@@ -1,6 +1,7 @@
 shader_type canvas_item;
 
 uniform bool blink_enabled = false;
+uniform bool hide_pixels = false;
 uniform float blink_speed : hint_range(1.0, 30.0) = 12.0;
 uniform float hidden_ratio : hint_range(0.0, 1.0) = 0.5;
 uniform float dodge_effect_strength : hint_range(0.0, 1.0) = 0.0;
@@ -32,6 +33,10 @@ uniform vec4 revive_glow_color : source_color = vec4(3.2, 3.2, 3.2, 1.0);
 uniform float revive_glow_outline_width : hint_range(1.0, 8.0) = 4.5;
 
 void fragment() {
+	if (hide_pixels) {
+		discard;
+	}
+
 	vec4 texture_color = texture(TEXTURE, UV);
 	vec4 color = COLOR;
 

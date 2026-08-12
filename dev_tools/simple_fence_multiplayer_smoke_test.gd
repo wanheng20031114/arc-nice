@@ -145,8 +145,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 62,
-		"协议v62必须保留P1D、遭遇跟随作战、狭路相逢、稀有宝箱与既有wire合同。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 63,
+		"协议v63必须保留P1D、遭遇跟随作战、狭路相逢、稀有宝箱与既有wire合同。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)

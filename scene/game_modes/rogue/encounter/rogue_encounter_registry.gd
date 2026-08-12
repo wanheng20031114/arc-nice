@@ -8,6 +8,7 @@ const SLIME_TALKERS := &"slime_talkers"
 const GHOST_SHADOW := &"ghost_shadow"
 const FLUORESCENT_PIT := &"fluorescent_pit"
 const SUITCASE_FRENZY := &"suitcase_frenzy"
+const INVISIBLE_SEA_CUCUMBER := &"invisible_sea_cucumber"
 
 const OPTION_PURCHASE_BASKETBALL := &"purchase_basketball"
 const OPTION_ASK_FOR_FREE := &"ask_for_free"
@@ -21,6 +22,9 @@ const OPTION_LEAVE_PIT := &"leave_pit"
 const OPTION_CLAIM_SUITCASE := &"claim_suitcase"
 const OPTION_JOIN_SUITCASE_SHOOTING := &"join_suitcase_shooting"
 const OPTION_IGNORE_SUITCASE := &"ignore_suitcase"
+const OPTION_STOMP_SEA_CUCUMBER := &"stomp_sea_cucumber"
+const OPTION_GIVE_GOLD_WINE_CUP := &"give_gold_wine_cup"
+const OPTION_COOK_SEA_CUCUMBER := &"cook_sea_cucumber"
 
 const MAX_VISIBLE_OPTIONS := 3
 
@@ -211,6 +215,47 @@ const _CONTENT_CONFIGS := {
 			},
 		],
 	},
+	INVISIBLE_SEA_CUCUMBER: {
+		"display_name": "隐形海参",
+		"portrait_texture_path": (
+			"res://resources/texture/rogue_encounter/invisible_sea_cucumber.png"
+		),
+		"encounter_hint": "",
+		"intro_speaker": "",
+		"intro_text": "你注意到了隐形的海参",
+		"intro_is_narration": true,
+		"resolving_speaker": "",
+		"resolving_text": "隐形的海参正在等待你的决定……",
+		"resolving_is_narration": true,
+		"result_status": "这次相遇已经有了结果",
+		"default_result_speaker": "",
+		"default_result_is_narration": true,
+		# 结果页由玩家主动点击推进；房主等待当轮所有玩家读完再离开。
+		"manual_result_page_advance": true,
+		"requires_result_ack": true,
+		"options": [
+			{
+				"option_id": OPTION_STOMP_SEA_CUCUMBER,
+				"title": "什么路边玩意",
+				"description": "直接一脚踩死",
+				"icon_texture_path": "",
+			},
+			{
+				"option_id": OPTION_GIVE_GOLD_WINE_CUP,
+				"title": "给他一个奖杯",
+				"description": "",
+				"icon_texture_path": (
+					"res://resources/texture/collectibles/gold_wine_cup.png"
+				),
+			},
+			{
+				"option_id": OPTION_COOK_SEA_CUCUMBER,
+				"title": "海鲜大餐真不错！",
+				"description": "管他会不会隐身直接做成海线大餐！",
+				"icon_texture_path": "",
+			},
+		],
+	},
 }
 
 const _POOLS := {
@@ -220,6 +265,7 @@ const _POOLS := {
 		GHOST_SHADOW,
 		FLUORESCENT_PIT,
 		SUITCASE_FRENZY,
+		INVISIBLE_SEA_CUCUMBER,
 	],
 }
 

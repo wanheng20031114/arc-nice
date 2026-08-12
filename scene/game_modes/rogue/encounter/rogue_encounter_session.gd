@@ -1271,6 +1271,46 @@ func _build_result_pages(
 				)]
 			RogueEncounterEconomyCoordinator.RESULT_SUITCASE_LEFT:
 				return []
+	elif encounter_id == RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER:
+		match result_code:
+			RogueEncounterEconomyCoordinator.RESULT_SEA_CUCUMBER_STOMP_GEL, \
+			RogueEncounterEconomyCoordinator.RESULT_SEA_CUCUMBER_STOMP_WOOD:
+				return [_make_result_page(
+					"",
+					str(economy_result.get("reward_text", "")),
+					true
+				)]
+			RogueEncounterEconomyCoordinator.RESULT_SEA_CUCUMBER_STOMP_DROPPED:
+				return [_make_result_page(
+					"",
+					"没有玩家的背包能装下材料，踩死海参后得到的材料被丢弃了。",
+					true
+				)]
+			RogueEncounterEconomyCoordinator.RESULT_SEA_CUCUMBER_TECHNIQUE:
+				return [
+					_make_result_page(
+						"",
+						"海参十分高兴，传授了你一些技术",
+						true
+					),
+					_make_result_page(
+						"",
+						"所有玩家的冲刺冷却时间缩短1秒，攻击力+10",
+						true
+					),
+				]
+			RogueEncounterEconomyCoordinator.RESULT_SEA_CUCUMBER_FEAST:
+				return [_make_result_page(
+					"",
+					"每个玩家获得了一个海参",
+					true
+				)]
+			RogueEncounterEconomyCoordinator.RESULT_SEA_CUCUMBER_PARTY_INVENTORY_FULL:
+				return [_make_result_page(
+					"",
+					"有玩家的背包没有空位，无法分发海参。",
+					true
+				)]
 	var definition := RogueEncounterRegistry.get_definition(encounter_id)
 	return [_make_result_page(
 		str(definition.get("default_result_speaker", "")),

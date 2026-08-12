@@ -11,11 +11,16 @@ const SLIME_COLLECTIBLE_REWARD_COUNT := 3
 const SLIME_GEL_REWARD_COUNT := 10
 const SLIME_HELP_COLLECTIBLE_CHANCE := 0.5
 const SLIME_XIRANG_REWARD_AMOUNTS: Array[int] = [500, 1000, 2000, 5000]
+const SEA_CUCUMBER_GEL_REWARD_COUNT := 10
+const SEA_CUCUMBER_WOOD_REWARD_COUNT := 5
+const SEA_CUCUMBER_ATTACK_DAMAGE_BONUS := 10
+const SEA_CUCUMBER_DASH_COOLDOWN_REDUCTION := 1
 const ENCOUNTER_CHICKEN_BRO := &"chicken_bro"
 const ENCOUNTER_SLIME_TALKERS := &"slime_talkers"
 const ENCOUNTER_GHOST_SHADOW := &"ghost_shadow"
 const ENCOUNTER_FLUORESCENT_PIT := &"fluorescent_pit"
 const ENCOUNTER_SUITCASE_FRENZY := &"suitcase_frenzy"
+const ENCOUNTER_INVISIBLE_SEA_CUCUMBER := &"invisible_sea_cucumber"
 const OPTION_PURCHASE := &"purchase_basketball"
 const OPTION_FREE := &"ask_for_free"
 const OPTION_HELP_SLIMES := &"help_slimes"
@@ -28,10 +33,20 @@ const OPTION_LEAVE_PIT := &"leave_pit"
 const OPTION_CLAIM_SUITCASE := &"claim_suitcase"
 const OPTION_JOIN_SUITCASE_SHOOTING := &"join_suitcase_shooting"
 const OPTION_IGNORE_SUITCASE := &"ignore_suitcase"
+const OPTION_STOMP_SEA_CUCUMBER := &"stomp_sea_cucumber"
+const OPTION_GIVE_GOLD_WINE_CUP := &"give_gold_wine_cup"
+const OPTION_COOK_SEA_CUCUMBER := &"cook_sea_cucumber"
 const PLANK_PATH := "res://resources/config/materials/material_plank.tres"
 const BASKETBALL_PATH := "res://resources/config/collectibles/collectible_basketball.tres"
 const WATER_BOTTLE_PATH := "res://resources/config/materials/material_water_bottle.tres"
 const GEL_PATH := "res://resources/config/materials/material_gel.tres"
+const WOOD_PATH := "res://resources/config/materials/material_wood.tres"
+const GOLD_WINE_CUP_PATH := (
+	"res://resources/config/collectibles/collectible_gold_wine_cup.tres"
+)
+const SEA_CUCUMBER_PATH := (
+	"res://resources/config/consumables/sea_cucumber.tres"
+)
 
 const RESULT_GRANTED_PAID := &"granted_paid"
 const RESULT_GRANTED_FREE := &"granted_free"
@@ -59,6 +74,14 @@ const RESULT_PIT_LEFT := &"pit_left"
 const RESULT_SUITCASE_ROBOTS_ALERTED := &"suitcase_robots_alerted"
 const RESULT_SUITCASE_DESTROYED := &"suitcase_destroyed"
 const RESULT_SUITCASE_LEFT := &"suitcase_left"
+const RESULT_SEA_CUCUMBER_STOMP_GEL := &"sea_cucumber_stomp_gel"
+const RESULT_SEA_CUCUMBER_STOMP_WOOD := &"sea_cucumber_stomp_wood"
+const RESULT_SEA_CUCUMBER_STOMP_DROPPED := &"sea_cucumber_stomp_dropped"
+const RESULT_SEA_CUCUMBER_TECHNIQUE := &"sea_cucumber_technique"
+const RESULT_SEA_CUCUMBER_FEAST := &"sea_cucumber_feast"
+const RESULT_SEA_CUCUMBER_PARTY_INVENTORY_FULL := (
+	&"sea_cucumber_party_inventory_full"
+)
 const GHOST_IDENTITY_SPECIAL_OUTCOME := &"ghost_identity_special"
 const SUITCASE_FOLLOWUP_COMBAT_ID := &"suitcase_battle"
 const RESULT_PRESENTATION_PAGES := &"pages"
@@ -136,6 +159,49 @@ func can_afford_slime_help(peer_ids: Array[int]) -> bool:
 	)
 
 
+## 金酒之杯必须实际位于本轮参与玩家的随身背包。共享仓库中的杯子
+## 不属于“玩家背包内持有”，因此既不能解锁选项，也不会被结算扣除。
+func has_gold_wine_cup_in_player_inventories(
+	peer_ids: Array[int]
+) -> bool:
+	if _run_state == null:
+		return false
+	var ordered_peer_ids := _normalize_peer_ids(peer_ids)
+	if ordered_peer_ids.is_empty():
+		return false
+	var party_snapshot := _run_state.export_party_economy_snapshot(
+		_to_packed_peer_ids(ordered_peer_ids)
+	)
+	return _count_item_path_in_player_inventories(
+		party_snapshot,
+		GOLD_WINE_CUP_PATH
+	) > 0
+
+
+## “海鲜大餐”是全有或全无的队伍奖励。只有每位参与玩家的背包都能
+## 再容纳一个海参时才开放选项，避免多人结算出现部分发放。
+func can_grant_sea_cucumber_to_all(peer_ids: Array[int]) -> bool:
+	if _run_state == null:
+		return false
+	var sea_cucumber := load(SEA_CUCUMBER_PATH) as PickupConfig
+	var ordered_peer_ids := _normalize_peer_ids(peer_ids)
+	if sea_cucumber == null or ordered_peer_ids.is_empty():
+		return false
+	var party_snapshot := _run_state.export_party_economy_snapshot(
+		_to_packed_peer_ids(ordered_peer_ids)
+	)
+	var inventory_snapshots := _index_inventory_snapshots(party_snapshot)
+	if inventory_snapshots.size() != ordered_peer_ids.size():
+		return false
+	for peer_id in ordered_peer_ids:
+		if not _inventory_has_capacity(
+			inventory_snapshots[peer_id] as Dictionary,
+			sea_cucumber
+		):
+			return false
+	return true
+
+
 func get_option_availability(
 	encounter_id: StringName,
 	peer_ids: Array[int]
@@ -167,6 +233,16 @@ func get_option_availability(
 				String(OPTION_CLAIM_SUITCASE): true,
 				String(OPTION_JOIN_SUITCASE_SHOOTING): true,
 				String(OPTION_IGNORE_SUITCASE): true,
+			}
+		ENCOUNTER_INVISIBLE_SEA_CUCUMBER:
+			return {
+				String(OPTION_STOMP_SEA_CUCUMBER): true,
+				String(OPTION_GIVE_GOLD_WINE_CUP): (
+					has_gold_wine_cup_in_player_inventories(peer_ids)
+				),
+				String(OPTION_COOK_SEA_CUCUMBER): (
+					can_grant_sea_cucumber_to_all(peer_ids)
+				),
 			}
 		_:
 			return {}
@@ -218,8 +294,350 @@ func resolve_encounter(
 				option_id,
 				eligible_peer_ids
 			)
+		ENCOUNTER_INVISIBLE_SEA_CUCUMBER:
+			return resolve_invisible_sea_cucumber(
+				option_id,
+				node_content_seed,
+				eligible_peer_ids,
+				occurrence_key
+			)
 		_:
 			return _make_result(false, RESULT_INVALID_REQUEST)
+
+
+## “隐形海参”统一由房主结算，并按 occurrence_key 缓存所有分支。
+## 三种随机用途分别使用独立 salt；奖杯扣除与全员永久强化则共用一次
+## party transaction，确保断线重放不会出现扣杯和增益只成功一半。
+func resolve_invisible_sea_cucumber(
+	option_id: StringName,
+	node_content_seed: int,
+	eligible_peer_ids: Array[int],
+	occurrence_key: String = ""
+) -> Dictionary:
+	if not occurrence_key.is_empty() and _settled_occurrences.has(occurrence_key):
+		return (
+			(_settled_occurrences[occurrence_key] as Dictionary).duplicate(true)
+		)
+	if (
+		_run_state == null
+		or option_id not in [
+			OPTION_STOMP_SEA_CUCUMBER,
+			OPTION_GIVE_GOLD_WINE_CUP,
+			OPTION_COOK_SEA_CUCUMBER,
+		]
+	):
+		return _make_result(false, RESULT_INVALID_REQUEST)
+	var ordered_peer_ids := _normalize_peer_ids(eligible_peer_ids)
+	if ordered_peer_ids.is_empty():
+		return _make_result(false, RESULT_INVALID_REQUEST)
+	for peer_id in ordered_peer_ids:
+		if peer_id > 0:
+			_run_state.ensure_multiplayer_peer_state(peer_id)
+	match option_id:
+		OPTION_STOMP_SEA_CUCUMBER:
+			return _resolve_sea_cucumber_stomp(
+				node_content_seed,
+				ordered_peer_ids,
+				occurrence_key
+			)
+		OPTION_GIVE_GOLD_WINE_CUP:
+			return _resolve_sea_cucumber_technique(
+				node_content_seed,
+				ordered_peer_ids,
+				occurrence_key
+			)
+		OPTION_COOK_SEA_CUCUMBER:
+			return _resolve_sea_cucumber_feast(
+				ordered_peer_ids,
+				occurrence_key
+			)
+	return _make_result(false, RESULT_INVALID_REQUEST)
+
+
+func _resolve_sea_cucumber_stomp(
+	node_content_seed: int,
+	ordered_peer_ids: Array[int],
+	occurrence_key: String
+) -> Dictionary:
+	var reward_is_gel := RogueEncounterRandom.choose_index(
+		node_content_seed,
+		&"invisible_sea_cucumber_stomp_reward_kind",
+		2
+	) == 0
+	var reward_path := GEL_PATH if reward_is_gel else WOOD_PATH
+	var reward_count := (
+		SEA_CUCUMBER_GEL_REWARD_COUNT
+		if reward_is_gel
+		else SEA_CUCUMBER_WOOD_REWARD_COUNT
+	)
+	var reward_item := load(reward_path) as PickupConfig
+	if reward_item == null:
+		return _make_result(false, RESULT_INVALID_REQUEST)
+	var party_snapshot := _run_state.export_party_economy_snapshot(
+		_to_packed_peer_ids(ordered_peer_ids)
+	)
+	var inventory_snapshots := _index_inventory_snapshots(party_snapshot)
+	if inventory_snapshots.size() != ordered_peer_ids.size():
+		return _make_result(false, RESULT_STALE_STATE)
+	var receiver_candidates: Array[int] = []
+	for peer_id in ordered_peer_ids:
+		if _get_wire_slot_capacity(
+			(inventory_snapshots[peer_id] as Dictionary).get("slots", []) as Array,
+			reward_item
+		) >= reward_count:
+			receiver_candidates.append(peer_id)
+	var receiver_peer_id := -1
+	if not receiver_candidates.is_empty():
+		receiver_peer_id = receiver_candidates[
+			RogueEncounterRandom.choose_index(
+				node_content_seed,
+				&"invisible_sea_cucumber_stomp_receiver",
+				receiver_candidates.size()
+			)
+		]
+	var expected_inventory_revisions := _get_expected_inventory_revisions(
+		inventory_snapshots,
+		ordered_peer_ids
+	)
+	var next_snapshot := party_snapshot.duplicate(true)
+	var next_inventory_snapshots := _index_inventory_snapshots(next_snapshot)
+	var destination := "discarded"
+	var transaction_required := false
+	if receiver_peer_id >= 0:
+		var target_inventory := (
+			next_inventory_snapshots[receiver_peer_id] as Dictionary
+		)
+		if _add_item_count_to_wire_slots(
+			target_inventory.get("slots", []) as Array,
+			reward_item,
+			reward_count
+		) != reward_count:
+			return _make_result(false, RESULT_STALE_STATE)
+		target_inventory["revision"] = (
+			int(expected_inventory_revisions[receiver_peer_id]) + 1
+		)
+		destination = "inventory"
+		transaction_required = true
+	if transaction_required and not _run_state.apply_authoritative_party_transaction(
+		next_snapshot,
+		int((party_snapshot["warehouse_ledger"] as Dictionary)["revision"]),
+		expected_inventory_revisions
+	):
+		return _make_result(false, RESULT_STALE_STATE)
+	var result_code := (
+		RESULT_SEA_CUCUMBER_STOMP_DROPPED
+		if destination == "discarded"
+		else (
+			RESULT_SEA_CUCUMBER_STOMP_GEL
+			if reward_is_gel
+			else RESULT_SEA_CUCUMBER_STOMP_WOOD
+		)
+	)
+	var result := _make_invisible_sea_cucumber_result(
+		result_code,
+		OPTION_STOMP_SEA_CUCUMBER
+	)
+	result.merge({
+		"reward_granted": destination != "discarded",
+		"reward_kind": "gel" if reward_is_gel else "wood",
+		"reward_path": reward_path,
+		"reward_count": reward_count,
+		"reward_text": "获得了%d个%s" % [
+			reward_count,
+			"凝胶" if reward_is_gel else "木头",
+		],
+		"receiver_peer_id": receiver_peer_id,
+		"reward_destination": destination,
+	}, true)
+	return _finalize_resolution(
+		result,
+		occurrence_key,
+		ordered_peer_ids,
+		transaction_required
+	)
+
+
+func _resolve_sea_cucumber_technique(
+	node_content_seed: int,
+	ordered_peer_ids: Array[int],
+	occurrence_key: String
+) -> Dictionary:
+	var party_snapshot := _run_state.export_party_economy_snapshot(
+		_to_packed_peer_ids(ordered_peer_ids)
+	)
+	var inventory_snapshots := _index_inventory_snapshots(party_snapshot)
+	var status := party_snapshot.get("party_status_ledger", {}) as Dictionary
+	if (
+		inventory_snapshots.size() != ordered_peer_ids.size()
+		or not _is_valid_party_status_ledger(status)
+	):
+		return _make_result(false, RESULT_STALE_STATE)
+	var cup_holder_peer_ids: Array[int] = []
+	for peer_id in ordered_peer_ids:
+		if _count_item_path_in_inventory_snapshot(
+			inventory_snapshots[peer_id] as Dictionary,
+			GOLD_WINE_CUP_PATH
+		) > 0:
+			cup_holder_peer_ids.append(peer_id)
+	if cup_holder_peer_ids.is_empty():
+		return _make_result(false, RESULT_INVALID_REQUEST)
+	var cup_payer_peer_id := cup_holder_peer_ids[
+		RogueEncounterRandom.choose_index(
+			node_content_seed,
+			&"invisible_sea_cucumber_gold_wine_cup_payer",
+			cup_holder_peer_ids.size()
+		)
+	]
+	var expected_inventory_revisions := _get_expected_inventory_revisions(
+		inventory_snapshots,
+		ordered_peer_ids
+	)
+	var expected_status_revision := int(status["revision"])
+	var next_snapshot := party_snapshot.duplicate(true)
+	var next_inventory_snapshots := _index_inventory_snapshots(next_snapshot)
+	var payer_inventory := (
+		next_inventory_snapshots[cup_payer_peer_id] as Dictionary
+	)
+	if _consume_from_inventory(
+		payer_inventory,
+		GOLD_WINE_CUP_PATH,
+		1
+	) != 1:
+		return _make_result(false, RESULT_STALE_STATE)
+	payer_inventory["revision"] = (
+		int(expected_inventory_revisions[cup_payer_peer_id]) + 1
+	)
+	var next_status := next_snapshot["party_status_ledger"] as Dictionary
+	var stat_bonus_totals: Array[Dictionary] = []
+	for peer_id in ordered_peer_ids:
+		if (
+			not _add_player_stat_bonus_to_status(
+				next_status,
+				peer_id,
+				&"attack_damage",
+				SEA_CUCUMBER_ATTACK_DAMAGE_BONUS
+			)
+			or not _add_player_stat_bonus_to_status(
+				next_status,
+				peer_id,
+				&"dash_cooldown_reduction",
+				SEA_CUCUMBER_DASH_COOLDOWN_REDUCTION
+			)
+		):
+			return _make_result(false, RESULT_INVALID_REQUEST)
+		var peer_bonuses := (
+			(next_status["player_stat_bonuses"] as Dictionary)[str(peer_id)]
+			as Dictionary
+		)
+		stat_bonus_totals.append({
+			"peer_id": peer_id,
+			"attack_damage": int(peer_bonuses["attack_damage"]),
+			"dash_cooldown_reduction": int(
+				peer_bonuses["dash_cooldown_reduction"]
+			),
+		})
+	next_status["revision"] = expected_status_revision + 1
+	if not _run_state.apply_authoritative_party_transaction(
+		next_snapshot,
+		int((party_snapshot["warehouse_ledger"] as Dictionary)["revision"]),
+		expected_inventory_revisions,
+		-1,
+		{},
+		expected_status_revision,
+		next_status
+	):
+		return _make_result(false, RESULT_STALE_STATE)
+	var result := _make_invisible_sea_cucumber_result(
+		RESULT_SEA_CUCUMBER_TECHNIQUE,
+		OPTION_GIVE_GOLD_WINE_CUP
+	)
+	result.merge({
+		"reward_granted": true,
+		"gold_wine_cup_paid": 1,
+		"cup_payer_peer_id": cup_payer_peer_id,
+		"attack_damage_bonus_each": SEA_CUCUMBER_ATTACK_DAMAGE_BONUS,
+		"dash_cooldown_reduction_each": (
+			SEA_CUCUMBER_DASH_COOLDOWN_REDUCTION
+		),
+		"player_stat_bonus_totals": stat_bonus_totals,
+	}, true)
+	return _finalize_resolution(
+		result,
+		occurrence_key,
+		ordered_peer_ids,
+		true
+	)
+
+
+func _resolve_sea_cucumber_feast(
+	ordered_peer_ids: Array[int],
+	occurrence_key: String
+) -> Dictionary:
+	var sea_cucumber := load(SEA_CUCUMBER_PATH) as PickupConfig
+	if sea_cucumber == null:
+		return _make_result(false, RESULT_INVALID_REQUEST)
+	var party_snapshot := _run_state.export_party_economy_snapshot(
+		_to_packed_peer_ids(ordered_peer_ids)
+	)
+	var inventory_snapshots := _index_inventory_snapshots(party_snapshot)
+	if inventory_snapshots.size() != ordered_peer_ids.size():
+		return _make_result(false, RESULT_STALE_STATE)
+	for peer_id in ordered_peer_ids:
+		if not _inventory_has_capacity(
+			inventory_snapshots[peer_id] as Dictionary,
+			sea_cucumber
+		):
+			return _finalize_resolution(
+				_make_invisible_sea_cucumber_result(
+					RESULT_SEA_CUCUMBER_PARTY_INVENTORY_FULL,
+					OPTION_COOK_SEA_CUCUMBER
+				),
+				occurrence_key,
+				ordered_peer_ids
+			)
+	var expected_inventory_revisions := _get_expected_inventory_revisions(
+		inventory_snapshots,
+		ordered_peer_ids
+	)
+	var next_snapshot := party_snapshot.duplicate(true)
+	var next_inventory_snapshots := _index_inventory_snapshots(next_snapshot)
+	var rewards: Array[Dictionary] = []
+	for peer_id in ordered_peer_ids:
+		var next_inventory := next_inventory_snapshots[peer_id] as Dictionary
+		if not _add_item_to_inventory(next_inventory, sea_cucumber):
+			return _make_result(false, RESULT_STALE_STATE)
+		next_inventory["revision"] = (
+			int(expected_inventory_revisions[peer_id]) + 1
+		)
+		rewards.append({
+			"peer_id": peer_id,
+			"config_path": SEA_CUCUMBER_PATH,
+			"count": 1,
+			"granted": true,
+		})
+	if not _run_state.apply_authoritative_party_transaction(
+		next_snapshot,
+		int((party_snapshot["warehouse_ledger"] as Dictionary)["revision"]),
+		expected_inventory_revisions
+	):
+		return _make_result(false, RESULT_STALE_STATE)
+	var result := _make_invisible_sea_cucumber_result(
+		RESULT_SEA_CUCUMBER_FEAST,
+		OPTION_COOK_SEA_CUCUMBER
+	)
+	result.merge({
+		"reward_granted": true,
+		"reward_kind": "sea_cucumber",
+		"sea_cucumber_path": SEA_CUCUMBER_PATH,
+		"sea_cucumber_count_each": 1,
+		"consumable_rewards": rewards,
+	}, true)
+	return _finalize_resolution(
+		result,
+		occurrence_key,
+		ordered_peer_ids,
+		true
+	)
 
 
 ## “疯穿箱子”本身没有资源收支；结果只声明遭遇表现和后续作战意图。
@@ -1037,6 +1455,8 @@ func migrate_result_peer_references(
 	var migrated := result.duplicate(true)
 	if int(migrated.get("receiver_peer_id", -1)) == old_peer_id:
 		migrated["receiver_peer_id"] = new_peer_id
+	if int(migrated.get("cup_payer_peer_id", -1)) == old_peer_id:
+		migrated["cup_payer_peer_id"] = new_peer_id
 	var payments := migrated.get("player_payments", {}) as Dictionary
 	if payments.has(old_peer_id):
 		var old_payment := int(payments[old_peer_id])
@@ -1062,6 +1482,8 @@ func migrate_result_peer_references(
 		"collectible_rewards",
 		"xirang_totals",
 		"max_health_penalty_totals",
+		"player_stat_bonus_totals",
+		"consumable_rewards",
 	]:
 		var entries := migrated.get(field_name, []) as Array
 		for raw_entry_value in entries:
@@ -1429,6 +1851,19 @@ func _make_suitcase_result(
 	return result
 
 
+func _make_invisible_sea_cucumber_result(
+	result_code: StringName,
+	option_id: StringName
+) -> Dictionary:
+	var result := _make_result(true, result_code)
+	result.merge({
+		"encounter_id": String(ENCOUNTER_INVISIBLE_SEA_CUCUMBER),
+		"option_id": String(option_id),
+		"terminal": true,
+	}, true)
+	return result
+
+
 func _make_pit_result(
 	result_code: StringName,
 	option_id: StringName,
@@ -1661,6 +2096,38 @@ func _is_valid_party_status_ledger(ledger: Dictionary) -> bool:
 	return true
 
 
+func _add_player_stat_bonus_to_status(
+	status: Dictionary,
+	peer_id: int,
+	stat_id: StringName,
+	delta: int
+) -> bool:
+	if (
+		peer_id < 0
+		or delta <= 0
+		or not RunStateStore.PLAYER_STAT_BONUS_KEYS.has(stat_id)
+		or typeof(status.get("player_stat_bonuses")) != TYPE_DICTIONARY
+	):
+		return false
+	var bonuses_by_peer := status["player_stat_bonuses"] as Dictionary
+	var peer_key := str(peer_id)
+	if (
+		not bonuses_by_peer.has(peer_key)
+		or typeof(bonuses_by_peer[peer_key]) != TYPE_DICTIONARY
+	):
+		return false
+	var bonuses := bonuses_by_peer[peer_key] as Dictionary
+	var stat_key := str(stat_id)
+	if not bonuses.has(stat_key):
+		return false
+	var previous_value := int(bonuses[stat_key])
+	var hard_cap := _run_state.get_player_stat_bonus_hard_cap(stat_id)
+	if hard_cap < 0 or previous_value < 0 or previous_value > hard_cap - delta:
+		return false
+	bonuses[stat_key] = previous_value + delta
+	return true
+
+
 func _inventory_has_capacity(
 	inventory_snapshot: Dictionary,
 	item: PickupConfig
@@ -1695,6 +2162,31 @@ func _count_item_path(party_snapshot: Dictionary, config_path: String) -> int:
 			var slot := raw_slot_value as Dictionary
 			if str(slot.get("config_path", "")) == config_path:
 				total += int(slot.get("stack_count", 0))
+	return total
+
+
+func _count_item_path_in_player_inventories(
+	party_snapshot: Dictionary,
+	config_path: String
+) -> int:
+	var total := 0
+	for raw_inventory_value in party_snapshot.get("inventories", []) as Array:
+		total += _count_item_path_in_inventory_snapshot(
+			raw_inventory_value as Dictionary,
+			config_path
+		)
+	return total
+
+
+func _count_item_path_in_inventory_snapshot(
+	inventory_snapshot: Dictionary,
+	config_path: String
+) -> int:
+	var total := 0
+	for raw_slot_value in inventory_snapshot.get("slots", []) as Array:
+		var slot := raw_slot_value as Dictionary
+		if str(slot.get("config_path", "")) == config_path:
+			total += int(slot.get("stack_count", 0))
 	return total
 
 

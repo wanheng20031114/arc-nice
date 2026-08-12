@@ -15,11 +15,11 @@ signal party_light_stone_ledger_changed(snapshot: Dictionary)
 signal party_status_ledger_changed(snapshot: Dictionary)
 
 const INVENTORY_CAPACITY := 20
-const PARTY_ECONOMY_SCHEMA_VERSION := 5
+const PARTY_ECONOMY_SCHEMA_VERSION := 6
 const SHARED_WAREHOUSE_LEDGER_SCHEMA_VERSION := 1
 const PARTY_XIRANG_LEDGER_SCHEMA_VERSION := 1
 const PARTY_LIGHT_STONE_LEDGER_SCHEMA_VERSION := 1
-const PARTY_STATUS_LEDGER_SCHEMA_VERSION := 2
+const PARTY_STATUS_LEDGER_SCHEMA_VERSION := 3
 const DEFAULT_PARTY_CORE_HEALTH := 100
 const PLAYER_STAT_BONUS_KEYS: Array[StringName] = [
 	&"max_health",
@@ -29,6 +29,7 @@ const PLAYER_STAT_BONUS_KEYS: Array[StringName] = [
 	&"ammo_capacity",
 	&"attack_damage",
 	&"dodge_percent_points",
+	&"dash_cooldown_reduction",
 ]
 const PLAYER_STAT_BONUS_HARD_CAPS := {
 	&"max_health": 2147483647,
@@ -38,6 +39,7 @@ const PLAYER_STAT_BONUS_HARD_CAPS := {
 	&"ammo_capacity": 65535,
 	&"attack_damage": 2147483647,
 	&"dodge_percent_points": 100,
+	&"dash_cooldown_reduction": 2147483647,
 }
 const STARTING_WOOD_COUNT := 5
 const STARTING_WOOD: PickupConfig = preload(
@@ -109,7 +111,7 @@ var party_core_current: int = DEFAULT_PARTY_CORE_HEALTH
 var party_core_maximum: int = DEFAULT_PARTY_CORE_HEALTH
 var max_health_penalties: Dictionary = {}
 ## 稀有宝箱等本局永久来源提供的玩家属性绝对总值。内部与 wire 均使用
-## 固定七字段字典，避免重连、重复快照或换场时再次按 delta 叠加。
+## 固定八字段字典，避免重连、重复快照或换场时再次按 delta 叠加。
 var player_stat_bonuses: Dictionary = {}
 var party_status_ledger_revision: int = 0
 var selected_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID

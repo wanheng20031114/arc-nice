@@ -94,7 +94,10 @@ extends RefCounted
 ## v62：敌人伤害反馈由单一粒子布尔值升级为表现位集，Host 可独立同步命中粒子
 ## 与直接命中闪红；聚合伤害和可靠致死事件统一使用该位集。v61 客户端会把新的
 ## int 表现位误解为旧 bool，无法保持直接命中与持续伤害表现一致。
-const PROTOCOL_VERSION := 62
+## v63：新增“隐形海参”神奇遭遇、海参消耗品与五秒隐藏表现；玩家持久属性
+## 账本追加冲刺冷却减秒字段，party status / economy schema 分别升为 3 / 6。
+## v62 客户端缺少新资源、option_id 和固定账本字段，不能安全加入。
+const PROTOCOL_VERSION := 63
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

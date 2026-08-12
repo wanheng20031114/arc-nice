@@ -127,6 +127,7 @@ const WALL_ESCAPE_MIN_OUTWARD_DOT := 0.12
 const WALL_ESCAPE_QUERY_MAX_RESULTS := 8
 	
 const BLINK_ENABLED_SHADER_PARAMETER := &"blink_enabled"
+const HIDE_PIXELS_SHADER_PARAMETER := &"hide_pixels"
 const DODGE_EFFECT_STRENGTH_SHADER_PARAMETER := &"dodge_effect_strength"
 const DODGE_SWEEP_SHADER_PARAMETER := &"dodge_sweep"
 const DASH_EFFECT_STRENGTH_SHADER_PARAMETER := &"dash_effect_strength"
@@ -205,6 +206,10 @@ var potion_move_speed_multiplier: float = 1.0
 var potion_move_speed_time_left: float = 0.0
 var potion_dodge_chance_bonus: float = 0.0
 var potion_dodge_time_left: float = 0.0
+var potion_hide_time_left: float = 0.0
+var _consumable_hide_active := false
+var _consumable_hide_player_was_visible := true
+var _consumable_hide_nameplate_restore_visible := false
 var void_battery_charged: bool = false
 var _void_battery_prediction_pending: bool = false
 var _void_battery_prediction_token: int = 0
@@ -291,6 +296,7 @@ var _run_move_speed_bonus: float = 0.0
 var _run_ammo_capacity_bonus: int = 0
 var _run_attack_damage_bonus: int = 0
 var _run_dodge_percent_points: int = 0
+var _run_dash_cooldown_reduction: int = 0
 var _base_dodge_chance: float = 0.0
 var _base_fire_interval: float = 0.0
 var multiplayer_visual_smoothing_enabled: bool = false
@@ -426,6 +432,7 @@ func _ready() -> void:
 	shooting_timer.one_shot = true
 	shooting_timer.wait_time = _get_effective_fire_interval()
 	_set_hurt_blink_enabled(false)
+	_set_consumable_hide_enabled(false)
 	_set_dash_effect_strength(0.0)
 	_set_revive_glow_strength(0.0)
 	_set_burn_overlay_strength(0.0)
@@ -436,7 +443,7 @@ func _ready() -> void:
 	_initialize_nameplate_label_settings()
 	health_bar.setup(max_health, current_health)
 	name_label.visible = false
-	nameplate_layer.visible = false
+	_set_nameplate_layer_visible(false)
 	health_changed.emit(current_health, max_health)
 	_update_animation()
 	_update_character_visual_state()
@@ -448,6 +455,8 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	_set_consumable_hide_enabled(false)
+	potion_hide_time_left = 0.0
 	clear_damage_over_time_statuses()
 	clear_cold_status()
 
@@ -991,6 +1000,15 @@ func _apply_pickup_effects(
 			1.0
 		)
 		potion_dodge_time_left = buff_duration
+		applied = true
+
+	if (
+		config.is_consumable_item()
+		and config.potion_hides_player
+		and buff_duration > 0.0
+	):
+		potion_hide_time_left = buff_duration
+		_set_consumable_hide_enabled(true)
 		applied = true
 
 	if config.is_consumable_item() and config.grants_next_skill_free:
@@ -1971,7 +1989,7 @@ func configure_multiplayer_control(
 	name_label.visible = false
 	nameplate_label.text = safe_display_name
 	_set_nameplate_local_highlight(highlight_as_local_player)
-	nameplate_layer.visible = not safe_display_name.is_empty()
+	_set_nameplate_layer_visible(not safe_display_name.is_empty())
 	_update_nameplate_position()
 	if not uses_local_input:
 		controls_locked = false
@@ -2593,7 +2611,7 @@ func _apply_tower_defense_hidden_death_state(force_hide_body: bool = false) -> v
 	if not keep_death_animation_visible:
 		body_sprite.stop()
 		body_sprite.hide()
-	nameplate_layer.hide()
+	_set_nameplate_layer_visible(false)
 	health_bar.hide()
 	if attack_interval_bar != null:
 		attack_interval_bar.hide()
@@ -2648,10 +2666,10 @@ func _update_multiplayer_nameplate_text(seconds_left: int) -> void:
 	if seconds_left >= 0:
 		var prefix: String = base_name if not base_name.is_empty() else name
 		nameplate_label.text = "%s %ds" % [prefix, seconds_left]
-		nameplate_layer.visible = true
+		_set_nameplate_layer_visible(true)
 	else:
 		nameplate_label.text = base_name
-		nameplate_layer.visible = not base_name.is_empty()
+		_set_nameplate_layer_visible(not base_name.is_empty())
 	_update_nameplate_position()
 
 func get_xirang() -> int:
@@ -3123,6 +3141,13 @@ func configure_run_stat_bonuses(
 		0,
 		100
 	)
+	var next_dash_cooldown_reduction := maxi(
+		int(bonuses.get("dash_cooldown_reduction", 0)),
+		0
+	)
+	var dash_cooldown_changed := (
+		next_dash_cooldown_reduction != _run_dash_cooldown_reduction
+	)
 	var changed := (
 		next_max_health != _run_max_health_bonus
 		or next_physical_defense != _run_physical_defense_bonus
@@ -3131,6 +3156,7 @@ func configure_run_stat_bonuses(
 		or next_ammo_capacity != _run_ammo_capacity_bonus
 		or next_attack_damage != _run_attack_damage_bonus
 		or next_dodge_points != _run_dodge_percent_points
+		or dash_cooldown_changed
 	)
 	if not changed:
 		return false
@@ -3141,8 +3167,12 @@ func configure_run_stat_bonuses(
 	_run_ammo_capacity_bonus = next_ammo_capacity
 	_run_attack_damage_bonus = next_attack_damage
 	_run_dodge_percent_points = next_dodge_points
+	_run_dash_cooldown_reduction = next_dash_cooldown_reduction
 	if refresh_stats and _base_stats_initialized:
 		_refresh_collectible_stats()
+		if dash_cooldown_changed:
+			_refresh_dash_ready_visual()
+			profile_display_changed.emit()
 	return true
 
 
@@ -4668,7 +4698,8 @@ func get_dash_cooldown() -> float:
 	return maxf(
 		_get_character_dash_cooldown()
 		- collectible_dash_cooldown_reduction
-		- tower_defense_fate_dash_cooldown_reduction,
+		- tower_defense_fate_dash_cooldown_reduction
+		- float(_run_dash_cooldown_reduction),
 		0.0
 	)
 
@@ -5129,6 +5160,14 @@ func _update_potion_effects(delta: float) -> void:
 		if potion_dodge_time_left <= 0.0:
 			potion_dodge_chance_bonus = 0.0
 
+	if potion_hide_time_left > 0.0:
+		potion_hide_time_left = maxf(
+			potion_hide_time_left - safe_delta,
+			0.0
+		)
+		if potion_hide_time_left <= 0.0:
+			_set_consumable_hide_enabled(false)
+
 	if potion_damage_reduction_time_left > 0.0:
 		potion_damage_reduction_time_left = maxf(
 			potion_damage_reduction_time_left - safe_delta,
@@ -5450,6 +5489,45 @@ func _set_hurt_blink_enabled(enabled: bool) -> void:
 	var sprite_material := body_sprite.material as ShaderMaterial
 	if sprite_material != null:
 		sprite_material.set_shader_parameter(BLINK_ENABLED_SHADER_PARAMETER, enabled)
+
+
+func is_hidden_by_consumable() -> bool:
+	return potion_hide_time_left > 0.0
+
+
+func _set_consumable_hide_enabled(enabled: bool) -> void:
+	var sprite_material := body_sprite.material as ShaderMaterial
+	if sprite_material != null:
+		sprite_material.set_shader_parameter(HIDE_PIXELS_SHADER_PARAMETER, enabled)
+	if enabled:
+		if not _consumable_hide_active:
+			_consumable_hide_player_was_visible = visible
+			_consumable_hide_nameplate_restore_visible = nameplate_layer.visible
+			_consumable_hide_active = true
+		# CharacterBody2D visibility is inherited by every CanvasItem in the
+		# player's visual tree, including character-specific helpers, trails and
+		# effects added while the consumable is active. Collision and processing
+		# stay enabled because only rendering visibility changes.
+		visible = false
+		nameplate_layer.visible = false
+		return
+	if not _consumable_hide_active:
+		return
+	_consumable_hide_active = false
+	visible = _consumable_hide_player_was_visible
+	nameplate_layer.visible = _consumable_hide_nameplate_restore_visible
+	if nameplate_layer.visible:
+		_update_nameplate_position()
+
+
+func _set_nameplate_layer_visible(enabled: bool) -> void:
+	if _consumable_hide_active:
+		# Death/revive countdowns may change the desired nameplate state during
+		# the five-second hide. Remember that latest state without drawing it.
+		_consumable_hide_nameplate_restore_visible = enabled
+		nameplate_layer.visible = false
+		return
+	nameplate_layer.visible = enabled
 
 
 func _start_local_revive_glow_effect() -> void:

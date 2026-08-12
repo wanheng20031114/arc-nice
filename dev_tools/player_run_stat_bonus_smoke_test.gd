@@ -75,6 +75,7 @@ func _run() -> void:
 		[&"ammo_capacity", 1],
 		[&"attack_damage", 2],
 		[&"dodge_percent_points", 1],
+		[&"dash_cooldown_reduction", 1],
 	]:
 		var next_status := (
 			run_state.build_party_status_ledger_with_player_stat_bonus(
@@ -95,8 +96,9 @@ func _run() -> void:
 		and is_equal_approx(player.move_speed, config.starting_move_speed + 5.0)
 		and player.get_ammo_capacity() == player.ammo_capacity + 1
 		and player.attack_damage == config.starting_attack_damage + 2
-		and is_equal_approx(player.dodge_chance, 0.01),
-		"玩家统一重算必须准确包含防御、移速、弹夹、攻击与闪避奖励。"
+		and is_equal_approx(player.dodge_chance, 0.01)
+		and is_equal_approx(player.get_dash_cooldown(), player.dash_cooldown - 1.0),
+		"玩家统一重算必须准确包含防御、移速、弹夹、攻击、闪避与冲刺冷却奖励。"
 	)
 
 	var committed := run_state.export_party_status_ledger()
@@ -152,10 +154,10 @@ func _test_default_ledger(run_state: RunStateStore) -> void:
 	_expect(
 		int(status.get("schema_version", 0))
 		== RunStateStore.PARTY_STATUS_LEDGER_SCHEMA_VERSION
-		and RunStateStore.PARTY_STATUS_LEDGER_SCHEMA_VERSION == 2
-		and RunStateStore.PARTY_ECONOMY_SCHEMA_VERSION == 5
+		and RunStateStore.PARTY_STATUS_LEDGER_SCHEMA_VERSION == 3
+		and RunStateStore.PARTY_ECONOMY_SCHEMA_VERSION == 6
 		and local_bonuses.size() == RunStateStore.PLAYER_STAT_BONUS_KEYS.size(),
-		"状态账本schema2必须携带本地玩家的七项零值奖励。"
+		"状态账本schema3必须携带本地玩家的八项零值奖励。"
 	)
 
 
@@ -272,14 +274,33 @@ func _test_multiplayer_identity_lifecycle() -> void:
 		isolated.apply_party_status_ledger(next_status),
 		"多人属性奖励夹具必须成功写入。"
 	)
+	var dash_status := (
+		isolated.build_party_status_ledger_with_player_stat_bonus(
+			11,
+			&"dash_cooldown_reduction",
+			1
+		)
+	)
+	_expect(
+		isolated.apply_party_status_ledger(dash_status),
+		"多人冲刺冷却奖励夹具必须成功写入。"
+	)
 	var revision_before_remap := isolated.party_status_ledger_revision
 	_expect(
 		isolated.remap_multiplayer_peer_state(11, 22)
 		and isolated.get_player_stat_bonus_value(22, &"move_speed") == 5
+		and isolated.get_player_stat_bonus_value(
+			22,
+			&"dash_cooldown_reduction"
+		) == 1
 		and isolated.get_player_stat_bonus_value(11, &"move_speed") == 0
+		and isolated.get_player_stat_bonus_value(
+			11,
+			&"dash_cooldown_reduction"
+		) == 0
 		and isolated.party_status_ledger_revision
 		== revision_before_remap + 1,
-		"重连身份迁移必须将绝对属性账本移动到新 peer 并只推进一次 revision。"
+		"重连身份迁移必须将含冲刺冷却的绝对属性账本移动到新 peer 并只推进一次 revision。"
 	)
 	var revision_before_prune := isolated.party_status_ledger_revision
 	_expect(

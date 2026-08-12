@@ -26,8 +26,9 @@ func _test_pool_and_deterministic_selection() -> void:
 			RogueEncounterRegistry.GHOST_SHADOW,
 			RogueEncounterRegistry.FLUORESCENT_PIT,
 			RogueEncounterRegistry.SUITCASE_FRENZY,
+			RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER,
 		],
-		"五种神奇遭遇必须等权注册且保持稳定顺序。"
+		"六种神奇遭遇必须等权注册且保持稳定顺序。"
 	)
 	var selected: Dictionary = {}
 	for seed_value in range(128):
@@ -46,8 +47,9 @@ func _test_pool_and_deterministic_selection() -> void:
 		and selected.has(RogueEncounterRegistry.SLIME_TALKERS)
 		and selected.has(RogueEncounterRegistry.GHOST_SHADOW)
 		and selected.has(RogueEncounterRegistry.FLUORESCENT_PIT)
-		and selected.has(RogueEncounterRegistry.SUITCASE_FRENZY),
-		"固定seed样本必须能够覆盖池中的五种遭遇。"
+		and selected.has(RogueEncounterRegistry.SUITCASE_FRENZY)
+		and selected.has(RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER),
+		"固定seed样本必须能够覆盖池中的六种遭遇。"
 	)
 
 
@@ -66,6 +68,9 @@ func _test_content_configs() -> void:
 	)
 	var suitcase := RogueEncounterRegistry.get_encounter_config(
 		RogueEncounterRegistry.SUITCASE_FRENZY
+	)
+	var sea_cucumber := RogueEncounterRegistry.get_encounter_config(
+		RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER
 	)
 	_expect(
 		str(chicken.get("intro_text", ""))
@@ -119,11 +124,15 @@ func _test_content_configs() -> void:
 	var suitcase_options := RogueEncounterRegistry.get_option_configs(
 		RogueEncounterRegistry.SUITCASE_FRENZY
 	)
+	var sea_cucumber_options := RogueEncounterRegistry.get_option_configs(
+		RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER
+	)
 	_expect(chicken_options.size() == 2, "鸡哥必须继续显示两个选项。")
 	_expect(slime_options.size() == 3, "史莱姆遭遇必须显示三个选项。")
 	_expect(ghost_options.size() == 2, "鬼影遭遇必须显示两个选项。")
 	_expect(pit_options.size() == 2, "荧光坑洞必须显示两个选项。")
 	_expect(suitcase_options.size() == 3, "疯穿箱子必须显示三个选项。")
+	_expect(sea_cucumber_options.size() == 3, "隐形海参必须显示三个选项。")
 	_expect(
 		RogueEncounterRegistry.get_option_ids(
 			RogueEncounterRegistry.SLIME_TALKERS
@@ -214,6 +223,43 @@ func _test_content_configs() -> void:
 		and str(suitcase_options[2].get("description", ""))
 		== "趁没被机器人发现前离开",
 		"疯穿箱子的三个选项ID、顺序与大小字必须精确。"
+	)
+	_expect(
+		str(sea_cucumber.get("display_name", "")) == "隐形海参"
+		and str(sea_cucumber.get("portrait_texture_path", ""))
+		== "res://resources/texture/rogue_encounter/invisible_sea_cucumber.png"
+		and str(sea_cucumber.get("encounter_hint", "")).is_empty()
+		and str(sea_cucumber.get("intro_text", ""))
+		== "你注意到了隐形的海参"
+		and bool(sea_cucumber.get("intro_is_narration", false))
+		and bool(sea_cucumber.get("manual_result_page_advance", false))
+		and RogueEncounterRegistry.requires_result_ack(
+			RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER
+		),
+		"隐形海参必须使用纯黑轮廓路径、指定开场与手动结果确认。"
+	)
+	_expect(
+		RogueEncounterRegistry.get_option_ids(
+			RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER
+		) == [
+			RogueEncounterRegistry.OPTION_STOMP_SEA_CUCUMBER,
+			RogueEncounterRegistry.OPTION_GIVE_GOLD_WINE_CUP,
+			RogueEncounterRegistry.OPTION_COOK_SEA_CUCUMBER,
+		]
+		and str(sea_cucumber_options[0].get("title", ""))
+		== "什么路边玩意"
+		and str(sea_cucumber_options[0].get("description", ""))
+		== "直接一脚踩死"
+		and str(sea_cucumber_options[1].get("title", ""))
+		== "给他一个奖杯"
+		and str(sea_cucumber_options[1].get("description", "")).is_empty()
+		and str(sea_cucumber_options[1].get("icon_texture_path", ""))
+		== "res://resources/texture/collectibles/gold_wine_cup.png"
+		and str(sea_cucumber_options[2].get("title", ""))
+		== "海鲜大餐真不错！"
+		and str(sea_cucumber_options[2].get("description", ""))
+		== "管他会不会隐身直接做成海线大餐！",
+		"隐形海参三个选项的ID、顺序与用户原文必须精确。"
 	)
 	var legacy_intro_pages := RogueEncounterRegistry.get_intro_pages(
 		RogueEncounterRegistry.CHICKEN_BRO

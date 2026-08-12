@@ -87,6 +87,7 @@ var last_ack_requested_result_sequence := -1
 var intro_pages: Array[Dictionary] = []
 var intro_page_index := 0
 var last_immediate_completion_occurrence_key := ""
+var result_completion_hold_active := false
 
 
 func _ready() -> void:
@@ -128,6 +129,7 @@ func apply_state(new_state: Dictionary) -> void:
 		rendered_phase = PHASE_IDLE
 		intro_page_index = 0
 		last_immediate_completion_occurrence_key = ""
+		result_completion_hold_active = false
 		_reset_result_pages()
 		rendered_result_sequence = -1
 		last_ack_requested_result_sequence = -1
@@ -304,8 +306,6 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and (event as InputEventKey).echo:
 		return
-	if not _local_can_participate() or _local_intro_page_is_advanced():
-		return
 	var is_mouse_confirm: bool = false
 	if event is InputEventMouseButton:
 		var mouse_event := event as InputEventMouseButton
@@ -318,6 +318,23 @@ func _input(event: InputEvent) -> void:
 		or event.is_action_pressed(&"ui_accept")
 		or is_mouse_confirm
 	):
+		return
+	if (
+		rendered_phase in [PHASE_RESULT, PHASE_COMPLETED]
+		and _manual_result_page_advance()
+	):
+		get_viewport().set_input_as_handled()
+		if typewriter.is_revealing():
+			typewriter.finish_line()
+			return
+		if result_page_index + 1 < result_pages.size():
+			result_page_index += 1
+			result_completion_hold_active = false
+			_show_current_result_page(true)
+			return
+		_begin_result_completion_hold()
+		return
+	if not _local_can_participate() or _local_intro_page_is_advanced():
 		return
 	get_viewport().set_input_as_handled()
 	if typewriter.is_revealing():
@@ -482,6 +499,7 @@ func _show_result(force: bool) -> void:
 		rendered_result_sequence = next_result_sequence
 		result_pages = next_pages
 		result_page_index = 0
+		result_completion_hold_active = false
 		result_hold_serial += 1
 		force = true
 	_show_current_result_page(force)
@@ -566,6 +584,8 @@ func _on_typewriter_line_finished() -> void:
 	# 高延迟客户端继续完成自己的全部结果页与 1.5 秒停留，再通知外层退出。
 	if rendered_phase not in [PHASE_RESULT, PHASE_COMPLETED] or rendered_line.is_empty():
 		return
+	if _manual_result_page_advance():
+		return
 	result_hold_serial += 1
 	var serial := result_hold_serial
 	if result_page_index + 1 < result_pages.size():
@@ -580,6 +600,20 @@ func _on_typewriter_line_finished() -> void:
 		result_page_index += 1
 		_show_current_result_page(true)
 		return
+	_begin_result_completion_hold()
+
+
+func _begin_result_completion_hold() -> void:
+	if (
+		result_completion_hold_active
+		or rendered_phase not in [PHASE_RESULT, PHASE_COMPLETED]
+		or result_pages.is_empty()
+	):
+		return
+	result_completion_hold_active = true
+	prompt_label.visible = false
+	result_hold_serial += 1
+	var serial := result_hold_serial
 	var timer := get_tree().create_timer(RESULT_HOLD_SECONDS)
 	await timer.timeout
 	if (
@@ -634,11 +668,12 @@ func _show_current_result_page(force: bool) -> void:
 	if result_pages.is_empty() or result_page_index >= result_pages.size():
 		return
 	var page := result_pages[result_page_index]
+	var waits_for_input := _manual_result_page_advance()
 	_show_dialogue_page(
 		str(page.get("text", "")),
 		str(page.get("speaker", "")),
 		bool(page.get("is_narration", false)),
-		false,
+		waits_for_input,
 		force
 	)
 	stage_label.text = "遭遇结果"
@@ -690,9 +725,14 @@ func _result_requires_ack() -> bool:
 	).has(local_peer_id)
 
 
+func _manual_result_page_advance() -> bool:
+	return bool(encounter_config.get("manual_result_page_advance", false))
+
+
 func _reset_result_pages() -> void:
 	result_pages.clear()
 	result_page_index = 0
+	result_completion_hold_active = false
 
 
 func _bind_encounter_content(encounter_id: StringName) -> void:

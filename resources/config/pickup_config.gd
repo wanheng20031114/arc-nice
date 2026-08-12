@@ -221,6 +221,8 @@ func get_inventory_icon_scale() -> Vector2:
 @export_range(1.0, 5.0, 0.05, "or_greater") var potion_fire_rate_multiplier: float = 1.0
 @export_range(1.0, 5.0, 0.05, "or_greater") var potion_move_speed_multiplier: float = 1.0
 @export_range(0.0, 1.0, 0.01) var potion_dodge_chance_bonus: float = 0.0
+# 隐身类消耗品仅关闭玩家像素呈现；碰撞、操作与其他战斗状态保持不变。
+@export var potion_hides_player: bool = false
 # 虚空电池只可维持一层充能；下一次成功发动技能时消耗该层而不清空技力。
 @export var grants_next_skill_free: bool = false
 # 道具效果持续时间，单位为秒。

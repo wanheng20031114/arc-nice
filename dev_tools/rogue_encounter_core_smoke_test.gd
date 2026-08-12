@@ -714,13 +714,14 @@ func _test_ghost_shadow_results_and_no_economy() -> void:
 		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
 	)
 	_expect(
-		pool_entries.size() == 5
+		pool_entries.size() == 6
 		and pool_entries.has(RogueEncounterRegistry.CHICKEN_BRO)
 		and pool_entries.has(RogueEncounterRegistry.SLIME_TALKERS)
 		and pool_entries.has(RogueEncounterRegistry.GHOST_SHADOW)
 		and pool_entries.has(RogueEncounterRegistry.FLUORESCENT_PIT)
-		and pool_entries.has(RogueEncounterRegistry.SUITCASE_FRENZY),
-		"神奇遭遇池必须同时包含鸡哥、史莱姆、鬼影、坑洞与疯穿箱子。"
+		and pool_entries.has(RogueEncounterRegistry.SUITCASE_FRENZY)
+		and pool_entries.has(RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER),
+		"神奇遭遇池必须同时包含鸡哥、史莱姆、鬼影、坑洞、疯穿箱子与隐形海参。"
 	)
 	var ghost_config := RogueEncounterRegistry.get_encounter_config(
 		RogueEncounterRegistry.GHOST_SHADOW
