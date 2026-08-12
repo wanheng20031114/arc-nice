@@ -108,7 +108,11 @@ extends RefCounted
 ## 定点字段改为“Host 最终有效移速 ÷ 角色稳定初始移速”，以收敛支援塔等加法
 ## 属性与瞬时倍率。包宽、RPC 表面与 8 个 ENet 通道不变；v65 客户端既缺少
 ## speed_tower 资源，也会把该字段当作纯运行时倍率并重复计入加法属性，不能安全加入。
-const PROTOCOL_VERSION := 66
+## v67：新增塔防攻速强化塔的资源与植物注册合同。攻速加成由 Host 和客户端从
+## 可靠植物生命周期分别派生，射击仍由 Host 按最终有效间隔复核；包宽、RPC 表面
+## 与 8 个 ENet 通道不变。v66 客户端缺少 attack_speed_tower 配置、场景与注册项，
+## 无法实例化 Host 广播的植物或派生对应射速，不能安全加入。
+const PROTOCOL_VERSION := 67
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

@@ -10,6 +10,9 @@ const LIFE_TOWER_BASE_PATH := (
 )
 const EXPECTED_PERIOD_SECONDS := 2.0
 const EXPECTED_AMPLITUDE_SOURCE_PIXELS := 2.0
+const FORCED_FAILURE_ARGUMENT := "--force-smoke-failure"
+
+var _failures: PackedStringArray = []
 
 
 func _init() -> void:
@@ -19,8 +22,14 @@ func _init() -> void:
 func _run() -> void:
 	var packed_scene := load(SCENE_PATH) as PackedScene
 	_assert(packed_scene != null, "Attack Speed Tower scene failed to load.")
+	if packed_scene == null:
+		_finish()
+		return
 	var tower := packed_scene.instantiate() as AttackSpeedTower
 	_assert(tower != null, "Attack Speed Tower scene failed to instantiate.")
+	if tower == null:
+		_finish()
+		return
 	root.add_child(tower)
 	await process_frame
 	tower.setup(
@@ -80,6 +89,9 @@ func _run() -> void:
 	_assert(health_bar != null, "HealthBar is missing.")
 	_assert(body_collision != null, "Body collision is missing.")
 	_assert(player_core != null and core_collision != null, "Player core is missing.")
+	if not _failures.is_empty():
+		_finish(tower)
+		return
 
 	var body_shape := body_collision.shape as RectangleShape2D
 	var core_shape := core_collision.shape as CapsuleShape2D
@@ -131,7 +143,15 @@ func _run() -> void:
 		"Speed motes must rely on native visibility_rect culling."
 	)
 	var mote_material := speed_motes.process_material as ParticleProcessMaterial
+	_assert(mote_material != null, "Speed mote process material is missing.")
+	if mote_material == null:
+		_finish(tower)
+		return
 	var alpha_texture := mote_material.color_ramp as GradientTexture1D
+	_assert(alpha_texture != null, "Speed mote color ramp texture is missing.")
+	if alpha_texture == null:
+		_finish(tower)
+		return
 	var alpha_gradient := alpha_texture.gradient
 	_assert(
 		speed_motes.get_parent() == speed_root
@@ -182,6 +202,9 @@ func _run() -> void:
 
 	var animation := animation_player.get_animation(&"speed_bob")
 	_assert(animation != null, "speed_bob animation is missing.")
+	if animation == null:
+		_finish(tower)
+		return
 	_assert(
 		is_equal_approx(animation.length, EXPECTED_PERIOD_SECONDS)
 		and animation.loop_mode == Animation.LOOP_LINEAR
@@ -203,11 +226,12 @@ func _run() -> void:
 		animation.track_get_key_count(0) == expected_values.size(),
 		"speed_bob must contain five cycle keys."
 	)
-	for key_index in expected_values.size():
-		_assert(
-			animation.track_get_key_value(0, key_index) == expected_values[key_index],
-			"speed_bob key %d is invalid." % key_index
-		)
+	if animation.track_get_key_count(0) == expected_values.size():
+		for key_index in expected_values.size():
+			_assert(
+				animation.track_get_key_value(0, key_index) == expected_values[key_index],
+				"speed_bob key %d is invalid." % key_index
+			)
 
 	_assert(speed_motes.emitting and speed_motes.visible, "Completed tower must emit.")
 	tower.call("_on_construction_started")
@@ -227,16 +251,29 @@ func _run() -> void:
 		"Removal must stop speed motes immediately."
 	)
 
-	print("ATTACK_SPEED_TOWER_SCENE_SMOKE_OK")
-	print("base_reused=true")
-	print("particle_color=blue")
-	print("attack_speed_bonus_per_tower=0.03")
-	tower.queue_free()
-	quit(0)
+	if OS.get_cmdline_user_args().has(FORCED_FAILURE_ARGUMENT):
+		_assert(false, "Intentional failure used to verify the smoke-test harness.")
+	_finish(tower)
 
 
 func _assert(condition: bool, message: String) -> void:
 	if condition:
 		return
-	push_error(message)
-	quit(1)
+	_failures.append(message)
+
+
+func _finish(tower: Node = null) -> void:
+	if tower != null:
+		tower.queue_free()
+	var exit_code := 0
+	if not _failures.is_empty():
+		for message in _failures:
+			push_error(message)
+		print("ATTACK_SPEED_TOWER_SCENE_SMOKE_FAILED")
+		exit_code = 1
+	else:
+		print("ATTACK_SPEED_TOWER_SCENE_SMOKE_OK")
+		print("base_reused=true")
+		print("particle_color=blue")
+		print("attack_speed_bonus_per_tower=0.03")
+	quit(exit_code)

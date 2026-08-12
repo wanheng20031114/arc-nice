@@ -268,7 +268,7 @@ func _test_selectable_p1e_entry_contract() -> void:
 
 func _test_protocol_boundaries() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 66
+		NET_CONSTANTS.PROTOCOL_VERSION == 67
 		and NET_CONSTANTS.CHANNEL_COUNT == 8
 		and CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET
 		== 18
@@ -276,7 +276,7 @@ func _test_protocol_boundaries() -> void:
 			&"combat_robot_main_battle_elite"
 		) == CombatAttackRegistry.PlayerHitWireId.INVALID
 		and CombatAttackRegistry.decode_player_hit_source(19) == &"",
-		"协议v66必须保留P1E键和确认状态尾字段，同时保持8通道和攻击来源末尾ID18。"
+		"协议v67必须保留攻速塔、v66移速塔、P1E键和确认状态尾字段，同时保持8通道和攻击来源末尾ID18。"
 	)
 
 
