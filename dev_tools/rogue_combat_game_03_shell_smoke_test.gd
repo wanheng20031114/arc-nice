@@ -3,6 +3,18 @@ extends SceneTree
 const GAME_SCENE := preload(
 	"res://scene/game_modes/rogue/combat/rogue_combat_game_03.tscn"
 )
+const ABANDONED_MINE_CAMPAIGN: WaveCampaignConfig = preload(
+	"res://resources/config/campaigns/rogue_combat/abandoned_mine_01/campaign.tres"
+)
+const CAPOO_MAGE: EnemyConfig = preload(
+	"res://resources/config/enemies/capoo_mage.tres"
+)
+const FROST_SORCERER: EnemyConfig = preload(
+	"res://resources/config/enemies/frost_sorcerer.tres"
+)
+const COMBAT_ROBOT: EnemyConfig = preload(
+	"res://resources/config/enemies/combat_robot.tres"
+)
 const BACKGROUND_PATH := (
 	"res://resources/texture/rogue_combat/abandoned_mine/"
 	+ "abandoned_mine_background.png"
@@ -11,7 +23,7 @@ const EXPECTED_WORLD_RECT := Rect2i(0, -2, 20, 20)
 const EXPECTED_CLEAR_CENTER_RECT := Rect2i(4, 3, 12, 10)
 const EXPECTED_WALL_SHAPE_COUNT := 11
 const EXPECTED_BLOCKED_CELL_COUNT := 214
-const MAX_AUTHORED_ENEMY_HALF_EXTENTS := Vector2(4, 9)
+const MAX_AUTHORED_ENEMY_HALF_EXTENTS := Vector2(11, 10)
 const EXPECTED_SPAWN_POSITIONS: Dictionary[StringName, Vector2] = {
 	&"Spawn1": Vector2(160, 222),
 	&"Spawn2": Vector2(162, 43),
@@ -73,7 +85,7 @@ func _initialize() -> void:
 	_test_background_contract(game)
 	_test_collision_and_navigation_contract(game)
 	_test_spawn_contract(game)
-	_test_deferred_combat_content(game)
+	_test_combat_content(game)
 
 	game.free()
 	_finish()
@@ -321,16 +333,78 @@ func _test_spawn_contract(game: RogueCombatGame) -> void:
 		)
 
 
-func _test_deferred_combat_content(game: RogueCombatGame) -> void:
+func _test_combat_content(game: RogueCombatGame) -> void:
 	_expect(
-		game.singleplayer_campaign == null and game.multiplayer_campaign == null,
-		"敌人设计完成前不得复用其他战斗的 Campaign。"
+		game.singleplayer_campaign == ABANDONED_MINE_CAMPAIGN
+		and game.multiplayer_campaign == ABANDONED_MINE_CAMPAIGN,
+		"废弃矿场的单人及多人模式必须绑定专属 Campaign。"
 	)
+	for runtime_mode in [
+		CombatRuntimeBase.RuntimeMode.SINGLEPLAYER,
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+	]:
+		game.runtime_mode = runtime_mode
+		_expect(
+			bool(game.call("_configure_active_campaign"))
+			and game.active_campaign == ABANDONED_MINE_CAMPAIGN
+			and game.waves.size() == 1,
+			"废弃矿场在单人及 Host 权威模式下必须选择同一份专属 Campaign。"
+		)
+	var waves := ABANDONED_MINE_CAMPAIGN.get_waves()
+	_expect(waves.size() == 1, "废弃矿场 Campaign 必须只有一个终点波次。")
+	if waves.size() == 1:
+		var wave := waves[0]
+		_expect(
+			wave.get_total_enemy_count() == 45
+			and _count_enemy(wave, CAPOO_MAGE) == 5
+			and _count_enemy(wave, FROST_SORCERER) == 15
+			and _count_enemy(wave, COMBAT_ROBOT) == 25,
+			"废弃矿场必须配置5个法术猫猫虫、15个寒冰术士和25个普通战斗机器人。"
+		)
+		_expect(
+			is_equal_approx(wave.spawn_interval, 0.2)
+			and wave.spawn_count_per_tick == 1
+			and wave.max_alive_enemies == 15
+			and wave.spawn_point_mask
+				== RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
+			and wave.spawn_point_order
+				== WaveConfig.SpawnPointOrder.BALANCED_SHUFFLE_BAG
+			and wave.spawn_order == WaveConfig.SpawnOrder.SHUFFLED,
+			"废弃矿场必须保持0.2秒批1、场上最多15名敌人及三点均衡乱序。"
+		)
+		game.random_generator.seed = 20260812
+		game.call("_build_wave_spawn_queue", wave)
+		_expect(
+			game.pending_enemy_configs.size() == 45
+			and _count_queued_enemy(game, CAPOO_MAGE) == 5
+			and _count_queued_enemy(game, FROST_SORCERER) == 15
+			and _count_queued_enemy(game, COMBAT_ROBOT) == 25,
+			"运行时刷怪队列必须完整保留5/15/25的45名敌人组成。"
+		)
 	_expect(
 		game.get_node_or_null(^"UndergroundChurchBackground") == null
 		and game.get_node_or_null(^"UndergroundChurchWallTorchLayout") == null,
 		"废弃矿场场景不得残留地下教会专属视觉节点。"
 	)
+
+
+func _count_enemy(wave: WaveConfig, enemy_config: EnemyConfig) -> int:
+	var result := 0
+	for entry in wave.enemy_entries:
+		if entry != null and entry.enemy_config == enemy_config:
+			result += entry.count
+	return result
+
+
+func _count_queued_enemy(
+	game: RogueCombatGame,
+	enemy_config: EnemyConfig
+) -> int:
+	var result := 0
+	for queued_config in game.pending_enemy_configs:
+		if queued_config == enemy_config:
+			result += 1
+	return result
 
 
 func _shape_hits_wall(

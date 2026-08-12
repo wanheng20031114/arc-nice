@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="WaveCampaignConfig" load_steps=3 format=3]
+
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/abandoned_mine_01/flow.tres" id="1_flow"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_campaign_config.gd" id="2_campaign_script"]
+
+[resource]
+script = ExtResource("2_campaign_script")
+campaign_id = &"rogue_combat_abandoned_mine_01"
+flow_graph = ExtResource("1_flow")

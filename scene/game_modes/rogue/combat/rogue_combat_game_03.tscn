@@ -25,6 +25,7 @@
 [ext_resource type="PackedScene" uid="uid://d4jmq3n7wpx2a" path="res://scene/ui/shared/player_life_status_hud.tscn" id="23_life_hud"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="24_night_light"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/combat/rogue_combat_game_03_navigation.tscn" id="25_navigation"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/abandoned_mine_01/campaign.tres" id="26_campaign"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -68,6 +69,8 @@ size = Vector2(86, 38.59294)
 position = Vector2(1, 0)
 script = ExtResource("1_game")
 event_title = "废弃矿场"
+singleplayer_campaign = ExtResource("26_campaign")
+multiplayer_campaign = ExtResource("26_campaign")
 pre_wave_duration = 3.0
 auto_start_waves = false
 world_lighting_policy = 2
