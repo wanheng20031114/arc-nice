@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ProductionRecipe" format=3]
+
+[ext_resource type="Script" uid="uid://bqe4uxp0um77k" path="res://resources/config/production/production_recipe.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="2_plank"]
+[ext_resource type="Resource" uid="uid://dtf2p26npy2pd" path="res://resources/config/materials/material_sapling.tres" id="3_sapling"]
+[ext_resource type="Resource" path="res://resources/config/buildings/building_attack_speed_tower.tres" id="4_building"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickup_config.gd" id="5_pickup_script"]
+
+[resource]
+script = ExtResource("1_script")
+recipe_id = &"wooden_core_to_attack_speed_tower"
+display_name = "攻速强化塔组装"
+input_items = Array[ExtResource("5_pickup_script")]([ExtResource("2_plank"), ExtResource("3_sapling")])
+input_amounts = Array[int]([10, 2])
+output_items = Array[ExtResource("5_pickup_script")]([ExtResource("4_building")])
+output_amounts = Array[int]([1])
+output_destination = 1
+duration_seconds = 30.0

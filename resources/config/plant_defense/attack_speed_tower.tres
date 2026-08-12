@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="AttackSpeedTowerConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/plant_defense/attack_speed_tower_config.gd" id="1_config"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/attack_speed_tower/attack_speed_tower.png" id="2_icon"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/attack_speed_tower.tscn" id="3_scene"]
+
+[resource]
+script = ExtResource("1_config")
+plant_id = &"attack_speed_tower"
+display_name = "攻速强化塔"
+description = "场上每存在一座已建成的攻速强化塔，每位玩家的最终攻击速度提高3%；多座塔按数量线性叠加。"
+icon = ExtResource("2_icon")
+plant_scene = ExtResource("3_scene")
+supports_multiplayer = true
+building_category = 2
+placement_surface = 1
+menu_order = 50
+max_health = 2400
+physical_defense = 5
+attack_speed_bonus_ratio = 0.03

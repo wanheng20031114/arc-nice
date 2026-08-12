@@ -10,7 +10,7 @@ const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
 	CodexSection.ENEMY: 64,
 	CodexSection.COLLECTIBLE: 125,
-	CodexSection.BUILDING: 18,
+	CodexSection.BUILDING: 19,
 }
 const EXPECTED_COLLECTIBLE_RARITY_COUNTS := {
 	&"common": 41,
@@ -21,7 +21,7 @@ const EXPECTED_COLLECTIBLE_RARITY_COUNTS := {
 }
 const EXPECTED_BUILDING_CATEGORY_COUNTS := {
 	&"defense_tower": 4,
-	&"support_tower": 4,
+	&"support_tower": 5,
 	&"production_building": 6,
 	&"technology_building": 1,
 	&"fence": 1,
@@ -776,6 +776,7 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 	var zero_attack_count := 0
 	var saw_life_tower := false
 	var saw_speed_tower := false
+	var saw_attack_speed_tower := false
 	for entry in catalog.get_entries(CodexSection.BUILDING):
 		var config := entry.source_resource as PlantDefenseConfig
 		_expect(config != null, "%s must retain its building config." % entry.entry_id)
@@ -834,6 +835,21 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 				and entry.notes[0].contains("30 秒"),
 				"Speed Tower codex entry must expose its stats, team effect, and 10-plank/2-sapling assembly recipe."
 			)
+		if entry.entry_id == &"attack_speed_tower":
+			saw_attack_speed_tower = true
+			_expect(
+				config is AttackSpeedTowerConfig
+				and String(stats.get("生命", "")) == "2400"
+				and String(stats.get("物理防御", "")) == "5 点"
+				and String(stats.get("法术防御", "")) == "0"
+				and entry.description.contains("攻击速度提高3%")
+				and entry.description.contains("线性叠加")
+				and entry.notes[0].contains("攻速强化塔组装")
+				and entry.notes[0].contains("木板 ×10")
+				and entry.notes[0].contains("树苗 ×2")
+				and entry.notes[0].contains("30 秒"),
+				"Attack Speed Tower codex entry must expose its stats, stacking effect, and assembly recipe."
+			)
 		if config.attack_damage > 0:
 			continue
 		zero_attack_count += 1
@@ -849,6 +865,10 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 	)
 	_expect(saw_life_tower, "Building codex must contain the Life Tower entry.")
 	_expect(saw_speed_tower, "Building codex must contain the Speed Tower entry.")
+	_expect(
+		saw_attack_speed_tower,
+		"Building codex must contain the Attack Speed Tower entry."
+	)
 
 
 func _test_visibility_contract(default_catalog: CodexCatalog) -> void:
@@ -951,7 +971,7 @@ func _test_scene_contract() -> void:
 	_expect(
 		screen.enemy_button.text == "敌人  %d" % expected_enemy_count
 		and screen.collectible_button.text == "收藏品  125"
-		and screen.building_button.text == "建筑物  18",
+		and screen.building_button.text == "建筑物  19",
 		"Sidebar must display all three section totals."
 	)
 	var nav_style := screen.enemy_button.get_theme_stylebox(&"normal") as StyleBoxFlat

@@ -8,7 +8,7 @@
 script = ExtResource("1_config")
 plant_id = &"wood_processing_station"
 display_name = "木头加工站"
-description = "一格生产建筑。靠近按F管理配方，以全场仓库为共享原料网络；可加工基础材料，并组装多种功能建筑与生命、移速强化塔。"
+description = "一格生产建筑。靠近按F管理配方，以全场仓库为共享原料网络；可加工基础材料，并组装多种功能建筑与生命、移速、攻速强化塔。"
 icon = ExtResource("2_icon")
 plant_scene = ExtResource("3_scene")
 supports_multiplayer = true

@@ -25,6 +25,9 @@ const LIFE_TOWER_ITEM: PickupConfig = preload(
 const SPEED_TOWER_ITEM: PickupConfig = preload(
 	"res://resources/config/buildings/building_speed_tower.tres"
 )
+const ATTACK_SPEED_TOWER_ITEM: PickupConfig = preload(
+	"res://resources/config/buildings/building_attack_speed_tower.tres"
+)
 const WOOD_PROCESSING_STATION_ITEM: PickupConfig = preload(
 	"res://resources/config/buildings/building_wood_processing_station.tres"
 )
@@ -80,6 +83,9 @@ const LIFE_TOWER_RECIPE: ProductionRecipe = preload(
 const SPEED_TOWER_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/wooden_core_to_speed_tower.tres"
 )
+const ATTACK_SPEED_TOWER_RECIPE: ProductionRecipe = preload(
+	"res://resources/config/production/wooden_core_to_attack_speed_tower.tres"
+)
 const WOOD_PROCESSING_STATION_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/simple_wood_processing_station.tres"
 )
@@ -120,6 +126,7 @@ const BUILDING_ITEMS := {
 	&"orange_charging_tower": ORANGE_CHARGING_TOWER_ITEM,
 	&"life_tower": LIFE_TOWER_ITEM,
 	&"speed_tower": SPEED_TOWER_ITEM,
+	&"attack_speed_tower": ATTACK_SPEED_TOWER_ITEM,
 	&"wood_processing_station": WOOD_PROCESSING_STATION_ITEM,
 	&"water_collector": WATER_COLLECTOR_ITEM,
 	&"planting_base": PLANTING_BASE_ITEM,
@@ -143,6 +150,7 @@ const PRIMARY_ACQUISITION_RECIPES := {
 	&"orange_charging_tower": ORANGE_CHARGING_TOWER_RECIPE,
 	&"life_tower": LIFE_TOWER_RECIPE,
 	&"speed_tower": SPEED_TOWER_RECIPE,
+	&"attack_speed_tower": ATTACK_SPEED_TOWER_RECIPE,
 	&"wood_processing_station": WOOD_PROCESSING_STATION_RECIPE,
 	&"water_collector": WATER_COLLECTOR_RECIPE,
 	&"planting_base": PLANTING_BASE_RECIPE,

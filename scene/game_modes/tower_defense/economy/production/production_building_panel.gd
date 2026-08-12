@@ -48,6 +48,7 @@ const LOCAL_OUTPUT_ICON_SCALE := Vector2(2.0, 2.0)
 	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow8,
 	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow9,
 	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow10,
+	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow11,
 ]
 @onready var status_label: Label = $Overlay/PanelRoot/StatusLabel
 @onready var close_button: Button = $Overlay/PanelRoot/CloseButton

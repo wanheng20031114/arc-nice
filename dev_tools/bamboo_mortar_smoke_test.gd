@@ -406,7 +406,7 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 	_expect(
 		PlantDefenseRegistry.get_config(&"bamboo_mortar")
 		== MORTAR_CONFIG
-		and PlantDefenseRegistry.get_all_configs().size() == 18
+		and PlantDefenseRegistry.get_all_configs().size() == 19
 		and PlantDefenseRegistry.get_all_configs().has(
 			PlantDefenseRegistry.get_config(&"excavator")
 		)
@@ -423,7 +423,7 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 			PlantDefenseRegistry.get_config(&"speed_tower")
 		)
 		and PlantDefenseRegistry.get_all_configs().has(MORTAR_CONFIG),
-		"迫击炮必须按防御塔语义注册，并与其余17种建筑共同进入公共注册表。"
+		"迫击炮必须按防御塔语义注册，并与其余18种建筑共同进入公共注册表。"
 	)
 	_expect(
 		mortar.main_sprite.sprite_frames.get_frame_count(&"charge") == 8

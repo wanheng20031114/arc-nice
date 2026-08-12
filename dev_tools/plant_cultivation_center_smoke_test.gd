@@ -115,7 +115,7 @@ func _run() -> void:
 		"植物培育中心必须占2×2格，拥有1500生命、10物防、10法防并支持联机。"
 	)
 	_expect(
-		PlantDefenseRegistry.get_all_configs().size() == 18
+		PlantDefenseRegistry.get_all_configs().size() == 19
 		and PlantDefenseRegistry.get_all_configs().has(
 			PlantDefenseRegistry.get_config(&"excavator")
 		)
@@ -130,8 +130,11 @@ func _run() -> void:
 		)
 		and PlantDefenseRegistry.get_all_configs().has(
 			PlantDefenseRegistry.get_config(&"speed_tower")
+		)
+		and PlantDefenseRegistry.get_all_configs().has(
+			PlantDefenseRegistry.get_config(&"attack_speed_tower")
 		),
-		"公共注册表必须包含生命、移速强化塔与既有全部正式建筑，共18种建筑。"
+		"公共注册表必须包含生命、移速与攻速强化塔及既有全部正式建筑，共19种建筑。"
 	)
 	if config == null:
 		_finish(test_root)
@@ -977,7 +980,7 @@ func _test_inventory_placement_request(
 	)
 	_expect(
 		controller.open_selection()
-		and controller.selection_hud.available_configs.size() == 18
+		and controller.selection_hud.available_configs.size() == 19
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"excavator")
 		)
@@ -988,9 +991,15 @@ func _test_inventory_placement_request(
 			PlantDefenseRegistry.get_config(&"simple_fence")
 		)
 		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"life_tower")
+		)
+		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"speed_tower")
+		)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"attack_speed_tower")
 		),
-		"T键免费调试入口必须展示包括生命、移速强化塔在内的全部18种建筑。"
+		"T键免费调试入口必须展示包括生命、移速与攻速强化塔在内的全部19种建筑。"
 	)
 	controller.cancel_placement()
 

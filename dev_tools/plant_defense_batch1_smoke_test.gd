@@ -263,7 +263,7 @@ func _test_config_and_scene_contracts() -> void:
 		return
 	var registered_configs := PlantDefenseRegistry.get_all_configs()
 	_expect(
-		registered_configs.size() == 18
+		registered_configs.size() == 19
 		and registered_configs.has(agave_config)
 		and registered_configs.has(bamboo_mortar_config)
 		and registered_configs.has(corn_config)
@@ -280,6 +280,9 @@ func _test_config_and_scene_contracts() -> void:
 		and registered_configs.has(orange_charging_config)
 		and registered_configs.has(life_tower_config)
 		and registered_configs.has(speed_tower_config)
+		and registered_configs.has(
+			PlantDefenseRegistry.get_config(&"attack_speed_tower")
+		)
 		and registered_configs.has(excavator_config)
 		and registered_configs.has(simple_fence_config)
 		and bamboo_mortar_config.building_category
@@ -290,7 +293,7 @@ func _test_config_and_scene_contracts() -> void:
 		== PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING
 		and simple_fence_config.building_category
 		== PlantDefenseConfig.BuildingCategory.FENCE,
-		"植物注册表必须公开全部18种建筑，并以显式语义分类取代历史数组下标契约。"
+		"植物注册表必须公开全部19种建筑，并以显式语义分类取代历史数组下标契约。"
 	)
 	_expect(
 		orange_charging_config.max_health == 3000
@@ -1567,7 +1570,7 @@ func _test_realtime_selection_and_cancel() -> void:
 	_expect(controller.is_selecting(), "打开后状态必须为SELECTING。")
 	_expect(controller.selection_hud.is_open(), "真实plant动作输入必须显示植物选择界面。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 18
+		controller.selection_hud.available_configs.size() == 19
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1611,13 +1614,16 @@ func _test_realtime_selection_and_cancel() -> void:
 			PlantDefenseRegistry.get_config(&"speed_tower")
 		)
 		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"attack_speed_tower")
+		)
+		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"excavator")
 		)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"simple_fence")
 		)
-		and controller.selection_hud.cards.size() == 18,
-		"单人T键调试界面必须显示包括生命、移速强化塔在内的全部18种建筑。"
+		and controller.selection_hud.cards.size() == 19,
+		"单人T键调试界面必须显示包括生命、移速与攻速强化塔在内的全部19种建筑。"
 	)
 	var agave_card: PlantSelectionCard = null
 	var bamboo_mortar_card: PlantSelectionCard = null
@@ -1867,7 +1873,7 @@ func _test_multiplayer_authority_contracts() -> void:
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 18
+		controller.selection_hud.available_configs.size() == 19
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1911,13 +1917,16 @@ func _test_multiplayer_authority_contracts() -> void:
 			PlantDefenseRegistry.get_config(&"speed_tower")
 		)
 		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"attack_speed_tower")
+		)
+		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"excavator")
 		)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"simple_fence")
 		)
-		and controller.selection_hud.cards.size() == 18,
-		"多人T键调试界面必须显示包括生命、移速强化塔在内的全部18种支持联机建筑。"
+		and controller.selection_hud.cards.size() == 19,
+		"多人T键调试界面必须显示包括生命、移速与攻速强化塔在内的全部19种支持联机建筑。"
 	)
 	controller.cancel_placement()
 	var placement_requests: Array[Dictionary] = []

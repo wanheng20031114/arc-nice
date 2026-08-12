@@ -310,7 +310,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_nav_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_nav_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_nav_hover")
 theme_override_styles/focus = SubResource("StyleBoxFlat_nav_hover")
-text = "建筑物  18"
+text = "建筑物  19"
 alignment = 0
 
 [node name="SidebarSpacer" type="Control" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar"]

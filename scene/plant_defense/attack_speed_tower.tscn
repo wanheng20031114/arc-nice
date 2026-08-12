@@ -1,0 +1,149 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/attack_speed_tower.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/life_tower/layers/lower_body.png" id="2_lower_body"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/attack_speed_tower/layers/speed_foreground.png" id="3_speed_foreground"]
+[ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="4_lifecycle_material"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="5_health_bar"]
+
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_speed_mote"]
+light_mode = 1
+
+[sub_resource type="Gradient" id="Gradient_speed_mote_texture"]
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_speed_mote"]
+gradient = SubResource("Gradient_speed_mote_texture")
+width = 1
+height = 1
+fill_to = Vector2(1, 1)
+
+[sub_resource type="Gradient" id="Gradient_speed_mote_alpha"]
+offsets = PackedFloat32Array(0, 0.78, 0.9, 1)
+colors = PackedColorArray(1, 1, 1, 0.94, 1, 1, 1, 0.94, 1, 1, 1, 0.35, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_speed_mote_alpha"]
+gradient = SubResource("Gradient_speed_mote_alpha")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_speed_motes"]
+particle_flag_disable_z = true
+emission_shape_offset = Vector3(0, -4, 0)
+emission_shape = 3
+emission_box_extents = Vector3(7, 3, 0)
+direction = Vector3(0, -1, 0)
+spread = 65.0
+initial_velocity_min = 4.0
+initial_velocity_max = 7.0
+radial_velocity_min = 2.0
+radial_velocity_max = 4.0
+gravity = Vector3(0, -0.5, 0)
+color = Color(0.117647, 0.603922, 1, 1)
+color_ramp = SubResource("GradientTexture1D_speed_mote_alpha")
+
+[sub_resource type="Animation" id="Animation_speed_bob_reset"]
+resource_name = "RESET"
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("VisualRoot/SpeedBobRoot:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(0, 0)]
+}
+
+[sub_resource type="Animation" id="Animation_speed_bob"]
+resource_name = "speed_bob"
+length = 2.0
+loop_mode = 1
+step = 0.05
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("VisualRoot/SpeedBobRoot:position")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.5, 1, 1.5, 2),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(0, 0), Vector2(0, -2), Vector2(0, 0), Vector2(0, 2), Vector2(0, 0)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_speed_bob"]
+_data = {
+&"RESET": SubResource("Animation_speed_bob_reset"),
+&"speed_bob": SubResource("Animation_speed_bob")
+}
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(24, 17)
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player_core"]
+resource_local_to_scene = true
+radius = 4.0
+height = 16.0
+
+[node name="AttackSpeedTower" type="StaticBody2D"]
+collision_layer = 512
+collision_mask = 0
+script = ExtResource("1_script")
+enemy_approach_depth = 7.0
+lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/LowerBody"), NodePath("VisualRoot/SpeedBobRoot/SpeedForeground")])
+
+[node name="VisualRoot" type="Node2D" parent="."]
+scale = Vector2(0.5, 0.5)
+
+[node name="LowerBody" type="Sprite2D" parent="VisualRoot"]
+texture_filter = 1
+material = ExtResource("4_lifecycle_material")
+texture = ExtResource("2_lower_body")
+
+[node name="SpeedBobRoot" type="Node2D" parent="VisualRoot"]
+
+[node name="SpeedForeground" type="Sprite2D" parent="VisualRoot/SpeedBobRoot"]
+z_index = 4
+texture_filter = 1
+material = ExtResource("4_lifecycle_material")
+texture = ExtResource("3_speed_foreground")
+
+[node name="SpeedMotes" type="GPUParticles2D" parent="VisualRoot/SpeedBobRoot"]
+z_index = 3
+texture_filter = 1
+material = SubResource("CanvasItemMaterial_speed_mote")
+texture = SubResource("GradientTexture2D_speed_mote")
+lifetime = 0.8
+randomness = 0.35
+visibility_rect = Rect2(-18, -18, 36, 30)
+process_material = SubResource("ParticleProcessMaterial_speed_motes")
+
+[node name="SpeedBobAnimationPlayer" type="AnimationPlayer" parent="."]
+libraries/ = SubResource("AnimationLibrary_speed_bob")
+autoplay = &"speed_bob"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 5.5)
+shape = SubResource("RectangleShape2D_body")
+debug_color = Color(0.87058824, 0.47058824, 0.654902, 0.05882353)
+
+[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+position = Vector2(0, 1)
+collision_layer = 1024
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+position = Vector2(0, 7)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_player_core")
+
+[node name="HealthBar" parent="." instance=ExtResource("5_health_bar")]
+custom_minimum_size = Vector2(24, 4)
+offset_left = -12.0
+offset_top = -11.0
+offset_right = 12.0
+offset_bottom = -7.0

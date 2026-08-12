@@ -245,6 +245,7 @@ var network_effective_move_speed_multiplier_override: float = 0.0
 var tower_defense_fate_max_health_multiplier: float = 1.0
 var tower_defense_life_tower_bonus_ratio: float = 0.0
 var tower_defense_speed_tower_bonus: float = 0.0
+var tower_defense_attack_speed_tower_bonus_ratio: float = 0.0
 var tower_defense_fate_move_speed_multiplier: float = 1.0
 var tower_defense_fate_dash_cooldown_reduction: float = 0.0
 var tower_defense_fate_low_health_ratio := 0.0
@@ -1875,6 +1876,22 @@ func set_tower_defense_speed_tower_bonus(total_bonus: float) -> void:
 
 func get_tower_defense_speed_tower_bonus() -> float:
 	return tower_defense_speed_tower_bonus
+
+
+## Applies the absolute team-wide Attack Speed Tower ratio. Sources are
+## aggregated by the tower-defense coordinator, so repeated calls replace
+## instead of stack.
+func set_tower_defense_attack_speed_tower_bonus_ratio(total_ratio: float) -> void:
+	var safe_ratio := maxf(total_ratio, 0.0) if is_finite(total_ratio) else 0.0
+	if is_equal_approx(tower_defense_attack_speed_tower_bonus_ratio, safe_ratio):
+		return
+	tower_defense_attack_speed_tower_bonus_ratio = safe_ratio
+	if is_node_ready():
+		_refresh_shooting_timer_wait_time()
+
+
+func get_tower_defense_attack_speed_tower_bonus_ratio() -> float:
+	return tower_defense_attack_speed_tower_bonus_ratio
 
 
 ## Applies the tower-defense fate modifiers as absolute run state. Calling this
@@ -5139,7 +5156,9 @@ func _get_effective_fire_interval() -> float:
 # 获取当前实际射速倍率
 func _get_effective_fire_rate_multiplier() -> float:
 	return maxf(
-		_get_character_fire_rate_multiplier() * potion_fire_rate_multiplier,
+		_get_character_fire_rate_multiplier()
+		* potion_fire_rate_multiplier
+		* (1.0 + tower_defense_attack_speed_tower_bonus_ratio),
 		0.01
 	)
 
