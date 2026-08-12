@@ -44,6 +44,7 @@ const SORTED_PLANT_IDS := [
 	"grape_arc_tower",
 	"hydrangea_rain_tower",
 	"orange_charging_tower",
+	"life_tower",
 	"wood_processing_station",
 	"water_collector",
 	"planting_base",

@@ -3,7 +3,7 @@ extends SceneTree
 const EXPECTED_COUNTS := {
 	CodexSection.ENEMY: 64,
 	CodexSection.COLLECTIBLE: 125,
-	CodexSection.BUILDING: 16,
+	CodexSection.BUILDING: 17,
 }
 
 
@@ -72,11 +72,11 @@ func _test_default_counts_are_lightweight() -> void:
 func _test_custom_visibility_count() -> void:
 	var catalog := CodexCatalog.new(HideBuildingProvider.new())
 	_expect(
-		catalog.get_registered_count(CodexSection.BUILDING) == 16,
+		catalog.get_registered_count(CodexSection.BUILDING) == 17,
 		"Raw registered count must remain independent of visibility."
 	)
 	_expect(
-		catalog.get_total_count(CodexSection.BUILDING) == 15,
+		catalog.get_total_count(CodexSection.BUILDING) == 16,
 		"Custom visibility navigation total must exclude HIDDEN records."
 	)
 	var cached_sections: Dictionary = catalog.get("_entries_by_section")
@@ -85,19 +85,19 @@ func _test_custom_visibility_count() -> void:
 		"Custom visibility total must materialize its section to preserve HIDDEN semantics."
 	)
 	_expect(
-		catalog.get_visible_count(CodexSection.BUILDING) == 15,
+		catalog.get_visible_count(CodexSection.BUILDING) == 16,
 		"Custom HIDDEN state must be excluded from the explicit visible count."
 	)
 	var entries := catalog.get_entries(CodexSection.BUILDING)
 	_expect(
-		entries.size() == 15 and _find_entry(entries, &"simple_fence") == null,
+		entries.size() == 16 and _find_entry(entries, &"simple_fence") == null,
 		"Custom HIDDEN state must match the filtered entry collection."
 	)
 	catalog.set_visibility_provider(null)
 	cached_sections = catalog.get("_entries_by_section")
 	_expect(
 		cached_sections.is_empty()
-		and catalog.get_total_count(CodexSection.BUILDING) == 16,
+		and catalog.get_total_count(CodexSection.BUILDING) == 17,
 		"Restoring the default provider must clear views and restore manifest counts."
 	)
 

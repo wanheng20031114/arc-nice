@@ -1,0 +1,105 @@
+[gd_scene format=3 uid="uid://b7qajdy24nb1n"]
+
+[ext_resource type="Script" uid="uid://cior6bo2yf144" path="res://scene/plant_defense/life_tower.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://cboit3ukos777" path="res://resources/texture/plant_defense/life_tower/layers/lower_body.png" id="2_lower_body"]
+[ext_resource type="Texture2D" uid="uid://cw6v2l28qk0sm" path="res://resources/texture/plant_defense/life_tower/layers/heart_foreground.png" id="3_heart_foreground"]
+[ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="4_lifecycle_material"]
+[ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="5_health_bar"]
+
+[sub_resource type="Animation" id="Animation_heart_bob_reset"]
+resource_name = "RESET"
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("VisualRoot/HeartBobRoot:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(0, 0)]
+}
+
+[sub_resource type="Animation" id="Animation_heart_bob"]
+resource_name = "heart_bob"
+length = 2.0
+loop_mode = 1
+step = 0.05
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("VisualRoot/HeartBobRoot:position")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.5, 1, 1.5, 2),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(0, 0), Vector2(0, -2), Vector2(0, 0), Vector2(0, 2), Vector2(0, 0)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_heart_bob"]
+_data = {
+&"RESET": SubResource("Animation_heart_bob_reset"),
+&"heart_bob": SubResource("Animation_heart_bob")
+}
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(24, 17)
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player_core"]
+resource_local_to_scene = true
+radius = 4.0
+height = 20.0
+
+[node name="LifeTower" type="StaticBody2D" unique_id=106494045]
+collision_layer = 512
+collision_mask = 0
+script = ExtResource("1_script")
+enemy_approach_depth = 7.0
+lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/LowerBody"), NodePath("VisualRoot/HeartBobRoot/HeartForeground")])
+
+[node name="VisualRoot" type="Node2D" parent="." unique_id=10858515]
+scale = Vector2(0.5, 0.5)
+
+[node name="LowerBody" type="Sprite2D" parent="VisualRoot" unique_id=1021923462]
+texture_filter = 1
+material = ExtResource("4_lifecycle_material")
+texture = ExtResource("2_lower_body")
+
+[node name="HeartBobRoot" type="Node2D" parent="VisualRoot" unique_id=534793860]
+
+[node name="HeartForeground" type="Sprite2D" parent="VisualRoot/HeartBobRoot" unique_id=1743733745]
+z_index = 4
+texture_filter = 1
+material = ExtResource("4_lifecycle_material")
+texture = ExtResource("3_heart_foreground")
+
+[node name="HeartBobAnimationPlayer" type="AnimationPlayer" parent="." unique_id=2002294644]
+libraries/ = SubResource("AnimationLibrary_heart_bob")
+autoplay = &"heart_bob"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1317831653]
+position = Vector2(0, 5.5)
+shape = SubResource("RectangleShape2D_body")
+debug_color = Color(0.87058824, 0.47058824, 0.654902, 0.12941177)
+
+[node name="PlayerCoreBody" type="StaticBody2D" parent="." unique_id=1312384718]
+position = Vector2(0, 1)
+collision_layer = 1024
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody" unique_id=1247677753]
+position = Vector2(0, 7)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_player_core")
+
+[node name="HealthBar" parent="." unique_id=964922228 instance=ExtResource("5_health_bar")]
+custom_minimum_size = Vector2(24, 4)
+offset_left = -12.0
+offset_top = -10.0
+offset_right = 12.0
+offset_bottom = -6.0

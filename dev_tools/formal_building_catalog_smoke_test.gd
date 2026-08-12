@@ -7,7 +7,7 @@ const DEFAULT_VIEWPORT := Vector2i(1152, 648)
 const SMALL_VIEWPORT := Vector2i(800, 480)
 const EXPECTED_CATEGORY_COUNTS := {
 	PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER: 4,
-	PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER: 2,
+	PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER: 3,
 	PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING: 6,
 	PlantDefenseConfig.BuildingCategory.TECHNOLOGY_BUILDING: 1,
 	PlantDefenseConfig.BuildingCategory.FENCE: 1,
@@ -69,10 +69,10 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 	await _wait_layout_frames(3)
 	_expect(
 		hud.is_open()
-		and hud.available_configs.size() == 16
-		and hud.cards.size() == 16
+		and hud.available_configs.size() == 17
+		and hud.cards.size() == 17
 		and not hud.free_placement_mode,
-		"Formal catalog must show all 16 buildings in inventory mode."
+		"Formal catalog must show all 17 buildings in inventory mode."
 	)
 	for category_variant in EXPECTED_CATEGORY_COUNTS:
 		var category := int(category_variant)
@@ -166,11 +166,12 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 	if not controller.valid_anchors.is_empty():
 		var anchor := controller.valid_anchors[0]
 		controller.call("_set_hovered_anchor", anchor, true)
-		var plant_count_before: int = game.plant_container.get_child_count()
+		var plant_container := game.get_node("PlantContainer") as Node2D
+		var plant_count_before: int = plant_container.get_child_count()
 		controller.call("_try_place_hovered")
 		await process_frame
 		_expect(
-			game.plant_container.get_child_count() == plant_count_before + 1
+			plant_container.get_child_count() == plant_count_before + 1
 			and run_state.get_inventory_item_total(
 				BuildingItemRegistry.get_item(PlantDefenseRegistry.AGAVE_CANNON_ID)
 			) == 0,
@@ -273,7 +274,8 @@ func _test_host_rejects_free_placement() -> void:
 				"reason": reason,
 			})
 	)
-	var plant_count_before: int = game.plant_container.get_child_count()
+	var plant_container := game.get_node("PlantContainer") as Node2D
+	var plant_count_before: int = plant_container.get_child_count()
 	game.tower_multiplayer_mode_adapter.request_authoritative_plant_placement(
 		2,
 		77,
@@ -286,7 +288,7 @@ func _test_host_rejects_free_placement() -> void:
 		and rejections[0]["peer_id"] == 2
 		and rejections[0]["reason"]
 		== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FREE_DISABLED
-		and game.plant_container.get_child_count() == plant_count_before,
+		and plant_container.get_child_count() == plant_count_before,
 		"Formal host must reject the legacy free-placement RPC before placement."
 	)
 	var collectible_pool := LuoxiMerchant.get_collectible_pool()

@@ -242,6 +242,7 @@ var cold_move_speed_multiplier := 1.0
 var timed_move_slow_multiplier := 1.0
 var network_effective_move_speed_multiplier_override: float = 0.0
 var tower_defense_fate_max_health_multiplier: float = 1.0
+var tower_defense_life_tower_bonus_ratio: float = 0.0
 var tower_defense_fate_move_speed_multiplier: float = 1.0
 var tower_defense_fate_dash_cooldown_reduction: float = 0.0
 var tower_defense_fate_low_health_ratio := 0.0
@@ -1844,6 +1845,21 @@ func get_run_max_health_penalty() -> int:
 	return _run_max_health_penalty
 
 
+## Applies the absolute team-wide Life Tower ratio. Sources are aggregated by
+## the tower-defense coordinator, so repeated calls replace instead of stack.
+func set_tower_defense_life_tower_bonus_ratio(total_ratio: float) -> void:
+	var safe_ratio := maxf(total_ratio, 0.0) if is_finite(total_ratio) else 0.0
+	if is_equal_approx(tower_defense_life_tower_bonus_ratio, safe_ratio):
+		return
+	tower_defense_life_tower_bonus_ratio = safe_ratio
+	if _base_stats_initialized and is_node_ready():
+		_refresh_collectible_stats()
+
+
+func get_tower_defense_life_tower_bonus_ratio() -> float:
+	return tower_defense_life_tower_bonus_ratio
+
+
 ## Applies the tower-defense fate modifiers as absolute run state. Calling this
 ## repeatedly is idempotent and never mutates the shared character resource.
 func configure_tower_defense_fate_modifiers(
@@ -3346,6 +3362,7 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 				+ max_health_bonus
 				+ _run_max_health_bonus
 			)
+			* (1.0 + tower_defense_life_tower_bonus_ratio)
 			* tower_defense_fate_max_health_multiplier
 		) - _run_max_health_penalty,
 		1
@@ -3408,7 +3425,8 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	_on_collectible_ammunition_stats_refreshed()
 	_refresh_shooting_timer_wait_time()
 	if (
-		attack_damage != previous_attack_damage
+		old_max_health != max_health
+		or attack_damage != previous_attack_damage
 		or not is_equal_approx(move_speed, previous_move_speed)
 		or physical_defense != previous_physical_defense
 		or magic_defense != previous_magic_defense
@@ -3434,7 +3452,11 @@ func _get_collectible_health_condition_maximum(
 	for item in active_items:
 		result += item.collectible_max_health_bonus
 	return maxi(
-		roundi(float(result) * tower_defense_fate_max_health_multiplier)
+		roundi(
+			float(result)
+			* (1.0 + tower_defense_life_tower_bonus_ratio)
+			* tower_defense_fate_max_health_multiplier
+		)
 		- _run_max_health_penalty,
 		1
 	)

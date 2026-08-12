@@ -7,6 +7,7 @@ const EXPECTED_SORTED_IDS: Array[StringName] = [
 	&"grape_arc_tower",
 	&"hydrangea_rain_tower",
 	&"orange_charging_tower",
+	&"life_tower",
 	&"wood_processing_station",
 	&"water_collector",
 	&"planting_base",
@@ -25,6 +26,7 @@ const EXPECTED_CATEGORY_BY_ID := {
 	&"grape_arc_tower": PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER,
 	&"hydrangea_rain_tower": PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER,
 	&"orange_charging_tower": PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER,
+	&"life_tower": PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER,
 	&"wood_processing_station": PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING,
 	&"water_collector": PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING,
 	&"planting_base": PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING,
@@ -43,6 +45,7 @@ const EXPECTED_SURFACE_BY_ID := {
 	&"grape_arc_tower": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
 	&"hydrangea_rain_tower": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
 	&"orange_charging_tower": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
+	&"life_tower": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
 	&"wood_processing_station": PlantDefenseConfig.PlacementSurface.ANY_LAND,
 	&"water_collector": PlantDefenseConfig.PlacementSurface.WATER_ONLY,
 	&"planting_base": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
@@ -61,6 +64,7 @@ const EXPECTED_MENU_ORDER_BY_ID := {
 	&"grape_arc_tower": 40,
 	&"hydrangea_rain_tower": 10,
 	&"orange_charging_tower": 20,
+	&"life_tower": 30,
 	&"wood_processing_station": 10,
 	&"water_collector": 20,
 	&"planting_base": 30,
@@ -79,10 +83,11 @@ const EXPECTED_TOWER_PHYSICAL_DEFENSE_BY_ID := {
 	&"grape_arc_tower": 10,
 	&"hydrangea_rain_tower": 10,
 	&"orange_charging_tower": 10,
+	&"life_tower": 5,
 }
 const EXPECTED_CATEGORY_COUNTS := {
 	PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER: 4,
-	PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER: 2,
+	PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER: 3,
 	PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING: 6,
 	PlantDefenseConfig.BuildingCategory.TECHNOLOGY_BUILDING: 1,
 	PlantDefenseConfig.BuildingCategory.FENCE: 1,
@@ -182,14 +187,25 @@ func _test_registry_semantics() -> void:
 				== int(EXPECTED_TOWER_PHYSICAL_DEFENSE_BY_ID[config.plant_id]),
 				"炮台基础物防不符合数值契约：%s。" % config.plant_id
 			)
-	_expect(configs.size() == 16, "正式建筑注册表必须恰好包含16项。")
+	_expect(configs.size() == 17, "正式建筑注册表必须恰好包含17项。")
 	_expect(
 		actual_ids == EXPECTED_SORTED_IDS,
 		"注册表必须按类别、类内顺序、ID确定性排序。actual=%s" % [actual_ids]
 	)
 	_expect(
 		category_counts == EXPECTED_CATEGORY_COUNTS,
-		"七类建筑数量必须固定为4/2/6/1/1/1/1。actual=%s" % [category_counts]
+		"七类建筑数量必须固定为4/3/6/1/1/1/1。actual=%s" % [category_counts]
+	)
+	var life_tower := PlantDefenseRegistry.get_config(&"life_tower") as LifeTowerConfig
+	_expect(
+		life_tower != null
+		and life_tower.max_health == 2400
+		and life_tower.physical_defense == 5
+		and life_tower.magic_defense == 0
+		and life_tower.footprint_size == Vector2i(2, 2)
+		and life_tower.supports_multiplayer
+		and is_equal_approx(life_tower.max_health_bonus_ratio, 0.10),
+		"生命强化塔必须声明2×2占地、2400生命、5物防、0法防与每塔10%生命上限加成。"
 	)
 
 
@@ -254,11 +270,11 @@ func _test_surface_semantics() -> void:
 func _test_building_item_and_acquisition_closure() -> void:
 	_expect(
 		BuildingItemRegistry.validate_contract(),
-		"建筑物品必须与16个plant_id形成一一对应，且每项至少有一条获取路线。"
+		"建筑物品必须与17个plant_id形成一一对应，且每项至少有一条获取路线。"
 	)
 	_expect(
-		BuildingItemRegistry.get_all_items().size() == 16,
-		"建筑物品Registry必须恰好公开16项。"
+		BuildingItemRegistry.get_all_items().size() == 17,
+		"建筑物品Registry必须恰好公开17项。"
 	)
 	var reachable_recipe_paths := {}
 	for recipe in SimpleCraftingRegistry.get_all_recipes():
@@ -323,6 +339,19 @@ func _test_building_item_and_acquisition_closure() -> void:
 		and is_equal_approx(orange_recipe.duration_seconds, 30.0)
 		and orange_recipe.outputs_to_player_inventory(),
 		"橘充能塔必须在独立科研完成后，才能于植物培育中心消耗1个木制核心和1份术士紫晶粉培育。"
+	)
+	var life_recipe := BuildingItemRegistry.get_primary_acquisition_recipe(
+		&"life_tower"
+	)
+	_expect(
+		life_recipe != null
+		and life_recipe.input_items == [WOODEN_CORE, WATER_BOTTLE]
+		and life_recipe.input_amounts == [1, 1]
+		and life_recipe.output_items == [BuildingItemRegistry.LIFE_TOWER_ITEM]
+		and life_recipe.output_amounts == [1]
+		and is_equal_approx(life_recipe.duration_seconds, 30.0)
+		and life_recipe.outputs_to_player_inventory(),
+		"生命强化塔必须在植物培育中心消耗1个木制核心和1个水瓶，并培育30秒。"
 	)
 
 

@@ -15,6 +15,7 @@ const PLANT_CULTIVATION_CENTER_ID: StringName = &"plant_cultivation_center"
 const PLANTING_BASE_ID: StringName = &"planting_base"
 const HYDRANGEA_RAIN_TOWER_ID: StringName = &"hydrangea_rain_tower"
 const ORANGE_CHARGING_TOWER_ID: StringName = &"orange_charging_tower"
+const LIFE_TOWER_ID: StringName = &"life_tower"
 const GRAPE_ARC_TOWER_ID: StringName = &"grape_arc_tower"
 const EXCAVATOR_ID: StringName = &"excavator"
 
@@ -60,6 +61,9 @@ const HYDRANGEA_RAIN_TOWER_CONFIG: PlantDefenseConfig = preload(
 const ORANGE_CHARGING_TOWER_CONFIG: PlantDefenseConfig = preload(
 	"res://resources/config/plant_defense/orange_charging_tower.tres"
 )
+const LIFE_TOWER_CONFIG: PlantDefenseConfig = preload(
+	"res://resources/config/plant_defense/life_tower.tres"
+)
 const GRAPE_ARC_TOWER_CONFIG: PlantDefenseConfig = preload(
 	"res://resources/config/plant_defense/grape_arc_tower.tres"
 )
@@ -81,6 +85,7 @@ const PLANT_CONFIGS := {
 	BAMBOO_MORTAR_ID: BAMBOO_MORTAR_CONFIG,
 	HYDRANGEA_RAIN_TOWER_ID: HYDRANGEA_RAIN_TOWER_CONFIG,
 	ORANGE_CHARGING_TOWER_ID: ORANGE_CHARGING_TOWER_CONFIG,
+	LIFE_TOWER_ID: LIFE_TOWER_CONFIG,
 	GRAPE_ARC_TOWER_ID: GRAPE_ARC_TOWER_CONFIG,
 	EXCAVATOR_ID: EXCAVATOR_CONFIG,
 	PLANTING_BASE_ID: PLANTING_BASE_CONFIG,

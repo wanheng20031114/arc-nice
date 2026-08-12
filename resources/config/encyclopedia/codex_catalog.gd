@@ -22,7 +22,7 @@ const BUILDING_FILTER_KEYS: Array[StringName] = [
 const REGISTERED_ENTRY_COUNTS := {
 	CodexSection.ENEMY: 64,
 	CodexSection.COLLECTIBLE: 125,
-	CodexSection.BUILDING: 16,
+	CodexSection.BUILDING: 17,
 }
 const COLLECTIBLE_ACCENTS: Array[Color] = [
 	Color("#f0e3c2"),
