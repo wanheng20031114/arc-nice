@@ -18,18 +18,6 @@ const EXPECTED_CATEGORY_COUNTS := {
 var failures: Array[String] = []
 
 
-class FakeNetManager:
-	extends Node
-
-	var connected_players := {1: "Host", 2: "Client"}
-
-	func is_host() -> bool:
-		return true
-
-	func get_host_peer_id() -> int:
-		return 1
-
-
 func _init() -> void:
 	call_deferred("_run")
 
@@ -65,7 +53,12 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 		and not game.tower_multiplayer_mode_adapter.allows_debug_collectible_grants(),
 		"Formal tower defense must disable free placement and debug grants."
 	)
-	_expect(controller.open_selection(), "Formal T catalog must open.")
+	var t_event := InputEventKey.new()
+	t_event.physical_keycode = KEY_T
+	t_event.pressed = true
+	_expect(t_event.is_action_pressed(&"plant"), "T key must map to the plant action.")
+	controller._unhandled_input(t_event)
+	_expect(controller.is_selecting(), "Pressing T must open the formal building catalog.")
 	await _wait_layout_frames(3)
 	_expect(
 		hud.is_open()
@@ -85,8 +78,10 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 
 	var agave := PlantDefenseRegistry.get_config(PlantDefenseRegistry.AGAVE_CANNON_ID)
 	var corn := PlantDefenseRegistry.get_config(PlantDefenseRegistry.CORN_MACHINE_GUN_ID)
+	var life_tower := PlantDefenseRegistry.get_config(PlantDefenseRegistry.LIFE_TOWER_ID)
 	var stone_mill := PlantDefenseRegistry.get_config(PlantDefenseRegistry.STONE_MILL_ID)
 	var corn_card := _find_card(hud, corn)
+	var life_tower_card := _find_card(hud, life_tower)
 	_expect(
 		hud.cards.all(
 			func(card: PlantSelectionCard) -> bool: return card.owned_count == 0
@@ -100,6 +95,12 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 		and corn_card.surface_label.text
 		== PlantDefenseConfig.get_placement_surface_label(corn.placement_surface),
 		"Zero-count cards must remain visible with an explicit surface tag."
+	)
+	_expect(
+		life_tower_card != null
+		and life_tower_card.owned_count == 0
+		and life_tower_card.select_button.disabled,
+		"Life Tower must be visible in the T catalog and disabled only while inventory count is zero."
 	)
 
 	hud.call("_select_config", corn)
@@ -144,12 +145,12 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 
 	_expect(
 		run_state.try_add_item(
-			BuildingItemRegistry.get_item(PlantDefenseRegistry.AGAVE_CANNON_ID)
+			BuildingItemRegistry.get_item(PlantDefenseRegistry.LIFE_TOWER_ID)
 		),
-		"Placement fixture must explicitly add one agave after validating the empty building catalog."
+		"Placement fixture must explicitly add one Life Tower after validating the empty building catalog."
 	)
 	await process_frame
-	hud.call("_select_config", agave)
+	hud.call("_select_config", life_tower)
 	hud.call("_confirm_selection")
 	await process_frame
 	_expect(
@@ -161,21 +162,37 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 	)
 	_expect(
 		not controller.valid_anchors.is_empty(),
-		"Explicitly injected agave fixture must have a valid formal placement anchor."
+		"Explicitly injected Life Tower fixture must have a valid formal placement anchor."
 	)
 	if not controller.valid_anchors.is_empty():
 		var anchor := controller.valid_anchors[0]
+		var footprint_cells := game.plant_system.get_footprint_cells(
+			anchor,
+			life_tower
+		)
 		controller.call("_set_hovered_anchor", anchor, true)
 		var plant_container := game.get_node("PlantContainer") as Node2D
 		var plant_count_before: int = plant_container.get_child_count()
 		controller.call("_try_place_hovered")
 		await process_frame
+		var placed_life_tower := game.plant_system.get_plant_at_cell(anchor)
+		var all_footprint_cells_registered := true
+		for cell in footprint_cells:
+			all_footprint_cells_registered = (
+				all_footprint_cells_registered
+				and game.plant_system.get_plant_at_cell(cell) == placed_life_tower
+			)
 		_expect(
 			plant_container.get_child_count() == plant_count_before + 1
+			and footprint_cells.size() == 4
+			and placed_life_tower != null
+			and placed_life_tower.config == life_tower
+			and placed_life_tower.footprint_cells == footprint_cells
+			and all_footprint_cells_registered
 			and run_state.get_inventory_item_total(
-				BuildingItemRegistry.get_item(PlantDefenseRegistry.AGAVE_CANNON_ID)
+				BuildingItemRegistry.get_item(PlantDefenseRegistry.LIFE_TOWER_ID)
 			) == 0,
-			"Formal T placement must atomically consume the selected building item."
+			"Formal T placement must occupy all four Life Tower cells and atomically consume its building item."
 		)
 
 	current_scene = null
@@ -316,36 +333,47 @@ func _test_multiplayer_debug_grant_policy(
 	collectible_path: String
 ) -> void:
 	var mp_game := MP_GAME_SCENE.instantiate()
-	var fake_net_manager := FakeNetManager.new()
+	var net_manager := NetManagerStore.get_autoload_instance()
+	var previous_net_role := net_manager.net_role
+	var previous_connected_players := net_manager.connected_players.duplicate()
+	net_manager.net_role = NetManagerStore.NetRole.HOST
+	net_manager.connected_players = {1: "Host", 2: "Client"}
 	mp_game.set("game", game)
-	mp_game.set("net_manager", fake_net_manager)
+	mp_game.set("net_manager", net_manager)
 	mp_game.set("run_state", run_state)
-	var inventory_before := run_state.export_inventory_snapshot_for_peer(1)
-	var metrics_before := mp_game.call("get_snapshot_packet_metrics") as Dictionary
-	var channels_before := metrics_before.get("channel_metrics", []) as Array
-	var transaction_packets_before := int(
-		(channels_before[6] as Dictionary).get("packet_count", 0)
+	var merchant_transactions := mp_game.get_node(
+		"MerchantTransactionsCoordinator"
+	) as MpMerchantTransactionsCoordinator
+	var broadcast_count := 0
+	merchant_transactions.rpc_broadcast_requested.connect(
+		func(_method_name: StringName, _args: Array) -> void:
+			broadcast_count += 1
 	)
+	merchant_transactions.bind_runtime(
+		game,
+		game.get_multiplayer_mode_adapter(),
+		run_state,
+		net_manager,
+		0.0
+	)
+	var inventory_before := run_state.export_inventory_snapshot_for_peer(1)
 
-	mp_game.call("request_debug_collectible", collectible_path)
-	mp_game.call("_apply_debug_collectible_for_peer", 1, collectible_path)
+	merchant_transactions.request_debug_collectible(collectible_path)
+	merchant_transactions.apply_debug_collectible_for_peer(1, collectible_path)
 
 	var inventory_after := run_state.export_inventory_snapshot_for_peer(1)
-	var metrics_after := mp_game.call("get_snapshot_packet_metrics") as Dictionary
-	var channels_after := metrics_after.get("channel_metrics", []) as Array
-	var transaction_packets_after := int(
-		(channels_after[6] as Dictionary).get("packet_count", 0)
-	)
 	_expect(
 		inventory_after == inventory_before
-		and transaction_packets_after == transaction_packets_before,
+		and broadcast_count == 0,
 		(
 			"Formal multiplayer debug grants must neither mutate inventory nor "
 			+ "broadcast a reliable result."
 		)
 	)
+	merchant_transactions.unbind_runtime(game)
 	mp_game.free()
-	fake_net_manager.free()
+	net_manager.net_role = previous_net_role
+	net_manager.connected_players = previous_connected_players
 
 
 func _find_card(

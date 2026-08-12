@@ -37,6 +37,9 @@ const RESEARCH_CENTER_ITEM := preload(
 const EXCAVATOR_ITEM := preload(
 	"res://resources/config/buildings/building_excavator.tres"
 )
+const LIFE_TOWER_ITEM := preload(
+	"res://resources/config/buildings/building_life_tower.tres"
+)
 
 var failures: PackedStringArray = []
 
@@ -196,7 +199,8 @@ func _run() -> void:
 		and panel.has_node("Overlay/PanelRoot/OutputSlot3")
 		and panel.has_node("Overlay/PanelRoot/MaterialList")
 		and panel.has_node("Overlay/PanelRoot/ToggleButton")
-		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow8"),
+		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow8")
+		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow9"),
 		"生产面板必须原生搭建左右各3个候选槽位、物资列表与右上角开关。"
 	)
 	_expect(
@@ -219,6 +223,7 @@ func _run() -> void:
 		and panel.recipe_rows[5].icon == PLANT_CULTIVATION_CENTER_ITEM.icon_texture
 		and panel.recipe_rows[6].icon == RESEARCH_CENTER_ITEM.icon_texture
 		and panel.recipe_rows[7].icon == EXCAVATOR_ITEM.icon_texture
+		and panel.recipe_rows[8].icon == LIFE_TOWER_ITEM.icon_texture
 		and panel.recipe_rows.all(func(row: Button) -> bool: return row.visible)
 		and panel.recipe_rows[2].text.contains("赌怪专用券制作")
 		and panel.recipe_rows[3].text.contains("水源采集器组装")
@@ -226,10 +231,32 @@ func _run() -> void:
 		and panel.recipe_rows[5].text.contains("植物培育中心组装")
 		and panel.recipe_rows[6].text.contains("科研中心组装")
 		and panel.recipe_rows[7].text.contains("挖土装置组装")
+		and panel.recipe_rows[8].text.contains("生命强化塔组装")
 		and panel.recipe_rows[3].text.contains("30秒")
-		and panel.recipe_rows[7].text.contains("30秒"),
-		"右侧八条配方必须显示正确产物图标，五种功能建筑统一标明30秒。"
+		and panel.recipe_rows[8].text.contains("30秒"),
+		"右侧九条配方必须显示正确产物图标，六种功能建筑统一标明30秒。"
 	)
+	panel.recipe_scroll.ensure_control_visible(panel.recipe_rows[8])
+	await process_frame
+	await _click_panel_control(panel.recipe_rows[8])
+	_expect(
+		panel.recipe_scroll.get_global_rect().encloses(
+			panel.recipe_rows[8].get_global_rect()
+		)
+		and station.active_recipe_id == &"wooden_core_to_life_tower"
+		and panel.recipe_rows[8].button_pressed
+		and panel.input_slots[0].visible
+		and panel.input_slots[0].item == PLANK
+		and panel.input_slots[0].stack_count == 10
+		and panel.input_slots[1].visible
+		and panel.input_slots[1].item == SAPLING
+		and panel.input_slots[1].stack_count == 2
+		and not panel.input_slots[2].visible
+		and panel.output_slots[0].visible
+		and panel.output_slots[0].item == LIFE_TOWER_ITEM,
+		"滚动到第九条配方后必须能选择生命强化塔，并显示10木板、2树苗与背包产物。"
+	)
+	panel.call("_on_recipe_row_pressed", 0)
 	_expect(
 		panel.input_slots[0].visible
 		and not panel.input_slots[1].visible
@@ -316,7 +343,7 @@ func _run() -> void:
 		"所有建筑面板必须通过统一关闭规则支持第二次交互键关闭。"
 	)
 	_expect(
-		station.recipes.size() == 8
+		station.recipes.size() == 9
 		and _recipe_matches(
 			station.recipes[0],
 			&"wood_to_plank",
@@ -396,8 +423,18 @@ func _run() -> void:
 			1,
 			30.0,
 			true
+		)
+		and _recipe_matches(
+			station.recipes[8],
+			&"wooden_core_to_life_tower",
+			[PLANK, SAPLING],
+			[10, 2],
+			LIFE_TOWER_ITEM,
+			1,
+			30.0,
+			true
 		),
-		"加工站必须按固定顺序提供三条材料配方与五条30秒功能建筑配方。"
+		"加工站必须按固定顺序提供三条材料配方与六条30秒功能建筑配方。"
 	)
 	_expect(
 		_is_valid_building_item(WATER_COLLECTOR_ITEM, &"water_collector")
@@ -407,8 +444,9 @@ func _run() -> void:
 			&"plant_cultivation_center"
 		)
 		and _is_valid_building_item(RESEARCH_CENTER_ITEM, &"research_center")
-		and _is_valid_building_item(EXCAVATOR_ITEM, &"excavator"),
-		"五种功能建筑物品必须复用原图、缩放至32×32且指向有效建筑配置。"
+		and _is_valid_building_item(EXCAVATOR_ITEM, &"excavator")
+		and _is_valid_building_item(LIFE_TOWER_ITEM, &"life_tower"),
+		"六种功能建筑物品必须复用原图、缩放至32×32且指向有效建筑配置。"
 	)
 
 	station.set_production_enabled(false)
@@ -756,6 +794,13 @@ func _test_utility_building_recipe_transactions(
 			"input_amounts": [30, 10],
 			"output_item": RESEARCH_CENTER_ITEM,
 		},
+		{
+			"recipe_id": &"wooden_core_to_life_tower",
+			"display_name": "生命强化塔",
+			"input_items": [PLANK, SAPLING],
+			"input_amounts": [10, 2],
+			"output_item": LIFE_TOWER_ITEM,
+		},
 	]
 	for recipe_case in recipe_cases:
 		var recipe_id := StringName(recipe_case["recipe_id"])
@@ -970,10 +1015,11 @@ func _test_multiplayer_production_contract(
 		"玩家断线必须本地撤销个人产物绑定，且不得发布生产包或创建幽灵背包。"
 	)
 	var mp_game := MP_GAME_SCENE.instantiate()
+	var tower_economy := mp_game.get_node("TowerEconomyCoordinator")
 	var rate_buckets: Dictionary = {}
 	var burst_was_accepted := true
 	for _request_index in 12:
-		burst_was_accepted = burst_was_accepted and bool(mp_game.call(
+		burst_was_accepted = burst_was_accepted and bool(tower_economy.call(
 			"_consume_peer_rate_token",
 			rate_buckets,
 			2,
@@ -982,7 +1028,7 @@ func _test_multiplayer_production_contract(
 		))
 	_expect(
 		burst_was_accepted
-		and not bool(mp_game.call(
+		and not bool(tower_economy.call(
 			"_consume_peer_rate_token",
 			rate_buckets,
 			2,
@@ -999,7 +1045,7 @@ func _test_multiplayer_production_contract(
 		authority.export_multiplayer_runtime_state(),
 		0.0
 	)
-	mp_game.call(
+	tower_economy.call(
 		"_cache_production_command_result",
 		2,
 		8,
@@ -1007,7 +1053,7 @@ func _test_multiplayer_production_contract(
 		cached_result
 	)
 	_expect(
-		mp_game.call("_get_cached_production_command_result", 2, 8, 1)
+		tower_economy.call("_get_cached_production_command_result", 2, 8, 1)
 		== cached_result,
 		"重复生产请求必须命中幂等结果缓存而不是再次执行。"
 	)
@@ -1124,6 +1170,33 @@ func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
 		push_error(message)
+
+
+func _click_panel_control(control: Control) -> void:
+	var position := control.get_global_rect().get_center()
+	var motion := InputEventMouseMotion.new()
+	motion.position = position
+	motion.global_position = position
+	root.push_input(motion, true)
+	await process_frame
+
+	var press := InputEventMouseButton.new()
+	press.position = position
+	press.global_position = position
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.button_mask = MOUSE_BUTTON_MASK_LEFT
+	press.pressed = true
+	root.push_input(press, true)
+	await process_frame
+
+	var release := InputEventMouseButton.new()
+	release.position = position
+	release.global_position = position
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.button_mask = 0
+	release.pressed = false
+	root.push_input(release, true)
+	await process_frame
 
 
 func _finish(test_root: Node) -> void:

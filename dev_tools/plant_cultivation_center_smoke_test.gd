@@ -45,9 +45,6 @@ const GRAPE_ARC_TOWER_BUILDING_ITEM := preload(
 const ORANGE_CHARGING_TOWER_BUILDING_ITEM := preload(
 	"res://resources/config/buildings/building_orange_charging_tower.tres"
 )
-const LIFE_TOWER_BUILDING_ITEM := preload(
-	"res://resources/config/buildings/building_life_tower.tres"
-)
 const DIRT_BLOCK := preload(
 	"res://resources/config/materials/material_dirt_block.tres"
 )
@@ -173,7 +170,7 @@ func _run() -> void:
 	center.set_shared_production_panel(panel)
 
 	_expect(
-		center.recipes.size() == 7
+		center.recipes.size() == 6
 		and center.recipes[0].input_items == [WOODEN_CORE]
 		and center.recipes[0].input_amounts == [1]
 		and center.recipes[0].output_items == [AGAVE_BUILDING_ITEM]
@@ -218,14 +215,8 @@ func _run() -> void:
 		and center.recipes[5].required_global_research_id
 		== GlobalResearchRegistry.ORANGE_CHARGING_TOWER_CRAFTING_ID
 		and is_equal_approx(center.recipes[5].duration_seconds, 30.0)
-		and center.recipes[5].outputs_to_player_inventory()
-		and center.recipes[6].input_items == [WOODEN_CORE, WATER_BOTTLE]
-		and center.recipes[6].input_amounts == [1, 1]
-		and center.recipes[6].output_items == [LIFE_TOWER_BUILDING_ITEM]
-		and center.recipes[6].output_amounts == [1]
-		and is_equal_approx(center.recipes[6].duration_seconds, 30.0)
-		and center.recipes[6].outputs_to_player_inventory(),
-		"培育中心必须提供七种塔配方，生命强化塔消耗1个木制核心和1个水瓶并培育30秒。"
+		and center.recipes[5].outputs_to_player_inventory(),
+		"培育中心必须只保留六种植物培育配方。"
 	)
 	_expect(
 		AGAVE_BUILDING_ITEM.pickup_type == PickupConfig.PickupType.BUILDING
@@ -259,13 +250,8 @@ func _run() -> void:
 		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.placeable_plant_id
 		== &"orange_charging_tower"
 		and not ORANGE_CHARGING_TOWER_BUILDING_ITEM.stackable
-		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.inventory_stack_limit == 1
-		and LIFE_TOWER_BUILDING_ITEM.pickup_type
-		== PickupConfig.PickupType.BUILDING
-		and LIFE_TOWER_BUILDING_ITEM.placeable_plant_id == &"life_tower"
-		and not LIFE_TOWER_BUILDING_ITEM.stackable
-		and LIFE_TOWER_BUILDING_ITEM.inventory_stack_limit == 1,
-		"七种产物必须是不可叠加且指向正确建筑配置的建筑物品。"
+		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.inventory_stack_limit == 1,
+		"六种产物必须是不可叠加且指向正确建筑配置的建筑物品。"
 	)
 
 	var border := center.get_node_or_null("ProductionBorder") as MeshInstance2D
@@ -493,11 +479,12 @@ func _run() -> void:
 		and panel.recipe_rows[4].tooltip_text.contains("约 40.0 秒")
 		and panel.recipe_rows[5].visible
 		and panel.recipe_rows[5].tooltip_text.contains("约 30.0 秒")
-		and panel.recipe_rows[6].visible
-		and panel.recipe_rows[6].tooltip_text.contains("约 30.0 秒")
+		and not panel.recipe_rows[6].visible
+		and not panel.recipe_rows[7].visible
+		and not panel.recipe_rows[8].visible
 		and progress_fill != null
 		and progress_fill.bg_color.g > 0.75,
-		"培育中心UI必须使用植物面板、嫩绿进度条，并显示七条耗时正确的培育配方。"
+		"培育中心UI必须使用植物面板、嫩绿进度条，并只显示六条耗时正确的培育配方。"
 	)
 	_expect(
 		panel.building_title.position == Vector2(96.0, 23.0)
@@ -575,9 +562,7 @@ func _run() -> void:
 		and panel.recipe_rows[4].text
 			== "培育葡萄电弧塔\n3 种原料 · 40秒"
 		and panel.recipe_rows[5].text
-			== "培育橘充能塔\n2 种原料 · 30秒"
-		and panel.recipe_rows[6].text
-			== "培育生命强化塔\n2 种原料 · 30秒",
+			== "培育橘充能塔\n2 种原料 · 30秒",
 		"背包产物配方摘要必须只显示投入与耗时，避免在窄栏重复长产物名。"
 	)
 	_expect(
@@ -604,15 +589,6 @@ func _run() -> void:
 		and center.active_recipe_id == &"wooden_core_to_corn_machine_gun"
 		and panel.recipe_rows[1].button_pressed,
 		"真实点击右栏可见配方必须命中按钮并切换培育方案。"
-	)
-	panel.recipe_scroll.ensure_control_visible(panel.recipe_rows[6])
-	await process_frame
-	await _click_panel_control(panel.recipe_rows[6])
-	_expect(
-		root.gui_get_hovered_control() == panel.recipe_rows[6]
-		and center.active_recipe_id == &"wooden_core_to_life_tower"
-		and panel.recipe_rows[6].button_pressed,
-		"滚动后点击第七条生命强化塔配方必须命中按钮并切换培育方案。"
 	)
 	await _click_panel_control(panel.close_button)
 	_expect(

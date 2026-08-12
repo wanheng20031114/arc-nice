@@ -113,6 +113,12 @@ const WOODEN_CORE: PickupConfig = preload(
 const WATER_BOTTLE: PickupConfig = preload(
 	"res://resources/config/materials/material_water_bottle.tres"
 )
+const PLANK: PickupConfig = preload(
+	"res://resources/config/materials/material_plank.tres"
+)
+const SAPLING: PickupConfig = preload(
+	"res://resources/config/materials/material_sapling.tres"
+)
 const SORCERER_VIOLET_POWDER: PickupConfig = preload(
 	"res://resources/config/materials/material_sorcerer_violet_powder.tres"
 )
@@ -345,13 +351,14 @@ func _test_building_item_and_acquisition_closure() -> void:
 	)
 	_expect(
 		life_recipe != null
-		and life_recipe.input_items == [WOODEN_CORE, WATER_BOTTLE]
-		and life_recipe.input_amounts == [1, 1]
+		and life_recipe.display_name == "生命强化塔组装"
+		and life_recipe.input_items == [PLANK, SAPLING]
+		and life_recipe.input_amounts == [10, 2]
 		and life_recipe.output_items == [BuildingItemRegistry.LIFE_TOWER_ITEM]
 		and life_recipe.output_amounts == [1]
 		and is_equal_approx(life_recipe.duration_seconds, 30.0)
 		and life_recipe.outputs_to_player_inventory(),
-		"生命强化塔必须在植物培育中心消耗1个木制核心和1个水瓶，并培育30秒。"
+		"生命强化塔必须在木头加工站消耗10个木板和2棵树苗，并组装30秒。"
 	)
 
 

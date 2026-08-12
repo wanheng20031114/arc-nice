@@ -811,8 +811,12 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 				and String(stats.get("物理防御", "")) == "5 点"
 				and String(stats.get("法术防御", "")) == "0"
 				and entry.description.contains("生命上限提高10%")
-				and entry.description.contains("线性叠加"),
-				"Life Tower codex entry must expose its 2400/5/0 stats and linear 10% team effect."
+				and entry.description.contains("线性叠加")
+				and entry.notes[0].contains("生命强化塔组装")
+				and entry.notes[0].contains("木板 ×10")
+				and entry.notes[0].contains("树苗 ×2")
+				and entry.notes[0].contains("30 秒"),
+				"Life Tower codex entry must expose its stats, team effect, and 10-plank/2-sapling assembly recipe."
 			)
 		if config.attack_damage > 0:
 			continue
