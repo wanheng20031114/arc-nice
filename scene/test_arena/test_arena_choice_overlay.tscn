@@ -578,7 +578,7 @@ theme_override_colors/font_color = Color(0.82, 0.86, 0.79, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
-text = "在 P1A 草地地图中每5秒生成1台主战机器人，共100台，同时存活上限20。"
+text = "在 P1A 草地地图中仅放置1台主战机器人，整场不循环生成。"
 autowrap_mode = 2
 
 [node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1E/PageMargin/Content"]

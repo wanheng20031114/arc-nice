@@ -567,8 +567,8 @@ func _validate_exact_mode_runtime(game: CombatRuntimeBase) -> void:
 	if test_arena == null or active_campaign == null:
 		return
 	var expected_enemy_count := (
-		1 if probe_game_mode == "test_arena_p2"
-		else 100 if probe_game_mode == "test_arena_p1e"
+		1
+		if probe_game_mode in ["test_arena_p1e", "test_arena_p2"]
 		else 1000
 	)
 	var campaign_waves := active_campaign.get_waves()

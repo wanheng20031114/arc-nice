@@ -84,16 +84,17 @@ func _test_staged_enemy_contract() -> void:
 		_expect(
 			wave.enemy_entries.size() == 1
 			and wave.enemy_entries[0].enemy_config == MAIN_CONFIG
-			and wave.enemy_entries[0].count == 100
-			and wave.get_total_enemy_count() == 100
+			and wave.enemy_entries[0].count == 1
+			and wave.get_total_enemy_count() == 1
+			and wave.exits.is_empty()
 			and wave.spawn_point_mask == 3
 			and wave.spawn_point_order
 			== WaveConfig.SpawnPointOrder.BALANCED_SHUFFLE_BAG
 			and wave.spawn_order == WaveConfig.SpawnOrder.ENTRY_ROUND_ROBIN
 			and is_equal_approx(wave.spawn_interval, 5.0)
 			and wave.spawn_count_per_tick == 1
-			and wave.max_alive_enemies == 20,
-			"P1E暂存波次必须保持100台、Spawn1/2均衡、每5秒1台、存活上限20。"
+			and wave.max_alive_enemies == 1,
+			"P1E暂存流程必须整场只排入1台、终点无出口、单批生成且存活上限为1。"
 		)
 
 
