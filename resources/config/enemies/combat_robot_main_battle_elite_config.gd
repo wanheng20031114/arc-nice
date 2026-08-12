@@ -1,6 +1,20 @@
 extends EnemyConfig
 class_name CombatRobotMainBattleEliteConfig
 
+@export_group("专属音效")
+@export var move_stomp_audio_stream_a: AudioStream
+@export var move_stomp_audio_stream_b: AudioStream
+@export var hit_audio_stream_a: AudioStream
+@export var hit_audio_stream_b: AudioStream
+@export var attack_windup_audio_stream: AudioStream
+@export var attack_slash_audio_stream: AudioStream
+@export var skill1_charge_audio_stream: AudioStream
+@export var skill1_dash_audio_stream: AudioStream
+@export var skill1_circle_slash_audio_stream: AudioStream
+@export var skill2_takeoff_audio_stream: AudioStream
+@export var skill2_drop_audio_stream: AudioStream
+@export var death_audio_stream: AudioStream
+
 @export_group("普通双剑斩")
 @export var attack_animation_name: StringName = &"attack"
 @export_range(0.0, 256.0, 0.5, "or_greater") var attack_range := 32.0

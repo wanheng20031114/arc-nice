@@ -1,6 +1,6 @@
 extends SceneTree
 
-const MAIN_CONFIG: EnemyConfig = preload(
+const MAIN_CONFIG: CombatRobotMainBattleEliteConfig = preload(
 	"res://resources/config/enemies/combat_robot_main_battle_elite.tres"
 )
 const MAIN_SCENE: PackedScene = preload(
@@ -44,6 +44,32 @@ const EXPECTED_DIRECT_CONFIG_REFERENCES := [
 	"res://resources/config/campaigns/test_arena/p1e/singleplayer/wave_01.tres",
 	"res://resources/config/encyclopedia/enemies/combat_robot_main_battle_elite.tres",
 ]
+const AUDIO_STREAM_FIELDS := {
+	&"move_stomp_audio_stream_a": ["combat_robot_main_battle_elite_stomp_a.wav", 0.25],
+	&"move_stomp_audio_stream_b": ["combat_robot_main_battle_elite_stomp_b.wav", 0.25],
+	&"hit_audio_stream_a": ["combat_robot_main_battle_elite_hit_a.wav", 0.16],
+	&"hit_audio_stream_b": ["combat_robot_main_battle_elite_hit_b.wav", 0.18],
+	&"attack_windup_audio_stream": ["combat_robot_main_battle_elite_normal_windup.wav", 0.35],
+	&"attack_slash_audio_stream": ["combat_robot_main_battle_elite_normal_double_slash.wav", 0.78],
+	&"skill1_charge_audio_stream": ["combat_robot_main_battle_elite_skill1_charge.wav", 0.56],
+	&"skill1_dash_audio_stream": ["combat_robot_main_battle_elite_skill1_dash.wav", 0.75],
+	&"skill1_circle_slash_audio_stream": ["combat_robot_main_battle_elite_skill1_circle_slash.wav", 0.78],
+	&"skill2_takeoff_audio_stream": ["combat_robot_main_battle_elite_skill2_takeoff.wav", 0.46],
+	&"skill2_drop_audio_stream": ["combat_robot_main_battle_elite_skill2_drop_bilateral_slash.wav", 0.76],
+	&"death_audio_stream": ["combat_robot_main_battle_elite_death.wav", 1.20],
+}
+const AUDIO_NODE_SPECS := {
+	&"MoveStompAudio": [&"move_stomp_audio_stream_a", -18.0, 180.0],
+	&"HitAudio": [&"hit_audio_stream_a", -12.0, 180.0],
+	&"DeathAudio": [&"death_audio_stream", -6.0, 220.0],
+	&"AttackWindupAudio": [&"attack_windup_audio_stream", -14.0, 220.0],
+	&"AttackSlashAudio": [&"attack_slash_audio_stream", -9.0, 220.0],
+	&"Skill1ChargeAudio": [&"skill1_charge_audio_stream", -12.0, 220.0],
+	&"Skill1DashAudio": [&"skill1_dash_audio_stream", -11.0, 220.0],
+	&"Skill1CircleSlashAudio": [&"skill1_circle_slash_audio_stream", -8.0, 220.0],
+	&"Skill2TakeoffAudio": [&"skill2_takeoff_audio_stream", -10.0, 220.0],
+	&"Skill2DropAudio": [&"skill2_drop_audio_stream", -6.0, 220.0],
+}
 
 var failures: Array[String] = []
 
@@ -55,6 +81,7 @@ func _init() -> void:
 func _run() -> void:
 	_test_released_enemy_contract()
 	_test_runtime_visual_release_contract()
+	_test_dedicated_audio_release_contract()
 	_test_selectable_p1e_entry_contract()
 	_test_protocol_boundaries()
 	_test_live_registry_and_texture_counts()
@@ -156,6 +183,53 @@ func _test_runtime_visual_release_contract() -> void:
 		)) == "high_resolution_source_preserved_linear_display",
 		"原生64资格必须继续为false，但经授权的高分辨率保真运行路径必须发布。"
 	)
+
+
+func _test_dedicated_audio_release_contract() -> void:
+	var seen_paths: Dictionary = {}
+	for field_name: StringName in AUDIO_STREAM_FIELDS:
+		var spec := AUDIO_STREAM_FIELDS[field_name] as Array
+		var stream := MAIN_CONFIG.get(field_name) as AudioStream
+		var expected_suffix := "resources/audio/%s" % str(spec[0])
+		_expect(
+			stream != null
+			and stream.resource_path.ends_with(expected_suffix)
+			and not seen_paths.has(stream.resource_path)
+			and absf(stream.get_length() - float(spec[1])) <= 0.002,
+			"专属音频字段%s必须绑定唯一且时长正确的正式WAV。" % field_name
+		)
+		if stream != null:
+			seen_paths[stream.resource_path] = true
+	_expect(
+		seen_paths.size() == 12,
+		"主战机器人必须精确绑定12条获批独立音效。"
+	)
+
+	var scene_text := FileAccess.get_file_as_string(MAIN_SCENE_PATH)
+	var enemy := MAIN_SCENE.instantiate() as CombatRobotMainBattleElite
+	if enemy != null:
+		enemy.config = MAIN_CONFIG
+		root.add_child(enemy)
+	for node_name: StringName in AUDIO_NODE_SPECS:
+		var spec := AUDIO_NODE_SPECS[node_name] as Array
+		var player := (
+			enemy.get_node_or_null(NodePath(String(node_name))) as AudioStreamPlayer2D
+			if enemy != null
+			else null
+		)
+		var configured_stream := MAIN_CONFIG.get(spec[0]) as AudioStream
+		_expect(
+			scene_text.contains("[node name=\"%s\"" % node_name)
+			and player != null
+			and player.stream == configured_stream
+			and player.bus == &"SFX"
+			and is_equal_approx(player.volume_db, float(spec[1]))
+			and is_equal_approx(player.max_distance, float(spec[2]))
+			and player.max_polyphony == 1,
+			"音频节点%s必须静态存在并保持获批混音/空间合同。" % node_name
+		)
+	if enemy != null:
+		enemy.free()
 
 
 func _test_selectable_p1e_entry_contract() -> void:

@@ -7,6 +7,12 @@ const MainBattleConfig := preload(
 const COMPLETE_SHAPE_QUERY_2D := preload(
 	"res://scene/combat/physics/complete_shape_query_2d.gd"
 )
+const ENEMY_ATTACK_AUDIO_LIMITER := preload(
+	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
+)
+const ENEMY_FEEDBACK_AUDIO_LIMITER := preload(
+	"res://scene/combat/audio/explosion_audio_limiter.gd"
+)
 const EXPECTED_RUNTIME_SPRITE_FRAMES_PATH := (
 	"res://resources/animation/combat_robot_main_battle_elite.tres"
 )
@@ -17,6 +23,9 @@ const AIRBORNE_VISUAL_STATUS_MASK := 1 << 5
 const BASE_VISUAL_STATUS_MASK := 0x1f
 const ANGLE_EPSILON_RADIANS := 0.000001
 const ACTION_EXPIRY_TOLERANCE_SECONDS := 0.05
+const MOVE_STOMP_FRAME_INDICES := [4, 7]
+const PITCH_VARIATION_MIN := 0.98
+const PITCH_VARIATION_MAX := 1.02
 
 const ACTION_ATTACK_WINDUP := &"main_battle_attack_windup"
 const ACTION_ATTACK_SLASH := &"main_battle_attack_slash"
@@ -57,6 +66,14 @@ enum CombatState {
 @onready var skill1_circle_ring: Line2D = $Skill1CircleRing
 @onready var skill2_cross_marker: Node2D = $Skill2CrossMarker
 @onready var skill2_fan_warning: Polygon2D = $Skill2FanWarning
+@onready var move_stomp_audio: AudioStreamPlayer2D = $MoveStompAudio
+@onready var attack_windup_audio: AudioStreamPlayer2D = $AttackWindupAudio
+@onready var attack_slash_audio: AudioStreamPlayer2D = $AttackSlashAudio
+@onready var skill1_charge_audio: AudioStreamPlayer2D = $Skill1ChargeAudio
+@onready var skill1_dash_audio: AudioStreamPlayer2D = $Skill1DashAudio
+@onready var skill1_circle_slash_audio: AudioStreamPlayer2D = $Skill1CircleSlashAudio
+@onready var skill2_takeoff_audio: AudioStreamPlayer2D = $Skill2TakeoffAudio
+@onready var skill2_drop_audio: AudioStreamPlayer2D = $Skill2DropAudio
 
 var main_config: MainBattleConfig = null
 var combat_state := CombatState.CHASE
@@ -78,6 +95,9 @@ var proxy_takeoff_visual_override := false
 var proxy_drop_visual_override := false
 var proxy_grounded_after_drop_latched := false
 var action_damage_done := false
+var move_stomp_variant_index := 0
+var hit_variant_index := 0
+var actual_motion_since_last_stomp := false
 
 var target_query := PhysicsShapeQueryParameters2D.new()
 var target_query_shape := CircleShape2D.new()
@@ -130,10 +150,12 @@ func _physics_process(delta: float) -> void:
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
+		actual_motion_since_last_stomp = false
 		return
 	if not is_instance_valid(objective_target):
 		velocity = Vector2.ZERO
-		_move_until_player_contact()
+		actual_motion_since_last_stomp = false
+		_move_until_player_contact_with_audio_tracking()
 		return
 	var move_direction := _get_safe_navigation_move_direction(
 		objective_target,
@@ -142,7 +164,7 @@ func _physics_process(delta: float) -> void:
 	)
 	_update_facing(move_direction)
 	velocity = move_direction * get_effective_move_speed()
-	_move_until_player_contact()
+	_move_until_player_contact_with_audio_tracking()
 
 
 func _apply_config() -> void:
@@ -175,6 +197,10 @@ func _apply_config() -> void:
 	proxy_takeoff_visual_override = false
 	proxy_drop_visual_override = false
 	proxy_grounded_after_drop_latched = false
+	move_stomp_variant_index = 0
+	hit_variant_index = 0
+	actual_motion_since_last_stomp = false
+	_bind_dedicated_audio_streams()
 	if main_config != null:
 		target_query.shape = target_query_shape
 		target_query.collision_mask = TARGET_COLLISION_MASK
@@ -229,6 +255,7 @@ func _start_attack_windup(target: Node2D) -> void:
 	_clear_navigation_path()
 	_update_facing(locked_direction)
 	_set_attack_warning(0.0, locked_direction)
+	_start_action_audio(attack_windup_audio)
 	_broadcast_action(ACTION_ATTACK_WINDUP, locked_direction)
 
 
@@ -251,6 +278,7 @@ func _start_attack_slash() -> void:
 	action_damage_done = false
 	_restart_scene_animation(main_config.attack_animation_name)
 	_set_attack_warning(0.0, locked_direction)
+	_start_action_audio(attack_slash_audio)
 	_broadcast_action(ACTION_ATTACK_SLASH, locked_direction)
 
 
@@ -283,6 +311,7 @@ func _start_skill1_windup(target: Node2D) -> void:
 	_update_facing(locked_direction)
 	_play_scene_animation(main_config.skill1_windup_animation_name)
 	_update_skill1_warning_line(target)
+	_start_action_audio(skill1_charge_audio)
 	_broadcast_target_or_action(ACTION_SKILL1_WINDUP, target, locked_direction)
 
 
@@ -310,6 +339,7 @@ func _start_skill1_dash() -> void:
 	_update_facing(locked_direction)
 	_hide_skill1_warning_line()
 	_play_scene_animation(main_config.skill1_dash_animation_name)
+	_start_action_audio(skill1_dash_audio)
 	_broadcast_action(ACTION_SKILL1_DASH, locked_direction)
 	if global_position.is_equal_approx(skill1_locked_position):
 		_finish_skill1_dash()
@@ -337,6 +367,7 @@ func _finish_skill1_dash() -> void:
 	velocity = Vector2.ZERO
 	_play_scene_animation(main_config.skill1_circle_animation_name)
 	_show_skill1_circle_ring()
+	_start_action_audio(skill1_circle_slash_audio)
 	_broadcast_action(ACTION_SKILL1_CIRCLE, locked_direction)
 	_apply_circle_damage(
 		main_config.skill1_circle_radius,
@@ -358,6 +389,7 @@ func _start_skill2_takeoff(target: Node2D) -> void:
 	_update_facing(locked_direction)
 	_set_airborne(true, true)
 	_play_scene_animation(main_config.skill2_takeoff_animation_name)
+	_start_action_audio(skill2_takeoff_audio)
 	_broadcast_target_or_action(ACTION_SKILL2_TAKEOFF, target, locked_direction)
 
 
@@ -367,6 +399,7 @@ func _update_skill2_takeoff(delta: float) -> void:
 		return
 	combat_state = CombatState.SKILL2_TRACK
 	state_time_left = maxf(main_config.skill2_tracking_duration, 0.01)
+	_stop_action_audio()
 	if animated_sprite != null:
 		animated_sprite.visible = false
 	_set_skill2_cross_visible(true)
@@ -412,6 +445,7 @@ func _start_skill2_drop() -> void:
 		animated_sprite.visible = multiplayer_proxy_visual_active
 	_play_scene_animation(main_config.skill2_drop_animation_name)
 	_set_skill2_fan_warning(true, locked_direction)
+	_start_action_audio(skill2_drop_audio)
 	_broadcast_action(ACTION_SKILL2_DROP, locked_direction)
 
 
@@ -578,6 +612,7 @@ func _dispatch_target_damage(
 
 
 func _finish_to_chase() -> void:
+	_stop_action_audio()
 	combat_state = CombatState.CHASE
 	state_time_left = 0.0
 	committed_target = null
@@ -600,6 +635,7 @@ func _die() -> void:
 		return
 	airborne = false
 	latest_proxy_action_id += 1
+	_stop_all_presentation_audio(false)
 	_hide_all_action_indicators()
 	# Skill 2 intentionally hides the body during tracking. A periodic status
 	# can still kill the enemy in that window, so restore the body before the
@@ -618,10 +654,20 @@ func play_multiplayer_death_sequence() -> void:
 	proxy_drop_visual_override = false
 	proxy_grounded_after_drop_latched = false
 	latest_proxy_action_id += 1
+	var should_play_death := multiplayer_proxy_visual_active
+	_stop_all_presentation_audio(false)
 	_hide_all_action_indicators()
 	if animated_sprite != null:
 		animated_sprite.visible = multiplayer_proxy_visual_active
+	if should_play_death:
+		super.play_multiplayer_death_sequence()
+		return
+	var dedicated_death_stream := death_audio.stream if death_audio != null else null
+	if death_audio != null:
+		death_audio.stream = null
 	super.play_multiplayer_death_sequence()
+	if death_audio != null:
+		death_audio.stream = dedicated_death_stream
 
 
 func is_temporarily_direct_damage_immune() -> bool:
@@ -655,7 +701,25 @@ func set_multiplayer_proxy_visual_active(active: bool) -> void:
 	super.set_multiplayer_proxy_visual_active(active)
 	if not is_multiplayer_proxy:
 		return
+	if not active:
+		actual_motion_since_last_stomp = false
+		_stop_all_presentation_audio(true)
 	_apply_proxy_airborne_visual(proxy_airborne_from_snapshot)
+
+
+func configure_multiplayer_proxy() -> void:
+	super.configure_multiplayer_proxy()
+	_stop_all_presentation_audio(true)
+
+
+func remove_for_home_escape() -> bool:
+	_stop_all_presentation_audio(true)
+	return super.remove_for_home_escape()
+
+
+func _exit_tree() -> void:
+	_stop_all_presentation_audio(true)
+	super._exit_tree()
 
 
 func play_multiplayer_enemy_action(
@@ -732,12 +796,16 @@ func _accept_proxy_action(
 		return false
 	latest_proxy_action_id = action_id
 	if not is_finite(action_elapsed) or action_elapsed < 0.0:
+		_stop_action_audio()
 		return false
 	var lifetime := _get_proxy_action_lifetime(action_name)
-	return (
+	var accepted := (
 		lifetime > 0.0
 		and action_elapsed <= lifetime + ACTION_EXPIRY_TOLERANCE_SECONDS
 	)
+	if not accepted:
+		_stop_action_audio()
+	return accepted
 
 
 func _get_proxy_action_lifetime(action_name: StringName) -> float:
@@ -780,6 +848,7 @@ func _play_proxy_action(
 	var safe_direction := direction.normalized() if direction != Vector2.ZERO else _get_facing_direction()
 	var safe_elapsed := maxf(elapsed, 0.0)
 	_update_facing(safe_direction)
+	_play_proxy_action_audio(action_name, safe_elapsed)
 	match action_name:
 		ACTION_ATTACK_WINDUP:
 			_play_proxy_attack_warning(safe_direction, action_id, safe_elapsed)
@@ -842,6 +911,241 @@ func _play_proxy_action(
 				action_id,
 				safe_elapsed
 			)
+
+
+func _bind_dedicated_audio_streams() -> void:
+	var has_config := main_config != null
+	move_stomp_audio.stream = (
+		main_config.move_stomp_audio_stream_a if has_config else null
+	)
+	attack_windup_audio.stream = (
+		main_config.attack_windup_audio_stream if has_config else null
+	)
+	attack_slash_audio.stream = (
+		main_config.attack_slash_audio_stream if has_config else null
+	)
+	skill1_charge_audio.stream = (
+		main_config.skill1_charge_audio_stream if has_config else null
+	)
+	skill1_dash_audio.stream = (
+		main_config.skill1_dash_audio_stream if has_config else null
+	)
+	skill1_circle_slash_audio.stream = (
+		main_config.skill1_circle_slash_audio_stream if has_config else null
+	)
+	skill2_takeoff_audio.stream = (
+		main_config.skill2_takeoff_audio_stream if has_config else null
+	)
+	skill2_drop_audio.stream = (
+		main_config.skill2_drop_audio_stream if has_config else null
+	)
+	if hit_audio != null:
+		hit_audio.stream = main_config.hit_audio_stream_a if has_config else null
+	if death_audio != null:
+		death_audio.stream = main_config.death_audio_stream if has_config else null
+
+
+func _get_action_audio_players() -> Array[AudioStreamPlayer2D]:
+	return [
+		attack_windup_audio,
+		attack_slash_audio,
+		skill1_charge_audio,
+		skill1_dash_audio,
+		skill1_circle_slash_audio,
+		skill2_takeoff_audio,
+		skill2_drop_audio,
+	]
+
+
+func _stop_action_audio() -> void:
+	for audio_player in _get_action_audio_players():
+		ENEMY_ATTACK_AUDIO_LIMITER.stop_heavy_attack(audio_player)
+
+
+func _stop_all_presentation_audio(stop_death: bool) -> void:
+	actual_motion_since_last_stomp = false
+	_stop_action_audio()
+	if move_stomp_audio != null:
+		move_stomp_audio.stop()
+	ENEMY_FEEDBACK_AUDIO_LIMITER.stop_enemy_hit(hit_audio)
+	if stop_death:
+		ENEMY_FEEDBACK_AUDIO_LIMITER.stop_enemy_death(death_audio)
+
+
+func _is_audio_presentation_active() -> bool:
+	return (
+		not is_dead
+		and visible
+		and (not is_multiplayer_proxy or multiplayer_proxy_visual_active)
+	)
+
+
+func _start_action_audio(
+	audio_player: AudioStreamPlayer2D,
+	from_position: float = 0.0
+) -> bool:
+	_stop_action_audio()
+	if move_stomp_audio != null:
+		move_stomp_audio.stop()
+	actual_motion_since_last_stomp = false
+	return _play_action_audio(audio_player, from_position)
+
+
+func _play_action_audio(
+	audio_player: AudioStreamPlayer2D,
+	from_position: float = 0.0
+) -> bool:
+	if (
+		not _is_audio_presentation_active()
+		or audio_player == null
+		or audio_player.stream == null
+	):
+		return false
+	var safe_offset := maxf(from_position, 0.0)
+	var stream_length := audio_player.stream.get_length()
+	if stream_length <= 0.0 or safe_offset >= stream_length:
+		return false
+	audio_player.pitch_scale = 1.0
+	return ENEMY_ATTACK_AUDIO_LIMITER.play_heavy_attack(
+		audio_player,
+		safe_offset
+	)
+
+
+func _play_proxy_action_audio(action_name: StringName, elapsed: float) -> void:
+	_stop_action_audio()
+	if move_stomp_audio != null:
+		move_stomp_audio.stop()
+	actual_motion_since_last_stomp = false
+	if not multiplayer_proxy_visual_active:
+		return
+	var audio_player: AudioStreamPlayer2D = null
+	match action_name:
+		ACTION_ATTACK_WINDUP:
+			audio_player = attack_windup_audio
+		ACTION_ATTACK_SLASH:
+			audio_player = attack_slash_audio
+		ACTION_SKILL1_WINDUP:
+			audio_player = skill1_charge_audio
+		ACTION_SKILL1_DASH:
+			audio_player = skill1_dash_audio
+		ACTION_SKILL1_CIRCLE:
+			audio_player = skill1_circle_slash_audio
+		ACTION_SKILL2_TAKEOFF:
+			audio_player = skill2_takeoff_audio
+		ACTION_SKILL2_DROP:
+			audio_player = skill2_drop_audio
+	_play_action_audio(audio_player, elapsed)
+
+
+func _on_main_battle_animation_frame_changed() -> void:
+	if (
+		main_config == null
+		or not _is_audio_presentation_active()
+		or combat_state != CombatState.CHASE
+		or animated_sprite == null
+		or not animated_sprite.visible
+		or animated_sprite.animation != main_config.move_animation_name
+		or animated_sprite.frame not in MOVE_STOMP_FRAME_INDICES
+		or get_locomotion_state() != LocomotionState.MOVING
+		or not actual_motion_since_last_stomp
+	):
+		return
+	actual_motion_since_last_stomp = false
+	var use_variant_a := move_stomp_variant_index % 2 == 0
+	move_stomp_variant_index += 1
+	move_stomp_audio.stream = (
+		main_config.move_stomp_audio_stream_a
+		if use_variant_a
+		else main_config.move_stomp_audio_stream_b
+	)
+	if move_stomp_audio.stream == null:
+		return
+	move_stomp_audio.pitch_scale = random_generator.randf_range(
+		PITCH_VARIATION_MIN,
+		PITCH_VARIATION_MAX
+	)
+	move_stomp_audio.play()
+
+
+func _move_until_player_contact_with_audio_tracking() -> void:
+	var position_before_move := global_position
+	_move_until_player_contact()
+	_record_actual_motion_for_audio(position_before_move, global_position)
+
+
+func _record_actual_motion_for_audio(
+	position_before_move: Vector2,
+	position_after_move: Vector2
+) -> void:
+	if position_before_move.distance_squared_to(position_after_move) > 0.000001:
+		actual_motion_since_last_stomp = true
+
+
+func apply_multiplayer_proxy_motion(
+	proxy_position: Vector2,
+	proxy_velocity: Vector2,
+	proxy_locomotion_state: int
+) -> void:
+	var position_before_snapshot := global_position
+	super.apply_multiplayer_proxy_motion(
+		proxy_position,
+		proxy_velocity,
+		proxy_locomotion_state
+	)
+	_record_actual_motion_for_audio(position_before_snapshot, global_position)
+
+
+func _prepare_next_hit_audio() -> bool:
+	if main_config == null or hit_audio == null:
+		return false
+	var use_variant_a := hit_variant_index % 2 == 0
+	hit_variant_index += 1
+	hit_audio.stream = (
+		main_config.hit_audio_stream_a
+		if use_variant_a
+		else main_config.hit_audio_stream_b
+	)
+	if hit_audio.stream == null:
+		return false
+	hit_audio.pitch_scale = random_generator.randf_range(
+		PITCH_VARIATION_MIN,
+		PITCH_VARIATION_MAX
+	)
+	return true
+
+
+func _on_combat_damage_applied(result: DamageResult) -> void:
+	if (
+		result == null
+		or not result.accepted
+		or result.applied_damage <= 0
+		or result.lethal
+	):
+		return
+	_prepare_next_hit_audio()
+
+
+func play_multiplayer_damage_feedback(
+	impact_direction: Vector2 = Vector2.ZERO,
+	feedback_flags: int = (
+		CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
+		| CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+	)
+) -> void:
+	super.play_multiplayer_damage_feedback(impact_direction, feedback_flags)
+	if (
+		not is_multiplayer_proxy
+		or not _is_audio_presentation_active()
+		or current_health <= 0
+		or not CombatTypes.has_flag(
+			feedback_flags,
+			CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+		)
+		or not _prepare_next_hit_audio()
+	):
+		return
+	ENEMY_FEEDBACK_AUDIO_LIMITER.play_enemy_hit(hit_audio)
 
 
 func _play_proxy_attack_warning(direction: Vector2, action_id: int, elapsed: float) -> void:

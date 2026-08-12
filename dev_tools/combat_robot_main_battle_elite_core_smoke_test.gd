@@ -15,6 +15,9 @@ const RUNTIME_SCENE := preload(
 const DEFAULT_DROP_TABLE := preload(
 	"res://resources/config/enemies/default_enemy_drop_table.tres"
 )
+const ENEMY_ATTACK_AUDIO_LIMITER := preload(
+	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
+)
 
 var failures: Array[String] = []
 var runtime: EnemyGameplayGatewayTestRuntime = null
@@ -37,6 +40,8 @@ func _run() -> void:
 	await _test_airborne_direct_damage_and_periodic_contract()
 	await _test_skill_lock_tracking_and_collision_toggle()
 	await _test_proxy_action_and_status_contract()
+	await _test_dedicated_audio_state_contract()
+	await _test_proxy_audio_offset_and_culling_contract()
 	_test_host_only_registry_contract()
 
 	root.get_node("BurnStatusScheduler").call("clear_all")
@@ -551,6 +556,298 @@ func _test_proxy_action_and_status_contract() -> void:
 	proxy.queue_free()
 	player.queue_free()
 	await process_frame
+
+
+func _test_dedicated_audio_state_contract() -> void:
+	var player := _spawn_player(Vector2(24.0, 0.0))
+	var enemy := _spawn_enemy(Vector2.ZERO, player)
+	await physics_frame
+	var sprite := enemy.animated_sprite
+	sprite.pause()
+	sprite.animation = ENEMY_CONFIG.move_animation_name
+	enemy.combat_state = CombatRobotMainBattleElite.CombatState.CHASE
+	enemy.velocity = Vector2.RIGHT
+	enemy.move_stomp_variant_index = 0
+	enemy.actual_motion_since_last_stomp = false
+	sprite.set_frame_and_progress(0, 0.0)
+	sprite.set_frame_and_progress(4, 0.0)
+	_expect(
+		enemy.move_stomp_variant_index == 0
+		and not enemy.move_stomp_audio.playing,
+		"仅速度非零但坐标未变化时不得误报重踏。"
+	)
+	var position_before_move := enemy.global_position
+	enemy.global_position += Vector2.RIGHT
+	enemy.call(
+		"_record_actual_motion_for_audio",
+		position_before_move,
+		enemy.global_position
+	)
+	sprite.set_frame_and_progress(0, 0.0)
+	sprite.set_frame_and_progress(4, 0.0)
+	_expect(
+		enemy.move_stomp_variant_index == 1
+		and enemy.move_stomp_audio.stream == ENEMY_CONFIG.move_stomp_audio_stream_a
+		and enemy.move_stomp_audio.playing
+		and enemy.move_stomp_audio.pitch_scale >= 0.98
+		and enemy.move_stomp_audio.pitch_scale <= 1.02,
+		"CHASE实际移动到第5帧时必须播放重踏A并使用约±2%音高变化。"
+	)
+	position_before_move = enemy.global_position
+	enemy.global_position += Vector2.RIGHT
+	enemy.call(
+		"_record_actual_motion_for_audio",
+		position_before_move,
+		enemy.global_position
+	)
+	sprite.set_frame_and_progress(7, 0.0)
+	_expect(
+		enemy.move_stomp_variant_index == 2
+		and enemy.move_stomp_audio.stream == ENEMY_CONFIG.move_stomp_audio_stream_b,
+		"第8帧必须固定轮换到重踏B。"
+	)
+	enemy.move_stomp_audio.stop()
+	sprite.set_frame_and_progress(0, 0.0)
+	sprite.set_frame_and_progress(4, 0.0)
+	_expect(
+		enemy.move_stomp_variant_index == 2
+		and not enemy.move_stomp_audio.playing,
+		"速度保持非零但没有新的实际位移时不得触发或推进重踏变体。"
+	)
+
+	ENEMY_ATTACK_AUDIO_LIMITER.reset_metrics()
+	enemy.call("_start_attack_windup", player)
+	_expect(
+		enemy.attack_windup_audio.playing,
+		"普通攻击蓄势入口必须播放专属蓄势音。"
+	)
+	enemy.call("_start_attack_slash")
+	_expect(
+		not enemy.attack_windup_audio.playing
+		and enemy.attack_slash_audio.playing,
+		"普通双剑斩入口必须停止蓄势并播放斩击音。"
+	)
+	enemy.call("_start_skill1_windup", player)
+	_expect(
+		not enemy.attack_slash_audio.playing
+		and enemy.skill1_charge_audio.playing,
+		"技能一充能必须替换此前动作音。"
+	)
+	enemy.call("_start_skill1_dash")
+	_expect(
+		not enemy.skill1_charge_audio.playing
+		and enemy.skill1_dash_audio.playing,
+		"技能一冲锋必须在切阶段时切换音节。"
+	)
+	enemy.call("_finish_skill1_dash")
+	_expect(
+		not enemy.skill1_dash_audio.playing
+		and enemy.skill1_circle_slash_audio.playing,
+		"技能一圆斩必须起始即播放重音并停止冲锋音。"
+	)
+	enemy.call("_start_skill2_takeoff", player)
+	_expect(
+		not enemy.skill1_circle_slash_audio.playing
+		and enemy.skill2_takeoff_audio.playing,
+		"技能二起飞入口必须播放专属起飞音。"
+	)
+	enemy.call("_update_skill2_takeoff", ENEMY_CONFIG.skill2_takeoff_duration)
+	_expect(
+		not enemy.skill2_takeoff_audio.playing
+		and not _any_action_audio_playing(enemy),
+		"技能二三秒追踪阶段必须完全静音。"
+	)
+	enemy.call("_start_skill2_drop")
+	_expect(
+		enemy.skill2_drop_audio.playing,
+		"技能二落砸入口必须播放落地双斩音。"
+	)
+	enemy.call("_finish_to_chase")
+	_expect(
+		not _any_action_audio_playing(enemy),
+		"动作结束或取消回追击时必须清理全部阶段音。"
+	)
+	_expect(
+		int(ENEMY_ATTACK_AUDIO_LIMITER.get_metrics()[&"heavy_requests"]) == 7,
+		"七个战斗瞬态必须各经重攻击限流器一次，移动重踏不得占用该配额。"
+	)
+
+	enemy.call("_set_airborne", false, false)
+	enemy.hit_variant_index = 0
+	enemy.apply_damage(1)
+	_expect(
+		enemy.hit_variant_index == 1
+		and enemy.hit_audio.stream == ENEMY_CONFIG.hit_audio_stream_a
+		and enemy.hit_audio.pitch_scale >= 0.98
+		and enemy.hit_audio.pitch_scale <= 1.02,
+		"首次非致命有效伤害必须选择受击A并使用约±2%音高。"
+	)
+	enemy.apply_damage(1)
+	_expect(
+		enemy.hit_variant_index == 2
+		and enemy.hit_audio.stream == ENEMY_CONFIG.hit_audio_stream_b,
+		"第二次非致命有效伤害必须固定轮换到受击B。"
+	)
+	enemy.current_health = 1
+	var hit_variant_before_death := enemy.hit_variant_index
+	enemy.apply_damage(2)
+	_expect(
+		enemy.is_dead
+		and enemy.hit_variant_index == hit_variant_before_death
+		and not enemy.hit_audio.playing
+		and enemy.death_audio.stream == ENEMY_CONFIG.death_audio_stream
+		and enemy.death_audio.playing,
+		"致命伤害必须只播放专属死亡音，不叠加或推进受击音。"
+	)
+	enemy.queue_free()
+	player.queue_free()
+	await process_frame
+
+
+func _test_proxy_audio_offset_and_culling_contract() -> void:
+	var player := _spawn_player(Vector2(60.0, 0.0))
+	var proxy := _spawn_enemy(Vector2.ZERO, player)
+	proxy.configure_multiplayer_proxy()
+	ENEMY_ATTACK_AUDIO_LIMITER.reset_metrics()
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_ATTACK_SLASH,
+		Vector2.RIGHT,
+		proxy.global_position,
+		1,
+		0.2
+	)
+	await process_frame
+	_expect(
+		proxy.attack_slash_audio.playing
+		and absf(proxy.attack_slash_audio.get_playback_position() - 0.2) <= 0.08,
+		"可见代理必须按action_elapsed从普通斩正确偏移播放。"
+	)
+	proxy.call("_stop_action_audio")
+	var requests_after_first := int(
+		ENEMY_ATTACK_AUDIO_LIMITER.get_metrics()[&"heavy_requests"]
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_ATTACK_SLASH,
+		Vector2.RIGHT,
+		proxy.global_position,
+		1,
+		0.2
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_ATTACK_SLASH,
+		Vector2.RIGHT,
+		proxy.global_position,
+		2,
+		0.9
+	)
+	_expect(
+		int(ENEMY_ATTACK_AUDIO_LIMITER.get_metrics()[&"heavy_requests"])
+		== requests_after_first
+		and not proxy.attack_slash_audio.playing,
+		"重复ID不得重播，已超过0.78秒音频但仍在动作寿命内的包也必须静音。"
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_SKILL2_TAKEOFF,
+		Vector2.UP,
+		proxy.global_position,
+		3,
+		0.2
+	)
+	await process_frame
+	_expect(
+		proxy.skill2_takeoff_audio.playing
+		and absf(proxy.skill2_takeoff_audio.get_playback_position() - 0.2) <= 0.08,
+		"技能二起飞代理音必须支持原生偏移播放。"
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_SKILL2_TAKEOFF,
+		Vector2.UP,
+		proxy.global_position,
+		4,
+		0.6
+	)
+	_expect(
+		not proxy.skill2_takeoff_audio.playing,
+		"迟到至三秒追踪阶段的起飞动作不得补播起飞音。"
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_SKILL2_DROP,
+		Vector2.DOWN,
+		proxy.global_position,
+		5,
+		0.3
+	)
+	await process_frame
+	_expect(
+		proxy.skill2_drop_audio.playing
+		and absf(proxy.skill2_drop_audio.get_playback_position() - 0.3) <= 0.08,
+		"技能二落砸代理音必须按drop+recovery总时间轴偏移播放。"
+	)
+	proxy.current_health = 100
+	proxy.hit_variant_index = 0
+	proxy.play_multiplayer_damage_feedback(
+		Vector2.RIGHT,
+		CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+	)
+	_expect(
+		proxy.hit_audio.playing
+		and proxy.hit_audio.stream == ENEMY_CONFIG.hit_audio_stream_a
+		and proxy.hit_variant_index == 1,
+		"代理收到一次已确认的非致命直击反馈时必须恰好播放一次专属受击音。"
+	)
+	proxy.set_multiplayer_proxy_visual_active(false)
+	var requests_before_culled_action := int(
+		ENEMY_ATTACK_AUDIO_LIMITER.get_metrics()[&"heavy_requests"]
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_ATTACK_SLASH,
+		Vector2.RIGHT,
+		proxy.global_position,
+		6,
+		0.2
+	)
+	_expect(
+		not _any_action_audio_playing(proxy)
+		and proxy.latest_proxy_action_id == 6
+		and int(ENEMY_ATTACK_AUDIO_LIMITER.get_metrics()[&"heavy_requests"])
+		== requests_before_culled_action,
+		"代理不可见时必须消费动作水位但不请求音频，并立即停止正在播放的声音。"
+	)
+	proxy.set_multiplayer_proxy_visual_active(true)
+	_expect(
+		not _any_action_audio_playing(proxy),
+		"代理恢复可见后不得补播裁剪期间的旧声音。"
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_ATTACK_SLASH,
+		Vector2.RIGHT,
+		proxy.global_position,
+		7,
+		0.2
+	)
+	_expect(
+		proxy.attack_slash_audio.playing,
+		"恢复可见后仅下一条新动作可以发声。"
+	)
+	proxy.set_multiplayer_proxy_visual_active(false)
+	proxy.play_multiplayer_death_sequence()
+	_expect(
+		proxy.is_dead
+		and not proxy.death_audio.playing
+		and not proxy.hit_audio.playing
+		and not _any_action_audio_playing(proxy),
+		"已裁剪代理的死亡只推进状态，不得发声或残留旧动作音。"
+	)
+	proxy.queue_free()
+	player.queue_free()
+	await process_frame
+
+
+func _any_action_audio_playing(enemy: CombatRobotMainBattleElite) -> bool:
+	for audio_player in enemy.call("_get_action_audio_players"):
+		if (audio_player as AudioStreamPlayer2D).playing:
+			return true
+	return false
 
 
 func _test_host_only_registry_contract() -> void:

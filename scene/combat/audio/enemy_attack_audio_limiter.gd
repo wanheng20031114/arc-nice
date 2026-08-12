@@ -39,12 +39,40 @@ static var heavy_attack_peak_active_voice_count := 0
 static var peak_active_voice_count := 0
 
 
-static func play_rapid_fire(audio_player: AudioStreamPlayer2D) -> bool:
-	return _play_limited_audio(audio_player, AttackAudioClass.RAPID_FIRE)
+static func play_rapid_fire(
+	audio_player: AudioStreamPlayer2D,
+	from_position: float = 0.0
+) -> bool:
+	return _play_limited_audio(
+		audio_player,
+		AttackAudioClass.RAPID_FIRE,
+		from_position
+	)
 
 
-static func play_heavy_attack(audio_player: AudioStreamPlayer2D) -> bool:
-	return _play_limited_audio(audio_player, AttackAudioClass.HEAVY_ATTACK)
+static func play_heavy_attack(
+	audio_player: AudioStreamPlayer2D,
+	from_position: float = 0.0
+) -> bool:
+	return _play_limited_audio(
+		audio_player,
+		AttackAudioClass.HEAVY_ATTACK,
+		from_position
+	)
+
+
+## Stops an admitted heavy voice immediately. AudioStreamPlayer2D.stop() does
+## not emit finished, so early action cancellation must release the limiter
+## group explicitly.
+static func stop_heavy_attack(audio_player: AudioStreamPlayer2D) -> void:
+	if audio_player == null:
+		return
+	audio_player.stop()
+	_remove_voice(
+		audio_player,
+		HEAVY_ATTACK_AUDIO_GROUP,
+		AttackAudioClass.HEAVY_ATTACK
+	)
 
 
 static func reset_metrics() -> void:
@@ -96,7 +124,8 @@ static func get_active_voice_count(
 
 static func _play_limited_audio(
 	audio_player: AudioStreamPlayer2D,
-	audio_class: AttackAudioClass
+	audio_class: AttackAudioClass,
+	from_position: float
 ) -> bool:
 	_record_request(audio_class)
 	if audio_player == null:
@@ -106,7 +135,7 @@ static func _play_limited_audio(
 	if not limiting_enabled:
 		bypassed_request_count += 1
 		_restore_base_volume(audio_player)
-		audio_player.play()
+		audio_player.play(maxf(from_position, 0.0))
 		if audio_player.playing:
 			_record_admission(audio_class)
 			return true
@@ -151,7 +180,7 @@ static func _play_limited_audio(
 		_get_max_stack_attenuation_db(audio_class)
 	)
 	audio_player.volume_db = base_volume_db - attenuation_db
-	audio_player.play()
+	audio_player.play(maxf(from_position, 0.0))
 	if not audio_player.playing:
 		_remove_voice(audio_player, audio_group, audio_class)
 		_record_rejection(audio_class)
@@ -227,7 +256,8 @@ static func _remove_voice(
 ) -> void:
 	var tree: SceneTree = null
 	if is_instance_valid(audio_player):
-		tree = audio_player.get_tree()
+		if audio_player.is_inside_tree():
+			tree = audio_player.get_tree()
 		if audio_player.is_in_group(audio_group):
 			audio_player.remove_from_group(audio_group)
 	var active_count := _count_active_voices(tree, audio_group) if tree != null else 0

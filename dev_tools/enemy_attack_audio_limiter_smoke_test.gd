@@ -14,6 +14,9 @@ const ATTACK_AUDIO_CALL_SITES := {
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.gd": (
 		"play_heavy_attack(attack_audio)"
 	),
+	"res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.gd": (
+		"ENEMY_ATTACK_AUDIO_LIMITER.play_heavy_attack("
+	),
 }
 
 var failures: Array[String] = []
@@ -39,6 +42,7 @@ func _run() -> void:
 	_test_call_site_contract()
 	_test_independent_voice_caps_and_metrics()
 	_test_direct_play_ab_switch()
+	await _test_from_position_and_early_stop()
 
 	LIMITER.limiting_enabled = original_limiting_enabled
 	_stop_and_free_audio_children()
@@ -178,6 +182,36 @@ func _test_direct_play_ab_switch() -> void:
 		"Direct-play A/B metrics must report every bypassed request."
 	)
 	_stop_audio_players(direct_players)
+	LIMITER.limiting_enabled = true
+
+
+func _test_from_position_and_early_stop() -> void:
+	for limiter_enabled in [true, false]:
+		LIMITER.limiting_enabled = limiter_enabled
+		LIMITER.reset_metrics()
+		var player := _add_audio_player(HEAVY_STREAM, -12.0, Vector2.ZERO)
+		_expect(
+			LIMITER.play_heavy_attack(player, 0.2),
+			"Heavy limiter must admit an offset playback request in both A/B paths."
+		)
+		await process_frame
+		_expect(
+			player.playing
+			and absf(player.get_playback_position() - 0.2) <= 0.08,
+			"Heavy limiter must use native play(from_position) rather than a later seek."
+		)
+		LIMITER.stop_heavy_attack(player)
+		_expect(
+			not player.playing
+			and LIMITER.get_active_voice_count(
+				self,
+				LIMITER.AttackAudioClass.HEAVY_ATTACK
+			) == 0,
+			"Early action cancellation must stop audio and release its limiter voice."
+		)
+		player.stream = null
+		player.queue_free()
+		await process_frame
 	LIMITER.limiting_enabled = true
 
 

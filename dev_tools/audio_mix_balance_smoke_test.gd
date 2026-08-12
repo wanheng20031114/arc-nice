@@ -4,6 +4,9 @@ const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn"
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const TANGO_SCENE := preload("res://scene/player/tango/player_tango.tscn")
 const ENEMY_BASE_SCENE := preload("res://scene/enemy/enemy.tscn")
+const MAIN_BATTLE_ROBOT_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.tscn"
+)
 const YUANSHI_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_bomber.tscn")
 const YUANSHI_PURPLE_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.tscn")
 const YUANSHI_FIRE_RANGED_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.tscn")
@@ -57,6 +60,7 @@ func _run() -> void:
 	await _test_player_mix()
 	await _test_tango_mix()
 	await _test_enemy_mix()
+	await _test_main_battle_robot_mix()
 	_test_bamboo_mortar_mix()
 	await _test_plant_placement_mix()
 	await _test_plant_collapse_mix()
@@ -169,6 +173,54 @@ func _test_enemy_mix() -> void:
 	await _expect_scene_audio_volume(RPG_EXPLOSION_SCENE, "ExplosionAudio", -9.0, "RPG explosion mix mismatch.")
 	await _expect_scene_audio_volume(SKILL1_EXPLOSION_SCENE, "ExplosionAudio", -9.0, "Skill1 explosion mix mismatch.")
 	await _expect_scene_audio_volume(YUANSHI_FIRE_RANGED_SCENE, "AttackAudio", -10.0, "Yuanshi fire attack cue mix mismatch.")
+
+
+func _test_main_battle_robot_mix() -> void:
+	var enemy := MAIN_BATTLE_ROBOT_SCENE.instantiate() as CombatRobotMainBattleElite
+	_expect(enemy != null, "Main-battle robot scene must instantiate for audio mix test.")
+	if enemy == null:
+		return
+	enemy.config = preload(
+		"res://resources/config/enemies/combat_robot_main_battle_elite.tres"
+	)
+	root.add_child(enemy)
+	await process_frame
+	var audio_specs := {
+		"MoveStompAudio": [-18.0, 180.0],
+		"HitAudio": [-12.0, 180.0],
+		"DeathAudio": [-6.0, 220.0],
+		"AttackWindupAudio": [-14.0, 220.0],
+		"AttackSlashAudio": [-9.0, 220.0],
+		"Skill1ChargeAudio": [-12.0, 220.0],
+		"Skill1DashAudio": [-11.0, 220.0],
+		"Skill1CircleSlashAudio": [-8.0, 220.0],
+		"Skill2TakeoffAudio": [-10.0, 220.0],
+		"Skill2DropAudio": [-6.0, 220.0],
+	}
+	for node_name in audio_specs:
+		var spec := audio_specs[node_name] as Array
+		var audio := enemy.get_node_or_null(node_name) as AudioStreamPlayer2D
+		_expect(
+			audio != null
+			and audio.stream != null
+			and audio.bus == &"SFX"
+			and _float_close(audio.volume_db, float(spec[0]))
+			and _float_close(audio.max_distance, float(spec[1]))
+			and audio.max_polyphony == 1,
+			"Main-battle robot %s mix/space/voice contract mismatch." % node_name
+		)
+	var circle_audio := enemy.get_node("Skill1CircleSlashAudio") as AudioStreamPlayer2D
+	var drop_audio := enemy.get_node("Skill2DropAudio") as AudioStreamPlayer2D
+	_expect(
+		circle_audio.volume_db > -10.0
+		and drop_audio.volume_db > -10.0
+		and circle_audio.volume_db < -3.0
+		and drop_audio.volume_db < -2.0,
+		"Elite skill cues must lead ordinary enemy attacks while staying below UI alerts and player core feedback."
+	)
+	_stop_audio_players(enemy)
+	enemy.queue_free()
+	await _drain_cleanup_frames()
 
 
 func _test_plant_placement_mix() -> void:

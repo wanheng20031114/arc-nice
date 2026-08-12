@@ -1,8 +1,18 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
 [ext_resource type="Script" path="res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.gd" id="2_script"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_main_battle_elite.tres" id="3_frames"]
+[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_stomp_a.wav" id="4_stomp_a"]
+[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_hit_a.wav" id="5_hit_a"]
+[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_death.wav" id="6_death"]
+[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_normal_windup.wav" id="7_attack_windup"]
+[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_normal_double_slash.wav" id="8_attack_slash"]
+[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill1_charge.wav" id="9_skill1_charge"]
+[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill1_dash.wav" id="10_skill1_dash"]
+[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill1_circle_slash.wav" id="11_skill1_circle"]
+[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill2_takeoff.wav" id="12_skill2_takeoff"]
+[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill2_drop_bilateral_slash.wav" id="13_skill2_drop"]
 
 [sub_resource type="RectangleShape2D" id="BodyShape"]
 resource_local_to_scene = true
@@ -31,6 +41,20 @@ shape = SubResource("BodyShape")
 [node name="CollisionShape2D" parent="TouchDamageArea" index="0"]
 position = Vector2(0, 3)
 shape = SubResource("TouchShape")
+
+[node name="HitAudio" parent="." index="3"]
+stream = ExtResource("5_hit_a")
+volume_db = -12.0
+max_distance = 180.0
+max_polyphony = 1
+bus = &"SFX"
+
+[node name="DeathAudio" parent="." index="4"]
+stream = ExtResource("6_death")
+volume_db = -6.0
+max_distance = 220.0
+max_polyphony = 1
+bus = &"SFX"
 
 [node name="AttackWarning" type="Polygon2D" parent="." index="6"]
 visible = false
@@ -72,3 +96,61 @@ visible = false
 z_index = 1
 color = Color(1, 0.24, 0.04, 0.22)
 polygon = PackedVector2Array(0, 0, 24, -41.57, 33.94, -33.94, 41.57, -24, 46.36, -12.42, 48, 0, 46.36, 12.42, 41.57, 24, 33.94, 33.94, 24, 41.57)
+
+[node name="MoveStompAudio" type="AudioStreamPlayer2D" parent="." index="11"]
+stream = ExtResource("4_stomp_a")
+volume_db = -18.0
+max_distance = 180.0
+max_polyphony = 1
+bus = &"SFX"
+
+[node name="AttackWindupAudio" type="AudioStreamPlayer2D" parent="." index="12"]
+stream = ExtResource("7_attack_windup")
+volume_db = -14.0
+max_distance = 220.0
+max_polyphony = 1
+bus = &"SFX"
+
+[node name="AttackSlashAudio" type="AudioStreamPlayer2D" parent="." index="13"]
+stream = ExtResource("8_attack_slash")
+volume_db = -9.0
+max_distance = 220.0
+max_polyphony = 1
+bus = &"SFX"
+
+[node name="Skill1ChargeAudio" type="AudioStreamPlayer2D" parent="." index="14"]
+stream = ExtResource("9_skill1_charge")
+volume_db = -12.0
+max_distance = 220.0
+max_polyphony = 1
+bus = &"SFX"
+
+[node name="Skill1DashAudio" type="AudioStreamPlayer2D" parent="." index="15"]
+stream = ExtResource("10_skill1_dash")
+volume_db = -11.0
+max_distance = 220.0
+max_polyphony = 1
+bus = &"SFX"
+
+[node name="Skill1CircleSlashAudio" type="AudioStreamPlayer2D" parent="." index="16"]
+stream = ExtResource("11_skill1_circle")
+volume_db = -8.0
+max_distance = 220.0
+max_polyphony = 1
+bus = &"SFX"
+
+[node name="Skill2TakeoffAudio" type="AudioStreamPlayer2D" parent="." index="17"]
+stream = ExtResource("12_skill2_takeoff")
+volume_db = -10.0
+max_distance = 220.0
+max_polyphony = 1
+bus = &"SFX"
+
+[node name="Skill2DropAudio" type="AudioStreamPlayer2D" parent="." index="18"]
+stream = ExtResource("13_skill2_drop")
+volume_db = -6.0
+max_distance = 220.0
+max_polyphony = 1
+bus = &"SFX"
+
+[connection signal="frame_changed" from="AnimatedSprite2D" to="." method="_on_main_battle_animation_frame_changed"]

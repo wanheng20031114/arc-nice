@@ -47,6 +47,13 @@ static func play_enemy_hit(audio_player: AudioStreamPlayer2D) -> void:
 	)
 
 
+static func stop_enemy_hit(audio_player: AudioStreamPlayer2D) -> void:
+	if audio_player == null:
+		return
+	audio_player.stop()
+	_remove_audio_player_from_group(audio_player, ENEMY_HIT_AUDIO_GROUP)
+
+
 static func play_enemy_death(audio_player: AudioStreamPlayer2D) -> void:
 	_play_limited_audio(
 		audio_player,
@@ -57,6 +64,13 @@ static func play_enemy_death(audio_player: AudioStreamPlayer2D) -> void:
 	)
 
 
+static func stop_enemy_death(audio_player: AudioStreamPlayer2D) -> void:
+	if audio_player == null:
+		return
+	audio_player.stop()
+	_remove_audio_player_from_group(audio_player, ENEMY_DEATH_AUDIO_GROUP)
+
+
 static func _play_limited_audio(
 	audio_player: AudioStreamPlayer2D,
 	audio_group: StringName,
@@ -64,7 +78,7 @@ static func _play_limited_audio(
 	stack_attenuation_db: float,
 	max_stack_attenuation_db: float
 ) -> void:
-	if audio_player == null:
+	if audio_player == null or audio_player.stream == null:
 		return
 
 	var tree := audio_player.get_tree()
