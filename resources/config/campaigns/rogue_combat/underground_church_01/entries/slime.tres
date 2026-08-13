@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="WaveEnemyEntry" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="WaveEnemyEntry" format=3 uid="uid://y6vlk12326kh"]
 
-[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry_script"]
-[ext_resource type="Resource" path="res://resources/config/enemies/slime.tres" id="2_enemy"]
+[ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry_script"]
+[ext_resource type="Resource" uid="uid://ddijbjp2c5h04" path="res://resources/config/enemies/slime.tres" id="2_enemy"]
 
 [resource]
 script = ExtResource("1_entry_script")

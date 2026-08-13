@@ -1,20 +1,20 @@
-[gd_resource type="Resource" script_class="WaveConfig" load_steps=6 format=3]
+[gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://cgeey6wyynemx"]
 
-[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="1_wave_script"]
-[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/underground_church_01/entries/cardboard_monster.tres" id="2_cardboard_entry"]
+[ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_naial"]
+[ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="1_wave_script"]
+[ext_resource type="Resource" uid="uid://byssh5todaew2" path="res://resources/config/campaigns/rogue_combat/underground_church_01/entries/cardboard_monster.tres" id="2_cardboard_entry"]
 [ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/underground_church_01/entries/combat_robot_gunner.tres" id="3_gunner_entry"]
-[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/underground_church_01/entries/slime.tres" id="4_slime_entry"]
+[ext_resource type="Resource" uid="uid://y6vlk12326kh" path="res://resources/config/campaigns/rogue_combat/underground_church_01/entries/slime.tres" id="4_slime_entry"]
+[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="5_mmv1m"]
 [ext_resource type="AudioStream" uid="uid://dvxl8ixgmll4p" path="res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3" id="5_music"]
 
 [resource]
 script = ExtResource("1_wave_script")
 wave_name = "地下教会"
-enemy_entries = Array[WaveEnemyEntry]([ExtResource("2_cardboard_entry"), ExtResource("3_gunner_entry"), ExtResource("4_slime_entry")])
+enemy_entries = Array[ExtResource("1_naial")]([ExtResource("2_cardboard_entry"), ExtResource("3_gunner_entry"), ExtResource("4_slime_entry")])
 spawn_point_mask = 7
 spawn_point_order = 1
-spawn_order = 0
 spawn_interval = 0.2
-spawn_count_per_tick = 1
 max_alive_enemies = 15
 music = ExtResource("5_music")
 step_id = &"underground_church_wave"
