@@ -65,6 +65,8 @@ func _run() -> void:
 	route.call(&"_on_loading_finished", false)
 	await process_frame
 	_expect(music.playing, "加载完成且路线就绪后必须开始播放路线音乐。")
+	music.seek(12.0)
+	await process_frame
 	var playback_before_reactivation := music.get_stream_playback()
 	route.activate_runtime()
 	await process_frame
@@ -91,14 +93,37 @@ func _run() -> void:
 		RogueRouteGame.RoutePresentationLease.COMBAT,
 		true
 	)
-	_expect(music.stream_paused, "只有作战 lease 必须暂停路线音乐。")
+	await process_frame
+	var playback_during_combat := music.get_stream_playback()
+	var paused_position := music.get_playback_position()
+	_expect(
+		music.has_stream_playback()
+		and music.stream_paused
+		and playback_during_combat == playback_before_reactivation
+		and paused_position >= 10.0,
+		"作战 lease 必须暂停既有 playback，并保留非零播放头。"
+	)
+	route.activate_runtime()
+	route.call(&"_on_loading_finished", false)
+	await process_frame
+	_expect(
+		music.has_stream_playback()
+		and music.stream_paused
+		and music.get_stream_playback() == playback_during_combat
+		and absf(music.get_playback_position() - paused_position) <= 0.05,
+		"作战暂停期间重复激活必须保持 playback 身份与播放位置。"
+	)
 	route.call(
 		&"_set_route_presentation_lease",
 		RogueRouteGame.RoutePresentationLease.COMBAT,
 		false
 	)
+	await process_frame
 	_expect(
-		not music.stream_paused and music.playing,
+		not music.stream_paused
+		and music.playing
+		and music.get_stream_playback() == playback_during_combat
+		and music.get_playback_position() >= paused_position - 0.05,
 		"作战结束后即使商店与遭遇 lease 仍交叠，也必须从原播放头恢复音乐。"
 	)
 	route.call(
@@ -115,7 +140,66 @@ func _run() -> void:
 
 	music.stop()
 	route.queue_free()
+	await process_frame
+
+	# 晚加入/完整同步可能先恢复作战 lease，再完成路线首次音乐启动。
+	loader.set("_state", LOADER_WAITING_FOR_MULTIPLAYER_STATE)
+	var leased_route := ROUTE_SCENE.instantiate() as RogueRouteGame
+	leased_route.auto_initialize = false
+	leased_route.manage_return_locally = false
+	root.add_child(leased_route)
+	await process_frame
+	await process_frame
+	_expect(
+		leased_route.start_authoritative_session(0xCA7F, false),
+		"先恢复 lease 的音乐测试必须建立有效路线运行态。"
+	)
+	leased_route.call(
+		&"_set_route_presentation_lease",
+		RogueRouteGame.RoutePresentationLease.COMBAT,
+		true
+	)
+	leased_route.activate_runtime()
+	await process_frame
+	var leased_music := leased_route.route_music_player
+	_expect(
+		not leased_music.has_stream_playback(),
+		"加载门禁期间即使已有作战 lease，也不得提前创建 playback。"
+	)
+
+	loader.set("_state", LOADER_IDLE_STATE)
+	leased_route.call(&"_on_loading_finished", true)
+	await process_frame
+	var initially_paused_playback := leased_music.get_stream_playback()
+	_expect(
+		leased_music.has_stream_playback()
+		and leased_music.stream_paused
+		and initially_paused_playback != null,
+		"首次启动发生在作战 lease 下时，必须创建一次 playback 并立即保持暂停。"
+	)
+	leased_route.activate_runtime()
+	await process_frame
+	_expect(
+		leased_music.stream_paused
+		and leased_music.get_stream_playback() == initially_paused_playback,
+		"先 lease 后启动的路线音乐重复激活时也不得重建 playback。"
+	)
+	leased_route.call(
+		&"_set_route_presentation_lease",
+		RogueRouteGame.RoutePresentationLease.COMBAT,
+		false
+	)
+	await process_frame
+	_expect(
+		leased_music.playing
+		and not leased_music.stream_paused
+		and leased_music.get_stream_playback() == initially_paused_playback,
+		"首次启动后释放作战 lease 必须续播同一个 playback。"
+	)
+	leased_music.stop()
+	leased_route.queue_free()
 	loader.set("_state", original_loader_state)
+	await process_frame
 	await process_frame
 	_finish()
 

@@ -20,6 +20,7 @@ func _run() -> void:
 	_test_session_personal_progress_and_timeout()
 	_test_deterministic_tie_and_no_vote()
 	_test_snapshot_replay_and_peer_migration()
+	_test_route_map_unique_assignment()
 	_test_run_history_persistence_and_exhausted_fallback()
 	_test_dynamic_option_availability()
 	_test_settled_result_and_spectator_migration()
@@ -396,6 +397,48 @@ func _test_snapshot_replay_and_peer_migration() -> void:
 	authority.free()
 	economy.free()
 	run_state.free()
+
+
+func _test_route_map_unique_assignment() -> void:
+	var node_ids := PackedInt32Array([3, 7, 11, 18, 24])
+	var assigned: Array[StringName] = []
+	for node_id in node_ids:
+		var encounter_id := RogueEncounterRegistry.select_encounter_for_map(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			0x45A771,
+			node_ids,
+			node_id
+		)
+		_expect(
+			not encounter_id.is_empty() and not assigned.has(encounter_id),
+			"同一地图的五个神奇遭遇节点必须得到互不重复的事件。"
+		)
+		assigned.append(encounter_id)
+	var repeated: Array[StringName] = []
+	for node_id in node_ids:
+		repeated.append(RogueEncounterRegistry.select_encounter_for_map(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			0x45A771,
+			node_ids,
+			node_id
+		))
+	_expect(
+		assigned == repeated,
+		"地图遭遇分配必须仅由地图 seed 与稳定节点顺序确定。"
+	)
+	_expect(
+		RogueEncounterRegistry.select_encounter_for_map(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			0x45A771,
+			PackedInt32Array([7, 3]),
+			3
+		) == &"",
+		"未按稳定升序提交的遭遇节点目录必须被拒绝。"
+	)
+	_expect(
+		RogueEncounterRegistry.compute_runtime_contract_hash().length() == 64,
+		"事件池顺序必须提供稳定的路线运行契约哈希。"
+	)
 
 
 func _test_run_history_persistence_and_exhausted_fallback() -> void:

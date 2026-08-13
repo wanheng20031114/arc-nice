@@ -6,22 +6,11 @@ const DEFAULT_CONFIG: RogueRouteGenerationConfig = preload(
 const WORLD_METRICS: RogueRouteWorldMetrics = preload(
 	"res://resources/config/rogue_route/p3_world_metrics.tres"
 )
-const EXPECTED_ICON_PATHS := {
-	RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER:
-		"res://resources/texture/rogue_route/nodes/node_magical_encounter_b_ref_v3.png",
-	RogueRouteGraph.NodeType.EMERGENCY_COMBAT:
-		"res://resources/texture/rogue_route/nodes/node_emergency_combat_a_ref_v3.png",
-	RogueRouteGraph.NodeType.NORMAL_COMBAT:
-		"res://resources/texture/rogue_route/nodes/node_normal_combat_b_ref_v3.png",
-	RogueRouteGraph.NodeType.WILDERNESS_RESOURCE:
-		"res://resources/texture/rogue_route/nodes/node_wilderness_resource_ref_v3.png",
-	RogueRouteGraph.NodeType.UNDERGROUND_SHOP:
-		"res://resources/texture/rogue_route/nodes/node_underground_shop_b_ref_v3.png",
-	RogueRouteGraph.NodeType.PREPARE_AHEAD:
-		"res://resources/texture/rogue_route/nodes/node_gift_b_ref_v3.png",
-}
-const SEED_SWEEP_COUNT := 256
-const STATISTICAL_SEED_COUNT := 64
+const EXPECTED_TEMPLATE_IDS := [
+	"4a", "4b", "4c", "4d", "4e", "4f", "4g", "4h", "4i", "4j",
+	"5a", "5b", "5c", "5d", "5e", "5f", "5g", "5h", "5i", "5j",
+]
+const SEED_SWEEP_COUNT := 1024
 
 var failures: Array[String] = []
 
@@ -36,7 +25,6 @@ func _run() -> void:
 	_test_determinism_and_layout_round_trip()
 	_test_random_stream_isolation()
 	_test_seed_sweep_invariants()
-	_test_variance_controls()
 	_finish()
 
 
@@ -46,449 +34,357 @@ func _test_default_config_contract() -> void:
 		return
 	_expect(
 		DEFAULT_CONFIG.validate_config().is_empty(),
-		"P3 路线图默认配置必须通过 validate_config：%s"
-		% [DEFAULT_CONFIG.validate_config()]
+		"P3 路线生成配置必须有效：%s" % [DEFAULT_CONFIG.validate_config()]
 	)
 	_expect(
-		DEFAULT_CONFIG.width == 11 and DEFAULT_CONFIG.height == 9,
-		"P3 路线图必须使用 11×9 奇数网格。"
+		DEFAULT_CONFIG.templates.size() == EXPECTED_TEMPLATE_IDS.size(),
+		"P3 必须配置 4a–4j、5a–5j 共 20 个模板。"
 	)
-	_expect(
-		DEFAULT_CONFIG.get_center_coord() == Vector2i(5, 4)
-		and DEFAULT_CONFIG.get_center_node_id() == 49,
-		"P3 路线图中心必须精确为 (5,4)，row-major id 必须为 49。"
-	)
-	_expect(
-		is_equal_approx(DEFAULT_CONFIG.empty_ratio, 0.5),
-		"P3 路线图基准空节点比例必须为 50%。"
-	)
-	_expect(
-		DEFAULT_CONFIG.node_type_catalog.size() == 6,
-		"P3 路线图必须注册六种非空节点。"
-	)
-	var underground_shop_config := DEFAULT_CONFIG.get_type_config(
-		RogueRouteGraph.NodeType.UNDERGROUND_SHOP
-	)
-	var ruins_resource_config := DEFAULT_CONFIG.get_type_config(
-		RogueRouteGraph.NodeType.WILDERNESS_RESOURCE
-	)
-	_expect(
-		RogueRouteGraph.NodeType.UNDERGROUND_SHOP == 5
-		and underground_shop_config != null
-		and underground_shop_config.type_id == &"underground_shop"
-		and underground_shop_config.content_pool_id == &"underground_shop"
-		and underground_shop_config.display_name == "地下商店"
-		and underground_shop_config.minimum_count == 4
-		and underground_shop_config.maximum_count == 7
-		and is_equal_approx(underground_shop_config.generation_weight, 0.2),
-		"地下商店必须稳定使用数值类型 5、统一内容标识、4–7 个硬数量约束与 0.2 生成权重。"
-	)
-	_expect(
-		ruins_resource_config != null
-		and ruins_resource_config.display_name == "遗址物资",
-		"数值类型 4 必须对玩家显示为遗址物资。"
-	)
-	for node_type in EXPECTED_ICON_PATHS:
-		var type_config := DEFAULT_CONFIG.get_type_config(int(node_type))
+	var actual_ids: Array[String] = []
+	for template in DEFAULT_CONFIG.get_sorted_templates():
+		actual_ids.append(String(template.template_id))
 		_expect(
-			type_config != null
-			and type_config.icon != null
-			and type_config.icon.resource_path == EXPECTED_ICON_PATHS[node_type],
-			"节点类型 %d 必须绑定约定图标。" % int(node_type)
+			is_equal_approx(template.selection_weight, 1.0),
+			"模板 %s 的选择权重必须为 1。" % template.template_id
 		)
+	_expect(actual_ids == EXPECTED_TEMPLATE_IDS, "20 个模板 ID 必须完整且稳定排序。")
+	_expect(
+		DEFAULT_CONFIG.start_max_manhattan_distance == 2
+		and DEFAULT_CONFIG.start_minimum_non_empty_count == 6,
+		"出生规则必须固定为曼哈顿距离 2 内至少 6 个非空节点。"
+	)
+	_expect_type_range(RogueRouteGraph.NodeType.NORMAL_COMBAT, 4, 4)
+	_expect_type_range(RogueRouteGraph.NodeType.EMERGENCY_COMBAT, 3, 3)
+	_expect_type_range(RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER, 4, 5)
+	_expect_type_range(RogueRouteGraph.NodeType.UNDERGROUND_SHOP, 2, 3)
+	_expect_type_range(RogueRouteGraph.NodeType.PREPARE_AHEAD, 2, 3)
+	_expect_type_range(RogueRouteGraph.NodeType.WILDERNESS_RESOURCE, 2, 3)
 
-	var invalid_even_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
-	invalid_even_config.width = 10
+
+func _expect_type_range(node_type: int, minimum_count: int, maximum_count: int) -> void:
+	var type_config := DEFAULT_CONFIG.get_type_config(node_type)
 	_expect(
-		_has_error_containing(invalid_even_config.validate_config(), "奇数"),
-		"偶数宽度必须被配置校验拒绝。"
-	)
-	var duplicate_type_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
-	duplicate_type_config.node_type_catalog.append(
-		duplicate_type_config.node_type_catalog[0]
-	)
-	_expect(
-		_has_error_containing(duplicate_type_config.validate_config(), "重复"),
-		"重复路线节点注册必须被配置校验拒绝。"
-	)
-	var invalid_maximum_config := (
-		DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
-	)
-	var invalid_underground_shop := invalid_maximum_config.get_type_config(
-		RogueRouteGraph.NodeType.UNDERGROUND_SHOP
-	)
-	invalid_underground_shop.maximum_count = (
-		invalid_underground_shop.minimum_count - 1
-	)
-	_expect(
-		_has_error_containing(
-			invalid_maximum_config.validate_config(),
-			"maximum_count"
-		),
-		"正数 maximum_count 小于 minimum_count 时必须被配置校验拒绝。"
+		type_config != null
+		and type_config.minimum_count == minimum_count
+		and type_config.maximum_count == maximum_count,
+		"节点类型 %d 的数量范围必须为 %d–%d。"
+		% [node_type, minimum_count, maximum_count]
 	)
 
 
 func _test_runtime_contract_hash() -> void:
-	_expect(WORLD_METRICS != null, "P3 必须加载统一路线世界度量资源。")
-	if WORLD_METRICS == null:
-		return
+	var baseline_hash := DEFAULT_CONFIG.compute_runtime_contract_hash(WORLD_METRICS)
 	_expect(
-		WORLD_METRICS.validate_metrics().is_empty()
-		and WORLD_METRICS.cell_spacing.is_equal_approx(Vector2(112.0, 80.0))
-		and WORLD_METRICS.board_margin.is_equal_approx(Vector2(128.0, 112.0))
-		and WORLD_METRICS.get_layout_size(Vector2i(11, 9)).is_equal_approx(
-			Vector2(1376.0, 864.0)
-		),
-		"P3 世界度量必须稳定定义 112×80 正交间距、128×112 边距和 1376×864 布局。"
+		baseline_hash.length() == 64
+		and baseline_hash == DEFAULT_CONFIG.compute_runtime_contract_hash(WORLD_METRICS),
+		"模板化生成运行契约必须是稳定 SHA-256。"
 	)
-	var baseline_hash := DEFAULT_CONFIG.compute_runtime_contract_hash(
-		WORLD_METRICS
+	var changed_config := DEFAULT_CONFIG.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as RogueRouteGenerationConfig
+	changed_config.templates[0].selection_weight = 2.0
+	var changed_count_config := (
+		DEFAULT_CONFIG.duplicate_deep(Resource.DEEP_DUPLICATE_ALL)
+		as RogueRouteGenerationConfig
 	)
-	var repeated_hash := DEFAULT_CONFIG.compute_runtime_contract_hash(
-		WORLD_METRICS
-	)
+	changed_count_config.get_type_config(
+		RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
+	).maximum_count = 4
 	_expect(
-		baseline_hash.length() == 64 and baseline_hash == repeated_hash,
-		"运行契约哈希必须是稳定的 64 位十六进制 SHA-256。"
-	)
-	var changed_metrics := WORLD_METRICS.duplicate(true) as RogueRouteWorldMetrics
-	changed_metrics.cell_spacing.x += 1.0
-	var changed_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
-	changed_config.move_action_cost += 1
-	var changed_cap_config := (
-		DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
-	)
-	changed_cap_config.get_type_config(
-		RogueRouteGraph.NodeType.UNDERGROUND_SHOP
-	).maximum_count += 1
-	_expect(
-		DEFAULT_CONFIG.compute_runtime_contract_hash(changed_metrics) != baseline_hash
-		and changed_config.compute_runtime_contract_hash(WORLD_METRICS) != baseline_hash
-		and changed_cap_config.compute_runtime_contract_hash(WORLD_METRICS)
+		changed_config.compute_runtime_contract_hash(WORLD_METRICS) != baseline_hash
+		and changed_count_config.compute_runtime_contract_hash(WORLD_METRICS)
 		!= baseline_hash,
-		"世界几何、移动消耗或节点 maximum_count 变化必须改变运行契约哈希。"
+		"模板权重、拓扑或精确数量范围变化必须改变运行契约。"
 	)
 
 
 func _test_determinism_and_layout_round_trip() -> void:
 	var first := RogueRouteGenerator.generate(DEFAULT_CONFIG, 0x51A7E)
 	var second := RogueRouteGenerator.generate(DEFAULT_CONFIG, 0x51A7E)
-	_expect(first != null and second != null, "固定 seed 必须成功生成两张路线图。")
+	_expect(first != null and second != null, "固定 seed 必须成功生成路线图。")
 	if first == null or second == null:
 		return
 	_expect(
-		first.compute_layout_hash() == second.compute_layout_hash()
-		and first.export_layout() == second.export_layout(),
+		first.export_layout() == second.export_layout(),
 		"相同 seed 与配置必须逐字段生成完全相同的布局。"
 	)
 	var exported := first.export_layout()
-	var imported := RogueRouteGraph.import_layout(exported)
+	var imported := RogueRouteGraph.import_layout(exported, DEFAULT_CONFIG)
 	_expect(
-		imported != null
-		and imported.compute_layout_hash() == first.compute_layout_hash()
+		int(exported.get("schema_version", 0)) == RogueRouteGraph.SCHEMA_VERSION
+		and exported.has("template_id")
+		and exported.has("node_coords")
+		and imported != null
 		and imported.export_layout() == exported,
-		"路线图 export/import 必须无损往返并保留哈希。"
+		"schema=2 快照必须显式携带模板与坐标并支持配置绑定的无损往返。"
+	)
+	var old_schema := exported.duplicate(true)
+	old_schema["schema_version"] = 1
+	_expect(
+		RogueRouteGraph.import_layout(old_schema, DEFAULT_CONFIG) == null,
+		"旧版路线快照必须被直接拒绝。"
 	)
 
-	var tampered := exported.duplicate(true)
-	var tampered_types := (tampered["node_types"] as PackedByteArray).duplicate()
-	tampered_types[0] = (
-		RogueRouteGraph.NodeType.NORMAL_COMBAT
-		if tampered_types[0] == RogueRouteGraph.NodeType.EMPTY
-		else RogueRouteGraph.NodeType.EMPTY
+	var forged_id := RogueRouteGraph.new()
+	var other_template_id := &"4a" if first.template_id != &"4a" else &"4b"
+	var forged_id_errors := forged_id.initialize_layout(
+		first.generation_seed,
+		first.width,
+		first.height,
+		first.start_node_id,
+		first.node_types,
+		first.node_content_seeds,
+		first.visual_offsets,
+		first.edges,
+		other_template_id,
+		first.node_coords
 	)
-	tampered["node_types"] = tampered_types
+	_expect(forged_id_errors.is_empty(), "伪造模板 ID 后仍应满足一般图结构约束。")
+	if forged_id_errors.is_empty():
+		_expect(
+			RogueRouteGraph.import_layout(
+				forged_id.export_layout(),
+				DEFAULT_CONFIG
+			) == null,
+			"即使重算 layout_hash，本地模板绑定仍必须拒绝 template_id 篡改。"
+		)
+
+	var shifted_coords := first.node_coords.duplicate()
+	for node_id in range(shifted_coords.size()):
+		shifted_coords[node_id] += Vector2.RIGHT
+	var forged_coords := RogueRouteGraph.new()
+	var forged_errors := forged_coords.initialize_layout(
+		first.generation_seed,
+		first.width + 1,
+		first.height,
+		first.start_node_id,
+		first.node_types,
+		first.node_content_seeds,
+		first.visual_offsets,
+		first.edges,
+		first.template_id,
+		shifted_coords
+	)
+	_expect(forged_errors.is_empty(), "平移坐标后仍应满足一般图结构约束。")
+	if forged_errors.is_empty():
+		var forged_snapshot := forged_coords.export_layout()
+		_expect(
+			RogueRouteGraph.import_layout(forged_snapshot) != null
+			and RogueRouteGraph.import_layout(forged_snapshot, DEFAULT_CONFIG) == null,
+			"即使攻击方重算 layout_hash，本地模板绑定仍必须拒绝坐标篡改。"
+		)
+
+	var template := DEFAULT_CONFIG.get_template(first.template_id)
+	var valid_starts := template.get_valid_start_node_ids(
+		DEFAULT_CONFIG.start_max_manhattan_distance,
+		DEFAULT_CONFIG.start_minimum_non_empty_count
+	)
+	var invalid_start_node_id := -1
+	for node_id in range(first.get_node_count()):
+		if not valid_starts.has(node_id):
+			invalid_start_node_id = node_id
+			break
+	_expect(invalid_start_node_id >= 0, "正式模板必须存在非法出生位置供防篡改测试。")
+	if invalid_start_node_id >= 0:
+		var invalid_start_types := first.node_types.duplicate()
+		var displaced_type: int = int(invalid_start_types[invalid_start_node_id])
+		invalid_start_types[invalid_start_node_id] = RogueRouteGraph.NodeType.EMPTY
+		invalid_start_types[first.start_node_id] = displaced_type
+		var invalid_start := RogueRouteGraph.new()
+		var invalid_start_errors := invalid_start.initialize_layout(
+			first.generation_seed,
+			first.width,
+			first.height,
+			invalid_start_node_id,
+			invalid_start_types,
+			first.node_content_seeds,
+			first.visual_offsets,
+			first.edges,
+			first.template_id,
+			first.node_coords
+		)
+		_expect(
+			invalid_start_errors.is_empty()
+			and RogueRouteGraph.import_layout(
+				invalid_start.export_layout(),
+				DEFAULT_CONFIG
+			) == null,
+			"即使重算 layout_hash，非法边缘出生点也必须被本地规则拒绝。"
+		)
+
+	var forged_content_seeds := first.node_content_seeds.duplicate()
+	forged_content_seeds[0] = int(forged_content_seeds[0]) ^ 1
+	var forged_seed_binding := RogueRouteGraph.new()
+	var forged_seed_errors := forged_seed_binding.initialize_layout(
+		first.generation_seed,
+		first.width,
+		first.height,
+		first.start_node_id,
+		first.node_types,
+		forged_content_seeds,
+		first.visual_offsets,
+		first.edges,
+		first.template_id,
+		first.node_coords
+	)
 	_expect(
-		RogueRouteGraph.import_layout(tampered) == null,
-		"布局字段被篡改后必须因哈希不匹配而拒绝导入。"
+		forged_seed_errors.is_empty()
+		and RogueRouteGraph.import_layout(forged_seed_binding.export_layout()) != null
+		and RogueRouteGraph.import_layout(
+			forged_seed_binding.export_layout(),
+			DEFAULT_CONFIG
+		) == null,
+		"即使重算 layout_hash，快照也必须与本地按 generation_seed 生成的完整布局一致。"
 	)
 
 
 func _test_random_stream_isolation() -> void:
 	var seed_value := 0x2468ACE
 	var baseline := RogueRouteGenerator.generate(DEFAULT_CONFIG, seed_value)
-	if baseline == null:
-		_expect(false, "随机流隔离基线必须成功生成。")
-		return
-
-	var jittered_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
+	var jittered_config := DEFAULT_CONFIG.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as RogueRouteGenerationConfig
 	jittered_config.visual_jitter_pixels = Vector2i(5, 2)
 	var jittered := RogueRouteGenerator.generate(jittered_config, seed_value)
 	_expect(
-		jittered != null
+		baseline != null
+		and jittered != null
 		and jittered.compute_topology_hash() == baseline.compute_topology_hash()
 		and jittered.compute_content_hash() == baseline.compute_content_hash()
 		and jittered.compute_layout_hash() != baseline.compute_layout_hash(),
-		"临时启用视觉抖动只能改变 visual 流，不能改变拓扑或内容。"
-	)
-
-	var dense_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
-	dense_config.extra_edge_ratio = 0.65
-	var dense := RogueRouteGenerator.generate(dense_config, seed_value)
-	_expect(
-		dense != null
-		and dense.compute_topology_hash() != baseline.compute_topology_hash()
-		and dense.compute_content_hash() == baseline.compute_content_hash(),
-		"改变补边比例只能改变 topology 流结果，不能串扰内容。"
-	)
-
-	var content_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
-	content_config.empty_ratio = 0.36
-	content_config.empty_ratio_jitter = 0.0
-	var changed_content := RogueRouteGenerator.generate(content_config, seed_value)
-	_expect(
-		changed_content != null
-		and changed_content.compute_topology_hash() == baseline.compute_topology_hash()
-		and changed_content.compute_content_hash() != baseline.compute_content_hash(),
-		"改变内容比例只能改变 content 流结果，不能串扰拓扑。"
+		"视觉随机流只能改变偏移，不得串扰模板、出生或内容。"
 	)
 
 
 func _test_seed_sweep_invariants() -> void:
-	var unique_layout_hashes: Dictionary = {}
+	var seen_templates: Dictionary = {}
+	var seen_magical_counts: Dictionary = {}
+	var seen_shop_counts: Dictionary = {}
+	var seen_chest_counts: Dictionary = {}
+	var seen_resource_counts: Dictionary = {}
 	for seed_offset in range(SEED_SWEEP_COUNT):
 		var generation_seed := 0x730000 + seed_offset
 		var graph := RogueRouteGenerator.generate(DEFAULT_CONFIG, generation_seed)
 		_expect(graph != null, "seed=%d 必须成功生成路线图。" % generation_seed)
 		if graph == null:
 			continue
-		_validate_graph_invariants(graph, DEFAULT_CONFIG, generation_seed)
-		unique_layout_hashes[graph.compute_layout_hash()] = true
+		_validate_graph_invariants(graph, generation_seed)
+		seen_templates[String(graph.template_id)] = true
+		seen_magical_counts[
+			graph.get_node_ids_by_type(RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER).size()
+		] = true
+		seen_shop_counts[
+			graph.get_node_ids_by_type(RogueRouteGraph.NodeType.UNDERGROUND_SHOP).size()
+		] = true
+		seen_chest_counts[
+			graph.get_node_ids_by_type(RogueRouteGraph.NodeType.PREPARE_AHEAD).size()
+		] = true
+		seen_resource_counts[
+			graph.get_node_ids_by_type(RogueRouteGraph.NodeType.WILDERNESS_RESOURCE).size()
+		] = true
+	_expect(seen_templates.size() == 20, "连续 1024 个 seed 必须覆盖全部 20 个等权模板。")
 	_expect(
-		unique_layout_hashes.size() >= SEED_SWEEP_COUNT - 2,
-		"256 个连续 seed 应生成至少 254 个不同布局，实际为 %d。"
-		% unique_layout_hashes.size()
+		seen_magical_counts.has(4) and seen_magical_counts.has(5)
+		and seen_shop_counts.has(2) and seen_shop_counts.has(3)
+		and seen_chest_counts.has(2) and seen_chest_counts.has(3)
+		and seen_resource_counts.has(2) and seen_resource_counts.has(3),
+		"所有 4–5 / 2–3 独立均匀数量都必须出现两个端点：遭遇%s 商店%s 宝箱%s 物资%s。"
+		% [
+			seen_magical_counts.keys(),
+			seen_shop_counts.keys(),
+			seen_chest_counts.keys(),
+			seen_resource_counts.keys(),
+		]
 	)
 
 
-func _validate_graph_invariants(
-	graph: RogueRouteGraph,
-	config: RogueRouteGenerationConfig,
-	generation_seed: int
-) -> void:
+func _validate_graph_invariants(graph: RogueRouteGraph, generation_seed: int) -> void:
 	var label := "seed=%d" % generation_seed
-	var node_count := config.get_node_count()
+	var template := DEFAULT_CONFIG.get_template(graph.template_id)
 	_expect(
-		graph.validate_layout().is_empty(),
-		"%s：生成布局必须通过自身校验：%s"
-		% [label, graph.validate_layout()]
+		graph.validate_layout().is_empty()
+		and DEFAULT_CONFIG.validate_graph_template(graph).is_empty()
+		and template != null,
+		"%s：图必须通过结构与本地模板绑定校验。" % label
+	)
+	if template == null:
+		return
+	_expect(
+		graph.get_node_count() == template.get_node_count()
+		and graph.node_coords == template.node_coords
+		and graph.edges == template.edges,
+		"%s：紧凑节点、坐标和边必须精确来自所选模板。" % label
 	)
 	_expect(
-		graph.width == config.width
-		and graph.height == config.height
-		and graph.get_node_count() == node_count,
-		"%s：节点数量必须精确等于 11×9。" % label
-	)
-	_expect(
-		graph.start_node_id == config.get_center_node_id()
-		and graph.get_start_coord() == config.get_center_coord()
-		and graph.get_node_type(graph.start_node_id) == RogueRouteGraph.NodeType.EMPTY
+		graph.get_node_type(graph.start_node_id) == RogueRouteGraph.NodeType.EMPTY
 		and graph.get_visual_offset(graph.start_node_id) == Vector2.ZERO,
-		"%s：玩家起点必须是正中心 EMPTY 格，且不得发生视觉偏移。" % label
+		"%s：出生点必须保持 EMPTY 且无视觉抖动。" % label
 	)
 
-	var empty_count := graph.get_node_ids_by_type(RogueRouteGraph.NodeType.EMPTY).size()
-	var empty_ratio := float(empty_count) / float(node_count)
-	var quantization_error := 0.5 / float(node_count) + 0.000001
-	_expect(
-		empty_ratio
-		>= maxf(config.empty_ratio - config.empty_ratio_jitter, 0.0)
-		- quantization_error
-		and empty_ratio
-		<= minf(config.empty_ratio + config.empty_ratio_jitter, 1.0)
-		+ quantization_error,
-		"%s：空节点比例 %.4f 超出配置范围。" % [label, empty_ratio]
-	)
-	for type_config in config.node_type_catalog:
-		var generated_count := graph.get_node_ids_by_type(
-			type_config.node_type
-		).size()
+	var start_coord := graph.get_start_coord()
+	var minimum_coord := graph.id_to_coord(0)
+	var maximum_coord := minimum_coord
+	var nearby_non_empty_count := 0
+	for node_id in range(graph.get_node_count()):
+		var coord := graph.id_to_coord(node_id)
+		minimum_coord.x = mini(minimum_coord.x, coord.x)
+		minimum_coord.y = mini(minimum_coord.y, coord.y)
+		maximum_coord.x = maxi(maximum_coord.x, coord.x)
+		maximum_coord.y = maxi(maximum_coord.y, coord.y)
 		_expect(
-			generated_count >= type_config.minimum_count
-			and (
-				type_config.maximum_count == 0
-				or generated_count <= type_config.maximum_count
-			),
-			"%s：%s 数量必须位于 minimum_count/maximum_count 约束内。"
-			% [label, type_config.display_name]
+			graph.coord_to_id(coord) == node_id,
+			"%s：显式坐标必须与紧凑节点 ID 无损互查。" % label
 		)
-	var underground_shop_count := graph.get_node_ids_by_type(
-		RogueRouteGraph.NodeType.UNDERGROUND_SHOP
-	).size()
-	_expect(
-		underground_shop_count >= 4 and underground_shop_count <= 7,
-		"%s：地下商店总数必须始终位于 4–7，实际为 %d。"
-		% [label, underground_shop_count]
-	)
-
-	var maximum_edge_count := graph.get_max_cardinal_edge_count()
-	var spanning_tree_edge_count := node_count - 1
-	var expected_extra_edge_count := roundi(
-		config.extra_edge_ratio
-		* float(maximum_edge_count - spanning_tree_edge_count)
-	)
-	_expect(
-		graph.get_edge_count()
-		== spanning_tree_edge_count + expected_extra_edge_count
-		and graph.get_edge_count() >= node_count
-		and graph.get_edge_count() < maximum_edge_count,
-		"%s：路线图必须使用覆盖树加精确补边，且不能成为完整邻接网格。" % label
-	)
-
-	var previous_edge := Vector2i(-1, -1)
-	var seen_edges: Dictionary = {}
-	for edge_offset in range(0, graph.edges.size(), 2):
-		var first_node_id := int(graph.edges[edge_offset])
-		var second_node_id := int(graph.edges[edge_offset + 1])
-		var edge := Vector2i(first_node_id, second_node_id)
-		var first_coord := graph.id_to_coord(first_node_id)
-		var second_coord := graph.id_to_coord(second_node_id)
-		var edge_key := "%d:%d" % [first_node_id, second_node_id]
-		_expect(
-			first_node_id < second_node_id
-			and (
-				absi(first_coord.x - second_coord.x)
-				+ absi(first_coord.y - second_coord.y)
-			) == 1
-			and not seen_edges.has(edge_key),
-			"%s：每条边必须规范化、唯一并仅连接四邻格。" % label
-		)
-		_expect(
-			previous_edge.x < edge.x
-			or (previous_edge.x == edge.x and previous_edge.y < edge.y),
-			"%s：序列化边必须按端点稳定排序。" % label
-		)
-		seen_edges[edge_key] = true
-		previous_edge = edge
-
-	var visited: Dictionary = {graph.start_node_id: true}
-	var queue: Array[int] = [graph.start_node_id]
-	var cursor := 0
-	while cursor < queue.size():
-		var node_id := queue[cursor]
-		cursor += 1
-		var neighbors := graph.get_neighbors(node_id)
-		_expect(
-			neighbors.size() >= 1 and neighbors.size() <= 4,
-			"%s：每个节点度数必须位于 1 到 4。" % label
-		)
-		for neighbor_id in neighbors:
-			_expect(
-				graph.has_edge(int(neighbor_id), node_id),
-				"%s：无向邻接必须双向对称。" % label
-			)
-			if not visited.has(int(neighbor_id)):
-				visited[int(neighbor_id)] = true
-				queue.append(int(neighbor_id))
-	_expect(
-		visited.size() == node_count,
-		"%s：从中心 BFS 必须访问全部 %d 个格子。" % [label, node_count]
-	)
-
-	for node_id in range(node_count):
-		var offset := graph.get_visual_offset(node_id)
-		_expect(
-			absf(offset.x) <= float(config.visual_jitter_pixels.x)
-			and absf(offset.y) <= float(config.visual_jitter_pixels.y),
-			"%s：节点 %d 的视觉抖动超出配置。" % [label, node_id]
-		)
-
-
-func _test_variance_controls() -> void:
-	var fixed_ratio_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
-	fixed_ratio_config.empty_ratio_jitter = 0.0
-	var variable_ratio_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
-	variable_ratio_config.empty_ratio_jitter = 0.18
-	var dispersed_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
-	dispersed_config.empty_ratio_jitter = 0.0
-	dispersed_config.empty_cluster_strength = 0.0
-	var clustered_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
-	clustered_config.empty_ratio_jitter = 0.0
-	clustered_config.empty_cluster_strength = 1.0
-
-	var fixed_ratios: Array[float] = []
-	var variable_ratios: Array[float] = []
-	var dispersed_adjacency_sum := 0.0
-	var clustered_adjacency_sum := 0.0
-	for seed_offset in range(STATISTICAL_SEED_COUNT):
-		var generation_seed := 0x910000 + seed_offset
-		var fixed_graph := RogueRouteGenerator.generate(fixed_ratio_config, generation_seed)
-		var variable_graph := RogueRouteGenerator.generate(variable_ratio_config, generation_seed)
-		var dispersed_graph := RogueRouteGenerator.generate(dispersed_config, generation_seed)
-		var clustered_graph := RogueRouteGenerator.generate(clustered_config, generation_seed)
+		var distance := absi(coord.x - start_coord.x) + absi(coord.y - start_coord.y)
 		if (
-			fixed_graph == null
-			or variable_graph == null
-			or dispersed_graph == null
-			or clustered_graph == null
+			node_id != graph.start_node_id
+			and distance <= 2
+			and graph.get_node_type(node_id) != RogueRouteGraph.NodeType.EMPTY
 		):
-			_expect(false, "方差控制 seed=%d 必须成功生成四张路线图。" % generation_seed)
-			continue
-		fixed_ratios.append(_get_empty_ratio(fixed_graph))
-		variable_ratios.append(_get_empty_ratio(variable_graph))
-		dispersed_adjacency_sum += _get_empty_adjacency_ratio(dispersed_graph)
-		clustered_adjacency_sum += _get_empty_adjacency_ratio(clustered_graph)
+			nearby_non_empty_count += 1
+	_expect(
+		start_coord.x != minimum_coord.x
+		and start_coord.x != maximum_coord.x
+		and start_coord.y != minimum_coord.y
+		and start_coord.y != maximum_coord.y
+		and nearby_non_empty_count >= 6,
+		"%s：出生点不得在包围盒边缘，且两格内必须至少有 6 个非空节点。" % label
+	)
 
 	_expect(
-		_get_variance(variable_ratios) > _get_variance(fixed_ratios) + 0.001,
-		"提高 empty_ratio_jitter 必须可测量地提高跨 seed 空节点比例方差。"
+		graph.get_node_ids_by_type(RogueRouteGraph.NodeType.NORMAL_COMBAT).size() == 4
+		and graph.get_node_ids_by_type(RogueRouteGraph.NodeType.EMERGENCY_COMBAT).size() == 3,
+		"%s：普通作战必须为 4 个、紧急作战必须为 3 个。" % label
 	)
+	for node_type in [
+		RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER,
+		RogueRouteGraph.NodeType.UNDERGROUND_SHOP,
+		RogueRouteGraph.NodeType.PREPARE_AHEAD,
+		RogueRouteGraph.NodeType.WILDERNESS_RESOURCE,
+	]:
+		var count := graph.get_node_ids_by_type(node_type).size()
+		var type_config := DEFAULT_CONFIG.get_type_config(node_type)
+		_expect(
+			count >= type_config.minimum_count and count <= type_config.maximum_count,
+			"%s：节点类型 %d 数量越界。" % [label, node_type]
+		)
+
+	var encounter_node_ids := graph.get_node_ids_by_type(
+		RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
+	)
+	var encounter_ids: Dictionary = {}
+	for node_id in encounter_node_ids:
+		var encounter_id := RogueEncounterRegistry.select_encounter_for_map(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			graph.generation_seed,
+			encounter_node_ids,
+			int(node_id)
+		)
+		encounter_ids[encounter_id] = true
 	_expect(
-		clustered_adjacency_sum
-		> dispersed_adjacency_sum + float(STATISTICAL_SEED_COUNT) * 0.04,
-		"提高 empty_cluster_strength 必须显著增加相邻空格的聚团程度。"
+		encounter_ids.size() == encounter_node_ids.size(),
+		"%s：本地图所有神奇遭遇节点必须一一映射到互不重复事件。" % label
 	)
-
-
-func _get_empty_ratio(graph: RogueRouteGraph) -> float:
-	return (
-		float(graph.get_node_ids_by_type(RogueRouteGraph.NodeType.EMPTY).size())
-		/ float(graph.get_node_count())
-	)
-
-
-func _get_empty_adjacency_ratio(graph: RogueRouteGraph) -> float:
-	var adjacent_empty_pairs := 0
-	var maximum_pair_count := graph.get_max_cardinal_edge_count()
-	for row in range(graph.height):
-		for column in range(graph.width):
-			var node_id := row * graph.width + column
-			if column + 1 < graph.width:
-				if (
-					graph.get_node_type(node_id) == RogueRouteGraph.NodeType.EMPTY
-					and graph.get_node_type(node_id + 1) == RogueRouteGraph.NodeType.EMPTY
-				):
-					adjacent_empty_pairs += 1
-			if row + 1 < graph.height:
-				if (
-					graph.get_node_type(node_id) == RogueRouteGraph.NodeType.EMPTY
-					and graph.get_node_type(node_id + graph.width)
-					== RogueRouteGraph.NodeType.EMPTY
-				):
-					adjacent_empty_pairs += 1
-	return float(adjacent_empty_pairs) / float(maximum_pair_count)
-
-
-func _get_variance(values: Array[float]) -> float:
-	if values.is_empty():
-		return 0.0
-	var mean := 0.0
-	for value in values:
-		mean += value
-	mean /= float(values.size())
-	var variance := 0.0
-	for value in values:
-		var difference := value - mean
-		variance += difference * difference
-	return variance / float(values.size())
-
-
-func _has_error_containing(errors: PackedStringArray, needle: String) -> bool:
-	for error in errors:
-		if error.contains(needle):
-			return true
-	return false
 
 
 func _expect(condition: bool, message: String) -> void:

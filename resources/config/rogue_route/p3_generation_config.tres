@@ -2,14 +2,36 @@
 
 [ext_resource type="Script" uid="uid://crq4yoaknng2q" path="res://resources/config/rogue_route/rogue_route_generation_config.gd" id="1_script"]
 [ext_resource type="Script" uid="uid://c5bwdhrij10lp" path="res://resources/config/rogue_route/rogue_route_node_type_config.gd" id="2_type_script"]
+[ext_resource type="Script" path="res://resources/config/rogue_route/rogue_route_template_config.gd" id="2_template_script"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/magical_encounter.tres" id="3_magical"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/emergency_combat.tres" id="4_emergency"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/normal_combat.tres" id="5_normal"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/wilderness_resource.tres" id="6_resource"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/underground_shop.tres" id="7_shop"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/prepare_ahead.tres" id="8_prepare"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/4a.tres" id="10_4a"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/4b.tres" id="11_4b"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/4c.tres" id="12_4c"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/4d.tres" id="13_4d"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/4e.tres" id="14_4e"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/4f.tres" id="15_4f"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/4g.tres" id="16_4g"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/4h.tres" id="17_4h"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/4i.tres" id="18_4i"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/4j.tres" id="19_4j"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/5a.tres" id="20_5a"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/5b.tres" id="21_5b"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/5c.tres" id="22_5c"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/5d.tres" id="23_5d"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/5e.tres" id="24_5e"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/5f.tres" id="25_5f"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/5g.tres" id="26_5g"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/5h.tres" id="27_5h"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/5i.tres" id="28_5i"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/templates/5j.tres" id="29_5j"]
 
 [resource]
 script = ExtResource("1_script")
+templates = Array[ExtResource("2_template_script")]([ExtResource("10_4a"), ExtResource("11_4b"), ExtResource("12_4c"), ExtResource("13_4d"), ExtResource("14_4e"), ExtResource("15_4f"), ExtResource("16_4g"), ExtResource("17_4h"), ExtResource("18_4i"), ExtResource("19_4j"), ExtResource("20_5a"), ExtResource("21_5b"), ExtResource("22_5c"), ExtResource("23_5d"), ExtResource("24_5e"), ExtResource("25_5f"), ExtResource("26_5g"), ExtResource("27_5h"), ExtResource("28_5i"), ExtResource("29_5j")])
 node_type_catalog = Array[ExtResource("2_type_script")]([ExtResource("3_magical"), ExtResource("4_emergency"), ExtResource("5_normal"), ExtResource("6_resource"), ExtResource("7_shop"), ExtResource("8_prepare")])
 visual_jitter_pixels = Vector2i(0, 0)

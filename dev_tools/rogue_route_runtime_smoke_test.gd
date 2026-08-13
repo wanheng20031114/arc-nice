@@ -49,7 +49,7 @@ func _find_empty_neighbor_fixture() -> Dictionary:
 
 func _test_layout_snapshot_boundaries(graph: RogueRouteGraph) -> void:
 	var exported := graph.export_layout()
-	var imported := RogueRouteGraph.import_layout(exported)
+	var imported := RogueRouteGraph.import_layout(exported, DEFAULT_CONFIG)
 	_expect(
 		imported != null and imported.compute_layout_hash() == graph.compute_layout_hash(),
 		"合法布局快照必须无损导入。"
@@ -74,9 +74,10 @@ func _test_layout_snapshot_boundaries(graph: RogueRouteGraph) -> void:
 	regular_arrays["node_types"] = Array(graph.node_types)
 	regular_arrays["node_content_seeds"] = Array(graph.node_content_seeds)
 	regular_arrays["visual_offsets"] = Array(graph.visual_offsets)
+	regular_arrays["node_coords"] = Array(graph.node_coords)
 	regular_arrays["edges"] = Array(graph.edges)
 	_expect(
-		RogueRouteGraph.import_layout(regular_arrays) != null,
+		RogueRouteGraph.import_layout(regular_arrays, DEFAULT_CONFIG) != null,
 		"网络解包后的严格普通数组必须仍可导入。"
 	)
 
@@ -119,27 +120,33 @@ func _test_layout_snapshot_boundaries(graph: RogueRouteGraph) -> void:
 		graph.node_types,
 		graph.node_content_seeds,
 		graph.visual_offsets,
-		unsorted_edges
+		unsorted_edges,
+		graph.template_id,
+		graph.node_coords
 	)
 	_expect(
 		_has_error_containing(unsorted_errors, "升序"),
 		"图契约必须拒绝顺序不规范的边快照。"
 	)
 
-	var off_center := RogueRouteGraph.new()
-	var off_center_errors := off_center.initialize_layout(
+	var non_center_types := graph.node_types.duplicate()
+	non_center_types[0] = RogueRouteGraph.NodeType.EMPTY
+	var non_center := RogueRouteGraph.new()
+	var non_center_errors := non_center.initialize_layout(
 		graph.generation_seed,
 		graph.width,
 		graph.height,
 		0,
-		graph.node_types,
+		non_center_types,
 		graph.node_content_seeds,
 		graph.visual_offsets,
-		graph.edges
+		graph.edges,
+		graph.template_id,
+		graph.node_coords
 	)
 	_expect(
-		_has_error_containing(off_center_errors, "正中心"),
-		"图契约必须拒绝不在正中心的起点。"
+		non_center_errors.is_empty(),
+		"一般图结构必须允许非中心起点；正式出生规则由生成配置绑定校验。"
 	)
 
 
@@ -569,7 +576,7 @@ func _test_board_contract(
 	var mismatched_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
 	mismatched_config.width = 9
 	_expect(
-		not board.present_graph(
+		board.present_graph(
 			graph,
 			mismatched_config,
 			empty_neighbor_id,
@@ -577,7 +584,7 @@ func _test_board_contract(
 			runtime.visited_counts,
 			true
 		),
-		"棋盘必须拒绝尺寸与布局不一致的生成配置。"
+		"模板化棋盘不得把回退画布尺寸误当作实际模板尺寸。"
 	)
 	_expect(
 		not board.present_graph(
@@ -639,7 +646,9 @@ func _make_graph_with_out_of_bounds_offset(
 		source.node_types,
 		source.node_content_seeds,
 		offsets,
-		source.edges
+		source.edges,
+		source.template_id,
+		source.node_coords
 	)
 	if not errors.is_empty():
 		return null

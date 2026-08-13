@@ -2,7 +2,7 @@
 extends Resource
 class_name RogueRouteFloorDefinition
 
-const RUNTIME_CONTRACT_SCHEMA := 7
+const RUNTIME_CONTRACT_SCHEMA := 8
 const CONTENT_CONTRACT_SCHEMA := 3
 const COMBAT_POOL_SCRIPT := preload(
 	"res://resources/config/rogue_combat/rogue_combat_pool_config.gd"
@@ -53,16 +53,7 @@ func validate_definition() -> PackedStringArray:
 		errors.append("路线楼层缺少 underground_shop_config。")
 	else:
 		errors.append_array(underground_shop_config.validate_config())
-	if generation_config != null and world_metrics != null:
-		var generation_size := Vector2i(
-			generation_config.width,
-			generation_config.height
-		)
-		if world_metrics.default_grid_size != generation_size:
-			errors.append(
-				"路线楼层的生成尺寸与世界默认网格尺寸不一致：%s != %s。"
-				% [generation_size, world_metrics.default_grid_size]
-			)
+	_validate_magical_encounter_pool_capacity(errors)
 	return errors
 
 
@@ -80,6 +71,7 @@ func compute_runtime_contract_hash() -> String:
 	var special_combat_hashes := _compute_special_combat_runtime_contracts()
 	var shop_hash := underground_shop_config.compute_runtime_contract_hash()
 	var rare_chest_hash := RogueRareChestRegistry.compute_runtime_contract_hash()
+	var encounter_pool_hash := RogueEncounterRegistry.compute_runtime_contract_hash()
 	if (
 		generation_hash.is_empty()
 		or combat_hash.is_empty()
@@ -87,23 +79,20 @@ func compute_runtime_contract_hash() -> String:
 		or special_combat_hashes.size() != special_combat_configs.size()
 		or shop_hash.is_empty()
 		or rare_chest_hash.is_empty()
+		or encounter_pool_hash.is_empty()
 	):
 		return ""
 	var parts := PackedStringArray([
 		"schema=%d" % RUNTIME_CONTRACT_SCHEMA,
 		"floor_id=%s" % String(floor_id),
 		"generation=%s" % generation_hash,
-		"empty_ratio=%.6f" % generation_config.empty_ratio,
-		"empty_ratio_jitter=%.6f" % generation_config.empty_ratio_jitter,
-		"empty_cluster_strength=%.6f"
-		% generation_config.empty_cluster_strength,
-		"extra_edge_ratio=%.6f" % generation_config.extra_edge_ratio,
 		"initial_action_points=%d" % generation_config.initial_action_points,
 		"normal_combat_pool=%s" % combat_hash,
 		"emergency_combat_pool=%s" % emergency_combat_hash,
 		"special_combat_count=%d" % special_combat_hashes.size(),
 		"underground_shop=%s" % shop_hash,
 		"rare_chest=%s" % rare_chest_hash,
+		"encounter_pool=%s" % encounter_pool_hash,
 	])
 	parts.append_array(special_combat_hashes)
 	return "\n".join(parts).sha256_text()
@@ -324,6 +313,31 @@ func _validate_emergency_combat_pool_binding(errors: PackedStringArray) -> void:
 				String(type_config.content_pool_id),
 				String(emergency_combat_pool.pool_id),
 			]
+		)
+
+
+func _validate_magical_encounter_pool_capacity(
+	errors: PackedStringArray
+) -> void:
+	if generation_config == null:
+		return
+	var type_config := generation_config.get_type_config(
+		RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
+	)
+	if type_config == null or type_config.content_pool_id == &"":
+		return
+	var pool_entries := RogueEncounterRegistry.get_pool_entries(
+		type_config.content_pool_id
+	)
+	if pool_entries.is_empty():
+		errors.append(
+			"神奇遭遇节点引用了不存在或为空的事件池：%s。"
+			% String(type_config.content_pool_id)
+		)
+	elif type_config.maximum_count > pool_entries.size():
+		errors.append(
+			"神奇遭遇最大数量 %d 超过事件池容量 %d，无法保证地图内不重复。"
+			% [type_config.maximum_count, pool_entries.size()]
 		)
 
 

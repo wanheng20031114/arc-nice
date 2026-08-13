@@ -156,7 +156,8 @@ func start_for_node(
 	node_id: int,
 	content_pool_id: StringName,
 	node_content_seed: int,
-	eligible_peer_ids: Array[int]
+	eligible_peer_ids: Array[int],
+	assigned_encounter_id: StringName = &""
 ) -> bool:
 	if (
 		not _is_authority
@@ -174,14 +175,19 @@ func start_for_node(
 		return false
 	if _run_state != null:
 		_encountered_encounter_ids = _run_state.get_rogue_encountered_ids()
-	var encounter_id := RogueEncounterRegistry.select_encounter_for_run(
-		content_pool_id,
-		node_content_seed,
-		_encountered_encounter_ids
-	)
+	var encounter_id := assigned_encounter_id
+	if encounter_id == &"":
+		encounter_id = RogueEncounterRegistry.select_encounter_for_run(
+			content_pool_id,
+			node_content_seed,
+			_encountered_encounter_ids
+		)
 	if (
 		encounter_id.is_empty()
 		or not RogueEncounterRegistry.has_encounter(encounter_id)
+		or not RogueEncounterRegistry.get_pool_entries(content_pool_id).has(
+			encounter_id
+		)
 	):
 		return false
 	# 选择与参与者均已验证，且尚未写入任何 Session 阶段字段；此时提交

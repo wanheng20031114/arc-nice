@@ -10,5 +10,6 @@ node_type = 6
 display_name = "稀有宝箱"
 icon = ExtResource("2_icon")
 generation_weight = 1.0
-minimum_count = 1
+minimum_count = 2
+maximum_count = 3
 content_pool_id = &"prepare_ahead"

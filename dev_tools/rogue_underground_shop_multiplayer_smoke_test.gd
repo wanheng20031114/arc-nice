@@ -6,6 +6,9 @@ const ROUTE_SCENE := preload(
 const SHOP_CONFIG: RogueUndergroundShopConfig = preload(
 	"res://resources/config/rogue_shop/shallow_mine_underground_shop.tres"
 )
+const GENERATION_CONFIG: RogueRouteGenerationConfig = preload(
+	"res://resources/config/rogue_route/p3_generation_config.tres"
+)
 const BUILDING_ITEM: PickupConfig = preload(
 	"res://resources/config/buildings/building_simple_fence.tres"
 )
@@ -28,9 +31,18 @@ func _test_controller_route_and_snapshot_contracts() -> void:
 	var graph_and_state := _make_two_shop_route()
 	var graph := graph_and_state.get("graph") as RogueRouteGraph
 	var route_state := graph_and_state.get("state") as RogueRouteRuntimeState
-	_expect(graph != null and route_state != null, "商店多人测试路线必须有效。")
-	if graph == null or route_state == null:
+	var shop_node_ids := graph_and_state.get(
+		"shop_node_ids",
+		PackedInt32Array()
+	) as PackedInt32Array
+	_expect(
+		graph != null and route_state != null and shop_node_ids.size() >= 2,
+		"商店多人测试路线必须是包含至少两个商店的正式模板图。"
+	)
+	if graph == null or route_state == null or shop_node_ids.size() < 2:
 		return
+	var first_shop_node_id := int(shop_node_ids[0])
+	var second_shop_node_id := int(shop_node_ids[1])
 
 	var host_run_state := RunStateStore.new()
 	host_run_state.begin_new_run(
@@ -66,8 +78,8 @@ func _test_controller_route_and_snapshot_contracts() -> void:
 	_expect(
 		not host_controller.start_authoritative_for_node(
 			graph.compute_layout_hash(),
-			1,
-			graph.get_node_content_seed(1),
+			first_shop_node_id,
+			graph.get_node_content_seed(first_shop_node_id),
 			2,
 			route_state.state_revision,
 			[1]
@@ -79,8 +91,8 @@ func _test_controller_route_and_snapshot_contracts() -> void:
 	_expect(
 		host_controller.start_authoritative_for_node(
 			graph.compute_layout_hash(),
-			1,
-			graph.get_node_content_seed(1),
+			first_shop_node_id,
+			graph.get_node_content_seed(first_shop_node_id),
 			1,
 			route_state.state_revision,
 			[1]
@@ -161,9 +173,8 @@ func _test_controller_route_and_snapshot_contracts() -> void:
 	var old_closed := host_controller.export_snapshot_for_peer(1)
 
 	_expect(
-		route_state.try_move(4, 1, route_state.state_revision)
-		and route_state.try_move(3, 1, route_state.state_revision),
-		"测试队伍必须能抵达后续地下商店。"
+		_move_route_state_to_node(graph, route_state, second_shop_node_id),
+		"测试队伍必须能沿正式模板路线抵达后续地下商店。"
 	)
 	_expect(
 		host_controller.reset_runtime(
@@ -178,8 +189,8 @@ func _test_controller_route_and_snapshot_contracts() -> void:
 	_expect(
 		host_controller.start_authoritative_for_node(
 			graph.compute_layout_hash(),
-			3,
-			graph.get_node_content_seed(3),
+			second_shop_node_id,
+			graph.get_node_content_seed(second_shop_node_id),
 			1,
 			route_state.state_revision,
 			[1]
@@ -328,6 +339,7 @@ func _test_full_snapshot_atomic_rejection(
 		controller.configure(SHOP_CONFIG, client_run_state),
 		"全量快照原子性测试控制器必须配置成功。"
 	)
+	_set_route_test_identity(route)
 	controller.set_identity_context(
 		false,
 		1,
@@ -343,14 +355,23 @@ func _test_full_snapshot_atomic_rejection(
 	layout_snapshot["runtime_contract_hash"] = route.get_runtime_contract_hash()
 	var state_snapshot := route_state.export_state().duplicate(true)
 	state_snapshot["briefing_state"] = {
-		"schema_version": 1,
+		"schema_version": RogueRouteGame.BRIEFING_SCHEMA_VERSION,
 		"layout_hash": graph.compute_layout_hash(),
 		"revision": 0,
 		"phase": 0,
 		"node_id": -1,
 		"occurrence_key": "",
 		"expected_route_revision": -1,
+		"source_kind": "",
+		"combat_config_id": "",
+		"source_encounter_occurrence_key": "",
 	}
+	await _test_valid_full_snapshot_application(
+		layout_snapshot,
+		state_snapshot,
+		valid_shop_snapshot,
+		graph.compute_layout_hash()
+	)
 	var economy_before := client_run_state.export_party_economy_snapshot(
 		PackedInt32Array([1])
 	)
@@ -480,6 +501,83 @@ func _test_full_snapshot_atomic_rejection(
 	await process_frame
 
 
+func _test_valid_full_snapshot_application(
+	layout_snapshot: Dictionary,
+	state_snapshot: Dictionary,
+	valid_shop_snapshot: Dictionary,
+	expected_layout_hash: String
+) -> void:
+	var valid_run_state := RunStateStore.new()
+	valid_run_state.begin_new_run(
+		PlayerCharacterRegistry.DEFAULT_CHARACTER_ID,
+		false
+	)
+	valid_run_state.ensure_multiplayer_peer_state(1)
+	var valid_route := ROUTE_SCENE.instantiate() as RogueRouteGame
+	valid_route.auto_initialize = false
+	valid_route.manage_return_locally = false
+	root.add_child(valid_route)
+	var valid_controller := valid_route.underground_shop_controller
+	var configured := valid_controller.configure(SHOP_CONFIG, valid_run_state)
+	_set_route_test_identity(valid_route)
+	valid_controller.set_identity_context(
+		false,
+		1,
+		{1: "玩家A"},
+		{1: PlayerCharacterRegistry.DEFAULT_CHARACTER_ID},
+		{1: "rogue-participant:v1:test-a"}
+	)
+	# 此处只验证完整快照事务；禁止表现转场计时器越过独立夹具生命周期。
+	valid_controller.set("_transition_active", true)
+	var applied := (
+		configured
+		and valid_route.apply_full_snapshot(
+			layout_snapshot.duplicate(true),
+			state_snapshot.duplicate(true),
+			{},
+			{},
+			valid_shop_snapshot.duplicate(true)
+		)
+	)
+	_expect(
+		applied
+		and valid_route.is_route_ready()
+		and valid_controller.get_phase()
+		== RogueUndergroundShopSession.Phase.SHOPPING
+		and str(
+			valid_route.export_layout_snapshot().get("layout_hash", "")
+		) == expected_layout_hash,
+		(
+			"未篡改的正式模板、路线状态与商店快照必须能由独立客户端完整应用。"
+			+ " configured=%s applied=%s ready=%s phase=%d status=%s"
+			% [
+				configured,
+				applied,
+				valid_route.is_route_ready(),
+				valid_controller.get_phase(),
+				valid_route.status_message.text,
+			]
+		)
+	)
+	valid_route.queue_free()
+	await process_frame
+	valid_run_state.free()
+	await process_frame
+
+
+func _set_route_test_identity(route: RogueRouteGame) -> void:
+	route.set("_local_peer_id", 1)
+	route.set("_player_names", {1: "玩家A"})
+	route.set(
+		"_player_character_ids",
+		{1: PlayerCharacterRegistry.DEFAULT_CHARACTER_ID}
+	)
+	route.set(
+		"_player_stable_keys",
+		{1: "rogue-participant:v1:test-a"}
+	)
+
+
 func _route_and_economy_are_unchanged(
 	route: RogueRouteGame,
 	controller: RogueUndergroundShopController,
@@ -504,48 +602,64 @@ func _route_and_economy_are_unchanged(
 
 
 func _make_two_shop_route() -> Dictionary:
-	var node_types := PackedByteArray()
-	node_types.resize(9)
-	node_types.fill(RogueRouteGraph.NodeType.EMPTY)
-	node_types[1] = RogueRouteGraph.NodeType.UNDERGROUND_SHOP
-	node_types[3] = RogueRouteGraph.NodeType.UNDERGROUND_SHOP
-	var content_seeds := PackedInt64Array()
-	content_seeds.resize(9)
-	for node_id in 9:
-		content_seeds[node_id] = 80_000 + node_id
-	var offsets := PackedVector2Array()
-	offsets.resize(9)
-	offsets.fill(Vector2.ZERO)
-	var graph := RogueRouteGraph.new()
-	var errors := graph.initialize_layout(
-		99,
-		3,
-		3,
-		4,
-		node_types,
-		content_seeds,
-		offsets,
-		PackedInt32Array([
-			0, 1,
-			0, 3,
-			1, 2,
-			1, 4,
-			2, 5,
-			3, 4,
-			3, 6,
-			4, 5,
-			4, 7,
-			5, 8,
-			6, 7,
-			7, 8,
-		])
-	)
-	if not errors.is_empty():
-		return {}
-	var state := RogueRouteRuntimeState.new()
-	if not state.initialize(graph, 20) or not state.try_move(1, 1, 0):
-		return {}
-	return {"graph": graph, "state": state}
+	for seed_offset in range(64):
+		var graph := RogueRouteGenerator.generate(
+			GENERATION_CONFIG,
+			0x5A0F00 + seed_offset
+		)
+		if graph == null:
+			continue
+		var shop_node_ids := graph.get_node_ids_by_type(
+			RogueRouteGraph.NodeType.UNDERGROUND_SHOP
+		)
+		if shop_node_ids.size() < 2:
+			continue
+		var state := RogueRouteRuntimeState.new()
+		if not state.initialize(graph, graph.get_node_count() * 2):
+			continue
+		if not _move_route_state_to_node(graph, state, int(shop_node_ids[0])):
+			continue
+		return {
+			"graph": graph,
+			"state": state,
+			"shop_node_ids": shop_node_ids,
+		}
+	return {}
+
+
+func _move_route_state_to_node(
+	graph: RogueRouteGraph,
+	state: RogueRouteRuntimeState,
+	target_node_id: int
+) -> bool:
+	if graph == null or state == null or not graph.is_valid_node_id(target_node_id):
+		return false
+	if state.current_node_id == target_node_id:
+		return true
+	var parents: Dictionary[int, int] = {state.current_node_id: -1}
+	var pending: Array[int] = [state.current_node_id]
+	var cursor := 0
+	while cursor < pending.size() and not parents.has(target_node_id):
+		var node_id := pending[cursor]
+		cursor += 1
+		for raw_neighbor_id in graph.get_neighbors(node_id):
+			var neighbor_id := int(raw_neighbor_id)
+			if parents.has(neighbor_id):
+				continue
+			parents[neighbor_id] = node_id
+			pending.append(neighbor_id)
+	if not parents.has(target_node_id):
+		return false
+	var reverse_path: Array[int] = []
+	var path_node_id := target_node_id
+	while path_node_id != state.current_node_id:
+		reverse_path.append(path_node_id)
+		path_node_id = int(parents[path_node_id])
+	reverse_path.reverse()
+	for node_id in reverse_path:
+		if not state.try_move(node_id, 1, state.state_revision):
+			return false
+	return state.current_node_id == target_node_id
 
 
 func _find_first_priced_slot(slots: Array) -> int:

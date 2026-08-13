@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="RogueRouteTemplateConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://resources/config/rogue_route/rogue_route_template_config.gd" id="1_template"]
+
+[resource]
+script = ExtResource("1_template")
+template_id = &"5h"
+selection_weight = 1.0
+width = 10
+height = 5
+node_coords = PackedVector2Array(2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 9, 0, 0, 1, 1, 1, 3, 1, 4, 1, 6, 1, 7, 1, 8, 1, 9, 1, 1, 2, 2, 2, 3, 2, 4, 2, 5, 2, 6, 2, 7, 2, 9, 2, 0, 3, 1, 3, 2, 3, 3, 3, 4, 3, 5, 3, 6, 3, 7, 3, 8, 3, 9, 3, 0, 4, 1, 4, 2, 4, 4, 4, 5, 4, 6, 4, 7, 4, 8, 4, 9, 4)
+edges = PackedInt32Array(0, 1, 1, 2, 1, 9, 2, 3, 2, 10, 3, 4, 4, 5, 4, 11, 5, 12, 6, 14, 7, 8, 8, 15, 9, 17, 10, 18, 11, 20, 12, 13, 12, 21, 13, 14, 14, 22, 15, 16, 15, 24, 16, 17, 16, 25, 18, 27, 19, 20, 21, 30, 22, 32, 23, 24, 24, 25, 24, 34, 25, 26, 26, 27, 28, 29, 28, 37, 29, 30, 29, 38, 30, 31, 30, 39, 33, 34, 34, 35, 36, 37, 37, 38, 39, 40, 40, 41)

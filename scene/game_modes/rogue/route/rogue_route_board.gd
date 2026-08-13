@@ -60,8 +60,6 @@ func present_graph(
 		or new_generation_config == null
 		or not new_graph.validate_layout().is_empty()
 		or not new_generation_config.validate_config().is_empty()
-		or new_generation_config.width != new_graph.width
-		or new_generation_config.height != new_graph.height
 		or not _is_graph_compatible_with_world(
 			new_graph,
 			new_generation_config
@@ -195,6 +193,12 @@ func get_world_metrics() -> RogueRouteWorldMetrics:
 func get_default_spawn_global_position(
 	target_config: RogueRouteGenerationConfig = null
 ) -> Vector2:
+	if (
+		graph != null
+		and graph.is_valid_node_id(graph.start_node_id)
+		and _node_positions.has(graph.start_node_id)
+	):
+		return get_node_global_position(graph.start_node_id)
 	if world_metrics == null:
 		return global_position
 	var width := (

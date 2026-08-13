@@ -448,7 +448,9 @@ func start_authoritative_session(
 		return false
 	_bind_runtime_state(generated_graph, generated_state)
 	_route_ready = true
+	_reposition_route_players_at_start()
 	_configure_camera_world_bounds()
+	_recenter_camera_on_player()
 	_update_route_hud()
 	_show_node_content(_runtime_state.current_node_id, false)
 	_set_status("路线世界已生成。可自由探索，点击青色相邻节点即可选择路线。", false)
@@ -498,7 +500,10 @@ func apply_full_snapshot(
 	):
 		_set_status("房主路线版本与本地运行配置不兼容。", true)
 		return false
-	var imported_graph := RogueRouteGraph.import_layout(layout_snapshot)
+	var imported_graph := RogueRouteGraph.import_layout(
+		layout_snapshot,
+		generation_config
+	)
 	if imported_graph == null:
 		_set_status("房主路线布局快照无效。", true)
 		return false
@@ -539,7 +544,8 @@ func apply_full_snapshot(
 		and _prepare_encounter_snapshot_application(
 			encounter_snapshot,
 			economy_snapshot,
-			true
+			true,
+			imported_graph
 		).is_empty()
 	):
 		_set_status("房主遭遇或经济快照结构无效。", true)
@@ -644,7 +650,8 @@ func apply_full_snapshot(
 		and _prepare_encounter_snapshot_application(
 			encounter_snapshot,
 			economy_snapshot,
-			false
+			false,
+			imported_graph
 		).is_empty()
 	):
 		_set_status("房主遭遇或经济快照无效或已过期。", true)
@@ -692,6 +699,8 @@ func apply_full_snapshot(
 		return false
 	_bind_runtime_state(imported_graph, imported_state)
 	_route_ready = true
+	if layout_changed:
+		_reposition_route_players_at_start()
 	if (
 		not encounter_snapshot.is_empty()
 		and not apply_encounter_snapshot(
@@ -711,6 +720,8 @@ func apply_full_snapshot(
 		_set_status("房主地下商店快照无效或已过期。", true)
 		return false
 	_configure_camera_world_bounds()
+	if layout_changed:
+		_recenter_camera_on_player()
 	_update_route_hud()
 	_show_node_content(_runtime_state.current_node_id, false)
 	_set_status("已同步房主路线。当前为只读模式。", false)
@@ -1095,9 +1106,15 @@ func apply_encounter_snapshot(
 func _prepare_encounter_snapshot_application(
 	encounter_snapshot: Dictionary,
 	economy_snapshot: Dictionary,
-	structure_only: bool
+	structure_only: bool,
+	validation_graph: RogueRouteGraph = null
 ) -> Dictionary:
 	if encounter_session == null or encounter_snapshot.is_empty():
+		return {}
+	if not _validate_map_encounter_assignment(
+		encounter_snapshot,
+		validation_graph
+	):
 		return {}
 	var supply_state := encounter_snapshot.get("supply_state", {}) as Dictionary
 	var supply_economy_snapshot := economy_snapshot.get(
@@ -1742,7 +1759,7 @@ func _try_play_route_entry_reveal() -> void:
 	var loader := get_node_or_null("/root/GameLoadCoordinator")
 	if loader != null and bool(loader.call("is_loading")):
 		return
-	_try_start_route_music()
+	_reconcile_route_music()
 	if is_encounter_active():
 		route_board.complete_entry_reveal()
 		_set_route_reveal_input_locked(false)
@@ -1753,12 +1770,23 @@ func _try_play_route_entry_reveal() -> void:
 	route_board.play_entry_reveal()
 
 
-## 路线音乐与入场揭示共用加载门禁。重复激活、重连快照或路线重建只会
-## 保持当前播放头，不会从头重播。
-func _try_start_route_music() -> void:
-	if route_music_player.playing:
+## 路线音乐与入场揭示共用加载门禁。暂停中的 AudioStreamPlayer.playing
+## 不能代表已有 playback；以 playback 身份为准，避免重复激活从头重播。
+func _reconcile_route_music() -> void:
+	if not is_node_ready():
 		return
-	route_music_player.play()
+	var combat_lease_active := (
+		_route_presentation_leases & RoutePresentationLease.COMBAT
+	) != 0
+	if not route_music_player.has_stream_playback():
+		if not _runtime_activated or not is_route_ready():
+			return
+		var loader := get_node_or_null("/root/GameLoadCoordinator")
+		if loader != null and bool(loader.call("is_loading")):
+			return
+		route_music_player.play()
+	# 首次启动也必须立刻遵循当前 lease，不能短暂泄漏路线音乐。
+	route_music_player.stream_paused = combat_lease_active
 
 
 func _on_route_entry_reveal_finished() -> void:
@@ -3293,6 +3321,71 @@ func _get_active_encounter_peer_ids() -> Array[int]:
 	return result
 
 
+func _get_map_assigned_encounter_id(
+	node_id: int,
+	validation_graph: RogueRouteGraph = null
+) -> StringName:
+	var graph := validation_graph if validation_graph != null else _route_graph
+	if (
+		graph == null
+		or generation_config == null
+		or not graph.is_valid_node_id(node_id)
+		or graph.get_node_type(node_id)
+		!= RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
+	):
+		return &""
+	var type_config := generation_config.get_type_config(
+		RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
+	)
+	if type_config == null or type_config.content_pool_id == &"":
+		return &""
+	return RogueEncounterRegistry.select_encounter_for_map(
+		type_config.content_pool_id,
+		graph.generation_seed,
+		graph.get_node_ids_by_type(
+			RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
+		),
+		node_id
+	)
+
+
+func _validate_map_encounter_assignment(
+	snapshot: Dictionary,
+	validation_graph: RogueRouteGraph = null
+) -> bool:
+	var phase := StringName(snapshot.get("phase", &""))
+	if phase == RogueEncounterSession.PHASE_IDLE:
+		return true
+	var graph := validation_graph if validation_graph != null else _route_graph
+	var node_id := int(snapshot.get("node_id", INVALID_NODE_ID))
+	if (
+		graph == null
+		or generation_config == null
+		or not graph.is_valid_node_id(node_id)
+		or graph.get_node_type(node_id)
+		!= RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
+	):
+		return false
+	var type_config := generation_config.get_type_config(
+		RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
+	)
+	var expected_encounter_id := _get_map_assigned_encounter_id(
+		node_id,
+		graph
+	)
+	return (
+		type_config != null
+		and type_config.content_pool_id != &""
+		and StringName(snapshot.get("content_pool_id", &""))
+		== type_config.content_pool_id
+		and int(snapshot.get("node_content_seed", -1))
+		== graph.get_node_content_seed(node_id)
+		and not expected_encounter_id.is_empty()
+		and StringName(snapshot.get("encounter_id", &""))
+		== expected_encounter_id
+	)
+
+
 func _try_start_encounter_for_node(node_id: int) -> bool:
 	if (
 		not _authority_enabled
@@ -3313,11 +3406,15 @@ func _try_start_encounter_for_node(node_id: int) -> bool:
 	)
 	if type_config == null or type_config.content_pool_id == &"":
 		return false
+	var assigned_encounter_id := _get_map_assigned_encounter_id(node_id)
+	if assigned_encounter_id.is_empty():
+		return false
 	return encounter_session.start_for_node(
 		node_id,
 		type_config.content_pool_id,
 		_route_graph.get_node_content_seed(node_id),
-		_get_active_encounter_peer_ids()
+		_get_active_encounter_peer_ids(),
+		assigned_encounter_id
 	)
 
 
@@ -4242,9 +4339,7 @@ func _apply_route_presentation_leases() -> void:
 	if not is_node_ready():
 		return
 	var active_leases := _route_presentation_leases
-	route_music_player.stream_paused = (
-		active_leases & RoutePresentationLease.COMBAT
-	) != 0
+	_reconcile_route_music()
 	var route_world_hidden := active_leases != 0
 	var full_hud_hidden := (
 		active_leases & ROUTE_PRESENTATION_FULL_HIDE_MASK
@@ -5129,6 +5224,52 @@ func _get_avatar_spawn_position(index: int) -> Vector2:
 		index % AVATAR_SPAWN_OFFSETS.size()
 	]
 	return route_board.get_default_spawn_global_position(generation_config) + offset
+
+
+func _reposition_route_players_at_start() -> void:
+	if (
+		route_board == null
+		or _route_graph == null
+		or not _route_graph.is_valid_node_id(_route_graph.start_node_id)
+	):
+		return
+	var start_position := route_board.get_node_global_position(
+		_route_graph.start_node_id
+	)
+	if _multiplayer_avatar_mode:
+		var peer_ids: Array[int] = []
+		for raw_peer_id in peer_players.keys():
+			var peer_id := int(raw_peer_id)
+			if peer_id > 0:
+				peer_ids.append(peer_id)
+		peer_ids.sort()
+		for index in range(peer_ids.size()):
+			_reposition_route_player(
+				peer_players.get(peer_ids[index]) as Player,
+				start_position + AVATAR_SPAWN_OFFSETS[
+					index % AVATAR_SPAWN_OFFSETS.size()
+				]
+			)
+		return
+	_reposition_route_player(player, start_position + AVATAR_SPAWN_OFFSETS[0])
+
+
+func _reposition_route_player(
+	player_instance: Player,
+	target_position: Vector2
+) -> void:
+	if player_instance == null or not is_instance_valid(player_instance):
+		return
+	var smoothing_enabled := (
+		player_instance.is_multiplayer_visual_smoothing_enabled()
+	)
+	if smoothing_enabled:
+		player_instance.set_multiplayer_visual_smoothing_enabled(false)
+	player_instance.global_position = target_position
+	player_instance.velocity = Vector2.ZERO
+	player_instance.reset_physics_interpolation()
+	if smoothing_enabled:
+		player_instance.set_multiplayer_visual_smoothing_enabled(true)
 
 
 func _attach_camera_to_local_player() -> void:

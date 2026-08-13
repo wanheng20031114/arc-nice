@@ -92,7 +92,7 @@ func _test_definition_contract() -> void:
 		"楼层 runtime contract hash 必须是稳定的 64 位 SHA-256。"
 	)
 	_expect(
-		FLOOR_DEFINITION_SCRIPT.RUNTIME_CONTRACT_SCHEMA == 7
+		FLOOR_DEFINITION_SCRIPT.RUNTIME_CONTRACT_SCHEMA == 8
 		and FLOOR_DEFINITION_SCRIPT.CONTENT_CONTRACT_SCHEMA == 3
 		and RogueCombatPoolConfig.RUNTIME_CONTRACT_SCHEMA == 1
 		and RogueCombatEncounterConfig.RUNTIME_CONTRACT_SCHEMA == 4,
@@ -164,8 +164,9 @@ func _test_definition_contract() -> void:
 	)
 	mismatched_floor.world_metrics.default_grid_size.x += 1
 	_expect(
-		_has_error_containing(mismatched_floor.validate_definition(), "不一致"),
-		"FloorDefinition 必须拒绝生成尺寸与世界网格不一致。"
+		mismatched_floor.validate_definition().is_empty()
+		and mismatched_floor.compute_runtime_contract_hash() != runtime_hash,
+		"模板化楼层应允许回退画布尺寸变化，并把世界度量变化纳入运行契约。"
 	)
 
 

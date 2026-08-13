@@ -10,5 +10,6 @@ node_type = 3
 display_name = "普通作战"
 icon = ExtResource("2_icon")
 generation_weight = 1.0
-minimum_count = 1
+minimum_count = 4
+maximum_count = 4
 content_pool_id = &"normal_combat"

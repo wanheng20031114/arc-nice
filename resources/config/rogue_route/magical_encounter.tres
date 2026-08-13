@@ -10,5 +10,6 @@ node_type = 1
 display_name = "神奇遭遇"
 icon = ExtResource("2_icon")
 generation_weight = 1.0
-minimum_count = 1
+minimum_count = 4
+maximum_count = 5
 content_pool_id = &"magical_encounter"

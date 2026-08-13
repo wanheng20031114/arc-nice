@@ -618,6 +618,26 @@ func _test_snapshot_and_delta_contract() -> void:
 	var client_host_player := client_route.get_player_for_peer(
 		fake_net_manager.host_peer_id
 	)
+	var client_board := client_route.get("route_board") as RogueRouteBoard
+	var client_graph: RogueRouteGraph = (
+		client_board.graph if client_board != null else null
+	)
+	var client_start_position := (
+		client_board.get_node_global_position(client_graph.start_node_id)
+		if client_graph != null
+		else Vector2.INF
+	)
+	_expect(
+		client_local_player != null
+		and client_host_player != null
+		and client_local_player.global_position.is_equal_approx(
+			client_start_position + RogueRouteGame.AVATAR_SPAWN_OFFSETS[1]
+		)
+		and client_host_player.global_position.is_equal_approx(
+			client_start_position + RogueRouteGame.AVATAR_SPAWN_OFFSETS[0]
+		),
+		"客户端创建多人角色时必须按 peer 排序落在模板实际起点偏移。"
+	)
 	wrapper.set("_route_repair_request_rate_buckets", {})
 	_expect(
 		bool(wrapper.call("_admit_route_repair_request", client_peer_id))
@@ -1186,35 +1206,44 @@ func _test_encounter_network_contract(
 	var client_camera_instance_id := (
 		client_camera.get_instance_id() if client_camera != null else 0
 	)
-	var node_types := layout.get("node_types", PackedByteArray()) as PackedByteArray
-	var node_content_seeds := layout.get(
-		"node_content_seeds",
-		PackedInt64Array()
-	) as PackedInt64Array
-	var magical_node_id := -1
-	var run_state := root.get_node_or_null("RunState") as RunStateStore
-	var encountered_ids: Array[StringName] = (
-		run_state.get_rogue_encountered_ids()
-		if run_state != null
-		else []
-	)
-	for node_id in node_types.size():
-		var selected_encounter := RogueEncounterRegistry.select_encounter_for_run(
-			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
-			int(node_content_seeds[node_id]) if node_id < node_content_seeds.size() else 0,
-			encountered_ids
+	var encounter_graph := RogueRouteGraph.import_layout(layout)
+	var magical_node_ids := (
+		encounter_graph.get_node_ids_by_type(
+			RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
 		)
+		if encounter_graph != null
+		else PackedInt32Array()
+	)
+	var magical_node_id := -1
+	var map_encounter_ids: Array[StringName] = []
+	for node_id in magical_node_ids:
+		var selected_encounter := RogueEncounterRegistry.select_encounter_for_map(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			encounter_graph.generation_seed,
+			magical_node_ids,
+			node_id
+		)
+		map_encounter_ids.append(selected_encounter)
 		if (
-			int(node_types[node_id])
-			== RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
-			and node_id < node_content_seeds.size()
-			and selected_encounter != RogueEncounterRegistry.FLUORESCENT_PIT
+			magical_node_id < 0
+			and
+			selected_encounter != RogueEncounterRegistry.FLUORESCENT_PIT
 			and not RogueEncounterRegistry.requires_result_ack(
 				selected_encounter
 			)
 		):
 			magical_node_id = node_id
-			break
+	var unique_map_encounter_ids := map_encounter_ids.duplicate()
+	unique_map_encounter_ids.sort()
+	for index in range(unique_map_encounter_ids.size() - 1, 0, -1):
+		if unique_map_encounter_ids[index] == unique_map_encounter_ids[index - 1]:
+			unique_map_encounter_ids.remove_at(index)
+	_expect(
+		encounter_graph != null
+		and map_encounter_ids.size() == magical_node_ids.size()
+		and unique_map_encounter_ids.size() == magical_node_ids.size(),
+		"同一张路线图的神奇遭遇必须按地图 seed 一一分配且互不重复。"
+	)
 	_expect(
 		magical_node_id >= 0,
 		"固定 P3 路线必须包含一个旧式单轮神奇遭遇节点。"
@@ -1260,6 +1289,25 @@ func _test_encounter_network_contract(
 	)
 	var economy := host_route.export_encounter_economy_snapshot(client_peer_id)
 	var client_state_before := client_route.export_encounter_snapshot()
+	var forged_encounter := voting.duplicate(true)
+	for candidate_id in RogueEncounterRegistry.get_pool_entries(
+		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
+	):
+		if candidate_id != StringName(voting.get("encounter_id", &"")):
+			forged_encounter["encounter_id"] = String(candidate_id)
+			break
+	_expect(
+		not bool(client_route.call(
+			"_validate_map_encounter_assignment",
+			forged_encounter
+		))
+		and not client_route.apply_encounter_snapshot(
+			forged_encounter,
+			economy
+		)
+		and client_route.export_encounter_snapshot() == client_state_before,
+		"客户端必须拒绝与当前模板 seed 确定分配不一致的神奇遭遇快照。"
+	)
 	_expect(
 		not bool(wrapper.call(
 			"_apply_encounter_snapshot_from_peer",

@@ -2,6 +2,7 @@ extends RefCounted
 class_name RogueEncounterRegistry
 
 const MAGICAL_ENCOUNTER_POOL := &"magical_encounter"
+const RUNTIME_CONTRACT_SCHEMA := 1
 
 const CHICKEN_BRO := &"chicken_bro"
 const SLIME_TALKERS := &"slime_talkers"
@@ -311,6 +312,65 @@ static func select_encounter_for_run(
 		available.size()
 	)
 	return available[index]
+
+
+## 为一张路线图中的全部遭遇节点建立稳定且不重复的内容映射。
+## ordered_node_ids 必须使用路线图的稳定节点顺序；同一地图 seed 下，节点分配
+## 与访问先后无关。下一张地图使用新的 generation_seed，因此允许再次出现
+## 上一张地图已经触发过的事件。
+static func select_encounter_for_map(
+	content_pool_id: StringName,
+	generation_seed: int,
+	ordered_node_ids: PackedInt32Array,
+	node_id: int
+) -> StringName:
+	var entries := get_pool_entries(content_pool_id)
+	if (
+		entries.is_empty()
+		or ordered_node_ids.is_empty()
+		or ordered_node_ids.size() > entries.size()
+	):
+		return &""
+	var node_index := ordered_node_ids.find(node_id)
+	if node_index < 0:
+		return &""
+	for index in range(1, ordered_node_ids.size()):
+		if ordered_node_ids[index - 1] >= ordered_node_ids[index]:
+			return &""
+	var shuffled := entries.duplicate()
+	for source_index in range(shuffled.size() - 1, 0, -1):
+		var target_index := RogueEncounterRandom.choose_index(
+			generation_seed,
+			StringName(
+				"route_map_assignment:%s:%d"
+				% [String(content_pool_id), source_index]
+			),
+			source_index + 1
+		)
+		var temporary: StringName = shuffled[source_index]
+		shuffled[source_index] = shuffled[target_index]
+		shuffled[target_index] = temporary
+	return shuffled[node_index]
+
+
+## 事件池的稳定顺序会直接影响按地图 seed 进行的一一分配，必须进入路线
+## runtime contract，避免不同客户端用相同布局推导出不同事件。
+static func compute_runtime_contract_hash() -> String:
+	var pool_ids: Array[StringName] = []
+	for raw_pool_id in _POOLS.keys():
+		pool_ids.append(StringName(raw_pool_id))
+	pool_ids.sort_custom(func(first: StringName, second: StringName) -> bool:
+		return String(first) < String(second)
+	)
+	var parts := PackedStringArray([
+		"schema=%d" % RUNTIME_CONTRACT_SCHEMA,
+	])
+	for pool_id in pool_ids:
+		var entries := get_pool_entries(pool_id)
+		parts.append("pool=%s:%d" % [String(pool_id), entries.size()])
+		for encounter_id in entries:
+			parts.append("encounter=%s" % String(encounter_id))
+	return "\n".join(parts).sha256_text()
 
 
 static func has_pool(content_pool_id: StringName) -> bool:

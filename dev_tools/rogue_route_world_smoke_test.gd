@@ -1,7 +1,7 @@
 extends SceneTree
 
 const ROUTE_SCENE := preload("res://scene/game_modes/rogue/route/rogue_route_game.tscn")
-const EXPECTED_WORLD_SIZE := Vector2(1376.0, 864.0)
+const EXPECTED_DEFAULT_WORLD_SIZE := Vector2(1376.0, 864.0)
 const EXPECTED_CELL_SPACING := Vector2(112.0, 80.0)
 const EXPECTED_BOARD_MARGIN := Vector2(128.0, 112.0)
 const EXPECTED_BACKGROUND_SIZE := Vector2(2304.0, 1296.0)
@@ -40,7 +40,9 @@ func _run() -> void:
 	physics_interpolation = false
 	render_viewport.snap_2d_transforms_to_pixel = false
 	render_viewport.snap_2d_vertices_to_pixel = true
-	route.initial_generation_seed = 424242
+	# 固定为起点拥有 EMPTY 相邻节点的模板化布局，避免本世界层测试在
+	# 逻辑移动后意外打开作战/遭遇/商店等独立模态流程。
+	route.initial_generation_seed = 1
 	root.add_child(route)
 	current_scene = route
 	for _frame in range(8):
@@ -181,37 +183,40 @@ func _audit_board(
 ) -> void:
 	var obsolete_group_marker := board.get_node_or_null("GroupMarker")
 	var metrics := board.get_world_metrics()
+	var graph := board.graph
 	_expect(
 		player_layer != null
 		and board.z_index < player_layer.z_index
 		and obsolete_group_marker == null,
 		"路线节点必须绘制在玩家下方，Board 不得再保留误导性的 GroupMarker。"
 	)
-	_expect(
-		board.size.is_equal_approx(EXPECTED_WORLD_SIZE),
-		"11×9 路线世界必须由统一度量计算为 1376×864。"
-	)
 	_expect(metrics != null, "路线板必须绑定统一 RogueRouteWorldMetrics。")
-	if metrics == null:
+	_expect(graph != null, "路线板必须持有已生成图数据。")
+	if metrics == null or graph == null:
 		return
+	var expected_template_world_size := metrics.get_layout_size(
+		Vector2i(graph.width, graph.height)
+	)
+	_expect(
+		graph.width in [8, 10]
+		and graph.height == 5
+		and board.size.is_equal_approx(expected_template_world_size),
+		"路线世界尺寸必须由实际 8×5 或 10×5 模板动态派生。"
+	)
 	_expect(
 		metrics.validate_metrics().is_empty()
 		and metrics.cell_spacing.is_equal_approx(EXPECTED_CELL_SPACING)
 		and metrics.board_margin.is_equal_approx(EXPECTED_BOARD_MARGIN)
 		and is_equal_approx(metrics.camera_zoom, EXPECTED_CAMERA_ZOOM)
 		and metrics.get_layout_size(Vector2i(11, 9)).is_equal_approx(
-			EXPECTED_WORLD_SIZE
+			EXPECTED_DEFAULT_WORLD_SIZE
 		),
-		"路线间距、边距、镜头缩放与世界尺寸必须来自同一份度量资源。"
+		"路线间距、边距、镜头缩放与无布局回退尺寸必须来自同一份度量资源。"
 	)
 	_expect(
 		board.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
 		"路线节点与界面素材必须使用 NEAREST 过滤。"
 	)
-	var graph := board.graph
-	if graph == null:
-		_expect(false, "路线板必须持有已生成图数据。")
-		return
 	for node_id in range(graph.get_node_count()):
 		var coord := graph.id_to_coord(node_id)
 		var base_position := (
@@ -533,6 +538,19 @@ func _audit_player_and_camera(
 		and camera.process_callback == Camera2D.CAMERA2D_PROCESS_PHYSICS,
 		"跟随 Camera2D 必须继承玩家插值并在物理回调中采样。"
 	)
+	var spawn_board := route.get_node_or_null(
+		"World/RouteBoard"
+	) as RogueRouteBoard
+	var spawn_graph: RogueRouteGraph = (
+		spawn_board.graph if spawn_board != null else null
+	)
+	_expect(
+		spawn_graph != null
+		and local_player.global_position.is_equal_approx(
+			spawn_board.get_node_global_position(spawn_graph.start_node_id)
+		),
+		"新路线必须把单人角色放到模板实际 start_node_id。"
+	)
 
 	var state_before := route.export_state_snapshot()
 	local_player.global_position += Vector2(24.0, 0.0)
@@ -567,10 +585,7 @@ func _audit_player_and_camera(
 		var neighbors := graph.get_neighbors(runtime.current_node_id)
 		for neighbor_id in neighbors:
 			var node_type := graph.get_node_type(int(neighbor_id))
-			if node_type not in [
-				RogueRouteGraph.NodeType.NORMAL_COMBAT,
-				RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER,
-			]:
+			if node_type == RogueRouteGraph.NodeType.EMPTY:
 				target_node_id = int(neighbor_id)
 				break
 	if board != null and target_node_id >= 0:
@@ -589,7 +604,8 @@ func _audit_player_and_camera(
 		and board.can_interact_with_node(target_node_id),
 		"玩家停留在远离目标的位置时，合法相邻节点仍必须允许点击。"
 	)
-	route.call(&"_apply_camera_drag", Vector2(-96.0, -48.0))
+	# 出生点可能靠近模板右/下侧，向左上拖动才能离开最近合法中心。
+	route.call(&"_apply_camera_drag", Vector2(96.0, 48.0))
 	await process_frame
 	var dragged_camera_position := camera.position
 	var player_position_before_route_move := local_player.global_position
@@ -649,7 +665,7 @@ func _audit_player_and_camera(
 		"定位角色复位镜头不能额外消耗 AP 或修改 revision。"
 	)
 
-	route.call(&"_apply_camera_drag", Vector2(-160.0, -80.0))
+	route.call(&"_apply_camera_drag", Vector2(160.0, 80.0))
 	await process_frame
 	_expect(
 		not camera.position.is_equal_approx(recentered_camera_position),
@@ -669,27 +685,35 @@ func _audit_player_and_camera(
 		route.export_state_snapshot(),
 		"Home 复位镜头不能额外消耗 AP 或修改 revision。"
 	)
-	var player_position_before_regeneration := local_player.global_position
-	var camera_local_before_regeneration := camera.position
-	var camera_global_before_regeneration := camera.global_position
-	var camera_center_before_regeneration := camera.get_screen_center_position()
 	var regenerated := route.start_authoritative_session(20260802, false)
 	await physics_frame
 	await process_frame
+	var regenerated_graph: RogueRouteGraph = board.graph if board != null else null
+	var expected_regenerated_spawn := (
+		board.get_node_global_position(regenerated_graph.start_node_id)
+		if regenerated_graph != null
+		else Vector2.INF
+	)
+	var recentered_camera_local := camera.position
+	var recentered_camera_global := camera.global_position
+	route.call(&"_recenter_camera_on_player")
+	await process_frame
 	_expect(
 		regenerated
+		and regenerated_graph != null
 		and local_player.global_position.is_equal_approx(
-			player_position_before_regeneration
+			expected_regenerated_spawn
 		)
-		and camera.position.is_equal_approx(camera_local_before_regeneration)
+		and local_player.velocity.is_zero_approx()
+		and camera.position.is_equal_approx(recentered_camera_local)
 		and camera.global_position.is_equal_approx(
-			camera_global_before_regeneration
-		)
-		and camera.get_screen_center_position().is_equal_approx(
-			camera_center_before_regeneration
+			recentered_camera_global
 		),
-		"重新生成路线只能替换逻辑地图，不得传送玩家或移动镜头。"
+		"重新生成路线必须把角色传送到新模板起点、清空速度并将镜头复位到最近合法中心。"
 	)
+	# 新布局会重新播放路线揭示；后续 HUD 交互审计需要先结束这段正式门禁。
+	board.complete_entry_reveal()
+	await process_frame
 
 
 func _expect_state_unchanged(
