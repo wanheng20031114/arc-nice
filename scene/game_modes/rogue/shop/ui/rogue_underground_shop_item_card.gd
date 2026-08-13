@@ -11,6 +11,10 @@ enum PresentationMode {
 const PRICE_COLOR := Color(0.91, 0.8, 0.57, 1.0)
 const INSUFFICIENT_PRICE_COLOR := Color(0.86, 0.32, 0.29, 1.0)
 
+@export_range(0.0, 4.0, 0.05) var float_amplitude_pixels := 1.5
+@export_range(1.0, 6.0, 0.05) var float_period_seconds := 3.0
+@export_range(0.0, 1.0, 0.01) var float_phase_turns := 0.0
+
 @onready var item_icon: TextureRect = %ItemIcon
 @onready var quick_use_badge: TextureRect = %QuickUseBadge
 @onready var xirang_icon: TextureRect = %XirangIcon
@@ -21,11 +25,24 @@ const INSUFFICIENT_PRICE_COLOR := Color(0.86, 0.32, 0.29, 1.0)
 
 var _mode := PresentationMode.BUY
 var _payload: Dictionary = {}
+var _item_icon_rest_position := Vector2.ZERO
+var _float_elapsed_seconds := 0.0
 
 
 func _ready() -> void:
+	_item_icon_rest_position = item_icon.position
 	pressed.connect(_on_pressed)
 	clear_card()
+
+
+func _process(delta: float) -> void:
+	if item_icon.texture == null or not is_visible_in_tree():
+		return
+	_float_elapsed_seconds = fposmod(
+		_float_elapsed_seconds + maxf(delta, 0.0),
+		maxf(float_period_seconds, 0.001)
+	)
+	_update_item_icon_float()
 
 
 func present_buy_offer(offer: Dictionary, xirang_balance: int = 0) -> void:
@@ -77,6 +94,9 @@ func clear_card() -> void:
 	_payload = {}
 	if item_icon != null:
 		item_icon.texture = null
+		item_icon.position = _item_icon_rest_position
+	_float_elapsed_seconds = 0.0
+	set_process(false)
 	if quick_use_badge != null:
 		quick_use_badge.hide()
 	if price_label != null:
@@ -136,6 +156,13 @@ func set_background_interaction_enabled(enabled: bool) -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP if enabled else Control.MOUSE_FILTER_IGNORE
 
 
+func get_float_offset_at_time(elapsed_seconds: float) -> float:
+	var safe_period := maxf(float_period_seconds, 0.001)
+	return sin(
+		TAU * (elapsed_seconds / safe_period + float_phase_turns)
+	) * float_amplitude_pixels
+
+
 func _apply_common_payload(payload: Dictionary, price: int) -> void:
 	var item := _resolve_item(payload)
 	var texture := payload.get("icon_texture") as Texture2D
@@ -144,8 +171,17 @@ func _apply_common_payload(payload: Dictionary, price: int) -> void:
 	if texture == null and item != null:
 		texture = item.icon_texture
 	item_icon.texture = texture
+	set_process(texture != null)
+	_update_item_icon_float()
 	price_label.text = str(maxi(price, 0))
 	xirang_icon.show()
+
+
+func _update_item_icon_float() -> void:
+	item_icon.position = _item_icon_rest_position + Vector2(
+		0.0,
+		get_float_offset_at_time(_float_elapsed_seconds)
+	)
 
 
 func _set_price_color(insufficient: bool) -> void:

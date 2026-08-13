@@ -240,27 +240,48 @@ columns = 4
 
 [node name="ItemCard00" parent="Root/ShopPanel/ItemGrid" instance=ExtResource("10_item_card")]
 unique_name_in_owner = true
+float_amplitude_pixels = 1.25
+float_period_seconds = 2.8
 
 [node name="ItemCard01" parent="Root/ShopPanel/ItemGrid" instance=ExtResource("10_item_card")]
 unique_name_in_owner = true
+float_amplitude_pixels = 1.75
+float_period_seconds = 3.2
+float_phase_turns = 0.18
 
 [node name="ItemCard02" parent="Root/ShopPanel/ItemGrid" instance=ExtResource("10_item_card")]
 unique_name_in_owner = true
+float_period_seconds = 2.6
+float_phase_turns = 0.41
 
 [node name="ItemCard03" parent="Root/ShopPanel/ItemGrid" instance=ExtResource("10_item_card")]
 unique_name_in_owner = true
+float_amplitude_pixels = 2.0
+float_period_seconds = 3.4
+float_phase_turns = 0.67
 
 [node name="ItemCard04" parent="Root/ShopPanel/ItemGrid" instance=ExtResource("10_item_card")]
 unique_name_in_owner = true
+float_amplitude_pixels = 1.75
+float_period_seconds = 2.9
+float_phase_turns = 0.83
 
 [node name="ItemCard05" parent="Root/ShopPanel/ItemGrid" instance=ExtResource("10_item_card")]
 unique_name_in_owner = true
+float_amplitude_pixels = 1.25
+float_period_seconds = 3.3
+float_phase_turns = 0.28
 
 [node name="ItemCard06" parent="Root/ShopPanel/ItemGrid" instance=ExtResource("10_item_card")]
 unique_name_in_owner = true
+float_amplitude_pixels = 2.0
+float_period_seconds = 2.7
+float_phase_turns = 0.55
 
 [node name="ItemCard07" parent="Root/ShopPanel/ItemGrid" instance=ExtResource("10_item_card")]
 unique_name_in_owner = true
+float_period_seconds = 3.1
+float_phase_turns = 0.94
 
 [node name="Rule" type="ColorRect" parent="Root/ShopPanel"]
 layout_mode = 1

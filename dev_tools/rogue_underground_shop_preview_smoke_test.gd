@@ -5,6 +5,17 @@ const PREVIEW_SCENE := preload(
 )
 const VIEWPORT_SIZE := Vector2i(1152, 648)
 const HEALTH_CONFIG := preload("res://resources/config/consumables/healing_potion.tres")
+const ITEM_ICON_REST_POSITION := Vector2(32.0, 14.0)
+const ITEM_FLOAT_PROFILES := [
+	Vector3(1.25, 2.8, 0.0),
+	Vector3(1.75, 3.2, 0.18),
+	Vector3(1.5, 2.6, 0.41),
+	Vector3(2.0, 3.4, 0.67),
+	Vector3(1.75, 2.9, 0.83),
+	Vector3(1.25, 3.3, 0.28),
+	Vector3(2.0, 2.7, 0.55),
+	Vector3(1.5, 3.1, 0.94),
+]
 
 var failures: Array[String] = []
 
@@ -141,10 +152,48 @@ func _audit_authored_scene(view: RogueUndergroundShopView) -> void:
 		grid.columns == 4 and grid.get_child_count() == 8,
 		"商品网格必须是 authored 4×2。"
 	)
+	var authored_float_profiles := {}
 	for card_index in range(view.get_item_cards().size()):
 		var card := view.get_item_cards()[card_index]
+		var expected_profile: Vector3 = ITEM_FLOAT_PROFILES[card_index]
 		_expect(card.size == Vector2(128, 128), "商品卡必须保持 128×128 像素尺寸。")
+		_expect(
+			is_equal_approx(card.float_amplitude_pixels, expected_profile.x)
+			and is_equal_approx(card.float_period_seconds, expected_profile.y)
+			and is_equal_approx(card.float_phase_turns, expected_profile.z),
+			"每张商品卡必须保留 authored 固定振幅、周期与相位。"
+		)
+		authored_float_profiles[expected_profile] = true
+		var peak_time := fposmod(
+			(0.25 - card.float_phase_turns) * card.float_period_seconds,
+			card.float_period_seconds
+		)
+		var trough_time := fposmod(
+			(0.75 - card.float_phase_turns) * card.float_period_seconds,
+			card.float_period_seconds
+		)
+		var peak_offset := card.get_float_offset_at_time(peak_time)
+		var trough_offset := card.get_float_offset_at_time(trough_time)
+		_expect(
+			is_equal_approx(peak_offset, card.float_amplitude_pixels)
+			and is_equal_approx(trough_offset, -card.float_amplitude_pixels)
+			and is_equal_approx(
+				card.get_float_offset_at_time(0.0),
+				card.get_float_offset_at_time(card.float_period_seconds)
+			),
+			"商品图标必须以连续正弦曲线在固定区间内循环且周期首尾衔接。"
+		)
 		var quick_use_badge := card.get_node("QuickUseBadge") as TextureRect
+		var item_icon := card.get_node("ItemIcon") as TextureRect
+		var card_rect := Rect2(Vector2.ZERO, card.size)
+		for offset_y in [peak_offset, trough_offset]:
+			_expect(
+				card_rect.encloses(Rect2(
+					ITEM_ICON_REST_POSITION + Vector2(0.0, offset_y),
+					item_icon.size
+				)),
+				"商品图标的完整浮动轨迹必须始终留在稳定点击卡片内部。"
+			)
 		_expect(
 			quick_use_badge.size == Vector2(10, 10)
 			and quick_use_badge.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
@@ -157,6 +206,10 @@ func _audit_authored_scene(view: RogueUndergroundShopView) -> void:
 			),
 			"交易卡价格必须使用个人息壤图标，而不是光石。"
 		)
+	_expect(
+		authored_float_profiles.size() == view.get_item_cards().size(),
+		"八张商品卡必须使用八组互不相同的固定浮动节奏。"
+	)
 	var consumable_prices: Dictionary = {}
 	for card in view.get_item_cards():
 		var payload := card.get_payload()
@@ -394,7 +447,11 @@ func _audit_sell_interaction(
 	for card_index in range(4, 8):
 		_expect(
 			view.get_item_cards()[card_index].get_payload().is_empty()
-			and view.get_item_cards()[card_index].disabled,
+			and view.get_item_cards()[card_index].disabled
+			and not view.get_item_cards()[card_index].is_processing()
+			and (
+				view.get_item_cards()[card_index].get_node("ItemIcon") as TextureRect
+			).position == ITEM_ICON_REST_POSITION,
 			"第三页越过20格容量的后4张卡必须为空且不可交互。"
 		)
 	var locked_card := view.get_item_cards()[1]
