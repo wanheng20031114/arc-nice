@@ -6,4 +6,4 @@
 [resource]
 script = ExtResource("1_entry_script")
 enemy_config = ExtResource("2_enemy")
-count = 30
+count = 40

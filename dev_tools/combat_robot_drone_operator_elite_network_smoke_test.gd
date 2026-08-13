@@ -35,9 +35,9 @@ func _run() -> void:
 
 func _test_protocol_and_compensation_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 69
+		NetConstants.PROTOCOL_VERSION == 70
 		and NetConstants.CHANNEL_COUNT == 8,
-		"协议v69必须隔离植被科研倍率快照与注册集合，并保留v68六格扩散、精英无人机与既有资源语义，且不能增加ENet频道。"
+		"协议v70必须隔离地下教会10/20/40敌人构成与同时存活上限15的正式作战合同，并保留v69植被科研、精英无人机与既有资源语义，且不能增加ENet频道。"
 	)
 	_expect(
 		MpProjectileCoordinatorScript._is_combat_robot_suicide_drone_type(

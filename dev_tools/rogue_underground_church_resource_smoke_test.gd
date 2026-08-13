@@ -82,23 +82,23 @@ func _test_underground_church_config() -> void:
 		wave.get_total_enemy_count() == 70
 		and is_equal_approx(wave.spawn_interval, 0.2)
 		and wave.spawn_count_per_tick == 1
-		and wave.max_alive_enemies == 20
+		and wave.max_alive_enemies == 15
 		and wave.spawn_point_mask
 			== RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
 		and wave.spawn_point_order
 			== WaveConfig.SpawnPointOrder.BALANCED_SHUFFLE_BAG
 		and wave.spawn_order == WaveConfig.SpawnOrder.SHUFFLED,
-		"地下教会必须保持70名敌人、0.2秒批1、cap20与三门均衡乱序。"
+		"地下教会必须保持70名敌人、0.2秒批1、cap15与三门均衡乱序。"
 	)
 	_expect(
-		_count_enemy(wave, CARDBOARD_MONSTER) == 20
+		_count_enemy(wave, CARDBOARD_MONSTER) == 10
 		and _count_enemy(wave, COMBAT_ROBOT_GUNNER) == 20
-		and _count_enemy(wave, SLIME) == 30,
-		"地下教会敌人组成必须严格为20纸箱怪、20持枪机器人、30史莱姆。"
+		and _count_enemy(wave, SLIME) == 40,
+		"地下教会敌人组成必须严格为10纸箱怪、20持枪机器人、40史莱姆。"
 	)
 	_expect(
-		_compute_enemy_kill_xirang(wave) == 290,
-		"地下教会全清必须保留290点敌人击杀息壤。"
+		_compute_enemy_kill_xirang(wave) == 270,
+		"地下教会全清必须保留270点敌人击杀息壤。"
 	)
 
 

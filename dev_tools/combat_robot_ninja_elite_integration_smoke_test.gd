@@ -113,7 +113,7 @@ func _test_codex_and_fate() -> void:
 
 
 func _test_protocol_and_no_new_attack_resources() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 69, "协议v69必须隔离植被科研倍率快照与注册集合，并保留v68六格扩散、精英忍者与既有资源语义。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 70, "协议v70必须隔离地下教会10/20/40敌人构成与同时存活上限15的正式作战合同，并保留v69植被科研、精英忍者与既有资源语义。")
 	_expect(
 		CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET == 18
 		and CombatAttackRegistry.encode_player_hit_source(

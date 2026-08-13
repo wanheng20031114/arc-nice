@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 69,
-		"协议v69必须隔离植被科研倍率快照与注册集合，并保留v68六格扩散、攻速强化塔、移速强化塔、P1E入口、神奇遭遇历史、P1D地下教堂与大小纸箱怪资源及既有模式接线。"
+		NetConstants.PROTOCOL_VERSION == 70,
+		"协议v70必须隔离地下教会10/20/40敌人构成与同时存活上限15的正式作战合同，并保留v69植被科研、攻速强化塔、移速强化塔、P1E入口、神奇遭遇历史、P1D地下教堂与大小纸箱怪资源及既有模式接线。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

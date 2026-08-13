@@ -28,16 +28,16 @@ const ROUTE_SEED_SEARCH_LIMIT := 4096
 const NETWORK_TIMEOUT_SECONDS := 30.0
 const COMBAT_TIMEOUT_SECONDS := 55.0
 const EXPECTED_ENEMY_COUNT := 70
-const EXPECTED_MAX_ALIVE_ENEMIES := 20
+const EXPECTED_MAX_ALIVE_ENEMIES := 15
 const EXPECTED_SPAWN_INTERVAL_MSEC := 200
 const SPAWN_INTERVAL_SCHEDULING_TOLERANCE_MSEC := 75
-const EXPECTED_SPAWN_BATCH_TARGETS: Array[int] = [20, 40, 60, 70]
+const EXPECTED_SPAWN_BATCH_TARGETS: Array[int] = [15, 30, 45, 60, 70]
 const EXPECTED_CONFIG_COUNTS := {
-	CARDBOARD_MONSTER_CONFIG_PATH: 20,
+	CARDBOARD_MONSTER_CONFIG_PATH: 10,
 	COMBAT_ROBOT_GUNNER_CONFIG_PATH: 20,
-	SLIME_CONFIG_PATH: 30,
+	SLIME_CONFIG_PATH: 40,
 }
-const EXPECTED_KILL_XIRANG := 290
+const EXPECTED_KILL_XIRANG := 270
 const EXPECTED_EXTRA_XIRANG := 500
 const EXPECTED_TOTAL_XIRANG_DELTA := (
 	EXPECTED_KILL_XIRANG + EXPECTED_EXTRA_XIRANG
@@ -337,7 +337,7 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 	print(
 		(
 			"ROGUE_COMBAT_LAN_HOST_SPAWN occurrence=%s config=%s count=70 "
-			+ "types=20/20/30 max_alive=20 interval_ms=%d"
+			+ "types=10/20/40 max_alive=15 interval_ms=%d"
 		)
 		% [
 			occurrence_key,
@@ -671,7 +671,7 @@ func _run_client(net_manager: NetManagerStore, port: int) -> void:
 	print(
 		(
 			"ROGUE_COMBAT_LAN_CLIENT_SPAWN occurrence=%s config=%s count=70 "
-			+ "types=20/20/30 doors=%s ids_match=true interval_ms=%d"
+			+ "types=10/20/40 doors=%s ids_match=true interval_ms=%d"
 		)
 		% [
 			occurrence_key,
@@ -842,7 +842,7 @@ func _on_host_enemy_spawned(
 		)
 		if host_peak_alive_count > EXPECTED_MAX_ALIVE_ENEMIES:
 			_fail(
-				"Host exceeded the configured twenty-enemy alive cap: %d"
+				"Host exceeded the configured fifteen-enemy alive cap: %d"
 				% host_peak_alive_count
 			)
 
@@ -859,7 +859,7 @@ func _wait_for_host_spawn_target(
 		var active_count := game.multiplayer_enemies_by_net_id.size()
 		if active_count > EXPECTED_MAX_ALIVE_ENEMIES:
 			_fail(
-				"Host exceeded the configured twenty-enemy alive cap: %d"
+				"Host exceeded the configured fifteen-enemy alive cap: %d"
 				% active_count
 			)
 			return false
@@ -946,11 +946,11 @@ func _validate_host_spawn_contract(game: RogueCombatGame) -> bool:
 		or wave.spawn_point_order
 		!= WaveConfig.SpawnPointOrder.BALANCED_SHUFFLE_BAG
 	):
-		_fail("Host formal wave does not use 0.2s/one/twenty/balanced spawn policy")
+		_fail("Host formal wave does not use 0.2s/one/fifteen/balanced spawn policy")
 		return false
 	if host_peak_alive_count != EXPECTED_MAX_ALIVE_ENEMIES:
 		_fail(
-			"Host peak alive count must reach but never exceed twenty: %d"
+			"Host peak alive count must reach but never exceed fifteen: %d"
 			% host_peak_alive_count
 		)
 		return false
@@ -964,7 +964,7 @@ func _validate_host_spawn_contract(game: RogueCombatGame) -> bool:
 			return false
 		config_counts[config_path] = config_counts.get(config_path, 0) + 1
 	if not _config_counts_match_expected(config_counts):
-		_fail("Host enemy composition is not 20 cardboard / 20 gunner / 30 slime")
+		_fail("Host enemy composition is not 10 cardboard / 20 gunner / 40 slime")
 		return false
 	var door_positions: Array[Vector2] = []
 	for marker in game.active_wave_spawn_points:
@@ -1056,7 +1056,7 @@ func _wait_for_client_enemy_batch(
 		)
 		return false
 	if game.multiplayer_enemies_by_net_id.size() > EXPECTED_MAX_ALIVE_ENEMIES:
-		_fail("Client observed more than twenty simultaneous enemy proxies")
+		_fail("Client observed more than fifteen simultaneous enemy proxies")
 		return false
 	return true
 
@@ -1109,7 +1109,7 @@ func _validate_client_spawn_contract(
 		_fail("Client cumulative enemy IDs differ from Host's seventy IDs")
 		return false
 	if not _config_counts_match_expected(config_counts):
-		_fail("Client enemy composition is not 20 cardboard / 20 gunner / 30 slime")
+		_fail("Client enemy composition is not 10 cardboard / 20 gunner / 40 slime")
 		return false
 	if host_spawn_positions.size() != EXPECTED_ENEMY_COUNT:
 		_fail("Client did not receive seventy authoritative spawn positions")
@@ -1388,7 +1388,7 @@ func _validate_victory_settlement(
 		var route_player := route.get_player_for_peer(peer_id) as Player
 		if int(final_xirang.get(peer_id, -1)) != expected_final_xirang:
 			_fail(
-				"%s peer %d did not receive 290 kill + 500 extra Xirang"
+				"%s peer %d did not receive 270 kill + 500 extra Xirang"
 				% [label, peer_id]
 			)
 		if route_player == null or route_player.get_xirang() != expected_final_xirang:

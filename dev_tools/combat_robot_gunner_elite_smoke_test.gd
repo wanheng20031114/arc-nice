@@ -301,9 +301,9 @@ func _test_burst_scheduler_and_half_speed() -> void:
 
 func _test_network_pool_and_fate_contract() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 69
+		NET_CONSTANTS.PROTOCOL_VERSION == 70
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
-		"协议v69必须隔离植被科研倍率快照与注册集合，并保留v68六格扩散、精英紫弹与既有资源语义，且不增加ENet频道。"
+		"协议v70必须隔离地下教会10/20/40敌人构成与同时存活上限15的正式作战合同，并保留v69植被科研、精英紫弹与既有资源语义，且不增加ENet频道。"
 	)
 	_expect(
 		CombatAttackRegistry.encode_player_hit_source(

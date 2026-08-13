@@ -921,10 +921,10 @@ func _test_multiplayer_and_runtime_source_contract() -> void:
 		)
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 69
+		NET_CONSTANTS.PROTOCOL_VERSION == 70
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
 		(
-			"Protocol v69 must isolate the Vegetation research multiplier snapshot and wire registry while retaining the v68 six-cell spread, v67 Attack Speed Tower, v66 Speed Tower, v38 projectile, v39 shield-state, v63 resource, "
+			"Protocol v70 must isolate the Underground Church 10/20/40 enemy composition and alive-cap 15 combat contract while retaining the v69 Vegetation research, v68 six-cell spread, v67 Attack Speed Tower, v66 Speed Tower, v38 projectile, v39 shield-state, v63 resource, "
 			+ "v40 slime semantics while isolating ninja boost visuals, ghost IDs, "
 			+ "reconnect activation, P1E status confirmation, and the elite robot resource contract without adding channels."
 		)
