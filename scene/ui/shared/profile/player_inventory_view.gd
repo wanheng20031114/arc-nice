@@ -6,9 +6,11 @@ signal item_discard_requested(slot_index: int)
 signal item_quick_use_toggle_requested(slot_index: int)
 
 const DESIGN_SIZE := Vector2(724.0, 543.0)
-const ITEM_DETAIL_BASE_SIZE := Vector2(254.0, 166.0)
-const ITEM_DETAIL_QUICK_USE_SIZE := Vector2(254.0, 208.0)
+const ITEM_DETAIL_BASE_SIZE := Vector2(258.0, 174.0)
 const ITEM_DETAIL_MARGIN := 14.0
+const ITEM_DETAIL_REGULAR_ACTION_WIDTH := 105.0
+const ITEM_DETAIL_COMPACT_ACTION_WIDTH := 58.0
+const ITEM_DETAIL_QUICK_USE_ACTION_WIDTH := 102.0
 const ITEM_CATEGORY_COLLECTIBLE_TEXTURE := preload(
 	"res://resources/texture/item_category_badge_collectible.png"
 )
@@ -33,6 +35,9 @@ const ITEM_CATEGORY_ITEM_TEXTURE := preload(
 @onready var item_detail_hint: Label = (
 	$ItemDetailPanel/Margin/Content/ItemHint
 )
+@onready var item_detail_button_row: HBoxContainer = (
+	$ItemDetailPanel/Margin/Content/ButtonRow
+)
 @onready var item_detail_use_button: Button = (
 	$ItemDetailPanel/Margin/Content/ButtonRow/UseButton
 )
@@ -40,7 +45,7 @@ const ITEM_CATEGORY_ITEM_TEXTURE := preload(
 	$ItemDetailPanel/Margin/Content/ButtonRow/DiscardButton
 )
 @onready var item_detail_quick_use_button: Button = (
-	$ItemDetailPanel/Margin/Content/QuickUseButton
+	$ItemDetailPanel/Margin/Content/ButtonRow/QuickUseButton
 )
 
 var run_state: RunStateStore = null
@@ -267,18 +272,39 @@ func _refresh_item_detail() -> void:
 		if run_state.is_quick_use_slot(selected_slot_index)
 		else "设置快捷使用"
 	)
+	_update_item_detail_action_layout()
 	item_detail_panel.visible = true
 	item_detail_panel.move_to_front()
 	_update_item_detail_position(
 		slots[selected_slot_index],
-		ITEM_DETAIL_QUICK_USE_SIZE
-		if item_detail_quick_use_button.visible
-		else ITEM_DETAIL_BASE_SIZE
+		ITEM_DETAIL_BASE_SIZE
 	)
 
 
 func _hide_item_detail() -> void:
 	item_detail_panel.visible = false
+
+
+func _update_item_detail_action_layout() -> void:
+	var has_quick_use := item_detail_quick_use_button.visible
+	item_detail_button_row.visible = (
+		item_detail_use_button.visible
+		or item_detail_discard_button.visible
+		or has_quick_use
+	)
+	item_detail_use_button.custom_minimum_size.x = (
+		ITEM_DETAIL_COMPACT_ACTION_WIDTH
+		if has_quick_use
+		else ITEM_DETAIL_REGULAR_ACTION_WIDTH
+	)
+	item_detail_discard_button.custom_minimum_size.x = (
+		ITEM_DETAIL_COMPACT_ACTION_WIDTH
+		if has_quick_use
+		else ITEM_DETAIL_REGULAR_ACTION_WIDTH
+	)
+	item_detail_quick_use_button.custom_minimum_size.x = (
+		ITEM_DETAIL_QUICK_USE_ACTION_WIDTH
+	)
 
 
 func _update_item_detail_position(

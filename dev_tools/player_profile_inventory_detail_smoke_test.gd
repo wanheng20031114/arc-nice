@@ -222,9 +222,20 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	var quick_use_button := (
 		profile_panel.inventory_view.item_detail_quick_use_button
 	)
+	var detail_button_row := (
+		profile_panel.inventory_view.item_detail_button_row
+	)
 	_expect(
 		not quick_use_button.visible,
 		"Collectibles must not show a quick-use binding button."
+	)
+	_expect(
+		detail_button_row.visible
+		and is_equal_approx(
+			profile_panel.item_detail_discard_button.size.x,
+			105.0
+		),
+		"A collectible must keep one centered regular-width discard action."
 	)
 	_expect(
 		not profile_panel.slots[1].quick_use_marker.visible,
@@ -267,14 +278,73 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	_expect(profile_panel.item_detail_hint.text.contains("双击"), "The consumable hint must mention double-click use.")
 	_expect(
 		quick_use_button.visible
+		and quick_use_button.is_visible_in_tree()
+		and detail_button_row.visible
 		and quick_use_button.text == "设置快捷使用"
-		and quick_use_button.size.x >= 230.0,
-		"Consumables must expose the full-width quick-use binding action."
+		and quick_use_button.get_parent() == detail_button_row,
+		"Consumables must expose quick-use inside the shared action row."
 	)
 	_expect(
-		profile_panel.item_detail_panel.size.y > base_detail_height + 30.0,
-		"Showing the quick-use action must expand the item detail panel vertically."
+		is_equal_approx(profile_panel.item_detail_panel.size.y, base_detail_height),
+		"The consumable action row must keep the compact base detail height "
+		+ "(base=%s, consumable=%s)."
+		% [base_detail_height, profile_panel.item_detail_panel.size.y]
 	)
+	_expect(
+		profile_panel.item_detail_panel.size == Vector2(258.0, 174.0),
+		"The redesigned item detail panel must retain its approved compact geometry."
+	)
+	var action_buttons := [
+		profile_panel.item_detail_use_button,
+		quick_use_button,
+		profile_panel.item_detail_discard_button,
+	]
+	_expect(
+		detail_button_row.get_child(0) == action_buttons[0]
+		and detail_button_row.get_child(1) == action_buttons[1]
+		and detail_button_row.get_child(2) == action_buttons[2],
+		"Consumable actions must read left-to-right as use, quick-use, discard."
+	)
+	_expect(
+		is_equal_approx(action_buttons[0].size.x, 58.0)
+		and is_equal_approx(action_buttons[1].size.x, 102.0)
+		and is_equal_approx(action_buttons[2].size.x, 58.0)
+		and action_buttons[0].position.x < action_buttons[1].position.x
+		and action_buttons[1].position.x < action_buttons[2].position.x
+		and is_equal_approx(action_buttons[0].position.y, action_buttons[1].position.y)
+		and is_equal_approx(action_buttons[1].position.y, action_buttons[2].position.y)
+		and is_equal_approx(action_buttons[0].size.y, action_buttons[1].size.y)
+		and is_equal_approx(action_buttons[1].size.y, action_buttons[2].size.y)
+		and action_buttons[0].size.y >= 30.0,
+		"The compact action row must use the approved 58/102/58 single-line layout."
+	)
+	var action_row_rect := Rect2(Vector2.ZERO, detail_button_row.size)
+	for action_index in range(action_buttons.size()):
+		var action_button := action_buttons[action_index] as Button
+		_expect(
+			action_row_rect.encloses(action_button.get_rect())
+			and action_button.get_combined_minimum_size().x <= action_button.size.x
+			and action_button.is_visible_in_tree(),
+			"Every consumable action must fit inside its visible button without clipping."
+		)
+		for other_index in range(action_index + 1, action_buttons.size()):
+			_expect(
+				not action_button.get_rect().intersects(
+					(action_buttons[other_index] as Button).get_rect()
+				),
+				"Consumable action buttons must not overlap."
+			)
+		var focus_style := action_button.get_theme_stylebox("focus") as StyleBoxFlat
+		_expect(
+			focus_style != null
+			and focus_style.get_border_width(SIDE_LEFT) >= 1
+			and focus_style.get_border_width(SIDE_TOP) >= 1
+			and focus_style.get_border_width(SIDE_RIGHT) >= 1
+			and focus_style.get_border_width(SIDE_BOTTOM) >= 1
+			and focus_style.border_color.a > 0.0
+			and action_button.focus_mode != Control.FOCUS_NONE,
+			"Every detail action must expose a visible keyboard-focus outline."
+		)
 	_expect(
 		profile_panel.item_detail_panel.position.y >= 14.0
 		and (
@@ -315,6 +385,29 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	)
 	quick_use_button.emit_signal("pressed")
 	await process_frame
+	profile_panel.slots[2].emit_signal("pressed")
+	await process_frame
+	_expect(
+		profile_panel.item_detail_title.text == "苹果"
+		and detail_button_row.visible
+		and not profile_panel.item_detail_use_button.visible
+		and not quick_use_button.visible
+		and profile_panel.item_detail_discard_button.visible
+		and is_equal_approx(
+			profile_panel.item_detail_discard_button.size.x,
+			105.0
+		),
+		"Leaving a consumable must restore the regular single-action layout."
+	)
+	profile_panel.slots[3].emit_signal("pressed")
+	await process_frame
+	_expect(
+		quick_use_button.visible
+		and quick_use_button.text == "取消快捷使用"
+		and is_equal_approx(profile_panel.item_detail_use_button.size.x, 58.0)
+		and is_equal_approx(profile_panel.item_detail_discard_button.size.x, 58.0),
+		"Returning to the bound consumable must restore the compact three-action row."
+	)
 
 	player.current_health = maxi(player.max_health - HEALTH_PICKUP.heal_amount, 1)
 	profile_panel.item_detail_use_button.emit_signal("pressed")
@@ -378,7 +471,9 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 		)
 		_expect(
 			not profile_panel.item_detail_use_button.visible
-			and not profile_panel.item_detail_discard_button.visible,
+			and not profile_panel.item_detail_discard_button.visible
+			and not quick_use_button.visible
+			and not detail_button_row.visible,
 			"A locked fate item must not expose use or discard actions."
 		)
 		_simulate_double_click(profile_panel.slots[stone_slot_index])

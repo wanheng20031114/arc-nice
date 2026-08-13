@@ -13,6 +13,10 @@ texture_margin_left = 24.0
 texture_margin_top = 24.0
 texture_margin_right = 24.0
 texture_margin_bottom = 24.0
+content_margin_left = 2.0
+content_margin_top = 2.0
+content_margin_right = 2.0
+content_margin_bottom = 2.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rich_text_padding"]
 bg_color = Color(0, 0, 0, 0)
@@ -46,24 +50,24 @@ corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_detail_discard"]
-bg_color = Color(0.58, 0.12, 0.12, 1)
+bg_color = Color(0.2, 0.075, 0.075, 0.96)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.95, 0.34, 0.3, 0.85)
+border_color = Color(0.68, 0.28, 0.24, 0.82)
 corner_radius_top_left = 4
 corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_detail_discard_hover"]
-bg_color = Color(0.74, 0.16, 0.16, 1)
+bg_color = Color(0.42, 0.1, 0.1, 1)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(1, 0.45, 0.4, 1)
+border_color = Color(0.9, 0.36, 0.3, 0.95)
 corner_radius_top_left = 4
 corner_radius_top_right = 4
 corner_radius_bottom_right = 4
@@ -93,7 +97,17 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_detail_button_focus"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_detail_button_focus"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.48, 0.94, 0.86, 0.95)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
 
 [sub_resource type="LabelSettings" id="LabelSettings_value_small"]
 font = ExtResource("3_font")
@@ -351,7 +365,7 @@ vertical_alignment = 1
 
 [node name="ButtonRow" type="HBoxContainer" parent="ItemDetailPanel/Margin/Content"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 alignment = 1
 
 [node name="UseButton" type="Button" parent="ItemDetailPanel/Margin/Content/ButtonRow"]
@@ -365,7 +379,24 @@ theme_override_colors/font_color = Color(0.94, 1, 0.92, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_detail_use")
 theme_override_styles/hover = SubResource("StyleBoxFlat_detail_use_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_detail_use_hover")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_detail_button_focus")
+theme_override_styles/focus = SubResource("StyleBoxFlat_detail_button_focus")
+
+[node name="QuickUseButton" type="Button" parent="ItemDetailPanel/Margin/Content/ButtonRow"]
+visible = false
+custom_minimum_size = Vector2(102, 30)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+text = "设置快捷使用"
+icon = ExtResource("6_quick_use_badge")
+icon_max_width = 10
+expand_icon = true
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(1, 0.94, 0.76, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_detail_quick_use")
+theme_override_styles/hover = SubResource("StyleBoxFlat_detail_quick_use_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_detail_quick_use_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_detail_button_focus")
 
 [node name="DiscardButton" type="Button" parent="ItemDetailPanel/Margin/Content/ButtonRow"]
 custom_minimum_size = Vector2(105, 30)
@@ -374,25 +405,8 @@ mouse_default_cursor_shape = 2
 text = "丢弃"
 theme_override_fonts/font = ExtResource("3_font")
 theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(1, 0.92, 0.9, 1)
+theme_override_colors/font_color = Color(0.94, 0.8, 0.78, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_detail_discard")
 theme_override_styles/hover = SubResource("StyleBoxFlat_detail_discard_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_detail_discard_hover")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_detail_button_focus")
-
-[node name="QuickUseButton" type="Button" parent="ItemDetailPanel/Margin/Content"]
-visible = false
-custom_minimum_size = Vector2(230, 30)
-layout_mode = 2
-mouse_default_cursor_shape = 2
-text = "设置快捷使用"
-icon = ExtResource("6_quick_use_badge")
-icon_max_width = 10
-expand_icon = true
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(1, 0.94, 0.76, 1)
-theme_override_styles/normal = SubResource("StyleBoxFlat_detail_quick_use")
-theme_override_styles/hover = SubResource("StyleBoxFlat_detail_quick_use_hover")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_detail_quick_use_hover")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_detail_button_focus")
+theme_override_styles/focus = SubResource("StyleBoxFlat_detail_button_focus")
