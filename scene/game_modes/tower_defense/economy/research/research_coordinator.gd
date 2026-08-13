@@ -26,6 +26,9 @@ const BAMBOO_MORTAR_CRAFTING_RESEARCH_ID := (
 const HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID := (
 	GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
 )
+const VEGETATION_STAKE_SPREAD_ENHANCEMENT_RESEARCH_ID := (
+	GlobalResearchRegistry.VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID
+)
 const GLOBAL_RESEARCH_DURATION_SECONDS := 60.0
 const GLOBAL_PHYSICAL_DEFENSE_BONUS := 10
 const GLOBAL_PLAYER_MOVE_SPEED_BONUS := 15.0
@@ -200,6 +203,19 @@ func is_global_research_completed(research_id: StringName) -> bool:
 		and get_global_research_state(research_id)
 		== GlobalResearchState.COMPLETED
 	)
+
+
+func get_vegetation_spread_speed_multiplier() -> float:
+	var multiplier := 1.0
+	for config in GlobalResearchRegistry.get_all_configs():
+		if (
+			config.effect_type
+			== GlobalResearchConfig.EffectType.VEGETATION_SPREAD_SPEED_MULTIPLIER
+			and get_global_research_state(config.research_id)
+			== GlobalResearchState.COMPLETED
+		):
+			multiplier *= config.effect_amount
+	return multiplier
 
 
 func get_global_material_total(item: PickupConfig) -> int:

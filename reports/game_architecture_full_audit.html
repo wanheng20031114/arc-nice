@@ -786,14 +786,14 @@
           <div class="diagram">
             <div class="diagram-node accent"><strong>世界事件</strong><p>敌人默认掉落表逐条独立掷骰；Pickup 没有逐帧逻辑，使用 lifetime + blink Timer。Host 先尝试即时应用，失败再尝试入背包。</p></div>
             <div class="diagram-node"><strong>20 槽背包 / 仓库网络</strong><p>资源路径定义同一物品；材料与药瓶可叠，建筑和收藏品不可叠。revision + request ID 保护使用、丢弃、合成与多人重放。</p></div>
-            <div class="diagram-node"><strong>消费与效果</strong><p>临时 Buff 立即应用；材料进入 17 条配方/2 项研究；建筑箱以 CAS 消耗后放置；收藏品由 Player 事件入口解释。</p></div>
+            <div class="diagram-node"><strong>消费与效果</strong><p>临时 Buff 立即应用；材料进入 17 条配方/6 项研究；建筑箱以 CAS 消耗后放置；收藏品由 Player 事件入口解释。</p></div>
           </div>
           <div class="data-table-wrap" style="margin-bottom:34px">
             <table>
               <thead><tr><th>物品域</th><th>当前规模</th><th>存放规则</th><th>真实消费路径</th><th>主要问题</th></tr></thead>
               <tbody>
                 <tr><td>世界道具</td><td>5</td><td>通常即时；满血生命瓶可入包并叠 999</td><td>Player.apply_pickup；成功才从世界移除</td><td>drop_weight 已成误导性兼容字段</td></tr>
-                <tr><td>材料</td><td>8 + 1 环境占位</td><td>可入包/仓，叠 999</td><td>17 条生产/即时配方 + 2 项研究</td><td>白晶、蓝晶、紫粉没有消费端</td></tr>
+                <tr><td>材料</td><td>8 + 1 环境占位</td><td>可入包/仓，叠 999</td><td>17 条生产/即时配方 + 6 项研究</td><td>白晶、蓝晶、紫粉没有消费端</td></tr>
                 <tr><td>建筑箱</td><td>11</td><td>可入包，不可叠，每箱一槽</td><td>先验证格子与 revision，再 CAS 消耗；生成失败回滚</td><td>12 个注册植物只有 11 个箱，葡萄塔断链</td></tr>
                 <tr><td>收藏品</td><td>123</td><td>可入包，不可叠；部分逐份生效</td><td>常驻、周期、命中、击杀、受伤、技能事件</td><td>目录隐式注册；未知字符串静默 no-op</td></tr>
               </tbody>
@@ -826,11 +826,15 @@
             </tbody>
           </table>
         </div>
-        <h3>2 项全局科研</h3>
+        <h3>6 项全局科研</h3>
         <div class="data-table-wrap" style="margin-bottom:40px">
           <table><thead><tr><th>项目</th><th>投入</th><th>时长</th><th>全局效果</th></tr></thead><tbody>
             <tr><td>建筑结构强化</td><td>木板50 + 树苗20 + 水瓶20</td><td>60s</td><td>所有植物/建筑物理防御 +10</td></tr>
-            <tr><td>机动训练</td><td>水瓶50</td><td>60s</td><td>所有玩家移动速度 +15</td></tr>
+            <tr><td>全员移动训练</td><td>水瓶50</td><td>60s</td><td>所有玩家移动速度 +15</td></tr>
+            <tr><td>迫击炮简易装配</td><td>木制核心2 + 树苗5</td><td>30s</td><td>解锁竹筒迫击炮简易制作配方</td></tr>
+            <tr><td>紫阳花简易培育</td><td>木制核心2 + 树苗5</td><td>30s</td><td>解锁紫阳花雨幕塔简易制作配方</td></tr>
+            <tr><td>橘充能塔培育</td><td>木制核心2 + 树苗5</td><td>30s</td><td>解锁植物培育中心的橘充能塔配方</td></tr>
+            <tr><td>植被桩蔓延增强</td><td>木板20 + 水瓶5</td><td>60s</td><td>完成后剩余蔓延进度 ×2：默认每圈10秒，强化后每圈5秒；不追溯已过时间</td></tr>
           </tbody></table>
         </div>
         <div class="toolbar"><input id="itemSearch" type="search" placeholder="搜索物品、用途或配方…" aria-label="搜索物品"><select id="itemFilter" aria-label="筛选物品类型"><option value="all">全部类型</option></select><span class="result-count" id="itemCount"></span></div>
@@ -1015,8 +1019,8 @@
       {name:"橡木仓库",id:"oak_warehouse",group:"库存建筑",tags:["性能中","20槽","revision"],stats:[["HP / 防御","2000 / 0|0"],["容量","20 槽"],["交互","F / 48px"]],mechanic:"独立 20 槽共享仓库，支持整叠移动、生产批量改写和多人快照；并行资源/数量数组由 storage_revision 保护。",runtime:"常驻 process 关闭；玩家进入后每 80ms 重选最近仓库。问题是每座候选仓库都 get_nodes_in_group 扫全部仓库，N 个覆盖建筑趋近 O(N×B)/80ms；现有 PlantSystem 空间查询未复用。",evidence:"<code>oak_warehouse.gd:8-35,59-69,141-1313</code>。事务有 expected revision、失败回滚和 4 秒 UI 超时，数据完整性较好。"},
       {name:"植物培育中心",id:"plant_cultivation_center",group:"生产建筑",tags:["性能中","塔建筑箱","缺葡萄配方"],stats:[["HP / 防御","1500 / 10|10"],["占格","2×2 草"],["节拍","1s 协调器"]],mechanic:"消耗木制核心，生产龙舌兰、玉米、竹筒、紫阳花四种不可堆叠建筑箱；葡萄塔尚未进入配方列表。",runtime:"继承 ProductionBuilding，共享 1 秒 ProductionCoordinator；等待材料/输出空间时由变化事件唤醒，不逐帧忙轮询。交互选取仍有每 80ms 全组重复扫描。",evidence:"<code>plant_cultivation_center.tscn:8-19,117</code>；<code>production_coordinator.gd:343-980</code>。"},
       {name:"种植基地",id:"planting_base",group:"生产建筑",tags:["性能低","树苗闭环","共享仓库"],stats:[["HP / 防御","2000 / 5|10"],["配方","树苗→2树苗"],["配方","树苗→5木头"]],mechanic:"以共享仓库为原料/产物网络：树苗 1 在 30 秒后增殖为 2，或在 60 秒后转为 5 木头。",runtime:"统一生产协调器每秒推进；稳定仓库顺序、材料总量缓存、revision journal，并只重试受相关材料/仓容变化影响的阻塞建筑。",evidence:"<code>production_coordinator.gd:81,343-980</code>；<code>resources/config/production/sapling_*.tres</code>。"},
-      {name:"科研中心",id:"research_center",group:"科研建筑",tags:["性能中","全局科研","遗留常量"],stats:[["HP / 防御","2800 / 5|20"],["全局项目","2"],["推进","1s Timer"]],mechanic:"共享仓库启动单一全局科技：建筑物防 +10 或玩家移速 +15；另用个人息壤购买角色科技。",runtime:"全局研究以 1 秒 Timer 推进，投入由生产协调器原子消费；完成后从已完成资源配置重新汇总效果。交互仍每80ms全组扫描；协调器保留已失效的旧材料/数值常量。",evidence:"<code>global_research_registry.gd:4-50</code>；<code>research_coordinator.gd:24-40,185-262,410-499</code>。"},
-      {name:"植被桩",id:"vegetation_stake",group:"地形建筑",tags:["性能低","增量扩散","1×1"],stats:[["HP / 防御","4000 / 10|50"],["扩散","每10s一环"],["上限","5格 / 50s"]],mechanic:"逐环把地形绿化；每个格保存原地形与所有 owner，重叠植被桩移除一个不会恢复仍由其他桩支撑的草地。",runtime:"系统预计算 5 个圆环，0.1 秒更新只在有活动源或 overlay dirty 时开启。桩与系统各保留 TOTAL_SPREAD_SECONDS=50，需单源化。",evidence:"<code>vegetation_spread_system.gd:9-18,99-176,275-559</code>；<code>vegetation_stake.gd:7</code>。"},
+      {name:"科研中心",id:"research_center",group:"科研建筑",tags:["性能中","全局科研","遗留常量"],stats:[["HP / 防御","2800 / 5|20"],["全局项目","6"],["推进","1s Timer"]],mechanic:"共享仓库启动单一全局科技：2项数值强化、3项配方解锁与1项植被蔓延强化；另用个人息壤购买角色科技。",runtime:"全局研究以 1 秒 Timer 推进，投入由生产协调器原子消费；完成后从已完成资源配置重新汇总效果。交互仍每80ms全组扫描；协调器保留已失效的旧材料/数值常量。",evidence:"<code>global_research_registry.gd</code>；<code>research_coordinator.gd</code>。"},
+      {name:"植被桩",id:"vegetation_stake",group:"地形建筑",tags:["性能低","增量扩散","1×1"],stats:[["HP / 防御","4000 / 10|50"],["默认扩散","每10s一环"],["默认上限","6格 / 60s"]],mechanic:"逐环把地形绿化；每个格保存原地形与所有 owner，重叠植被桩移除一个不会恢复仍由其他桩支撑的草地。完成植被桩蔓延增强后，剩余传播与视觉进度同步以2倍推进，等效每圈5秒；中途完成不追溯旧进度。",runtime:"系统预计算 6 个圆环，0.1 秒更新只在有活动源或 overlay dirty 时开启。地形提交和 GrowthOverlay 共用基础进度时钟；科研只改变后续进度增量。",evidence:"<code>vegetation_spread_system.gd</code>；<code>vegetation_stake.gd</code>；<code>vegetation_stake_spread_enhancement.tres</code>。"},
       {name:"水源采集器",id:"water_collector",group:"生产建筑",tags:["性能低","水上放置","环境配方"],stats:[["HP / 防御","2000 / 10|0"],["产出","水瓶1 / 20s"],["占格","2×2 水"]],mechanic:"四个占用格必须全为水；以数量 0 的环境水源占位配方，每 20 秒自动产生 1 个水瓶并送入共享仓库。",runtime:"共享生产协调器自动选择配方；不需要个人 UI 逐帧工作。placement_surface 在配置中明确为 WATER。",evidence:"<code>water_collector.tres:9-22</code>；<code>water_to_bottle.tres</code>。"},
       {name:"木头加工站",id:"wood_processing_station",group:"生产建筑",tags:["性能中","材料枢纽","1×1"],stats:[["HP / 防御","2000 / 10|0"],["占格","1×1 草"],["配方","6 条"]],mechanic:"把木头加工成木板/木制核心，并组装水源采集器、种植基地、培育中心和科研中心建筑箱。",runtime:"共享 ProductionBuilding/Coordinator。交互开始后每 80ms 全组重选；PlantDefenseConfig 的 REQUIRED_FOOTPRINT_SIZE 实际只是默认值，1×1 合法。",evidence:"<code>wood_processing_station.tres:9-22</code>；<code>production_building.gd:11,73-83,822-862</code>。"}
     ];
@@ -1030,7 +1034,7 @@
       {name:"木头",id:"material_wood",group:"材料",tags:["闭环","可叠999","基础资源"],stats:[["来源","开局5 / 敌人2%"],["消费","木板 / 建筑"],["堆叠","999"]],mechanic:"开局 5；普通敌人每条规则独立 2%；也可由种植基地用树苗转化。用于木板和即时木头加工站/仓库。",runtime:"背包/仓库以 resource_path 比较同物品，先补栈再找空槽。",evidence:"<code>material_wood.tres</code>；<code>default_enemy_drop_table.tres:16-21</code>。"},
       {name:"树苗",id:"material_sapling",group:"材料",tags:["闭环","可增殖","可叠999"],stats:[["来源","敌人1%"],["增殖","1→2 / 30s"],["转木","1→5 / 60s"]],mechanic:"用于木制核心、种植基地、研究、药瓶、植被桩；种植基地可形成自身增殖或转木材闭环。",runtime:"生产协调器按仓库总量/容量变化唤醒阻塞建筑，不逐帧轮询。",evidence:"<code>material_sapling.tres</code>；<code>sapling_propagation.tres</code>；<code>sapling_to_wood.tres</code>。"},
       {name:"木板",id:"material_plank",group:"材料",tags:["闭环","生产","可叠999"],stats:[["生产","木1→板2"],["时长","10s"],["用途","核心/建筑/科研"]],mechanic:"木头加工站生产；用于木制核心、功能建筑、建筑结构强化和植被桩。",runtime:"作为多种共享仓库事务的核心材料，revision journal 避免并发重复消费。",evidence:"<code>material_plank.tres</code>；<code>wood_to_plank.tres</code>。"},
-      {name:"水瓶",id:"material_water_bottle",group:"材料",tags:["闭环","环境产出","可叠999"],stats:[["生产","1 / 20s"],["来源","水源采集器"],["用途","核心/建筑/科研"]],mechanic:"水源采集器由环境水源占位配方自动生产；用于核心、功能建筑、两项研究和生命药瓶。",runtime:"产出进入共享仓库；数量 0 的环境投入由 ProductionRecipe 明确表示，不占库存。",evidence:"<code>material_water_bottle.tres</code>；<code>water_to_bottle.tres</code>。"},
+      {name:"水瓶",id:"material_water_bottle",group:"材料",tags:["闭环","环境产出","可叠999"],stats:[["生产","1 / 20s"],["来源","水源采集器"],["用途","核心/建筑/科研"]],mechanic:"水源采集器由环境水源占位配方自动生产；用于核心、功能建筑、三项强化研究和生命药瓶。",runtime:"产出进入共享仓库；数量 0 的环境投入由 ProductionRecipe 明确表示，不占库存。",evidence:"<code>material_water_bottle.tres</code>；<code>water_to_bottle.tres</code>。"},
       {name:"木制核心",id:"material_wooden_core",group:"材料",tags:["闭环缺口","塔原料","可叠999"],stats:[["投入","木板10+树苗1+水5"],["时长","10s"],["用途","战斗塔箱"]],mechanic:"植物培育中心的统一塔原料；当前只消费到龙舌兰、玉米、竹筒和紫阳花。",runtime:"葡萄塔没有对应消费配方，导致核心→葡萄建筑箱链路缺失。",evidence:"<code>wooden_core_assembly.tres</code>；<code>plant_cultivation_center.tscn:8-19</code>。"},
       {name:"白色水晶",id:"material_white_crystal",group:"材料",tags:["死端","稀有","0.2%"],stats:[["来源","所有敌人"],["概率","0.2%"],["消费端","无"]],mechanic:"仅由默认敌人掉落表产出，可正常入背包和仓库，但没有生产、研究、合成或其他消费。",runtime:"会无限期累积为无用途库存。上线前应设计终端用途或移出默认表。",evidence:"<code>material_white_crystal.tres</code>；<code>default_enemy_drop_table.tres:22-27</code>。"},
       {name:"卡普蓝晶",id:"material_capoo_blue_crystal",group:"材料",tags:["死端","Capoo","1%"],stats:[["来源","capoo 标签敌人"],["概率","1%"],["消费端","无"]],mechanic:"required tags 全包含匹配，仅 Capoo 家族独立掷骰掉落。",runtime:"没有价值出口；背包/仓库正常存储只是掩盖内容链断点。",evidence:"<code>material_capoo_blue_crystal.tres</code>；<code>default_enemy_drop_table.tres:28-35</code>。"},

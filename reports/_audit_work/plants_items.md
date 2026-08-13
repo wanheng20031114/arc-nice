@@ -55,7 +55,7 @@
 | `plant_cultivation_center` (`plant_cultivation_center.tres:9-20`) | `plant_cultivation_center.tscn` / `plant_cultivation_center.gd` | 1500 / 10 / 10 | 无 | 2×2 草 | 木制核心培育战斗塔建筑箱 |
 | `planting_base` (`planting_base.tres:9-21`) | `planting_base.tscn` / `planting_base.gd` | 2000 / 5 / 10 | 无 | 2×2 草 | 树苗繁育/转木材 |
 | `research_center` (`research_center.tres:9-21`) | `research_center.tscn` / `research_center.gd` | 2800 / 5 / 20 | 无 | 2×2 草 | 全局科研与个人息壤科技 |
-| `vegetation_stake` (`vegetation_stake.tres:9-22`) | `vegetation_stake.tscn` / `vegetation_stake.gd` | 4000 / 10 / 50 | 无 | 1×1 草 | 每10s扩一环，5格/50s植被化 |
+| `vegetation_stake` (`vegetation_stake.tres:9-22`) | `vegetation_stake.tscn` / `vegetation_stake.gd` | 4000 / 10 / 50 | 无 | 1×1 草 | 默认每10s扩一环、6格/60s植被化；科研后仅剩余进度按2倍推进 |
 | `water_collector` (`water_collector.tres:9-22`) | `water_collector.tscn` / `water_collector.gd` | 2000 / 10 / 0 | 无 | 2×2 水 | 环境水源→水瓶 |
 | `wood_processing_station` (`wood_processing_station.tres:9-22`) | `wood_processing_station.tscn` / `wood_processing_station.gd` | 2000 / 10 / 0 | 无 | 1×1 草 | 木板/核心/四类功能建筑组装 |
 
@@ -142,15 +142,16 @@
 
 ### 4.4 科研
 
-- 注册2项：建筑结构强化（木板50+树苗20+水瓶20，60s，全建筑物防+10）和机动训练（水瓶50，60s，全玩家移速+15）；资源入口为 `resources/config/research/*.tres`，注册表见 `global_research_registry.gd:4-50`。
+- 注册6项：建筑结构强化、全员移动训练、迫击炮简易装配、紫阳花简易培育、橘充能塔培育和植被桩蔓延增强；资源入口为 `resources/config/research/*.tres`，顺序与 wire ID 由 `global_research_registry.gd` 显式注册。
 - 同时只能有一个全局项目；开始时由生产协调器原子消费共享仓库，1秒 Timer 推进；完成后重新汇总已完成配置的 effect amount（`research_coordinator.gd:185-243,410-454,487-499`）。
+- 植被桩蔓延增强消耗木板20+水瓶5并研发60秒；完成前保持默认每圈10秒，完成后只把剩余基础进度改为2倍推进，等效每圈5秒、从零铺满6圈需30秒，已经过去的时间不追溯加速。地形提交与 `GrowthOverlay` 均读取同一基础进度，因此不会出现视觉先行或滞后。
 - 个人科技走玩家息壤、等级和 `Player.RESEARCH_TECHNOLOGY_COSTS`，不是物品消耗（`:246-262`）。
 
 ### 4.5 植被桩
 
-- `VegetationSpreadSystem` 预计算5个圆环；每10秒仅处理尚未完成的下一环，0.1秒更新只在有活动源/overlay dirty时开启（`vegetation_spread_system.gd:9-18,275-304,346-478,559`）。
+- `VegetationSpreadSystem` 预计算6个圆环；默认每10秒仅处理尚未完成的下一环，0.1秒更新只在有活动源/overlay dirty时开启（`vegetation_spread_system.gd:9-18,275-304,346-478,559`）。
 - `_generated_cells` 保存原地形和所有 owner，重叠桩移除一个不会错误恢复仍被其他桩覆盖的格子（`:99-176,485-490`）。
-- `TOTAL_SPREAD_SECONDS=50` 同时出现在桩脚本和系统脚本（`vegetation_stake.gd:7`、`vegetation_spread_system.gd:15`），应由系统导出/配置单源化。
+- 扩散总时长由 `VegetationSpreadSystem.TOTAL_SPREAD_SECONDS` 单一派生；当前半径6格、每环10秒，总计60秒，植被桩运行时直接引用该常量。
 
 ## 5. 物品定义与注册全貌
 
@@ -175,7 +176,7 @@
 | `material_wood` 木头 | 开局5；普通敌人独立2%；树苗转木头 | 木板；即时木头加工站/仓库 | 闭环正常 |
 | `material_sapling` 树苗 | 敌人独立1%；种植基地增殖 | 核心、种植基地、研究、药瓶、植被桩；可转木头 | 闭环正常 |
 | `material_plank` 木板 | 木头加工站 1木→2板 | 核心、功能建筑、科研、植被桩 | 闭环正常 |
-| `material_water_bottle` 水瓶 | 水源采集器20s产1 | 核心、功能建筑、两项研究、药瓶 | 闭环正常 |
+| `material_water_bottle` 水瓶 | 水源采集器20s产1 | 核心、功能建筑、三项强化研究、药瓶 | 闭环正常 |
 | `material_wooden_core` 木制核心 | 木板10+树苗1+水5，10s | 四种战斗/支援塔箱 | **缺葡萄塔消费配方** |
 | `material_white_crystal` 白色水晶 | 所有敌人独立0.2% | 无 | 死端库存 |
 | `material_capoo_blue_crystal` 卡普蓝晶 | `capoo` 敌人独立1% | 无 | 死端库存 |

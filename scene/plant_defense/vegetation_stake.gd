@@ -3,8 +3,9 @@ class_name VegetationStake
 
 signal spread_runtime_state_changed(elapsed_seconds: float)
 
-const RUNTIME_STATE_SCHEMA := 1
-const TOTAL_SPREAD_SECONDS := 50.0
+const RUNTIME_STATE_SCHEMA := 2
+const TOTAL_SPREAD_SECONDS := VegetationSpreadSystem.TOTAL_SPREAD_SECONDS
+const MIN_SPREAD_SPEED_MULTIPLIER := 0.01
 const AMBIENT_REVEAL_SECONDS := 0.15
 
 @onready var health_bar: PlantHealthBar = $HealthBar
@@ -15,6 +16,7 @@ const AMBIENT_REVEAL_SECONDS := 0.15
 
 var _spread_elapsed_at_sync: float = 0.0
 var _spread_sync_ticks: float = 0.0
+var _spread_speed_multiplier := 1.0
 var _ambient_reveal_tween: Tween = null
 
 
@@ -96,16 +98,35 @@ func get_spread_elapsed_seconds() -> float:
 	if _spread_sync_ticks <= 0.0:
 		return 0.0
 	return clampf(
-		_spread_elapsed_at_sync + _now_seconds() - _spread_sync_ticks,
+		_spread_elapsed_at_sync
+			+ (_now_seconds() - _spread_sync_ticks) * _spread_speed_multiplier,
 		0.0,
 		TOTAL_SPREAD_SECONDS
 	)
+
+
+func set_spread_speed_multiplier(multiplier: float) -> bool:
+	if not is_finite(multiplier) or multiplier < MIN_SPREAD_SPEED_MULTIPLIER:
+		return false
+	if is_equal_approx(_spread_speed_multiplier, multiplier):
+		return true
+	var current_progress := get_spread_elapsed_seconds()
+	_spread_speed_multiplier = multiplier
+	if _spread_sync_ticks > 0.0:
+		_spread_elapsed_at_sync = current_progress
+		_spread_sync_ticks = _now_seconds()
+	return true
+
+
+func get_spread_speed_multiplier() -> float:
+	return _spread_speed_multiplier
 
 
 func export_multiplayer_runtime_state() -> Dictionary:
 	return {
 		"schema": RUNTIME_STATE_SCHEMA,
 		"spread_elapsed_seconds": get_spread_elapsed_seconds(),
+		"spread_speed_multiplier": _spread_speed_multiplier,
 	}
 
 
@@ -115,6 +136,17 @@ func apply_multiplayer_runtime_state(
 ) -> void:
 	if int(state.get("schema", 0)) != RUNTIME_STATE_SCHEMA:
 		return
+	var received_multiplier := float(
+		state.get("spread_speed_multiplier", 0.0)
+	)
+	if (
+		not is_finite(received_multiplier)
+		or received_multiplier < MIN_SPREAD_SPEED_MULTIPLIER
+	):
+		return
+	var raw_elapsed := float(state.get("spread_elapsed_seconds", -1.0))
+	if not is_finite(raw_elapsed) or raw_elapsed < 0.0:
+		return
 	var now_seconds := _now_seconds()
 	var sample_time := (
 		minf(mapped_sample_time, now_seconds)
@@ -122,13 +154,15 @@ func apply_multiplayer_runtime_state(
 		else now_seconds
 	)
 	var received_elapsed := clampf(
-		float(state.get("spread_elapsed_seconds", 0.0))
-		+ maxf(now_seconds - sample_time, 0.0),
+		raw_elapsed
+			+ maxf(now_seconds - sample_time, 0.0)
+				* received_multiplier,
 		0.0,
 		TOTAL_SPREAD_SECONDS
 	)
 	if received_elapsed + 0.001 < get_spread_elapsed_seconds():
 		return
+	_spread_speed_multiplier = received_multiplier
 	if not is_operational:
 		_spread_elapsed_at_sync = 0.0
 		_spread_sync_ticks = 0.0

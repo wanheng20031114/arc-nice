@@ -3,11 +3,14 @@ extends SceneTree
 const SPREAD_SCENE := preload(
 	"res://scene/game_modes/tower_defense/plant/vegetation/vegetation_spread_system.tscn"
 )
+const LEGACY_SPREAD_RADIUS := 5
+const LEGACY_OUTER_RADIUS_SQUARED := 26
 
 var failures: Array[String] = []
 var fixture_root: Node2D = null
 var terrain: FakeTerrain = null
 var spread: VegetationSpreadSystem = null
+var authoritative_terrain_batches: Array[Dictionary] = []
 
 
 class FakeTerrain:
@@ -36,15 +39,29 @@ class FakeTerrain:
 			terrain_changed.emit(coords, previous, terrain_type)
 
 
+class CountingVegetationStake:
+	extends VegetationStake
+
+	var speed_set_count := 0
+	var last_speed_multiplier := 1.0
+
+	func set_spread_speed_multiplier(multiplier: float) -> bool:
+		speed_set_count += 1
+		last_speed_multiplier = multiplier
+		return super.set_spread_speed_multiplier(multiplier)
+
+
 func _init() -> void:
 	call_deferred("_run")
 
 
 func _run() -> void:
 	_test_ring_geometry_and_pixel_hash()
+	_test_research_progress_events_do_not_rescan_stakes()
 	await _test_overlay_coalescing_and_layout_reuse()
 	await _test_active_source_iteration()
 	await _test_all_ring_deadlines_and_full_teardown()
+	await _test_mid_spread_speed_upgrade_continuity()
 	await _test_in_progress_teardown()
 	await _test_obstacles_do_not_block_later_rings()
 	await _test_reversible_terrain_and_skips()
@@ -68,23 +85,43 @@ func _run() -> void:
 
 
 func _test_ring_geometry_and_pixel_hash() -> void:
-	var expected_counts := [0, 4, 8, 16, 20, 40]
+	var expected_counts := [0, 4, 8, 16, 20, 40, 32]
 	var all_offsets: Dictionary = {}
+	var legacy_offsets: Dictionary = {}
 	for ring in range(1, VegetationSpreadSystem.SPREAD_RADIUS + 1):
 		var offsets := VegetationSpreadSystem.get_ring_offsets(ring)
 		_expect(offsets.size() == expected_counts[ring], "第%d圈必须有%d格。" % [ring, expected_counts[ring]])
 		for offset in offsets:
 			_expect(offset != Vector2i.ZERO, "传播圈必须排除中心格。")
-			_expect(not all_offsets.has(offset), "五个传播圈之间不能有重复格。")
+			_expect(not all_offsets.has(offset), "六个传播圈之间不能有重复格。")
 			all_offsets[offset] = true
+		if ring == LEGACY_SPREAD_RADIUS:
+			legacy_offsets = all_offsets.duplicate()
+			_expect(
+				all_offsets.size() == 88,
+				"前五圈必须完整保留既有88格覆盖与50秒截止时间。"
+			)
+	for y in range(-LEGACY_SPREAD_RADIUS, LEGACY_SPREAD_RADIUS + 1):
+		for x in range(-LEGACY_SPREAD_RADIUS, LEGACY_SPREAD_RADIUS + 1):
+			var offset := Vector2i(x, y)
+			var belonged_to_legacy_footprint := (
+				offset.length_squared() > 0
+				and offset.length_squared() <= LEGACY_OUTER_RADIUS_SQUARED
+			)
+			_expect(
+				legacy_offsets.has(offset) == belonged_to_legacy_footprint,
+				"前五圈必须逐格保留旧版d²<=26覆盖：%s" % offset
+			)
+	for legacy_offset in legacy_offsets:
+		_expect(all_offsets.has(legacy_offset), "新增第六圈不能移除旧覆盖：%s" % legacy_offset)
 	var caller_owned_offsets := VegetationSpreadSystem.get_ring_offsets(1)
 	caller_owned_offsets.clear()
 	_expect(
 		VegetationSpreadSystem.get_ring_offsets(1).size() == expected_counts[1],
 		"公开圈偏移必须返回调用者可修改的副本，不能暴露静态缓存本体。"
 	)
-	_expect(all_offsets.size() == 88, "平滑外沿后的五个传播圈必须合计88格。")
-	var outer_ring := VegetationSpreadSystem.get_ring_offsets(5)
+	_expect(all_offsets.size() == 120, "平滑外沿后的六个传播圈必须合计120格。")
+	var legacy_outer_ring := VegetationSpreadSystem.get_ring_offsets(5)
 	for smoothed_cap_cell in [
 		Vector2i(5, 1),
 		Vector2i(5, -1),
@@ -95,14 +132,33 @@ func _test_ring_geometry_and_pixel_hash() -> void:
 		Vector2i(1, -5),
 		Vector2i(-1, -5),
 	]:
-		_expect(outer_ring.has(smoothed_cap_cell), "第五圈必须补齐轴向尖帽相邻格：%s" % smoothed_cap_cell)
+		_expect(legacy_outer_ring.has(smoothed_cap_cell), "第五圈必须继续保留既有轴向尖帽相邻格：%s" % smoothed_cap_cell)
 	for outside_cell in [
 		Vector2i(5, 2),
 		Vector2i(2, 5),
 		Vector2i(-5, -2),
 		Vector2i(-2, -5),
 	]:
-		_expect(not outer_ring.has(outside_cell), "第五圈不能超出最小平滑扩展：%s" % outside_cell)
+		_expect(not legacy_outer_ring.has(outside_cell), "第五圈不能侵占新增的第六圈格：%s" % outside_cell)
+	var outer_ring := VegetationSpreadSystem.get_ring_offsets(6)
+	for smoothed_cap_cell in [
+		Vector2i(6, 1),
+		Vector2i(6, -1),
+		Vector2i(-6, 1),
+		Vector2i(-6, -1),
+		Vector2i(1, 6),
+		Vector2i(-1, 6),
+		Vector2i(1, -6),
+		Vector2i(-1, -6),
+	]:
+		_expect(outer_ring.has(smoothed_cap_cell), "第六圈必须补齐新的轴向尖帽相邻格：%s" % smoothed_cap_cell)
+	for outside_cell in [
+		Vector2i(6, 2),
+		Vector2i(2, 6),
+		Vector2i(-6, -2),
+		Vector2i(-2, -6),
+	]:
+		_expect(not outer_ring.has(outside_cell), "第六圈不能超出最小平滑扩展：%s" % outside_cell)
 
 	var cell := Vector2i(17, -9)
 	var quarter := VegetationSpreadSystem.get_revealed_pixel_indices(cell, 0.25)
@@ -154,6 +210,123 @@ func _test_ring_geometry_and_pixel_hash() -> void:
 		and _max_dictionary_value(delta_counts) <= 6,
 		"绿化点出现顺序必须使用多种空间步长，不能退回等差线排列。"
 	)
+
+
+func _test_research_progress_events_do_not_rescan_stakes() -> void:
+	var coordinator := TowerDefensePlantRuntimeCoordinator.new()
+	var standalone_spread := VegetationSpreadSystem.new()
+	var standalone_plant_system := PlantSystem.new()
+	var research := ResearchCoordinator.new()
+	var counting_stake := CountingVegetationStake.new()
+	var standalone_terrain := FakeTerrain.new()
+	var standalone_world_layer := TileMapLayer.new()
+	standalone_terrain.add_child(standalone_world_layer)
+	standalone_terrain.world_map_layer = standalone_world_layer
+	_expect(
+		standalone_spread.setup(
+			standalone_terrain,
+			Rect2i(-6, -6, 13, 13),
+			false
+		),
+		"科研事件测试必须建立客户端传播夹具。"
+	)
+	standalone_plant_system.plant_footprints[counting_stake] = [Vector2i.ZERO]
+	coordinator.setup(
+		CombatRuntimeBase.RuntimeMode.SINGLEPLAYER,
+		null,
+		standalone_spread,
+		standalone_plant_system,
+		null
+	)
+	coordinator.configure_mode_services(
+		null,
+		null,
+		research,
+		null,
+		null,
+		null,
+		null,
+		96
+	)
+	research.research_state_changed.emit()
+	_expect(
+		counting_stake.speed_set_count == 0,
+		"科研进度变化但传播倍率未变时不能扫描并重写全部植被桩。"
+	)
+	research.global_research_states[
+		GlobalResearchRegistry.VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID
+	] = ResearchCoordinator.GlobalResearchState.COMPLETED
+	research.research_state_changed.emit()
+	_expect(
+		is_equal_approx(standalone_spread.get_spread_speed_multiplier(), 2.0)
+		and counting_stake.speed_set_count == 1
+		and is_equal_approx(counting_stake.last_speed_multiplier, 2.0),
+		"科研完成事件必须恰好一次把传播系统与既有植被桩切到2倍。"
+	)
+	research.research_state_changed.emit()
+	_expect(
+		counting_stake.speed_set_count == 1,
+		"科研完成后的重复状态广播不能再次全表重写既有植被桩。"
+	)
+	research.global_research_states[
+		GlobalResearchRegistry.VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID
+	] = ResearchCoordinator.GlobalResearchState.AVAILABLE
+	standalone_spread.set_spread_speed_multiplier(1.0)
+	coordinator.call(
+		"_on_vegetation_runtime_state_changed",
+		20.0,
+		counting_stake,
+		705,
+		Vector2i.ZERO
+	)
+	_expect(
+		is_equal_approx(standalone_spread.get_spread_speed_multiplier(), 2.0),
+		"late join植被桩快照必须先把权威倍率同步给视觉传播系统，不能依赖另一信道的科研快照先到。"
+	)
+	research.global_research_states[
+		GlobalResearchRegistry.VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID
+	] = ResearchCoordinator.GlobalResearchState.COMPLETED
+	counting_stake.set_spread_speed_multiplier(1.0)
+	coordinator.call(
+		"_on_vegetation_runtime_state_changed",
+		20.0,
+		counting_stake,
+		705,
+		Vector2i.ZERO
+	)
+	_expect(
+		is_equal_approx(counting_stake.get_spread_speed_multiplier(), 2.0)
+		and is_equal_approx(
+			standalone_spread.get_spread_speed_multiplier(),
+			2.0
+		),
+		"科研快照先到时，迟到的旧倍率植被桩状态不能把已完成科研降回1倍。"
+	)
+	research.global_research_states[
+		GlobalResearchRegistry.VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID
+	] = ResearchCoordinator.GlobalResearchState.AVAILABLE
+	counting_stake.set_spread_speed_multiplier(1.0)
+	coordinator.call(
+		"_on_vegetation_runtime_state_changed",
+		21.0,
+		counting_stake,
+		705,
+		Vector2i.ZERO
+	)
+	_expect(
+		is_equal_approx(counting_stake.get_spread_speed_multiplier(), 2.0)
+		and is_equal_approx(
+			standalone_spread.get_spread_speed_multiplier(),
+			2.0
+		),
+		"新植被快照已把传播系统升至2倍后，迟到的旧倍率植被桩快照与旧科研状态都不能造成降级。"
+	)
+	counting_stake.free()
+	research.free()
+	standalone_plant_system.free()
+	standalone_spread.free()
+	standalone_terrain.free()
+	coordinator.free()
 
 
 func _test_overlay_coalescing_and_layout_reuse() -> void:
@@ -222,7 +395,11 @@ func _test_active_source_iteration() -> void:
 	await _build_fixture(Rect2i(-12, -12, 25, 25), true)
 	for source_id in range(1, 7):
 		_expect(
-			spread.register_source(source_id, Vector2i(source_id - 3, 0), 50.0),
+			spread.register_source(
+				source_id,
+				Vector2i(source_id - 3, 0),
+				VegetationSpreadSystem.TOTAL_SPREAD_SECONDS
+			),
 			"完成来源必须能从late snapshot注册。"
 		)
 	_expect(spread.get_active_source_count() == 0, "已完成来源不得留在10Hz活动集合。")
@@ -238,8 +415,8 @@ func _test_active_source_iteration() -> void:
 		spread.get_last_overlay_source_count() == 1,
 		"权威覆盖收集必须只访问一个活动来源，不能扫描六个已完成来源。"
 	)
-	spread.advance_time(49.0)
-	_expect(spread.get_active_source_count() == 0, "50秒来源必须立即退出活动集合。")
+	spread.advance_time(VegetationSpreadSystem.TOTAL_SPREAD_SECONDS - 1.0)
+	_expect(spread.get_active_source_count() == 0, "60秒来源必须立即退出活动集合。")
 	_flush_overlay_update()
 	_expect(
 		spread.get_last_overlay_source_count() == 0,
@@ -251,10 +428,10 @@ func _test_active_source_iteration() -> void:
 func _test_all_ring_deadlines_and_full_teardown() -> void:
 	await _build_fixture(Rect2i(-6, -6, 13, 13), true)
 	_expect(not spread.is_processing(), "没有传播来源时不应保留每帧处理。")
-	_expect(spread.register_source(70, Vector2i.ZERO), "五圈边界测试必须能注册权威来源。")
+	_expect(spread.register_source(70, Vector2i.ZERO), "六圈边界测试必须能注册权威来源。")
 	_expect(spread.is_processing(), "注册未完成来源后必须启用计时处理。")
-	var completed_cell_counts := [0, 4, 12, 28, 48, 88]
-	var ring_cell_counts := [0, 4, 8, 16, 20, 40]
+	var completed_cell_counts := [0, 4, 12, 28, 48, 88, 120]
+	var ring_cell_counts := [0, 4, 8, 16, 20, 40, 32]
 	var elapsed := 0.0
 	for ring in range(1, VegetationSpreadSystem.SPREAD_RADIUS + 1):
 		var just_before_deadline := float(ring) * VegetationSpreadSystem.SECONDS_PER_RING - 0.1
@@ -279,21 +456,84 @@ func _test_all_ring_deadlines_and_full_teardown() -> void:
 			== completed_cell_counts[ring],
 			"第%d圈必须在%.0f秒边界完成，累计%d格。" % [ring, elapsed, completed_cell_counts[ring]]
 		)
+		_expect(
+			authoritative_terrain_batches.size() == ring
+			and (
+				authoritative_terrain_batches[ring - 1].get(
+					"terrain_types", PackedInt32Array()
+				) as PackedInt32Array
+			).size() == ring_cell_counts[ring],
+			"Host第%d圈必须只提交一次%d格权威地形批次。" % [ring, ring_cell_counts[ring]]
+		)
 
-	_expect(spread.get_overlay_cell_count() == 0, "50秒全部五圈完成后不能残留临时绿化覆盖。")
+	_expect(spread.get_overlay_cell_count() == 0, "60秒全部六圈完成后不能残留临时绿化覆盖。")
 	_expect(not spread.is_processing(), "全部来源完成后必须停用每帧处理。")
 	for ring in range(1, VegetationSpreadSystem.SPREAD_RADIUS + 1):
 		for offset in VegetationSpreadSystem.get_ring_offsets(ring):
 			_expect(
 				terrain.get_terrain_type(offset) == DualGridTilemap.TerrainType.GRASS,
-				"50秒时五圈内所有有效泥地都必须完成绿化：%s" % offset
+				"60秒时六圈内所有有效泥地都必须完成绿化：%s" % offset
 			)
 
-	_expect(spread.cancel_source(70), "全部五圈完成后来源仍必须可销毁。")
+	_expect(spread.cancel_source(70), "全部六圈完成后来源仍必须可销毁。")
 	_flush_overlay_update()
+	_expect(
+		authoritative_terrain_batches.size() == 7
+		and (
+			authoritative_terrain_batches[6].get(
+				"terrain_types", PackedInt32Array()
+			) as PackedInt32Array
+		).size() == 120,
+		"Host销毁完整来源必须用一个120格权威批次提交全部地形恢复。"
+	)
 	_expect(not spread.has_source(70), "销毁后必须删除已完成来源。")
-	_expect(terrain.raw_cells.is_empty(), "完整传播来源销毁后，其88格EMPTY草地必须全部恢复。")
+	_expect(terrain.raw_cells.is_empty(), "完整传播来源销毁后，其120格EMPTY草地必须全部恢复。")
 	_expect(spread.get_overlay_cell_count() == 0, "完整传播来源销毁后不能残留覆盖实例。")
+
+
+func _test_mid_spread_speed_upgrade_continuity() -> void:
+	await _build_fixture(Rect2i(-6, -6, 13, 13), true)
+	_expect(spread.register_source(705, Vector2i.ZERO), "科研加速测试必须能注册来源。")
+	spread.advance_time(20.0)
+	_flush_overlay_update()
+	_expect(
+		_count_terrain_type(DualGridTilemap.TerrainType.GRASS) == 12
+		and is_equal_approx(spread.get_source_elapsed_seconds(705), 20.0),
+		"科研前20秒必须只完成前两圈，工作进度为20秒。"
+	)
+	_expect(
+		spread.set_spread_speed_multiplier(2.0)
+		and is_equal_approx(spread.get_effective_seconds_per_ring(), 5.0)
+		and is_equal_approx(spread.get_effective_total_spread_seconds(), 30.0),
+		"科研完成后必须把有效每圈时长改为5秒、从零完整蔓延改为30秒。"
+	)
+	_flush_overlay_update()
+	_expect(
+		_count_terrain_type(DualGridTilemap.TerrainType.GRASS) == 12
+		and is_equal_approx(spread.get_source_elapsed_seconds(705), 20.0),
+		"中途完成科研不能回溯加速既有20秒，不能瞬间补完第三、第四圈。"
+	)
+	spread.advance_time(4.9)
+	_flush_overlay_update()
+	_expect(
+		_count_terrain_type(DualGridTilemap.TerrainType.GRASS) == 12
+		and is_equal_approx(spread.get_source_elapsed_seconds(705), 29.8)
+		and spread.get_overlay_cell_count() == 16
+		and absf(spread.get_overlay_progress(Vector2i(3, 0)) - 0.98) < 0.001,
+		"科研后的4.9实秒仍只能完成两圈，第三圈像素揭示必须同步推进至98%。"
+	)
+	spread.advance_time(0.1)
+	_flush_overlay_update()
+	_expect(
+		_count_terrain_type(DualGridTilemap.TerrainType.GRASS) == 28
+		and is_equal_approx(spread.get_source_elapsed_seconds(705), 30.0),
+		"科研后的第5.0实秒必须恰好完成第三圈，权威地形与视觉进度保持同一边界。"
+	)
+	_expect(
+		not spread.set_spread_speed_multiplier(0.0)
+		and is_equal_approx(spread.get_spread_speed_multiplier(), 2.0),
+		"非法倍率必须被拒绝且不能破坏已生效科研倍率。"
+	)
 
 
 func _test_in_progress_teardown() -> void:
@@ -319,7 +559,7 @@ func _test_obstacles_do_not_block_later_rings() -> void:
 		Vector2i(0, 1): DualGridTilemap.TerrainType.METAL,
 	})
 	_expect(spread.register_source(72, Vector2i.ZERO), "障碍穿透测试必须能注册来源。")
-	spread.advance_time(50.0)
+	spread.advance_time(VegetationSpreadSystem.TOTAL_SPREAD_SECONDS)
 	_expect(
 		terrain.get_terrain_type(Vector2i(1, 0)) == DualGridTilemap.TerrainType.WATER,
 		"第一圈水格必须保持不变。"
@@ -333,10 +573,12 @@ func _test_obstacles_do_not_block_later_rings() -> void:
 		Vector2i(3, 0),
 		Vector2i(4, 0),
 		Vector2i(5, 0),
+		Vector2i(6, 0),
 		Vector2i(0, 2),
 		Vector2i(0, 3),
 		Vector2i(0, 4),
 		Vector2i(0, 5),
+		Vector2i(0, 6),
 	]:
 		_expect(
 			terrain.get_terrain_type(cell) == DualGridTilemap.TerrainType.GRASS,
@@ -351,7 +593,7 @@ func _test_obstacles_do_not_block_later_rings() -> void:
 		terrain.get_terrain_type(Vector2i(0, 1)) == DualGridTilemap.TerrainType.METAL,
 		"来源销毁后原有金属格必须保持金属。"
 	)
-	_expect(terrain.get_terrain_type(Vector2i(5, 0)) == DualGridTilemap.TerrainType.EMPTY, "障碍后方生成草必须随来源恢复。")
+	_expect(terrain.get_terrain_type(Vector2i(6, 0)) == DualGridTilemap.TerrainType.EMPTY, "障碍后方生成草必须随来源恢复。")
 
 
 func _test_reversible_terrain_and_skips() -> void:
@@ -400,7 +642,7 @@ func _test_frozen_boundary() -> void:
 	spread.advance_time(5.0)
 	_flush_overlay_update()
 	_expect(spread.get_overlay_cell_count() == 2, "地图角落的第一圈只能包含冻结边界内的右、下两格。")
-	spread.advance_time(45.0)
+	spread.advance_time(VegetationSpreadSystem.TOTAL_SPREAD_SECONDS - 5.0)
 	for cell in terrain.raw_cells:
 		_expect(Rect2i(0, 0, 6, 6).has_point(cell), "传播不能越过初始化时冻结的地图边界。")
 
@@ -445,14 +687,16 @@ func _test_completed_overlap_owners() -> void:
 func _test_non_authoritative_client() -> void:
 	await _build_fixture(Rect2i(-6, -6, 13, 13), false)
 	spread.register_source(50, Vector2i.ZERO)
-	spread.advance_time(50.0)
+	spread.advance_time(VegetationSpreadSystem.TOTAL_SPREAD_SECONDS)
 	_flush_overlay_update()
 	_expect(terrain.set_call_count == 0, "非权威客户端不能根据本地计时修改地形。")
-	_expect(spread.get_overlay_cell_count() == 88, "非权威客户端仍须显示五圈88格预测绿化覆盖。")
+	_expect(spread.get_overlay_cell_count() == 120, "非权威客户端仍须显示六圈120格预测绿化覆盖。")
 	_expect(not spread.is_processing(), "完成的客户端预测来源在覆盖冲刷后必须退出10Hz处理。")
+	_expect(authoritative_terrain_batches.is_empty(), "非权威客户端完成六圈时不能提交任何地形批次。")
 	spread.cancel_source(50)
 	_flush_overlay_update()
 	_expect(terrain.set_call_count == 0, "非权威客户端销毁来源也不能自行恢复地形。")
+	_expect(authoritative_terrain_batches.is_empty(), "非权威客户端销毁来源时不能提交地形恢复批次。")
 
 
 func _test_authority_handoff_never_client_writes() -> void:
@@ -527,7 +771,10 @@ func _test_runtime_state_is_monotonic() -> void:
 		local_now_seconds - sample_age_seconds,
 		0.000001
 	)
-	var late_snapshot_elapsed := 50.0 - sample_age_seconds * 0.5
+	var late_snapshot_elapsed := (
+		VegetationSpreadSystem.TOTAL_SPREAD_SECONDS
+		- sample_age_seconds * 0.5
+	)
 	_expect(
 		spread.apply_source_runtime_state(
 			61,
@@ -538,9 +785,12 @@ func _test_runtime_state_is_monotonic() -> void:
 		"客户端必须接受带Host映射采样时间的late snapshot。"
 	)
 	_expect(
-		is_equal_approx(spread.get_source_elapsed_seconds(61), 50.0)
+		is_equal_approx(
+			spread.get_source_elapsed_seconds(61),
+			VegetationSpreadSystem.TOTAL_SPREAD_SECONDS
+		)
 		and spread.get_active_source_count() == 1,
-		"late snapshot映射到50秒后必须封顶并立即退出活动集合。"
+		"late snapshot映射到60秒后必须封顶并立即退出活动集合。"
 	)
 
 
@@ -554,6 +804,7 @@ func _build_fixture(
 	initial_cells: Dictionary = {}
 ) -> void:
 	_cleanup_fixture()
+	authoritative_terrain_batches.clear()
 	fixture_root = Node2D.new()
 	fixture_root.name = "VegetationSpreadFixture"
 	root.add_child(fixture_root)
@@ -584,6 +835,9 @@ func _build_fixture(
 		if overlay.multimesh.mesh is QuadMesh:
 			_expect((overlay.multimesh.mesh as QuadMesh).size == Vector2(16, 16), "覆盖QuadMesh必须严格对齐16×16地块。")
 		_expect(spread.setup(terrain, bounds, authority), "传播系统必须接受冻结边界和权威模式配置。")
+		spread.authoritative_terrain_changed.connect(
+			_on_authoritative_terrain_changed
+		)
 
 
 func _cleanup_fixture() -> void:
@@ -600,6 +854,16 @@ func _count_terrain_type(terrain_type: int) -> int:
 		if int(terrain.raw_cells[cell_variant]) == terrain_type:
 			count += 1
 	return count
+
+
+func _on_authoritative_terrain_changed(
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> void:
+	authoritative_terrain_batches.append({
+		"cell_xy": cell_xy.duplicate(),
+		"terrain_types": terrain_types.duplicate(),
+	})
 
 
 func _get_pixel_reveal_order(cell: Vector2i) -> PackedInt32Array:

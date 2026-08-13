@@ -40,6 +40,9 @@ const HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID := (
 const ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID := (
 	GlobalResearchRegistry.ORANGE_CHARGING_TOWER_CRAFTING_ID
 )
+const VEGETATION_STAKE_SPREAD_ENHANCEMENT_RESEARCH_ID := (
+	GlobalResearchRegistry.VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID
+)
 
 var failures: PackedStringArray = []
 
@@ -273,6 +276,9 @@ func _test_config_and_scene(
 	var orange_research := GlobalResearchRegistry.get_config(
 		ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID
 	)
+	var vegetation_spread_research := GlobalResearchRegistry.get_config(
+		VEGETATION_STAKE_SPREAD_ENHANCEMENT_RESEARCH_ID
+	)
 	var registered_research_projects := GlobalResearchRegistry.get_all_configs()
 	_expect(
 		registered_research_projects == [
@@ -281,9 +287,10 @@ func _test_config_and_scene(
 			bamboo_mortar_research,
 			hydrangea_research,
 			orange_research,
+			vegetation_spread_research,
 		]
 		and ResearchCoordinator.RUNTIME_STATE_SCHEMA == 3,
-		"全局科研注册表必须按固定顺序公开五个合法项目，并使用runtime schema3。"
+		"全局科研注册表必须按固定顺序公开六个合法项目，并使用runtime schema3。"
 	)
 	_expect(
 		defense_research != null
@@ -355,6 +362,20 @@ func _test_config_and_scene(
 			&"wooden_core_to_orange_charging_tower"
 		) == ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID,
 		"橘充能塔培育研究必须与紫阳花同为2木制核心、5树苗和30秒，但只解锁培育中心配方。"
+	)
+	_expect(
+		vegetation_spread_research != null
+		and vegetation_spread_research.is_valid()
+		and vegetation_spread_research.input_items == [PLANK, WATER_BOTTLE]
+		and vegetation_spread_research.input_amounts == [20, 5]
+		and is_equal_approx(
+			vegetation_spread_research.duration_seconds,
+			60.0
+		)
+		and vegetation_spread_research.effect_type
+		== GlobalResearchConfig.EffectType.VEGETATION_SPREAD_SPEED_MULTIPLIER
+		and is_equal_approx(vegetation_spread_research.effect_amount, 2.0),
+		"植被桩蔓延增强必须消耗20木板和5水瓶、持续60秒，并将蔓延速率设为2倍。"
 	)
 	_expect(
 		config != null
@@ -584,7 +605,10 @@ func _test_config_and_scene(
 		and panel.has_node(
 			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/OrangeChargingTowerResearchButton"
 		)
-		and panel.global_research_buttons.size() == 5
+		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/VegetationStakeSpreadResearchButton"
+		)
+		and panel.global_research_buttons.size() == 6
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/PlankSlot")
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/SaplingSlot")
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/WaterBottleSlot")
@@ -592,7 +616,7 @@ func _test_config_and_scene(
 		and panel.has_node("Overlay/PanelRoot/PlayerPage/TechNode2")
 		and panel.has_node("Overlay/PanelRoot/PlayerPage/TechNode3")
 		and not panel.has_node("Overlay/PanelRoot/ToggleButton"),
-		"科研UI必须原生包含五项全局研究、双页与三处技术节点，并且不能有开关。"
+		"科研UI必须原生包含六项全局研究、双页与三处技术节点，并且不能有开关。"
 	)
 	_expect(
 		is_equal_approx(
@@ -801,6 +825,24 @@ func _test_panel_mouse_navigation(
 		and panel.material_slots[0].item == WOODEN_CORE
 		and panel.material_slots[1].item == SAPLING,
 		"滚动后点击橘充能塔研究必须选中独立项目，并展示与紫阳花相同的双材料需求。"
+	)
+	panel.global_research_scroll.ensure_control_visible(
+		panel.vegetation_stake_spread_research_button
+	)
+	await process_frame
+	await _click_panel_control(panel.vegetation_stake_spread_research_button)
+	_expect(
+		root.gui_get_hovered_control()
+		== panel.vegetation_stake_spread_research_button
+		and panel.selected_global_research_id
+		== VEGETATION_STAKE_SPREAD_ENHANCEMENT_RESEARCH_ID
+		and panel.vegetation_stake_spread_research_button.button_pressed
+		and panel.material_slots[0].visible
+		and panel.material_slots[1].visible
+		and not panel.material_slots[2].visible
+		and panel.material_slots[0].item == PLANK
+		and panel.material_slots[1].item == WATER_BOTTLE,
+		"滚动后点击植被桩蔓延增强必须选中独立项目，并展示20木板与5水瓶的双材料布局。"
 	)
 
 	await _click_panel_control(panel.close_button)
@@ -1212,6 +1254,56 @@ func _test_recipe_unlock_research(
 		and available_recipes.has(hydrangea_recipe),
 		"橘充能塔研发满30秒后必须仅新增独立完成ID，不得污染简易制作解锁。"
 	)
+	_expect(
+		is_equal_approx(
+			research.get_vegetation_spread_speed_multiplier(),
+			1.0
+		)
+		and production.get_total_item_count(PLANK) == 20
+		and warehouse.try_add_storage_item_count(WATER_BOTTLE, 4)
+		and center.try_start_global_research(
+			VEGETATION_STAKE_SPREAD_ENHANCEMENT_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_MISSING_INPUT
+		and production.get_total_item_count(PLANK) == 20
+		and production.get_total_item_count(WATER_BOTTLE) == 4,
+		"植被桩蔓延增强缺少第5个水瓶时必须原子失败，且完成前倍率保持1。"
+	)
+	_expect(
+		warehouse.try_add_storage_item_count(WATER_BOTTLE, 1)
+		and center.try_start_global_research(
+			VEGETATION_STAKE_SPREAD_ENHANCEMENT_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_SUCCESS
+		and production.get_total_item_count(PLANK) == 0
+		and production.get_total_item_count(WATER_BOTTLE) == 0,
+		"植被桩蔓延增强开始时必须原子扣除20木板与5水瓶。"
+	)
+	research.advance_global_research(59.9)
+	_expect(
+		research.get_global_research_state(
+			VEGETATION_STAKE_SPREAD_ENHANCEMENT_RESEARCH_ID
+		) == ResearchCoordinator.GlobalResearchState.RESEARCHING
+		and is_equal_approx(
+			research.get_vegetation_spread_speed_multiplier(),
+			1.0
+		),
+		"植被桩蔓延增强未满60秒时不得提前提高蔓延速率。"
+	)
+	research.advance_global_research(0.1)
+	expected_completed_ids.append(
+		VEGETATION_STAKE_SPREAD_ENHANCEMENT_RESEARCH_ID
+	)
+	completed_ids = research.get_completed_global_research_ids()
+	_expect(
+		completed_ids == expected_completed_ids
+		and research.get_active_global_research_id().is_empty()
+		and is_equal_approx(
+			research.get_vegetation_spread_speed_multiplier(),
+			2.0
+		)
+		and SimpleCraftingRegistry.get_available_recipes(completed_ids).size()
+		== 9,
+		"植被桩蔓延增强满60秒后必须把蔓延倍率设为2，且不得污染配方解锁。"
+	)
 
 	var remote_research := (
 		RESEARCH_COORDINATOR_SCENE.instantiate() as ResearchCoordinator
@@ -1234,16 +1326,20 @@ func _test_recipe_unlock_research(
 	var snapshot_elapsed := snapshot.get("global_elapsed", {}) as Dictionary
 	_expect(
 		int(snapshot.get("schema", 0)) == 3
-		and snapshot_states.size() == 5
-		and snapshot_elapsed.size() == 5
+		and snapshot_states.size() == 6
+		and snapshot_elapsed.size() == 6
 		and remote_research.get_completed_global_research_ids()
 		== expected_completed_ids
+		and is_equal_approx(
+			remote_research.get_vegetation_spread_speed_multiplier(),
+			2.0
+		)
 		and remote_plant_system.get_global_physical_defense_bonus() == 10
 		and is_equal_approx(
 			remote_player.move_speed,
 			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
 		),
-		"schema3多人科研快照必须完整同步五个项目、数值效果与三项配方解锁。"
+		"schema3多人科研快照必须完整同步六个项目、数值效果与三项配方解锁。"
 	)
 	var replayed_snapshot := snapshot.duplicate(true)
 	replayed_snapshot["revision"] = int(snapshot["revision"]) + 1
@@ -1252,10 +1348,14 @@ func _test_recipe_unlock_research(
 		remote_research.get_completed_global_research_ids()
 		== expected_completed_ids
 		and is_equal_approx(
+			remote_research.get_vegetation_spread_speed_multiplier(),
+			2.0
+		)
+		and is_equal_approx(
 			remote_player.move_speed,
 			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
 		),
-		"重复应用更高revision的五项目完成态快照不得重复叠加数值效果。"
+		"重复应用更高revision的六项目完成态快照不得重复叠加数值效果。"
 	)
 
 	var accepted_revision := remote_research.research_revision
@@ -1291,6 +1391,10 @@ func _test_recipe_unlock_research(
 		remote_research.research_revision == accepted_revision
 		and remote_research.get_completed_global_research_ids()
 		== expected_completed_ids
+		and is_equal_approx(
+			remote_research.get_vegetation_spread_speed_multiplier(),
+			2.0
+		)
 		and remote_plant_system.get_global_physical_defense_bonus() == 10
 		and is_equal_approx(
 			remote_player.move_speed,

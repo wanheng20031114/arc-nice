@@ -125,7 +125,7 @@ func _test_fate_and_protocol_boundaries() -> void:
 		"命运精英映射必须保持10项，普通与大纸箱怪都不得拥有精英替换。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 67
+		NET_CONSTANTS.PROTOCOL_VERSION == 69
 		and NET_CONSTANTS.CHANNEL_COUNT == 8
 		and CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET
 		== 18
@@ -133,7 +133,7 @@ func _test_fate_and_protocol_boundaries() -> void:
 			&"cardboard_monster_large_slash"
 		) == CombatAttackRegistry.PlayerHitWireId.INVALID
 		and CombatAttackRegistry.decode_player_hit_source(19) == &"",
-		"协议v67必须保留攻速塔与v66移速塔、v65及v64的P1E状态确认与v63资源语义、保持8通道和攻击来源末尾ID18，大纸箱怪不得新增攻击wire ID。"
+		"协议v69必须隔离植被科研倍率快照与注册集合，保留v68六格扩散与既有状态确认语义、保持8通道和攻击来源末尾ID18，大纸箱怪不得新增攻击wire ID。"
 	)
 	_expect(
 		GameModeCatalog.MODE_TEST_ARENA_P1C == 6

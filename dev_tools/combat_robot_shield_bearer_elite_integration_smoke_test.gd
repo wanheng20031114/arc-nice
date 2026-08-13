@@ -110,7 +110,7 @@ func _test_codex_and_fate() -> void:
 
 
 func _test_protocol_attack_registry_and_pool_absence() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 67, "精英盾兵资源合同、攻速塔、v66移速塔与v63新增语义必须保留在协议v67中。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 69, "协议v69必须隔离植被科研倍率快照与注册集合，并保留v68六格扩散、精英盾兵与既有资源语义。")
 	_expect(
 		CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET == 18
 		and CombatAttackRegistry.encode_player_hit_source(

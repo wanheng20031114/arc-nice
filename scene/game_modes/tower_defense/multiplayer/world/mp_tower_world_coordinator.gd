@@ -1309,10 +1309,19 @@ func apply_plant_runtime_state(
 		var spread_elapsed := float(
 			corrected_state.get("spread_elapsed_seconds", 0.0)
 		)
-		if not is_finite(spread_elapsed):
+		var spread_speed_multiplier := float(
+			corrected_state.get("spread_speed_multiplier", 0.0)
+		)
+		if (
+			not is_finite(spread_elapsed)
+			or not is_finite(spread_speed_multiplier)
+			or spread_speed_multiplier
+			< VegetationStake.MIN_SPREAD_SPEED_MULTIPLIER
+		):
 			return
 		corrected_state["spread_elapsed_seconds"] = (
-			maxf(spread_elapsed, 0.0) + sample_age
+			maxf(spread_elapsed, 0.0)
+				+ sample_age * spread_speed_multiplier
 		)
 	for elapsed_key in [
 		"windup_elapsed_seconds",

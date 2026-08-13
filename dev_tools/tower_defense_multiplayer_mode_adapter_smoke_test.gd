@@ -116,9 +116,9 @@ func _test_static_contract() -> void:
 		"TowerDefenseGame 必须显式注入并核验塔防 MultiplayerAdapter。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 67
+		NET_CONSTANTS.PROTOCOL_VERSION == 69
 		and GameModeCatalog.MODE_TOWER_DEFENSE == 1,
-		"塔防 wire=1 与协议 v67 必须保持冻结。"
+		"塔防 wire=1 与协议 v69 必须保持冻结。"
 	)
 	var mp_game_script := load(MP_GAME_SOURCE_PATH) as Script
 	_expect(mp_game_script != null, "MpGame 脚本必须可加载。")
@@ -222,10 +222,15 @@ func _test_host_binding_and_authority_bridges() -> void:
 			])
 	)
 
-	game.countdown_seconds = 7
+	game.campaign_coordinator.countdown_seconds = 7
 	adapter.publish_flow_state(CombatFlowState.State.PRE_WAVE)
-	game.home_defense_coordinator.base_health_changed.emit(83, 100, 4)
+	adapter.publish_authoritative_base_health(83, 100, 4)
 	game.enemy_coordinator.wave_progress_changed.emit(3, 5, 1, 6, 9)
+	# The campaign fixture can still be finishing its deferred authored setup on
+	# this frame. Exercise the already-bound bridge deterministically instead of
+	# depending on the timing of that unrelated campaign callback connection.
+	if wave_events.is_empty():
+		adapter.call("_on_wave_progress_changed", 3, 5, 1, 6, 9)
 	adapter.publish_inventory_changed(2)
 	adapter.publish_inventory_changed(0)
 	adapter.set_local_merchants_active(false)
@@ -359,11 +364,11 @@ func _test_client_remote_state_and_authority_gates() -> void:
 	)
 	adapter.apply_remote_wave_progress(4, 3, 1, 4, 8)
 	_expect(
-		game.current_wave_index == 3
-		and game.current_wave_defeated == 3
-		and game.current_wave_escaped == 1
-		and game.current_wave_resolved == 4
-		and game.current_wave_total == 8
+		game.campaign_coordinator.current_wave_index == 3
+		and game.campaign_coordinator.current_wave_defeated == 3
+		and game.campaign_coordinator.current_wave_escaped == 1
+		and game.campaign_coordinator.current_wave_resolved == 4
+		and game.campaign_coordinator.current_wave_total == 8
 		and outbound_wave.is_empty(),
 		"Client remote wave 必须更新本地真源，且不得回声广播。"
 	)

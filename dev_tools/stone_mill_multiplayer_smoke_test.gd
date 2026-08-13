@@ -140,8 +140,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 67,
-		"多人协议v67必须保留攻速塔、v66移速塔、P1D/P1E、遭遇跟随作战、狭路相逢、稀有宝箱与既有wire合同。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 69,
+		"多人协议v69必须隔离植被科研倍率快照与注册集合，并保留v68六格扩散、P1D/P1E与既有wire合同。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()

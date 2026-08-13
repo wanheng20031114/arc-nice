@@ -10,11 +10,17 @@ const VEGETATION_RING_TEXTURE := preload(
 const LEGACY_VEGETATION_RING_RADIUS := 64.0 * 0.52 * 0.5
 const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
 const ENEMY_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
+const VEGETATION_SPREAD_RESEARCH_ID := (
+	GlobalResearchRegistry.VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID
+)
 const AUTHORITATIVE_BATCH_CELL_COUNT := 193
+const VEGETATION_FINAL_CELL_COUNT := 120
 const LIFECYCLE_PLANT_NET_ID := 900001
 const MULTI_CELL_DECAY_PLANT_NET_ID := 900003
 const ROSTER_PLANT_NET_ID := 900004
 const REALTIME_PLANT_NET_ID := 900005
+const RESEARCH_EXISTING_PLANT_NET_ID := 900006
+const RESEARCH_NEW_PLANT_NET_ID := 900007
 
 var failures: Array[String] = []
 var emitted_terrain_batches: Array[Dictionary] = []
@@ -44,9 +50,11 @@ func _run() -> void:
 	_test_preauthored_spread_system(game)
 	_test_authoritative_batching(game)
 	_test_client_snapshot_replacement_and_revision(game)
+	_test_vegetation_final_state_round_trip(game)
 	await _test_multiplayer_lifecycle_effect_routing(game)
 	await _test_real_plant_lifecycle(game)
 	await _test_multi_cell_unsupported_terrain_damage(game)
+	await _test_vegetation_research_runtime_refresh(game)
 
 	game.queue_free()
 	await process_frame
@@ -162,7 +170,11 @@ func _test_vegetation_stake_scene_contract() -> void:
 	var first_sample_age := minf(sample_now * 0.5, 0.25)
 	var first_sample_time := maxf(sample_now - first_sample_age, 0.000001)
 	stake.apply_multiplayer_runtime_state(
-		{"schema": 1, "spread_elapsed_seconds": 12.0},
+		{
+			"schema": VegetationStake.RUNTIME_STATE_SCHEMA,
+			"spread_elapsed_seconds": 12.0,
+			"spread_speed_multiplier": 1.0,
+		},
 		first_sample_time
 	)
 	var first_elapsed := stake.get_spread_elapsed_seconds()
@@ -171,7 +183,11 @@ func _test_vegetation_stake_scene_contract() -> void:
 		"运行时状态必须计入Host采样后的映射时间。"
 	)
 	stake.apply_multiplayer_runtime_state(
-		{"schema": 1, "spread_elapsed_seconds": 8.0},
+		{
+			"schema": VegetationStake.RUNTIME_STATE_SCHEMA,
+			"spread_elapsed_seconds": 8.0,
+			"spread_speed_multiplier": 1.0,
+		},
 		Time.get_ticks_msec() / 1000.0
 	)
 	_expect(
@@ -186,30 +202,86 @@ func _test_vegetation_stake_scene_contract() -> void:
 	)
 	var advanced_raw_elapsed := first_elapsed - advanced_sample_age * 0.5
 	stake.apply_multiplayer_runtime_state(
-		{"schema": 1, "spread_elapsed_seconds": advanced_raw_elapsed},
+		{
+			"schema": VegetationStake.RUNTIME_STATE_SCHEMA,
+			"spread_elapsed_seconds": advanced_raw_elapsed,
+			"spread_speed_multiplier": 1.0,
+		},
 		advanced_sample_time
 	)
 	_expect(
 		stake.get_spread_elapsed_seconds() > first_elapsed,
 		"原始elapsed较小但映射到当前更先进的状态仍必须被接受。"
 	)
+	var accelerated_now := Time.get_ticks_msec() / 1000.0
+	var accelerated_sample_age := minf(accelerated_now * 0.5, 0.25)
+	var accelerated_sample_time := maxf(
+		accelerated_now - accelerated_sample_age,
+		0.000001
+	)
+	var accelerated_raw_elapsed := first_elapsed + 2.0
+	stake.apply_multiplayer_runtime_state(
+		{
+			"schema": VegetationStake.RUNTIME_STATE_SCHEMA,
+			"spread_elapsed_seconds": accelerated_raw_elapsed,
+			"spread_speed_multiplier": 2.0,
+		},
+		accelerated_sample_time
+	)
+	var accelerated_elapsed := stake.get_spread_elapsed_seconds()
+	_expect(
+		absf(
+			accelerated_elapsed
+				- (
+					accelerated_raw_elapsed
+					+ accelerated_sample_age * 2.0
+				)
+		) < 0.1
+		and is_equal_approx(stake.get_spread_speed_multiplier(), 2.0),
+		"schema2快照必须携带2倍传播倍率，并以基础进度秒按年龄×2外推。"
+	)
+	stake.apply_multiplayer_runtime_state(
+		{
+			"schema": VegetationStake.RUNTIME_STATE_SCHEMA,
+			"spread_elapsed_seconds": VegetationStake.TOTAL_SPREAD_SECONDS + 10.0,
+			"spread_speed_multiplier": 2.0,
+		},
+		Time.get_ticks_msec() / 1000.0
+	)
 	var exported_state := stake.export_multiplayer_runtime_state()
 	_expect(
-		int(exported_state.get("schema", 0)) == 1
-		and float(exported_state.get("spread_elapsed_seconds", -1.0)) <= 50.0,
-		"植被桩导出的运行时状态必须保持schema 1并封顶50秒。"
+		int(exported_state.get("schema", 0))
+		== VegetationStake.RUNTIME_STATE_SCHEMA
+		and is_equal_approx(
+			float(exported_state.get("spread_elapsed_seconds", -1.0)),
+			VegetationStake.TOTAL_SPREAD_SECONDS
+		)
+		and is_equal_approx(
+			float(exported_state.get("spread_speed_multiplier", -1.0)),
+			2.0
+		),
+		"植被桩导出的运行时状态必须使用schema2、携带倍率并精确封顶60基础进度秒。"
 	)
 	stake.queue_free()
 	await process_frame
 
 
 func _test_preauthored_spread_system(game: TowerDefenseGame) -> void:
-	_expect(game.supports_multiplayer_terrain_state(), "塔防运行时必须启用多人地形状态。")
+	var tower_adapter := (
+		game.get_multiplayer_mode_adapter()
+		as TowerDefenseMultiplayerModeAdapter
+	)
+	_expect(
+		tower_adapter != null and tower_adapter.supports_terrain_state(),
+		"塔防多人适配器必须通过植物运行时协调器启用地形状态。"
+	)
 	var spread_node := game.get_node_or_null("VegetationSpreadSystem")
 	_expect(spread_node is VegetationSpreadSystem, "GameTower场景必须预置VegetationSpreadSystem。")
 	_expect(
-		spread_node == game.vegetation_spread_system,
-		"GameTower运行时引用必须指向场景预置的传播系统。"
+		game.plant_runtime_coordinator != null
+		and spread_node
+		== game.plant_runtime_coordinator.authored_vegetation_spread_system,
+		"植物运行时协调器的正式引用必须指向场景预置的传播系统。"
 	)
 	if spread_node is VegetationSpreadSystem:
 		var overlay := spread_node.get_node_or_null("GrowthOverlay") as MultiMeshInstance2D
@@ -269,7 +341,7 @@ func _test_authoritative_batching(game: TowerDefenseGame) -> void:
 		return
 	if not tower_adapter.terrain_delta.is_connected(_on_terrain_delta):
 		tower_adapter.terrain_delta.connect(_on_terrain_delta)
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	_set_fixture_runtime_mode(game, CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY)
 	game.plant_runtime_coordinator.apply_authoritative_terrain_changes(
 		cell_xy,
 		terrain_types,
@@ -300,6 +372,132 @@ func _test_authoritative_batching(game: TowerDefenseGame) -> void:
 	)
 
 
+func _test_vegetation_final_state_round_trip(game: TowerDefenseGame) -> void:
+	var coordinator := game.plant_runtime_coordinator
+	_expect(
+		coordinator != null
+		and coordinator.authored_terrain_baseline.size() >= VEGETATION_FINAL_CELL_COUNT,
+		"植被120格网络往返测试需要完整植物运行时与足够的authored地形。"
+	)
+	if (
+		coordinator == null
+		or coordinator.authored_terrain_baseline.size() < VEGETATION_FINAL_CELL_COUNT
+	):
+		return
+	var cells: Array[Vector2i] = []
+	for cell_variant in coordinator.authored_terrain_baseline:
+		cells.append(cell_variant as Vector2i)
+	cells.sort_custom(_sort_cells)
+	cells.resize(VEGETATION_FINAL_CELL_COUNT)
+	var cell_xy := PackedInt32Array()
+	var final_types := PackedInt32Array()
+	var restore_types := PackedInt32Array()
+	for cell in cells:
+		var baseline_type := int(coordinator.authored_terrain_baseline[cell])
+		cell_xy.append(cell.x)
+		cell_xy.append(cell.y)
+		final_types.append(_different_terrain_type(baseline_type))
+		restore_types.append(baseline_type)
+
+	coordinator.multiplayer_terrain_revision = 0
+	coordinator.multiplayer_terrain_overrides.clear()
+	emitted_terrain_batches.clear()
+	_set_fixture_runtime_mode(game, CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY)
+	_expect(
+		coordinator.apply_authoritative_terrain_changes(cell_xy, final_types, 96),
+		"Host必须接受植被半径6最终120格权威地形。"
+	)
+	_expect(
+		emitted_terrain_batches.size() == 2
+		and int(emitted_terrain_batches[0].get("revision", -1)) == 1
+		and int(emitted_terrain_batches[1].get("revision", -1)) == 2
+		and (
+			emitted_terrain_batches[0].get("terrain_types", PackedInt32Array())
+			as PackedInt32Array
+		).size() == 96
+		and (
+			emitted_terrain_batches[1].get("terrain_types", PackedInt32Array())
+			as PackedInt32Array
+		).size() == 24,
+		"Host植被最终120格必须按96+24拆包，并使用连续revision 1、2。"
+	)
+
+	_set_fixture_runtime_mode(game, CombatRuntimeBase.RuntimeMode.CLIENT_VIEW)
+	coordinator.multiplayer_terrain_revision = 0
+	coordinator.multiplayer_terrain_overrides.clear()
+	for cell in cells:
+		game.dual_grid_terrain.set_tile(
+			cell, int(coordinator.authored_terrain_baseline[cell])
+		)
+	for batch in emitted_terrain_batches:
+		_expect(
+			game.tower_multiplayer_mode_adapter.apply_remote_terrain_delta(
+				int(batch.get("revision", -1)),
+				batch.get("cell_xy", PackedInt32Array()) as PackedInt32Array,
+				batch.get("terrain_types", PackedInt32Array()) as PackedInt32Array
+			),
+			"Client必须依序接受植被96+24权威地形分包。"
+		)
+	_expect(
+		coordinator.multiplayer_terrain_revision == 2
+		and coordinator.multiplayer_terrain_overrides.size()
+		== VEGETATION_FINAL_CELL_COUNT,
+		"Client应用96+24分包后必须保留完整120格与revision 2。"
+	)
+	for index in range(cells.size()):
+		_expect(
+			game.dual_grid_terrain.get_terrain_type(cells[index]) == final_types[index],
+			"Client不能丢失植被120格最终状态：%s" % cells[index]
+		)
+
+	emitted_terrain_batches.clear()
+	_set_fixture_runtime_mode(game, CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY)
+	_expect(
+		coordinator.apply_authoritative_terrain_changes(cell_xy, restore_types, 96),
+		"Host必须接受植被120格完整恢复。"
+	)
+	_expect(
+		emitted_terrain_batches.size() == 2
+		and int(emitted_terrain_batches[0].get("revision", -1)) == 3
+		and int(emitted_terrain_batches[1].get("revision", -1)) == 4
+		and (
+			emitted_terrain_batches[0].get("terrain_types", PackedInt32Array())
+			as PackedInt32Array
+		).size() == 96
+		and (
+			emitted_terrain_batches[1].get("terrain_types", PackedInt32Array())
+			as PackedInt32Array
+		).size() == 24,
+		"Host植被120格恢复必须按96+24拆包，并连续推进revision 3、4。"
+	)
+	_set_fixture_runtime_mode(game, CombatRuntimeBase.RuntimeMode.CLIENT_VIEW)
+	coordinator.multiplayer_terrain_revision = 2
+	coordinator.multiplayer_terrain_overrides.clear()
+	for index in range(cells.size()):
+		game.dual_grid_terrain.set_tile(cells[index], final_types[index])
+		coordinator.multiplayer_terrain_overrides[cells[index]] = final_types[index]
+	for batch in emitted_terrain_batches:
+		_expect(
+			game.tower_multiplayer_mode_adapter.apply_remote_terrain_delta(
+				int(batch.get("revision", -1)),
+				batch.get("cell_xy", PackedInt32Array()) as PackedInt32Array,
+				batch.get("terrain_types", PackedInt32Array()) as PackedInt32Array
+			),
+			"Client必须依序接受植被96+24恢复分包。"
+		)
+	_expect(
+		coordinator.multiplayer_terrain_revision == 4
+		and coordinator.multiplayer_terrain_overrides.is_empty(),
+		"Client应用恢复分包后必须清空全部120格override并推进至revision 4。"
+	)
+	for cell in cells:
+		_expect(
+			game.dual_grid_terrain.get_terrain_type(cell)
+			== int(coordinator.authored_terrain_baseline[cell]),
+			"Client不能丢失植被120格恢复状态：%s" % cell
+		)
+
+
 func _test_client_snapshot_replacement_and_revision(game: TowerDefenseGame) -> void:
 	var empty_target := Vector2i.ZERO
 	var found_empty_target := false
@@ -325,7 +523,7 @@ func _test_client_snapshot_replacement_and_revision(game: TowerDefenseGame) -> v
 	if not found_restored_cell:
 		return
 
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	_set_fixture_runtime_mode(game, CombatRuntimeBase.RuntimeMode.CLIENT_VIEW)
 	var snapshot_applied := game.tower_multiplayer_mode_adapter.apply_remote_terrain_snapshot(
 		7,
 		PackedInt32Array([empty_target.x, empty_target.y]),
@@ -376,7 +574,11 @@ func _test_client_snapshot_replacement_and_revision(game: TowerDefenseGame) -> v
 
 
 func _test_real_plant_lifecycle(game: TowerDefenseGame) -> void:
-	var spread: VegetationSpreadSystem = game.vegetation_spread_system
+	var spread: VegetationSpreadSystem = (
+		game.plant_runtime_coordinator.authored_vegetation_spread_system
+		if game.plant_runtime_coordinator != null
+		else null
+	)
 	var plant_system := game.plant_system
 	var config := VEGETATION_STAKE_CONFIG as PlantDefenseConfig
 	_expect(spread != null and plant_system != null, "真实生命周期测试需要GameTower完整植物与传播系统。")
@@ -412,7 +614,7 @@ func _test_real_plant_lifecycle(game: TowerDefenseGame) -> void:
 		"真实传播目标的authored baseline必须是EMPTY或DIRT。"
 	)
 
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	_set_fixture_runtime_mode(game, CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY)
 	var tower_adapter := (
 		game.get_multiplayer_mode_adapter()
 		as TowerDefenseMultiplayerModeAdapter
@@ -576,7 +778,7 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 	if anchors.is_empty():
 		return
 
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	_set_fixture_runtime_mode(game, CombatRuntimeBase.RuntimeMode.CLIENT_VIEW)
 	var anchor := anchors[0]
 	game.tower_multiplayer_mode_adapter.apply_remote_plant_spawn(
 		0,
@@ -642,7 +844,7 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 		"实时客户端request_id>0必须播放0.7秒生成效果与一次空间放置声。"
 	)
 	if realtime_plant == null:
-		game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		_set_fixture_runtime_mode(game, CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY)
 		return
 
 	# Keep ample distance from the 0.305 s cue's natural finish so a slow
@@ -731,7 +933,7 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 		).is_empty(),
 		"实时生成后提前撤除时，两套粒子租约与放置声部最终都必须完整释放。"
 	)
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	_set_fixture_runtime_mode(game, CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY)
 
 
 func _test_multi_cell_unsupported_terrain_damage(game: TowerDefenseGame) -> void:
@@ -741,7 +943,7 @@ func _test_multi_cell_unsupported_terrain_damage(game: TowerDefenseGame) -> void
 	if config == null or plant_system == null:
 		return
 
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	_set_fixture_runtime_mode(game, CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY)
 	var valid_anchors := plant_system.get_valid_anchors_for_player(config, game.player)
 	_expect(not valid_anchors.is_empty(), "真实地图必须保留可放置2x2植物的草地锚点。")
 	if valid_anchors.is_empty():
@@ -769,13 +971,13 @@ func _test_multi_cell_unsupported_terrain_damage(game: TowerDefenseGame) -> void
 		game.dual_grid_terrain.set_tile(cell, DualGridTilemap.TerrainType.DIRT)
 
 	var full_health := plant.current_health
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	_set_fixture_runtime_mode(game, CombatRuntimeBase.RuntimeMode.CLIENT_VIEW)
 	game.plant_terrain_decay_timer.timeout.emit()
 	_expect(
 		plant.current_health == full_health,
 		"CLIENT_VIEW不能本地结算2x2植物的失地衰败伤害。"
 	)
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	_set_fixture_runtime_mode(game, CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY)
 	game.plant_terrain_decay_timer.timeout.emit()
 	_expect(
 		plant.current_health == full_health - 200,
@@ -812,6 +1014,111 @@ func _test_multi_cell_unsupported_terrain_damage(game: TowerDefenseGame) -> void
 		plant_system.get_plant_by_net_id(MULTI_CELL_DECAY_PLANT_NET_ID) == null,
 		"2x2衰败测试植物死亡后必须释放net_id与占地。"
 	)
+	await process_frame
+
+
+func _test_vegetation_research_runtime_refresh(
+	game: TowerDefenseGame
+) -> void:
+	var plant_system := game.plant_system
+	var research := game.research_coordinator
+	var coordinator := game.plant_runtime_coordinator
+	var spread := (
+		coordinator.authored_vegetation_spread_system
+		if coordinator != null
+		else null
+	) as VegetationSpreadSystem
+	var config := VEGETATION_STAKE_CONFIG as PlantDefenseConfig
+	_expect(
+		plant_system != null
+		and research != null
+		and coordinator != null
+		and spread != null
+		and config != null,
+		"科研传播运行时测试需要正式植物系统、科研协调器和植被传播节点。"
+	)
+	if (
+		plant_system == null
+		or research == null
+		or coordinator == null
+		or spread == null
+		or config == null
+	):
+		return
+	var anchors := plant_system.get_valid_anchors_for_player(config, game.player)
+	_expect(not anchors.is_empty(), "科研完成前必须保留可生成既有植被桩的合法锚点。")
+	if anchors.is_empty():
+		return
+	var existing_stake := plant_system.spawn_multiplayer_replica(
+		config.plant_id,
+		anchors[0],
+		game.player,
+		RESEARCH_EXISTING_PLANT_NET_ID,
+		config.max_health,
+		config.max_health,
+		1,
+		false
+	) as VegetationStake
+	_expect(
+		existing_stake != null
+		and existing_stake.is_operational
+		and is_equal_approx(existing_stake.get_spread_speed_multiplier(), 1.0)
+		and is_equal_approx(spread.get_spread_speed_multiplier(), 1.0),
+		"科研完成前，正式SpreadSystem与既有植被桩都必须保持1倍基础进度速率。"
+	)
+	if existing_stake == null:
+		return
+
+	var research_state := research.export_runtime_state()
+	var global_states := (
+		research_state.get("global_states", {}) as Dictionary
+	).duplicate()
+	var global_elapsed := (
+		research_state.get("global_elapsed", {}) as Dictionary
+	).duplicate()
+	global_states[String(VEGETATION_SPREAD_RESEARCH_ID)] = (
+		ResearchCoordinator.GlobalResearchState.COMPLETED
+	)
+	global_elapsed[String(VEGETATION_SPREAD_RESEARCH_ID)] = (
+		research.get_global_research_duration(VEGETATION_SPREAD_RESEARCH_ID)
+	)
+	research_state["global_states"] = global_states
+	research_state["global_elapsed"] = global_elapsed
+	research_state["active_global_research_id"] = ""
+	research_state["revision"] = int(research_state.get("revision", 0)) + 1
+	research.apply_multiplayer_runtime_state(research_state)
+	_expect(
+		research.is_global_research_completed(VEGETATION_SPREAD_RESEARCH_ID)
+		and is_equal_approx(spread.get_spread_speed_multiplier(), 2.0)
+		and is_equal_approx(
+			existing_stake.get_spread_speed_multiplier(),
+			2.0
+		),
+		"科研完成快照发出research_state_changed后，正式传播系统与既有植被桩必须即时切到2倍。"
+	)
+
+	anchors = plant_system.get_valid_anchors_for_player(config, game.player)
+	_expect(not anchors.is_empty(), "科研完成后必须保留可生成新植被桩的合法锚点。")
+	var new_stake: VegetationStake = null
+	if not anchors.is_empty():
+		new_stake = plant_system.spawn_multiplayer_replica(
+			config.plant_id,
+			anchors[0],
+			game.player,
+			RESEARCH_NEW_PLANT_NET_ID,
+			config.max_health,
+			config.max_health,
+			1,
+			false
+		) as VegetationStake
+	_expect(
+		new_stake != null
+		and is_equal_approx(new_stake.get_spread_speed_multiplier(), 2.0),
+		"科研完成后新生成的植被桩必须从正式SpreadSystem继承2倍速率。"
+	)
+	if new_stake != null:
+		new_stake.begin_removal(PlantDefense.RemovalMode.SILENT)
+	existing_stake.begin_removal(PlantDefense.RemovalMode.SILENT)
 	await process_frame
 
 
@@ -884,6 +1191,12 @@ func _on_lifecycle_plant_removed(net_id: int, was_destroyed: bool) -> void:
 	if record_lifecycle_events and net_id == LIFECYCLE_PLANT_NET_ID:
 		lifecycle_events.append("plant_removed")
 		lifecycle_plant_was_destroyed = was_destroyed
+
+
+func _set_fixture_runtime_mode(game: TowerDefenseGame, runtime_mode: int) -> void:
+	game.runtime_mode = runtime_mode
+	if game.plant_runtime_coordinator != null:
+		game.plant_runtime_coordinator.set_runtime_mode(runtime_mode)
 
 
 func _finish() -> void:

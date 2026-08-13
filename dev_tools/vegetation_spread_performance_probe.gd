@@ -56,7 +56,11 @@ func _run() -> void:
 			-72 + (source_index % 8) * 18,
 			-72 + (source_index / 8) * 18
 		)
-		spread.register_source(source_index + 1, origin, 50.0)
+		spread.register_source(
+			source_index + 1,
+			origin,
+			VegetationSpreadSystem.TOTAL_SPREAD_SECONDS
+		)
 	spread.register_source(1000, Vector2i(80, 80), 0.0)
 	_expect(
 		spread.get_source_count() == COMPLETED_SOURCE_COUNT + 1

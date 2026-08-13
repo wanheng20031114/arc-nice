@@ -8,6 +8,7 @@ enum EffectType {
 	PLAYER_MOVE_SPEED,
 	SIMPLE_CRAFTING_RECIPE_UNLOCK,
 	PRODUCTION_RECIPE_UNLOCK,
+	VEGETATION_SPREAD_SPEED_MULTIPLIER,
 }
 
 @export_group("基础信息")
@@ -41,7 +42,7 @@ func is_valid() -> bool:
 		or duration_seconds <= 0.0
 		or not is_finite(effect_amount)
 		or effect_type < EffectType.BUILDING_PHYSICAL_DEFENSE
-		or effect_type > EffectType.PRODUCTION_RECIPE_UNLOCK
+		or effect_type > EffectType.VEGETATION_SPREAD_SPEED_MULTIPLIER
 	):
 		return false
 	match effect_type:

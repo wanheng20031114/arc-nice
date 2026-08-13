@@ -6,13 +6,16 @@ signal authoritative_terrain_changed(
 	terrain_types: PackedInt32Array
 )
 
-const SPREAD_RADIUS := 5
-## Fill the eight nearest cells just outside the strict radius-five disc so the
-## four cardinal caps are three cells wide instead of ending in a single-tile
-## spike. This keeps the five-ring schedule while only expanding the last ring.
+const SPREAD_RADIUS := 6
+## Starting at radius five, include the nearest cells just outside each strict
+## integer-radius disc. Keeping that threshold on every outer ring preserves the
+## complete legacy radius-five footprint at its original 50-second deadline,
+## while radius six adds only cells that were not already owned by ring five.
+const SMOOTHED_RING_START_RADIUS := 5
 const OUTER_RING_RADIUS_SQUARED := SPREAD_RADIUS * SPREAD_RADIUS + 1
 const SECONDS_PER_RING := 10.0
 const TOTAL_SPREAD_SECONDS := SPREAD_RADIUS * SECONDS_PER_RING
+const MIN_SPREAD_SPEED_MULTIPLIER := 0.01
 const MAX_REVEALED_PIXELS := 48
 const UPDATE_INTERVAL_SECONDS := 0.1
 const RUNTIME_STATE_SCHEMA := 1
@@ -40,6 +43,7 @@ var _overlay_transform_write_count := 0
 var _overlay_custom_data_write_count := 0
 var _last_advance_source_count := 0
 var _last_overlay_source_count := 0
+var _spread_speed_multiplier := 1.0
 
 
 func _ready() -> void:
@@ -90,6 +94,28 @@ func set_authoritative(value: bool) -> void:
 		_restore_pending_cells()
 		_resolve_due_sources(_get_sorted_source_ids(_sources))
 	_mark_overlay_dirty()
+
+
+func set_spread_speed_multiplier(multiplier: float) -> bool:
+	if not is_finite(multiplier) or multiplier < MIN_SPREAD_SPEED_MULTIPLIER:
+		return false
+	if is_equal_approx(_spread_speed_multiplier, multiplier):
+		return true
+	_spread_speed_multiplier = multiplier
+	_mark_overlay_dirty()
+	return true
+
+
+func get_spread_speed_multiplier() -> float:
+	return _spread_speed_multiplier
+
+
+func get_effective_seconds_per_ring() -> float:
+	return SECONDS_PER_RING / _spread_speed_multiplier
+
+
+func get_effective_total_spread_seconds() -> float:
+	return float(SPREAD_RADIUS) * get_effective_seconds_per_ring()
 
 
 func is_configured() -> bool:
@@ -172,7 +198,8 @@ func advance_time(delta_seconds: float) -> void:
 				continue
 			var source: Dictionary = _sources[source_id]
 			source["elapsed"] = minf(
-				float(source["elapsed"]) + delta_seconds,
+				float(source["elapsed"])
+					+ delta_seconds * _spread_speed_multiplier,
 				TOTAL_SPREAD_SECONDS
 			)
 			_sources[source_id] = source
@@ -249,11 +276,14 @@ func apply_source_runtime_state(
 	if int(state.get("schema", 0)) != RUNTIME_STATE_SCHEMA:
 		return false
 	var elapsed_seconds := float(state.get("spread_elapsed_seconds", -1.0))
-	if elapsed_seconds < 0.0:
+	if not is_finite(elapsed_seconds) or elapsed_seconds < 0.0:
 		return false
 	if mapped_sample_time_seconds >= 0.0:
 		var local_now_seconds := float(Time.get_ticks_msec()) * 0.001
-		elapsed_seconds += maxf(local_now_seconds - mapped_sample_time_seconds, 0.0)
+		elapsed_seconds += (
+			maxf(local_now_seconds - mapped_sample_time_seconds, 0.0)
+			* _spread_speed_multiplier
+		)
 	if not _sources.has(source_id):
 		return register_source(source_id, origin_cell, elapsed_seconds)
 	var source: Dictionary = _sources[source_id]
@@ -440,7 +470,7 @@ func _resolve_due_sources(source_ids: Array[int]) -> void:
 		)
 
 		# A ring can change terrain only once, exactly at its authored deadline.
-		# Keep the next unresolved ring as a cursor instead of rescanning all 88
+		# Keep the next unresolved ring as a cursor instead of rescanning all 120
 		# cells for every source at 10 Hz.
 		while (
 			next_ring <= SPREAD_RADIUS
@@ -532,7 +562,11 @@ func _collect_source_ring_overlay_progress(
 ) -> void:
 	var elapsed := float(source["elapsed"])
 	var ring_start := float(ring - 1) * SECONDS_PER_RING
-	var progress := clampf((elapsed - ring_start) / SECONDS_PER_RING, 0.0, 1.0)
+	var progress := clampf(
+		(elapsed - ring_start) / SECONDS_PER_RING,
+		0.0,
+		1.0
+	)
 	if progress <= 0.0:
 		return
 	var resolved: Dictionary = source["resolved"]
@@ -655,12 +689,16 @@ static func _ring_for_offset(offset: Vector2i) -> int:
 	if distance_squared <= 0 or distance_squared > OUTER_RING_RADIUS_SQUARED:
 		return 0
 	for ring in range(1, SPREAD_RADIUS + 1):
-		var ring_radius_squared := ring * ring
-		if ring == SPREAD_RADIUS:
-			ring_radius_squared = OUTER_RING_RADIUS_SQUARED
-		if distance_squared <= ring_radius_squared:
+		if distance_squared <= _get_ring_radius_squared(ring):
 			return ring
 	return 0
+
+
+static func _get_ring_radius_squared(ring: int) -> int:
+	var radius_squared := ring * ring
+	if ring >= SMOOTHED_RING_START_RADIUS:
+		radius_squared += 1
+	return radius_squared
 
 
 static func _cell_visual_seeds(cell: Vector2i) -> Vector2i:

@@ -218,6 +218,7 @@ func configure_mode_services(
 	bamboo_mortar_combat_system: BambooMortarCombatSystem,
 	terrain_network_batch_max_cells: int
 ) -> void:
+	_disconnect_research_spread_signal()
 	_run_state = run_state
 	_production_coordinator = production_coordinator
 	_research_coordinator = research_coordinator
@@ -226,6 +227,8 @@ func configure_mode_services(
 	_research_center_panel = research_center_panel
 	_bamboo_mortar_combat_system = bamboo_mortar_combat_system
 	_terrain_network_batch_max_cells = maxi(terrain_network_batch_max_cells, 1)
+	_connect_research_spread_signal()
+	_refresh_vegetation_spread_speed()
 
 
 func configure_vegetation(placement_rect: Rect2i) -> bool:
@@ -243,6 +246,7 @@ func configure_vegetation(placement_rect: Rect2i) -> bool:
 		placement_rect,
 		_runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	)
+	_refresh_vegetation_spread_speed()
 	if not _vegetation_spread_system.authoritative_terrain_changed.is_connected(
 		_on_authoritative_vegetation_terrain_changed
 	):
@@ -661,6 +665,9 @@ func handle_plant_placed(plant: PlantDefense) -> void:
 	var vegetation_stake := plant as VegetationStake
 	if vegetation_stake == null or _vegetation_spread_system == null:
 		return
+	vegetation_stake.set_spread_speed_multiplier(
+		_vegetation_spread_system.get_spread_speed_multiplier()
+	)
 	if vegetation_stake.is_operational:
 		_activate_vegetation_stake_source(vegetation_stake)
 		return
@@ -705,6 +712,60 @@ func notify_recipe_unlocks_changed() -> void:
 	for building in snapshot:
 		if building != null and is_instance_valid(building):
 			building.notify_recipe_unlocks_changed()
+
+
+func _connect_research_spread_signal() -> void:
+	if (
+		_research_coordinator != null
+		and not _research_coordinator.research_state_changed.is_connected(
+			_refresh_vegetation_spread_speed
+		)
+	):
+		_research_coordinator.research_state_changed.connect(
+			_refresh_vegetation_spread_speed
+		)
+
+
+func _disconnect_research_spread_signal() -> void:
+	if (
+		_research_coordinator != null
+		and _research_coordinator.research_state_changed.is_connected(
+			_refresh_vegetation_spread_speed
+		)
+	):
+		_research_coordinator.research_state_changed.disconnect(
+			_refresh_vegetation_spread_speed
+		)
+
+
+func _refresh_vegetation_spread_speed() -> void:
+	var multiplier := 1.0
+	if _research_coordinator != null:
+		multiplier = (
+			_research_coordinator.get_vegetation_spread_speed_multiplier()
+		)
+	if _vegetation_spread_system != null:
+		# 全局科研不可逆；跨信道到达的较旧科研进度不能覆盖植被桩
+		# 运行时快照已经携带的更高权威倍率。
+		multiplier = maxf(
+			multiplier,
+			_vegetation_spread_system.get_spread_speed_multiplier()
+		)
+	if (
+		_vegetation_spread_system == null
+		or is_equal_approx(
+			_vegetation_spread_system.get_spread_speed_multiplier(),
+			multiplier
+		)
+	):
+		return
+	_vegetation_spread_system.set_spread_speed_multiplier(multiplier)
+	if _plant_system == null:
+		return
+	for plant_variant in _plant_system.plant_footprints:
+		var vegetation_stake := plant_variant as VegetationStake
+		if vegetation_stake != null and is_instance_valid(vegetation_stake):
+			vegetation_stake.set_spread_speed_multiplier(multiplier)
 
 
 func _on_recipe_notify_building_tree_exiting(building: ProductionBuilding) -> void:
@@ -1106,7 +1167,7 @@ func _activate_vegetation_stake_source(vegetation_stake: VegetationStake) -> voi
 		source_id, origin_cell, vegetation_stake.get_spread_elapsed_seconds()
 	)
 	var runtime_callback := _on_vegetation_runtime_state_changed.bind(
-		source_id, origin_cell
+		vegetation_stake, source_id, origin_cell
 	)
 	if not vegetation_stake.spread_runtime_state_changed.is_connected(runtime_callback):
 		vegetation_stake.spread_runtime_state_changed.connect(runtime_callback)
@@ -1114,11 +1175,27 @@ func _activate_vegetation_stake_source(vegetation_stake: VegetationStake) -> voi
 
 func _on_vegetation_runtime_state_changed(
 	elapsed_seconds: float,
+	vegetation_stake: VegetationStake,
 	source_id: int,
 	origin_cell: Vector2i
 ) -> void:
-	if _vegetation_spread_system == null:
+	if (
+		_vegetation_spread_system == null
+		or vegetation_stake == null
+		or not is_instance_valid(vegetation_stake)
+	):
 		return
+	var multiplier := maxf(
+		vegetation_stake.get_spread_speed_multiplier(),
+		_vegetation_spread_system.get_spread_speed_multiplier()
+	)
+	if _research_coordinator != null:
+		multiplier = maxf(
+			multiplier,
+			_research_coordinator.get_vegetation_spread_speed_multiplier()
+		)
+	vegetation_stake.set_spread_speed_multiplier(multiplier)
+	_vegetation_spread_system.set_spread_speed_multiplier(multiplier)
 	_vegetation_spread_system.apply_source_runtime_state(
 		source_id,
 		origin_cell,

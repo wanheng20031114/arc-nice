@@ -301,9 +301,9 @@ func _test_burst_scheduler_and_half_speed() -> void:
 
 func _test_network_pool_and_fate_contract() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 67
+		NET_CONSTANTS.PROTOCOL_VERSION == 69
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
-		"协议v67必须保留攻速塔、v66移速塔、精英紫弹的v49资源合同、v50消耗品合同及v63资源语义，且不增加ENet频道。"
+		"协议v69必须隔离植被科研倍率快照与注册集合，并保留v68六格扩散、精英紫弹与既有资源语义，且不增加ENet频道。"
 	)
 	_expect(
 		CombatAttackRegistry.encode_player_hit_source(

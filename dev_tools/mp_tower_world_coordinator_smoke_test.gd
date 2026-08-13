@@ -122,6 +122,22 @@ class TestProductionBuilding:
 		applied_host_sample_time = host_sample_time
 
 
+class TestRuntimeStatePlant:
+	extends PlantDefense
+
+	var apply_count := 0
+	var applied_runtime_state: Dictionary = {}
+	var applied_mapped_sample_time := -1.0
+
+	func apply_multiplayer_runtime_state(
+		state: Dictionary,
+		mapped_sample_time: float
+	) -> void:
+		apply_count += 1
+		applied_runtime_state = state.duplicate(true)
+		applied_mapped_sample_time = mapped_sample_time
+
+
 class TestTowerEconomyCoordinator:
 	extends MpTowerEconomyCoordinator
 
@@ -512,6 +528,7 @@ func _run() -> void:
 		return
 	_test_static_boundary(mp_game)
 	_test_placement_spawn_pending_health_remove_chain(mp_game)
+	_test_vegetation_spread_sample_age_correction(mp_game)
 	_test_terrain_repair_and_base_revision(mp_game)
 	_test_plant_combat_network(mp_game)
 	mp_game.free()
@@ -692,6 +709,55 @@ func _test_placement_spawn_pending_health_remove_chain(
 		"植物移除必须先清理经济 pending，再移除世界实体，最后原子补应用仓库快照。"
 	)
 	_dispose_fixture(session, host)
+	_dispose_fixture(session, client)
+
+
+func _test_vegetation_spread_sample_age_correction(
+	session: MultiplayerGameplaySession
+) -> void:
+	var client := _make_fixture(session, false)
+	var coordinator := client.coordinator as MpTowerWorldCoordinator
+	var plant := TestRuntimeStatePlant.new()
+	coordinator.apply_plant_runtime_state(
+		plant,
+		{
+			"schema": VegetationStake.RUNTIME_STATE_SCHEMA,
+			"spread_elapsed_seconds": 20.0,
+			"spread_speed_multiplier": 2.0,
+		},
+		42.0
+	)
+	_expect(
+		plant.apply_count == 1
+		and is_equal_approx(
+			float(plant.applied_runtime_state.get(
+				"spread_elapsed_seconds",
+				-1.0
+			)),
+			30.0
+		)
+		and is_equal_approx(
+			float(plant.applied_runtime_state.get(
+				"spread_speed_multiplier",
+				-1.0
+			)),
+			2.0
+		),
+		"植被桩迟加入快照必须按2倍传播速率补偿5秒传输年龄，基础进度应从20推进到30。"
+	)
+	coordinator.apply_plant_runtime_state(
+		plant,
+		{
+			"schema": VegetationStake.RUNTIME_STATE_SCHEMA,
+			"spread_elapsed_seconds": 30.0,
+		},
+		42.0
+	)
+	_expect(
+		plant.apply_count == 1,
+		"缺少权威传播倍率的植被桩快照必须被拒绝，不能按隐式1倍伪造迟加入进度。"
+	)
+	plant.free()
 	_dispose_fixture(session, client)
 
 
