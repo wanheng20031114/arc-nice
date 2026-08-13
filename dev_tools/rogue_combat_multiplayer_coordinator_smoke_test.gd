@@ -209,6 +209,9 @@ func _test_protocol_contract_is_static_and_order_safe() -> void:
 		"net_combat_safe_to_teardown",
 		"net_combat_settlement",
 		"net_combat_terminal_ready",
+		"net_emergency_reward_choice_requested",
+		"net_emergency_reward_completion_retry_requested",
+		"net_emergency_reward_snapshot",
 	])
 	expected_rpc_names.sort()
 	var any_peer_rpc_names := {
@@ -216,10 +219,12 @@ func _test_protocol_contract_is_static_and_order_safe() -> void:
 		"net_combat_activated": true,
 		"net_combat_prepared": true,
 		"net_combat_terminal_ready": true,
+		"net_emergency_reward_choice_requested": true,
+		"net_emergency_reward_completion_retry_requested": true,
 	}
 	_expect(
 		actual_rpc_names == expected_rpc_names,
-		"肉鸽作战协调器必须严格保留既有 10 个 RPC 入口。"
+		"肉鸽作战协调器必须严格保留既有10个入口并新增3个紧急奖励RPC。"
 	)
 	for rpc_name in expected_rpc_names:
 		var config := rpc_config.get(StringName(rpc_name), {}) as Dictionary

@@ -19,6 +19,8 @@ const SUITCASE_COMBAT_CONFIG_ID := &"suitcase_battle"
 const SUITCASE_ELITE_BULLET_POOL_CAPACITY := 480
 const UNDERGROUND_CHURCH_COMBAT_CONFIG_ID := &"underground_church_01"
 const UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY := 240
+const SINGLEPLAYER_STABLE_IDENTITY := "singleplayer:local"
+const INVALID_REWARD_OFFER_INDEX := -1
 
 var route: RogueRouteGame = null
 var active_battle: RogueCombatGame = null
@@ -35,6 +37,10 @@ var _pending_result: Dictionary = {}
 var _consumed_node_ids: Dictionary[int, bool] = {}
 var _last_result: Dictionary = {}
 var _victory_sequence_serial := 0
+var _emergency_reward_session: RogueEmergencyRewardSelectionSession = null
+var _emergency_reward_overlay: RogueEmergencyRewardChoiceOverlay = null
+var _emergency_reward_pending_offer_index := INVALID_REWARD_OFFER_INDEX
+var _emergency_reward_settlement_retry_pending := false
 
 
 func _ready() -> void:
@@ -61,10 +67,16 @@ static func _has_enabled_singleplayer_combat_pool(
 		or parent_route.floor_definition == null
 		or parent_route.floor_definition.normal_combat_pool == null
 		or not parent_route.floor_definition.normal_combat_pool.is_ready_to_enable()
+		or parent_route.floor_definition.emergency_combat_pool == null
+		or not parent_route.floor_definition.emergency_combat_pool.is_ready_to_enable()
 	):
 		return false
-	var configs := (
+	var configs: Array[RogueCombatEncounterConfig] = []
+	configs.append_array(
 		parent_route.floor_definition.get_sorted_normal_combat_configs()
+	)
+	configs.append_array(
+		parent_route.floor_definition.get_sorted_emergency_combat_configs()
 	)
 	if configs.is_empty():
 		return false
@@ -81,12 +93,47 @@ static func _has_enabled_singleplayer_combat_pool(
 
 func _exit_tree() -> void:
 	_victory_sequence_serial += 1
+	_reset_emergency_reward_selection()
 	if route != null and is_instance_valid(route):
 		route.combat_victory_presentation.interrupt_and_reset()
 		route.combat_scene_transition.hide_immediately()
 	_disconnect_route_signals()
 	active_battle = null
 	route = null
+
+
+func _process(delta: float) -> void:
+	if (
+		_emergency_reward_session == null
+		or not _settling_outcome
+		or not _pending_victory
+	):
+		return
+	if (
+		_emergency_reward_session.is_choosing()
+		and not _has_locked_emergency_reward_choice()
+	):
+		_emergency_reward_session.advance(delta)
+	if (
+		_emergency_reward_session != null
+		and _emergency_reward_session.is_ready_to_settle()
+		and not _emergency_reward_settlement_retry_pending
+	):
+		_complete_emergency_rewards()
+
+
+func _has_locked_emergency_reward_choice() -> bool:
+	if _emergency_reward_pending_offer_index != INVALID_REWARD_OFFER_INDEX:
+		return true
+	if _emergency_reward_session == null:
+		return false
+	var peer_state := _emergency_reward_session.get_peer_state(
+		SINGLEPLAYER_PEER_ID
+	)
+	return int(peer_state.get(
+		"timeout_choice_index",
+		INVALID_REWARD_OFFER_INDEX
+	)) != INVALID_REWARD_OFFER_INDEX
 
 
 func is_enabled() -> bool:
@@ -326,6 +373,16 @@ func _resolve_active_outcome(victory: bool, failure_reason: String) -> void:
 	if active_battle == null or route == null:
 		return
 	_pending_victory = victory
+	if victory and _uses_emergency_reward_selection():
+		_consumed_node_ids[_active_node_id] = true
+		if _begin_emergency_reward_selection():
+			return
+		_pending_result = _make_victory_reward_failure_result(
+			&"emergency_reward_session_start_failed"
+		)
+		_last_result = _pending_result.duplicate(true)
+		_play_victory_return_sequence()
+		return
 	_pending_result = (
 		_resolve_victory_result()
 		if victory
@@ -367,6 +424,283 @@ func _resolve_active_outcome(victory: bool, failure_reason: String) -> void:
 	if not _show_route_combat_result(_pending_result):
 		_waiting_for_result_dismissal = false
 		_finalize_return_from_battle()
+
+
+func _uses_emergency_reward_selection() -> bool:
+	return (
+		route != null
+		and _active_encounter_config != null
+		and _active_encounter_config.reward_config != null
+		and _active_encounter_config.reward_config.uses_collectible_choices()
+		and route.is_emergency_combat_config_id(
+			_active_encounter_config.encounter_id
+		)
+	)
+
+
+func _begin_emergency_reward_selection() -> bool:
+	if (
+		active_battle == null
+		or active_battle.player == null
+		or not is_instance_valid(active_battle.player)
+		or active_battle.run_state == null
+		or route == null
+		or route.emergency_reward_choice_overlay == null
+	):
+		return false
+	_reset_emergency_reward_selection()
+	_emergency_reward_overlay = route.emergency_reward_choice_overlay
+	_emergency_reward_session = RogueEmergencyRewardSelectionSession.new()
+	var choice_callable := Callable(self, "_on_emergency_reward_choice_selected")
+	var inventory_callable := Callable(
+		self,
+		"_on_emergency_reward_inventory_requested"
+	)
+	var state_callable := Callable(
+		self,
+		"_on_emergency_reward_state_changed"
+	)
+	_emergency_reward_overlay.choice_selected.connect(choice_callable)
+	_emergency_reward_overlay.inventory_requested.connect(inventory_callable)
+	_emergency_reward_session.state_changed.connect(state_callable)
+	active_battle.player_profile_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	var reward_player := active_battle.player
+	var began := _emergency_reward_session.begin_authority(
+		active_battle.run_state,
+		StringName(_active_occurrence_key),
+		_active_content_seed,
+		[SINGLEPLAYER_PEER_ID] as Array[int],
+		_active_encounter_config.reward_config,
+		_active_encounter_config.filter_loot_by_character
+		== RogueCombatEncounterConfig.Decision.YES,
+		{SINGLEPLAYER_PEER_ID: SINGLEPLAYER_STABLE_IDENTITY},
+		{SINGLEPLAYER_PEER_ID: reward_player.get_character_id()},
+		{SINGLEPLAYER_PEER_ID: reward_player.get_xirang()}
+	)
+	if not began:
+		push_error("单人紧急作战奖励选择会话初始化失败。")
+		_reset_emergency_reward_selection()
+		return false
+	_refresh_emergency_reward_overlay()
+	return true
+
+
+func _on_emergency_reward_state_changed(_snapshot: Dictionary) -> void:
+	_refresh_emergency_reward_overlay()
+
+
+func _refresh_emergency_reward_overlay() -> void:
+	if (
+		_emergency_reward_session == null
+		or _emergency_reward_overlay == null
+		or not is_instance_valid(_emergency_reward_overlay)
+	):
+		return
+	if _emergency_reward_session.is_ready_to_settle():
+		if _emergency_reward_settlement_retry_pending:
+			_show_emergency_reward_settlement_retry()
+		else:
+			_emergency_reward_overlay.set_waiting("两轮选择已完成 · 正在发放奖励")
+		return
+	if not _emergency_reward_session.is_choosing():
+		return
+	var peer_state := _emergency_reward_session.get_peer_state(
+		SINGLEPLAYER_PEER_ID
+	)
+	if peer_state.is_empty():
+		return
+	var round_index := int(peer_state.get("round_index", 0))
+	var remaining_seconds := float(peer_state.get("remaining_seconds", 0.0))
+	var timeout_offer_index := int(
+		peer_state.get("timeout_choice_index", INVALID_REWARD_OFFER_INDEX)
+	)
+	var locked_offer_index := timeout_offer_index
+	if _emergency_reward_pending_offer_index != INVALID_REWARD_OFFER_INDEX:
+		locked_offer_index = _emergency_reward_pending_offer_index
+	_emergency_reward_overlay.show_round(
+		_emergency_reward_session.get_current_offer_paths(
+			SINGLEPLAYER_PEER_ID
+		),
+		round_index + 1,
+		_active_encounter_config.reward_config.collectible_choice_round_count,
+		remaining_seconds,
+		"请选择其中一件收藏品",
+		locked_offer_index == INVALID_REWARD_OFFER_INDEX,
+		true
+	)
+	if locked_offer_index != INVALID_REWARD_OFFER_INDEX:
+		_emergency_reward_overlay.set_choice_pending(
+			locked_offer_index,
+			"当前收藏品选择已保留"
+		)
+		_emergency_reward_overlay.show_inventory_full_error()
+		_emergency_reward_overlay.countdown_timer.stop()
+
+
+func _on_emergency_reward_choice_selected(
+	round_number: int,
+	offer_index: int
+) -> void:
+	if _emergency_reward_session == null:
+		return
+	if (
+		_emergency_reward_session.is_ready_to_settle()
+		and _emergency_reward_settlement_retry_pending
+	):
+		_complete_emergency_rewards()
+		return
+	if not _emergency_reward_session.is_choosing():
+		return
+	var requested_offer_index := offer_index
+	if _emergency_reward_pending_offer_index != INVALID_REWARD_OFFER_INDEX:
+		requested_offer_index = _emergency_reward_pending_offer_index
+	var choice_result := _emergency_reward_session.submit_choice(
+		SINGLEPLAYER_PEER_ID,
+		_active_occurrence_key,
+		round_number - 1,
+		requested_offer_index
+	)
+	if bool(choice_result.get("accepted", false)):
+		_emergency_reward_pending_offer_index = INVALID_REWARD_OFFER_INDEX
+		_refresh_emergency_reward_overlay()
+		if _emergency_reward_session.is_ready_to_settle():
+			_complete_emergency_rewards()
+		return
+	var reason := StringName(choice_result.get(
+		"reason",
+		RogueEmergencyRewardSelectionSession.REASON_INVALID_REQUEST
+	))
+	if reason == RogueEmergencyRewardSelectionSession.REASON_INVENTORY_FULL:
+		_emergency_reward_pending_offer_index = requested_offer_index
+		_refresh_emergency_reward_overlay()
+		return
+	push_error("单人紧急作战收藏品选择失败：%s" % String(reason))
+	_refresh_emergency_reward_overlay()
+
+
+func _on_emergency_reward_inventory_requested() -> void:
+	if (
+		active_battle == null
+		or not is_instance_valid(active_battle)
+		or active_battle.player_profile_panel == null
+	):
+		return
+	active_battle.player_profile_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	active_battle.player_profile_panel.open()
+
+
+func _complete_emergency_rewards() -> void:
+	if (
+		_emergency_reward_session == null
+		or not _emergency_reward_session.is_ready_to_settle()
+	):
+		return
+	_emergency_reward_settlement_retry_pending = false
+	var batch_result := _emergency_reward_session.complete_rewards()
+	if not bool(batch_result.get("resolved", false)):
+		var reason := StringName(batch_result.get(
+			"failure_reason",
+			RogueCombatRewardResolver.FAILURE_TRANSACTION_CONFLICT
+		))
+		if reason in [
+			RogueCombatRewardResolver.FAILURE_INVENTORY_FULL,
+			RogueCombatRewardResolver.FAILURE_TRANSACTION_CONFLICT,
+		]:
+			_emergency_reward_settlement_retry_pending = true
+			_show_emergency_reward_settlement_retry(reason)
+			return
+		push_error("单人紧急作战奖励原子结算失败：%s" % String(reason))
+		_finish_emergency_reward_resolution(
+			_make_victory_reward_failure_result(reason)
+		)
+		return
+	var results_by_peer := batch_result.get("results_by_peer", {}) as Dictionary
+	var result := results_by_peer.get(SINGLEPLAYER_PEER_ID, {}) as Dictionary
+	if result.is_empty():
+		_finish_emergency_reward_resolution(
+			_make_victory_reward_failure_result(
+				&"missing_local_reward_result"
+			)
+		)
+		return
+	var final_xirang_by_peer := (
+		batch_result.get("final_xirang_by_peer", {}) as Dictionary
+	)
+	_set_player_xirang(
+		active_battle.player,
+		int(final_xirang_by_peer.get(
+			SINGLEPLAYER_PEER_ID,
+			active_battle.player.get_xirang()
+		))
+	)
+	result["shared_light_stone_reward"] = int(
+		batch_result.get("shared_light_stone_reward", 0)
+	)
+	result["random_item_path"] = str(
+		batch_result.get("random_item_path", "")
+	)
+	result["random_item_count"] = int(
+		batch_result.get("random_item_count", 0)
+	)
+	result["victory"] = true
+	_finish_emergency_reward_resolution(result)
+
+
+func _show_emergency_reward_settlement_retry(
+	reason: StringName = RogueCombatRewardResolver.FAILURE_INVENTORY_FULL
+) -> void:
+	if (
+		_emergency_reward_session == null
+		or _emergency_reward_overlay == null
+		or not is_instance_valid(_emergency_reward_overlay)
+		or _active_encounter_config == null
+	):
+		return
+	var peer_state := _emergency_reward_session.get_peer_state(
+		SINGLEPLAYER_PEER_ID
+	)
+	var rounds := peer_state.get("rounds", []) as Array
+	var selected_paths := peer_state.get("selected_paths", []) as Array
+	if rounds.is_empty() or selected_paths.is_empty():
+		return
+	var last_round := rounds[rounds.size() - 1] as Dictionary
+	var offer_paths := last_round.get("paths", []) as Array
+	var selected_path := str(selected_paths[selected_paths.size() - 1])
+	var selected_offer_index := offer_paths.find(selected_path)
+	_emergency_reward_overlay.show_round(
+		offer_paths,
+		rounds.size(),
+		_active_encounter_config.reward_config.collectible_choice_round_count,
+		0.0,
+		"奖励发放需要重新确认",
+		false,
+		true
+	)
+	_emergency_reward_overlay.set_choice_pending(selected_offer_index)
+	_emergency_reward_overlay.show_inventory_full_error(
+		(
+			"结算状态已变化 · 请重试发放"
+			if reason == RogueCombatRewardResolver.FAILURE_TRANSACTION_CONFLICT
+			else "背包空间不足 · 奖励选择已保留，请整理背包后重试"
+		)
+	)
+
+
+func _finish_emergency_reward_resolution(result: Dictionary) -> void:
+	_pending_result = result.duplicate(true)
+	_last_result = _pending_result.duplicate(true)
+	_reset_emergency_reward_selection()
+	_play_victory_return_sequence()
+
+
+func _make_victory_reward_failure_result(reason: StringName) -> Dictionary:
+	return {
+		"victory": true,
+		"extra_xirang": 0,
+		"loot": _make_empty_loot_result(),
+		"item_rewards": [],
+		"reward_failure_reason": reason,
+	}
 
 
 func _resolve_victory_result() -> Dictionary:
@@ -685,6 +1019,7 @@ func _set_player_xirang(target: Player, amount: int) -> void:
 
 
 func _dispose_active_battle() -> void:
+	_reset_emergency_reward_selection()
 	var battle := active_battle
 	active_battle = null
 	if battle == null or not is_instance_valid(battle):
@@ -692,6 +1027,46 @@ func _dispose_active_battle() -> void:
 	if battle.get_parent() != null:
 		battle.get_parent().remove_child(battle)
 	battle.free()
+
+
+func _reset_emergency_reward_selection() -> void:
+	var overlay := _emergency_reward_overlay
+	var session := _emergency_reward_session
+	_emergency_reward_overlay = null
+	_emergency_reward_session = null
+	_emergency_reward_pending_offer_index = INVALID_REWARD_OFFER_INDEX
+	_emergency_reward_settlement_retry_pending = false
+	if session != null:
+		var state_callable := Callable(
+			self,
+			"_on_emergency_reward_state_changed"
+		)
+		if session.state_changed.is_connected(state_callable):
+			session.state_changed.disconnect(state_callable)
+	if overlay != null and is_instance_valid(overlay):
+		var choice_callable := Callable(
+			self,
+			"_on_emergency_reward_choice_selected"
+		)
+		var inventory_callable := Callable(
+			self,
+			"_on_emergency_reward_inventory_requested"
+		)
+		if overlay.choice_selected.is_connected(choice_callable):
+			overlay.choice_selected.disconnect(choice_callable)
+		if overlay.inventory_requested.is_connected(inventory_callable):
+			overlay.inventory_requested.disconnect(inventory_callable)
+		overlay.hide_and_reset()
+	if (
+		active_battle != null
+		and is_instance_valid(active_battle)
+		and active_battle.player_profile_panel != null
+	):
+		if active_battle.player_profile_panel.is_open():
+			active_battle.player_profile_panel.close()
+		active_battle.player_profile_panel.process_mode = (
+			Node.PROCESS_MODE_INHERIT
+		)
 
 
 func _recover_route_from_start_failure(occurrence_key: String) -> void:

@@ -14,7 +14,7 @@ enum DeadlineStart {
 	WAVE_START,
 }
 
-const RUNTIME_CONTRACT_SCHEMA := 3
+const RUNTIME_CONTRACT_SCHEMA := 4
 const DEFAULT_ENCOUNTER_ID := &"narrow_road_01"
 const DEFAULT_EVENT_TITLE := "狭路相逢"
 const DEFAULT_OBJECTIVE_TEXT := "击败全部战斗机器人"
@@ -44,6 +44,11 @@ var combat_limit_seconds: int = DEFAULT_COMBAT_LIMIT_SECONDS
 @export_range(0, 999999, 1, "or_greater") var extra_xirang: int = DEFAULT_EXTRA_XIRANG
 ## 结算实际以此资源为准；extra_xirang 继续作为旧简报与旧调用方的最低奖励摘要。
 @export var reward_config: RogueCombatRewardConfig
+
+@export_group("敌人数量增幅")
+## 以整波总人数为基准；普通作战保持 0，紧急作战可配置为 5–10。
+@export_range(0, 100, 1) var enemy_count_increase_minimum_percent: int = 0
+@export_range(0, 100, 1) var enemy_count_increase_maximum_percent: int = 0
 
 @export_group("作战规则")
 @export var decisions_confirmed: bool = false
@@ -92,8 +97,9 @@ func get_spawn_point_mask() -> int:
 	return result
 
 
-## 为本次节点复制一份独立资源图。敌人组成与生成节奏完整继承 authored Wave，
-## occurrence 只负责按遭遇规则覆盖击杀息壤，单人和多人共同使用此入口。
+## 为本次节点复制一份独立资源图。敌人种类与生成节奏继承 authored Wave；
+## occurrence 负责确定性分配配置过的人数增幅并覆盖击杀息壤，单人和多人
+## 共同使用此入口。
 func build_occurrence_campaign(occurrence_key: String) -> WaveCampaignConfig:
 	if occurrence_key.is_empty() or campaign == null or campaign.flow_graph == null:
 		return null
@@ -103,9 +109,16 @@ func build_occurrence_campaign(occurrence_key: String) -> WaveCampaignConfig:
 	var source_wave := source_waves[0]
 	if source_wave == null or source_wave.enemy_entries.is_empty():
 		return null
+	var occurrence_enemy_counts := _build_occurrence_enemy_counts(
+		source_wave,
+		occurrence_key
+	)
+	if occurrence_enemy_counts.size() != source_wave.enemy_entries.size():
+		return null
 
 	var occurrence_entries: Array[WaveEnemyEntry] = []
-	for source_entry in source_wave.enemy_entries:
+	for entry_index in range(source_wave.enemy_entries.size()):
+		var source_entry := source_wave.enemy_entries[entry_index]
 		if source_entry == null or source_entry.enemy_config == null:
 			return null
 		var entry := source_entry.duplicate(false) as WaveEnemyEntry
@@ -113,6 +126,7 @@ func build_occurrence_campaign(occurrence_key: String) -> WaveCampaignConfig:
 			return null
 		# 保留正式 EnemyConfig 的资源路径，确保多人刷怪序列化身份稳定。
 		entry.enemy_config = source_entry.enemy_config
+		entry.count = occurrence_enemy_counts[entry_index]
 		entry.xirang_kill_reward_override = (
 			-1 if keep_enemy_kill_xirang == Decision.YES else 0
 		)
@@ -153,6 +167,10 @@ func compute_runtime_contract_hash() -> String:
 		"preparation=%d" % preparation_seconds,
 		"limit=%d" % combat_limit_seconds,
 		"extra_xirang=%d" % extra_xirang,
+		"enemy_count_increase=%d:%d" % [
+			enemy_count_increase_minimum_percent,
+			enemy_count_increase_maximum_percent,
+		],
 		"reward_path=%s" % (reward_config.resource_path if reward_config != null else ""),
 		"reward_hash=%s" % (
 			reward_config.compute_runtime_contract_hash()
@@ -229,6 +247,18 @@ func _validate_content_fields(errors: PackedStringArray) -> void:
 		errors.append("Rouge 战斗的作战时限必须大于0秒。")
 	if extra_xirang < 0:
 		errors.append("Rouge 战斗的额外息壤不能为负数。")
+	if (
+		enemy_count_increase_minimum_percent < 0
+		or enemy_count_increase_minimum_percent > 100
+	):
+		errors.append("Rouge 战斗的敌人数量最小增幅必须处于0%到100%。")
+	if (
+		enemy_count_increase_maximum_percent < 0
+		or enemy_count_increase_maximum_percent > 100
+	):
+		errors.append("Rouge 战斗的敌人数量最大增幅必须处于0%到100%。")
+	if enemy_count_increase_maximum_percent < enemy_count_increase_minimum_percent:
+		errors.append("Rouge 战斗的敌人数量最大增幅不能小于最小增幅。")
 	if reward_config == null:
 		errors.append("Rouge 战斗配置缺少奖励资源。")
 	else:
@@ -267,6 +297,14 @@ func _validate_campaign(errors: PackedStringArray) -> void:
 			errors.append("Rouge 战斗波次的敌人条目%d数量必须大于0。" % (entry_index + 1))
 	if wave.get_total_enemy_count() <= 0:
 		errors.append("Rouge 战斗 Campaign 必须至少生成一个敌人。")
+	elif _has_valid_enemy_count_increase_range():
+		var target_bounds := _get_enemy_count_target_bounds(
+			wave.get_total_enemy_count()
+		)
+		if target_bounds.x > target_bounds.y:
+			errors.append(
+				"Rouge 战斗的敌人数量增幅无法产生满足百分比范围的整数整波目标。"
+			)
 	if wave.spawn_point_mask <= 0:
 		errors.append("Rouge 战斗波次必须启用至少一个出生点。")
 	elif wave.spawn_point_mask & ~WaveConfig.ALL_SPAWN_POINT_MASK:
@@ -317,3 +355,97 @@ func _validate_decision(
 		errors.append("%s尚未指定。" % label)
 	elif decision not in [Decision.NO, Decision.YES]:
 		errors.append("%s的配置值无效。" % label)
+
+
+func _build_occurrence_enemy_counts(
+	source_wave: WaveConfig,
+	occurrence_key: String
+) -> PackedInt32Array:
+	var result := PackedInt32Array()
+	if source_wave == null or occurrence_key.is_empty():
+		return result
+
+	var source_total := 0
+	for source_entry in source_wave.enemy_entries:
+		if source_entry == null or source_entry.enemy_config == null or source_entry.count <= 0:
+			return PackedInt32Array()
+		result.append(source_entry.count)
+		source_total += source_entry.count
+	if source_total <= 0 or not _has_valid_enemy_count_increase_range():
+		return PackedInt32Array()
+
+	var target_bounds := _get_enemy_count_target_bounds(source_total)
+	if target_bounds.x > target_bounds.y:
+		return PackedInt32Array()
+	var target_total := _choose_occurrence_enemy_target(
+		occurrence_key,
+		target_bounds.x,
+		target_bounds.y
+	)
+	var remaining_increase := target_total - source_total
+	if remaining_increase <= 0:
+		return result
+
+	var remainders := PackedInt32Array()
+	var allocated_increase := 0
+	for entry_index in range(source_wave.enemy_entries.size()):
+		var source_count := source_wave.enemy_entries[entry_index].count
+		var numerator := source_count * remaining_increase
+		var proportional_increase := floori(float(numerator) / float(source_total))
+		result[entry_index] += proportional_increase
+		remainders.append(numerator % source_total)
+		allocated_increase += proportional_increase
+
+	var remainder_awarded: Dictionary = {}
+	var leftover := remaining_increase - allocated_increase
+	while leftover > 0:
+		var best_entry_index := -1
+		var best_remainder := -1
+		for entry_index in range(remainders.size()):
+			if remainder_awarded.has(entry_index):
+				continue
+			if remainders[entry_index] > best_remainder:
+				best_remainder = remainders[entry_index]
+				best_entry_index = entry_index
+		if best_entry_index < 0:
+			return PackedInt32Array()
+		result[best_entry_index] += 1
+		remainder_awarded[best_entry_index] = true
+		leftover -= 1
+	return result
+
+
+func _choose_occurrence_enemy_target(
+	occurrence_key: String,
+	minimum_target: int,
+	maximum_target: int
+) -> int:
+	if maximum_target <= minimum_target:
+		return minimum_target
+	var digest := (
+		"%s|rogue_combat_enemy_count|encounter:%s|contract:%s"
+		% [occurrence_key, String(encounter_id), compute_runtime_contract_hash()]
+	).sha256_text()
+	# 15 个十六进制位不会越过有符号 INT64，且跨平台结果稳定。
+	var stable_value := digest.substr(0, 15).hex_to_int()
+	return minimum_target + int(stable_value % (maximum_target - minimum_target + 1))
+
+
+func _get_enemy_count_target_bounds(source_total: int) -> Vector2i:
+	var minimum_target := ceili(
+		float(source_total * (100 + enemy_count_increase_minimum_percent)) / 100.0
+	)
+	var maximum_target := floori(
+		float(source_total * (100 + enemy_count_increase_maximum_percent)) / 100.0
+	)
+	return Vector2i(minimum_target, maximum_target)
+
+
+func _has_valid_enemy_count_increase_range() -> bool:
+	return (
+		enemy_count_increase_minimum_percent >= 0
+		and enemy_count_increase_minimum_percent <= 100
+		and enemy_count_increase_maximum_percent
+		>= enemy_count_increase_minimum_percent
+		and enemy_count_increase_maximum_percent <= 100
+	)

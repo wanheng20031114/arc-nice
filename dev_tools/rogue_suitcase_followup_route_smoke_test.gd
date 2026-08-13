@@ -187,7 +187,7 @@ func _test_suitcase_followup_route_contract(fixture: Dictionary) -> void:
 	var presented_state := host.export_state_snapshot()
 	var presented := presented_state.get("briefing_state", {}) as Dictionary
 	_expect(
-		int(presented.get("schema_version", -1)) == 2
+		int(presented.get("schema_version", -1)) == 3
 		and int(presented.get("phase", -1))
 		== RogueRouteGame.BriefingPhase.PRESENTED
 		and StringName(presented.get("source_kind", &""))
@@ -585,7 +585,7 @@ func _test_normal_combat_schema_two_compatibility(fixture: Dictionary) -> void:
 	host.call("_on_route_board_node_pressed", combat_node_id)
 	var presented := host.export_briefing_state_snapshot()
 	_expect(
-		int(presented.get("schema_version", -1)) == 2
+		int(presented.get("schema_version", -1)) == 3
 		and int(presented.get("phase", -1))
 		== RogueRouteGame.BriefingPhase.PRESENTED
 		and StringName(presented.get("source_kind", &""))

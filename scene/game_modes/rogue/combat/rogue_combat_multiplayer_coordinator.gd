@@ -17,6 +17,8 @@ const PREPARE_BARRIER_TIMEOUT_MSEC := 30_000
 const RECONNECT_ACTIVATION_TIMEOUT_MSEC := 15_000
 const TERMINAL_BARRIER_TIMEOUT_MSEC := 15_000
 const TERMINAL_SPECTATOR_SYNC_TIMEOUT_MSEC := 30_000
+const EMERGENCY_REWARD_WIRE_SCHEMA_VERSION := 1
+const INVALID_REWARD_OFFER_INDEX := -1
 const SUITCASE_COMBAT_CONFIG_ID := &"suitcase_battle"
 const SUITCASE_ELITE_BULLET_POOL_CAPACITY := 480
 const UNDERGROUND_CHURCH_COMBAT_CONFIG_ID := &"underground_church_01"
@@ -36,6 +38,7 @@ enum ProtocolPhase {
 	IDLE,
 	PREPARING,
 	ACTIVE,
+	REWARD_SELECTING,
 	SETTLED,
 }
 
@@ -82,6 +85,13 @@ var _pending_settlement: Dictionary = {}
 var _settlement_scheduled := false
 var _settled_occurrences: Dictionary = {}
 
+var _emergency_reward_session: RogueEmergencyRewardSelectionSession = null
+var _emergency_reward_overlay: RogueEmergencyRewardChoiceOverlay = null
+var _emergency_reward_client_snapshot: Dictionary = {}
+var _emergency_reward_rollback_state: Dictionary = {}
+var _emergency_reward_completion_failure_by_peer: Dictionary = {}
+var _emergency_reward_completion_retry_requested := false
+
 var _expected_terminal_peers: Dictionary = {}
 var _terminal_ready_peers: Dictionary = {}
 var _terminal_safe_received := false
@@ -119,6 +129,8 @@ func bind_network_dependencies(
 	_route = route_instance
 	_net_manager = net_manager_instance
 	_run_state = run_state_instance
+	_emergency_reward_overlay = _route.emergency_reward_choice_overlay
+	_connect_emergency_reward_overlay_signals()
 	_enabled = _has_enabled_multiplayer_combat_pool(_route)
 	set_multiplayer_authority(_get_host_peer_id())
 	if not _enabled:
@@ -145,12 +157,20 @@ func bind_network_dependencies(
 	_connect_net_manager_signals()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if not _enabled or not _is_host():
 		return
 	var now_msec := Time.get_ticks_msec()
 	_poll_pending_terminal_spectator_syncs(now_msec)
 	if _phase == ProtocolPhase.IDLE:
+		return
+	if (
+		_phase == ProtocolPhase.REWARD_SELECTING
+		and _emergency_reward_session != null
+	):
+		if _emergency_reward_session.is_choosing():
+			_emergency_reward_session.advance(delta)
+		_try_complete_host_emergency_rewards()
 		return
 	_capture_live_combat_xirang()
 	_poll_prepare_barrier_timeout(now_msec)
@@ -177,6 +197,7 @@ func _poll_reconnect_activation_timeouts(now_msec: int = -1) -> void:
 		not _is_host()
 		or not (
 			_phase == ProtocolPhase.ACTIVE
+			or _phase == ProtocolPhase.REWARD_SELECTING
 			or (
 				_phase == ProtocolPhase.PREPARING
 				and _activation_dispatch_started
@@ -284,6 +305,8 @@ func _discard_pending_terminal_spectator_syncs_except(
 
 func _exit_tree() -> void:
 	_interrupt_terminal_presentation()
+	_reset_emergency_reward_selection()
+	_disconnect_emergency_reward_overlay_signals()
 	_disconnect_route_signals()
 	_disconnect_net_manager_signals()
 
@@ -315,10 +338,16 @@ static func _has_enabled_multiplayer_combat_pool(
 		or route_instance.floor_definition == null
 		or route_instance.floor_definition.normal_combat_pool == null
 		or not route_instance.floor_definition.normal_combat_pool.is_ready_to_enable()
+		or route_instance.floor_definition.emergency_combat_pool == null
+		or not route_instance.floor_definition.emergency_combat_pool.is_ready_to_enable()
 	):
 		return false
-	var configs := (
+	var configs: Array[RogueCombatEncounterConfig] = []
+	configs.append_array(
 		route_instance.floor_definition.get_sorted_normal_combat_configs()
+	)
+	configs.append_array(
+		route_instance.floor_definition.get_sorted_emergency_combat_configs()
 	)
 	if configs.is_empty():
 		return false
@@ -515,6 +544,7 @@ func _begin_protocol(
 	_last_combat_xirang_by_peer = _entry_xirang_by_peer.duplicate(true)
 	if not _freeze_participant_reward_identities() and _is_host():
 		return false
+	_reset_emergency_reward_selection()
 	_disconnected_participants.clear()
 	_pending_reconnect_prepare_peers.clear()
 	_expected_prepared_peers = _participant_peer_ids.duplicate()
@@ -801,7 +831,11 @@ func _accept_combat_activated(sender_id: int, occurrence_key: String) -> void:
 		or occurrence_key != _active_occurrence_key
 		or not _is_pending_reconnect_prepare(sender_id, occurrence_key)
 		or not (
-			_phase in [ProtocolPhase.ACTIVE, ProtocolPhase.SETTLED]
+			_phase in [
+				ProtocolPhase.ACTIVE,
+				ProtocolPhase.REWARD_SELECTING,
+				ProtocolPhase.SETTLED,
+			]
 			or (
 				_phase == ProtocolPhase.PREPARING
 				and _activation_dispatch_started
@@ -931,12 +965,711 @@ func _activate_local_runtime() -> bool:
 	return true
 
 
+func _connect_emergency_reward_overlay_signals() -> void:
+	if _emergency_reward_overlay == null:
+		return
+	if not _emergency_reward_overlay.choice_selected.is_connected(
+		_on_emergency_reward_choice_selected
+	):
+		_emergency_reward_overlay.choice_selected.connect(
+			_on_emergency_reward_choice_selected
+		)
+	if not _emergency_reward_overlay.inventory_requested.is_connected(
+		_on_emergency_reward_inventory_requested
+	):
+		_emergency_reward_overlay.inventory_requested.connect(
+			_on_emergency_reward_inventory_requested
+		)
+
+
+func _disconnect_emergency_reward_overlay_signals() -> void:
+	if _emergency_reward_overlay == null or not is_instance_valid(
+		_emergency_reward_overlay
+	):
+		return
+	if _emergency_reward_overlay.choice_selected.is_connected(
+		_on_emergency_reward_choice_selected
+	):
+		_emergency_reward_overlay.choice_selected.disconnect(
+			_on_emergency_reward_choice_selected
+		)
+	if _emergency_reward_overlay.inventory_requested.is_connected(
+		_on_emergency_reward_inventory_requested
+	):
+		_emergency_reward_overlay.inventory_requested.disconnect(
+			_on_emergency_reward_inventory_requested
+		)
+
+
+func _is_active_emergency_reward_encounter() -> bool:
+	return (
+		_route != null
+		and _active_encounter_config != null
+		and _route.is_emergency_combat_config_id(_active_combat_config_id)
+		and _active_encounter_config.reward_config != null
+		and _active_encounter_config.reward_config.uses_collectible_choices()
+		and _active_encounter_config.reward_config.uses_random_item_reward()
+	)
+
+
+func _begin_host_emergency_reward_selection(
+	occurrence_key: String
+) -> bool:
+	if (
+		not _is_host()
+		or _phase != ProtocolPhase.ACTIVE
+		or occurrence_key != _active_occurrence_key
+		or not _is_active_emergency_reward_encounter()
+		or _emergency_reward_session != null
+	):
+		return false
+	var rollback_state := _capture_host_reward_rollback_state()
+	if rollback_state.is_empty():
+		return false
+	_capture_live_combat_xirang()
+	var peer_ids: Array[int] = []
+	var base_xirang_by_peer: Dictionary = {}
+	for peer_id_variant in _participant_peer_ids.keys():
+		var peer_id := int(peer_id_variant)
+		peer_ids.append(peer_id)
+		base_xirang_by_peer[peer_id] = int(_last_combat_xirang_by_peer.get(
+			peer_id,
+			_entry_xirang_by_peer.get(peer_id, 0)
+		))
+	peer_ids.sort()
+	var session := RogueEmergencyRewardSelectionSession.new()
+	if not session.begin_authority(
+		_run_state,
+		StringName(occurrence_key),
+		_active_content_seed,
+		peer_ids,
+		_active_encounter_config.reward_config,
+		_active_encounter_config.filter_loot_by_character
+		== RogueCombatEncounterConfig.Decision.YES,
+		_participant_stable_keys,
+		_participant_character_ids,
+		base_xirang_by_peer
+	):
+		return false
+	for peer_id_variant in _disconnected_participants.keys():
+		session.mark_peer_disconnected(int(peer_id_variant), occurrence_key)
+	_emergency_reward_session = session
+	_emergency_reward_rollback_state = rollback_state
+	_emergency_reward_completion_failure_by_peer.clear()
+	_emergency_reward_completion_retry_requested = true
+	_emergency_reward_session.state_changed.connect(
+		_on_emergency_reward_session_state_changed
+	)
+	_phase = ProtocolPhase.REWARD_SELECTING
+	_freeze_local_combat_for_reward_selection()
+	_broadcast_emergency_reward_state()
+	_try_complete_host_emergency_rewards()
+	return true
+
+
+func _freeze_local_combat_for_reward_selection() -> void:
+	if _combat_game == null or not is_instance_valid(_combat_game):
+		return
+	# 战场模拟冻结，但保留资料面板与 MpGame 事务节点；这样背包满时仍可
+	# 使用既有多人权威丢弃流程整理背包。
+	_combat_game.process_mode = Node.PROCESS_MODE_DISABLED
+	if _combat_game.player_profile_panel != null:
+		_combat_game.player_profile_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+
+
+func _on_emergency_reward_session_state_changed(_snapshot: Dictionary) -> void:
+	if not _is_host() or _phase != ProtocolPhase.REWARD_SELECTING:
+		return
+	_emergency_reward_completion_failure_by_peer.clear()
+	if (
+		_emergency_reward_session != null
+		and _emergency_reward_session.is_ready_to_settle()
+	):
+		_emergency_reward_completion_retry_requested = true
+	_broadcast_emergency_reward_state()
+
+
+func _broadcast_emergency_reward_state() -> void:
+	if (
+		not _is_host()
+		or _phase != ProtocolPhase.REWARD_SELECTING
+		or _emergency_reward_session == null
+	):
+		return
+	for peer_id_variant in _participant_peer_ids.keys():
+		var peer_id := int(peer_id_variant)
+		if _disconnected_participants.has(peer_id):
+			continue
+		var projection := _build_emergency_reward_projection(peer_id)
+		if projection.is_empty():
+			continue
+		if peer_id == _get_local_peer_id():
+			_apply_emergency_reward_projection(projection)
+		elif _is_peer_send_ready(peer_id):
+			net_emergency_reward_snapshot.rpc_id(
+				peer_id,
+				_active_occurrence_key,
+				projection
+			)
+
+
+func _send_emergency_reward_state_to_peer(peer_id: int) -> void:
+	if (
+		not _is_host()
+		or peer_id <= 0
+		or _disconnected_participants.has(peer_id)
+		or not _is_peer_send_ready(peer_id)
+	):
+		return
+	var projection := _build_emergency_reward_projection(peer_id)
+	if not projection.is_empty():
+		net_emergency_reward_snapshot.rpc_id(
+			peer_id,
+			_active_occurrence_key,
+			projection
+		)
+
+
+func _build_emergency_reward_projection(peer_id: int) -> Dictionary:
+	if _emergency_reward_session == null or peer_id <= 0:
+		return {}
+	var full_snapshot := _emergency_reward_session.export_state()
+	var local_state: Dictionary = {}
+	var waiting_online_count := 0
+	for participant_variant in full_snapshot.get("participants", []) as Array:
+		if not participant_variant is Dictionary:
+			return {}
+		var participant := participant_variant as Dictionary
+		var participant_peer_id := int(participant.get("peer_id", -1))
+		var complete := bool(participant.get("complete", false))
+		var forfeited := bool(participant.get("forfeited", false))
+		if not complete and not forfeited:
+			waiting_online_count += 1
+		if participant_peer_id != peer_id:
+			continue
+		var selected_paths := participant.get("selected_paths", []) as Array
+		var rounds := participant.get("rounds", []) as Array
+		var retry_offer_paths: Array = []
+		var retry_offer_index := INVALID_REWARD_OFFER_INDEX
+		if not selected_paths.is_empty():
+			var selected_round_index := selected_paths.size() - 1
+			if selected_round_index >= 0 and selected_round_index < rounds.size():
+				retry_offer_paths = (
+					(rounds[selected_round_index] as Dictionary).get(
+						"paths",
+						[]
+					) as Array
+				).duplicate()
+				retry_offer_index = retry_offer_paths.find(
+					selected_paths[selected_round_index]
+				)
+		local_state = {
+			"peer_id": participant_peer_id,
+			"current_round_index": int(participant.get(
+				"current_round_index",
+				participant.get("round_index", 0)
+			)),
+			"current_offer_paths": (
+				participant.get("current_offer_paths", []) as Array
+			).duplicate(),
+			"deadline_seconds_remaining": float(participant.get(
+				"deadline_seconds_remaining",
+				participant.get("remaining_seconds", 0.0)
+			)),
+			"timeout_choice_index": int(participant.get(
+				"timeout_choice_index",
+				INVALID_REWARD_OFFER_INDEX
+			)),
+			"forfeited": forfeited,
+			"complete": complete,
+			"retry_offer_paths": retry_offer_paths,
+			"retry_offer_index": retry_offer_index,
+		}
+	if local_state.is_empty():
+		return {}
+	return {
+		"schema_version": EMERGENCY_REWARD_WIRE_SCHEMA_VERSION,
+		"revision": int(full_snapshot.get("revision", 0)),
+		"phase": str(full_snapshot.get("phase", "")),
+		"occurrence_id": str(full_snapshot.get("occurrence_id", "")),
+		"content_seed": int(full_snapshot.get("content_seed", 0)),
+		"reward_contract_hash": str(full_snapshot.get(
+			"reward_contract_hash",
+			""
+		)),
+		"round_count": (
+			_active_encounter_config.reward_config.collectible_choice_round_count
+		),
+		"waiting_online_count": waiting_online_count,
+		"local_completion_blocked": (
+			_emergency_reward_completion_failure_by_peer.has(peer_id)
+		),
+		"local_participant": local_state,
+	}
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func net_emergency_reward_snapshot(
+	occurrence_key: String,
+	projection: Dictionary
+) -> void:
+	if (
+		not _is_client()
+		or multiplayer.get_remote_sender_id() != _get_host_peer_id()
+		or occurrence_key != _active_occurrence_key
+		or _phase not in [ProtocolPhase.ACTIVE, ProtocolPhase.REWARD_SELECTING]
+	):
+		return
+	if _apply_emergency_reward_projection(projection):
+		_phase = ProtocolPhase.REWARD_SELECTING
+		_freeze_local_combat_for_reward_selection()
+
+
+func _apply_emergency_reward_projection(projection: Dictionary) -> bool:
+	if not _validate_emergency_reward_projection(projection):
+		return false
+	if (
+		not _emergency_reward_client_snapshot.is_empty()
+		and int(projection.get("revision", 0))
+		< int(_emergency_reward_client_snapshot.get("revision", 0))
+	):
+		return false
+	_emergency_reward_client_snapshot = projection.duplicate(true)
+	_render_local_emergency_reward_projection()
+	return true
+
+
+func _validate_emergency_reward_projection(projection: Dictionary) -> bool:
+	if (
+		_active_encounter_config == null
+		or _active_encounter_config.reward_config == null
+		or int(projection.get("schema_version", -1))
+		!= EMERGENCY_REWARD_WIRE_SCHEMA_VERSION
+		or typeof(projection.get("revision")) != TYPE_INT
+		or int(projection.get("revision", 0)) < 1
+		or str(projection.get("occurrence_id", "")) != _active_occurrence_key
+		or int(projection.get("content_seed", 0)) != _active_content_seed
+		or str(projection.get("reward_contract_hash", ""))
+		!= _active_encounter_config.reward_config.compute_runtime_contract_hash()
+		or typeof(projection.get("local_participant")) != TYPE_DICTIONARY
+		or typeof(projection.get("waiting_online_count")) != TYPE_INT
+		or int(projection.get("waiting_online_count", -1)) < 0
+	):
+		return false
+	var phase := StringName(projection.get("phase", ""))
+	if phase not in [
+		RogueEmergencyRewardSelectionSession.PHASE_CHOOSING,
+		RogueEmergencyRewardSelectionSession.PHASE_READY,
+		RogueEmergencyRewardSelectionSession.PHASE_SETTLED,
+	]:
+		return false
+	var local_peer_id := _get_local_peer_id()
+	var local_state := projection["local_participant"] as Dictionary
+	var complete := bool(local_state.get("complete", false))
+	var forfeited := bool(local_state.get("forfeited", false))
+	var round_index := int(local_state.get("current_round_index", -1))
+	var round_count := int(projection.get("round_count", -1))
+	var remaining := float(local_state.get("deadline_seconds_remaining", -1.0))
+	var timeout_index := int(local_state.get(
+		"timeout_choice_index",
+		-2
+	))
+	if (
+		int(local_state.get("peer_id", -1)) != local_peer_id
+		or round_count
+		!= _active_encounter_config.reward_config.collectible_choice_round_count
+		or round_index < 0
+		or round_index > round_count
+		or remaining < 0.0
+		or remaining
+		> _active_encounter_config.reward_config.collectible_choice_seconds_per_round
+		or timeout_index < INVALID_REWARD_OFFER_INDEX
+		or timeout_index
+		>= _active_encounter_config.reward_config.collectible_choice_offer_count
+		or (forfeited and not complete)
+		or (not complete and phase != RogueEmergencyRewardSelectionSession.PHASE_CHOOSING)
+	):
+		return false
+	var offer_paths := local_state.get("current_offer_paths", []) as Array
+	if complete:
+		var retry_offer_paths := local_state.get(
+			"retry_offer_paths",
+			[]
+		) as Array
+		var retry_offer_index := int(local_state.get(
+			"retry_offer_index",
+			INVALID_REWARD_OFFER_INDEX
+		))
+		return (
+			offer_paths.is_empty()
+			and (
+				retry_offer_paths.is_empty()
+				or (
+					retry_offer_paths.size()
+					== _active_encounter_config.reward_config.collectible_choice_offer_count
+					and retry_offer_index >= 0
+					and retry_offer_index < retry_offer_paths.size()
+				)
+			)
+		)
+	if (
+		offer_paths.size()
+		!= _active_encounter_config.reward_config.collectible_choice_offer_count
+		or round_index >= round_count
+	):
+		return false
+	var local_peer_ids: Array[int] = [local_peer_id]
+	var offer_result := RogueCombatRewardResolver.build_emergency_collectible_offers(
+		StringName(_active_occurrence_key),
+		_active_content_seed,
+		local_peer_ids,
+		_active_encounter_config.reward_config,
+		_active_encounter_config.filter_loot_by_character
+		== RogueCombatEncounterConfig.Decision.YES,
+		{local_peer_id: _participant_stable_keys.get(local_peer_id, "")},
+		{local_peer_id: _participant_character_ids.get(local_peer_id, &"")}
+	)
+	if not bool(offer_result.get("resolved", false)):
+		return false
+	var expected_rounds := (
+		(offer_result.get("offers_by_peer", {}) as Dictionary).get(
+			local_peer_id,
+			[]
+		) as Array
+	)
+	return (
+		round_index < expected_rounds.size()
+		and offer_paths
+		== (
+			(expected_rounds[round_index] as Dictionary).get("paths", [])
+			as Array
+		)
+	)
+
+
+func _render_local_emergency_reward_projection() -> void:
+	if _emergency_reward_overlay == null:
+		return
+	var local_state := (
+		_emergency_reward_client_snapshot.get("local_participant", {}) as Dictionary
+	)
+	if local_state.is_empty() or bool(local_state.get("forfeited", false)):
+		_emergency_reward_overlay.hide_and_reset()
+		return
+	var complete := bool(local_state.get("complete", false))
+	if complete:
+		if bool(_emergency_reward_client_snapshot.get(
+			"local_completion_blocked",
+			false
+		)):
+			var retry_offer_paths := local_state.get(
+				"retry_offer_paths",
+				[]
+			) as Array
+			var retry_offer_index := int(local_state.get(
+				"retry_offer_index",
+				INVALID_REWARD_OFFER_INDEX
+			))
+			if (
+				retry_offer_paths.size() == 2
+				and retry_offer_index >= 0
+				and retry_offer_index < retry_offer_paths.size()
+			):
+				_emergency_reward_overlay.show_round(
+					retry_offer_paths,
+					maxi(int(local_state.get(
+						"current_round_index",
+						1
+					)), 1),
+					maxi(int(_emergency_reward_client_snapshot.get(
+						"round_count",
+						2
+					)), 1),
+					0.0,
+					"背包空间不足 · 已选奖励保留",
+					false,
+					true
+				)
+				_emergency_reward_overlay.set_choice_pending(
+					retry_offer_index
+				)
+			_emergency_reward_overlay.show_inventory_full_error(
+				"背包空间不足 · 已选奖励保留，请整理后重试"
+			)
+		else:
+			var waiting_count := int(_emergency_reward_client_snapshot.get(
+				"waiting_online_count",
+				0
+			))
+			_emergency_reward_overlay.set_waiting(
+				"两轮选择已完成 · 等待其他在线玩家（%d）" % waiting_count
+			)
+		return
+	var offer_paths := local_state.get("current_offer_paths", []) as Array
+	var round_index := int(local_state.get("current_round_index", 0))
+	var round_count := int(_emergency_reward_client_snapshot.get(
+		"round_count",
+		2
+	))
+	var remaining := float(local_state.get(
+		"deadline_seconds_remaining",
+		0.0
+	))
+	_emergency_reward_overlay.show_round(
+		offer_paths,
+		round_index + 1,
+		round_count,
+		remaining,
+		"请选择其中一件收藏品",
+		true,
+		true
+	)
+	var locked_index := int(local_state.get(
+		"timeout_choice_index",
+		INVALID_REWARD_OFFER_INDEX
+	))
+	if locked_index >= 0 and remaining <= 0.0:
+		_emergency_reward_overlay.set_choice_pending(locked_index)
+		_emergency_reward_overlay.show_inventory_full_error()
+
+
+func _on_emergency_reward_choice_selected(
+	round_number: int,
+	offer_index: int
+) -> void:
+	if (
+		_phase != ProtocolPhase.REWARD_SELECTING
+		or _emergency_reward_client_snapshot.is_empty()
+	):
+		return
+	var local_peer_id := _get_local_peer_id()
+	var expected_revision := int(_emergency_reward_client_snapshot.get(
+		"revision",
+		0
+	))
+	if bool(_emergency_reward_client_snapshot.get(
+		"local_completion_blocked",
+		false
+	)):
+		if _is_host():
+			_handle_emergency_reward_completion_retry(local_peer_id)
+		elif _is_peer_send_ready(_get_host_peer_id()):
+			net_emergency_reward_completion_retry_requested.rpc_id(
+				_get_host_peer_id(),
+				_active_occurrence_key,
+				expected_revision
+			)
+		return
+	if _is_host():
+		_handle_emergency_reward_choice_request(
+			local_peer_id,
+			expected_revision,
+			round_number - 1,
+			offer_index
+		)
+	elif _is_peer_send_ready(_get_host_peer_id()):
+		net_emergency_reward_choice_requested.rpc_id(
+			_get_host_peer_id(),
+			_active_occurrence_key,
+			expected_revision,
+			round_number - 1,
+			offer_index
+		)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_emergency_reward_choice_requested(
+	occurrence_key: String,
+	expected_revision: int,
+	round_index: int,
+	offer_index: int
+) -> void:
+	if not _is_host() or occurrence_key != _active_occurrence_key:
+		return
+	_handle_emergency_reward_choice_request(
+		multiplayer.get_remote_sender_id(),
+		expected_revision,
+		round_index,
+		offer_index
+	)
+
+
+func _handle_emergency_reward_choice_request(
+	peer_id: int,
+	expected_revision: int,
+	round_index: int,
+	offer_index: int
+) -> void:
+	if (
+		_phase != ProtocolPhase.REWARD_SELECTING
+		or _emergency_reward_session == null
+		or not _participant_peer_ids.has(peer_id)
+		or _disconnected_participants.has(peer_id)
+		or expected_revision < 1
+		or expected_revision > _emergency_reward_session.get_revision()
+	):
+		_send_emergency_reward_state_to_peer(peer_id)
+		return
+	var result := _emergency_reward_session.submit_choice(
+		peer_id,
+		_active_occurrence_key,
+		round_index,
+		offer_index
+	)
+	if not bool(result.get("accepted", false)):
+		_send_emergency_reward_state_to_peer(peer_id)
+	_try_complete_host_emergency_rewards()
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_emergency_reward_completion_retry_requested(
+	occurrence_key: String,
+	expected_revision: int
+) -> void:
+	if (
+		not _is_host()
+		or occurrence_key != _active_occurrence_key
+		or _emergency_reward_session == null
+		or expected_revision < 1
+		or expected_revision > _emergency_reward_session.get_revision()
+	):
+		return
+	_handle_emergency_reward_completion_retry(
+		multiplayer.get_remote_sender_id()
+	)
+
+
+func _handle_emergency_reward_completion_retry(peer_id: int) -> void:
+	if (
+		_phase != ProtocolPhase.REWARD_SELECTING
+		or not _emergency_reward_completion_failure_by_peer.has(peer_id)
+	):
+		return
+	_emergency_reward_completion_failure_by_peer.clear()
+	_emergency_reward_completion_retry_requested = true
+	_try_complete_host_emergency_rewards()
+
+
+func _on_emergency_reward_inventory_requested() -> void:
+	if (
+		_phase != ProtocolPhase.REWARD_SELECTING
+		or _combat_game == null
+		or not is_instance_valid(_combat_game)
+		or _combat_game.player_profile_panel == null
+	):
+		return
+	_combat_game.player_profile_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	_combat_game.player_profile_panel.configure_multiplayer_requests(true)
+	_combat_game.player_profile_panel.open()
+
+
+func _try_complete_host_emergency_rewards() -> void:
+	if (
+		not _is_host()
+		or _phase != ProtocolPhase.REWARD_SELECTING
+		or _emergency_reward_session == null
+		or not _emergency_reward_session.is_ready_to_settle()
+		or not _emergency_reward_completion_retry_requested
+	):
+		return
+	_emergency_reward_completion_retry_requested = false
+	var reward_batch := _emergency_reward_session.complete_rewards()
+	if not bool(reward_batch.get("resolved", false)):
+		for peer_id_variant in reward_batch.get(
+			"inventory_full_peer_ids",
+			[]
+		) as Array:
+			_emergency_reward_completion_failure_by_peer[int(peer_id_variant)] = true
+		if _emergency_reward_completion_failure_by_peer.is_empty():
+			push_error(
+				"RogueCombatMultiplayerCoordinator: 紧急奖励事务失败：%s"
+				% str(reward_batch.get("failure_reason", "unknown"))
+			)
+			_abort_authoritative_protocol(&"emergency_reward_transaction_failed")
+			return
+		_broadcast_emergency_reward_state()
+		return
+	var results_by_peer := (
+		reward_batch.get("results_by_peer", {}) as Dictionary
+	).duplicate(true)
+	var shared_light_stone_reward := int(reward_batch.get(
+		"shared_light_stone_reward",
+		0
+	))
+	for peer_id_variant in results_by_peer.keys():
+		var peer_id := int(peer_id_variant)
+		var result := (results_by_peer[peer_id_variant] as Dictionary).duplicate(true)
+		result["victory"] = true
+		result["shared_light_stone_reward"] = shared_light_stone_reward
+		results_by_peer[peer_id] = result
+	var final_xirang_by_peer := (
+		reward_batch.get("final_xirang_by_peer", {}) as Dictionary
+	).duplicate(true)
+	_apply_xirang_map_to_game(_combat_game, final_xirang_by_peer)
+	var settlement := {
+		"node_id": _active_node_id,
+		"content_seed": _active_content_seed,
+		"occurrence_key": _active_occurrence_key,
+		"victory": true,
+		"failure_reason": "",
+		"consume_node": true,
+		"final_xirang_by_peer": final_xirang_by_peer,
+		"inventory_snapshots_by_peer": (
+			reward_batch.get("inventory_snapshots_by_peer", {}) as Dictionary
+		).duplicate(true),
+		"results_by_peer": results_by_peer,
+		"light_stone_ledger": (
+			reward_batch.get("light_stone_ledger", {}) as Dictionary
+		).duplicate(true),
+	}
+	if not _publish_host_settlement(
+		_active_occurrence_key,
+		settlement,
+		_emergency_reward_rollback_state
+	):
+		push_error(
+			"RogueCombatMultiplayerCoordinator: 紧急奖励结算发布失败。"
+		)
+
+
+func _reset_emergency_reward_selection() -> void:
+	if (
+		_emergency_reward_session != null
+		and _emergency_reward_session.state_changed.is_connected(
+			_on_emergency_reward_session_state_changed
+		)
+	):
+		_emergency_reward_session.state_changed.disconnect(
+			_on_emergency_reward_session_state_changed
+		)
+	_emergency_reward_session = null
+	_emergency_reward_client_snapshot.clear()
+	_emergency_reward_rollback_state.clear()
+	_emergency_reward_completion_failure_by_peer.clear()
+	_emergency_reward_completion_retry_requested = false
+	if _emergency_reward_overlay != null and is_instance_valid(
+		_emergency_reward_overlay
+	):
+		_emergency_reward_overlay.hide_and_reset()
+	if (
+		_combat_game != null
+		and is_instance_valid(_combat_game)
+		and _combat_game.player_profile_panel != null
+		and _combat_game.player_profile_panel.is_open()
+	):
+		_combat_game.player_profile_panel.close()
+
+
 func _on_local_combat_outcome_started(
 	victory: bool,
 	failure_reason: String
 ) -> void:
 	if (
-		_phase not in [ProtocolPhase.ACTIVE, ProtocolPhase.SETTLED]
+		_phase not in [
+			ProtocolPhase.ACTIVE,
+			ProtocolPhase.REWARD_SELECTING,
+			ProtocolPhase.SETTLED,
+		]
 		or _local_outcome_received
 	):
 		return
@@ -970,6 +1703,14 @@ func _settle_host_outcome(
 		or _combat_game == null
 		or not is_instance_valid(_combat_game)
 	):
+		return
+	if victory and _is_active_emergency_reward_encounter():
+		if not _begin_host_emergency_reward_selection(occurrence_key):
+			push_error(
+				"RogueCombatMultiplayerCoordinator: 无法启动紧急奖励选择。"
+			)
+			_abort_authoritative_protocol(&"emergency_reward_session_failed")
+			return
 		return
 	var reward_rollback_state := _capture_host_reward_rollback_state()
 	if reward_rollback_state.is_empty():
@@ -1174,6 +1915,7 @@ func _capture_host_reward_rollback_state() -> Dictionary:
 		"inventory_snapshots_by_peer": inventory_snapshots_by_peer,
 		"combat_xirang_by_peer": combat_xirang_by_peer,
 		"party_xirang_by_peer": _get_party_xirang_balances_for_participants(),
+		"light_stone_ledger": _run_state.export_party_light_stone_ledger(),
 	}
 
 
@@ -1186,6 +1928,8 @@ func _rollback_host_reward_mutations(rollback_state: Dictionary) -> bool:
 		or typeof(rollback_state.get("combat_xirang_by_peer"))
 		!= TYPE_DICTIONARY
 		or typeof(rollback_state.get("party_xirang_by_peer"))
+		!= TYPE_DICTIONARY
+		or typeof(rollback_state.get("light_stone_ledger"))
 		!= TYPE_DICTIONARY
 	):
 		return false
@@ -1242,9 +1986,17 @@ func _rollback_host_reward_mutations(rollback_state: Dictionary) -> bool:
 		_combat_game,
 		rollback_state["combat_xirang_by_peer"] as Dictionary
 	)
-	return _run_state.set_party_xirang_balances(
+	if not _run_state.set_party_xirang_balances(
 		rollback_state["party_xirang_by_peer"] as Dictionary
+	):
+		return false
+	var light_rollback := (
+		rollback_state["light_stone_ledger"] as Dictionary
+	).duplicate(true)
+	light_rollback["revision"] = (
+		_run_state.get_party_light_stone_ledger_revision() + 1
 	)
+	return _run_state.apply_party_light_stone_ledger(light_rollback)
 
 
 func _downgrade_pending_reconnects_before_settlement_broadcast(
@@ -1332,6 +2084,10 @@ func _apply_route_spectator_settlement(
 		or typeof(settlement.get("inventory_snapshots_by_peer"))
 		!= TYPE_DICTIONARY
 		or typeof(settlement.get("results_by_peer")) != TYPE_DICTIONARY
+		or (
+			settlement.has("light_stone_ledger")
+			and typeof(settlement.get("light_stone_ledger")) != TYPE_DICTIONARY
+		)
 	):
 		return false
 	var final_xirang := settlement["final_xirang_by_peer"] as Dictionary
@@ -1368,7 +2124,8 @@ func _apply_route_spectator_settlement(
 			return false
 	if not _apply_authoritative_settlement_economy(
 		final_xirang,
-		inventory_snapshots
+		inventory_snapshots,
+		settlement.get("light_stone_ledger", {}) as Dictionary
 	):
 		return false
 	_apply_xirang_map_to_route(final_xirang)
@@ -1394,6 +2151,10 @@ func _apply_settlement(settlement: Dictionary) -> bool:
 		or typeof(settlement.get("inventory_snapshots_by_peer"))
 		!= TYPE_DICTIONARY
 		or typeof(settlement.get("results_by_peer")) != TYPE_DICTIONARY
+		or (
+			settlement.has("light_stone_ledger")
+			and typeof(settlement.get("light_stone_ledger")) != TYPE_DICTIONARY
+		)
 	):
 		return false
 	var final_xirang := settlement["final_xirang_by_peer"] as Dictionary
@@ -1410,11 +2171,21 @@ func _apply_settlement(settlement: Dictionary) -> bool:
 
 	if not _apply_authoritative_settlement_economy(
 		final_xirang,
-		inventory_snapshots
+		inventory_snapshots,
+		settlement.get("light_stone_ledger", {}) as Dictionary
 	):
 		return false
 	_apply_xirang_map_to_game(_combat_game, final_xirang)
 	_apply_xirang_map_to_route(final_xirang)
+	if _emergency_reward_overlay != null:
+		_emergency_reward_overlay.hide_and_reset()
+	if (
+		_combat_game != null
+		and is_instance_valid(_combat_game)
+		and _combat_game.player_profile_panel != null
+		and _combat_game.player_profile_panel.is_open()
+	):
+		_combat_game.player_profile_panel.close()
 	if bool(settlement.get("consume_node", false)):
 		_consumed_node_ids[int(settlement.get("node_id", INVALID_NODE_ID))] = true
 
@@ -1434,33 +2205,59 @@ func _apply_settlement(settlement: Dictionary) -> bool:
 
 func _apply_authoritative_settlement_economy(
 	final_xirang: Dictionary,
-	inventory_snapshots: Dictionary
+	inventory_snapshots: Dictionary,
+	light_stone_ledger: Dictionary = {}
 ) -> bool:
 	if not _is_host():
-		# Preflight every peer snapshot before publishing any inventory signal.
-		# This prevents malformed Host data from exposing a half-updated party.
-		var prepared_snapshots: Dictionary = {}
+		var peer_ids := PackedInt32Array()
 		for peer_id_variant in inventory_snapshots.keys():
-			var peer_id := int(peer_id_variant)
-			var snapshot := inventory_snapshots[peer_id_variant] as Dictionary
-			var prepared := _run_state.prepare_inventory_snapshot_for_peer(
-				peer_id,
-				snapshot,
-				true
-			)
-			if prepared.is_empty():
-				return false
-			prepared_snapshots[peer_id] = prepared
-		for peer_id_variant in prepared_snapshots.keys():
-			if not _run_state.commit_prepared_inventory_snapshot_for_peer(
-				prepared_snapshots[peer_id_variant] as Dictionary,
-				false
+			peer_ids.append(int(peer_id_variant))
+		peer_ids.sort()
+		var party_snapshot := _run_state.export_party_economy_snapshot(peer_ids)
+		var inventories: Array[Dictionary] = []
+		for peer_id in peer_ids:
+			if (
+				not inventory_snapshots.has(peer_id)
+				or not inventory_snapshots[peer_id] is Dictionary
 			):
-				push_error(
-					"RogueCombatMultiplayerCoordinator: 结算背包提交失去原子性。"
-				)
 				return false
-		_run_state.notify_inventory_snapshot_committed()
+			inventories.append(
+				(inventory_snapshots[peer_id] as Dictionary).duplicate(true)
+			)
+		party_snapshot["inventories"] = inventories
+		var xirang_ledger := (
+			party_snapshot.get("xirang_ledger", {}) as Dictionary
+		).duplicate(true)
+		var current_xirang := _run_state.export_party_xirang_ledger()
+		var xirang_values := (
+			current_xirang.get("values", {}) as Dictionary
+		).duplicate(true)
+		for peer_id_variant in final_xirang.keys():
+			xirang_values[str(int(peer_id_variant))] = int(
+				final_xirang[peer_id_variant]
+			)
+		xirang_ledger["values"] = xirang_values
+		if (
+			int(xirang_ledger.get("revision", -1))
+			<= int(current_xirang.get("revision", -1))
+			and xirang_values
+			!= (current_xirang.get("values", {}) as Dictionary)
+		):
+			xirang_ledger["revision"] = int(current_xirang.get("revision", 0)) + 1
+		party_snapshot["xirang_ledger"] = xirang_ledger
+		if not light_stone_ledger.is_empty():
+			party_snapshot["light_stone_ledger"] = (
+				light_stone_ledger.duplicate(true)
+			)
+		# 三类战利品先按完整 Party Economy 一次预检，再一次提交。
+		if not _run_state.validate_party_economy_snapshot(party_snapshot):
+			return false
+		return _run_state.apply_party_economy_snapshot(party_snapshot)
+	if (
+		not light_stone_ledger.is_empty()
+		and _run_state.export_party_light_stone_ledger() != light_stone_ledger
+	):
+		return false
 	return _run_state.set_party_xirang_balances(final_xirang)
 
 
@@ -1776,6 +2573,7 @@ func _clear_local_result_lifecycle() -> void:
 
 func _reset_protocol_state() -> void:
 	_interrupt_terminal_presentation()
+	_reset_emergency_reward_selection()
 	_phase = ProtocolPhase.IDLE
 	_active_node_id = INVALID_NODE_ID
 	_active_content_seed = 0
@@ -1882,7 +2680,11 @@ func _can_withdraw_failed_runtime_participant(
 		and _is_pending_reconnect_prepare(sender_id, occurrence_key)
 		and CLIENT_PREPARATION_ABORT_REASONS.has(reason)
 		and (
-			_phase in [ProtocolPhase.ACTIVE, ProtocolPhase.SETTLED]
+			_phase in [
+				ProtocolPhase.ACTIVE,
+				ProtocolPhase.REWARD_SELECTING,
+				ProtocolPhase.SETTLED,
+			]
 			or (
 				_phase == ProtocolPhase.PREPARING
 				and _activation_dispatch_started
@@ -2008,6 +2810,15 @@ func _on_player_left(peer_id: int) -> void:
 	if _is_host():
 		if _phase == ProtocolPhase.PREPARING:
 			_try_activate_host_barrier()
+		elif (
+			_phase == ProtocolPhase.REWARD_SELECTING
+			and _emergency_reward_session != null
+		):
+			_emergency_reward_session.mark_peer_disconnected(
+				peer_id,
+				_active_occurrence_key
+			)
+			_try_complete_host_emergency_rewards()
 		elif _phase == ProtocolPhase.SETTLED:
 			_try_broadcast_safe_teardown()
 
@@ -2178,11 +2989,38 @@ func _finish_player_reconnected(old_peer_id: int, new_peer_id: int) -> void:
 		_reconnecting_peer_ids.erase(new_peer_id)
 		return
 
+	if (
+		_is_host()
+		and _phase == ProtocolPhase.REWARD_SELECTING
+		and _emergency_reward_session != null
+	):
+		if not _emergency_reward_session.remap_disconnected_peer(
+			old_peer_id,
+			new_peer_id
+		):
+			_reconnecting_peer_ids.erase(new_peer_id)
+			_abort_authoritative_protocol(
+				&"emergency_reward_reconnect_remap_failed"
+			)
+			return
 	var host_runtime_missing := _host_runtime_is_missing_peer(new_peer_id)
 	var disconnected_record := _remap_reconnected_participant_identity(
 		old_peer_id,
 		new_peer_id
 	)
+	if _phase == ProtocolPhase.REWARD_SELECTING:
+		if _is_host():
+			_keep_reconnected_participant_as_spectator(
+				old_peer_id,
+				new_peer_id,
+				disconnected_record
+			)
+		else:
+			_reconnecting_peer_ids.erase(new_peer_id)
+			_emergency_reward_client_snapshot.clear()
+			if _emergency_reward_overlay != null:
+				_emergency_reward_overlay.hide_and_reset()
+		return
 	if _is_host() and _phase == ProtocolPhase.SETTLED:
 		# The outcome already exists; rebuilding and activating a combat scene only
 		# races its deferred prepared signal against the settlement packet. Restore
@@ -2216,6 +3054,7 @@ func _finish_player_reconnected(old_peer_id: int, new_peer_id: int) -> void:
 		return
 	var activate_immediately := _phase in [
 		ProtocolPhase.ACTIVE,
+		ProtocolPhase.REWARD_SELECTING,
 		ProtocolPhase.SETTLED,
 	] or _activation_dispatch_started
 	_pending_reconnect_prepare_peers[new_peer_id] = {
@@ -2336,6 +3175,38 @@ func _remap_frozen_reward_identity(old_peer_id: int, new_peer_id: int) -> void:
 			continue
 		peer_map[new_peer_id] = peer_map[old_peer_id]
 		peer_map.erase(old_peer_id)
+	_remap_emergency_reward_rollback_identity(old_peer_id, new_peer_id)
+
+
+## 紧急奖励选择开始时已冻结奖励前状态。选择期间发生重连时，回滚快照必须与
+## 正式参战者 peer 一起迁移，否则奖励 CAS 后若终局提交失败将无法恢复该玩家。
+func _remap_emergency_reward_rollback_identity(
+	old_peer_id: int,
+	new_peer_id: int
+) -> void:
+	if _emergency_reward_rollback_state.is_empty():
+		return
+	var snapshots := (
+		_emergency_reward_rollback_state.get(
+			"inventory_snapshots_by_peer",
+			{}
+		) as Dictionary
+	)
+	if snapshots.has(old_peer_id):
+		var snapshot := (snapshots[old_peer_id] as Dictionary).duplicate(true)
+		snapshot["peer_id"] = new_peer_id
+		snapshots[new_peer_id] = snapshot
+		snapshots.erase(old_peer_id)
+		_emergency_reward_rollback_state["inventory_snapshots_by_peer"] = snapshots
+	for map_name in ["combat_xirang_by_peer", "party_xirang_by_peer"]:
+		var peer_map := (
+			_emergency_reward_rollback_state.get(map_name, {}) as Dictionary
+		)
+		if not peer_map.has(old_peer_id):
+			continue
+		peer_map[new_peer_id] = peer_map[old_peer_id]
+		peer_map.erase(old_peer_id)
+		_emergency_reward_rollback_state[map_name] = peer_map
 
 
 func _send_terminal_reconnect_spectator(

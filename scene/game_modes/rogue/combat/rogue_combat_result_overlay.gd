@@ -108,6 +108,14 @@ func present_reward_result(result: Dictionary) -> void:
 		int(first_reward.get("granted_count", 0))
 		< int(first_reward.get("rolled_count", 1))
 	)
+	var shared_light_stone_reward := maxi(
+		int(result.get("shared_light_stone_reward", 0)),
+		0
+	)
+	if shared_light_stone_reward > 0:
+		result_subtitle_label.text += "  全队共享光石 +%d。" % (
+			shared_light_stone_reward
+		)
 	var cards: Array[PanelContainer] = [loot_card, loot_card_2, loot_card_3]
 	var icons: Array[TextureRect] = [loot_icon_rect, loot_icon_rect_2, loot_icon_rect_3]
 	var badges: Array[PanelContainer] = [rarity_badge, rarity_badge_2, rarity_badge_3]

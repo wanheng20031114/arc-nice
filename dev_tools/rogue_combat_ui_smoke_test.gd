@@ -178,6 +178,7 @@ func _run() -> void:
 	result.present_reward_result({
 		"victory": true,
 		"extra_xirang": 2600,
+		"shared_light_stone_reward": 1,
 		"item_rewards": [
 			_make_reward_row(COMMON_LOOT_CONFIG, 1, 1, "普通品质"),
 			_make_reward_row(SECOND_COMMON_LOOT_CONFIG, 1, 0, "普通品质"),
@@ -187,6 +188,7 @@ func _run() -> void:
 	await process_frame
 	_expect(
 		result.extra_xirang_value_label.text == "+2600"
+		and result.result_subtitle_label.text.contains("全队共享光石 +1")
 		and result.loot_card.visible
 		and result.loot_card_2.visible
 		and result.loot_card_3.visible,

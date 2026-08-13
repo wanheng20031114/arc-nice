@@ -24,6 +24,9 @@ const FORMAL_CONFIG: RogueCombatEncounterConfig = preload(
 const SUITCASE_CONFIG: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/suitcase_battle.tres"
 )
+const EMERGENCY_CONFIG: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/emergency_narrow_road_01.tres"
+)
 
 
 class FakeNetManager extends NetManagerStore:
@@ -137,6 +140,11 @@ func _run() -> void:
 	_test_host_settlement_commit_gates_broadcast()
 	_test_pending_reconnect_is_spectator_before_settlement_broadcast()
 	_test_late_activation_cannot_rewind_settled_phase()
+	_test_emergency_reward_snapshot_is_peer_private()
+	_test_completed_emergency_choice_can_disconnect_and_remap()
+	_test_ready_emergency_choice_can_disconnect_and_remap()
+	_test_emergency_disconnect_forfeit_and_reward_commit()
+	_test_emergency_reconnect_reward_rollback_state_remaps()
 	await _test_real_reward_mutation_rolls_back_after_commit_failure()
 	await _test_disconnected_original_participant_receives_victory_rewards()
 	_test_player_left_preserves_participant_and_shrinks_barriers()
@@ -206,6 +214,381 @@ func _test_prepare_requires_route_resolved_config() -> void:
 	)
 
 
+func _configure_emergency_reward_fixture(
+	peer_ids: Array[int],
+	occurrence_key: String = "emergency:runtime:reward:1"
+) -> RogueEmergencyRewardSelectionSession:
+	_reset_fixture_state()
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	_coordinator._phase = COORDINATOR.ProtocolPhase.REWARD_SELECTING
+	_coordinator._active_node_id = 91
+	_coordinator._active_content_seed = 910_027
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._active_combat_config_id = EMERGENCY_CONFIG.encounter_id
+	_coordinator._active_encounter_config = EMERGENCY_CONFIG
+	_coordinator._participant_peer_ids.clear()
+	_coordinator._participant_stable_keys.clear()
+	_coordinator._participant_character_ids.clear()
+	_coordinator._entry_xirang_by_peer.clear()
+	_coordinator._last_combat_xirang_by_peer.clear()
+	var stable_keys: Dictionary = {}
+	var character_ids: Dictionary = {}
+	var base_xirang: Dictionary = {}
+	for peer_id in peer_ids:
+		run_state.ensure_multiplayer_peer_state(peer_id)
+		_coordinator._participant_peer_ids[peer_id] = true
+		stable_keys[peer_id] = "emergency-fixture:%d" % peer_id
+		character_ids[peer_id] = &"weishidaier"
+		base_xirang[peer_id] = 700 + peer_id
+		_coordinator._participant_stable_keys[peer_id] = stable_keys[peer_id]
+		_coordinator._participant_character_ids[peer_id] = character_ids[peer_id]
+		_coordinator._entry_xirang_by_peer[peer_id] = base_xirang[peer_id]
+		_coordinator._last_combat_xirang_by_peer[peer_id] = base_xirang[peer_id]
+	var session := RogueEmergencyRewardSelectionSession.new()
+	_expect(
+		session.begin_authority(
+			run_state,
+			StringName(occurrence_key),
+			_coordinator._active_content_seed,
+			peer_ids,
+			EMERGENCY_CONFIG.reward_config,
+			false,
+			stable_keys,
+			character_ids,
+			base_xirang
+		),
+		"紧急多人奖励 fixture 必须能建立权威选择会话。"
+	)
+	_coordinator._emergency_reward_session = session
+	_coordinator._emergency_reward_rollback_state = (
+		_coordinator._capture_host_reward_rollback_state()
+	)
+	_coordinator._emergency_reward_completion_retry_requested = false
+	return session
+
+
+func _test_emergency_reward_snapshot_is_peer_private() -> void:
+	var session := _configure_emergency_reward_fixture([1, 2])
+	var peer_one_projection := _coordinator._build_emergency_reward_projection(1)
+	var peer_two_projection := _coordinator._build_emergency_reward_projection(2)
+	_expect(
+		COORDINATOR.ProtocolPhase.REWARD_SELECTING
+		!= COORDINATOR.ProtocolPhase.ACTIVE,
+		"紧急奖励选择必须有独立协议阶段，不能复用 ACTIVE。"
+	)
+	_expect(
+		not peer_one_projection.has("participants")
+		and not peer_one_projection.has("offers_by_peer")
+		and int((peer_one_projection.get(
+			"local_participant",
+			{}
+		) as Dictionary).get("peer_id", -1)) == 1,
+		"发给 peer1 的投影只能包含 peer1 候选，不能泄露全队 participant。"
+	)
+	_expect(
+		not peer_two_projection.has("participants")
+		and int((peer_two_projection.get(
+			"local_participant",
+			{}
+		) as Dictionary).get("peer_id", -1)) == 2,
+		"发给 peer2 的投影只能包含 peer2 本地候选。"
+	)
+	var peer_one_offers := (
+		(peer_one_projection["local_participant"] as Dictionary).get(
+			"current_offer_paths",
+			[]
+		) as Array
+	)
+	var peer_two_offers := (
+		(peer_two_projection["local_participant"] as Dictionary).get(
+			"current_offer_paths",
+			[]
+		) as Array
+	)
+	_expect(
+		peer_one_offers.size() == 2 and peer_two_offers.size() == 2,
+		"每个客户端投影都必须恰有本轮两个候选。"
+	)
+	var before_revision := session.get_revision()
+	var stale_client_revision := before_revision
+	session.advance(1.0)
+	_coordinator._handle_emergency_reward_choice_request(
+		1,
+		stale_client_revision,
+		0,
+		0
+	)
+	_expect(
+		int(session.get_peer_state(1).get("round_index", 0)) == 1,
+		"其他玩家倒计时引发全局 revision 推进后，旧但非未来的合法点击仍须接受。"
+	)
+	session.advance(29.0)
+	_expect(
+		session.get_revision() > before_revision
+		and int(session.get_peer_state(1).get("round_index", 0)) == 1
+		and int(session.get_peer_state(2).get("round_index", 0)) == 1,
+		"房主推进30秒必须为尚未选择的在线玩家执行确定性超时选择。"
+	)
+	_coordinator._reset_emergency_reward_selection()
+	_expect(
+		_coordinator._emergency_reward_session == null
+		and _coordinator._emergency_reward_client_snapshot.is_empty()
+		and not _route.emergency_reward_choice_overlay.visible,
+		"协议 reset 必须清理紧急奖励会话、客户端投影与 Overlay。"
+	)
+
+
+func _test_emergency_disconnect_forfeit_and_reward_commit() -> void:
+	var occurrence_key := "emergency:runtime:disconnect:2"
+	var session := _configure_emergency_reward_fixture([1, 2], occurrence_key)
+	_coordinator._disconnected_participants[2] = {
+		"entry_xirang": 702,
+		"last_combat_xirang": 702,
+	}
+	_expect(
+		session.mark_peer_disconnected(2, occurrence_key),
+		"选择阶段断线必须立即把玩家标记为 forfeit。"
+	)
+	_expect(
+		session.remap_disconnected_peer(2, 3),
+		"断线玩家重连应只迁移最终基础奖励投递 peer。"
+	)
+	var remapped_state := session.get_peer_state(3)
+	_expect(
+		bool(remapped_state.get("completed", false))
+		and bool(remapped_state.get("disconnected", false))
+		and (remapped_state.get("selected_paths", []) as Array).is_empty(),
+		"重连后的 forfeit 状态必须保持完成且无收藏品，不能重新开放补选。"
+	)
+	# 同步 coordinator 的 canonical peer 映射，模拟正式重连 old -> new。
+	_coordinator._participant_peer_ids.erase(2)
+	_coordinator._participant_peer_ids[3] = true
+	for peer_map in [
+		_coordinator._participant_stable_keys,
+		_coordinator._participant_character_ids,
+		_coordinator._entry_xirang_by_peer,
+		_coordinator._last_combat_xirang_by_peer,
+	]:
+		peer_map[3] = peer_map[2]
+		peer_map.erase(2)
+	_coordinator._disconnected_participants.erase(2)
+	_coordinator._disconnected_participants[3] = true
+	for round_index in range(2):
+		var choice := session.submit_choice(
+			1,
+			occurrence_key,
+			round_index,
+			0
+		)
+		_expect(
+			bool(choice.get("accepted", false)),
+			"在线玩家第%d轮选择应被房主接受。" % (round_index + 1)
+		)
+	_expect(
+		session.is_ready_to_settle(),
+		"只应等待在线玩家；forfeit 玩家不得阻塞全队结算。"
+	)
+	var light_before := (
+		(root.get_node("RunState") as RunStateStore).get_party_light_stone_amount()
+	)
+	_coordinator.host_settlement_commit_uses_super = true
+	_coordinator._emergency_reward_completion_retry_requested = true
+	_coordinator._local_outcome_received = true
+	_coordinator._local_outcome_victory = true
+	_coordinator._try_complete_host_emergency_rewards()
+	var settlement := (
+		_coordinator.host_settlement_broadcasts.back().get(
+			"settlement",
+			{}
+		) as Dictionary
+		if not _coordinator.host_settlement_broadcasts.is_empty()
+		else {}
+	)
+	var results := settlement.get("results_by_peer", {}) as Dictionary
+	var xirang := settlement.get("final_xirang_by_peer", {}) as Dictionary
+	var result_one := results.get(1, {}) as Dictionary
+	var result_three := results.get(3, {}) as Dictionary
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.SETTLED,
+		"紧急选择完成后必须进入既有 SETTLED 终局协议。"
+	)
+	_expect(
+		int(result_one.get("extra_xirang", 0))
+		== int(result_three.get("extra_xirang", -1))
+		and int(xirang.get(1, 0)) - 701 == int(xirang.get(3, 0)) - 702,
+		"所有原参战者（含 forfeit 重连者）必须获得同一个整百息壤数。"
+	)
+	_expect(
+		(result_one.get("item_rewards", []) as Array).size() == 3
+		and (result_three.get("item_rewards", []) as Array).is_empty()
+		and bool(result_three.get("reward_selection_forfeited", false)),
+		"在线玩家获得两收藏品与资源；forfeit 玩家放弃尚未入包的全部物品。"
+	)
+	_expect(
+		int(result_one.get("shared_light_stone_reward", 0)) == 1
+		and int(result_three.get("shared_light_stone_reward", 0)) == 1
+		and (root.get_node("RunState") as RunStateStore)
+		.get_party_light_stone_amount() == light_before + 1,
+		"settlement 顶层同步光石 ledger，并且全队共享光石只增加一次。"
+	)
+
+
+func _test_emergency_reconnect_reward_rollback_state_remaps() -> void:
+	var occurrence_key := "emergency:runtime:reconnect-rollback:5"
+	var session := _configure_emergency_reward_fixture([1, 2], occurrence_key)
+	var run_state := root.get_node("RunState") as RunStateStore
+	var inventory_one_before := run_state.export_inventory_snapshot_for_peer(1)
+	var inventory_two_before := run_state.export_inventory_snapshot_for_peer(2)
+	var light_before := run_state.get_party_light_stone_amount()
+	var light_revision_before := run_state.get_party_light_stone_ledger_revision()
+	_coordinator._disconnected_participants[2] = {
+		"entry_xirang": 702,
+		"last_combat_xirang": 702,
+	}
+	_expect(
+		session.mark_peer_disconnected(2, occurrence_key)
+		and run_state.remap_multiplayer_peer_state(2, 3)
+		and session.remap_disconnected_peer(2, 3),
+		"奖励阶段重连夹具必须先迁移会话与 RunState 身份。"
+	)
+	_coordinator._remap_reconnected_participant_identity(2, 3)
+	var rollback_snapshots := (
+		_coordinator._emergency_reward_rollback_state.get(
+			"inventory_snapshots_by_peer",
+			{}
+		) as Dictionary
+	)
+	_expect(
+		rollback_snapshots.has(3)
+		and not rollback_snapshots.has(2)
+		and int((rollback_snapshots[3] as Dictionary).get("peer_id", -1)) == 3,
+		"紧急奖励回滚背包快照必须随 old→new peer 同步迁移。"
+	)
+	for round_index in range(2):
+		_expect(
+			bool(session.submit_choice(
+				1,
+				occurrence_key,
+				round_index,
+				0
+			).get("accepted", false)),
+			"在线玩家应完成第%d轮选择。" % (round_index + 1)
+		)
+	var reward_batch := session.complete_rewards() as Dictionary
+	_expect(
+		bool(reward_batch.get("resolved", false))
+		and run_state.get_party_light_stone_amount() == light_before + 1,
+		"失败注入前必须已真实完成紧急奖励 CAS。"
+	)
+	var settlement := {
+		"node_id": _coordinator._active_node_id,
+		"content_seed": _coordinator._active_content_seed,
+		"occurrence_key": occurrence_key,
+		"victory": true,
+		"failure_reason": "",
+		"consume_node": true,
+		"final_xirang_by_peer": reward_batch.get("final_xirang_by_peer", {}),
+		"inventory_snapshots_by_peer": reward_batch.get(
+			"inventory_snapshots_by_peer",
+			{}
+		),
+		"results_by_peer": reward_batch.get("results_by_peer", {}),
+		"light_stone_ledger": reward_batch.get("light_stone_ledger", {}),
+	}
+	_coordinator.host_settlement_commit_result = false
+	_expect(
+		not _coordinator._publish_host_settlement(
+			occurrence_key,
+			settlement,
+			_coordinator._emergency_reward_rollback_state
+		),
+		"奖励 CAS 后注入的终局提交失败必须拒绝发布并触发回滚。"
+	)
+	var inventory_one_after := run_state.export_inventory_snapshot_for_peer(1)
+	var inventory_three_after := run_state.export_inventory_snapshot_for_peer(3)
+	_expect(
+		_inventory_contents(inventory_one_after)
+		== _inventory_contents(inventory_one_before)
+		and _inventory_contents(inventory_three_after)
+		== _inventory_contents(inventory_two_before),
+		"终局提交失败后必须按重连后的 peer 完整恢复奖励前背包内容。"
+	)
+	_expect(
+		run_state.get_party_xirang_balance(1) == 0
+		and run_state.get_party_xirang_balance(3) == 0
+		and run_state.get_party_light_stone_amount() == light_before
+		and run_state.get_party_light_stone_ledger_revision()
+		> light_revision_before,
+		"终局提交失败后必须恢复两名玩家息壤与共享光石，并保持 revision 单调。"
+	)
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.IDLE
+		and _coordinator.host_settlement_broadcasts.is_empty(),
+		"重连后的奖励回滚成功时不得广播失败结算，节点协议应安全中止。"
+	)
+
+
+func _test_completed_emergency_choice_can_disconnect_and_remap() -> void:
+	var occurrence_key := "emergency:runtime:completed-disconnect:3"
+	var session := _configure_emergency_reward_fixture([1, 2], occurrence_key)
+	for round_index in range(2):
+		_expect(
+			bool(session.submit_choice(
+				2,
+				occurrence_key,
+				round_index,
+				0
+			).get("accepted", false)),
+			"已先完成的 peer2 两轮选择必须可提交。"
+		)
+	_expect(
+		not session.is_ready_to_settle(),
+		"peer2 完成后仍须等待在线 peer1。"
+	)
+	var selected_before := (
+		session.get_peer_state(2).get("selected_paths", []) as Array
+	).duplicate()
+	_expect(
+		session.mark_peer_disconnected(2, occurrence_key)
+		and session.remap_disconnected_peer(2, 4),
+		"已完成选择但仍在等待时断线，也必须能迁移到重连 peer。"
+	)
+	var remapped := session.get_peer_state(4)
+	_expect(
+		bool(remapped.get("disconnected", false))
+		and bool(remapped.get("completed", false))
+		and (remapped.get("selected_paths", []) as Array) == selected_before,
+		"已完成玩家断线重连不得重开选择，也不得丢失已锁定选择。"
+	)
+	_coordinator._reset_emergency_reward_selection()
+
+
+func _test_ready_emergency_choice_can_disconnect_and_remap() -> void:
+	var occurrence_key := "emergency:runtime:ready-disconnect:4"
+	var session := _configure_emergency_reward_fixture([1], occurrence_key)
+	for round_index in range(2):
+		_expect(
+			bool(session.submit_choice(
+				1,
+				occurrence_key,
+				round_index,
+				0
+			).get("accepted", false)),
+			"单一玩家两轮选择必须完成。"
+		)
+	_expect(session.is_ready_to_settle(), "全员完成后会话必须进入 READY。")
+	_expect(
+		session.mark_peer_disconnected(1, occurrence_key)
+		and session.remap_disconnected_peer(1, 5),
+		"READY 与最终 CAS 之间断线仍必须能标记并迁移基础奖励投递 peer。"
+	)
+	_expect(
+		session.is_ready_to_settle()
+		and bool(session.get_peer_state(5).get("disconnected", false)),
+		"READY 断线迁移不得重开选择或改变 ready 阶段。"
+	)
+	_coordinator._reset_emergency_reward_selection()
 func _create_fixture() -> void:
 	_fixture_root = Node2D.new()
 	_fixture_root.name = "RogueCombatCoordinatorRuntimeFixture"

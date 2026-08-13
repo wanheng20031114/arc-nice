@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RogueRouteFloorDefinition" load_steps=8 format=3]
+[gd_resource type="Resource" script_class="RogueRouteFloorDefinition" load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://resources/config/rogue_route/rogue_route_floor_definition.gd" id="1_script"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/p3_generation_config.tres" id="2_generation"]
@@ -7,6 +7,7 @@
 [ext_resource type="Resource" path="res://resources/config/rogue_combat/shallow_mine_normal_combat_pool.tres" id="5_combat_pool"]
 [ext_resource type="Resource" path="res://resources/config/rogue_shop/shallow_mine_underground_shop.tres" id="6_shop"]
 [ext_resource type="Resource" path="res://resources/config/rogue_combat/suitcase_battle.tres" id="7_suitcase_battle"]
+[ext_resource type="Resource" path="res://resources/config/rogue_combat/shallow_mine_emergency_combat_pool.tres" id="8_emergency_combat_pool"]
 
 [resource]
 script = ExtResource("1_script")
@@ -16,5 +17,6 @@ generation_config = ExtResource("2_generation")
 world_metrics = ExtResource("3_metrics")
 background_texture = ExtResource("4_background")
 normal_combat_pool = ExtResource("5_combat_pool")
+emergency_combat_pool = ExtResource("8_emergency_combat_pool")
 special_combat_configs = Array[RogueCombatEncounterConfig]([ExtResource("7_suitcase_battle")])
 underground_shop_config = ExtResource("6_shop")

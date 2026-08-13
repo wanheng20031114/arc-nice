@@ -37,7 +37,10 @@ func build_encounter_model(
 	reward_summary: String,
 	action_point_delta: int,
 	primary_action_text: String,
-	can_cancel: bool
+	can_cancel: bool,
+	presentation_variant: StringName = (
+		BRIEFING_MODEL_SCRIPT.PRESENTATION_VARIANT_DEFAULT
+	)
 ) -> BRIEFING_MODEL_SCRIPT:
 	if (
 		source_kind == &""
@@ -62,6 +65,7 @@ func build_encounter_model(
 		primary_action_text,
 		source_kind,
 		config_id,
-		can_cancel
+		can_cancel,
+		presentation_variant
 	)
 	return model if model.is_valid() else null

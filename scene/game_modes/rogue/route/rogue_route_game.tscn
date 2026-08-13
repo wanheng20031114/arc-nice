@@ -1,4 +1,4 @@
-[gd_scene load_steps=37 format=3]
+[gd_scene load_steps=38 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_route_game.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/route/rogue_route_board.tscn" id="2_board"]
@@ -27,6 +27,7 @@
 [ext_resource type="Script" path="res://scene/game_modes/rogue/rare_chest/rogue_rare_chest_session.gd" id="31_rare_chest_session"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/rare_chest/rogue_rare_chest_overlay.tscn" id="32_rare_chest_overlay"]
 [ext_resource type="AudioStream" path="res://resources/audio/rogue_route_cave.ogg" id="33_route_music"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/combat/reward/rogue_emergency_reward_choice_overlay.tscn" id="34_emergency_reward"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape_vertical"]
 size = Vector2(16, 16)
@@ -372,6 +373,8 @@ layout_mode = 1
 [node name="CombatVictoryPresentation" parent="." instance=ExtResource("19_combat_victory")]
 
 [node name="CombatSceneTransition" parent="." instance=ExtResource("20_scene_transition")]
+
+[node name="EmergencyRewardChoiceOverlay" parent="." instance=ExtResource("34_emergency_reward")]
 
 [node name="RunDefeatOverlay" parent="." instance=ExtResource("17_run_defeat")]
 

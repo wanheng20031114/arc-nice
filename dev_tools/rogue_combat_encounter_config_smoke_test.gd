@@ -232,10 +232,10 @@ func _test_kill_reward_policy_applies_to_every_entry() -> void:
 func _test_runtime_contract_hash() -> void:
 	var baseline := ENCOUNTER_CONFIG.compute_runtime_contract_hash()
 	_expect(
-		RogueCombatEncounterConfig.RUNTIME_CONTRACT_SCHEMA == 3
+		RogueCombatEncounterConfig.RUNTIME_CONTRACT_SCHEMA == 4
 		and baseline.length() == 64
 		and baseline == ENCOUNTER_CONFIG.compute_runtime_contract_hash(),
-		"作战 runtime contract 必须使用包含奖励资源的schema3稳定SHA-256。"
+		"作战 runtime contract 必须使用包含奖励与敌人增幅的schema4稳定SHA-256。"
 	)
 
 	var presentation_only := ENCOUNTER_CONFIG.duplicate(false) as RogueCombatEncounterConfig

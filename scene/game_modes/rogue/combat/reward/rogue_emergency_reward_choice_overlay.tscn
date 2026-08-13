@@ -1,0 +1,216 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/rogue/combat/reward/rogue_emergency_reward_choice_overlay.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/supply/rogue_supply_collectible_choice_panel.tscn" id="2_choice_panel"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_frame"]
+content_margin_left = 3.0
+content_margin_top = 3.0
+content_margin_right = 3.0
+content_margin_bottom = 3.0
+bg_color = Color(0.025, 0.055, 0.075, 0.992)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.24, 0.67, 0.72, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.82)
+shadow_size = 18
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_header"]
+bg_color = Color(0.045, 0.14, 0.17, 0.98)
+border_width_bottom = 2
+border_color = Color(0.3, 0.75, 0.77, 0.8)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+
+[sub_resource type="FontVariation" id="FontVariation_heading"]
+base_font = ExtResource("3_font")
+variation_embolden = 0.7
+spacing_top = 2
+
+[sub_resource type="FontVariation" id="FontVariation_body"]
+base_font = ExtResource("3_font")
+spacing_top = 1
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = SubResource("FontVariation_heading")
+font_size = 28
+font_color = Color(0.88, 0.98, 1, 1)
+outline_size = 2
+outline_color = Color(0.005, 0.035, 0.05, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_round"]
+font = SubResource("FontVariation_body")
+font_size = 17
+font_color = Color(0.57, 0.9, 0.94, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_countdown"]
+font = SubResource("FontVariation_heading")
+font_size = 18
+font_color = Color(0.48, 0.88, 0.92, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_retry"]
+content_margin_left = 22.0
+content_margin_top = 8.0
+content_margin_right = 22.0
+content_margin_bottom = 8.0
+bg_color = Color(0.04, 0.2, 0.24, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.35, 0.8, 0.82, 0.9)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_retry_hover"]
+content_margin_left = 22.0
+content_margin_top = 8.0
+content_margin_right = 22.0
+content_margin_bottom = 8.0
+bg_color = Color(0.07, 0.32, 0.36, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.62, 0.96, 0.96, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="LabelSettings" id="LabelSettings_hint"]
+font = SubResource("FontVariation_body")
+font_size = 13
+font_color = Color(0.67, 0.78, 0.82, 1)
+
+[node name="RogueEmergencyRewardChoiceOverlay" type="CanvasLayer"]
+layer = 19
+visible = false
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Shade" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.005, 0.018, 0.028, 0.84)
+
+[node name="WarningTop" type="ColorRect" parent="Root"]
+visible = false
+custom_minimum_size = Vector2(0, 7)
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 7.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.24, 0.67, 0.72, 0.9)
+
+[node name="Center" type="CenterContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 28.0
+offset_top = 28.0
+offset_right = -28.0
+offset_bottom = -28.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Frame" type="PanelContainer" parent="Root/Center"]
+custom_minimum_size = Vector2(1000, 500)
+layout_mode = 2
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_frame")
+
+[node name="Margin" type="MarginContainer" parent="Root/Center/Frame"]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 16
+
+[node name="Rows" type="VBoxContainer" parent="Root/Center/Frame/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="PanelContainer" parent="Root/Center/Frame/Margin/Rows"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_header")
+
+[node name="Info" type="HBoxContainer" parent="Root/Center/Frame/Margin/Rows/Header"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Round" type="Label" parent="Root/Center/Frame/Margin/Rows/Header/Info"]
+custom_minimum_size = Vector2(150, 58)
+layout_mode = 2
+text = "第 1 / 2 轮"
+label_settings = SubResource("LabelSettings_round")
+vertical_alignment = 1
+
+[node name="Title" type="Label" parent="Root/Center/Frame/Margin/Rows/Header/Info"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "紧急作战奖励"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Countdown" type="Label" parent="Root/Center/Frame/Margin/Rows/Header/Info"]
+custom_minimum_size = Vector2(150, 58)
+layout_mode = 2
+text = "剩余 30 秒"
+label_settings = SubResource("LabelSettings_countdown")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="ChoicePanel" parent="Root/Center/Frame/Margin/Rows" instance=ExtResource("2_choice_panel")]
+layout_mode = 2
+
+[node name="RetryButton" type="Button" parent="Root/Center/Frame/Margin/Rows"]
+visible = false
+custom_minimum_size = Vector2(250, 42)
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_retry")
+theme_override_styles/hover = SubResource("StyleBoxFlat_retry_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_retry_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_retry_hover")
+text = "重试领取已选收藏品"
+
+[node name="Hint" type="Label" parent="Root/Center/Frame/Margin/Rows"]
+layout_mode = 2
+text = "两轮候选互不重复 · 每轮超时后将自动随机选择"
+label_settings = SubResource("LabelSettings_hint")
+horizontal_alignment = 1
+
+[node name="CountdownTimer" type="Timer" parent="."]
+wait_time = 30.0
+one_shot = true

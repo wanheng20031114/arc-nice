@@ -21,6 +21,15 @@ const UNDERGROUND_CHURCH: RogueCombatEncounterConfig = preload(
 const ABANDONED_MINE: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/abandoned_mine_01.tres"
 )
+const EMERGENCY_NARROW_ROAD: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/emergency_narrow_road_01.tres"
+)
+const EMERGENCY_UNDERGROUND_CHURCH: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/emergency_underground_church_01.tres"
+)
+const EMERGENCY_ABANDONED_MINE: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/emergency_abandoned_mine_01.tres"
+)
 const ELITE_GUNNER: EnemyConfig = preload(
 	"res://resources/config/enemies/combat_robot_gunner_elite.tres"
 )
@@ -57,13 +66,22 @@ func _test_definition_contract() -> void:
 		and FLOOR.generation_config != null
 		and FLOOR.world_metrics != null
 		and FLOOR.background_texture != null
-		and FLOOR.normal_combat_pool != null,
-		"FloorDefinition 必须集中持有楼层身份、生成、几何、背景与普通作战池。"
+		and FLOOR.normal_combat_pool != null
+		and FLOOR.emergency_combat_pool != null,
+		"FloorDefinition 必须集中持有楼层身份、生成、几何、背景与两类路线作战池。"
 	)
 	_expect(
 		FLOOR.world_metrics.default_grid_size
 		== Vector2i(FLOOR.generation_config.width, FLOOR.generation_config.height),
 		"楼层世界默认网格必须与生成尺寸同源。"
+	)
+	var emergency_type_config := FLOOR.generation_config.get_type_config(
+		RogueRouteGraph.NodeType.EMERGENCY_COMBAT
+	)
+	_expect(
+		emergency_type_config != null
+		and is_equal_approx(emergency_type_config.generation_weight, 1.0),
+		"接入紧急关卡池不得改变紧急作战节点原有的地图生成权重1.0。"
 	)
 	_test_special_combat_catalog()
 	var runtime_hash := FLOOR.compute_runtime_contract_hash()
@@ -74,10 +92,10 @@ func _test_definition_contract() -> void:
 		"楼层 runtime contract hash 必须是稳定的 64 位 SHA-256。"
 	)
 	_expect(
-		FLOOR_DEFINITION_SCRIPT.RUNTIME_CONTRACT_SCHEMA == 6
+		FLOOR_DEFINITION_SCRIPT.RUNTIME_CONTRACT_SCHEMA == 7
 		and FLOOR_DEFINITION_SCRIPT.CONTENT_CONTRACT_SCHEMA == 3
 		and RogueCombatPoolConfig.RUNTIME_CONTRACT_SCHEMA == 1
-		and RogueCombatEncounterConfig.RUNTIME_CONTRACT_SCHEMA == 3,
+		and RogueCombatEncounterConfig.RUNTIME_CONTRACT_SCHEMA == 4,
 		"楼层、内容、作战池与作战运行契约版本必须准确。"
 	)
 	_expect(
@@ -165,6 +183,17 @@ func _test_special_combat_catalog() -> void:
 			church_bucket_count += 1
 		elif selected == ABANDONED_MINE:
 			abandoned_mine_bucket_count += 1
+	var emergency_counts := {
+		EMERGENCY_NARROW_ROAD: 0,
+		EMERGENCY_UNDERGROUND_CHURCH: 0,
+		EMERGENCY_ABANDONED_MINE: 0,
+	}
+	for bucket in range(FLOOR.emergency_combat_pool.get_total_selection_weight()):
+		var selected := (
+			FLOOR.emergency_combat_pool.select_config_for_weight_bucket(bucket)
+		)
+		if emergency_counts.has(selected):
+			emergency_counts[selected] = int(emergency_counts[selected]) + 1
 	_expect(
 		FLOOR.normal_combat_pool.pool_id == &"normal_combat"
 		and FLOOR.normal_combat_pool.entries.size() == 3
@@ -179,11 +208,23 @@ func _test_special_combat_catalog() -> void:
 		== UNDERGROUND_CHURCH
 		and FLOOR.get_combat_config(&"abandoned_mine_01")
 		== ABANDONED_MINE
+		and FLOOR.emergency_combat_pool.pool_id == &"emergency_combat"
+		and FLOOR.emergency_combat_pool.entries.size() == 3
+		and FLOOR.emergency_combat_pool.get_total_selection_weight() == 3
+		and int(emergency_counts[EMERGENCY_NARROW_ROAD]) == 1
+		and int(emergency_counts[EMERGENCY_UNDERGROUND_CHURCH]) == 1
+		and int(emergency_counts[EMERGENCY_ABANDONED_MINE]) == 1
+		and FLOOR.get_combat_config(&"emergency_narrow_road_01")
+		== EMERGENCY_NARROW_ROAD
+		and FLOOR.get_combat_config(&"emergency_underground_church_01")
+		== EMERGENCY_UNDERGROUND_CHURCH
+		and FLOOR.get_combat_config(&"emergency_abandoned_mine_01")
+		== EMERGENCY_ABANDONED_MINE
 		and FLOOR.special_combat_configs.size() == 1
 		and FLOOR.get_combat_config(&"suitcase_battle")
 		== SUITCASE_BATTLE
 		and FLOOR.get_combat_config(&"missing") == null,
-		"楼层必须提供三项等权普通池，并统一解析普通与特殊作战。"
+		"楼层必须提供各三项等权的普通/紧急池，并统一解析全部作战。"
 	)
 	var reordered_pool := (
 		FLOOR.normal_combat_pool.duplicate(false) as RogueCombatPoolConfig
@@ -242,6 +283,22 @@ func _test_special_combat_catalog() -> void:
 		_has_error_containing(duplicate_ids.validate_definition(), "重复 ID"),
 		"楼层必须拒绝重复的特殊作战 config_id。"
 	)
+	var duplicate_pool_id_floor := (
+		FLOOR.duplicate(false) as FLOOR_DEFINITION_SCRIPT
+	)
+	duplicate_pool_id_floor.emergency_combat_pool = (
+		FLOOR.emergency_combat_pool.duplicate(true) as RogueCombatPoolConfig
+	)
+	duplicate_pool_id_floor.emergency_combat_pool.entries[0].combat_config = (
+		NARROW_ROAD
+	)
+	_expect(
+		_has_error_containing(
+			duplicate_pool_id_floor.validate_definition(),
+			"紧急作战 ID 与普通作战池重复"
+		),
+		"楼层必须拒绝普通与紧急池之间重复的作战 ID。"
+	)
 
 
 func _count_enemy(wave: WaveConfig, enemy_config: EnemyConfig) -> int:
@@ -276,6 +333,9 @@ func _test_floor_application() -> void:
 		"HUD/Root/TopBar"
 	) as RogueRouteTopBar
 	var adapters := route.get("_normal_combat_briefing_adapters") as Dictionary
+	var emergency_adapters := (
+		route.get("_emergency_combat_briefing_adapters") as Dictionary
+	)
 	_expect(
 		route.floor_definition == FLOOR
 		and route.generation_config == FLOOR.generation_config,
@@ -317,6 +377,23 @@ func _test_floor_application() -> void:
 		"协调器不得保留默认兜底，普通作战池中的每项必须建立专属简报适配器。"
 	)
 	_expect(
+		emergency_adapters.size() == 3
+		and (
+			emergency_adapters[&"emergency_narrow_road_01"]
+			as RogueEmergencyCombatBriefingAdapter
+		).encounter_config == EMERGENCY_NARROW_ROAD
+		and (
+			emergency_adapters[&"emergency_underground_church_01"]
+			as RogueEmergencyCombatBriefingAdapter
+		).encounter_config == EMERGENCY_UNDERGROUND_CHURCH
+		and (
+			emergency_adapters[&"emergency_abandoned_mine_01"]
+			as RogueEmergencyCombatBriefingAdapter
+		).encounter_config == EMERGENCY_ABANDONED_MINE
+		and route.emergency_reward_choice_overlay != null,
+		"三个紧急作战必须各自建立危险简报适配器，并静态装配奖励选择层。"
+	)
+	_expect(
 		top_bar != null
 		and top_bar.floor_title.text == FLOOR.display_name,
 		"路线 ready 必须把 FloorDefinition.display_name 应用到 TopBar。"
@@ -326,6 +403,52 @@ func _test_floor_application() -> void:
 		== FLOOR.compute_runtime_contract_hash(),
 		"路线快照契约必须完全委托给当前 FloorDefinition。"
 	)
+	var emergency_fixture := _find_adjacent_emergency_fixture()
+	_expect(not emergency_fixture.is_empty(), "测试种子范围内必须存在相邻紧急作战。")
+	if not emergency_fixture.is_empty():
+		_expect(
+			route.start_authoritative_session(
+				int(emergency_fixture["seed"]),
+				false
+			),
+			"路线必须能以含相邻紧急作战的确定种子启动。"
+		)
+		await process_frame
+		var graph := route.get("_route_graph") as RogueRouteGraph
+		var runtime := route.get("_runtime_state") as RogueRouteRuntimeState
+		var emergency_node_id := int(emergency_fixture["node_id"])
+		var config := route.resolve_emergency_combat_config_for_node(
+			emergency_node_id
+		)
+		var model := route.call(
+			"_build_emergency_combat_briefing_model",
+			emergency_node_id,
+			runtime.action_points,
+			config.encounter_id if config != null else &""
+		) as RogueRouteNodeBriefingModel
+		var occurrence_key := "emergency_combat:%s:%d:%d:1" % [
+			graph.compute_layout_hash(),
+			emergency_node_id,
+			graph.get_node_content_seed(emergency_node_id),
+		]
+		var occurrence := (
+			config.build_occurrence_campaign(occurrence_key)
+			if config != null
+			else null
+		)
+		var expected_enemy_count := 0
+		if occurrence != null:
+			for wave in occurrence.get_waves():
+				expected_enemy_count += wave.get_total_enemy_count()
+		_expect(
+			model != null
+			and model.source_kind
+			== RogueRouteNodeBriefingModel.SOURCE_KIND_EMERGENCY_COMBAT
+			and model.is_danger_presentation()
+			and model.enemy_count == expected_enemy_count
+			and model.enemy_count > config.get_total_enemy_count(),
+			"紧急简报必须使用危险变体，并显示本 occurrence 增幅后的实际敌人数。"
+		)
 
 	current_scene = null
 	route.queue_free()
@@ -336,6 +459,20 @@ func _test_floor_application() -> void:
 		physics_interpolation == previous_interpolation,
 		"FloorDefinition smoke 退出路线后必须恢复物理插值状态。"
 	)
+
+
+func _find_adjacent_emergency_fixture() -> Dictionary:
+	for seed in range(1, 4097):
+		var graph := RogueRouteGenerator.generate(FLOOR.generation_config, seed)
+		if graph == null:
+			continue
+		for neighbor_id in graph.get_neighbors(graph.start_node_id):
+			if (
+				graph.get_node_type(neighbor_id)
+				== RogueRouteGraph.NodeType.EMERGENCY_COMBAT
+			):
+				return {"seed": seed, "node_id": int(neighbor_id)}
+	return {}
 
 
 func _test_invalid_floor_is_atomic() -> void:
@@ -375,6 +512,10 @@ func _test_invalid_floor_is_atomic() -> void:
 	_expect(
 		(route.get("_normal_combat_briefing_adapters") as Dictionary).is_empty(),
 		"无效楼层不得创建带默认兜底配置的战斗简报适配器。"
+	)
+	_expect(
+		(route.get("_emergency_combat_briefing_adapters") as Dictionary).is_empty(),
+		"无效楼层不得创建紧急作战简报适配器。"
 	)
 	route.free()
 	await process_frame

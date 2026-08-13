@@ -2,7 +2,7 @@
 extends Resource
 class_name RogueRouteFloorDefinition
 
-const RUNTIME_CONTRACT_SCHEMA := 6
+const RUNTIME_CONTRACT_SCHEMA := 7
 const CONTENT_CONTRACT_SCHEMA := 3
 const COMBAT_POOL_SCRIPT := preload(
 	"res://resources/config/rogue_combat/rogue_combat_pool_config.gd"
@@ -14,6 +14,7 @@ const COMBAT_POOL_SCRIPT := preload(
 @export var world_metrics: RogueRouteWorldMetrics
 @export var background_texture: Texture2D
 @export var normal_combat_pool: COMBAT_POOL_SCRIPT
+@export var emergency_combat_pool: COMBAT_POOL_SCRIPT
 @export var special_combat_configs: Array[RogueCombatEncounterConfig] = []
 @export var underground_shop_config: RogueUndergroundShopConfig
 
@@ -41,6 +42,12 @@ func validate_definition() -> PackedStringArray:
 	else:
 		errors.append_array(normal_combat_pool.validate_config())
 		_validate_normal_combat_pool_binding(errors)
+	if emergency_combat_pool == null:
+		errors.append("路线楼层缺少 emergency_combat_pool。")
+	else:
+		errors.append_array(emergency_combat_pool.validate_config())
+		_validate_emergency_combat_pool_binding(errors)
+	_validate_route_combat_pool_id_collisions(errors)
 	_validate_special_combat_configs(errors)
 	if underground_shop_config == null:
 		errors.append("路线楼层缺少 underground_shop_config。")
@@ -67,12 +74,16 @@ func compute_runtime_contract_hash() -> String:
 		world_metrics
 	)
 	var combat_hash := normal_combat_pool.compute_runtime_contract_hash()
+	var emergency_combat_hash := (
+		emergency_combat_pool.compute_runtime_contract_hash()
+	)
 	var special_combat_hashes := _compute_special_combat_runtime_contracts()
 	var shop_hash := underground_shop_config.compute_runtime_contract_hash()
 	var rare_chest_hash := RogueRareChestRegistry.compute_runtime_contract_hash()
 	if (
 		generation_hash.is_empty()
 		or combat_hash.is_empty()
+		or emergency_combat_hash.is_empty()
 		or special_combat_hashes.size() != special_combat_configs.size()
 		or shop_hash.is_empty()
 		or rare_chest_hash.is_empty()
@@ -89,6 +100,7 @@ func compute_runtime_contract_hash() -> String:
 		"extra_edge_ratio=%.6f" % generation_config.extra_edge_ratio,
 		"initial_action_points=%d" % generation_config.initial_action_points,
 		"normal_combat_pool=%s" % combat_hash,
+		"emergency_combat_pool=%s" % emergency_combat_hash,
 		"special_combat_count=%d" % special_combat_hashes.size(),
 		"underground_shop=%s" % shop_hash,
 		"rare_chest=%s" % rare_chest_hash,
@@ -135,6 +147,8 @@ func compute_content_contract_hash() -> String:
 			)
 	for config in get_sorted_normal_combat_configs():
 		parts.append(_combat_content_contract("normal_combat", config))
+	for config in get_sorted_emergency_combat_configs():
+		parts.append(_combat_content_contract("emergency_combat", config))
 	for config in get_sorted_special_combat_configs():
 		parts.append(_combat_content_contract("special_combat", config))
 	return "\n".join(parts).sha256_text()
@@ -148,6 +162,10 @@ func get_combat_config(config_id: StringName) -> RogueCombatEncounterConfig:
 		var normal_config := normal_combat_pool.get_combat_config(config_id)
 		if normal_config != null:
 			return normal_config
+	if emergency_combat_pool != null:
+		var emergency_config := emergency_combat_pool.get_combat_config(config_id)
+		if emergency_config != null:
+			return emergency_config
 	return get_special_combat_config(config_id)
 
 
@@ -172,6 +190,32 @@ func get_sorted_normal_combat_configs() -> Array[RogueCombatEncounterConfig]:
 	if normal_combat_pool == null:
 		return result
 	for entry in normal_combat_pool.get_sorted_entries():
+		if entry != null and entry.combat_config != null:
+			result.append(entry.combat_config)
+	return result
+
+
+func get_emergency_combat_config(
+	config_id: StringName
+) -> RogueCombatEncounterConfig:
+	if emergency_combat_pool == null:
+		return null
+	return emergency_combat_pool.get_combat_config(config_id)
+
+
+func select_emergency_combat_config(
+	node_content_seed: int
+) -> RogueCombatEncounterConfig:
+	if emergency_combat_pool == null:
+		return null
+	return emergency_combat_pool.select_config(node_content_seed)
+
+
+func get_sorted_emergency_combat_configs() -> Array[RogueCombatEncounterConfig]:
+	var result: Array[RogueCombatEncounterConfig] = []
+	if emergency_combat_pool == null:
+		return result
+	for entry in emergency_combat_pool.get_sorted_entries():
 		if entry != null and entry.combat_config != null:
 			result.append(entry.combat_config)
 	return result
@@ -208,9 +252,12 @@ func _validate_special_combat_configs(errors: PackedStringArray) -> void:
 		var config_id := config.encounter_id
 		if config_id == &"":
 			continue
-		if get_normal_combat_config(config_id) != null:
+		if (
+			get_normal_combat_config(config_id) != null
+			or get_emergency_combat_config(config_id) != null
+		):
 			errors.append(
-				"路线楼层特殊作战 ID 与普通作战池重复：%s。"
+				"路线楼层特殊作战 ID 与路线作战池重复：%s。"
 				% String(config_id)
 			)
 		if seen_ids.has(config_id):
@@ -232,6 +279,7 @@ func _compute_special_combat_runtime_contracts() -> PackedStringArray:
 			or config.encounter_id == &""
 			or seen_ids.has(config.encounter_id)
 			or get_normal_combat_config(config.encounter_id) != null
+			or get_emergency_combat_config(config.encounter_id) != null
 		):
 			return PackedStringArray()
 		var config_hash := config.compute_runtime_contract_hash()
@@ -260,6 +308,40 @@ func _validate_normal_combat_pool_binding(errors: PackedStringArray) -> void:
 				String(normal_combat_pool.pool_id),
 			]
 		)
+
+
+func _validate_emergency_combat_pool_binding(errors: PackedStringArray) -> void:
+	if generation_config == null or emergency_combat_pool == null:
+		return
+	var type_config := generation_config.get_type_config(
+		RogueRouteGraph.NodeType.EMERGENCY_COMBAT
+	)
+	if type_config == null:
+		errors.append("路线楼层缺少紧急作战节点类型配置。")
+	elif type_config.content_pool_id != emergency_combat_pool.pool_id:
+		errors.append(
+			"紧急作战节点内容池与楼层作战池不一致：%s != %s。" % [
+				String(type_config.content_pool_id),
+				String(emergency_combat_pool.pool_id),
+			]
+		)
+
+
+func _validate_route_combat_pool_id_collisions(
+	errors: PackedStringArray
+) -> void:
+	if normal_combat_pool == null or emergency_combat_pool == null:
+		return
+	for config in get_sorted_emergency_combat_configs():
+		if (
+			config != null
+			and config.encounter_id != &""
+			and get_normal_combat_config(config.encounter_id) != null
+		):
+			errors.append(
+				"路线楼层紧急作战 ID 与普通作战池重复：%s。"
+				% String(config.encounter_id)
+			)
 
 
 func _combat_content_contract(
@@ -321,6 +403,7 @@ func _has_contract_inputs() -> bool:
 		and world_metrics != null
 		and background_texture != null
 		and normal_combat_pool != null
+		and emergency_combat_pool != null
 		and underground_shop_config != null
 	)
 

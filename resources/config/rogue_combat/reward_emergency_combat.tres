@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="RogueCombatRewardConfig" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://resources/config/rogue_combat/rogue_combat_reward_config.gd" id="1_reward_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_small_stone.tres" id="2_small_stone"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_wood.tres" id="3_wood"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="4_water_bottle"]
+[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="5_pickup_script"]
+
+[resource]
+script = ExtResource("1_reward_script")
+xirang_minimum = 1000
+xirang_maximum = 2000
+xirang_step = 100
+collectible_count = 0
+collectible_choice_round_count = 2
+collectible_choice_offer_count = 2
+collectible_choice_seconds_per_round = 30.0
+collectible_choice_rarities = PackedInt32Array(0, 1, 2)
+deduplicate_collectible_choices = true
+random_item_reward_pool = Array[ExtResource("5_pickup_script")]([ExtResource("2_small_stone"), ExtResource("3_wood"), ExtResource("4_water_bottle")])
+random_item_reward_count = 3
+shared_light_stone_reward = 1

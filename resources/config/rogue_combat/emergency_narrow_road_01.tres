@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="RogueCombatEncounterConfig" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://resources/config/rogue_combat/rogue_combat_encounter_config.gd" id="1_config_script"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/emergency_narrow_road_01/campaign.tres" id="2_campaign"]
+[ext_resource type="Resource" path="res://resources/config/rogue_combat/reward_emergency_combat.tres" id="3_reward"]
+[ext_resource type="Texture2D" uid="uid://bfwhhd0u8f6ke" path="res://resources/texture/rogue_route/normal_combat_briefing_visual.png" id="4_briefing"]
+
+[resource]
+script = ExtResource("1_config_script")
+encounter_id = &"emergency_narrow_road_01"
+event_title = "紧急作战：狭路相逢"
+objective_text = "击败全部精英战斗机器人"
+briefing_visual = ExtResource("4_briefing")
+combat_scene_path = "res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
+campaign = ExtResource("2_campaign")
+preparation_seconds = 3
+combat_limit_seconds = 90
+extra_xirang = 1000
+reward_config = ExtResource("3_reward")
+enemy_count_increase_minimum_percent = 5
+enemy_count_increase_maximum_percent = 10
+decisions_confirmed = true
+deadline_start = 2
+keep_enemy_kill_xirang = 2
+filter_loot_by_character = 2
+reward_dead_players_on_victory = 2
+return_to_route_before_result = 2
+show_failure_result = 2
+consume_node_on_failure = 2
+enemy_pickup_drops = 1
+inherit_route_xirang = 2
+support_singleplayer = 2
+support_multiplayer = 2

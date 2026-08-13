@@ -7,7 +7,10 @@ class_name RogueRouteNodeBriefingModel
 ## 知道普通作战、紧急作战或其他未来作战类型的配置结构。
 
 const SOURCE_KIND_DEFAULT_COMBAT := &"default_combat"
+const SOURCE_KIND_EMERGENCY_COMBAT := &"emergency_combat"
 const SOURCE_KIND_SPECIAL_COMBAT := &"special_combat"
+const PRESENTATION_VARIANT_DEFAULT := &"default"
+const PRESENTATION_VARIANT_DANGER := &"danger"
 
 var source_kind: StringName
 var config_id: StringName
@@ -22,6 +25,7 @@ var reward_summary: String
 var action_point_delta: int
 var primary_action_text: String
 var can_cancel: bool
+var presentation_variant: StringName
 
 
 func _init(
@@ -37,7 +41,8 @@ func _init(
 	new_primary_action_text: String = "",
 	new_source_kind: StringName = &"",
 	new_config_id: StringName = &"",
-	new_can_cancel: bool = true
+	new_can_cancel: bool = true,
+	new_presentation_variant: StringName = PRESENTATION_VARIANT_DEFAULT
 ) -> void:
 	source_kind = new_source_kind
 	config_id = new_config_id
@@ -52,6 +57,7 @@ func _init(
 	action_point_delta = new_action_point_delta
 	primary_action_text = new_primary_action_text
 	can_cancel = new_can_cancel
+	presentation_variant = new_presentation_variant
 
 
 func validate() -> PackedStringArray:
@@ -80,8 +86,19 @@ func validate() -> PackedStringArray:
 		errors.append("作战简报的行动力变化不能为正数。")
 	if primary_action_text.strip_edges().is_empty():
 		errors.append("作战简报缺少主操作文案。")
+	if presentation_variant not in [
+		PRESENTATION_VARIANT_DEFAULT,
+		PRESENTATION_VARIANT_DANGER,
+	]:
+		errors.append(
+			"作战简报使用了未知表现变体：%s。" % String(presentation_variant)
+		)
 	return errors
 
 
 func is_valid() -> bool:
 	return validate().is_empty()
+
+
+func is_danger_presentation() -> bool:
+	return presentation_variant == PRESENTATION_VARIANT_DANGER

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="WaveConfig" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="1_wave_script"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/emergency_narrow_road_01/entries/combat_robot_elite.tres" id="2_robot_entry"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/emergency_narrow_road_01/entries/drone_operator_elite.tres" id="3_operator_entry"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/emergency_narrow_road_01/entries/gunner_elite.tres" id="4_gunner_entry"]
+[ext_resource type="AudioStream" uid="uid://dvxl8ixgmll4p" path="res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3" id="5_music"]
+
+[resource]
+script = ExtResource("1_wave_script")
+wave_name = "紧急作战：狭路相逢"
+enemy_entries = Array[WaveEnemyEntry]([ExtResource("2_robot_entry"), ExtResource("3_operator_entry"), ExtResource("4_gunner_entry")])
+spawn_point_mask = 7
+spawn_point_order = 1
+spawn_order = 0
+spawn_interval = 0.3
+spawn_count_per_tick = 1
+max_alive_enemies = 10
+music = ExtResource("5_music")
+step_id = &"emergency_narrow_road_wave"
+display_name = "紧急作战：击败全部精英战斗机器人"

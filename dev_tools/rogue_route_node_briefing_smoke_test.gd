@@ -68,8 +68,10 @@ func _run() -> void:
 		model.source_kind
 		== RogueRouteNodeBriefingModel.SOURCE_KIND_DEFAULT_COMBAT
 		and model.config_id == &"narrow_road_01"
-		and model.can_cancel,
-		"普通作战模型必须保留 default_combat/config_id 与可取消契约。"
+		and model.can_cancel
+		and model.presentation_variant
+		== RogueRouteNodeBriefingModel.PRESENTATION_VARIANT_DEFAULT,
+		"普通作战模型必须保留来源、配置、可取消与默认表现契约。"
 	)
 	_expect(
 		model.title == "普通作战" and model.summary == "狭路相逢",
@@ -86,6 +88,49 @@ func _run() -> void:
 		and model.action_point_delta == -1
 		and model.primary_action_text == "进入作战",
 		"奖励、行动力变化和唯一主操作文案必须准确。"
+	)
+	var danger_model := RogueRouteNodeBriefingModel.new(
+		"紧急作战",
+		"高威胁敌群已确认",
+		model.hero_visual,
+		model.icon,
+		model.objective,
+		model.time_limit_seconds,
+		model.enemy_count,
+		model.reward_summary,
+		model.action_point_delta,
+		model.primary_action_text,
+		RogueRouteNodeBriefingModel.SOURCE_KIND_EMERGENCY_COMBAT,
+		&"emergency_narrow_road_01",
+		true,
+		RogueRouteNodeBriefingModel.PRESENTATION_VARIANT_DANGER
+	)
+	_expect(
+		danger_model.is_valid()
+		and danger_model.is_danger_presentation()
+		and danger_model.presentation_variant
+		== RogueRouteNodeBriefingModel.PRESENTATION_VARIANT_DANGER,
+		"紧急作战模型必须显式携带 danger 表现变体。"
+	)
+	var invalid_variant_model := RogueRouteNodeBriefingModel.new(
+		"紧急作战",
+		"无效变体测试",
+		model.hero_visual,
+		model.icon,
+		model.objective,
+		model.time_limit_seconds,
+		model.enemy_count,
+		model.reward_summary,
+		model.action_point_delta,
+		model.primary_action_text,
+		RogueRouteNodeBriefingModel.SOURCE_KIND_EMERGENCY_COMBAT,
+		&"invalid_variant",
+		true,
+		&"unknown"
+	)
+	_expect(
+		not invalid_variant_model.is_valid(),
+		"简报模型必须拒绝未知的表现变体。"
 	)
 	_expect(
 		adapter.build_model(NORMAL_NODE_CONFIG, 0, 1) == null,
@@ -161,6 +206,14 @@ func _run() -> void:
 		== TextureRect.STRETCH_KEEP_ASPECT_COVERED
 		and briefing.hero_reveal_mask is ColorRect,
 		"简报必须以原生 TextureRect cover 模式和 ColorRect 遮罩承载主视觉。"
+	)
+	_expect(
+		briefing.danger_hero_style != null
+		and briefing.danger_info_style != null
+		and briefing.danger_action_point_style != null
+		and briefing.danger_primary_style != null
+		and briefing.danger_secondary_style != null,
+		"危险简报样式必须作为场景资源静态配置，不能在运行时拼装。"
 	)
 
 	briefing.confirmed.connect(func() -> void: confirmed_count += 1)
@@ -259,6 +312,61 @@ func _run() -> void:
 		and not briefing.is_decision_locked()
 		and canceled_count == 1,
 		"客户端的返回键或遮罩点击不得取消房主的待决简报。"
+	)
+	briefing.dismiss()
+	var default_hero_style := briefing.hero_frame.get_theme_stylebox(&"panel")
+	var default_info_style := briefing.objective_card.get_theme_stylebox(&"panel")
+	var default_frame_modulate := briefing.frame.self_modulate
+	var default_title_color := briefing.title_label.get_theme_color(&"font_color")
+	var default_tag_text := briefing.briefing_tag.text
+	briefing.present(danger_model, true)
+	_expect(
+		briefing.visible
+		and briefing.get_presentation_variant()
+		== RogueRouteNodeBriefingModel.PRESENTATION_VARIANT_DANGER
+		and briefing.briefing_tag.text == BRIEFING_SCRIPT.DANGER_TAG_TEXT
+		and briefing.frame.self_modulate.is_equal_approx(
+			BRIEFING_SCRIPT.DANGER_FRAME_MODULATE
+		)
+		and briefing.hero_frame.get_theme_stylebox(&"panel")
+		== briefing.danger_hero_style
+		and briefing.objective_card.get_theme_stylebox(&"panel")
+		== briefing.danger_info_style,
+		"danger 简报必须应用红黑警戒框架、高危标签与危险信息卡。"
+	)
+	_expect(
+		briefing.map_shade.color.is_equal_approx(
+			Color(BRIEFING_SCRIPT.DANGER_MAP_SHADE_COLOR, 0.0)
+		)
+		and briefing.panel_stage.position.is_equal_approx(
+			Vector2(briefing.get("_panel_rest_position"))
+			+ BRIEFING_SCRIPT.DANGER_PANEL_OPEN_OFFSET
+		),
+		"danger 简报必须使用更深遮罩与紧促的侧向警报入场。"
+	)
+	await create_timer(0.34).timeout
+	_expect(
+		briefing.panel_stage.position.is_equal_approx(
+			Vector2(briefing.get("_panel_rest_position"))
+		)
+		and is_equal_approx(briefing.panel_stage.modulate.a, 1.0)
+		and is_zero_approx(briefing.hero_reveal_mask.scale.x),
+		"danger 简报的克制警报动效必须在短时限内完整收束。"
+	)
+	briefing.dismiss()
+	briefing.present(model, true)
+	_expect(
+		briefing.get_presentation_variant()
+		== RogueRouteNodeBriefingModel.PRESENTATION_VARIANT_DEFAULT
+		and briefing.briefing_tag.text == default_tag_text
+		and briefing.frame.self_modulate.is_equal_approx(default_frame_modulate)
+		and briefing.title_label.get_theme_color(&"font_color")
+		== default_title_color
+		and briefing.hero_frame.get_theme_stylebox(&"panel")
+		== default_hero_style
+		and briefing.objective_card.get_theme_stylebox(&"panel")
+		== default_info_style,
+		"danger 简报关闭后，下一次普通简报必须完整恢复原有视觉。"
 	)
 	briefing.dismiss()
 

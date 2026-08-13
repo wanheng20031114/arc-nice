@@ -13,10 +13,16 @@ const FAILURE_NO_ELIGIBLE_COLLECTIBLE := &"no_eligible_collectible"
 const FAILURE_INVENTORY_FULL := &"inventory_full"
 const FAILURE_INVALID_REWARD_CONFIG := &"invalid_reward_config"
 const FAILURE_INVALID_PARTICIPANTS := &"invalid_participants"
+const FAILURE_INVALID_REWARD_SELECTION := &"invalid_reward_selection"
+const FAILURE_INCOMPLETE_REWARD_SELECTION := &"incomplete_reward_selection"
 const FAILURE_TRANSACTION_CONFLICT := &"transaction_conflict"
 
 const _ROLL_SALT_PREFIX := "rogue_combat_common_collectible"
 const _PARTY_ROLL_SALT_PREFIX := "rogue_combat_collectible_batch"
+const _EMERGENCY_RARITY_SALT_PREFIX := "rogue_emergency_collectible_rarity"
+const _EMERGENCY_OFFER_SALT_PREFIX := "rogue_emergency_collectible_offer"
+const _EMERGENCY_TIMEOUT_SALT_PREFIX := "rogue_emergency_collectible_timeout"
+const _EMERGENCY_RESOURCE_SALT_PREFIX := "rogue_emergency_resource"
 
 
 ## 为所有符合奖励条件的玩家生成并原子提交一次结算。base_xirang_by_peer 是
@@ -36,7 +42,11 @@ static func resolve_party_rewards(
 	var failure_result := _make_party_failure(FAILURE_INVALID_RUN_STATE)
 	if run_state == null:
 		return failure_result
-	if reward_config == null or not reward_config.validate_config().is_empty():
+	if (
+		reward_config == null
+		or not reward_config.validate_config().is_empty()
+		or reward_config.uses_collectible_choices()
+	):
 		return _make_party_failure(FAILURE_INVALID_REWARD_CONFIG)
 
 	var ordered_peer_ids := _normalize_peer_ids(peer_ids)
@@ -159,6 +169,507 @@ static func resolve_party_rewards(
 		"results_by_peer": results_by_peer,
 		"final_xirang_by_peer": final_xirang_by_peer,
 		"inventory_snapshots_by_peer": next_inventory_snapshots,
+	}
+
+
+## 为紧急作战生成每名玩家的逐轮候选。玩家身份使用稳定键而非临时
+## peer_id 进入 salt，因此断线重映射或主客机 peer 排列变化不会改签。
+static func build_emergency_collectible_offers(
+	occurrence_id: StringName,
+	content_seed: int,
+	peer_ids: Array[int],
+	reward_config: RogueCombatRewardConfig,
+	filter_by_player_compatibility: bool,
+	stable_keys_by_peer: Dictionary,
+	character_ids_by_peer: Dictionary = {}
+) -> Dictionary:
+	if (
+		occurrence_id == &""
+		or reward_config == null
+		or not reward_config.validate_config().is_empty()
+		or not reward_config.uses_collectible_choices()
+	):
+		return _make_emergency_offer_failure(FAILURE_INVALID_REWARD_CONFIG)
+	var ordered_peer_ids := _normalize_peer_ids(peer_ids)
+	if ordered_peer_ids.size() != peer_ids.size() or ordered_peer_ids.is_empty():
+		return _make_emergency_offer_failure(FAILURE_INVALID_PARTICIPANTS)
+
+	var identities: Dictionary = {}
+	var seen_identities: Dictionary = {}
+	for peer_id in ordered_peer_ids:
+		var identity := str(stable_keys_by_peer.get(
+			peer_id,
+			stable_keys_by_peer.get(str(peer_id), "")
+		)).strip_edges()
+		var character_id := StringName(character_ids_by_peer.get(
+			peer_id,
+			character_ids_by_peer.get(str(peer_id), &"")
+		))
+		if (
+			identity.is_empty()
+			or seen_identities.has(identity)
+			or (
+				filter_by_player_compatibility
+				and not PlayerCharacterRegistry.is_valid_character_id(character_id)
+			)
+		):
+			return _make_emergency_offer_failure(FAILURE_INVALID_PARTICIPANTS)
+		identities[peer_id] = identity
+		seen_identities[identity] = true
+
+	var offers_by_peer: Dictionary = {}
+	var contract_hash := reward_config.compute_runtime_contract_hash()
+	for peer_id in ordered_peer_ids:
+		var identity := str(identities[peer_id])
+		var character_id := StringName(character_ids_by_peer.get(
+			peer_id,
+			character_ids_by_peer.get(str(peer_id), &"")
+		))
+		var used_paths: Dictionary = {}
+		var rounds: Array[Dictionary] = []
+		for round_index in range(reward_config.collectible_choice_round_count):
+			var rarity_choice := RogueEncounterRandom.choose_index(
+				content_seed,
+				StringName(
+					"%s|occurrence:%s|identity:%s|contract:%s|round:%d"
+					% [
+						_EMERGENCY_RARITY_SALT_PREFIX,
+						String(occurrence_id),
+						identity,
+						contract_hash,
+						round_index,
+					]
+				),
+				reward_config.collectible_choice_rarities.size()
+			)
+			if rarity_choice < 0:
+				return _make_emergency_offer_failure(
+					FAILURE_NO_ELIGIBLE_COLLECTIBLE
+				)
+			var rarity := int(
+				reward_config.collectible_choice_rarities[rarity_choice]
+			)
+			var rarity_pool := _get_collectible_pool(
+				rarity,
+				filter_by_player_compatibility,
+				null,
+				character_id
+			)
+			var available: Array[PickupConfig] = []
+			for item in rarity_pool:
+				if (
+					not reward_config.deduplicate_collectible_choices
+					or not used_paths.has(item.resource_path)
+				):
+					available.append(item)
+			if available.size() < reward_config.collectible_choice_offer_count:
+				return _make_emergency_offer_failure(
+					FAILURE_NO_ELIGIBLE_COLLECTIBLE
+				)
+			var paths: Array[String] = []
+			for offer_index in range(
+				reward_config.collectible_choice_offer_count
+			):
+				var chosen_index := RogueEncounterRandom.choose_index(
+					content_seed,
+					StringName(
+						"%s|occurrence:%s|identity:%s|contract:%s|round:%d|offer:%d"
+						% [
+							_EMERGENCY_OFFER_SALT_PREFIX,
+							String(occurrence_id),
+							identity,
+							contract_hash,
+							round_index,
+							offer_index,
+						]
+					),
+					available.size()
+				)
+				if chosen_index < 0:
+					return _make_emergency_offer_failure(
+						FAILURE_NO_ELIGIBLE_COLLECTIBLE
+					)
+				var chosen := available[chosen_index]
+				paths.append(chosen.resource_path)
+				used_paths[chosen.resource_path] = true
+				available.remove_at(chosen_index)
+			rounds.append({
+				"round_index": round_index,
+				"rarity": rarity,
+				"paths": paths,
+			})
+		offers_by_peer[peer_id] = rounds
+	return {
+		"resolved": true,
+		"failure_reason": FAILURE_NONE,
+		"offers_by_peer": offers_by_peer,
+	}
+
+
+## 紧急作战的基础物资按场次抽一次，所有玩家复用同一结果。
+static func roll_random_item_reward(
+	occurrence_id: StringName,
+	content_seed: int,
+	reward_config: RogueCombatRewardConfig
+) -> PickupConfig:
+	if (
+		occurrence_id == &""
+		or reward_config == null
+		or not reward_config.validate_config().is_empty()
+		or not reward_config.uses_random_item_reward()
+	):
+		return null
+	var pool: Array[PickupConfig] = []
+	for item in reward_config.random_item_reward_pool:
+		if item != null:
+			pool.append(item)
+	pool.sort_custom(
+		func(left: PickupConfig, right: PickupConfig) -> bool:
+			return left.resource_path < right.resource_path
+	)
+	var chosen_index := RogueEncounterRandom.choose_index(
+		content_seed,
+		StringName("%s|occurrence:%s|contract:%s" % [
+			_EMERGENCY_RESOURCE_SALT_PREFIX,
+			String(occurrence_id),
+			reward_config.compute_runtime_contract_hash(),
+		]),
+		pool.size()
+	)
+	return pool[chosen_index] if chosen_index >= 0 else null
+
+
+static func select_emergency_timeout_offer_index(
+	occurrence_id: StringName,
+	content_seed: int,
+	stable_identity: String,
+	round_index: int,
+	reward_config: RogueCombatRewardConfig
+) -> int:
+	var identity := stable_identity.strip_edges()
+	if (
+		occurrence_id == &""
+		or identity.is_empty()
+		or reward_config == null
+		or not reward_config.validate_config().is_empty()
+		or not reward_config.uses_collectible_choices()
+		or round_index < 0
+		or round_index >= reward_config.collectible_choice_round_count
+	):
+		return -1
+	return RogueEncounterRandom.choose_index(
+		content_seed,
+		StringName(
+			"%s|occurrence:%s|identity:%s|contract:%s|round:%d" % [
+				_EMERGENCY_TIMEOUT_SALT_PREFIX,
+				String(occurrence_id),
+				identity,
+				reward_config.compute_runtime_contract_hash(),
+				round_index,
+			]
+		),
+		reward_config.collectible_choice_offer_count
+	)
+
+
+## 选择阶段的只读容量预检。此前已选收藏品与本场固定随机物资一起模拟，
+## 保证第二轮确认后最终原子事务不会因为已知容量不足才被迫丢弃奖励。
+static func preflight_emergency_peer_rewards(
+	run_state: RunStateStore,
+	peer_id: int,
+	selected_collectible_paths: Array[String],
+	random_item: PickupConfig,
+	random_item_count: int
+) -> Dictionary:
+	if run_state == null or peer_id < 0:
+		return {
+			"can_commit": false,
+			"failure_reason": FAILURE_INVALID_RUN_STATE,
+		}
+	var items: Array[PickupConfig] = []
+	var counts: Array[int] = []
+	var seen_paths: Dictionary = {}
+	for config_path in selected_collectible_paths:
+		var item := CollectibleRegistry.get_for_path(config_path)
+		if (
+			item == null
+			or not CollectibleRegistry.is_standard_random_collectible(item)
+			or seen_paths.has(config_path)
+		):
+			return {
+				"can_commit": false,
+				"failure_reason": FAILURE_INVALID_REWARD_SELECTION,
+			}
+		seen_paths[config_path] = true
+		items.append(item)
+		counts.append(1)
+	if random_item_count > 0:
+		if (
+			random_item == null
+			or random_item.pickup_type != PickupConfig.PickupType.MATERIAL
+			or not random_item.can_store_in_inventory
+		):
+			return {
+				"can_commit": false,
+				"failure_reason": FAILURE_INVALID_REWARD_CONFIG,
+			}
+		items.append(random_item)
+		counts.append(random_item_count)
+	var can_commit := (
+		run_state.can_add_item_counts(items, counts)
+		if peer_id == 0
+		else run_state.can_add_item_counts_for_peer(peer_id, items, counts)
+	)
+	return {
+		"can_commit": can_commit,
+		"failure_reason": FAILURE_NONE if can_commit else FAILURE_INVENTORY_FULL,
+	}
+
+
+## 所有选择完成后，以一次 Party Economy CAS 提交在线玩家的收藏品、同种物资、
+## 全员同额息壤及一次共享光石。选择阶段断线者放弃尚未入包的全部物品，但仍
+## 获得息壤，且不会因离线背包已满而阻塞在线玩家结算。在线玩家背包无法完整
+## 容纳时整笔不写入，可整理后重试。
+static func commit_emergency_party_rewards(
+	run_state: RunStateStore,
+	occurrence_id: StringName,
+	content_seed: int,
+	peer_ids: Array[int],
+	reward_config: RogueCombatRewardConfig,
+	filter_by_player_compatibility: bool,
+	stable_keys_by_peer: Dictionary,
+	character_ids_by_peer: Dictionary,
+	base_xirang_by_peer: Dictionary,
+	selected_paths_by_peer: Dictionary,
+	forfeited_peer_ids: Array[int] = []
+) -> Dictionary:
+	if run_state == null:
+		return _make_emergency_party_failure(FAILURE_INVALID_RUN_STATE)
+	if (
+		occurrence_id == &""
+		or reward_config == null
+		or not reward_config.validate_config().is_empty()
+		or not reward_config.uses_collectible_choices()
+		or not reward_config.uses_random_item_reward()
+	):
+		return _make_emergency_party_failure(FAILURE_INVALID_REWARD_CONFIG)
+	var ordered_peer_ids := _normalize_peer_ids(peer_ids)
+	if ordered_peer_ids.size() != peer_ids.size() or ordered_peer_ids.is_empty():
+		return _make_emergency_party_failure(FAILURE_INVALID_PARTICIPANTS)
+	var forfeited: Dictionary = {}
+	for peer_id in forfeited_peer_ids:
+		if peer_id not in ordered_peer_ids or forfeited.has(peer_id):
+			return _make_emergency_party_failure(FAILURE_INVALID_PARTICIPANTS)
+		forfeited[peer_id] = true
+
+	var offer_result := build_emergency_collectible_offers(
+		occurrence_id,
+		content_seed,
+		ordered_peer_ids,
+		reward_config,
+		filter_by_player_compatibility,
+		stable_keys_by_peer,
+		character_ids_by_peer
+	)
+	if not bool(offer_result.get("resolved", false)):
+		return _make_emergency_party_failure(StringName(
+			offer_result.get("failure_reason", FAILURE_INVALID_REWARD_CONFIG)
+		))
+	var offers_by_peer := offer_result["offers_by_peer"] as Dictionary
+	var normalized_selected_paths: Dictionary = {}
+	for peer_id in ordered_peer_ids:
+		if (
+			not base_xirang_by_peer.has(peer_id)
+			or typeof(base_xirang_by_peer[peer_id]) != TYPE_INT
+			or int(base_xirang_by_peer[peer_id]) < 0
+		):
+			return _make_emergency_party_failure(FAILURE_INVALID_PARTICIPANTS)
+		var raw_paths := selected_paths_by_peer.get(
+			peer_id,
+			selected_paths_by_peer.get(str(peer_id), [])
+		) as Array
+		if (
+			raw_paths.size() > reward_config.collectible_choice_round_count
+			or (
+				not forfeited.has(peer_id)
+				and raw_paths.size()
+				!= reward_config.collectible_choice_round_count
+			)
+		):
+			return _make_emergency_party_failure(
+				FAILURE_INCOMPLETE_REWARD_SELECTION
+			)
+		var paths: Array[String] = []
+		var seen_paths: Dictionary = {}
+		var peer_rounds := offers_by_peer[peer_id] as Array
+		for round_index in range(raw_paths.size()):
+			if typeof(raw_paths[round_index]) != TYPE_STRING:
+				return _make_emergency_party_failure(
+					FAILURE_INVALID_REWARD_SELECTION
+				)
+			var config_path := str(raw_paths[round_index])
+			var round_paths := (
+				(peer_rounds[round_index] as Dictionary).get("paths", []) as Array
+			)
+			if config_path not in round_paths or seen_paths.has(config_path):
+				return _make_emergency_party_failure(
+					FAILURE_INVALID_REWARD_SELECTION
+				)
+			seen_paths[config_path] = true
+			paths.append(config_path)
+		normalized_selected_paths[peer_id] = paths
+
+	var random_item := roll_random_item_reward(
+		occurrence_id,
+		content_seed,
+		reward_config
+	)
+	if random_item == null:
+		return _make_emergency_party_failure(FAILURE_INVALID_REWARD_CONFIG)
+	var packed_peer_ids := PackedInt32Array()
+	for peer_id in ordered_peer_ids:
+		packed_peer_ids.append(peer_id)
+	var party_snapshot := run_state.export_party_economy_snapshot(packed_peer_ids)
+	var next_snapshot := party_snapshot.duplicate(true)
+	var current_inventories := _index_inventory_snapshots(party_snapshot)
+	var next_inventories := _index_inventory_snapshots(next_snapshot)
+	if (
+		current_inventories.size() != ordered_peer_ids.size()
+		or next_inventories.size() != ordered_peer_ids.size()
+	):
+		return _make_emergency_party_failure(FAILURE_INVALID_PARTICIPANTS)
+
+	var expected_inventory_revisions: Dictionary = {}
+	var results_by_peer: Dictionary = {}
+	for peer_id in ordered_peer_ids:
+		var current_inventory := current_inventories[peer_id] as Dictionary
+		var next_inventory := next_inventories[peer_id] as Dictionary
+		var expected_revision := int(current_inventory.get("revision", -1))
+		expected_inventory_revisions[peer_id] = expected_revision
+		var item_results: Array[Dictionary] = []
+		if forfeited.has(peer_id):
+			results_by_peer[peer_id] = {
+				"occurrence_id": String(occurrence_id),
+				"content_seed": content_seed,
+				"peer_id": peer_id,
+				"extra_xirang": 0,
+				"loot": _make_empty_loot(FAILURE_NONE),
+				"item_rewards": item_results,
+				"reward_selection_forfeited": true,
+			}
+			continue
+		for config_path in normalized_selected_paths[peer_id] as Array[String]:
+			var collectible := CollectibleRegistry.get_for_path(config_path)
+			if _add_item_count_to_wire_inventory(next_inventory, collectible, 1) != 1:
+				return _make_emergency_party_failure(
+					FAILURE_INVENTORY_FULL,
+					[peer_id]
+				)
+			item_results.append(_make_collectible_reward(collectible, true))
+		for entry in reward_config.item_rewards:
+			if (
+				_add_item_count_to_wire_inventory(
+					next_inventory,
+					entry.item,
+					entry.count
+				) != entry.count
+			):
+				return _make_emergency_party_failure(
+					FAILURE_INVENTORY_FULL,
+					[peer_id]
+				)
+			item_results.append(_make_fixed_item_reward(
+				entry.item,
+				entry.count,
+				entry.count
+			))
+		if (
+			_add_item_count_to_wire_inventory(
+				next_inventory,
+				random_item,
+				reward_config.random_item_reward_count
+			) != reward_config.random_item_reward_count
+		):
+			return _make_emergency_party_failure(
+				FAILURE_INVENTORY_FULL,
+				[peer_id]
+			)
+		item_results.append(_make_fixed_item_reward(
+			random_item,
+			reward_config.random_item_reward_count,
+			reward_config.random_item_reward_count
+		))
+		next_inventory["revision"] = expected_revision + 1
+		results_by_peer[peer_id] = {
+			"occurrence_id": String(occurrence_id),
+			"content_seed": content_seed,
+			"peer_id": peer_id,
+			"extra_xirang": 0,
+			"loot": (
+				item_results[0].duplicate(true)
+				if not item_results.is_empty()
+				else _make_empty_loot(FAILURE_NONE)
+			),
+			"item_rewards": item_results,
+			"reward_selection_forfeited": false,
+		}
+
+	var extra_xirang := reward_config.roll_xirang(content_seed, occurrence_id)
+	var final_xirang_by_peer: Dictionary = {}
+	var current_xirang := party_snapshot.get("xirang_ledger", {}) as Dictionary
+	var next_xirang := current_xirang.duplicate(true)
+	var next_xirang_values := next_xirang.get("values", {}) as Dictionary
+	var xirang_changed := false
+	for peer_id in ordered_peer_ids:
+		var amount := int(base_xirang_by_peer[peer_id]) + extra_xirang
+		final_xirang_by_peer[peer_id] = amount
+		(results_by_peer[peer_id] as Dictionary)["extra_xirang"] = extra_xirang
+		var peer_key := str(peer_id)
+		if int(next_xirang_values.get(peer_key, 0)) != amount:
+			next_xirang_values[peer_key] = amount
+			xirang_changed = true
+	next_xirang["values"] = next_xirang_values
+	if xirang_changed:
+		next_xirang["revision"] = int(current_xirang.get("revision", -1)) + 1
+
+	var current_light := party_snapshot.get("light_stone_ledger", {}) as Dictionary
+	var next_light: Dictionary = {}
+	if reward_config.shared_light_stone_reward > 0:
+		next_light = current_light.duplicate(true)
+		next_light["revision"] = int(current_light.get("revision", -1)) + 1
+		next_light["amount"] = (
+			int(current_light.get("amount", 0))
+			+ reward_config.shared_light_stone_reward
+		)
+	var warehouse := party_snapshot.get("warehouse_ledger", {}) as Dictionary
+	if not run_state.apply_authoritative_party_transaction(
+		next_snapshot,
+		int(warehouse.get("revision", -1)),
+		expected_inventory_revisions,
+		int(current_xirang.get("revision", -1)),
+		next_xirang,
+		-1,
+		{},
+		int(current_light.get("revision", -1)) if not next_light.is_empty() else -1,
+		next_light
+	):
+		return _make_emergency_party_failure(FAILURE_TRANSACTION_CONFLICT)
+	return {
+		"resolved": true,
+		"failure_reason": FAILURE_NONE,
+		"extra_xirang": extra_xirang,
+		"random_item_path": random_item.resource_path,
+		"random_item_count": reward_config.random_item_reward_count,
+		"shared_light_stone_reward": reward_config.shared_light_stone_reward,
+		"light_stone_ledger": (
+			next_light.duplicate(true)
+			if not next_light.is_empty()
+			else current_light.duplicate(true)
+		),
+		"results_by_peer": results_by_peer,
+		"final_xirang_by_peer": final_xirang_by_peer,
+		"inventory_snapshots_by_peer": next_inventories,
+		"forfeited_peer_ids": forfeited_peer_ids.duplicate(),
 	}
 
 
@@ -529,6 +1040,36 @@ static func _make_empty_loot(failure_reason: StringName) -> Dictionary:
 		"rarity_name": "",
 		"granted": false,
 		"failure_reason": failure_reason,
+	}
+
+
+static func _make_emergency_offer_failure(
+	failure_reason: StringName
+) -> Dictionary:
+	return {
+		"resolved": false,
+		"failure_reason": failure_reason,
+		"offers_by_peer": {},
+	}
+
+
+static func _make_emergency_party_failure(
+	failure_reason: StringName,
+	inventory_full_peer_ids: Array[int] = []
+) -> Dictionary:
+	return {
+		"resolved": false,
+		"failure_reason": failure_reason,
+		"extra_xirang": 0,
+		"random_item_path": "",
+		"random_item_count": 0,
+		"shared_light_stone_reward": 0,
+		"light_stone_ledger": {},
+		"results_by_peer": {},
+		"final_xirang_by_peer": {},
+		"inventory_snapshots_by_peer": {},
+		"forfeited_peer_ids": [],
+		"inventory_full_peer_ids": inventory_full_peer_ids.duplicate(),
 	}
 
 

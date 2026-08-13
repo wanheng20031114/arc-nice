@@ -46,6 +46,7 @@ func _run() -> void:
 	await _test_normal_combat_briefing_cancel_confirm_and_entry()
 	await _test_briefing_start_failure_cleanup()
 	await _test_victory_reward_return_and_consumed_revisit()
+	await _test_emergency_reward_selection_inventory_retry_and_settlement()
 	await _test_victory_presentation_route_reset_cancels_sequence()
 	await _test_victory_reveal_route_reset_discards_old_result()
 	await _test_full_inventory_and_runtime_content_policy()
@@ -236,6 +237,137 @@ func _test_normal_combat_briefing_cancel_confirm_and_entry() -> void:
 			and battle.countdown_seconds == 3,
 			"战场 prepared 时必须仍处于完整遮盖；reveal 完成后才可激活三秒准备倒计时。"
 		)
+	_cleanup_route(route)
+	await process_frame
+
+
+func _test_emergency_reward_selection_inventory_retry_and_settlement() -> void:
+	var emergency_fixture := _find_adjacent_emergency_combat_fixture()
+	_expect(
+		not emergency_fixture.is_empty(),
+		"测试种子范围内必须存在相邻紧急作战节点。"
+	)
+	if emergency_fixture.is_empty():
+		return
+	run_state.begin_new_run(&"weishidaier", false)
+	var filler := _get_non_stackable_common_collectible()
+	_expect(filler != null, "紧急奖励满包夹具需要非堆叠收藏品。")
+	if filler == null:
+		return
+	for slot_index in RunStateStore.INVENTORY_CAPACITY:
+		_expect(
+			run_state.try_add_item(filler),
+			"紧急奖励满包夹具槽位%d写入失败。" % slot_index
+		)
+	var light_stone_before := run_state.get_party_light_stone_amount()
+	var route := ROUTE_SCENE.instantiate() as RogueRouteGame
+	route.auto_initialize = false
+	route.manage_return_locally = true
+	root.add_child(route)
+	await process_frame
+	var coordinator := _get_coordinator(route)
+	_expect(
+		coordinator != null and coordinator.is_enabled(),
+		"正式紧急池必须启用单人作战协调器。"
+	)
+	_expect(
+		route.start_authoritative_session(
+			int(emergency_fixture["seed"]),
+			false
+		),
+		"单人路线必须能以紧急作战夹具 seed 启动。"
+	)
+	await process_frame
+	var runtime := route.get("_runtime_state") as RogueRouteRuntimeState
+	var emergency_node_id := int(emergency_fixture["combat_node_id"])
+	_expect(
+		runtime.try_move(
+			emergency_node_id,
+			route.generation_config.move_action_cost,
+			runtime.state_revision
+		),
+		"紧急奖励夹具必须能进入紧急作战节点。"
+	)
+	var battle := await _wait_for_active_battle(coordinator)
+	_expect(battle != null, "紧急作战必须实例化正式战场。")
+	if battle == null:
+		_cleanup_route(route)
+		await process_frame
+		return
+	_expect(
+		await _wait_for_preparation(battle),
+		"紧急作战奖励夹具必须先完成真实战场预热。"
+	)
+	var xirang_before := battle.player.get_xirang()
+	battle.call("_enter_victory")
+	_expect(
+		await _wait_for_emergency_reward_overlay(route),
+		"紧急胜利必须先显示连续两轮收藏品选择，不得立即普通结算。"
+	)
+	var overlay := route.emergency_reward_choice_overlay
+	_expect(
+		coordinator.get_active_battle() == battle
+		and battle.process_mode == Node.PROCESS_MODE_DISABLED
+		and overlay.active_round_number == 1
+		and overlay.active_offer_paths.size() == 2
+		and not route.combat_victory_presentation.visible,
+		"奖励选择期间必须冻结并保留战场，且第一轮只显示两个候选。"
+	)
+	overlay.choice_selected.emit(1, 0)
+	await process_frame
+	_expect(
+		overlay.pending_offer_index == 0
+		and overlay.retry_button.visible
+		and not overlay.retry_button.disabled
+		and overlay.choice_panel.status_label.text.contains("背包空间不足"),
+		"满包时必须保留本轮选择并提供整理后的原候选重试。"
+	)
+	overlay.inventory_requested.emit()
+	await process_frame
+	_expect(
+		battle.player_profile_panel.is_open(),
+		"紧急奖励背包按钮必须打开战场原生玩家资料面板。"
+	)
+	for slot_index in 3:
+		_expect(
+			run_state.discard_item(slot_index),
+			"紧急奖励整理背包必须能丢弃槽位%d。" % slot_index
+		)
+	battle.player_profile_panel.close()
+	overlay.retry_button.pressed.emit()
+	await process_frame
+	_expect(
+		overlay.active_round_number == 2
+		and overlay.active_offer_paths.size() == 2,
+		"整理后重试必须提交原第一轮候选并刷新独立第二轮。"
+	)
+	overlay.choice_selected.emit(2, 0)
+	_expect(
+		await _wait_for_battle_return(coordinator),
+		"完成两轮选择后必须一次结算并沿用既有胜利返回流程。"
+	)
+	var result := coordinator.get_last_result()
+	var item_rewards := result.get("item_rewards", []) as Array
+	var extra_xirang := int(result.get("extra_xirang", -1))
+	_expect(
+		item_rewards.size() == 3
+		and str((item_rewards[0] as Dictionary).get("config_path", ""))
+		!= str((item_rewards[1] as Dictionary).get("config_path", ""))
+		and extra_xirang >= 1000
+		and extra_xirang <= 2000
+		and extra_xirang % 100 == 0
+		and route.player.get_xirang() == xirang_before + extra_xirang
+		and int(result.get("random_item_count", 0)) == 3
+		and not str(result.get("random_item_path", "")).is_empty()
+		and int(result.get("shared_light_stone_reward", 0)) == 1
+		and run_state.get_party_light_stone_amount() == light_stone_before + 1,
+		"紧急奖励必须原子发放两件互异收藏品、同种资源×3、1000–2000整百息壤与共享光石+1。"
+	)
+	_expect(
+		not overlay.visible
+		and coordinator.get("_emergency_reward_session") == null,
+		"紧急奖励完成返回后必须清理覆盖层、会话与临时信号。"
+	)
 	_cleanup_route(route)
 	await process_frame
 
@@ -1094,6 +1226,14 @@ func _wait_for_result_overlay(route: RogueRouteGame) -> bool:
 	return false
 
 
+func _wait_for_emergency_reward_overlay(route: RogueRouteGame) -> bool:
+	for _frame in 240:
+		if route.emergency_reward_choice_overlay.visible:
+			return true
+		await process_frame
+	return false
+
+
 func _find_adjacent_normal_combat_fixture() -> Dictionary:
 	for seed in range(1, MAX_SEED_SEARCH + 1):
 		var graph := RogueRouteGenerator.generate(GENERATION_CONFIG, seed)
@@ -1103,6 +1243,23 @@ func _find_adjacent_normal_combat_fixture() -> Dictionary:
 			if (
 				graph.get_node_type(neighbor_id)
 				== RogueRouteGraph.NodeType.NORMAL_COMBAT
+			):
+				return {
+					"seed": seed,
+					"combat_node_id": int(neighbor_id),
+				}
+	return {}
+
+
+func _find_adjacent_emergency_combat_fixture() -> Dictionary:
+	for seed in range(1, MAX_SEED_SEARCH + 1):
+		var graph := RogueRouteGenerator.generate(GENERATION_CONFIG, seed)
+		if graph == null:
+			continue
+		for neighbor_id in graph.get_neighbors(graph.start_node_id):
+			if (
+				graph.get_node_type(neighbor_id)
+				== RogueRouteGraph.NodeType.EMERGENCY_COMBAT
 			):
 				return {
 					"seed": seed,
