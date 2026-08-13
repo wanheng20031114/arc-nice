@@ -1,6 +1,11 @@
 extends Node2D
 class_name RogueRouteWorld
 
+const MINIMUM_INTEGER_PIXEL_SCALE := 1
+# 仅属于本地路线表现，不进入地图快照或运行契约。标准 16:9 分辨率
+# 以整数 K 呈现同一份 640×360 安全视野；非标准比例只扩展视野，不裁它。
+const REFERENCE_VISIBLE_WORLD_SIZE := Vector2(640.0, 360.0)
+
 @onready var route_board: RogueRouteBoard = $RouteBoard
 @onready var map_camera: Camera2D = $Camera2D
 @onready var backdrop: Parallax2D = $Backdrop
@@ -10,6 +15,23 @@ class_name RogueRouteWorld
 @onready var top_boundary: CollisionShape2D = $WorldBounds/Top
 @onready var bottom_boundary: CollisionShape2D = $WorldBounds/Bottom
 
+var _route_pixel_snap_enabled := true
+var _integer_pixel_scale := 0
+var _last_stretch_transform := Transform2D()
+var _has_last_stretch_transform := false
+var _last_viewport_size := Vector2.ZERO
+var _has_last_viewport_size := false
+var _canvas_transform_before_route := Transform2D()
+var _has_canvas_transform_before_route := false
+
+
+func _enter_tree() -> void:
+	var viewport := get_viewport()
+	if viewport == null:
+		return
+	_canvas_transform_before_route = viewport.canvas_transform
+	_has_canvas_transform_before_route = true
+
 
 func _ready() -> void:
 	if not route_board.layout_bounds_changed.is_connected(
@@ -17,6 +39,44 @@ func _ready() -> void:
 	):
 		route_board.layout_bounds_changed.connect(_on_layout_bounds_changed)
 	configure_world_bounds()
+	refresh_integer_route_scale()
+
+
+func _exit_tree() -> void:
+	set_route_pixel_snap_enabled(false)
+	var viewport := get_viewport()
+	# 子节点会先于 World 退出；此时路线 Camera2D 已无法通过
+	# force_update_scroll() 写回原生 Canvas。若没有外部相机接管，就显式
+	# 恢复进入路线前的变换，避免像素吸附残留到下一场景首帧。
+	if (
+		_has_canvas_transform_before_route
+		and viewport != null
+		and viewport.get_camera_2d() == null
+	):
+		viewport.canvas_transform = _canvas_transform_before_route
+	_has_canvas_transform_before_route = false
+
+
+## Camera2D 会先在内部 process 中提交带物理插值的 canvas_transform；World
+## 使用更晚的 process priority，只量化这一帧最终的物理屏幕原点。逻辑相机、
+## 玩家位置和碰撞始终保留完整精度，因此不会积累舍入误差。
+func _process(_delta: float) -> void:
+	if not is_route_pixel_snap_active():
+		return
+	var viewport := get_viewport()
+	if viewport == null:
+		return
+	var stretch_transform := viewport.get_stretch_transform()
+	var viewport_size := viewport.get_visible_rect().size
+	if (
+		not _has_last_stretch_transform
+		or not stretch_transform.is_equal_approx(_last_stretch_transform)
+		or not _has_last_viewport_size
+		or not viewport_size.is_equal_approx(_last_viewport_size)
+	):
+		if not refresh_integer_route_scale():
+			return
+	apply_route_canvas_pixel_snap()
 
 
 func configure_world_bounds() -> void:
@@ -38,7 +98,7 @@ func attach_camera_to_player(player: Player) -> void:
 		Node.PHYSICS_INTERPOLATION_MODE_INHERIT
 	)
 	map_camera.position = Vector2.ZERO
-	map_camera.zoom = metrics.get_camera_zoom_vector()
+	refresh_integer_route_scale()
 	map_camera.position_smoothing_enabled = false
 	map_camera.enabled = true
 	configure_world_bounds()
@@ -46,6 +106,7 @@ func attach_camera_to_player(player: Player) -> void:
 	map_camera.reset_physics_interpolation()
 	map_camera.make_current()
 	map_camera.force_update_scroll()
+	apply_route_canvas_pixel_snap()
 
 
 ## 外部战斗场景拥有过同一 Viewport 的 Camera2D 后，单纯恢复 enabled
@@ -77,15 +138,17 @@ func restore_camera_after_external_scene(
 		Node.PHYSICS_INTERPOLATION_MODE_INHERIT
 	)
 	map_camera.position = preserved_offset
-	map_camera.zoom = metrics.get_camera_zoom_vector()
+	if not refresh_integer_route_scale():
+		return false
 	map_camera.position_smoothing_enabled = false
 	configure_world_bounds()
 	clamp_camera_drag(player, viewport_size)
 	map_camera.enabled = true
 	map_camera.make_current()
-	map_camera.force_update_scroll()
 	player.reset_physics_interpolation()
 	map_camera.reset_physics_interpolation()
+	map_camera.force_update_scroll()
+	apply_route_canvas_pixel_snap()
 	return map_camera.get_viewport().get_camera_2d() == map_camera
 
 
@@ -123,14 +186,10 @@ func clamp_camera_drag(player: Player, viewport_size: Vector2) -> void:
 		clampf(requested_center.x, min_center.x, max_center.x),
 		clampf(requested_center.y, min_center.y, max_center.y)
 	)
-	# zoom=2 时半个世界像素恰好对应一个屏幕像素，既保留平滑移动，
-	# 又避免拖拽偏移把世界字体落在半屏幕像素上。
-	var drag_snap := 1.0 / maxf(map_camera.zoom.x, 0.001)
 	var local_offset := clamped_center - player.global_position
-	map_camera.position = Vector2(
-		snappedf(local_offset.x, drag_snap),
-		snappedf(local_offset.y, drag_snap)
-	)
+	# 拖拽目标保持完整世界精度；物理像素相位只在最终 canvas transform 上
+	# 量化。若在这里再次吸附，会把 root stretch 的小数倍率重新引入。
+	map_camera.position = local_offset
 
 
 func recenter_camera(player: Player, viewport_size: Vector2) -> void:
@@ -139,6 +198,186 @@ func recenter_camera(player: Player, viewport_size: Vector2) -> void:
 	map_camera.position = Vector2.ZERO
 	clamp_camera_drag(player, viewport_size)
 	map_camera.reset_physics_interpolation()
+
+
+func set_route_pixel_snap_enabled(enabled: bool) -> void:
+	if _route_pixel_snap_enabled == enabled:
+		return
+	if not enabled:
+		# 我们只在路线相机仍实际拥有该 Viewport 时，先让 Camera2D 写回
+		# 原生（未相位吸附）的 canvas transform。若战斗相机已接管，绝不
+		# 覆盖外部相机这一帧提交的 transform。
+		var viewport := get_viewport()
+		if (
+			map_camera != null
+			and map_camera.is_inside_tree()
+			and viewport != null
+			and viewport.get_camera_2d() == map_camera
+		):
+			map_camera.force_update_scroll()
+		_route_pixel_snap_enabled = false
+		return
+	_route_pixel_snap_enabled = enabled
+	if not refresh_integer_route_scale():
+		return
+	if map_camera != null and map_camera.is_inside_tree():
+		map_camera.reset_physics_interpolation()
+		map_camera.force_update_scroll()
+	apply_route_canvas_pixel_snap()
+
+
+func refresh_integer_route_scale() -> bool:
+	if map_camera == null or route_board == null:
+		return false
+	var viewport := get_viewport()
+	if viewport == null:
+		return false
+	var stretch_transform := viewport.get_stretch_transform()
+	var stretch_scale := stretch_transform.get_scale().abs()
+	if not _is_valid_stretch_scale(stretch_scale):
+		return false
+	var viewport_size := viewport.get_visible_rect().size
+	var physical_viewport_size := viewport_size * stretch_scale
+	var selected_scale := calculate_safe_integer_pixel_scale(
+		physical_viewport_size
+	)
+	var compensated_zoom := calculate_compensated_camera_zoom(
+		selected_scale,
+		stretch_scale
+	)
+	var zoom_changed := not map_camera.zoom.is_equal_approx(compensated_zoom)
+	var viewport_size_changed := (
+		not _has_last_viewport_size
+		or not viewport_size.is_equal_approx(_last_viewport_size)
+	)
+	_integer_pixel_scale = selected_scale
+	_last_stretch_transform = stretch_transform
+	_has_last_stretch_transform = true
+	_last_viewport_size = viewport_size
+	_has_last_viewport_size = true
+	if zoom_changed:
+		map_camera.zoom = compensated_zoom
+	if zoom_changed or viewport_size_changed:
+		var camera_player := map_camera.get_parent() as Player
+		if camera_player != null and is_instance_valid(camera_player):
+			# EXPAND 模式下，窗口比例变化可能只改变可见逻辑尺寸而不改变
+			# stretch basis；因此与 zoom 变化一样需要重新收紧拖拽边界。
+			clamp_camera_drag(camera_player, viewport_size)
+	if zoom_changed:
+		if map_camera.is_inside_tree():
+			# 视口 resize 不得在旧、新 zoom 之间插值一帧。
+			map_camera.reset_physics_interpolation()
+			if viewport.get_camera_2d() == map_camera:
+				map_camera.force_update_scroll()
+	return true
+
+
+func apply_route_canvas_pixel_snap() -> bool:
+	if not is_route_pixel_snap_active():
+		return false
+	var viewport := get_viewport()
+	if viewport == null:
+		return false
+	viewport.canvas_transform = snap_canvas_transform_to_physical_pixels(
+		viewport.canvas_transform,
+		viewport.get_stretch_transform()
+	)
+	return true
+
+
+func get_integer_pixel_scale() -> int:
+	return _integer_pixel_scale
+
+
+func get_effective_physical_world_scale() -> Vector2:
+	var viewport := get_viewport()
+	if viewport == null or map_camera == null:
+		return Vector2.ZERO
+	return (
+		viewport.get_stretch_transform().get_scale().abs()
+		* map_camera.zoom.abs()
+	)
+
+
+func is_route_pixel_snap_active() -> bool:
+	if (
+		not _route_pixel_snap_enabled
+		or map_camera == null
+		or not map_camera.enabled
+		or not is_visible_in_tree()
+	):
+		return false
+	var viewport := get_viewport()
+	return viewport != null and viewport.get_camera_2d() == map_camera
+
+
+func get_rendered_camera_center() -> Vector2:
+	var viewport := get_viewport()
+	if viewport == null:
+		return Vector2.ZERO
+	return viewport.canvas_transform.affine_inverse() * (
+		viewport.get_visible_rect().size * 0.5
+	)
+
+
+static func calculate_safe_integer_pixel_scale(
+	physical_viewport_size: Vector2,
+	reference_visible_world_size: Vector2 = REFERENCE_VISIBLE_WORLD_SIZE
+) -> int:
+	if (
+		not _is_valid_positive_size(physical_viewport_size)
+		or not _is_valid_positive_size(reference_visible_world_size)
+	):
+		return MINIMUM_INTEGER_PIXEL_SCALE
+	var safe_scale := minf(
+		physical_viewport_size.x / reference_visible_world_size.x,
+		physical_viewport_size.y / reference_visible_world_size.y
+	)
+	# 向下取整是安全框契约：K 绝不能大到裁掉 640×360。1600×900
+	# 因而取 K2，并在两个方向显示额外世界内容。
+	return maxi(
+		floori(safe_scale),
+		MINIMUM_INTEGER_PIXEL_SCALE
+	)
+
+
+static func calculate_compensated_camera_zoom(
+	integer_pixel_scale: int,
+	stretch_scale: Vector2
+) -> Vector2:
+	if not _is_valid_stretch_scale(stretch_scale):
+		return Vector2.ONE
+	var safe_integer_scale := maxi(
+		integer_pixel_scale,
+		MINIMUM_INTEGER_PIXEL_SCALE
+	)
+	return Vector2(
+		float(safe_integer_scale) / stretch_scale.x,
+		float(safe_integer_scale) / stretch_scale.y
+	)
+
+
+static func snap_canvas_transform_to_physical_pixels(
+	canvas_transform: Transform2D,
+	stretch_transform: Transform2D
+) -> Transform2D:
+	if is_zero_approx(stretch_transform.determinant()):
+		return canvas_transform
+	var physical_transform := stretch_transform * canvas_transform
+	physical_transform.origin = physical_transform.origin.round()
+	return stretch_transform.affine_inverse() * physical_transform
+
+
+static func _is_valid_stretch_scale(stretch_scale: Vector2) -> bool:
+	return _is_valid_positive_size(stretch_scale)
+
+
+static func _is_valid_positive_size(value: Vector2) -> bool:
+	return (
+		value.is_finite()
+		and value.x > 0.0
+		and value.y > 0.0
+	)
 
 
 func _on_layout_bounds_changed(bounds: Rect2) -> void:

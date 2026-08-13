@@ -177,6 +177,7 @@ script = ExtResource("15_single_combat_coordinator")
 [node name="RareChestOverlay" parent="." instance=ExtResource("32_rare_chest_overlay")]
 
 [node name="World" type="Node2D" parent="."]
+process_priority = 100
 script = ExtResource("9_world_script")
 
 [node name="Backdrop" type="Parallax2D" parent="World"]

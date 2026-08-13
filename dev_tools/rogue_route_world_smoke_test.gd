@@ -6,6 +6,8 @@ const EXPECTED_CELL_SPACING := Vector2(112.0, 80.0)
 const EXPECTED_BOARD_MARGIN := Vector2(128.0, 112.0)
 const EXPECTED_BACKGROUND_SIZE := Vector2(2304.0, 1296.0)
 const EXPECTED_CAMERA_ZOOM := 2.0
+const TEST_WINDOW_SIZE := Vector2i(1280, 720)
+const TEST_CONTENT_SCALE_SIZE := Vector2i(1152, 648)
 const MIN_VISIBLE_COLUMNS := 5
 const MIN_VISIBLE_ROWS := 3
 const EXPECTED_NODE_DISPLAY_SIZE := Vector2(32.0, 32.0)
@@ -24,15 +26,29 @@ func _init() -> void:
 
 func _run() -> void:
 	var render_viewport := root.get_viewport()
+	var original_window_size := root.size
+	var original_content_scale_size := root.content_scale_size
+	var original_content_scale_mode := root.content_scale_mode
+	var original_content_scale_aspect := root.content_scale_aspect
 	var original_physics_interpolation := physics_interpolation
 	var original_transform_pixel_snap := render_viewport.snap_2d_transforms_to_pixel
 	var original_vertex_pixel_snap := render_viewport.snap_2d_vertices_to_pixel
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
 		run_state.begin_new_run(PlayerCharacterRegistry.TANGO_ID, false)
+	# headless SceneTree 默认只有 64×64；整数路线缩放会据此合理退到 K1，
+	# 但既有 FOV/密度预算要在正式 720p 基准画布而不是测试器默认窗口验收。
+	root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	root.content_scale_size = TEST_CONTENT_SCALE_SIZE
+	root.size = TEST_WINDOW_SIZE
 	var route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	_expect(route != null, "P3 世界场景必须能够实例化。")
 	if route == null:
+		root.content_scale_mode = original_content_scale_mode
+		root.content_scale_aspect = original_content_scale_aspect
+		root.content_scale_size = original_content_scale_size
+		root.size = original_window_size
 		_finish()
 		return
 	# 使用与旧路线覆盖相反的哨兵值，确保局部像素画问题不会再次通过
@@ -106,6 +122,10 @@ func _run() -> void:
 	physics_interpolation = original_physics_interpolation
 	render_viewport.snap_2d_transforms_to_pixel = original_transform_pixel_snap
 	render_viewport.snap_2d_vertices_to_pixel = original_vertex_pixel_snap
+	root.content_scale_mode = original_content_scale_mode
+	root.content_scale_aspect = original_content_scale_aspect
+	root.content_scale_size = original_content_scale_size
+	root.size = original_window_size
 	_finish()
 
 

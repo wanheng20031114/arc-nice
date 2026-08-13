@@ -4360,6 +4360,8 @@ func _apply_route_presentation_leases() -> void:
 		if route_world_hidden
 		else Node.PROCESS_MODE_INHERIT
 	)
+	if route_world_hidden:
+		world.set_route_pixel_snap_enabled(false)
 	world.visible = not route_world_hidden
 	route_hud.visible = not full_hud_hidden
 	bottom_bar.visible = not shop_hides_bottom_bar
@@ -4369,6 +4371,7 @@ func _apply_route_presentation_leases() -> void:
 		world.reset_physics_interpolation()
 		if player != null and is_instance_valid(player):
 			_restore_route_camera_after_external_scene()
+		world.set_route_pixel_snap_enabled(true)
 	_reconcile_local_modal_presentations()
 	_refresh_route_input_lock()
 

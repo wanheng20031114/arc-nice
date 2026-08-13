@@ -5,8 +5,8 @@ const INVALID_NODE_ID := -1
 const EDGE_FIRST_START_PROGRESS := 0.04
 const EDGE_LAST_START_PROGRESS := 0.78
 const EDGE_REVEAL_SPAN := 0.18
-# 路线相机固定以 2× 显示世界；节点外环在世界中使用 32px，
-# 让屏幕上的节点和轨道仍保持紧凑的像素密度。
+# 节点外环在世界中保持 32px 显示尺寸；最终由路线专用整数倍率按
+# 分辨率呈现，让节点和轨道在不同窗口下仍保持稳定的像素密度。
 const NODE_CONNECTION_CLEARANCE := 16.0
 const HORIZONTAL_RAIL_WORLD_SIZE := Vector2(16.0, 6.0)
 const VERTICAL_RAIL_WORLD_SIZE := Vector2(6.0, 16.0)
