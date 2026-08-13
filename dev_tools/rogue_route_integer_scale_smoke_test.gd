@@ -13,6 +13,12 @@ const BASE_CONTENT_SIZE := Vector2i(1152, 648)
 const SAFE_VISIBLE_WORLD_SIZE := Vector2(640.0, 360.0)
 const EPSILON := 0.001
 const RESOLUTION_CASES := [
+	{
+		"size": Vector2i(1152, 648),
+		"scale": 2,
+		"canonical": false,
+		"requires_reference_frame": false,
+	},
 	{"size": Vector2i(1280, 720), "scale": 2, "canonical": true},
 	{"size": Vector2i(1366, 768), "scale": 2, "canonical": false},
 	{"size": Vector2i(1600, 900), "scale": 2, "canonical": false},
@@ -138,6 +144,9 @@ func _audit_resolution_table(
 		var physical_size := case["size"] as Vector2i
 		var expected_scale := int(case["scale"])
 		var is_canonical := bool(case["canonical"])
+		var requires_reference_frame := bool(
+			case.get("requires_reference_frame", true)
+		)
 		_configure_test_window(physical_size)
 		await process_frame
 		await process_frame
@@ -169,12 +178,20 @@ func _audit_resolution_table(
 			"%s 可见世界应为 %s，实际为 %s。"
 			% [physical_size, expected_fov, visible_world]
 		)
-		_expect(
-			visible_world.x + EPSILON >= SAFE_VISIBLE_WORLD_SIZE.x
-			and visible_world.y + EPSILON >= SAFE_VISIBLE_WORLD_SIZE.y,
-			"%s 必须完整显示至少 640×360 路线安全框，实际为 %s。"
-			% [physical_size, visible_world]
-		)
+		if requires_reference_frame:
+			_expect(
+				visible_world.x + EPSILON >= SAFE_VISIBLE_WORLD_SIZE.x
+				and visible_world.y + EPSILON >= SAFE_VISIBLE_WORLD_SIZE.y,
+				"%s 必须完整显示至少 640×360 路线安全框，实际为 %s。"
+				% [physical_size, visible_world]
+			)
+		else:
+			_expect(
+				physical_size == BASE_CONTENT_SIZE
+				and visible_world.distance_to(Vector2(576.0, 324.0)) <= 0.02,
+				"1152×648 设计画布必须以 K2 放大路线并显示 576×324，实际为 %s。"
+				% visible_world
+			)
 		if is_canonical:
 			_expect(
 				visible_world.distance_to(SAFE_VISIBLE_WORLD_SIZE) <= 0.02,
@@ -249,6 +266,27 @@ func _audit_live_resize(
 	world.apply_route_canvas_pixel_snap()
 	var player_position_before := route.player.global_position
 	var graph_before: RogueRouteGraph = world.route_board.graph
+	_configure_test_window(BASE_CONTENT_SIZE)
+	await process_frame
+	await process_frame
+	var compact_visible_world := (
+		route.get_viewport_rect().size / route.map_camera.zoom
+	)
+	_expect(
+		world.get_integer_pixel_scale() == 2
+		and compact_visible_world.distance_to(Vector2(576.0, 324.0)) <= 0.02,
+		"1280×720 → 1152×648 resize 必须保持 K2，并把路线放大到 576×324 FOV。"
+	)
+	_expect(
+		route.player.global_position.is_equal_approx(player_position_before)
+		and world.route_board.graph == graph_before,
+		"紧凑设计画布 resize 不得移动玩家或重建权威路线图。"
+	)
+	_audit_final_transform(route, world, "1152×648 设计画布 resize 后")
+
+	_configure_test_window(Vector2i(1280, 720))
+	await process_frame
+	await process_frame
 
 	_configure_test_window(Vector2i(2560, 1440))
 	await process_frame
@@ -589,12 +627,38 @@ func _audit_pure_scale_contract() -> void:
 		RogueRouteWorld.calculate_safe_integer_pixel_scale(
 			Vector2(NAN, 720.0),
 			SAFE_VISIBLE_WORLD_SIZE
-		) == 1
+		) == 2
 		and RogueRouteWorld.calculate_safe_integer_pixel_scale(
 			Vector2(1280.0, 720.0),
 			Vector2.ZERO
-		) == 1,
-		"无效 physical viewport/安全框必须安全退回 K1。"
+		) == 2,
+		"无效 physical viewport/安全框必须安全退回 K2。"
+	)
+	_expect(
+		RogueRouteWorld.calculate_safe_integer_pixel_scale(
+			Vector2(1.0, 1.0),
+			SAFE_VISIBLE_WORLD_SIZE
+		) == 2
+		and RogueRouteWorld.calculate_safe_integer_pixel_scale(
+			Vector2(1279.0, 719.0),
+			SAFE_VISIBLE_WORLD_SIZE
+		) == 2
+		and RogueRouteWorld.calculate_safe_integer_pixel_scale(
+			Vector2(1919.0, 1079.0),
+			SAFE_VISIBLE_WORLD_SIZE
+		) == 2
+		and RogueRouteWorld.calculate_safe_integer_pixel_scale(
+			Vector2(1920.0, 1080.0),
+			SAFE_VISIBLE_WORLD_SIZE
+		) == 3,
+		"最低倍率必须钳制为 K2，并只在完整 1080p 阈值升到 K3。"
+	)
+	_expect(
+		RogueRouteWorld.calculate_compensated_camera_zoom(
+			1,
+			Vector2.ONE
+		).is_equal_approx(Vector2(2.0, 2.0)),
+		"补偿 zoom 的公开纯函数也必须执行 K2 最低倍率。"
 	)
 
 

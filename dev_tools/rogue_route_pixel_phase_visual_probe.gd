@@ -2,32 +2,42 @@ extends SceneTree
 
 ## 可选实机路线像素相位探针（不要加 --headless）。
 ##
-## 固定 720p 基准，在完成入场揭示后通过 RogueRouteGame 的正式鼠标拖拽
-## 输入入口逐帧移动。每一帧都等待 RenderingServer.frame_post_draw，再记录
-## 最终物理 transform、相机状态、一个静态节点 ROI 与 current-adjacent 静态
-## 连线 ROI。该工具不替代 headless smoke；它提供 GPU/DisplayServer 相关的
-## 截图与 JSON 证据，供 shimmer 回归人工/离线比较。
+## 默认验证 720p；在脚本命令末尾传入 `-- --compact` 时验证 1152×648。
+## 在完成入场揭示后通过 RogueRouteGame 的正式鼠标拖拽输入入口逐帧移动。
+## 每一帧都等待 RenderingServer.frame_post_draw，再记录最终物理 transform、
+## 相机状态、一个静态节点 ROI 与 current-adjacent 静态连线 ROI。该工具不
+## 替代 headless smoke；它提供 GPU/DisplayServer 相关的截图与 JSON 证据。
 
 const ROUTE_SCENE := preload(
 	"res://scene/game_modes/rogue/route/rogue_route_game.tscn"
 )
-const PROBE_SIZE := Vector2i(1280, 720)
+const DEFAULT_PROBE_SIZE := Vector2i(1280, 720)
+const COMPACT_PROBE_SIZE := Vector2i(1152, 648)
 const CONTENT_SCALE_SIZE := Vector2i(1152, 648)
-const EXPECTED_VISIBLE_WORLD_SIZE := Vector2(640.0, 360.0)
+const DEFAULT_EXPECTED_VISIBLE_WORLD_SIZE := Vector2(640.0, 360.0)
+const COMPACT_EXPECTED_VISIBLE_WORLD_SIZE := Vector2(576.0, 324.0)
 const FIXED_SEED := 1
 const MOTION_FRAME_COUNT := 18
 const PLAYER_MOTION_FRAME_COUNT := 24
 const NODE_ROI_SIZE := Vector2i(96, 96)
 const RAIL_ROI_SIZE := Vector2i(128, 64)
 const EPSILON := 0.001
-const OUTPUT_DIRECTORY := "user://rogue_route_pixel_phase_probe"
-const REPORT_PATH := OUTPUT_DIRECTORY + "/phase_report.json"
+const OUTPUT_ROOT := "user://rogue_route_pixel_phase_probe"
 
 var failures: PackedStringArray = []
 var frame_records: Array[Dictionary] = []
+var _probe_size := DEFAULT_PROBE_SIZE
+var _expected_visible_world_size := DEFAULT_EXPECTED_VISIBLE_WORLD_SIZE
+var _output_directory := OUTPUT_ROOT + "/1280x720"
+var _report_path := _output_directory + "/phase_report.json"
 
 
 func _initialize() -> void:
+	if OS.get_cmdline_user_args().has("--compact"):
+		_probe_size = COMPACT_PROBE_SIZE
+		_expected_visible_world_size = COMPACT_EXPECTED_VISIBLE_WORLD_SIZE
+		_output_directory = OUTPUT_ROOT + "/1152x648"
+		_report_path = _output_directory + "/phase_report.json"
 	call_deferred(&"_run")
 
 
@@ -43,8 +53,8 @@ func _run() -> void:
 	root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
 	root.content_scale_size = CONTENT_SCALE_SIZE
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
-	DisplayServer.window_set_size(PROBE_SIZE)
-	root.size = PROBE_SIZE
+	DisplayServer.window_set_size(_probe_size)
+	root.size = _probe_size
 	await process_frame
 
 	var route := ROUTE_SCENE.instantiate() as RogueRouteGame
@@ -82,9 +92,16 @@ func _run() -> void:
 	)
 	_expect(
 		world.get_integer_pixel_scale() == 2
-		and visible_world_size.distance_to(EXPECTED_VISIBLE_WORLD_SIZE) <= EPSILON,
-		"720p 实机探针必须使用 K2 与标准同构图 640×360，实际 K%d/FOV%s。"
-		% [world.get_integer_pixel_scale(), visible_world_size]
+		and visible_world_size.distance_to(
+			_expected_visible_world_size
+		) <= EPSILON,
+		"%s 实机探针必须使用 K2 与预期 FOV %s，实际 K%d/FOV%s。"
+		% [
+			_probe_size,
+			_expected_visible_world_size,
+			world.get_integer_pixel_scale(),
+			visible_world_size,
+		]
 	)
 
 	var current_node_id := board.current_node_id
@@ -98,7 +115,7 @@ func _run() -> void:
 		_finish()
 		return
 
-	var output_absolute := ProjectSettings.globalize_path(OUTPUT_DIRECTORY)
+	var output_absolute := ProjectSettings.globalize_path(_output_directory)
 	var make_error := DirAccess.make_dir_recursive_absolute(output_absolute)
 	_expect(
 		make_error in [OK, ERR_ALREADY_EXISTS],
@@ -195,7 +212,7 @@ func _run() -> void:
 	)
 
 	var report := {
-		"schema": 1,
+		"schema": 2,
 		"seed": FIXED_SEED,
 		"display_server": DisplayServer.get_name(),
 		"rendering_method": RenderingServer.get_current_rendering_method(),
@@ -207,9 +224,9 @@ func _run() -> void:
 		],
 		"integer_pixel_scale": world.get_integer_pixel_scale(),
 		"visible_world_size": [visible_world_size.x, visible_world_size.y],
-		"safe_visible_world_size": [
-			EXPECTED_VISIBLE_WORLD_SIZE.x,
-			EXPECTED_VISIBLE_WORLD_SIZE.y,
+		"expected_visible_world_size": [
+			_expected_visible_world_size.x,
+			_expected_visible_world_size.y,
 		],
 		"drag_delta_per_frame": [drag_delta.x, drag_delta.y],
 		"player_move_action": player_move_action,
@@ -218,7 +235,7 @@ func _run() -> void:
 		"frames": frame_records,
 		"failures": failures,
 	}
-	var report_absolute := ProjectSettings.globalize_path(REPORT_PATH)
+	var report_absolute := ProjectSettings.globalize_path(_report_path)
 	var report_file := FileAccess.open(report_absolute, FileAccess.WRITE)
 	_expect(report_file != null, "无法写入探针报告：%s。" % report_absolute)
 	if report_file != null:
@@ -303,14 +320,14 @@ func _capture_frame(
 		else MOTION_FRAME_COUNT
 	)
 	if frame_index in [0, motion_last_frame / 2, motion_last_frame]:
-		full_path = OUTPUT_DIRECTORY + "/full_%s.png" % frame_label
+		full_path = _output_directory + "/full_%s.png" % frame_label
 		_expect(
 			frame_image.save_png(ProjectSettings.globalize_path(full_path)) == OK,
 			"%s frame %d 全帧截图保存失败。"
 			% [motion_kind, frame_index]
 		)
-	var node_path := OUTPUT_DIRECTORY + "/node_%s.png" % frame_label
-	var rail_path := OUTPUT_DIRECTORY + "/rail_%s.png" % frame_label
+	var node_path := _output_directory + "/node_%s.png" % frame_label
+	var rail_path := _output_directory + "/rail_%s.png" % frame_label
 	var node_hash := ""
 	var rail_hash := ""
 	if node_roi != null:

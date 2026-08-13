@@ -36,7 +36,7 @@ func _run() -> void:
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
 		run_state.begin_new_run(PlayerCharacterRegistry.TANGO_ID, false)
-	# headless SceneTree 默认只有 64×64；整数路线缩放会据此合理退到 K1，
+	# headless SceneTree 默认只有 64×64；整数路线缩放会据此钳制到 K2，
 	# 但既有 FOV/密度预算要在正式 720p 基准画布而不是测试器默认窗口验收。
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
 	root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND

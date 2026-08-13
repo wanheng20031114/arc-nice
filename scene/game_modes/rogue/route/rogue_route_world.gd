@@ -1,9 +1,10 @@
 extends Node2D
 class_name RogueRouteWorld
 
-const MINIMUM_INTEGER_PIXEL_SCALE := 1
-# 仅属于本地路线表现，不进入地图快照或运行契约。标准 16:9 分辨率
-# 以整数 K 呈现同一份 640×360 安全视野；非标准比例只扩展视野，不裁它。
+const MINIMUM_INTEGER_PIXEL_SCALE := 2
+# 仅属于本地路线表现，不进入地图快照或运行契约。物理宽高达到
+# 1280×720 支持阈值后，以整数 K 呈现同一份 640×360 安全视野；更小的
+# 物理窗口优先保持 K2 的可读尺寸，允许少显示一部分路线内容。
 const REFERENCE_VISIBLE_WORLD_SIZE := Vector2(640.0, 360.0)
 
 @onready var route_board: RogueRouteBoard = $RouteBoard
@@ -333,8 +334,8 @@ static func calculate_safe_integer_pixel_scale(
 		physical_viewport_size.x / reference_visible_world_size.x,
 		physical_viewport_size.y / reference_visible_world_size.y
 	)
-	# 向下取整是安全框契约：K 绝不能大到裁掉 640×360。1600×900
-	# 因而取 K2，并在两个方向显示额外世界内容。
+	# 达到 1280×720 支持阈值后向下取整，保证 K 不会裁掉 640×360
+	# 安全框；最低 K2 则让 1152×648 设计画布保持可读的节点尺寸。
 	return maxi(
 		floori(safe_scale),
 		MINIMUM_INTEGER_PIXEL_SCALE
