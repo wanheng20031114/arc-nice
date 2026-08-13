@@ -9,14 +9,23 @@ const BRIEFING_SCRIPT := preload(
 const NORMAL_ADAPTER_SCRIPT := preload(
 	"res://scene/game_modes/rogue/route/rogue_normal_combat_briefing_adapter.gd"
 )
+const EMERGENCY_ADAPTER_SCRIPT := preload(
+	"res://scene/game_modes/rogue/route/rogue_emergency_combat_briefing_adapter.gd"
+)
 const SPECIAL_ADAPTER_SCRIPT := preload(
 	"res://scene/game_modes/rogue/route/rogue_special_combat_briefing_adapter.gd"
 )
 const NORMAL_NODE_CONFIG: RogueRouteNodeTypeConfig = preload(
 	"res://resources/config/rogue_route/normal_combat.tres"
 )
+const EMERGENCY_NODE_CONFIG: RogueRouteNodeTypeConfig = preload(
+	"res://resources/config/rogue_route/emergency_combat.tres"
+)
 const ENCOUNTER_CONFIG: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/encounter_01.tres"
+)
+const EMERGENCY_ENCOUNTER_CONFIG: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/emergency_narrow_road_01.tres"
 )
 const SUITCASE_BATTLE_CONFIG: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/suitcase_battle.tres"
@@ -89,28 +98,29 @@ func _run() -> void:
 		and model.primary_action_text == "进入作战",
 		"奖励、行动力变化和唯一主操作文案必须准确。"
 	)
-	var danger_model := RogueRouteNodeBriefingModel.new(
-		"紧急作战",
-		"高威胁敌群已确认",
-		model.hero_visual,
-		model.icon,
-		model.objective,
-		model.time_limit_seconds,
-		model.enemy_count,
-		model.reward_summary,
-		model.action_point_delta,
-		model.primary_action_text,
-		RogueRouteNodeBriefingModel.SOURCE_KIND_EMERGENCY_COMBAT,
-		&"emergency_narrow_road_01",
-		true,
-		RogueRouteNodeBriefingModel.PRESENTATION_VARIANT_DANGER
+	var emergency_adapter := EMERGENCY_ADAPTER_SCRIPT.new(
+		EMERGENCY_ENCOUNTER_CONFIG,
+		EMERGENCY_ENCOUNTER_CONFIG.briefing_visual
+	)
+	var danger_model := emergency_adapter.build_model(
+		EMERGENCY_NODE_CONFIG,
+		8,
+		1
 	)
 	_expect(
-		danger_model.is_valid()
+		danger_model != null
+		and danger_model.is_valid()
 		and danger_model.is_danger_presentation()
 		and danger_model.presentation_variant
 		== RogueRouteNodeBriefingModel.PRESENTATION_VARIANT_DANGER,
-		"紧急作战模型必须显式携带 danger 表现变体。"
+		"真实紧急作战配置必须生成 danger 表现变体。"
+	)
+	_expect(
+		danger_model != null
+		and danger_model.title == "紧急作战"
+		and danger_model.summary == "狭路相逢"
+		and not danger_model.summary.begins_with(danger_model.title),
+		"紧急简报副标题必须只显示地点，不得重复“紧急作战”前缀。"
 	)
 	var invalid_variant_model := RogueRouteNodeBriefingModel.new(
 		"紧急作战",
@@ -210,6 +220,7 @@ func _run() -> void:
 	_expect(
 		briefing.danger_hero_style != null
 		and briefing.danger_info_style != null
+		and briefing.danger_enemy_style != null
 		and briefing.danger_primary_style != null
 		and briefing.danger_primary_hover_style != null
 		and briefing.danger_primary_pressed_style != null,
@@ -316,6 +327,7 @@ func _run() -> void:
 	briefing.dismiss()
 	var default_hero_style := briefing.hero_frame.get_theme_stylebox(&"panel")
 	var default_info_style := briefing.objective_card.get_theme_stylebox(&"panel")
+	var default_enemy_style := briefing.enemy_card.get_theme_stylebox(&"panel")
 	var default_action_point_style := briefing.action_point_card.get_theme_stylebox(&"panel")
 	var default_cancel_style := briefing.cancel_button.get_theme_stylebox(&"normal")
 	var default_confirm_style := briefing.confirm_button.get_theme_stylebox(&"normal")
@@ -331,7 +343,10 @@ func _run() -> void:
 		briefing.visible
 		and briefing.get_presentation_variant()
 		== RogueRouteNodeBriefingModel.PRESENTATION_VARIANT_DANGER
+		and briefing.title_label.text == "紧急作战"
+		and briefing.summary_label.text == "狭路相逢"
 		and briefing.briefing_tag.text == BRIEFING_SCRIPT.DANGER_TAG_TEXT
+		and briefing.briefing_tag.text.begins_with("▲")
 		and briefing.frame.self_modulate.is_equal_approx(
 			BRIEFING_SCRIPT.DANGER_FRAME_MODULATE
 		)
@@ -339,14 +354,20 @@ func _run() -> void:
 		== briefing.danger_hero_style
 		and briefing.objective_card.get_theme_stylebox(&"panel")
 		== briefing.danger_info_style
+		and briefing.enemy_card.get_theme_stylebox(&"panel")
+		== briefing.danger_enemy_style
 		and briefing.confirm_button.get_theme_stylebox(&"normal")
 		== briefing.danger_primary_style,
-		"danger 简报必须保留羊皮主体，并用风险标签、主视觉边框、信息卡与主按钮表达威胁升级。"
+		"danger 简报必须保留羊皮主体，并用风险标签、主视觉边框、敌人卡与主按钮表达威胁升级。"
 	)
 	var danger_info_flat := briefing.danger_info_style as StyleBoxFlat
+	var danger_enemy_flat := briefing.danger_enemy_style as StyleBoxFlat
+	var default_enemy_flat := default_enemy_style as StyleBoxFlat
 	_expect(
 		danger_info_flat != null
 		and danger_info_flat.bg_color.a <= 0.15
+		and danger_enemy_flat != null
+		and danger_enemy_flat.bg_color.a <= 0.16
 		and BRIEFING_SCRIPT.DANGER_FRAME_MODULATE.g
 		/ BRIEFING_SCRIPT.DANGER_FRAME_MODULATE.r >= 0.9
 		and absf(
@@ -354,6 +375,21 @@ func _run() -> void:
 			- BRIEFING_SCRIPT.DANGER_MAP_SHADE_COLOR.g
 		) <= 0.02,
 		"danger 简报的卡片、羊皮框和地图遮罩必须保持低饱和、低覆盖率，避免整屏红黑化。"
+	)
+	_expect(
+		default_enemy_flat != null
+		and danger_enemy_flat.border_width_left
+		> default_enemy_flat.border_width_left
+		and danger_enemy_flat.border_color.a
+		> default_enemy_flat.border_color.a
+		and danger_enemy_flat.border_color.r
+		> danger_enemy_flat.border_color.g * 3.0
+		and briefing.header_line.color.a
+		>= default_header_line_color.a + 0.2
+		and briefing.hero_tint.color.a
+		>= default_hero_tint_color.a + 0.04
+		and briefing.hero_tint.color.a <= 0.16,
+		"danger 简报必须以敌人卡警戒边、标题分隔线与克制薄滤色形成可辨识的高危层级。"
 	)
 	_expect(
 		briefing.action_point_card.get_theme_stylebox(&"panel")
@@ -400,6 +436,8 @@ func _run() -> void:
 		== default_hero_style
 		and briefing.objective_card.get_theme_stylebox(&"panel")
 		== default_info_style
+		and briefing.enemy_card.get_theme_stylebox(&"panel")
+		== default_enemy_style
 		and briefing.action_point_card.get_theme_stylebox(&"panel")
 		== default_action_point_style
 		and briefing.cancel_button.get_theme_stylebox(&"normal")

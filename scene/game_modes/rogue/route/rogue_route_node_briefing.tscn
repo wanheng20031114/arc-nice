@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3]
+[gd_scene load_steps=25 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_route_node_briefing.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/route_move_confirmation_frame.png" id="2_frame"]
@@ -203,6 +203,18 @@ corner_radius_top_right = 6
 corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_danger_enemy"]
+bg_color = Color(0.52, 0.12, 0.035, 0.14)
+border_width_left = 3
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.66, 0.14, 0.035, 0.66)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_danger_primary"]
 content_margin_left = 28.0
 content_margin_top = 9.0
@@ -260,6 +272,7 @@ layer = 50
 script = ExtResource("1_script")
 danger_hero_style = SubResource("StyleBoxFlat_danger_hero")
 danger_info_style = SubResource("StyleBoxFlat_danger_info")
+danger_enemy_style = SubResource("StyleBoxFlat_danger_enemy")
 danger_primary_style = SubResource("StyleBoxFlat_danger_primary")
 danger_primary_hover_style = SubResource("StyleBoxFlat_danger_primary_hover")
 danger_primary_pressed_style = SubResource("StyleBoxFlat_danger_primary_pressed")

@@ -2,6 +2,7 @@ extends "res://scene/game_modes/rogue/route/rogue_route_node_briefing_adapter.gd
 class_name RogueEmergencyCombatBriefingAdapter
 
 const PRIMARY_ACTION_TEXT := "进入紧急作战"
+const EVENT_TITLE_SEPARATOR := "："
 
 var encounter_config: RogueCombatEncounterConfig
 var hero_visual: Texture2D
@@ -30,7 +31,10 @@ func build_model(
 		BRIEFING_MODEL_SCRIPT.SOURCE_KIND_EMERGENCY_COMBAT,
 		encounter_config.encounter_id,
 		node_config.display_name,
-		encounter_config.event_title,
+		_get_briefing_summary(
+			node_config.display_name,
+			encounter_config.event_title
+		),
 		encounter_config,
 		hero_visual,
 		node_config.icon,
@@ -40,6 +44,15 @@ func build_model(
 		true,
 		BRIEFING_MODEL_SCRIPT.PRESENTATION_VARIANT_DANGER
 	)
+
+
+func _get_briefing_summary(node_title: String, event_title: String) -> String:
+	var normalized_title := node_title.strip_edges()
+	var normalized_event_title := event_title.strip_edges()
+	var repeated_prefix := normalized_title + EVENT_TITLE_SEPARATOR
+	if normalized_event_title.begins_with(repeated_prefix):
+		return normalized_event_title.trim_prefix(repeated_prefix).strip_edges()
+	return normalized_event_title
 
 
 func _can_build(

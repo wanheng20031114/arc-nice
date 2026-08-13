@@ -20,7 +20,7 @@ const DANGER_INFO_STAGGER_SECONDS := 0.03
 const DANGER_MAP_SHADE_COLOR := Color(0.012, 0.018, 0.02, 0.82)
 const DANGER_PANEL_OPEN_OFFSET := Vector2(-8.0, 0.0)
 const DANGER_FRAME_MODULATE := Color(0.92, 0.9, 0.86, 1.0)
-const DANGER_TAG_TEXT := "威胁等级：高"
+const DANGER_TAG_TEXT := "▲  威胁等级：高"
 const HOST_STATUS_TEXT := "确认前不会扣除行动力"
 const CLIENT_STATUS_TEXT := "等待房主决定"
 const REQUIRED_COMBAT_STATUS_TEXT := "该特殊作战不可取消"
@@ -30,6 +30,7 @@ const CANCELING_STATUS_TEXT := "正在返回路线…"
 @export_group("危险简报样式")
 @export var danger_hero_style: StyleBox
 @export var danger_info_style: StyleBox
+@export var danger_enemy_style: StyleBox
 @export var danger_primary_style: StyleBox
 @export var danger_primary_hover_style: StyleBox
 @export var danger_primary_pressed_style: StyleBox
@@ -384,8 +385,8 @@ func _apply_presentation_variant() -> void:
 func _apply_danger_presentation() -> void:
 	frame.self_modulate = DANGER_FRAME_MODULATE
 	map_shade.color = DANGER_MAP_SHADE_COLOR
-	header_line.color = Color(0.62, 0.18, 0.055, 0.55)
-	hero_tint.color = Color(0.28, 0.07, 0.02, 0.1)
+	header_line.color = Color(0.66, 0.16, 0.045, 0.68)
+	hero_tint.color = Color(0.3, 0.055, 0.015, 0.13)
 	hero_reveal_mask.color = Color(0.075, 0.09, 0.09, 1.0)
 	briefing_tag.text = DANGER_TAG_TEXT
 	title_label.add_theme_color_override(&"font_color", Color(0.32, 0.09, 0.03, 1.0))
@@ -393,8 +394,9 @@ func _apply_danger_presentation() -> void:
 	briefing_tag.add_theme_color_override(&"font_color", Color(0.62, 0.18, 0.055, 0.96))
 	enemy_count_label.add_theme_color_override(&"font_color", Color(0.56, 0.13, 0.045, 1.0))
 	hero_frame.add_theme_stylebox_override(&"panel", danger_hero_style)
-	for info_card in [objective_card, time_card, enemy_card, reward_card]:
+	for info_card in [objective_card, time_card, reward_card]:
 		info_card.add_theme_stylebox_override(&"panel", danger_info_style)
+	enemy_card.add_theme_stylebox_override(&"panel", danger_enemy_style)
 	_apply_button_style_set(
 		confirm_button,
 		danger_primary_style,
