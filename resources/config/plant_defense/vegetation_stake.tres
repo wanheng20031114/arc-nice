@@ -1,8 +1,8 @@
-[gd_resource type="Resource" script_class="PlantDefenseConfig" format=3]
+[gd_resource type="Resource" script_class="PlantDefenseConfig" format=3 uid="uid://bcl1bbd0wxgll"]
 
-[ext_resource type="Script" path="res://resources/config/plant_defense/plant_defense_config.gd" id="1_config"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/vegetation_stake/vegetation_stake.png" id="2_icon"]
-[ext_resource type="PackedScene" path="res://scene/plant_defense/vegetation_stake.tscn" id="3_scene"]
+[ext_resource type="Script" uid="uid://b5ngq5py6eyrp" path="res://resources/config/plant_defense/plant_defense_config.gd" id="1_config"]
+[ext_resource type="Texture2D" uid="uid://7j2elewjts2l" path="res://resources/texture/plant_defense/vegetation_stake/vegetation_stake.png" id="2_icon"]
+[ext_resource type="PackedScene" uid="uid://bcy5vqdkp2k0b" path="res://scene/plant_defense/vegetation_stake.tscn" id="3_scene"]
 
 [resource]
 script = ExtResource("1_config")
@@ -14,11 +14,7 @@ plant_scene = ExtResource("3_scene")
 supports_multiplayer = true
 building_category = 6
 placement_surface = 1
-menu_order = 10
 max_health = 4000
 physical_defense = 10
 magic_defense = 50
-attack_damage = 0
-attack_speed = 0.0
-attack_range = 0.0
 footprint_size = Vector2i(1, 1)
