@@ -210,9 +210,9 @@ func _run() -> void:
 	_expect(
 		briefing.danger_hero_style != null
 		and briefing.danger_info_style != null
-		and briefing.danger_action_point_style != null
 		and briefing.danger_primary_style != null
-		and briefing.danger_secondary_style != null,
+		and briefing.danger_primary_hover_style != null
+		and briefing.danger_primary_pressed_style != null,
 		"危险简报样式必须作为场景资源静态配置，不能在运行时拼装。"
 	)
 
@@ -316,9 +316,16 @@ func _run() -> void:
 	briefing.dismiss()
 	var default_hero_style := briefing.hero_frame.get_theme_stylebox(&"panel")
 	var default_info_style := briefing.objective_card.get_theme_stylebox(&"panel")
+	var default_action_point_style := briefing.action_point_card.get_theme_stylebox(&"panel")
+	var default_cancel_style := briefing.cancel_button.get_theme_stylebox(&"normal")
+	var default_confirm_style := briefing.confirm_button.get_theme_stylebox(&"normal")
 	var default_frame_modulate := briefing.frame.self_modulate
 	var default_title_color := briefing.title_label.get_theme_color(&"font_color")
 	var default_tag_text := briefing.briefing_tag.text
+	var default_header_line_color := briefing.header_line.color
+	var default_hero_tint_color := briefing.hero_tint.color
+	var default_node_icon_modulate := briefing.node_icon.modulate
+	var default_action_point_icon_modulate := briefing.action_point_icon.modulate
 	briefing.present(danger_model, true)
 	_expect(
 		briefing.visible
@@ -331,8 +338,35 @@ func _run() -> void:
 		and briefing.hero_frame.get_theme_stylebox(&"panel")
 		== briefing.danger_hero_style
 		and briefing.objective_card.get_theme_stylebox(&"panel")
-		== briefing.danger_info_style,
-		"danger 简报必须应用红黑警戒框架、高危标签与危险信息卡。"
+		== briefing.danger_info_style
+		and briefing.confirm_button.get_theme_stylebox(&"normal")
+		== briefing.danger_primary_style,
+		"danger 简报必须保留羊皮主体，并用风险标签、主视觉边框、信息卡与主按钮表达威胁升级。"
+	)
+	var danger_info_flat := briefing.danger_info_style as StyleBoxFlat
+	_expect(
+		danger_info_flat != null
+		and danger_info_flat.bg_color.a <= 0.15
+		and BRIEFING_SCRIPT.DANGER_FRAME_MODULATE.g
+		/ BRIEFING_SCRIPT.DANGER_FRAME_MODULATE.r >= 0.9
+		and absf(
+			BRIEFING_SCRIPT.DANGER_MAP_SHADE_COLOR.r
+			- BRIEFING_SCRIPT.DANGER_MAP_SHADE_COLOR.g
+		) <= 0.02,
+		"danger 简报的卡片、羊皮框和地图遮罩必须保持低饱和、低覆盖率，避免整屏红黑化。"
+	)
+	_expect(
+		briefing.action_point_card.get_theme_stylebox(&"panel")
+		== default_action_point_style
+		and briefing.cancel_button.get_theme_stylebox(&"normal")
+		== default_cancel_style
+		and briefing.confirm_button.get_theme_stylebox(&"normal")
+		!= default_confirm_style
+		and briefing.node_icon.modulate.is_equal_approx(default_node_icon_modulate)
+		and briefing.action_point_icon.modulate.is_equal_approx(
+			default_action_point_icon_modulate
+		),
+		"danger 简报只强调主决策；行动力语义、节点图标与取消操作必须沿用普通简报视觉。"
 	)
 	_expect(
 		briefing.map_shade.color.is_equal_approx(
@@ -342,7 +376,7 @@ func _run() -> void:
 			Vector2(briefing.get("_panel_rest_position"))
 			+ BRIEFING_SCRIPT.DANGER_PANEL_OPEN_OFFSET
 		),
-		"danger 简报必须使用更深遮罩与紧促的侧向警报入场。"
+		"danger 简报必须使用中性遮罩与轻微侧向入场，形成克制的节奏差异。"
 	)
 	await create_timer(0.34).timeout
 	_expect(
@@ -351,7 +385,7 @@ func _run() -> void:
 		)
 		and is_equal_approx(briefing.panel_stage.modulate.a, 1.0)
 		and is_zero_approx(briefing.hero_reveal_mask.scale.x),
-		"danger 简报的克制警报动效必须在短时限内完整收束。"
+		"danger 简报的轻量警戒动效必须在短时限内完整收束。"
 	)
 	briefing.dismiss()
 	briefing.present(model, true)
@@ -365,7 +399,19 @@ func _run() -> void:
 		and briefing.hero_frame.get_theme_stylebox(&"panel")
 		== default_hero_style
 		and briefing.objective_card.get_theme_stylebox(&"panel")
-		== default_info_style,
+		== default_info_style
+		and briefing.action_point_card.get_theme_stylebox(&"panel")
+		== default_action_point_style
+		and briefing.cancel_button.get_theme_stylebox(&"normal")
+		== default_cancel_style
+		and briefing.confirm_button.get_theme_stylebox(&"normal")
+		== default_confirm_style
+		and briefing.header_line.color.is_equal_approx(default_header_line_color)
+		and briefing.hero_tint.color.is_equal_approx(default_hero_tint_color)
+		and briefing.node_icon.modulate.is_equal_approx(default_node_icon_modulate)
+		and briefing.action_point_icon.modulate.is_equal_approx(
+			default_action_point_icon_modulate
+		),
 		"danger 简报关闭后，下一次普通简报必须完整恢复原有视觉。"
 	)
 	briefing.dismiss()

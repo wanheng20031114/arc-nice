@@ -13,14 +13,14 @@ const INFO_FADE_SECONDS := 0.16
 const INFO_STAGGER_SECONDS := 0.035
 const MAP_SHADE_COLOR := Color(0.012, 0.018, 0.02, 0.78)
 const PANEL_OPEN_OFFSET := Vector2(0.0, 18.0)
-const DANGER_PANEL_OPEN_SECONDS := 0.15
-const DANGER_HERO_REVEAL_SECONDS := 0.18
-const DANGER_INFO_FADE_SECONDS := 0.12
-const DANGER_INFO_STAGGER_SECONDS := 0.022
-const DANGER_MAP_SHADE_COLOR := Color(0.035, 0.002, 0.004, 0.88)
-const DANGER_PANEL_OPEN_OFFSET := Vector2(-12.0, 0.0)
-const DANGER_FRAME_MODULATE := Color(0.33, 0.105, 0.105, 1.0)
-const DANGER_TAG_TEXT := "高危警报"
+const DANGER_PANEL_OPEN_SECONDS := 0.18
+const DANGER_HERO_REVEAL_SECONDS := 0.22
+const DANGER_INFO_FADE_SECONDS := 0.15
+const DANGER_INFO_STAGGER_SECONDS := 0.03
+const DANGER_MAP_SHADE_COLOR := Color(0.012, 0.018, 0.02, 0.82)
+const DANGER_PANEL_OPEN_OFFSET := Vector2(-8.0, 0.0)
+const DANGER_FRAME_MODULATE := Color(0.92, 0.9, 0.86, 1.0)
+const DANGER_TAG_TEXT := "威胁等级：高"
 const HOST_STATUS_TEXT := "确认前不会扣除行动力"
 const CLIENT_STATUS_TEXT := "等待房主决定"
 const REQUIRED_COMBAT_STATUS_TEXT := "该特殊作战不可取消"
@@ -30,15 +30,9 @@ const CANCELING_STATUS_TEXT := "正在返回路线…"
 @export_group("危险简报样式")
 @export var danger_hero_style: StyleBox
 @export var danger_info_style: StyleBox
-@export var danger_action_point_style: StyleBox
-@export var danger_secondary_style: StyleBox
-@export var danger_secondary_hover_style: StyleBox
-@export var danger_secondary_pressed_style: StyleBox
 @export var danger_primary_style: StyleBox
 @export var danger_primary_hover_style: StyleBox
 @export var danger_primary_pressed_style: StyleBox
-@export var danger_disabled_style: StyleBox
-@export var danger_focus_style: StyleBox
 
 @onready var map_shade: ColorRect = %MapShade
 @onready var panel_stage: Control = %PanelStage
@@ -227,17 +221,9 @@ func _configure_decision_controls() -> void:
 			HOST_STATUS_TEXT if _can_cancel else REQUIRED_COMBAT_STATUS_TEXT
 		)
 	if _can_decide:
-		decision_status_label.modulate = (
-			Color(1.0, 0.58, 0.5, 0.94)
-			if _is_danger_presentation()
-			else Color(0.39, 0.25, 0.14, 0.76)
-		)
+		decision_status_label.modulate = Color(0.39, 0.25, 0.14, 0.76)
 	else:
-		decision_status_label.modulate = (
-			Color(1.0, 0.32, 0.25, 1.0)
-			if _is_danger_presentation()
-			else Color(0.54, 0.19, 0.12, 1.0)
-		)
+		decision_status_label.modulate = Color(0.54, 0.19, 0.12, 1.0)
 	if not _can_decide:
 		_release_modal_focus()
 
@@ -257,11 +243,7 @@ func _play_open_animation() -> void:
 	var open_offset := DANGER_PANEL_OPEN_OFFSET if danger else PANEL_OPEN_OFFSET
 	map_shade.color = Color(shade_color, 0.0)
 	panel_stage.position = _panel_rest_position + open_offset
-	panel_stage.modulate = (
-		Color(1.0, 0.72, 0.68, 0.0)
-		if danger
-		else Color(1.0, 1.0, 1.0, 0.0)
-	)
+	panel_stage.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	hero_reveal_mask.pivot_offset = Vector2(
 		hero_reveal_mask.size.x,
 		0.0
@@ -343,11 +325,7 @@ func _lock_decision(status_text: String) -> void:
 	cancel_button.disabled = true
 	confirm_button.disabled = true
 	decision_status_label.text = status_text
-	decision_status_label.modulate = (
-		Color(1.0, 0.32, 0.25, 1.0)
-		if _is_danger_presentation()
-		else Color(0.54, 0.19, 0.12, 1.0)
-	)
+	decision_status_label.modulate = Color(0.54, 0.19, 0.12, 1.0)
 	_release_modal_focus()
 
 
@@ -406,52 +384,26 @@ func _apply_presentation_variant() -> void:
 func _apply_danger_presentation() -> void:
 	frame.self_modulate = DANGER_FRAME_MODULATE
 	map_shade.color = DANGER_MAP_SHADE_COLOR
-	header_line.color = Color(0.92, 0.1, 0.055, 0.9)
-	hero_tint.color = Color(0.32, 0.0, 0.0, 0.28)
-	hero_reveal_mask.color = Color(0.19, 0.005, 0.008, 1.0)
-	node_icon.modulate = Color(1.0, 0.58, 0.5, 1.0)
-	action_point_icon.modulate = Color(1.0, 0.42, 0.34, 1.0)
+	header_line.color = Color(0.62, 0.18, 0.055, 0.55)
+	hero_tint.color = Color(0.28, 0.07, 0.02, 0.1)
+	hero_reveal_mask.color = Color(0.075, 0.09, 0.09, 1.0)
 	briefing_tag.text = DANGER_TAG_TEXT
-	title_label.add_theme_color_override(&"font_color", Color(1.0, 0.72, 0.66, 1.0))
-	summary_label.add_theme_color_override(&"font_color", Color(1.0, 0.45, 0.36, 0.94))
-	briefing_tag.add_theme_color_override(&"font_color", Color(1.0, 0.2, 0.12, 1.0))
-	decision_status_label.add_theme_color_override(
-		&"font_color",
-		Color(1.0, 0.62, 0.54, 1.0)
-	)
-	for caption in _info_captions:
-		caption.add_theme_color_override(&"font_color", Color(0.96, 0.42, 0.35, 0.9))
-	for value_label in _value_labels:
-		value_label.add_theme_color_override(&"font_color", Color(1.0, 0.88, 0.82, 1.0))
-	enemy_count_label.add_theme_color_override(&"font_color", Color(1.0, 0.25, 0.16, 1.0))
-	action_point_label.add_theme_color_override(&"font_color", Color(1.0, 0.38, 0.3, 1.0))
+	title_label.add_theme_color_override(&"font_color", Color(0.32, 0.09, 0.03, 1.0))
+	summary_label.add_theme_color_override(&"font_color", Color(0.5, 0.2, 0.07, 0.9))
+	briefing_tag.add_theme_color_override(&"font_color", Color(0.62, 0.18, 0.055, 0.96))
+	enemy_count_label.add_theme_color_override(&"font_color", Color(0.56, 0.13, 0.045, 1.0))
 	hero_frame.add_theme_stylebox_override(&"panel", danger_hero_style)
 	for info_card in [objective_card, time_card, enemy_card, reward_card]:
 		info_card.add_theme_stylebox_override(&"panel", danger_info_style)
-	action_point_card.add_theme_stylebox_override(
-		&"panel",
-		danger_action_point_style
-	)
-	_apply_button_style_set(
-		cancel_button,
-		danger_secondary_style,
-		danger_secondary_hover_style,
-		danger_secondary_pressed_style
-	)
 	_apply_button_style_set(
 		confirm_button,
 		danger_primary_style,
 		danger_primary_hover_style,
 		danger_primary_pressed_style
 	)
-	close_button.add_theme_color_override(&"font_color", Color(1.0, 0.5, 0.42, 0.9))
-	close_button.add_theme_color_override(&"font_hover_color", Color(1.0, 0.2, 0.12, 1.0))
-	cancel_button.add_theme_color_override(&"font_color", Color(1.0, 0.66, 0.58, 1.0))
-	cancel_button.add_theme_color_override(&"font_hover_color", Color(1.0, 0.9, 0.84, 1.0))
-	cancel_button.add_theme_color_override(&"font_pressed_color", Color(1.0, 0.72, 0.64, 1.0))
-	confirm_button.add_theme_color_override(&"font_color", Color(1.0, 0.92, 0.86, 1.0))
-	confirm_button.add_theme_color_override(&"font_hover_color", Color.WHITE)
-	confirm_button.add_theme_color_override(&"font_pressed_color", Color(1.0, 0.8, 0.72, 1.0))
+	confirm_button.add_theme_color_override(&"font_color", Color(1.0, 0.92, 0.76, 1.0))
+	confirm_button.add_theme_color_override(&"font_hover_color", Color(1.0, 0.97, 0.86, 1.0))
+	confirm_button.add_theme_color_override(&"font_pressed_color", Color(1.0, 0.88, 0.68, 1.0))
 
 
 func _apply_button_style_set(
@@ -463,8 +415,6 @@ func _apply_button_style_set(
 	button.add_theme_stylebox_override(&"normal", normal_style)
 	button.add_theme_stylebox_override(&"hover", hover_style)
 	button.add_theme_stylebox_override(&"pressed", pressed_style)
-	button.add_theme_stylebox_override(&"disabled", danger_disabled_style)
-	button.add_theme_stylebox_override(&"focus", danger_focus_style)
 
 
 func _restore_default_presentation() -> void:
