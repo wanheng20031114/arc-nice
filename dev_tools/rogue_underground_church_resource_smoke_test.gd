@@ -9,6 +9,9 @@ const NARROW_ROAD: RogueCombatEncounterConfig = preload(
 const ABANDONED_MINE: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/abandoned_mine_01.tres"
 )
+const UNDERGROUND_SEWER: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/underground_sewer_01.tres"
+)
 const SUITCASE_BATTLE: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/suitcase_battle.tres"
 )
@@ -131,13 +134,15 @@ func _test_normal_combat_pool() -> void:
 	)
 	_expect(
 		NORMAL_POOL.pool_id == &"normal_combat"
-		and NORMAL_POOL.entries.size() == 3
+		and NORMAL_POOL.entries.size() == 4
 		and NORMAL_POOL.get_combat_config(&"narrow_road_01") == NARROW_ROAD
 		and NORMAL_POOL.get_combat_config(&"underground_church_01")
-			== UNDERGROUND_CHURCH
+		== UNDERGROUND_CHURCH
 		and NORMAL_POOL.get_combat_config(&"abandoned_mine_01")
-			== ABANDONED_MINE,
-		"普通作战池必须只收录狭路相逢、地下教会和废弃矿场。"
+		== ABANDONED_MINE
+		and NORMAL_POOL.get_combat_config(&"underground_sewer_01")
+		== UNDERGROUND_SEWER,
+		"普通作战池必须只收录狭路相逢、地下教会、废弃矿场和地下水道。"
 	)
 	var weights := {}
 	var total_weight := 0
@@ -147,11 +152,12 @@ func _test_normal_combat_pool() -> void:
 		weights[entry.combat_config.encounter_id] = entry.selection_weight
 		total_weight += entry.selection_weight
 	_expect(
-		total_weight == 3
+		total_weight == 4
 		and int(weights.get(&"narrow_road_01", 0)) == 1
 		and int(weights.get(&"underground_church_01", 0)) == 1
-		and int(weights.get(&"abandoned_mine_01", 0)) == 1,
-		"三种普通作战的选择权重必须精确为1、1、1。"
+		and int(weights.get(&"abandoned_mine_01", 0)) == 1
+		and int(weights.get(&"underground_sewer_01", 0)) == 1,
+		"四种普通作战的选择权重必须精确为1、1、1、1。"
 	)
 	var pool_hash := NORMAL_POOL.compute_runtime_contract_hash()
 	_expect(
@@ -169,6 +175,7 @@ func _test_normal_combat_pool() -> void:
 				&"narrow_road_01",
 				&"underground_church_01",
 				&"abandoned_mine_01",
+				&"underground_sewer_01",
 			],
 			"普通作战池必须对节点种子%d给出稳定且合法的配置。" % seed_value
 		)

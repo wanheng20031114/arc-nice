@@ -5,6 +5,7 @@
 [ext_resource type="Resource" uid="uid://bgo01u0bqbesa" path="res://resources/config/rogue_combat/encounter_01.tres" id="3_narrow_road"]
 [ext_resource type="Resource" uid="uid://b58vexewqaqrb" path="res://resources/config/rogue_combat/underground_church_01.tres" id="4_underground_church"]
 [ext_resource type="Resource" uid="uid://ceubwgnmnekfg" path="res://resources/config/rogue_combat/abandoned_mine_01.tres" id="5_abandoned_mine"]
+[ext_resource type="Resource" path="res://resources/config/rogue_combat/underground_sewer_01.tres" id="6_underground_sewer"]
 
 [sub_resource type="Resource" id="NarrowRoadEntry"]
 script = ExtResource("2_entry_script")
@@ -18,7 +19,11 @@ combat_config = ExtResource("4_underground_church")
 script = ExtResource("2_entry_script")
 combat_config = ExtResource("5_abandoned_mine")
 
+[sub_resource type="Resource" id="UndergroundSewerEntry"]
+script = ExtResource("2_entry_script")
+combat_config = ExtResource("6_underground_sewer")
+
 [resource]
 script = ExtResource("1_pool_script")
 pool_id = &"normal_combat"
-entries = Array[ExtResource("2_entry_script")]([SubResource("NarrowRoadEntry"), SubResource("UndergroundChurchEntry"), SubResource("AbandonedMineEntry")])
+entries = Array[ExtResource("2_entry_script")]([SubResource("NarrowRoadEntry"), SubResource("UndergroundChurchEntry"), SubResource("AbandonedMineEntry"), SubResource("UndergroundSewerEntry")])

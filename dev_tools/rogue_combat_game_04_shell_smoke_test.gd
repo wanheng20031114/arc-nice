@@ -3,6 +3,21 @@ extends SceneTree
 const GAME_SCENE := preload(
 	"res://scene/game_modes/rogue/combat/rogue_combat_game_04.tscn"
 )
+const UNDERGROUND_SEWER_CAMPAIGN: WaveCampaignConfig = preload(
+	"res://resources/config/campaigns/rogue_combat/underground_sewer_01/campaign.tres"
+)
+const YUANSHI_INSECT_FAST: EnemyConfig = preload(
+	"res://resources/config/enemies/yuanshi_insect_fast.tres"
+)
+const YUANSHI_INSECT_FIRE_RANGED: EnemyConfig = preload(
+	"res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"
+)
+const YUANSHI_INSECT_BOMBER: EnemyConfig = preload(
+	"res://resources/config/enemies/yuanshi_insect_bomber.tres"
+)
+const CAPOO_MAGE: EnemyConfig = preload(
+	"res://resources/config/enemies/capoo_mage.tres"
+)
 const BACKGROUND_PATH := (
 	"res://resources/texture/rogue_combat/underground_sewer/"
 	+ "underground_sewer_background.png"
@@ -24,7 +39,7 @@ const EXPECTED_TORCHES: Dictionary[StringName, Array] = {
 	&"LeftWallTorch": [Vector2(136, 56), 1.35],
 	&"RightWallTorch": [Vector2(280, 56), 1.55],
 }
-const MAX_AUTHORED_ENEMY_HALF_EXTENTS := Vector2(11, 10)
+const MAX_AUTHORED_ENEMY_HALF_EXTENTS := Vector2(12, 10)
 const PLAYER_RADIUS := 16.0
 const PLAYER_SPAWN_OFFSETS: Array[Vector2] = [
 	Vector2.ZERO,
@@ -88,6 +103,7 @@ func _initialize() -> void:
 	_test_background_and_torches(game)
 	_test_collision_and_navigation(game)
 	_test_spawns(game)
+	_test_combat_content(game)
 	game.free()
 	_finish()
 
@@ -324,6 +340,76 @@ func _test_spawns(game: RogueCombatGame) -> void:
 			== agent_open_cells.size(),
 		"最大敌人体型的全部安全格必须四方向连通。"
 	)
+
+
+func _test_combat_content(game: RogueCombatGame) -> void:
+	_expect(
+		game.singleplayer_campaign == UNDERGROUND_SEWER_CAMPAIGN
+		and game.multiplayer_campaign == UNDERGROUND_SEWER_CAMPAIGN,
+		"地下水道单人与多人默认入口必须绑定专属普通Campaign。"
+	)
+	for runtime_mode in [
+		CombatRuntimeBase.RuntimeMode.SINGLEPLAYER,
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+	]:
+		game.runtime_mode = runtime_mode
+		_expect(
+			bool(game.call("_configure_active_campaign"))
+			and game.active_campaign == UNDERGROUND_SEWER_CAMPAIGN
+			and game.waves.size() == 1,
+			"地下水道在单人与Host权威模式下必须选择同一份专属Campaign。"
+		)
+	var waves := UNDERGROUND_SEWER_CAMPAIGN.get_waves()
+	_expect(waves.size() == 1, "地下水道Campaign必须只有一个终点波次。")
+	if waves.size() != 1:
+		return
+	var wave := waves[0]
+	_expect(
+		wave.enemy_entries.size() == 4
+		and wave.get_total_enemy_count() == 47
+		and _count_enemy(wave, YUANSHI_INSECT_FAST) == 20
+		and _count_enemy(wave, YUANSHI_INSECT_FIRE_RANGED) == 20
+		and _count_enemy(wave, YUANSHI_INSECT_BOMBER) == 4
+		and _count_enemy(wave, CAPOO_MAGE) == 3,
+		"地下水道普通作战必须严格配置20迅捷、20火焰弹、4自爆原石虫与3法师Capoo，共47只。"
+	)
+	_expect(
+		is_equal_approx(wave.spawn_interval, 0.2)
+		and wave.spawn_count_per_tick == 1
+		and wave.max_alive_enemies == 15
+		and wave.spawn_point_mask == EXPECTED_SPAWN_MASK
+		and wave.get_enabled_spawn_point_names() == [&"Spawn1", &"Spawn2"]
+		and wave.spawn_point_order
+		== WaveConfig.SpawnPointOrder.BALANCED_SHUFFLE_BAG
+		and wave.spawn_order == WaveConfig.SpawnOrder.SHUFFLED,
+		"地下水道必须保持0.2秒批1、cap15、mask3与两点均衡乱序。"
+	)
+	game.random_generator.seed = 20260814
+	game.call("_build_wave_spawn_queue", wave)
+	_expect(
+		game.pending_enemy_configs.size() == 47
+		and _count_queued_enemy(game, YUANSHI_INSECT_FAST) == 20
+		and _count_queued_enemy(game, YUANSHI_INSECT_FIRE_RANGED) == 20
+		and _count_queued_enemy(game, YUANSHI_INSECT_BOMBER) == 4
+		and _count_queued_enemy(game, CAPOO_MAGE) == 3,
+		"地下水道运行时刷怪队列必须完整保留20/20/4/3的47只敌人。"
+	)
+
+
+func _count_enemy(wave: WaveConfig, enemy_config: EnemyConfig) -> int:
+	var result := 0
+	for entry in wave.enemy_entries:
+		if entry != null and entry.enemy_config == enemy_config:
+			result += entry.count
+	return result
+
+
+func _count_queued_enemy(game: RogueCombatGame, enemy_config: EnemyConfig) -> int:
+	var result := 0
+	for queued_config in game.pending_enemy_configs:
+		if queued_config == enemy_config:
+			result += 1
+	return result
 
 
 func _is_open_position(ground: TileMapLayer, global_position: Vector2) -> bool:

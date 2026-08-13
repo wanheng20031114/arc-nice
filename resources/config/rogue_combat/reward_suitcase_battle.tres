@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://cmr6j2fhngvmg" path="res://resources/config/rogue_combat/rogue_combat_reward_config.gd" id="1_reward_script"]
 [ext_resource type="Script" uid="uid://dk4hr0xcv7b0j" path="res://resources/config/rogue_combat/rogue_combat_reward_item_entry.gd" id="2_entry_script"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickup_config.gd" id="3_adi6n"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="3_plank"]
 
 [sub_resource type="Resource" id="Resource_plank_reward"]
@@ -15,4 +16,5 @@ xirang_minimum = 2000
 xirang_maximum = 3000
 xirang_step = 100
 collectible_count = 2
+collectible_choice_rarities = PackedInt32Array()
 item_rewards = Array[ExtResource("2_entry_script")]([SubResource("Resource_plank_reward")])

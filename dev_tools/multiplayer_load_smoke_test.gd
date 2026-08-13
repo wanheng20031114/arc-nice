@@ -290,8 +290,8 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 70, "The multiplayer protocol version must be 70.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v70 must retain eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 71, "The multiplayer protocol version must be 71.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v71 must retain eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
@@ -363,7 +363,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"Protocol v70 must reject v69 and all older or unversioned clients."
+		"Protocol v71 must reject v70 and all older or unversioned clients."
 	)
 
 	var rejection_reasons: Array[String] = []

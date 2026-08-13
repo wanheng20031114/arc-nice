@@ -15,10 +15,20 @@ signal battle_returned(
 const SINGLEPLAYER_PEER_ID := 0
 const INVALID_NODE_ID := -1
 const BATTLE_NODE_NAME := "RogueCombatBattle"
+const YUANSHI_FIRE_PROJECTILE_POOL_SCENE := preload(
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn"
+)
 const SUITCASE_COMBAT_CONFIG_ID := &"suitcase_battle"
 const SUITCASE_ELITE_BULLET_POOL_CAPACITY := 480
 const UNDERGROUND_CHURCH_COMBAT_CONFIG_ID := &"underground_church_01"
 const UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY := 240
+const UNDERGROUND_SEWER_COMBAT_CONFIG_ID := &"underground_sewer_01"
+const EMERGENCY_UNDERGROUND_SEWER_COMBAT_CONFIG_ID := (
+	&"emergency_underground_sewer_01"
+)
+const UNDERGROUND_SEWER_FIRE_PROJECTILE_PREWARM_COUNT := 48
+const UNDERGROUND_SEWER_FIRE_PROJECTILE_RETAINED_CAPACITY := 192
+const EMERGENCY_UNDERGROUND_SEWER_ELITE_BULLET_POOL_CAPACITY := 144
 const SINGLEPLAYER_STABLE_IDENTITY := "singleplayer:local"
 const INVALID_REWARD_OFFER_INDEX := -1
 
@@ -254,6 +264,10 @@ func _on_combat_requested(
 			UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY,
 			UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY
 		)
+	_apply_underground_sewer_projectile_pool_overrides(
+		battle.session_object_pool,
+		_active_encounter_config.encounter_id
+	)
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state != null:
 		battle.player.set_run_max_health_penalty(
@@ -272,6 +286,33 @@ func _on_combat_requested(
 	battle.random_generator.seed = content_seed
 	battle_started.emit(node_id, occurrence_key, battle)
 	_activate_battle_when_prepared(battle, occurrence_key)
+
+
+func _apply_underground_sewer_projectile_pool_overrides(
+	pool: SessionObjectPool,
+	encounter_id: StringName
+) -> void:
+	if (
+		pool == null
+		or not (
+			encounter_id == UNDERGROUND_SEWER_COMBAT_CONFIG_ID
+			or encounter_id == EMERGENCY_UNDERGROUND_SEWER_COMBAT_CONFIG_ID
+		)
+	):
+		return
+	# 火焰弹理论并发约30；48个预热实例保留余量，192回收上限沿用公共池。
+	pool.register_scene(
+		YUANSHI_FIRE_PROJECTILE_POOL_SCENE,
+		UNDERGROUND_SEWER_FIRE_PROJECTILE_PREWARM_COUNT,
+		UNDERGROUND_SEWER_FIRE_PROJECTILE_RETAINED_CAPACITY
+	)
+	if encounter_id == EMERGENCY_UNDERGROUND_SEWER_COMBAT_CONFIG_ID:
+		# 10名精英枪手一轮至多120发；144为完整齐射保留20%余量。
+		CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(
+			pool,
+			EMERGENCY_UNDERGROUND_SEWER_ELITE_BULLET_POOL_CAPACITY,
+			EMERGENCY_UNDERGROUND_SEWER_ELITE_BULLET_POOL_CAPACITY
+		)
 
 
 func _configure_battle_before_tree(

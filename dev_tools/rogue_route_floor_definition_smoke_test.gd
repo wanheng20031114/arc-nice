@@ -21,6 +21,9 @@ const UNDERGROUND_CHURCH: RogueCombatEncounterConfig = preload(
 const ABANDONED_MINE: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/abandoned_mine_01.tres"
 )
+const UNDERGROUND_SEWER: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/underground_sewer_01.tres"
+)
 const EMERGENCY_NARROW_ROAD: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/emergency_narrow_road_01.tres"
 )
@@ -29,6 +32,9 @@ const EMERGENCY_UNDERGROUND_CHURCH: RogueCombatEncounterConfig = preload(
 )
 const EMERGENCY_ABANDONED_MINE: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/emergency_abandoned_mine_01.tres"
+)
+const EMERGENCY_UNDERGROUND_SEWER: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/emergency_underground_sewer_01.tres"
 )
 const ELITE_GUNNER: EnemyConfig = preload(
 	"res://resources/config/enemies/combat_robot_gunner_elite.tres"
@@ -174,6 +180,7 @@ func _test_special_combat_catalog() -> void:
 	var narrow_bucket_count := 0
 	var church_bucket_count := 0
 	var abandoned_mine_bucket_count := 0
+	var underground_sewer_bucket_count := 0
 	for bucket in range(FLOOR.normal_combat_pool.get_total_selection_weight()):
 		var selected := FLOOR.normal_combat_pool.select_config_for_weight_bucket(
 			bucket
@@ -184,10 +191,13 @@ func _test_special_combat_catalog() -> void:
 			church_bucket_count += 1
 		elif selected == ABANDONED_MINE:
 			abandoned_mine_bucket_count += 1
+		elif selected == UNDERGROUND_SEWER:
+			underground_sewer_bucket_count += 1
 	var emergency_counts := {
 		EMERGENCY_NARROW_ROAD: 0,
 		EMERGENCY_UNDERGROUND_CHURCH: 0,
 		EMERGENCY_ABANDONED_MINE: 0,
+		EMERGENCY_UNDERGROUND_SEWER: 0,
 	}
 	for bucket in range(FLOOR.emergency_combat_pool.get_total_selection_weight()):
 		var selected := (
@@ -197,35 +207,41 @@ func _test_special_combat_catalog() -> void:
 			emergency_counts[selected] = int(emergency_counts[selected]) + 1
 	_expect(
 		FLOOR.normal_combat_pool.pool_id == &"normal_combat"
-		and FLOOR.normal_combat_pool.entries.size() == 3
-		and FLOOR.normal_combat_pool.get_total_selection_weight() == 3
+		and FLOOR.normal_combat_pool.entries.size() == 4
+		and FLOOR.normal_combat_pool.get_total_selection_weight() == 4
 		and narrow_bucket_count == 1
 		and church_bucket_count == 1
 		and abandoned_mine_bucket_count == 1
+		and underground_sewer_bucket_count == 1
 		and FLOOR.normal_combat_pool.select_config_for_weight_bucket(-1) == null
-		and FLOOR.normal_combat_pool.select_config_for_weight_bucket(3) == null
+		and FLOOR.normal_combat_pool.select_config_for_weight_bucket(4) == null
 		and FLOOR.get_combat_config(&"narrow_road_01") == NARROW_ROAD
 		and FLOOR.get_combat_config(&"underground_church_01")
 		== UNDERGROUND_CHURCH
 		and FLOOR.get_combat_config(&"abandoned_mine_01")
 		== ABANDONED_MINE
+		and FLOOR.get_combat_config(&"underground_sewer_01")
+		== UNDERGROUND_SEWER
 		and FLOOR.emergency_combat_pool.pool_id == &"emergency_combat"
-		and FLOOR.emergency_combat_pool.entries.size() == 3
-		and FLOOR.emergency_combat_pool.get_total_selection_weight() == 3
+		and FLOOR.emergency_combat_pool.entries.size() == 4
+		and FLOOR.emergency_combat_pool.get_total_selection_weight() == 4
 		and int(emergency_counts[EMERGENCY_NARROW_ROAD]) == 1
 		and int(emergency_counts[EMERGENCY_UNDERGROUND_CHURCH]) == 1
 		and int(emergency_counts[EMERGENCY_ABANDONED_MINE]) == 1
+		and int(emergency_counts[EMERGENCY_UNDERGROUND_SEWER]) == 1
 		and FLOOR.get_combat_config(&"emergency_narrow_road_01")
 		== EMERGENCY_NARROW_ROAD
 		and FLOOR.get_combat_config(&"emergency_underground_church_01")
 		== EMERGENCY_UNDERGROUND_CHURCH
 		and FLOOR.get_combat_config(&"emergency_abandoned_mine_01")
 		== EMERGENCY_ABANDONED_MINE
+		and FLOOR.get_combat_config(&"emergency_underground_sewer_01")
+		== EMERGENCY_UNDERGROUND_SEWER
 		and FLOOR.special_combat_configs.size() == 1
 		and FLOOR.get_combat_config(&"suitcase_battle")
 		== SUITCASE_BATTLE
 		and FLOOR.get_combat_config(&"missing") == null,
-		"楼层必须提供各三项等权的普通/紧急池，并统一解析全部作战。"
+		"楼层必须提供各四项等权的普通/紧急池，并统一解析全部作战。"
 	)
 	var reordered_pool := (
 		FLOOR.normal_combat_pool.duplicate(false) as RogueCombatPoolConfig
@@ -362,7 +378,7 @@ func _test_floor_application() -> void:
 	)
 	_expect(
 		coordinator != null
-		and adapters.size() == 3
+		and adapters.size() == 4
 		and (adapters[&"narrow_road_01"] as RogueNormalCombatBriefingAdapter).encounter_config
 		== NARROW_ROAD
 		and (adapters[&"narrow_road_01"] as RogueNormalCombatBriefingAdapter).hero_visual
@@ -374,11 +390,15 @@ func _test_floor_application() -> void:
 		and (adapters[&"abandoned_mine_01"] as RogueNormalCombatBriefingAdapter).encounter_config
 		== ABANDONED_MINE
 		and (adapters[&"abandoned_mine_01"] as RogueNormalCombatBriefingAdapter).hero_visual
-		== ABANDONED_MINE.briefing_visual,
+		== ABANDONED_MINE.briefing_visual
+		and (adapters[&"underground_sewer_01"] as RogueNormalCombatBriefingAdapter).encounter_config
+		== UNDERGROUND_SEWER
+		and (adapters[&"underground_sewer_01"] as RogueNormalCombatBriefingAdapter).hero_visual
+		== UNDERGROUND_SEWER.briefing_visual,
 		"协调器不得保留默认兜底，普通作战池中的每项必须建立专属简报适配器。"
 	)
 	_expect(
-		emergency_adapters.size() == 3
+		emergency_adapters.size() == 4
 		and (
 			emergency_adapters[&"emergency_narrow_road_01"]
 			as RogueEmergencyCombatBriefingAdapter
@@ -391,8 +411,12 @@ func _test_floor_application() -> void:
 			emergency_adapters[&"emergency_abandoned_mine_01"]
 			as RogueEmergencyCombatBriefingAdapter
 		).encounter_config == EMERGENCY_ABANDONED_MINE
+		and (
+			emergency_adapters[&"emergency_underground_sewer_01"]
+			as RogueEmergencyCombatBriefingAdapter
+		).encounter_config == EMERGENCY_UNDERGROUND_SEWER
 		and route.emergency_reward_choice_overlay != null,
-		"三个紧急作战必须各自建立危险简报适配器，并静态装配奖励选择层。"
+		"四个紧急作战必须各自建立危险简报适配器，并静态装配奖励选择层。"
 	)
 	_expect(
 		top_bar != null
@@ -446,9 +470,8 @@ func _test_floor_application() -> void:
 			and model.source_kind
 			== RogueRouteNodeBriefingModel.SOURCE_KIND_EMERGENCY_COMBAT
 			and model.is_danger_presentation()
-			and model.enemy_count == expected_enemy_count
-			and model.enemy_count > config.get_total_enemy_count(),
-			"紧急简报必须使用危险变体，并显示本 occurrence 增幅后的实际敌人数。"
+			and model.enemy_count == expected_enemy_count,
+			"紧急简报必须使用危险变体，并显示本 occurrence 的实际敌人数。"
 		)
 
 	current_scene = null

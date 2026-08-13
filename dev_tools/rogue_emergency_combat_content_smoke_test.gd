@@ -12,6 +12,9 @@ const EMERGENCY_UNDERGROUND_CHURCH: RogueCombatEncounterConfig = preload(
 const EMERGENCY_ABANDONED_MINE: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/emergency_abandoned_mine_01.tres"
 )
+const EMERGENCY_UNDERGROUND_SEWER: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/emergency_underground_sewer_01.tres"
+)
 const NORMAL_NARROW_ROAD: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/encounter_01.tres"
 )
@@ -20,6 +23,9 @@ const NORMAL_UNDERGROUND_CHURCH: RogueCombatEncounterConfig = preload(
 )
 const NORMAL_ABANDONED_MINE: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/abandoned_mine_01.tres"
+)
+const NORMAL_UNDERGROUND_SEWER: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/underground_sewer_01.tres"
 )
 const EMERGENCY_REWARD: RogueCombatRewardConfig = preload(
 	"res://resources/config/rogue_combat/reward_emergency_combat.tres"
@@ -48,6 +54,15 @@ const CAPOO_MAGE: EnemyConfig = preload(
 )
 const FROST_SORCERER_ELITE: EnemyConfig = preload(
 	"res://resources/config/enemies/frost_sorcerer_elite.tres"
+)
+const YUANSHI_INSECT_FAST: EnemyConfig = preload(
+	"res://resources/config/enemies/yuanshi_insect_fast.tres"
+)
+const YUANSHI_INSECT_FIRE_RANGED: EnemyConfig = preload(
+	"res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"
+)
+const STONE_GOLEM: EnemyConfig = preload(
+	"res://resources/config/enemies/stone_golem.tres"
 )
 
 var _failures := PackedStringArray()
@@ -78,10 +93,10 @@ func _run() -> void:
 func _test_equal_weight_pool() -> void:
 	_expect(
 		EMERGENCY_POOL.pool_id == &"emergency_combat"
-		and EMERGENCY_POOL.entries.size() == 3
-		and EMERGENCY_POOL.get_total_selection_weight() == 3
+		and EMERGENCY_POOL.entries.size() == 4
+		and EMERGENCY_POOL.get_total_selection_weight() == 4
 		and EMERGENCY_POOL.validate_config().is_empty(),
-		"紧急作战池必须是包含三个有效等权条目的独立池。"
+		"紧急作战池必须是包含四个有效等权条目的独立池。"
 	)
 	var seen_ids: Dictionary = {}
 	for bucket in range(EMERGENCY_POOL.get_total_selection_weight()):
@@ -91,11 +106,12 @@ func _test_equal_weight_pool() -> void:
 	for entry in EMERGENCY_POOL.entries:
 		_expect(entry != null and entry.selection_weight == 1, "紧急作战池条目权重必须为1。")
 	_expect(
-		seen_ids.size() == 3
+		seen_ids.size() == 4
 		and seen_ids.has(&"emergency_narrow_road_01")
 		and seen_ids.has(&"emergency_underground_church_01")
-		and seen_ids.has(&"emergency_abandoned_mine_01"),
-		"三个权重桶必须一一覆盖三种紧急作战。"
+		and seen_ids.has(&"emergency_abandoned_mine_01")
+		and seen_ids.has(&"emergency_underground_sewer_01"),
+		"四个权重桶必须一一覆盖四种紧急作战。"
 	)
 
 
@@ -119,12 +135,21 @@ func _test_emergency_reward() -> void:
 		_expect(
 			config.reward_config == EMERGENCY_REWARD
 			and config.extra_xirang == 1000
-			and config.enemy_count_increase_minimum_percent == 5
-			and config.enemy_count_increase_maximum_percent == 10
 			and config.is_ready_to_enable(),
-			"%s 必须绑定有效紧急奖励与5%%–10%%敌人增幅：%s"
+			"%s 必须绑定有效紧急奖励：%s"
 			% [config.event_title, config.validate_config()]
 		)
+	for config in _get_scaled_emergency_configs():
+		_expect(
+			config.enemy_count_increase_minimum_percent == 5
+			and config.enemy_count_increase_maximum_percent == 10,
+			"%s 必须保留既有5%%–10%%敌人增幅。" % config.event_title
+		)
+	_expect(
+		EMERGENCY_UNDERGROUND_SEWER.enemy_count_increase_minimum_percent == 0
+		and EMERGENCY_UNDERGROUND_SEWER.enemy_count_increase_maximum_percent == 0,
+		"地下水道紧急作战必须严格采用固定20/2/15/10编成，不做敌人数增幅。"
+	)
 
 
 func _test_combat_scene_reuse() -> void:
@@ -134,8 +159,10 @@ func _test_combat_scene_reuse() -> void:
 		and EMERGENCY_UNDERGROUND_CHURCH.combat_scene_path
 		== NORMAL_UNDERGROUND_CHURCH.combat_scene_path
 		and EMERGENCY_ABANDONED_MINE.combat_scene_path
-		== NORMAL_ABANDONED_MINE.combat_scene_path,
-		"三个紧急作战必须分别复用对应普通关卡场景，不更换地图美术。"
+		== NORMAL_ABANDONED_MINE.combat_scene_path
+		and EMERGENCY_UNDERGROUND_SEWER.combat_scene_path
+		== NORMAL_UNDERGROUND_SEWER.combat_scene_path,
+		"四个紧急作战必须分别复用对应普通关卡场景，不更换地图美术。"
 	)
 
 
@@ -158,12 +185,24 @@ func _test_authored_elite_replacements() -> void:
 		[5, 15, 25],
 		"废弃矿场"
 	)
+	_expect_wave_entries(
+		EMERGENCY_UNDERGROUND_SEWER,
+		[
+			YUANSHI_INSECT_FAST,
+			STONE_GOLEM,
+			YUANSHI_INSECT_FIRE_RANGED,
+			GUNNER_ELITE,
+		],
+		[20, 2, 15, 10],
+		"地下水道"
+	)
 
 
 func _test_occurrence_count_scaling() -> void:
 	_test_config_occurrences(EMERGENCY_NARROW_ROAD, 24, 24)
 	_test_config_occurrences(EMERGENCY_UNDERGROUND_CHURCH, 74, 77)
 	_test_config_occurrences(EMERGENCY_ABANDONED_MINE, 48, 49)
+	_test_config_occurrences(EMERGENCY_UNDERGROUND_SEWER, 47, 47)
 
 
 func _test_config_occurrences(
@@ -289,6 +328,15 @@ func _allocate_largest_remainder(source_counts: Array[int], target_total: int) -
 
 
 func _get_emergency_configs() -> Array[RogueCombatEncounterConfig]:
+	return [
+		EMERGENCY_NARROW_ROAD,
+		EMERGENCY_UNDERGROUND_CHURCH,
+		EMERGENCY_ABANDONED_MINE,
+		EMERGENCY_UNDERGROUND_SEWER,
+	]
+
+
+func _get_scaled_emergency_configs() -> Array[RogueCombatEncounterConfig]:
 	return [
 		EMERGENCY_NARROW_ROAD,
 		EMERGENCY_UNDERGROUND_CHURCH,

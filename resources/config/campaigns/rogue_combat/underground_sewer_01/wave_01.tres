@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="WaveConfig" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="1_wave_script"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/underground_sewer_01/entries/yuanshi_insect_fast.tres" id="2_fast_entry"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/underground_sewer_01/entries/yuanshi_insect_fire_ranged.tres" id="3_fire_entry"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/underground_sewer_01/entries/yuanshi_insect_bomber.tres" id="4_bomber_entry"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/underground_sewer_01/entries/capoo_mage.tres" id="5_mage_entry"]
+[ext_resource type="AudioStream" uid="uid://dvxl8ixgmll4p" path="res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3" id="6_music"]
+
+[resource]
+script = ExtResource("1_wave_script")
+wave_name = "地下水道"
+enemy_entries = Array[WaveEnemyEntry]([ExtResource("2_fast_entry"), ExtResource("3_fire_entry"), ExtResource("4_bomber_entry"), ExtResource("5_mage_entry")])
+spawn_point_mask = 3
+spawn_point_order = 1
+spawn_order = 0
+spawn_interval = 0.2
+spawn_count_per_tick = 1
+max_alive_enemies = 15
+music = ExtResource("6_music")
+step_id = &"underground_sewer_wave"
+display_name = "地下水道：击败全部敌人"
