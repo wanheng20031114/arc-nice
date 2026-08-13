@@ -35,11 +35,17 @@ var slash_damage_done := false
 var action_sequence: int = 0
 var latest_proxy_action_id: int = 0
 var slash_query_shape := CircleShape2D.new()
+var slash_query := PhysicsShapeQueryParameters2D.new()
+var slash_hit_target_ids: Dictionary[int, bool] = {}
 var committed_attack_target: Node2D = null
 
 
 func _ready() -> void:
 	super._ready()
+	slash_query.shape = slash_query_shape
+	slash_query.collision_mask = SLASH_COLLISION_MASK
+	slash_query.collide_with_bodies = true
+	slash_query.collide_with_areas = false
 	_set_windup_warning(0.0, Vector2.RIGHT)
 
 
@@ -67,13 +73,10 @@ func _physics_process(delta: float) -> void:
 			_update_slash(delta)
 			return
 
-	var combat_target := _get_preferred_ranged_combat_target()
-	if (
-		_is_combat_sense_refresh_due()
-		and combat_target != null
-		and _try_start_windup(combat_target)
-	):
-		return
+	if _is_combat_sense_refresh_due():
+		var combat_target := _get_preferred_ranged_combat_target()
+		if combat_target != null and _try_start_windup(combat_target):
+			return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
 		return
@@ -252,16 +255,11 @@ func _apply_slash_damage() -> void:
 	if knight_config == null:
 		return
 
-	var query := PhysicsShapeQueryParameters2D.new()
-	query.shape = slash_query_shape
-	query.transform = Transform2D(0.0, global_position)
-	query.collision_mask = SLASH_COLLISION_MASK
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	var results := get_world_2d().direct_space_state.intersect_shape(query, 16)
+	slash_query.transform = Transform2D(0.0, global_position)
+	var results := get_world_2d().direct_space_state.intersect_shape(slash_query, 16)
 	var half_angle := deg_to_rad(knight_config.slash_angle_degrees * 0.5)
 	var outgoing_damage := get_effective_attack_damage(knight_config.attack_damage)
-	var hit_targets: Dictionary = {}
+	slash_hit_target_ids.clear()
 	for result in results:
 		var hit_target := result.get("collider") as Node2D
 		if hit_target == null:
@@ -275,7 +273,7 @@ func _apply_slash_damage() -> void:
 		):
 			continue
 		var target_id := hit_target.get_instance_id()
-		if hit_targets.has(target_id):
+		if slash_hit_target_ids.has(target_id):
 			continue
 		var offset := hit_target.global_position - global_position
 		var distance := offset.length()
@@ -292,7 +290,7 @@ func _apply_slash_damage() -> void:
 				> half_angle + SLASH_ANGLE_EPSILON_RADIANS
 		):
 			continue
-		hit_targets[target_id] = true
+		slash_hit_target_ids[target_id] = true
 		if player != null:
 			_apply_multiplayer_player_damage(
 				player,

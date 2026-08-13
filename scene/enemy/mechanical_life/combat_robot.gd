@@ -49,13 +49,10 @@ func _physics_process(delta: float) -> void:
 			_update_dash(delta)
 			return
 
-	var combat_target := _get_preferred_ranged_combat_target()
-	if (
-		_is_combat_sense_refresh_due()
-		and combat_target != null
-		and _try_start_windup(combat_target)
-	):
-		return
+	if _is_combat_sense_refresh_due():
+		var combat_target := _get_preferred_ranged_combat_target()
+		if combat_target != null and _try_start_windup(combat_target):
+			return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
 		return

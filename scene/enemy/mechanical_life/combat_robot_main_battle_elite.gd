@@ -244,12 +244,15 @@ func _update_cooldowns(delta: float) -> void:
 func _try_start_ready_action() -> bool:
 	if main_config == null:
 		return false
-	var skill2_target := _find_nearest_target_in_range(
-		main_config.skill2_trigger_range
-	)
-	if skill2_cooldown_left <= 0.0 and skill2_target != null:
-		_start_skill2_takeoff(skill2_target)
-		return true
+	if skill2_cooldown_left <= 0.0:
+		var skill2_target := _find_nearest_target_in_range(
+			main_config.skill2_trigger_range
+		)
+		if skill2_target != null:
+			_start_skill2_takeoff(skill2_target)
+			return true
+	if skill1_cooldown_left > 0.0 and attack_cooldown_left > 0.0:
+		return false
 	var target := _get_preferred_ranged_combat_target()
 	if target == null:
 		return false
@@ -1536,10 +1539,8 @@ func _update_skill1_warning_line(target: Node2D) -> void:
 	if skill1_warning_line == null or target == null or not is_instance_valid(target):
 		_hide_skill1_warning_line()
 		return
-	skill1_warning_line.points = PackedVector2Array([
-		Vector2.ZERO,
-		to_local(target.global_position),
-	])
+	skill1_warning_line.set_point_position(0, Vector2.ZERO)
+	skill1_warning_line.set_point_position(1, to_local(target.global_position))
 	skill1_warning_line.visible = true
 
 
