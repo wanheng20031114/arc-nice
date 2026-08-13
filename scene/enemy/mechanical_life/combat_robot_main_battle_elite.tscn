@@ -1,27 +1,27 @@
-[gd_scene load_steps=25 format=3]
+[gd_scene format=3 uid="uid://dg4ut2wlit07y"]
 
-[ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.gd" id="2_script"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_main_battle_elite.tres" id="3_frames"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_stomp_a.wav" id="4_stomp_a"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_hit_a.wav" id="5_hit_a"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_death.wav" id="6_death"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_normal_windup.wav" id="7_attack_windup"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_normal_double_slash.wav" id="8_attack_slash"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill1_charge.wav" id="9_skill1_charge"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill1_dash.wav" id="10_skill1_dash"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill1_circle_slash.wav" id="11_skill1_circle"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill2_takeoff.wav" id="12_skill2_takeoff"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill2_drop_bilateral_slash.wav" id="13_skill2_drop"]
+[ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://cdww6mu67y7u4" path="res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.gd" id="2_script"]
+[ext_resource type="SpriteFrames" uid="uid://cpdxxjm7gq0j0" path="res://resources/animation/combat_robot_main_battle_elite.tres" id="3_frames"]
+[ext_resource type="AudioStream" uid="uid://bub35ngkgx667" path="res://resources/audio/combat_robot_main_battle_elite_stomp_a.wav" id="4_stomp_a"]
+[ext_resource type="AudioStream" uid="uid://ce0lp4r51nou8" path="res://resources/audio/combat_robot_main_battle_elite_hit_a.wav" id="5_hit_a"]
+[ext_resource type="AudioStream" uid="uid://cyx5inbroc51n" path="res://resources/audio/combat_robot_main_battle_elite_death.wav" id="6_death"]
+[ext_resource type="AudioStream" uid="uid://xqkpnylvj8b7" path="res://resources/audio/combat_robot_main_battle_elite_normal_windup.wav" id="7_attack_windup"]
+[ext_resource type="AudioStream" uid="uid://c4hm6554is6jb" path="res://resources/audio/combat_robot_main_battle_elite_normal_double_slash.wav" id="8_attack_slash"]
+[ext_resource type="AudioStream" uid="uid://qrhsxs7y3ey1" path="res://resources/audio/combat_robot_main_battle_elite_skill1_charge.wav" id="9_skill1_charge"]
+[ext_resource type="AudioStream" uid="uid://6iakhslhaopv" path="res://resources/audio/combat_robot_main_battle_elite_skill1_dash.wav" id="10_skill1_dash"]
+[ext_resource type="AudioStream" uid="uid://dlyi072rcn8sy" path="res://resources/audio/combat_robot_main_battle_elite_skill1_circle_slash.wav" id="11_skill1_circle"]
+[ext_resource type="AudioStream" uid="uid://dy6i7646c3051" path="res://resources/audio/combat_robot_main_battle_elite_skill2_takeoff.wav" id="12_skill2_takeoff"]
+[ext_resource type="AudioStream" uid="uid://mttgyii6uejj" path="res://resources/audio/combat_robot_main_battle_elite_skill2_drop_bilateral_slash.wav" id="13_skill2_drop"]
 [ext_resource type="Material" path="res://resources/shader/night_vfx_emission_additive.tres" id="14_fan_emission"]
 
-[sub_resource type="RectangleShape2D" id="BodyShape"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_x046l"]
 resource_local_to_scene = true
-size = Vector2(18, 18)
+size = Vector2(18, 27)
 
-[sub_resource type="RectangleShape2D" id="TouchShape"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_llpl8"]
 resource_local_to_scene = true
-size = Vector2(18, 18)
+size = Vector2(18, 27)
 
 [sub_resource type="Gradient" id="Gradient_fan_slash_texture"]
 offsets = PackedFloat32Array(0, 0.16, 0.5, 0.84, 1)
@@ -42,6 +42,16 @@ colors = PackedColorArray(1, 0.9, 0.48, 0.96, 1, 0.52, 0.08, 0.94, 0.94, 0.18, 0
 gradient = SubResource("Gradient_attack_fan_lifetime")
 width = 24
 
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_attack_fan"]
+particle_flag_align_y = true
+particle_flag_disable_z = true
+initial_velocity_min = 105.0
+initial_velocity_max = 145.0
+gravity = Vector3(0, 0, 0)
+scale_min = 0.45
+scale_max = 0.72
+color_ramp = SubResource("GradientTexture1D_attack_fan_lifetime")
+
 [sub_resource type="Gradient" id="Gradient_skill2_fan_lifetime"]
 offsets = PackedFloat32Array(0, 0.18, 0.62, 1)
 colors = PackedColorArray(1, 1, 0.7, 1, 1, 0.66, 0.12, 1, 1, 0.24, 0.025, 0.72, 0.72, 0.045, 0.01, 0)
@@ -50,22 +60,9 @@ colors = PackedColorArray(1, 1, 0.7, 1, 1, 0.66, 0.12, 1, 1, 0.24, 0.025, 0.72, 
 gradient = SubResource("Gradient_skill2_fan_lifetime")
 width = 24
 
-[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_attack_fan"]
-particle_flag_disable_z = true
-particle_flag_align_y = true
-direction = Vector3(1, 0, 0)
-spread = 45.0
-initial_velocity_min = 105.0
-initial_velocity_max = 145.0
-gravity = Vector3(0, 0, 0)
-scale_min = 0.45
-scale_max = 0.72
-color_ramp = SubResource("GradientTexture1D_attack_fan_lifetime")
-
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_skill2_fan"]
-particle_flag_disable_z = true
 particle_flag_align_y = true
-direction = Vector3(1, 0, 0)
+particle_flag_disable_z = true
 spread = 60.0
 initial_velocity_min = 125.0
 initial_velocity_max = 170.0
@@ -74,145 +71,134 @@ scale_min = 0.55
 scale_max = 0.85
 color_ramp = SubResource("GradientTexture1D_skill2_fan_lifetime")
 
-[node name="CombatRobotMainBattleElite" instance=ExtResource("1_base")]
+[node name="CombatRobotMainBattleElite" unique_id=1570788885 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
+waypoint_arrival_distance = 6.0
 metadata/runtime_visual_strategy = "high_resolution_source_preserved_linear_display"
 metadata/runtime_visual_native64_eligible = false
 
-[node name="AnimatedSprite2D" parent="." index="0"]
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 2
 position = Vector2(0, -17)
 scale = Vector2(0.125, 0.125)
 sprite_frames = ExtResource("3_frames")
 animation = &"move"
 
-[node name="CollisionShape2D" parent="." index="1"]
-position = Vector2(0, 3)
-shape = SubResource("BodyShape")
+[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
+position = Vector2(0, -0.5)
+shape = SubResource("RectangleShape2D_x046l")
 
-[node name="CollisionShape2D" parent="TouchDamageArea" index="0"]
-position = Vector2(0, 3)
-shape = SubResource("TouchShape")
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
+position = Vector2(0, -0.5)
+shape = SubResource("RectangleShape2D_llpl8")
 
-[node name="HitAudio" parent="." index="3"]
+[node name="HitAudio" parent="." index="3" unique_id=782546985]
 stream = ExtResource("5_hit_a")
 volume_db = -12.0
 max_distance = 180.0
-max_polyphony = 1
-bus = &"SFX"
 
-[node name="DeathAudio" parent="." index="4"]
+[node name="DeathAudio" parent="." index="4" unique_id=1329864117]
 stream = ExtResource("6_death")
 volume_db = -6.0
 max_distance = 220.0
-max_polyphony = 1
-bus = &"SFX"
 
-[node name="AttackWarning" type="Polygon2D" parent="." index="6"]
+[node name="AttackWarning" type="Polygon2D" parent="." index="6" unique_id=1987249159]
 visible = false
 z_index = 1
 color = Color(1, 0.28, 0.08, 0.24)
 polygon = PackedVector2Array(0, 0, 22.627, -22.627, 27.713, -16, 30.91, -8.282, 32, 0, 30.91, 8.282, 27.713, 16, 22.627, 22.627)
 
-[node name="Skill1WarningLine" type="Line2D" parent="." index="7"]
+[node name="Skill1WarningLine" type="Line2D" parent="." index="7" unique_id=887623370]
 visible = false
 z_index = 1
+points = PackedVector2Array(0, 0, 160, 0)
 width = 2.0
 default_color = Color(1, 0.24, 0.06, 0.58)
-points = PackedVector2Array(0, 0, 160, 0)
 
-[node name="Skill1CircleRing" type="Line2D" parent="." index="8"]
+[node name="Skill1CircleRing" type="Line2D" parent="." index="8" unique_id=909851932]
 visible = false
 z_index = 1
+points = PackedVector2Array(36, 0, 33.26, 13.78, 25.46, 25.46, 13.78, 33.26, 0, 36, -13.78, 33.26, -25.46, 25.46, -33.26, 13.78, -36, 0, -33.26, -13.78, -25.46, -25.46, -13.78, -33.26, 0, -36, 13.78, -33.26, 25.46, -25.46, 33.26, -13.78)
 closed = true
 width = 2.0
 default_color = Color(1, 0.3, 0.06, 0.66)
-points = PackedVector2Array(36, 0, 33.26, 13.78, 25.46, 25.46, 13.78, 33.26, 0, 36, -13.78, 33.26, -25.46, 25.46, -33.26, 13.78, -36, 0, -33.26, -13.78, -25.46, -25.46, -13.78, -33.26, 0, -36, 13.78, -33.26, 25.46, -25.46, 33.26, -13.78)
 
-[node name="Skill2CrossMarker" type="Node2D" parent="." index="9"]
+[node name="Skill2CrossMarker" type="Node2D" parent="." index="9" unique_id=1440141885]
 visible = false
 z_index = 4
 
-[node name="Horizontal" type="Line2D" parent="Skill2CrossMarker"]
-width = 2.0
-default_color = Color(1, 0.18, 0.04, 0.82)
+[node name="Horizontal" type="Line2D" parent="Skill2CrossMarker" index="0" unique_id=1274914388]
 points = PackedVector2Array(-10, 0, 10, 0)
-
-[node name="Vertical" type="Line2D" parent="Skill2CrossMarker"]
 width = 2.0
 default_color = Color(1, 0.18, 0.04, 0.82)
-points = PackedVector2Array(0, -10, 0, 10)
 
-[node name="Skill2FanWarning" type="Polygon2D" parent="." index="10"]
+[node name="Vertical" type="Line2D" parent="Skill2CrossMarker" index="1" unique_id=1389330439]
+points = PackedVector2Array(0, -10, 0, 10)
+width = 2.0
+default_color = Color(1, 0.18, 0.04, 0.82)
+
+[node name="Skill2FanWarning" type="Polygon2D" parent="." index="10" unique_id=1967886897]
 visible = false
 z_index = 1
 color = Color(1, 0.24, 0.04, 0.22)
 polygon = PackedVector2Array(0, 0, 24, -41.57, 33.94, -33.94, 41.57, -24, 46.36, -12.42, 48, 0, 46.36, 12.42, 41.57, 24, 33.94, 33.94, 24, 41.57)
 
-[node name="MoveStompAudio" type="AudioStreamPlayer2D" parent="." index="11"]
+[node name="MoveStompAudio" type="AudioStreamPlayer2D" parent="." index="11" unique_id=1635591605]
 stream = ExtResource("4_stomp_a")
 volume_db = -18.0
 max_distance = 180.0
-max_polyphony = 1
 bus = &"SFX"
 
-[node name="AttackWindupAudio" type="AudioStreamPlayer2D" parent="." index="12"]
+[node name="AttackWindupAudio" type="AudioStreamPlayer2D" parent="." index="12" unique_id=549667301]
 stream = ExtResource("7_attack_windup")
 volume_db = -14.0
 max_distance = 220.0
-max_polyphony = 1
 bus = &"SFX"
 
-[node name="AttackSlashAudio" type="AudioStreamPlayer2D" parent="." index="13"]
+[node name="AttackSlashAudio" type="AudioStreamPlayer2D" parent="." index="13" unique_id=1796705640]
 stream = ExtResource("8_attack_slash")
 volume_db = -9.0
 max_distance = 220.0
-max_polyphony = 1
 bus = &"SFX"
 
-[node name="Skill1ChargeAudio" type="AudioStreamPlayer2D" parent="." index="14"]
+[node name="Skill1ChargeAudio" type="AudioStreamPlayer2D" parent="." index="14" unique_id=2055671765]
 stream = ExtResource("9_skill1_charge")
 volume_db = -12.0
 max_distance = 220.0
-max_polyphony = 1
 bus = &"SFX"
 
-[node name="Skill1DashAudio" type="AudioStreamPlayer2D" parent="." index="15"]
+[node name="Skill1DashAudio" type="AudioStreamPlayer2D" parent="." index="15" unique_id=2013677624]
 stream = ExtResource("10_skill1_dash")
 volume_db = -11.0
 max_distance = 220.0
-max_polyphony = 1
 bus = &"SFX"
 
-[node name="Skill1CircleSlashAudio" type="AudioStreamPlayer2D" parent="." index="16"]
+[node name="Skill1CircleSlashAudio" type="AudioStreamPlayer2D" parent="." index="16" unique_id=891926855]
 stream = ExtResource("11_skill1_circle")
 volume_db = -8.0
 max_distance = 220.0
-max_polyphony = 1
 bus = &"SFX"
 
-[node name="Skill2TakeoffAudio" type="AudioStreamPlayer2D" parent="." index="17"]
+[node name="Skill2TakeoffAudio" type="AudioStreamPlayer2D" parent="." index="17" unique_id=2054110198]
 stream = ExtResource("12_skill2_takeoff")
 volume_db = -10.0
 max_distance = 220.0
-max_polyphony = 1
 bus = &"SFX"
 
-[node name="Skill2DropAudio" type="AudioStreamPlayer2D" parent="." index="18"]
+[node name="Skill2DropAudio" type="AudioStreamPlayer2D" parent="." index="18" unique_id=100653618]
 stream = ExtResource("13_skill2_drop")
 volume_db = -6.0
 max_distance = 220.0
-max_polyphony = 1
 bus = &"SFX"
 
-[node name="FanSlashVFX" type="Node2D" parent="." index="19"]
+[node name="FanSlashVFX" type="Node2D" parent="." index="19" unique_id=1118541173]
 z_index = 3
 
-[node name="AttackUpper" type="GPUParticles2D" parent="FanSlashVFX"]
+[node name="AttackUpper" type="GPUParticles2D" parent="FanSlashVFX" index="0" unique_id=1831108063]
 texture_filter = 2
+material = ExtResource("14_fan_emission")
 position = Vector2(0, -4.5)
 rotation = -0.12
-material = ExtResource("14_fan_emission")
 emitting = false
 amount = 11
 texture = SubResource("GradientTexture2D_fan_slash")
@@ -220,19 +206,17 @@ lifetime = 0.24
 one_shot = true
 explosiveness = 0.96
 randomness = 0.16
-local_coords = false
-fixed_fps = 60
-interpolate = true
 use_fixed_seed = true
 seed = 11032026
+fixed_fps = 60
 visibility_rect = Rect2(-48, -48, 96, 96)
 process_material = SubResource("ParticleProcessMaterial_attack_fan")
 
-[node name="AttackLower" type="GPUParticles2D" parent="FanSlashVFX"]
+[node name="AttackLower" type="GPUParticles2D" parent="FanSlashVFX" index="1" unique_id=691287729]
 texture_filter = 2
+material = ExtResource("14_fan_emission")
 position = Vector2(0, 4.5)
 rotation = 0.12
-material = ExtResource("14_fan_emission")
 emitting = false
 amount = 11
 texture = SubResource("GradientTexture2D_fan_slash")
@@ -240,20 +224,18 @@ lifetime = 0.24
 one_shot = true
 explosiveness = 0.96
 randomness = 0.16
-local_coords = false
-fixed_fps = 60
-interpolate = true
 use_fixed_seed = true
 seed = 11032027
+fixed_fps = 60
 visibility_rect = Rect2(-48, -48, 96, 96)
 process_material = SubResource("ParticleProcessMaterial_attack_fan")
 
-[node name="Skill2Upper" type="GPUParticles2D" parent="FanSlashVFX"]
+[node name="Skill2Upper" type="GPUParticles2D" parent="FanSlashVFX" index="2" unique_id=1628714595]
+self_modulate = Color(1.2, 1.02, 0.76, 1)
 texture_filter = 2
+material = ExtResource("14_fan_emission")
 position = Vector2(0, -5.5)
 rotation = -0.16
-material = ExtResource("14_fan_emission")
-self_modulate = Color(1.2, 1.02, 0.76, 1)
 emitting = false
 amount = 15
 texture = SubResource("GradientTexture2D_fan_slash")
@@ -261,20 +243,18 @@ lifetime = 0.3
 one_shot = true
 explosiveness = 0.97
 randomness = 0.14
-local_coords = false
-fixed_fps = 60
-interpolate = true
 use_fixed_seed = true
 seed = 22042026
+fixed_fps = 60
 visibility_rect = Rect2(-64, -64, 128, 128)
 process_material = SubResource("ParticleProcessMaterial_skill2_fan")
 
-[node name="Skill2Lower" type="GPUParticles2D" parent="FanSlashVFX"]
+[node name="Skill2Lower" type="GPUParticles2D" parent="FanSlashVFX" index="3" unique_id=1189488238]
+self_modulate = Color(1.2, 1.02, 0.76, 1)
 texture_filter = 2
+material = ExtResource("14_fan_emission")
 position = Vector2(0, 5.5)
 rotation = 0.16
-material = ExtResource("14_fan_emission")
-self_modulate = Color(1.2, 1.02, 0.76, 1)
 emitting = false
 amount = 15
 texture = SubResource("GradientTexture2D_fan_slash")
@@ -282,11 +262,9 @@ lifetime = 0.3
 one_shot = true
 explosiveness = 0.97
 randomness = 0.14
-local_coords = false
-fixed_fps = 60
-interpolate = true
 use_fixed_seed = true
 seed = 22042027
+fixed_fps = 60
 visibility_rect = Rect2(-64, -64, 128, 128)
 process_material = SubResource("ParticleProcessMaterial_skill2_fan")
 
