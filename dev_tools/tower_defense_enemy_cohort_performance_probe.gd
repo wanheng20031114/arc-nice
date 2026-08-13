@@ -99,6 +99,7 @@ var fixed_seed := DEFAULT_FIXED_SEED
 var requested_corn_count := 0
 var requested_agave_count := 0
 var requested_max_fps := 60
+var requested_window_size := Vector2i.ZERO
 var requested_navigation_interval := 0
 var requested_navigation_render_dedupe := true
 var requested_navigation_refresh_budget := true
@@ -157,7 +158,7 @@ func _parse_user_arguments() -> void:
 		elif argument.begins_with("--phase="):
 			phase = _parse_phase(argument.get_slice("=", 1))
 		elif argument.begins_with("--enemies="):
-			requested_enemy_count = maxi(int(argument.get_slice("=", 1)), 1)
+			requested_enemy_count = maxi(int(argument.get_slice("=", 1)), 0)
 		elif argument.begins_with("--fences="):
 			requested_simple_fence_count = maxi(
 				int(argument.get_slice("=", 1)),
@@ -179,6 +180,13 @@ func _parse_user_arguments() -> void:
 			requested_agave_count = maxi(int(argument.get_slice("=", 1)), 0)
 		elif argument.begins_with("--max-fps="):
 			requested_max_fps = maxi(int(argument.get_slice("=", 1)), 0)
+		elif argument.begins_with("--window-size="):
+			var components := argument.get_slice("=", 1).to_lower().split("x", false)
+			if components.size() == 2:
+				requested_window_size = Vector2i(
+					maxi(int(components[0]), 1),
+					maxi(int(components[1]), 1)
+				)
 		elif argument.begins_with("--navigation-interval="):
 			requested_navigation_interval = maxi(int(argument.get_slice("=", 1)), 0)
 		elif argument.begins_with("--navigation-render-dedupe="):
@@ -389,6 +397,9 @@ func _run() -> void:
 	game.random_generator.seed = fixed_seed
 	root.add_child(game)
 	current_scene = game
+	if requested_window_size != Vector2i.ZERO and DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_size(requested_window_size)
+		root.size = requested_window_size
 	await process_frame
 	await physics_frame
 	var runtime_setup_ms := float(
@@ -514,6 +525,7 @@ func _run() -> void:
 	for _warmup_index in range(warmup_frames):
 		await process_frame
 		_drive_player_movement()
+	print("TOWER_DEFENSE_ENEMY_COHORT_MEASURE_BEGIN")
 
 	var result := await _measure_sample_window(
 		setup_ms,
@@ -521,6 +533,7 @@ func _run() -> void:
 		runtime_setup_ms,
 		projectile_pool_startup
 	)
+	print("TOWER_DEFENSE_ENEMY_COHORT_MEASURE_END")
 	print("TOWER_DEFENSE_ENEMY_COHORT_RESULT %s" % JSON.stringify(result))
 	await _finish()
 
@@ -1227,12 +1240,19 @@ func _measure_sample_window(
 	var frame_setup_samples: Array[float] = []
 	var render_cpu_samples: Array[float] = []
 	var render_gpu_samples: Array[float] = []
+	var render_total_cpu_samples: Array[float] = []
 	var draw_call_samples: Array[float] = []
 	var render_object_samples: Array[float] = []
+	var canvas_draw_call_samples: Array[float] = []
+	var canvas_object_samples: Array[float] = []
+	var canvas_primitive_samples: Array[float] = []
 	var collision_pair_samples: Array[float] = []
 	var physics_active_samples: Array[float] = []
 	var node_count_samples: Array[float] = []
 	var static_memory_mib_samples: Array[float] = []
+	var video_memory_mib_samples: Array[float] = []
+	var texture_memory_mib_samples: Array[float] = []
+	var buffer_memory_mib_samples: Array[float] = []
 	var physics_steps_per_render_sample: Array[float] = []
 	var frame_diagnostics: Array[Dictionary] = []
 	var previous_corn_locks := _get_corn_target_lock_count()
@@ -1267,18 +1287,42 @@ func _measure_sample_window(
 		physics_samples.append(
 			Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
 		)
-		frame_setup_samples.append(RenderingServer.get_frame_setup_time_cpu())
-		render_cpu_samples.append(
+		var frame_setup_ms := RenderingServer.get_frame_setup_time_cpu()
+		var viewport_render_cpu_ms := (
 			RenderingServer.viewport_get_measured_render_time_cpu(viewport_rid)
 		)
+		frame_setup_samples.append(frame_setup_ms)
+		render_cpu_samples.append(viewport_render_cpu_ms)
 		render_gpu_samples.append(
 			RenderingServer.viewport_get_measured_render_time_gpu(viewport_rid)
 		)
+		render_total_cpu_samples.append(frame_setup_ms + viewport_render_cpu_ms)
 		draw_call_samples.append(
 			Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
 		)
 		render_object_samples.append(
 			Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)
+		)
+		canvas_draw_call_samples.append(
+			RenderingServer.viewport_get_render_info(
+				viewport_rid,
+				RenderingServer.VIEWPORT_RENDER_INFO_TYPE_CANVAS,
+				RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME
+			)
+		)
+		canvas_object_samples.append(
+			RenderingServer.viewport_get_render_info(
+				viewport_rid,
+				RenderingServer.VIEWPORT_RENDER_INFO_TYPE_CANVAS,
+				RenderingServer.VIEWPORT_RENDER_INFO_OBJECTS_IN_FRAME
+			)
+		)
+		canvas_primitive_samples.append(
+			RenderingServer.viewport_get_render_info(
+				viewport_rid,
+				RenderingServer.VIEWPORT_RENDER_INFO_TYPE_CANVAS,
+				RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME
+			)
 		)
 		collision_pair_samples.append(
 			Performance.get_monitor(Performance.PHYSICS_2D_COLLISION_PAIRS)
@@ -1289,6 +1333,18 @@ func _measure_sample_window(
 		node_count_samples.append(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
 		static_memory_mib_samples.append(
 			Performance.get_monitor(Performance.MEMORY_STATIC) / (1024.0 * 1024.0)
+		)
+		video_memory_mib_samples.append(
+			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED)
+			/ (1024.0 * 1024.0)
+		)
+		texture_memory_mib_samples.append(
+			Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED)
+			/ (1024.0 * 1024.0)
+		)
+		buffer_memory_mib_samples.append(
+			Performance.get_monitor(Performance.RENDER_BUFFER_MEM_USED)
+			/ (1024.0 * 1024.0)
 		)
 		var current_corn_locks := _get_corn_target_lock_count()
 		var current_corn_rays := _get_corn_hitscan_ray_count()
@@ -1490,12 +1546,19 @@ func _measure_sample_window(
 		"frame_setup_ms": _summarize(frame_setup_samples),
 		"render_cpu_ms": _summarize(render_cpu_samples),
 		"render_gpu_ms": _summarize(render_gpu_samples),
+		"render_total_cpu_ms": _summarize(render_total_cpu_samples),
 		"draw_calls": _summarize(draw_call_samples),
 		"render_objects": _summarize(render_object_samples),
+		"canvas_draw_calls": _summarize(canvas_draw_call_samples),
+		"canvas_objects": _summarize(canvas_object_samples),
+		"canvas_primitives": _summarize(canvas_primitive_samples),
 		"collision_pairs": _summarize(collision_pair_samples),
 		"physics_active_objects": _summarize(physics_active_samples),
 		"node_count": _summarize(node_count_samples),
 		"static_memory_mib": _summarize(static_memory_mib_samples),
+		"video_memory_mib": _summarize(video_memory_mib_samples),
+		"texture_memory_mib": _summarize(texture_memory_mib_samples),
+		"buffer_memory_mib": _summarize(buffer_memory_mib_samples),
 		"player_damage": maxi(player_health_before - game.player.current_health, 0),
 		"base_damage": maxi(base_health_before - game.current_base_health, 0),
 		"physics_frames_elapsed": Engine.get_physics_frames() - physics_frames_before,
@@ -1546,6 +1609,12 @@ func _measure_sample_window(
 		"renderer": RenderingServer.get_current_rendering_method(),
 		"render_driver": RenderingServer.get_current_rendering_driver_name(),
 		"gpu": RenderingServer.get_video_adapter_name(),
+		"requested_window_size": [requested_window_size.x, requested_window_size.y],
+		"window_size": [DisplayServer.window_get_size().x, DisplayServer.window_get_size().y],
+		"viewport_size": [
+			game.get_viewport().get_visible_rect().size.x,
+			game.get_viewport().get_visible_rect().size.y,
+		],
 	}
 
 	_expect(wall_samples.size() == sample_frames, "Every requested frame sample must be recorded.")
