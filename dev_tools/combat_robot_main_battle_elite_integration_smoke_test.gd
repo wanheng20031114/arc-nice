@@ -59,16 +59,16 @@ const AUDIO_STREAM_FIELDS := {
 	&"death_audio_stream": ["combat_robot_main_battle_elite_death.wav", 1.20],
 }
 const AUDIO_NODE_SPECS := {
-	&"MoveStompAudio": [&"move_stomp_audio_stream_a", -18.0, 180.0],
-	&"HitAudio": [&"hit_audio_stream_a", -12.0, 180.0],
-	&"DeathAudio": [&"death_audio_stream", -6.0, 220.0],
-	&"AttackWindupAudio": [&"attack_windup_audio_stream", -14.0, 220.0],
-	&"AttackSlashAudio": [&"attack_slash_audio_stream", -9.0, 220.0],
-	&"Skill1ChargeAudio": [&"skill1_charge_audio_stream", -12.0, 220.0],
-	&"Skill1DashAudio": [&"skill1_dash_audio_stream", -11.0, 220.0],
-	&"Skill1CircleSlashAudio": [&"skill1_circle_slash_audio_stream", -8.0, 220.0],
-	&"Skill2TakeoffAudio": [&"skill2_takeoff_audio_stream", -10.0, 220.0],
-	&"Skill2DropAudio": [&"skill2_drop_audio_stream", -6.0, 220.0],
+	&"MoveStompAudio": [&"move_stomp_audio_stream_a", -15.0, 180.0],
+	&"HitAudio": [&"hit_audio_stream_a", -9.0, 180.0],
+	&"DeathAudio": [&"death_audio_stream", -3.0, 220.0],
+	&"AttackWindupAudio": [&"attack_windup_audio_stream", -11.0, 220.0],
+	&"AttackSlashAudio": [&"attack_slash_audio_stream", -6.0, 220.0],
+	&"Skill1ChargeAudio": [&"skill1_charge_audio_stream", -9.0, 220.0],
+	&"Skill1DashAudio": [&"skill1_dash_audio_stream", -8.0, 220.0],
+	&"Skill1CircleSlashAudio": [&"skill1_circle_slash_audio_stream", -5.0, 220.0],
+	&"Skill2TakeoffAudio": [&"skill2_takeoff_audio_stream", -7.0, 220.0],
+	&"Skill2DropAudio": [&"skill2_drop_audio_stream", -3.0, 220.0],
 }
 
 var failures: Array[String] = []

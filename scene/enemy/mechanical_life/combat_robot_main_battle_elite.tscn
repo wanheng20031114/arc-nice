@@ -94,12 +94,12 @@ shape = SubResource("RectangleShape2D_llpl8")
 
 [node name="HitAudio" parent="." index="3" unique_id=782546985]
 stream = ExtResource("5_hit_a")
-volume_db = -12.0
+volume_db = -9.0
 max_distance = 180.0
 
 [node name="DeathAudio" parent="." index="4" unique_id=1329864117]
 stream = ExtResource("6_death")
-volume_db = -6.0
+volume_db = -3.0
 max_distance = 220.0
 
 [node name="AttackWarning" type="Polygon2D" parent="." index="6" unique_id=1987249159]
@@ -145,49 +145,49 @@ polygon = PackedVector2Array(0, 0, 24, -41.57, 33.94, -33.94, 41.57, -24, 46.36,
 
 [node name="MoveStompAudio" type="AudioStreamPlayer2D" parent="." index="11" unique_id=1635591605]
 stream = ExtResource("4_stomp_a")
-volume_db = -18.0
+volume_db = -15.0
 max_distance = 180.0
 bus = &"SFX"
 
 [node name="AttackWindupAudio" type="AudioStreamPlayer2D" parent="." index="12" unique_id=549667301]
 stream = ExtResource("7_attack_windup")
-volume_db = -14.0
+volume_db = -11.0
 max_distance = 220.0
 bus = &"SFX"
 
 [node name="AttackSlashAudio" type="AudioStreamPlayer2D" parent="." index="13" unique_id=1796705640]
 stream = ExtResource("8_attack_slash")
-volume_db = -9.0
+volume_db = -6.0
 max_distance = 220.0
 bus = &"SFX"
 
 [node name="Skill1ChargeAudio" type="AudioStreamPlayer2D" parent="." index="14" unique_id=2055671765]
 stream = ExtResource("9_skill1_charge")
-volume_db = -12.0
+volume_db = -9.0
 max_distance = 220.0
 bus = &"SFX"
 
 [node name="Skill1DashAudio" type="AudioStreamPlayer2D" parent="." index="15" unique_id=2013677624]
 stream = ExtResource("10_skill1_dash")
-volume_db = -11.0
+volume_db = -8.0
 max_distance = 220.0
 bus = &"SFX"
 
 [node name="Skill1CircleSlashAudio" type="AudioStreamPlayer2D" parent="." index="16" unique_id=891926855]
 stream = ExtResource("11_skill1_circle")
-volume_db = -8.0
+volume_db = -5.0
 max_distance = 220.0
 bus = &"SFX"
 
 [node name="Skill2TakeoffAudio" type="AudioStreamPlayer2D" parent="." index="17" unique_id=2054110198]
 stream = ExtResource("12_skill2_takeoff")
-volume_db = -10.0
+volume_db = -7.0
 max_distance = 220.0
 bus = &"SFX"
 
 [node name="Skill2DropAudio" type="AudioStreamPlayer2D" parent="." index="18" unique_id=100653618]
 stream = ExtResource("13_skill2_drop")
-volume_db = -6.0
+volume_db = -3.0
 max_distance = 220.0
 bus = &"SFX"
 

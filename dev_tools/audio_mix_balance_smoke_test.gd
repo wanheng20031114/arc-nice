@@ -186,16 +186,16 @@ func _test_main_battle_robot_mix() -> void:
 	root.add_child(enemy)
 	await process_frame
 	var audio_specs := {
-		"MoveStompAudio": [-18.0, 180.0],
-		"HitAudio": [-12.0, 180.0],
-		"DeathAudio": [-6.0, 220.0],
-		"AttackWindupAudio": [-14.0, 220.0],
-		"AttackSlashAudio": [-9.0, 220.0],
-		"Skill1ChargeAudio": [-12.0, 220.0],
-		"Skill1DashAudio": [-11.0, 220.0],
-		"Skill1CircleSlashAudio": [-8.0, 220.0],
-		"Skill2TakeoffAudio": [-10.0, 220.0],
-		"Skill2DropAudio": [-6.0, 220.0],
+		"MoveStompAudio": [-15.0, 180.0],
+		"HitAudio": [-9.0, 180.0],
+		"DeathAudio": [-3.0, 220.0],
+		"AttackWindupAudio": [-11.0, 220.0],
+		"AttackSlashAudio": [-6.0, 220.0],
+		"Skill1ChargeAudio": [-9.0, 220.0],
+		"Skill1DashAudio": [-8.0, 220.0],
+		"Skill1CircleSlashAudio": [-5.0, 220.0],
+		"Skill2TakeoffAudio": [-7.0, 220.0],
+		"Skill2DropAudio": [-3.0, 220.0],
 	}
 	for node_name in audio_specs:
 		var spec := audio_specs[node_name] as Array
