@@ -221,11 +221,10 @@ func _test_authoritative_damage_boost_contract() -> void:
 		"已有0.5倍减速必须先把80基础移速降至40。"
 	)
 
-	var accepted := ninja.apply_damage(
+	var accepted := _apply_damage_without_hit_flash(
+		ninja,
 		11,
-		Vector2.LEFT,
-		EnemyConfig.DamageType.PHYSICAL,
-		false
+		Vector2.LEFT
 	)
 	_expect(accepted, "非致死实际扣血必须被伤害入口接受。")
 	_expect(
@@ -262,11 +261,10 @@ func _test_authoritative_damage_boost_contract() -> void:
 
 	var boost_time_before_second_hit := ninja.boost_timer.time_left
 	var cooldown_time_before_second_hit := ninja.cooldown_timer.time_left
-	ninja.apply_damage(
+	_apply_damage_without_hit_flash(
+		ninja,
 		11,
-		Vector2.RIGHT,
-		EnemyConfig.DamageType.PHYSICAL,
-		false
+		Vector2.RIGHT
 	)
 	_expect(
 		test_root.enemy_actions.size() == 1
@@ -318,11 +316,10 @@ func _test_authoritative_damage_boost_contract() -> void:
 	)
 
 	var actions_before_cooldown_hit := test_root.enemy_actions.size()
-	ninja.apply_damage(
+	_apply_damage_without_hit_flash(
+		ninja,
 		11,
-		Vector2.ZERO,
-		EnemyConfig.DamageType.PHYSICAL,
-		false
+		Vector2.ZERO
 	)
 	_expect(
 		test_root.enemy_actions.size() == actions_before_cooldown_hit
@@ -330,11 +327,10 @@ func _test_authoritative_damage_boost_contract() -> void:
 		"冷却中的实际扣血不得再次启动加速。"
 	)
 	ninja.call("_on_cooldown_timer_timeout")
-	ninja.apply_damage(
+	_apply_damage_without_hit_flash(
+		ninja,
 		11,
-		Vector2.ZERO,
-		EnemyConfig.DamageType.PHYSICAL,
-		false
+		Vector2.ZERO
 	)
 	_expect(
 		ninja.is_damage_boost_active()
@@ -781,7 +777,12 @@ func _test_lifecycle_cleanup_contract() -> void:
 		EnemyConfig.DamageType.PHYSICAL,
 		false
 	)
-	_expect(ninja.is_damage_boost_active(), "清理测试前必须成功启动加速。")
+	_expect(
+		ninja.is_damage_boost_active()
+		and ninja.animated_sprite.material != null,
+		"清理测试前必须同时启动加速与真实受击闪白。"
+	)
+	var ninja_reference: WeakRef = weakref(ninja)
 	var removed := ninja.remove_for_home_escape()
 	_expect(
 		removed
@@ -789,10 +790,26 @@ func _test_lifecycle_cleanup_contract() -> void:
 		and not ninja.is_damage_boost_active()
 		and ninja.boost_timer.is_stopped()
 		and ninja.cooldown_timer.is_stopped()
-		and ninja.animated_sprite.material == null,
-		"进入基地必须停止Timer、尾影、动作与速度状态。"
+		and not ninja.visible
+		and ninja.is_queued_for_deletion(),
+		"进入基地必须停止Timer与动作、隐藏本体并排队释放。"
 	)
 	await process_frame
+	_expect(
+		ninja_reference.get_ref() == null,
+		"进入基地后的下一帧必须完成本体与受击闪白材质清理。"
+	)
+
+
+func _apply_damage_without_hit_flash(
+	ninja: CombatRobotNinja,
+	amount: int,
+	impact_direction: Vector2
+) -> bool:
+	var request := DamageRequest.new(amount, CombatTypes.DamageType.PHYSICAL)
+	request.with_directions(impact_direction)
+	request.with_flag(CombatTypes.DamageFlag.SUPPRESS_HIT_FLASH)
+	return ninja.apply_combat_damage(request).accepted
 
 
 func _spawn_ninja(proxy: bool) -> CombatRobotNinja:

@@ -4,6 +4,20 @@ const TOWER_SCENE := preload(
 	"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
 )
 const ENEMY_CONFIG := preload("res://resources/config/enemies/slime.tres")
+const EXPECTED_NORMAL_WAVE_ENEMY_COUNT := 63
+const EXPECTED_ROBOT_IDS := [
+	"combat_robot",
+	"combat_robot_elite",
+	"combat_robot_gunner",
+	"combat_robot_gunner_elite",
+	"combat_robot_drone_operator",
+	"combat_robot_drone_operator_elite",
+	"combat_robot_shield_bearer",
+	"combat_robot_shield_bearer_elite",
+	"combat_robot_ninja",
+	"combat_robot_ninja_elite",
+	"combat_robot_main_battle_elite",
+]
 
 var failures: Array[String] = []
 
@@ -28,6 +42,8 @@ func _run() -> void:
 	_expect(game.enemy_coordinator.next_multiplayer_enemy_net_id == 47, "net id 未由 EnemyCoordinator 持有。")
 	_expect(game.enemy_coordinator.enemy_retarget_cursor == 9, "retarget cursor 未由 EnemyCoordinator 持有。")
 
+	await _exercise_full_catalog_tower_spawn(game)
+	game.enemy_coordinator.next_multiplayer_enemy_net_id = 47
 	await _exercise_spawn_terminal_chain(game)
 
 	current_scene = null
@@ -42,6 +58,106 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _exercise_full_catalog_tower_spawn(game: TowerDefenseGame) -> void:
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	game.campaign_coordinator.wave_state = CombatFlowState.State.INTERMISSION
+	game.enemy_coordinator.clear_queue()
+	game.enemy_coordinator.clear_active_enemies()
+	game.enemy_coordinator.clear_hud_enemies()
+	game.enemy_coordinator.active_wave_spawn_points.clear()
+	game.enemy_coordinator.active_wave_spawn_points.append_array(
+		game.enemy_coordinator.enemy_spawn_points
+	)
+	_expect(game.tower_grid_pathfinder.is_built, "塔防正式 GridPathfinder 尚未建立。")
+	_expect(
+		not game.enemy_coordinator.active_wave_spawn_points.is_empty(),
+		"塔防正式场景没有可用的敌人出生点。"
+	)
+	var home_targets := game.get_home_objective_targets()
+	_expect(not home_targets.is_empty(), "塔防正式场景没有可用的 Home 目标。")
+	if (
+		not game.tower_grid_pathfinder.is_built
+		or game.enemy_coordinator.active_wave_spawn_points.is_empty()
+		or home_targets.is_empty()
+	):
+		return
+
+	var normal_wave_enemy_count := 0
+	var robot_ids_seen := {}
+	var validated_navigation_profiles := {}
+	for entry in EnemyCodexRegistry.get_all_entries():
+		if entry.rank == EnemyCodexEntryConfig.Rank.BOSS:
+			continue
+		normal_wave_enemy_count += 1
+		var entry_id := String(entry.entry_id)
+		if entry_id in EXPECTED_ROBOT_IDS:
+			robot_ids_seen[entry_id] = true
+		var enemy_config := entry.enemy_config
+		_expect(enemy_config != null, "图鉴敌人缺少 EnemyConfig：%s" % entry_id)
+		if enemy_config == null or enemy_config.enemy_scene == null:
+			continue
+
+		var probe := enemy_config.enemy_scene.instantiate() as Enemy
+		_expect(probe != null, "敌人场景无法实例化为 Enemy：%s" % entry_id)
+		if probe == null:
+			continue
+		var body_half_extents := probe.get_configured_body_collision_half_extents()
+		probe.free()
+		_expect(body_half_extents.x > 0.0 and body_half_extents.y > 0.0, "敌人体型无效：%s" % entry_id)
+		var profile_key := "%d:%d:%d" % [
+			ceili(body_half_extents.x),
+			ceili(body_half_extents.y),
+			enemy_config.terrain_traversal_types,
+		]
+		if not validated_navigation_profiles.has(profile_key):
+			validated_navigation_profiles[profile_key] = true
+			for spawn_point in game.enemy_coordinator.enemy_spawn_points:
+				var has_home_path := false
+				for home_target in home_targets:
+					var path := game.tower_grid_pathfinder.get_global_path(
+						spawn_point.global_position,
+						home_target.global_position,
+						body_half_extents,
+						enemy_config.terrain_traversal_types
+					)
+					if not path.is_empty():
+						has_home_path = true
+						break
+				_expect(
+					has_home_path,
+					"敌人体型无法从出生点 %s 到达任一 Home：%s" % [
+						spawn_point.name,
+						entry_id,
+					]
+				)
+
+		var expected_net_id := game.enemy_coordinator.next_multiplayer_enemy_net_id
+		var spawned := game.enemy_coordinator.try_spawn_enemy(enemy_config)
+		_expect(spawned, "塔防 EnemyCoordinator 无法生成敌人：%s" % entry_id)
+		var spawned_enemy := game.enemy_coordinator.get_enemy(expected_net_id)
+		_expect(spawned_enemy != null, "塔防敌人未进入多人稳定索引：%s" % entry_id)
+		if spawned_enemy != null:
+			spawned_enemy.process_mode = Node.PROCESS_MODE_DISABLED
+			_expect(spawned_enemy.config == enemy_config, "生成敌人配置发生漂移：%s" % entry_id)
+			spawned_enemy.queue_free()
+			await process_frame
+			await physics_frame
+			_expect(
+				game.enemy_coordinator.get_enemy(expected_net_id) == null,
+				"敌人退出后多人索引残留：%s" % entry_id
+			)
+
+	_expect(
+		normal_wave_enemy_count == EXPECTED_NORMAL_WAVE_ENEMY_COUNT,
+		"塔防可配置敌人必须完整覆盖63个非Boss图鉴条目。"
+	)
+	for robot_id in EXPECTED_ROBOT_IDS:
+		_expect(robot_ids_seen.has(robot_id), "塔防可配置敌人缺少机器人：%s" % robot_id)
+	game.enemy_coordinator.clear_active_enemies()
+	game.enemy_coordinator.clear_hud_enemies()
+	game.enemy_coordinator.active_wave_spawn_points.clear()
 
 
 func _exercise_spawn_terminal_chain(game: TowerDefenseGame) -> void:

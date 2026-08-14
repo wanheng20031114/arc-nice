@@ -15,6 +15,20 @@ const PROGRESSION_CONFIG_PATH := (
 )
 const COMBAT_MUSIC := "res://resources/audio/shenmu_forest_combat.ogg"
 const REST_MUSIC := "res://resources/audio/shenmu_forest_intermission.ogg"
+const EXPECTED_NORMAL_WAVE_ENEMY_COUNT := 63
+const EXPECTED_ROBOT_IDS := [
+	"combat_robot",
+	"combat_robot_elite",
+	"combat_robot_gunner",
+	"combat_robot_gunner_elite",
+	"combat_robot_drone_operator",
+	"combat_robot_drone_operator_elite",
+	"combat_robot_shield_bearer",
+	"combat_robot_shield_bearer_elite",
+	"combat_robot_ninja",
+	"combat_robot_ninja_elite",
+	"combat_robot_main_battle_elite",
+]
 
 var failures := PackedStringArray()
 var temporary_files := PackedStringArray()
@@ -49,6 +63,23 @@ func _init() -> void:
 	_expect(
 		_production_snapshot_matches(production_snapshot),
 		"默认只校验模式不得创建、删除或修改任何正式波次/流程文件。"
+	)
+
+	var full_catalog_document := _build_full_catalog_document()
+	var full_catalog_path := "%s/full_catalog.json" % test_directory
+	_expect(_write_json(full_catalog_path, full_catalog_document), "应能写出全敌人目录测试 JSON。")
+	var full_catalog_result := _run_importer(full_catalog_path)
+	_expect(
+		int(full_catalog_result["exit_code"]) == 0,
+		"EnemyCodexRegistry 中全部非Boss敌人都应可进入塔防普通波次。"
+	)
+	_expect(
+		String(full_catalog_result["output"]).contains("TOWER_DEFENSE_WAVE_IMPORT_VALIDATE_OK"),
+		"全敌人目录校验应输出成功标记。"
+	)
+	_expect(
+		_production_snapshot_matches(production_snapshot),
+		"全敌人目录只校验不得修改正式资源。"
 	)
 
 	var short_document := valid_document.duplicate(true) as Dictionary
@@ -175,6 +206,35 @@ func _build_valid_document() -> Dictionary:
 		"daily_rogue_action_points": [5, 5, 5],
 		"waves": waves,
 	}
+
+
+func _build_full_catalog_document() -> Dictionary:
+	var document := _build_valid_document()
+	var waves := document["waves"] as Array
+	for wave_index in range(4):
+		(waves[wave_index] as Dictionary)["entries"] = []
+	var non_boss_ids := PackedStringArray()
+	var robot_ids_seen := {}
+	for entry in EnemyCodexRegistry.get_all_entries():
+		if entry.rank == EnemyCodexEntryConfig.Rank.BOSS:
+			continue
+		non_boss_ids.append(String(entry.entry_id))
+		if String(entry.entry_id) in EXPECTED_ROBOT_IDS:
+			robot_ids_seen[String(entry.entry_id)] = true
+		var wave_index := floori(float(non_boss_ids.size() - 1) / 18.0)
+		var wave_entries := (waves[wave_index] as Dictionary)["entries"] as Array
+		wave_entries.append({
+			"enemy_id": String(entry.entry_id),
+			"count": 1,
+			"xirang_kill_reward_override": -1,
+		})
+	_expect(
+		non_boss_ids.size() == EXPECTED_NORMAL_WAVE_ENEMY_COUNT,
+		"塔防普通波次目录必须与图鉴注册表的63个非Boss敌人完全一致。"
+	)
+	for robot_id in EXPECTED_ROBOT_IDS:
+		_expect(robot_ids_seen.has(robot_id), "塔防普通波次目录缺少机器人：%s" % robot_id)
+	return document
 
 
 func _run_importer(

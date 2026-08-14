@@ -34,15 +34,10 @@ const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 const ELITE_CONFIG_REFERENCE := (
 	"res://resources/config/enemies/combat_robot_gunner_elite.tres"
 )
-const SUITCASE_BATTLE_GUNNER_ENTRY := (
-	"res://resources/config/campaigns/rogue_combat/suitcase_battle/entries/gunner_elite.tres"
-)
 const ZERO_DIRECT_REFERENCE_ROOTS := {
 	"正式标准单人波次": "res://resources/config/campaigns/standard/singleplayer",
 	"正式标准多人波次": "res://resources/config/campaigns/standard/multiplayer",
-	"正式塔防波次": "res://resources/config/campaigns/tower_defense/formal",
 	"旧正式波次": "res://resources/config/waves",
-	"肉鸽战斗波次": "res://resources/config/campaigns/rogue_combat",
 	"肉鸽遭遇配置": "res://resources/config/rogue_combat",
 	"P1B单人": "res://resources/config/campaigns/test_arena/p1b/singleplayer",
 	"P1B多人": "res://resources/config/campaigns/test_arena/p1b/multiplayer",
@@ -380,16 +375,9 @@ func _test_zero_direct_wave_references() -> void:
 	for label: String in ZERO_DIRECT_REFERENCE_ROOTS:
 		var directory_path: String = ZERO_DIRECT_REFERENCE_ROOTS[label]
 		var references := _find_text_references(directory_path, ELITE_CONFIG_REFERENCE)
-		references.sort()
-		var expected: Array[String] = []
-		if label == "肉鸽战斗波次":
-			expected.append(SUITCASE_BATTLE_GUNNER_ENTRY)
 		_expect(
-			references == expected,
-			(
-				"%s只允许皮箱之战的唯一精英枪手条目；expected=%s actual=%s"
-				% [label, expected, references]
-			)
+			references.is_empty(),
+			"%s不得直接引用精英枪手配置：%s" % [label, references]
 		)
 
 

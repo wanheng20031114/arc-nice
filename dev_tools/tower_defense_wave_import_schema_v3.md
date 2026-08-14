@@ -69,6 +69,10 @@ Godot.exe --headless --path . --script res://dev_tools/import_tower_defense_wave
 | `count` | 整数 | `1..9999` |
 | `xirang_kill_reward_override` | 整数 | `-1` 继承敌人默认值，或 `0..999` 覆盖本波击杀息壤 |
 
+`enemy_id` 的唯一真相源是 `EnemyCodexRegistry`：除 `Rank.BOSS` 外的全部条目都可用于普通波次，不能维护额外的塔防白名单。当前设计器会完整列出 63 个非 Boss 敌人，其中包含 11 个机械生命机器人。铃兰继续由第 4 日专用 Boss 流程管理，不出现在普通波次下拉中。
+
+持枪机器人的子弹、无人机操作员部署的自爆无人机等运行时投射物没有独立 `EnemyConfig`，也不参与 Home 伤害、击杀奖励或波次存活计数，因此不属于可配置敌人目录。
+
 ## 最小结构示例
 
 ```json
