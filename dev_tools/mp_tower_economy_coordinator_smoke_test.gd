@@ -88,8 +88,8 @@ func _test_static_boundary(coordinator: MpTowerEconomyCoordinator) -> void:
 	var rpc_pattern := RegEx.new()
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
-		rpc_pattern.search_all(source).size() == 126,
-		"Tower economy extraction must preserve all 126 MpGame RPC facades."
+		rpc_pattern.search_all(source).size() == 144,
+		"Tower economy extraction must preserve all 144 protocol-v72 MpGame RPC facades."
 	)
 	for function_name in [
 		"net_warehouse_command_requested",
@@ -246,9 +246,14 @@ func _rpc_entry_captures_sender_first(source: String, function_name: String) -> 
 	var line_end := source.find("\n", body_offset)
 	if line_end < 0:
 		return false
-	return source.substr(body_offset, line_end - body_offset).strip_edges() == (
-		"var sender_id := multiplayer.get_remote_sender_id()"
-	)
+	var first_line := source.substr(
+		body_offset,
+		line_end - body_offset
+	).strip_edges()
+	return first_line in [
+		"var sender_id := multiplayer.get_remote_sender_id()",
+		"var sender_id := _get_rpc_sender_id()",
+	]
 
 
 func _rpc_entry_uses_shared_admission_before_economy(

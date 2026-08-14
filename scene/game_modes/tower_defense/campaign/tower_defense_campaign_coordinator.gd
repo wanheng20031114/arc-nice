@@ -3,6 +3,10 @@ class_name TowerDefenseCampaignCoordinator
 
 const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.025
 const MAX_WAVE_SPAWN_COUNT_PER_TICK := 4
+const FORMAL_FOUR_DAY_CAMPAIGN_IDS: Array[StringName] = [
+	&"tower_defense_singleplayer",
+	&"tower_defense_multiplayer",
+]
 
 signal remote_flow_state_applied(
 	step_id: StringName,
@@ -52,6 +56,7 @@ var _boss_coordinator: TowerDefenseBossCoordinator
 var _player_roster_coordinator: TowerDefensePlayerRosterCoordinator
 var _prewarmer_coordinator: TowerDefensePrewarmerCoordinator
 var _fate_flow_coordinator: TowerDefenseFateFlowCoordinator
+var _rogue_exploration_coordinator: TowerDefenseRogueExplorationCoordinator
 var _multiplayer_adapter: TowerDefenseMultiplayerModeAdapter
 var _plant_placement_coordinator: TowerDefensePlantPlacementCoordinator
 var _home_defense_coordinator: TowerDefenseHomeDefenseCoordinator
@@ -123,6 +128,7 @@ func setup_runtime(
 	player_roster_coordinator: TowerDefensePlayerRosterCoordinator,
 	prewarmer_coordinator: TowerDefensePrewarmerCoordinator,
 	fate_flow_coordinator: TowerDefenseFateFlowCoordinator,
+	rogue_exploration_coordinator: TowerDefenseRogueExplorationCoordinator,
 	multiplayer_adapter: TowerDefenseMultiplayerModeAdapter,
 	plant_placement_coordinator: TowerDefensePlantPlacementCoordinator,
 	home_defense_coordinator: TowerDefenseHomeDefenseCoordinator,
@@ -142,6 +148,7 @@ func setup_runtime(
 	_player_roster_coordinator = player_roster_coordinator
 	_prewarmer_coordinator = prewarmer_coordinator
 	_fate_flow_coordinator = fate_flow_coordinator
+	_rogue_exploration_coordinator = rogue_exploration_coordinator
 	_multiplayer_adapter = multiplayer_adapter
 	_plant_placement_coordinator = plant_placement_coordinator
 	_home_defense_coordinator = home_defense_coordinator
@@ -167,6 +174,7 @@ func is_runtime_bound() -> bool:
 		and _player_roster_coordinator != null
 		and _prewarmer_coordinator != null
 		and _fate_flow_coordinator != null
+		and _rogue_exploration_coordinator != null
 		and _multiplayer_adapter != null
 		and _plant_placement_coordinator != null
 		and _home_defense_coordinator != null
@@ -337,7 +345,13 @@ func request_wave_start(requester_peer_id: int = 0) -> bool:
 	if flow_step == null or countdown_seconds <= TowerDefensePresentationCoordinator.COUNTDOWN_FINAL_SECONDS:
 		return false
 	countdown_seconds = TowerDefensePresentationCoordinator.COUNTDOWN_FINAL_SECONDS
-	_presentation_coordinator.show_countdown(countdown_seconds, false)
+	if _is_day_four_boss_preparation():
+		_presentation_coordinator.show_day_four_boss_preparation(
+			countdown_seconds,
+			false
+		)
+	else:
+		_presentation_coordinator.show_countdown(countdown_seconds, false)
 	_presentation_coordinator.play_countdown_tick()
 	_state_timer.start(1.0)
 	publish_flow_state(wave_state)
@@ -477,10 +491,16 @@ func on_state_timer_timeout() -> void:
 
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
 	if countdown_seconds > 0:
-		_presentation_coordinator.show_countdown(
-			countdown_seconds,
-			can_local_player_start_wave_early()
-		)
+		if _is_day_four_boss_preparation():
+			_presentation_coordinator.show_day_four_boss_preparation(
+				countdown_seconds,
+				can_local_player_start_wave_early()
+			)
+		else:
+			_presentation_coordinator.show_countdown(
+				countdown_seconds,
+				can_local_player_start_wave_early()
+			)
 		if countdown_seconds <= TowerDefensePresentationCoordinator.COUNTDOWN_FINAL_SECONDS:
 			_presentation_coordinator.play_countdown_tick()
 		return
@@ -502,6 +522,8 @@ func start_client_flow_countdown(
 	var flow_step := get_flow_step_by_id(step_id)
 	if flow_step != null:
 		current_flow_step = flow_step
+		if state == CombatFlowState.State.INTERMISSION:
+			next_flow_step_after_rest = flow_step
 		if flow_step is WaveConfig:
 			current_wave_index = get_wave_number_for_step(
 				flow_step as WaveConfig,
@@ -514,10 +536,16 @@ func start_client_flow_countdown(
 		_multiplayer_adapter.set_local_merchants_active(true)
 		_presentation_coordinator.update_post_wave_music(flow_step)
 	countdown_seconds = maxi(seconds, 0)
-	_presentation_coordinator.show_countdown(
-		countdown_seconds,
-		can_local_player_start_wave_early()
-	)
+	if _is_day_four_boss_preparation():
+		_presentation_coordinator.show_day_four_boss_preparation(
+			countdown_seconds,
+			false
+		)
+	else:
+		_presentation_coordinator.show_countdown(
+			countdown_seconds,
+			can_local_player_start_wave_early()
+		)
 	_presentation_coordinator.play_client_countdown_tick_if_new(
 		state,
 		step_id,
@@ -537,10 +565,16 @@ func update_client_flow_countdown() -> void:
 		_state_timer.stop()
 		return
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
-	_presentation_coordinator.show_countdown(
-		countdown_seconds,
-		can_local_player_start_wave_early()
-	)
+	if _is_day_four_boss_preparation():
+		_presentation_coordinator.show_day_four_boss_preparation(
+			countdown_seconds,
+			false
+		)
+	else:
+		_presentation_coordinator.show_countdown(
+			countdown_seconds,
+			can_local_player_start_wave_early()
+		)
 	if countdown_seconds <= 0:
 		_state_timer.stop()
 		return
@@ -592,10 +626,18 @@ func apply_remote_flow_state(
 			_presentation_coordinator.transition_world_to_day()
 			start_client_flow_countdown(typed_state, step_id, seconds)
 		CombatFlowState.State.INTERMISSION:
-			_presentation_coordinator.apply_intermission_lighting(
-				maxi(current_wave_index + 1, 1)
-			)
-			start_client_flow_countdown(typed_state, step_id, seconds)
+			if flow_step is BossConfig and is_formal_four_day_campaign():
+				_presentation_coordinator.transition_world_to_day()
+				start_client_flow_countdown(typed_state, step_id, seconds)
+				_presentation_coordinator.show_day_four_boss_preparation(
+					seconds,
+					false
+				)
+			else:
+				_presentation_coordinator.apply_intermission_lighting(
+					maxi(current_wave_index + 1, 1)
+				)
+				start_client_flow_countdown(typed_state, step_id, seconds)
 		CombatFlowState.State.WAVE_ACTIVE:
 			_state_timer.stop()
 			wave_state = CombatFlowState.State.WAVE_ACTIVE
@@ -610,11 +652,15 @@ func apply_remote_flow_state(
 			if not phase_started:
 				_presentation_coordinator.play_wave_start_audio()
 		CombatFlowState.State.BOSS_INTRO:
+			if flow_step is BossConfig and is_formal_four_day_campaign():
+				_presentation_coordinator.transition_world_to_day()
 			_boss_coordinator.apply_remote_flow_state(
 				CombatFlowState.State.BOSS_INTRO,
 				flow_step as BossConfig
 			)
 		CombatFlowState.State.BOSS_ACTIVE:
+			if flow_step is BossConfig and is_formal_four_day_campaign():
+				_presentation_coordinator.transition_world_to_day()
 			_boss_coordinator.apply_remote_flow_state(
 				CombatFlowState.State.BOSS_ACTIVE,
 				flow_step as BossConfig
@@ -623,6 +669,11 @@ func apply_remote_flow_state(
 			_fate_flow_coordinator.apply_remote_interlude_flow(
 				get_day_number_for_wave(maxi(current_wave_index + 1, 1))
 			)
+		CombatFlowState.State.ROGUE_EXPLORATION:
+			_state_timer.stop()
+			_enemy_spawn_timer.stop()
+			wave_state = CombatFlowState.State.ROGUE_EXPLORATION
+			_multiplayer_adapter.set_local_merchants_active(false)
 		CombatFlowState.State.VICTORY:
 			enter_victory(false)
 		CombatFlowState.State.DEFEAT:
@@ -665,6 +716,16 @@ func complete_current_step() -> void:
 		enter_victory()
 		return
 	if completed_day:
+		var completed_day_number := get_day_number_for_wave(
+			completed_wave_number
+		)
+		if should_enter_daily_rogue_exploration(completed_wave_number):
+			if not _rogue_exploration_coordinator.enter_exploration(
+				completed_day_number,
+				next_step
+			):
+				enter_defeat()
+			return
 		_fate_flow_coordinator.enter_interlude(next_step)
 		return
 	enter_intermission(next_step)
@@ -676,6 +737,69 @@ func resume_flow_after_fate_interlude(next_step_id: StringName) -> void:
 		enter_victory()
 		return
 	enter_intermission(next_step)
+
+
+func should_enter_daily_rogue_exploration(completed_wave_number: int) -> bool:
+	return (
+		_rogue_exploration_coordinator != null
+		and is_formal_four_day_campaign()
+		and completed_wave_number in [4, 8, 12]
+	)
+
+
+func is_formal_four_day_campaign() -> bool:
+	return (
+		active_campaign != null
+		and active_campaign.campaign_id in FORMAL_FOUR_DAY_CAMPAIGN_IDS
+		and waves.size() == 12
+		and _progression_config != null
+		and _progression_config.daily_rogue_action_points.size()
+		== TowerDefenseProgressionConfig.ROGUE_EXPLORATION_DAY_COUNT
+	)
+
+
+func _is_day_four_boss_preparation() -> bool:
+	return (
+		wave_state == CombatFlowState.State.INTERMISSION
+		and next_flow_step_after_rest is BossConfig
+		and is_formal_four_day_campaign()
+	)
+
+
+func resume_flow_after_rogue_exploration(next_step_id: StringName) -> void:
+	var next_step := get_flow_step_by_id(next_step_id)
+	if next_step == null:
+		enter_victory()
+		return
+	if next_step is BossConfig:
+		enter_day_four_boss_preparation(next_step as BossConfig)
+		return
+	enter_intermission(next_step)
+
+
+func enter_day_four_boss_preparation(boss_step: BossConfig) -> void:
+	if boss_step == null:
+		enter_victory()
+		return
+	wave_state = CombatFlowState.State.INTERMISSION
+	current_flow_step = boss_step
+	next_flow_step_after_rest = boss_step
+	_enemy_spawn_timer.stop()
+	_multiplayer_adapter.set_merchant_active(true)
+	countdown_seconds = get_new_day_preparation_seconds()
+	_presentation_coordinator.transition_world_to_day()
+	_presentation_coordinator.show_day_four_boss_preparation(
+		countdown_seconds,
+		can_local_player_start_wave_early()
+	)
+	_player_roster_coordinator.force_revive_dead_players(true)
+	publish_flow_state(CombatFlowState.State.INTERMISSION)
+	if countdown_seconds <= 0:
+		begin_flow_step(boss_step)
+		return
+	if countdown_seconds <= TowerDefensePresentationCoordinator.COUNTDOWN_FINAL_SECONDS:
+		_presentation_coordinator.play_countdown_tick()
+	_state_timer.start(1.0)
 
 
 func enter_victory(emit_multiplayer: bool = true) -> void:

@@ -22,6 +22,7 @@ signal boss_started(
 signal defeat_started
 signal victory_started
 signal revive_all_requested
+signal restore_all_full_health_requested
 signal profile_upgrade_requested(stat_type: int)
 signal profile_inventory_item_use_requested(slot_index: int)
 signal profile_inventory_item_discard_requested(slot_index: int)

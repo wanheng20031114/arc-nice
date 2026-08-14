@@ -43,6 +43,23 @@ const FEEDBACK_RPC_METHODS := {
 	&"net_plant_health_batch": true,
 	&"net_tower_defense_wave_progress_changed": true,
 }
+const AUTH_RPC_METHODS := {
+	&"net_tower_rogue_exploration_snapshot": true,
+	&"net_request_route_full_snapshot": true,
+	&"net_route_full_snapshot": true,
+	&"net_route_move_delta": true,
+	&"net_route_briefing_state": true,
+	&"net_route_briefing_cover_ready": true,
+	&"net_route_encounter_intro_ack": true,
+	&"net_route_encounter_vote": true,
+	&"net_route_encounter_result_ack": true,
+	&"net_route_encounter_snapshot": true,
+	&"net_shop_purchase_request": true,
+	&"net_shop_sell_request": true,
+	&"net_shop_exit_ack": true,
+	&"net_shop_snapshot": true,
+	&"net_route_avatar_corrected": true,
+}
 
 var _snapshot_packet_warn_time_left := 0.0
 var _max_player_snapshot_packet_bytes := 0
@@ -101,6 +118,12 @@ func set_rpc_payload_diagnostics_enabled(enabled: bool) -> void:
 
 
 static func get_rpc_traffic_channel(method_name: StringName) -> int:
+	if method_name == &"net_route_avatar_input":
+		return _NetConstants.CH_INPUT
+	if method_name == &"net_route_avatar_snapshot":
+		return _NetConstants.CH_PLAYER_STATE
+	if AUTH_RPC_METHODS.has(method_name):
+		return _NetConstants.CH_AUTH
 	if (
 		method_name == &"net_projectile_fired"
 		or method_name == &"net_tango_laser_volley"

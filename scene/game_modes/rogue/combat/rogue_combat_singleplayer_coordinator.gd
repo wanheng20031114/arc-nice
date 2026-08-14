@@ -58,10 +58,25 @@ func _ready() -> void:
 	if (
 		parent_route == null
 		or not parent_route.manage_return_locally
-		or not _has_enabled_singleplayer_combat_pool(parent_route)
 	):
 		return
-	route = parent_route
+	_bind_route(parent_route)
+
+
+## 嵌入式战役在父场景完成运行模式选择后显式绑定，避免多人场景误启单人作战。
+func bind_embedded_route(route_instance: RogueRouteGame) -> bool:
+	if route_instance == null or not route_instance.embedded_session:
+		return false
+	if route != null and route != route_instance:
+		return false
+	_bind_route(route_instance)
+	return _enabled
+
+
+func _bind_route(route_instance: RogueRouteGame) -> void:
+	if _enabled or not _has_enabled_singleplayer_combat_pool(route_instance):
+		return
+	route = route_instance
 	route.combat_requested.connect(_on_combat_requested)
 	route.combat_result_dismissed.connect(_on_combat_result_dismissed)
 	route.host_layout_committed.connect(_on_host_layout_committed)
@@ -148,6 +163,17 @@ func _has_locked_emergency_reward_choice() -> bool:
 
 func is_enabled() -> bool:
 	return _enabled
+
+
+func is_runtime_busy() -> bool:
+	return (
+		active_battle != null
+		or _settling_outcome
+		or _waiting_for_result_dismissal
+		or _emergency_reward_session != null
+		or _emergency_reward_pending_offer_index != INVALID_REWARD_OFFER_INDEX
+		or _emergency_reward_settlement_retry_pending
+	)
 
 
 func is_node_consumed(node_id: int) -> bool:

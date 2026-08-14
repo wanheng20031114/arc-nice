@@ -129,7 +129,11 @@ extends RefCounted
 ## 20/2/15/10）；两者均绑定 Game04 的 Spawn1/Spawn2（spawn mask 3），并分别加入
 ## 普通/紧急作战池。RPC 表面、快照宽度与 8 个 ENet 通道均不变；v70 客户端缺少
 ## 新编成、双出生点和池成员合同，无法安全复现同一 Rogue 路线运行，不能加入。
-const PROTOCOL_VERSION := 71
+## v72：正式塔防新增四日战役与内嵌地下探索流程，战斗流追加稳定 wire 状态
+## ROGUE_EXPLORATION=8；塔防完整快照可携带带 epoch/每日幂等发放账本的路线状态，
+## 支持同图跨日、断线重连与失败后下一日换图。v71 客户端无法解释该状态及快照，
+## 也可能重复发放行动力或错误恢复塔防世界，不能安全加入。
+const PROTOCOL_VERSION := 72
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

@@ -3497,6 +3497,106 @@ func revive_all_players() -> void:
 			_revive_player_peer(peer_id, revive_position as Vector2)
 
 
+## 探索边界必须同时处理存活与死亡玩家，并为每位在线玩家推进一次健康
+## revision。绝对最大生命一并发送，确保最大生命惩罚/永久属性在重连及
+## 独立可靠信道乱序下仍由 Host 收敛。
+func restore_all_players_to_full_health() -> void:
+	if not has_life_dependencies() or not _net_manager.is_host():
+		return
+	clear_pending_revives()
+	for peer_id_variant in _runtime.peer_players:
+		restore_player_to_full_health(int(peer_id_variant))
+
+
+## 为跨过探索满血边界后才重连的单个玩家补发同一套绝对状态。调用者须先
+## 从 RunState 刷新该玩家的永久属性；这里只负责生命权威与网络修订。
+func restore_player_to_full_health(peer_id: int) -> bool:
+	if not has_life_dependencies() or not _net_manager.is_host() or peer_id <= 0:
+		return false
+	var player_node := _runtime.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return false
+	var maximum_health := maxi(player_node.max_health, 1)
+	if not _NetConstants.is_valid_network_combat_value(maximum_health):
+		push_error(
+			"MpPlayerCoordinator: 全员生命恢复超出网络 signed int32 契约，已拒绝发送。"
+		)
+		return false
+	_cancel_actions_for_revive_callable.call(peer_id)
+	_clear_tiyi_lifecycle_state_callable.call(peer_id)
+	_dead_player_revive_times.erase(peer_id)
+	_dead_player_revive_last_seconds.erase(peer_id)
+	var restore_position := player_node.global_position
+	var health_revision := _next_player_health_revision(peer_id)
+	if not _NetConstants.is_valid_network_combat_value(health_revision):
+		push_error(
+			"MpPlayerCoordinator: 满血恢复健康修订超出网络 signed int32 契约，已拒绝发送。"
+		)
+		return false
+	player_node.apply_multiplayer_full_health_restore(
+		restore_position,
+		maximum_health,
+		PLAYER_REVIVE_INVINCIBILITY_SECONDS
+	)
+	life_rpc_broadcast_requested.emit(
+		&"net_player_full_health_restored",
+		[
+			peer_id,
+			restore_position,
+			maximum_health,
+			PLAYER_REVIVE_INVINCIBILITY_SECONDS,
+			health_revision,
+		]
+	)
+	return true
+
+
+func apply_player_full_health_restored(
+	peer_id: int,
+	restore_position: Vector2,
+	maximum_health: int,
+	invincible_seconds: float,
+	health_revision: int
+) -> void:
+	if (
+		peer_id <= 0
+		or maximum_health <= 0
+		or not _NetConstants.is_valid_network_combat_value(maximum_health)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+		or not is_finite(invincible_seconds)
+		or invincible_seconds < 0.0
+		or not is_bound()
+		or health_revision <= int(_player_health_revisions.get(peer_id, 0))
+	):
+		return
+	var player_node := _runtime.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	_player_health_revisions[peer_id] = health_revision
+	mark_health_revision_applied(peer_id, health_revision)
+	_dead_player_revive_times.erase(peer_id)
+	_dead_player_revive_last_seconds.erase(peer_id)
+	_clear_tiyi_lifecycle_state_callable.call(peer_id)
+	player_node.apply_multiplayer_full_health_restore(
+		restore_position,
+		maximum_health,
+		invincible_seconds
+	)
+	_mode_adapter.clear_player_respawn_countdown(peer_id)
+	if (
+		int(_runtime.runtime_mode) == GAME_RUNTIME_CLIENT_VIEW
+		and peer_id != _get_client_view_local_peer_id()
+	):
+		reset_visual_interpolator_to_state(
+			peer_id,
+			restore_position,
+			Vector2.ZERO,
+			player_node.get_multiplayer_facing_id(),
+			player_node.get_multiplayer_anim_state(),
+			_get_net_time()
+		)
+
+
 func apply_player_revive_countdown(peer_id: int, seconds_left: int) -> void:
 	if not is_bound() or peer_id <= 0:
 		return

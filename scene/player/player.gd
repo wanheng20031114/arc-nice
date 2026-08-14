@@ -2624,6 +2624,28 @@ func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invi
 		_start_local_revive_glow_effect()
 
 
+## 塔防与地下探索边界使用的绝对生命恢复。最大生命来自 Host 的当前
+## RunState 结果；在本地收藏品刷新之后再次写回，避免重连时背包快照与
+## 流程快照跨信道到达顺序短暂覆盖权威上限。
+func apply_multiplayer_full_health_restore(
+	restore_position: Vector2,
+	authoritative_max_health: int,
+	invincible_seconds: float = 0.0
+) -> void:
+	var resolved_max_health := maxi(authoritative_max_health, 1)
+	max_health = resolved_max_health
+	revive_multiplayer(
+		restore_position,
+		resolved_max_health,
+		invincible_seconds
+	)
+	max_health = resolved_max_health
+	current_health = resolved_max_health
+	health_bar.visible = true
+	health_bar.set_health(current_health, max_health)
+	health_changed.emit(current_health, max_health)
+
+
 func start_multiplayer_invincibility(seconds: float) -> void:
 	invincibility_time_left = maxf(seconds, 0.0)
 	_set_hurt_blink_enabled(invincibility_time_left > 0.0)

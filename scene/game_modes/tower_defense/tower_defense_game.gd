@@ -122,6 +122,9 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var fate_flow_coordinator: TowerDefenseFateFlowCoordinator = (
 	$FateFlowCoordinator
 )
+@onready var rogue_exploration_coordinator: TowerDefenseRogueExplorationCoordinator = (
+	$RogueExplorationCoordinator
+)
 @onready var boss_container: Node2D = $BossContainer
 @onready var linglan_boss_runtime_port: TowerDefenseLinglanBossRuntimePort = (
 	$LinglanBossRuntimePort as TowerDefenseLinglanBossRuntimePort
@@ -407,6 +410,10 @@ func _ready() -> void:
 		set_process(false)
 		set_physics_process(false)
 		return
+	if not _configure_rogue_exploration():
+		set_process(false)
+		set_physics_process(false)
+		return
 	if not _bind_tower_multiplayer_adapter_dependencies():
 		set_process(false)
 		set_physics_process(false)
@@ -455,6 +462,11 @@ func _on_runtime_activated() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if (
+		rogue_exploration_coordinator != null
+		and rogue_exploration_coordinator.is_exploration_active()
+	):
+		return
 	presentation_coordinator.update_local_spectator_camera(delta)
 	player_roster_coordinator.local_player = player
 	player_roster_coordinator.update_singleplayer_respawn(delta)
@@ -465,6 +477,11 @@ func _physics_process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if (
+		rogue_exploration_coordinator != null
+		and rogue_exploration_coordinator.is_exploration_active()
+	):
+		return
 	presentation_coordinator.handle_unhandled_input(event)
 
 
@@ -654,6 +671,7 @@ func _configure_campaign_runtime_coordinator() -> bool:
 		player_roster_coordinator,
 		prewarmer_coordinator,
 		fate_flow_coordinator,
+		rogue_exploration_coordinator,
 		tower_multiplayer_mode_adapter,
 		plant_placement_coordinator,
 		home_defense_coordinator,
@@ -670,6 +688,35 @@ func _configure_campaign_runtime_coordinator() -> bool:
 		push_error("TowerDefenseGame: CampaignCoordinator 运行时依赖绑定不完整。")
 		return false
 	return true
+
+
+func _configure_rogue_exploration() -> bool:
+	if rogue_exploration_coordinator == null:
+		push_error("TowerDefenseGame: 缺少静态 RogueExplorationCoordinator 节点。")
+		return false
+	if not rogue_exploration_coordinator.setup(
+		self,
+		campaign_coordinator,
+		progression_config,
+		player_roster_coordinator,
+		home_defense_coordinator,
+		plant_placement_coordinator,
+		plant_placement_controller,
+		tower_multiplayer_mode_adapter,
+		state_timer,
+		enemy_spawn_timer,
+		plant_terrain_decay_timer,
+		production_coordinator,
+		research_coordinator,
+		run_state
+	):
+		push_error("TowerDefenseGame: RogueExplorationCoordinator 依赖绑定失败。")
+		return false
+	return true
+
+
+func get_rogue_exploration_coordinator() -> TowerDefenseRogueExplorationCoordinator:
+	return rogue_exploration_coordinator
 
 
 func _bind_tower_multiplayer_adapter_dependencies() -> bool:
@@ -697,6 +744,9 @@ func _bind_tower_multiplayer_adapter_dependencies() -> bool:
 		research_coordinator,
 		plant_placement_coordinator,
 		state_timer
+	)
+	tower_multiplayer_mode_adapter.bind_rogue_exploration_coordinator(
+		rogue_exploration_coordinator
 	)
 	if not tower_multiplayer_mode_adapter.is_tower_bound():
 		push_error("TowerDefenseGame: MultiplayerAdapter 依赖绑定不完整。")

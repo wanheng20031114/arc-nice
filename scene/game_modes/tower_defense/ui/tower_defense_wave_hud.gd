@@ -242,6 +242,52 @@ func show_tower_defense_boss_progress(resolved: int = 0, total: int = 1) -> void
 	_hide_start_wave_button()
 
 
+func show_tower_defense_boss_day_preparation(
+	day_number: int,
+	seconds: int,
+	allow_early_start: bool = false
+) -> void:
+	show_countdown(seconds, allow_early_start)
+	_set_boss_day_context(day_number, 0, 1, true)
+
+
+func show_tower_defense_boss_day_progress(
+	day_number: int,
+	resolved: int = 0,
+	total: int = 1
+) -> void:
+	_stop_result_tween()
+	top_bar.visible = true
+	result_overlay.visible = false
+	tower_defense_stats.visible = true
+	_hide_stage_banner()
+	_set_boss_day_context(day_number, resolved, total, false)
+	_hide_start_wave_button()
+
+
+func _set_boss_day_context(
+	day_number: int,
+	resolved: int,
+	total: int,
+	preparing: bool
+) -> void:
+	var safe_resolved := maxi(resolved, 0)
+	var safe_total := maxi(total, 1)
+	var progress_percent := clampi(
+		roundi(float(safe_resolved) / float(safe_total) * 100.0),
+		0,
+		100
+	)
+	day_label.text = "第 %d 日" % maxi(day_number, 1)
+	phase_label.text = "白昼"
+	phase_label.self_modulate = Color(1.0, 0.88, 0.54, 1.0)
+	day_dial.set_day_progress(0, 1, 1, safe_resolved, safe_total)
+	wave_title_label.text = "首领战准备" if preparing else "首领战"
+	wave_value_label.text = "--" if preparing else "%d%%" % progress_percent
+	wave_progress_bar.value = 0.0 if preparing else float(progress_percent)
+	_hide_global_wave_notice()
+
+
 func show_countdown(seconds: int, allow_early_start: bool = false) -> void:
 	_stop_result_tween()
 	top_bar.visible = true

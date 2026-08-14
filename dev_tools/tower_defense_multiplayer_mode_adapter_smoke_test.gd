@@ -18,10 +18,11 @@ const ADAPTER_SCENE_PATH := (
 	+ "tower_defense_multiplayer_mode_adapter.tscn"
 )
 const MP_GAME_SOURCE_PATH := "res://scene/multiplayer/mp_game.gd"
+const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 const EXPECTED_TOWER_SCENE_UID := "uid://dy51i4e27gaoi"
 const EXPECTED_ADAPTER_SCENE_UID := "uid://crap4mx7t2k6r"
-const EXPECTED_MP_GAME_RPC_COUNT := 126
+const EXPECTED_MP_GAME_RPC_COUNT := 144
 
 var failures: Array[String] = []
 var test_root: Node2D = null
@@ -76,6 +77,7 @@ func _test_static_contract() -> void:
 		"var _player_roster_coordinator: TowerDefensePlayerRosterCoordinator",
 		"var _presentation_coordinator: TowerDefensePresentationCoordinator",
 		"var _fate_flow_coordinator: TowerDefenseFateFlowCoordinator",
+		"var _rogue_exploration_coordinator: TowerDefenseRogueExplorationCoordinator",
 	]:
 		_expect(
 			adapter_source.contains(required_dependency),
@@ -116,17 +118,30 @@ func _test_static_contract() -> void:
 		"TowerDefenseGame 必须显式注入并核验塔防 MultiplayerAdapter。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 71
+		NET_CONSTANTS.PROTOCOL_VERSION == 72
 		and GameModeCatalog.MODE_TOWER_DEFENSE == 1,
-		"塔防 wire=1 与协议 v71 必须保持冻结。"
+		"塔防 wire=1 与协议 v72 必须保持冻结。"
 	)
 	var mp_game_script := load(MP_GAME_SOURCE_PATH) as Script
 	_expect(mp_game_script != null, "MpGame 脚本必须可加载。")
 	if mp_game_script != null:
 		_expect(
 			mp_game_script.get_rpc_config().size() == EXPECTED_MP_GAME_RPC_COUNT,
-			"MpGame 有效 RPC 数量必须保持 126。"
+			"MpGame 有效 RPC 数量必须保持 144。"
 		)
+	var mp_game_source := FileAccess.get_file_as_string(MP_GAME_SOURCE_PATH)
+	_expect(
+		mp_game_source.contains(
+			"rogue_boundary_full_health_pending"
+		)
+		and mp_game_source.contains(
+			"refresh_players_from_run_state_for_rogue_boundary()"
+		)
+		and mp_game_source.contains(
+			"restore_player_to_full_health(new_peer_id)"
+		),
+		"跨过探索满血边界的断线玩家必须在重连后按 RunState 上限补发健康修订。"
+	)
 
 
 func _test_host_binding_and_authority_bridges() -> void:
@@ -156,8 +171,23 @@ func _test_host_binding_and_authority_bridges() -> void:
 	_expect(
 		adapter == game.tower_multiplayer_mode_adapter
 		and adapter.get_tower_runtime() == game
-		and adapter.is_tower_bound(),
+		and adapter.is_tower_bound()
+		and adapter.get_rogue_exploration_coordinator()
+		== game.get_rogue_exploration_coordinator()
+		and adapter.get_rogue_route() != null
+		and adapter.get_rogue_combat_coordinator() != null,
 		"Host ready 后必须完成静态节点复用与全部强类型依赖注入。"
+	)
+	var progression_hash := game.progression_config.compute_runtime_contract_hash()
+	_expect(
+		not progression_hash.is_empty()
+		and adapter.is_rogue_progression_contract_compatible({
+			"progression_contract_hash": progression_hash,
+		})
+		and not adapter.is_rogue_progression_contract_compatible({
+			"progression_contract_hash": "forged",
+		}),
+		"探索会话必须在应用前验证本地成长配置运行契约。"
 	)
 	_expect(
 		game.runtime_mode == CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
@@ -280,8 +310,99 @@ func _test_host_binding_and_authority_bridges() -> void:
 		and (fixed_respawn as Vector2).is_equal_approx(peer_two.global_position),
 		"多人固定复活点必须与玩家稳定出生槽一致。"
 	)
+	_test_rogue_boundary_full_health_network_contract(game, adapter)
 
 	await _cleanup_game(game)
+
+
+func _test_rogue_boundary_full_health_network_contract(
+	game: TowerDefenseGame,
+	adapter: TowerDefenseMultiplayerModeAdapter
+) -> void:
+	var player_two := game.get_player_for_peer(2)
+	if player_two == null:
+		_expect(false, "满血边界测试缺少 peer 2。")
+		return
+	var fake_net_manager := NetManagerStore.new()
+	fake_net_manager.net_role = NetManagerStore.NetRole.HOST
+	fake_net_manager.connection_state = NetManagerStore.ConnectionState.IN_GAME
+	fake_net_manager.host_peer_id = 1
+	var projectile_coordinator := MpProjectileCoordinator.new()
+	var player_coordinator := MpPlayerCoordinator.new()
+	player_coordinator.bind_runtime(game)
+	player_coordinator.bind_life_dependencies(
+		fake_net_manager,
+		adapter,
+		projectile_coordinator,
+		Callable(self, "_test_net_time"),
+		Callable(self, "_test_peer_noop"),
+		Callable(self, "_test_peer_noop"),
+		Callable(self, "_test_peer_noop"),
+		Callable(self, "_test_revive_anchor"),
+		Callable(self, "_test_revive_commit")
+	)
+	var life_events: Array[Array] = []
+	player_coordinator.life_rpc_broadcast_requested.connect(
+		func(method_name: StringName, arguments: Array) -> void:
+			life_events.append([method_name, arguments])
+	)
+	player_two.current_health = 3
+	_expect(
+		player_coordinator.restore_player_to_full_health(2)
+		and player_two.current_health == player_two.max_health
+		and life_events.size() == 1
+		and life_events[0][0] == &"net_player_full_health_restored"
+		and int((life_events[0][1] as Array)[0]) == 2
+		and int((life_events[0][1] as Array)[2]) == player_two.max_health
+		and int((life_events[0][1] as Array)[4]) > 0,
+		"探索边界必须以绝对最大生命和单调健康 revision 恢复目标玩家。"
+	)
+
+	var reconnect_player_state := SnapshotManager.PlayerState.new()
+	reconnect_player_state.peer_id = 2
+	reconnect_player_state.current_health = 3
+	reconnect_player_state.max_health = player_two.max_health
+	var game_session := MP_GAME_SCRIPT.new()
+	game_session.set("net_manager", fake_net_manager)
+	var reconnect_states := (
+		game_session.get("_disconnected_player_reconnect_states") as Dictionary
+	)
+	reconnect_states[2] = {
+		"state": reconnect_player_state,
+		"revive_at": 999.0,
+		"revive_last_seconds": 9,
+	}
+	game_session.call("_mark_disconnected_players_for_rogue_boundary_full_health")
+	var marked_state := (
+		(game_session.get("_disconnected_player_reconnect_states") as Dictionary)[2]
+		as Dictionary
+	)
+	_expect(
+		bool(marked_state.get("rogue_boundary_full_health_pending", false))
+		and float(marked_state.get("revive_at", 0.0)) < 0.0
+		and int(marked_state.get("revive_last_seconds", 0)) < 0,
+		"断线玩家跨过探索边界时必须取消旧死亡倒计时并登记重连满血。"
+	)
+	game_session.free()
+	player_coordinator.free()
+	projectile_coordinator.free()
+	fake_net_manager.free()
+
+
+func _test_net_time() -> float:
+	return 0.0
+
+
+func _test_peer_noop(_peer_id: int) -> void:
+	pass
+
+
+func _test_revive_anchor(_peer_id: int) -> Vector2:
+	return Vector2.ZERO
+
+
+func _test_revive_commit(_peer_id: int, _position: Vector2) -> void:
+	pass
 
 
 func _test_client_remote_state_and_authority_gates() -> void:

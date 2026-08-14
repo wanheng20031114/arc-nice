@@ -1,6 +1,9 @@
 extends Node2D
 class_name MpRogueRoute
 
+signal embedded_authoritative_snapshot_changed
+signal embedded_return_requested
+
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const MULTIPLAYER_LOBBY_SCENE_PATH := (
 	"res://scene/multiplayer/multiplayer_lobby.tscn"
@@ -33,6 +36,10 @@ const ROUTE_SHOP_COMMAND_RATE_PER_SECOND := 6.0
 const ROUTE_SHOP_COMMAND_RATE_BURST := 8.0
 const SHOP_EXIT_ACK_RETRY_MSEC := 500
 const BRIEFING_COVER_BARRIER_TIMEOUT_MSEC := 10_000
+
+## 独立 P3 场景保持自动绑定；塔防中的静态桥节点由 MpGame 在正式运行时
+## 准备完成后显式绑定，避免它误把自己当成顶层路线场景并切回大厅。
+@export var auto_bind_scene_runtime := true
 
 var _route: RogueRouteGame = null
 var _combat_coordinator: RogueCombatMultiplayerCoordinator = null
@@ -70,9 +77,15 @@ var _route_encounter_command_rate_buckets: Dictionary = {}
 var _route_shop_command_rate_buckets: Dictionary = {}
 var _pending_shop_exit_ack: Dictionary = {}
 var _pending_shop_exit_retry_at_msec := 0
+var _embedded_campaign_mode := false
+var _embedded_exploration_active := false
+var _embedded_rpc_sender_id := 0
+var _rpc_transport: Callable = Callable()
 
 
 func _ready() -> void:
+	if not auto_bind_scene_runtime:
+		return
 	_route = get_node_or_null("RogueRoute") as RogueRouteGame
 	_combat_coordinator = get_node_or_null(
 		"RogueCombatCoordinator"
@@ -126,9 +139,318 @@ func _ready() -> void:
 		call_deferred("_synchronize_after_barrier")
 
 
+## 复用 P3 已验证的路线运输逻辑，但由塔防 MpGame 根节点承载 wire RPC。
+## 路线、作战协调器与桥节点均静态存在；本入口不生成地图、不发放行动力，
+## 因而普通塔防全量修复不会重建路线或重复传送玩家。
+func bind_embedded_campaign_runtime(
+	route_instance: RogueRouteGame,
+	combat_coordinator_instance: RogueCombatMultiplayerCoordinator,
+	net_manager_instance: NetManagerStore,
+	run_state_instance: RunStateStore,
+	rpc_transport: Callable
+) -> bool:
+	if (
+		auto_bind_scene_runtime
+		or route_instance == null
+		or combat_coordinator_instance == null
+		or net_manager_instance == null
+		or run_state_instance == null
+		or not rpc_transport.is_valid()
+	):
+		return false
+	if _runtime_prepared:
+		return (
+			_route == route_instance
+			and _combat_coordinator == combat_coordinator_instance
+			and _net_manager == net_manager_instance
+			and _run_state == run_state_instance
+		)
+	_route = route_instance
+	_combat_coordinator = combat_coordinator_instance
+	_net_manager = net_manager_instance
+	_run_state = run_state_instance
+	_rpc_transport = rpc_transport
+	_embedded_campaign_mode = true
+	_combat_coordinator.bind_network_dependencies(
+		_route,
+		_net_manager,
+		_run_state
+	)
+	_connect_route_signals()
+	set_multiplayer_authority(_get_host_peer_id())
+	_reset_snapshot_request_state()
+	_runtime_prepared = true
+	return true
+
+
+func unbind_embedded_campaign_runtime() -> void:
+	if not _embedded_campaign_mode:
+		return
+	_disconnect_route_signals()
+	_route = null
+	_combat_coordinator = null
+	_net_manager = null
+	_run_state = null
+	_rpc_transport = Callable()
+	_embedded_campaign_mode = false
+	_embedded_exploration_active = false
+	_embedded_rpc_sender_id = 0
+	_runtime_prepared = false
+	_reset_snapshot_request_state()
+	_reset_avatar_sync_state()
+	_reset_briefing_cover_barrier()
+
+
+func synchronize_embedded_route() -> void:
+	if not _embedded_campaign_mode or not _runtime_prepared or _route == null:
+		return
+	_route.activate_runtime()
+	if (
+		_is_host()
+		and _embedded_exploration_active
+		and _route.is_route_ready()
+	):
+		embedded_authoritative_snapshot_changed.emit()
+	elif _is_client() and _route.is_route_ready():
+		_request_full_snapshot()
+
+
+func set_embedded_exploration_active(active: bool) -> void:
+	if not _embedded_campaign_mode:
+		return
+	_embedded_exploration_active = active
+	if not active:
+		_reset_snapshot_request_state()
+		_pending_shop_exit_ack.clear()
+		_pending_shop_exit_retry_at_msec = 0
+		_reset_briefing_cover_barrier()
+		_route_repair_request_rate_buckets.clear()
+		_route_encounter_command_rate_buckets.clear()
+		_route_shop_command_rate_buckets.clear()
+		# 离线玩家姿态是跨断线的语义状态，不属于当日 active 运输缓存；
+		# 保留到 authenticated reconnect 或既有 TTL 到期。
+		_reset_avatar_sync_state(true)
+
+
+func is_embedded_exploration_active() -> bool:
+	return _embedded_campaign_mode and _embedded_exploration_active
+
+
+func capture_embedded_route_peer_before_removal(peer_id: int) -> void:
+	if not _embedded_campaign_mode or peer_id <= 0 or _route == null:
+		return
+	_prune_disconnected_avatar_poses()
+	var preserved_pose := _get_avatar_pose_for_peer(peer_id)
+	if not preserved_pose.is_empty():
+		preserved_pose["stored_at_msec"] = Time.get_ticks_msec()
+		_disconnected_avatar_poses[peer_id] = preserved_pose.duplicate(true)
+	clear_embedded_peer_transport_state(peer_id)
+
+
+func clear_embedded_peer_transport_state(peer_id: int) -> void:
+	if not _embedded_campaign_mode or peer_id <= 0:
+		return
+	_route_repair_request_rate_buckets.erase(peer_id)
+	_route_encounter_command_rate_buckets.erase(peer_id)
+	_route_shop_command_rate_buckets.erase(peer_id)
+	if _is_host() and _briefing_cover_expected_peers.has(peer_id):
+		_briefing_cover_expected_peers.erase(peer_id)
+		_briefing_cover_ready_peers.erase(peer_id)
+		_try_commit_briefed_move_after_cover_barrier()
+	_clear_avatar_peer_sync_state(peer_id)
+
+
+func remove_embedded_route_peer_locally(peer_id: int) -> void:
+	if not _embedded_campaign_mode or peer_id <= 0 or _route == null:
+		return
+	capture_embedded_route_peer_before_removal(peer_id)
+	_route.remove_multiplayer_player(peer_id)
+
+
+func migrate_embedded_route_peer_locally(
+	old_peer_id: int,
+	new_peer_id: int,
+	player_name: String,
+	character_id: StringName,
+	stable_participant_key: String
+) -> bool:
+	if (
+		not _embedded_campaign_mode
+		or _route == null
+		or old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
+	):
+		return false
+	_prune_disconnected_avatar_poses()
+	var preserved_pose := (
+		_disconnected_avatar_poses.get(old_peer_id, {}) as Dictionary
+	)
+	var migrated := _route.migrate_multiplayer_player(
+		old_peer_id,
+		new_peer_id,
+		player_name,
+		character_id
+	)
+	if not migrated and _route.get_player_for_peer(new_peer_id) == null:
+		var anchor := _route.get_player_for_peer(_get_host_peer_id())
+		var spawn_position := (
+			_route.clamp_avatar_position(anchor.global_position)
+			if anchor != null
+			else _route.clamp_avatar_position(Vector2.ZERO)
+		)
+		migrated = _route.add_multiplayer_player(
+			new_peer_id,
+			player_name,
+			character_id,
+			spawn_position
+		)
+	if not migrated:
+		return false
+	if not preserved_pose.is_empty():
+		_route.apply_avatar_snapshot(
+			new_peer_id,
+			preserved_pose.get("position", Vector2.ZERO) as Vector2,
+			preserved_pose.get("velocity", Vector2.ZERO) as Vector2,
+			int(preserved_pose.get("facing", 0)),
+			int(preserved_pose.get("anim_state", 0)),
+			true
+		)
+	if (
+		not stable_participant_key.is_empty()
+		and not _route.set_multiplayer_participant_stable_key(
+			new_peer_id,
+			stable_participant_key
+		)
+	):
+		return false
+	migrate_embedded_peer_transport_state(old_peer_id, new_peer_id)
+	return true
+
+
+func migrate_embedded_peer_transport_state(
+	old_peer_id: int,
+	new_peer_id: int
+) -> void:
+	if (
+		not _embedded_campaign_mode
+		or old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
+	):
+		return
+	var replace_briefing_peer := (
+		_is_host() and _briefing_cover_expected_peers.has(old_peer_id)
+	)
+	for peer_id in [old_peer_id, new_peer_id]:
+		_route_repair_request_rate_buckets.erase(peer_id)
+		_route_encounter_command_rate_buckets.erase(peer_id)
+		_route_shop_command_rate_buckets.erase(peer_id)
+		_briefing_cover_expected_peers.erase(peer_id)
+		_briefing_cover_ready_peers.erase(peer_id)
+		_clear_avatar_peer_sync_state(peer_id)
+	if replace_briefing_peer and not _briefing_move_commit_started:
+		_briefing_cover_expected_peers[new_peer_id] = true
+	_restore_embedded_disconnected_avatar_pose(old_peer_id, new_peer_id)
+
+
+func _restore_embedded_disconnected_avatar_pose(
+	old_peer_id: int,
+	new_peer_id: int
+) -> bool:
+	if _route == null:
+		return false
+	_prune_disconnected_avatar_poses()
+	var preserved_pose := (
+		_disconnected_avatar_poses.get(old_peer_id, {}) as Dictionary
+	)
+	var player_node := _route.get_player_for_peer(new_peer_id)
+	if preserved_pose.is_empty() or player_node == null:
+		return false
+	var applied := _route.apply_avatar_snapshot(
+		new_peer_id,
+		preserved_pose.get("position", Vector2.ZERO) as Vector2,
+		preserved_pose.get("velocity", Vector2.ZERO) as Vector2,
+		int(preserved_pose.get("facing", 0)),
+		int(preserved_pose.get("anim_state", 0)),
+		true
+	)
+	if applied:
+		_disconnected_avatar_poses.erase(old_peer_id)
+	return applied
+
+
+func send_embedded_full_route_snapshot_to_peer(peer_id: int) -> void:
+	if _embedded_campaign_mode:
+		_send_full_snapshot_to_peer(peer_id)
+
+
+func apply_embedded_route_rpc(
+	method_name: StringName,
+	sender_id: int,
+	arguments: Array
+) -> Variant:
+	if (
+		not _embedded_campaign_mode
+		or not _runtime_prepared
+		or not _embedded_exploration_active
+		or sender_id <= 0
+		or _embedded_rpc_sender_id > 0
+	):
+		return false
+	if method_name not in [
+		&"net_route_encounter_intro_ack",
+		&"net_route_encounter_vote",
+		&"net_route_encounter_result_ack",
+		&"net_route_encounter_snapshot",
+		&"net_shop_purchase_request",
+		&"net_shop_sell_request",
+		&"net_shop_exit_ack",
+		&"net_shop_snapshot",
+		&"net_route_avatar_input",
+		&"net_route_avatar_snapshot",
+		&"net_route_avatar_corrected",
+		&"net_request_route_full_snapshot",
+		&"net_route_full_snapshot",
+		&"net_route_move_delta",
+		&"net_route_briefing_state",
+		&"net_route_briefing_cover_ready",
+	]:
+		return false
+	_embedded_rpc_sender_id = sender_id
+	callv(method_name, arguments)
+	_embedded_rpc_sender_id = 0
+	return true
+
+
+func _send_route_rpc(
+	peer_id: int,
+	method_name: StringName,
+	arguments: Array = []
+) -> bool:
+	if (
+		peer_id <= 0
+		or (_embedded_campaign_mode and not _embedded_exploration_active)
+	):
+		return false
+	if _rpc_transport.is_valid():
+		return bool(_rpc_transport.call(peer_id, method_name, arguments))
+	var rpc_arguments: Array = [peer_id, method_name]
+	rpc_arguments.append_array(arguments)
+	callv(&"rpc_id", rpc_arguments)
+	return true
+
+
+func _get_route_rpc_sender_id() -> int:
+	if _embedded_campaign_mode:
+		return _embedded_rpc_sender_id
+	return multiplayer.get_remote_sender_id()
+
+
 func _physics_process(delta: float) -> void:
 	if (
 		not _runtime_prepared
+		or (_embedded_campaign_mode and not _embedded_exploration_active)
 		or _get_connection_state() != STATE_IN_GAME
 		or _route == null
 	):
@@ -730,6 +1052,13 @@ func _on_host_layout_committed(layout: Dictionary, state: Dictionary) -> void:
 	_reset_avatar_validation_positions()
 	_latest_layout_snapshot = layout.duplicate(true)
 	_latest_state_snapshot = state.duplicate(true)
+	if _embedded_campaign_mode:
+		# Route creation happens before the coordinator atomically flips the
+		# embedded session active. Never publish the half-entered active=false/day=N
+		# coordinator snapshot; the coordinator's formal active snapshot owns entry.
+		if _embedded_exploration_active:
+			embedded_authoritative_snapshot_changed.emit()
+		return
 	if _get_connection_state() == STATE_IN_GAME:
 		_broadcast_full_snapshot()
 
@@ -743,7 +1072,11 @@ func _on_host_move_committed(delta: Dictionary) -> void:
 		return
 	for peer_id in _get_remote_player_peer_ids():
 		if _is_peer_send_ready(peer_id):
-			net_route_move_delta.rpc_id(peer_id, delta.duplicate(true))
+			_send_route_rpc(
+				peer_id,
+				&"net_route_move_delta",
+				[delta.duplicate(true)]
+			)
 
 
 func _on_host_briefing_state_committed(snapshot: Dictionary) -> void:
@@ -755,9 +1088,10 @@ func _on_host_briefing_state_committed(snapshot: Dictionary) -> void:
 		return
 	for peer_id in _get_remote_player_peer_ids():
 		if _is_peer_send_ready(peer_id):
-			net_route_briefing_state.rpc_id(
+			_send_route_rpc(
 				peer_id,
-				snapshot.duplicate(true)
+				&"net_route_briefing_state",
+				[snapshot.duplicate(true)]
 			)
 
 
@@ -832,11 +1166,14 @@ func _on_local_briefing_cover_completed(
 		and local_peer_id > 0
 		and _is_peer_send_ready(_get_host_peer_id())
 	):
-		net_route_briefing_cover_ready.rpc_id(
+		_send_route_rpc(
 			_get_host_peer_id(),
-			occurrence_key,
-			briefing_revision,
-			expected_route_revision
+			&"net_route_briefing_cover_ready",
+			[
+				occurrence_key,
+				briefing_revision,
+				expected_route_revision,
+			]
 		)
 
 
@@ -894,8 +1231,20 @@ func _on_host_encounter_snapshot_committed(
 		or economy_snapshot.is_empty()
 	):
 		return
+	var previous_action_points_revision := int(
+		_latest_state_snapshot.get("action_points_revision", -1)
+	)
+	_refresh_authoritative_state_cache()
 	_latest_encounter_snapshot = encounter_snapshot.duplicate(true)
 	_latest_economy_snapshot = economy_snapshot.duplicate(true)
+	if (
+		_embedded_campaign_mode
+		and _embedded_exploration_active
+		and int(_latest_state_snapshot.get("action_points_revision", -1))
+		!= previous_action_points_revision
+	):
+		embedded_authoritative_snapshot_changed.emit()
+		return
 	if _get_connection_state() != STATE_IN_GAME or not _has_network_peer():
 		return
 	for peer_id in _get_remote_player_peer_ids():
@@ -917,10 +1266,10 @@ func _on_local_encounter_intro_ack_requested(
 	elif _is_client() and _has_network_peer():
 		var host_peer_id := _get_host_peer_id()
 		if host_peer_id > 0 and _is_peer_send_ready(host_peer_id):
-			net_route_encounter_intro_ack.rpc_id(
+			_send_route_rpc(
 				host_peer_id,
-				occurrence_key,
-				expected_revision
+				&"net_route_encounter_intro_ack",
+				[occurrence_key, expected_revision]
 			)
 
 
@@ -940,11 +1289,10 @@ func _on_local_encounter_vote_requested(
 	elif _is_client() and _has_network_peer():
 		var host_peer_id := _get_host_peer_id()
 		if host_peer_id > 0 and _is_peer_send_ready(host_peer_id):
-			net_route_encounter_vote.rpc_id(
+			_send_route_rpc(
 				host_peer_id,
-				occurrence_key,
-				expected_revision,
-				option_id
+				&"net_route_encounter_vote",
+				[occurrence_key, expected_revision, option_id]
 			)
 
 
@@ -962,10 +1310,10 @@ func _on_local_encounter_result_ack_requested(
 	elif _is_client() and _has_network_peer():
 		var host_peer_id := _get_host_peer_id()
 		if host_peer_id > 0 and _is_peer_send_ready(host_peer_id):
-			net_route_encounter_result_ack.rpc_id(
+			_send_route_rpc(
 				host_peer_id,
-				occurrence_key,
-				result_sequence
+				&"net_route_encounter_result_ack",
+				[occurrence_key, result_sequence]
 			)
 
 
@@ -983,9 +1331,10 @@ func _on_host_shop_snapshot_committed(
 		and _has_network_peer()
 		and _is_peer_send_ready(target_peer_id)
 	):
-		net_shop_snapshot.rpc_id(
+		_send_route_rpc(
 			target_peer_id,
-			shop_snapshot.duplicate(true)
+			&"net_shop_snapshot",
+			[shop_snapshot.duplicate(true)]
 		)
 
 
@@ -1018,15 +1367,18 @@ func _on_local_shop_purchase_requested(
 	var host_peer_id := _get_host_peer_id()
 	if host_peer_id <= 0 or not _is_peer_send_ready(host_peer_id):
 		return
-	net_shop_purchase_request.rpc_id(
+	_send_route_rpc(
 		host_peer_id,
-		request_id,
-		occurrence_key,
-		offer_index,
-		expected_session_revision,
-		expected_shelf_revision,
-		expected_inventory_revision,
-		expected_xirang_revision
+		&"net_shop_purchase_request",
+		[
+			request_id,
+			occurrence_key,
+			offer_index,
+			expected_session_revision,
+			expected_shelf_revision,
+			expected_inventory_revision,
+			expected_xirang_revision,
+		]
 	)
 
 
@@ -1059,15 +1411,18 @@ func _on_local_shop_sell_requested(
 	var host_peer_id := _get_host_peer_id()
 	if host_peer_id <= 0 or not _is_peer_send_ready(host_peer_id):
 		return
-	net_shop_sell_request.rpc_id(
+	_send_route_rpc(
 		host_peer_id,
-		request_id,
-		occurrence_key,
-		slot_index,
-		expected_config_path,
-		expected_session_revision,
-		expected_inventory_revision,
-		expected_xirang_revision
+		&"net_shop_sell_request",
+		[
+			request_id,
+			occurrence_key,
+			slot_index,
+			expected_config_path,
+			expected_session_revision,
+			expected_inventory_revision,
+			expected_xirang_revision,
+		]
 	)
 
 
@@ -1106,10 +1461,13 @@ func _try_send_pending_shop_exit_ack(now_msec: int = -1) -> bool:
 	if host_peer_id <= 0 or not _is_peer_send_ready(host_peer_id):
 		return false
 	var resolved_now := Time.get_ticks_msec() if now_msec < 0 else now_msec
-	net_shop_exit_ack.rpc_id(
+	_send_route_rpc(
 		host_peer_id,
-		str(_pending_shop_exit_ack.get("occurrence_key", "")),
-		int(_pending_shop_exit_ack.get("expected_session_revision", -1))
+		&"net_shop_exit_ack",
+		[
+			str(_pending_shop_exit_ack.get("occurrence_key", "")),
+			int(_pending_shop_exit_ack.get("expected_session_revision", -1)),
+		]
 	)
 	_pending_shop_exit_retry_at_msec = resolved_now + SHOP_EXIT_ACK_RETRY_MSEC
 	return true
@@ -1202,13 +1560,16 @@ func _send_full_snapshot_to_peer(peer_id: int) -> void:
 	var economy_state := _route.export_encounter_economy_snapshot(peer_id)
 	if encounter_state.is_empty() or economy_state.is_empty():
 		return
-	net_route_full_snapshot.rpc_id(
+	_send_route_rpc(
 		peer_id,
-		_latest_layout_snapshot.duplicate(true),
-		_latest_state_snapshot.duplicate(true),
-		encounter_state.duplicate(true),
-		economy_state.duplicate(true),
-		shop_state.duplicate(true)
+		&"net_route_full_snapshot",
+		[
+			_latest_layout_snapshot.duplicate(true),
+			_latest_state_snapshot.duplicate(true),
+			encounter_state.duplicate(true),
+			economy_state.duplicate(true),
+			shop_state.duplicate(true),
+		]
 	)
 
 
@@ -1221,7 +1582,7 @@ func _request_full_snapshot() -> void:
 	var host_peer_id := _get_host_peer_id()
 	if host_peer_id <= 0 or not _reserve_full_snapshot_request():
 		return
-	net_request_route_full_snapshot.rpc_id(host_peer_id)
+	_send_route_rpc(host_peer_id, &"net_request_route_full_snapshot")
 
 
 func _reserve_full_snapshot_request(now_msec: int = -1) -> bool:
@@ -1409,11 +1770,14 @@ func _send_local_avatar_pose() -> void:
 	if packed_pose.size() != AVATAR_POSE_FIELD_COUNT:
 		return
 	_client_avatar_sequence = _next_avatar_sequence(_client_avatar_sequence)
-	net_route_avatar_input.rpc_id(
+	_send_route_rpc(
 		host_peer_id,
-		_client_avatar_sequence,
-		_route.get_route_revision(),
-		packed_pose
+		&"net_route_avatar_input",
+		[
+			_client_avatar_sequence,
+			_route.get_route_revision(),
+			packed_pose,
+		]
 	)
 
 
@@ -1447,11 +1811,14 @@ func _broadcast_avatar_snapshot() -> void:
 	)
 	for peer_id in _get_remote_player_peer_ids():
 		if _is_peer_send_ready(peer_id):
-			net_route_avatar_snapshot.rpc_id(
+			_send_route_rpc(
 				peer_id,
-				_host_avatar_snapshot_sequence,
-				route_revision,
-				packed_states
+				&"net_route_avatar_snapshot",
+				[
+					_host_avatar_snapshot_sequence,
+					route_revision,
+					packed_states,
+				]
 			)
 
 
@@ -1556,7 +1923,7 @@ func net_route_encounter_intro_ack(
 ) -> void:
 	if not _is_host() or _route == null:
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_route_rpc_sender_id()
 	if not _admit_route_encounter_command(sender_id):
 		return
 	if not _route.host_submit_encounter_intro_ack(
@@ -1575,7 +1942,7 @@ func net_route_encounter_vote(
 ) -> void:
 	if not _is_host() or _route == null:
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_route_rpc_sender_id()
 	if not _admit_route_encounter_command(sender_id):
 		return
 	if not _route.host_submit_encounter_vote(
@@ -1594,7 +1961,7 @@ func net_route_encounter_result_ack(
 ) -> void:
 	if not _is_host() or _route == null:
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_route_rpc_sender_id()
 	if not _admit_route_encounter_command(sender_id):
 		return
 	if not _route.host_submit_encounter_result_ack(
@@ -1611,7 +1978,7 @@ func net_route_encounter_snapshot(
 	economy_state: Dictionary
 ) -> void:
 	_apply_encounter_snapshot_from_peer(
-		multiplayer.get_remote_sender_id(),
+		_get_route_rpc_sender_id(),
 		encounter_state,
 		economy_state
 	)
@@ -1655,10 +2022,13 @@ func _send_encounter_snapshot_to_peer(peer_id: int) -> bool:
 	var economy_state := _route.export_encounter_economy_snapshot(peer_id)
 	if encounter_state.is_empty() or economy_state.is_empty():
 		return false
-	net_route_encounter_snapshot.rpc_id(
+	_send_route_rpc(
 		peer_id,
-		encounter_state.duplicate(true),
-		economy_state.duplicate(true)
+		&"net_route_encounter_snapshot",
+		[
+			encounter_state.duplicate(true),
+			economy_state.duplicate(true),
+		]
 	)
 	return true
 
@@ -1675,7 +2045,7 @@ func net_shop_purchase_request(
 ) -> void:
 	if not _is_host() or _route == null:
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_route_rpc_sender_id()
 	if not _admit_route_shop_command(sender_id):
 		return
 	_route.host_submit_shop_purchase(
@@ -1702,7 +2072,7 @@ func net_shop_sell_request(
 ) -> void:
 	if not _is_host() or _route == null:
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_route_rpc_sender_id()
 	if not _admit_route_shop_command(sender_id):
 		return
 	_route.host_submit_shop_sell(
@@ -1724,7 +2094,7 @@ func net_shop_exit_ack(
 ) -> void:
 	if not _is_host() or _route == null:
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_route_rpc_sender_id()
 	# 退出回执关闭本地 UI 后没有人工重试入口，不能与高频买卖共用会
 	# 静默耗尽的 token bucket；仍严格要求已注册、可发送的 RPC sender。
 	if not _is_registered_route_peer(sender_id):
@@ -1739,7 +2109,7 @@ func net_shop_exit_ack(
 @rpc("authority", "call_remote", "reliable", 0)
 func net_shop_snapshot(shop_state: Dictionary) -> void:
 	_apply_shop_snapshot_from_peer(
-		multiplayer.get_remote_sender_id(),
+		_get_route_rpc_sender_id(),
 		shop_state
 	)
 
@@ -1771,7 +2141,7 @@ func net_route_avatar_input(
 ) -> void:
 	if not _is_host():
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_route_rpc_sender_id()
 	if (
 		sender_id <= 0
 		or sender_id == _get_host_peer_id()
@@ -1872,10 +2242,10 @@ func _try_send_avatar_correction(
 		return false
 	if not _reserve_avatar_correction(peer_id, input_sequence, now_msec):
 		return false
-	net_route_avatar_corrected.rpc_id(
+	_send_route_rpc(
 		peer_id,
-		_route.get_route_revision(),
-		packed_pose
+		&"net_route_avatar_corrected",
+		[_route.get_route_revision(), packed_pose]
 	)
 	return true
 
@@ -1916,7 +2286,7 @@ func net_route_avatar_snapshot(
 ) -> void:
 	if (
 		not _is_client()
-		or multiplayer.get_remote_sender_id() != _get_host_peer_id()
+		or _get_route_rpc_sender_id() != _get_host_peer_id()
 		or snapshot_sequence <= _last_host_avatar_snapshot_sequence
 		or snapshot_sequence > AVATAR_MAX_SEQUENCE
 		or route_revision != _route.get_route_revision()
@@ -1951,7 +2321,7 @@ func net_route_avatar_corrected(
 ) -> void:
 	if (
 		not _is_client()
-		or multiplayer.get_remote_sender_id() != _get_host_peer_id()
+		or _get_route_rpc_sender_id() != _get_host_peer_id()
 		or route_revision != _route.get_route_revision()
 		or packed_pose.size() != AVATAR_POSE_FIELD_COUNT
 	):
@@ -1974,13 +2344,16 @@ func _reset_avatar_validation_positions() -> void:
 	_accepted_avatar_times_msec.clear()
 
 
-func _reset_avatar_sync_state() -> void:
+func _reset_avatar_sync_state(
+	preserve_disconnected_poses: bool = false
+) -> void:
 	_client_avatar_sequence = 0
 	_last_host_avatar_snapshot_sequence = 0
 	_last_client_avatar_sequences.clear()
 	_last_avatar_correction_times_msec.clear()
 	_last_avatar_correction_sequences.clear()
-	_disconnected_avatar_poses.clear()
+	if not preserve_disconnected_poses:
+		_disconnected_avatar_poses.clear()
 	_reset_avatar_validation_positions()
 
 
@@ -2008,7 +2381,7 @@ func _prune_disconnected_avatar_poses() -> void:
 func net_request_route_full_snapshot() -> void:
 	if not _is_host():
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_route_rpc_sender_id()
 	if not _admit_route_repair_request(sender_id):
 		return
 	_send_full_snapshot_to_peer(sender_id)
@@ -2023,7 +2396,7 @@ func net_route_full_snapshot(
 	shop_state: Dictionary
 ) -> void:
 	_apply_full_snapshot_from_peer(
-		multiplayer.get_remote_sender_id(),
+		_get_route_rpc_sender_id(),
 		layout,
 		state,
 		encounter_state,
@@ -2093,7 +2466,7 @@ func _prune_client_inventory_states_to_connected_players() -> int:
 
 @rpc("authority", "call_remote", "reliable", 0)
 func net_route_move_delta(delta: Dictionary) -> void:
-	_apply_move_delta_from_peer(multiplayer.get_remote_sender_id(), delta)
+	_apply_move_delta_from_peer(_get_route_rpc_sender_id(), delta)
 
 
 func _apply_move_delta_from_peer(sender_id: int, delta: Dictionary) -> bool:
@@ -2113,7 +2486,7 @@ func _apply_move_delta_from_peer(sender_id: int, delta: Dictionary) -> bool:
 @rpc("authority", "call_remote", "reliable", 0)
 func net_route_briefing_state(snapshot: Dictionary) -> void:
 	_apply_briefing_state_from_peer(
-		multiplayer.get_remote_sender_id(),
+		_get_route_rpc_sender_id(),
 		snapshot
 	)
 
@@ -2143,7 +2516,7 @@ func net_route_briefing_cover_ready(
 ) -> void:
 	if not _is_host():
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_route_rpc_sender_id()
 	if (
 		_briefing_cover_ready_peers.has(sender_id)
 		or not _admit_route_encounter_command(sender_id)
@@ -2158,6 +2531,9 @@ func net_route_briefing_cover_ready(
 
 
 func _on_return_requested() -> void:
+	if _embedded_campaign_mode:
+		embedded_return_requested.emit()
+		return
 	if _net_manager != null:
 		_net_manager.disconnect_from_game()
 	_return_to_lobby()

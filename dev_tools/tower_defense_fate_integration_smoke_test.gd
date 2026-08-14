@@ -4,9 +4,22 @@ const GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_
 const FATE_COORDINATOR_SCENE := preload(
 	"res://scene/game_modes/tower_defense/fate/fate_coordinator.tscn"
 )
+const DAY_CYCLE_CONFIG: DayCycleConfig = preload(
+	"res://resources/config/day_cycle/tower_defense_day_cycle.tres"
+)
+
+
+class FateFlowBoundaryProbe:
+	extends TowerDefenseFateFlowCoordinator
+
+	signal interlude_entered(next_step: FlowStepConfig)
+
+	func enter_interlude(next_step: FlowStepConfig) -> void:
+		interlude_entered.emit(next_step)
+
 
 class FlowBoundaryProbe:
-	extends TowerDefenseGame
+	extends TowerDefenseCampaignCoordinator
 
 	var probe_wave_number := 1
 	var probe_next_step: FlowStepConfig = null
@@ -15,24 +28,31 @@ class FlowBoundaryProbe:
 	var entered_victory := false
 	var captured_next_step: FlowStepConfig = null
 
-	func _get_default_next_flow_step(_flow_step: FlowStepConfig) -> FlowStepConfig:
+	func get_default_next_flow_step(_flow_step: FlowStepConfig) -> FlowStepConfig:
 		return probe_next_step
 
-	func _get_wave_number_for_step(_wave_config: WaveConfig) -> int:
+	func get_wave_number_for_step(
+		_wave_config: WaveConfig,
+		_fallback_wave_index: int
+	) -> int:
 		return probe_wave_number
 
-	func _enter_xiaocong_fate_interlude(next_step: FlowStepConfig) -> void:
+	func bind_fate_probe(fate_probe: FateFlowBoundaryProbe) -> void:
+		_fate_flow_coordinator = fate_probe
+		fate_probe.interlude_entered.connect(_on_fate_interlude_entered)
+
+	func _on_fate_interlude_entered(next_step: FlowStepConfig) -> void:
 		entered_fate = true
 		captured_next_step = next_step
 
-	func _enter_intermission(next_step: FlowStepConfig = null) -> void:
+	func enter_intermission(next_step: FlowStepConfig = null) -> void:
 		entered_intermission = true
 		captured_next_step = next_step
 
-	func _enter_victory(_emit_multiplayer: bool = true) -> void:
+	func enter_victory(_emit_multiplayer: bool = true) -> void:
 		entered_victory = true
 
-	func _record_progression_day(_day_number: int) -> void:
+	func record_progression_day(_day_number: int) -> void:
 		pass
 
 
@@ -65,6 +85,8 @@ class FateProbeHomeDefenseCoordinator:
 
 
 var failures: Array[String] = []
+var _active_case_id: StringName = &""
+var _completed_case_ids: Dictionary[StringName, bool] = {}
 
 
 func _init() -> void:
@@ -74,23 +96,45 @@ func _init() -> void:
 func _run() -> void:
 	var case_filter := OS.get_environment("ARC_FATE_INTEGRATION_CASE")
 	if case_filter.is_empty() or case_filter in ["contracts", "core"]:
+		_begin_case(&"day_and_lighting")
 		_test_day_and_lighting_boundaries()
+		_verify_case_completed(&"day_and_lighting")
+		_begin_case(&"wave_completion")
 		_test_wave_completion_boundaries()
+		_verify_case_completed(&"wave_completion")
+		_begin_case(&"elite_bias")
 		_test_elite_bias_day_window()
+		_verify_case_completed(&"elite_bias")
+		_begin_case(&"double_xirang")
 		_test_double_xirang_day_combat_states()
+		_verify_case_completed(&"double_xirang")
+		_begin_case(&"boss_health_cap")
 		_test_boss_runtime_health_cap()
+		_verify_case_completed(&"boss_health_cap")
 	if case_filter.is_empty() or case_filter in ["contracts", "ui", "hud"]:
+		_begin_case(&"wave_hud")
 		await _test_wave_hud_uses_day_cycle_config()
+		_verify_case_completed(&"wave_hud")
 	if case_filter.is_empty() or case_filter in ["contracts", "ui", "offers"]:
+		_begin_case(&"collectible_offer")
 		await _test_xiaocong_collectible_offer_count()
+		_verify_case_completed(&"collectible_offer")
 	if case_filter.is_empty() or case_filter in ["contracts", "ui", "critical"]:
+		_begin_case(&"critical_core")
 		await _test_critical_core_follow_up_resolution()
+		_verify_case_completed(&"critical_core")
 	if case_filter.is_empty() or case_filter in ["contracts", "scene"]:
+		_begin_case(&"scene_freeze")
 		await _test_scene_config_and_interlude_freeze()
+		_verify_case_completed(&"scene_freeze")
 	if case_filter.is_empty() or case_filter in ["contracts", "stone"]:
+		_begin_case(&"fate_stone")
 		await _test_fate_stone_zero_benefit_filter()
+		_verify_case_completed(&"fate_stone")
 	if case_filter.is_empty() or case_filter == "threaded_prewarm":
+		_begin_case(&"threaded_prewarm")
 		await _test_elite_config_prewarm()
+		_verify_case_completed(&"threaded_prewarm")
 	if not case_filter.is_empty() and case_filter not in [
 		"contracts", "core", "ui", "hud", "offers", "critical",
 		"scene", "stone", "threaded_prewarm"
@@ -107,6 +151,26 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _begin_case(case_id: StringName) -> void:
+	_active_case_id = case_id
+	_completed_case_ids.erase(case_id)
+
+
+func _complete_case(case_id: StringName) -> void:
+	if _active_case_id == case_id:
+		_completed_case_ids[case_id] = true
+		_active_case_id = &""
+
+
+func _verify_case_completed(case_id: StringName) -> void:
+	if not bool(_completed_case_ids.get(case_id, false)):
+		failures.append(
+			"Fate integration case '%s' aborted before completion; inspect SCRIPT ERROR output."
+			% String(case_id)
+		)
+		_active_case_id = &""
 
 
 func _test_elite_config_prewarm() -> void:
@@ -189,16 +253,21 @@ func _test_elite_config_prewarm() -> void:
 	for _cleanup_frame in range(4):
 		await process_frame
 		await physics_frame
+	_complete_case(&"threaded_prewarm")
 
 
 func _test_day_and_lighting_boundaries() -> void:
 	var probe := LightingProbe.new()
 	_attach_campaign_coordinator(probe)
+	var presentation := TowerDefensePresentationCoordinator.new()
+	presentation.set("_runtime", probe)
+	presentation.set("_campaign_coordinator", probe.campaign_coordinator)
 	var expected_days := [1, 1, 1, 1, 2, 2, 2, 2, 3]
 	for wave_index in range(expected_days.size()):
 		var wave_number := wave_index + 1
 		_expect(
-			probe._get_day_number_for_wave(wave_number) == expected_days[wave_index],
+			probe.campaign_coordinator.get_day_number_for_wave(wave_number)
+			== expected_days[wave_index],
 			"Wave %d must map to day %d." % [wave_number, expected_days[wave_index]]
 		)
 
@@ -208,7 +277,7 @@ func _test_day_and_lighting_boundaries() -> void:
 	]
 	for wave_index in range(expected_wave_lighting.size()):
 		probe.lighting_events.clear()
-		probe._apply_wave_start_lighting(wave_index + 1)
+		presentation.apply_wave_start_lighting(wave_index + 1)
 		_expect(
 			probe.lighting_events == [expected_wave_lighting[wave_index]],
 			"Wave %d lighting must be %s." % [
@@ -222,55 +291,67 @@ func _test_day_and_lighting_boundaries() -> void:
 	]
 	for completed_wave_index in range(expected_rest_lighting.size()):
 		probe.lighting_events.clear()
-		probe._apply_intermission_lighting(completed_wave_index + 1)
+		presentation.apply_intermission_lighting(completed_wave_index + 1)
 		_expect(
 			probe.lighting_events == [expected_rest_lighting[completed_wave_index]],
 			"Rest after wave %d must keep the expected phase lighting." % (
 				completed_wave_index + 1
 			)
 		)
+	presentation.free()
 	probe.free()
+	_complete_case(&"day_and_lighting")
 
 
 func _test_wave_completion_boundaries() -> void:
 	var next_wave := WaveConfig.new()
 	for wave_number in [1, 3, 5]:
 		var probe := FlowBoundaryProbe.new()
-		_attach_campaign_coordinator(probe)
+		probe.day_cycle_config = DAY_CYCLE_CONFIG
+		var fate_probe := FateFlowBoundaryProbe.new()
+		probe.bind_fate_probe(fate_probe)
 		probe.current_flow_step = WaveConfig.new()
 		probe.probe_wave_number = wave_number
 		probe.probe_next_step = next_wave
-		probe._complete_current_step()
+		probe.complete_current_step()
 		_expect(
 			probe.entered_intermission and not probe.entered_fate,
 			"Non-day-ending wave %d must enter intermission." % wave_number
 		)
+		fate_probe.free()
 		probe.free()
 
 	var day_end_probe := FlowBoundaryProbe.new()
-	_attach_campaign_coordinator(day_end_probe)
+	day_end_probe.day_cycle_config = DAY_CYCLE_CONFIG
+	var day_end_fate_probe := FateFlowBoundaryProbe.new()
+	day_end_probe.bind_fate_probe(day_end_fate_probe)
 	day_end_probe.current_flow_step = WaveConfig.new()
 	day_end_probe.probe_wave_number = 4
 	day_end_probe.probe_next_step = next_wave
-	day_end_probe._complete_current_step()
+	day_end_probe.complete_current_step()
 	_expect(day_end_probe.entered_fate, "Wave 4 must enter the fate interlude.")
 	_expect(
 		day_end_probe.captured_next_step == next_wave,
 		"The fate interlude must retain the next campaign step."
 	)
+	day_end_fate_probe.free()
 	day_end_probe.free()
 
 	var terminal_probe := FlowBoundaryProbe.new()
-	_attach_campaign_coordinator(terminal_probe)
+	terminal_probe.day_cycle_config = DAY_CYCLE_CONFIG
+	var terminal_fate_probe := FateFlowBoundaryProbe.new()
+	terminal_probe.bind_fate_probe(terminal_fate_probe)
 	terminal_probe.current_flow_step = WaveConfig.new()
 	terminal_probe.probe_wave_number = 12
 	terminal_probe.probe_next_step = null
-	terminal_probe._complete_current_step()
+	terminal_probe.complete_current_step()
 	_expect(
 		terminal_probe.entered_victory and not terminal_probe.entered_fate,
 		"Terminal wave 12 must enter victory directly without a meaningless fate vote."
 	)
+	terminal_fate_probe.free()
 	terminal_probe.free()
+	_complete_case(&"wave_completion")
 
 
 func _test_elite_bias_day_window() -> void:
@@ -293,14 +374,14 @@ func _test_elite_bias_day_window() -> void:
 
 	coordinator.elite_bias_day = 2
 	coordinator.random_generator.seed = 246813579
-	probe.current_wave_index = 0
+	probe.campaign_coordinator.current_wave_index = 0
 	for sample_index in range(32):
 		_expect(
 			coordinator.resolve_enemy_config(base_config) == base_config,
 			"Elite bias must not leak into the day before its target window."
 		)
 
-	probe.current_wave_index = 4
+	probe.campaign_coordinator.current_wave_index = 4
 	var saw_elite := false
 	for sample_index in range(128):
 		if coordinator.resolve_enemy_config(base_config) == elite_config:
@@ -308,7 +389,7 @@ func _test_elite_bias_day_window() -> void:
 			break
 	_expect(saw_elite, "The configured next day must be able to replace base enemies.")
 
-	probe.current_wave_index = 8
+	probe.campaign_coordinator.current_wave_index = 8
 	for sample_index in range(32):
 		_expect(
 			coordinator.resolve_enemy_config(base_config) == base_config,
@@ -316,6 +397,7 @@ func _test_elite_bias_day_window() -> void:
 		)
 	coordinator.free()
 	probe.free()
+	_complete_case(&"elite_bias")
 
 
 func _test_double_xirang_day_combat_states() -> void:
@@ -325,30 +407,31 @@ func _test_double_xirang_day_combat_states() -> void:
 	_bind_fate_probe(coordinator, probe)
 	probe.fate_coordinator = coordinator
 	coordinator.double_xirang_day = 2
-	probe.current_wave_index = 4
-	probe.wave_state = CombatFlowState.State.WAVE_ACTIVE
+	probe.campaign_coordinator.current_wave_index = 4
+	probe.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	_expect(
 		coordinator.is_double_xirang_reward_active(),
 		"The target day's ordinary waves must double Xirang kill rewards."
 	)
-	probe.wave_state = CombatFlowState.State.BOSS_ACTIVE
+	probe.campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE
 	_expect(
 		coordinator.is_double_xirang_reward_active(),
 		"A target-day boss fight must retain the next-day double-Xirang reward."
 	)
-	probe.wave_state = CombatFlowState.State.INTERMISSION
+	probe.campaign_coordinator.wave_state = CombatFlowState.State.INTERMISSION
 	_expect(
 		not coordinator.is_double_xirang_reward_active(),
 		"The double-Xirang fate must remain combat-only."
 	)
-	probe.current_wave_index = 8
-	probe.wave_state = CombatFlowState.State.WAVE_ACTIVE
+	probe.campaign_coordinator.current_wave_index = 8
+	probe.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	_expect(
 		not coordinator.is_double_xirang_reward_active(),
 		"The double-Xirang fate must expire after its single target day."
 	)
 	coordinator.free()
 	probe.free()
+	_complete_case(&"double_xirang")
 
 
 func _test_boss_runtime_health_cap() -> void:
@@ -371,6 +454,7 @@ func _test_boss_runtime_health_cap() -> void:
 		"All-enemy max-health fate must also drive Linglan's authoritative HUD cap."
 	)
 	boss.free()
+	_complete_case(&"boss_health_cap")
 
 
 func _test_wave_hud_uses_day_cycle_config() -> void:
@@ -393,6 +477,7 @@ func _test_wave_hud_uses_day_cycle_config() -> void:
 	)
 	hud.queue_free()
 	await process_frame
+	_complete_case(&"wave_hud")
 
 
 func _test_xiaocong_collectible_offer_count() -> void:
@@ -429,6 +514,7 @@ func _test_xiaocong_collectible_offer_count() -> void:
 	game.free()
 	coordinator.queue_free()
 	await process_frame
+	_complete_case(&"collectible_offer")
 
 
 func _test_critical_core_follow_up_resolution() -> void:
@@ -522,6 +608,7 @@ func _test_critical_core_follow_up_resolution() -> void:
 	game.free()
 	coordinator.queue_free()
 	await process_frame
+	_complete_case(&"critical_core")
 
 
 func _test_scene_config_and_interlude_freeze() -> void:
@@ -736,7 +823,7 @@ func _test_scene_config_and_interlude_freeze() -> void:
 			placement_rejections.append(reason)
 	)
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	game.wave_state = CombatFlowState.State.FATE_INTERLUDE
+	game.campaign_coordinator.wave_state = CombatFlowState.State.FATE_INTERLUDE
 	game.tower_multiplayer_mode_adapter.request_authoritative_inventory_plant_placement(
 		2,
 		91,
@@ -763,6 +850,7 @@ func _test_scene_config_and_interlude_freeze() -> void:
 	current_scene = null
 	game.queue_free()
 	await process_frame
+	_complete_case(&"scene_freeze")
 
 
 func _test_fate_stone_zero_benefit_filter() -> void:
@@ -792,6 +880,7 @@ func _test_fate_stone_zero_benefit_filter() -> void:
 	game.free()
 	coordinator.queue_free()
 	await process_frame
+	_complete_case(&"fate_stone")
 
 
 func _expect(condition: bool, message: String) -> void:

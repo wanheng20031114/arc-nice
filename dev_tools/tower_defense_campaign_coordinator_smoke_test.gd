@@ -3,6 +3,9 @@ extends SceneTree
 const TOWER_SCENE := preload(
 	"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
 )
+const PERFORMANCE_CAMPAIGN: WaveCampaignConfig = preload(
+	"res://resources/config/campaigns/tower_defense/performance/campaign.tres"
+)
 
 var failures: Array[String] = []
 
@@ -29,6 +32,25 @@ func _run() -> void:
 	_expect(campaign.active_campaign != null, "Campaign 唯一 owner 未加载活动战役。")
 	_expect(campaign.flow_graph != null, "Campaign 唯一 owner 未加载流程图。")
 	_expect(campaign.get_start_flow_step() != null, "Campaign 流程缺少起点。")
+	_expect(
+		campaign.is_formal_four_day_campaign()
+		and campaign.should_enter_daily_rogue_exploration(4)
+		and campaign.should_enter_daily_rogue_exploration(8)
+		and campaign.should_enter_daily_rogue_exploration(12),
+		"正式12波战役必须只在第4、8、12波后进入地下探索。"
+	)
+	var formal_campaign := campaign.active_campaign
+	var formal_waves := campaign.waves.duplicate()
+	campaign.active_campaign = PERFORMANCE_CAMPAIGN
+	campaign.waves.assign(PERFORMANCE_CAMPAIGN.get_waves())
+	_expect(
+		campaign.waves.size() == 12
+		and not campaign.is_formal_four_day_campaign()
+		and not campaign.should_enter_daily_rogue_exploration(4),
+		"12波性能战役不得被误判为正式四日战役或插入地下探索。"
+	)
+	campaign.active_campaign = formal_campaign
+	campaign.waves.assign(formal_waves)
 	_expect(
 		game.state_timer.timeout.is_connected(
 			Callable(campaign, "on_state_timer_timeout")
@@ -75,6 +97,24 @@ func _run() -> void:
 		int(snapshot.get("state", -1)) == int(CombatFlowState.State.PRE_WAVE),
 		"流程快照状态与 Campaign 状态不一致。"
 	)
+
+	var boss_step := campaign.get_flow_step_by_id(&"boss_01_linglan")
+	_expect(boss_step is BossConfig, "正式流程必须存在铃兰 Boss 步骤。")
+	campaign.start_client_flow_countdown(
+		CombatFlowState.State.INTERMISSION,
+		&"boss_01_linglan",
+		60
+	)
+	campaign.update_client_flow_countdown()
+	campaign.update_client_flow_countdown()
+	_expect(
+		game.wave_hud.day_label.text == "第 4 日"
+		and game.wave_hud.phase_label.text == "白昼"
+		and game.wave_hud.wave_title_label.text == "首领战准备"
+		and not game.wave_hud.global_wave_notice.visible,
+		"客户端连续倒计时必须保持第4日白昼首领准备语义，不能回写第12波。"
+	)
+	game.state_timer.stop()
 
 	var entered_results: Array[CombatFlowState.State] = []
 	campaign.result_entered.connect(

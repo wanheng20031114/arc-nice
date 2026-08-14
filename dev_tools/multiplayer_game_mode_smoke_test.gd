@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 71,
-		"协议v71必须隔离地下水道普通20/20/4/3、紧急20/2/15/10编成、Game04双出生点及普通/紧急池合同，并保留v70地下教会、植被科研、攻速强化塔、移速强化塔、P1E入口、神奇遭遇历史、P1D地下教堂与大小纸箱怪资源及既有模式接线。"
+		NetConstants.PROTOCOL_VERSION == 72,
+		"协议v72必须隔离塔防四日地下探索，并保留v71地下水道及既有模式接线。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

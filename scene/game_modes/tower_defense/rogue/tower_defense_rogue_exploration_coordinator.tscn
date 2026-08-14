@@ -1,0 +1,21 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/rogue/tower_defense_rogue_exploration_coordinator.gd" id="1_coordinator"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/route/rogue_route_game.tscn" id="2_route"]
+[ext_resource type="Script" path="res://scene/game_modes/rogue/combat/rogue_combat_multiplayer_coordinator.gd" id="3_multiplayer_combat"]
+
+[node name="RogueExplorationCoordinator" type="Node"]
+script = ExtResource("1_coordinator")
+
+[node name="RogueRoute" parent="." instance=ExtResource("2_route")]
+visible = false
+process_mode = 4
+auto_initialize = false
+manage_return_locally = false
+embedded_session = true
+
+[node name="RogueCombatCoordinator" type="Node" parent="."]
+script = ExtResource("3_multiplayer_combat")
+
+[node name="Camera2D" parent="RogueRoute/World" index="5"]
+enabled = false

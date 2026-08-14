@@ -63,6 +63,7 @@ const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 @onready var network_diagnostics_coordinator: MpNetworkDiagnosticsCoordinatorScript = (
 	$NetworkDiagnosticsCoordinator
 )
+@onready var tower_rogue_route_bridge: MpRogueRoute = $TowerRogueRouteBridge
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
 var game: CombatRuntimeBase = null
@@ -77,6 +78,10 @@ var _client_host_game_ready: bool = false
 var _embedded_runtime_active := false
 var _embedded_participant_peer_ids: Dictionary[int, bool] = {}
 var _suspended_embedded_participant_peer_ids: Dictionary[int, bool] = {}
+## exploration session uses CH_AUTH while the established tower flow RPC uses
+## CH_WORLD_EVENT. Preserve each channel's protocol and defer the cross-channel
+## transition until both authoritative halves describe the same active state.
+var _pending_tower_rogue_flow_state: Dictionary = {}
 
 
 func _ready() -> void:
@@ -236,7 +241,10 @@ func _on_player_action_rpc_to_host_requested(
 	method_name: StringName,
 	arguments: Array
 ) -> void:
-	if not net_manager.is_client():
+	if (
+		not net_manager.is_client()
+		or _is_tower_world_suspended_for_rogue_exploration()
+	):
 		return
 	_rpc_to_peer(_get_host_peer_id(), method_name, arguments)
 
@@ -264,7 +272,11 @@ func _on_player_snapshot_send_requested(
 	data: PackedByteArray,
 	entity_count: int
 ) -> void:
-	if peer_id <= 0 or not net_manager.is_host():
+	if (
+		peer_id <= 0
+		or not net_manager.is_host()
+		or _is_tower_world_suspended_for_rogue_exploration()
+	):
 		return
 	_record_snapshot_packet_size(&"player", data.size(), entity_count)
 	_rpc_to_peer(
@@ -299,7 +311,10 @@ func _on_projectile_rpc_to_host_requested(
 	method_name: StringName,
 	arguments: Array
 ) -> void:
-	if not net_manager.is_client():
+	if (
+		not net_manager.is_client()
+		or _is_tower_world_suspended_for_rogue_exploration()
+	):
 		return
 	_rpc_to_peer(_get_host_peer_id(), method_name, arguments)
 
@@ -355,7 +370,11 @@ func _on_enemy_snapshot_send_requested(
 	snapshot_hz: int,
 	entity_count: int
 ) -> void:
-	if peer_id <= 0 or not net_manager.is_host():
+	if (
+		peer_id <= 0
+		or not net_manager.is_host()
+		or _is_tower_world_suspended_for_rogue_exploration()
+	):
 		return
 	_record_snapshot_packet_size(&"enemy", data.size(), entity_count)
 	_rpc_to_peer(
@@ -376,6 +395,9 @@ func _on_enemy_snapshot_send_requested(
 func _exit_tree() -> void:
 	if net_manager != null and net_manager.is_host():
 		_capture_shared_warehouse_ledger()
+	if tower_rogue_route_bridge != null:
+		tower_rogue_route_bridge.unbind_embedded_campaign_runtime()
+	_pending_tower_rogue_flow_state.clear()
 	if net_manager != null and net_manager.connection_state_changed.is_connected(_on_connection_state_changed):
 		net_manager.connection_state_changed.disconnect(_on_connection_state_changed)
 	if net_manager != null and net_manager.player_left.is_connected(_on_net_player_left):
@@ -468,6 +490,11 @@ func _physics_process(delta: float) -> void:
 	if embedded_runtime and not _embedded_runtime_active:
 		return
 	if int(net_manager.connection_state) != STATE_IN_GAME:
+		return
+	# The outer Tower MpGame remains in the scene while the embedded Rogue route
+	# is active. Its child route bridge processes independently, so this freezes
+	# Tower realtime simulation without starving route or route-combat transport.
+	if _is_tower_world_suspended_for_rogue_exploration():
 		return
 	_update_recent_event_cache_prune(delta)
 	_update_snapshot_packet_warning_timer(delta)
@@ -596,6 +623,10 @@ func _process(delta: float) -> void:
 	if embedded_runtime and not _embedded_runtime_active:
 		return
 	session_coordinator.update_transport(delta)
+	# Keep lobby/session transport alive, but never interpolate or advance the
+	# hidden Tower world during a Rogue exploration interlude.
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
 	if net_manager.is_client() or net_manager.is_host():
 		_client_interpolate_entities()
 	if net_manager.is_client() and game != null:
@@ -633,6 +664,7 @@ func begin_inventory_building_placement(
 ) -> bool:
 	if (
 		not _has_tower_mode()
+		or _is_tower_world_suspended_for_rogue_exploration()
 	):
 		return false
 	return tower_mode_adapter.begin_inventory_building_placement(
@@ -831,7 +863,10 @@ func _on_tower_economy_rpc_to_host_requested(
 	method_name: StringName,
 	args: Array
 ) -> void:
-	if not net_manager.is_client():
+	if (
+		not net_manager.is_client()
+		or _is_tower_world_suspended_for_rogue_exploration()
+	):
 		return
 	_rpc_to_peer(_get_host_peer_id(), method_name, args)
 
@@ -1196,7 +1231,11 @@ func _on_tower_world_plant_placement_request_to_host(
 	plant_id: String,
 	anchor: Vector2i
 ) -> void:
-	if not _has_tower_mode() or not net_manager.is_client():
+	if (
+		not _has_tower_mode()
+		or not net_manager.is_client()
+		or _is_tower_world_suspended_for_rogue_exploration()
+	):
 		return
 	_rpc_to_peer(
 		_get_host_peer_id(),
@@ -1213,7 +1252,11 @@ func _on_tower_world_inventory_plant_placement_request_to_host(
 	expected_inventory_revision: int,
 	item_config_path: String
 ) -> void:
-	if not _has_tower_mode() or not net_manager.is_client():
+	if (
+		not _has_tower_mode()
+		or not net_manager.is_client()
+		or _is_tower_world_suspended_for_rogue_exploration()
+	):
 		return
 	_rpc_to_peer(
 		_get_host_peer_id(),
@@ -1407,6 +1450,21 @@ func _has_tower_mode() -> bool:
 		tower_mode_adapter != null
 		and is_instance_valid(tower_mode_adapter)
 	)
+
+
+## Only the persistent outer Tower runtime is suspended. Embedded Rogue combat
+## owns a separate MpGame and must continue processing normally.
+func _is_tower_world_suspended_for_rogue_exploration() -> bool:
+	return (
+		not embedded_runtime
+		and _has_tower_mode()
+		and tower_mode_adapter.is_rogue_exploration_active()
+	)
+
+
+## Explicit sender seam for authoritative request dispatch and smoke tests.
+func _get_rpc_sender_id() -> int:
+	return multiplayer.get_remote_sender_id()
 
 
 func _get_tower_plant(net_id: int) -> PlantDefense:
@@ -1772,6 +1830,9 @@ func _setup_game(mode: int) -> bool:
 				_on_host_linglan_airdrop_started
 			)
 		mode_adapter.revive_all_requested.connect(_on_host_revive_all_requested)
+		mode_adapter.restore_all_full_health_requested.connect(
+			_on_host_restore_all_full_health_requested
+		)
 		gameplay_gateway.player_teleport_requested.connect(
 			_on_host_player_teleport_requested
 		)
@@ -1811,6 +1872,38 @@ func _setup_game(mode: int) -> bool:
 		_on_game_return_to_lobby_requested
 	)
 	add_child(game)
+	if tower_adapter != null:
+		var rogue_route := tower_adapter.get_rogue_route()
+		var rogue_combat := tower_adapter.get_rogue_combat_coordinator()
+		if (
+			rogue_route == null
+			or rogue_combat == null
+			or tower_rogue_route_bridge == null
+			or not tower_rogue_route_bridge.bind_embedded_campaign_runtime(
+				rogue_route,
+				rogue_combat,
+				net_manager,
+				run_state,
+				_send_tower_rogue_route_rpc
+			)
+		):
+			push_error("MpGame: 无法绑定塔防内嵌地下探索多人桥。")
+			return false
+		if not tower_adapter.rogue_exploration_snapshot_changed.is_connected(
+			_on_tower_rogue_exploration_snapshot_changed
+		):
+			tower_adapter.rogue_exploration_snapshot_changed.connect(
+				_on_tower_rogue_exploration_snapshot_changed
+			)
+		if not tower_rogue_route_bridge.embedded_authoritative_snapshot_changed.is_connected(
+			_on_tower_rogue_route_snapshot_refresh_requested
+		):
+			tower_rogue_route_bridge.embedded_authoritative_snapshot_changed.connect(
+				_on_tower_rogue_route_snapshot_refresh_requested
+			)
+		tower_rogue_route_bridge.set_embedded_exploration_active(
+			tower_adapter.is_rogue_exploration_active()
+		)
 	run_state.set_active_multiplayer_peer(local_peer_id)
 	if net_manager.is_host() and _has_tower_mode():
 		tower_world_coordinator.broadcast_base_health_snapshot()
@@ -2048,6 +2141,8 @@ func _client_interpolate_entities() -> void:
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
 func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) -> void:
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
 	player_coordinator.receive_authoritative_player_snapshot(
 		host_timestamp,
 		data
@@ -2063,6 +2158,8 @@ func _rpc_receive_enemy_snapshot(
 	chunk_count: int = 1,
 	snapshot_hz: int = _NetConstants.ENEMY_SNAPSHOT_HZ
 ) -> void:
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
 	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
 	enemy_coordinator.apply_authoritative_snapshot(
 		snapshot_time,
@@ -2086,7 +2183,13 @@ func _rpc_client_player_state(
 	dash_direction: Vector2,
 	dash_start_move_input: Vector2
 ) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if (
+		_is_tower_world_suspended_for_rogue_exploration()
+		or net_manager == null
+		or not net_manager.is_host()
+	):
+		return
+	var sender_id := _get_rpc_sender_id()
 	player_coordinator.handle_client_player_state(
 		sender_id,
 		sequence,
@@ -2127,7 +2230,13 @@ func net_player_dash_requested(
 	direction: Vector2,
 	start_move_input: Vector2
 ) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if (
+		_is_tower_world_suspended_for_rogue_exploration()
+		or net_manager == null
+		or not net_manager.is_host()
+	):
+		return
+	var sender_id := _get_rpc_sender_id()
 	player_coordinator.handle_dash_request(
 		sender_id,
 		dash_request_sequence,
@@ -2167,7 +2276,9 @@ func net_player_dash_confirmed(
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_hoe_primary_attack_requested(direction: Vector2, request_id: int = 0) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
+	var sender_id := _get_rpc_sender_id()
 	player_coordinator.handle_hoe_primary_request(
 		sender_id,
 		direction,
@@ -2177,7 +2288,9 @@ func net_hoe_primary_attack_requested(direction: Vector2, request_id: int = 0) -
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_hoe_whirlwind_requested(request_id: int = 0) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
+	var sender_id := _get_rpc_sender_id()
 	player_coordinator.handle_hoe_whirlwind_request(sender_id, request_id)
 
 
@@ -2222,7 +2335,9 @@ func net_hoe_action_confirmed(
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_tango_electric_surge_requested(request_id: int) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
+	var sender_id := _get_rpc_sender_id()
 	player_coordinator.handle_tango_electric_surge_request(sender_id, request_id)
 
 
@@ -2283,7 +2398,9 @@ func _finish_authoritative_tango_electric_surge(
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_tango_charge_started_requested(direction: Vector2, request_id: int) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
+	var sender_id := _get_rpc_sender_id()
 	player_coordinator.handle_tango_charge_started_request(
 		sender_id,
 		direction,
@@ -2293,7 +2410,9 @@ func net_tango_charge_started_requested(direction: Vector2, request_id: int) -> 
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_tango_charge_released_requested(direction: Vector2, request_id: int) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
+	var sender_id := _get_rpc_sender_id()
 	player_coordinator.handle_tango_charge_released_request(
 		sender_id,
 		direction,
@@ -2303,7 +2422,9 @@ func net_tango_charge_released_requested(direction: Vector2, request_id: int) ->
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_tango_charge_cancelled_requested(request_id: int) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
+	var sender_id := _get_rpc_sender_id()
 	player_coordinator.handle_tango_charge_cancelled_request(sender_id, request_id)
 
 
@@ -2406,7 +2527,9 @@ func net_tango_charge_rejected(peer_id: int, request_id: int, phase_text: String
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_tiyi_high_noon_requested(activation_id: int) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
+	var sender_id := _get_rpc_sender_id()
 	player_coordinator.handle_tiyi_high_noon_request(sender_id, activation_id)
 
 
@@ -2607,7 +2730,9 @@ func _rpc_projectile_fired_from_client(
 	_client_fire_timestamp: float = -1.0,
 	target_enemy_net_id: int = 0
 ) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
+	var sender_id := _get_rpc_sender_id()
 	projectile_coordinator.handle_client_projectile_fired(
 		sender_id,
 		projectile_id,
@@ -2807,7 +2932,9 @@ func _rpc_enemy_hit_report(
 	_damage: int,
 	_impact_direction: Vector2
 ) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
+	var sender_id := _get_rpc_sender_id()
 	enemy_coordinator.receive_enemy_hit_report(
 		sender_id,
 		_projectile_id,
@@ -3367,6 +3494,26 @@ func _on_host_revive_all_requested() -> void:
 	player_coordinator.revive_all_players()
 
 
+func _on_host_restore_all_full_health_requested() -> void:
+	_mark_disconnected_players_for_rogue_boundary_full_health()
+	player_coordinator.restore_all_players_to_full_health()
+
+
+func _mark_disconnected_players_for_rogue_boundary_full_health() -> void:
+	if not net_manager.is_host():
+		return
+	for peer_id in _disconnected_player_reconnect_states.keys():
+		var reconnect_state := (
+			_disconnected_player_reconnect_states[peer_id] as Dictionary
+		)
+		reconnect_state["rogue_boundary_full_health_pending"] = true
+		# 已跨过全员满血边界的断线玩家不再继承旧死亡倒计时；重连节点
+		# 创建后会按 RunState 当前上限产生一条新的权威健康 revision。
+		reconnect_state["revive_at"] = -1.0
+		reconnect_state["revive_last_seconds"] = -1
+		_disconnected_player_reconnect_states[peer_id] = reconnect_state
+
+
 @rpc("authority", "call_remote", "reliable", 5)
 func net_player_revive_countdown(peer_id: int, seconds_left: int) -> void:
 	player_coordinator.apply_player_revive_countdown(peer_id, seconds_left)
@@ -3384,6 +3531,23 @@ func net_player_revived(
 		peer_id,
 		revive_position,
 		current_health,
+		invincible_seconds,
+		health_revision
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_player_full_health_restored(
+	peer_id: int,
+	restore_position: Vector2,
+	maximum_health: int,
+	invincible_seconds: float,
+	health_revision: int
+) -> void:
+	player_coordinator.apply_player_full_health_restored(
+		peer_id,
+		restore_position,
+		maximum_health,
 		invincible_seconds,
 		health_revision
 	)
@@ -3484,7 +3648,138 @@ func _on_world_flow_state_broadcast_requested(
 ) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
+	# 会话快照先于同一可靠信道上的流程状态到达，客户端不会先进入空的
+	# 探索画面；非探索流程同样发送 active=false 以收敛返回边界。
+	_broadcast_tower_rogue_exploration_snapshots()
 	_rpc_to_connected_clients(&"net_flow_state_changed", [String(step_id), state, countdown_seconds])
+
+
+func _on_tower_rogue_exploration_snapshot_changed(
+	_snapshot: Dictionary
+) -> void:
+	if not net_manager.is_host() or tower_mode_adapter == null:
+		return
+	tower_rogue_route_bridge.set_embedded_exploration_active(
+		tower_mode_adapter.is_rogue_exploration_active()
+	)
+	_broadcast_tower_rogue_exploration_snapshots()
+
+
+func _on_tower_rogue_route_snapshot_refresh_requested() -> void:
+	if net_manager.is_host():
+		_broadcast_tower_rogue_exploration_snapshots()
+
+
+func _broadcast_tower_rogue_exploration_snapshots() -> void:
+	if not net_manager.is_host() or tower_mode_adapter == null:
+		return
+	for peer_id in _get_connected_client_peer_ids():
+		_send_tower_rogue_exploration_snapshot_to_peer(peer_id)
+
+
+func _send_tower_rogue_exploration_snapshot_to_peer(peer_id: int) -> bool:
+	if (
+		not net_manager.is_host()
+		or tower_mode_adapter == null
+		or peer_id <= 0
+		or not net_manager.is_peer_send_ready(peer_id)
+	):
+		return false
+	var snapshot := (
+		tower_mode_adapter.export_rogue_exploration_snapshot_for_peer(peer_id)
+	)
+	if snapshot.is_empty():
+		return false
+	return _rpc_to_peer(
+		peer_id,
+		&"net_tower_rogue_exploration_snapshot",
+		[snapshot]
+	)
+
+
+func _apply_tower_rogue_exploration_snapshot(
+	sender_id: int,
+	snapshot: Dictionary
+) -> bool:
+	if (
+		not net_manager.is_client()
+		or sender_id != _get_host_peer_id()
+		or tower_mode_adapter == null
+		or tower_rogue_route_bridge == null
+		or snapshot.is_empty()
+	):
+		return false
+	if not tower_mode_adapter.is_rogue_progression_contract_compatible(snapshot):
+		push_error(
+			"MpGame: Host 地下探索成长配置契约与本地不一致，拒绝会话快照。"
+		)
+		return false
+	if not tower_mode_adapter.apply_remote_rogue_exploration_snapshot(snapshot):
+		return false
+	var active := tower_mode_adapter.is_rogue_exploration_active()
+	tower_rogue_route_bridge.set_embedded_exploration_active(active)
+	if active:
+		tower_rogue_route_bridge.synchronize_embedded_route()
+	_flush_pending_tower_rogue_flow_state(active)
+	return true
+
+
+func _is_tower_rogue_session_transport_active() -> bool:
+	return (
+		tower_mode_adapter != null
+		and tower_rogue_route_bridge != null
+		and tower_mode_adapter.is_rogue_exploration_active()
+		and tower_rogue_route_bridge.is_embedded_exploration_active()
+	)
+
+
+func _receive_or_defer_tower_flow_state(
+	step_id: String,
+	state: int,
+	countdown_seconds: int
+) -> void:
+	if tower_mode_adapter == null:
+		world_flow_coordinator.receive_flow_state(
+			StringName(step_id),
+			state,
+			countdown_seconds
+		)
+		return
+	var expects_active_session := (
+		state == CombatFlowState.State.ROGUE_EXPLORATION
+	)
+	var session_active := _is_tower_rogue_session_transport_active()
+	if expects_active_session != session_active:
+		_pending_tower_rogue_flow_state = {
+			"step_id": step_id,
+			"state": state,
+			"countdown_seconds": countdown_seconds,
+		}
+		return
+	_pending_tower_rogue_flow_state.clear()
+	world_flow_coordinator.receive_flow_state(
+		StringName(step_id),
+		state,
+		countdown_seconds
+	)
+
+
+func _flush_pending_tower_rogue_flow_state(session_active: bool) -> void:
+	if _pending_tower_rogue_flow_state.is_empty():
+		return
+	var state := int(_pending_tower_rogue_flow_state.get("state", -1))
+	if (
+		(state == CombatFlowState.State.ROGUE_EXPLORATION)
+		!= session_active
+	):
+		return
+	var pending := _pending_tower_rogue_flow_state.duplicate(true)
+	_pending_tower_rogue_flow_state.clear()
+	world_flow_coordinator.receive_flow_state(
+		StringName(pending.get("step_id", "")),
+		state,
+		int(pending.get("countdown_seconds", 0))
+	)
 
 
 func _on_world_flow_wave_progress_broadcast_requested(
@@ -3583,10 +3878,242 @@ func _handle_authoritative_runtime_state_request(
 	sender_id: int,
 	include_flow_state: bool
 ) -> bool:
-	return session_coordinator.handle_authoritative_runtime_state_request(
+	if not session_coordinator.admit_authoritative_runtime_state_request(
+		net_manager.is_host(),
 		sender_id,
-		include_flow_state,
 		_get_net_time()
+	):
+		return false
+	_send_tower_rogue_exploration_snapshot_to_peer(sender_id)
+	return session_coordinator.send_authoritative_runtime_state_to_peer(
+		sender_id,
+		include_flow_state
+	)
+
+
+func _send_tower_rogue_route_rpc(
+	peer_id: int,
+	method_name: StringName,
+	arguments: Array
+) -> bool:
+	if (
+		peer_id <= 0
+		or tower_rogue_route_bridge == null
+		or not is_instance_valid(tower_rogue_route_bridge)
+	):
+		return false
+	return _rpc_to_peer(peer_id, method_name, arguments)
+
+
+func _dispatch_tower_rogue_route_rpc(
+	method_name: StringName,
+	arguments: Array
+) -> void:
+	if (
+		tower_rogue_route_bridge == null
+		or not is_instance_valid(tower_rogue_route_bridge)
+	):
+		return
+	tower_rogue_route_bridge.apply_embedded_route_rpc(
+		method_name,
+		multiplayer.get_remote_sender_id(),
+		arguments
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func net_tower_rogue_exploration_snapshot(snapshot: Dictionary) -> void:
+	_apply_tower_rogue_exploration_snapshot(
+		multiplayer.get_remote_sender_id(),
+		snapshot
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_request_route_full_snapshot() -> void:
+	_dispatch_tower_rogue_route_rpc(
+		&"net_request_route_full_snapshot",
+		[]
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func net_route_full_snapshot(
+	layout: Dictionary,
+	state: Dictionary,
+	encounter_state: Dictionary,
+	economy_state: Dictionary,
+	shop_state: Dictionary
+) -> void:
+	_dispatch_tower_rogue_route_rpc(
+		&"net_route_full_snapshot",
+		[layout, state, encounter_state, economy_state, shop_state]
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func net_route_move_delta(delta: Dictionary) -> void:
+	_dispatch_tower_rogue_route_rpc(&"net_route_move_delta", [delta])
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func net_route_briefing_state(snapshot: Dictionary) -> void:
+	_dispatch_tower_rogue_route_rpc(&"net_route_briefing_state", [snapshot])
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_briefing_cover_ready(
+	occurrence_key: String,
+	briefing_revision: int,
+	expected_route_revision: int
+) -> void:
+	_dispatch_tower_rogue_route_rpc(
+		&"net_route_briefing_cover_ready",
+		[occurrence_key, briefing_revision, expected_route_revision]
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_encounter_intro_ack(
+	occurrence_key: String,
+	expected_revision: int
+) -> void:
+	_dispatch_tower_rogue_route_rpc(
+		&"net_route_encounter_intro_ack",
+		[occurrence_key, expected_revision]
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_encounter_vote(
+	occurrence_key: String,
+	expected_revision: int,
+	option_id: StringName
+) -> void:
+	_dispatch_tower_rogue_route_rpc(
+		&"net_route_encounter_vote",
+		[occurrence_key, expected_revision, option_id]
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_encounter_result_ack(
+	occurrence_key: String,
+	result_sequence: int
+) -> void:
+	_dispatch_tower_rogue_route_rpc(
+		&"net_route_encounter_result_ack",
+		[occurrence_key, result_sequence]
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func net_route_encounter_snapshot(
+	encounter_state: Dictionary,
+	economy_state: Dictionary
+) -> void:
+	_dispatch_tower_rogue_route_rpc(
+		&"net_route_encounter_snapshot",
+		[encounter_state, economy_state]
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_shop_purchase_request(
+	request_id: String,
+	occurrence_key: String,
+	offer_index: int,
+	expected_session_revision: int,
+	expected_shelf_revision: int,
+	expected_inventory_revision: int,
+	expected_xirang_revision: int
+) -> void:
+	_dispatch_tower_rogue_route_rpc(
+		&"net_shop_purchase_request",
+		[
+			request_id,
+			occurrence_key,
+			offer_index,
+			expected_session_revision,
+			expected_shelf_revision,
+			expected_inventory_revision,
+			expected_xirang_revision,
+		]
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_shop_sell_request(
+	request_id: String,
+	occurrence_key: String,
+	slot_index: int,
+	expected_config_path: String,
+	expected_session_revision: int,
+	expected_inventory_revision: int,
+	expected_xirang_revision: int
+) -> void:
+	_dispatch_tower_rogue_route_rpc(
+		&"net_shop_sell_request",
+		[
+			request_id,
+			occurrence_key,
+			slot_index,
+			expected_config_path,
+			expected_session_revision,
+			expected_inventory_revision,
+			expected_xirang_revision,
+		]
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_shop_exit_ack(
+	occurrence_key: String,
+	expected_session_revision: int
+) -> void:
+	_dispatch_tower_rogue_route_rpc(
+		&"net_shop_exit_ack",
+		[occurrence_key, expected_session_revision]
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func net_shop_snapshot(shop_state: Dictionary) -> void:
+	_dispatch_tower_rogue_route_rpc(&"net_shop_snapshot", [shop_state])
+
+
+@rpc("any_peer", "call_remote", "unreliable_ordered", 1)
+func net_route_avatar_input(
+	sequence: int,
+	route_revision: int,
+	packed_pose: PackedInt32Array
+) -> void:
+	_dispatch_tower_rogue_route_rpc(
+		&"net_route_avatar_input",
+		[sequence, route_revision, packed_pose]
+	)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 2)
+func net_route_avatar_snapshot(
+	snapshot_sequence: int,
+	route_revision: int,
+	packed_states: PackedInt32Array
+) -> void:
+	_dispatch_tower_rogue_route_rpc(
+		&"net_route_avatar_snapshot",
+		[snapshot_sequence, route_revision, packed_states]
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func net_route_avatar_corrected(
+	route_revision: int,
+	packed_pose: PackedInt32Array
+) -> void:
+	_dispatch_tower_rogue_route_rpc(
+		&"net_route_avatar_corrected",
+		[route_revision, packed_pose]
 	)
 
 
@@ -3652,8 +4179,13 @@ func net_plant_placement_requested(
 	plant_id: String,
 	anchor: Vector2i
 ) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
-	if not _has_tower_mode() or not net_manager.is_host() or game == null:
+	var sender_id := _get_rpc_sender_id()
+	if (
+		_is_tower_world_suspended_for_rogue_exploration()
+		or not _has_tower_mode()
+		or not net_manager.is_host()
+		or game == null
+	):
 		return
 	tower_world_coordinator.handle_remote_plant_placement_request(
 		sender_id,
@@ -3672,8 +4204,13 @@ func net_inventory_plant_placement_requested(
 	expected_inventory_revision: int,
 	item_config_path: String
 ) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
-	if not _has_tower_mode() or not net_manager.is_host() or game == null:
+	var sender_id := _get_rpc_sender_id()
+	if (
+		_is_tower_world_suspended_for_rogue_exploration()
+		or not _has_tower_mode()
+		or not net_manager.is_host()
+		or game == null
+	):
 		return
 	tower_world_coordinator.handle_remote_inventory_plant_placement_request(
 		sender_id,
@@ -3688,7 +4225,9 @@ func net_inventory_plant_placement_requested(
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_warehouse_command_requested(command: Dictionary) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
 	if (
 		not _has_tower_mode()
 		or not net_manager.is_host()
@@ -3705,7 +4244,9 @@ func net_warehouse_command_requested(command: Dictionary) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_warehouse_snapshot_requested(warehouse_net_id: int) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
 	if (
 		not _has_tower_mode()
 		or not net_manager.is_host()
@@ -3721,7 +4262,9 @@ func net_warehouse_snapshot_requested(warehouse_net_id: int) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_production_command_requested(command: Dictionary) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
 	if (
 		not _has_tower_mode()
 		or not net_manager.is_host()
@@ -3738,7 +4281,9 @@ func net_production_command_requested(command: Dictionary) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_research_command_requested(command: Dictionary) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
 	if (
 		not _has_tower_mode()
 		or not net_manager.is_host()
@@ -3755,7 +4300,9 @@ func net_research_command_requested(command: Dictionary) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_production_snapshot_requested(building_net_id: int) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
+	if _is_tower_world_suspended_for_rogue_exploration():
+		return
 	if (
 		not _has_tower_mode()
 		or not net_manager.is_host()
@@ -4275,11 +4822,7 @@ func net_merchant_active_changed(active: bool) -> void:
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_flow_state_changed(step_id: String, state: int, countdown_seconds: int) -> void:
-	world_flow_coordinator.receive_flow_state(
-		StringName(step_id),
-		state,
-		countdown_seconds
-	)
+	_receive_or_defer_tower_flow_state(step_id, state, countdown_seconds)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -4886,6 +5429,15 @@ func _on_net_player_left(peer_id: int) -> void:
 	if embedded_runtime and not _embedded_participant_peer_ids.has(peer_id):
 		return
 	_capture_disconnected_player_reconnect_state(peer_id)
+	if tower_mode_adapter != null:
+		tower_rogue_route_bridge.capture_embedded_route_peer_before_removal(
+			peer_id
+		)
+		if net_manager.is_host():
+			tower_mode_adapter.handle_rogue_exploration_peer_left(peer_id)
+		else:
+			tower_rogue_route_bridge.remove_embedded_route_peer_locally(peer_id)
+		tower_rogue_route_bridge.clear_embedded_peer_transport_state(peer_id)
 	_clear_peer_network_state(peer_id)
 	if game != null:
 		game.remove_multiplayer_player(peer_id)
@@ -5044,12 +5596,55 @@ func _on_net_player_reconnected(
 				player_state.position,
 				_get_net_time()
 			)
+	if (
+		net_manager.is_host()
+		and bool(reconnect_state.get("rogue_boundary_full_health_pending", false))
+		and tower_mode_adapter != null
+	):
+		tower_mode_adapter.refresh_players_from_run_state_for_rogue_boundary()
+		if not player_coordinator.restore_player_to_full_health(new_peer_id):
+			push_error(
+				"MpGame: 无法为跨过地下探索满血边界的重连玩家 %d 恢复生命。"
+				% new_peer_id
+			)
 	var owned_plant_ids := reconnect_state.get("owned_plant_net_ids", []) as Array
 	for plant_net_id_variant in owned_plant_ids:
 		var plant := _get_tower_plant(int(plant_net_id_variant))
 		if plant != null and is_instance_valid(plant):
 			plant.owner_player = player_node
 	_disconnected_player_reconnect_states.erase(old_peer_id)
+	if tower_mode_adapter != null:
+		var route_migrated := false
+		if net_manager.is_host():
+			route_migrated = (
+				tower_mode_adapter.handle_rogue_exploration_peer_reconnected(
+					old_peer_id,
+					new_peer_id,
+					player_name,
+					character_id
+				)
+			)
+		else:
+			route_migrated = (
+				tower_rogue_route_bridge.migrate_embedded_route_peer_locally(
+					old_peer_id,
+					new_peer_id,
+					player_name,
+					character_id,
+					net_manager.get_stable_participant_key(new_peer_id)
+				)
+			)
+		if not route_migrated:
+			push_warning(
+				"MpGame: 地下探索玩家 %d -> %d 将由下一份权威快照修复。"
+				% [old_peer_id, new_peer_id]
+			)
+		tower_rogue_route_bridge.migrate_embedded_peer_transport_state(
+			old_peer_id,
+			new_peer_id
+		)
+		if net_manager.is_host():
+			_send_tower_rogue_exploration_snapshot_to_peer(new_peer_id)
 
 
 func _clear_peer_network_state(peer_id: int) -> void:
@@ -5087,6 +5682,7 @@ func _return_to_lobby() -> void:
 	projectile_coordinator.reset_session_state()
 	world_flow_coordinator.reset_session_state()
 	_disconnected_player_reconnect_states.clear()
+	_pending_tower_rogue_flow_state.clear()
 	collectible_presentation_coordinator.reset_session_state()
 	network_diagnostics_coordinator.reset_session_state()
 	tower_economy_coordinator.reset_session_state()

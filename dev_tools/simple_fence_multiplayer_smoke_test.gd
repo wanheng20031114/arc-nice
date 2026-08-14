@@ -145,8 +145,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 71,
-		"协议v71必须隔离地下水道普通20/20/4/3、紧急20/2/15/10编成、Game04双出生点及普通/紧急池合同，并保留v70地下教会、P1D/P1E与既有wire合同。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 72,
+		"协议v72必须隔离塔防四日地下探索并保留v71地下水道、P1D/P1E与既有wire合同。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)

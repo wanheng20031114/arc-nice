@@ -1,7 +1,9 @@
 extends SceneTree
 
-const TARGET_WAVE_COUNT := 16
+const SCHEMA_VERSION := 3
+const TARGET_WAVE_COUNT := 12
 const CURRENT_FORMAL_WAVE_COUNT := 12
+const CAMPAIGN_DAY_COUNT := 4
 const WAVES_PER_DAY := 4
 const FORMAL_WAVE_PATH := (
 	"res://resources/config/campaigns/tower_defense/formal/wave_%02d.tres"
@@ -98,33 +100,30 @@ func _build_snapshot() -> Dictionary:
 
 	var waves: Array[Dictionary] = []
 	for wave_number in range(1, TARGET_WAVE_COUNT + 1):
-		if wave_number <= formal_waves.size():
-			waves.append(
-				_serialize_wave(
-					formal_waves[wave_number - 1],
-					wave_number,
-					enemy_id_by_config_path,
-					false
-				)
-			)
-			continue
 		waves.append(
-			_create_placeholder_wave(
-				formal_waves.back(),
-				wave_number
+			_serialize_wave(
+				formal_waves[wave_number - 1],
+				wave_number,
+				enemy_id_by_config_path,
+				false
 			)
 		)
 
 	return {
-		"schema_version": 1,
-		"workbook_id": "tower_defense_wave_designer_v1",
+		"schema_version": SCHEMA_VERSION,
+		"workbook_id": "tower_defense_4_day_campaign_designer_v3",
 		"campaign_id": "tower_defense_formal",
 		"source_wave_count": CURRENT_FORMAL_WAVE_COUNT,
 		"target_wave_count": TARGET_WAVE_COUNT,
-		"day_count": TARGET_WAVE_COUNT / WAVES_PER_DAY,
+		"day_count": CAMPAIGN_DAY_COUNT,
 		"waves_per_day": DAY_CYCLE_CONFIG.waves_per_day,
 		"night_start_wave_in_day": DAY_CYCLE_CONFIG.night_start_wave_in_day,
 		"boss_after_wave": TARGET_WAVE_COUNT,
+		"boss_day": CAMPAIGN_DAY_COUNT,
+		"boss_period": "day",
+		"daily_rogue_action_points": Array(
+			PROGRESSION_CONFIG.daily_rogue_action_points
+		),
 		"progression": {
 			"enemy_count_per_extra_player_ratio": (
 				PROGRESSION_CONFIG.enemy_count_per_extra_player_ratio
@@ -137,6 +136,9 @@ func _build_snapshot() -> Dictionary:
 			),
 			"new_day_preparation_seconds": (
 				PROGRESSION_CONFIG.new_day_preparation_seconds
+			),
+			"daily_rogue_action_points": Array(
+				PROGRESSION_CONFIG.daily_rogue_action_points
 			),
 		},
 		"enemies": enemies,
@@ -224,26 +226,4 @@ func _serialize_wave(
 		),
 		"is_placeholder": is_placeholder,
 		"entries": entries,
-	}
-
-
-func _create_placeholder_wave(template: WaveConfig, wave_number: int) -> Dictionary:
-	# 占位波只继承全波节奏与音乐，绝不虚构敌人组成。
-	return {
-		"wave_id": "wave_%02d" % wave_number,
-		"wave_number": wave_number,
-		"day": DAY_CYCLE_CONFIG.get_day_number(wave_number),
-		"wave_in_day": DAY_CYCLE_CONFIG.get_wave_in_day(wave_number),
-		"period": "夜晚" if DAY_CYCLE_CONFIG.is_night_wave(wave_number) else "白昼",
-		"display_name": "第%d波（待设计）" % wave_number,
-		"spawn_point_mask": template.spawn_point_mask,
-		"spawn_interval": template.spawn_interval,
-		"spawn_count_per_tick": template.spawn_count_per_tick,
-		"max_alive_enemies": template.max_alive_enemies,
-		"music_path": template.music.resource_path if template.music != null else "",
-		"post_wave_music_path": (
-			template.post_wave_music.resource_path if template.post_wave_music != null else ""
-		),
-		"is_placeholder": true,
-		"entries": [],
 	}

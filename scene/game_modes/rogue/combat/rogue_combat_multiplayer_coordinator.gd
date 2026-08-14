@@ -7,7 +7,10 @@ class_name RogueCombatMultiplayerCoordinator
 ## NodePath 恒定。楼层普通作战池无效或未确认时，本节点不会连接路线的
 ## normal_combat_requested 信号，因此不会意外锁住测试地图。
 
-const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
+## MpGame 的塔防根场景现在静态挂载 MpRogueRoute 运输桥；这里若继续
+## preload MpGame 会形成 MpGame -> MpRogueRoute -> RogueCombat -> MpGame
+## 的资源加载环。只在真正进入路线作战时从缓存加载 PackedScene。
+const MP_GAME_SCENE_PATH := "res://scene/multiplayer/mp_game.tscn"
 
 const COMBAT_RUNTIME_NODE_NAME := &"RogueCombatNetwork"
 const STANDARD_BATTLE_XIRANG := 1000
@@ -653,7 +656,13 @@ func net_combat_prepare(
 func _create_embedded_runtime() -> bool:
 	if _combat_network != null or _active_occurrence_key.is_empty():
 		return false
-	var raw_instance := MP_GAME_SCENE.instantiate()
+	var packed_scene := load(MP_GAME_SCENE_PATH) as PackedScene
+	if packed_scene == null:
+		push_error(
+			"RogueCombatMultiplayerCoordinator: 无法加载 MpGame 嵌入战斗场景。"
+		)
+		return false
+	var raw_instance := packed_scene.instantiate()
 	var instance := raw_instance as MultiplayerGameplaySession
 	if instance == null:
 		push_error(

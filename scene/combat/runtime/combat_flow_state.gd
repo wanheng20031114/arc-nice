@@ -1,8 +1,9 @@
 extends RefCounted
 class_name CombatFlowState
 
-## Stable combat-flow wire values. These values remain frozen in protocol v57 and
-## must not be reordered when mode-specific flow implementations are split.
+## Stable combat-flow wire values. Values 0-7 have remained frozen since
+## protocol v57; protocol v72 only appends ROGUE_EXPLORATION=8. Existing values
+## must never be reordered when mode-specific flow implementations are split.
 enum State {
 	PRE_WAVE = 0,
 	WAVE_ACTIVE = 1,
@@ -12,6 +13,7 @@ enum State {
 	BOSS_INTRO = 5,
 	BOSS_ACTIVE = 6,
 	FATE_INTERLUDE = 7,
+	ROGUE_EXPLORATION = 8,
 }
 
 

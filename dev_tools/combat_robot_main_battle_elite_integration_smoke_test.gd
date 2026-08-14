@@ -268,7 +268,7 @@ func _test_selectable_p1e_entry_contract() -> void:
 
 func _test_protocol_boundaries() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 71
+		NET_CONSTANTS.PROTOCOL_VERSION == 72
 		and NET_CONSTANTS.CHANNEL_COUNT == 8
 		and CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET
 		== 18
@@ -276,7 +276,7 @@ func _test_protocol_boundaries() -> void:
 			&"combat_robot_main_battle_elite"
 		) == CombatAttackRegistry.PlayerHitWireId.INVALID
 		and CombatAttackRegistry.decode_player_hit_source(19) == &"",
-		"协议v71必须隔离地下水道普通20/20/4/3、紧急20/2/15/10编成、Game04双出生点及普通/紧急池合同，并保留v70地下教会、P1E键和确认状态尾字段，同时保持8通道和攻击来源末尾ID18。"
+		"协议v72必须隔离塔防四日地下探索并保留v71地下水道、P1E和攻击来源合同。"
 	)
 
 

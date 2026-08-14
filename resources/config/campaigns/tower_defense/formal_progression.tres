@@ -18,6 +18,7 @@ script = ExtResource("1_script")
 initial_preparation_seconds = 90.0
 wave_intermission_seconds = 30.0
 new_day_preparation_seconds = 60.0
+daily_rogue_action_points = Array[int]([5, 5, 5])
 enemy_count_per_extra_player_ratio = 0.25
 per_player_items = Array[ExtResource("2_pickup_script")]([ExtResource("8_sapling")])
 per_player_amounts = Array[int]([3])

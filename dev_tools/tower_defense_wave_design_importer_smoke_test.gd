@@ -10,6 +10,9 @@ const SINGLEPLAYER_FLOW_PATH := (
 const MULTIPLAYER_FLOW_PATH := (
 	"res://resources/config/campaigns/tower_defense/multiplayer/flow.tres"
 )
+const PROGRESSION_CONFIG_PATH := (
+	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
+)
 const COMBAT_MUSIC := "res://resources/audio/shenmu_forest_combat.ogg"
 const REST_MUSIC := "res://resources/audio/shenmu_forest_intermission.ogg"
 
@@ -32,7 +35,7 @@ func _init() -> void:
 	var valid_path := "%s/valid.json" % test_directory
 	_expect(_write_json(valid_path, valid_document), "应能写出合法测试 JSON。")
 	var valid_result := _run_importer(valid_path)
-	_expect(int(valid_result["exit_code"]) == 0, "合法 16 波设计应通过默认只校验模式。")
+	_expect(int(valid_result["exit_code"]) == 0, "合法 12 波四日战役应通过默认只校验模式。")
 	_expect(
 		String(valid_result["output"]).contains("TOWER_DEFENSE_WAVE_IMPORT_VALIDATE_OK"),
 		"合法校验应输出成功标记。"
@@ -53,7 +56,7 @@ func _init() -> void:
 	var short_path := "%s/short.json" % test_directory
 	_expect(_write_json(short_path, short_document), "应能写出缺波测试 JSON。")
 	var short_result := _run_importer(short_path)
-	_expect(int(short_result["exit_code"]) != 0, "不足 16 波的设计必须被拒绝。")
+	_expect(int(short_result["exit_code"]) != 0, "不足 12 波的设计必须被拒绝。")
 	_expect(
 		String(short_result["output"]).contains("TOWER_DEFENSE_WAVE_IMPORT_INVALID"),
 		"缺波设计应输出失败标记。"
@@ -90,14 +93,57 @@ func _init() -> void:
 		"任何校验失败也不得修改正式波次/流程文件。"
 	)
 
+	var sixteen_wave_document := valid_document.duplicate(true) as Dictionary
+	for wave_number in range(13, 17):
+		var extra_wave := ((valid_document["waves"] as Array)[0] as Dictionary).duplicate(true)
+		extra_wave["wave_id"] = "wave_%02d" % wave_number
+		extra_wave["wave_number"] = wave_number
+		(sixteen_wave_document["waves"] as Array).append(extra_wave)
+	var sixteen_wave_path := "%s/sixteen_waves.json" % test_directory
+	_expect(_write_json(sixteen_wave_path, sixteen_wave_document), "应能写出旧16波测试 JSON。")
+	var sixteen_wave_result := _run_importer(sixteen_wave_path)
+	_expect(int(sixteen_wave_result["exit_code"]) != 0, "旧16波设计必须被 schema v3 拒绝。")
+
+	var short_ap_document := valid_document.duplicate(true) as Dictionary
+	short_ap_document["daily_rogue_action_points"] = [5, 5]
+	var short_ap_path := "%s/short_ap.json" % test_directory
+	_expect(_write_json(short_ap_path, short_ap_document), "应能写出行动力长度错误样本。")
+	_expect(int(_run_importer(short_ap_path)["exit_code"]) != 0, "行动力数组长度不是3时必须拒绝。")
+
+	var negative_ap_document := valid_document.duplicate(true) as Dictionary
+	negative_ap_document["daily_rogue_action_points"] = [5, -1, 5]
+	var negative_ap_path := "%s/negative_ap.json" % test_directory
+	_expect(_write_json(negative_ap_path, negative_ap_document), "应能写出负行动力样本。")
+	_expect(int(_run_importer(negative_ap_path)["exit_code"]) != 0, "负行动力必须拒绝。")
+
+	var wrong_boss_day_document := valid_document.duplicate(true) as Dictionary
+	wrong_boss_day_document["boss_day"] = 3
+	var wrong_boss_day_path := "%s/wrong_boss_day.json" % test_directory
+	_expect(_write_json(wrong_boss_day_path, wrong_boss_day_document), "应能写出错误Boss日期样本。")
+	_expect(int(_run_importer(wrong_boss_day_path)["exit_code"]) != 0, "Boss日期不是第4日时必须拒绝。")
+
+	var rollback_result := _run_importer(
+		valid_path,
+		PackedStringArray(["--apply", "--test-fail-after-wave-commit"])
+	)
+	_expect(int(rollback_result["exit_code"]) != 0, "测试注入的提交失败必须返回失败。")
+	_expect(
+		String(rollback_result["output"]).contains("ROLLBACK_OK"),
+		"提交失败应执行完整回滚。"
+	)
+	_expect(
+		_production_snapshot_matches(production_snapshot),
+		"提交失败后12波、单双人流程与成长配置必须逐字节恢复。"
+	)
+
 	_cleanup_test_files(test_directory)
 	_finish()
 
 
 func _build_valid_document() -> Dictionary:
 	var waves: Array[Dictionary] = []
-	for wave_number in range(1, 17):
-		var use_maximum_bounds := wave_number == 16
+	for wave_number in range(1, 13):
+		var use_maximum_bounds := wave_number == 12
 		waves.append({
 			"wave_id": "wave_%02d" % wave_number,
 			"wave_number": wave_number,
@@ -118,17 +164,23 @@ func _build_valid_document() -> Dictionary:
 			],
 		})
 	return {
-		"schema_version": 1,
+		"schema_version": 3,
 		"campaign_id": "tower_defense_formal",
-		"target_wave_count": 16,
+		"target_wave_count": 12,
 		"day_count": 4,
 		"waves_per_day": 4,
-		"boss_after_wave": 16,
+		"boss_after_wave": 12,
+		"boss_day": 4,
+		"boss_period": "day",
+		"daily_rogue_action_points": [5, 5, 5],
 		"waves": waves,
 	}
 
 
-func _run_importer(input_path: String) -> Dictionary:
+func _run_importer(
+	input_path: String,
+	extra_arguments: PackedStringArray = PackedStringArray()
+) -> Dictionary:
 	var output: Array = []
 	var arguments := PackedStringArray([
 		"--headless",
@@ -139,6 +191,7 @@ func _run_importer(input_path: String) -> Dictionary:
 		"--",
 		"--input=%s" % ProjectSettings.globalize_path(input_path),
 	])
+	arguments.append_array(extra_arguments)
 	var exit_code := OS.execute(OS.get_executable_path(), arguments, output, true)
 	return {
 		"exit_code": exit_code,
@@ -158,11 +211,12 @@ func _write_json(path: String, document: Dictionary) -> bool:
 
 func _snapshot_production_files() -> Dictionary:
 	var result := {}
-	for wave_number in range(1, 17):
+	for wave_number in range(1, 13):
 		var path := FORMAL_WAVE_PATH_PATTERN % wave_number
 		result[path] = _read_file_state(path)
 	result[SINGLEPLAYER_FLOW_PATH] = _read_file_state(SINGLEPLAYER_FLOW_PATH)
 	result[MULTIPLAYER_FLOW_PATH] = _read_file_state(MULTIPLAYER_FLOW_PATH)
+	result[PROGRESSION_CONFIG_PATH] = _read_file_state(PROGRESSION_CONFIG_PATH)
 	return result
 
 

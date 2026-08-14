@@ -314,6 +314,24 @@ func _verify_tower_defense_layout_and_updates() -> void:
 		is_equal_approx(hud.day_dial.target_wave_progress, 1.0),
 		"Boss defeat must advance the circular progress ring to one hundred percent."
 	)
+	hud.show_tower_defense_boss_day_preparation(4, 60, false)
+	_expect(
+		hud.day_label.text == "第 4 日"
+		and hud.phase_label.text == "白昼"
+		and hud.wave_title_label.text == "首领战准备"
+		and hud.wave_value_label.text == "--"
+		and not hud.global_wave_notice.visible,
+		"Day-four preparation must not reuse the cached day-three/wave-twelve context."
+	)
+	hud.show_tower_defense_boss_day_progress(4, 1, 2)
+	_expect(
+		hud.day_label.text == "第 4 日"
+		and hud.phase_label.text == "白昼"
+		and hud.wave_title_label.text == "首领战"
+		and hud.wave_value_label.text == "50%"
+		and not hud.global_wave_notice.visible,
+		"Day-four Boss progress must remain independent from ordinary wave numbering."
+	)
 
 	hud.set_tower_defense_wave_progress(5, 0, 1)
 	hud.hide_all()

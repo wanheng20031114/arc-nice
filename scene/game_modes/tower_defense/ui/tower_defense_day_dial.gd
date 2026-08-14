@@ -30,7 +30,7 @@ func set_day_progress(
 	var safe_night_start := clampi(
 		new_night_start_phase_index,
 		0,
-		safe_phase_count - 1
+		safe_phase_count
 	)
 	var next_phase_index := clampi(new_phase_index, 0, safe_phase_count - 1)
 	var next_progress := (

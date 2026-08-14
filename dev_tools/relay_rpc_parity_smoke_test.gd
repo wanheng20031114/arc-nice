@@ -69,6 +69,7 @@ func _run() -> void:
 		"net_enemy_escaped",
 		"net_base_health_changed",
 		"net_player_healed",
+		"net_player_full_health_restored",
 		"net_plant_placement_requested",
 		"net_inventory_plant_placement_requested",
 		"net_plant_spawned",
@@ -122,6 +123,23 @@ func _run() -> void:
 		"net_research_command_requested",
 		"net_research_command_result",
 		"net_research_state_updated",
+		"net_tower_rogue_exploration_snapshot",
+		"net_request_route_full_snapshot",
+		"net_route_full_snapshot",
+		"net_route_move_delta",
+		"net_route_briefing_state",
+		"net_route_briefing_cover_ready",
+		"net_route_encounter_intro_ack",
+		"net_route_encounter_vote",
+		"net_route_encounter_result_ack",
+		"net_route_encounter_snapshot",
+		"net_shop_purchase_request",
+		"net_shop_sell_request",
+		"net_shop_exit_ack",
+		"net_shop_snapshot",
+		"net_route_avatar_input",
+		"net_route_avatar_snapshot",
+		"net_route_avatar_corrected",
 	]:
 		_expect(main_rpcs.has(required_method), "Gameplay RPC %s must be registered." % required_method)
 	if main_rpcs.has("net_tiyi_high_noon_requested"):
@@ -312,10 +330,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 71,
-		"协议v71必须隔离地下水道普通20/20/4/3、紧急20/2/15/10编成、Game04双出生点及普通/紧急池合同，并保留v70地下教会及既有资源合同。"
+		NetConstants.PROTOCOL_VERSION == 72,
+		"协议v72必须隔离塔防四日地下探索，并保留v71地下水道及既有资源合同。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v71 must retain eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v72 must retain eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -354,7 +372,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v71 hosts must accept exactly v71 and reject v70."
+		"Protocol v72 hosts must accept exactly v72 and reject v71."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -422,11 +440,11 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 71")
+		and relay_source.contains("const PROTOCOL_VERSION := 72")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
 		(
-			"Relay server must declare v71, accept the room capacity, and provision "
+			"Relay server must declare v72, accept the room capacity, and provision "
 			+ "the same eight ENet channels as clients."
 		)
 	)

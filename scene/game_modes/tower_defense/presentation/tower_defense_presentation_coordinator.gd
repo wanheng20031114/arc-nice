@@ -311,7 +311,26 @@ func show_wave_progress(
 
 
 func show_boss_progress(defeated: int, total: int) -> void:
-	_wave_hud.show_tower_defense_boss_progress(defeated, total)
+	if _campaign_coordinator.is_formal_four_day_campaign():
+		_wave_hud.show_tower_defense_boss_day_progress(4, defeated, total)
+	else:
+		_wave_hud.show_tower_defense_boss_progress(defeated, total)
+
+
+func show_day_four_boss_preparation(
+	seconds: int,
+	can_start_early: bool
+) -> void:
+	_runtime.transition_world_to_day()
+	_wave_hud.show_tower_defense_boss_day_preparation(
+		4,
+		seconds,
+		can_start_early
+	)
+	var announcement_key := &"4:0"
+	if _last_day_phase_announcement_key != announcement_key:
+		_last_day_phase_announcement_key = announcement_key
+		_day_phase_announcement.show_day_phase(4, false)
 
 
 func show_custom_phase_announcement(text: String) -> void:

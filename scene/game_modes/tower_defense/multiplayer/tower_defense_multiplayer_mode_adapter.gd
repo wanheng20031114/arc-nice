@@ -74,6 +74,7 @@ signal xiaocong_vote_requested(
 )
 signal xiaocong_collectible_requested(choice_index: int)
 signal xiaocong_fate_state_changed(state: Dictionary)
+signal rogue_exploration_snapshot_changed(snapshot: Dictionary)
 
 var _tower_runtime: TowerDefenseGame = null
 var _campaign_coordinator: TowerDefenseCampaignCoordinator = null
@@ -94,6 +95,7 @@ var _luoxi_special_game_coordinator: LuoxiSpecialGameCoordinator = null
 var _run_state: RunStateStore = null
 var _research_coordinator: ResearchCoordinator = null
 var _plant_placement_coordinator: TowerDefensePlantPlacementCoordinator = null
+var _rogue_exploration_coordinator: TowerDefenseRogueExplorationCoordinator = null
 var _state_timer: Timer = null
 var _merchant_intermission_active := false
 var _luoxi_collectible_claim_counts: Dictionary[int, int] = {}
@@ -188,7 +190,126 @@ func is_tower_bound() -> bool:
 		and _run_state != null
 		and _research_coordinator != null
 		and _plant_placement_coordinator != null
+		and _rogue_exploration_coordinator != null
 		and _state_timer != null
+	)
+
+
+func bind_rogue_exploration_coordinator(
+	coordinator: TowerDefenseRogueExplorationCoordinator
+) -> void:
+	assert(coordinator != null, "塔防多人适配器缺少地下探索协调器。")
+	assert(
+		_rogue_exploration_coordinator == null
+		or _rogue_exploration_coordinator == coordinator,
+		"塔防多人适配器不得在运行时更换地下探索协调器。"
+	)
+	_rogue_exploration_coordinator = coordinator
+	if not coordinator.exploration_snapshot_changed.is_connected(
+		rogue_exploration_snapshot_changed.emit
+	):
+		coordinator.exploration_snapshot_changed.connect(
+			rogue_exploration_snapshot_changed.emit
+		)
+
+
+func get_rogue_exploration_coordinator() -> TowerDefenseRogueExplorationCoordinator:
+	return _rogue_exploration_coordinator
+
+
+func get_rogue_route() -> RogueRouteGame:
+	return (
+		_rogue_exploration_coordinator.get_route()
+		if _rogue_exploration_coordinator != null
+		else null
+	)
+
+
+func get_rogue_combat_coordinator() -> RogueCombatMultiplayerCoordinator:
+	if _rogue_exploration_coordinator == null:
+		return null
+	return (
+		_rogue_exploration_coordinator.get_combat_coordinator()
+		as RogueCombatMultiplayerCoordinator
+	)
+
+
+func is_rogue_exploration_active() -> bool:
+	return (
+		_rogue_exploration_coordinator != null
+		and _rogue_exploration_coordinator.is_exploration_active()
+	)
+
+
+## 重连玩家可能跨过了探索进入/返回的满血边界。先从 RunState 重算
+## 当前永久属性与最大生命惩罚，再由 MpPlayerCoordinator 产生新的健康修订。
+func refresh_players_from_run_state_for_rogue_boundary() -> void:
+	if _player_roster_coordinator != null:
+		_player_roster_coordinator.refresh_players_from_run_state()
+
+
+func is_rogue_progression_contract_compatible(
+	snapshot: Dictionary
+) -> bool:
+	var tower_runtime := get_tower_runtime()
+	return (
+		tower_runtime != null
+		and tower_runtime.progression_config != null
+		and typeof(snapshot.get("progression_contract_hash")) == TYPE_STRING
+		and str(snapshot["progression_contract_hash"])
+		== tower_runtime.progression_config.compute_runtime_contract_hash()
+	)
+
+
+func export_rogue_exploration_snapshot_for_peer(
+	peer_id: int
+) -> Dictionary:
+	if _rogue_exploration_coordinator == null:
+		return {}
+	return _rogue_exploration_coordinator.export_multiplayer_snapshot_for_peer(
+		peer_id
+	)
+
+
+func apply_remote_rogue_exploration_snapshot(snapshot: Dictionary) -> bool:
+	if (
+		_rogue_exploration_coordinator == null
+		or _tower_runtime == null
+		or _tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	):
+		return false
+	return _rogue_exploration_coordinator.apply_multiplayer_snapshot(snapshot)
+
+
+func handle_rogue_exploration_peer_left(peer_id: int) -> void:
+	if (
+		_rogue_exploration_coordinator != null
+		and _tower_runtime != null
+		and _tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		_rogue_exploration_coordinator.host_remove_disconnected_peer(peer_id)
+
+
+func handle_rogue_exploration_peer_reconnected(
+	old_peer_id: int,
+	new_peer_id: int,
+	player_name: String,
+	character_id: StringName
+) -> bool:
+	if (
+		_rogue_exploration_coordinator == null
+		or _tower_runtime == null
+		or _tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		return false
+	return _rogue_exploration_coordinator.host_migrate_reconnected_peer(
+		old_peer_id,
+		new_peer_id,
+		player_name,
+		character_id
 	)
 
 
@@ -2093,6 +2214,12 @@ func _connect_mode_signals() -> void:
 	):
 		_player_roster_coordinator.revive_all_requested.connect(
 			revive_all_requested.emit
+		)
+	if not _player_roster_coordinator.restore_all_full_health_requested.is_connected(
+		restore_all_full_health_requested.emit
+	):
+		_player_roster_coordinator.restore_all_full_health_requested.connect(
+			restore_all_full_health_requested.emit
 		)
 	if not _presentation_coordinator.return_to_lobby_requested.is_connected(
 		handle_return_to_lobby_requested

@@ -110,7 +110,7 @@ func _test_codex_and_fate() -> void:
 
 
 func _test_protocol_attack_registry_and_pool_absence() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 71, "协议v71必须隔离地下水道普通20/20/4/3、紧急20/2/15/10编成、Game04双出生点及普通/紧急池合同，并保留v70地下教会、精英盾兵与既有资源语义。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 72, "协议v72必须隔离塔防四日地下探索并保留v71地下水道与精英盾兵资源语义。")
 	_expect(
 		CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET == 18
 		and CombatAttackRegistry.encode_player_hit_source(

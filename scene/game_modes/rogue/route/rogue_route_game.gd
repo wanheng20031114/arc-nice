@@ -129,6 +129,8 @@ const ROUTE_PRESENTATION_FULL_HIDE_MASK := (
 @export var floor_definition: FLOOR_DEFINITION_SCRIPT
 @export var auto_initialize := true
 @export var manage_return_locally := true
+## 嵌入其他正式流程时仍使用完整 Rogue 运行时，但返回权由外层协调器持有。
+@export var embedded_session := false
 ## 0 表示每次进入时生成新 seed；非零值便于复现指定地图。
 @export var initial_generation_seed := AUTO_SEED
 
@@ -256,6 +258,8 @@ var _max_health_transition_by_peer: Dictionary = {}
 var _previous_physics_interpolation_enabled := false
 var _owns_physics_interpolation_override := false
 var _floor_definition_applied := false
+var _embedded_environment: Environment = null
+var _embedded_canvas_layer_visibility: Dictionary = {}
 
 
 func _enter_tree() -> void:
@@ -263,6 +267,20 @@ func _enter_tree() -> void:
 	_previous_physics_interpolation_enabled = get_tree().physics_interpolation
 	get_tree().physics_interpolation = true
 	_owns_physics_interpolation_override = true
+	# 嵌入式路线从首帧起就不能与塔防争夺 WorldEnvironment / Camera2D。
+	# 父节点 _enter_tree 先于子节点执行，但完整场景树已可按路径访问。
+	if embedded_session:
+		visible = false
+		_set_embedded_canvas_layers_visible(false)
+		var route_environment := get_node_or_null(
+			"RouteBeaconGlowEnvironment"
+		) as WorldEnvironment
+		if route_environment != null:
+			_embedded_environment = route_environment.environment
+			route_environment.environment = null
+		var embedded_camera := get_node_or_null("World/Camera2D") as Camera2D
+		if embedded_camera != null:
+			embedded_camera.enabled = false
 
 
 func _ready() -> void:
@@ -399,7 +417,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func start_authoritative_session(
 	generation_seed: int = AUTO_SEED,
-	announce_full_snapshot: bool = true
+	announce_full_snapshot: bool = true,
+	initial_action_points_override: int = -1
 ) -> bool:
 	if generation_config == null:
 		_set_status("路线生成配置缺失。", true)
@@ -419,10 +438,18 @@ func start_authoritative_session(
 	if generated_graph == null:
 		_set_status("路线图生成失败。", true)
 		return false
+	var resolved_initial_action_points := (
+		generation_config.initial_action_points
+		if initial_action_points_override < 0
+		else initial_action_points_override
+	)
+	if resolved_initial_action_points > RogueRouteRuntimeState.MAX_ACTION_POINTS:
+		_set_status("路线初始行动力超出运行上限。", true)
+		return false
 	var generated_state := RogueRouteRuntimeState.new()
 	if not generated_state.initialize(
 		generated_graph,
-		generation_config.initial_action_points
+		resolved_initial_action_points
 	):
 		_set_status("路线运行状态初始化失败。", true)
 		return false
@@ -432,6 +459,7 @@ func start_authoritative_session(
 	_reset_supply_runtime(true)
 	_reset_rare_chest_runtime(true)
 	_reset_underground_shop_runtime(true)
+	_reset_run_defeat_presentation()
 
 	_set_route_reveal_input_locked(false)
 	_clear_pending_move(true)
@@ -461,6 +489,198 @@ func start_authoritative_session(
 		)
 	_try_play_route_entry_reveal()
 	return true
+
+
+## 由嵌入式单人流程显式启用；多人路线不会误创建本地单人角色或单人作战。
+func configure_embedded_singleplayer_player() -> bool:
+	if not is_node_ready():
+		return false
+	embedded_session = true
+	_configure_singleplayer_player()
+	var combat_coordinator := get_node_or_null(
+		"SingleplayerCombatCoordinator"
+	) as RogueCombatSingleplayerCoordinator
+	if player == null or combat_coordinator == null:
+		return false
+	combat_coordinator.bind_embedded_route(self)
+	return combat_coordinator.is_enabled()
+
+
+## 只有权威路线可追加共享行动力；奖励 revision 会进入既有全量快照。
+func grant_authoritative_action_points(amount: int) -> bool:
+	return (
+		_authority_enabled
+		and is_route_ready()
+		and _runtime_state.grant_action_points(amount)
+	)
+
+
+func get_action_points() -> int:
+	return _runtime_state.action_points if is_route_ready() else -1
+
+
+## 每次嵌入式探索显现前，从 RunState 刷新永久属性与最大生命惩罚，
+## 再把路线角色恢复到当前有效上限。多人各端对同一权威 RunState 快照
+## 做绝对值恢复，不产生奖励，也不会改写路线运行 revision。
+func restore_embedded_players_to_full_health() -> bool:
+	if not embedded_session:
+		return false
+	if _run_state == null:
+		_run_state = get_node_or_null("/root/RunState") as RunStateStore
+	if _run_state == null:
+		return false
+	var restored_any := false
+	if _multiplayer_avatar_mode:
+		for raw_peer_id in peer_players.keys():
+			var peer_id := int(raw_peer_id)
+			var peer_player := peer_players.get(peer_id) as Player
+			if peer_player == null or not is_instance_valid(peer_player):
+				continue
+			_restore_embedded_player_to_full_health(peer_player, peer_id)
+			restored_any = true
+		return restored_any
+	if player == null or not is_instance_valid(player):
+		return false
+	_restore_embedded_player_to_full_health(player, SINGLEPLAYER_PEER_ID)
+	return true
+
+
+func _restore_embedded_player_to_full_health(
+	player_instance: Player,
+	ledger_peer_id: int
+) -> void:
+	player_instance.set_run_max_health_penalty(
+		_run_state.get_max_health_penalty_for_peer(ledger_peer_id)
+	)
+	player_instance.configure_run_stat_bonuses(
+		_run_state.get_player_stat_bonuses(ledger_peer_id),
+		true
+	)
+	# 即使绝对账本未变化，也要重算收藏品与惩罚的组合上限。
+	player_instance.refresh_collectible_stats()
+	player_instance.apply_multiplayer_full_health_restore(
+		player_instance.global_position,
+		maxi(player_instance.max_health, 1)
+	)
+
+
+## 日终自动返回的唯一稳定性判定。每个持久交互 owner 都必须已经释放，
+## 避免行动力刚归零时跳过作战、奖励、背包整理或商店离场确认。
+func is_exploration_settled_for_return() -> bool:
+	if not is_route_ready() or _run_failure_presented:
+		return false
+	var singleplayer_combat := get_node_or_null(
+		"SingleplayerCombatCoordinator"
+	) as RogueCombatSingleplayerCoordinator
+	return (
+		_pending_node_id == INVALID_NODE_ID
+		and _briefing_phase == BriefingPhase.NONE
+		and not _route_reveal_input_locked
+		and _route_presentation_leases == 0
+		and not _normal_combat_active
+		and (
+			singleplayer_combat == null
+			or not singleplayer_combat.is_runtime_busy()
+		)
+		and not _encounter_input_locked
+		and not _encounter_presented_active
+		and (
+			encounter_session == null
+			or not encounter_session.is_active()
+		)
+		and (
+			supply_session == null
+			or not supply_session.is_active()
+		)
+		and not _is_local_supply_modal_owner()
+		and not _rare_chest_presented_active
+		and not _rare_chest_presentation_dismiss_pending
+		and (
+			rare_chest_session == null
+			or not rare_chest_session.is_active()
+		)
+		and not _is_local_shop_presentation_active()
+		and not _is_shop_departure_blocked()
+		and (
+			combat_result_overlay == null
+			or not combat_result_overlay.visible
+		)
+		and (
+			emergency_reward_choice_overlay == null
+			or not emergency_reward_choice_overlay.visible
+		)
+		and (
+			player_profile_panel == null
+			or not player_profile_panel.is_open()
+		)
+	)
+
+
+func has_run_failed() -> bool:
+	return _run_failure_presented
+
+
+## 外层正式流程确认失败已消费后清理本地表现；不回主菜单、不回大厅。
+func acknowledge_embedded_run_failure() -> bool:
+	if not embedded_session or not _run_failure_presented:
+		return false
+	_reset_run_defeat_presentation()
+	_set_encounter_input_locked(false)
+	_refresh_route_input_lock()
+	return true
+
+
+func set_embedded_presentation_active(active: bool) -> void:
+	if not embedded_session:
+		return
+	if not active and world != null:
+		# 先撤销路线对共享 viewport canvas transform 的像素相位接管，
+		# 再停相机，避免最后一帧吸附残留到塔防相机。
+		world.set_route_pixel_snap_enabled(false)
+	visible = active
+	process_mode = (
+		Node.PROCESS_MODE_INHERIT if active else Node.PROCESS_MODE_DISABLED
+	)
+	if not is_node_ready():
+		return
+	_set_embedded_canvas_layers_visible(active)
+	var route_environment := get_node_or_null(
+		"RouteBeaconGlowEnvironment"
+	) as WorldEnvironment
+	if route_environment != null:
+		if _embedded_environment == null and route_environment.environment != null:
+			_embedded_environment = route_environment.environment
+		route_environment.environment = _embedded_environment if active else null
+	if active:
+		# 统一复用 route presentation lease 的原生相机交接、HUD 与像素吸附
+		# 协调，确保外部 Tower Camera 后重新 make_current。
+		_apply_route_presentation_leases()
+	else:
+		if route_hud != null:
+			route_hud.visible = false
+		if map_camera != null:
+			map_camera.enabled = false
+		if world != null:
+			world.set_process(false)
+	set_process_unhandled_input(active)
+	_reconcile_route_music()
+
+
+func _set_embedded_canvas_layers_visible(active: bool) -> void:
+	for canvas_layer in find_children("*", "CanvasLayer", true, false):
+		var typed_layer := canvas_layer as CanvasLayer
+		if typed_layer == null:
+			continue
+		if active:
+			typed_layer.visible = bool(
+				_embedded_canvas_layer_visibility.get(typed_layer, true)
+			)
+		else:
+			if not _embedded_canvas_layer_visibility.has(typed_layer):
+				_embedded_canvas_layer_visibility[typed_layer] = typed_layer.visible
+			typed_layer.visible = false
+	if active:
+		_embedded_canvas_layer_visibility.clear()
 
 
 func start_client_waiting() -> void:
@@ -1786,7 +2006,10 @@ func _reconcile_route_music() -> void:
 			return
 		route_music_player.play()
 	# 首次启动也必须立刻遵循当前 lease，不能短暂泄漏路线音乐。
-	route_music_player.stream_paused = combat_lease_active
+	route_music_player.stream_paused = (
+		combat_lease_active
+		or (embedded_session and not visible)
+	)
 
 
 func _on_route_entry_reveal_finished() -> void:
@@ -4145,7 +4368,7 @@ func _reset_run_defeat_presentation() -> void:
 
 func _on_run_defeat_confirmed() -> void:
 	return_requested.emit()
-	if manage_return_locally:
+	if manage_return_locally and not embedded_session:
 		call_deferred(&"_return_to_main_menu")
 
 
@@ -4337,6 +4560,16 @@ func _close_stale_route_modals_for_combat() -> void:
 
 func _apply_route_presentation_leases() -> void:
 	if not is_node_ready():
+		return
+	if embedded_session and not visible:
+		_reconcile_route_music()
+		_camera_drag_active = false
+		world.set_route_pixel_snap_enabled(false)
+		world.process_mode = Node.PROCESS_MODE_DISABLED
+		world.visible = false
+		route_hud.visible = false
+		map_camera.enabled = false
+		_set_embedded_canvas_layers_visible(false)
 		return
 	var active_leases := _route_presentation_leases
 	_reconcile_route_music()
@@ -5277,6 +5510,10 @@ func _reposition_route_player(
 
 func _attach_camera_to_local_player() -> void:
 	if map_camera == null or player == null:
+		return
+	if embedded_session and not visible:
+		# 隐藏期只保留角色所有权；首次激活由统一 presentation reconcile
+		# 负责 reparent + make_current，不能在 Tower Ready 中途抢相机。
 		return
 	world.attach_camera_to_player(player)
 	# 重连身份迁移或完整快照可能在表现 lease 期间重建本地 Player。

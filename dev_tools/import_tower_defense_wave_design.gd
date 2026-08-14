@@ -5,9 +5,14 @@ extends SceneTree
 ## Validation is the default and never changes project resources. Production
 ## files are only replaced when --apply is supplied explicitly.
 
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 3
 const CAMPAIGN_ID := "tower_defense_formal"
-const WAVE_COUNT := 16
+const WAVE_COUNT := 12
+const DAY_COUNT := 4
+const WAVES_PER_DAY := 4
+const BOSS_DAY := 4
+const BOSS_PERIOD := "day"
+const ROGUE_EXPLORATION_DAY_COUNT := 3
 const MAX_ENTRIES_PER_WAVE := 18
 const MIN_ENEMY_COUNT := 1
 const MAX_ENEMY_COUNT := 9999
@@ -22,6 +27,7 @@ const MAX_XIRANG_REWARD_OVERRIDE := 999
 
 const INPUT_ARGUMENT_PREFIX := "--input="
 const APPLY_ARGUMENT := "--apply"
+const TEST_FAIL_AFTER_WAVE_COMMIT_ARGUMENT := "--test-fail-after-wave-commit"
 
 const FORMAL_WAVE_PATH_PATTERN := (
 	"res://resources/config/campaigns/tower_defense/formal/wave_%02d.tres"
@@ -31,6 +37,9 @@ const SINGLEPLAYER_FLOW_PATH := (
 )
 const MULTIPLAYER_FLOW_PATH := (
 	"res://resources/config/campaigns/tower_defense/multiplayer/flow.tres"
+)
+const PROGRESSION_CONFIG_PATH := (
+	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
 )
 const BOSS_CONFIG: BossConfig = preload(
 	"res://resources/config/bosses/boss_01_linglan.tres"
@@ -76,7 +85,7 @@ func _init() -> void:
 
 	var waves := _build_wave_resources(plan)
 	if waves.size() != WAVE_COUNT:
-		push_error("导入计划无法构建完整的 16 个 WaveConfig；未写入任何正式资源。")
+		push_error("导入计划无法构建完整的 12 个 WaveConfig；未写入任何正式资源。")
 		quit(1)
 		return
 	var graph_errors := _validate_built_graph(waves)
@@ -93,7 +102,11 @@ func _init() -> void:
 		quit()
 		return
 
-	var apply_error := _apply_plan(plan, waves)
+	var apply_error := _apply_plan(
+		plan,
+		waves,
+		bool(arguments["test_fail_after_wave_commit"])
+	)
 	if not apply_error.is_empty():
 		push_error(apply_error)
 		quit(1)
@@ -106,6 +119,7 @@ func _init() -> void:
 func _parse_arguments() -> Dictionary:
 	var input_path := ""
 	var apply := false
+	var test_fail_after_wave_commit := false
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with(INPUT_ARGUMENT_PREFIX):
 			if not input_path.is_empty():
@@ -117,6 +131,11 @@ func _parse_arguments() -> Dictionary:
 				push_error("--apply 只能提供一次。")
 				return {"valid": false}
 			apply = true
+		elif argument == TEST_FAIL_AFTER_WAVE_COMMIT_ARGUMENT:
+			if test_fail_after_wave_commit:
+				push_error("--test-fail-after-wave-commit 只能提供一次。")
+				return {"valid": false}
+			test_fail_after_wave_commit = true
 		else:
 			push_error("未知参数：%s" % argument)
 			return {"valid": false}
@@ -128,10 +147,14 @@ func _parse_arguments() -> Dictionary:
 	if not input_path.begins_with("res://") and not input_path.is_absolute_path():
 		push_error("--input 必须是绝对路径或 res:// 路径：%s" % input_path)
 		return {"valid": false}
+	if test_fail_after_wave_commit and not apply:
+		push_error("--test-fail-after-wave-commit 只能与 --apply 一起使用。")
+		return {"valid": false}
 	return {
 		"valid": true,
 		"input_path": input_path,
 		"apply": apply,
+		"test_fail_after_wave_commit": test_fail_after_wave_commit,
 	}
 
 
@@ -166,7 +189,7 @@ func _validate_document(document: Variant, errors: PackedStringArray) -> Diction
 		errors.append("根节点必须是 JSON 对象。")
 		return {}
 	var root := document as Dictionary
-	_validate_root_identity(root, errors)
+	var daily_rogue_action_points := _validate_root_identity(root, errors)
 	var enemy_configs_by_id := _build_enemy_config_map(errors)
 	var waves_value: Variant = root.get("waves")
 	if typeof(waves_value) != TYPE_ARRAY:
@@ -174,7 +197,7 @@ func _validate_document(document: Variant, errors: PackedStringArray) -> Diction
 		return {}
 	var source_waves := waves_value as Array
 	if source_waves.size() != WAVE_COUNT:
-		errors.append("waves 必须恰好包含 16 波，当前为 %d 波。" % source_waves.size())
+		errors.append("waves 必须恰好包含 12 波，当前为 %d 波。" % source_waves.size())
 
 	var normalized_waves: Array[Dictionary] = []
 	var unique_enemy_ids := {}
@@ -200,18 +223,23 @@ func _validate_document(document: Variant, errors: PackedStringArray) -> Diction
 				override_entry_count += 1
 
 	if normalized_waves.size() != WAVE_COUNT and errors.is_empty():
-		errors.append("无法得到完整的 16 波规范化结果。")
+		errors.append("无法得到完整的 12 波规范化结果。")
 	if not errors.is_empty():
 		return {}
 	return {
 		"waves": normalized_waves,
+		"daily_rogue_action_points": daily_rogue_action_points,
 		"unique_enemy_count": unique_enemy_ids.size(),
 		"total_enemy_count": total_enemy_count,
 		"override_entry_count": override_entry_count,
 	}
 
 
-func _validate_root_identity(root: Dictionary, errors: PackedStringArray) -> void:
+func _validate_root_identity(
+	root: Dictionary,
+	errors: PackedStringArray
+) -> Array[int]:
+	var daily_rogue_action_points: Array[int] = []
 	var schema_version := _read_integer(
 		root,
 		"schema_version",
@@ -221,7 +249,7 @@ func _validate_root_identity(root: Dictionary, errors: PackedStringArray) -> voi
 		errors
 	)
 	if schema_version != SCHEMA_VERSION:
-		return
+		return daily_rogue_action_points
 	var campaign_value: Variant = root.get("campaign_id")
 	if typeof(campaign_value) != TYPE_STRING:
 		errors.append("根节点.campaign_id 必须是字符串。")
@@ -230,19 +258,43 @@ func _validate_root_identity(root: Dictionary, errors: PackedStringArray) -> voi
 			"根节点.campaign_id 必须为 %s，当前为 %s。"
 			% [CAMPAIGN_ID, String(campaign_value)]
 		)
-	_validate_optional_exact_integer(root, "target_wave_count", 16, errors)
-	_validate_optional_exact_integer(root, "day_count", 4, errors)
-	_validate_optional_exact_integer(root, "waves_per_day", 4, errors)
-	_validate_optional_exact_integer(root, "boss_after_wave", 16, errors)
+	_validate_required_exact_integer(root, "target_wave_count", WAVE_COUNT, errors)
+	_validate_required_exact_integer(root, "day_count", DAY_COUNT, errors)
+	_validate_required_exact_integer(root, "waves_per_day", WAVES_PER_DAY, errors)
+	_validate_required_exact_integer(root, "boss_after_wave", WAVE_COUNT, errors)
+	_validate_required_exact_integer(root, "boss_day", BOSS_DAY, errors)
+	var boss_period_value: Variant = root.get("boss_period")
+	if typeof(boss_period_value) != TYPE_STRING or String(boss_period_value) != BOSS_PERIOD:
+		errors.append("根节点.boss_period 必须为字符串 %s。" % BOSS_PERIOD)
+	var action_points_value: Variant = root.get("daily_rogue_action_points")
+	if typeof(action_points_value) != TYPE_ARRAY:
+		errors.append("根节点.daily_rogue_action_points 必须是长度为3的非负整数数组。")
+		return daily_rogue_action_points
+	var source_action_points := action_points_value as Array
+	if source_action_points.size() != ROGUE_EXPLORATION_DAY_COUNT:
+		errors.append(
+			"根节点.daily_rogue_action_points 必须恰好包含第1至第3日共3项。"
+		)
+	for day_index in source_action_points.size():
+		var value: Variant = source_action_points[day_index]
+		if not _is_integer_number(value) or int(value) < 0:
+			errors.append(
+				"根节点.daily_rogue_action_points[%d] 必须是非负整数。"
+				% day_index
+			)
+			continue
+		daily_rogue_action_points.append(int(value))
+	return daily_rogue_action_points
 
 
-func _validate_optional_exact_integer(
+func _validate_required_exact_integer(
 	dictionary: Dictionary,
 	key: String,
 	expected: int,
 	errors: PackedStringArray
 ) -> void:
 	if not dictionary.has(key):
+		errors.append("根节点.%s 为 schema v3 必填字段。" % key)
 		return
 	var value: Variant = dictionary[key]
 	if not _is_integer_number(value) or int(value) != expected:
@@ -571,7 +623,11 @@ func _create_flow_graph(waves: Array[WaveConfig], graph_name: String) -> FlowGra
 	return graph
 
 
-func _apply_plan(plan: Dictionary, waves: Array[WaveConfig]) -> String:
+func _apply_plan(
+	plan: Dictionary,
+	waves: Array[WaveConfig],
+	test_fail_after_wave_commit: bool
+) -> String:
 	var run_id := "%d_%d" % [int(Time.get_unix_time_from_system()), OS.get_process_id()]
 	var staging_root := "user://tower_defense_wave_import/staging_%s" % run_id
 	var backup_root := "user://tower_defense_wave_import/backup_%s" % run_id
@@ -606,6 +662,11 @@ func _apply_plan(plan: Dictionary, waves: Array[WaveConfig]) -> String:
 			return "预写入验证失败：%s" % verify_error
 		staged_waves.append(staged_wave)
 
+	var progression_stage_error := _stage_progression_config(plan, staging_root)
+	if not progression_stage_error.is_empty():
+		_cleanup_staging(staging_root)
+		return progression_stage_error
+
 	var preflight_flow_error := _preflight_flow_serialization(staging_root, staged_waves)
 	if not preflight_flow_error.is_empty():
 		_cleanup_staging(staging_root)
@@ -619,12 +680,56 @@ func _apply_plan(plan: Dictionary, waves: Array[WaveConfig]) -> String:
 	var commit_error := _commit_staged_resources(
 		plan,
 		staging_root,
-		backup_root
+		backup_root,
+		test_fail_after_wave_commit
 	)
 	_cleanup_staging(staging_root)
 	if not commit_error.is_empty():
 		return commit_error
 	print("可恢复备份：%s" % ProjectSettings.globalize_path(backup_root))
+	return ""
+
+
+func _stage_progression_config(plan: Dictionary, staging_root: String) -> String:
+	var source_config := ResourceLoader.load(
+		PROGRESSION_CONFIG_PATH,
+		"",
+		ResourceLoader.CACHE_MODE_IGNORE
+	) as TowerDefenseProgressionConfig
+	if source_config == null:
+		return "无法加载正式塔防成长配置。"
+	var staged_config := source_config.duplicate(true) as TowerDefenseProgressionConfig
+	if staged_config == null:
+		return "无法复制正式塔防成长配置。"
+	var action_points: Array[int] = []
+	action_points.assign(plan["daily_rogue_action_points"])
+	staged_config.daily_rogue_action_points = action_points
+	var config_errors := staged_config.validate_config()
+	if not config_errors.is_empty():
+		return "地下探索行动力无法形成有效成长配置：%s" % "；".join(config_errors)
+	var stage_path := "%s/formal_progression.tres" % staging_root
+	var save_error := ResourceSaver.save(staged_config, stage_path)
+	if save_error != OK:
+		return "成长配置预写入失败：%s" % error_string(save_error)
+	var reloaded_config := ResourceLoader.load(
+		stage_path,
+		"",
+		ResourceLoader.CACHE_MODE_IGNORE
+	) as TowerDefenseProgressionConfig
+	return _verify_progression_config(reloaded_config, action_points)
+
+
+func _verify_progression_config(
+	config: TowerDefenseProgressionConfig,
+	expected_action_points: Array[int]
+) -> String:
+	if config == null:
+		return "成长配置为空或无法重新加载。"
+	var config_errors := config.validate_config()
+	if not config_errors.is_empty():
+		return "成长配置无效：%s" % "；".join(config_errors)
+	if config.daily_rogue_action_points != expected_action_points:
+		return "成长配置的每日地下探索行动力与导入计划不一致。"
 	return ""
 
 
@@ -674,7 +779,8 @@ func _create_backups(backup_root: String) -> String:
 func _commit_staged_resources(
 	plan: Dictionary,
 	staging_root: String,
-	backup_root: String
+	backup_root: String,
+	test_fail_after_wave_commit: bool
 ) -> String:
 	for wave_number in range(1, WAVE_COUNT + 1):
 		var source := "%s/wave_%02d.tres" % [staging_root, wave_number]
@@ -700,6 +806,9 @@ func _commit_staged_resources(
 			_rollback_from_backups(backup_root)
 			return "%s；已尝试回滚。" % verify_error
 		committed_waves.append(wave)
+	if test_fail_after_wave_commit:
+		_rollback_from_backups(backup_root)
+		return "测试注入：波次提交后故意失败；已尝试回滚。"
 
 	var single_graph := _create_flow_graph(
 		committed_waves, "塔防模式 / 正式单人战斗流程"
@@ -752,6 +861,32 @@ func _commit_staged_resources(
 		if not flow_error.is_empty():
 			_rollback_from_backups(backup_root)
 			return "%s；已尝试回滚。" % flow_error
+
+	var progression_source := "%s/formal_progression.tres" % staging_root
+	var progression_replace_error := _replace_file(
+		progression_source,
+		PROGRESSION_CONFIG_PATH
+	)
+	if progression_replace_error != OK:
+		_rollback_from_backups(backup_root)
+		return (
+			"替换正式成长配置失败，已尝试回滚：%s"
+			% error_string(progression_replace_error)
+		)
+	var committed_progression := ResourceLoader.load(
+		PROGRESSION_CONFIG_PATH,
+		"",
+		ResourceLoader.CACHE_MODE_IGNORE
+	) as TowerDefenseProgressionConfig
+	var expected_action_points: Array[int] = []
+	expected_action_points.assign(plan["daily_rogue_action_points"])
+	var progression_error := _verify_progression_config(
+		committed_progression,
+		expected_action_points
+	)
+	if not progression_error.is_empty():
+		_rollback_from_backups(backup_root)
+		return "%s；已尝试回滚。" % progression_error
 	return ""
 
 
@@ -819,7 +954,7 @@ func _verify_flow_graph(graph: FlowGraphConfig) -> String:
 	if not graph_errors.is_empty():
 		return "正式流程图无效：%s" % "；".join(graph_errors)
 	if graph.steps.size() != WAVE_COUNT + 1:
-		return "正式流程必须包含 16 波与 1 个 Boss。"
+		return "正式流程必须包含 12 波与 1 个 Boss。"
 	if graph.start_step == null or graph.start_step.step_id != &"wave_01":
 		return "正式流程起点必须是 wave_01。"
 	for wave_index in range(WAVE_COUNT):
@@ -844,6 +979,10 @@ func _get_target_file_definitions() -> Array[Dictionary]:
 	result.append({
 		"path": MULTIPLAYER_FLOW_PATH,
 		"backup_name": "multiplayer_flow.tres",
+	})
+	result.append({
+		"path": PROGRESSION_CONFIG_PATH,
+		"backup_name": "formal_progression.tres",
 	})
 	return result
 

@@ -13,15 +13,15 @@ const ROGUE_COMBAT_COORDINATOR_SOURCE_PATH := (
 
 const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 
-const EXPECTED_MP_GAME_RPC_COUNT := 126
+const EXPECTED_MP_GAME_RPC_COUNT := 144
 const EXPECTED_MP_GAME_RPC_NAME_HASH := (
-	"a46021f28a7b751d4d14ab568deac088bf47b615c265a4ef1cc4d8d75fabfa27"
+	"38bec6fc80f0571d5c58747ed1a8aa3d7c07c9fe09b0a250c571755cee4b3ac3"
 )
 const EXPECTED_MP_GAME_RPC_SIGNATURE_HASH := (
-	"6f899f2c464a3cd7eddae293b28bf3f9a5d2db5a8081a80fd3c5fa4dae9adc17"
+	"7f6040dffac9b4ee81e1c364dc1464a6c03fe7d71898df871a95f8b5c831f1a6"
 )
 const EXPECTED_MP_GAME_RPC_ANNOTATION_HASH := (
-	"96e6b2976861a125f91888717319b7e26d1596b1a0c42a0c641e9932648163b8"
+	"ce88c99b4dc303ca72838ad54a41e5a7b4a00ff0a1b21651a9106346fbcc5aad"
 )
 
 const EXPECTED_MP_ROGUE_ROUTE_RPC_COUNT := 16
@@ -35,15 +35,15 @@ const EXPECTED_MP_ROGUE_ROUTE_RPC_ANNOTATION_HASH := (
 	"a572289259bd54ed1ffe876c17e70bb05738e5b6bd546f923b8004c16e0208a9"
 )
 
-const EXPECTED_ROGUE_COMBAT_COORDINATOR_RPC_COUNT := 10
+const EXPECTED_ROGUE_COMBAT_COORDINATOR_RPC_COUNT := 13
 const EXPECTED_ROGUE_COMBAT_COORDINATOR_RPC_NAME_HASH := (
-	"5c54e2b0ce2ee265b9d3417d504de69c8f609e6c5fca871b043da0da42377d59"
+	"01a0591c45b03f3a2bccfc5a48e6b8ef71d09be90b52487e1ca68f359491ca75"
 )
 const EXPECTED_ROGUE_COMBAT_COORDINATOR_RPC_SIGNATURE_HASH := (
-	"4a5c34953800c0ed3a39bdcdd57a5978994108c7659c57a5aa35d2e5c46ef32a"
+	"0ecb2dba2ce76c977cc888ecf998d14f07768dda39f20d914eafb457fe5d2974"
 )
 const EXPECTED_ROGUE_COMBAT_COORDINATOR_RPC_ANNOTATION_HASH := (
-	"272a50890bb520168b9b1de6829cde1f00cb89bfb0fc52c704781aced99cec4e"
+	"8318bdab10097cbe72e130fa80c637ad9161ab673dcc14f920dd6b649f30d3b0"
 )
 
 const EXPECTED_MODE_WIRE_KEYS := {
@@ -320,8 +320,8 @@ func _strip_quotes(value: String) -> String:
 
 
 func _test_protocol_and_wire_values() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 71, "多人协议必须保持 v71。")
-	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v71 必须保持 8 个 ENet 信道。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 72, "多人协议必须保持 v72。")
+	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v72 必须保持 8 个 ENet 信道。")
 	_expect(GameModeCatalog.MODE_STANDARD == 0, "standard wire value 必须保持 0。")
 	_expect(GameModeCatalog.MODE_TOWER_DEFENSE == 1, "tower_defense wire value 必须保持 1。")
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P1 == 2, "test_arena_p1 wire value 必须保持 2。")
@@ -358,12 +358,13 @@ func _test_protocol_and_wire_values() -> void:
 		"BOSS_INTRO": 5,
 		"BOSS_ACTIVE": 6,
 		"FATE_INTERLUDE": 7,
+		"ROGUE_EXPLORATION": 8,
 	}
 	for state_name in expected_flow_values:
 		_expect(
 			int(CombatFlowState.State.get(state_name, -1))
 			== int(expected_flow_values[state_name]),
-			"CombatFlowState.%s 的 v58 wire value 改变。" % state_name
+			"CombatFlowState.%s 的 v72 wire value 改变。" % state_name
 		)
 
 
@@ -458,6 +459,9 @@ func _test_scene_node_paths() -> void:
 			NodePath("PlantSystem"),
 			NodePath("DualGridTerrain"),
 			NodePath("FateCoordinator"),
+			NodePath("RogueExplorationCoordinator"),
+			NodePath("RogueExplorationCoordinator/RogueRoute"),
+			NodePath("RogueExplorationCoordinator/RogueCombatCoordinator"),
 		]
 	)
 	_test_packed_scene_structure(
@@ -505,6 +509,7 @@ func _test_scene_node_paths() -> void:
 			NodePath("EnemyCoordinator"),
 			NodePath("ProjectileCoordinator"),
 			NodePath("WorldFlowCoordinator"),
+			NodePath("TowerRogueRouteBridge"),
 			NodePath("PublicRoomKeepaliveRequest"),
 		]
 	)

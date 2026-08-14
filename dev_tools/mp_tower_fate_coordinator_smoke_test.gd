@@ -147,8 +147,11 @@ func _test_static_boundary(coordinator: MpTowerFateCoordinator) -> void:
 	var rpc_pattern := RegEx.new()
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
-		rpc_pattern.search_all(source).size() == 126,
-		"Tower fate extraction must preserve all 126 MpGame RPC facades."
+		rpc_pattern.search_all(source).size() == 144,
+		(
+			"Tower fate extraction must preserve all 144 protocol-v72 MpGame "
+			+ "RPC facades, including the embedded Rogue transport."
+		)
 	)
 	for function_name in [
 		"net_xiaocong_interaction_requested",

@@ -70,6 +70,7 @@
 [ext_resource type="PackedScene" uid="uid://d7n2r5w8y3k6p" path="res://scene/game_modes/tower_defense/plant/tower_defense_plant_placement_coordinator.tscn" id="72_plant_placement_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_runtime_port.tscn" id="73_campaign_runtime_port"]
 [ext_resource type="PackedScene" uid="uid://c5w9k3x7d2j8s" path="res://scene/game_modes/tower_defense/pickup/tower_defense_pickup_registry.tscn" id="74_pickup_registry"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/rogue/tower_defense_rogue_exploration_coordinator.tscn" id="75_rogue_exploration"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -454,6 +455,8 @@ script = ExtResource("54_luoxi_special_game")
 [node name="XiaocongFateInterlude" parent="." instance=ExtResource("52_xiaocong_interlude")]
 
 [node name="FateFlowCoordinator" parent="." instance=ExtResource("69_fate_flow")]
+
+[node name="RogueExplorationCoordinator" parent="." instance=ExtResource("75_rogue_exploration")]
 
 [node name="BossContainer" type="Node2D" parent="." unique_id=1704115178]
 

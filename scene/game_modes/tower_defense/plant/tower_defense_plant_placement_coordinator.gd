@@ -181,7 +181,10 @@ func begin_inventory_building_placement(
 	refresh_interaction_state()
 	if (
 		_local_player.is_dead
-		or _flow_state == CombatFlowState.State.FATE_INTERLUDE
+		or _flow_state in [
+			CombatFlowState.State.FATE_INTERLUDE,
+			CombatFlowState.State.ROGUE_EXPLORATION,
+		]
 		or has_exclusive_modal_open()
 	):
 		return false
@@ -301,6 +304,7 @@ static func evaluate_placement_input_enabled(
 			CombatFlowState.State.VICTORY,
 			CombatFlowState.State.DEFEAT,
 			CombatFlowState.State.FATE_INTERLUDE,
+			CombatFlowState.State.ROGUE_EXPLORATION,
 		]
 		and not exclusive_modal_open
 	)

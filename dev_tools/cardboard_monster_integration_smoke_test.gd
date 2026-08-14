@@ -90,11 +90,11 @@ func _test_fate_and_wire_boundaries() -> void:
 		"命运精英映射必须保持10项，纸箱怪不得拥有精英替换。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 71
+		NET_CONSTANTS.PROTOCOL_VERSION == 72
 		and NET_CONSTANTS.CHANNEL_COUNT == 8
 		and CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET
 		== 18,
-		"协议v71必须隔离地下水道普通20/20/4/3、紧急20/2/15/10编成、Game04双出生点及普通/紧急池合同，并保留v70地下教会10/20/40编成、同时存活上限15与既有wire语义，同时保持8通道和攻击来源末尾ID18。"
+		"协议v72必须隔离塔防四日地下探索并保留v71地下水道、纸箱怪及既有wire合同。"
 	)
 
 

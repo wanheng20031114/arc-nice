@@ -301,9 +301,9 @@ func _test_burst_scheduler_and_half_speed() -> void:
 
 func _test_network_pool_and_fate_contract() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 71
+		NET_CONSTANTS.PROTOCOL_VERSION == 72
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
-		"协议v71必须隔离地下水道普通20/20/4/3、紧急20/2/15/10编成、Game04双出生点及普通/紧急池合同，并保留v70地下教会、精英紫弹与既有资源语义，且不增加ENet频道。"
+		"协议v72必须隔离塔防四日地下探索并保留v71地下水道、精英紫弹资源语义，且不增加ENet频道。"
 	)
 	_expect(
 		CombatAttackRegistry.encode_player_hit_source(

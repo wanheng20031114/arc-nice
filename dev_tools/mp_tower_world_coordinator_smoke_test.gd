@@ -545,8 +545,8 @@ func _test_static_boundary(mp_game: MultiplayerGameplaySession) -> void:
 	var rpc_pattern := RegEx.new()
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
-		rpc_pattern.search_all(source).size() == 126,
-		"TowerWorld 提取不得改变 MpGame 的 126 个 RPC 门面。"
+		rpc_pattern.search_all(source).size() == 144,
+		"TowerWorld 提取必须保留 protocol-v72 的 144 个 MpGame RPC 门面。"
 	)
 	for function_name in [
 		"net_plant_placement_requested",
@@ -1361,9 +1361,14 @@ func _rpc_entry_captures_sender_first(source: String, function_name: String) -> 
 	var line_end := source.find("\n", body_offset)
 	if line_end < 0:
 		return false
-	return source.substr(body_offset, line_end - body_offset).strip_edges() == (
-		"var sender_id := multiplayer.get_remote_sender_id()"
-	)
+	var first_line := source.substr(
+		body_offset,
+		line_end - body_offset
+	).strip_edges()
+	return first_line in [
+		"var sender_id := multiplayer.get_remote_sender_id()",
+		"var sender_id := _get_rpc_sender_id()",
+	]
 
 
 func _get_rpc_body(source: String, function_name: String) -> String:

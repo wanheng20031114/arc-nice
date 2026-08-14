@@ -11,6 +11,8 @@ signal enemy_retarget_requested
 signal respawn_countdown_changed(peer_id: int, seconds_left: int)
 signal respawn_countdown_cleared(peer_id: int)
 signal revive_all_requested
+## Host 侧由 MpPlayerCoordinator 以健康 revision 广播，覆盖存活与死亡玩家。
+signal restore_all_full_health_requested
 
 var runtime_mode := CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 var local_peer_id := 0
@@ -567,6 +569,42 @@ func force_revive_dead_players(emit_multiplayer: bool) -> void:
 				if player_instance != null and is_instance_valid(player_instance) and player_instance.is_dead:
 					revive_all_requested.emit()
 					return
+
+
+## 从跨场景 RunState 重新应用永久属性与最大生命惩罚后，再把全员恢复到
+## 当前有效上限。多人权威由会话层产生健康 revision，避免只改 Host 节点。
+func restore_all_players_to_full_health(emit_multiplayer: bool) -> void:
+	refresh_players_from_run_state()
+	match runtime_mode:
+		CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
+			if local_player == null or not is_instance_valid(local_player):
+				return
+			local_player.revive_multiplayer(
+				local_player.global_position,
+				local_player.max_health,
+				_respawn_invincibility_seconds
+			)
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY:
+			if emit_multiplayer:
+				restore_all_full_health_requested.emit()
+
+
+func refresh_players_from_run_state() -> void:
+	if _run_state == null:
+		return
+	for player_instance in get_all_players():
+		var runtime_peer_id := (
+			0
+			if runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+			else player_instance.peer_id
+		)
+		player_instance.set_run_max_health_penalty(
+			_run_state.get_max_health_penalty_for_peer(runtime_peer_id)
+		)
+		player_instance.configure_run_stat_bonuses(
+			_run_state.get_player_stat_bonuses(runtime_peer_id),
+			true
+		)
 
 
 func update_singleplayer_respawn(delta: float) -> void:

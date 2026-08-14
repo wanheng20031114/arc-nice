@@ -19,6 +19,14 @@ const TOWER_ROOT_SCRIPT_PATH := (
 const TOWER_ROOT_SCENE_PATH := (
 	"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
 )
+const TOWER_PLANT_GAMEPLAY_BRIDGE_SCRIPT_PATH := (
+	"res://scene/game_modes/tower_defense/multiplayer/"
+	+ "tower_plant_gameplay_bridge.gd"
+)
+const TOWER_MULTIPLAYER_ADAPTER_SCRIPT_PATH := (
+	"res://scene/game_modes/tower_defense/multiplayer/"
+	+ "tower_defense_multiplayer_mode_adapter.gd"
+)
 
 var failures: Array[String] = []
 
@@ -131,6 +139,12 @@ func _run() -> void:
 	)
 	var tower_root_source := FileAccess.get_file_as_string(TOWER_ROOT_SCRIPT_PATH)
 	var tower_root_scene := FileAccess.get_file_as_string(TOWER_ROOT_SCENE_PATH)
+	var tower_plant_gameplay_bridge_source := FileAccess.get_file_as_string(
+		TOWER_PLANT_GAMEPLAY_BRIDGE_SCRIPT_PATH
+	)
+	var tower_multiplayer_adapter_source := FileAccess.get_file_as_string(
+		TOWER_MULTIPLAYER_ADAPTER_SCRIPT_PATH
+	)
 	_expect(
 		not coordinator_source.contains("current_scene")
 		and not coordinator_source.contains("has_method(")
@@ -148,10 +162,16 @@ func _run() -> void:
 			"[node name=\"PlantPlacementCoordinator\" parent=\".\" instance="
 		) == 1
 		and tower_root_source.contains("plant_placement_coordinator.setup(")
-		and tower_root_source.contains(
-			"plant_placement_coordinator.begin_inventory_building_placement("
+		and tower_root_scene.count(
+			"[node name=\"TowerPlantGameplayPort\" type=\"Node\" parent=\".\"]"
+		) == 1
+		and tower_plant_gameplay_bridge_source.contains(
+			"mode_adapter.begin_inventory_building_placement("
+		)
+		and tower_multiplayer_adapter_source.contains(
+			"_plant_placement_coordinator.begin_inventory_building_placement("
 		),
-		"塔防根场景必须静态搭建并显式委托 PlantPlacementCoordinator。"
+		"塔防根场景必须静态搭建并通过强类型 gameplay port 委托 PlantPlacementCoordinator。"
 	)
 
 	var controller := PlacementControllerProbe.new()
@@ -243,6 +263,11 @@ func _run() -> void:
 	_expect(
 		not controller.input_enabled,
 		"FATE_INTERLUDE 必须关闭放置输入。"
+	)
+	coordinator.set_flow_state(CombatFlowState.State.ROGUE_EXPLORATION)
+	_expect(
+		not controller.input_enabled,
+		"ROGUE_EXPLORATION 必须关闭放置输入。"
 	)
 	coordinator.set_flow_state(CombatFlowState.State.WAVE_ACTIVE)
 	_expect(controller.input_enabled, "离开阻塞流程后必须恢复放置输入。")

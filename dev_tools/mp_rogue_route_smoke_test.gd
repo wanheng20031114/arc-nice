@@ -5,6 +5,10 @@ const ROUTE_SCENE := preload("res://scene/game_modes/rogue/route/rogue_route_gam
 const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const NetManagerScript := preload("res://scene/multiplayer/net_manager.gd")
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
+const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
+const MP_WORLD_FLOW_SCRIPT := preload(
+	"res://scene/multiplayer/world_flow/mp_world_flow_coordinator.gd"
+)
 const OAK_WAREHOUSE_SCENE := preload(
 	"res://scene/plant_defense/oak_warehouse.tscn"
 )
@@ -106,8 +110,183 @@ class WarehouseTowerModeAdapterStub:
 		return warehouses.get(net_id) as PlantDefense
 
 
+class RogueFlowGateAdapterStub:
+	extends TowerDefenseMultiplayerModeAdapter
+
+	var exploration_active := false
+
+
+	func is_rogue_exploration_active() -> bool:
+		return exploration_active
+
+
+class TowerGateSessionProbe:
+	extends MpSessionCoordinator
+
+	var update_calls := 0
+
+
+	func update_transport(_delta: float) -> void:
+		update_calls += 1
+
+
+class TowerGatePlayerProbe:
+	extends MpPlayerCoordinator
+
+	var state_calls := 0
+	var dash_calls := 0
+
+
+	func handle_client_player_state(
+		_sender_id: int,
+		_sequence: int,
+		_reported_position: Vector2,
+		_reported_velocity: Vector2,
+		_move_input: Vector2,
+		_shoot_input: Vector2,
+		_buttons: int,
+		_dash_request_sequence: int,
+		_dash_direction: Vector2,
+		_dash_start_move_input: Vector2
+	) -> void:
+		state_calls += 1
+
+
+	func handle_dash_request(
+		_sender_id: int,
+		_dash_request_sequence: int,
+		_direction: Vector2,
+		_start_move_input: Vector2
+	) -> void:
+		dash_calls += 1
+
+
+class TowerGateWorldProbe:
+	extends MpTowerWorldCoordinator
+
+	var placement_calls := 0
+
+
+	func handle_remote_plant_placement_request(
+		_sender_id: int,
+		_request_id: int,
+		_plant_id: String,
+		_anchor: Vector2i
+	) -> void:
+		placement_calls += 1
+
+
+	func handle_remote_inventory_plant_placement_request(
+		_sender_id: int,
+		_request_id: int,
+		_plant_id: String,
+		_anchor: Vector2i,
+		_slot_index: int,
+		_expected_inventory_revision: int,
+		_item_config_path: String
+	) -> void:
+		placement_calls += 1
+
+
+class TowerGateEconomyProbe:
+	extends MpTowerEconomyCoordinator
+
+	var request_calls := 0
+
+
+	func handle_authoritative_warehouse_command(
+		_peer_id: int,
+		_raw_command: Dictionary
+	) -> void:
+		request_calls += 1
+
+
+	func handle_authoritative_warehouse_snapshot_request(
+		_sender_id: int,
+		_warehouse_net_id: int
+	) -> bool:
+		request_calls += 1
+		return true
+
+
+	func handle_authoritative_production_command(
+		_peer_id: int,
+		_raw_command: Dictionary
+	) -> void:
+		request_calls += 1
+
+
+	func handle_authoritative_production_snapshot_request(
+		_sender_id: int,
+		_building_net_id: int
+	) -> bool:
+		request_calls += 1
+		return true
+
+
+	func handle_authoritative_research_command(
+		_peer_id: int,
+		_raw_command: Dictionary
+	) -> void:
+		request_calls += 1
+
+
+class TowerGateTransactionsProbe:
+	extends MpTransactionsCoordinator
+
+	var admission_calls := 0
+
+
+	func consume_remote_transaction_admission(
+		_peer_id: int,
+		_now_seconds: float = -1.0
+	) -> bool:
+		admission_calls += 1
+		return true
+
+
+class TowerGateMpGameProbe:
+	extends MP_GAME_SCRIPT
+
+	var host_physics_tick_calls := 0
+	var interpolation_calls := 0
+
+
+	func _ready() -> void:
+		pass
+
+
+	func _get_rpc_sender_id() -> int:
+		return 42
+
+
+	func _update_recent_event_cache_prune(_delta: float) -> void:
+		pass
+
+
+	func _update_snapshot_packet_warning_timer(_delta: float) -> void:
+		pass
+
+
+	func _update_batched_network_events(_delta: float) -> void:
+		pass
+
+
+	func _update_authoritative_tango_charge_lifecycle() -> void:
+		pass
+
+
+	func _host_physics_tick(_frame: int, _delta: float) -> void:
+		host_physics_tick_calls += 1
+
+
+	func _client_interpolate_entities() -> void:
+		interpolation_calls += 1
+
+
 class ReconnectWrapperStub:
 	extends MpRogueRoute
+	var embedded_transport_call_count := 0
 
 
 	func _ready() -> void:
@@ -116,6 +295,15 @@ class ReconnectWrapperStub:
 
 	func _exit_tree() -> void:
 		pass
+
+
+	func capture_embedded_transport_call(
+		_peer_id: int,
+		_method_name: StringName,
+		_arguments: Array
+	) -> bool:
+		embedded_transport_call_count += 1
+		return true
 
 
 class BriefingTimeoutRouteStub:
@@ -139,6 +327,9 @@ func _run() -> void:
 	_test_mode_and_loading_contract()
 	_test_stable_participant_identity_contract()
 	_test_briefing_cover_timeout_contract()
+	_test_embedded_inactive_gate_contract()
+	_test_tower_rogue_cross_channel_flow_gate()
+	_test_tower_world_suspension_gate()
 	await _test_lobby_contract()
 	await _test_snapshot_and_delta_contract()
 	await _test_briefing_network_contract()
@@ -148,11 +339,274 @@ func _run() -> void:
 	_finish()
 
 
+func _test_embedded_inactive_gate_contract() -> void:
+	var wrapper := ReconnectWrapperStub.new()
+	wrapper.set("_embedded_campaign_mode", true)
+	wrapper.set("_runtime_prepared", true)
+	wrapper.set("_embedded_exploration_active", false)
+	wrapper.set(
+		"_rpc_transport",
+		Callable(wrapper, "capture_embedded_transport_call")
+	)
+	var stale_calls := [
+		[&"net_request_route_full_snapshot", []],
+		[&"net_route_full_snapshot", [{}, {}, {}, {}, {}]],
+		[&"net_route_move_delta", [{}]],
+		[&"net_route_briefing_state", [{}]],
+		[&"net_route_briefing_cover_ready", ["briefing", 1, 1]],
+		[&"net_route_encounter_intro_ack", ["encounter", 1]],
+		[&"net_route_encounter_vote", ["encounter", 1, &"option"]],
+		[&"net_route_encounter_result_ack", ["encounter", 1]],
+		[&"net_route_encounter_snapshot", [{}, {}]],
+		[
+			&"net_shop_purchase_request",
+			["request", "shop", 0, 1, 1, 1, 1],
+		],
+		[
+			&"net_shop_sell_request",
+			["request", "shop", 0, "item", 1, 1, 1],
+		],
+		[&"net_shop_exit_ack", ["shop", 1]],
+		[&"net_shop_snapshot", [{}]],
+		[&"net_route_avatar_input", [1, 1, PackedInt32Array()]],
+		[&"net_route_avatar_snapshot", [1, 1, PackedInt32Array()]],
+		[&"net_route_avatar_corrected", [1, PackedInt32Array()]],
+	]
+	for stale_call in stale_calls:
+		_expect(
+			not bool(wrapper.apply_embedded_route_rpc(
+				stale_call[0] as StringName,
+				42,
+				stale_call[1] as Array
+			)),
+			"塔防非探索阶段必须拒绝陈旧 RPC：%s。" % stale_call[0]
+		)
+	_expect(
+		not bool(wrapper.call(
+			"_send_route_rpc",
+			7,
+			&"net_route_move_delta",
+			[{}]
+		))
+		and wrapper.embedded_transport_call_count == 0,
+		"塔防非探索阶段的隐藏路线不得继续发包。"
+	)
+	wrapper.set("_snapshot_request_pending", true)
+	wrapper.set("_pending_shop_exit_ack", {"occurrence_key": "old"})
+	wrapper.set("_briefing_cover_occurrence_key", "old")
+	wrapper.set("_briefing_cover_deadline_msec", 123)
+	wrapper.set("_route_shop_command_rate_buckets", {42: {"tokens": 0.0}})
+	wrapper.set("_embedded_exploration_active", true)
+	wrapper.set_embedded_exploration_active(false)
+	_expect(
+		not bool(wrapper.get("_snapshot_request_pending"))
+		and (wrapper.get("_pending_shop_exit_ack") as Dictionary).is_empty()
+		and str(wrapper.get("_briefing_cover_occurrence_key")).is_empty()
+		and int(wrapper.get("_briefing_cover_deadline_msec")) == 0
+		and (wrapper.get("_route_shop_command_rate_buckets") as Dictionary).is_empty(),
+		"探索返回后必须清理快照重试、商店回执、简报屏障和限流会话。"
+	)
+	var manager := FakeNetManager.new()
+	var refresh_counter := {"count": 0}
+	manager.host_role = true
+	wrapper.set("_net_manager", manager)
+	wrapper.embedded_authoritative_snapshot_changed.connect(func() -> void:
+		refresh_counter["count"] = int(refresh_counter["count"]) + 1
+	)
+	wrapper.call(
+		"_on_host_layout_committed",
+		{"schema": 1, "template_id": "entry"},
+		{"schema": 1, "revision": 1}
+	)
+	_expect(
+		int(refresh_counter["count"]) == 0,
+		"首次建图但探索尚未 active 时不得广播半进入会话快照。"
+	)
+	wrapper.set("_embedded_exploration_active", true)
+	wrapper.call(
+		"_on_host_layout_committed",
+		{"schema": 1, "template_id": "active"},
+		{"schema": 1, "revision": 2}
+	)
+	_expect(
+		int(refresh_counter["count"]) == 1,
+		"探索正式 active 后路线布局提交必须恢复会话刷新通知。"
+	)
+	manager.free()
+	wrapper.free()
+
+
+func _test_tower_rogue_cross_channel_flow_gate() -> void:
+	var game := MP_GAME_SCRIPT.new()
+	var adapter := RogueFlowGateAdapterStub.new()
+	var bridge := ReconnectWrapperStub.new()
+	var world_flow := MP_WORLD_FLOW_SCRIPT.new()
+	bridge.set("_embedded_campaign_mode", true)
+	bridge.set("_embedded_exploration_active", false)
+	game.set("tower_mode_adapter", adapter)
+	game.set("tower_rogue_route_bridge", bridge)
+	game.set("world_flow_coordinator", world_flow)
+	game.call(
+		"_receive_or_defer_tower_flow_state",
+		"rogue_day_1",
+		CombatFlowState.State.ROGUE_EXPLORATION,
+		0
+	)
+	_expect(
+		int((game.get("_pending_tower_rogue_flow_state") as Dictionary).get(
+			"state",
+			-1
+		)) == CombatFlowState.State.ROGUE_EXPLORATION,
+		"CH5 探索流程先到时必须等待 CH0 会话快照，不能进入空路线。"
+	)
+	adapter.exploration_active = true
+	bridge.set("_embedded_exploration_active", true)
+	game.call("_flush_pending_tower_rogue_flow_state", true)
+	_expect(
+		(game.get("_pending_tower_rogue_flow_state") as Dictionary).is_empty(),
+		"active 会话快照落地后必须提交等待中的探索流程。"
+	)
+	game.call(
+		"_receive_or_defer_tower_flow_state",
+		"day_4_prepare",
+		CombatFlowState.State.INTERMISSION,
+		60
+	)
+	_expect(
+		not (game.get("_pending_tower_rogue_flow_state") as Dictionary).is_empty(),
+		"CH5 返回流程先到时必须等待 CH0 active=false，不能提前解冻塔防。"
+	)
+	adapter.exploration_active = false
+	bridge.set("_embedded_exploration_active", false)
+	game.call("_flush_pending_tower_rogue_flow_state", false)
+	_expect(
+		(game.get("_pending_tower_rogue_flow_state") as Dictionary).is_empty(),
+		"active=false 会话快照落地后必须提交等待中的塔防返回流程。"
+	)
+	game.free()
+	adapter.free()
+	bridge.free()
+	world_flow.free()
+
+
+func _test_tower_world_suspension_gate() -> void:
+	var game := TowerGateMpGameProbe.new()
+	var adapter := RogueFlowGateAdapterStub.new()
+	var manager := FakeNetManager.new()
+	var session := TowerGateSessionProbe.new()
+	var players := TowerGatePlayerProbe.new()
+	var tower_world := TowerGateWorldProbe.new()
+	var economy := TowerGateEconomyProbe.new()
+	var transactions := TowerGateTransactionsProbe.new()
+	var runtime := WarehouseRuntimeStub.new()
+	manager.host_role = true
+	adapter.exploration_active = true
+	game.set("tower_mode_adapter", adapter)
+	game.set("net_manager", manager)
+	game.set("session_coordinator", session)
+	game.set("player_coordinator", players)
+	game.set("tower_world_coordinator", tower_world)
+	game.set("tower_economy_coordinator", economy)
+	game.set("transactions_coordinator", transactions)
+	game.set("game", runtime)
+
+	game.call("_physics_process", 0.016)
+	game.call("_process", 0.016)
+	_dispatch_tower_gate_probe_requests(game, 1)
+	_expect(
+		game.host_physics_tick_calls == 0
+		and game.interpolation_calls == 0
+		and session.update_calls == 1,
+		"探索激活时外层塔防必须冻结物理帧和插值，但继续会话保活。"
+	)
+	_expect(
+		players.state_calls == 0
+		and players.dash_calls == 0
+		and tower_world.placement_calls == 0
+		and economy.request_calls == 0
+		and transactions.admission_calls == 0,
+		"探索激活时玩家状态、冲刺、建造和塔防经济请求必须零下游调用。"
+	)
+
+	adapter.exploration_active = false
+	game.call("_physics_process", 0.016)
+	game.call("_process", 0.016)
+	_dispatch_tower_gate_probe_requests(game, 10)
+	_expect(
+		game.host_physics_tick_calls == 1
+		and game.interpolation_calls == 1
+		and session.update_calls == 2,
+		"探索退出后外层塔防物理帧和插值必须恢复。"
+	)
+	_expect(
+		players.state_calls == 1
+		and players.dash_calls == 1
+		and tower_world.placement_calls == 2
+		and economy.request_calls == 5
+		and transactions.admission_calls == 3,
+		"探索退出后同一批玩家、建造和塔防经济入口必须恢复下游分发。"
+	)
+
+	runtime.free()
+	transactions.free()
+	economy.free()
+	tower_world.free()
+	players.free()
+	session.free()
+	manager.free()
+	adapter.free()
+	game.free()
+
+
+func _dispatch_tower_gate_probe_requests(
+	game: TowerGateMpGameProbe,
+	request_id: int
+) -> void:
+	game.call(
+		"_rpc_client_player_state",
+		request_id,
+		Vector2(100.0, 50.0),
+		Vector2.ONE,
+		Vector2.RIGHT,
+		Vector2.RIGHT,
+		0,
+		request_id,
+		Vector2.RIGHT,
+		Vector2.RIGHT
+	)
+	game.call(
+		"net_player_dash_requested",
+		request_id,
+		Vector2.RIGHT,
+		Vector2.RIGHT
+	)
+	game.call(
+		"net_plant_placement_requested",
+		request_id,
+		"pea",
+		Vector2i(2, 3)
+	)
+	game.call(
+		"net_inventory_plant_placement_requested",
+		request_id + 1,
+		"pea",
+		Vector2i(3, 4),
+		0,
+		1,
+		"res://test.tres"
+	)
+	game.call("net_warehouse_command_requested", {"request_id": request_id})
+	game.call("net_warehouse_snapshot_requested", 101)
+	game.call("net_production_command_requested", {"request_id": request_id + 1})
+	game.call("net_research_command_requested", {"request_id": request_id + 2})
+	game.call("net_production_snapshot_requested", 102)
+
+
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 71,
+		NetConstants.PROTOCOL_VERSION == 72,
 		(
-			"协议 v71 必须隔离地下水道普通20/20/4/3、紧急20/2/15/10编成、Game04双出生点及普通/紧急池合同，同时保留v70地下教会10/20/40编成与同时存活上限15，并承载v69植被科研、v68六格扩散、v67攻速强化塔、v66移速强化塔、P1E入口、神奇遭遇本局历史、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
+			"协议 v72 必须隔离塔防四日地下探索，同时保留v71地下水道、v69植被科研、v68六格扩散、v67攻速强化塔、v66移速强化塔、P1E入口、神奇遭遇本局历史、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
 			+ "狭路相逢波次资源合同，并隔离 P1C 与纸箱怪资源、"
 			+ "精英战斗机器人、精英持枪机器人弹丸与消耗品资源合同，且保留"
 			+ "精英操作员无人机、精英盾兵、物资节点共享光石/行动力状态、"
@@ -2195,6 +2649,46 @@ func _test_incremental_avatar_reconnect(
 		and shared_run_state.get_party_item_total(PLANK) == 4,
 		"未收到 old→new 通知的重连者本人必须在首次 Host 全量后清除旧键且不重复统计。"
 	)
+	# 塔防内嵌路线的玩家由 Tower coordinator 先从 roster 移除；Bridge
+	# 必须在此之前保存非零独特姿态，并在 old→new 身份迁移后覆盖安全锚点。
+	var embedded_old_peer_id := collision_peer_id
+	var embedded_new_peer_id := collision_peer_id + 500
+	var embedded_old_player := host_route.get_player_for_peer(
+		embedded_old_peer_id
+	)
+	if embedded_old_player != null:
+		var embedded_position := host_route.clamp_avatar_position(
+			embedded_old_player.global_position + Vector2(31.0, -13.0)
+		)
+		embedded_old_player.global_position = embedded_position
+		reconnect_wrapper.set("_embedded_campaign_mode", true)
+		reconnect_wrapper.capture_embedded_route_peer_before_removal(
+			embedded_old_peer_id
+		)
+		var embedded_character_id := embedded_old_player.get_character_id()
+		var coordinator_migrated := host_route.migrate_multiplayer_player(
+			embedded_old_peer_id,
+			embedded_new_peer_id,
+			"EmbeddedReconnect",
+			embedded_character_id
+		)
+		# 模拟 Tower coordinator 在旧节点已被移除时采用 Host 安全锚点；
+		# Bridge 随后的 transport 迁移必须用缓存姿态覆盖该临时位置。
+		if coordinator_migrated:
+			host_route.get_player_for_peer(embedded_new_peer_id).global_position = (
+				host_route.clamp_avatar_position(host_anchor_position)
+			)
+		reconnect_wrapper.migrate_embedded_peer_transport_state(
+			embedded_old_peer_id,
+			embedded_new_peer_id
+		)
+		_expect(
+			coordinator_migrated
+			and host_route.get_player_for_peer(embedded_new_peer_id) != null
+			and host_route.get_player_for_peer(embedded_new_peer_id).global_position
+			.is_equal_approx(embedded_position),
+			"塔防内嵌路线断线重连必须恢复离线前的独特姿态，不能落到 Host 锚点。"
+		)
 	reconnect_wrapper.queue_free()
 
 

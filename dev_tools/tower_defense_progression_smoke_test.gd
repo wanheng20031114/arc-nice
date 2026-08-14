@@ -150,6 +150,35 @@ func _test_campaign_coordinator_contract() -> void:
 func _test_progression_resource() -> void:
 	_expect(PROGRESSION != null and PROGRESSION.is_valid(), "Progression config must validate.")
 	_expect(
+		PROGRESSION.daily_rogue_action_points == [5, 5, 5],
+		"Formal day-one through day-three Rogue action points must default to 5/5/5."
+	)
+	var baseline_contract_hash := PROGRESSION.compute_runtime_contract_hash()
+	var changed_action_points := PROGRESSION.duplicate(true) as TowerDefenseProgressionConfig
+	changed_action_points.daily_rogue_action_points = [4, 5, 6]
+	_expect(
+		not baseline_contract_hash.is_empty()
+		and changed_action_points.compute_runtime_contract_hash()
+		!= baseline_contract_hash,
+		"Changing ordered daily Rogue action points must change the runtime contract hash."
+	)
+	changed_action_points.daily_rogue_action_points = [6, 5, 4]
+	var reordered_contract_hash := changed_action_points.compute_runtime_contract_hash()
+	changed_action_points.daily_rogue_action_points = [4, 5, 6]
+	_expect(
+		reordered_contract_hash
+		!= changed_action_points.compute_runtime_contract_hash(),
+		"Daily Rogue action-point order must be contract-significant."
+	)
+	var invalid_length := PROGRESSION.duplicate(true) as TowerDefenseProgressionConfig
+	invalid_length.daily_rogue_action_points = [5, 5]
+	invalid_length.per_player_amounts = []
+	_expect(
+		not invalid_length.is_valid()
+		and invalid_length.validate_config().size() >= 2,
+		"Invalid Rogue day count and package length must return validation errors without OOB."
+	)
+	_expect(
 		PROGRESSION.per_player_items == [SAPLING]
 		and PROGRESSION.per_player_amounts == [3]
 		and PROGRESSION.team_items.is_empty()
