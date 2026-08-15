@@ -237,6 +237,14 @@ func _on_player_life_state_correction_requested(
 	)
 
 
+func _on_player_state_rejected(
+	_peer_id: int,
+	_sequence: int,
+	reason: StringName
+) -> void:
+	_get_network_diagnostics_coordinator().record_player_input_rejection(reason)
+
+
 func _on_player_action_rpc_to_host_requested(
 	method_name: StringName,
 	arguments: Array
@@ -2246,26 +2254,6 @@ func _rpc_client_player_state(
 		dash_request_sequence,
 		dash_direction,
 		dash_start_move_input
-	)
-
-
-func _apply_accepted_client_player_state(
-	sender_id: int,
-	player_node: Player,
-	reported_position: Vector2,
-	reported_velocity: Vector2,
-	shoot_input: Vector2,
-	use_skill1: bool,
-	use_reload: bool = false
-) -> void:
-	player_coordinator.apply_accepted_client_player_state(
-		sender_id,
-		player_node,
-		reported_position,
-		reported_velocity,
-		shoot_input,
-		use_skill1,
-		use_reload
 	)
 
 
@@ -5648,6 +5636,17 @@ func _on_net_player_reconnected(
 		reconnect_state,
 		net_manager.is_host()
 	)
+	if (
+		net_manager.is_host()
+		and not player_coordinator.restore_reconnect_ingress_state(
+			new_peer_id,
+			reconnect_state
+		)
+	):
+		push_error(
+			"MpGame: 玩家 %d -> %d 的输入序列重连账本无效。"
+			% [old_peer_id, new_peer_id]
+		)
 	merchant_transactions_coordinator.restore_reconnect_state(
 		new_peer_id,
 		reconnect_state

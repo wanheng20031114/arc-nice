@@ -31,6 +31,11 @@ signal player_state_correction_requested(
 	corrected_position: Vector2,
 	corrected_velocity: Vector2
 )
+signal player_state_rejected(
+	peer_id: int,
+	sequence: int,
+	reason: StringName
+)
 signal authoritative_teleport_broadcast_requested(
 	peer_id: int,
 	target_position: Vector2,
@@ -57,6 +62,11 @@ const PLAYER_STATE_MAX_ACCEPTED_JUMP_DISTANCE := 2048.0
 const PLAYER_STATE_POSITION_TOLERANCE := 24.0
 const PLAYER_STATE_MAX_VALIDATION_SECONDS := 0.25
 const PLAYER_STATE_SPEED_TOLERANCE_MULTIPLIER := 1.75
+const PLAYER_STATE_MAX_SEQUENCE := 0x7FFFFFFF
+const PLAYER_STATE_MAX_SEQUENCE_ADVANCE := 256
+const PLAYER_INPUT_VECTOR_MAX_LENGTH := 1.001
+const PLAYER_INPUT_BUTTON_MASK := INPUT_BUTTON_RELOAD | INPUT_BUTTON_DASH
+const PLAYER_STATE_CORRECTION_MIN_INTERVAL_SECONDS := 0.1
 const PLAYER_ACTION_INGRESS_RATE_PER_SECOND := 24.0
 const PLAYER_ACTION_INGRESS_RATE_BURST := 32.0
 const HOE_ACTION_PRIMARY := &"primary"
@@ -143,6 +153,8 @@ var _local_tango_release_pending := false
 var _local_tango_electric_surge_request_id := 0
 var _local_tiyi_activation_request_id := 0
 var _last_player_state_sequences: Dictionary[int, int] = {}
+var _player_state_sequence_rebase_pending: Dictionary[int, bool] = {}
+var _last_player_state_correction_times: Dictionary[int, float] = {}
 var _last_dash_request_sequences: Dictionary[int, int] = {}
 var _last_dash_confirmed_sequences: Dictionary[int, int] = {}
 var _last_dash_accepted_times: Dictionary[int, float] = {}
@@ -2061,30 +2073,40 @@ func handle_client_player_state(
 	if (
 		not has_player_action_dependencies()
 		or not _action_net_manager.is_host()
-		or sender_id <= 0
 	):
+		return
+	if sender_id <= 0:
+		_record_player_state_rejection(sender_id, sequence, &"invalid_peer")
 		return
 	var player_node := _runtime.get_player_for_peer(sender_id)
 	if player_node == null or not is_instance_valid(player_node):
+		_record_player_state_rejection(sender_id, sequence, &"missing_player")
 		return
-	if player_node.is_dead or player_node.controls_locked:
-		player_state_correction_requested.emit(
-			sender_id,
-			player_node.global_position,
-			player_node.velocity
-		)
+	if player_node.is_dead:
+		_record_player_state_rejection(sender_id, sequence, &"player_dead")
+		_request_player_state_correction(sender_id, player_node)
 		return
-	if not accept_client_player_state(
+	if player_node.controls_locked:
+		_record_player_state_rejection(sender_id, sequence, &"controls_locked")
+		_request_player_state_correction(sender_id, player_node)
+		return
+	var accepted_at := _get_action_net_time()
+	var rejection_reason := _get_client_player_input_rejection_reason(
 		sender_id,
 		sequence,
 		reported_position,
-		reported_velocity
-	):
-		player_state_correction_requested.emit(
-			sender_id,
-			player_node.global_position,
-			player_node.velocity
-		)
+		reported_velocity,
+		move_input,
+		shoot_input,
+		buttons,
+		player_node,
+		accepted_at
+	)
+	if rejection_reason != &"":
+		if rejection_reason == &"sequence_jump":
+			_player_state_sequence_rebase_pending[sender_id] = true
+		_record_player_state_rejection(sender_id, sequence, rejection_reason)
+		_request_player_state_correction(sender_id, player_node)
 		return
 	var combat_actions_locked := player_node.are_combat_actions_locked()
 	if combat_actions_locked:
@@ -2092,6 +2114,28 @@ func handle_client_player_state(
 	var use_reload := (
 		(buttons & INPUT_BUTTON_RELOAD) != 0
 		and not combat_actions_locked
+	)
+	if not _apply_validated_client_player_state(
+		sender_id,
+		player_node,
+		reported_position,
+		reported_velocity,
+		shoot_input,
+		false,
+		use_reload
+	):
+		_record_player_state_rejection(
+			sender_id,
+			sequence,
+			&"player_apply_failed"
+		)
+		_request_player_state_correction(sender_id, player_node)
+		return
+	_commit_accepted_client_player_state(
+		sender_id,
+		sequence,
+		reported_position,
+		accepted_at
 	)
 	if (buttons & INPUT_BUTTON_DASH) != 0:
 		var dash_movement_evidence := dash_start_move_input
@@ -2106,15 +2150,6 @@ func handle_client_player_state(
 			dash_direction,
 			dash_movement_evidence
 		)
-	apply_accepted_client_player_state(
-		sender_id,
-		player_node,
-		reported_position,
-		reported_velocity,
-		shoot_input,
-		false,
-		use_reload
-	)
 
 
 func accept_client_player_state(
@@ -2125,24 +2160,107 @@ func accept_client_player_state(
 ) -> bool:
 	if not has_player_action_dependencies():
 		return false
-	var last_sequence := int(_last_player_state_sequences.get(peer_id, 0))
-	if sequence <= last_sequence:
-		return false
-	_last_player_state_sequences[peer_id] = sequence
-	if not _is_finite_vector2(reported_position) or not _is_finite_vector2(reported_velocity):
-		return false
 	var now := _get_action_net_time()
 	var player_node := _runtime.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
+	var rejection_reason := _get_client_player_motion_rejection_reason(
+		peer_id,
+		sequence,
+		reported_position,
+		reported_velocity,
+		player_node,
+		now
+	)
+	if rejection_reason != &"":
+		if rejection_reason == &"sequence_jump":
+			_player_state_sequence_rebase_pending[peer_id] = true
+		_record_player_state_rejection(peer_id, sequence, rejection_reason)
 		return false
+	if not _apply_validated_client_player_state(
+		peer_id,
+		player_node,
+		reported_position,
+		reported_velocity,
+		Vector2.ZERO,
+		false
+	):
+		_record_player_state_rejection(peer_id, sequence, &"player_apply_failed")
+		return false
+	_commit_accepted_client_player_state(peer_id, sequence, reported_position, now)
+	return true
+
+
+## 高频输入不构造临时对象；此校验边界一次检查完整网络帧，任何字段
+## 失败都不会推进已接纳序列或姿态水位。
+func _get_client_player_input_rejection_reason(
+	peer_id: int,
+	sequence: int,
+	reported_position: Vector2,
+	reported_velocity: Vector2,
+	move_input: Vector2,
+	shoot_input: Vector2,
+	buttons: int,
+	player_node: Player,
+	now: float
+) -> StringName:
+	if buttons < 0 or (buttons & ~PLAYER_INPUT_BUTTON_MASK) != 0:
+		return &"unknown_buttons"
+	if (
+		not _is_finite_vector2(move_input)
+		or not _is_finite_vector2(shoot_input)
+	):
+		return &"non_finite_input"
+	if (
+		move_input.length() > PLAYER_INPUT_VECTOR_MAX_LENGTH
+		or shoot_input.length() > PLAYER_INPUT_VECTOR_MAX_LENGTH
+	):
+		return &"input_out_of_range"
+	return _get_client_player_motion_rejection_reason(
+		peer_id,
+		sequence,
+		reported_position,
+		reported_velocity,
+		player_node,
+		now
+	)
+
+
+func _get_client_player_motion_rejection_reason(
+	peer_id: int,
+	sequence: int,
+	reported_position: Vector2,
+	reported_velocity: Vector2,
+	player_node: Player,
+	now: float
+) -> StringName:
+	if (
+		peer_id <= 0
+		or sequence <= 0
+		or sequence > PLAYER_STATE_MAX_SEQUENCE
+	):
+		return &"invalid_sequence"
+	var last_sequence := int(_last_player_state_sequences.get(peer_id, 0))
+	if sequence <= last_sequence:
+		return &"stale_sequence"
+	if (
+		sequence - last_sequence > PLAYER_STATE_MAX_SEQUENCE_ADVANCE
+		and not _player_state_sequence_rebase_pending.has(peer_id)
+	):
+		return &"sequence_jump"
+	if (
+		not is_finite(now)
+		or not _is_finite_vector2(reported_position)
+		or not _is_finite_vector2(reported_velocity)
+	):
+		return &"non_finite_motion"
+	if player_node == null or not is_instance_valid(player_node):
+		return &"missing_player"
 	if not _accepted_player_state_positions.has(peer_id):
 		if (
 			player_node.global_position.distance_to(reported_position)
 			> PLAYER_STATE_POSITION_TOLERANCE * 4.0
 		):
-			return false
-		remember_accepted_player_pose(peer_id, reported_position, now)
-		return true
+			return &"initial_position_out_of_range"
+		return &""
 	var previous_position := _accepted_player_state_positions[peer_id]
 	var previous_time := float(_accepted_player_state_times.get(peer_id, now))
 	var elapsed := clampf(
@@ -2161,19 +2279,61 @@ func accept_client_player_state(
 	allowed_distance = minf(allowed_distance, PLAYER_STATE_MAX_ACCEPTED_JUMP_DISTANCE)
 	var movement_delta := reported_position - previous_position
 	if movement_delta.length() > allowed_distance:
-		return false
+		return &"position_jump"
 	if reported_velocity.length() > effective_speed * 3.0 + PLAYER_STATE_POSITION_TOLERANCE:
-		return false
+		return &"velocity_out_of_range"
 	if (
 		movement_delta.length_squared() > 0.001
 		and player_node.test_move(player_node.global_transform, movement_delta)
 	):
-		return false
-	remember_accepted_player_pose(peer_id, reported_position, now)
-	return true
+		return &"blocked_motion"
+	return &""
 
 
-func apply_accepted_client_player_state(
+func _commit_accepted_client_player_state(
+	peer_id: int,
+	sequence: int,
+	reported_position: Vector2,
+	accepted_at: float
+) -> void:
+	_last_player_state_sequences[peer_id] = sequence
+	_player_state_sequence_rebase_pending.erase(peer_id)
+	remember_accepted_player_pose(peer_id, reported_position, accepted_at)
+
+
+func _record_player_state_rejection(
+	peer_id: int,
+	sequence: int,
+	reason: StringName
+) -> void:
+	player_state_rejected.emit(peer_id, sequence, reason)
+
+
+## 不可信实时包可以高频到达；可靠位置修正按 peer 限流，避免把一条
+## unreliable 输入通道放大成可靠通道队头阻塞。
+func _request_player_state_correction(peer_id: int, player_node: Player) -> void:
+	if peer_id <= 0 or player_node == null or not is_instance_valid(player_node):
+		return
+	var now := _get_action_net_time()
+	if not is_finite(now):
+		return
+	if _last_player_state_correction_times.has(peer_id):
+		var last_sent_at := float(_last_player_state_correction_times[peer_id])
+		if (
+			now >= last_sent_at
+			and now - last_sent_at
+			< PLAYER_STATE_CORRECTION_MIN_INTERVAL_SECONDS
+		):
+			return
+	_last_player_state_correction_times[peer_id] = now
+	player_state_correction_requested.emit(
+		peer_id,
+		player_node.global_position,
+		player_node.velocity
+	)
+
+
+func _apply_validated_client_player_state(
 	sender_id: int,
 	player_node: Player,
 	reported_position: Vector2,
@@ -2181,9 +2341,9 @@ func apply_accepted_client_player_state(
 	shoot_input: Vector2,
 	use_skill1: bool,
 	use_reload: bool = false
-) -> void:
+) -> bool:
 	if sender_id <= 0 or player_node == null or not is_instance_valid(player_node):
-		return
+		return false
 	player_node.apply_remote_multiplayer_state(
 		reported_position,
 		reported_velocity,
@@ -2199,6 +2359,7 @@ func apply_accepted_client_player_state(
 		player_node.get_multiplayer_facing_id(),
 		player_node.get_multiplayer_anim_state()
 	)
+	return true
 
 
 func handle_dash_request(
@@ -2225,20 +2386,40 @@ func try_accept_client_dash_request(
 	direction: Vector2,
 	movement_evidence: Vector2
 ) -> bool:
-	if not has_player_action_dependencies() or peer_id <= 0 or dash_request_sequence <= 0:
+	var rejection_reason := _get_client_dash_rejection_reason(
+		peer_id,
+		player_node,
+		dash_request_sequence,
+		direction,
+		movement_evidence
+	)
+	# Dash 同时走可靠请求和若干实时冗余包；旧序列是正常幂等重放，
+	# 只做 no-op，不应污染异常输入统计。
+	if rejection_reason == &"dash_duplicate":
 		return false
-	if player_node == null or not is_instance_valid(player_node):
-		return false
-	if dash_request_sequence <= int(_last_dash_request_sequences.get(peer_id, 0)):
-		return false
-	if not _is_finite_vector2(direction) or not _is_finite_vector2(movement_evidence):
-		return false
-	if direction.length_squared() <= 0.001 or movement_evidence.length_squared() <= 0.001:
+	if rejection_reason != &"":
+		_record_player_state_rejection(
+			peer_id,
+			dash_request_sequence,
+			rejection_reason
+		)
 		return false
 	var safe_direction := direction.normalized()
 	if safe_direction.dot(movement_evidence.normalized()) < 0.8:
+		_record_player_state_rejection(
+			peer_id,
+			dash_request_sequence,
+			&"dash_direction_mismatch"
+		)
 		return false
 	var accepted_at := _get_action_net_time()
+	if not is_finite(accepted_at):
+		_record_player_state_rejection(
+			peer_id,
+			dash_request_sequence,
+			&"dash_non_finite_time"
+		)
+		return false
 	var minimum_dash_interval := maxf(
 		player_node.get_dash_cooldown() - DASH_COOLDOWN_NETWORK_TOLERANCE_SECONDS,
 		0.0
@@ -2246,13 +2427,60 @@ func try_accept_client_dash_request(
 	if _last_dash_accepted_times.has(peer_id):
 		var last_accepted_at := float(_last_dash_accepted_times[peer_id])
 		if accepted_at - last_accepted_at < minimum_dash_interval:
+			_record_player_state_rejection(
+				peer_id,
+				dash_request_sequence,
+				&"dash_cooldown"
+			)
 			return false
 	if not player_node.start_multiplayer_dash_protection(safe_direction):
+		_record_player_state_rejection(
+			peer_id,
+			dash_request_sequence,
+			&"dash_entity_rejected"
+		)
 		return false
 	_last_dash_request_sequences[peer_id] = dash_request_sequence
 	_last_dash_accepted_times[peer_id] = accepted_at
 	_broadcast_player_dash_confirmed(peer_id, safe_direction, dash_request_sequence)
 	return true
+
+
+## Dash 是姿态帧中的独立子命令：失败只拒绝 Dash，不回滚已经接纳的移动。
+func _get_client_dash_rejection_reason(
+	peer_id: int,
+	player_node: Player,
+	dash_request_sequence: int,
+	direction: Vector2,
+	movement_evidence: Vector2
+) -> StringName:
+	if not has_player_action_dependencies() or peer_id <= 0:
+		return &"dash_dependencies_unavailable"
+	if (
+		dash_request_sequence <= 0
+		or dash_request_sequence > PLAYER_STATE_MAX_SEQUENCE
+	):
+		return &"dash_invalid_sequence"
+	var last_sequence := int(_last_dash_request_sequences.get(peer_id, 0))
+	if dash_request_sequence <= last_sequence:
+		return &"dash_duplicate"
+	if dash_request_sequence - last_sequence > PLAYER_STATE_MAX_SEQUENCE_ADVANCE:
+		return &"dash_sequence_jump"
+	if player_node == null or not is_instance_valid(player_node):
+		return &"dash_missing_player"
+	if (
+		not _is_finite_vector2(direction)
+		or not _is_finite_vector2(movement_evidence)
+	):
+		return &"dash_non_finite_input"
+	if (
+		direction.length_squared() <= 0.001
+		or movement_evidence.length_squared() <= 0.001
+		or direction.length() > PLAYER_INPUT_VECTOR_MAX_LENGTH
+		or movement_evidence.length() > PLAYER_INPUT_VECTOR_MAX_LENGTH
+	):
+		return &"dash_input_out_of_range"
+	return &""
 
 
 func apply_dash_confirmation(
@@ -3713,6 +3941,20 @@ func capture_player_reconnect_state(peer_id: int) -> Dictionary:
 	# 旧水位，Host 的下一次生命事件可能小于已应用快照而被客户端拒绝。
 	reconnect_state["health_revision"] = captured_health_revision
 	reconnect_state["applied_health_revision"] = captured_health_revision
+	# 输入序列属于连接身份租约；重连换 peer id 时必须与角色状态一起迁移，
+	# 否则 Host 会把客户端继续递增的合法序列误判为异常跳跃。
+	reconnect_state["player_input_sequence"] = int(
+		_last_player_state_sequences.get(peer_id, 0)
+	)
+	reconnect_state["player_input_rebase_pending"] = (
+		_player_state_sequence_rebase_pending.has(peer_id)
+	)
+	reconnect_state["dash_request_sequence"] = int(
+		_last_dash_request_sequences.get(peer_id, 0)
+	)
+	reconnect_state["dash_last_accepted_at"] = float(
+		_last_dash_accepted_times.get(peer_id, -1.0)
+	)
 	reconnect_state["state"] = captured_state
 	return reconnect_state
 
@@ -3742,6 +3984,54 @@ func restore_reconnect_life_state(
 		_dead_player_revive_last_seconds[peer_id] = int(
 			reconnect_state.get("revive_last_seconds", -1)
 		)
+
+
+## 将旧连接的输入水位迁到新 peer。该状态只由 Host 的捕获入口生成，
+## 校验失败代表内部重连账本损坏，不能静默改写成另一套序列语义。
+func restore_reconnect_ingress_state(
+	peer_id: int,
+	reconnect_state: Dictionary
+) -> bool:
+	if peer_id <= 0:
+		return false
+	if (
+		not reconnect_state.has("player_input_sequence")
+		or not reconnect_state.has("player_input_rebase_pending")
+		or not reconnect_state.has("dash_request_sequence")
+		or not reconnect_state.has("dash_last_accepted_at")
+		or typeof(reconnect_state["player_input_sequence"]) != TYPE_INT
+		or typeof(reconnect_state["player_input_rebase_pending"]) != TYPE_BOOL
+		or typeof(reconnect_state["dash_request_sequence"]) != TYPE_INT
+		or typeof(reconnect_state["dash_last_accepted_at"]) != TYPE_FLOAT
+	):
+		return false
+	var input_sequence := int(reconnect_state.get("player_input_sequence", 0))
+	var dash_sequence := int(reconnect_state.get("dash_request_sequence", 0))
+	var input_rebase_pending := bool(
+		reconnect_state.get("player_input_rebase_pending", false)
+	)
+	var dash_accepted_at := float(
+		reconnect_state.get("dash_last_accepted_at", -1.0)
+	)
+	if (
+		input_sequence < 0
+		or input_sequence > PLAYER_STATE_MAX_SEQUENCE
+		or dash_sequence < 0
+		or dash_sequence > PLAYER_STATE_MAX_SEQUENCE
+		or not is_finite(dash_accepted_at)
+	):
+		return false
+	_last_player_state_sequences[peer_id] = input_sequence
+	if input_rebase_pending:
+		_player_state_sequence_rebase_pending[peer_id] = true
+	else:
+		_player_state_sequence_rebase_pending.erase(peer_id)
+	_last_dash_request_sequences[peer_id] = dash_sequence
+	if dash_accepted_at >= 0.0:
+		_last_dash_accepted_times[peer_id] = dash_accepted_at
+	else:
+		_last_dash_accepted_times.erase(peer_id)
+	return true
 
 
 func prune_recent_player_hit_events(now: float) -> void:
@@ -4510,6 +4800,8 @@ func clear_peer(peer_id: int) -> void:
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
 	_last_player_state_sequences.erase(peer_id)
+	_player_state_sequence_rebase_pending.erase(peer_id)
+	_last_player_state_correction_times.erase(peer_id)
 	_last_dash_request_sequences.erase(peer_id)
 	_last_dash_confirmed_sequences.erase(peer_id)
 	_last_dash_accepted_times.erase(peer_id)
@@ -4565,6 +4857,8 @@ func reset_session_state() -> void:
 	_local_tango_electric_surge_request_id = 0
 	_local_tiyi_activation_request_id = 0
 	_last_player_state_sequences.clear()
+	_player_state_sequence_rebase_pending.clear()
+	_last_player_state_correction_times.clear()
 	_last_dash_request_sequences.clear()
 	_last_dash_confirmed_sequences.clear()
 	_last_dash_accepted_times.clear()

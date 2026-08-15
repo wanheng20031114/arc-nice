@@ -332,6 +332,21 @@ func _test_authoritative_player_state_remap() -> void:
 		EnemyConfig.DamageType.PHYSICAL,
 		false
 	)
+	# 长局中的客户端序列不会因 ENet 身份重连而归零；用多个合法窗口推进到
+	# 4096 以上，验证 Host 将输入水位作为重连账本的一部分迁移。
+	for input_sequence in range(250, 5001, 250):
+		mp_game.player_coordinator.handle_client_player_state(
+			OLD_PEER_ID,
+			input_sequence,
+			old_player.global_position,
+			Vector2.ZERO,
+			Vector2.ZERO,
+			Vector2.ZERO,
+			0,
+			0,
+			Vector2.ZERO,
+			Vector2.ZERO
+		)
 	var admitted_actions_at_once := 0
 	for _attempt in range(int(MpPlayerCoordinator.PLAYER_ACTION_INGRESS_RATE_BURST) + 1):
 		if mp_game._consume_remote_player_action_admission(
@@ -371,8 +386,9 @@ func _test_authoritative_player_state_remap() -> void:
 		captured_player_state != null
 		and captured_player_state.current_health == expected_health
 		and captured_player_state.health_revision == 7
-		and int(captured_reconnect_state.get("health_revision", 0)) == 7,
-		"断线捕获必须把节点生命值与可靠 revision 作为同一份权威重连状态保存。"
+		and int(captured_reconnect_state.get("health_revision", 0)) == 7
+		and int(captured_reconnect_state.get("player_input_sequence", 0)) == 5000,
+		"断线捕获必须把节点生命、可靠 revision 与输入水位保存为同一份权威状态。"
 	)
 	for _frame in 3:
 		await process_frame
@@ -395,6 +411,33 @@ func _test_authoritative_player_state_remap() -> void:
 		and restored.current_xirang == expected_xirang
 		and restored.current_health == expected_health,
 		"Reconnect must restore position, Xirang, and life state under the new ENet peer id."
+	)
+	var restored_ingress_state := (
+		mp_game.player_coordinator.capture_player_reconnect_state(NEW_PEER_ID)
+	)
+	_expect(
+		int(restored_ingress_state.get("player_input_sequence", 0)) == 5000,
+		"重连必须把旧 peer 的输入水位迁移到新 peer。"
+	)
+	mp_game.player_coordinator.handle_client_player_state(
+		NEW_PEER_ID,
+		5001,
+		restored.global_position,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	_expect(
+		int(
+			mp_game.player_coordinator.capture_player_reconnect_state(
+				NEW_PEER_ID
+			).get("player_input_sequence", 0)
+		) == 5001,
+		"重连后的下一份连续输入必须立即接纳，不得永久误判为序列跳跃。"
 	)
 	_expect(
 		not run_state.has_multiplayer_peer_state(OLD_PEER_ID)

@@ -1611,19 +1611,22 @@ func _test_host_remote_player_position_writeback() -> void:
 			net_manager.set("net_role", 1)
 		var mp_game := MP_GAME_SCENE.instantiate()
 		_bind_multiplayer_runtime(mp_game, host_game)
+		var player_coordinator := (
+			mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
+		)
 		if net_manager != null:
 			mp_game.set("net_manager", net_manager)
 		var previous_visual_position := remote_player.get_multiplayer_visual_global_position()
 		var accepted_position := remote_player.global_position + Vector2(24.0, 8.0)
 		var accepted_velocity := Vector2(120.0, 0.0)
-		mp_game.call(
-			"_apply_accepted_client_player_state",
-			2,
-			remote_player,
-			accepted_position,
-			accepted_velocity,
-			Vector2.RIGHT,
-			false
+		_expect(
+			player_coordinator.accept_client_player_state(
+				2,
+				1,
+				accepted_position,
+				accepted_velocity
+			),
+			"完整玩家状态事务必须接纳合法的远端位置。"
 		)
 		_expect(
 			remote_player.global_position.is_equal_approx(accepted_position),
@@ -1648,9 +1651,7 @@ func _test_host_remote_player_position_writeback() -> void:
 			"Host remote player visual smoothing must not move gameplay position."
 		)
 		_expect(
-			not (
-				mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
-			).has_visual_interpolator(2),
+			not player_coordinator.has_visual_interpolator(2),
 			"Host must not create player visual interpolation state for accepted remote player positions."
 		)
 		if net_manager != null:
@@ -1966,14 +1967,17 @@ func _test_host_remote_player_form_buff_expires() -> void:
 		if net_manager != null:
 			mp_game.set("net_manager", net_manager)
 		_bind_multiplayer_runtime(mp_game, game)
-		mp_game.call(
-			"_apply_accepted_client_player_state",
-			2,
-			remote_player,
-			remote_player.global_position,
-			Vector2.RIGHT,
-			Vector2.ZERO,
-			false
+		var player_coordinator := (
+			mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
+		)
+		_expect(
+			player_coordinator.accept_client_player_state(
+				2,
+				1,
+				remote_player.global_position,
+				Vector2.RIGHT
+			),
+			"完整玩家状态事务必须接纳合法的远端形态更新。"
 		)
 		_expect(
 			remote_player.form_buff_time_left > 0.0,

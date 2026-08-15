@@ -445,6 +445,7 @@ var _probe_action_broadcast_methods: Array[StringName] = []
 var _probe_action_to_host_methods: Array[StringName] = []
 var _probe_action_to_peer_methods: Array[StringName] = []
 var _probe_state_correction_count := 0
+var _probe_player_state_rejections: Array[StringName] = []
 var _probe_tiyi_damage_ids := PackedInt32Array()
 var _probe_realtime_rpc_packets: Array[Dictionary] = []
 var _probe_player_snapshot_packets: Array[Dictionary] = []
@@ -492,6 +493,7 @@ func _run() -> void:
 	coordinator.player_state_correction_requested.connect(
 		_probe_on_player_state_correction
 	)
+	coordinator.player_state_rejected.connect(_probe_on_player_state_rejected)
 	coordinator.tiyi_high_noon_damage_requested.connect(
 		_probe_on_tiyi_high_noon_damage_requested
 	)
@@ -652,7 +654,119 @@ func _run() -> void:
 		and action_player.remote_state_apply_count == 1,
 		"重复玩家状态序列必须拒绝并请求可靠位置修正。"
 	)
+	coordinator.handle_client_player_state(
+		2,
+		2,
+		Vector2(8.0, 0.0),
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		Vector2(NAN, 0.0),
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	coordinator.handle_client_player_state(
+		2,
+		MpPlayerCoordinator.PLAYER_STATE_MAX_SEQUENCE,
+		Vector2(10.0, 0.0),
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		Vector2.ZERO,
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	coordinator.handle_client_player_state(
+		2,
+		2,
+		Vector2(8.0, 0.0),
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		Vector2.ZERO,
+		1,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	_expect(
+		action_player.remote_state_apply_count == 1
+		and _probe_player_state_rejections == [
+			&"stale_sequence",
+			&"non_finite_input",
+			&"sequence_jump",
+			&"unknown_buttons",
+		]
+		and _probe_player_state_rejections.count(&"non_finite_input") == 1
+		and _probe_state_correction_count == 1,
+		"非法输入字段和超大序列必须可观察地拒绝，且不得污染接纳水位。"
+	)
+	coordinator.handle_client_player_state(
+		2,
+		2,
+		Vector2(8.0, 0.0),
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		Vector2.ZERO,
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	_expect(
+		action_player.remote_state_apply_count == 2
+		and action_player.last_remote_position == Vector2(8.0, 0.0),
+		"被拒帧之后的合法连续序列必须仍可接纳。"
+	)
+	coordinator.handle_client_player_state(
+		2,
+		3,
+		Vector2(8.0, 0.0),
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		Vector2.ZERO,
+		MpPlayerCoordinator.INPUT_BUTTON_DASH,
+		1,
+		Vector2(NAN, 0.0),
+		Vector2.RIGHT
+	)
+	_expect(
+		action_player.remote_state_apply_count == 3
+		and action_player.dash_protection_count == 0
+		and _probe_player_state_rejections.back() == &"dash_non_finite_input",
+		"Dash 子命令损坏时必须保留合法姿态，只拒绝并记录 Dash。"
+	)
+	_probe_net_time += (
+		MpPlayerCoordinator.PLAYER_STATE_CORRECTION_MIN_INTERVAL_SECONDS + 0.01
+	)
+	coordinator.handle_client_player_state(
+		2,
+		4,
+		Vector2(8.0, 0.0),
+		Vector2.ZERO,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		1,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	_expect(
+		_probe_state_correction_count == 2,
+		"可靠姿态修正必须限流，但窗口结束后可发送最新权威姿态。"
+	)
 	var action_broadcast_count := _probe_action_broadcast_methods.size()
+	_expect(
+		not coordinator.try_accept_client_dash_request(
+			2,
+			action_player,
+			MpPlayerCoordinator.PLAYER_STATE_MAX_SEQUENCE,
+			Vector2.RIGHT,
+			Vector2.RIGHT
+		),
+		"超大 Dash 序列不得抢占可靠动作水位。"
+	)
 	_expect(
 		coordinator.try_accept_client_dash_request(
 			2,
@@ -669,6 +783,9 @@ func _run() -> void:
 		and _probe_action_broadcast_methods.back() == &"net_player_dash_confirmed",
 		"Dash 接纳必须启动保护并经根出口广播确认。"
 	)
+	var rejection_count_before_dash_duplicate := (
+		_probe_player_state_rejections.size()
+	)
 	_expect(
 		not coordinator.try_accept_client_dash_request(
 			2,
@@ -678,6 +795,11 @@ func _run() -> void:
 			Vector2.RIGHT
 		),
 		"重复 Dash 序列不得再次启动保护。"
+	)
+	_expect(
+		_probe_player_state_rejections.size()
+		== rejection_count_before_dash_duplicate,
+		"跨信道 Dash 冗余属于幂等重放，不得污染异常输入诊断。"
 	)
 	var admitted_actions := 0
 	for _index in range(int(MpPlayerCoordinator.PLAYER_ACTION_INGRESS_RATE_BURST)):
@@ -700,6 +822,151 @@ func _run() -> void:
 		and coordinator.consume_remote_player_action_admission(2, 40.0),
 		"peer 清理必须释放姿态、序列与动作限流状态。"
 	)
+
+	var boundary_player := ProbePlayer.new()
+	boundary_player.peer_id = 6
+	boundary_player.move_speed = 100.0
+	runtime.peer_players[6] = boundary_player
+	coordinator.handle_client_player_state(
+		6,
+		MpPlayerCoordinator.PLAYER_STATE_MAX_SEQUENCE_ADVANCE,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	_expect(
+		boundary_player.remote_state_apply_count == 1,
+		"输入序列允许窗口的上边界必须可接纳。"
+	)
+	coordinator.clear_peer(6)
+	coordinator.handle_client_player_state(
+		6,
+		MpPlayerCoordinator.PLAYER_STATE_MAX_SEQUENCE_ADVANCE + 1,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	_expect(
+		boundary_player.remote_state_apply_count == 1
+		and _probe_player_state_rejections.back() == &"sequence_jump",
+		"输入序列超过允许窗口一位时必须拒绝且不得应用。"
+	)
+	coordinator.handle_client_player_state(
+		6,
+		MpPlayerCoordinator.PLAYER_STATE_MAX_SEQUENCE_ADVANCE + 2,
+		Vector2(NAN, 0.0),
+		Vector2.ZERO,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	coordinator.handle_client_player_state(
+		6,
+		MpPlayerCoordinator.PLAYER_STATE_MAX_SEQUENCE_ADVANCE + 3,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	_expect(
+		boundary_player.remote_state_apply_count == 2
+		and _probe_player_state_rejections.back() == &"non_finite_motion",
+		"序列重同步租约必须保留到完整姿态校验成功，并恢复持续输入流。"
+	)
+
+	# 重连换 peer id 时沿用同一客户端递增序列；Host 必须迁移接纳水位。
+	coordinator.clear_peer(6)
+	coordinator.handle_client_player_state(
+		6,
+		250,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	_probe_net_time = 42.0
+	_expect(
+		coordinator.try_accept_client_dash_request(
+			6,
+			boundary_player,
+			200,
+			Vector2.RIGHT,
+			Vector2.RIGHT
+		),
+		"重连夹具必须先建立有效 Dash 水位。"
+	)
+	var reconnect_snapshot := SnapshotManager.PlayerState.new()
+	reconnect_snapshot.peer_id = 6
+	reconnect_snapshot.position = Vector2.ZERO
+	runtime.probe_player_snapshot_states = [reconnect_snapshot]
+	var ingress_reconnect_state := coordinator.capture_player_reconnect_state(6)
+	_expect(
+		int(ingress_reconnect_state.get("player_input_sequence", 0)) == 250
+		and int(ingress_reconnect_state.get("dash_request_sequence", 0)) == 200,
+		"重连捕获必须包含姿态和 Dash 两条输入水位。"
+	)
+	coordinator.clear_peer(6)
+	runtime.peer_players.erase(6)
+	boundary_player.peer_id = 7
+	runtime.peer_players[7] = boundary_player
+	_expect(
+		not coordinator.restore_reconnect_ingress_state(
+			7,
+			{"player_input_sequence": 250}
+		),
+		"缺字段的重连输入账本必须明确拒绝，不能静默重置水位。"
+	)
+	_expect(
+		coordinator.restore_reconnect_ingress_state(7, ingress_reconnect_state),
+		"合法重连输入账本必须迁移到新 peer id。"
+	)
+	coordinator.handle_client_player_state(
+		7,
+		251,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	_expect(
+		boundary_player.remote_state_apply_count == 4
+		and not coordinator.try_accept_client_dash_request(
+			7,
+			boundary_player,
+			200,
+			Vector2.RIGHT,
+			Vector2.RIGHT
+		),
+		"重连后下一姿态序列必须连续，旧 Dash 重放必须保持拒绝。"
+	)
+	coordinator.clear_peer(7)
+	runtime.peer_players.erase(7)
+	boundary_player.free()
 
 	net_manager.host_mode = false
 	net_manager.client_mode = true
@@ -1571,6 +1838,14 @@ func _probe_on_player_state_correction(
 	_corrected_velocity: Vector2
 ) -> void:
 	_probe_state_correction_count += 1
+
+
+func _probe_on_player_state_rejected(
+	_peer_id: int,
+	_sequence: int,
+	reason: StringName
+) -> void:
+	_probe_player_state_rejections.append(reason)
 
 
 func _probe_on_tiyi_high_noon_damage_requested(

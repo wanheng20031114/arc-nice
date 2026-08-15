@@ -104,6 +104,9 @@ func _test_metrics_contract(diagnostics: MpNetworkDiagnosticsCoordinator) -> voi
 	diagnostics.record_state_repair()
 	for latency_ms in [10.0, 20.0, 50.0]:
 		diagnostics.record_transaction_latency_ms(latency_ms)
+	diagnostics.record_player_input_rejection(&"non_finite_input")
+	diagnostics.record_player_input_rejection(&"non_finite_input")
+	diagnostics.record_player_input_rejection(&"sequence_jump")
 	var enemy_metrics := {
 		"enemy_snapshot_batch_count": 7,
 		"enemy_snapshot_chunk_encode_count": 8,
@@ -142,6 +145,15 @@ func _test_metrics_contract(diagnostics: MpNetworkDiagnosticsCoordinator) -> voi
 		),
 		"Payload sampling, repair, and latency summary semantics must remain unchanged."
 	)
+	var input_rejection_counts := (
+		metrics.get("player_input_rejection_counts", {}) as Dictionary
+	)
+	_expect(
+		int(metrics.get("player_input_rejection_total", 0)) == 3
+		and int(input_rejection_counts.get(&"non_finite_input", 0)) == 2
+		and int(input_rejection_counts.get(&"sequence_jump", 0)) == 1,
+		"玩家输入拒绝必须按原因汇总到生产网络诊断。"
+	)
 	_expect(
 		int(metrics.get("player_snapshot_encode_count", 0)) == 11
 		and int(metrics.get("player_snapshot_cohort_size", 0)) == 4
@@ -176,6 +188,10 @@ func _test_metrics_contract(diagnostics: MpNetworkDiagnosticsCoordinator) -> voi
 		not bool(reset_metrics.get("rpc_payload_diagnostics_enabled", true))
 		and int(reset_metrics.get("enemy_snapshot_packet_count", -1)) == 0
 		and int(reset_metrics.get("state_repair_count", -1)) == 0
+		and int(reset_metrics.get("player_input_rejection_total", -1)) == 0
+		and (
+			reset_metrics.get("player_input_rejection_counts", {}) as Dictionary
+		).is_empty()
 		and reset_channels.size() == 8
 		and int((reset_channels[7] as Dictionary).get("packet_count", -1)) == 0,
 		"Session reset must clear every diagnostic counter and restore production mode."

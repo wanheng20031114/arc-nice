@@ -72,6 +72,8 @@ var _rpc_payload_diagnostics_enabled := false
 var _rpc_payload_call_counts: Dictionary[StringName, int] = {}
 var _rpc_payload_sample_bytes: Dictionary[StringName, int] = {}
 var _rpc_payload_sample_count := 0
+var _player_input_rejection_counts: Dictionary[StringName, int] = {}
+var _player_input_rejection_total := 0
 var _runtime_network_metrics = MultiplayerRuntimeMetricsScript.new(
 	_NetConstants.CHANNEL_COUNT
 )
@@ -198,6 +200,16 @@ func record_transaction_latency_ms(latency_ms: float) -> void:
 	_runtime_network_metrics.record_transaction_latency_ms(latency_ms)
 
 
+## 输入拒绝按原因聚合到会话诊断；不记录完整载荷，避免诊断本身泄露或放大流量。
+func record_player_input_rejection(reason: StringName) -> void:
+	if reason == &"":
+		return
+	_player_input_rejection_counts[reason] = int(
+		_player_input_rejection_counts.get(reason, 0)
+	) + 1
+	_player_input_rejection_total += 1
+
+
 func get_snapshot_packet_metrics(
 	player_snapshot_encode_count: int,
 	player_snapshot_cohort_size: int,
@@ -248,6 +260,10 @@ func get_snapshot_packet_metrics(
 			"transaction_latency_p95_ms",
 			0.0
 		),
+		"player_input_rejection_total": _player_input_rejection_total,
+		"player_input_rejection_counts": (
+			_player_input_rejection_counts.duplicate()
+		),
 		"pool_metrics": pool_metrics,
 	}
 
@@ -271,4 +287,6 @@ func reset_session_state() -> void:
 	_rpc_payload_call_counts.clear()
 	_rpc_payload_sample_bytes.clear()
 	_rpc_payload_sample_count = 0
+	_player_input_rejection_counts.clear()
+	_player_input_rejection_total = 0
 	_runtime_network_metrics.reset(_NetConstants.CHANNEL_COUNT)

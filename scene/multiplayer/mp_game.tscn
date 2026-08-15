@@ -81,6 +81,7 @@ timeout = 10.0
 [connection signal="authoritative_teleport_broadcast_requested" from="PlayerCoordinator" to="." method="_on_player_authoritative_teleport_broadcast_requested"]
 [connection signal="stale_player_peer_detected" from="PlayerCoordinator" to="." method="_on_stale_player_peer_detected"]
 [connection signal="player_state_correction_requested" from="PlayerCoordinator" to="." method="_on_player_life_state_correction_requested"]
+[connection signal="player_state_rejected" from="PlayerCoordinator" to="." method="_on_player_state_rejected"]
 [connection signal="tiyi_high_noon_damage_requested" from="PlayerCoordinator" to="." method="_on_tiyi_high_noon_damage_requested"]
 [connection signal="rpc_to_host_requested" from="ProjectileCoordinator" to="." method="_on_projectile_rpc_to_host_requested"]
 [connection signal="rpc_broadcast_requested" from="ProjectileCoordinator" to="." method="_on_projectile_rpc_broadcast_requested"]
