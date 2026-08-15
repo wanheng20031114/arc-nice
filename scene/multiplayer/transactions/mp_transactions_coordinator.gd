@@ -7,6 +7,8 @@ const PeerReplayResultCacheScript := preload(
 
 const SIMPLE_CRAFTING_RATE_PER_SECOND := 8.0
 const SIMPLE_CRAFTING_RATE_BURST := 12.0
+const SIMPLE_CRAFTING_REPLAY_RATE_PER_SECOND := 4.0
+const SIMPLE_CRAFTING_REPLAY_RATE_BURST := 8.0
 const SIMPLE_CRAFTING_RESULT_CACHE_SIZE := 32
 const SIMPLE_CRAFTING_WIRE_ID_MAX_LENGTH := 128
 const PLAYER_TRANSACTION_INGRESS_RATE_PER_SECOND := 32.0
@@ -85,6 +87,7 @@ var _local_simple_crafting_request_ids_by_ui_token: Dictionary = {}
 var _last_simple_crafting_request_ids: Dictionary = {}
 var _last_simple_crafting_result_ids: Dictionary = {}
 var _simple_crafting_rate_buckets: Dictionary = {}
+var _simple_crafting_replay_rate_buckets: Dictionary = {}
 var _simple_crafting_result_cache := PeerReplayResultCacheScript.new(
 	SIMPLE_CRAFTING_RESULT_CACHE_SIZE
 )
@@ -152,6 +155,7 @@ func reset_session_state() -> void:
 	_last_simple_crafting_request_ids.clear()
 	_last_simple_crafting_result_ids.clear()
 	_simple_crafting_rate_buckets.clear()
+	_simple_crafting_replay_rate_buckets.clear()
 	_simple_crafting_result_cache.clear()
 
 
@@ -163,6 +167,7 @@ func clear_peer(peer_id: int) -> void:
 	_last_simple_crafting_request_ids.erase(peer_id)
 	_last_simple_crafting_result_ids.erase(peer_id)
 	_simple_crafting_rate_buckets.erase(peer_id)
+	_simple_crafting_replay_rate_buckets.erase(peer_id)
 	_simple_crafting_result_cache.clear_peer(peer_id)
 
 
@@ -451,8 +456,6 @@ func apply_authoritative_simple_crafting_request(
 ) -> void:
 	if not is_bound() or not _net_manager.is_host() or peer_id <= 0:
 		return
-	if not consume_remote_transaction_admission(peer_id):
-		return
 	if (
 		request_id <= 0
 		or expected_inventory_revision < 0
@@ -460,20 +463,31 @@ func apply_authoritative_simple_crafting_request(
 		or recipe_id.length() > SIMPLE_CRAFTING_WIRE_ID_MAX_LENGTH
 	):
 		return
+	var cached_result := get_cached_simple_crafting_result(peer_id, request_id)
+	if not cached_result.is_empty():
+		# request_id 已经结算时只重放不可变结果，不再占用“新事务”预算；
+		# 独立的低速预算仍限制恶意重复包造成的广播放大。
+		if not _consume_peer_rate_token(
+			_simple_crafting_replay_rate_buckets,
+			peer_id,
+			SIMPLE_CRAFTING_REPLAY_RATE_PER_SECOND,
+			SIMPLE_CRAFTING_REPLAY_RATE_BURST
+		):
+			return
+		cached_result["inventory_snapshot"] = (
+			_run_state.export_inventory_snapshot_for_peer(peer_id)
+		)
+		cache_simple_crafting_result(peer_id, request_id, cached_result)
+		_send_simple_crafting_result(cached_result)
+		return
+	if not consume_remote_transaction_admission(peer_id):
+		return
 	if not _consume_peer_rate_token(
 		_simple_crafting_rate_buckets,
 		peer_id,
 		SIMPLE_CRAFTING_RATE_PER_SECOND,
 		SIMPLE_CRAFTING_RATE_BURST
 	):
-		return
-	var cached_result := get_cached_simple_crafting_result(peer_id, request_id)
-	if not cached_result.is_empty():
-		cached_result["inventory_snapshot"] = (
-			_run_state.export_inventory_snapshot_for_peer(peer_id)
-		)
-		cache_simple_crafting_result(peer_id, request_id, cached_result)
-		_send_simple_crafting_result(cached_result)
 		return
 	var player_node := _runtime.get_player_for_peer(peer_id)
 	var last_request_id := int(

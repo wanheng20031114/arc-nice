@@ -69,6 +69,7 @@ func _run() -> void:
 	_test_local_request_tracking(coordinator)
 	_test_replay_cache(coordinator)
 	_test_shared_ingress_budget(coordinator)
+	_test_cached_crafting_replay_has_independent_budget(coordinator)
 	_test_consumable_single_settlement(coordinator)
 	_test_inventory_results_survive_player_lifecycle_gap(coordinator)
 	coordinator.free()
@@ -196,6 +197,79 @@ func _test_shared_ingress_budget(coordinator: MpTransactionsCoordinator) -> void
 		not coordinator.consume_remote_transaction_admission(8, 100.0),
 		"内嵌战斗中被暂停的参与者不得提交事务。"
 	)
+	coordinator.unbind_session(session)
+	net_manager.free()
+	adapter.free()
+	runtime.free()
+	session.free()
+	run_state.free()
+
+
+func _test_cached_crafting_replay_has_independent_budget(
+	coordinator: MpTransactionsCoordinator
+) -> void:
+	const PEER_ID := 7
+	const REQUEST_ID := 41
+	var session := MP_GAME_SCENE.instantiate() as MultiplayerGameplaySession
+	var runtime := TestRuntime.new()
+	var adapter := MultiplayerModeAdapter.new()
+	var net_manager := NetManagerStore.new()
+	var run_state := RunStateStore.new()
+	var suspended_peers: Dictionary[int, bool] = {}
+	run_state.begin_new_run(&"weishidaier", false)
+	run_state.ensure_multiplayer_peer_state(PEER_ID)
+	root.add_child(net_manager)
+	net_manager.net_role = NetManagerStore.NetRole.HOST
+	coordinator.bind_session(
+		session,
+		runtime,
+		adapter,
+		net_manager,
+		run_state,
+		suspended_peers
+	)
+	var snapshot := run_state.export_inventory_snapshot_for_peer(PEER_ID)
+	coordinator.cache_simple_crafting_result(
+		PEER_ID,
+		REQUEST_ID,
+		{
+			"peer_id": PEER_ID,
+			"request_id": REQUEST_ID,
+			"recipe_id": "cached_recipe",
+			"result": String(RunStateStore.CRAFT_RESULT_SUCCESS),
+			"inventory_snapshot": snapshot,
+			"force_inventory_repair": false,
+		}
+	)
+	var replayed_request_ids: Array[int] = []
+	var capture_replay := func(
+		_peer_id: int,
+		_request_id: int,
+		_recipe_id: String,
+		_result: String,
+		_inventory_snapshot: Dictionary,
+		_force_inventory_repair: bool
+	) -> void:
+		replayed_request_ids.append(_request_id)
+	coordinator.simple_crafting_result_broadcast_requested.connect(capture_replay)
+	# 将新事务共享预算固定耗尽；缓存结果仍应通过自己的有界重放预算返回。
+	for _index in int(
+		MpTransactionsCoordinator.PLAYER_TRANSACTION_INGRESS_RATE_BURST
+	):
+		coordinator.consume_remote_transaction_admission(PEER_ID, 100.0)
+	for _index in 16:
+		coordinator.apply_authoritative_simple_crafting_request(
+			PEER_ID,
+			REQUEST_ID,
+			"cached_recipe",
+			0
+		)
+	_expect(
+		replayed_request_ids.size()
+		== int(MpTransactionsCoordinator.SIMPLE_CRAFTING_REPLAY_RATE_BURST),
+		"缓存制作结果必须绕过已耗尽的新事务预算，并受独立重放预算约束。"
+	)
+	coordinator.simple_crafting_result_broadcast_requested.disconnect(capture_replay)
 	coordinator.unbind_session(session)
 	net_manager.free()
 	adapter.free()
