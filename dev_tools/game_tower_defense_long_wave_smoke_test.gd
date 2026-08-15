@@ -31,7 +31,8 @@ func _run() -> void:
 		game.navigation_prewarmed and game.is_runtime_preparation_complete(),
 		"Long-wave fixture must finish all staged runtime preparation."
 	)
-	if game.waves.is_empty():
+	var campaign_coordinator := game.campaign_coordinator
+	if campaign_coordinator.waves.is_empty():
 		current_scene = null
 		game.queue_free()
 		_finish(0, 0)
@@ -40,7 +41,7 @@ func _run() -> void:
 	# Build the pressure cohort explicitly. Formal campaign content is allowed to
 	# change independently; relying on its first wave previously left this test in
 	# an infinite `spawned < 1200` loop after that wave was reduced to 24 enemies.
-	var authored_wave: WaveConfig = game.waves[0]
+	var authored_wave: WaveConfig = campaign_coordinator.waves[0]
 	var fixture_enemy_config: EnemyConfig = null
 	for authored_entry in authored_wave.enemy_entries:
 		if authored_entry != null and authored_entry.enemy_config != null:
@@ -84,9 +85,12 @@ func _run() -> void:
 	var death_loop_samples_ms: Array[float] = []
 	var post_death_frame_samples_ms: Array[float] = []
 	var worst_post_death_frame: Dictionary = {}
-	while game.current_wave_spawned < EXPECTED_WAVE_TOTAL and cycle_guard < 8:
+	while (
+		campaign_coordinator.current_wave_spawned < EXPECTED_WAVE_TOTAL
+		and cycle_guard < 8
+	):
 		while (
-			game.current_wave_spawned < EXPECTED_WAVE_TOTAL
+			campaign_coordinator.current_wave_spawned < EXPECTED_WAVE_TOTAL
 			and game.enemy_coordinator.active_wave_enemy_ids.size() < EXPECTED_MAX_ALIVE
 		):
 			game.enemy_coordinator.spawn_wave_batch(
@@ -183,8 +187,14 @@ func _run() -> void:
 			post_death_max_ms,
 		]
 	)
-	_expect(game.current_wave_spawned == EXPECTED_WAVE_TOTAL, "All 1200 enemies must spawn.")
-	_expect(game.current_wave_defeated == EXPECTED_WAVE_TOTAL, "All 1200 enemies must resolve as defeated.")
+	_expect(
+		campaign_coordinator.current_wave_spawned == EXPECTED_WAVE_TOTAL,
+		"All 1200 enemies must spawn."
+	)
+	_expect(
+		campaign_coordinator.current_wave_defeated == EXPECTED_WAVE_TOTAL,
+		"All 1200 enemies must resolve as defeated."
+	)
 	_expect(observed_peak_enemies == EXPECTED_MAX_ALIVE, "Long-wave peak enemy count must reach 300.")
 	_expect(
 		game.player.current_xirang == initial_xirang + expected_xirang_value,

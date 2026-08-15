@@ -1,37 +1,55 @@
-[gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://jiwxnjc6t5jo"]
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
 
-[ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry"]
-[ext_resource type="Resource" uid="uid://d31hbyrmfh543" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="2_basic"]
-[ext_resource type="Resource" uid="uid://chktgvo5mcaul" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="3_shell"]
-[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="4_exit"]
-[ext_resource type="AudioStream" uid="uid://cq88gwju4hy3n" path="res://resources/audio/shenmu_forest_combat.ogg" id="5_music"]
-[ext_resource type="AudioStream" uid="uid://baapagnqe6lpx" path="res://resources/audio/shenmu_forest_intermission.ogg" id="6_rest"]
-[ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="7_wave"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_g45ep"]
+[ext_resource type="Resource" path="res://resources/config/enemies/slime.tres" id="2_1r7uo"]
+[ext_resource type="Resource" path="res://resources/config/enemies/slime_fire.tres" id="3_hxrxs"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="4_yshn8"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="5_ene8o"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="6_ja5su"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="7_waj4h"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_combat.ogg" id="8_o81k4"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_intermission.ogg" id="9_solqb"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="10_n74w4"]
 
-[sub_resource type="Resource" id="Entry_basic"]
-script = ExtResource("1_entry")
-enemy_config = ExtResource("2_basic")
-count = 18
+[sub_resource type="Resource" id="Resource_680cl"]
+script = ExtResource("1_g45ep")
+enemy_config = ExtResource("2_1r7uo")
+count = 1300
 
-[sub_resource type="Resource" id="Entry_shell"]
-script = ExtResource("1_entry")
-enemy_config = ExtResource("3_shell")
-count = 6
+[sub_resource type="Resource" id="Resource_05v3i"]
+script = ExtResource("1_g45ep")
+enemy_config = ExtResource("3_hxrxs")
+count = 400
 
-[sub_resource type="Resource" id="Exit_next"]
-script = ExtResource("4_exit")
+[sub_resource type="Resource" id="Resource_ni28g"]
+script = ExtResource("1_g45ep")
+enemy_config = ExtResource("4_yshn8")
+count = 500
+
+[sub_resource type="Resource" id="Resource_fhet2"]
+script = ExtResource("1_g45ep")
+enemy_config = ExtResource("5_ene8o")
+count = 300
+
+[sub_resource type="Resource" id="Resource_x5k7p"]
+script = ExtResource("1_g45ep")
+enemy_config = ExtResource("6_ja5su")
+count = 500
+
+[sub_resource type="Resource" id="Resource_7ea31"]
+script = ExtResource("7_waj4h")
 target_step_id = &"wave_02"
 
 [resource]
-script = ExtResource("7_wave")
+script = ExtResource("10_n74w4")
 wave_name = "第1波 林地试探"
-enemy_entries = Array[ExtResource("1_entry")]([SubResource("Entry_basic"), SubResource("Entry_shell")])
-spawn_point_mask = 63
-spawn_interval = 0.8
-max_alive_enemies = 24
-music = ExtResource("5_music")
-post_wave_music = ExtResource("6_rest")
+enemy_entries = Array[ExtResource("1_g45ep")]([SubResource("Resource_680cl"), SubResource("Resource_05v3i"), SubResource("Resource_ni28g"), SubResource("Resource_fhet2"), SubResource("Resource_x5k7p")])
+spawn_point_mask = 15
+spawn_interval = 0.1
+max_alive_enemies = 300
+music = ExtResource("8_o81k4")
+post_wave_music = ExtResource("9_solqb")
 step_id = &"wave_01"
 display_name = "第1波 林地试探"
-exits = Array[ExtResource("4_exit")]([SubResource("Exit_next")])
+exits = Array[ExtResource("7_waj4h")]([SubResource("Resource_7ea31")])
 editor_position = Vector2(120, -120)

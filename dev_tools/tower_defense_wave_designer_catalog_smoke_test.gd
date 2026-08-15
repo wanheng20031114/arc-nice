@@ -31,6 +31,7 @@ const DROP_COLUMN_BY_PATH := {
 }
 
 var failures: Array[String] = []
+var shared_strings := PackedStringArray()
 
 
 func _init() -> void:
@@ -44,14 +45,16 @@ func _init() -> void:
 	var worksheet_xml := ""
 	var catalog_xml := ""
 	var machine_xml := ""
-	for file_path in archive.get_files():
+	var archive_files := archive.get_files()
+	shared_strings = _read_shared_strings(archive, archive_files)
+	for file_path in archive_files:
 		if not file_path.begins_with("xl/worksheets/sheet") or not file_path.ends_with(".xml"):
 			continue
 		var xml := archive.read_file(file_path).get_string_from_utf8()
 		worksheet_xml += xml
-		if xml.contains("敌人目录｜"):
+		if _worksheet_contains_text(xml, "敌人目录｜"):
 			catalog_xml = xml
-		elif xml.contains("敌人导入数据｜schema v3"):
+		elif _worksheet_contains_text(xml, "敌人导入数据｜schema v3"):
 			machine_xml = xml
 	archive.close()
 
@@ -86,7 +89,7 @@ func _init() -> void:
 	_validate_machine_runtime_values(machine_xml)
 
 	_expect(
-		_count_regex(worksheet_xml, "\\$A\\$6:\\$A\\$68") == 12,
+		_count_data_validation_targets(worksheet_xml, "$A$6:$A$68") == 12,
 		"前三日日页的12个敌人下拉必须全部覆盖目录A6:A68。"
 	)
 	_expect(
@@ -107,10 +110,86 @@ func _init() -> void:
 		"新增敌人的战斗数值与掉率必须继续受目录数据验证约束。"
 	)
 	_expect(
-		_count_regex(catalog_xml, "<x:row r=\"(5[5-9]|6[0-8])\" ht=\"23\"") == 14,
+		_count_regex(
+			catalog_xml,
+			"<(?:x:)?row\\b(?=[^>]*\\br=\"(?:5[5-9]|6[0-8])\")"
+			+ "(?=[^>]*\\bht=\"23(?:\\.1)?\")[^>]*>"
+		) == 14,
 		"新增14行必须延续敌人目录的23点行高。"
 	)
 	_finish()
+
+
+func _read_shared_strings(
+	archive: ZIPReader,
+	archive_files: PackedStringArray
+) -> PackedStringArray:
+	var values := PackedStringArray()
+	const SHARED_STRINGS_PATH := "xl/sharedStrings.xml"
+	if not archive_files.has(SHARED_STRINGS_PATH):
+		return values
+	var parser := XMLParser.new()
+	var open_error := parser.open_buffer(archive.read_file(SHARED_STRINGS_PATH))
+	_expect(open_error == OK, "工作簿 sharedStrings.xml 应能解析。")
+	if open_error != OK:
+		return values
+	var in_shared_item := false
+	var in_text := false
+	var item_text := ""
+	while parser.read() == OK:
+		var node_type := parser.get_node_type()
+		var node_name := ""
+		if (
+			node_type == XMLParser.NODE_ELEMENT
+			or node_type == XMLParser.NODE_ELEMENT_END
+		):
+			node_name = _xml_local_name(parser.get_node_name())
+		if node_type == XMLParser.NODE_ELEMENT:
+			if node_name == "si":
+				in_shared_item = true
+				item_text = ""
+			elif in_shared_item and node_name == "t":
+				in_text = true
+		elif (
+			node_type == XMLParser.NODE_TEXT
+			or node_type == XMLParser.NODE_CDATA
+		):
+			if in_shared_item and in_text:
+				item_text += parser.get_node_data()
+		elif node_type == XMLParser.NODE_ELEMENT_END:
+			if node_name == "t":
+				in_text = false
+			elif node_name == "si":
+				values.append(item_text)
+				in_shared_item = false
+	return values
+
+
+func _xml_local_name(name: String) -> String:
+	var separator_index := name.rfind(":")
+	return name.substr(separator_index + 1) if separator_index >= 0 else name
+
+
+func _worksheet_contains_text(xml: String, expected_text: String) -> bool:
+	if xml.contains(expected_text):
+		return true
+	var regex := RegEx.new()
+	var compile_error := regex.compile(
+		"<(?:x:)?c\\b[^>]*\\bt=\"s\"[^>]*>.*?"
+		+ "<(?:x:)?v>([0-9]+)</(?:x:)?v>.*?</(?:x:)?c>"
+	)
+	_expect(compile_error == OK, "工作簿共享字符串正则应可编译。")
+	if compile_error != OK:
+		return false
+	for match_result in regex.search_all(xml):
+		var shared_index := int(match_result.get_string(1))
+		if (
+			shared_index >= 0
+			and shared_index < shared_strings.size()
+			and shared_strings[shared_index].contains(expected_text)
+		):
+			return true
+	return false
 
 
 func _read_column_values(
@@ -121,7 +200,10 @@ func _read_column_values(
 ) -> PackedStringArray:
 	var regex := RegEx.new()
 	var compile_error := regex.compile(
-		"<x:c r=\"%s([0-9]+)\"[^>]*>.*?<x:v>([^<]*)</x:v></x:c>" % column
+		(
+			"<(?:x:)?c\\b(?=[^>]*\\br=\"%s([0-9]+)\")[^>]*>.*?"
+			+ "<(?:x:)?v>([^<]*)</(?:x:)?v>.*?</(?:x:)?c>"
+		) % column
 	)
 	_expect(compile_error == OK, "工作簿单元格正则应可编译：%s。" % column)
 	var values := PackedStringArray()
@@ -130,7 +212,9 @@ func _read_column_values(
 	for match_result in regex.search_all(xml):
 		var row_number := int(match_result.get_string(1))
 		if row_number >= minimum_row and row_number <= maximum_row:
-			values.append(match_result.get_string(2))
+			values.append(
+				_decode_cell_value(match_result.get_string(0), match_result.get_string(2))
+			)
 	return values
 
 
@@ -215,15 +299,62 @@ func _validate_machine_runtime_values(xml: String) -> void:
 func _read_row_values(xml: String, row_number: int) -> Dictionary:
 	var regex := RegEx.new()
 	var compile_error := regex.compile(
-		"<x:c r=\"([A-Z]+)%d\"[^>]*>.*?<x:v>([^<]*)</x:v></x:c>" % row_number
+		(
+			"<(?:x:)?c\\b(?=[^>]*\\br=\"([A-Z]+)%d\")[^>]*>.*?"
+			+ "<(?:x:)?v>([^<]*)</(?:x:)?v>.*?</(?:x:)?c>"
+		) % row_number
 	)
 	_expect(compile_error == OK, "敌人目录行正则应可编译：%d" % row_number)
 	var values := {}
 	if compile_error != OK:
 		return values
 	for match_result in regex.search_all(xml):
-		values[match_result.get_string(1)] = match_result.get_string(2)
+		values[match_result.get_string(1)] = _decode_cell_value(
+			match_result.get_string(0),
+			match_result.get_string(2)
+		)
 	return values
+
+
+func _decode_cell_value(cell_xml: String, raw_value: String) -> String:
+	if not cell_xml.contains(" t=\"s\""):
+		return raw_value
+	var index_text := raw_value.strip_edges()
+	_expect(index_text.is_valid_int(), "工作簿共享字符串索引必须是整数。")
+	if not index_text.is_valid_int():
+		return ""
+	var shared_index := int(index_text)
+	_expect(
+		shared_index >= 0 and shared_index < shared_strings.size(),
+		"工作簿共享字符串索引越界：%d。" % shared_index
+	)
+	if shared_index < 0 or shared_index >= shared_strings.size():
+		return ""
+	return shared_strings[shared_index]
+
+
+func _count_data_validation_targets(xml: String, formula_range: String) -> int:
+	var validation_regex := RegEx.new()
+	var validation_compile_error := validation_regex.compile(
+		"<(?:x:)?dataValidation\\b[^>]*>.*?</(?:x:)?dataValidation>"
+	)
+	_expect(validation_compile_error == OK, "工作簿数据验证正则应可编译。")
+	if validation_compile_error != OK:
+		return 0
+	var sqref_regex := RegEx.new()
+	var sqref_compile_error := sqref_regex.compile("\\bsqref=\"([^\"]+)\"")
+	_expect(sqref_compile_error == OK, "工作簿 sqref 正则应可编译。")
+	if sqref_compile_error != OK:
+		return 0
+	var target_count := 0
+	for validation_match in validation_regex.search_all(xml):
+		var validation_xml := validation_match.get_string(0)
+		if not validation_xml.contains(formula_range):
+			continue
+		var sqref_match := sqref_regex.search(validation_xml)
+		if sqref_match != null:
+			target_count += sqref_match.get_string(1).split(" ", false).size()
+	return target_count
 
 
 func _count_regex(subject: String, pattern: String) -> int:

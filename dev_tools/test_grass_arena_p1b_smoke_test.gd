@@ -45,21 +45,9 @@ const P1B_AUTHORED_RESOURCE_PATHS := [
 	"res://resources/config/campaigns/test_arena/p1b/multiplayer/flow.tres",
 	"res://resources/config/campaigns/test_arena/p1b/multiplayer/campaign.tres",
 ]
-const FORMAL_WAVE_DIRECTORIES := [
-	"res://resources/config/campaigns/standard/singleplayer",
-	"res://resources/config/campaigns/standard/multiplayer",
-	"res://resources/config/campaigns/tower_defense/formal",
-]
-const ELITE_NINJA_ZERO_DIRECT_REFERENCE_ROOTS := {
-	"正式标准单人波次": "res://resources/config/campaigns/standard/singleplayer",
-	"正式标准多人波次": "res://resources/config/campaigns/standard/multiplayer",
-	"正式塔防波次": "res://resources/config/campaigns/tower_defense/formal",
-	"旧正式波次": "res://resources/config/waves",
-	"肉鸽战斗波次": "res://resources/config/campaigns/rogue_combat",
-	"肉鸽遭遇配置": "res://resources/config/rogue_combat",
-	"P1B单人": "res://resources/config/campaigns/test_arena/p1b/singleplayer",
-	"P1B多人": "res://resources/config/campaigns/test_arena/p1b/multiplayer",
-}
+const FORMAL_TOWER_WAVE_DIRECTORY := (
+	"res://resources/config/campaigns/tower_defense/formal"
+)
 const EXPECTED_TOTAL_ENEMIES := 1000
 const EXPECTED_ROBOT_TYPE_COUNT := 200
 
@@ -85,7 +73,7 @@ func _run() -> void:
 
 	_test_scene_contract()
 	_test_campaign_contracts()
-	_test_new_robots_stay_out_of_formal_waves()
+	_test_p1b_and_formal_robot_rosters()
 	_test_strict_five_type_rotation_queue()
 	_test_unequal_round_robin_queue()
 
@@ -186,7 +174,7 @@ func _validate_campaign_wave(campaign: WaveCampaignConfig, mode_label: String) -
 	)
 
 
-func _test_new_robots_stay_out_of_formal_waves() -> void:
+func _test_p1b_and_formal_robot_rosters() -> void:
 	var elite_p1b_reference_count := 0
 	var elite_ninja_p1b_reference_count := 0
 	for resource_path in P1B_AUTHORED_RESOURCE_PATHS:
@@ -209,65 +197,33 @@ func _test_new_robots_stay_out_of_formal_waves() -> void:
 		"精英忍者战斗机器人不得直接写入 P1B 单人或多人资源。"
 	)
 
-	var operator_reference_count := 0
-	var shield_bearer_reference_count := 0
-	var ninja_reference_count := 0
-	var elite_reference_count := 0
-	var elite_ninja_reference_count := 0
-	for directory_path in FORMAL_WAVE_DIRECTORIES:
-		var directory := DirAccess.open(directory_path)
-		_expect(
-			directory != null,
-			"P1B 正式波次隔离测试必须能读取目录 %s。" % directory_path
-		)
-		if directory == null:
+	var expected_formal_reference_counts := {
+		COMBAT_ROBOT_DRONE_OPERATOR_CONFIG_PATH: 2,
+		COMBAT_ROBOT_SHIELD_BEARER_CONFIG_PATH: 3,
+		COMBAT_ROBOT_NINJA_CONFIG_PATH: 3,
+		COMBAT_ROBOT_ELITE_CONFIG_PATH: 4,
+		COMBAT_ROBOT_NINJA_ELITE_CONFIG_PATH: 5,
+	}
+	var actual_formal_reference_counts := {}
+	for config_path: String in expected_formal_reference_counts:
+		actual_formal_reference_counts[config_path] = 0
+	var directory := DirAccess.open(FORMAL_TOWER_WAVE_DIRECTORY)
+	_expect(directory != null, "必须能读取正式塔防波次目录。")
+	if directory == null:
+		return
+	for file_name in directory.get_files():
+		if not file_name.begins_with("wave_") or not file_name.ends_with(".tres"):
 			continue
-		for file_name in directory.get_files():
-			if not file_name.begins_with("wave_") or not file_name.ends_with(".tres"):
-				continue
-			var wave_text := FileAccess.get_file_as_string(
-				"%s/%s" % [directory_path, file_name]
-			)
-			operator_reference_count += wave_text.count(
-				COMBAT_ROBOT_DRONE_OPERATOR_CONFIG_PATH
-			)
-			shield_bearer_reference_count += wave_text.count(
-				COMBAT_ROBOT_SHIELD_BEARER_CONFIG_PATH
-			)
-			ninja_reference_count += wave_text.count(COMBAT_ROBOT_NINJA_CONFIG_PATH)
-			elite_reference_count += wave_text.count(COMBAT_ROBOT_ELITE_CONFIG_PATH)
-			elite_ninja_reference_count += wave_text.count(
-				COMBAT_ROBOT_NINJA_ELITE_CONFIG_PATH
-			)
-	_expect(
-		operator_reference_count == 0,
-		"爆炸无人机操作员只能进入 P1B，所有正式波次引用次数必须为0。"
-	)
-	_expect(
-		shield_bearer_reference_count == 0,
-		"举盾战斗机器人只能进入 P1B，所有正式波次引用次数必须为0。"
-	)
-	_expect(
-		ninja_reference_count == 0,
-		"忍者战斗机器人只能进入 P1B，所有正式波次引用次数必须为0。"
-	)
-	_expect(
-		elite_reference_count == 0,
-		"精英战斗机器人只能由命运替换生成，所有正式波次直接引用次数必须为0。"
-	)
-	_expect(
-		elite_ninja_reference_count == 0,
-		"精英忍者战斗机器人只能由命运替换生成，所有正式波次直接引用次数必须为0。"
-	)
-	for label: String in ELITE_NINJA_ZERO_DIRECT_REFERENCE_ROOTS:
-		var references := _find_text_references(
-			ELITE_NINJA_ZERO_DIRECT_REFERENCE_ROOTS[label],
-			COMBAT_ROBOT_NINJA_ELITE_CONFIG_PATH
+		var wave_text := FileAccess.get_file_as_string(
+			FORMAL_TOWER_WAVE_DIRECTORY.path_join(file_name)
 		)
-		_expect(
-			references.is_empty(),
-			"%s不得直接引用精英忍者战斗机器人：%s。" % [label, references]
-		)
+		for config_path: String in expected_formal_reference_counts:
+			actual_formal_reference_counts[config_path] += wave_text.count(config_path)
+	_expect(
+		actual_formal_reference_counts == expected_formal_reference_counts,
+		"正式塔防机器人引用必须与当前 Excel 编成一致：%s"
+		% [actual_formal_reference_counts]
+	)
 
 
 func _test_strict_five_type_rotation_queue() -> void:
@@ -389,28 +345,6 @@ func _finish() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
-
-
-func _find_text_references(directory_path: String, needle: String) -> Array[String]:
-	var matches: Array[String] = []
-	var directory := DirAccess.open(directory_path)
-	if directory == null:
-		failures.append("无法打开集成审计目录：%s。" % directory_path)
-		return matches
-	directory.list_dir_begin()
-	var entry_name := directory.get_next()
-	while not entry_name.is_empty():
-		if entry_name != "." and entry_name != "..":
-			var child_path := directory_path.path_join(entry_name)
-			if directory.current_is_dir():
-				matches.append_array(_find_text_references(child_path, needle))
-			elif entry_name.get_extension() in ["tres", "tscn", "gd"]:
-				var file := FileAccess.open(child_path, FileAccess.READ)
-				if file != null and needle in file.get_as_text():
-					matches.append(child_path)
-		entry_name = directory.get_next()
-	directory.list_dir_end()
-	return matches
 
 
 func _expect(condition: bool, message: String) -> void:

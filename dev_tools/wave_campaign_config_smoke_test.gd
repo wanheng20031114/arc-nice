@@ -5,8 +5,15 @@ const WAVE_CAMPAIGN_CONFIG_SCRIPT := preload(
 )
 const STANDARD_GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
-const FORMAL_TOTALS: Array[int] = [24, 36, 48, 64, 80, 96, 112, 128, 144, 160, 176, 200]
-const FORMAL_MAX_ALIVE: Array[int] = [24, 32, 36, 40, 48, 52, 56, 64, 72, 80, 88, 96]
+const FORMAL_TOTALS: Array[int] = [
+	3000, 3850, 3470, 2080, 2100, 2240, 2150, 2240, 3120, 3780, 3000, 4900,
+]
+const FORMAL_MAX_ALIVE: Array[int] = [
+	300, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300,
+]
+const FORMAL_SPAWN_POINT_MASKS: Array[int] = [
+	15, 15, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63,
+]
 const PERFORMANCE_TOTAL := 1200
 const PERFORMANCE_MAX_ALIVE := 300
 
@@ -151,8 +158,8 @@ func _verify_formal_waves(waves: Array[WaveConfig]) -> void:
 			"Formal wave %d max-alive mismatch." % (wave_index + 1)
 		)
 		_expect(
-			wave.spawn_point_mask == WaveConfig.ALL_SPAWN_POINT_MASK,
-			"Formal tower-defense waves must use all six spawn points."
+			wave.spawn_point_mask == FORMAL_SPAWN_POINT_MASKS[wave_index],
+			"Formal wave %d spawn-point mask mismatch." % (wave_index + 1)
 		)
 		_expect(
 			wave.post_clear_rest_duration == 0.0,
@@ -261,11 +268,29 @@ func _test_runtime_campaign_selection() -> void:
 		if game == null:
 			continue
 		game.runtime_mode = int(test_case[1])
+		var tower_game := game as TowerDefenseGame
+		var tower_campaign_coordinator: TowerDefenseCampaignCoordinator = null
+		if tower_game != null:
+			tower_campaign_coordinator = tower_game.get_node_or_null(
+				"CampaignCoordinator"
+			) as TowerDefenseCampaignCoordinator
+			_expect(
+				tower_campaign_coordinator != null,
+				"Tower-defense runtime probe must expose its authored CampaignCoordinator."
+			)
+			if tower_campaign_coordinator == null:
+				game.free()
+				continue
+			tower_game.campaign_coordinator = tower_campaign_coordinator
 		_expect(
 			bool(game.call("_configure_active_campaign")),
 			"Runtime must configure Campaign %s." % String(test_case[2])
 		)
-		var campaign := game.get("active_campaign") as WaveCampaignConfig
+		var campaign: WaveCampaignConfig = null
+		if tower_campaign_coordinator != null:
+			campaign = tower_campaign_coordinator.active_campaign
+		else:
+			campaign = game.get("active_campaign") as WaveCampaignConfig
 		_expect(
 			campaign != null and campaign.campaign_id == test_case[2],
 			"Runtime selected the wrong campaign."

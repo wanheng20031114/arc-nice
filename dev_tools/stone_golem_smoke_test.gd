@@ -22,10 +22,10 @@ const CAMPAIGN_LATE_WAVES := [
 		"res://resources/config/campaigns/standard/multiplayer/wave_12.tres"
 	),
 	preload(
-		"res://resources/config/campaigns/tower_defense/formal/wave_11.tres"
+		"res://resources/config/campaigns/tower_defense/formal/wave_09.tres"
 	),
 	preload(
-		"res://resources/config/campaigns/tower_defense/formal/wave_12.tres"
+		"res://resources/config/campaigns/tower_defense/formal/wave_10.tres"
 	),
 	preload(
 		"res://resources/config/campaigns/tower_defense/performance/waves/wave_11.tres"
@@ -34,14 +34,14 @@ const CAMPAIGN_LATE_WAVES := [
 		"res://resources/config/campaigns/tower_defense/performance/waves/wave_12.tres"
 	),
 ]
-const EXPECTED_CAMPAIGN_GOLEM_COUNTS := [6, 8, 6, 8, 1, 1, 15, 17]
+const EXPECTED_CAMPAIGN_GOLEM_COUNTS := [6, 8, 6, 8, 20, 20, 15, 17]
 const EXPECTED_CAMPAIGN_TOTALS := [
 	480,
 	560,
 	480,
 	560,
-	176,
-	200,
+	3120,
+	3780,
 	1200,
 	1200,
 ]
@@ -59,11 +59,11 @@ const TEST_HEALTH := 1000
 const DENSE_TARGET_COUNT := 70
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: Node
 
 
 class BroadcastCaptureRoot:
-	extends Node2D
+	extends MultiplayerGameplayGateway
 
 	var enemy_actions: Array[Dictionary] = []
 
@@ -786,6 +786,7 @@ func _spawn_golem(position: Vector2, player: Player) -> StoneGolem:
 	test_root.add_child(enemy)
 	enemy.global_position = position
 	enemy.setup(GOLEM_CONFIG, player)
+	enemy.bind_gameplay_gateway(test_root as BroadcastCaptureRoot)
 	return enemy
 
 

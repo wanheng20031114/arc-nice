@@ -1,43 +1,67 @@
-[gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://de7j54wl1rvn3"]
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
 
-[ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry"]
-[ext_resource type="Resource" uid="uid://d31hbyrmfh543" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="2_basic"]
-[ext_resource type="Resource" uid="uid://drqobuvr21y71" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="3_fast"]
-[ext_resource type="Resource" uid="uid://chktgvo5mcaul" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="4_shell"]
-[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="5_exit"]
-[ext_resource type="AudioStream" uid="uid://cq88gwju4hy3n" path="res://resources/audio/shenmu_forest_combat.ogg" id="6_music"]
-[ext_resource type="AudioStream" uid="uid://baapagnqe6lpx" path="res://resources/audio/shenmu_forest_intermission.ogg" id="7_rest"]
-[ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="8_wave"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_jotuh"]
+[ext_resource type="Resource" path="res://resources/config/enemies/slime.tres" id="2_wnopu"]
+[ext_resource type="Resource" path="res://resources/config/enemies/slime_fire.tres" id="3_2lc14"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="4_py8rv"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="5_nbxpp"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="6_rtir1"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="7_3ntf2"]
+[ext_resource type="Resource" path="res://resources/config/enemies/slime_frost.tres" id="8_d2sbx"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="9_m4vgf"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_combat.ogg" id="10_2r1b0"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_intermission.ogg" id="11_t2px1"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="12_box87"]
 
-[sub_resource type="Resource" id="Entry_basic"]
-script = ExtResource("1_entry")
-enemy_config = ExtResource("2_basic")
-count = 22
+[sub_resource type="Resource" id="Resource_q2br4"]
+script = ExtResource("1_jotuh")
+enemy_config = ExtResource("2_wnopu")
+count = 2000
 
-[sub_resource type="Resource" id="Entry_fast"]
-script = ExtResource("1_entry")
-enemy_config = ExtResource("3_fast")
-count = 8
+[sub_resource type="Resource" id="Resource_pp41a"]
+script = ExtResource("1_jotuh")
+enemy_config = ExtResource("3_2lc14")
+count = 400
 
-[sub_resource type="Resource" id="Entry_shell"]
-script = ExtResource("1_entry")
-enemy_config = ExtResource("4_shell")
-count = 6
+[sub_resource type="Resource" id="Resource_s4cev"]
+script = ExtResource("1_jotuh")
+enemy_config = ExtResource("4_py8rv")
+count = 500
 
-[sub_resource type="Resource" id="Exit_next"]
-script = ExtResource("5_exit")
+[sub_resource type="Resource" id="Resource_7vjdd"]
+script = ExtResource("1_jotuh")
+enemy_config = ExtResource("5_nbxpp")
+count = 300
+
+[sub_resource type="Resource" id="Resource_k3d46"]
+script = ExtResource("1_jotuh")
+enemy_config = ExtResource("6_rtir1")
+count = 200
+
+[sub_resource type="Resource" id="Resource_ulhdh"]
+script = ExtResource("1_jotuh")
+enemy_config = ExtResource("7_3ntf2")
+count = 50
+
+[sub_resource type="Resource" id="Resource_qxvyu"]
+script = ExtResource("1_jotuh")
+enemy_config = ExtResource("8_d2sbx")
+count = 400
+
+[sub_resource type="Resource" id="Resource_8auhg"]
+script = ExtResource("9_m4vgf")
 target_step_id = &"wave_03"
 
 [resource]
-script = ExtResource("8_wave")
+script = ExtResource("12_box87")
 wave_name = "第2波 迅影与硬壳"
-enemy_entries = Array[ExtResource("1_entry")]([SubResource("Entry_basic"), SubResource("Entry_fast"), SubResource("Entry_shell")])
-spawn_point_mask = 63
-spawn_interval = 0.7
-max_alive_enemies = 32
-music = ExtResource("6_music")
-post_wave_music = ExtResource("7_rest")
+enemy_entries = Array[ExtResource("1_jotuh")]([SubResource("Resource_q2br4"), SubResource("Resource_pp41a"), SubResource("Resource_s4cev"), SubResource("Resource_7vjdd"), SubResource("Resource_k3d46"), SubResource("Resource_ulhdh"), SubResource("Resource_qxvyu")])
+spawn_point_mask = 15
+spawn_interval = 0.1
+max_alive_enemies = 300
+music = ExtResource("10_2r1b0")
+post_wave_music = ExtResource("11_t2px1")
 step_id = &"wave_02"
 display_name = "第2波 迅影与硬壳"
-exits = Array[ExtResource("5_exit")]([SubResource("Exit_next")])
+exits = Array[ExtResource("9_m4vgf")]([SubResource("Resource_8auhg")])
 editor_position = Vector2(480, -120)
