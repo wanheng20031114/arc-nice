@@ -38,6 +38,7 @@ func _run() -> void:
 
 	_test_stats_ammo_and_animation()
 	await _test_sniper_sweep()
+	await _test_sniper_pool_lease_reset()
 	await _test_high_noon()
 	_test_attack_upgrade_progression()
 	await _finish()
@@ -302,6 +303,59 @@ func _test_sniper_sweep() -> void:
 	)
 	homing_enemy.queue_free()
 	homing_bullet.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_sniper_pool_lease_reset() -> void:
+	var pool := SessionObjectPool.new()
+	pool.name = "TiyiSniperLeasePool"
+	test_root.add_child(pool)
+	pool.register_scene(SNIPER_BULLET_SCENE, 1, 1)
+
+	var exception_wall := StaticBody2D.new()
+	exception_wall.collision_layer = 1
+	exception_wall.collision_mask = 0
+	exception_wall.position = Vector2(16, 2200)
+	var collision := CollisionShape2D.new()
+	var shape := RectangleShape2D.new()
+	shape.size = Vector2(8, 16)
+	collision.shape = shape
+	exception_wall.add_child(collision)
+	test_root.add_child(exception_wall)
+	await physics_frame
+
+	var bullet := pool.acquire(SNIPER_BULLET_SCENE) as TiyiSniperBullet
+	_expect(bullet != null, "Tiyi sniper pool must acquire its prewarmed instance.")
+	if bullet == null:
+		exception_wall.queue_free()
+		pool.queue_free()
+		return
+	var first_id := bullet.get_instance_id()
+	bullet.sweep_cast.add_exception(exception_wall)
+	bullet.retire()
+	await physics_frame
+	await physics_frame
+
+	var reused := pool.acquire(SNIPER_BULLET_SCENE) as TiyiSniperBullet
+	_expect(
+		reused != null and reused.get_instance_id() == first_id,
+		"Tiyi sniper pool must reuse the retained instance."
+	)
+	if reused != null:
+		reused.set_physics_process(false)
+		reused.global_position = Vector2(0, 2200)
+		reused.rotation = 0.0
+		reused.sweep_cast.target_position = Vector2(32, 0)
+		reused.sweep_cast.force_shapecast_update()
+		_expect(
+			reused.sweep_cast.is_colliding()
+			and reused.sweep_cast.get_collider(0) == exception_wall,
+			"Tiyi sniper reuse must clear ShapeCast exceptions from the prior lease."
+		)
+		reused.retire()
+	exception_wall.queue_free()
+	pool.queue_free()
 	await process_frame
 	await physics_frame
 

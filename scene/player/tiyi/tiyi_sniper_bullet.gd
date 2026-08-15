@@ -26,12 +26,17 @@ func _ready() -> void:
 
 func on_pool_acquired(generation: int) -> void:
 	super.on_pool_acquired(generation)
+	# ShapeCast 例外属于单次穿透租约；池实例复用时不得继承上次命中过的敌人。
+	if sweep_cast != null:
+		sweep_cast.clear_exceptions()
 	_confirmed_hit_keys.clear()
-	_clear_temporary_shield_exceptions()
+	_temporary_shield_exceptions.clear()
 
 
 func on_pool_released(generation: int) -> void:
-	_clear_temporary_shield_exceptions()
+	if sweep_cast != null:
+		sweep_cast.clear_exceptions()
+	_temporary_shield_exceptions.clear()
 	_confirmed_hit_keys.clear()
 	super.on_pool_released(generation)
 
