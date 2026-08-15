@@ -465,6 +465,16 @@ func _test_deadline_start_policies() -> void:
 		"WAVE_ACTIVE 必须在 Music 总线以 -6 dB 目标和三秒淡入启动循环 1-28。"
 	)
 	game.call("_stop_combat_deadline")
+	# 本测试随后会直接切换远端流程；先按正式终结事务释放已生成的权威敌人，
+	# 避免用场景销毁伪造一个“未登记实体退出”的生产异常。
+	for child in game.enemy_container.get_children():
+		var enemy := child as Enemy
+		if enemy == null:
+			continue
+		game.try_resolve_active_wave_enemy(
+			enemy.get_instance_id(), CombatTypes.EnemyTerminalReason.REMOVED
+		)
+		enemy.free()
 
 
 func _test_authoritative_deadline_and_outcomes() -> void:
@@ -561,9 +571,11 @@ func _test_client_active_flow_updates() -> void:
 	)
 	game.apply_remote_enemy_count(7)
 	_expect(
-		game.current_wave_defeated == 3
+		game.current_wave_defeated == 0
+		and game.current_wave_removed == 3
+		and game.current_wave_resolved == 3
 		and game.rogue_combat_hud.enemy_value_label.text == "3 / 10",
-		"Client 敌人数同步必须只更新 Rouge 专属作战 HUD。"
+		"Client 仅收到存活数时必须把未知终结记为移除，不得伪造击杀统计。"
 	)
 
 	game.wave_start_audio.stop()

@@ -79,13 +79,30 @@ var spawn_point_configuration_valid := true
 var pending_enemy_configs: Array[EnemyConfig] = []
 var pending_enemy_xirang_kill_rewards: Array[int] = []
 var pending_enemy_config_index: int = 0
-var active_wave_enemy_ids: Dictionary = {}
-var resolved_wave_enemy_ids: Dictionary = {}
+var wave_enemy_terminal_ledger := WaveEnemyTerminalLedger.new()
+var active_wave_enemy_ids: Dictionary:
+	get:
+		return wave_enemy_terminal_ledger.get_attached_enemy_ids()
 
 var current_wave_index: int = 0
-var current_wave_total: int = 0
-var current_wave_spawned: int = 0
-var current_wave_defeated: int = 0
+var current_wave_total: int:
+	get:
+		return wave_enemy_terminal_ledger.get_total()
+var current_wave_spawned: int:
+	get:
+		return wave_enemy_terminal_ledger.get_spawned()
+var current_wave_defeated: int:
+	get:
+		return wave_enemy_terminal_ledger.get_defeated()
+var current_wave_escaped: int:
+	get:
+		return wave_enemy_terminal_ledger.get_escaped()
+var current_wave_removed: int:
+	get:
+		return wave_enemy_terminal_ledger.get_removed()
+var current_wave_resolved: int:
+	get:
+		return wave_enemy_terminal_ledger.get_resolved()
 var countdown_seconds: int = 0
 var current_flow_step: FlowStepConfig = null
 var next_flow_step_after_rest: FlowStepConfig = null
@@ -95,62 +112,34 @@ var navigation_prewarm_requested: bool = false
 var navigation_prewarmed: bool = false
 
 
-## WaveCombatRuntimeBase is the sole writer of generic wave progress. The
-## invariant is 0 <= defeated <= spawned <= total; callers record lifecycle
-## transitions instead of mutating the three counters independently.
+## 账本拥有实体与聚合生命周期；运行时只负责把 Godot 信号翻译成领域事务。
 func reset_wave_progress(
 	total: int,
 	spawned: int = 0,
-	defeated: int = 0
+	defeated: int = 0,
+	escaped: int = 0,
+	removed: int = 0
 ) -> void:
-	current_wave_total = maxi(total, 0)
-	current_wave_spawned = clampi(spawned, 0, current_wave_total)
-	current_wave_defeated = clampi(defeated, 0, current_wave_spawned)
-
-
-func record_wave_spawns(count: int) -> int:
-	if count <= 0:
-		return 0
-	var previous_spawned := current_wave_spawned
-	current_wave_spawned = clampi(
-		current_wave_spawned + count,
-		0,
-		current_wave_total
-	)
-	return current_wave_spawned - previous_spawned
-
-
-func try_record_wave_enemy_defeat() -> bool:
-	if current_wave_defeated >= current_wave_spawned:
-		return false
-	current_wave_defeated += 1
-	return true
+	if not wave_enemy_terminal_ledger.reset(
+		total, spawned, defeated, escaped, removed
+	):
+		push_error("WaveCombatRuntimeBase: 非法波次进度重置被拒绝。")
 
 
 func apply_wave_progress_snapshot(
 	total: int,
 	spawned: int,
-	defeated: int
+	defeated: int,
+	escaped: int = 0,
+	removed: int = 0
 ) -> bool:
-	if (
-		total < 0
-		or spawned < 0
-		or defeated < 0
-		or spawned > total
-		or defeated > spawned
-	):
-		return false
-	current_wave_total = total
-	current_wave_spawned = spawned
-	current_wave_defeated = defeated
-	return true
+	return wave_enemy_terminal_ledger.apply_snapshot(
+		total, spawned, defeated, escaped, removed
+	)
 
 
 func is_wave_progress_complete() -> bool:
-	return (
-		current_wave_spawned == current_wave_total
-		and current_wave_defeated == current_wave_total
-	)
+	return wave_enemy_terminal_ledger.is_complete()
 
 
 func get_wave_progress_snapshot() -> Dictionary:
@@ -159,40 +148,57 @@ func get_wave_progress_snapshot() -> Dictionary:
 		"total": current_wave_total,
 		"spawned": current_wave_spawned,
 		"defeated": current_wave_defeated,
+		"escaped": current_wave_escaped,
+		"removed": current_wave_removed,
+		"resolved": current_wave_resolved,
 	}
 
 
-func register_active_wave_enemy(enemy: Enemy) -> bool:
+func register_active_wave_enemy(
+	enemy: Enemy,
+	role: WaveEnemyTerminalLedger.EnemyRole = (
+		WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
+	)
+) -> bool:
 	if enemy == null or not is_instance_valid(enemy):
 		return false
-	var enemy_id := enemy.get_instance_id()
-	active_wave_enemy_ids[enemy_id] = true
-	resolved_wave_enemy_ids.erase(enemy_id)
-	return true
+	return wave_enemy_terminal_ledger.register_enemy(enemy.get_instance_id(), role)
 
 
-func remove_active_wave_enemy(enemy_id: int) -> bool:
-	if enemy_id <= 0:
-		return false
-	resolved_wave_enemy_ids.erase(enemy_id)
-	return active_wave_enemy_ids.erase(enemy_id)
+func register_auxiliary_wave_enemy(enemy: Enemy) -> bool:
+	return register_active_wave_enemy(
+		enemy, WaveEnemyTerminalLedger.EnemyRole.AUXILIARY
+	)
 
 
 func clear_active_wave_enemies() -> void:
-	active_wave_enemy_ids.clear()
-	resolved_wave_enemy_ids.clear()
+	wave_enemy_terminal_ledger.clear_entities()
+
+
+func try_resolve_active_wave_enemy(
+	enemy_id: int,
+	reason: CombatTypes.EnemyTerminalReason
+) -> bool:
+	return wave_enemy_terminal_ledger.resolve_enemy(enemy_id, reason)
 
 
 func try_resolve_active_wave_enemy_defeat(enemy_id: int) -> bool:
-	if (
-		enemy_id <= 0
-		or not active_wave_enemy_ids.has(enemy_id)
-		or resolved_wave_enemy_ids.has(enemy_id)
-		or not try_record_wave_enemy_defeat()
-	):
-		return false
-	resolved_wave_enemy_ids[enemy_id] = true
-	return true
+	return try_resolve_active_wave_enemy(
+		enemy_id, CombatTypes.EnemyTerminalReason.DEFEATED
+	)
+
+
+## 只供无真实实体的边界测试构造完整领域状态。
+func replace_wave_terminal_state_for_fixture(
+	total: int,
+	spawned: int,
+	defeated: int,
+	escaped: int = 0,
+	removed: int = 0
+) -> bool:
+	return wave_enemy_terminal_ledger.reset(
+		total, spawned, defeated, escaped, removed
+	)
 
 
 # 以下钩子只描述模式边界，不提供任何具体模式策略。
@@ -1039,7 +1045,10 @@ func _spawn_wave_batch() -> void:
 	for _spawn_index in range(spawn_count_this_tick):
 		if not _has_pending_enemy_configs():
 			break
-		if active_wave_enemy_ids.size() >= maxi(wave_config.max_alive_enemies, 1):
+		if (
+			wave_enemy_terminal_ledger.get_attached_enemy_count()
+			>= maxi(wave_config.max_alive_enemies, 1)
+		):
 			break
 
 		var enemy_config := pending_enemy_configs[pending_enemy_config_index]
@@ -1050,7 +1059,6 @@ func _spawn_wave_batch() -> void:
 			break
 
 		pending_enemy_config_index += 1
-		record_wave_spawns(1)
 
 	if not _has_pending_enemy_configs():
 		enemy_spawn_timer.stop()
@@ -1096,7 +1104,10 @@ func _try_spawn_enemy(
 	)
 	enemy_instance.set_xirang_kill_reward_override(xirang_kill_reward_override)
 	var enemy_id := enemy_instance.get_instance_id()
-	register_active_wave_enemy(enemy_instance)
+	if not register_active_wave_enemy(enemy_instance):
+		push_error("WaveCombatRuntimeBase: 敌人生成未能登记到当前波次。")
+		enemy_instance.queue_free()
+		return false
 	enemy_instance.defeated.connect(_on_wave_enemy_defeated)
 	enemy_instance.tree_exited.connect(_on_wave_enemy_tree_exited.bind(enemy_id))
 	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, enemy_instance.global_position)
@@ -1134,7 +1145,7 @@ func _on_wave_enemy_defeated(enemy: Enemy) -> void:
 	):
 		return
 	_emit_multiplayer_enemy_defeated(enemy)
-	_present_wave_progress(current_wave_defeated, current_wave_total)
+	_present_wave_progress(current_wave_resolved, current_wave_total)
 	_check_wave_completion()
 
 
@@ -1151,17 +1162,52 @@ func _emit_multiplayer_enemy_defeated(enemy: Enemy) -> void:
 	multiplayer_gateway.enemy_defeated.emit(enemy_net_id, enemy.global_position)
 
 func _on_wave_enemy_tree_exited(enemy_id: int) -> void:
-	remove_active_wave_enemy(enemy_id)
-	_mark_multiplayer_enemy_removed(enemy_id)
+	var result := wave_enemy_terminal_ledger.detach_enemy(enemy_id)
+	if not result.accepted:
+		if not result.known:
+			push_error(
+				"WaveCombatRuntimeBase: 未登记实体 %d 退出，执行隔离的网络清理。"
+				% enemy_id
+			)
+			_cleanup_untracked_multiplayer_enemy_exit(enemy_id)
+		return
+	if (
+		result.terminal_created
+		and result.role == WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
+	):
+		push_error(
+			"WaveCombatRuntimeBase: 波次目标 %d 未经终结便离开场景树，按 REMOVED 结算。"
+			% enemy_id
+		)
+		_present_wave_progress(current_wave_resolved, current_wave_total)
+	_mark_multiplayer_enemy_detached(enemy_id, result)
 	_check_wave_completion()
 
-func _mark_multiplayer_enemy_removed(enemy_id: int) -> void:
+
+func _mark_multiplayer_enemy_detached(
+	enemy_id: int,
+	detach_result: WaveEnemyTerminalLedger.DetachResult
+) -> void:
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
 		return
 	var enemy_net_id := unregister_network_enemy_by_instance_id(enemy_id)
 	if enemy_net_id <= 0:
 		return
-	multiplayer_gateway.enemy_removed.emit(enemy_net_id)
+	# DEFEATED 只消费多人配对缓存；REMOVED 在离树时首次广播；
+	# ESCAPED 已发送唯一终结包，不再追加通用 removed。
+	if (
+		detach_result.terminal_reason
+		!= CombatTypes.EnemyTerminalReason.ESCAPED
+	):
+		multiplayer_gateway.enemy_removed.emit(enemy_net_id)
+
+
+func _cleanup_untracked_multiplayer_enemy_exit(enemy_id: int) -> void:
+	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	var enemy_net_id := unregister_network_enemy_by_instance_id(enemy_id)
+	if enemy_net_id > 0:
+		multiplayer_gateway.enemy_removed.emit(enemy_net_id)
 
 func _check_wave_completion() -> void:
 	if wave_state != CombatFlowState.State.WAVE_ACTIVE:
@@ -1170,7 +1216,9 @@ func _check_wave_completion() -> void:
 		return
 	if not is_wave_progress_complete():
 		return
-	if not active_wave_enemy_ids.is_empty():
+	if wave_enemy_terminal_ledger.get_attached_enemy_count(
+		WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
+	) > 0:
 		return
 
 	enemy_spawn_timer.stop()

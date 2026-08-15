@@ -72,6 +72,9 @@ func _exercise_full_catalog_tower_spawn(game: TowerDefenseGame) -> void:
 	game.enemy_coordinator.active_wave_spawn_points.append_array(
 		game.enemy_coordinator.enemy_spawn_points
 	)
+	game.campaign_coordinator.reset_wave_progress(
+		EXPECTED_NORMAL_WAVE_ENEMY_COUNT
+	)
 	_expect(game.tower_grid_pathfinder.is_built, "塔防正式 GridPathfinder 尚未建立。")
 	_expect(
 		not game.enemy_coordinator.active_wave_spawn_points.is_empty(),
@@ -143,6 +146,10 @@ func _exercise_full_catalog_tower_spawn(game: TowerDefenseGame) -> void:
 		if spawned_enemy != null:
 			spawned_enemy.process_mode = Node.PROCESS_MODE_DISABLED
 			_expect(spawned_enemy.config == enemy_config, "生成敌人配置发生漂移：%s" % entry_id)
+			game.campaign_coordinator.try_resolve_wave_enemy(
+				spawned_enemy.get_instance_id(),
+				CombatTypes.EnemyTerminalReason.REMOVED
+			)
 			spawned_enemy.queue_free()
 			await process_frame
 			await physics_frame

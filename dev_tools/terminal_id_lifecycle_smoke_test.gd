@@ -21,9 +21,9 @@ const ENEMY_CONFIG := preload(
 
 const HOST_AUTHORITY := 1
 const CLIENT_VIEW := 2
-const ENEMY_TERMINAL_DEFEATED := 0
-const ENEMY_TERMINAL_ESCAPED := 1
-const ENEMY_TERMINAL_REMOVED := 2
+const ENEMY_TERMINAL_DEFEATED := CombatTypes.EnemyTerminalReason.DEFEATED
+const ENEMY_TERMINAL_ESCAPED := CombatTypes.EnemyTerminalReason.ESCAPED
+const ENEMY_TERMINAL_REMOVED := CombatTypes.EnemyTerminalReason.REMOVED
 const PRESSURE_EVENT_COUNT := 4096
 
 
@@ -250,13 +250,22 @@ func _exercise_enemy_exit_pressure(runtime: CombatRuntimeBase, label: String) ->
 		var net_id := event_index + 1
 		runtime.register_network_enemy(net_id, enemy)
 		if runtime is TowerDefenseGame:
-			(runtime as TowerDefenseGame).enemy_coordinator.handle_wave_enemy_tree_exited(
+			var tower_enemy_coordinator := (
+				(runtime as TowerDefenseGame).enemy_coordinator
+			)
+			tower_enemy_coordinator.register_external_enemy(
+				enemy, WaveEnemyTerminalLedger.EnemyRole.AUXILIARY
+			)
+			tower_enemy_coordinator.handle_wave_enemy_tree_exited(
 				instance_id
 			)
-		elif event_index % 2 == 0:
-			runtime.call("_on_wave_enemy_tree_exited", instance_id)
 		else:
-			runtime.call("_on_boss_enemy_tree_exited", instance_id)
+			var wave_runtime := runtime as WaveCombatRuntimeBase
+			wave_runtime.register_auxiliary_wave_enemy(enemy)
+			if event_index % 2 == 0:
+				runtime.call("_on_wave_enemy_tree_exited", instance_id)
+			else:
+				runtime.call("_on_boss_enemy_tree_exited", instance_id)
 		enemy.free()
 	_expect(
 		removed_ids.size() == PRESSURE_EVENT_COUNT,
@@ -281,23 +290,23 @@ func _test_tower_defense_enemy_escape_marker() -> void:
 	var enemy_instance_id := enemy.get_instance_id()
 	var net_id := 77
 	runtime.register_network_enemy(net_id, enemy)
-	runtime.enemy_coordinator.emit_multiplayer_enemy_escaped(enemy)
-	var pending_escape_ids := (
-		runtime.enemy_coordinator.get("_pending_terminal_escape_net_ids")
-		as Dictionary
+	runtime.enemy_coordinator.register_external_enemy(
+		enemy, WaveEnemyTerminalLedger.EnemyRole.AUXILIARY
 	)
 	_expect(
-		pending_escape_ids.size() == 1,
-		"Escape must retain one marker only until the paired tree exit."
+		runtime.enemy_coordinator.try_resolve_active_enemy_escape(
+			enemy_instance_id
+		),
+		"Escape fixture must commit ESCAPED before presentation removal."
 	)
-	# Boss and boss-add exits share this removal path; it must consume, not retain,
-	# the escape marker while suppressing the duplicate generic terminal event.
+	runtime.enemy_coordinator.emit_multiplayer_enemy_escaped(enemy)
+	# Boss 和召唤物共用账本终结原因，不再维护第二份 escape pending 集合。
 	runtime.enemy_coordinator.handle_wave_enemy_tree_exited(enemy_instance_id)
 	_expect(escaped_ids == [net_id], "Escape must emit its terminal event once.")
 	_expect(removed_ids.is_empty(), "Escape tree exit must suppress generic removal.")
 	_expect(
-		pending_escape_ids.is_empty(),
-		"Escape marker must be consumed by the paired boss tree exit."
+		not runtime.enemy_coordinator.active_wave_enemy_ids.has(enemy_instance_id),
+		"Escape tree exit must move the ledger entity to DETACHED."
 	)
 	enemy.free()
 	runtime.free()

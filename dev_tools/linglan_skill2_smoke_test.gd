@@ -282,7 +282,11 @@ func _test_game_target_and_spawn_entry() -> void:
 		game.wave_state == CombatFlowState.State.BOSS_ACTIVE,
 		"Skill2 spawn fixture must reach the real BOSS_ACTIVE state."
 	)
-	var active_enemy_ids_before := game.active_wave_enemy_ids.duplicate()
+	var objective_enemy_ids_before := (
+		game.wave_enemy_terminal_ledger.get_attached_enemy_ids(
+			WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
+		)
+	)
 	var enemy_count_before := _count_enemy_children(game.enemy_container)
 	game.spawn_linglan_skill2_enemies(SKILL2_CONFIG.spawn_enemy_config, SKILL2_CONFIG.spawn_marker_names)
 	var spawned_positions := _get_enemy_positions_after_index(game.enemy_container, enemy_count_before)
@@ -290,10 +294,19 @@ func _test_game_target_and_spawn_entry() -> void:
 	_expect(_positions_include(spawned_positions, spawn4.global_position), "Skill2 StandardGame spawn entry must use Spawn4.")
 	_expect(_positions_include(spawned_positions, spawn5.global_position), "Skill2 StandardGame spawn entry must use Spawn5.")
 	_expect(
-		game.active_wave_enemy_ids == active_enemy_ids_before,
+		game.wave_enemy_terminal_ledger.get_attached_enemy_ids(
+			WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
+		) == objective_enemy_ids_before,
 		"Skill2 boss adds must not enter normal wave counters."
 	)
 
+	var active_boss := game.boss_coordinator.linglan_boss
+	if active_boss != null and is_instance_valid(active_boss):
+		game.try_resolve_active_wave_enemy(
+			active_boss.get_instance_id(),
+			CombatTypes.EnemyTerminalReason.REMOVED
+		)
+	game.boss_coordinator.end_encounter()
 	game.queue_free()
 	await process_frame
 	await physics_frame

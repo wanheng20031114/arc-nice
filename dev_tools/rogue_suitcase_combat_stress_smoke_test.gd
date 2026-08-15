@@ -83,7 +83,11 @@ class SpawnProbe:
 			return false
 		spawned_config_paths.append(enemy_config.resource_path)
 		spawned_point_names.append(String(spawn_point.name))
-		active_wave_enemy_ids[next_fake_enemy_id] = true
+		if not wave_enemy_terminal_ledger.register_enemy(
+			next_fake_enemy_id,
+			WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
+		):
+			return false
 		next_fake_enemy_id += 1
 		return true
 
@@ -273,7 +277,7 @@ func _erase_one_active_enemy(probe: SpawnProbe) -> void:
 	if active_ids.is_empty():
 		_failures.append("压力探针没有可移除的存活敌人。")
 		return
-	probe.active_wave_enemy_ids.erase(active_ids[0])
+	probe.wave_enemy_terminal_ledger.detach_enemy(int(active_ids[0]))
 
 
 func _test_forty_live_elite_gunners() -> void:

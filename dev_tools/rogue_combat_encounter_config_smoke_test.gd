@@ -76,8 +76,9 @@ class SpawnCapProbe:
 		_xirang_kill_reward_override: int = -1
 	) -> bool:
 		spawn_attempts += 1
-		active_wave_enemy_ids[spawn_attempts] = true
-		return true
+		return wave_enemy_terminal_ledger.register_enemy(
+			spawn_attempts, WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
+		)
 
 	func _check_wave_completion() -> void:
 		pass
@@ -298,7 +299,7 @@ func _test_wave_alive_cap() -> void:
 			probe.pending_enemy_configs.size(),
 		]
 	)
-	probe.remove_active_wave_enemy(1)
+	probe.wave_enemy_terminal_ledger.detach_enemy(1)
 	probe.call("_spawn_wave_batch")
 	_expect(
 		probe.spawn_attempts == 11

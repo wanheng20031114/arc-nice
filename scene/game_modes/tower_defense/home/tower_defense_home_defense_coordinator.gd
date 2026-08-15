@@ -224,17 +224,20 @@ func on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
 	if resolved_home_enemy_ids.has(enemy_id):
 		return
 	resolved_home_enemy_ids[enemy_id] = true
+	var is_registered_active := _enemy_coordinator.has_active_enemy(enemy_id)
 	var resolves_active_wave := (
 		flow_state == CombatFlowState.State.WAVE_ACTIVE
-		and _enemy_coordinator.has_active_enemy(enemy_id)
+		and is_registered_active
 	)
 	var active_boss := _get_active_boss()
 	var resolves_boss_step := (
 		flow_state == CombatFlowState.State.BOSS_ACTIVE
 		and enemy == active_boss
-		and _enemy_coordinator.has_active_enemy(enemy_id)
+		and is_registered_active
 	)
-	if resolves_active_wave or resolves_boss_step:
+	# 所有已登记实体都必须先提交唯一 ESCAPED 原因；是否推进普通波次或
+	# Boss 步骤是另一层策略，Boss 召唤物也不能绕过实体终结账本。
+	if is_registered_active:
 		var recorded_escape := _enemy_coordinator.try_resolve_active_enemy_escape(
 			enemy_id
 		)

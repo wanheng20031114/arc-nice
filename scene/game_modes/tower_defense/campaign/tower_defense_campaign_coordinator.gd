@@ -36,11 +36,25 @@ var wave_state: CombatFlowState.State = CombatFlowState.State.PRE_WAVE:
 var current_flow_step: FlowStepConfig = null
 var next_flow_step_after_rest: FlowStepConfig = null
 var current_wave_index := 0
-var current_wave_total := 0
-var current_wave_spawned := 0
-var current_wave_defeated := 0
-var current_wave_escaped := 0
-var current_wave_resolved := 0
+var wave_enemy_terminal_ledger := WaveEnemyTerminalLedger.new()
+var current_wave_total: int:
+	get:
+		return wave_enemy_terminal_ledger.get_total()
+var current_wave_spawned: int:
+	get:
+		return wave_enemy_terminal_ledger.get_spawned()
+var current_wave_defeated: int:
+	get:
+		return wave_enemy_terminal_ledger.get_defeated()
+var current_wave_escaped: int:
+	get:
+		return wave_enemy_terminal_ledger.get_escaped()
+var current_wave_removed: int:
+	get:
+		return wave_enemy_terminal_ledger.get_removed()
+var current_wave_resolved: int:
+	get:
+		return wave_enemy_terminal_ledger.get_resolved()
 var countdown_seconds := 0
 
 # Replicated wave progress has no independent revision and arrives on both the
@@ -292,43 +306,44 @@ func clear() -> void:
 	reset_wave_progress(0)
 
 
-## CampaignCoordinator is the sole writer of aggregate wave progress. Enemy and
-## home coordinators own lifecycle decisions, then record them through these
-## methods so resolved always equals defeated + escaped and never exceeds total.
+## Campaign 持有波次账本；Enemy/Home/Boss 只提交带实体身份的终结事务。
 func reset_wave_progress(total: int, spawned: int = 0) -> void:
-	current_wave_total = maxi(total, 0)
-	current_wave_spawned = clampi(spawned, 0, current_wave_total)
-	current_wave_defeated = 0
-	current_wave_escaped = 0
-	current_wave_resolved = 0
+	if not wave_enemy_terminal_ledger.reset(total, spawned):
+		push_error("TowerDefenseCampaignCoordinator: 非法波次进度重置被拒绝。")
 
 
-func record_wave_spawns(count: int) -> int:
-	if count <= 0:
-		return 0
-	var previous_spawned := current_wave_spawned
-	current_wave_spawned = clampi(
-		current_wave_spawned + count,
-		0,
-		current_wave_total
-	)
-	return current_wave_spawned - previous_spawned
+func register_wave_enemy(
+	enemy_id: int,
+	role: WaveEnemyTerminalLedger.EnemyRole
+) -> bool:
+	return wave_enemy_terminal_ledger.register_enemy(enemy_id, role)
 
 
-func try_resolve_wave_enemy_defeat() -> bool:
-	if current_wave_resolved >= current_wave_spawned:
-		return false
-	current_wave_defeated += 1
-	current_wave_resolved = current_wave_defeated + current_wave_escaped
-	return true
+func try_resolve_wave_enemy(
+	enemy_id: int,
+	reason: CombatTypes.EnemyTerminalReason
+) -> bool:
+	return wave_enemy_terminal_ledger.resolve_enemy(enemy_id, reason)
 
 
-func try_resolve_wave_enemy_escape() -> bool:
-	if current_wave_resolved >= current_wave_spawned:
-		return false
-	current_wave_escaped += 1
-	current_wave_resolved = current_wave_defeated + current_wave_escaped
-	return true
+func detach_wave_enemy(enemy_id: int) -> WaveEnemyTerminalLedger.DetachResult:
+	return wave_enemy_terminal_ledger.detach_enemy(enemy_id)
+
+
+func is_wave_enemy_active(enemy_id: int) -> bool:
+	return wave_enemy_terminal_ledger.is_enemy_active(enemy_id)
+
+
+func get_attached_wave_enemy_ids(role_filter: int = -1) -> Dictionary:
+	return wave_enemy_terminal_ledger.get_attached_enemy_ids(role_filter)
+
+
+func get_attached_wave_enemy_count(role_filter: int = -1) -> int:
+	return wave_enemy_terminal_ledger.get_attached_enemy_count(role_filter)
+
+
+func clear_wave_enemy_entities() -> void:
+	wave_enemy_terminal_ledger.clear_entities()
 
 
 func apply_remote_wave_progress(
@@ -349,7 +364,7 @@ func apply_remote_wave_progress(
 		or escaped < 0
 		or resolved < 0
 		or total < 0
-		or defeated + escaped != resolved
+		or defeated + escaped > resolved
 		or resolved > total
 	):
 		return false
@@ -362,39 +377,39 @@ func apply_remote_wave_progress(
 	var starts_new_remote_wave := (
 		wave_number > _last_remote_wave_progress_number
 	)
+	var removed := resolved - defeated - escaped
 	if (
 		not starts_new_remote_wave
 		and (
-			defeated < current_wave_defeated
+			total != current_wave_total
+			or defeated < current_wave_defeated
 			or escaped < current_wave_escaped
+			or removed < current_wave_removed
 			or resolved < current_wave_resolved
 		)
 	):
 		return false
-	if starts_new_remote_wave:
-		current_wave_spawned = 0
-	current_wave_index = wave_number - 1
-	current_wave_total = total
-	current_wave_defeated = defeated
-	current_wave_escaped = escaped
-	current_wave_resolved = resolved
-	# The wire snapshot intentionally omits the host-only spawn scheduler count.
-	# Every resolved enemy proves that at least one enemy was spawned, which is
-	# the exact lower bound needed to preserve resolved <= spawned on clients.
-	current_wave_spawned = clampi(
-		maxi(current_wave_spawned, current_wave_resolved),
+	var previous_spawned := 0 if starts_new_remote_wave else current_wave_spawned
+	var snapshot_spawned := clampi(
+		maxi(previous_spawned, resolved),
 		0,
-		current_wave_total
+		total
 	)
+	if not wave_enemy_terminal_ledger.apply_snapshot(
+		total,
+		snapshot_spawned,
+		defeated,
+		escaped,
+		removed
+	):
+		return false
+	current_wave_index = wave_number - 1
 	_last_remote_wave_progress_number = wave_number
 	return true
 
 
 func is_wave_progress_complete() -> bool:
-	return (
-		current_wave_spawned >= current_wave_total
-		and current_wave_resolved == current_wave_total
-	)
+	return wave_enemy_terminal_ledger.is_complete()
 
 
 func get_wave_progress_snapshot() -> Dictionary:
@@ -405,6 +420,19 @@ func get_wave_progress_snapshot() -> Dictionary:
 		"resolved": current_wave_resolved,
 		"total": current_wave_total,
 	}
+
+
+## 只供无真实实体的边界测试构造完整账本状态。
+func replace_wave_terminal_state_for_fixture(
+	total: int,
+	spawned: int,
+	defeated: int,
+	escaped: int = 0,
+	removed: int = 0
+) -> bool:
+	return wave_enemy_terminal_ledger.reset(
+		total, spawned, defeated, escaped, removed
+	)
 
 
 func get_replicated_wave_progress_snapshot() -> Dictionary:

@@ -116,6 +116,17 @@ func _run() -> void:
 		"Additional spawn ticks must never exceed the 300-enemy hard cap."
 	)
 
+	# 压测主动销毁场景不属于敌人异常消失；先提交明确的 REMOVED 终结原因，
+	# 让三百个实体沿正式账本路径注销，避免 teardown 污染异常诊断。
+	for child in game.enemy_container.get_children():
+		var enemy := child as Enemy
+		if enemy == null:
+			continue
+		campaign.try_resolve_wave_enemy(
+			enemy.get_instance_id(), CombatTypes.EnemyTerminalReason.REMOVED
+		)
+		enemy.queue_free()
+	await process_frame
 	game.queue_free()
 	for _cleanup_frame in range(4):
 		await process_frame

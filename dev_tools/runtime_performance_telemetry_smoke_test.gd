@@ -283,6 +283,18 @@ func _finish() -> void:
 	if telemetry != null:
 		telemetry.stop()
 	if game != null:
+		# 性能采样结束属于夹具主动收口，先通过终结账本批量标记 REMOVED，
+		# 避免把三百个正常 teardown 事件误报为生产中的敌人异常消失。
+		var campaign := game.campaign_coordinator
+		for child in game.enemy_container.get_children():
+			var enemy := child as Enemy
+			if enemy == null:
+				continue
+			campaign.try_resolve_wave_enemy(
+				enemy.get_instance_id(), CombatTypes.EnemyTerminalReason.REMOVED
+			)
+			enemy.queue_free()
+		await process_frame
 		game.queue_free()
 	if telemetry != null:
 		telemetry.queue_free()

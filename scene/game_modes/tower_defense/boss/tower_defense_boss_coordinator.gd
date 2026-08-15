@@ -258,7 +258,10 @@ func activate_boss() -> void:
 			linglan_boss.global_position
 		)
 	var boss_instance_id := linglan_boss.get_instance_id()
-	enemy_coordinator.register_external_enemy(linglan_boss)
+	if not enemy_coordinator.register_external_enemy(linglan_boss):
+		push_error("TowerDefenseBossCoordinator: Boss 未能登记为波次目标。")
+		campaign_coordinator.enter_defeat()
+		return
 	var exited_callback := _on_boss_tree_exited.bind(boss_instance_id)
 	if not linglan_boss.tree_exited.is_connected(exited_callback):
 		linglan_boss.tree_exited.connect(exited_callback)
@@ -320,15 +323,23 @@ func complete_escaped_step_if_ready() -> void:
 
 func remove_remaining_adds() -> void:
 	if enemy_container == null:
-		enemy_coordinator.clear_active_enemies()
 		enemy_coordinator.clear_hud_alive_enemies()
 		return
+	var attached_auxiliary_ids := (
+		campaign_coordinator.get_attached_wave_enemy_ids(
+			WaveEnemyTerminalLedger.EnemyRole.AUXILIARY
+		)
+	)
 	for child in enemy_container.get_children():
 		var enemy := child as Enemy
-		if enemy != null and is_instance_valid(enemy):
-			if enemy_coordinator.has_active_enemy(enemy.get_instance_id()):
-				enemy.queue_free()
-	enemy_coordinator.clear_active_enemies()
+		if (
+			enemy != null
+			and is_instance_valid(enemy)
+			and attached_auxiliary_ids.has(enemy.get_instance_id())
+		):
+			enemy.queue_free()
+	# 终结原因必须保留到 tree_exited，由 EnemyCoordinator 完成 DETACHED
+	# 与唯一网络终结配对；这里不提前清空领域账本。
 	enemy_coordinator.clear_hud_alive_enemies()
 
 
@@ -780,7 +791,11 @@ func _try_spawn_boss_add_at_position(
 	)
 	enemy_coordinator.assign_enemy_targets(enemy_instance, spawn_position)
 	var enemy_id := enemy_instance.get_instance_id()
-	enemy_coordinator.register_external_enemy(enemy_instance)
+	if not enemy_coordinator.register_external_enemy(
+		enemy_instance, WaveEnemyTerminalLedger.EnemyRole.AUXILIARY
+	):
+		enemy_instance.queue_free()
+		return false
 	_connect_boss_add_signals(enemy_instance, enemy_id)
 	enemy_coordinator.finalize_authoritative_enemy_spawn(
 		enemy_instance, enemy_config, enemy_instance.global_position
@@ -853,7 +868,11 @@ func _finish_airdrop_sniper_spawn(
 	enemy_instance.set_physics_process(true)
 	_set_collision_shapes_disabled_recursive(enemy_instance, false)
 	var enemy_id := enemy_instance.get_instance_id()
-	enemy_coordinator.register_external_enemy(enemy_instance)
+	if not enemy_coordinator.register_external_enemy(
+		enemy_instance, WaveEnemyTerminalLedger.EnemyRole.AUXILIARY
+	):
+		enemy_instance.queue_free()
+		return
 	_connect_boss_add_signals(enemy_instance, enemy_id)
 	enemy_coordinator.finalize_authoritative_enemy_spawn(
 		enemy_instance, enemy_config, landing_position
@@ -908,7 +927,6 @@ func _on_boss_defeated(enemy: Enemy) -> void:
 		enemy.get_instance_id()
 	):
 		return
-	enemy_coordinator.remove_active_enemy(enemy.get_instance_id())
 	enemy_coordinator.remove_hud_alive_enemy(enemy.get_instance_id())
 	presentation_coordinator.show_boss_progress(1, 1)
 	enemy_coordinator.emit_multiplayer_enemy_defeated(enemy)
@@ -929,8 +947,14 @@ func _on_boss_tree_exited(enemy_id: int) -> void:
 
 
 func _on_boss_add_defeated(enemy: Enemy) -> void:
-	if enemy != null:
-		enemy_coordinator.remove_hud_alive_enemy(enemy.get_instance_id())
+	if (
+		enemy == null
+		or not enemy_coordinator.try_resolve_active_enemy_defeat(
+			enemy.get_instance_id()
+		)
+	):
+		return
+	enemy_coordinator.remove_hud_alive_enemy(enemy.get_instance_id())
 	enemy_coordinator.emit_multiplayer_enemy_defeated(enemy)
 
 

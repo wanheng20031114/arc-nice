@@ -450,7 +450,7 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 	rogue_combat_hud.show_combat(
 		event_title,
 		float(combat_seconds_remaining),
-		current_wave_defeated,
+		current_wave_resolved,
 		total_enemies
 	)
 	if deadline_start == DeadlineStart.WAVE_START:
@@ -482,11 +482,10 @@ func _on_combat_deadline_timer_timeout() -> void:
 	_enter_defeat()
 
 
-func _on_wave_enemy_defeated(enemy: Enemy) -> void:
-	super._on_wave_enemy_defeated(enemy)
+func _present_wave_progress(resolved_count: int, total_count: int) -> void:
 	rogue_combat_hud.set_defeated_enemy_count(
-		maxi(current_wave_defeated, 0),
-		maxi(current_wave_total, 0)
+		maxi(resolved_count, 0),
+		maxi(total_count, 0)
 	)
 
 
@@ -499,11 +498,13 @@ func apply_remote_enemy_count(alive_count: int) -> void:
 	if not apply_wave_progress_snapshot(
 		total_enemies,
 		total_enemies,
+		0,
+		0,
 		total_enemies - safe_alive_count
 	):
 		return
 	rogue_combat_hud.set_defeated_enemy_count(
-		current_wave_defeated,
+		current_wave_resolved,
 		total_enemies
 	)
 

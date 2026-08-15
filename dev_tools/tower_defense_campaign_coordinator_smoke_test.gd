@@ -83,22 +83,40 @@ func _run() -> void:
 
 	campaign.reset_wave_progress(2)
 	_expect(
-		not campaign.try_resolve_wave_enemy_defeat()
-		and not campaign.try_resolve_wave_enemy_escape(),
+		not campaign.try_resolve_wave_enemy(
+			1, CombatTypes.EnemyTerminalReason.DEFEATED
+		),
 		"Campaign 不得结算尚未生成的敌人。"
 	)
 	_expect(
-		campaign.record_wave_spawns(1) == 1
-		and campaign.try_resolve_wave_enemy_defeat()
-		and not campaign.try_resolve_wave_enemy_escape(),
+		campaign.register_wave_enemy(
+			1, WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
+		)
+		and campaign.try_resolve_wave_enemy(
+			1, CombatTypes.EnemyTerminalReason.DEFEATED
+		)
+		and not campaign.try_resolve_wave_enemy(
+			1, CombatTypes.EnemyTerminalReason.ESCAPED
+		),
 		"Campaign 必须维持 resolved <= spawned，且同一生成额度只能结算一次。"
 	)
 	campaign.reset_wave_progress(0)
 	_expect(
-		campaign.apply_remote_wave_progress(1, 1, 0, 1, 2)
+		campaign.apply_remote_wave_progress(1, 0, 0, 1, 2)
 		and campaign.current_wave_resolved == 1
+		and campaign.current_wave_removed == 1
 		and campaign.current_wave_spawned == 1,
-		"远端波次进度必须维持 resolved <= spawned。"
+		"远端五字段快照必须从 resolved 推导 REMOVED。"
+	)
+	_expect(
+		not campaign.apply_remote_wave_progress(1, 1, 0, 1, 2)
+		and campaign.current_wave_removed == 1,
+		"同 epoch 不得把既有 REMOVED 改写成击败。"
+	)
+	_expect(
+		not campaign.apply_remote_wave_progress(1, 0, 0, 1, 3)
+		and campaign.current_wave_total == 2,
+		"同 epoch 的远端快照不得漂移波次目标总数。"
 	)
 	_expect(
 		campaign.apply_remote_wave_progress(2, 1, 1, 2, 3)

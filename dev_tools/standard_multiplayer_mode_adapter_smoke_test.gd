@@ -222,7 +222,7 @@ func _test_host_wiring_order_and_authority_bridge() -> void:
 		and game.get_wave_progress_snapshot() == progress_before_invalid,
 		"通用波次进度必须拒绝重复终结与 defeated>spawned 的非法快照。"
 	)
-	game.remove_active_wave_enemy(progress_enemy.get_instance_id())
+	game.wave_enemy_terminal_ledger.detach_enemy(progress_enemy.get_instance_id())
 	progress_enemy.free()
 
 	game.call("_set_merchant_active", true)
@@ -298,6 +298,10 @@ func _test_host_wiring_order_and_authority_bridge() -> void:
 					"boss:%d" % boss_net_id,
 				],
 				"Boss started 必须保持注册索引→flow→boss broadcast 顺序。"
+			)
+			game.try_resolve_active_wave_enemy(
+				boss.get_instance_id(),
+				CombatTypes.EnemyTerminalReason.REMOVED
 			)
 			game.call("_on_boss_enemy_removed", boss.get_instance_id())
 			boss.free()

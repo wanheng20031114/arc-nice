@@ -358,6 +358,10 @@ func _finish_airdrop_sniper_spawn(
 	if not encounter_scope.track(enemy_instance, encounter_generation):
 		enemy_instance.queue_free()
 		return
+	if not runtime.register_auxiliary_wave_enemy(enemy_instance):
+		encounter_scope.untrack(enemy_instance.get_instance_id())
+		enemy_instance.queue_free()
+		return
 	_connect_boss_add_signals(enemy_instance)
 	enemy_instance.global_position = landing_position + Vector2(0.0, -drop_height)
 	enemy_instance.setup(
@@ -471,6 +475,10 @@ func _try_spawn_boss_add_at_marker(
 	if not encounter_scope.track(enemy_instance, encounter_generation):
 		enemy_instance.queue_free()
 		return false
+	if not runtime.register_auxiliary_wave_enemy(enemy_instance):
+		encounter_scope.untrack(enemy_instance.get_instance_id())
+		enemy_instance.queue_free()
+		return false
 	_connect_boss_add_signals(enemy_instance)
 	enemy_instance.global_position = spawn_marker.global_position
 	enemy_instance.setup(
@@ -512,8 +520,15 @@ func _get_enemy_spawn_marker(marker_name: StringName) -> Marker2D:
 
 
 func _on_boss_add_defeated(enemy: Enemy) -> void:
-	if runtime != null:
-		runtime._emit_multiplayer_enemy_defeated(enemy)
+	if (
+		runtime == null
+		or enemy == null
+		or not runtime.try_resolve_active_wave_enemy_defeat(
+			enemy.get_instance_id()
+		)
+	):
+		return
+	runtime._emit_multiplayer_enemy_defeated(enemy)
 
 
 func _is_encounter_generation_active(encounter_generation: int) -> bool:

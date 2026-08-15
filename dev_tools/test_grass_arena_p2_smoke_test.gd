@@ -122,26 +122,28 @@ func _test_inherited_arena_and_interlude() -> void:
 
 func _test_one_kill_completes_day() -> void:
 	var wave := TEST_CAMPAIGN.get_waves()[0]
-	arena.current_flow_step = wave
-	arena.current_wave_index = 0
-	arena.current_wave_total = 1
-	arena.current_wave_spawned = 1
-	arena.current_wave_defeated = 1
-	arena.current_wave_resolved = 1
-	arena.enemy_coordinator.active_wave_enemy_ids.clear()
+	arena.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.WAVE_ACTIVE,
+		wave
+	)
+	arena.campaign_coordinator.current_wave_index = 0
+	arena.campaign_coordinator.replace_wave_terminal_state_for_fixture(1, 1, 1)
+	arena.enemy_coordinator.clear_active_enemies()
 	arena.enemy_coordinator.clear_queue()
-	arena.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	arena.enemy_coordinator.check_wave_completion()
 	var fate_interlude_ready := await _wait_for_fate_interlude(5.0)
 
 	var hint_layer := arena.get_node("TestControlsHint") as CanvasLayer
 	_expect(
-		arena.wave_state == CombatFlowState.State.FATE_INTERLUDE,
+		arena.campaign_coordinator.wave_state
+		== CombatFlowState.State.FATE_INTERLUDE,
 		"唯一史莱姆被击败后必须直接进入一整天结束的小葱流程。"
 	)
 	_expect(
-		arena.progression_day_records.size() == 1
-		and int(arena.progression_day_records[0].get("day", 0)) == 1,
+		arena.campaign_coordinator.progression_day_records.size() == 1
+		and int(arena.campaign_coordinator.progression_day_records[0].get(
+			"day", 0
+		)) == 1,
 		"P2 完成唯一敌人后必须记录第 1 天完整进度。"
 	)
 	_expect(
@@ -158,7 +160,9 @@ func _test_one_kill_completes_day() -> void:
 		"进入暗室后必须隐藏测试提示，并把玩家传送至隔离的小葱区域。"
 	)
 
-	arena.call("_on_xiaocong_fate_interlude_completed", &"")
+	# 通过 FateManager 的公开测试入口发出完成信号，让 FateFlow 负责遮罩、
+	# 房间退场、玩家回传与 Campaign 恢复，禁止再调用已抽取的 Game 私有方法。
+	arena.fate_manager.force_finish()
 	var entered_victory := await _wait_for_wave_state(
 		CombatFlowState.State.VICTORY,
 		5.0
@@ -182,7 +186,7 @@ func _wait_for_fate_interlude(timeout_seconds: float) -> bool:
 func _wait_for_wave_state(target_state: int, timeout_seconds: float) -> bool:
 	var deadline_msec := Time.get_ticks_msec() + int(timeout_seconds * 1000.0)
 	while Time.get_ticks_msec() < deadline_msec:
-		if arena.wave_state == target_state:
+		if arena.campaign_coordinator.wave_state == target_state:
 			return true
 		await process_frame
 		await physics_frame

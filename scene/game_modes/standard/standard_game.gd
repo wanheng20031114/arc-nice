@@ -549,7 +549,7 @@ func _present_wave_started(
 		wave_config,
 		is_remote,
 		current_wave_index + 1,
-		current_wave_defeated,
+		current_wave_resolved,
 		current_wave_total
 	)
 
@@ -611,8 +611,24 @@ func _on_boss_proxy_created(boss: LinglanBoss, net_id: int) -> void:
 
 
 func _on_boss_enemy_removed(enemy_id: int) -> void:
-	remove_active_wave_enemy(enemy_id)
-	_mark_multiplayer_enemy_removed(enemy_id)
+	var result := wave_enemy_terminal_ledger.detach_enemy(enemy_id)
+	if not result.accepted:
+		if not result.known:
+			push_error(
+				"StandardGame: 未登记 Boss 实体 %d 退出，执行隔离的网络清理。"
+				% enemy_id
+			)
+			_cleanup_untracked_multiplayer_enemy_exit(enemy_id)
+		return
+	if (
+		result.terminal_created
+		and result.role == WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
+	):
+		push_error(
+			"StandardGame: Boss 遭遇实体 %d 未经终结便退出，按 REMOVED 结算。"
+			% enemy_id
+		)
+	_mark_multiplayer_enemy_detached(enemy_id, result)
 
 
 func _on_boss_defeated(enemy: Enemy) -> void:
@@ -621,7 +637,6 @@ func _on_boss_defeated(enemy: Enemy) -> void:
 		or not try_resolve_active_wave_enemy_defeat(enemy.get_instance_id())
 	):
 		return
-	remove_active_wave_enemy(enemy.get_instance_id())
 	_emit_multiplayer_enemy_defeated(enemy)
 
 

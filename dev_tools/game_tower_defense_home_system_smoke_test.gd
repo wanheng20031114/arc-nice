@@ -1177,8 +1177,17 @@ func _verify_escape_resolution(game: TowerDefenseGame) -> void:
 	)
 	game.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	game.campaign_coordinator.current_flow_step = null
-	game.campaign_coordinator.reset_wave_progress(1, 1)
-	game.campaign_coordinator.try_resolve_wave_enemy_escape()
+	game.campaign_coordinator.reset_wave_progress(1)
+	var completed_escape_enemy_id := 900_001
+	game.campaign_coordinator.register_wave_enemy(
+		completed_escape_enemy_id,
+		WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
+	)
+	game.campaign_coordinator.try_resolve_wave_enemy(
+		completed_escape_enemy_id,
+		CombatTypes.EnemyTerminalReason.ESCAPED
+	)
+	game.campaign_coordinator.detach_wave_enemy(completed_escape_enemy_id)
 	game.enemy_coordinator.clear_queue()
 	game.enemy_coordinator.clear_active_enemies()
 	game.enemy_coordinator.check_wave_completion()

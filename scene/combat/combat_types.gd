@@ -47,6 +47,13 @@ enum DamageRejectionReason {
 	UNTRUSTED_SOURCE = 9,
 }
 
+## 敌人终结原因会直接进入多人协议；已有值不可重排或复用。
+enum EnemyTerminalReason {
+	DEFEATED = 0,
+	ESCAPED = 1,
+	REMOVED = 2,
+}
+
 
 static func normalize_damage_type(value: int) -> int:
 	return DamageType.MAGIC if value == DamageType.MAGIC else DamageType.PHYSICAL
