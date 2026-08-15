@@ -36,6 +36,8 @@ var linglan_boss_started: bool = false
 var linglan_boss: LinglanBoss = null
 var linglan_boss_intro_vfx: LinglanBossIntroVFX = null
 var boss_health_hud: BossHealthHUD = null
+# 只由协调器持有：Boss 终结时一次性关闭，避免异步空投越过遭遇边界。
+var encounter_scope := StandardBossEncounterScope.new()
 var configured_bosses: Array[BossConfig]:
 	get:
 		return (
@@ -105,12 +107,14 @@ func configure_existing_runtime_nodes() -> void:
 
 
 func start_step(boss_config: BossConfig) -> bool:
+	end_encounter()
 	if not enabled or boss_config == null:
 		victory_requested.emit()
 		return true
 	if not _ensure_runtime_nodes(boss_config):
 		victory_requested.emit()
 		return true
+	encounter_scope.begin()
 	active_boss_config = boss_config
 	linglan_boss_started = true
 	flow_state_requested.emit(
@@ -201,6 +205,14 @@ func stop_presentation() -> void:
 		boss_health_hud.hide_all()
 
 
+func end_encounter() -> bool:
+	return encounter_scope.close()
+
+
+func get_encounter_entity_count() -> int:
+	return encounter_scope.get_live_entity_count()
+
+
 func finish_intro() -> void:
 	_on_intro_finished()
 
@@ -232,11 +244,19 @@ func spawn_skill2_enemies(
 	if (
 		runtime == null
 		or runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		or runtime.wave_state != CombatFlowState.State.BOSS_ACTIVE
 		or enemy_config == null
 	):
 		return
+	var encounter_generation: int = encounter_scope.get_generation()
+	if not encounter_scope.is_current(encounter_generation):
+		return
 	for marker_name in marker_names:
-		_try_spawn_boss_add_at_marker(enemy_config, marker_name)
+		_try_spawn_boss_add_at_marker(
+			enemy_config,
+			marker_name,
+			encounter_generation
+		)
 
 
 func spawn_airdrop_sniper(
@@ -254,6 +274,9 @@ func spawn_airdrop_sniper(
 		or enemy_config.enemy_scene == null
 	):
 		return
+	var encounter_generation: int = encounter_scope.get_generation()
+	if not encounter_scope.is_current(encounter_generation):
+		return
 	var landing_position := _get_random_arena_position()
 	if runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY:
 		runtime_port.airdrop_started.emit(
@@ -263,13 +286,19 @@ func spawn_airdrop_sniper(
 			drop_height,
 			drop_duration
 		)
-	_spawn_airdrop_warning(warning_scene, landing_position, warning_duration)
+	_spawn_airdrop_warning(
+		warning_scene,
+		landing_position,
+		warning_duration,
+		encounter_generation
+	)
 	_finish_airdrop_sniper_spawn(
 		enemy_config,
 		landing_position,
 		maxf(warning_duration, 0.0),
 		maxf(drop_height, 0.0),
-		maxf(drop_duration, 0.01)
+		maxf(drop_duration, 0.01),
+		encounter_generation
 	)
 
 
@@ -280,9 +309,14 @@ func get_skill2_target_player(from_position: Vector2) -> Player:
 func _spawn_airdrop_warning(
 	warning_scene: PackedScene,
 	landing_position: Vector2,
-	warning_duration: float
+	warning_duration: float,
+	encounter_generation: int
 ) -> void:
-	if runtime == null or warning_scene == null:
+	if (
+		runtime == null
+		or warning_scene == null
+		or not encounter_scope.is_current(encounter_generation)
+	):
 		return
 	var warning_instance := warning_scene.instantiate()
 	var warning := warning_instance as LinglanAirdropWarningMarker
@@ -291,6 +325,9 @@ func _spawn_airdrop_warning(
 			warning_instance.free()
 		return
 	runtime.add_child(warning)
+	if not encounter_scope.track(warning, encounter_generation):
+		warning.queue_free()
+		return
 	warning.top_level = true
 	warning.global_position = landing_position
 	warning.start(warning_duration)
@@ -301,13 +338,13 @@ func _finish_airdrop_sniper_spawn(
 	landing_position: Vector2,
 	warning_duration: float,
 	drop_height: float,
-	drop_duration: float
+	drop_duration: float,
+	encounter_generation: int
 ) -> void:
 	if warning_duration > 0.0:
 		await get_tree().create_timer(warning_duration).timeout
 	if (
-		runtime == null
-		or runtime.wave_state != CombatFlowState.State.BOSS_ACTIVE
+		not _is_encounter_generation_active(encounter_generation)
 		or runtime.enemy_container == null
 		or runtime.player == null
 	):
@@ -317,6 +354,11 @@ func _finish_airdrop_sniper_spawn(
 		push_warning("Linglan 空降狙击手场景实例化失败。")
 		return
 	runtime.enemy_container.add_child(enemy_instance)
+	# 下落阶段也属于遭遇实体；先登记和接入退出链，再启动任何异步表现。
+	if not encounter_scope.track(enemy_instance, encounter_generation):
+		enemy_instance.queue_free()
+		return
+	_connect_boss_add_signals(enemy_instance)
 	enemy_instance.global_position = landing_position + Vector2(0.0, -drop_height)
 	enemy_instance.setup(
 		enemy_config,
@@ -337,17 +379,18 @@ func _finish_airdrop_sniper_spawn(
 		landing_position,
 		drop_duration
 	)
-	await tween.finished
+	# 使用独立计时器保证 close 回收 tween 目标后协程仍会结束并释放引用。
+	await get_tree().create_timer(drop_duration, false).timeout
 	if not is_instance_valid(enemy_instance):
 		return
-	if runtime == null or runtime.wave_state != CombatFlowState.State.BOSS_ACTIVE:
-		enemy_instance.queue_free()
+	if not _is_encounter_generation_active(encounter_generation):
+		if not enemy_instance.is_queued_for_deletion():
+			enemy_instance.queue_free()
 		return
 	enemy_instance.global_position = landing_position
 	enemy_instance.set_process(true)
 	enemy_instance.set_physics_process(true)
 	_set_collision_shapes_disabled_recursive(enemy_instance, false)
-	_connect_boss_add_signals(enemy_instance)
 	runtime._register_multiplayer_enemy_instance(
 		enemy_instance,
 		enemy_config,
@@ -400,10 +443,11 @@ func _get_random_arena_position() -> Vector2:
 
 func _try_spawn_boss_add_at_marker(
 	enemy_config: EnemyConfig,
-	marker_name: StringName
+	marker_name: StringName,
+	encounter_generation: int
 ) -> bool:
 	if (
-		runtime == null
+		not _is_encounter_generation_active(encounter_generation)
 		or enemy_config == null
 		or runtime.enemy_container == null
 		or runtime.player == null
@@ -424,6 +468,10 @@ func _try_spawn_boss_add_at_marker(
 		push_warning("Boss 召唤敌人场景实例化失败。")
 		return false
 	runtime.enemy_container.add_child(enemy_instance)
+	if not encounter_scope.track(enemy_instance, encounter_generation):
+		enemy_instance.queue_free()
+		return false
+	_connect_boss_add_signals(enemy_instance)
 	enemy_instance.global_position = spawn_marker.global_position
 	enemy_instance.setup(
 		enemy_config,
@@ -431,7 +479,6 @@ func _try_spawn_boss_add_at_marker(
 		runtime.grid_pathfinder,
 		runtime
 	)
-	_connect_boss_add_signals(enemy_instance)
 	runtime._register_multiplayer_enemy_instance(
 		enemy_instance,
 		enemy_config,
@@ -445,9 +492,9 @@ func _connect_boss_add_signals(enemy_instance: Enemy) -> void:
 	var enemy_id := enemy_instance.get_instance_id()
 	if not enemy_instance.defeated.is_connected(_on_boss_add_defeated):
 		enemy_instance.defeated.connect(_on_boss_add_defeated)
-	var exited_callback := _on_boss_tree_exited.bind(enemy_id)
+	var exited_callback := _on_boss_add_tree_exited.bind(enemy_id)
 	if not enemy_instance.tree_exited.is_connected(exited_callback):
-			enemy_instance.tree_exited.connect(exited_callback)
+		enemy_instance.tree_exited.connect(exited_callback)
 
 
 func _get_enemy_spawn_marker(marker_name: StringName) -> Marker2D:
@@ -467,6 +514,15 @@ func _get_enemy_spawn_marker(marker_name: StringName) -> Marker2D:
 func _on_boss_add_defeated(enemy: Enemy) -> void:
 	if runtime != null:
 		runtime._emit_multiplayer_enemy_defeated(enemy)
+
+
+func _is_encounter_generation_active(encounter_generation: int) -> bool:
+	return (
+		encounter_scope.is_current(encounter_generation)
+		and runtime != null
+		and runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		and runtime.wave_state == CombatFlowState.State.BOSS_ACTIVE
+	)
 
 
 func get_first_boss_config() -> BossConfig:
@@ -697,9 +753,11 @@ func _on_intro_finished() -> void:
 
 func _activate_boss() -> void:
 	if active_boss_config == null:
+		end_encounter()
 		victory_requested.emit()
 		return
 	if not _ensure_runtime_nodes(active_boss_config):
+		end_encounter()
 		victory_requested.emit()
 		return
 	flow_state_requested.emit(
@@ -723,7 +781,18 @@ func _activate_boss() -> void:
 	boss_started.emit(linglan_boss, active_boss_config)
 
 
-func _on_boss_tree_exited(enemy_id: int) -> void:
+func _on_boss_add_tree_exited(enemy_id: int) -> void:
+	encounter_scope.untrack(enemy_id)
+	boss_enemy_removed.emit(enemy_id)
+
+
+func _on_active_boss_tree_exited(enemy_id: int) -> void:
+	if (
+		linglan_boss != null
+		and is_instance_valid(linglan_boss)
+		and linglan_boss.get_instance_id() == enemy_id
+	):
+		end_encounter()
 	boss_enemy_removed.emit(enemy_id)
 
 
@@ -732,12 +801,21 @@ func _on_boss_defeated(enemy: Enemy) -> void:
 		runtime == null
 		or runtime.wave_state != CombatFlowState.State.BOSS_ACTIVE
 		or enemy != linglan_boss
+		or not encounter_scope.is_open()
 	):
 		return
+	var defeated_generation: int = encounter_scope.get_generation()
+	# 先封闭遭遇，再广播 Boss 终结；任何等待中的空投从此只能安全退出。
+	end_encounter()
 	boss_defeated.emit(enemy)
 	var victory_timer := get_tree().create_timer(1.3)
 	await victory_timer.timeout
-	if runtime != null and runtime.wave_state == CombatFlowState.State.BOSS_ACTIVE:
+	if (
+		runtime != null
+		and runtime.wave_state == CombatFlowState.State.BOSS_ACTIVE
+		and encounter_scope.get_generation() == defeated_generation
+		and not encounter_scope.is_open()
+	):
 		step_completed.emit()
 
 
@@ -791,7 +869,7 @@ func _connect_boss_signals() -> void:
 	if not linglan_boss.defeated.is_connected(_on_boss_defeated):
 		linglan_boss.defeated.connect(_on_boss_defeated)
 	var enemy_id := linglan_boss.get_instance_id()
-	var exited_callback := _on_boss_tree_exited.bind(enemy_id)
+	var exited_callback := _on_active_boss_tree_exited.bind(enemy_id)
 	if not linglan_boss.tree_exited.is_connected(exited_callback):
 		linglan_boss.tree_exited.connect(exited_callback)
 
@@ -802,6 +880,10 @@ func _connect_intro_signal() -> void:
 		and not linglan_boss_intro_vfx.intro_finished.is_connected(_on_intro_finished)
 	):
 		linglan_boss_intro_vfx.intro_finished.connect(_on_intro_finished)
+
+
+func _exit_tree() -> void:
+	end_encounter()
 
 
 func _get_tile_cell_global_position(cell: Vector2i) -> Vector2:

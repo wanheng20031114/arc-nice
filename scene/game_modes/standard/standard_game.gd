@@ -570,6 +570,7 @@ func _present_remote_enemy_count(alive_count: int) -> void:
 
 
 func _present_terminal_state(victory: bool) -> void:
+	boss_coordinator.end_encounter()
 	boss_coordinator.stop_presentation()
 	if victory:
 		wave_hud.show_victory()

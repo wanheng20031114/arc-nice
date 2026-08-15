@@ -18,6 +18,9 @@ const EXPECTED_HUD_PATH := (
 const EXPECTED_SKILL2 := preload(
 	"res://resources/config/bosses/linglan_skill2.tres"
 )
+const AIRDROP_WARNING_SCENE := preload(
+	"res://scene/boss/linglan/linglan_airdrop_warning_marker.tscn"
+)
 
 var failures: Array[String] = []
 
@@ -133,6 +136,20 @@ func _run() -> void:
 		and replay_second_position == second_airdrop_position,
 		"Fixed-seed Linglan airdrop sampling order or arena mapping changed."
 	)
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	_expect(
+		coordinator.start_step(EXPECTED_BOSS_ENTRY)
+		and game.wave_state == CombatFlowState.State.BOSS_INTRO
+		and coordinator.encounter_scope.is_open(),
+		"An authoritative Boss step must open one explicit encounter scope."
+	)
+	coordinator.finish_intro()
+	await process_frame
+	_expect(
+		game.wave_state == CombatFlowState.State.BOSS_ACTIVE
+		and coordinator.linglan_boss != null,
+		"The focused fixture must enter the real authoritative Boss-active flow."
+	)
 	var enemy_children_before := game.enemy_container.get_child_count()
 	game.spawn_linglan_skill2_enemies(
 		EXPECTED_SKILL2.spawn_enemy_config,
@@ -142,6 +159,54 @@ func _run() -> void:
 	_expect(
 		game.enemy_container.get_child_count() == enemy_children_before + 2,
 		"Standard Boss skill2 façade must still spawn one add at Spawn4 and Spawn5."
+	)
+	var summoned_add_net_ids: Array[int] = []
+	for child in game.enemy_container.get_children():
+		var summoned_add := child as Enemy
+		if summoned_add == null:
+			continue
+		var net_id := game.get_network_enemy_net_id_by_instance_id(
+			summoned_add.get_instance_id()
+		)
+		if net_id > 0:
+			summoned_add_net_ids.append(net_id)
+	_expect(
+		summoned_add_net_ids.size() == 2,
+		"Boss adds must enter the normal authoritative enemy registry."
+	)
+	coordinator.spawn_airdrop_sniper(
+		EXPECTED_SKILL2.spawn_enemy_config,
+		AIRDROP_WARNING_SCENE,
+		0.8,
+		48.0,
+		0.2
+	)
+	await process_frame
+	_expect(
+		coordinator.get_encounter_entity_count() == 3,
+		"The encounter scope must own both live adds and the pending airdrop warning."
+	)
+	var defeated_boss := coordinator.linglan_boss
+	if defeated_boss != null:
+		defeated_boss.call("_die")
+	_expect(
+		not coordinator.encounter_scope.is_open()
+		and coordinator.get_encounter_entity_count() == 0,
+		"Boss defeat must close and empty its transient entity scope synchronously."
+	)
+	await create_timer(1.45).timeout
+	await process_frame
+	_expect(
+		game.enemy_container.get_child_count() == enemy_children_before,
+		"Boss defeat must remove surviving adds and prevent the pending airdrop from spawning."
+	)
+	var stale_add_registry_entry := false
+	for net_id in summoned_add_net_ids:
+		if game.get_network_enemy(net_id) != null:
+			stale_add_registry_entry = true
+	_expect(
+		not stale_add_registry_entry and game.get_network_enemy_count() == 0,
+		"Encounter cleanup must leave no Boss or add entry in the network registry."
 	)
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	_expect(

@@ -271,6 +271,18 @@ func _test_game_target_and_spawn_entry() -> void:
 
 	var spawn4 := game.get_node("EnemySpawnPoints/Spawn4") as Marker2D
 	var spawn5 := game.get_node("EnemySpawnPoints/Spawn5") as Marker2D
+	var boss_config := game.boss_coordinator.get_first_boss_config()
+	_expect(
+		boss_config != null and game.boss_coordinator.start_step(boss_config),
+		"Skill2 spawn fixture must enter the authored Boss encounter."
+	)
+	game.boss_coordinator.finish_intro()
+	await process_frame
+	_expect(
+		game.wave_state == CombatFlowState.State.BOSS_ACTIVE,
+		"Skill2 spawn fixture must reach the real BOSS_ACTIVE state."
+	)
+	var active_enemy_ids_before := game.active_wave_enemy_ids.duplicate()
 	var enemy_count_before := _count_enemy_children(game.enemy_container)
 	game.spawn_linglan_skill2_enemies(SKILL2_CONFIG.spawn_enemy_config, SKILL2_CONFIG.spawn_marker_names)
 	var spawned_positions := _get_enemy_positions_after_index(game.enemy_container, enemy_count_before)
@@ -278,7 +290,7 @@ func _test_game_target_and_spawn_entry() -> void:
 	_expect(_positions_include(spawned_positions, spawn4.global_position), "Skill2 StandardGame spawn entry must use Spawn4.")
 	_expect(_positions_include(spawned_positions, spawn5.global_position), "Skill2 StandardGame spawn entry must use Spawn5.")
 	_expect(
-		game.enemy_coordinator.active_wave_enemy_ids.is_empty(),
+		game.active_wave_enemy_ids == active_enemy_ids_before,
 		"Skill2 boss adds must not enter normal wave counters."
 	)
 
