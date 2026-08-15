@@ -594,11 +594,12 @@ func receive_upgrade_confirmation(
 ) -> void:
 	if not success or not is_bound() or peer_id <= 0:
 		return
+	# 升级等级属于 RunState 持久账本；Player 只负责当前场景中的属性表现。
+	_run_state.ensure_multiplayer_peer_state(peer_id)
+	_run_state.set_upgrade_level_for_peer(peer_id, stat_type, level)
 	var player_node: Player = _runtime.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return
-	_run_state.ensure_multiplayer_peer_state(peer_id)
-	_run_state.set_upgrade_level_for_peer(peer_id, stat_type, level)
 	var already_applied_on_host := (
 		_net_manager.is_host() and peer_id == _get_local_peer_id()
 	)

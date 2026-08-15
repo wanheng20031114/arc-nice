@@ -457,6 +457,22 @@ func _run() -> void:
 			and collector.inventory_feedback_count == 1,
 			"重复或同 revision 背包快照不得重复播放拾取反馈。"
 		)
+		var lifecycle_gap_snapshot := authoritative_inventory_snapshot.duplicate(true)
+		lifecycle_gap_snapshot["revision"] = applied_inventory_revision + 1
+		runtime.peer_players.erase(7)
+		coordinator.receive_pickup_collected(
+			45,
+			7,
+			PICKUP_CONFIG_PATH,
+			false,
+			lifecycle_gap_snapshot
+		)
+		_expect(
+			run_state.get_inventory_revision_for_peer(7)
+			== applied_inventory_revision + 1
+			and collector.inventory_feedback_count == 1,
+			"Player 节点缺席时，拾取结果仍必须推进背包账本且不伪造表现。"
+		)
 	coordinator.receive_merchant_active(true)
 	coordinator.receive_flow_state(&"wave_active", 2, 3)
 	enemy_coordinator.remote_count = 12

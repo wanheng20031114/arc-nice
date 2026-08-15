@@ -472,6 +472,20 @@ func _test_inventory_results_survive_player_lifecycle_gap(
 	)
 	# 模拟 CH0 已经移除 Player，而 CH6 可靠事务结果随后抵达。
 	_expect(runtime.get_player_for_peer(PEER_ID) == null, "夹具不得创建 Player。")
+	coordinator.receive_upgrade_confirmation(
+		PEER_ID,
+		RunStateStore.StatType.ATTACK,
+		3,
+		0,
+		true
+	)
+	_expect(
+		client_state.get_upgrade_level_for_peer(
+			PEER_ID,
+			RunStateStore.StatType.ATTACK
+		) == 3,
+		"Player 缺席时，升级确认仍必须提交持久升级等级。"
+	)
 	coordinator.receive_inventory_item_used(
 		PEER_ID,
 		potion_slot,

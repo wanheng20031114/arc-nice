@@ -449,9 +449,7 @@ func receive_debug_collectible_granted(
 ) -> void:
 	if not is_bound() or peer_id <= 0:
 		return
-	var player_node := _runtime.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
+	# 调试授予也属于权威库存事务；Player 缺席只能省略表现，不能丢账本。
 	if not inventory_snapshot.is_empty():
 		_run_state.apply_inventory_snapshot_for_peer(peer_id, inventory_snapshot)
 	elif success and not config_path.is_empty():

@@ -414,25 +414,31 @@ func receive_pickup_collected(
 	var pickup_config := load(config_path) as PickupConfig
 	if pickup_config == null:
 		return
-	var player_node := _runtime.get_player_for_peer(collector_peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
 	if applied_immediately:
+		var player_node := _runtime.get_player_for_peer(collector_peer_id)
+		if player_node == null or not is_instance_valid(player_node):
+			return
 		player_node.apply_pickup(pickup_config, false)
-	elif not inventory_snapshot.is_empty():
-		var inventory_revision_before := (
-			_run_state.get_inventory_revision_for_peer(collector_peer_id)
-		)
-		var snapshot_applied := _run_state.apply_inventory_snapshot_for_peer(
-			collector_peer_id,
-			inventory_snapshot
-		)
-		if (
-			snapshot_applied
-			and _run_state.get_inventory_revision_for_peer(collector_peer_id)
-			> inventory_revision_before
-		):
-			player_node.play_world_inventory_pickup_feedback(pickup_config)
+		return
+	if inventory_snapshot.is_empty():
+		return
+	# 背包是跨场景持久账本，必须先于可销毁的 Player 表现节点提交。
+	var inventory_revision_before := (
+		_run_state.get_inventory_revision_for_peer(collector_peer_id)
+	)
+	if not _run_state.apply_inventory_snapshot_for_peer(
+		collector_peer_id,
+		inventory_snapshot
+	):
+		return
+	if (
+		_run_state.get_inventory_revision_for_peer(collector_peer_id)
+		<= inventory_revision_before
+	):
+		return
+	var player_node := _runtime.get_player_for_peer(collector_peer_id)
+	if player_node != null and is_instance_valid(player_node):
+		player_node.play_world_inventory_pickup_feedback(pickup_config)
 
 
 func reset_session_state() -> void:

@@ -330,6 +330,32 @@ func _test_offer_refresh_choice_and_special_game(
 		"Special-game start, reveal, and finish must keep authoritative order and confirmations."
 	)
 
+	var granted_item := load(first_paths[0]) as PickupConfig
+	var authoritative_state := RunStateStore.new()
+	authoritative_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		granted_item != null
+		and authoritative_state.try_add_item_for_peer(1, granted_item),
+		"Debug grant lifecycle fixture must build an authoritative inventory."
+	)
+	var granted_snapshot := (
+		authoritative_state.export_inventory_snapshot_for_peer(1)
+	)
+	runtime.test_player = null
+	coordinator.receive_debug_collectible_granted(
+		1,
+		first_paths[0],
+		true,
+		granted_snapshot
+	)
+	_expect(
+		run_state.get_inventory_revision_for_peer(1)
+		== int(granted_snapshot.get("revision", -1))
+		and run_state.get_inventory_item_total_for_peer(1, granted_item) == 1,
+		"Player 节点缺席时，调试收藏品结果仍必须收敛权威背包账本。"
+	)
+	authoritative_state.free()
+
 	coordinator.unbind_runtime(runtime)
 	net_manager.free()
 	adapter.free()
