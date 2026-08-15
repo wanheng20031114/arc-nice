@@ -605,18 +605,17 @@ func receive_inventory_item_used(
 ) -> void:
 	if not is_bound() or peer_id <= 0 or inventory_snapshot.is_empty():
 		return
-	var player_node: Player = _runtime.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	if _net_manager.is_host() and peer_id == _get_local_peer_id():
-		return
-	var revision_before := _run_state.get_inventory_revision_for_peer(peer_id)
-	var snapshot_applied := _run_state.apply_inventory_snapshot_for_peer(
+	var revision_before := _commit_received_inventory_snapshot(
 		peer_id,
 		inventory_snapshot,
 		force_inventory_repair
 	)
-	if not snapshot_applied or not success:
+	if revision_before < 0 or not success:
+		return
+	# 消耗品表现依赖 Player 节点，但背包账本不依赖。断线/重连导致节点
+	# 暂时缺席时只跳过表现；可靠事务快照已经在上方完成收敛。
+	var player_node: Player = _runtime.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
 		return
 	if (
 		int(inventory_snapshot.get("revision", -1)) > revision_before
@@ -636,12 +635,7 @@ func receive_inventory_item_discarded(
 ) -> void:
 	if not is_bound() or peer_id <= 0 or inventory_snapshot.is_empty():
 		return
-	var player_node: Player = _runtime.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	if _net_manager.is_host() and peer_id == _get_local_peer_id():
-		return
-	_run_state.apply_inventory_snapshot_for_peer(
+	_commit_received_inventory_snapshot(
 		peer_id,
 		inventory_snapshot,
 		force_inventory_repair
@@ -663,20 +657,15 @@ func receive_simple_crafting_result(
 		or inventory_snapshot.is_empty()
 	):
 		return
-	var player_node := _runtime.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
 	var last_result_id := int(_last_simple_crafting_result_ids.get(peer_id, 0))
 	if request_id <= last_result_id:
 		return
-	if not _net_manager.is_host():
-		var snapshot_applied := _run_state.apply_inventory_snapshot_for_peer(
-			peer_id,
-			inventory_snapshot,
-			force_inventory_repair and peer_id == _get_local_peer_id()
-		)
-		if not snapshot_applied:
-			return
+	if _commit_received_inventory_snapshot(
+		peer_id,
+		inventory_snapshot,
+		force_inventory_repair and peer_id == _get_local_peer_id()
+	) < 0:
+		return
 	_last_simple_crafting_result_ids[peer_id] = request_id
 	if peer_id != _get_local_peer_id():
 		return
@@ -686,6 +675,26 @@ func receive_simple_crafting_result(
 		_normalize_crafting_result_code(StringName(result)),
 		ui_request_token
 	)
+
+
+## CH6 事务结果首先收敛持久背包账本；Player 只是可选的表现载体。
+## 返回接收前 revision，供消耗品判断是否需要重放一次本地效果；-1 表示
+## 快照无效。Host 本机已在权威执行阶段提交账本，因此这里只确认而不重写。
+func _commit_received_inventory_snapshot(
+	peer_id: int,
+	inventory_snapshot: Dictionary,
+	force_inventory_repair: bool
+) -> int:
+	var revision_before := _run_state.get_inventory_revision_for_peer(peer_id)
+	if _net_manager.is_host():
+		return revision_before if peer_id == _get_local_peer_id() else -1
+	if not _run_state.apply_inventory_snapshot_for_peer(
+		peer_id,
+		inventory_snapshot,
+		force_inventory_repair
+	):
+		return -1
+	return revision_before
 
 
 func receive_skill1_purchase_confirmation(

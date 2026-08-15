@@ -70,6 +70,7 @@ func _run() -> void:
 	_test_replay_cache(coordinator)
 	_test_shared_ingress_budget(coordinator)
 	_test_consumable_single_settlement(coordinator)
+	_test_inventory_results_survive_player_lifecycle_gap(coordinator)
 	coordinator.free()
 	_finish()
 
@@ -345,6 +346,117 @@ func _test_consumable_single_settlement(
 	session.free()
 	host_run_state.free()
 	client_run_state.free()
+
+
+func _test_inventory_results_survive_player_lifecycle_gap(
+	coordinator: MpTransactionsCoordinator
+) -> void:
+	const PEER_ID := 7
+	var authoritative_state := RunStateStore.new()
+	_expect(
+		authoritative_state.try_add_item_count_for_peer(PEER_ID, ROCK_POTION, 2),
+		"事务乱序夹具必须建立权威背包。"
+	)
+	var potion_slot := _find_item_slot_for_peer(
+		authoritative_state,
+		PEER_ID,
+		ROCK_POTION
+	)
+	var used_snapshot := (
+		authoritative_state.export_inventory_snapshot_for_peer(PEER_ID)
+	)
+	_expect(
+		authoritative_state.discard_item_for_peer(PEER_ID, potion_slot),
+		"事务乱序夹具必须生成后续丢弃 revision。"
+	)
+	var discarded_snapshot := (
+		authoritative_state.export_inventory_snapshot_for_peer(PEER_ID)
+	)
+	_expect(
+		authoritative_state.try_add_item_for_peer(PEER_ID, ROCK_POTION),
+		"事务乱序夹具必须生成后续制作结果 revision。"
+	)
+	var crafting_snapshot := (
+		authoritative_state.export_inventory_snapshot_for_peer(PEER_ID)
+	)
+
+	var session := MP_GAME_SCENE.instantiate() as MultiplayerGameplaySession
+	var runtime := TestRuntime.new()
+	var adapter := MultiplayerModeAdapter.new()
+	var net_manager := NetManagerStore.new()
+	var client_state := RunStateStore.new()
+	var suspended_peers: Dictionary[int, bool] = {}
+	root.add_child(net_manager)
+	net_manager.net_role = NetManagerStore.NetRole.CLIENT
+	coordinator.bind_session(
+		session,
+		runtime,
+		adapter,
+		net_manager,
+		client_state,
+		suspended_peers
+	)
+	# 模拟 CH0 已经移除 Player，而 CH6 可靠事务结果随后抵达。
+	_expect(runtime.get_player_for_peer(PEER_ID) == null, "夹具不得创建 Player。")
+	coordinator.receive_inventory_item_used(
+		PEER_ID,
+		potion_slot,
+		ROCK_POTION.resource_path,
+		true,
+		used_snapshot
+	)
+	_expect(
+		client_state.get_inventory_revision_for_peer(PEER_ID)
+		== int(used_snapshot.get("revision", -1))
+		and client_state.get_inventory_item_total_for_peer(
+			PEER_ID,
+			ROCK_POTION
+		) == 2,
+		"Player 缺席时，使用结果仍必须提交权威背包快照。"
+	)
+	coordinator.receive_inventory_item_discarded(
+		PEER_ID,
+		potion_slot,
+		true,
+		discarded_snapshot
+	)
+	_expect(
+		client_state.get_inventory_revision_for_peer(PEER_ID)
+		== int(discarded_snapshot.get("revision", -1))
+		and client_state.get_inventory_item_total_for_peer(
+			PEER_ID,
+			ROCK_POTION
+		) == 0,
+		"Player 缺席时，丢弃结果仍必须推进背包 revision。"
+	)
+	coordinator.receive_simple_crafting_result(
+		PEER_ID,
+		41,
+		"test_recipe",
+		String(RunStateStore.CRAFT_RESULT_SUCCESS),
+		crafting_snapshot
+	)
+	var result_ids := coordinator.get(
+		"_last_simple_crafting_result_ids"
+	) as Dictionary
+	_expect(
+		client_state.get_inventory_revision_for_peer(PEER_ID)
+		== int(crafting_snapshot.get("revision", -1))
+		and client_state.get_inventory_item_total_for_peer(
+			PEER_ID,
+			ROCK_POTION
+		) == 1
+		and int(result_ids.get(PEER_ID, 0)) == 41,
+		"Player 缺席时，制作结果必须原子收敛账本与去重游标。"
+	)
+
+	coordinator.unbind_session(session)
+	net_manager.free()
+	adapter.free()
+	runtime.free()
+	session.free()
+	authoritative_state.free()
+	client_state.free()
 
 
 func _find_item_slot_for_peer(
