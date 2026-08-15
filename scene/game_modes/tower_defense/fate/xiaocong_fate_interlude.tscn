@@ -211,7 +211,7 @@ vertical_alignment = 1
 [node name="SceneTransitionLayer" type="CanvasLayer" parent="."]
 process_mode = 3
 visible = false
-layer = 80
+layer = 100
 
 [node name="Cover" type="ColorRect" parent="SceneTransitionLayer"]
 material = SubResource("ShaderMaterial_scene_transition")

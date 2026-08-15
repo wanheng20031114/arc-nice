@@ -692,6 +692,8 @@ func _test_scene_config_and_interlude_freeze() -> void:
 		and (right_room_wall.shape as RectangleShape2D).size == Vector2(16, 264)
 		and scene_transition_layer.layer
 		> interlude.choice_overlay.layer
+		and scene_transition_layer.layer
+		> game.tower_defense_status_hud.layer
 		and not scene_transition_layer.visible
 		and scene_transition_material != null
 		and scene_transition_material.resource_local_to_scene

@@ -618,9 +618,22 @@ func apply_remote_flow_state(
 				flow_step as WaveConfig,
 				current_wave_index
 			) - 1
-	_fate_flow_coordinator.set_interlude_systems_frozen(
+	if (
+		_rogue_exploration_coordinator.has_pending_presentation_exit()
+		and typed_state not in [
+			CombatFlowState.State.ROGUE_EXPLORATION,
+			CombatFlowState.State.FATE_INTERLUDE,
+		]
+	):
+		_rogue_exploration_coordinator.complete_pending_presentation_exit()
+	var entering_fate_from_pending_rogue := (
 		typed_state == CombatFlowState.State.FATE_INTERLUDE
+		and _rogue_exploration_coordinator.has_pending_presentation_exit()
 	)
+	if not entering_fate_from_pending_rogue:
+		_fate_flow_coordinator.set_interlude_systems_frozen(
+			typed_state == CombatFlowState.State.FATE_INTERLUDE
+		)
 	match typed_state:
 		CombatFlowState.State.PRE_WAVE:
 			_presentation_coordinator.transition_world_to_day()
@@ -736,6 +749,9 @@ func resume_flow_after_fate_interlude(next_step_id: StringName) -> void:
 	if next_step == null:
 		enter_victory()
 		return
+	if next_step is BossConfig:
+		enter_day_four_boss_preparation(next_step as BossConfig)
+		return
 	enter_intermission(next_step)
 
 
@@ -768,13 +784,7 @@ func _is_day_four_boss_preparation() -> bool:
 
 func resume_flow_after_rogue_exploration(next_step_id: StringName) -> void:
 	var next_step := get_flow_step_by_id(next_step_id)
-	if next_step == null:
-		enter_victory()
-		return
-	if next_step is BossConfig:
-		enter_day_four_boss_preparation(next_step as BossConfig)
-		return
-	enter_intermission(next_step)
+	_fate_flow_coordinator.enter_interlude(next_step)
 
 
 func enter_day_four_boss_preparation(boss_step: BossConfig) -> void:
@@ -803,6 +813,8 @@ func enter_day_four_boss_preparation(boss_step: BossConfig) -> void:
 
 
 func enter_victory(emit_multiplayer: bool = true) -> void:
+	if wave_state == CombatFlowState.State.VICTORY:
+		return
 	_luoxi_special_game_coordinator.cancel_all()
 	_luoxi_merchant.abort_special_game()
 	_plant_placement_coordinator.cancel_placement()

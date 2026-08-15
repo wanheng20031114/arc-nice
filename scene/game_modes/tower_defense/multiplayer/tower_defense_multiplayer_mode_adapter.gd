@@ -241,6 +241,24 @@ func is_rogue_exploration_active() -> bool:
 	)
 
 
+func is_rogue_tower_world_suspended() -> bool:
+	return (
+		_rogue_exploration_coordinator != null
+		and _rogue_exploration_coordinator.is_tower_runtime_suspended()
+	)
+
+
+## Rogue 接管塔防世界、Fate 黑屋运行或战役已经终结时，任何会修改
+## Tower/RunState 的管理请求都不得落到权威运行时。Fate 仍需保留外层
+## 玩家同步用于黑屋走动，因此该契约不能与 world suspension 合并。
+func is_tower_management_suspended() -> bool:
+	return (
+		is_rogue_tower_world_suspended()
+		or is_fate_interlude_active()
+		or is_terminal_combat_state()
+	)
+
+
 ## 重连玩家可能跨过了探索进入/返回的满血边界。先从 RunState 重算
 ## 当前永久属性与最大生命惩罚，再由 MpPlayerCoordinator 产生新的健康修订。
 func refresh_players_from_run_state_for_rogue_boundary() -> void:
@@ -531,6 +549,15 @@ func restore_multiplayer_player(
 	return player_instance
 
 
+func synchronize_reconnected_player_presentation_lease(peer_id: int) -> bool:
+	return (
+		_fate_flow_coordinator != null
+		and _fate_flow_coordinator.synchronize_reconnected_player_presentation_lease(
+			peer_id
+		)
+	)
+
+
 func apply_remote_flow_state(
 	step_id: StringName,
 	state: int,
@@ -573,7 +600,11 @@ func apply_remote_defeat() -> void:
 		and tower_runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	):
-		_campaign_coordinator.enter_defeat(false)
+		_campaign_coordinator.apply_remote_flow_state(
+			&"",
+			CombatFlowState.State.DEFEAT,
+			0
+		)
 
 
 func apply_remote_victory() -> void:
@@ -583,7 +614,11 @@ func apply_remote_victory() -> void:
 		and tower_runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	):
-		_campaign_coordinator.enter_victory(false)
+		_campaign_coordinator.apply_remote_flow_state(
+			&"",
+			CombatFlowState.State.VICTORY,
+			0
+		)
 
 
 func apply_remote_enemy_count(alive_count: int) -> void:

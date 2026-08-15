@@ -462,10 +462,7 @@ func _on_runtime_activated() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if (
-		rogue_exploration_coordinator != null
-		and rogue_exploration_coordinator.is_exploration_active()
-	):
+	if _is_tower_runtime_suspended_for_rogue():
 		return
 	presentation_coordinator.update_local_spectator_camera(delta)
 	player_roster_coordinator.local_player = player
@@ -477,12 +474,16 @@ func _physics_process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if (
-		rogue_exploration_coordinator != null
-		and rogue_exploration_coordinator.is_exploration_active()
-	):
+	if _is_tower_runtime_suspended_for_rogue():
 		return
 	presentation_coordinator.handle_unhandled_input(event)
+
+
+func _is_tower_runtime_suspended_for_rogue() -> bool:
+	return (
+		rogue_exploration_coordinator != null
+		and rogue_exploration_coordinator.is_tower_runtime_suspended()
+	)
 
 
 func configure_multiplayer(
@@ -942,6 +943,7 @@ func _configure_xiaocong_fate_flow() -> bool:
 		return false
 	fate_flow_coordinator.setup(
 		campaign_coordinator,
+		rogue_exploration_coordinator,
 		fate_coordinator,
 		fate_manager,
 		player_roster_coordinator,

@@ -51,6 +51,12 @@ const PLANK_MATERIAL := preload("res://resources/config/materials/material_plank
 const AGAVE_BUILDING_ITEM := preload(
 	"res://resources/config/buildings/building_agave_cannon.tres"
 )
+const OAK_WAREHOUSE_BUILDING_ITEM := preload(
+	"res://resources/config/buildings/building_oak_warehouse.tres"
+)
+const WOOD_PROCESSING_STATION_BUILDING_ITEM := preload(
+	"res://resources/config/buildings/building_wood_processing_station.tres"
+)
 const RECONNECT_PLAYER_NAME := "client4"
 const RECONNECT_WOOD_BONUS := 7
 const RECONNECT_XIRANG_BONUS := 4321
@@ -766,12 +772,12 @@ func _run_host_tower_defense_reconnect_probe(
 		player_instance.max_health - RECONNECT_HEALTH_DAMAGE,
 		false
 	)
-	if not bool(
-		mp_game.call(
-			"_commit_authoritative_player_teleport",
-			old_peer_id,
-			RECONNECT_TARGET_POSITION
-		)
+	var player_coordinator := (
+		mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
+	)
+	if not player_coordinator.handle_authoritative_player_teleport_request(
+		old_peer_id,
+		RECONNECT_TARGET_POSITION
 	):
 		_fail("Host reconnect probe could not commit the preserved position fixture.")
 		return
@@ -971,6 +977,12 @@ func _run_tower_defense_runtime_probe(
 	await _wait_seconds(1.0)
 	if not await _exercise_tower_defense_local_character(net_manager, mp_game, game):
 		return
+	if not await _prepare_tower_defense_inventory_fixture(
+		net_manager,
+		mp_game,
+		is_host_probe
+	):
+		return
 	var plant_config := PlantDefenseRegistry.get_config(&"agave_cannon")
 	var shared_plant_anchor := _find_shared_multiplayer_plant_anchor(game, plant_config)
 	if shared_plant_anchor == Vector2i.MAX:
@@ -1005,6 +1017,75 @@ func _run_tower_defense_runtime_probe(
 			agave_total_before_placement,
 			wood_total_before_warehouse_competition
 		)
+
+
+func _prepare_tower_defense_inventory_fixture(
+	net_manager: Node,
+	mp_game: Node,
+	is_host_probe: bool
+) -> bool:
+	var run_state := root.get_node("RunState") as RunStateStore
+	var local_peer_id := int(net_manager.get_local_peer_id())
+	var remote_client_count := maxi(
+		_get_connected_player_count(net_manager) - 1,
+		0
+	)
+	if is_host_probe:
+		for peer_id_variant in net_manager.connected_players:
+			var peer_id := int(peer_id_variant)
+			if peer_id == local_peer_id:
+				continue
+			if not _seed_exact_peer_item_fixture(
+				run_state,
+				peer_id,
+				AGAVE_BUILDING_ITEM
+			):
+				_fail("Host could not seed the client Agave placement fixture.")
+				return false
+		for host_item: PickupConfig in [
+			OAK_WAREHOUSE_BUILDING_ITEM,
+			WOOD_PROCESSING_STATION_BUILDING_ITEM,
+		]:
+			if not _seed_exact_peer_item_fixture(
+				run_state,
+				local_peer_id,
+				host_item
+			):
+				_fail("Host could not seed its formal building fixture.")
+				return false
+		for peer_id_variant in net_manager.connected_players:
+			var peer_id := int(peer_id_variant)
+			mp_game.call("_broadcast_inventory_snapshot", peer_id)
+	var expected_local_agave := 0 if is_host_probe else 1
+	var expected_party_agave := remote_client_count
+	var end_time := _now_seconds() + 5.0
+	while _now_seconds() <= end_time:
+		if (
+			_get_peer_item_total(run_state, local_peer_id, AGAVE_BUILDING_ITEM)
+			== expected_local_agave
+			and _count_peer_item_total(
+				run_state,
+				net_manager.connected_players,
+				AGAVE_BUILDING_ITEM
+			) == expected_party_agave
+		):
+			return true
+		await process_frame
+	_fail("Tower-defense formal building fixture did not converge on this peer.")
+	return false
+
+
+func _seed_exact_peer_item_fixture(
+	run_state: RunStateStore,
+	peer_id: int,
+	item: PickupConfig
+) -> bool:
+	var current_total := _get_peer_item_total(run_state, peer_id, item)
+	if current_total == 1:
+		return true
+	if current_total != 0:
+		return false
+	return run_state.try_add_item_for_peer(peer_id, item)
 
 
 func _get_tower_defense_probe_character_id(
@@ -1141,7 +1222,13 @@ func _run_host_tower_defense_runtime_probe(
 	for peer_id_variant in net_manager.connected_players:
 		var peer_id := int(peer_id_variant)
 		if peer_id != int(net_manager.get_local_peer_id()):
-			mp_game.call("_send_runtime_state_to_peer", peer_id, false)
+			var session_coordinator := (
+				mp_game.get_node("SessionCoordinator") as MpSessionCoordinator
+			)
+			session_coordinator.send_authoritative_runtime_state_to_peer(
+				peer_id,
+				false
+			)
 	await _wait_seconds(0.5)
 
 	var damage_enemy_id := await _spawn_host_probe_enemy(game)
@@ -1216,7 +1303,10 @@ func _run_host_tower_defense_runtime_probe(
 	# Keep the original warehouse competition setup deterministic; the second
 	# seed below is intentionally left to storage_changed so production verifies
 	# the new automatic warehouse broadcast path.
-	mp_game.call("_broadcast_warehouse_snapshot", warehouse)
+	var economy_coordinator := (
+		mp_game.get_node("TowerEconomyCoordinator") as MpTowerEconomyCoordinator
+	)
+	economy_coordinator.broadcast_warehouse_snapshot(warehouse)
 	await _wait_seconds(0.75)
 	# A one-item shared stack is intentionally transient. Some clients can observe
 	# the already-consumed revision directly, so the authoritative transaction is
@@ -1316,6 +1406,11 @@ func _run_host_tower_defense_runtime_probe(
 	game.plant_system.remove_plant_by_net_id(2)
 	await _wait_seconds(0.75)
 	await _run_host_tower_defense_fate_probe(net_manager, mp_game, game)
+	if failures.is_empty():
+		# Keep the authority alive until clients have observed the reliable Fate
+		# return and sampled their transaction metrics. Clients retain a longer
+		# teardown linger, so the authority still disconnects first.
+		await _wait_seconds(1.0)
 
 
 func _run_client_tower_defense_runtime_probe(
@@ -1348,9 +1443,17 @@ func _run_client_tower_defense_runtime_probe(
 	game.plant_placement_controller.selection_unavailable.connect(
 		func() -> void: rejection_state[&"received"] = true
 	)
+	var run_state := root.get_node("RunState") as RunStateStore
+	var local_peer_id := int(net_manager.get_local_peer_id())
+	var local_agave_before_rejection := _get_peer_item_total(
+		run_state,
+		local_peer_id,
+		AGAVE_BUILDING_ITEM
+	)
 	# Formal servers must reject the legacy free-placement RPC even when its
 	# plant id and anchor are otherwise valid.
-	mp_game.call(
+	var tower_world_coordinator := mp_game.get_node("TowerWorldCoordinator")
+	tower_world_coordinator.call(
 		"_on_local_plant_placement_requested",
 		100,
 		&"agave_cannon",
@@ -1359,9 +1462,10 @@ func _run_client_tower_defense_runtime_probe(
 	if not await _wait_for_dictionary_flag(rejection_state, &"received", 3.0):
 		_fail("Formal Host did not reject the legacy free-placement RPC.")
 		return
-	var run_state := root.get_node("RunState") as RunStateStore
-	var local_peer_id := int(net_manager.get_local_peer_id())
-	if _get_peer_item_total(run_state, local_peer_id, AGAVE_BUILDING_ITEM) != 1:
+	if (
+		_get_peer_item_total(run_state, local_peer_id, AGAVE_BUILDING_ITEM)
+		!= local_agave_before_rejection
+	):
 		_fail("Formal free-placement rejection changed the client's Agave inventory.")
 		return
 	rejection_state[&"received"] = false
@@ -1388,7 +1492,11 @@ func _run_client_tower_defense_runtime_probe(
 	elif bool(rejection_state[&"received"]):
 		_fail("Winning client unexpectedly received a placement rejection.")
 		return
-	var expected_agave_count := 0 if won_competition else 1
+	var expected_agave_count := (
+		local_agave_before_rejection - 1
+		if won_competition
+		else local_agave_before_rejection
+	)
 	if not await _wait_for_peer_item_total(
 		run_state,
 		local_peer_id,
@@ -1447,7 +1555,10 @@ func _run_client_tower_defense_runtime_probe(
 		approach_direction = Vector2.DOWN
 	local_player.global_position = warehouse.global_position + approach_direction.normalized() * 24.0
 	local_player.velocity = Vector2.ZERO
-	mp_game.set("_has_sent_input", false)
+	var player_coordinator := (
+		mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
+	)
+	player_coordinator.set("_has_sent_realtime_input", false)
 	mp_game.call("_client_send_input_if_needed", 0)
 	# Force one endpoint to behave like a slow observer. It must accept revision 2
 	# (the already-consumed empty stack) as convergence instead of requiring the
@@ -1519,7 +1630,7 @@ func _run_client_tower_defense_runtime_probe(
 		station.global_position + station_approach.normalized() * 24.0
 	)
 	local_player.velocity = Vector2.ZERO
-	mp_game.set("_has_sent_input", false)
+	player_coordinator.set("_has_sent_realtime_input", false)
 	mp_game.call("_client_send_input_if_needed", 0)
 	if not await _wait_for_warehouse_item_total(
 		warehouse,
@@ -1623,6 +1734,9 @@ func _run_host_tower_defense_fate_probe(
 	):
 		_fail("Host did not enter the Xiaocong fate interlude.")
 		return
+	if not await _wait_for_fate_room_ready(game, true, 10.0):
+		_fail("Host Xiaocong room presentation did not become ready.")
+		return
 	if (
 		game.production_coordinator.authoritative_processing_enabled
 		or game.research_coordinator.authoritative_processing_enabled
@@ -1706,6 +1820,9 @@ func _run_client_tower_defense_fate_probe(
 		10.0
 	):
 		_fail("Client did not receive the Xiaocong fate flow state.")
+		return
+	if not await _wait_for_fate_room_ready(game, false, 10.0):
+		_fail("Client Xiaocong room presentation did not become ready.")
 		return
 	var local_peer_id := int(net_manager.get_local_peer_id())
 	var local_player := game.get_player_for_peer(local_peer_id) as Player
@@ -1808,6 +1925,44 @@ func _wait_for_fate_stage(
 	return false
 
 
+func _wait_for_fate_room_ready(
+	game: TowerDefenseGame,
+	require_all_players: bool,
+	timeout_seconds: float
+) -> bool:
+	var deadline := Time.get_ticks_msec() + roundi(timeout_seconds * 1000.0)
+	while Time.get_ticks_msec() < deadline:
+		var room_ready := (
+			game != null
+			and is_instance_valid(game)
+			and game.xiaocong_fate_interlude.is_active
+			and game.fate_manager.active
+			and not game.plant_placement_controller.placement_input_enabled
+			and not game.fate_flow_coordinator.remote_entry_in_progress
+		)
+		if room_ready:
+			var players_in_room := true
+			var candidates: Array = (
+				game.peer_players.values()
+				if require_all_players
+				else [game.player]
+			)
+			for player_variant in candidates:
+				var player_instance := player_variant as Player
+				if (
+					player_instance == null
+					or not is_instance_valid(player_instance)
+					or player_instance.global_position.x < 7000.0
+					or player_instance.global_position.y < 7000.0
+				):
+					players_in_room = false
+					break
+			if players_in_room:
+				return true
+		await process_frame
+	return false
+
+
 func _wait_for_player_xirang(
 	player_instance: Player,
 	expected_xirang: int,
@@ -1826,40 +1981,86 @@ func _wait_for_player_xirang(
 
 
 func _run_host_wave_probe(game: Variant) -> void:
-	if game is TowerDefenseGame:
-		(game as TowerDefenseGame).campaign_coordinator.begin_flow_step(
-			game.flow_graph.start_step
-		)
+	var tower_game := game as TowerDefenseGame
+	var tower_campaign: TowerDefenseCampaignCoordinator = (
+		tower_game.campaign_coordinator
+		if tower_game != null
+		else null
+	)
+	var start_step: FlowStepConfig = (
+		tower_campaign.get_start_flow_step()
+		if tower_campaign != null
+		else game.flow_graph.start_step
+	)
+	if tower_campaign != null:
+		tower_campaign.begin_flow_step(start_step)
 	else:
-		game.call("_begin_flow_step", game.flow_graph.start_step)
+		game.call("_begin_flow_step", start_step)
 	if not await _wait_for_game_wave_state(game, CombatFlowState.State.WAVE_ACTIVE, 3.0):
 		_fail("Host wave probe did not enter wave active state.")
 		return
-	if int(game.current_wave_total) != 1:
-		_fail("Host wave probe expected one enemy, saw %d." % int(game.current_wave_total))
+	var expected_wave_total := 1
+	if tower_campaign != null:
+		expected_wave_total = 0
+		var start_wave := start_step as WaveConfig
+		if start_wave != null:
+			var player_count := tower_game.campaign_runtime_port.get_progression_player_count()
+			for entry in start_wave.enemy_entries:
+				if entry == null or entry.enemy_config == null:
+					continue
+				expected_wave_total += tower_game.progression_config.get_scaled_enemy_count(
+					maxi(entry.count, 0), player_count
+				)
+	var current_wave_total := (
+		tower_campaign.current_wave_total
+		if tower_campaign != null
+		else int(game.current_wave_total)
+	)
+	if current_wave_total != expected_wave_total:
+		_fail(
+			"Host wave probe expected %d enemies, saw %d."
+			% [expected_wave_total, current_wave_total]
+		)
 		return
-	var enemy_id := await _wait_for_first_host_enemy_net_id(game, 5.0)
-	if enemy_id <= 0:
-		_fail("Host wave probe did not spawn a networked enemy.")
-		return
-	print("LAN_PROBE_EVENT host_wave_enemy_spawned net_id=%d" % enemy_id)
-
-	await _wait_seconds(0.5)
-	var enemy: Enemy = game.get_enemy_for_net_id(enemy_id)
-	if enemy == null or not is_instance_valid(enemy):
-		_fail("Host wave probe enemy disappeared before damage.")
-		return
-	enemy.apply_damage(99999)
-	if not await _wait_for_host_enemy_removed(game, enemy_id, 8.0):
-		_fail("Host wave probe enemy was not removed after defeat.")
-		return
-	if not await _wait_for_game_wave_state(game, CombatFlowState.State.INTERMISSION, 5.0):
-		var next_step: FlowStepConfig = (
-			(game as TowerDefenseGame).campaign_coordinator.get_default_next_flow_step(
-				game.current_flow_step
+	for enemy_index in range(expected_wave_total):
+		var enemy_id := await _wait_for_first_host_enemy_net_id(game, 5.0)
+		if enemy_id <= 0:
+			_fail(
+				"Host wave probe did not spawn networked enemy %d/%d."
+				% [enemy_index + 1, expected_wave_total]
 			)
-			if game is TowerDefenseGame
-			else game.call("_get_default_next_flow_step", game.current_flow_step)
+			return
+		if enemy_index == 0:
+			print("LAN_PROBE_EVENT host_wave_enemy_spawned net_id=%d" % enemy_id)
+			await _wait_seconds(0.5)
+		var enemy: Enemy = game.get_enemy_for_net_id(enemy_id)
+		if enemy == null or not is_instance_valid(enemy):
+			_fail("Host wave probe enemy disappeared before damage.")
+			return
+		enemy.apply_damage(99999)
+		if not await _wait_for_host_enemy_removed(game, enemy_id, 8.0):
+			_fail("Host wave probe enemy was not removed after defeat.")
+			return
+	if not await _wait_for_game_wave_state(game, CombatFlowState.State.INTERMISSION, 5.0):
+		var current_flow_step: FlowStepConfig = (
+			tower_campaign.current_flow_step
+			if tower_campaign != null
+			else game.current_flow_step
+		)
+		var next_step: FlowStepConfig = (
+			tower_campaign.get_default_next_flow_step(current_flow_step)
+			if tower_campaign != null
+			else game.call("_get_default_next_flow_step", current_flow_step)
+		)
+		var observed_state := (
+			int(tower_campaign.wave_state)
+			if tower_campaign != null
+			else int(game.wave_state)
+		)
+		var current_wave_resolved := (
+			tower_campaign.current_wave_resolved
+			if tower_campaign != null
+			else int(game.current_wave_resolved)
 		)
 		_fail(
 			(
@@ -1867,11 +2068,11 @@ func _run_host_wave_probe(game: Variant) -> void:
 				+ "next=%s resolved=%d/%d active=%d."
 			)
 			% [
-				int(game.wave_state),
-				String(game.current_flow_step.step_id) if game.current_flow_step != null else "<null>",
+				observed_state,
+				String(current_flow_step.step_id) if current_flow_step != null else "<null>",
 				String(next_step.step_id) if next_step != null else "<null>",
-				int(game.current_wave_resolved),
-				int(game.current_wave_total),
+				current_wave_resolved,
+				current_wave_total,
 				_get_active_wave_enemy_count(game),
 			]
 		)
@@ -1938,7 +2139,7 @@ func _run_host_boss_probe(game: Variant) -> void:
 			print("LAN_PROBE_EVENT host_boss_started_signal net_id=%d config=%s" % [net_id, config_path])
 	)
 	if game is TowerDefenseGame:
-		(game as TowerDefenseGame).campaign_coordinator.enter_pre_flow_step(
+		(game as TowerDefenseGame).campaign_coordinator.begin_flow_step(
 			probe_linglan_boss_entry
 		)
 	else:
@@ -2177,8 +2378,10 @@ func _trigger_host_authoritative_player_death(
 		return false
 	var source_id := peer_id * 1000000 + 770001
 	var lethal_damage := maxi(player.max_health * 100, player.current_health + 9999)
-	var result := mp_game.call(
-		"_apply_player_hit_report",
+	var player_coordinator := (
+		mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
+	)
+	var result := player_coordinator.apply_player_hit_report(
 		source_id,
 		peer_id,
 		lethal_damage,
@@ -2187,7 +2390,7 @@ func _trigger_host_authoritative_player_death(
 		EnemyConfig.DamageType.PHYSICAL,
 		0,
 		false
-	) as DamageResult
+	)
 	if result == null or not result.accepted or not result.lethal:
 		_fail(
 			"Host authoritative death probe did not produce an accepted lethal DamageResult."
@@ -2516,8 +2719,10 @@ func _wait_for_player_dead(player: Player, timeout_seconds: float) -> bool:
 func _get_player_health_revision(mp_game: Node, peer_id: int) -> int:
 	if mp_game == null or not is_instance_valid(mp_game) or peer_id <= 0:
 		return 0
-	var revisions := mp_game.get("_player_health_revisions") as Dictionary
-	return int(revisions.get(peer_id, 0))
+	var player_coordinator := (
+		mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
+	)
+	return player_coordinator.get_health_revision(peer_id)
 
 
 func _wait_for_player_state_at_revision(
@@ -2700,7 +2905,10 @@ func _wait_for_host_plant_requests(
 			expected_client_ids.append(peer_id)
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
-		var processed_requests := mp_game.get("_last_plant_placement_request_ids") as Dictionary
+		var tower_world_coordinator := mp_game.get_node("TowerWorldCoordinator")
+		var processed_requests := tower_world_coordinator.get(
+			"_last_plant_placement_request_ids"
+		) as Dictionary
 		var all_processed := not expected_client_ids.is_empty()
 		for peer_id in expected_client_ids:
 			if int(processed_requests.get(peer_id, 0)) != request_id:
@@ -2728,13 +2936,15 @@ func _prepare_host_clients_for_building_interaction(
 			expected_client_ids.append(peer_id)
 	if expected_client_ids.is_empty():
 		return false
-	var accepted_positions := mp_game.get(
-		"_accepted_player_state_positions"
-	) as Dictionary
-	var accepted_times := mp_game.get("_accepted_player_state_times") as Dictionary
 	var player_coordinator := (
 		mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
 	)
+	var accepted_positions := player_coordinator.get(
+		"_accepted_player_state_positions"
+	) as Dictionary
+	var accepted_times := player_coordinator.get(
+		"_accepted_player_state_times"
+	) as Dictionary
 	var authoritative_time := float(mp_game.call("_get_net_time"))
 	for peer_id in expected_client_ids:
 		var player_node := game.get_player_for_peer(peer_id) as Player
@@ -2809,9 +3019,10 @@ func _is_host_player_in_building_interaction_range(
 	player_node: Player,
 	building: PlantDefense
 ) -> bool:
+	var economy_coordinator := mp_game.get_node("TowerEconomyCoordinator")
 	if building is OakWarehouse:
 		return bool(
-			mp_game.call(
+			economy_coordinator.call(
 				"_is_authoritative_nearest_warehouse",
 				player_node,
 				building
@@ -2819,7 +3030,7 @@ func _is_host_player_in_building_interaction_range(
 		)
 	if building is ProductionBuilding:
 		return bool(
-			mp_game.call(
+			economy_coordinator.call(
 				"_is_authoritative_nearest_production_building",
 				player_node,
 				building
@@ -2835,9 +3046,10 @@ func _wait_for_host_warehouse_transactions(
 ) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
-		var results_by_peer := mp_game.get(
-			"_warehouse_transaction_results_by_peer"
-		) as Dictionary
+		var results_by_peer := _get_tower_economy_result_buckets(
+			mp_game,
+			&"_warehouse_transaction_result_cache"
+		)
 		var result_count := 0
 		for peer_results_variant in results_by_peer.values():
 			var peer_results := peer_results_variant as Dictionary
@@ -2849,9 +3061,10 @@ func _wait_for_host_warehouse_transactions(
 
 
 func _count_host_warehouse_transactions(mp_game: Node) -> int:
-	var results_by_peer := mp_game.get(
-		"_warehouse_transaction_results_by_peer"
-	) as Dictionary
+	var results_by_peer := _get_tower_economy_result_buckets(
+		mp_game,
+		&"_warehouse_transaction_result_cache"
+	)
 	var result_count := 0
 	for peer_results_variant in results_by_peer.values():
 		var peer_results := peer_results_variant as Dictionary
@@ -2866,9 +3079,10 @@ func _wait_for_host_production_results(
 ) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
-		var results_by_peer := mp_game.get(
-			"_production_command_results_by_peer"
-		) as Dictionary
+		var results_by_peer := _get_tower_economy_result_buckets(
+			mp_game,
+			&"_production_command_result_cache"
+		)
 		var result_count := 0
 		for peer_results_variant in results_by_peer.values():
 			var peer_results := peer_results_variant as Dictionary
@@ -2884,9 +3098,10 @@ func _count_host_production_result_reasons(
 	request_id: int
 ) -> Dictionary:
 	var counts: Dictionary = {}
-	var results_by_peer := mp_game.get(
-		"_production_command_results_by_peer"
-	) as Dictionary
+	var results_by_peer := _get_tower_economy_result_buckets(
+		mp_game,
+		&"_production_command_result_cache"
+	)
 	for peer_results_variant in results_by_peer.values():
 		var peer_results := peer_results_variant as Dictionary
 		for result_variant in peer_results.values():
@@ -2896,6 +3111,19 @@ func _count_host_production_result_reasons(
 			var reason := StringName(result.get("reason", &""))
 			counts[reason] = int(counts.get(reason, 0)) + 1
 	return counts
+
+
+func _get_tower_economy_result_buckets(
+	mp_game: Node,
+	cache_property: StringName
+) -> Dictionary:
+	var economy_coordinator := mp_game.get_node("TowerEconomyCoordinator")
+	var result_cache := (
+		economy_coordinator.get(cache_property) as PeerReplayResultCache
+	)
+	if result_cache == null:
+		return {}
+	return result_cache.results_by_peer
 
 
 func _wait_for_warehouse_request_settled(
@@ -3134,7 +3362,8 @@ func _submit_local_inventory_plant_request(
 	var slot_index := _find_peer_item_slot(run_state, local_peer_id, item)
 	if item == null or slot_index < 0:
 		return false
-	mp_game.call(
+	var tower_world_coordinator := mp_game.get_node("TowerWorldCoordinator")
+	tower_world_coordinator.call(
 		"_on_local_inventory_plant_placement_requested",
 		request_id,
 		plant_id,
@@ -3289,7 +3518,14 @@ func _wait_for_first_host_enemy_net_id(game: Variant, timeout_seconds: float) ->
 func _wait_for_game_wave_state(game: Variant, target_state: int, timeout_seconds: float) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
-		if game != null and is_instance_valid(game) and int(game.wave_state) == target_state:
+		var observed_state := -1
+		if game is TowerDefenseGame:
+			observed_state = int(
+				(game as TowerDefenseGame).campaign_coordinator.wave_state
+			)
+		elif game != null and is_instance_valid(game):
+			observed_state = int(game.wave_state)
+		if observed_state == target_state:
 			return true
 		await process_frame
 	return false
@@ -3513,6 +3749,7 @@ func _disable_probe_wave_flow(game: Variant) -> void:
 
 func _configure_probe_wave_flow(game: Variant) -> void:
 	_disable_probe_wave_flow(game)
+	var tower_game := game as TowerDefenseGame
 	var probe_waves := _create_probe_waves()
 	var flow_graph := FlowGraphConfig.new()
 	flow_graph.graph_name = "Probe Flow"
@@ -3520,9 +3757,9 @@ func _configure_probe_wave_flow(game: Variant) -> void:
 		flow_graph.steps.append(wave_config)
 	if not flow_graph.steps.is_empty():
 		flow_graph.start_step = flow_graph.steps[0]
-	if _runtime_uses_tower_defense(game):
+	if tower_game != null:
 		var no_bosses: Array[Resource] = []
-		(game as TowerDefenseGame).replace_campaign_runtime_state_for_fixture(
+		tower_game.replace_campaign_runtime_state_for_fixture(
 			flow_graph,
 			probe_waves,
 			no_bosses
@@ -3530,29 +3767,26 @@ func _configure_probe_wave_flow(game: Variant) -> void:
 	else:
 		game.waves = probe_waves
 		game.flow_graph = flow_graph
-	# The probe starts wave one directly, but still needs a non-zero ordinary
-	# intermission so clearing it can be observed before wave two begins. Keep
-	# this one-enemy transport fixture independent from formal player scaling;
-	# the progression smoke test covers exact 1/2/4/8-player totals.
-	if _runtime_uses_tower_defense(game):
-		var wave_progression := (
-			game.progression_config.duplicate(true)
-			as TowerDefenseProgressionConfig
-		)
-		wave_progression.wave_intermission_seconds = 30.0
-		wave_progression.new_day_preparation_seconds = 30.0
-		wave_progression.enemy_count_per_extra_player_ratio = 0.0
-		game.progression_config = wave_progression
+	# The probe starts wave one directly. Tower keeps the already-bound formal
+	# progression contract so every coordinator and multiplayer endpoint hashes
+	# the same config; its expected enemy total is derived from formal scaling.
+	if tower_game != null:
+		var tower_campaign := tower_game.campaign_coordinator
+		tower_campaign.current_wave_index = 0
+		tower_campaign.current_wave_total = 0
+		tower_campaign.current_wave_spawned = 0
+		tower_campaign.current_wave_defeated = 0
 	else:
 		game.pre_wave_duration = 30.0
-	game.current_wave_index = 0
-	game.current_wave_total = 0
-	game.current_wave_spawned = 0
-	game.current_wave_defeated = 0
+		game.current_wave_index = 0
+		game.current_wave_total = 0
+		game.current_wave_spawned = 0
+		game.current_wave_defeated = 0
 
 
 func _configure_probe_boss_flow(game: Variant) -> void:
 	_disable_probe_wave_flow(game)
+	var tower_game := game as TowerDefenseGame
 	probe_linglan_boss_entry = load(LINGLAN_BOSS_ENTRY_PATH) as BossConfig
 	if probe_linglan_boss_entry == null:
 		_fail("Boss probe could not load the Linglan flow entry.")
@@ -3563,35 +3797,32 @@ func _configure_probe_boss_flow(game: Variant) -> void:
 	flow_graph.start_step = probe_linglan_boss_entry
 	var flow_steps: Array[FlowStepConfig] = [probe_linglan_boss_entry]
 	flow_graph.steps = flow_steps
-	if _runtime_uses_tower_defense(game):
+	if tower_game != null:
 		var no_waves: Array[WaveConfig] = []
-		(game as TowerDefenseGame).replace_campaign_runtime_state_for_fixture(
+		tower_game.replace_campaign_runtime_state_for_fixture(
 			flow_graph,
 			no_waves,
 			boss_resources
 		)
-		var boss_progression := (
-			game.progression_config.duplicate(true)
-			as TowerDefenseProgressionConfig
-		)
-		boss_progression.initial_preparation_seconds = 0.0
-		boss_progression.wave_intermission_seconds = 0.0
-		boss_progression.new_day_preparation_seconds = 0.0
-		game.progression_config = boss_progression
+		var tower_campaign := tower_game.campaign_coordinator
+		tower_campaign.current_flow_step = null
+		tower_campaign.next_flow_step_after_rest = null
+		tower_campaign.current_wave_index = 0
+		tower_campaign.current_wave_total = 0
+		tower_campaign.current_wave_spawned = 0
+		tower_campaign.current_wave_defeated = 0
+		tower_game.boss_coordinator.linglan_boss_started = false
 	else:
 		game.bosses = boss_resources
 		game.flow_graph = flow_graph
 		game.pre_wave_duration = 0.0
-	game.current_flow_step = null
-	game.next_flow_step_after_rest = null
-	if _runtime_uses_tower_defense(game):
-		(game as TowerDefenseGame).boss_coordinator.linglan_boss_started = false
-	else:
+		game.current_flow_step = null
+		game.next_flow_step_after_rest = null
 		game.linglan_boss_started = false
-	game.current_wave_index = 0
-	game.current_wave_total = 0
-	game.current_wave_spawned = 0
-	game.current_wave_defeated = 0
+		game.current_wave_index = 0
+		game.current_wave_total = 0
+		game.current_wave_spawned = 0
+		game.current_wave_defeated = 0
 
 
 func _create_probe_waves() -> Array[WaveConfig]:
@@ -3604,7 +3835,7 @@ func _create_probe_waves() -> Array[WaveConfig]:
 		wave_config.step_id = StringName("probe_wave_%02d" % (wave_index + 1))
 		wave_config.wave_name = "Probe Wave %d" % (wave_index + 1)
 		wave_config.enemy_entries = [entry]
-		wave_config.spawn_interval = 60.0
+		wave_config.spawn_interval = 0.1
 		wave_config.spawn_count_per_tick = 1
 		wave_config.max_alive_enemies = 1
 		wave_config.post_clear_rest_duration = 30.0
@@ -3698,12 +3929,17 @@ func _spawn_host_probe_enemy(game: Variant) -> int:
 		else game.active_wave_spawn_points
 	)
 	if active_spawn_points.is_empty():
+		var probe_waves: Array = (
+			tower_game.campaign_coordinator.waves
+			if tower_game != null
+			else game.waves
+		)
 		var resolved := false
-		if not game.waves.is_empty():
+		if not probe_waves.is_empty():
 			resolved = (
-				tower_game.enemy_coordinator.resolve_spawn_points(game.waves[0])
+				tower_game.enemy_coordinator.resolve_spawn_points(probe_waves[0])
 				if tower_game != null
-				else bool(game.call("_resolve_wave_spawn_points", game.waves[0]))
+				else bool(game.call("_resolve_wave_spawn_points", probe_waves[0]))
 			)
 		if not resolved:
 			_fail("Host probe could not resolve an active wave spawn-point mask.")

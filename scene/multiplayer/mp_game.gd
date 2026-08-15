@@ -636,14 +636,20 @@ func _process(delta: float) -> void:
 
 
 func request_multiplayer_upgrade(stat_type: int) -> void:
+	if _is_tower_management_suspended():
+		return
 	transactions_coordinator.request_upgrade(stat_type)
 
 
 func request_multiplayer_inventory_item_use(slot_index: int) -> void:
+	if _is_tower_management_suspended():
+		return
 	transactions_coordinator.request_inventory_item_use(slot_index)
 
 
 func request_multiplayer_inventory_item_discard(slot_index: int) -> void:
+	if _is_tower_management_suspended():
+		return
 	transactions_coordinator.request_inventory_item_discard(slot_index)
 
 
@@ -651,6 +657,8 @@ func request_multiplayer_simple_crafting(
 	recipe_id: StringName,
 	ui_request_token: int
 ) -> void:
+	if _is_tower_management_suspended():
+		return
 	transactions_coordinator.request_simple_crafting(recipe_id, ui_request_token)
 
 
@@ -664,7 +672,7 @@ func begin_inventory_building_placement(
 ) -> bool:
 	if (
 		not _has_tower_mode()
-		or _is_tower_world_suspended_for_rogue_exploration()
+		or _is_tower_management_suspended()
 	):
 		return false
 	return tower_mode_adapter.begin_inventory_building_placement(
@@ -674,10 +682,14 @@ func begin_inventory_building_placement(
 
 
 func request_multiplayer_skill1_purchase() -> void:
+	if _is_tower_management_suspended():
+		return
 	transactions_coordinator.request_skill1_purchase()
 
 
 func _on_transaction_upgrade_request_to_host(stat_type: int) -> void:
+	if _is_tower_management_suspended():
+		return
 	_rpc_to_peer(_get_host_peer_id(), &"net_upgrade_selected", [stat_type])
 
 
@@ -685,6 +697,8 @@ func _on_transaction_inventory_item_use_request_to_host(
 	slot_index: int,
 	expected_inventory_revision: int
 ) -> void:
+	if _is_tower_management_suspended():
+		return
 	_rpc_to_peer(
 		_get_host_peer_id(),
 		&"net_inventory_item_use_requested",
@@ -696,6 +710,8 @@ func _on_transaction_inventory_item_discard_request_to_host(
 	slot_index: int,
 	expected_inventory_revision: int
 ) -> void:
+	if _is_tower_management_suspended():
+		return
 	_rpc_to_peer(
 		_get_host_peer_id(),
 		&"net_inventory_item_discard_requested",
@@ -708,6 +724,8 @@ func _on_transaction_simple_crafting_request_to_host(
 	recipe_id: String,
 	expected_inventory_revision: int
 ) -> void:
+	if _is_tower_management_suspended():
+		return
 	_rpc_to_peer(
 		_get_host_peer_id(),
 		&"net_simple_crafting_requested",
@@ -716,6 +734,8 @@ func _on_transaction_simple_crafting_request_to_host(
 
 
 func _on_transaction_skill1_purchase_request_to_host() -> void:
+	if _is_tower_management_suspended():
+		return
 	_rpc_to_peer(_get_host_peer_id(), &"net_skill1_purchase_requested")
 
 
@@ -865,7 +885,7 @@ func _on_tower_economy_rpc_to_host_requested(
 ) -> void:
 	if (
 		not net_manager.is_client()
-		or _is_tower_world_suspended_for_rogue_exploration()
+		or _is_tower_management_suspended()
 	):
 		return
 	_rpc_to_peer(_get_host_peer_id(), method_name, args)
@@ -918,7 +938,7 @@ func _on_merchant_transactions_rpc_to_host_requested(
 	method_name: StringName,
 	args: Array
 ) -> void:
-	if not net_manager.is_client():
+	if not net_manager.is_client() or _is_tower_management_suspended():
 		return
 	_rpc_to_peer(_get_host_peer_id(), method_name, args)
 
@@ -1119,6 +1139,8 @@ func uses_authoritative_luoxi_offers() -> bool:
 
 
 func request_luoxi_collectible_offer() -> void:
+	if _is_tower_management_suspended():
+		return
 	merchant_transactions_coordinator.request_luoxi_collectible_offer()
 
 
@@ -1127,6 +1149,8 @@ func request_luoxi_collectible_choice(
 	_legacy_config_path: String = "",
 	offer_revision: int = 0
 ) -> void:
+	if _is_tower_management_suspended():
+		return
 	merchant_transactions_coordinator.request_luoxi_collectible_choice(
 		choice_index,
 		offer_revision
@@ -1134,12 +1158,16 @@ func request_luoxi_collectible_choice(
 
 
 func request_luoxi_collectible_refresh(offer_revision: int = 0) -> void:
+	if _is_tower_management_suspended():
+		return
 	merchant_transactions_coordinator.request_luoxi_collectible_refresh(
 		offer_revision
 	)
 
 
 func request_luoxi_special_game_start() -> void:
+	if _is_tower_management_suspended():
+		return
 	merchant_transactions_coordinator.request_luoxi_special_game_start()
 
 
@@ -1151,6 +1179,8 @@ func request_luoxi_special_game_card_reveal(
 	session_revision: int,
 	card_index: int
 ) -> void:
+	if _is_tower_management_suspended():
+		return
 	merchant_transactions_coordinator.request_luoxi_special_game_card_reveal(
 		session_revision,
 		card_index
@@ -1158,6 +1188,8 @@ func request_luoxi_special_game_card_reveal(
 
 
 func request_luoxi_special_game_finish(session_revision: int) -> void:
+	if _is_tower_management_suspended():
+		return
 	merchant_transactions_coordinator.request_luoxi_special_game_finish(
 		session_revision
 	)
@@ -1198,11 +1230,16 @@ func broadcast_collectible_follow_visual_effect(
 
 
 func request_multiplayer_cheat_xirang() -> void:
+	if _is_tower_management_suspended():
+		return
 	merchant_transactions_coordinator.request_cheat_xirang()
 
 
 func request_debug_collectible(config_path: String) -> void:
-	if merchant_transactions_coordinator == null:
+	if (
+		merchant_transactions_coordinator == null
+		or _is_tower_management_suspended()
+	):
 		return
 	merchant_transactions_coordinator.request_debug_collectible(config_path)
 
@@ -1234,7 +1271,7 @@ func _on_tower_world_plant_placement_request_to_host(
 	if (
 		not _has_tower_mode()
 		or not net_manager.is_client()
-		or _is_tower_world_suspended_for_rogue_exploration()
+		or _is_tower_management_suspended()
 	):
 		return
 	_rpc_to_peer(
@@ -1255,7 +1292,7 @@ func _on_tower_world_inventory_plant_placement_request_to_host(
 	if (
 		not _has_tower_mode()
 		or not net_manager.is_client()
-		or _is_tower_world_suspended_for_rogue_exploration()
+		or _is_tower_management_suspended()
 	):
 		return
 	_rpc_to_peer(
@@ -1458,7 +1495,15 @@ func _is_tower_world_suspended_for_rogue_exploration() -> bool:
 	return (
 		not embedded_runtime
 		and _has_tower_mode()
-		and tower_mode_adapter.is_rogue_exploration_active()
+		and tower_mode_adapter.is_rogue_tower_world_suspended()
+	)
+
+
+func _is_tower_management_suspended() -> bool:
+	return (
+		not embedded_runtime
+		and _has_tower_mode()
+		and tower_mode_adapter.is_tower_management_suspended()
 	)
 
 
@@ -3507,6 +3552,7 @@ func _mark_disconnected_players_for_rogue_boundary_full_health() -> void:
 			_disconnected_player_reconnect_states[peer_id] as Dictionary
 		)
 		reconnect_state["rogue_boundary_full_health_pending"] = true
+		reconnect_state["tower_world_spawn_restore_pending"] = true
 		# 已跨过全员满血边界的断线玩家不再继承旧死亡倒计时；重连节点
 		# 创建后会按 RunState 当前上限产生一条新的权威健康 revision。
 		reconnect_state["revive_at"] = -1.0
@@ -4181,7 +4227,7 @@ func net_plant_placement_requested(
 ) -> void:
 	var sender_id := _get_rpc_sender_id()
 	if (
-		_is_tower_world_suspended_for_rogue_exploration()
+		_is_tower_management_suspended()
 		or not _has_tower_mode()
 		or not net_manager.is_host()
 		or game == null
@@ -4206,7 +4252,7 @@ func net_inventory_plant_placement_requested(
 ) -> void:
 	var sender_id := _get_rpc_sender_id()
 	if (
-		_is_tower_world_suspended_for_rogue_exploration()
+		_is_tower_management_suspended()
 		or not _has_tower_mode()
 		or not net_manager.is_host()
 		or game == null
@@ -4226,7 +4272,7 @@ func net_inventory_plant_placement_requested(
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_warehouse_command_requested(command: Dictionary) -> void:
 	var sender_id := _get_rpc_sender_id()
-	if _is_tower_world_suspended_for_rogue_exploration():
+	if _is_tower_management_suspended():
 		return
 	if (
 		not _has_tower_mode()
@@ -4245,7 +4291,7 @@ func net_warehouse_command_requested(command: Dictionary) -> void:
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_warehouse_snapshot_requested(warehouse_net_id: int) -> void:
 	var sender_id := _get_rpc_sender_id()
-	if _is_tower_world_suspended_for_rogue_exploration():
+	if _is_tower_management_suspended():
 		return
 	if (
 		not _has_tower_mode()
@@ -4263,7 +4309,7 @@ func net_warehouse_snapshot_requested(warehouse_net_id: int) -> void:
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_production_command_requested(command: Dictionary) -> void:
 	var sender_id := _get_rpc_sender_id()
-	if _is_tower_world_suspended_for_rogue_exploration():
+	if _is_tower_management_suspended():
 		return
 	if (
 		not _has_tower_mode()
@@ -4282,7 +4328,7 @@ func net_production_command_requested(command: Dictionary) -> void:
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_research_command_requested(command: Dictionary) -> void:
 	var sender_id := _get_rpc_sender_id()
-	if _is_tower_world_suspended_for_rogue_exploration():
+	if _is_tower_management_suspended():
 		return
 	if (
 		not _has_tower_mode()
@@ -4301,7 +4347,7 @@ func net_research_command_requested(command: Dictionary) -> void:
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_production_snapshot_requested(building_net_id: int) -> void:
 	var sender_id := _get_rpc_sender_id()
-	if _is_tower_world_suspended_for_rogue_exploration():
+	if _is_tower_management_suspended():
 		return
 	if (
 		not _has_tower_mode()
@@ -4864,7 +4910,9 @@ func net_game_victory() -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_upgrade_selected(stat_type: int) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_management_suspended():
+		return
+	var sender_id := _get_rpc_sender_id()
 	transactions_coordinator.handle_remote_upgrade_selection(sender_id, stat_type)
 
 
@@ -4873,7 +4921,9 @@ func net_inventory_item_use_requested(
 	slot_index: int,
 	expected_inventory_revision: int = -1
 ) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_management_suspended():
+		return
+	var sender_id := _get_rpc_sender_id()
 	transactions_coordinator.handle_remote_inventory_item_use_request(
 		sender_id,
 		slot_index,
@@ -4886,7 +4936,9 @@ func net_inventory_item_discard_requested(
 	slot_index: int,
 	expected_inventory_revision: int = -1
 ) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_management_suspended():
+		return
+	var sender_id := _get_rpc_sender_id()
 	transactions_coordinator.handle_remote_inventory_item_discard_request(
 		sender_id,
 		slot_index,
@@ -4900,7 +4952,9 @@ func net_simple_crafting_requested(
 	recipe_id: String,
 	expected_inventory_revision: int
 ) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_management_suspended():
+		return
+	var sender_id := _get_rpc_sender_id()
 	transactions_coordinator.handle_remote_simple_crafting_request(
 		sender_id,
 		request_id,
@@ -4911,7 +4965,9 @@ func net_simple_crafting_requested(
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_skill1_purchase_requested() -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	if _is_tower_management_suspended():
+		return
+	var sender_id := _get_rpc_sender_id()
 	transactions_coordinator.handle_remote_skill1_purchase_request(sender_id)
 
 
@@ -4986,9 +5042,10 @@ func net_xiaocong_collectible_choice_requested(choice_index: int) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_luoxi_collectible_offer_requested() -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
 	if (
 		not net_manager.is_host()
+		or _is_tower_management_suspended()
 		or sender_id <= 0
 		or not transactions_coordinator.consume_remote_transaction_admission(
 			sender_id
@@ -5005,9 +5062,10 @@ func net_luoxi_collectible_choice_requested(
 	choice_index: int,
 	offer_revision: int = 0
 ) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
 	if (
 		not net_manager.is_host()
+		or _is_tower_management_suspended()
 		or sender_id <= 0
 		or not transactions_coordinator.consume_remote_transaction_admission(
 			sender_id
@@ -5023,9 +5081,10 @@ func net_luoxi_collectible_choice_requested(
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_luoxi_collectible_refresh_requested(offer_revision: int = 0) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
 	if (
 		not net_manager.is_host()
+		or _is_tower_management_suspended()
 		or sender_id <= 0
 		or not transactions_coordinator.consume_remote_transaction_admission(
 			sender_id
@@ -5040,9 +5099,10 @@ func net_luoxi_collectible_refresh_requested(offer_revision: int = 0) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_luoxi_special_game_start_requested() -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
 	if (
 		not net_manager.is_host()
+		or _is_tower_management_suspended()
 		or sender_id <= 0
 		or not transactions_coordinator.consume_remote_transaction_admission(
 			sender_id
@@ -5059,9 +5119,10 @@ func net_luoxi_special_game_card_reveal_requested(
 	session_revision: int,
 	card_index: int
 ) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
 	if (
 		not net_manager.is_host()
+		or _is_tower_management_suspended()
 		or sender_id <= 0
 		or not transactions_coordinator.consume_remote_transaction_admission(
 			sender_id
@@ -5077,9 +5138,10 @@ func net_luoxi_special_game_card_reveal_requested(
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_luoxi_special_game_finish_requested(session_revision: int) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
 	if (
 		not net_manager.is_host()
+		or _is_tower_management_suspended()
 		or sender_id <= 0
 		or not transactions_coordinator.consume_remote_transaction_admission(
 			sender_id
@@ -5094,10 +5156,11 @@ func net_luoxi_special_game_finish_requested(session_revision: int) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_cheat_xirang_requested() -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
 	if (
 		not net_manager.is_host()
 		or not OS.is_debug_build()
+		or _is_tower_management_suspended()
 		or sender_id <= 0
 		or not transactions_coordinator.consume_remote_transaction_admission(
 			sender_id
@@ -5111,9 +5174,10 @@ func net_cheat_xirang_requested() -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_debug_collectible_requested(config_path: String) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
 	if (
 		not net_manager.is_host()
+		or _is_tower_management_suspended()
 		or sender_id <= 0
 		or not transactions_coordinator.consume_remote_transaction_admission(
 			sender_id
@@ -5453,12 +5517,17 @@ func _capture_disconnected_player_reconnect_state(peer_id: int) -> void:
 			break
 	var spawn_slot_index := 0
 	var wave_death_count := 0
+	var tower_world_spawn_restore_pending := false
 	if _has_tower_mode():
 		spawn_slot_index = (
 			tower_mode_adapter.get_reconnect_spawn_slot_index(peer_id)
 		)
 		wave_death_count = (
 			tower_mode_adapter.get_reconnect_wave_death_count(peer_id)
+		)
+		tower_world_spawn_restore_pending = (
+			tower_mode_adapter.is_rogue_tower_world_suspended()
+			or tower_mode_adapter.is_fate_interlude_active()
 		)
 	var owned_plant_net_ids: Array[int] = []
 	if _has_tower_mode():
@@ -5470,6 +5539,9 @@ func _capture_disconnected_player_reconnect_state(peer_id: int) -> void:
 		"spawn_slot_index": spawn_slot_index,
 		"wave_death_count": wave_death_count,
 		"owned_plant_net_ids": owned_plant_net_ids,
+		"tower_world_spawn_restore_pending": (
+			tower_world_spawn_restore_pending
+		),
 	}
 	reconnect_state.merge(
 		merchant_transactions_coordinator.capture_reconnect_state(peer_id),
@@ -5612,6 +5684,38 @@ func _on_net_player_reconnected(
 		var plant := _get_tower_plant(int(plant_net_id_variant))
 		if plant != null and is_instance_valid(plant):
 			plant.owner_player = player_node
+	var fate_presentation_lease_synchronized := false
+	if tower_mode_adapter != null:
+		fate_presentation_lease_synchronized = (
+			tower_mode_adapter.synchronize_reconnected_player_presentation_lease(
+				new_peer_id
+			)
+		)
+	if (
+		net_manager.is_host()
+		and tower_mode_adapter != null
+		and not tower_mode_adapter.is_fate_interlude_active()
+		and not fate_presentation_lease_synchronized
+		and bool(
+			reconnect_state.get("tower_world_spawn_restore_pending", false)
+		)
+	):
+		var tower_spawn_position: Variant = (
+			tower_mode_adapter.get_fixed_multiplayer_respawn_position(new_peer_id)
+		)
+		if not tower_spawn_position is Vector2:
+			push_error(
+				"MpGame: 无法解析跨幕间重连玩家 %d 的塔防出生点。"
+				% new_peer_id
+			)
+		elif not player_coordinator.handle_authoritative_player_teleport_request(
+			new_peer_id,
+			tower_spawn_position as Vector2
+		):
+			push_error(
+				"MpGame: 无法将跨幕间重连玩家 %d 权威传送回塔防出生点。"
+				% new_peer_id
+			)
 	_disconnected_player_reconnect_states.erase(old_peer_id)
 	if tower_mode_adapter != null:
 		var route_migrated := false

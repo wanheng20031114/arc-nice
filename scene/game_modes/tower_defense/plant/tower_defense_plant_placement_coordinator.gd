@@ -245,6 +245,13 @@ func notify_exclusive_modal_opened() -> void:
 	refresh_interaction_state()
 
 
+func close_outer_modals_for_mode_transfer() -> void:
+	_settings_panel.close()
+	_profile_panel.close()
+	_debug_collectible_window.close()
+	_plant_runtime_coordinator.close_economy_modals_for_mode_transfer()
+
+
 func has_exclusive_modal_open() -> bool:
 	return (
 		(_settings_panel != null and _settings_panel.is_open())

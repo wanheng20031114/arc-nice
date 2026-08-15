@@ -114,10 +114,25 @@ class RogueFlowGateAdapterStub:
 	extends TowerDefenseMultiplayerModeAdapter
 
 	var exploration_active := false
+	var presentation_pending := false
+	var fate_interlude_active := false
+	var terminal_state := false
 
 
 	func is_rogue_exploration_active() -> bool:
 		return exploration_active
+
+
+	func is_rogue_tower_world_suspended() -> bool:
+		return exploration_active or presentation_pending
+
+
+	func is_fate_interlude_active() -> bool:
+		return fate_interlude_active
+
+
+	func is_terminal_combat_state() -> bool:
+		return terminal_state
 
 
 class TowerGateSessionProbe:
@@ -128,6 +143,20 @@ class TowerGateSessionProbe:
 
 	func update_transport(_delta: float) -> void:
 		update_calls += 1
+
+
+class RogueFlowWorldProbe:
+	extends MP_WORLD_FLOW_SCRIPT
+
+	var received_states: Array[int] = []
+
+
+	func receive_flow_state(
+		_step_id: StringName,
+		state: int,
+		_countdown_seconds: int
+	) -> void:
+		received_states.append(state)
 
 
 class TowerGatePlayerProbe:
@@ -235,6 +264,67 @@ class TowerGateTransactionsProbe:
 	extends MpTransactionsCoordinator
 
 	var admission_calls := 0
+	var local_request_calls := 0
+	var remote_request_calls := 0
+
+
+	func request_upgrade(_stat_type: int) -> void:
+		local_request_calls += 1
+
+
+	func request_inventory_item_use(_slot_index: int) -> void:
+		local_request_calls += 1
+
+
+	func request_inventory_item_discard(_slot_index: int) -> void:
+		local_request_calls += 1
+
+
+	func request_simple_crafting(
+		_recipe_id: StringName,
+		_ui_request_token: int
+	) -> void:
+		local_request_calls += 1
+
+
+	func request_skill1_purchase() -> void:
+		local_request_calls += 1
+
+
+	func handle_remote_upgrade_selection(
+		_sender_id: int,
+		_stat_type: int
+	) -> void:
+		remote_request_calls += 1
+
+
+	func handle_remote_inventory_item_use_request(
+		_sender_id: int,
+		_slot_index: int,
+		_expected_inventory_revision: int
+	) -> void:
+		remote_request_calls += 1
+
+
+	func handle_remote_inventory_item_discard_request(
+		_sender_id: int,
+		_slot_index: int,
+		_expected_inventory_revision: int
+	) -> void:
+		remote_request_calls += 1
+
+
+	func handle_remote_simple_crafting_request(
+		_sender_id: int,
+		_request_id: int,
+		_recipe_id: String,
+		_expected_inventory_revision: int
+	) -> void:
+		remote_request_calls += 1
+
+
+	func handle_remote_skill1_purchase_request(_sender_id: int) -> void:
+		remote_request_calls += 1
 
 
 	func consume_remote_transaction_admission(
@@ -245,11 +335,91 @@ class TowerGateTransactionsProbe:
 		return true
 
 
+class TowerGateMerchantProbe:
+	extends MpMerchantTransactionsCoordinator
+
+	var local_request_calls := 0
+	var remote_request_calls := 0
+
+
+	func request_luoxi_collectible_offer() -> void:
+		local_request_calls += 1
+
+
+	func request_luoxi_collectible_choice(
+		_choice_index: int,
+		_offer_revision: int = 0
+	) -> void:
+		local_request_calls += 1
+
+
+	func request_luoxi_collectible_refresh(_offer_revision: int = 0) -> void:
+		local_request_calls += 1
+
+
+	func request_luoxi_special_game_start() -> void:
+		local_request_calls += 1
+
+
+	func request_luoxi_special_game_card_reveal(
+		_session_revision: int,
+		_card_index: int
+	) -> void:
+		local_request_calls += 1
+
+
+	func request_luoxi_special_game_finish(_session_revision: int) -> void:
+		local_request_calls += 1
+
+
+	func handle_remote_luoxi_collectible_offer_requested(
+		_peer_id: int
+	) -> void:
+		remote_request_calls += 1
+
+
+	func handle_remote_luoxi_collectible_choice_requested(
+		_peer_id: int,
+		_choice_index: int,
+		_offer_revision: int
+	) -> void:
+		remote_request_calls += 1
+
+
+	func handle_remote_luoxi_collectible_refresh_requested(
+		_peer_id: int,
+		_offer_revision: int
+	) -> void:
+		remote_request_calls += 1
+
+
+	func handle_remote_luoxi_special_game_start_requested(
+		_peer_id: int
+	) -> void:
+		remote_request_calls += 1
+
+
+	func handle_remote_luoxi_special_game_card_reveal_requested(
+		_peer_id: int,
+		_session_revision: int,
+		_card_index: int
+	) -> void:
+		remote_request_calls += 1
+
+
+	func handle_remote_luoxi_special_game_finish_requested(
+		_peer_id: int,
+		_session_revision: int
+	) -> void:
+		remote_request_calls += 1
+
+
 class TowerGateMpGameProbe:
 	extends MP_GAME_SCRIPT
 
 	var host_physics_tick_calls := 0
 	var interpolation_calls := 0
+	var outbound_rpc_calls := 0
 
 
 	func _ready() -> void:
@@ -282,6 +452,16 @@ class TowerGateMpGameProbe:
 
 	func _client_interpolate_entities() -> void:
 		interpolation_calls += 1
+
+
+	func _rpc_to_peer(
+		_peer_id: int,
+		_method_name: StringName,
+		_args: Array = [],
+		_record_outbound: bool = true
+	) -> bool:
+		outbound_rpc_calls += 1
+		return true
 
 
 class ReconnectWrapperStub:
@@ -440,7 +620,7 @@ func _test_tower_rogue_cross_channel_flow_gate() -> void:
 	var game := MP_GAME_SCRIPT.new()
 	var adapter := RogueFlowGateAdapterStub.new()
 	var bridge := ReconnectWrapperStub.new()
-	var world_flow := MP_WORLD_FLOW_SCRIPT.new()
+	var world_flow := RogueFlowWorldProbe.new()
 	bridge.set("_embedded_campaign_mode", true)
 	bridge.set("_embedded_exploration_active", false)
 	game.set("tower_mode_adapter", adapter)
@@ -466,22 +646,46 @@ func _test_tower_rogue_cross_channel_flow_gate() -> void:
 		(game.get("_pending_tower_rogue_flow_state") as Dictionary).is_empty(),
 		"active 会话快照落地后必须提交等待中的探索流程。"
 	)
+	_expect(
+		world_flow.received_states == [CombatFlowState.State.ROGUE_EXPLORATION],
+		"重复刷新边界前，探索流程必须且只能提交一次。"
+	)
 	game.call(
 		"_receive_or_defer_tower_flow_state",
-		"day_4_prepare",
-		CombatFlowState.State.INTERMISSION,
-		60
+		"wave_05",
+		CombatFlowState.State.FATE_INTERLUDE,
+		0
 	)
 	_expect(
-		not (game.get("_pending_tower_rogue_flow_state") as Dictionary).is_empty(),
-		"CH5 返回流程先到时必须等待 CH0 active=false，不能提前解冻塔防。"
+		int((game.get("_pending_tower_rogue_flow_state") as Dictionary).get(
+			"state",
+			-1
+		)) == CombatFlowState.State.FATE_INTERLUDE,
+		"CH5 命运流程先到时必须等待 CH0 active=false，不能跳过探索退出边界。"
+	)
+	game.call("_flush_pending_tower_rogue_flow_state", true)
+	_expect(
+		int((game.get("_pending_tower_rogue_flow_state") as Dictionary).get(
+			"state",
+			-1
+		)) == CombatFlowState.State.FATE_INTERLUDE
+		and world_flow.received_states.size() == 1,
+		"重复 active=true 快照不得提前提交或丢弃等待中的 Fate 流程。"
 	)
 	adapter.exploration_active = false
 	bridge.set("_embedded_exploration_active", false)
 	game.call("_flush_pending_tower_rogue_flow_state", false)
 	_expect(
 		(game.get("_pending_tower_rogue_flow_state") as Dictionary).is_empty(),
-		"active=false 会话快照落地后必须提交等待中的塔防返回流程。"
+		"active=false 会话快照落地后必须提交等待中的命运流程。"
+	)
+	game.call("_flush_pending_tower_rogue_flow_state", false)
+	_expect(
+		world_flow.received_states == [
+			CombatFlowState.State.ROGUE_EXPLORATION,
+			CombatFlowState.State.FATE_INTERLUDE,
+		],
+		"重复 active=false 快照不得重复提交 Fate 流程。"
 	)
 	game.free()
 	adapter.free()
@@ -498,6 +702,7 @@ func _test_tower_world_suspension_gate() -> void:
 	var tower_world := TowerGateWorldProbe.new()
 	var economy := TowerGateEconomyProbe.new()
 	var transactions := TowerGateTransactionsProbe.new()
+	var merchants := TowerGateMerchantProbe.new()
 	var runtime := WarehouseRuntimeStub.new()
 	manager.host_role = true
 	adapter.exploration_active = true
@@ -508,11 +713,14 @@ func _test_tower_world_suspension_gate() -> void:
 	game.set("tower_world_coordinator", tower_world)
 	game.set("tower_economy_coordinator", economy)
 	game.set("transactions_coordinator", transactions)
+	game.set("merchant_transactions_coordinator", merchants)
 	game.set("game", runtime)
 
 	game.call("_physics_process", 0.016)
 	game.call("_process", 0.016)
 	_dispatch_tower_gate_probe_requests(game, 1)
+	_dispatch_tower_local_transaction_requests(game, 1)
+	_dispatch_tower_host_transaction_requests(game, 1)
 	_expect(
 		game.host_physics_tick_calls == 0
 		and game.interpolation_calls == 0
@@ -524,30 +732,126 @@ func _test_tower_world_suspension_gate() -> void:
 		and players.dash_calls == 0
 		and tower_world.placement_calls == 0
 		and economy.request_calls == 0
-		and transactions.admission_calls == 0,
-		"探索激活时玩家状态、冲刺、建造和塔防经济请求必须零下游调用。"
+		and transactions.admission_calls == 0
+		and transactions.local_request_calls == 0
+		and transactions.remote_request_calls == 0
+		and merchants.local_request_calls == 0
+		and merchants.remote_request_calls == 0,
+		"探索激活时玩家、塔防经济及通用 RunState 管理请求必须零下游调用。"
 	)
 
 	adapter.exploration_active = false
+	adapter.presentation_pending = true
 	game.call("_physics_process", 0.016)
 	game.call("_process", 0.016)
 	_dispatch_tower_gate_probe_requests(game, 10)
+	_dispatch_tower_local_transaction_requests(game, 10)
+	_dispatch_tower_host_transaction_requests(game, 10)
+	_expect(
+		game.host_physics_tick_calls == 0
+		and game.interpolation_calls == 0
+		and session.update_calls == 2
+		and players.state_calls == 0
+		and tower_world.placement_calls == 0
+		and transactions.local_request_calls == 0
+		and transactions.remote_request_calls == 0
+		and merchants.local_request_calls == 0
+		and merchants.remote_request_calls == 0,
+		"Rogue 最后一帧等待 Fate 遮罩时必须继续冻结全部管理请求入口。"
+	)
+
+	adapter.presentation_pending = false
+	adapter.fate_interlude_active = true
+	game.call("_physics_process", 0.016)
+	game.call("_process", 0.016)
+	_dispatch_tower_gate_probe_requests(game, 20)
+	_dispatch_tower_local_transaction_requests(game, 20)
+	_dispatch_tower_host_transaction_requests(game, 20)
 	_expect(
 		game.host_physics_tick_calls == 1
 		and game.interpolation_calls == 1
-		and session.update_calls == 2,
-		"探索退出后外层塔防物理帧和插值必须恢复。"
+		and session.update_calls == 3,
+		"Fate 黑屋必须恢复外层玩家物理帧和插值，并继续会话保活。"
 	)
 	_expect(
 		players.state_calls == 1
 		and players.dash_calls == 1
+		and tower_world.placement_calls == 0
+		and economy.request_calls == 0
+		and transactions.admission_calls == 0
+		and transactions.local_request_calls == 0
+		and transactions.remote_request_calls == 0
+		and merchants.local_request_calls == 0
+		and merchants.remote_request_calls == 0,
+		"Fate 黑屋只能恢复玩家 transport，全部 Tower/RunState 管理请求必须拒绝。"
+	)
+	manager.host_role = false
+	_dispatch_tower_client_management_requests(game, 20)
+	_dispatch_tower_client_transaction_requests(game, 20)
+	_expect(
+		game.outbound_rpc_calls == 0,
+		"Fate 黑屋的客户端发送端不得发出任何 Tower/RunState 管理 RPC。"
+	)
+	manager.host_role = true
+
+	adapter.fate_interlude_active = false
+	game.call("_physics_process", 0.016)
+	game.call("_process", 0.016)
+	_dispatch_tower_gate_probe_requests(game, 30)
+	_expect(
+		game.host_physics_tick_calls == 2
+		and game.interpolation_calls == 2
+		and session.update_calls == 4,
+		"Fate 结束后外层塔防物理帧、插值和会话保活必须保持运行。"
+	)
+	_expect(
+		players.state_calls == 2
+		and players.dash_calls == 2
 		and tower_world.placement_calls == 2
 		and economy.request_calls == 5
 		and transactions.admission_calls == 3,
-		"探索退出后同一批玩家、建造和塔防经济入口必须恢复下游分发。"
+		"Fate 结束后玩家、建造和塔防经济入口必须恢复下游分发。"
+	)
+	manager.host_role = false
+	_dispatch_tower_client_management_requests(game, 30)
+	_dispatch_tower_client_transaction_requests(game, 30)
+	_expect(
+		game.outbound_rpc_calls == 9,
+		"Fate 结束后客户端塔防、通用事务与商人 RPC 发送端必须恢复。"
+	)
+	manager.host_role = true
+	_dispatch_tower_local_transaction_requests(game, 30)
+	_dispatch_tower_host_transaction_requests(game, 30)
+	_expect(
+		transactions.local_request_calls == 5
+		and transactions.remote_request_calls == 5
+		and merchants.local_request_calls == 6
+		and merchants.remote_request_calls == 6
+		and transactions.admission_calls == 9,
+		"正常塔防阶段必须恢复 Host 本地与远端通用事务、洛曦请求分发。"
+	)
+
+	adapter.terminal_state = true
+	_dispatch_tower_gate_probe_requests(game, 40)
+	_dispatch_tower_local_transaction_requests(game, 40)
+	_dispatch_tower_host_transaction_requests(game, 40)
+	manager.host_role = false
+	_dispatch_tower_client_management_requests(game, 40)
+	_dispatch_tower_client_transaction_requests(game, 40)
+	_expect(
+		tower_world.placement_calls == 2
+		and economy.request_calls == 5
+		and transactions.local_request_calls == 5
+		and transactions.remote_request_calls == 5
+		and merchants.local_request_calls == 6
+		and merchants.remote_request_calls == 6
+		and transactions.admission_calls == 9
+		and game.outbound_rpc_calls == 9,
+		"胜利/失败终局必须拒绝迟到的塔防、事务及商人管理请求。"
 	)
 
 	runtime.free()
+	merchants.free()
 	transactions.free()
 	economy.free()
 	tower_world.free()
@@ -600,6 +904,91 @@ func _dispatch_tower_gate_probe_requests(
 	game.call("net_production_command_requested", {"request_id": request_id + 1})
 	game.call("net_research_command_requested", {"request_id": request_id + 2})
 	game.call("net_production_snapshot_requested", 102)
+
+
+func _dispatch_tower_client_management_requests(
+	game: TowerGateMpGameProbe,
+	request_id: int
+) -> void:
+	game.call(
+		"_on_tower_world_plant_placement_request_to_host",
+		request_id,
+		"pea",
+		Vector2i(2, 3)
+	)
+	game.call(
+		"_on_tower_world_inventory_plant_placement_request_to_host",
+		request_id + 1,
+		"pea",
+		Vector2i(3, 4),
+		0,
+		1,
+		"res://test.tres"
+	)
+	game.call(
+		"_on_tower_economy_rpc_to_host_requested",
+		&"net_production_command_requested",
+		[{"request_id": request_id + 2}]
+	)
+
+
+func _dispatch_tower_local_transaction_requests(
+	game: TowerGateMpGameProbe,
+	request_id: int
+) -> void:
+	game.request_multiplayer_upgrade(0)
+	game.request_multiplayer_inventory_item_use(0)
+	game.request_multiplayer_inventory_item_discard(0)
+	game.request_multiplayer_simple_crafting(&"probe", request_id)
+	game.request_multiplayer_skill1_purchase()
+	game.request_luoxi_collectible_offer()
+	game.request_luoxi_collectible_choice(0, "", request_id)
+	game.request_luoxi_collectible_refresh(request_id)
+	game.request_luoxi_special_game_start()
+	game.request_luoxi_special_game_card_reveal(request_id, 0)
+	game.request_luoxi_special_game_finish(request_id)
+
+
+func _dispatch_tower_host_transaction_requests(
+	game: TowerGateMpGameProbe,
+	request_id: int
+) -> void:
+	game.call("net_upgrade_selected", 0)
+	game.call("net_inventory_item_use_requested", 0, request_id)
+	game.call("net_inventory_item_discard_requested", 0, request_id)
+	game.call("net_simple_crafting_requested", request_id, "probe", request_id)
+	game.call("net_skill1_purchase_requested")
+	game.call("net_luoxi_collectible_offer_requested")
+	game.call("net_luoxi_collectible_choice_requested", 0, request_id)
+	game.call("net_luoxi_collectible_refresh_requested", request_id)
+	game.call("net_luoxi_special_game_start_requested")
+	game.call("net_luoxi_special_game_card_reveal_requested", request_id, 0)
+	game.call("net_luoxi_special_game_finish_requested", request_id)
+
+
+func _dispatch_tower_client_transaction_requests(
+	game: TowerGateMpGameProbe,
+	request_id: int
+) -> void:
+	game.call("_on_transaction_upgrade_request_to_host", 0)
+	game.call("_on_transaction_inventory_item_use_request_to_host", 0, request_id)
+	game.call(
+		"_on_transaction_inventory_item_discard_request_to_host",
+		0,
+		request_id
+	)
+	game.call(
+		"_on_transaction_simple_crafting_request_to_host",
+		request_id,
+		"probe",
+		request_id
+	)
+	game.call("_on_transaction_skill1_purchase_request_to_host")
+	game.call(
+		"_on_merchant_transactions_rpc_to_host_requested",
+		&"net_luoxi_collectible_offer_requested",
+		[]
+	)
 
 
 func _test_mode_and_loading_contract() -> void:

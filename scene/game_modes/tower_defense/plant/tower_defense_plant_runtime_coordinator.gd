@@ -231,6 +231,12 @@ func configure_mode_services(
 	_refresh_vegetation_spread_speed()
 
 
+func close_economy_modals_for_mode_transfer() -> void:
+	_oak_warehouse_panel.close()
+	_production_building_panel.close()
+	_research_center_panel.close()
+
+
 func configure_vegetation(placement_rect: Rect2i) -> bool:
 	authored_terrain_baseline.clear()
 	multiplayer_terrain_overrides.clear()

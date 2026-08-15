@@ -230,7 +230,11 @@ func _test_tower_defense_client_mirror(run_state: RunStateStore) -> void:
 	run_state.party_status_ledger_changed.connect(signal_callback)
 	var status_revision_before := run_state.get_party_status_ledger_revision()
 	var remote_revision := game.base_health_revision + 1
-	game.apply_remote_base_health(74, 100, remote_revision)
+	game.tower_multiplayer_mode_adapter.apply_remote_base_health(
+		74,
+		100,
+		remote_revision
+	)
 	_expect(
 		game.current_base_health == 74
 		and run_state.get_party_core_health() == 74
@@ -239,6 +243,68 @@ func _test_tower_defense_client_mirror(run_state: RunStateStore) -> void:
 		and int(observed_signals[0]) == 0,
 		"客户端核心网络快照必须静默镜像到账本，禁止形成信号回写环。"
 	)
+	var rogue := game.get_rogue_exploration_coordinator()
+	_expect(rogue != null, "客户端账本测试必须绑定 Rogue 探索协调器。")
+	if rogue != null:
+		_expect(
+			run_state.set_party_core_health(5, 5),
+			"跨信道测试必须建立 Rogue 核心账本。"
+		)
+		var rogue_ledger_revision := (
+			run_state.get_party_status_ledger_revision()
+		)
+		rogue._active = true
+		game.tower_multiplayer_mode_adapter.apply_remote_base_health(
+			76,
+			100,
+			game.base_health_revision + 1
+		)
+		_expect(
+			game.current_base_health == 76
+			and game.maximum_base_health == 100
+			and run_state.get_party_core_health() == 5
+			and run_state.get_party_core_maximum_health() == 5
+			and run_state.get_party_status_ledger_revision()
+			== rogue_ledger_revision,
+			"Rogue active 时乱序基地快照只能更新塔防镜像，不得抢写 Rogue 状态账本。"
+		)
+		rogue._active = false
+		rogue._saved_tower_core_current = 76
+		rogue._saved_tower_core_maximum = 100
+		rogue.call(&"_begin_pending_presentation_exit")
+		game.tower_multiplayer_mode_adapter.apply_remote_base_health(
+			76,
+			100,
+			game.base_health_revision + 1
+		)
+		_expect(
+			run_state.get_party_core_health() == 5
+			and run_state.get_party_core_maximum_health() == 5
+			and run_state.get_party_status_ledger_revision()
+			== rogue_ledger_revision,
+			"Rogue pending 退出遮罩期间的基地快照不得污染 Rogue 状态账本。"
+		)
+		_expect(
+			rogue.complete_pending_presentation_exit()
+			and run_state.get_party_core_health() == 76
+			and run_state.get_party_core_maximum_health() == 100
+			and run_state.get_party_status_ledger_revision()
+			== rogue_ledger_revision + 1,
+			"消费 pending 退出必须只用保存的 Tower 核心恢复一次状态账本。"
+		)
+		var restored_revision := run_state.get_party_status_ledger_revision()
+		game.tower_multiplayer_mode_adapter.apply_remote_base_health(
+			76,
+			100,
+			game.base_health_revision + 1
+		)
+		_expect(
+			run_state.get_party_core_health() == 76
+			and run_state.get_party_core_maximum_health() == 100
+			and run_state.get_party_status_ledger_revision()
+			== restored_revision,
+			"Rogue 退出后的重复塔防基地快照不得额外推进状态账本 revision。"
+		)
 	run_state.party_status_ledger_changed.disconnect(signal_callback)
 	game.queue_free()
 	await process_frame

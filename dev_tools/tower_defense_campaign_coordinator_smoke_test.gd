@@ -115,6 +115,20 @@ func _run() -> void:
 		"客户端连续倒计时必须保持第4日白昼首领准备语义，不能回写第12波。"
 	)
 	game.state_timer.stop()
+	campaign.resume_flow_after_fate_interlude(&"boss_01_linglan")
+	_expect(
+		campaign.wave_state == CombatFlowState.State.INTERMISSION
+		and campaign.current_flow_step == boss_step
+		and campaign.next_flow_step_after_rest == boss_step
+		and campaign.countdown_seconds == 60
+		and not game.state_timer.is_stopped()
+		and game.wave_hud.wave_title_label.text == "首领战准备",
+		(
+			"第三次 Fate 完成后必须进入 60 秒第4日首领准备，"
+			+ "不能回落到普通波间休整。"
+		)
+	)
+	game.state_timer.stop()
 
 	var entered_results: Array[CombatFlowState.State] = []
 	campaign.result_entered.connect(
@@ -126,13 +140,14 @@ func _run() -> void:
 	campaign.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	campaign.terminal_wave_enters_fate_interlude = false
 	campaign.complete_current_step()
+	campaign.enter_victory()
 	_expect(
 		campaign.wave_state == CombatFlowState.State.VICTORY,
 		"无后继流程节点必须由 Campaign 进入胜利。"
 	)
 	_expect(
 		entered_results == [CombatFlowState.State.VICTORY],
-		"Campaign 胜利结果信号必须且只能发出一次。"
+		"Campaign 胜利入口必须幂等，结果信号只能发出一次。"
 	)
 
 	current_scene = null

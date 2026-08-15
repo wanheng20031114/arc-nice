@@ -242,6 +242,375 @@ func _test_runtime_binding_and_behavior() -> void:
 		"单人离开 Fate 房间必须恢复 Roster 出生位置。"
 	)
 
+	var interrupted_next_step := game.campaign_coordinator.get_flow_step_by_id(
+		&"wave_05"
+	)
+	game.campaign_coordinator.wave_state = CombatFlowState.State.INTERMISSION
+	game.settings_panel.open()
+	game.player_profile_panel.open()
+	game.debug_collectible_window.open()
+	game.luoxi_merchant.choice_visible = true
+	game.luoxi_merchant.choice_overlay.show_choices([])
+	game.luoxi_merchant.special_game_overlay.show_game(2)
+	game.luoxi_special_game_coordinator.sessions_by_peer[0] = (
+		LuoxiSpecialGameSession.new()
+	)
+	_expect(
+		game.settings_panel.is_open()
+		and game.player_profile_panel.is_open()
+		and game.debug_collectible_window.is_open()
+		and game.luoxi_merchant.choice_overlay.is_open()
+		and game.luoxi_merchant.special_game_overlay.is_open(),
+		"Fate 转场测试前必须先打开 Tower/Luoxi modal。"
+	)
+	flow.enter_interlude(interrupted_next_step)
+	_expect(
+		not game.settings_panel.is_open()
+		and not game.player_profile_panel.is_open()
+		and not game.debug_collectible_window.is_open()
+		and not game.luoxi_merchant.choice_overlay.is_open()
+		and not game.luoxi_merchant.special_game_overlay.is_open()
+		and game.luoxi_special_game_coordinator.sessions_by_peer.is_empty(),
+		"Fate 在取得 freeze lease 前必须关闭旧 modal 并取消洛希 session。"
+	)
+	for _host_reveal_frame in range(180):
+		if (
+			game.xiaocong_fate_interlude.is_active
+			and game.xiaocong_fate_interlude.scene_transition_progress < 0.95
+		):
+			break
+		await process_frame
+	_expect(
+		game.xiaocong_fate_interlude.is_active
+		and flow.interlude_systems_frozen
+		and game.player.global_position
+		== game.xiaocong_fate_interlude.get_player_spawn_position(0),
+		"Host Fate 揭幕竞态测试未进入房间表现阶段。"
+	)
+	game.campaign_coordinator.wave_state = CombatFlowState.State.VICTORY
+	for _host_abort_frame in range(180):
+		if (
+			not game.xiaocong_fate_interlude.is_active
+			and not flow.interlude_systems_frozen
+			and game.player.global_position
+			== roster.get_world_spawn_position(0)
+		):
+			break
+		await process_frame
+	_expect(
+		not game.xiaocong_fate_interlude.is_active
+		and not flow.interlude_systems_frozen
+		and not game.player.combat_actions_locked
+		and game.player.global_position == roster.get_world_spawn_position(0),
+		(
+			"Host 在 Fate 揭幕期间切走流程时必须释放房间、冻结租约，"
+			+ "并恢复权威玩家位置。"
+		)
+	)
+	game.campaign_coordinator.wave_state = CombatFlowState.State.INTERMISSION
+
+	game.plant_placement_controller.set_placement_input_enabled(true)
+	game.plant_placement_controller.set_process_unhandled_input(true)
+	var rogue := game.rogue_exploration_coordinator
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	roster.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	_expect(
+		game.plant_placement_controller.placement_input_enabled,
+		"Rogue freeze 前的建造输入测试前置状态必须为启用。"
+	)
+	rogue.call(&"_freeze_tower_runtime")
+	_expect(
+		bool(rogue.get(&"_saved_placement_input_enabled")),
+		"Rogue freeze 必须在禁用输入前捕获建造输入 lease。"
+	)
+	rogue.call(&"_begin_pending_presentation_exit")
+	game.campaign_coordinator.wave_state = CombatFlowState.State.ROGUE_EXPLORATION
+	var inactive_repair_state: Dictionary = game.fate_manager.export_state()
+	inactive_repair_state["revision"] = game.fate_manager.state_revision + 1
+	inactive_repair_state["active"] = false
+	inactive_repair_state["completed_day"] = 1
+	inactive_repair_state["next_step_id"] = "wave_05"
+	inactive_repair_state["stage"] = TowerDefenseFateManager.STAGE_WAIT_INTERACTIONS
+	game.fate_manager.apply_remote_state(inactive_repair_state)
+	await process_frame
+	_expect(
+		not game.xiaocong_fate_interlude.is_active
+		and flow.remote_fate_presentation_deferred
+		and flow.remote_fate_conclusion_pending,
+		(
+			"客户端只先收到 inactive Fate repair 时必须延后表现并保留"
+			+ " conclusion，不能把它当作普通空闲状态丢弃。"
+		)
+	)
+	game.campaign_coordinator.apply_remote_flow_state(
+		&"wave_05",
+		CombatFlowState.State.FATE_INTERLUDE,
+		0
+	)
+	for _inactive_repair_frame in range(600):
+		if flow.remote_departure_covered:
+			break
+		await process_frame
+	_expect(
+		not rogue.has_pending_presentation_exit()
+		and not flow.remote_entry_in_progress
+		and flow.remote_departure_in_progress
+		and flow.remote_departure_covered
+		and game.xiaocong_fate_interlude.is_active,
+		(
+			"inactive-only repair 后收到 FATE flow 必须完成 Rogue handoff，"
+			+ "并进入已遮黑的 Fate 离场等待。"
+		)
+	)
+	game.campaign_coordinator.apply_remote_flow_state(
+		&"wave_05",
+		CombatFlowState.State.INTERMISSION,
+		10
+	)
+	for _inactive_return_frame in range(240):
+		if (
+			game.campaign_coordinator.wave_state
+			== CombatFlowState.State.INTERMISSION
+			and not game.xiaocong_fate_interlude.is_active
+			and not flow.remote_departure_in_progress
+			and not game.xiaocong_fate_interlude.scene_transition_layer.visible
+		):
+			break
+		await process_frame
+	_expect(
+		game.campaign_coordinator.wave_state
+		== CombatFlowState.State.INTERMISSION
+		and not flow.remote_fate_presentation_deferred
+		and not flow.remote_fate_conclusion_pending
+		and not flow.interlude_systems_frozen
+		and not game.xiaocong_fate_interlude.is_active
+		and not game.xiaocong_fate_interlude.scene_transition_layer.visible,
+		"inactive-only repair 离场后必须清空跨信道标志并释放 Fate 租约。"
+	)
+
+	game.plant_placement_controller.set_placement_input_enabled(true)
+	game.plant_placement_controller.set_process_unhandled_input(true)
+	rogue.call(&"_freeze_tower_runtime")
+	rogue.call(&"_begin_pending_presentation_exit")
+	game.campaign_coordinator.wave_state = CombatFlowState.State.ROGUE_EXPLORATION
+	var early_fate_state: Dictionary = game.fate_manager.export_state()
+	early_fate_state["revision"] = game.fate_manager.state_revision + 1
+	early_fate_state["active"] = true
+	early_fate_state["completed_day"] = 1
+	early_fate_state["next_step_id"] = "wave_05"
+	early_fate_state["stage"] = TowerDefenseFateManager.STAGE_WAIT_INTERACTIONS
+	game.fate_manager.apply_remote_state(early_fate_state)
+	await process_frame
+	_expect(
+		not game.xiaocong_fate_interlude.is_active
+		and flow.remote_fate_presentation_deferred,
+		(
+			"客户端 Fate 状态先于流程状态到达时只能缓存，不能抢先激活"
+			+ "黑屋表现。"
+		)
+	)
+	game.campaign_coordinator.apply_remote_flow_state(
+		&"wave_05",
+		CombatFlowState.State.FATE_INTERLUDE,
+		0
+	)
+	for _handoff_frame in range(120):
+		if (
+			not flow.remote_entry_in_progress
+			and game.xiaocong_fate_interlude.is_active
+		):
+			break
+		await process_frame
+	_expect(
+		not rogue.has_pending_presentation_exit()
+		and flow.interlude_systems_frozen
+		and flow.frozen_placement_input_enabled
+		and not game.plant_placement_controller.placement_input_enabled,
+		(
+			"客户端 Rogue pending 必须先在遮罩下退出，再由 Fate 重新取得"
+			+ "建造输入冻结边界。pending=%s frozen=%s saved=%s enabled=%s"
+			% [
+				rogue.has_pending_presentation_exit(),
+				flow.interlude_systems_frozen,
+				flow.frozen_placement_input_enabled,
+				game.plant_placement_controller.placement_input_enabled,
+			]
+		)
+	)
+	game.tower_multiplayer_mode_adapter.apply_remote_victory()
+	for _direct_victory_frame in range(600):
+		if (
+			game.campaign_coordinator.wave_state
+			== CombatFlowState.State.VICTORY
+			and not game.xiaocong_fate_interlude.is_active
+			and not flow.remote_departure_in_progress
+			and not game.xiaocong_fate_interlude.scene_transition_layer.visible
+		):
+			break
+		await process_frame
+	_expect(
+		game.campaign_coordinator.wave_state == CombatFlowState.State.VICTORY
+		and not flow.interlude_systems_frozen
+		and not game.xiaocong_fate_interlude.is_active
+		and not game.xiaocong_fate_interlude.scene_transition_layer.visible,
+		(
+			"多人 victory 直达通知必须复用 Fate defer/cover 管线，"
+			+ "完整释放房间和冻结租约。"
+		)
+	)
+
+	game.campaign_coordinator.wave_state = CombatFlowState.State.ROGUE_EXPLORATION
+	rogue.call(&"_freeze_tower_runtime")
+	rogue.call(&"_begin_pending_presentation_exit")
+	game.campaign_coordinator.apply_remote_flow_state(
+		&"wave_05",
+		CombatFlowState.State.FATE_INTERLUDE,
+		0
+	)
+	for _client_reveal_frame in range(180):
+		if (
+			flow.remote_entry_in_progress
+			and game.xiaocong_fate_interlude.is_active
+			and game.xiaocong_fate_interlude.scene_transition_progress < 0.95
+		):
+			break
+		await process_frame
+	_expect(
+		flow.remote_entry_in_progress
+		and game.xiaocong_fate_interlude.is_active,
+		"客户端 Fate 揭幕竞态测试未进入异步揭幕阶段。"
+	)
+	game.campaign_coordinator.apply_remote_flow_state(
+		&"",
+		CombatFlowState.State.VICTORY,
+		0
+	)
+	for _client_reveal_abort_frame in range(240):
+		if (
+			not flow.remote_entry_in_progress
+			and game.campaign_coordinator.wave_state
+			== CombatFlowState.State.VICTORY
+			and not game.xiaocong_fate_interlude.is_active
+			and game.xiaocong_fate_interlude.scene_transition_progress <= 0.001
+			and not game.xiaocong_fate_interlude.scene_transition_layer.visible
+		):
+			break
+		await process_frame
+	_expect(
+		game.campaign_coordinator.wave_state == CombatFlowState.State.VICTORY
+		and flow.pending_remote_flow_state.is_empty()
+		and not flow.remote_entry_in_progress
+		and not flow.interlude_systems_frozen
+		and not game.xiaocong_fate_interlude.is_active
+		and not game.xiaocong_fate_interlude.scene_transition_layer.visible,
+		(
+			"客户端 Fate 揭幕期间收到终局状态后必须重新遮黑、消费暂存"
+			+ "流程并完整释放房间。"
+		)
+	)
+
+	game.campaign_coordinator.wave_state = CombatFlowState.State.ROGUE_EXPLORATION
+	rogue.call(&"_freeze_tower_runtime")
+	rogue.call(&"_begin_pending_presentation_exit")
+	game.campaign_coordinator.apply_remote_flow_state(
+		&"wave_05",
+		CombatFlowState.State.FATE_INTERLUDE,
+		0
+	)
+	game.campaign_coordinator.apply_remote_flow_state(
+		&"",
+		CombatFlowState.State.VICTORY,
+		0
+	)
+	for _abort_frame in range(180):
+		if (
+			not flow.remote_entry_in_progress
+			and game.campaign_coordinator.wave_state
+			== CombatFlowState.State.VICTORY
+			and not rogue.has_pending_presentation_exit()
+			and game.xiaocong_fate_interlude.scene_transition_progress <= 0.001
+			and not game.xiaocong_fate_interlude.scene_transition_layer.visible
+		):
+			break
+		await process_frame
+	_expect(
+		game.campaign_coordinator.wave_state == CombatFlowState.State.VICTORY
+		and not rogue.has_pending_presentation_exit()
+		and not rogue.get_route().visible
+		and not flow.remote_entry_in_progress
+		and not flow.interlude_systems_frozen
+		and not game.xiaocong_fate_interlude.scene_transition_layer.visible,
+		(
+			"客户端 Fate 遮罩等待期间若收到终局状态，必须先在全黑下消费"
+			+ " Rogue pending、应用最新流程，再揭开遮罩。"
+		)
+	)
+
+	game.campaign_coordinator.wave_state = CombatFlowState.State.INTERMISSION
+	game.settings_panel.open()
+	game.plant_placement_controller.set_placement_input_enabled(true)
+	game.plant_placement_controller.set_process_unhandled_input(true)
+	game.campaign_coordinator.apply_remote_flow_state(
+		&"wave_05",
+		CombatFlowState.State.FATE_INTERLUDE,
+		0
+	)
+	_expect(
+		not game.settings_panel.is_open()
+		and flow.interlude_systems_frozen
+		and flow.frozen_placement_input_enabled
+		and not game.plant_placement_controller.placement_input_enabled,
+		(
+			"Client direct Fate 必须先提交 FATE flow 再关闭旧 modal，"
+			+ "不能让 closed 信号在预冻结后重新启用建造输入。"
+		)
+	)
+	for _defeat_room_frame in range(180):
+		if (
+			not flow.remote_entry_in_progress
+			and game.xiaocong_fate_interlude.is_active
+		):
+			break
+		await process_frame
+	var inactive_departure_state: Dictionary = game.fate_manager.export_state()
+	inactive_departure_state["revision"] = game.fate_manager.state_revision + 1
+	inactive_departure_state["active"] = false
+	game.fate_manager.apply_remote_state(inactive_departure_state)
+	for _defeat_cover_frame in range(600):
+		if flow.remote_departure_covered:
+			break
+		await process_frame
+	_expect(
+		flow.remote_departure_in_progress
+		and flow.remote_departure_covered
+		and game.xiaocong_fate_interlude.is_active,
+		"多人 defeat 直达竞态测试未进入 Fate 已遮黑离场窗口。"
+	)
+	game.tower_multiplayer_mode_adapter.apply_remote_defeat()
+	for _direct_defeat_frame in range(240):
+		if (
+			game.campaign_coordinator.wave_state
+			== CombatFlowState.State.DEFEAT
+			and not game.xiaocong_fate_interlude.is_active
+			and not flow.remote_departure_in_progress
+			and not game.xiaocong_fate_interlude.scene_transition_layer.visible
+		):
+			break
+		await process_frame
+	_expect(
+		game.campaign_coordinator.wave_state == CombatFlowState.State.DEFEAT
+		and not flow.interlude_systems_frozen
+		and not game.xiaocong_fate_interlude.is_active
+		and not flow.remote_departure_in_progress
+		and not game.xiaocong_fate_interlude.scene_transition_layer.visible,
+		(
+			"多人 defeat 直达通知必须在既有黑幕下直接完成 Fate 离场，"
+			+ "不能卡住 room/freeze。"
+		)
+	)
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	roster.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+
 	_stop_audio_recursive(game)
 	current_scene = null
 	game.queue_free()

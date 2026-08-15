@@ -37,6 +37,9 @@ var _map_generation_epoch := 0
 var _daily_grant_ledger: Dictionary[int, int] = {}
 var _requires_fresh_map := false
 var _finishing := false
+var _presentation_exit_pending := false
+var _presentation_exit_completing := false
+var _tower_runtime_frozen := false
 var _route_identity_configured := false
 
 var _saved_process_modes: Dictionary = {}
@@ -104,6 +107,7 @@ func setup(
 	):
 		return false
 	_connect_route_signals()
+	_connect_run_state_signals()
 	_route.set_embedded_presentation_active(false)
 	return true
 
@@ -178,27 +182,45 @@ func _connect_route_signals() -> void:
 		_route.return_requested.connect(_on_route_return_requested)
 
 
+func _connect_run_state_signals() -> void:
+	if not _run_state.party_status_ledger_changed.is_connected(
+		_on_party_status_ledger_changed
+	):
+		_run_state.party_status_ledger_changed.connect(
+			_on_party_status_ledger_changed
+		)
+
+
 func enter_exploration(day_number: int, next_step: FlowStepConfig) -> bool:
 	if (
 		not is_bound()
 		or day_number < 1
 		or day_number > TowerDefenseProgressionConfig.ROGUE_EXPLORATION_DAY_COUNT
 		or next_step == null
+		or next_step.step_id.is_empty()
 		or _runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 		or not _ensure_route_runtime_identity()
 	):
 		return false
 	if _active:
-		return _active_day == day_number
+		return _active_day == day_number and _next_step_id == next_step.step_id
+	if _presentation_exit_pending:
+		return _daily_grant_ledger.has(day_number)
+	if _tower_runtime_frozen:
+		return false
+	# 发放账本同时也是探索日的一次性消费凭证。已完成或失败的同一天
+	# 可能因可靠重发再次请求进入；必须幂等确认，不能重开 Rogue/Fate。
+	if _daily_grant_ledger.has(day_number):
+		return true
 	var daily_action_points := _progression.get_daily_rogue_action_points(
 		day_number
 	)
-	_next_step_id = next_step.step_id
 	if daily_action_points == 0:
 		_daily_grant_ledger[day_number] = 0
-		_campaign.resume_flow_after_rogue_exploration(_next_step_id)
+		_campaign.resume_flow_after_rogue_exploration(next_step.step_id)
 		return true
 
+	_next_step_id = next_step.step_id
 	_active_day = day_number
 	_finishing = false
 	# 先完成塔防角色复活的相机/输入副作用，再统一冻结 Tower presentation；
@@ -208,25 +230,31 @@ func enter_exploration(day_number: int, next_step: FlowStepConfig) -> bool:
 	_activate_rogue_core_for_entry()
 	_route.set_embedded_presentation_active(true)
 	if not _ensure_authoritative_map():
-		_capture_rogue_core_and_restore_tower_core()
+		_cache_rogue_core_from_run_state()
+		_restore_tower_core()
 		_restore_tower_runtime()
 		_route.set_embedded_presentation_active(false)
 		_active_day = INVALID_DAY
+		_next_step_id = &""
 		_campaign.enter_defeat()
 		return false
 	if not _route.restore_embedded_players_to_full_health():
-		_capture_rogue_core_and_restore_tower_core()
+		_cache_rogue_core_from_run_state()
+		_restore_tower_core()
 		_restore_tower_runtime()
 		_route.set_embedded_presentation_active(false)
 		_active_day = INVALID_DAY
+		_next_step_id = &""
 		_campaign.enter_defeat()
 		return false
 	if not _daily_grant_ledger.has(day_number):
 		if not _route.grant_authoritative_action_points(daily_action_points):
-			_capture_rogue_core_and_restore_tower_core()
+			_cache_rogue_core_from_run_state()
+			_restore_tower_core()
 			_restore_tower_runtime()
 			_route.set_embedded_presentation_active(false)
 			_active_day = INVALID_DAY
+			_next_step_id = &""
 			_campaign.enter_defeat()
 			return false
 		_daily_grant_ledger[day_number] = daily_action_points
@@ -289,13 +317,11 @@ func _finish_exploration(failed: bool) -> void:
 	set_process(false)
 	var completed_day := _active_day
 	var resume_step_id := _next_step_id
+	_cache_rogue_core_from_run_state()
 	_active = false
 	_active_day = INVALID_DAY
 	_next_step_id = &""
-	_capture_rogue_core_and_restore_tower_core()
-	_route.set_embedded_presentation_active(false)
-	_restore_tower_runtime()
-	_player_roster.restore_all_players_to_full_health(true)
+	_begin_pending_presentation_exit()
 	exploration_snapshot_changed.emit(export_multiplayer_snapshot_for_peer())
 	exploration_finished.emit(completed_day, failed)
 	_finishing = false
@@ -303,55 +329,77 @@ func _finish_exploration(failed: bool) -> void:
 
 
 func _freeze_tower_runtime() -> void:
-	if not _saved_process_modes.is_empty():
+	if _tower_runtime_frozen:
 		return
+	_multiplayer_adapter.cancel_all_luoxi_special_games()
+	_plant_placement.close_outer_modals_for_mode_transfer()
+	# Lease 采用严格的两阶段提交：先只读捕获全部基线，再产生任何副作用。
+	# 子树禁用、cancel_placement 等操作都可能联动输入或暂停态，不能边捕获边改写。
 	_saved_tower_core_current = _home_defense.current_base_health
 	_saved_tower_core_maximum = _home_defense.maximum_base_health
 	_saved_tower_camera_enabled = _runtime.map_camera.enabled
-	_runtime.map_camera.enabled = false
 	var tower_environment := _runtime.get_node_or_null(
 		"WorldEnvironment"
 	) as WorldEnvironment
 	if tower_environment != null:
 		_saved_tower_environment = tower_environment.environment
-		tower_environment.environment = null
 	for child in _runtime.get_children():
 		if child == self or child.name in [
 			&"MultiplayerGameplayGateway",
 			&"MultiplayerModeAdapter",
 			&"CampaignCoordinator",
 			&"CampaignRuntimePort",
+			&"XiaocongFateInterlude",
+			&"FateFlowCoordinator",
 		]:
 			continue
 		_saved_process_modes[child] = child.process_mode
-		# AudioStreamPlayer 会在所属节点停处理时改变暂停态；必须先捕获
-		# 原 playback 的 stream_paused，再禁用子树，才能精确续播。
-		_capture_and_pause_music(child)
-		child.process_mode = Node.PROCESS_MODE_DISABLED
+		_capture_music_pause_state(child)
 		if _has_property(child, &"visible"):
 			_saved_visibility[child] = bool(child.get(&"visible"))
-			child.set(&"visible", false)
 	_saved_terrain_decay_was_running = not _terrain_decay_timer.is_stopped()
 	if _saved_terrain_decay_was_running:
 		_saved_terrain_decay_time_left = _terrain_decay_timer.time_left
-		_terrain_decay_timer.stop()
 	_saved_production_processing_enabled = (
 		_production.authoritative_processing_enabled
 	)
 	_saved_research_processing_enabled = _research.authoritative_processing_enabled
-	_production.set_authoritative_processing_enabled(false)
-	_research.set_authoritative_processing_enabled(false)
-	_plant_placement.cancel_placement()
 	_saved_placement_input_enabled = _plant_placement_controller.placement_input_enabled
 	_saved_placement_unhandled_input_enabled = (
 		_plant_placement_controller.is_processing_unhandled_input()
 	)
+
+	_tower_runtime_frozen = true
+	_runtime.map_camera.enabled = false
+	if tower_environment != null:
+		tower_environment.environment = null
+	# AudioStreamPlayer 会在所属节点停处理时改变暂停态；先显式暂停同一个
+	# playback，再禁用子树，恢复时才能继续原播放位置。
+	for player_variant in _saved_music_paused.keys():
+		var audio_player := player_variant as Node
+		if audio_player != null and is_instance_valid(audio_player):
+			audio_player.set(&"stream_paused", true)
+	if _saved_terrain_decay_was_running:
+		_terrain_decay_timer.stop()
+	_production.set_authoritative_processing_enabled(false)
+	_research.set_authoritative_processing_enabled(false)
+	_plant_placement.cancel_placement()
 	_plant_placement_controller.set_placement_input_enabled(false)
 	_plant_placement_controller.set_process_unhandled_input(false)
 	_player_roster.set_combat_actions_locked_for_all(true)
+	for child_variant in _saved_process_modes.keys():
+		var child := child_variant as Node
+		if child != null and is_instance_valid(child):
+			child.process_mode = Node.PROCESS_MODE_DISABLED
+	for child_variant in _saved_visibility.keys():
+		var child := child_variant as Node
+		if child != null and is_instance_valid(child):
+			child.set(&"visible", false)
 
 
 func _restore_tower_runtime() -> void:
+	if not _tower_runtime_frozen:
+		return
 	var tower_environment := _runtime.get_node_or_null(
 		"WorldEnvironment"
 	) as WorldEnvironment
@@ -399,6 +447,7 @@ func _restore_tower_runtime() -> void:
 		_saved_placement_unhandled_input_enabled
 	)
 	_player_roster.set_combat_actions_locked_for_all(false)
+	_tower_runtime_frozen = false
 
 
 func _activate_rogue_core_for_entry() -> void:
@@ -413,10 +462,13 @@ func _activate_rogue_core_for_entry() -> void:
 	)
 
 
-func _capture_rogue_core_and_restore_tower_core() -> void:
+func _cache_rogue_core_from_run_state() -> void:
 	_rogue_core_current = _run_state.get_party_core_health()
 	_rogue_core_maximum = _run_state.get_party_core_maximum_health()
 	_rogue_core_initialized = true
+
+
+func _restore_tower_core() -> void:
 	_run_state.set_party_core_health(
 		_saved_tower_core_current,
 		_saved_tower_core_maximum,
@@ -429,7 +481,7 @@ func _capture_rogue_core_and_restore_tower_core() -> void:
 		)
 
 
-func _capture_and_pause_music(node: Node) -> void:
+func _capture_music_pause_state(node: Node) -> void:
 	var has_playback := false
 	if node is AudioStreamPlayer:
 		has_playback = (node as AudioStreamPlayer).has_stream_playback()
@@ -439,9 +491,8 @@ func _capture_and_pause_music(node: Node) -> void:
 		has_playback = (node as AudioStreamPlayer3D).has_stream_playback()
 	if has_playback:
 		_saved_music_paused[node] = bool(node.get(&"stream_paused"))
-		node.set(&"stream_paused", true)
 	for child in node.get_children():
-		_capture_and_pause_music(child)
+		_capture_music_pause_state(child)
 
 
 static func _has_property(object: Object, property_name: StringName) -> bool:
@@ -465,10 +516,43 @@ func is_exploration_active() -> bool:
 	return _active
 
 
+func is_tower_runtime_suspended() -> bool:
+	return _active or _presentation_exit_pending
+
+
+func has_pending_presentation_exit() -> bool:
+	return _presentation_exit_pending
+
+
+func complete_pending_presentation_exit() -> bool:
+	if not _presentation_exit_pending or _presentation_exit_completing:
+		return false
+	_presentation_exit_completing = true
+	# pending 在整个同步恢复事务中继续持有 Tower world suspension；
+	# HomeDefense/玩家恢复会同步发信号，不能让观察者看见半恢复的伪空闲态。
+	_restore_tower_core()
+	_route.set_embedded_presentation_active(false)
+	_restore_tower_runtime()
+	_player_roster.restore_all_players_to_full_health(
+		_runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	)
+	_presentation_exit_pending = false
+	_presentation_exit_completing = false
+	return true
+
+
+func _begin_pending_presentation_exit() -> void:
+	if _presentation_exit_pending:
+		return
+	_presentation_exit_pending = true
+	# 保留最后一帧路线画面给小葱转场遮罩，但停止路线输入、动画和角色模拟。
+	_route.process_mode = Node.PROCESS_MODE_DISABLED
+
+
 func export_multiplayer_snapshot_for_peer(peer_id: int = -1) -> Dictionary:
 	var tower_core_current := _home_defense.current_base_health
 	var tower_core_maximum := _home_defense.maximum_base_health
-	if _active or _finishing:
+	if _active or _finishing or _presentation_exit_pending:
 		tower_core_current = _saved_tower_core_current
 		tower_core_maximum = _saved_tower_core_maximum
 	var snapshot := {
@@ -528,6 +612,9 @@ func apply_multiplayer_snapshot(snapshot: Dictionary) -> bool:
 			and not _route.restore_embedded_players_to_full_health()
 		):
 			return false
+		# active 全量快照已原子应用其 party economy；在任何跨信道的
+		# Tower 基地恢复到达前，锁存本次 Rogue 核心恢复账本。
+		_cache_rogue_core_from_run_state()
 	_active = incoming_active
 	_active_day = int(prepared["day"])
 	_map_generation_epoch = int(prepared["map_generation_epoch"])
@@ -539,6 +626,7 @@ func apply_multiplayer_snapshot(snapshot: Dictionary) -> bool:
 		)
 	_next_step_id = StringName(prepared["next_step_id"])
 	if incoming_active and not was_active:
+		_presentation_exit_pending = false
 		_freeze_tower_runtime()
 		# 晚加入客户端可能先收到探索快照、后收到塔防全量状态；冻结时本地
 		# HomeDefense 仍是默认值，因此必须以 Host 在进入探索前保存的核心值
@@ -550,10 +638,12 @@ func apply_multiplayer_snapshot(snapshot: Dictionary) -> bool:
 	elif not incoming_active and was_active:
 		_saved_tower_core_current = int(prepared["tower_core_current"])
 		_saved_tower_core_maximum = int(prepared["tower_core_maximum"])
-		_capture_rogue_core_and_restore_tower_core()
-		_route.set_embedded_presentation_active(false)
-		_restore_tower_runtime()
-		_player_roster.restore_all_players_to_full_health(false)
+		_begin_pending_presentation_exit()
+	elif not incoming_active and _presentation_exit_pending:
+		# inactive 快照可能因流程状态广播或可靠重发重复到达；只刷新 Host
+		# 保存的塔防核心边界，不能重复退出表现或再次改写 Rogue 核心账本。
+		_saved_tower_core_current = int(prepared["tower_core_current"])
+		_saved_tower_core_maximum = int(prepared["tower_core_maximum"])
 	elif incoming_active:
 		# 同一 active 会话的重复全量同步不应回血或重建布局，但仍需刷新
 		# Tower 恢复边界，覆盖客户端较晚到达的本地默认/旧塔防状态。
@@ -589,13 +679,21 @@ func _preflight_multiplayer_snapshot(snapshot: Dictionary) -> Dictionary:
 		return {}
 	var incoming_active := bool(snapshot["active"])
 	var incoming_day := int(snapshot["day"])
+	var incoming_epoch := int(snapshot["map_generation_epoch"])
 	if incoming_active and (
 		incoming_day < 1
 		or incoming_day > TowerDefenseProgressionConfig.ROGUE_EXPLORATION_DAY_COUNT
 		or str(snapshot["next_step_id"]).is_empty()
 	):
 		return {}
-	if not incoming_active and incoming_day != INVALID_DAY:
+	if not incoming_active and (
+		incoming_day != INVALID_DAY
+		or not str(snapshot["next_step_id"]).is_empty()
+		or (
+			(_active or _presentation_exit_pending)
+			and incoming_epoch != _map_generation_epoch
+		)
+	):
 		return {}
 	var ledger := _decode_daily_grant_ledger(
 		snapshot["daily_grant_ledger"] as Dictionary
@@ -608,6 +706,28 @@ func _preflight_multiplayer_snapshot(snapshot: Dictionary) -> Dictionary:
 			or ledger[day_number] != _daily_grant_ledger[day_number]
 		):
 			return {}
+	if incoming_active and not ledger.has(incoming_day):
+		return {}
+	if incoming_active and _is_active_snapshot_superseded_by_campaign(
+		incoming_day,
+		StringName(snapshot["next_step_id"])
+	):
+		return {}
+	# 一个 active 会话不能被另一日/另一地图的 active 快照原地替换；
+	# pending 也只能由显式视觉退出消费。否则乱序重发会绕过 Fate 并
+	# 复用上一份 Tower 冻结租约。
+	if incoming_active and (
+		_presentation_exit_pending
+		or (
+			_active
+			and (
+				incoming_day != _active_day
+				or incoming_epoch != _map_generation_epoch
+			)
+		)
+		or (not _active and _daily_grant_ledger.has(incoming_day))
+	):
+		return {}
 	var prepared := snapshot.duplicate(true)
 	prepared["daily_grant_ledger"] = ledger
 	if incoming_active:
@@ -615,6 +735,35 @@ func _preflight_multiplayer_snapshot(snapshot: Dictionary) -> Dictionary:
 			if typeof(snapshot.get(field_name)) != TYPE_DICTIONARY:
 				return {}
 	return prepared
+
+
+func _is_active_snapshot_superseded_by_campaign(
+	incoming_day: int,
+	incoming_next_step_id: StringName
+) -> bool:
+	var flow_state := _campaign.wave_state
+	if flow_state == CombatFlowState.State.ROGUE_EXPLORATION:
+		return false
+	# Fate/终局只能出现在本次 Rogue 的逻辑退出之后；跨信道晚到的
+	# active 快照已经被该权威流程淘汰，不能重新取得 Tower 冻结租约。
+	if flow_state in [
+		CombatFlowState.State.FATE_INTERLUDE,
+		CombatFlowState.State.VICTORY,
+		CombatFlowState.State.DEFEAT,
+	]:
+		return true
+	var campaign_day := _campaign.get_day_number_for_wave(
+		maxi(_campaign.current_wave_index + 1, 1)
+	)
+	if incoming_day > 0 and incoming_day < campaign_day:
+		return true
+	var current_step_id := _campaign.get_flow_step_id(
+		_campaign.current_flow_step
+	)
+	return (
+		not current_step_id.is_empty()
+		and current_step_id == incoming_next_step_id
+	)
 
 
 func _decode_daily_grant_ledger(raw_ledger: Dictionary) -> Dictionary[int, int]:
@@ -688,6 +837,14 @@ func host_migrate_reconnected_peer(
 func _on_route_return_requested() -> void:
 	if _route.has_run_failed():
 		host_handle_exploration_failure()
+
+
+func _on_party_status_ledger_changed(_snapshot: Dictionary) -> void:
+	# Rogue economy 更新与 inactive 探索快照同走可靠 channel 0；因此
+	# active 期间最后一次信号一定先于该退出快照。Tower 基地恢复使用
+	# emit_change_signal=false，不会把 channel 5 的 Tower 核心写进缓存。
+	if _active:
+		_cache_rogue_core_from_run_state()
 
 
 func _is_local_authority() -> bool:

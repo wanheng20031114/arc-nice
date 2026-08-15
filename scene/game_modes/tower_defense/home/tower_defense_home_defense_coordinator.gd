@@ -122,7 +122,13 @@ func apply_remote_base_health(
 	maximum_base_health = maxi(new_maximum_health, 1)
 	current_base_health = clampi(new_current_health, 0, maximum_base_health)
 	base_health_revision = new_revision
-	if _run_state != null:
+	# Rogue 全量快照走 CH0，基地生命与流程走 CH5，两条可靠信道之间
+	# 没有总顺序。Rogue 仍持有塔防运行态时，基地快照只更新本地表现；
+	# 共享账本继续由 Rogue economy 真源维护，并在 pending 退出时恢复塔防核心。
+	if (
+		_run_state != null
+		and not _multiplayer_adapter.is_rogue_tower_world_suspended()
+	):
 		_run_state.set_party_core_health(current_base_health, maximum_base_health, false)
 	var play_damage_pulse := (
 		has_received_remote_base_health_snapshot
