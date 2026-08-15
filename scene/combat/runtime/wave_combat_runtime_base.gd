@@ -80,6 +80,7 @@ var pending_enemy_configs: Array[EnemyConfig] = []
 var pending_enemy_xirang_kill_rewards: Array[int] = []
 var pending_enemy_config_index: int = 0
 var active_wave_enemy_ids: Dictionary = {}
+var resolved_wave_enemy_ids: Dictionary = {}
 
 var current_wave_index: int = 0
 var current_wave_total: int = 0
@@ -92,6 +93,106 @@ var enemy_retarget_time_left: float = 0.0
 var next_multiplayer_enemy_net_id: int = 1
 var navigation_prewarm_requested: bool = false
 var navigation_prewarmed: bool = false
+
+
+## WaveCombatRuntimeBase is the sole writer of generic wave progress. The
+## invariant is 0 <= defeated <= spawned <= total; callers record lifecycle
+## transitions instead of mutating the three counters independently.
+func reset_wave_progress(
+	total: int,
+	spawned: int = 0,
+	defeated: int = 0
+) -> void:
+	current_wave_total = maxi(total, 0)
+	current_wave_spawned = clampi(spawned, 0, current_wave_total)
+	current_wave_defeated = clampi(defeated, 0, current_wave_spawned)
+
+
+func record_wave_spawns(count: int) -> int:
+	if count <= 0:
+		return 0
+	var previous_spawned := current_wave_spawned
+	current_wave_spawned = clampi(
+		current_wave_spawned + count,
+		0,
+		current_wave_total
+	)
+	return current_wave_spawned - previous_spawned
+
+
+func try_record_wave_enemy_defeat() -> bool:
+	if current_wave_defeated >= current_wave_spawned:
+		return false
+	current_wave_defeated += 1
+	return true
+
+
+func apply_wave_progress_snapshot(
+	total: int,
+	spawned: int,
+	defeated: int
+) -> bool:
+	if (
+		total < 0
+		or spawned < 0
+		or defeated < 0
+		or spawned > total
+		or defeated > spawned
+	):
+		return false
+	current_wave_total = total
+	current_wave_spawned = spawned
+	current_wave_defeated = defeated
+	return true
+
+
+func is_wave_progress_complete() -> bool:
+	return (
+		current_wave_spawned == current_wave_total
+		and current_wave_defeated == current_wave_total
+	)
+
+
+func get_wave_progress_snapshot() -> Dictionary:
+	return {
+		"wave_number": current_wave_index + 1,
+		"total": current_wave_total,
+		"spawned": current_wave_spawned,
+		"defeated": current_wave_defeated,
+	}
+
+
+func register_active_wave_enemy(enemy: Enemy) -> bool:
+	if enemy == null or not is_instance_valid(enemy):
+		return false
+	var enemy_id := enemy.get_instance_id()
+	active_wave_enemy_ids[enemy_id] = true
+	resolved_wave_enemy_ids.erase(enemy_id)
+	return true
+
+
+func remove_active_wave_enemy(enemy_id: int) -> bool:
+	if enemy_id <= 0:
+		return false
+	resolved_wave_enemy_ids.erase(enemy_id)
+	return active_wave_enemy_ids.erase(enemy_id)
+
+
+func clear_active_wave_enemies() -> void:
+	active_wave_enemy_ids.clear()
+	resolved_wave_enemy_ids.clear()
+
+
+func try_resolve_active_wave_enemy_defeat(enemy_id: int) -> bool:
+	if (
+		enemy_id <= 0
+		or not active_wave_enemy_ids.has(enemy_id)
+		or resolved_wave_enemy_ids.has(enemy_id)
+		or not try_record_wave_enemy_defeat()
+	):
+		return false
+	resolved_wave_enemy_ids[enemy_id] = true
+	return true
 
 
 # 以下钩子只描述模式边界，不提供任何具体模式策略。
@@ -754,11 +855,9 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 	_apply_wave_start_lighting(current_wave_index + 1)
 	state_timer.stop()
 	_set_intermission_services_active(false)
-	current_wave_spawned = 0
-	current_wave_defeated = 0
-	active_wave_enemy_ids.clear()
+	clear_active_wave_enemies()
 	_build_wave_spawn_queue(wave_config)
-	current_wave_total = pending_enemy_configs.size()
+	reset_wave_progress(pending_enemy_configs.size())
 	_present_wave_started(wave_config, false)
 	_emit_multiplayer_flow_state(CombatFlowState.State.WAVE_ACTIVE)
 
@@ -951,7 +1050,7 @@ func _spawn_wave_batch() -> void:
 			break
 
 		pending_enemy_config_index += 1
-		current_wave_spawned += 1
+		record_wave_spawns(1)
 
 	if not _has_pending_enemy_configs():
 		enemy_spawn_timer.stop()
@@ -997,7 +1096,7 @@ func _try_spawn_enemy(
 	)
 	enemy_instance.set_xirang_kill_reward_override(xirang_kill_reward_override)
 	var enemy_id := enemy_instance.get_instance_id()
-	active_wave_enemy_ids[enemy_id] = true
+	register_active_wave_enemy(enemy_instance)
 	enemy_instance.defeated.connect(_on_wave_enemy_defeated)
 	enemy_instance.tree_exited.connect(_on_wave_enemy_tree_exited.bind(enemy_id))
 	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, enemy_instance.global_position)
@@ -1015,15 +1114,13 @@ func _register_multiplayer_enemy_instance(
 	if enemy_instance == null or enemy_config == null:
 		return 0
 	var enemy_id := enemy_instance.get_instance_id()
-	var existing_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy_id, 0))
+	var existing_net_id := get_network_enemy_net_id_by_instance_id(enemy_id)
 	if existing_net_id > 0:
 		return existing_net_id
 	var enemy_net_id := next_multiplayer_enemy_net_id
 	next_multiplayer_enemy_net_id += 1
-	enemy_instance.set_meta("net_id", enemy_net_id)
-	multiplayer_enemy_ids_by_instance[enemy_id] = enemy_net_id
-	multiplayer_enemies_by_net_id[enemy_net_id] = enemy_instance
-	register_combat_target(enemy_net_id, enemy_instance)
+	if not register_network_enemy(enemy_net_id, enemy_instance):
+		return 0
 	if broadcast_spawn:
 		multiplayer_gateway.enemy_spawned.emit(enemy_net_id, enemy_config, spawn_position)
 	return enemy_net_id
@@ -1031,9 +1128,11 @@ func _register_multiplayer_enemy_instance(
 func _on_wave_enemy_defeated(enemy: Enemy) -> void:
 	if wave_state != CombatFlowState.State.WAVE_ACTIVE:
 		return
-	if enemy == null or not active_wave_enemy_ids.has(enemy.get_instance_id()):
+	if (
+		enemy == null
+		or not try_resolve_active_wave_enemy_defeat(enemy.get_instance_id())
+	):
 		return
-	current_wave_defeated = mini(current_wave_defeated + 1, current_wave_total)
 	_emit_multiplayer_enemy_defeated(enemy)
 	_present_wave_progress(current_wave_defeated, current_wave_total)
 	_check_wave_completion()
@@ -1044,24 +1143,22 @@ func _emit_multiplayer_enemy_defeated(enemy: Enemy) -> void:
 		return
 	if enemy == null:
 		return
-	var enemy_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy.get_instance_id(), 0))
+	var enemy_net_id := get_network_enemy_net_id_by_instance_id(
+		enemy.get_instance_id()
+	)
 	if enemy_net_id <= 0:
 		return
 	multiplayer_gateway.enemy_defeated.emit(enemy_net_id, enemy.global_position)
 
 func _on_wave_enemy_tree_exited(enemy_id: int) -> void:
-	active_wave_enemy_ids.erase(enemy_id)
+	remove_active_wave_enemy(enemy_id)
 	_mark_multiplayer_enemy_removed(enemy_id)
 	_check_wave_completion()
 
 func _mark_multiplayer_enemy_removed(enemy_id: int) -> void:
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
 		return
-	var enemy_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy_id, 0))
-	multiplayer_enemy_ids_by_instance.erase(enemy_id)
-	if enemy_net_id > 0:
-		multiplayer_enemies_by_net_id.erase(enemy_net_id)
-		unregister_combat_target(enemy_net_id)
+	var enemy_net_id := unregister_network_enemy_by_instance_id(enemy_id)
 	if enemy_net_id <= 0:
 		return
 	multiplayer_gateway.enemy_removed.emit(enemy_net_id)
@@ -1071,9 +1168,7 @@ func _check_wave_completion() -> void:
 		return
 	if _has_pending_enemy_configs():
 		return
-	if current_wave_spawned < current_wave_total:
-		return
-	if current_wave_defeated < current_wave_total:
+	if not is_wave_progress_complete():
 		return
 	if not active_wave_enemy_ids.is_empty():
 		return
@@ -1121,18 +1216,7 @@ func _enter_defeat() -> void:
 
 
 func get_enemy_for_net_id(net_id: int) -> Enemy:
-	if not multiplayer_enemies_by_net_id.has(net_id):
-		return null
-	var enemy_variant: Variant = multiplayer_enemies_by_net_id.get(net_id)
-	if enemy_variant == null:
-		multiplayer_enemies_by_net_id.erase(net_id)
-		unregister_combat_target(net_id)
-		return null
-	if not is_instance_valid(enemy_variant):
-		multiplayer_enemies_by_net_id.erase(net_id)
-		unregister_combat_target(net_id)
-		return null
-	return enemy_variant as Enemy
+	return get_network_enemy(net_id)
 
 func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
 	return collect_reused_enemy_snapshot_states(enemy_container)

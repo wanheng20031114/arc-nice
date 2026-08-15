@@ -180,10 +180,8 @@ func finish_for_peer(peer_id: int, session_revision: int) -> Dictionary:
 
 	var pending_xirang := session.get_pending_xirang()
 	if pending_xirang > 0:
-		player_instance.current_xirang += pending_xirang
-		player_instance.xirang_changed.emit(
-			player_instance.current_xirang,
-			pending_xirang
+		player_instance.set_xirang_balance(
+			player_instance.current_xirang + pending_xirang
 		)
 	var result := _make_session_result(session, ResultCode.SUCCESS)
 	result["awarded_item_paths"] = item_paths.duplicate()

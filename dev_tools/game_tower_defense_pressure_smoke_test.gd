@@ -30,25 +30,26 @@ func _run() -> void:
 	root.add_child(game)
 	await process_frame
 	await physics_frame
+	var campaign := game.campaign_coordinator
 
 	_expect(game.linglan_boss_enabled, "Tower-defense runtime must enable Linglan.")
-	_expect(game.bosses.is_empty(), "Performance Campaign must remain free of Boss steps.")
-	_expect(game.waves.size() == 12, "Pressure Campaign must contain twelve waves.")
-	if game.waves.is_empty():
+	_expect(campaign.bosses.is_empty(), "Performance Campaign must remain free of Boss steps.")
+	_expect(campaign.waves.size() == 12, "Pressure Campaign must contain twelve waves.")
+	if campaign.waves.is_empty():
 		game.queue_free()
 		await process_frame
 		_finish(0)
 		return
 
 	for early_wave_index in range(2):
-		var early_wave: WaveConfig = game.waves[early_wave_index]
+		var early_wave: WaveConfig = campaign.waves[early_wave_index]
 		_expect(
 			is_equal_approx(early_wave.spawn_interval, EXPECTED_EARLY_WAVE_INTERVAL)
 			and early_wave.spawn_count_per_tick == 1,
 			"Tower-defense waves 1-2 must spawn one enemy every 0.1 seconds."
 		)
 
-	var sequential_wave: WaveConfig = game.waves[2]
+	var sequential_wave: WaveConfig = campaign.waves[2]
 	_expect(
 		sequential_wave.get_total_enemy_count() == EXPECTED_WAVE_TOTAL,
 		"Pressure wave must queue exactly 1200 enemies."
@@ -67,7 +68,7 @@ func _run() -> void:
 	)
 
 	var started_at_msec := Time.get_ticks_msec()
-	game.campaign_coordinator.begin_flow_step(sequential_wave)
+	campaign.begin_flow_step(sequential_wave)
 	_expect(
 		is_equal_approx(
 			game.enemy_spawn_timer.wait_time,
@@ -75,10 +76,10 @@ func _run() -> void:
 		),
 		"Tower-defense runtime must preserve the configured 0.025-second interval."
 	)
-	var timed_spawn_start: int = game.current_wave_spawned
+	var timed_spawn_start: int = campaign.current_wave_spawned
 	await create_timer(1.0).timeout
 	game.enemy_spawn_timer.stop()
-	var timed_spawn_count: int = game.current_wave_spawned - timed_spawn_start
+	var timed_spawn_count: int = campaign.current_wave_spawned - timed_spawn_start
 	_expect(
 		absi(timed_spawn_count - EXPECTED_SEQUENTIAL_SPAWNS_PER_SECOND)
 		<= SPAWN_RATE_TOLERANCE,
@@ -90,8 +91,8 @@ func _run() -> void:
 		)
 	var fill_elapsed_msec := Time.get_ticks_msec() - started_at_msec
 
-	_expect(game.current_wave_total == EXPECTED_WAVE_TOTAL, "Runtime queue total must stay at 1200.")
-	_expect(game.current_wave_spawned == EXPECTED_MAX_ALIVE, "Runtime must fill exactly 300 slots.")
+	_expect(campaign.current_wave_total == EXPECTED_WAVE_TOTAL, "Runtime queue total must stay at 1200.")
+	_expect(campaign.current_wave_spawned == EXPECTED_MAX_ALIVE, "Runtime must fill exactly 300 slots.")
 	_expect(
 		game.enemy_coordinator.active_wave_enemy_ids.size() == EXPECTED_MAX_ALIVE,
 		"Active enemy registry must stop exactly at 300."
@@ -110,7 +111,7 @@ func _run() -> void:
 			TowerDefenseCampaignCoordinator.MAX_WAVE_SPAWN_COUNT_PER_TICK
 		)
 	_expect(
-		game.current_wave_spawned == EXPECTED_MAX_ALIVE
+		campaign.current_wave_spawned == EXPECTED_MAX_ALIVE
 		and game.enemy_coordinator.active_wave_enemy_ids.size() == EXPECTED_MAX_ALIVE,
 		"Additional spawn ticks must never exceed the 300-enemy hard cap."
 	)

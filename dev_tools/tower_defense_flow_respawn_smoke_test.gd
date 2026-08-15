@@ -64,40 +64,50 @@ func _test_respawn_policy_and_permanent_death_hud() -> void:
 	no_respawn_adapter.bind_runtime(no_respawn_runtime)
 	no_respawn_runtime.multiplayer_mode_adapter = no_respawn_adapter
 	no_respawn_runtime.tower_multiplayer_mode_adapter = no_respawn_adapter
-	var mp_game := MP_GAME_SCENE.instantiate()
-	mp_game.set("game", no_respawn_runtime)
-	mp_game.set("_mode_adapter", no_respawn_adapter)
-	mp_game.set("tower_mode_adapter", no_respawn_adapter)
-	no_respawn_adapter.attach_multiplayer_session(mp_game)
-	mp_game.call("_schedule_player_revive", 7)
-	var revive_times := mp_game.get("_dead_player_revive_times") as Dictionary
-	var revive_seconds := mp_game.get("_dead_player_revive_last_seconds") as Dictionary
-	_expect(
-		revive_times.is_empty() and revive_seconds.is_empty(),
-		"The shared MpGame scheduler must not create a timer when the runtime forbids respawn."
+	var net_manager := NetManagerStore.new()
+	var life_fixture := _create_player_life_fixture(
+		no_respawn_runtime,
+		no_respawn_adapter,
+		net_manager
 	)
-	revive_times[7] = 0.0
-	revive_seconds[7] = 0
-	mp_game.call("_revive_player_peer", 7, Vector2.ZERO)
-	_expect(
-		revive_times.is_empty() and revive_seconds.is_empty(),
-		"The final revive sink must discard a stale timer instead of bypassing the runtime policy."
+	var player_coordinator := (
+		life_fixture.get("coordinator") as MpPlayerCoordinator
 	)
-	var mp_source := FileAccess.get_file_as_string(
-		"res://scene/multiplayer/mp_game.gd"
+	player_coordinator.schedule_player_revive(7)
+	var captured_life_state := player_coordinator.capture_reconnect_life_state(7)
+	_expect(
+		float(captured_life_state.get("revive_at", -1.0)) < 0.0
+		and not player_coordinator.has_pending_revive(7),
+		"The player-life owner must not create a timer when the runtime forbids respawn."
+	)
+	player_coordinator.restore_reconnect_life_state(
+		7,
+		{"revive_at": 0.0, "revive_last_seconds": 0},
+		true
+	)
+	_expect(
+		not player_coordinator.has_pending_revive(7),
+		"Reconnect restore must discard a stale timer instead of bypassing the runtime policy."
+	)
+	var player_coordinator_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/player/mp_player_coordinator.gd"
 	)
 	for lethal_function in [
 		"request_multiplayer_player_damage_over_time_tick",
 		"apply_luoxi_direct_health_loss",
-		"_apply_player_hit_report",
+		"apply_player_hit_report",
 	]:
 		_expect(
-			_get_function_source(mp_source, lethal_function).contains(
-				"_schedule_player_revive("
+			_get_function_source(
+				player_coordinator_source,
+				lethal_function
+			).contains(
+				"schedule_player_revive("
 			),
-			"Every lethal player-damage path must route through the shared respawn-policy scheduler."
+			"Every lethal player-damage path must route through the player-life owner."
 		)
-	mp_game.free()
+	_free_player_life_fixture(life_fixture, no_respawn_runtime)
+	net_manager.free()
 	no_respawn_runtime.free()
 
 	var status_hud := STATUS_HUD_SCENE.instantiate() as TowerDefenseStatusHUD
@@ -900,22 +910,28 @@ func _test_host_authoritative_revive_all() -> void:
 		"Host mode must keep the right-side multiplayer dead-player list enabled."
 	)
 
-	var mp_game := MP_GAME_SCENE.instantiate()
-	mp_game.set("game", game)
-	mp_game.set("net_manager", net_manager)
 	var tower_adapter := (
 		game.get_multiplayer_mode_adapter()
 		as TowerDefenseMultiplayerModeAdapter
 	)
-	mp_game.set("_mode_adapter", tower_adapter)
-	mp_game.set("tower_mode_adapter", tower_adapter)
-	tower_adapter.attach_multiplayer_session(mp_game)
-	var revive_times := mp_game.get("_dead_player_revive_times") as Dictionary
-	var revive_seconds := mp_game.get("_dead_player_revive_last_seconds") as Dictionary
-	revive_times[1] = 1000.0
-	revive_times[77] = 2000.0
-	revive_seconds[1] = 5
-	revive_seconds[77] = 9
+	var life_fixture := _create_player_life_fixture(
+		game,
+		tower_adapter,
+		net_manager as NetManagerStore
+	)
+	var player_coordinator := (
+		life_fixture.get("coordinator") as MpPlayerCoordinator
+	)
+	player_coordinator.restore_reconnect_life_state(
+		1,
+		{"revive_at": 1000.0, "revive_last_seconds": 5},
+		true
+	)
+	player_coordinator.restore_reconnect_life_state(
+		77,
+		{"revive_at": 2000.0, "revive_last_seconds": 9},
+		true
+	)
 	var revive_events := {"dead": 0, "living": 0}
 	var revive_all_requests := {"count": 0}
 	dead_player.revived.connect(
@@ -931,7 +947,7 @@ func _test_host_authoritative_revive_all() -> void:
 			revive_all_requests["count"] = int(revive_all_requests["count"]) + 1
 	)
 	game.get_multiplayer_mode_adapter().revive_all_requested.connect(
-		Callable(mp_game, "_on_host_revive_all_requested")
+		player_coordinator.revive_all_players
 	)
 
 	var next_step := game.campaign_coordinator.get_start_flow_step()
@@ -953,8 +969,8 @@ func _test_host_authoritative_revive_all() -> void:
 		"Host revive-all must not heal or teleport a living multiplayer player."
 	)
 	_expect(
-		revive_times.is_empty()
-		and revive_seconds.is_empty()
+		not player_coordinator.has_pending_revive(1)
+		and not player_coordinator.has_pending_revive(77)
 		and game.tower_defense_status_hud.respawn_entries.is_empty(),
 		"Host revive-all must clear every pending revive timer and death HUD entry before completing."
 	)
@@ -966,19 +982,16 @@ func _test_host_authoritative_revive_all() -> void:
 		int(revive_all_requests["count"]) == 1,
 		"A Host intermission must issue exactly one authoritative revive-all request."
 	)
-	var revision_after_revive := int(
-		(mp_game.get("_player_health_revisions") as Dictionary).get(1, 0)
-	)
+	var revision_after_revive := player_coordinator.get_health_revision(1)
 	game.campaign_coordinator.enter_intermission(next_step)
 	_expect(
 		int(revive_events["dead"]) == 1
-		and int((mp_game.get("_player_health_revisions") as Dictionary).get(1, 0))
-		== revision_after_revive
+		and player_coordinator.get_health_revision(1) == revision_after_revive
 		and int(revive_all_requests["count"]) == 1,
 		"A repeated Host intermission must not request or perform revival for an already-living player."
 	)
 
-	mp_game.free()
+	_free_player_life_fixture(life_fixture, game)
 	net_manager.set("net_role", previous_role)
 	await _cleanup_tower_game(game)
 
@@ -1302,6 +1315,69 @@ func _all_multiplayer_players_dead(game: TowerDefenseGame, peer_ids: Array[int])
 		if player_instance == null or not player_instance.is_dead:
 			return false
 	return true
+
+
+func _create_player_life_fixture(
+	runtime: CombatRuntimeBase,
+	mode_adapter: MultiplayerModeAdapter,
+	net_manager: NetManagerStore
+) -> Dictionary:
+	var coordinator := MpPlayerCoordinator.new()
+	var projectile_coordinator := MpProjectileCoordinator.new()
+	coordinator.bind_runtime(runtime)
+	coordinator.bind_life_dependencies(
+		net_manager,
+		mode_adapter,
+		projectile_coordinator,
+		_test_net_time,
+		_noop_peer_life_transition,
+		_noop_peer_life_transition,
+		_noop_peer_life_transition,
+		_get_test_revive_anchor,
+		_noop_commit_revive_position
+	)
+	return {
+		"coordinator": coordinator,
+		"projectile_coordinator": projectile_coordinator,
+	}
+
+
+func _free_player_life_fixture(
+	fixture: Dictionary,
+	runtime: CombatRuntimeBase
+) -> void:
+	var coordinator := fixture.get("coordinator") as MpPlayerCoordinator
+	if coordinator != null:
+		coordinator.unbind_runtime(runtime)
+		coordinator.free()
+	var projectile_coordinator := (
+		fixture.get("projectile_coordinator") as MpProjectileCoordinator
+	)
+	if projectile_coordinator != null:
+		projectile_coordinator.free()
+
+
+func _test_net_time() -> float:
+	return 0.0
+
+
+func _noop_peer_life_transition(_peer_id: int) -> void:
+	pass
+
+
+func _get_test_revive_anchor(
+	_peer_id: int,
+	player_instance: Player
+) -> Vector2:
+	return player_instance.global_position
+
+
+func _noop_commit_revive_position(
+	_peer_id: int,
+	_position: Vector2,
+	_net_time: float
+) -> void:
+	pass
 
 
 func _cleanup_tower_game(game: TowerDefenseGame) -> void:

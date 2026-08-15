@@ -28,10 +28,10 @@ class ProbeRuntime:
 		return peer_players.get(peer_id) as Player
 
 	func get_enemy_for_net_id(net_id: int) -> Enemy:
-		return multiplayer_enemies_by_net_id.get(net_id) as Enemy
+		return get_network_enemy(net_id)
 
 	func get_pickup_for_net_id(net_id: int) -> Pickup:
-		return multiplayer_pickups.get(net_id) as Pickup
+		return get_network_pickup(net_id)
 
 	func remove_multiplayer_player(peer_id: int) -> void:
 		peer_players.erase(peer_id)
@@ -185,6 +185,7 @@ func _run() -> void:
 	var gameplay_gateway := MultiplayerGameplayGateway.new()
 	var run_state := RunStateStore.new()
 	var net_manager := NetManagerStore.new()
+	var merchant_transactions := MpMerchantTransactionsCoordinator.new()
 	var pickup_container := Node2D.new()
 	runtime.add_child(pickup_container)
 	runtime.enemy_container = pickup_container
@@ -258,6 +259,7 @@ func _run() -> void:
 		run_state,
 		net_manager
 	)
+	coordinator.bind_merchant_transactions_coordinator(merchant_transactions)
 	_expect(coordinator.is_bound(), "协调器必须绑定全部六个强类型运行时依赖。")
 	_expect(
 		coordinator.request_authoritative_wave_start(7)
@@ -291,7 +293,7 @@ func _run() -> void:
 		live_pickup = Pickup.new()
 		live_pickup.config = pickup_config
 		live_pickup.global_position = Vector2(11, 12)
-		runtime.multiplayer_pickups[32] = live_pickup
+		runtime.register_network_pickup(32, live_pickup)
 		_expect(
 			coordinator.send_live_pickup_roster_to_peer(9) == 1
 			and pickup_peer_packets.size() == 1
@@ -352,7 +354,7 @@ func _run() -> void:
 	)
 
 	coordinator.unbind_runtime(runtime)
-	runtime.multiplayer_pickups.erase(32)
+	runtime.unregister_network_pickup(32, live_pickup)
 	if live_pickup != null:
 		live_pickup.free()
 	run_state.begin_new_run(&"weishidaier", false)
@@ -389,7 +391,7 @@ func _run() -> void:
 		)
 		coordinator.receive_pickup_removed(41)
 		_expect(
-			not runtime.multiplayer_pickups.has(41),
+			not runtime.has_network_pickup(41),
 			"客户端移除事件必须立即清理拾取物索引。"
 		)
 
@@ -405,7 +407,7 @@ func _run() -> void:
 			true
 		)
 		_expect(
-			not runtime.multiplayer_pickups.has(42)
+			not runtime.has_network_pickup(42)
 			and collector.immediate_apply_count == 1
 			and not collector.immediate_apply_healing
 			and collector.last_pickup_config == immediate_pickup_config,
@@ -429,7 +431,7 @@ func _run() -> void:
 			run_state.get_inventory_revision_for_peer(7)
 		)
 		_expect(
-			not runtime.multiplayer_pickups.has(43)
+			not runtime.has_network_pickup(43)
 			and applied_inventory_revision
 			== int(authoritative_inventory_snapshot.get("revision", -1))
 			and collector.inventory_feedback_count == 1
@@ -449,7 +451,7 @@ func _run() -> void:
 			authoritative_inventory_snapshot
 		)
 		_expect(
-			not runtime.multiplayer_pickups.has(44)
+			not runtime.has_network_pickup(44)
 			and run_state.get_inventory_revision_for_peer(7)
 			== applied_inventory_revision
 			and collector.inventory_feedback_count == 1,
@@ -507,6 +509,7 @@ func _run() -> void:
 	gameplay_gateway.free()
 	enemy_coordinator.free()
 	mode_adapter.free()
+	merchant_transactions.free()
 	runtime.peer_players.erase(7)
 	collector.free()
 	runtime.free()
@@ -530,18 +533,21 @@ func _test_pickup_delegation_contract() -> void:
 	var root_source := FileAccess.get_file_as_string(
 		"res://scene/multiplayer/mp_game.gd"
 	)
+	var session_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/session/mp_session_coordinator.gd"
+	)
 	var coordinator_source := FileAccess.get_file_as_string(
 		"res://scene/multiplayer/world_flow/mp_world_flow_coordinator.gd"
 	)
 	_expect(
-		root_source.contains(
-			"world_flow_coordinator.send_live_pickup_roster_to_peer(peer_id)"
+		session_source.contains(
+			"_world_flow_coordinator.send_live_pickup_roster_to_peer(peer_id)"
 		)
 		and root_source.contains(
 			"world_flow_coordinator.receive_pickup_collected("
 		)
 		and not root_source.contains("func _on_host_pickup_collected("),
-		"MpGame 必须把迟加入清单和收集应用收口为 WorldFlow 薄门面。"
+		"Session/MpGame 必须把迟加入清单和收集应用收口为 WorldFlow 薄门面。"
 	)
 	_expect(
 		coordinator_source.contains(

@@ -63,7 +63,7 @@ func _test_standard_registry() -> void:
 		"普通模式静态 Pickup 必须继续按 NodePath 排序获得 1、2。"
 	)
 	_expect(
-		game.next_multiplayer_pickup_net_id
+		registry.next_multiplayer_pickup_net_id
 		== PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID,
 		"普通模式动态 Pickup 起始 net id 必须保持 1000。"
 	)
@@ -102,12 +102,12 @@ func _test_standard_registry() -> void:
 	)
 	_expect(
 		game.get_pickup_for_net_id(1000) == boss_pickup
-		and game.next_multiplayer_pickup_net_id == 1001,
-		"普通 Pickup façade 与协调器必须共享同一索引及 net id 游标。"
+		and registry.next_multiplayer_pickup_net_id == 1001,
+		"普通 PickupRegistry 必须独占动态 net id 游标。"
 	)
 	registry.register_existing_dynamic_pickups()
 	_expect(
-		spawn_records.size() == 1 and game.next_multiplayer_pickup_net_id == 1001,
+		spawn_records.size() == 1 and registry.next_multiplayer_pickup_net_id == 1001,
 		"重复扫描已有动态 Pickup 不得重复分配或广播。"
 	)
 	boss_pickup.consumed.emit(boss_pickup, 1, true)
@@ -119,7 +119,7 @@ func _test_standard_registry() -> void:
 		"消费后 tree_exited 必须被成对抑制，且移除/收集广播顺序保持不变。"
 	)
 	_expect(
-		game.pending_multiplayer_pickup_exit_ids.is_empty()
+		registry.pending_multiplayer_pickup_exit_ids.is_empty()
 		and game.get_pickup_for_net_id(1000) == null,
 		"Pickup 消费退出后不得残留索引或抑制标记。"
 	)
@@ -146,9 +146,9 @@ func _test_rogue_registry() -> void:
 	var registry := game.get_node_or_null("PickupRegistry") as RoguePickupRegistry
 	_expect(registry != null, "肉鸽必须静态挂载自身 PickupRegistry。")
 	_expect(registry != null and registry.is_bound(), "肉鸽 PickupRegistry 必须绑定中性依赖。")
-	_expect(game.multiplayer_pickups.is_empty(), "肉鸽场景不得凭空产生静态 Pickup。")
+	_expect(game.get_network_pickup_count() == 0, "肉鸽场景不得凭空产生静态 Pickup。")
 	_expect(
-		game.next_multiplayer_pickup_net_id
+		registry.next_multiplayer_pickup_net_id
 		== PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID,
 		"肉鸽动态 Pickup 起始 net id 必须独立保持 1000。"
 	)
@@ -167,7 +167,7 @@ func _test_rogue_registry() -> void:
 	_expect(
 		spawn_ids == [1000]
 		and game.get_pickup_for_net_id(1000) == enemy_pickup
-		and game.next_multiplayer_pickup_net_id == 1001,
+		and registry.next_multiplayer_pickup_net_id == 1001,
 		"肉鸽 EnemyContainer 必须由自身协调器注册动态 Pickup。"
 	)
 	enemy_pickup.queue_free()
@@ -199,12 +199,10 @@ func _test_tree_less_standard_facade() -> void:
 	game.add_child(registry)
 	registry.bind_standard_dependencies(
 		game.runtime_mode,
-		game.multiplayer_pickups,
+		game,
 		gateway,
 		enemy_container,
-		boss_container,
-		{},
-		PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
+		boss_container
 	)
 	var removed_ids: Array[int] = []
 	var collected_ids: Array[int] = []
@@ -217,15 +215,14 @@ func _test_tree_less_standard_facade() -> void:
 	)
 	var pickup := Pickup.new()
 	pickup.config = HEALTH_PICKUP
-	pickup.set_meta("net_id", 77)
-	game.multiplayer_pickups[77] = pickup
+	game.register_network_pickup(77, pickup)
 	game._on_multiplayer_pickup_consumed(pickup, 2, true)
 	game._on_multiplayer_pickup_tree_exited(77)
 	_expect(
 		removed_ids == [77]
 		and collected_ids == [77]
-		and game.pending_multiplayer_pickup_exit_ids.is_empty(),
-		"StandardGame.new() 的 tree-less façade 必须保持消费/退出配对语义。"
+		and registry.pending_multiplayer_pickup_exit_ids.is_empty(),
+		"StandardGame.new() 的 tree-less 注册表必须保持消费/退出配对语义。"
 	)
 	pickup.free()
 	game.free()
@@ -261,12 +258,10 @@ func _test_tree_less_tower_registry() -> void:
 	game.pickup_registry = registry
 	registry.bind_tower_dependencies(
 		game.runtime_mode,
-		game.multiplayer_pickups,
+		game,
 		gateway,
 		enemy_container,
-		boss_container,
-		{},
-		PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
+		boss_container
 	)
 	var spawned_ids: Array[int] = []
 	var terminal_events: Array[String] = []
@@ -290,9 +285,9 @@ func _test_tree_less_tower_registry() -> void:
 		and game.get_pickup_for_net_id(
 			PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
 		) == pickup
-		and game.next_multiplayer_pickup_net_id
+		and registry.next_multiplayer_pickup_net_id
 		== PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID + 1,
-		"塔防 PickupRegistry 必须与根 façade 共享动态索引与 net id 游标。"
+		"塔防 PickupRegistry 必须独占动态索引与 net id 游标。"
 	)
 	pickup.consumed.emit(pickup, 2, true)
 	registry.handle_multiplayer_pickup_tree_exited(
@@ -300,7 +295,7 @@ func _test_tree_less_tower_registry() -> void:
 	)
 	_expect(
 		terminal_events == ["removed:1000", "collected:1000"]
-		and game.pending_multiplayer_pickup_exit_ids.is_empty()
+		and registry.pending_multiplayer_pickup_exit_ids.is_empty()
 		and game.get_pickup_for_net_id(
 			PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
 		) == null,
@@ -325,6 +320,12 @@ func _test_source_boundaries() -> void:
 	)
 	var tower_runtime_source := FileAccess.get_file_as_string(
 		"res://scene/game_modes/tower_defense/tower_defense_game.gd"
+	)
+	var standard_runtime_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/standard/standard_game.gd"
+	)
+	var rogue_runtime_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/rogue/combat/rogue_combat_game.gd"
 	)
 	var tower_scene_source := FileAccess.get_file_as_string(
 		"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
@@ -362,6 +363,16 @@ func _test_source_boundaries() -> void:
 		_expect(
 			source.contains("MultiplayerGameplayGateway"),
 			"Pickup 协调器必须直接依赖中性 MultiplayerGameplayGateway。"
+		)
+	for runtime_source in [
+		standard_runtime_source,
+		rogue_runtime_source,
+		tower_runtime_source,
+	]:
+		_expect(
+			not runtime_source.contains("pending_multiplayer_pickup_exit_ids")
+			and not runtime_source.contains("next_multiplayer_pickup_net_id"),
+			"模式根不得镜像 PickupRegistry 的退出账本或 net id 游标。"
 		)
 	_expect(
 		standard_source.contains("[enemy_container, boss_container]"),

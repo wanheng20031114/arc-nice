@@ -5,6 +5,7 @@ signal opened
 signal closed
 
 const DESIGN_SIZE := Vector2(728.0, 544.0)
+const CONTROL_LOCK_OWNER := &"tower_production_panel"
 const DEFAULT_PANEL_BACKGROUND := preload(
 	"res://resources/texture/production/production_panel_background.png"
 )
@@ -100,6 +101,8 @@ func bind_building(new_building: ProductionBuilding, player: Player) -> void:
 	if building == new_building and tracked_player == player:
 		_refresh_all()
 		return
+	if overlay.visible:
+		close()
 	_unbind_building()
 	building = new_building
 	tracked_player = player
@@ -126,7 +129,7 @@ func open() -> void:
 	overlay.show()
 	set_process_input(true)
 	set_process(true)
-	tracked_player.set_controls_locked(true)
+	tracked_player.set_control_lock(CONTROL_LOCK_OWNER, true)
 	material_list.hide()
 	_refresh_all()
 	if (
@@ -158,9 +161,8 @@ func close() -> void:
 		was_open
 		and closing_player != null
 		and is_instance_valid(closing_player)
-		and not closing_player.is_dead
 	):
-		closing_player.set_controls_locked(false)
+		closing_player.set_control_lock(CONTROL_LOCK_OWNER, false)
 	if not was_open:
 		return
 	if closing_building != null and is_instance_valid(closing_building):

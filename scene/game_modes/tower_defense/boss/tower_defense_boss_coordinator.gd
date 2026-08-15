@@ -138,17 +138,11 @@ func begin_intro(boss_config: BossConfig = null) -> void:
 	active_boss_config = boss_config
 	player_roster_coordinator.reset_wave_death_counts()
 	linglan_boss_started = true
-	campaign_coordinator.current_flow_step = boss_config
-	campaign_coordinator.wave_state = CombatFlowState.State.BOSS_INTRO
-	campaign_coordinator.stop_enemy_spawn_timer()
-	campaign_coordinator.stop_state_timer()
+	if not campaign_coordinator.transition_to_boss_intro(boss_config):
+		campaign_coordinator.enter_victory()
+		return
 	enemy_coordinator.clear_queue()
 	enemy_coordinator.clear_active_enemies()
-	campaign_coordinator.current_wave_total = 1
-	campaign_coordinator.current_wave_spawned = 1
-	campaign_coordinator.current_wave_defeated = 0
-	campaign_coordinator.current_wave_escaped = 0
-	campaign_coordinator.current_wave_resolved = 0
 	home_defense_coordinator.clear_resolved_enemy_ids()
 	enemy_coordinator.clear_hud_alive_enemies()
 	multiplayer_adapter.set_merchant_active(false)
@@ -174,10 +168,17 @@ func apply_remote_flow_state(
 	state: CombatFlowState.State,
 	boss_config: BossConfig
 ) -> void:
+	# Repair flow 可能只补 state、没有重复携带配置；此时复用已由更早
+	# flow/boss-started 建立的强类型 active config，而不是提交无 step 状态。
+	var transition_boss_config := (
+		boss_config if boss_config != null else active_boss_config
+	)
 	match state:
 		CombatFlowState.State.BOSS_INTRO:
-			campaign_coordinator.stop_state_timer()
-			campaign_coordinator.wave_state = CombatFlowState.State.BOSS_INTRO
+			if not campaign_coordinator.transition_to_boss_intro(
+				transition_boss_config
+			):
+				return
 			multiplayer_adapter.set_local_merchants_active(false)
 			presentation_coordinator.show_boss_progress(0, 1)
 			if boss_config != null:
@@ -186,8 +187,10 @@ func apply_remote_flow_state(
 				prepare_arena(boss_config)
 				play_remote_intro(boss_config)
 		CombatFlowState.State.BOSS_ACTIVE:
-			campaign_coordinator.stop_state_timer()
-			campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE
+			if not campaign_coordinator.transition_to_boss_active(
+				transition_boss_config
+			):
+				return
 			multiplayer_adapter.set_local_merchants_active(false)
 			presentation_coordinator.show_boss_progress(0, 1)
 			restore_remote_camera_if_intro_complete()
@@ -207,11 +210,10 @@ func apply_remote_started(
 		or boss_config == null
 	):
 		return
+	if not campaign_coordinator.transition_to_boss_active(boss_config):
+		return
 	restore_remote_camera_if_intro_complete()
 	active_boss_config = boss_config
-	campaign_coordinator.current_flow_step = boss_config
-	campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE
-	campaign_coordinator.stop_state_timer()
 	presentation_coordinator.show_boss_progress(0, 1)
 	multiplayer_adapter.set_local_merchants_active(false)
 	presentation_coordinator.update_boss_music(boss_config)
@@ -239,7 +241,9 @@ func activate_boss() -> void:
 	if not boss_config_has_required_data(active_boss_config):
 		campaign_coordinator.enter_victory()
 		return
-	campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE
+	if not campaign_coordinator.transition_to_boss_active(active_boss_config):
+		campaign_coordinator.enter_victory()
+		return
 	linglan_boss.config = get_boss_enemy_config(active_boss_config)
 	linglan_boss.global_position = get_linglan_spawn_global_position(active_boss_config)
 	linglan_boss.activate_boss(
@@ -306,7 +310,7 @@ func stop_presentation() -> void:
 func complete_escaped_step_if_ready() -> void:
 	if (
 		campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE
-		or campaign_coordinator.current_wave_resolved < campaign_coordinator.current_wave_total
+		or not campaign_coordinator.is_wave_progress_complete()
 	):
 		return
 	if boss_health_hud != null:
@@ -733,7 +737,6 @@ func instantiate_remote_proxy(
 	)
 	enemy_coordinator.configure_runtime_enemy_modifiers(boss_enemy)
 	boss_enemy.configure_multiplayer_proxy()
-	boss_enemy.set_meta("net_id", net_id)
 	enemy_coordinator.register_remote_proxy_indices(boss_enemy, net_id)
 	return boss_enemy
 
@@ -901,10 +904,12 @@ func _on_boss_defeated(enemy: Enemy) -> void:
 		or enemy != linglan_boss
 	):
 		return
+	if not enemy_coordinator.try_resolve_active_enemy_defeat(
+		enemy.get_instance_id()
+	):
+		return
 	enemy_coordinator.remove_active_enemy(enemy.get_instance_id())
 	enemy_coordinator.remove_hud_alive_enemy(enemy.get_instance_id())
-	campaign_coordinator.current_wave_defeated = 1
-	campaign_coordinator.current_wave_resolved = 1
 	presentation_coordinator.show_boss_progress(1, 1)
 	enemy_coordinator.emit_multiplayer_enemy_defeated(enemy)
 	remove_remaining_adds()

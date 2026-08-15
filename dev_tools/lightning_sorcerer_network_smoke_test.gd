@@ -342,8 +342,7 @@ func _test_target_warning_proxy_contract() -> void:
 	lightning.setup(LIGHTNING_SORCERER_CONFIG, player)
 	lightning.configure_multiplayer_proxy()
 	lightning.set_meta("net_id", 73)
-	var net_enemies := enemy_coordinator.net_enemies
-	net_enemies[73] = lightning
+	enemy_coordinator.register_client_enemy(73, lightning, 0.0)
 
 	var target_warning := lightning.get_node_or_null("TargetWarning") as Node2D
 	_expect(
@@ -931,8 +930,7 @@ func _register_lightning_proxy(
 	lightning.configure_multiplayer_proxy()
 	lightning.set_meta("net_id", net_id)
 	var enemy_coordinator := mp_game.get("enemy_coordinator") as MpEnemyCoordinator
-	var net_enemies := enemy_coordinator.net_enemies
-	net_enemies[net_id] = lightning
+	enemy_coordinator.register_client_enemy(net_id, lightning, 0.0)
 	return lightning
 
 

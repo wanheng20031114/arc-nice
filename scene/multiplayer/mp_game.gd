@@ -4910,9 +4910,9 @@ func net_game_victory() -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_upgrade_selected(stat_type: int) -> void:
+	var sender_id := _get_rpc_sender_id()
 	if _is_tower_management_suspended():
 		return
-	var sender_id := _get_rpc_sender_id()
 	transactions_coordinator.handle_remote_upgrade_selection(sender_id, stat_type)
 
 
@@ -4921,9 +4921,9 @@ func net_inventory_item_use_requested(
 	slot_index: int,
 	expected_inventory_revision: int = -1
 ) -> void:
+	var sender_id := _get_rpc_sender_id()
 	if _is_tower_management_suspended():
 		return
-	var sender_id := _get_rpc_sender_id()
 	transactions_coordinator.handle_remote_inventory_item_use_request(
 		sender_id,
 		slot_index,
@@ -4936,9 +4936,9 @@ func net_inventory_item_discard_requested(
 	slot_index: int,
 	expected_inventory_revision: int = -1
 ) -> void:
+	var sender_id := _get_rpc_sender_id()
 	if _is_tower_management_suspended():
 		return
-	var sender_id := _get_rpc_sender_id()
 	transactions_coordinator.handle_remote_inventory_item_discard_request(
 		sender_id,
 		slot_index,
@@ -4952,9 +4952,9 @@ func net_simple_crafting_requested(
 	recipe_id: String,
 	expected_inventory_revision: int
 ) -> void:
+	var sender_id := _get_rpc_sender_id()
 	if _is_tower_management_suspended():
 		return
-	var sender_id := _get_rpc_sender_id()
 	transactions_coordinator.handle_remote_simple_crafting_request(
 		sender_id,
 		request_id,
@@ -4965,9 +4965,9 @@ func net_simple_crafting_requested(
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_skill1_purchase_requested() -> void:
+	var sender_id := _get_rpc_sender_id()
 	if _is_tower_management_suspended():
 		return
-	var sender_id := _get_rpc_sender_id()
 	transactions_coordinator.handle_remote_skill1_purchase_request(sender_id)
 
 
@@ -5510,11 +5510,14 @@ func _on_net_player_left(peer_id: int) -> void:
 func _capture_disconnected_player_reconnect_state(peer_id: int) -> void:
 	if game == null or peer_id <= 0:
 		return
-	var player_state: SnapshotManager.PlayerState = null
-	for state in game.collect_player_snapshot_states():
-		if state != null and state.peer_id == peer_id:
-			player_state = state
-			break
+	var player_runtime_state := (
+		player_coordinator.capture_player_reconnect_state(peer_id)
+	)
+	if player_runtime_state.is_empty():
+		push_error(
+			"MpGame: 无法捕获断线玩家 %d 的权威运行时状态。" % peer_id
+		)
+		return
 	var spawn_slot_index := 0
 	var wave_death_count := 0
 	var tower_world_spawn_restore_pending := false
@@ -5535,7 +5538,6 @@ func _capture_disconnected_player_reconnect_state(peer_id: int) -> void:
 			if int(plant_snapshot.get("owner_peer_id", 0)) == peer_id:
 				owned_plant_net_ids.append(int(plant_snapshot.get("net_id", 0)))
 	var reconnect_state := {
-		"state": player_state,
 		"spawn_slot_index": spawn_slot_index,
 		"wave_death_count": wave_death_count,
 		"owned_plant_net_ids": owned_plant_net_ids,
@@ -5543,12 +5545,9 @@ func _capture_disconnected_player_reconnect_state(peer_id: int) -> void:
 			tower_world_spawn_restore_pending
 		),
 	}
+	reconnect_state.merge(player_runtime_state, true)
 	reconnect_state.merge(
 		merchant_transactions_coordinator.capture_reconnect_state(peer_id),
-		true
-	)
-	reconnect_state.merge(
-		player_coordinator.capture_reconnect_life_state(peer_id),
 		true
 	)
 	_disconnected_player_reconnect_states[peer_id] = reconnect_state
@@ -5686,6 +5685,9 @@ func _on_net_player_reconnected(
 			plant.owner_player = player_node
 	var fate_presentation_lease_synchronized := false
 	if tower_mode_adapter != null:
+		tower_mode_adapter.synchronize_reconnected_player_rogue_suspension(
+			new_peer_id
+		)
 		fate_presentation_lease_synchronized = (
 			tower_mode_adapter.synchronize_reconnected_player_presentation_lease(
 				new_peer_id

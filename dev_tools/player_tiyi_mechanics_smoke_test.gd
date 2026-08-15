@@ -508,7 +508,7 @@ func _test_high_noon() -> void:
 		"A dead locked target must release its slot for replacement on the next beat."
 	)
 	var health_before_cancel := replacement_enemy.current_health
-	player.set_controls_locked(true)
+	player.set_control_lock(&"tiyi_smoke_external", true)
 	_expect(not player.is_high_noon_active(), "An external controls lock must cancel High Noon immediately.")
 	_expect(
 		not player.high_noon_cast_effect_sprite.visible
@@ -517,7 +517,7 @@ func _test_high_noon() -> void:
 	)
 	player.call("_update_high_noon", 5.0)
 	_expect(replacement_enemy.current_health == health_before_cancel, "A cancelled High Noon must deal no delayed damage.")
-	player.set_controls_locked(false)
+	player.set_control_lock(&"tiyi_smoke_external", false)
 	var residual_bullet := _spawn_test_bullet(Vector2(-120.0, -120.0))
 	player.apply_multiplayer_death_state()
 	var body_sprite := player.get_node("BodySprite") as AnimatedSprite2D

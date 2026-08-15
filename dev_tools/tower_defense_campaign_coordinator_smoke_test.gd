@@ -6,6 +6,12 @@ const TOWER_SCENE := preload(
 const PERFORMANCE_CAMPAIGN: WaveCampaignConfig = preload(
 	"res://resources/config/campaigns/tower_defense/performance/campaign.tres"
 )
+const FLOW_STATE_CLIENT_SOURCE_PATHS: Array[String] = [
+	"res://scene/game_modes/tower_defense/fate/tower_defense_fate_flow_coordinator.gd",
+	"res://scene/game_modes/tower_defense/rogue/tower_defense_rogue_exploration_coordinator.gd",
+	"res://scene/game_modes/tower_defense/boss/tower_defense_boss_coordinator.gd",
+	"res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.gd",
+]
 
 var failures: Array[String] = []
 
@@ -22,6 +28,7 @@ func _run() -> void:
 	await process_frame
 
 	var campaign := game.campaign_coordinator
+	_test_flow_state_write_ownership()
 	_expect(campaign != null, "塔防场景缺少静态 CampaignCoordinator。")
 	_expect(
 		game.get_node_or_null("CampaignRuntimePort")
@@ -74,12 +81,45 @@ func _run() -> void:
 			"TowerDefenseGame 不得保留 Campaign 配置镜像。"
 		)
 
+	campaign.reset_wave_progress(2)
+	_expect(
+		not campaign.try_resolve_wave_enemy_defeat()
+		and not campaign.try_resolve_wave_enemy_escape(),
+		"Campaign 不得结算尚未生成的敌人。"
+	)
+	_expect(
+		campaign.record_wave_spawns(1) == 1
+		and campaign.try_resolve_wave_enemy_defeat()
+		and not campaign.try_resolve_wave_enemy_escape(),
+		"Campaign 必须维持 resolved <= spawned，且同一生成额度只能结算一次。"
+	)
+	campaign.reset_wave_progress(0)
+	_expect(
+		campaign.apply_remote_wave_progress(1, 1, 0, 1, 2)
+		and campaign.current_wave_resolved == 1
+		and campaign.current_wave_spawned == 1,
+		"远端波次进度必须维持 resolved <= spawned。"
+	)
+	_expect(
+		campaign.apply_remote_wave_progress(2, 1, 1, 2, 3)
+		and campaign.current_wave_index == 1
+		and campaign.current_wave_spawned == 2
+		and not campaign.apply_remote_wave_progress(1, 1, 0, 1, 2)
+		and not campaign.apply_remote_wave_progress(2, 1, 0, 1, 3)
+		and campaign.current_wave_resolved == 2,
+		"远端波次 epoch 必须拒绝旧波和同波倒退包。"
+	)
+	campaign.reset_wave_progress(0)
+	campaign.current_wave_index = 0
+
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var start_step := campaign.get_start_flow_step()
-	campaign.wave_state = CombatFlowState.State.PRE_WAVE
-	campaign.current_flow_step = start_step
-	campaign.next_flow_step_after_rest = start_step
-	campaign.countdown_seconds = 9
+	campaign.replace_flow_state_for_fixture(
+		CombatFlowState.State.PRE_WAVE,
+		start_step,
+		start_step,
+		9
+	)
 	_expect(campaign.request_wave_start(), "单人准备阶段应允许收束倒计时。")
 	_expect(
 		campaign.countdown_seconds
@@ -100,6 +140,74 @@ func _run() -> void:
 
 	var boss_step := campaign.get_flow_step_by_id(&"boss_01_linglan")
 	_expect(boss_step is BossConfig, "正式流程必须存在铃兰 Boss 步骤。")
+	var typed_boss_step := boss_step as BossConfig
+	var wave_five := campaign.get_flow_step_by_id(&"wave_05")
+	game.state_timer.start(1.0)
+	game.enemy_spawn_timer.start(1.0)
+	campaign.transition_to_fate_interlude(boss_step)
+	_expect(
+		campaign.wave_state == CombatFlowState.State.FATE_INTERLUDE
+		and campaign.next_flow_step_after_rest == boss_step
+		and campaign.countdown_seconds == 0
+		and game.state_timer.is_stopped()
+		and game.enemy_spawn_timer.is_stopped(),
+		"Fate typed transition 必须原子提交 next/state/countdown 并停止流程 timer。"
+	)
+	game.state_timer.start(1.0)
+	game.enemy_spawn_timer.start(1.0)
+	_expect(
+		campaign.transition_to_rogue_exploration(wave_five)
+		and campaign.wave_state == CombatFlowState.State.ROGUE_EXPLORATION
+		and campaign.next_flow_step_after_rest == wave_five
+		and campaign.countdown_seconds == 0
+		and game.state_timer.is_stopped()
+		and game.enemy_spawn_timer.is_stopped(),
+		"Rogue typed transition 必须原子提交 next/state/countdown 并停止流程 timer。"
+	)
+	game.state_timer.start(1.0)
+	game.enemy_spawn_timer.start(1.0)
+	_expect(
+		campaign.apply_remote_wave_progress(12, 12, 0, 12, 12),
+		"Boss 前置夹具必须先建立末波已完成的远端进度 epoch。"
+	)
+	_expect(
+		not campaign.apply_remote_wave_progress(12, 0, 0, 0, 1),
+		"Boss keyframe 与末波复用 wave number 时不得倒退覆盖末波 epoch。"
+	)
+	_expect(
+		campaign.transition_to_boss_intro(typed_boss_step)
+		and campaign.wave_state == CombatFlowState.State.BOSS_INTRO
+		and campaign.current_flow_step == boss_step
+		and campaign.next_flow_step_after_rest == null
+		and campaign.current_wave_total == 1
+		and campaign.current_wave_spawned == 1
+		and campaign.current_wave_resolved == 0
+		and campaign.countdown_seconds == 0
+		and game.state_timer.is_stopped()
+		and game.enemy_spawn_timer.is_stopped(),
+		(
+			"Boss intro typed transition 必须提交 active step、重置 Boss 进度，"
+			+ "并清空 rest/countdown。"
+		)
+	)
+	_expect(
+		not campaign.apply_remote_wave_progress(12, 0, 0, 0, 1)
+		and not campaign.apply_remote_wave_progress(12, 12, 0, 12, 12)
+		and campaign.current_wave_total == 1
+		and campaign.current_wave_spawned == 1
+		and campaign.current_wave_resolved == 0
+		and campaign.get_replicated_wave_progress_snapshot().is_empty(),
+		(
+			"Boss flow 必须隔离通用 wave_progress：Boss 包与迟到末波包"
+			+ "都不得污染 Boss 自己的进度状态。"
+		)
+	)
+	_expect(
+		campaign.transition_to_boss_active(typed_boss_step)
+		and campaign.wave_state == CombatFlowState.State.BOSS_ACTIVE
+		and campaign.current_flow_step == boss_step,
+		"Boss active typed transition 必须保持同一个 Boss active step。"
+	)
 	campaign.start_client_flow_countdown(
 		CombatFlowState.State.INTERMISSION,
 		&"boss_01_linglan",
@@ -136,8 +244,10 @@ func _run() -> void:
 	)
 	var terminal_wave := WaveConfig.new()
 	terminal_wave.step_id = &"campaign_smoke_terminal"
-	campaign.current_flow_step = terminal_wave
-	campaign.wave_state = CombatFlowState.State.WAVE_ACTIVE
+	campaign.replace_flow_state_for_fixture(
+		CombatFlowState.State.WAVE_ACTIVE,
+		terminal_wave
+	)
 	campaign.terminal_wave_enters_fate_interlude = false
 	campaign.complete_current_step()
 	campaign.enter_victory()
@@ -162,6 +272,47 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_flow_state_write_ownership() -> void:
+	var direct_write_pattern := RegEx.new()
+	var compiled := direct_write_pattern.compile(
+		"(?:campaign_coordinator|_campaign|_campaign_coordinator)"
+		+ "\\.(?:wave_state|current_flow_step|next_flow_step_after_rest|countdown_seconds)"
+		+ "\\s*=(?!=)"
+	)
+	_expect(compiled == OK, "Campaign 外部写入静态规则无法编译。")
+	if compiled != OK:
+		return
+	for source_path in FLOW_STATE_CLIENT_SOURCE_PATHS:
+		var source := _read_text(source_path)
+		_expect(
+			direct_write_pattern.search(source) == null,
+			"Campaign flow 状态仍被外部直接写入：%s" % source_path
+		)
+	_expect(
+		_read_text(FLOW_STATE_CLIENT_SOURCE_PATHS[0]).contains(
+			"campaign_coordinator.transition_to_fate_interlude("
+		)
+		and _read_text(FLOW_STATE_CLIENT_SOURCE_PATHS[1]).contains(
+			"_campaign.transition_to_rogue_exploration("
+		)
+		and _read_text(FLOW_STATE_CLIENT_SOURCE_PATHS[2]).contains(
+			"campaign_coordinator.transition_to_boss_intro("
+		)
+		and _read_text(FLOW_STATE_CLIENT_SOURCE_PATHS[2]).contains(
+			"campaign_coordinator.transition_to_boss_active("
+		),
+		"Fate/Rogue/Boss 必须通过 Campaign typed transition API 写流程状态。"
+	)
+
+
+func _read_text(path: String) -> String:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		failures.append("无法读取验证源码：%s" % path)
+		return ""
+	return file.get_as_text()
 
 
 func _expect(condition: bool, message: String) -> void:

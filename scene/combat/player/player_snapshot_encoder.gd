@@ -7,6 +7,15 @@ var _live_peer_ids: Dictionary = {}
 var _stale_peer_ids: Array = []
 
 
+## 无状态调用路径使用一次性编码器，仍与常驻 roster 共用完全相同的字段
+## 采样契约。返回数组及其中的 PlayerState 不会再被该编码器改写。
+static func collect_once(
+	peer_players: Dictionary
+) -> Array[SnapshotManager.PlayerState]:
+	var encoder := PlayerSnapshotEncoder.new()
+	return encoder.collect(peer_players)
+
+
 func collect(
 	peer_players: Dictionary
 ) -> Array[SnapshotManager.PlayerState]:

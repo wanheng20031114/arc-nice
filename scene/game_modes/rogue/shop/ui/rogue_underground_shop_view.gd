@@ -91,7 +91,7 @@ func _ready() -> void:
 		run_state.party_xirang_ledger_changed.connect(
 			_on_party_xirang_ledger_changed
 		)
-	_balance_peer_id = run_state.active_multiplayer_peer_id
+	_balance_peer_id = run_state.get_active_multiplayer_peer_id()
 	_current_xirang_balance = run_state.get_party_xirang_balance(
 		_balance_peer_id
 	)
@@ -332,7 +332,7 @@ func _on_quick_use_binding_changed(
 	_preferred_slot_index: int
 ) -> void:
 	if (
-		owner_peer_id == run_state.active_multiplayer_peer_id
+		owner_peer_id == run_state.get_active_multiplayer_peer_id()
 		and _active_tab == ShopTab.SELL
 	):
 		_refresh_grid()

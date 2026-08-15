@@ -7,7 +7,7 @@ var runtime_mode := CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 var next_multiplayer_pickup_net_id := FIRST_DYNAMIC_PICKUP_NET_ID
 var pending_multiplayer_pickup_exit_ids: Dictionary = {}
 
-var _pickup_index: Dictionary = {}
+var _runtime: CombatRuntimeBase
 var _gameplay_gateway: MultiplayerGameplayGateway
 var _dynamic_containers: Array[Node] = []
 var _bound := false
@@ -15,19 +15,19 @@ var _bound := false
 
 func bind_dependencies(
 	mode: int,
-	pickup_index: Dictionary,
+	runtime: CombatRuntimeBase,
 	gameplay_gateway: MultiplayerGameplayGateway,
-	dynamic_containers: Array[Node],
-	pending_exit_ids: Dictionary,
-	next_pickup_net_id: int
+	dynamic_containers: Array[Node]
 ) -> void:
 	runtime_mode = mode
-	_pickup_index = pickup_index
+	_runtime = runtime
 	_gameplay_gateway = gameplay_gateway
 	_dynamic_containers = dynamic_containers.duplicate()
-	pending_multiplayer_pickup_exit_ids = pending_exit_ids
-	next_multiplayer_pickup_net_id = next_pickup_net_id
-	_bound = _gameplay_gateway != null and not _dynamic_containers.is_empty()
+	_bound = (
+		_runtime != null
+		and _gameplay_gateway != null
+		and not _dynamic_containers.is_empty()
+	)
 	for container in _dynamic_containers:
 		if container == null:
 			_bound = false
@@ -53,7 +53,9 @@ func connect_dynamic_containers() -> void:
 
 
 func register_static_pickups(static_root: Node) -> void:
-	_pickup_index.clear()
+	if _runtime == null:
+		return
+	_runtime.clear_network_pickup_registry()
 	pending_multiplayer_pickup_exit_ids.clear()
 	next_multiplayer_pickup_net_id = FIRST_DYNAMIC_PICKUP_NET_ID
 	if static_root == null:
@@ -76,22 +78,47 @@ func register_existing_dynamic_pickups() -> void:
 
 
 func get_pickup_for_net_id(net_id: int) -> Pickup:
-	return get_pickup_from_index(_pickup_index, net_id)
+	return _runtime.get_network_pickup(net_id) if _runtime != null else null
+
+
+func get_registered_pickup_ids() -> Array[int]:
+	return _runtime.get_network_pickup_ids() if _runtime != null else []
+
+
+func register_remote_pickup(net_id: int, pickup: Pickup) -> bool:
+	if (
+		runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		or _runtime == null
+	):
+		return false
+	return _runtime.register_network_pickup(net_id, pickup)
+
+
+func remove_remote_pickup(net_id: int, expected_pickup: Pickup = null) -> Pickup:
+	if (
+		runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		or _runtime == null
+	):
+		return null
+	return _runtime.unregister_network_pickup(net_id, expected_pickup)
 
 
 func mark_multiplayer_pickup_removed(
 	net_id: int,
-	suppress_next_tree_exit: bool = false
+	suppress_next_tree_exit: bool = false,
+	expected_pickup: Pickup = null
 ) -> bool:
-	if net_id <= 0 or _gameplay_gateway == null:
+	if net_id <= 0 or _runtime == null or _gameplay_gateway == null:
 		return false
 	if suppress_next_tree_exit:
 		if pending_multiplayer_pickup_exit_ids.has(net_id):
 			return false
-		pending_multiplayer_pickup_exit_ids[net_id] = true
 	elif pending_multiplayer_pickup_exit_ids.erase(net_id):
 		return false
-	_pickup_index.erase(net_id)
+	if _runtime.unregister_network_pickup(net_id, expected_pickup) == null:
+		return false
+	if suppress_next_tree_exit:
+		pending_multiplayer_pickup_exit_ids[net_id] = true
 	_gameplay_gateway.pickup_removed.emit(net_id)
 	return true
 
@@ -101,12 +128,14 @@ func handle_multiplayer_pickup_consumed(
 	collector_peer_id: int,
 	applied_immediately: bool
 ) -> void:
-	if pickup == null:
+	if pickup == null or _runtime == null:
 		return
-	var net_id := int(pickup.get_meta("net_id", 0))
+	var net_id := _runtime.get_network_pickup_net_id_by_instance_id(
+		pickup.get_instance_id()
+	)
 	if net_id <= 0:
 		return
-	if not mark_multiplayer_pickup_removed(net_id, true):
+	if not mark_multiplayer_pickup_removed(net_id, true, pickup):
 		return
 	_gameplay_gateway.pickup_collected.emit(
 		net_id,
@@ -116,10 +145,13 @@ func handle_multiplayer_pickup_consumed(
 	)
 
 
-func handle_multiplayer_pickup_tree_exited(net_id: int) -> void:
+func handle_multiplayer_pickup_tree_exited(
+	net_id: int,
+	exiting_pickup: Pickup = null
+) -> void:
 	if runtime_mode != CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY:
 		return
-	mark_multiplayer_pickup_removed(net_id)
+	mark_multiplayer_pickup_removed(net_id, false, exiting_pickup)
 
 
 func _on_dynamic_pickup_container_child_entered(child: Node) -> void:
@@ -147,7 +179,12 @@ func _register_dynamic_multiplayer_pickup(pickup: Pickup) -> void:
 		return
 	if pickup == null or not is_instance_valid(pickup) or pickup.is_queued_for_deletion():
 		return
-	if int(pickup.get_meta("net_id", 0)) > 0:
+	if (
+		_runtime != null
+		and _runtime.get_network_pickup_net_id_by_instance_id(
+			pickup.get_instance_id()
+		) > 0
+	):
 		return
 	var net_id := next_multiplayer_pickup_net_id
 	next_multiplayer_pickup_net_id += 1
@@ -171,13 +208,13 @@ func _register_multiplayer_pickup(
 	net_id: int,
 	broadcast_spawn: bool
 ) -> void:
-	pickup.set_meta("net_id", net_id)
-	_pickup_index[net_id] = pickup
+	if _runtime == null or not _runtime.register_network_pickup(net_id, pickup):
+		return
 	if runtime_mode != CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY:
 		return
 	if not pickup.consumed.is_connected(handle_multiplayer_pickup_consumed):
 		pickup.consumed.connect(handle_multiplayer_pickup_consumed)
-	var tree_exit_callback := handle_multiplayer_pickup_tree_exited.bind(net_id)
+	var tree_exit_callback := handle_multiplayer_pickup_tree_exited.bind(net_id, pickup)
 	if not pickup.tree_exited.is_connected(tree_exit_callback):
 		pickup.tree_exited.connect(tree_exit_callback)
 	if broadcast_spawn:
@@ -186,13 +223,3 @@ func _register_multiplayer_pickup(
 			pickup.config,
 			pickup.global_position
 		)
-
-
-static func get_pickup_from_index(pickup_index: Dictionary, net_id: int) -> Pickup:
-	if not pickup_index.has(net_id):
-		return null
-	var pickup_variant: Variant = pickup_index.get(net_id)
-	if pickup_variant == null or not is_instance_valid(pickup_variant):
-		pickup_index.erase(net_id)
-		return null
-	return pickup_variant as Pickup

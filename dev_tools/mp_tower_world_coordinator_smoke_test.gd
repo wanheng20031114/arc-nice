@@ -1025,7 +1025,7 @@ func _test_plant_combat_network(session: MultiplayerGameplaySession) -> void:
 
 	var host_runtime := host.runtime as TestRuntime
 	var host_enemy_coordinator := host.enemy_coordinator as MpEnemyCoordinator
-	host_runtime.multiplayer_enemy_ids_by_instance[target.get_instance_id()] = 901
+	host_runtime.register_network_enemy(901, target)
 	var single_damage_applied := (
 		host_coordinator.apply_authoritative_plant_enemy_damage(
 			201,
@@ -1080,7 +1080,7 @@ func _test_plant_combat_network(session: MultiplayerGameplaySession) -> void:
 		).is_empty(),
 		"会话 reset 必须清空植物战斗网络聚合队列。"
 	)
-	host_runtime.multiplayer_enemy_ids_by_instance.erase(target.get_instance_id())
+	host_runtime.unregister_network_enemy(901, target)
 	session.remove_child(remote_projectile)
 	remote_projectile.free()
 	target.free()

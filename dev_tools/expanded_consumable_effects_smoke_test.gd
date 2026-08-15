@@ -428,11 +428,11 @@ func _test_void_battery_transaction() -> void:
 
 	_expect(run_state.try_use_item(slot_index, player), "充能消耗后必须能使用剩余虚空电池。")
 	player.skill1_charge = 2.0
-	player.controls_locked = true
+	player.set_controls_locked(true)
 	player.set("_last_skill_activation_msec", -1000000)
 	_expect(not player._try_use_skill1(), "操作锁定时技能必须失败。")
 	_expect(player.has_void_battery_charge(), "失败的技能尝试不得消耗虚空充能。")
-	player.controls_locked = false
+	player.set_controls_locked(false)
 	player.set("_last_skill_activation_msec", -1000000)
 	_expect(player._try_use_skill1(), "解除锁定后低技力技能必须成功。")
 	_expect(

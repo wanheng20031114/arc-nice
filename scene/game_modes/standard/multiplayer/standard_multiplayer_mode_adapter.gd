@@ -478,10 +478,8 @@ func _on_boss_flow_state_requested(
 			_wave_runtime.current_flow_step = boss_config
 			_wave_runtime.enemy_spawn_timer.stop()
 			_wave_runtime._clear_pending_enemy_spawn_queue()
-			_wave_runtime.active_wave_enemy_ids.clear()
-			_wave_runtime.current_wave_total = 1
-			_wave_runtime.current_wave_spawned = 1
-			_wave_runtime.current_wave_defeated = 0
+			_wave_runtime.clear_active_wave_enemies()
+			_wave_runtime.reset_wave_progress(1, 1)
 			_wave_runtime._emit_multiplayer_flow_state(state)
 		CombatFlowState.State.BOSS_ACTIVE:
 			pass
@@ -492,8 +490,7 @@ func _on_boss_started(boss: LinglanBoss, boss_config: BossConfig) -> void:
 		return
 	if boss == null or boss_config == null:
 		return
-	var boss_instance_id := boss.get_instance_id()
-	_wave_runtime.active_wave_enemy_ids[boss_instance_id] = true
+	_wave_runtime.register_active_wave_enemy(boss)
 	var boss_net_id := _wave_runtime._register_multiplayer_enemy_instance(
 		boss,
 		_boss_coordinator.get_boss_enemy_config(boss_config),

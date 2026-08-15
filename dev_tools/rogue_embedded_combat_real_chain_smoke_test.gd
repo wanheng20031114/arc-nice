@@ -3,6 +3,7 @@ extends SceneTree
 const MpProjectileCoordinator := preload(
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
 )
+const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const ROGUE_COMBAT_SCENE := preload(
 	"res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
 )
@@ -36,13 +37,11 @@ class EmbeddedRouteShell:
 	extends Node2D
 
 
-## Runs MpGame's real projectile factory and identity pipeline without starting
-## an ENet session. Damage requests are deliberately accepted as client-view
-## presentation events and never mutate Player health.
+## Runs MpGame's real static coordinator scene without starting an ENet
+## session. Only scene/session boot and teardown are suppressed; the tested
+## projectile and player-life calls still cross their production coordinators.
 class EmbeddedMpGameHarness:
 	extends "res://scene/multiplayer/mp_game.gd"
-
-	var client_damage_requests: Array[Dictionary] = []
 
 
 	func _ready() -> void:
@@ -51,33 +50,6 @@ class EmbeddedMpGameHarness:
 
 	func _exit_tree() -> void:
 		pass
-
-
-	func is_client_view_runtime() -> bool:
-		return true
-
-
-	func request_multiplayer_player_damage(
-		source_id: int,
-		target_peer_id: int,
-		damage: int,
-		source_type: StringName,
-		damage_type_or_source_direction: Variant = EnemyConfig.DamageType.PHYSICAL,
-		source_direction_or_is_ranged: Variant = Vector2.ZERO,
-		is_ranged: bool = false,
-		contact_preconsumed: bool = false
-	) -> bool:
-		client_damage_requests.append({
-			"source_id": source_id,
-			"target_peer_id": target_peer_id,
-			"damage": damage,
-			"source_type": source_type,
-			"damage_type_or_source_direction": damage_type_or_source_direction,
-			"source_direction_or_is_ranged": source_direction_or_is_ranged,
-			"is_ranged": is_ranged,
-			"contact_preconsumed": contact_preconsumed,
-		})
-		return true
 
 
 var failures: Array[String] = []
@@ -344,16 +316,50 @@ func _test_embedded_client_view_damage_authority() -> void:
 	root.add_child(route_shell)
 	current_scene = route_shell
 
-	var mp_game := EmbeddedMpGameHarness.new()
+	var mp_game_node := MP_GAME_SCENE.instantiate()
+	mp_game_node.set_script(EmbeddedMpGameHarness)
+	var mp_game := mp_game_node as EmbeddedMpGameHarness
+	_expect(mp_game != null, "ClientView 测试必须实例化真实 MpGame 静态协调器场景。")
+	if mp_game == null:
+		mp_game_node.free()
+		await _dispose_shell(route_shell)
+		return
 	mp_game.name = "EmbeddedCombatRuntime"
-	var keepalive_request := HTTPRequest.new()
-	keepalive_request.name = "PublicRoomKeepaliveRequest"
-	mp_game.add_child(keepalive_request)
-	var projectile_coordinator := MpProjectileCoordinator.new()
-	projectile_coordinator.name = "ProjectileCoordinator"
-	mp_game.add_child(projectile_coordinator)
-	mp_game.projectile_coordinator = projectile_coordinator
 	route_shell.add_child(mp_game)
+	var net_manager := root.get_node("NetManager") as NetManagerStore
+	var session_coordinator := mp_game.get_node(
+		"SessionCoordinator"
+	) as MpSessionCoordinator
+	var player_coordinator := mp_game.get_node(
+		"PlayerCoordinator"
+	) as MpPlayerCoordinator
+	var projectile_coordinator := mp_game.get_node(
+		"ProjectileCoordinator"
+	) as MpProjectileCoordinator
+	var keepalive_request := mp_game.get_node(
+		"PublicRoomKeepaliveRequest"
+	) as HTTPRequest
+	_expect(
+		net_manager != null
+		and session_coordinator != null
+		and player_coordinator != null
+		and projectile_coordinator != null
+		and keepalive_request != null,
+		"真实 MpGame 场景必须提供会话、玩家、弹体协调器及保活请求节点。"
+	)
+	if (
+		net_manager == null
+		or session_coordinator == null
+		or player_coordinator == null
+		or projectile_coordinator == null
+		or keepalive_request == null
+	):
+		await _dispose_shell(route_shell)
+		return
+	session_coordinator.bind_transport_dependencies(
+		net_manager,
+		keepalive_request
+	)
 	var wave := _create_one_enemy_wave()
 	var battle := await _create_battle(
 		mp_game,
@@ -362,10 +368,37 @@ func _test_embedded_client_view_damage_authority() -> void:
 		CLIENT_PEER_ID
 	)
 	if battle == null:
+		session_coordinator.unbind_transport_dependencies()
 		await _dispose_shell(route_shell)
 		return
 	mp_game.game = battle
+	mp_game._gameplay_gateway = battle.get_multiplayer_gameplay_gateway()
+	mp_game._mode_adapter = battle.get_multiplayer_mode_adapter()
+	session_coordinator.bind_runtime(battle)
+	player_coordinator.bind_runtime(battle)
+	player_coordinator.bind_realtime_dependencies(
+		net_manager,
+		session_coordinator
+	)
 	projectile_coordinator.bind_runtime(battle)
+	projectile_coordinator.bind_network_facade_dependencies(
+		net_manager,
+		player_coordinator,
+		Callable(mp_game, "_get_net_time"),
+		Callable(mp_game, "_get_unbounded_host_event_age"),
+		Callable(mp_game, "_is_embedded_participant_suspended")
+	)
+	player_coordinator.bind_life_dependencies(
+		net_manager,
+		mp_game._mode_adapter,
+		projectile_coordinator,
+		Callable(mp_game, "_get_net_time"),
+		Callable(mp_game, "_cancel_player_life_tango_for_revive_schedule"),
+		Callable(mp_game, "_cancel_player_life_actions_for_revive"),
+		Callable(mp_game, "_clear_player_life_tiyi_lifecycle_state"),
+		Callable(mp_game, "_get_player_life_revive_anchor_position"),
+		Callable(mp_game, "_commit_player_life_revive_position")
+	)
 	var gameplay_gateway := battle.get_multiplayer_gameplay_gateway()
 	_expect(
 		gameplay_gateway != null,
@@ -373,6 +406,13 @@ func _test_embedded_client_view_damage_authority() -> void:
 	)
 	if gameplay_gateway != null:
 		gameplay_gateway.attach_multiplayer_session(mp_game)
+	if mp_game._mode_adapter != null:
+		mp_game._mode_adapter.attach_multiplayer_session(mp_game)
+	_expect(
+		player_coordinator.has_life_dependencies()
+		and projectile_coordinator.has_network_facade_dependencies(),
+		"ClientView 伤害链必须由玩家生命协调器与弹体网络门面共同持有依赖。"
+	)
 	var player := battle.get_player_for_peer(CLIENT_PEER_ID) as Player
 	_expect(player != null, "ClientView 肉鸽战场必须创建本地玩家视图。")
 	if player == null:
@@ -382,6 +422,10 @@ func _test_embedded_client_view_damage_authority() -> void:
 	battle.process_mode = Node.PROCESS_MODE_DISABLED
 	_reset_player_for_damage_test(player)
 
+	var previous_net_role := net_manager.net_role
+	# A direct local call has sender id 0. The coordinator accepts that identity
+	# only for Host-side loopback, matching the authority RPC's production source.
+	net_manager.net_role = NetManagerStore.NetRole.HOST
 	mp_game.net_projectile_fired(
 		CLIENT_GUNNER_PROJECTILE_ID,
 		"combat_robot_gunner_bullet",
@@ -396,6 +440,7 @@ func _test_embedded_client_view_damage_authority() -> void:
 		-1.0,
 		0
 	)
+	net_manager.net_role = previous_net_role
 	var gunner_bullet := (
 		projectile_coordinator.get_projectile(CLIENT_GUNNER_PROJECTILE_ID)
 		as CombatRobotGunnerBullet
@@ -407,21 +452,24 @@ func _test_embedded_client_view_damage_authority() -> void:
 	if gunner_bullet != null:
 		gunner_bullet.set_physics_process(false)
 		var health_before := player.current_health
+		net_manager.net_role = NetManagerStore.NetRole.CLIENT
 		gunner_bullet.call("_on_body_entered", player)
+		net_manager.net_role = previous_net_role
 		_expect(
 			player.current_health == health_before
-			and mp_game.client_damage_requests.size() == 1,
+			and gunner_bullet.has_hit,
 			(
-				"ClientView 枪弹接触只能交给嵌套多人网关消费，不能本地扣血；"
-				+ "health %d -> %d，gateway requests=%d。"
+				"ClientView 枪弹接触必须经真实玩家生命协调器消费且不能本地扣血；"
+				+ "health %d -> %d，consumed=%s。"
 			) % [
 				health_before,
 				player.current_health,
-				mp_game.client_damage_requests.size(),
+				gunner_bullet.has_hit,
 			]
 		)
 
 	_reset_player_for_damage_test(player)
+	net_manager.net_role = NetManagerStore.NetRole.HOST
 	mp_game.net_projectile_fired(
 		CLIENT_DRONE_PROJECTILE_ID,
 		"combat_robot_suicide_drone",
@@ -436,6 +484,7 @@ func _test_embedded_client_view_damage_authority() -> void:
 		-1.0,
 		0
 	)
+	net_manager.net_role = previous_net_role
 	var drone := (
 		projectile_coordinator.get_projectile(CLIENT_DRONE_PROJECTILE_ID)
 		as CombatRobotSuicideDrone
@@ -468,7 +517,14 @@ func _test_embedded_client_view_damage_authority() -> void:
 
 	if gameplay_gateway != null:
 		gameplay_gateway.detach_multiplayer_session(mp_game)
+	if mp_game._mode_adapter != null:
+		mp_game._mode_adapter.detach_multiplayer_session(mp_game)
+	player_coordinator.unbind_runtime(battle)
 	projectile_coordinator.unbind_runtime(battle)
+	session_coordinator.unbind_runtime(battle)
+	session_coordinator.unbind_transport_dependencies()
+	mp_game._gameplay_gateway = null
+	mp_game._mode_adapter = null
 	mp_game.game = null
 	await _dispose_shell(route_shell)
 

@@ -1,6 +1,8 @@
 extends WaveCombatRuntimeBase
 class_name RogueCombatGame
 
+const MODAL_CONTROL_LOCK_OWNER := &"rogue_combat_modal_ui"
+
 const TANGO_LASER_BULLET_POOL_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
 )
@@ -62,36 +64,6 @@ var multiplayer_defeat_check_pending: bool:
 		return player_roster_coordinator.defeat_check_pending
 	set(value):
 		player_roster_coordinator.defeat_check_pending = value
-var _pending_multiplayer_pickup_exit_ids: Dictionary = {}
-var pending_multiplayer_pickup_exit_ids: Dictionary:
-	get:
-		var registry := pickup_registry
-		return (
-			registry.pending_multiplayer_pickup_exit_ids
-			if registry != null and registry.is_bound()
-			else _pending_multiplayer_pickup_exit_ids
-		)
-	set(value):
-		_pending_multiplayer_pickup_exit_ids = value
-		var registry := pickup_registry
-		if registry != null and registry.is_bound():
-			registry.pending_multiplayer_pickup_exit_ids = value
-var _next_multiplayer_pickup_net_id := (
-	PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
-)
-var next_multiplayer_pickup_net_id: int:
-	get:
-		var registry := pickup_registry
-		return (
-			registry.next_multiplayer_pickup_net_id
-			if registry != null and registry.is_bound()
-			else _next_multiplayer_pickup_net_id
-		)
-	set(value):
-		_next_multiplayer_pickup_net_id = value
-		var registry := pickup_registry
-		if registry != null and registry.is_bound():
-			registry.next_multiplayer_pickup_net_id = value
 var combat_seconds_remaining := 0
 var _combat_deadline_started := false
 var _outcome_emitted := false
@@ -220,11 +192,9 @@ func configure_multiplayer(
 func _initialize_mode_runtime_before_validation() -> void:
 	pickup_registry.bind_rogue_dependencies(
 		runtime_mode,
-		multiplayer_pickups,
+		self,
 		get_multiplayer_gameplay_gateway(),
-		enemy_container,
-		_pending_multiplayer_pickup_exit_ids,
-		_next_multiplayer_pickup_net_id
+		enemy_container
 	)
 	player_roster_coordinator.bind_dependencies(
 		self,
@@ -323,13 +293,7 @@ func get_player_for_peer(peer_id: int) -> Player:
 
 
 func get_pickup_for_net_id(net_id: int) -> Pickup:
-	var registry := pickup_registry
-	if registry != null and registry.is_bound():
-		return registry.get_pickup_for_net_id(net_id)
-	return PickupRegistryBase.get_pickup_from_index(
-		multiplayer_pickups,
-		net_id
-	)
+	return get_network_pickup(net_id)
 
 
 func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
@@ -427,15 +391,16 @@ func _on_settings_panel_closed() -> void:
 
 
 func _lock_player_for_modal_ui() -> void:
-	if player != null and not player.is_dead:
-		player.set_controls_locked(true)
+	if player != null and is_instance_valid(player):
+		player.set_control_lock(MODAL_CONTROL_LOCK_OWNER, true)
 
 
 func _refresh_player_modal_ui_lock() -> void:
-	if player == null or player.is_dead:
+	if player == null or not is_instance_valid(player):
 		return
-	player.set_controls_locked(
-		settings_panel.is_open() or player_profile_panel.is_open()
+	player.set_control_lock(
+		MODAL_CONTROL_LOCK_OWNER,
+		settings_panel.is_open()
 	)
 
 
@@ -531,7 +496,12 @@ func apply_remote_enemy_count(alive_count: int) -> void:
 		return
 	var total_enemies := maxi(current_wave_total, maxi(alive_count, 0))
 	var safe_alive_count := clampi(alive_count, 0, total_enemies)
-	current_wave_defeated = total_enemies - safe_alive_count
+	if not apply_wave_progress_snapshot(
+		total_enemies,
+		total_enemies,
+		total_enemies - safe_alive_count
+	):
+		return
 	rogue_combat_hud.set_defeated_enemy_count(
 		current_wave_defeated,
 		total_enemies
@@ -564,8 +534,7 @@ func apply_remote_flow_state(
 		CombatFlowState.State.WAVE_ACTIVE:
 			combat_seconds_remaining = maxi(seconds, 0)
 			var total_enemies := _get_expected_enemy_count(current_flow_step)
-			current_wave_total = total_enemies
-			current_wave_defeated = 0
+			reset_wave_progress(total_enemies, total_enemies)
 			rogue_combat_hud.show_combat(
 				event_title,
 				float(combat_seconds_remaining),
@@ -767,9 +736,7 @@ func apply_skill1_purchase_state(
 	var player_instance := get_player_for_peer(peer_id)
 	if player_instance == null or not is_instance_valid(player_instance):
 		return
-	if player_instance.current_xirang != current_xirang:
-		player_instance.current_xirang = current_xirang
-		player_instance.xirang_changed.emit(current_xirang, 0)
+	player_instance.set_xirang_balance(current_xirang)
 	if skill1_unlocked and not player_instance.has_skill1():
 		player_instance.unlock_skill1()
 	if skill1_upgrade_level >= 0:

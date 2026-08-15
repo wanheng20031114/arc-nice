@@ -1078,11 +1078,7 @@ func _copy_battle_xirang_to_route() -> void:
 
 
 func _set_player_xirang(target: Player, amount: int) -> void:
-	var normalized_amount := maxi(amount, 0)
-	if target.current_xirang == normalized_amount:
-		return
-	target.current_xirang = normalized_amount
-	target.xirang_changed.emit(target.current_xirang, 0)
+	target.set_xirang_balance(amount)
 
 
 func _dispose_active_battle() -> void:

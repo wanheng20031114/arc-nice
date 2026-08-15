@@ -630,8 +630,7 @@ func try_upgrade(stat_type: int, player: Player) -> bool:
 
 	var free_upgrade := player.try_trigger_free_base_upgrade()
 	if not free_upgrade:
-		player.current_xirang -= upgrade_cost
-		player.xirang_changed.emit(player.current_xirang, -upgrade_cost)
+		player.set_xirang_balance(player.current_xirang - upgrade_cost)
 	upgrade_levels[stat_type] = current_level + 1
 
 	match stat_type:
@@ -675,6 +674,12 @@ func set_active_multiplayer_peer(peer_id: int) -> void:
 		ensure_multiplayer_peer_state(active_multiplayer_peer_id)
 	inventory_changed.emit()
 	upgrade_changed.emit()
+
+
+## 当前本地界面所映射的多人背包 owner。0 表示使用单人背包。
+## 外部系统只能通过此只读接口观察映射，避免依赖 RunState 的存储字段。
+func get_active_multiplayer_peer_id() -> int:
+	return active_multiplayer_peer_id
 
 
 func ensure_multiplayer_peer_state(peer_id: int) -> void:
@@ -3556,8 +3561,7 @@ func try_upgrade_for_peer(peer_id: int, stat_type: int, player: Player) -> bool:
 
 	var free_upgrade := player.try_trigger_free_base_upgrade()
 	if not free_upgrade:
-		player.current_xirang -= upgrade_cost
-		player.xirang_changed.emit(player.current_xirang, -upgrade_cost)
+		player.set_xirang_balance(player.current_xirang - upgrade_cost)
 	peer_levels[stat_type] = current_level + 1
 
 	match stat_type:

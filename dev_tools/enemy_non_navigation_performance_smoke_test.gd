@@ -431,7 +431,7 @@ func _verify_event_driven_pickup_registration(game: TowerDefenseGame) -> void:
 	var net_id := int(pickup.get_meta("net_id", 0))
 	_expect(
 		net_id >= 1000
-		and game.multiplayer_pickups.get(net_id) == pickup
+		and game.get_network_pickup(net_id) == pickup
 		and pickup.global_position == Vector2(10000.0, 9000.0),
 		"EnemyContainer child events must register the finalized pickup exactly once."
 	)

@@ -603,29 +603,35 @@ func _test_net_manager_player_list_sync_diff() -> void:
 
 
 func _test_recent_event_cache() -> void:
-	var mp_game := MP_GAME_SCENE.instantiate()
-	_expect(mp_game != null, "MpGame scene must instantiate for recent event cache test.")
-	if mp_game == null:
+	var player_coordinator := MpPlayerCoordinator.new()
+	_expect(
+		player_coordinator != null,
+		"PlayerCoordinator must instantiate for recent event cache test."
+	)
+	if player_coordinator == null:
 		return
 
-	var cache := {}
-	mp_game.call("_remember_recent_event", cache, "hit-a", 30.0, 10.0)
+	player_coordinator.call("_remember_player_hit", "hit-a", 10.0)
 	_expect(
-		bool(mp_game.call("_is_recent_event_cached", cache, "hit-a", 39.0)),
+		bool(player_coordinator.call("_is_recent_player_hit_cached", "hit-a", 10.1)),
 		"Recent event cache must keep entries inside the retention window."
 	)
 	_expect(
-		not bool(mp_game.call("_is_recent_event_cached", cache, "hit-a", 41.0)),
+		not bool(player_coordinator.call("_is_recent_player_hit_cached", "hit-a", 41.0)),
 		"Recent event cache must expire entries outside the retention window."
 	)
-	_expect(not cache.has("hit-a"), "Expired recent event cache entries must be erased on lookup.")
+	var cache := player_coordinator.get("_processed_player_hit_ids") as Dictionary
+	_expect(
+		not cache.has("hit-a"),
+		"Expired player-hit entries must be erased on lookup."
+	)
 
-	mp_game.call("_remember_recent_event", cache, "hit-b", 5.0, 10.0)
-	mp_game.call("_remember_recent_event", cache, "hit-c", 30.0, 10.0)
-	mp_game.call("_prune_recent_event_cache", cache, 20.0)
+	cache["hit-b"] = 5.0
+	cache["hit-c"] = 30.0
+	player_coordinator.prune_recent_player_hit_events(20.0)
 	_expect(not cache.has("hit-b"), "Recent event prune must erase expired entries.")
 	_expect(cache.has("hit-c"), "Recent event prune must keep live entries.")
-	mp_game.free()
+	player_coordinator.free()
 
 
 func _test_snapshot_packet_metrics() -> void:
@@ -633,6 +639,7 @@ func _test_snapshot_packet_metrics() -> void:
 	_expect(mp_game != null, "MpGame scene must instantiate for snapshot metrics test.")
 	if mp_game == null:
 		return
+	_bind_mp_game_coordinators(mp_game)
 	mp_game.call("_record_snapshot_packet_size", &"player", 128, 4)
 	var metrics := mp_game.call("get_snapshot_packet_metrics") as Dictionary
 	_expect(
@@ -786,7 +793,7 @@ func _test_delta_snapshot_peer_cache_cleanup() -> void:
 			snapshot_mgr.player_send_baselines_by_peer.has(11),
 			"Delta snapshot cache test must create receiver peer baseline."
 		)
-		mp_game.call("_clear_peer_network_state", 11)
+		player_coordinator.clear_peer(11)
 		_expect(
 			not snapshot_mgr.player_send_baselines_by_peer.has(11),
 			"Peer cleanup must clear the departed peer receiver baseline."
@@ -796,49 +803,36 @@ func _test_delta_snapshot_peer_cache_cleanup() -> void:
 			peer_12_baseline == null or not peer_12_baseline.has(11),
 			"Peer cleanup must remove the departed peer from other player send baselines."
 		)
-	var cohort_peers: Dictionary = {}
-	var keyframe_times: Dictionary = {}
 	var ready_peers: Array[int] = [12]
 	_expect(
-		bool(mp_game.call(
+		bool(player_coordinator.call(
 			"_snapshot_cohort_requires_keyframe",
-			cohort_peers,
-			keyframe_times,
 			ready_peers,
-			0.0,
-			0.5
+			0.0
 		)),
 		"A receiver outside the shared snapshot cohort must force a keyframe."
 	)
-	mp_game.call(
+	player_coordinator.call(
 		"_commit_snapshot_cohort_send",
-		cohort_peers,
-		keyframe_times,
 		ready_peers,
 		0.0,
 		true
 	)
 	_expect(
-		not bool(mp_game.call(
+		not bool(player_coordinator.call(
 			"_snapshot_cohort_requires_keyframe",
-			cohort_peers,
-			keyframe_times,
 			ready_peers,
-			0.25,
-			0.5
+			0.25
 		)),
 		"A stable cohort must retain deltas before the periodic keyframe interval."
 	)
 	_expect(
-		bool(mp_game.call(
+		bool(player_coordinator.call(
 			"_snapshot_cohort_requires_keyframe",
-			cohort_peers,
-			keyframe_times,
 			ready_peers,
-			0.5,
-			0.5
+			MpPlayerCoordinator.PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS
 		)),
-		"A stable cohort must force a full snapshot at the 0.5 second boundary."
+		"A stable cohort must force a full snapshot at its configured keyframe boundary."
 	)
 	mp_game.free()
 
@@ -853,10 +847,10 @@ func _test_freed_pickup_index_cleanup() -> void:
 	if pickup == null:
 		game.free()
 		return
-	game.multiplayer_pickups[77] = pickup
+	game.register_network_pickup(77, pickup)
 	pickup.free()
 	_expect(game.get_pickup_for_net_id(77) == null, "StandardGame must ignore freed pickup references by net id.")
-	_expect(not game.multiplayer_pickups.has(77), "StandardGame must erase freed pickup references from the net id index.")
+	_expect(not game.has_network_pickup(77), "StandardGame must erase freed pickup references from the net id index.")
 	game.free()
 
 
@@ -883,11 +877,10 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 		parameter_mp_game.get_node("ProjectileCoordinator")
 		as MpProjectileCoordinator
 	)
-	var accepted_parameters := parameter_mp_game.call(
-		"_get_authoritative_client_projectile_parameters",
+	var accepted_parameters := parameter_projectile_coordinator.get_authoritative_client_projectile_parameters(
 		&"player_bullet",
 		2
-	) as Dictionary
+	)
 	_expect(
 		int(accepted_parameters.get("damage", 0)) == 37,
 		"Host must rebuild client player bullet damage from the authoritative player."
@@ -907,11 +900,10 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 		)
 		remote_player.shooting_timer.stop()
 		remote_player.apply_multiplayer_ammo_state(remote_player.get_ammo_capacity(), 0, false, 0.0)
-		var empty_ammo_parameters := parameter_mp_game.call(
-			"_get_authoritative_client_projectile_parameters",
+		var empty_ammo_parameters := parameter_projectile_coordinator.get_authoritative_client_projectile_parameters(
 			&"player_bullet",
 			2
-		) as Dictionary
+		)
 		_expect(
 			empty_ammo_parameters.is_empty(),
 			"Host must reject client player bullets when authoritative ammo is empty."
@@ -922,22 +914,20 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 		)
 		remote_player.shooting_timer.stop()
 		remote_player.apply_multiplayer_ammo_state(remote_player.get_ammo_capacity(), 1, true, 0.25)
-		var reloading_parameters := parameter_mp_game.call(
-			"_get_authoritative_client_projectile_parameters",
+		var reloading_parameters := parameter_projectile_coordinator.get_authoritative_client_projectile_parameters(
 			&"player_bullet",
 			2
-		) as Dictionary
+		)
 		_expect(
 			reloading_parameters.is_empty(),
 			"Host must reject client player bullets during authoritative reload."
 		)
 		remote_player.shooting_timer.stop()
 		remote_player.current_shot_pattern = PickupConfig.ShotPattern.SPIRAL
-		var spiral_parameters := parameter_mp_game.call(
-			"_get_authoritative_client_projectile_parameters",
+		var spiral_parameters := parameter_projectile_coordinator.get_authoritative_client_projectile_parameters(
 			&"player_bullet",
 			2
-		) as Dictionary
+		)
 		_expect(
 			not spiral_parameters.is_empty(),
 			"Host must allow spiral player bullets without ammo even during reload."
@@ -954,11 +944,10 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 		_expect(run_state.try_add_item_for_peer(2, ARCHER_COLLECTIBLE), "Peer 2 archer collectible must fit before projectile validation.")
 	if remote_player != null:
 		remote_player.attack_damage = 37
-	var accepted_arrow_parameters := parameter_mp_game.call(
-		"_get_authoritative_client_projectile_parameters",
+	var accepted_arrow_parameters := parameter_projectile_coordinator.get_authoritative_client_projectile_parameters(
 		&"collectible_arrow",
 		2
-	) as Dictionary
+	)
 	_expect(
 		not accepted_arrow_parameters.is_empty(),
 		"Host must accept client archer collectible arrow projectiles."
@@ -973,11 +962,10 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 		and float(accepted_arrow_parameters.get("lifetime", 0.0)) > 0.0,
 		"Host must rebuild archer arrow motion parameters from the scene default."
 	)
-	var rejected_parameters := parameter_mp_game.call(
-		"_get_authoritative_client_projectile_parameters",
+	var rejected_parameters := parameter_projectile_coordinator.get_authoritative_client_projectile_parameters(
 		&"capoo_ak47_bullet",
 		2
-	) as Dictionary
+	)
 	_expect(rejected_parameters.is_empty(), "Host must reject client-spawned enemy projectile types.")
 	var peer_two_projectile_id := MpProjectileCoordinator.encode_projectile_id(
 		2,
@@ -1055,18 +1043,16 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 		remote_player.unlock_skill1()
 		remote_player.skill1_charge_duration = 1.0
 		remote_player.skill1_charge = 0.0
-		var uncharged_skill1_parameters := parameter_mp_game.call(
-			"_get_authoritative_client_projectile_parameters",
+		var uncharged_skill1_parameters := parameter_projectile_coordinator.get_authoritative_client_projectile_parameters(
 			&"skill1_bomb",
 			2
-		) as Dictionary
+		)
 		_expect(uncharged_skill1_parameters.is_empty(), "Host must reject skill1 projectile before charge is full.")
 		remote_player.skill1_charge = remote_player.skill1_charge_duration
-		var charged_skill1_parameters := parameter_mp_game.call(
-			"_get_authoritative_client_projectile_parameters",
+		var charged_skill1_parameters := parameter_projectile_coordinator.get_authoritative_client_projectile_parameters(
 			&"skill1_bomb",
 			2
-		) as Dictionary
+		)
 		_expect(
 			int(charged_skill1_parameters.get("damage", 0))
 			== remote_player.get_skill1_projectile_damage(),
@@ -1101,12 +1087,24 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	player_coordinator.reset_visual_interpolator_to_state(
 		2, Vector2.ZERO, Vector2.ZERO, 0, 0, 0.0
 	)
-	var sequence_cache := mp_game.get("_last_player_state_sequences") as Dictionary
-	var accepted_positions := mp_game.get("_accepted_player_state_positions") as Dictionary
-	var accepted_times := mp_game.get("_accepted_player_state_times") as Dictionary
-	var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
-	var revive_times := mp_game.get("_dead_player_revive_times") as Dictionary
-	var revive_seconds := mp_game.get("_dead_player_revive_last_seconds") as Dictionary
+	var sequence_cache := (
+		mp_game.player_coordinator.get("_last_player_state_sequences") as Dictionary
+	)
+	var accepted_positions := (
+		mp_game.player_coordinator.get("_accepted_player_state_positions") as Dictionary
+	)
+	var accepted_times := (
+		mp_game.player_coordinator.get("_accepted_player_state_times") as Dictionary
+	)
+	var health_revisions: Dictionary = (
+		mp_game.player_coordinator.get_health_revisions_for_snapshot()
+	)
+	var revive_times := (
+		mp_game.player_coordinator.get("_dead_player_revive_times") as Dictionary
+	)
+	var revive_seconds := (
+		mp_game.player_coordinator.get("_dead_player_revive_last_seconds") as Dictionary
+	)
 	sequence_cache[2] = 10
 	accepted_positions[2] = Vector2(12.0, 34.0)
 	accepted_times[2] = 5.0
@@ -1195,6 +1193,9 @@ func _test_player_snapshot_roster_reconcile() -> void:
 		await process_frame
 		await physics_frame
 		return
+	var net_manager := root.get_node("NetManager") as NetManagerStore
+	var previous_role := int(net_manager.get("net_role"))
+	net_manager.set("net_role", NetManagerStore.NetRole.CLIENT)
 	_bind_multiplayer_runtime(mp_game, game)
 	var projectile_coordinator := (
 		mp_game.get_node("ProjectileCoordinator") as MpProjectileCoordinator
@@ -1205,8 +1206,12 @@ func _test_player_snapshot_roster_reconcile() -> void:
 	player_coordinator.reset_visual_interpolator_to_state(
 		3, Vector2.ZERO, Vector2.ZERO, 0, 0, 0.0
 	)
-	var sequence_cache := mp_game.get("_last_player_state_sequences") as Dictionary
-	var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
+	var sequence_cache := (
+		mp_game.player_coordinator.get("_last_player_state_sequences") as Dictionary
+	)
+	var health_revisions: Dictionary = (
+		mp_game.player_coordinator.get_health_revisions_for_snapshot()
+	)
 	sequence_cache[3] = 12
 	health_revisions[3] = 4
 
@@ -1269,6 +1274,7 @@ func _test_player_snapshot_roster_reconcile() -> void:
 	_expect(stale_player == null or not is_instance_valid(stale_player), "Roster reconcile must free missing peer player nodes.")
 	_expect(not is_instance_valid(projectile), "Roster reconcile must free missing peer projectile nodes.")
 
+	net_manager.set("net_role", previous_role)
 	_stop_audio_players(game)
 	mp_game.free()
 	game.queue_free()
@@ -1321,11 +1327,11 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 		await physics_frame
 		return
 	_bind_multiplayer_runtime(mp_game, game)
-	var net_enemies: Dictionary = mp_game.enemy_coordinator.net_enemies
-	var enemy_spawn_times: Dictionary = mp_game.enemy_coordinator.enemy_spawn_snapshot_times
-	net_enemies[7] = enemy_a
-	net_enemies[8] = enemy_b
-	net_enemies[9] = enemy_c
+	var enemy_coordinator := mp_game.enemy_coordinator as MpEnemyCoordinator
+	var enemy_spawn_times: Dictionary = enemy_coordinator.enemy_spawn_snapshot_times
+	enemy_coordinator.register_client_enemy(7, enemy_a, 0.0)
+	enemy_coordinator.register_client_enemy(8, enemy_b, 0.0)
+	enemy_coordinator.register_client_enemy(9, enemy_c, 0.0)
 	enemy_spawn_times[7] = 0.0
 	enemy_spawn_times[8] = 0.0
 	enemy_spawn_times[9] = 0.0
@@ -1351,47 +1357,89 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 	state_c.health = 10
 	var first_chunk := snapshot_mgr.encode_all_enemy_snapshots([state_a])
 	var second_chunk := snapshot_mgr.encode_all_enemy_snapshots([state_b, state_c])
-	mp_game.call("_rpc_receive_enemy_snapshot", 0.0, first_chunk, 10, 0, 2)
+	enemy_coordinator.apply_authoritative_snapshot(
+		0.0,
+		first_chunk,
+		10,
+		0,
+		2,
+		NetConstants.ENEMY_SNAPSHOT_HZ
+	)
 	var state_a_frame := (
 		(mp_game.enemy_coordinator.enemy_interpolators[7] as NetInterpolator).get_latest_state()
 	)
 	_expect(
-		net_enemies.has(7)
-		and net_enemies.has(8)
-		and net_enemies.has(9)
+		game.has_network_enemy(7)
+		and game.has_network_enemy(8)
+		and game.has_network_enemy(9)
 		and state_a_frame.velocity == Vector2.ZERO
 		and state_a_frame.anim_state == Enemy.LocomotionState.MOVING,
 		"Incomplete chunks must retain the roster and preserve locomotion despite quantized zero velocity."
 	)
-	mp_game.call("_rpc_receive_enemy_snapshot", 0.0, second_chunk, 10, 1, 2)
+	enemy_coordinator.apply_authoritative_snapshot(
+		0.0,
+		second_chunk,
+		10,
+		1,
+		2,
+		NetConstants.ENEMY_SNAPSHOT_HZ
+	)
 	_expect(
-		net_enemies.has(7) and net_enemies.has(8) and net_enemies.has(9),
+		game.has_network_enemy(7) and game.has_network_enemy(8) and game.has_network_enemy(9),
 		"A complete chunk batch must reconcile against the union of every chunk."
 	)
 
 	# Batch 11 loses its second chunk. Seeing a newer partial batch must not make
 	# either incomplete roster authoritative.
-	mp_game.call("_rpc_receive_enemy_snapshot", 1.0, first_chunk, 11, 0, 2)
-	mp_game.call("_rpc_receive_enemy_snapshot", 2.0, first_chunk, 12, 0, 2)
+	enemy_coordinator.apply_authoritative_snapshot(
+		1.0,
+		first_chunk,
+		11,
+		0,
+		2,
+		NetConstants.ENEMY_SNAPSHOT_HZ
+	)
+	enemy_coordinator.apply_authoritative_snapshot(
+		2.0,
+		first_chunk,
+		12,
+		0,
+		2,
+		NetConstants.ENEMY_SNAPSHOT_HZ
+	)
 	_expect(
-		net_enemies.has(7) and net_enemies.has(8) and net_enemies.has(9),
+		game.has_network_enemy(7) and game.has_network_enemy(8) and game.has_network_enemy(9),
 		"A lost chunk must never reconcile either its batch or a newer partial batch."
 	)
 
 	# Completing batch 12 makes only its 7+8 union authoritative and retires every
 	# older pending batch. A late chunk from batch 11 must then be ignored.
 	var state_b_chunk := snapshot_mgr.encode_all_enemy_snapshots([state_b])
-	mp_game.call("_rpc_receive_enemy_snapshot", 2.0, state_b_chunk, 12, 1, 2)
+	enemy_coordinator.apply_authoritative_snapshot(
+		2.0,
+		state_b_chunk,
+		12,
+		1,
+		2,
+		NetConstants.ENEMY_SNAPSHOT_HZ
+	)
 	await process_frame
 	_expect(
-		net_enemies.has(7) and net_enemies.has(8) and not net_enemies.has(9),
+		game.has_network_enemy(7) and game.has_network_enemy(8) and not game.has_network_enemy(9),
 		"A complete newer batch must reconcile only against its own chunk union."
 	)
 	_expect(not is_instance_valid(enemy_c), "The complete newer batch must free stale enemy 9.")
 	var empty_chunk := snapshot_mgr.encode_all_enemy_snapshots([])
-	mp_game.call("_rpc_receive_enemy_snapshot", 1.0, empty_chunk, 11, 1, 2)
+	enemy_coordinator.apply_authoritative_snapshot(
+		1.0,
+		empty_chunk,
+		11,
+		1,
+		2,
+		NetConstants.ENEMY_SNAPSHOT_HZ
+	)
 	_expect(
-		net_enemies.has(7) and net_enemies.has(8),
+		game.has_network_enemy(7) and game.has_network_enemy(8),
 		"A late chunk from an older batch must not re-run stale roster reconciliation."
 	)
 	var snapshot_metrics := mp_game.call("get_snapshot_packet_metrics") as Dictionary
@@ -1410,16 +1458,30 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 		partial_states.size() == 1,
 		"Two-enemy truncated snapshots should decode the complete leading enemy only."
 	)
-	mp_game.call("_rpc_receive_enemy_snapshot", 0.0, truncated_two_enemy_data)
-	_expect(net_enemies.has(8), "Incomplete enemy snapshot batches must not reconcile away unseen enemies.")
+	enemy_coordinator.apply_authoritative_snapshot(
+		3.0,
+		truncated_two_enemy_data,
+		0,
+		0,
+		1,
+		NetConstants.ENEMY_SNAPSHOT_HZ
+	)
+	_expect(game.has_network_enemy(8), "Incomplete enemy snapshot batches must not reconcile away unseen enemies.")
 	_expect(is_instance_valid(enemy_b), "Incomplete enemy snapshot batches must not free unseen enemies.")
 
 	var one_enemy_data := snapshot_mgr.encode_all_enemy_snapshots([state_a])
-	mp_game.call("_rpc_receive_enemy_snapshot", 0.0, one_enemy_data)
+	enemy_coordinator.apply_authoritative_snapshot(
+		3.0,
+		one_enemy_data,
+		0,
+		0,
+		1,
+		NetConstants.ENEMY_SNAPSHOT_HZ
+	)
 	await process_frame
-	_expect(not net_enemies.has(8), "Complete enemy snapshot batches must reconcile stale enemies.")
+	_expect(not game.has_network_enemy(8), "Complete enemy snapshot batches must reconcile stale enemies.")
 	_expect(not is_instance_valid(enemy_b), "Complete enemy snapshot batches must free stale enemies.")
-	_expect(net_enemies.has(7), "Complete enemy snapshot batches must keep seen enemies.")
+	_expect(game.has_network_enemy(7), "Complete enemy snapshot batches must keep seen enemies.")
 
 	enemy_a.queue_free()
 	mp_game.free()
@@ -1471,10 +1533,9 @@ func _test_enemy_snapshot_death_and_empty_roster_cleanup() -> void:
 		await physics_frame
 		return
 	_bind_multiplayer_runtime(mp_game, game)
-	var net_enemies: Dictionary = mp_game.enemy_coordinator.net_enemies
 	var enemy_spawn_times: Dictionary = mp_game.enemy_coordinator.enemy_spawn_snapshot_times
-	net_enemies[21] = enemy_dead
-	net_enemies[22] = enemy_stale
+	mp_game.enemy_coordinator.register_client_enemy(21, enemy_dead, 0.0)
+	mp_game.enemy_coordinator.register_client_enemy(22, enemy_stale, 0.0)
 	enemy_spawn_times[21] = 0.0
 	enemy_spawn_times[22] = 0.0
 	mp_game.enemy_coordinator.enemy_interpolators[21] = NetInterpolator.new(0.1)
@@ -1489,7 +1550,7 @@ func _test_enemy_snapshot_death_and_empty_roster_cleanup() -> void:
 	dead_state.is_dead = true
 	mp_game.call("_rpc_receive_enemy_snapshot", 1.0, snapshot_mgr.encode_all_enemy_snapshots([dead_state]))
 	await process_frame
-	_expect(not net_enemies.has(21), "Dead enemy snapshots must erase the client enemy index.")
+	_expect(not game.has_network_enemy(21), "Dead enemy snapshots must erase the client enemy index.")
 	_expect(not enemy_spawn_times.has(21), "Dead enemy snapshots must erase spawn timing.")
 	_expect(
 		not mp_game.enemy_coordinator.enemy_interpolators.has(21),
@@ -1506,14 +1567,17 @@ func _test_enemy_snapshot_death_and_empty_roster_cleanup() -> void:
 		1
 	)
 	await process_frame
-	_expect(not net_enemies.has(22), "An empty chunked roster must reconcile stale enemies.")
+	_expect(not game.has_network_enemy(22), "An empty chunked roster must reconcile stale enemies.")
 	_expect(not enemy_spawn_times.has(22), "An empty chunked roster must erase stale spawn timing.")
 	_expect(
 		not mp_game.enemy_coordinator.enemy_interpolators.has(22),
 		"An empty chunked roster must clear stale interpolation."
 	)
 	_expect(
-		mp_game.snapshot_mgr.enemy_receive_baselines.is_empty(),
+		(
+			mp_game.enemy_coordinator.get("_snapshot_manager")
+			as SnapshotManager
+		).enemy_receive_baselines.is_empty(),
 		"An empty chunked roster must prune the receive baseline only after completion."
 	)
 
@@ -1623,9 +1687,9 @@ func _test_projectile_time_compensation() -> void:
 		mp_game.get_node("ProjectileCoordinator") as MpProjectileCoordinator
 	)
 	var now_origin := Time.get_ticks_msec() / 1000.0 - 10.0
-	mp_game.set("_net_time_origin", now_origin)
-	mp_game.set("_has_host_time_offset", true)
-	mp_game.set("_host_to_client_time_offset", 0.0)
+	mp_game.session_coordinator.set("_net_time_origin", now_origin)
+	mp_game.session_coordinator.set("_has_host_time_offset", true)
+	mp_game.session_coordinator.set("_host_to_client_time_offset", 0.0)
 	var now := float(mp_game.call("_get_net_time"))
 	var spawn_position := Vector2(10.0, 20.0)
 	var direction := Vector2.RIGHT
@@ -1721,11 +1785,13 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 		var net_manager := root.get_node_or_null("NetManager")
 		if net_manager != null:
 			mp_game.set("net_manager", net_manager)
-		mp_game.set("_net_time_origin", Time.get_ticks_msec() / 1000.0 - 10.0)
-		mp_game.set("_has_host_time_offset", true)
-		mp_game.set("_host_to_client_time_offset", 0.0)
-		var net_enemies: Dictionary = mp_game.enemy_coordinator.net_enemies
-		net_enemies[42] = enemy
+		mp_game.session_coordinator.set(
+			"_net_time_origin",
+			Time.get_ticks_msec() / 1000.0 - 10.0
+		)
+		mp_game.session_coordinator.set("_has_host_time_offset", true)
+		mp_game.session_coordinator.set("_host_to_client_time_offset", 0.0)
+		mp_game.enemy_coordinator.register_client_enemy(42, enemy, 0.0)
 		var interp := NetInterpolator.new(0.05, 0.0)
 		interp.push_snapshot(
 			9.5,
@@ -1780,10 +1846,7 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 			sniper_interp.push_snapshot(9.5, sniper.global_position, Vector2.ZERO)
 			mp_game.enemy_coordinator.enemy_interpolators[43] = sniper_interp
 			var aim_glow := sniper.get_node_or_null("AimGlow") as Polygon2D
-			var net_enemies_for_target_action: Dictionary = (
-				mp_game.enemy_coordinator.net_enemies
-			)
-			net_enemies_for_target_action[43] = sniper
+			mp_game.enemy_coordinator.register_client_enemy(43, sniper, 0.0)
 			mp_game.call(
 				"net_enemy_target_action",
 				43,
@@ -1836,10 +1899,7 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 			var linglan_interp := NetInterpolator.new(0.05, 0.0)
 			linglan_interp.push_snapshot(9.5, linglan.global_position, Vector2.ZERO)
 			mp_game.enemy_coordinator.enemy_interpolators[44] = linglan_interp
-			var net_enemies_for_linglan_action: Dictionary = (
-				mp_game.enemy_coordinator.net_enemies
-			)
-			net_enemies_for_linglan_action[44] = linglan
+			mp_game.enemy_coordinator.register_client_enemy(44, linglan, 0.0)
 			current_scene = client_game
 			mp_game.call(
 				"net_enemy_action",
@@ -2006,8 +2066,11 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		snapshot_client.free()
 		typed_run_state.begin_new_run(&"weishidaier", false)
 		mp_game.set("run_state", run_state)
-		mp_game.call("_apply_upgrade_for_peer", 0, RunStateStore.StatType.ATTACK)
-		mp_game.call("_apply_skill1_purchase_for_peer", 0)
+		mp_game.transactions_coordinator.apply_authoritative_upgrade(
+			0,
+			RunStateStore.StatType.ATTACK
+		)
+		mp_game.transactions_coordinator.apply_authoritative_skill1_purchase(0)
 		_expect(
 			not (run_state.get("multiplayer_upgrade_levels") as Dictionary).has(0),
 			"Invalid peer upgrade requests must not create peer 0 run state."
@@ -2040,8 +2103,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			var crafting_revision := (
 				typed_run_state.get_inventory_revision_for_peer(4)
 			)
-			mp_game.call(
-				"_apply_authoritative_simple_crafting_request",
+			mp_game.transactions_coordinator.apply_authoritative_simple_crafting_request(
 				4,
 				101,
 				String(SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID),
@@ -2066,8 +2128,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 				and committed_revision == crafting_revision + 1,
 				"Host必须只为请求Peer原子扣料、发放产物并推进一次revision。"
 			)
-			mp_game.call(
-				"_apply_authoritative_simple_crafting_request",
+			mp_game.transactions_coordinator.apply_authoritative_simple_crafting_request(
 				4,
 				101,
 				String(SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID),
@@ -2082,15 +2143,16 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 				) == 1,
 				"重复的简易制造request_id必须命中幂等缓存，不能重复产出。"
 			)
-			mp_game.call(
-				"_apply_authoritative_simple_crafting_request",
+			mp_game.transactions_coordinator.apply_authoritative_simple_crafting_request(
 				4,
 				102,
 				String(SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID),
 				crafting_revision
 			)
 			var crafting_cache := (
-				mp_game.get("_simple_crafting_results_by_peer") as Dictionary
+				mp_game.transactions_coordinator.get(
+					"_simple_crafting_results_by_peer"
+				) as Dictionary
 			)
 			var peer_crafting_cache := (
 				crafting_cache.get(4, {}) as Dictionary
@@ -2113,15 +2175,14 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			var revision_after_cleanup := (
 				typed_run_state.get_inventory_revision_for_peer(4)
 			)
-			mp_game.call(
-				"_apply_authoritative_simple_crafting_request",
+			mp_game.transactions_coordinator.apply_authoritative_simple_crafting_request(
 				4,
 				102,
 				String(SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID),
 				crafting_revision
 			)
 			peer_crafting_cache = (
-				(mp_game.get(
+				(mp_game.transactions_coordinator.get(
 					"_simple_crafting_results_by_peer"
 				) as Dictionary).get(4, {}) as Dictionary
 			)
@@ -2141,7 +2202,9 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 	var peer_four := game.get_player_for_peer(4) as Player
 	_expect(peer_four != null, "Peer 4 must exist for confirmed event test.")
 	if peer_four != null:
-		var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
+		var health_revisions: Dictionary = (
+			mp_game.player_coordinator.get_health_revisions_for_snapshot()
+		)
 		mp_game.call(
 			"net_player_damage_applied",
 			99,
@@ -2249,10 +2312,10 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		_expect(run_state.get_item_for_peer(2, 0) == APPLE_COLLECTIBLE, "The successful Luoxi retry must fill the freed peer inventory slot.")
 		_expect(run_state.try_add_item_for_peer(4, HEALTH_PICKUP), "Peer 4 health pickup must fit in inventory for use testing.")
 		peer_four.current_health = maxi(peer_four.max_health - HEALTH_PICKUP.heal_amount, 1)
-		mp_game.call("_apply_inventory_item_use_for_peer", 4, 1)
+		mp_game.transactions_coordinator.apply_authoritative_inventory_item_use(4, 1)
 		_expect(run_state.get_item_for_peer(4, 1) == null, "Host inventory use must remove the consumed peer item.")
 		_expect(peer_four.current_health == peer_four.max_health, "Host inventory use must apply the pickup effect to the selected peer.")
-		mp_game.call("_apply_inventory_item_discard_for_peer", 4, 0)
+		mp_game.transactions_coordinator.apply_authoritative_inventory_item_discard(4, 0)
 		_expect(run_state.get_item_for_peer(4, 0) == null, "Host inventory discard must remove the selected peer item.")
 		_expect(
 			is_equal_approx(peer_four.call("_get_inventory_bullet_pierce_chance"), 0.0),
@@ -2265,8 +2328,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		var peer_four_inventory_revision: int = (
 			run_state.get_inventory_revision_for_peer(4)
 		)
-		mp_game.call(
-			"_apply_inventory_item_discard_for_peer",
+		mp_game.transactions_coordinator.apply_authoritative_inventory_item_discard(
 			4,
 			0,
 			peer_four_inventory_revision - 1
@@ -2276,8 +2338,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			and run_state.get_inventory_revision_for_peer(4) == peer_four_inventory_revision,
 			"Host must reject stale inventory commands without mutating the authoritative slot."
 		)
-		mp_game.call(
-			"_apply_inventory_item_discard_for_peer",
+		mp_game.transactions_coordinator.apply_authoritative_inventory_item_discard(
 			4,
 			0,
 			peer_four_inventory_revision
@@ -2478,13 +2539,16 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		)
 		mp_game.call("net_inventory_item_discarded", 99, 0, true, {})
 		_expect(not peer_inventories.has(99), "Inventory confirms for missing peers must not create peer run state.")
-		var bound_mode_adapter: MultiplayerModeAdapter = mp_game._mode_adapter
+		var bound_mode_adapter := game.get_multiplayer_mode_adapter()
+		var merchant_transactions := (
+			mp_game.merchant_transactions_coordinator
+			as MpMerchantTransactionsCoordinator
+		)
 		var inventory_before_unbound_confirm: Dictionary = (
 			run_state.export_inventory_snapshot_for_peer(3)
 		)
-		mp_game._mode_adapter = null
-		mp_game.call(
-			"net_luoxi_collectible_confirmed",
+		merchant_transactions.unbind_runtime(game)
+		merchant_transactions.receive_luoxi_collectible_confirmation(
 			3,
 			0,
 			APPLE_COLLECTIBLE.resource_path,
@@ -2495,9 +2559,14 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			== inventory_before_unbound_confirm,
 			"Luoxi confirmation must fail closed while the typed mode adapter is unavailable."
 		)
-		mp_game._mode_adapter = bound_mode_adapter
-		mp_game.call(
-			"net_luoxi_collectible_confirmed",
+		merchant_transactions.bind_runtime(
+			game,
+			bound_mode_adapter,
+			run_state,
+			net_manager,
+			mp_game.session_coordinator.get_net_time_origin()
+		)
+		merchant_transactions.receive_luoxi_collectible_confirmation(
 			3,
 			0,
 			APPLE_COLLECTIBLE.resource_path,
@@ -2552,14 +2621,16 @@ func _test_multiplayer_character_scene_registry() -> void:
 	if tiyi_player != null:
 		var mp_game := MP_GAME_SCENE.instantiate()
 		_bind_multiplayer_runtime(mp_game, game)
+		var projectile_coordinator := (
+			mp_game.projectile_coordinator as MpProjectileCoordinator
+		)
 		var weishidaier_player := host_player as AmmoRangedPlayer
 		if weishidaier_player != null:
 			var weishidaier_ammo_before := weishidaier_player.current_ammo
-			var bullet_parameters := mp_game.call(
-				"_get_authoritative_client_projectile_parameters",
+			var bullet_parameters := projectile_coordinator.get_authoritative_client_projectile_parameters(
 				&"player_bullet",
 				1
-			) as Dictionary
+			)
 			_expect(
 				is_equal_approx(float(bullet_parameters.get("speed", 0.0)), 320.0)
 				and is_equal_approx(
@@ -2574,27 +2645,24 @@ func _test_multiplayer_character_scene_registry() -> void:
 			)
 			weishidaier_player.shooting_timer.stop()
 		_expect(
-			int(mp_game.call(
-				"_get_player_projectile_damage_type",
+			int(mp_game.enemy_coordinator.get_player_projectile_damage_type(
 				&"tiyi_sniper_bullet"
 			)) == EnemyConfig.DamageType.MAGIC,
 			"Host must derive Tiyi sniper bullets as magic damage."
 		)
 		_expect(
-			int(mp_game.call(
-				"_get_player_projectile_damage_type",
+			int(mp_game.enemy_coordinator.get_player_projectile_damage_type(
 				&"player_bullet"
 			)) == EnemyConfig.DamageType.PHYSICAL,
 			"Host must preserve ordinary player bullets as physical damage."
 		)
 		var authoritative_direction := Vector2(3.0, 4.0).normalized()
-		var authoritative_spawn := mp_game.call(
-			"_get_authoritative_client_projectile_spawn_position",
+		var authoritative_spawn := projectile_coordinator.get_authoritative_client_projectile_spawn_position(
 			&"tiyi_sniper_bullet",
 			3,
 			Vector2(99999.0, -99999.0),
 			authoritative_direction
-		) as Vector2
+		)
 		_expect(
 			authoritative_spawn.is_equal_approx(
 				tiyi_player.global_position + authoritative_direction * 16.0
@@ -2602,11 +2670,10 @@ func _test_multiplayer_character_scene_registry() -> void:
 			"Host must ignore a client-reported Tiyi spawn point and rebuild it from the muzzle."
 		)
 		var ammo_before := tiyi_player.current_ammo
-		var sniper_parameters := mp_game.call(
-			"_get_authoritative_client_projectile_parameters",
+		var sniper_parameters := projectile_coordinator.get_authoritative_client_projectile_parameters(
 			&"tiyi_sniper_bullet",
 			3
-		) as Dictionary
+		)
 		_expect(
 			int(sniper_parameters.get("damage", 0)) == 100
 			and is_equal_approx(float(sniper_parameters.get("speed", 0.0)), 1920.0)
@@ -2619,30 +2686,27 @@ func _test_multiplayer_character_scene_registry() -> void:
 			"Host must atomically consume one Tiyi round and start the authoritative cooldown."
 		)
 		_expect(
-			(mp_game.call(
-				"_get_authoritative_client_projectile_parameters",
+			projectile_coordinator.get_authoritative_client_projectile_parameters(
 				&"tiyi_sniper_bullet",
 				3
-			) as Dictionary).is_empty()
+			).is_empty()
 			and tiyi_player.current_ammo == ammo_before - 1,
 			"Host must reject a repeated Tiyi shot during cooldown without consuming ammo."
 		)
 		_expect(
-			(mp_game.call(
-				"_get_authoritative_client_projectile_parameters",
+			projectile_coordinator.get_authoritative_client_projectile_parameters(
 				&"player_bullet",
 				3
-			) as Dictionary).is_empty(),
+			).is_empty(),
 			"Tiyi must not be able to forge another character's projectile type."
 		)
 		tiyi_player.shooting_timer.stop()
 		tiyi_player.set_controls_locked(true)
 		_expect(
-			(mp_game.call(
-				"_get_authoritative_client_projectile_parameters",
+			projectile_coordinator.get_authoritative_client_projectile_parameters(
 				&"tiyi_sniper_bullet",
 				3
-			) as Dictionary).is_empty()
+			).is_empty()
 			and tiyi_player.current_ammo == ammo_before - 1,
 			"Host must reject Tiyi shots while controls are locked without consuming ammo."
 		)
@@ -2819,19 +2883,17 @@ func _test_host_authoritative_hoe_actions() -> void:
 	_stop_audio_players(hoe_player)
 	var free_aim_direction := Vector2(2.0, 1.0).normalized()
 	_expect(
-		(mp_game.call(
-			"_get_authoritative_client_projectile_parameters",
+		mp_game.projectile_coordinator.get_authoritative_client_projectile_parameters(
 			&"player_bullet",
 			1
-		) as Dictionary).is_empty(),
+		).is_empty(),
 		"Hoe Cat must not be able to forge Weishidaier player bullets."
 	)
 	_expect(
-		(mp_game.call(
-			"_get_authoritative_client_projectile_parameters",
+		mp_game.projectile_coordinator.get_authoritative_client_projectile_parameters(
 			&"skill1_bomb",
 			1
-		) as Dictionary).is_empty(),
+		).is_empty(),
 		"Hoe Cat must not be able to forge Weishidaier skill bombs."
 	)
 
@@ -2902,7 +2964,9 @@ func _test_host_authoritative_hoe_actions() -> void:
 			outside_cone_enemy.current_health == outside_cone_enemy_health_before,
 			"Host-authoritative Hoe Cat impact must exclude a real insect beyond the 60-degree cone."
 		)
-	var action_sequences := mp_game.get("_hoe_action_sequences_by_peer") as Dictionary
+	var action_sequences := (
+		mp_game.player_coordinator.get("_hoe_action_sequences_by_peer") as Dictionary
+	)
 	_expect(int(action_sequences.get(1, 0)) == 1, "Host must assign an increasing sequence to an accepted Hoe Cat attack.")
 	_expect(
 		not bool(mp_game.call("_apply_authoritative_hoe_action", 1, &"primary", free_aim_direction)),
@@ -2986,11 +3050,12 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 	var oversized_target_ids := PackedInt32Array()
 	for enemy_net_id in range(1, 28):
 		oversized_target_ids.append(enemy_net_id)
-	var sanitized_target_ids := mp_game.call(
-		"_sanitize_tiyi_target_ids",
+	var sanitized_target_ids: PackedInt32Array = (
+		mp_game.player_coordinator.sanitize_tiyi_target_ids(
 		oversized_target_ids,
 		false
-	) as PackedInt32Array
+		)
+	)
 	_expect(
 		sanitized_target_ids.size() == 25
 		and sanitized_target_ids[0] == 1
@@ -3008,8 +3073,12 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 		bool(mp_game.call("_apply_authoritative_tiyi_high_noon_request", 1, 1)),
 		"Host must accept a charged Tiyi high-noon request with activation id 1."
 	)
-	var active_activations := mp_game.get("_active_tiyi_activations_by_peer") as Dictionary
-	var activation_sequences := mp_game.get("_tiyi_activation_sequences_by_peer") as Dictionary
+	var active_activations := (
+		mp_game.player_coordinator.get("_active_tiyi_activations_by_peer") as Dictionary
+	)
+	var activation_sequences := (
+		mp_game.player_coordinator.get("_tiyi_activation_sequences_by_peer") as Dictionary
+	)
 	_expect(
 		int(active_activations.get(1, 0)) == 1
 		and int(activation_sequences.get(1, 0)) == 1
@@ -3216,8 +3285,8 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			0.0
 		)
 		var health_before_forged_sniper_hit := second_host_enemy.current_health
-		mp_game.call(
-			"_rpc_enemy_hit_report",
+		mp_game.enemy_coordinator.receive_enemy_hit_report(
+			2,
 			sniper_projectile_id,
 			2,
 			2,
@@ -3238,8 +3307,8 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			0.0
 		)
 		var health_before_forged_bomb_hit := second_host_enemy.current_health
-		mp_game.call(
-			"_rpc_enemy_hit_report",
+		mp_game.enemy_coordinator.receive_enemy_hit_report(
+			2,
 			skill1_bomb_projectile_id,
 			2,
 			2,
@@ -3325,7 +3394,9 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			))
 			_expect(heal_result, "Host-authoritative player heal must use the reliable multiplayer confirmation path.")
 			_expect(peer_two.current_health == 15, "Host-authoritative player heal must restore health.")
-			var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
+			var health_revisions: Dictionary = (
+				mp_game.player_coordinator.get_health_revisions_for_snapshot()
+			)
 			var heal_revision := int(health_revisions.get(2, 0))
 			_expect(heal_revision > 0, "Host-authoritative player heal must allocate a health revision.")
 			await process_frame
@@ -3387,8 +3458,10 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 	root.add_child(client_game)
 	await process_frame
 	var client_mp_game := MP_GAME_SCENE.instantiate()
+	var net_manager := root.get_node("NetManager") as NetManagerStore
+	var previous_client_role := int(net_manager.get("net_role"))
+	net_manager.set("net_role", NetManagerStore.NetRole.CLIENT)
 	_bind_multiplayer_runtime(client_mp_game, client_game)
-	var net_manager := root.get_node_or_null("NetManager")
 	if net_manager != null:
 		client_mp_game.set("net_manager", net_manager)
 	var client_run_state := root.get_node_or_null("RunState") as RunStateStore
@@ -3408,16 +3481,15 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			"Client enemy proxies must not stack native physics interpolation on network interpolation."
 		)
 		client_enemy.set_meta("net_id", 77)
-		var client_net_enemies: Dictionary = client_mp_game.enemy_coordinator.net_enemies
 		var spawn_times: Dictionary = (
 			client_mp_game.enemy_coordinator.enemy_spawn_snapshot_times
 		)
-		client_net_enemies[77] = client_enemy
+		client_mp_game.enemy_coordinator.register_client_enemy(77, client_enemy, 0.0)
 		spawn_times[77] = 0.0
 		client_mp_game.enemy_coordinator.enemy_interpolators[77] = NetInterpolator.new(0.1)
 		client_mp_game.call("net_enemy_defeated", 77, Vector2(44.0, 55.0))
 		await process_frame
-		_expect(not client_net_enemies.has(77), "Client enemy defeated event must erase the enemy index.")
+		_expect(not client_game.has_network_enemy(77), "Client enemy defeated event must erase the enemy index.")
 		_expect(not spawn_times.has(77), "Client enemy defeated event must erase spawn timing.")
 		_expect(
 			not client_mp_game.enemy_coordinator.enemy_interpolators.has(77),
@@ -3444,8 +3516,7 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		magic_enemy.configure_multiplayer_proxy()
 		magic_enemy.set_meta("net_id", 78)
 		magic_enemy.global_position = Vector2(88.0, 99.0)
-		var client_net_enemies: Dictionary = client_mp_game.enemy_coordinator.net_enemies
-		client_net_enemies[78] = magic_enemy
+		client_mp_game.enemy_coordinator.register_client_enemy(78, magic_enemy, 0.0)
 		var health_after_magic := maxi(magic_enemy.current_health - 5, 1)
 		client_mp_game.call(
 			"net_enemy_damage_applied",
@@ -3490,7 +3561,7 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			true
 		)
 		await process_frame
-		_expect(not client_game.multiplayer_pickups.has(9001), "Pickup collected event must erase pickup index.")
+		_expect(not client_game.has_network_pickup(9001), "Pickup collected event must erase pickup index.")
 		_expect(
 			client_player.current_move_speed_multiplier > base_multiplier,
 			"Pickup collected event must apply immediate pickup effects to the collector."
@@ -3536,7 +3607,7 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			pickup_inventory_snapshot
 		)
 		await process_frame
-		_expect(not client_game.multiplayer_pickups.has(9002), "Stored pickup confirm must erase pickup index.")
+		_expect(not client_game.has_network_pickup(9002), "Stored pickup confirm must erase pickup index.")
 		_expect(
 			client_run_state != null
 			and client_run_state.get_item_for_peer(2, 0)
@@ -3586,6 +3657,7 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			not client_player.powerup_audio.playing,
 			"A rejected stored-pickup confirmation must not replay pickup feedback."
 		)
+	net_manager.set("net_role", previous_client_role)
 	client_mp_game.free()
 	_stop_audio_players(client_game)
 	client_game.queue_free()
@@ -3752,17 +3824,26 @@ func _test_multiplayer_revive_position_uses_living_players() -> void:
 		dead_player.global_position = Vector2(90.0, 90.0)
 		remote_alive_player.global_position = Vector2(-20.0, -30.0)
 		dead_player.is_dead = true
-		var accepted_positions := mp_game.get("_accepted_player_state_positions") as Dictionary
+		var accepted_positions := (
+			mp_game.player_coordinator.get("_accepted_player_state_positions") as Dictionary
+		)
 		var accepted_remote_position := Vector2(240.0, 320.0)
 		accepted_positions[3] = accepted_remote_position
 
-		var revive_positions := mp_game.call("_collect_living_player_revive_positions") as Array
+		var revive_positions := (
+			mp_game.player_coordinator.call(
+				"_collect_living_player_revive_positions"
+			) as Array
+		)
 		_expect(revive_positions.size() == 2, "Revive anchors must include only living players.")
 		_expect(revive_positions.has(host_player.global_position), "Revive anchors must include the living host position.")
 		_expect(revive_positions.has(accepted_remote_position), "Revive anchors must use accepted remote player positions.")
 		_expect(not revive_positions.has(dead_player.global_position), "Revive anchors must exclude dead players.")
 
-		var picked_position := mp_game.call("_pick_multiplayer_revive_position", revive_positions) as Vector2
+		var picked_position := mp_game.player_coordinator.call(
+			"_pick_multiplayer_revive_position",
+			revive_positions
+		) as Vector2
 		_expect(
 			picked_position == host_player.global_position or picked_position == accepted_remote_position,
 			"Random revive position must be selected from living player anchors."
@@ -3772,7 +3853,7 @@ func _test_multiplayer_revive_position_uses_living_players() -> void:
 			== null,
 			"Standard mode must not opt into a fixed multiplayer respawn position."
 		)
-		var resolved_position: Variant = mp_game.call(
+		var resolved_position: Variant = mp_game.player_coordinator.call(
 			"_resolve_multiplayer_revive_position",
 			2,
 			revive_positions
@@ -3851,7 +3932,7 @@ func _test_tower_defense_spawn_slots_and_fixed_respawn() -> void:
 		_bind_multiplayer_runtime(mp_game, game)
 		var unrelated_living_positions: Array[Vector2] = [Vector2(-400.0, -300.0)]
 		for peer_id in player_names:
-			var resolved_position: Variant = mp_game.call(
+			var resolved_position: Variant = mp_game.player_coordinator.call(
 				"_resolve_multiplayer_revive_position",
 				int(peer_id),
 				unrelated_living_positions
@@ -3914,7 +3995,9 @@ func _test_multiplayer_revive_resets_remote_visual_interpolator() -> void:
 				3, old_position, Vector2.ZERO, 0, 0, 0.0
 			)
 			stale_interp = player_coordinator.get_visual_interpolator(3)
-			var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
+			var health_revisions: Dictionary = (
+				mp_game.player_coordinator.get_health_revisions_for_snapshot()
+			)
 			health_revisions[3] = 1
 
 			mp_game.call(
@@ -4129,7 +4212,9 @@ func _test_linglan_airdrop_replication_contract() -> void:
 	game.auto_start_waves = false
 	root.add_child(game)
 	await process_frame
-	game.wave_state = CombatFlowState.State.BOSS_ACTIVE
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.BOSS_ACTIVE
+	)
 	var replicated_events: Array[Dictionary] = []
 	var spawned_events: Array[Dictionary] = []
 	game.linglan_boss_runtime_port.airdrop_started.connect(
@@ -4355,7 +4440,7 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 		target_enemy.global_position = Vector2(64.0, 0.0)
 		target_enemy.setup(enemy_config, game.player, game.grid_pathfinder)
 		target_enemy.set_meta("net_id", 501)
-		game.multiplayer_enemies_by_net_id[501] = target_enemy
+		game.register_network_enemy(501, target_enemy)
 
 		var projectile_coordinator := (
 			mp_game.get_node("ProjectileCoordinator")
@@ -4367,8 +4452,8 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 			1
 			)
 		)
-		mp_game.call(
-			"net_projectile_fired",
+		projectile_coordinator.apply_authority_projectile_fired(
+			0,
 			sakura_rocket_projectile_id,
 			"collectible_sakura_rocket",
 			2,
@@ -4441,13 +4526,21 @@ func _test_multiplayer_cheat_xirang_confirm() -> void:
 	var remote_player := host_game.get_player_for_peer(2) as Player
 	_expect(remote_player != null, "Remote player must exist for cheat xirang confirm test.")
 	if remote_player != null:
-		remote_player.current_xirang = 15
-		mp_game.call("net_cheat_xirang_confirmed", 2, 1015, 1000)
+		remote_player.set_xirang_balance(15)
+		mp_game.merchant_transactions_coordinator.receive_cheat_xirang_confirmation(
+			2,
+			1015,
+			1000
+		)
 		_expect(remote_player.current_xirang == 1015, "Cheat confirm must update the selected peer's xirang.")
 		var run_state := root.get_node("RunState") as RunStateStore
 		run_state.begin_new_run(&"weishidaier", false)
 		mp_game.set("run_state", run_state)
-		mp_game.call("net_debug_collectible_granted", 2, APPLE_COLLECTIBLE.resource_path, true)
+		mp_game.merchant_transactions_coordinator.receive_debug_collectible_granted(
+			2,
+			APPLE_COLLECTIBLE.resource_path,
+			true
+		)
 		_expect(
 			run_state.get_item_for_peer(2, 0) == APPLE_COLLECTIBLE,
 			"Debug collectible confirm must add the selected collectible to the selected peer inventory."
@@ -5050,15 +5143,17 @@ func _bind_multiplayer_runtime(
 ) -> void:
 	if mp_game == null or game == null:
 		return
-	_bind_mp_game_coordinators(mp_game, game)
 	var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
 	var mode_adapter := game.get_multiplayer_mode_adapter()
 	mp_game.game = game
 	mp_game._gameplay_gateway = gameplay_gateway
 	mp_game._mode_adapter = mode_adapter
+	mp_game.net_manager = root.get_node("NetManager") as NetManagerStore
+	mp_game.run_state = root.get_node("RunState") as RunStateStore
 	mp_game.tower_mode_adapter = (
 		mode_adapter as TowerDefenseMultiplayerModeAdapter
 	)
+	_bind_mp_game_coordinators(mp_game, game)
 	if gameplay_gateway != null:
 		gameplay_gateway.attach_multiplayer_session(mp_game)
 	if mode_adapter != null:
@@ -5085,12 +5180,116 @@ func _bind_mp_game_coordinators(
 		mp_game.get_node("ProjectileCoordinator") as MpProjectileCoordinator
 	)
 	mp_game.projectile_coordinator = projectile_coordinator
+	var world_flow_coordinator := (
+		mp_game.get_node("WorldFlowCoordinator") as MpWorldFlowCoordinator
+	)
+	mp_game.world_flow_coordinator = world_flow_coordinator
+	var transactions_coordinator := (
+		mp_game.get_node("TransactionsCoordinator") as MpTransactionsCoordinator
+	)
+	mp_game.transactions_coordinator = transactions_coordinator
+	var tower_economy_coordinator := (
+		mp_game.get_node("TowerEconomyCoordinator") as MpTowerEconomyCoordinator
+	)
+	mp_game.tower_economy_coordinator = tower_economy_coordinator
+	var tower_world_coordinator := (
+		mp_game.get_node("TowerWorldCoordinator") as MpTowerWorldCoordinator
+	)
+	mp_game.tower_world_coordinator = tower_world_coordinator
+	var merchant_transactions_coordinator := (
+		mp_game.get_node("MerchantTransactionsCoordinator")
+		as MpMerchantTransactionsCoordinator
+	)
+	mp_game.merchant_transactions_coordinator = merchant_transactions_coordinator
+	var tower_fate_coordinator := (
+		mp_game.get_node("TowerFateCoordinator") as MpTowerFateCoordinator
+	)
+	mp_game.tower_fate_coordinator = tower_fate_coordinator
+	var collectible_presentation_coordinator := (
+		mp_game.get_node("CollectiblePresentationCoordinator")
+		as MpCollectiblePresentationCoordinator
+	)
+	mp_game.collectible_presentation_coordinator = collectible_presentation_coordinator
+	var network_diagnostics_coordinator := (
+		mp_game.get_node("NetworkDiagnosticsCoordinator")
+		as MpNetworkDiagnosticsCoordinator
+	)
+	mp_game.network_diagnostics_coordinator = network_diagnostics_coordinator
 	if game != null:
+		var net_manager := mp_game.net_manager as NetManagerStore
+		var run_state := mp_game.run_state as RunStateStore
+		var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
+		var mode_adapter := game.get_multiplayer_mode_adapter()
 		session_coordinator.bind_runtime(game)
 		player_coordinator.bind_runtime(game)
+		player_coordinator.bind_realtime_dependencies(
+			net_manager,
+			session_coordinator
+		)
 		enemy_coordinator.bind_runtime(game)
+		enemy_coordinator.bind_lifecycle_dependencies(
+			net_manager,
+			gameplay_gateway,
+			Callable(mp_game, "_get_net_time")
+		)
 		projectile_coordinator.bind_runtime(game)
+		projectile_coordinator.bind_network_facade_dependencies(
+			net_manager,
+			player_coordinator,
+			Callable(mp_game, "_get_net_time"),
+			Callable(mp_game, "_get_unbounded_host_event_age"),
+			Callable(mp_game, "_is_embedded_participant_suspended")
+		)
 		enemy_coordinator.bind_damage_dependencies(projectile_coordinator, mp_game)
+		world_flow_coordinator.bind_runtime(
+			game,
+			mode_adapter,
+			enemy_coordinator,
+			gameplay_gateway,
+			run_state,
+			net_manager,
+			game.get_node_or_null("LinglanBossRuntimePort") as LinglanBossRuntimePort
+		)
+		player_coordinator.bind_life_dependencies(
+			net_manager,
+			mode_adapter,
+			projectile_coordinator,
+			Callable(mp_game, "_get_net_time"),
+			Callable(mp_game, "_cancel_player_life_tango_for_revive_schedule"),
+			Callable(mp_game, "_cancel_player_life_actions_for_revive"),
+			Callable(mp_game, "_clear_player_life_tiyi_lifecycle_state"),
+			Callable(mp_game, "_get_player_life_revive_anchor_position"),
+			Callable(mp_game, "_commit_player_life_revive_position")
+		)
+		player_coordinator.bind_player_action_dependencies(
+			net_manager,
+			Callable(mp_game, "_get_net_time"),
+			Callable(mp_game, "_is_embedded_participant_suspended")
+		)
+		transactions_coordinator.bind_session(
+			mp_game,
+			game,
+			mode_adapter,
+			net_manager,
+			run_state,
+			mp_game.get("_suspended_embedded_participant_peer_ids") as Dictionary
+		)
+		merchant_transactions_coordinator.bind_runtime(
+			game,
+			mode_adapter,
+			run_state,
+			net_manager,
+			session_coordinator.get_net_time_origin()
+		)
+		world_flow_coordinator.bind_merchant_transactions_coordinator(
+			merchant_transactions_coordinator
+		)
+		collectible_presentation_coordinator.bind_runtime(
+			game,
+			mp_game,
+			net_manager,
+			session_coordinator.get_net_time_origin()
+		)
 	return player_coordinator
 
 

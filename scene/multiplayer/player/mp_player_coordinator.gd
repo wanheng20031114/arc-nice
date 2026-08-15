@@ -3687,6 +3687,36 @@ func capture_reconnect_life_state(peer_id: int) -> Dictionary:
 	}
 
 
+## 捕获一份可跨帧持有的重连状态。Roster 的实时采样对象会复用且默认不
+## 携带生命 revision；这里在同一主线程事务内复制瞬时状态并附上当前生命
+## 水位，使位置/角色运行时与死亡/复活状态只有一个捕获入口。
+func capture_player_reconnect_state(peer_id: int) -> Dictionary:
+	if not is_bound() or peer_id <= 0:
+		return {}
+	var captured_state: SnapshotManager.PlayerState = null
+	for sampled_state in _runtime.collect_player_snapshot_states():
+		if sampled_state == null or sampled_state.peer_id != peer_id:
+			continue
+		captured_state = SnapshotManager.copy_player_state(sampled_state)
+		break
+	if captured_state == null:
+		return {}
+	# Host 以可靠事件水位为权威；Client 可能先收到更高 revision 的实时
+	# keyframe，因此镜像捕获取两条接收水位的最大值。
+	var captured_health_revision := maxi(
+		get_health_revision(peer_id),
+		get_applied_health_revision(peer_id)
+	)
+	captured_state.health_revision = captured_health_revision
+	var reconnect_state := capture_reconnect_life_state(peer_id)
+	# 重连后的可靠事件序号必须从同一最大水位继续增长；若仍分别恢复两条
+	# 旧水位，Host 的下一次生命事件可能小于已应用快照而被客户端拒绝。
+	reconnect_state["health_revision"] = captured_health_revision
+	reconnect_state["applied_health_revision"] = captured_health_revision
+	reconnect_state["state"] = captured_state
+	return reconnect_state
+
+
 func restore_reconnect_life_state(
 	peer_id: int,
 	reconnect_state: Dictionary,

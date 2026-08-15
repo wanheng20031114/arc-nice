@@ -3467,11 +3467,7 @@ static func _apply_xirang_map_to_game(
 		if player == null or not is_instance_valid(player):
 			continue
 		var amount := maxi(int(xirang_by_peer[peer_id_variant]), 0)
-		if player.current_xirang == amount:
-			continue
-		var delta := amount - player.current_xirang
-		player.current_xirang = amount
-		player.xirang_changed.emit(amount, delta)
+		player.set_xirang_balance(amount)
 
 
 func _apply_xirang_map_to_route(xirang_by_peer: Dictionary) -> void:
@@ -3483,11 +3479,7 @@ func _apply_xirang_map_to_route(xirang_by_peer: Dictionary) -> void:
 		if player == null or not is_instance_valid(player):
 			continue
 		var amount := maxi(int(xirang_by_peer[peer_id_variant]), 0)
-		if player.current_xirang == amount:
-			continue
-		var delta := amount - player.current_xirang
-		player.current_xirang = amount
-		player.xirang_changed.emit(amount, delta)
+		player.set_xirang_balance(amount)
 
 
 func _get_party_xirang_balances_for_participants() -> Dictionary:

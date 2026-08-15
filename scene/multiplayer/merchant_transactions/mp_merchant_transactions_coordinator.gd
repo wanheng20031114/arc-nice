@@ -372,12 +372,7 @@ func receive_luoxi_collectible_refresh_confirmation(
 			and peer_id == _net_manager.get_local_peer_id()
 		)
 		if not already_applied_on_host:
-			var xirang_delta := current_xirang - player_node.current_xirang
-			player_node.current_xirang = maxi(current_xirang, 0)
-			player_node.xirang_changed.emit(
-				player_node.current_xirang,
-				xirang_delta
-			)
+			player_node.set_xirang_balance(current_xirang)
 	if peer_id == _net_manager.get_local_peer_id():
 		_mode_adapter.show_local_luoxi_refresh_result(
 			result_code,
@@ -427,13 +422,8 @@ func receive_luoxi_special_game_finished(
 			_net_manager.is_host()
 			and peer_id == _net_manager.get_local_peer_id()
 		)
-		if not already_applied_on_host and confirmed_xirang != player_node.current_xirang:
-			var xirang_delta := confirmed_xirang - player_node.current_xirang
-			player_node.current_xirang = maxi(confirmed_xirang, 0)
-			player_node.xirang_changed.emit(
-				player_node.current_xirang,
-				xirang_delta
-			)
+		if not already_applied_on_host:
+			player_node.set_xirang_balance(confirmed_xirang)
 	if peer_id == _net_manager.get_local_peer_id():
 		_mode_adapter.show_local_luoxi_special_game_finished(result)
 
@@ -441,18 +431,14 @@ func receive_luoxi_special_game_finished(
 func receive_cheat_xirang_confirmation(
 	peer_id: int,
 	current_xirang: int,
-	added_amount: int
+	_added_amount: int
 ) -> void:
 	if not is_bound():
 		return
 	var player_node := _runtime.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return
-	player_node.current_xirang = maxi(current_xirang, 0)
-	player_node.xirang_changed.emit(
-		player_node.current_xirang,
-		maxi(added_amount, 0)
-	)
+	player_node.set_xirang_balance(current_xirang)
 
 
 func receive_debug_collectible_granted(

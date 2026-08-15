@@ -408,23 +408,31 @@ func _test_double_xirang_day_combat_states() -> void:
 	probe.fate_coordinator = coordinator
 	coordinator.double_xirang_day = 2
 	probe.campaign_coordinator.current_wave_index = 4
-	probe.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
+	probe.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.WAVE_ACTIVE
+	)
 	_expect(
 		coordinator.is_double_xirang_reward_active(),
 		"The target day's ordinary waves must double Xirang kill rewards."
 	)
-	probe.campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE
+	probe.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.BOSS_ACTIVE
+	)
 	_expect(
 		coordinator.is_double_xirang_reward_active(),
 		"A target-day boss fight must retain the next-day double-Xirang reward."
 	)
-	probe.campaign_coordinator.wave_state = CombatFlowState.State.INTERMISSION
+	probe.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.INTERMISSION
+	)
 	_expect(
 		not coordinator.is_double_xirang_reward_active(),
 		"The double-Xirang fate must remain combat-only."
 	)
 	probe.campaign_coordinator.current_wave_index = 8
-	probe.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
+	probe.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.WAVE_ACTIVE
+	)
 	_expect(
 		not coordinator.is_double_xirang_reward_active(),
 		"The double-Xirang fate must expire after its single target day."
@@ -825,7 +833,9 @@ func _test_scene_config_and_interlude_freeze() -> void:
 			placement_rejections.append(reason)
 	)
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	game.campaign_coordinator.wave_state = CombatFlowState.State.FATE_INTERLUDE
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.FATE_INTERLUDE
+	)
 	game.tower_multiplayer_mode_adapter.request_authoritative_inventory_plant_placement(
 		2,
 		91,

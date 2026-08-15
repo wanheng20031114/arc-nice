@@ -852,6 +852,13 @@ func _test_panel_mouse_navigation(
 		and not player.controls_locked,
 		"真实点击右上关闭键必须关闭科研面板并恢复玩家控制。"
 	)
+	panel.open_for(center, player)
+	player.died.emit()
+	_expect(
+		not panel.is_open()
+		and not player.has_control_lock(ResearchCenterPanel.CONTROL_LOCK_OWNER),
+		"玩家死亡时科研面板必须关闭并只释放自己的控制锁 owner。"
+	)
 
 
 func _click_panel_control(control: Control) -> void:

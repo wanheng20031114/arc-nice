@@ -193,8 +193,10 @@ func _run() -> void:
 		tower_world_coordinator,
 		tower_economy_coordinator
 	)
-	runtime.multiplayer_pickups[3] = null
-	runtime.multiplayer_pickups[4] = null
+	var stale_pickup := Pickup.new()
+	var live_pickup := Pickup.new()
+	runtime.register_network_pickup(3, stale_pickup)
+	runtime.register_network_pickup(4, live_pickup)
 	_expect(
 		coordinator.apply_runtime_world_manifest(
 			PackedInt32Array([2, 7]),
@@ -225,6 +227,9 @@ func _run() -> void:
 		== PackedInt32Array([6, 6, 9]),
 		"manifest 迁移不得改变成员去重或正植物 ID 的重复顺序。"
 	)
+	runtime.clear_network_pickup_registry()
+	stale_pickup.free()
+	live_pickup.free()
 	_expect(
 		keepalive_request.request_completed.is_connected(
 			Callable(coordinator, "_on_public_room_keepalive_completed")
@@ -428,7 +433,7 @@ func _test_static_delegation_contract() -> void:
 		not root_source.contains("func _send_runtime_world_manifest_to_peer(")
 		and not root_source.contains("func _send_runtime_state_to_peer(")
 		and root_source.contains(
-			"return session_coordinator.handle_authoritative_runtime_state_request("
+			"return session_coordinator.send_authoritative_runtime_state_to_peer("
 		)
 		and root_source.contains(
 			"return session_coordinator.get_connected_client_peer_ids("

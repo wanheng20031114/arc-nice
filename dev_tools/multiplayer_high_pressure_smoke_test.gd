@@ -129,7 +129,7 @@ class TestRuntime:
 		return lookup_targets.get(net_id) as Enemy
 
 	func get_pickup_for_net_id(net_id: int) -> Pickup:
-		return multiplayer_pickups.get(net_id) as Pickup
+		return get_network_pickup(net_id)
 
 	func remove_multiplayer_player(peer_id: int) -> void:
 		peer_players.erase(peer_id)
@@ -504,9 +504,9 @@ func _test_combat_target_query_reuse() -> void:
 		"Base single-player queries must refill one array from Enemy and Boss containers in distance order."
 	)
 	fixture.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-	fixture.register_combat_target(901, near_enemy)
-	fixture.register_combat_target(902, boss_enemy)
-	fixture.register_combat_target(903, far_enemy)
+	fixture.register_network_enemy(901, near_enemy)
+	fixture.register_network_enemy(902, boss_enemy)
+	fixture.register_network_enemy(903, far_enemy)
 
 	var host_mp_game := _new_mp_game(true)
 	var host_reused_targets: Array[Enemy] = [far_enemy]
@@ -555,9 +555,6 @@ func _test_combat_target_query_reuse() -> void:
 	)
 
 	var client_mp_game := _new_mp_game()
-	client_mp_game.enemy_coordinator.net_enemies.assign(
-		{901: near_enemy, 902: boss_enemy, 903: far_enemy}
-	)
 	var client_reused_targets: Array[Enemy] = [far_enemy]
 	client_mp_game.call(
 		"query_combat_targets_into",
@@ -601,10 +598,7 @@ func _test_combat_target_query_reuse() -> void:
 		"MP client queries must exclude dead proxy targets."
 	)
 
-	client_mp_game.enemy_coordinator.net_enemies.clear()
-	fixture.unregister_combat_target(901)
-	fixture.unregister_combat_target(902)
-	fixture.unregister_combat_target(903)
+	fixture.clear_network_enemy_registry()
 	near_enemy.queue_free()
 	boss_enemy.queue_free()
 	far_enemy.queue_free()
@@ -613,25 +607,18 @@ func _test_combat_target_query_reuse() -> void:
 
 func _test_adaptive_enemy_snapshot_cadence() -> void:
 	var mp_game := _new_mp_game()
-	fixture.multiplayer_enemies_by_net_id.clear()
-	for enemy_index in range(199):
-		fixture.multiplayer_enemies_by_net_id[enemy_index + 1] = null
 	_expect(
-		int(mp_game.call("_get_enemy_snapshot_interval_frames")) == 2,
+		mp_game.enemy_coordinator.get_snapshot_interval_frames_for_enemy_count(199) == 2,
 		"Below 200 enemies, the Host must retain the 30 Hz enemy cadence."
 	)
-	fixture.multiplayer_enemies_by_net_id[200] = null
 	_expect(
-		int(mp_game.call("_get_enemy_snapshot_interval_frames")) == 3,
+		mp_game.enemy_coordinator.get_snapshot_interval_frames_for_enemy_count(200) == 3,
 		"At the 200-enemy threshold, the Host must reduce enemy snapshots to 20 Hz."
 	)
-	for enemy_index in range(200, 300):
-		fixture.multiplayer_enemies_by_net_id[enemy_index + 1] = null
 	_expect(
-		int(mp_game.call("_get_enemy_snapshot_interval_frames")) == 3,
+		mp_game.enemy_coordinator.get_snapshot_interval_frames_for_enemy_count(300) == 3,
 		"The 300-enemy pressure target must remain on the 20 Hz cadence."
 	)
-	fixture.multiplayer_enemies_by_net_id.clear()
 
 
 func _test_enemy_interpolator_iteration_prunes_after_traversal() -> void:
@@ -1217,8 +1204,8 @@ func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 	fixture.add_child(stale_enemy)
 	live_enemy.process_mode = Node.PROCESS_MODE_DISABLED
 	stale_enemy.process_mode = Node.PROCESS_MODE_DISABLED
-	mp_game.enemy_coordinator.net_enemies.assign({1: live_enemy, 2: stale_enemy})
-	fixture.multiplayer_enemies_by_net_id = {1: live_enemy, 2: stale_enemy}
+	fixture.register_network_enemy(1, live_enemy)
+	fixture.register_network_enemy(2, stale_enemy)
 
 	var live_pickup := PICKUP_SCENE.instantiate() as Pickup
 	var stale_pickup := PICKUP_SCENE.instantiate() as Pickup
@@ -1226,7 +1213,8 @@ func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 	stale_pickup.config = PICKUP_CONFIG
 	fixture.add_child(live_pickup)
 	fixture.add_child(stale_pickup)
-	fixture.multiplayer_pickups = {10: live_pickup, 11: stale_pickup}
+	fixture.register_network_pickup(10, live_pickup)
+	fixture.register_network_pickup(11, stale_pickup)
 	var live_plant := PlantDefense.new()
 	var stale_plant := PlantDefense.new()
 	fixture.proxy_plants = {20: live_plant, 21: stale_plant}
@@ -1247,12 +1235,12 @@ func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 		PackedInt32Array([20])
 	)
 	_expect(
-		mp_game.enemy_coordinator.net_enemies.has(1)
-		and not mp_game.enemy_coordinator.net_enemies.has(2),
+		fixture.has_network_enemy(1)
+		and not fixture.has_network_enemy(2),
 		"A complete-state manifest must silently prune a leaked enemy replica."
 	)
 	_expect(
-		fixture.multiplayer_pickups.has(10) and not fixture.multiplayer_pickups.has(11),
+		fixture.has_network_pickup(10) and not fixture.has_network_pickup(11),
 		"A complete-state manifest must prune a pickup whose reliable removal was missed."
 	)
 	_expect(
@@ -1266,9 +1254,8 @@ func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 		and not fixture.animated_plant_removal_ids.has(21),
 		"A complete-state manifest must prune stale plants and their queued warehouse snapshots."
 	)
-	mp_game.enemy_coordinator.net_enemies.clear()
-	fixture.multiplayer_enemies_by_net_id.clear()
-	fixture.multiplayer_pickups.clear()
+	fixture.clear_network_enemy_registry()
+	fixture.clear_network_pickup_registry()
 	fixture.proxy_plants.clear()
 	live_enemy.queue_free()
 	live_pickup.queue_free()
@@ -1848,7 +1835,8 @@ func _test_offscreen_proxy_visual_budget() -> void:
 	far_enemy.is_multiplayer_proxy = true
 	near_enemy.global_position = Vector2.ZERO
 	far_enemy.global_position = Vector2(100000.0, 100000.0)
-	mp_game.enemy_coordinator.net_enemies.assign({1: near_enemy, 2: far_enemy})
+	mp_game.enemy_coordinator.register_client_enemy(1, near_enemy, 0.0)
+	mp_game.enemy_coordinator.register_client_enemy(2, far_enemy, 0.0)
 	await process_frame
 	mp_game.call("_update_client_proxy_visual_budget", 1.0)
 	_expect(
@@ -1885,7 +1873,7 @@ func _test_offscreen_proxy_visual_budget() -> void:
 		and bool(mp_game.call("_should_interpolate_enemy_proxy", 2, far_enemy, 10.2)),
 		"A visible proxy must keep full render-rate interpolation even with a retained offscreen slot."
 	)
-	mp_game.enemy_coordinator.net_enemies.clear()
+	fixture.clear_network_enemy_registry()
 	near_enemy.queue_free()
 	far_enemy.queue_free()
 	camera.queue_free()

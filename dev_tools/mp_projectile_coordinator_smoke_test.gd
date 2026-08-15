@@ -23,7 +23,7 @@ class ProbeRuntime:
 		return peer_players.get(peer_id) as Player
 
 	func get_enemy_for_net_id(net_id: int) -> Enemy:
-		return multiplayer_enemies_by_net_id.get(net_id) as Enemy
+		return get_network_enemy(net_id)
 
 	func get_pickup_for_net_id(_net_id: int) -> Pickup:
 		return null

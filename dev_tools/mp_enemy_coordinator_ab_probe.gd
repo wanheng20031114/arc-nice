@@ -23,7 +23,7 @@ class ProbeRuntime:
 		return peer_players.get(peer_id) as Player
 
 	func get_enemy_for_net_id(net_id: int) -> Enemy:
-		return multiplayer_enemies_by_net_id.get(net_id) as Enemy
+		return get_network_enemy(net_id)
 
 	func get_pickup_for_net_id(_net_id: int) -> Pickup:
 		return null
@@ -214,6 +214,7 @@ func _run_trace(use_legacy: bool, seed: int) -> int:
 	var legacy := LegacyEnemySnapshotLogic.new()
 	var extracted := MpEnemyCoordinator.new()
 	extracted.bind_runtime(runtime)
+	var registry_enemies: Array[Enemy] = []
 	var trace_hash := 23
 	var snapshot_time := 100.0
 	for _event_index in range(EVENT_COUNT):
@@ -221,9 +222,8 @@ func _run_trace(use_legacy: bool, seed: int) -> int:
 		match operation:
 			0, 1:
 				var enemy_count := random.randi_range(0, 260)
-				runtime.multiplayer_enemies_by_net_id.clear()
-				for net_id in range(1, enemy_count + 1):
-					runtime.multiplayer_enemies_by_net_id[net_id] = null
+				if not use_legacy:
+					_set_runtime_enemy_count(runtime, registry_enemies, enemy_count)
 				var ready_peers := _random_ready_peers(random)
 				var states := _random_states(random)
 				snapshot_time += random.randf_range(0.01, 0.32)
@@ -282,9 +282,30 @@ func _run_trace(use_legacy: bool, seed: int) -> int:
 				0
 			))
 		)
+	runtime.clear_network_enemy_registry()
+	for enemy in registry_enemies:
+		enemy.free()
 	extracted.free()
 	runtime.free()
 	return trace_hash
+
+
+func _set_runtime_enemy_count(
+	runtime: CombatRuntimeBase,
+	registry_enemies: Array[Enemy],
+	enemy_count: int
+) -> void:
+	while registry_enemies.size() < enemy_count:
+		var enemy := Enemy.new()
+		enemy.process_mode = Node.PROCESS_MODE_DISABLED
+		registry_enemies.append(enemy)
+	for enemy_index in range(registry_enemies.size()):
+		var net_id := enemy_index + 1
+		var enemy := registry_enemies[enemy_index]
+		if enemy_index < enemy_count:
+			runtime.register_network_enemy(net_id, enemy)
+		else:
+			runtime.unregister_network_enemy(net_id, enemy)
 
 
 func _coordinator_packet(batch: MpEnemyCoordinator.HostSnapshotBatch) -> Dictionary:

@@ -1297,12 +1297,30 @@ func _run() -> void:
 		and _probe_tiyi_clear_count == 1,
 		"可靠复活确认必须恢复玩家并清理角色生命期状态。"
 	)
-	var reconnect_life_state := coordinator.capture_reconnect_life_state(4)
-	_expect(
-		int(reconnect_life_state.get("health_revision", 0)) == 3
-		and int(reconnect_life_state.get("applied_health_revision", 0)) == 3,
-		"重连快照必须由玩家协调器持有完整生命 revision。"
+	var reconnect_sample := SnapshotManager.PlayerState.new()
+	reconnect_sample.peer_id = 4
+	reconnect_sample.character_id = &"weishidaier"
+	reconnect_sample.position = Vector2(73.0, 91.0)
+	reconnect_sample.current_health = life_player.current_health
+	reconnect_sample.max_health = life_player.max_health
+	reconnect_sample.is_dead = life_player.is_dead
+	runtime.probe_player_snapshot_states = [reconnect_sample]
+	coordinator.mark_health_revision_applied(4, 7)
+	var reconnect_state := coordinator.capture_player_reconnect_state(4)
+	var reconnect_player_state := (
+		reconnect_state.get("state") as SnapshotManager.PlayerState
 	)
+	reconnect_sample.current_health = 1
+	_expect(
+		reconnect_player_state != null
+		and reconnect_player_state.current_health == 100
+		and reconnect_player_state.position == Vector2(73.0, 91.0)
+		and reconnect_player_state.health_revision == 7
+		and int(reconnect_state.get("health_revision", 0)) == 7
+		and int(reconnect_state.get("applied_health_revision", 0)) == 7,
+		"重连状态必须独占采样对象，并把分叉的生命 revision 收敛到同一最大水位。"
+	)
+	runtime.probe_player_snapshot_states.clear()
 	coordinator.clear_peer(4)
 	_expect(
 		coordinator.get_health_revision(4) == 0

@@ -349,13 +349,13 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 		func() -> bool:
 			return (
 				game.current_wave_defeated == EXPECTED_ENEMY_COUNT
-				and game.multiplayer_enemies_by_net_id.is_empty()
+				and game.get_network_enemy_count() == 0
 			),
 		12.0
 	):
 		_fail(
 			"Host enemies did not fully resolve: defeated=%d network=%d"
-			% [game.current_wave_defeated, game.multiplayer_enemies_by_net_id.size()]
+			% [game.current_wave_defeated, game.get_network_enemy_count()]
 		)
 		return
 
@@ -838,7 +838,7 @@ func _on_host_enemy_spawned(
 	if watched_host_game != null and is_instance_valid(watched_host_game):
 		host_peak_alive_count = maxi(
 			host_peak_alive_count,
-			watched_host_game.multiplayer_enemies_by_net_id.size()
+			watched_host_game.get_network_enemy_count()
 		)
 		if host_peak_alive_count > EXPECTED_MAX_ALIVE_ENEMIES:
 			_fail(
@@ -856,7 +856,7 @@ func _wait_for_host_spawn_target(
 	var deadline := Time.get_ticks_msec() + int(timeout_seconds * 1000.0)
 	while Time.get_ticks_msec() < deadline:
 		_freeze_host_enemies(game)
-		var active_count := game.multiplayer_enemies_by_net_id.size()
+		var active_count := game.get_network_enemy_count()
 		if active_count > EXPECTED_MAX_ALIVE_ENEMIES:
 			_fail(
 				"Host exceeded the configured fifteen-enemy alive cap: %d"
@@ -878,7 +878,7 @@ func _wait_for_host_spawn_target(
 		% [
 			target_count,
 			game.current_wave_spawned,
-			game.multiplayer_enemies_by_net_id.size(),
+			game.get_network_enemy_count(),
 			host_spawn_ids.size(),
 			game.current_wave_defeated,
 		]
@@ -1002,8 +1002,7 @@ func _validate_host_spawn_contract(game: RogueCombatGame) -> bool:
 
 
 func _freeze_host_enemies(game: RogueCombatGame) -> void:
-	for enemy_variant in game.multiplayer_enemies_by_net_id.values():
-		var enemy := enemy_variant as Enemy
+	for enemy in game.get_network_enemies():
 		if enemy == null or not is_instance_valid(enemy):
 			continue
 		enemy.velocity = Vector2.ZERO
@@ -1033,7 +1032,7 @@ func _wait_for_client_enemy_batch(
 	var ready := await _wait_until(
 		func() -> bool:
 			if (
-				game.multiplayer_enemies_by_net_id.size()
+				game.get_network_enemy_count()
 				> EXPECTED_MAX_ALIVE_ENEMIES
 			):
 				return false
@@ -1055,7 +1054,7 @@ func _wait_for_client_enemy_batch(
 			% [batch_ids]
 		)
 		return false
-	if game.multiplayer_enemies_by_net_id.size() > EXPECTED_MAX_ALIVE_ENEMIES:
+	if game.get_network_enemy_count() > EXPECTED_MAX_ALIVE_ENEMIES:
 		_fail("Client observed more than fifteen simultaneous enemy proxies")
 		return false
 	return true

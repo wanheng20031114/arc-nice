@@ -95,6 +95,8 @@ func _init() -> void:
 
 
 func _run() -> void:
+	_test_network_enemy_registry_atomicity()
+	_test_network_pickup_registry_atomicity()
 	_test_game_enemy_removal_markers()
 	_test_tower_defense_enemy_escape_marker()
 	_test_pickup_tree_exit_markers(GAME_SCRIPT.new(), "StandardGame")
@@ -110,6 +112,120 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_network_enemy_registry_atomicity() -> void:
+	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new() as CombatRuntimeBase
+	var first_enemy := Enemy.new()
+	var replacement_enemy := Enemy.new()
+	_expect(
+		runtime.register_network_enemy(41, first_enemy)
+		and runtime.get_network_enemy(41) == first_enemy
+		and runtime.get_network_enemy_net_id_by_instance_id(
+			first_enemy.get_instance_id()
+		) == 41
+		and runtime.combat_target_index.get_enemy(41) == first_enemy,
+		"网络敌人注册必须原子写入 net、instance 与战斗目标三索引。"
+	)
+	_expect(
+		runtime.register_network_enemy(41, replacement_enemy)
+		and runtime.get_network_enemy(41) == replacement_enemy
+		and runtime.get_network_enemy_net_id_by_instance_id(
+			first_enemy.get_instance_id()
+		) == 0,
+		"同 net-id 替换必须清理旧实例反向索引。"
+	)
+	_expect(
+		runtime.unregister_network_enemy(41, first_enemy) == null
+		and runtime.get_network_enemy(41) == replacement_enemy,
+		"旧实例迟到 tree-exit 不得移除同 net-id 的新代理。"
+	)
+	_expect(
+		runtime.register_network_enemy(52, first_enemy)
+		and runtime.register_network_enemy(53, first_enemy)
+		and not runtime.has_network_enemy(52)
+		and runtime.get_network_enemy(53) == first_enemy,
+		"同实例迁移 net-id 必须移除旧 net 索引。"
+	)
+	_expect(
+		runtime.unregister_network_enemy_by_instance_id(
+			first_enemy.get_instance_id()
+		) == 53
+		and not runtime.has_network_enemy(53),
+		"按 instance-id 移除必须幂等清理双向索引。"
+	)
+	var freed_enemy := Enemy.new()
+	var freed_instance_id := freed_enemy.get_instance_id()
+	runtime.register_network_enemy(54, freed_enemy)
+	freed_enemy.free()
+	_expect(
+		runtime.get_network_enemy(54) == null
+		and runtime.get_network_enemy_net_id_by_instance_id(freed_instance_id) == 0,
+		"已释放敌人查询必须无类型转换错误地清理双向索引。"
+	)
+	runtime.clear_network_enemy_registry()
+	_expect(
+		runtime.get_network_enemy_count() == 0
+		and runtime.combat_target_index.get_enemy(41) == null,
+		"会话级清理必须同时清空网络敌人与战斗目标索引。"
+	)
+	first_enemy.free()
+	replacement_enemy.free()
+	runtime.free()
+
+
+func _test_network_pickup_registry_atomicity() -> void:
+	var runtime := GAME_SCRIPT.new() as CombatRuntimeBase
+	var first_pickup := Pickup.new()
+	var replacement_pickup := Pickup.new()
+	_expect(
+		runtime.register_network_pickup(61, first_pickup)
+		and runtime.get_network_pickup(61) == first_pickup
+		and runtime.get_network_pickup_net_id_by_instance_id(
+			first_pickup.get_instance_id()
+		) == 61,
+		"网络拾取物注册必须原子写入 net/instance 双向索引。"
+	)
+	_expect(
+		runtime.register_network_pickup(61, replacement_pickup)
+		and runtime.get_network_pickup(61) == replacement_pickup
+		and runtime.get_network_pickup_net_id_by_instance_id(
+			first_pickup.get_instance_id()
+		) == 0,
+		"同 net-id 拾取物替换必须清理旧实例反向索引。"
+	)
+	_expect(
+		runtime.unregister_network_pickup(61, first_pickup) == null
+		and runtime.get_network_pickup(61) == replacement_pickup,
+		"旧拾取物迟到 tree-exit 不得移除同 net-id 的新代理。"
+	)
+	_expect(
+		runtime.register_network_pickup(62, first_pickup)
+		and runtime.register_network_pickup(63, first_pickup)
+		and not runtime.has_network_pickup(62)
+		and runtime.get_network_pickup(63) == first_pickup,
+		"同拾取物实例迁移 net-id 必须移除旧 net 索引。"
+	)
+	var freed_pickup := Pickup.new()
+	var freed_instance_id := freed_pickup.get_instance_id()
+	runtime.register_network_pickup(64, freed_pickup)
+	freed_pickup.free()
+	_expect(
+		runtime.get_network_pickup(64) == null
+		and runtime.get_network_pickup_net_id_by_instance_id(freed_instance_id) == 0,
+		"已释放拾取物查询必须无类型转换错误地清理双向索引。"
+	)
+	runtime.clear_network_pickup_registry()
+	_expect(
+		runtime.get_network_pickup_count() == 0
+		and runtime.get_network_pickup_net_id_by_instance_id(
+			first_pickup.get_instance_id()
+		) == 0,
+		"会话级清理必须同时清空拾取物双向索引。"
+	)
+	first_pickup.free()
+	replacement_pickup.free()
+	runtime.free()
 
 
 func _test_game_enemy_removal_markers() -> void:
@@ -128,13 +244,11 @@ func _exercise_enemy_exit_pressure(runtime: CombatRuntimeBase, label: String) ->
 	gateway.enemy_removed.connect(
 		func(net_id: int) -> void: removed_ids.append(net_id)
 	)
-	var instance_to_net := runtime.multiplayer_enemy_ids_by_instance
-	var net_to_enemy := runtime.multiplayer_enemies_by_net_id
 	for event_index in range(PRESSURE_EVENT_COUNT):
-		var instance_id := 100_000 + event_index
+		var enemy := Enemy.new()
+		var instance_id := enemy.get_instance_id()
 		var net_id := event_index + 1
-		instance_to_net[instance_id] = net_id
-		net_to_enemy[net_id] = null
+		runtime.register_network_enemy(net_id, enemy)
 		if runtime is TowerDefenseGame:
 			(runtime as TowerDefenseGame).enemy_coordinator.handle_wave_enemy_tree_exited(
 				instance_id
@@ -143,6 +257,7 @@ func _exercise_enemy_exit_pressure(runtime: CombatRuntimeBase, label: String) ->
 			runtime.call("_on_wave_enemy_tree_exited", instance_id)
 		else:
 			runtime.call("_on_boss_enemy_tree_exited", instance_id)
+		enemy.free()
 	_expect(
 		removed_ids.size() == PRESSURE_EVENT_COUNT,
 		"%s must emit exactly one removal for each wave/boss exit." % label
@@ -165,8 +280,7 @@ func _test_tower_defense_enemy_escape_marker() -> void:
 	var enemy := Enemy.new()
 	var enemy_instance_id := enemy.get_instance_id()
 	var net_id := 77
-	runtime.multiplayer_enemy_ids_by_instance[enemy_instance_id] = net_id
-	runtime.multiplayer_enemies_by_net_id[net_id] = enemy
+	runtime.register_network_enemy(net_id, enemy)
 	runtime.enemy_coordinator.emit_multiplayer_enemy_escaped(enemy)
 	var pending_escape_ids := (
 		runtime.enemy_coordinator.get("_pending_terminal_escape_net_ids")
@@ -217,11 +331,9 @@ func _test_pickup_tree_exit_markers(runtime: CombatRuntimeBase, label: String) -
 			collected_ids.append(net_id)
 	)
 	var pickup := Pickup.new()
-	var pickup_index := runtime.get("multiplayer_pickups") as Dictionary
 	for event_index in range(PRESSURE_EVENT_COUNT):
 		var net_id := event_index + 1
-		pickup.set_meta("net_id", net_id)
-		pickup_index[net_id] = pickup
+		runtime.register_network_pickup(net_id, pickup)
 		pickup_registry.handle_multiplayer_pickup_consumed(pickup, 2, true)
 		pickup_registry.handle_multiplayer_pickup_tree_exited(net_id)
 	_expect(
@@ -238,7 +350,7 @@ func _test_pickup_tree_exit_markers(runtime: CombatRuntimeBase, label: String) -
 	)
 
 	var spontaneous_net_id := PRESSURE_EVENT_COUNT + 1
-	pickup_index[spontaneous_net_id] = pickup
+	runtime.register_network_pickup(spontaneous_net_id, pickup)
 	pickup_registry.handle_multiplayer_pickup_tree_exited(spontaneous_net_id)
 	_expect(
 		removed_ids.size() == PRESSURE_EVENT_COUNT + 1,
@@ -270,12 +382,10 @@ func _bind_tree_less_standard_pickup_registry(
 	runtime.add_child(registry)
 	registry.bind_standard_dependencies(
 		runtime.runtime_mode,
-		runtime.multiplayer_pickups,
+		runtime,
 		gateway,
 		enemy_container,
-		boss_container,
-		{},
-		PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
+		boss_container
 	)
 	return registry
 
@@ -293,12 +403,10 @@ func _bind_tree_less_tower_pickup_registry(
 	runtime.pickup_registry = registry
 	registry.bind_tower_dependencies(
 		runtime.runtime_mode,
-		runtime.multiplayer_pickups,
+		runtime,
 		gateway,
 		runtime.get_node("EnemyContainer") as Node2D,
-		runtime.get_node("BossContainer") as Node2D,
-		{},
-		PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
+		runtime.get_node("BossContainer") as Node2D
 	)
 	return registry
 
@@ -419,7 +527,7 @@ func _test_client_escape_compatibility_has_no_tombstone_cache() -> void:
 		mp_game.net_enemy_escaped(net_id)
 		mp_game.net_enemy_removed(net_id)
 	_expect(
-		enemy_coordinator.net_enemies.is_empty(),
+		runtime.get_network_enemy_count() == 0,
 		"Unified and legacy escape/removal traffic must leave no client enemies."
 	)
 	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
@@ -449,7 +557,7 @@ func _test_reliable_terminal_feedback_payload() -> void:
 	)
 	enemy.current_health = 0
 	enemy.is_dead = true
-	runtime.multiplayer_enemies_by_net_id[net_id] = enemy
+	runtime.register_network_enemy(net_id, enemy)
 	enemy_coordinator.bind_runtime(runtime)
 	enemy_coordinator.pending_enemy_damage_feedback[net_id] = {
 		"current_health": 10,
@@ -488,7 +596,7 @@ func _test_reliable_terminal_feedback_payload() -> void:
 		not enemy_coordinator.pending_enemy_damage_feedback.has(net_id),
 		"致死反馈并入可靠终结事件后必须从不可靠批队列移除，避免重复浮字。"
 	)
-	runtime.multiplayer_enemies_by_net_id.clear()
+	runtime.clear_network_enemy_registry()
 	enemy_coordinator.clear_active_damage_feedback_context(net_id)
 	enemy.free()
 	runtime.free()
@@ -532,11 +640,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	enemy.set_process(false)
 	enemy.set_physics_process(false)
 	var net_id := 707
-	enemy.set_meta(&"net_id", net_id)
-	runtime.multiplayer_enemy_ids_by_instance[
-		enemy.get_instance_id()
-	] = net_id
-	runtime.multiplayer_enemies_by_net_id[net_id] = enemy
+	runtime.register_network_enemy(net_id, enemy)
 	enemy.defeated.connect(
 		func(defeated_enemy: Enemy) -> void:
 			gateway.enemy_defeated.emit(net_id, defeated_enemy.global_position)
@@ -579,8 +683,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 		"真实致死批伤结束后不得遗留不可靠反馈或活动伤害上下文。"
 	)
 	if args.size() != 9:
-		runtime.multiplayer_enemies_by_net_id.clear()
-		runtime.multiplayer_enemy_ids_by_instance.clear()
+		runtime.clear_network_enemy_registry()
 		root.remove_child(enemy)
 		enemy.free()
 		root.remove_child(enemy_coordinator)
@@ -597,12 +700,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	root.add_child(client_enemy)
 	client_enemy.setup(lethal_config, null, null, client_runtime)
 	client_enemy.configure_multiplayer_proxy()
-	client_enemy.set_meta(&"net_id", net_id)
-	client_enemy_coordinator.net_enemies[net_id] = client_enemy
-	client_runtime.multiplayer_enemies_by_net_id[net_id] = client_enemy
-	client_runtime.multiplayer_enemy_ids_by_instance[
-		client_enemy.get_instance_id()
-	] = net_id
+	client_enemy_coordinator.register_client_enemy(net_id, client_enemy, 0.0)
 	client_enemy_coordinator.receive_enemy_terminal(
 		int(args[0]),
 		int(args[1]),
@@ -617,16 +715,15 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	_expect(
 		client_enemy.is_dead
 		and client_enemy.current_health == 0
-		and not client_enemy_coordinator.net_enemies.has(net_id)
-		and not client_runtime.multiplayer_enemies_by_net_id.has(net_id)
+		and client_enemy_coordinator.get_client_enemy(net_id) == null
+		and not client_runtime.has_network_enemy(net_id)
 		and client_runtime.amount == 40
 		and client_runtime.impact_direction == Vector2.RIGHT
 		and client_runtime.damage_type
 		== int(EnemyConfig.DamageType.PHYSICAL),
 		"客户端消费九参数可靠terminal时必须先显示最后40点伤害、应用0生命，再执行死亡移除。"
 	)
-	runtime.multiplayer_enemies_by_net_id.clear()
-	runtime.multiplayer_enemy_ids_by_instance.clear()
+	runtime.clear_network_enemy_registry()
 	root.remove_child(enemy)
 	enemy.free()
 	root.remove_child(enemy_coordinator)

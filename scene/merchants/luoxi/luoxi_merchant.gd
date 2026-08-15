@@ -441,8 +441,7 @@ func try_purchase_refresh_for_player(player: Player) -> int:
 		return MerchantPurchaseResult.OfferRefresh.LIMIT_REACHED
 	if player.current_xirang < cost:
 		return MerchantPurchaseResult.OfferRefresh.INSUFFICIENT_XIRANG
-	player.current_xirang -= cost
-	player.xirang_changed.emit(player.current_xirang, -cost)
+	player.set_xirang_balance(player.current_xirang - cost)
 	refresh_counts_by_player_key[player_key] = refresh_count + 1
 	return MerchantPurchaseResult.OfferRefresh.SUCCESS
 
@@ -464,10 +463,8 @@ func show_refresh_result(
 			confirmed_refresh_count,
 			get_refresh_limit()
 		)
-	if confirmed_current_xirang >= 0 and active_player.current_xirang != confirmed_current_xirang:
-		var xirang_delta := confirmed_current_xirang - active_player.current_xirang
-		active_player.current_xirang = confirmed_current_xirang
-		active_player.xirang_changed.emit(active_player.current_xirang, xirang_delta)
+	if confirmed_current_xirang >= 0:
+		active_player.set_xirang_balance(confirmed_current_xirang)
 	if result_code == MerchantPurchaseResult.OfferRefresh.SUCCESS:
 		_replace_current_choices_after_refresh(player_key)
 		return
@@ -534,10 +531,8 @@ func apply_authoritative_offer_state(
 		0,
 		get_refresh_limit()
 	)
-	if confirmed_current_xirang >= 0 and active_player.current_xirang != confirmed_current_xirang:
-		var xirang_delta := confirmed_current_xirang - active_player.current_xirang
-		active_player.current_xirang = maxi(confirmed_current_xirang, 0)
-		active_player.xirang_changed.emit(active_player.current_xirang, xirang_delta)
+	if confirmed_current_xirang >= 0:
+		active_player.set_xirang_balance(confirmed_current_xirang)
 
 	selected_choice_index = clampi(selected_choice_index, 0, get_choice_count() - 1)
 	choice_visible = true

@@ -4,18 +4,14 @@ class_name RoguePickupRegistry
 
 func bind_rogue_dependencies(
 	mode: int,
-	pickup_index: Dictionary,
+	runtime: CombatRuntimeBase,
 	gameplay_gateway: MultiplayerGameplayGateway,
-	enemy_container: Node2D,
-	pending_exit_ids: Dictionary,
-	next_pickup_net_id: int
+	enemy_container: Node2D
 ) -> void:
 	var dynamic_containers: Array[Node] = [enemy_container]
 	bind_dependencies(
 		mode,
-		pickup_index,
+		runtime,
 		gameplay_gateway,
-		dynamic_containers,
-		pending_exit_ids,
-		next_pickup_net_id
+		dynamic_containers
 	)

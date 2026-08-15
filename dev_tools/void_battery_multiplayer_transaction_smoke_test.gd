@@ -146,7 +146,7 @@ func _run() -> void:
 		broadcasts[0].get("inventory_snapshot", {}) as Dictionary
 	).duplicate(true)
 	host_player.skill1_charge = 0.0
-	host_player.controls_locked = true
+	host_player.set_controls_locked(true)
 	host_player.set("_last_skill_activation_msec", -1000000)
 	_expect(
 		not host_player.consume_multiplayer_skill1_charge()
@@ -154,7 +154,7 @@ func _run() -> void:
 		and is_zero_approx(host_player.skill1_charge),
 		"Host操作锁定导致技能失败时不得消费虚空充能或技力。"
 	)
-	host_player.controls_locked = false
+	host_player.set_controls_locked(false)
 	host_player.set("_last_skill_activation_msec", -1000000)
 	_expect(
 		host_player.consume_multiplayer_skill1_charge()
@@ -294,7 +294,7 @@ func _run() -> void:
 	)
 	client_player.apply_authoritative_void_battery_state(true)
 	client_player.skill1_charge = 2.0
-	client_player.controls_locked = true
+	client_player.set_controls_locked(true)
 	client_player.set("_last_skill_activation_msec", -1000000)
 	_expect(
 		not client_player.try_begin_skill1_activation(false)
@@ -302,7 +302,7 @@ func _run() -> void:
 		and is_equal_approx(client_player.skill1_charge, 2.0),
 		"客户端失败的低技力技能不得消费虚空充能。"
 	)
-	client_player.controls_locked = false
+	client_player.set_controls_locked(false)
 	client_player.set("_last_skill_activation_msec", -1000000)
 	_expect(
 		client_player.try_begin_skill1_activation(false, true, 1001)

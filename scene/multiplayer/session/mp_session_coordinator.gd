@@ -400,27 +400,19 @@ func _send_runtime_world_manifest_to_peer(peer_id: int) -> bool:
 	var live_pickup_ids := PackedInt32Array()
 	var live_plant_ids := PackedInt32Array()
 	var sorted_enemy_ids: Array[int] = []
-	for net_id_variant in _runtime.multiplayer_enemies_by_net_id.keys():
-		sorted_enemy_ids.append(int(net_id_variant))
+	for net_id in _runtime.get_network_enemy_ids():
+		sorted_enemy_ids.append(net_id)
 	sorted_enemy_ids.sort()
 	for net_id in sorted_enemy_ids:
-		var enemy_variant: Variant = (
-			_runtime.multiplayer_enemies_by_net_id.get(net_id)
-		)
-		if enemy_variant == null or not is_instance_valid(enemy_variant):
-			continue
-		var enemy := enemy_variant as Enemy
+		var enemy := _runtime.get_network_enemy(net_id)
 		if enemy != null and is_instance_valid(enemy) and not enemy.is_dead:
 			live_enemy_ids.append(net_id)
 	var sorted_pickup_ids: Array[int] = []
-	for net_id_variant in _runtime.multiplayer_pickups.keys():
-		sorted_pickup_ids.append(int(net_id_variant))
+	for net_id in _runtime.get_network_pickup_ids():
+		sorted_pickup_ids.append(net_id)
 	sorted_pickup_ids.sort()
 	for net_id in sorted_pickup_ids:
-		var pickup_variant: Variant = _runtime.multiplayer_pickups.get(net_id)
-		if pickup_variant == null or not is_instance_valid(pickup_variant):
-			continue
-		var pickup := pickup_variant as Pickup
+		var pickup := _runtime.get_network_pickup(net_id)
 		if pickup != null and is_instance_valid(pickup):
 			live_pickup_ids.append(net_id)
 	if _tower_world_coordinator.is_bound():
@@ -508,8 +500,7 @@ func apply_runtime_world_manifest(
 	_enemy_coordinator.remove_enemies_missing_from_manifest(
 		manifest.enemy_id_set
 	)
-	for net_id_variant in _runtime.multiplayer_pickups.keys():
-		var net_id := int(net_id_variant)
+	for net_id in _runtime.get_network_pickup_ids():
 		if not manifest.pickup_id_set.has(net_id):
 			_world_flow_coordinator.receive_pickup_removed(net_id)
 	if _tower_world_coordinator.is_bound():

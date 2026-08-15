@@ -114,7 +114,6 @@ class DamageFeedbackBatch:
 		return net_ids.is_empty()
 
 
-var net_enemies: Dictionary[int, Enemy] = {}
 var enemy_interpolators: Dictionary[int, NetInterpolator] = {}
 var pending_enemy_damage_feedback: Dictionary = {}
 var active_enemy_damage_feedback_context: Dictionary = {}
@@ -179,8 +178,8 @@ func unbind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 		return
 	_clear_damage_dependencies()
 	_clear_lifecycle_dependencies()
-	_runtime = null
 	reset_session_state()
+	_runtime = null
 
 
 func is_bound() -> bool:
@@ -334,10 +333,14 @@ func is_client_view() -> bool:
 
 
 func get_snapshot_interval_frames() -> int:
-	var enemy_count := _runtime.multiplayer_enemies_by_net_id.size() if is_bound() else 0
+	var enemy_count := _runtime.get_network_enemy_count() if is_bound() else 0
+	return get_snapshot_interval_frames_for_enemy_count(enemy_count)
+
+
+func get_snapshot_interval_frames_for_enemy_count(enemy_count: int) -> int:
 	var target_hz := (
 		ENEMY_HIGH_PRESSURE_SNAPSHOT_HZ
-		if enemy_count >= ENEMY_HIGH_PRESSURE_THRESHOLD
+		if maxi(enemy_count, 0) >= ENEMY_HIGH_PRESSURE_THRESHOLD
 		else _NetConstants.ENEMY_SNAPSHOT_HZ
 	)
 	return maxi(roundi(float(_NetConstants.HOST_PHYSICS_HZ) / float(target_hz)), 1)
@@ -534,10 +537,9 @@ func apply_authoritative_snapshot(
 		if enemy_node != null and is_instance_valid(enemy_node):
 			apply_network_health(
 				enemy_node,
-				enemy_state.health,
-				enemy_state.health_revision
-			)
-			enemy_node.is_dead = enemy_state.is_dead
+					enemy_state.health,
+					enemy_state.health_revision
+				)
 			enemy_node.apply_multiplayer_visual_status_mask(
 				enemy_state.visual_status_mask
 			)
@@ -568,7 +570,7 @@ func interpolate_remote_enemies(current_time: float) -> void:
 	for net_id_variant in enemy_interpolators:
 		var net_id := int(net_id_variant)
 		var interpolator := enemy_interpolators.get(net_id) as NetInterpolator
-		var enemy_node := net_enemies.get(net_id) as Enemy
+		var enemy_node := get_valid_client_enemy(net_id)
 		if (
 			interpolator == null
 			or enemy_node == null
@@ -604,8 +606,7 @@ func update_proxy_visual_budget(delta: float) -> void:
 		camera = viewport.get_camera_2d()
 	if camera == null:
 		_offscreen_proxy_count = 0
-		for enemy_variant in net_enemies.values():
-			var enemy := enemy_variant as Enemy
+		for enemy in _runtime.get_network_enemies():
 			if enemy != null and is_instance_valid(enemy):
 				enemy.set_multiplayer_proxy_visual_active(true)
 		return
@@ -624,8 +625,7 @@ func update_proxy_visual_budget(delta: float) -> void:
 		visible_world_size + margin_vector * 2.0
 	)
 	var offscreen_count := 0
-	for enemy_variant in net_enemies.values():
-		var enemy := enemy_variant as Enemy
+	for enemy in _runtime.get_network_enemies():
 		if enemy == null or not is_instance_valid(enemy):
 			continue
 		var visual_active := active_rect.has_point(enemy.global_position)
@@ -640,8 +640,8 @@ func build_live_spawn_batches(host_timestamp: float) -> Array[SpawnBatch]:
 	if not is_bound() or not is_finite(host_timestamp) or host_timestamp < 0.0:
 		return batches
 	var sorted_ids: Array[int] = []
-	for net_id_variant in _runtime.multiplayer_enemies_by_net_id.keys():
-		sorted_ids.append(int(net_id_variant))
+	for net_id in _runtime.get_network_enemy_ids():
+		sorted_ids.append(net_id)
 	sorted_ids.sort()
 	for chunk_start in range(0, sorted_ids.size(), ENEMY_SPAWN_BATCH_MAX_RECORDS):
 		var batch := SpawnBatch.new()
@@ -651,7 +651,7 @@ func build_live_spawn_batches(host_timestamp: float) -> Array[SpawnBatch]:
 		)
 		for record_index in range(chunk_start, chunk_end):
 			var net_id := sorted_ids[record_index]
-			var enemy := _runtime.multiplayer_enemies_by_net_id.get(net_id) as Enemy
+			var enemy := _runtime.get_network_enemy(net_id)
 			if (
 				net_id <= 0
 				or not _NetConstants.is_valid_network_combat_value(net_id)
@@ -803,7 +803,6 @@ func receive_enemy_spawn(
 	)
 	remote_enemy_spawned.emit(enemy)
 	enemy.configure_multiplayer_proxy()
-	enemy.set_meta("net_id", net_id)
 	_register_client_enemy(net_id, enemy)
 	clear_client_terminal_marker(net_id)
 	consume_pending_enemy_action(net_id, current_time)
@@ -1887,7 +1886,7 @@ func collect_terminal_feedback(enemy_net_id: int) -> Dictionary:
 	var active_context := active_enemy_damage_feedback_context.get(enemy_net_id, {}) as Dictionary
 	var enemy: Enemy = null
 	if is_bound():
-		enemy = _runtime.multiplayer_enemies_by_net_id.get(enemy_net_id) as Enemy
+		enemy = _runtime.get_network_enemy(enemy_net_id)
 	var current_health := int(pending_feedback.get("current_health", 0))
 	var health_revision := int(pending_feedback.get("health_revision", 0))
 	var confirmed_damage := maxi(int(pending_feedback.get("damage", 0)), 0)
@@ -2009,33 +2008,30 @@ func get_client_enemy(enemy_net_id: int) -> Enemy:
 
 
 func get_valid_client_enemy(enemy_net_id: int) -> Enemy:
-	var enemy_variant: Variant = net_enemies.get(enemy_net_id)
-	if enemy_variant == null:
+	if not is_bound():
 		return null
-	if not is_instance_valid(enemy_variant):
-		net_enemies.erase(enemy_net_id)
+	var enemy := _runtime.get_network_enemy(enemy_net_id)
+	if enemy == null:
 		enemy_spawn_snapshot_times.erase(enemy_net_id)
 		enemy_interpolators.erase(enemy_net_id)
 		_offscreen_interpolation_slots.erase(enemy_net_id)
 		return null
-	return enemy_variant as Enemy
+	return enemy
 
 
 func get_remote_enemy_count() -> int:
-	return net_enemies.size()
+	return _runtime.get_network_enemy_count() if is_bound() else 0
 
 
 func get_remote_enemy_ids() -> Array[int]:
-	var result: Array[int] = []
-	for net_id in net_enemies:
-		result.append(int(net_id))
-	return result
+	return _runtime.get_network_enemy_ids() if is_bound() else []
 
 
 func get_all_client_combat_targets() -> Array[Enemy]:
 	var result: Array[Enemy] = []
-	for enemy_variant in net_enemies.values():
-		var enemy := enemy_variant as Enemy
+	if not is_bound():
+		return result
+	for enemy in _runtime.get_network_enemies():
 		if _CombatTargetIndex.is_enemy_queryable(enemy):
 			result.append(enemy)
 	return result
@@ -2050,8 +2046,9 @@ func find_nearest_client_combat_target(
 	var nearest: Enemy = null
 	var nearest_distance_squared := INF
 	var nearest_instance_id := 0
-	for enemy_variant in net_enemies.values():
-		var enemy := enemy_variant as Enemy
+	if not is_bound():
+		return null
+	for enemy in _runtime.get_network_enemies():
 		if not _CombatTargetIndex.is_enemy_queryable(enemy):
 			continue
 		var instance_id := enemy.get_instance_id()
@@ -2084,8 +2081,9 @@ func query_client_combat_targets_into(
 	result.clear()
 	var safe_radius := maxf(radius, 0.0)
 	var radius_squared := safe_radius * safe_radius
-	for enemy_variant in net_enemies.values():
-		var enemy := enemy_variant as Enemy
+	if not is_bound():
+		return
+	for enemy in _runtime.get_network_enemies():
 		if not _CombatTargetIndex.is_enemy_queryable(enemy):
 			continue
 		if safe_radius > 0.0 and center.distance_squared_to(enemy.global_position) > radius_squared:
@@ -2121,11 +2119,13 @@ func apply_network_health(
 	current_health: int,
 	health_revision: int
 ) -> bool:
-	if enemy_node == null or health_revision <= enemy_node.health_revision:
-		return false
-	enemy_node.apply_multiplayer_health_snapshot(maxi(current_health, 0))
-	enemy_node.health_revision = health_revision
-	return true
+	return (
+		enemy_node != null
+		and enemy_node.try_apply_multiplayer_health_snapshot(
+			maxi(current_health, 0),
+			health_revision
+		)
+	)
 
 
 func get_buffered_enemy_position(
@@ -2141,7 +2141,7 @@ func get_buffered_enemy_position(
 
 func reconcile_roster(seen_enemy_ids: Dictionary, snapshot_time: float) -> void:
 	var stale_ids: Array[int] = []
-	for net_id in net_enemies:
+	for net_id in get_remote_enemy_ids():
 		if seen_enemy_ids.has(net_id):
 			continue
 		if float(enemy_spawn_snapshot_times.get(net_id, -INF)) > snapshot_time:
@@ -2157,21 +2157,17 @@ func remove_client_enemy(
 	preserve_interpolator: bool = false,
 	preserve_pending_action: bool = false
 ) -> void:
-	var enemy := net_enemies.get(net_id) as Enemy
+	var enemy := get_valid_client_enemy(net_id)
 	if enemy != null and is_instance_valid(enemy):
 		if play_death_sequence:
 			enemy.play_multiplayer_death_sequence()
 		else:
 			enemy.queue_free()
-	net_enemies.erase(net_id)
 	if not preserve_pending_action:
 		erase_pending_enemy_action(net_id)
 	enemy_spawn_snapshot_times.erase(net_id)
 	if is_bound():
-		_runtime.multiplayer_enemies_by_net_id.erase(net_id)
-		_runtime.unregister_combat_target(net_id)
-		if enemy != null and is_instance_valid(enemy):
-			_runtime.multiplayer_enemy_ids_by_instance.erase(enemy.get_instance_id())
+		_runtime.unregister_network_enemy(net_id, enemy)
 	if not preserve_interpolator:
 		enemy_interpolators.erase(net_id)
 	_offscreen_interpolation_slots.erase(net_id)
@@ -2291,7 +2287,11 @@ func clear_peer(peer_id: int) -> void:
 
 func reset_session_state() -> void:
 	_snapshot_manager.reset_delta_cache()
-	net_enemies.clear()
+	if is_bound():
+		if is_client_view():
+			for net_id in get_remote_enemy_ids():
+				remove_client_enemy(net_id, false)
+		_runtime.clear_network_enemy_registry()
 	enemy_interpolators.clear()
 	enemy_spawn_snapshot_times.clear()
 	_host_snapshot_live_ids.clear()
@@ -2435,31 +2435,27 @@ func _should_interpolate_proxy(
 
 
 func _register_client_enemy(net_id: int, enemy: Enemy) -> void:
-	net_enemies[net_id] = enemy
-	if is_bound():
-		_runtime.multiplayer_enemies_by_net_id[net_id] = enemy
-		_runtime.multiplayer_enemy_ids_by_instance[enemy.get_instance_id()] = net_id
-		_runtime.register_combat_target(net_id, enemy)
+	if not is_bound() or not _runtime.register_network_enemy(net_id, enemy):
+		return
 	var callback := _on_client_enemy_tree_exited.bind(net_id, enemy)
 	if not enemy.tree_exited.is_connected(callback):
 		enemy.tree_exited.connect(callback)
 
 
 func _on_client_enemy_tree_exited(net_id: int, exiting_enemy: Enemy) -> void:
-	var indexed_enemy := net_enemies.get(net_id) as Enemy
+	var indexed_enemy := (
+		_runtime.get_network_enemy(net_id) if is_bound() else null
+	)
 	if indexed_enemy == null:
 		return
 	if is_instance_valid(indexed_enemy) and indexed_enemy != exiting_enemy:
 		return
-	net_enemies.erase(net_id)
 	erase_pending_enemy_action(net_id)
 	enemy_spawn_snapshot_times.erase(net_id)
 	enemy_interpolators.erase(net_id)
 	_offscreen_interpolation_slots.erase(net_id)
 	if is_bound():
-		_runtime.multiplayer_enemies_by_net_id.erase(net_id)
-		_runtime.multiplayer_enemy_ids_by_instance.erase(exiting_enemy.get_instance_id())
-		_runtime.unregister_combat_target(net_id)
+		_runtime.unregister_network_enemy(net_id, exiting_enemy)
 
 
 func _receive_action_record(record: Dictionary, current_time: float) -> void:

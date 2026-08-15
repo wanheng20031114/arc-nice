@@ -1,6 +1,8 @@
 extends Node2D
 class_name RogueRouteGame
 
+const ROUTE_INPUT_CONTROL_LOCK_OWNER := &"rogue_route_input"
+
 signal host_layout_committed(
 	layout_snapshot: Dictionary,
 	state_snapshot: Dictionary
@@ -5244,11 +5246,7 @@ func _apply_route_player_xirang(player_instance: Player, amount: int) -> void:
 	var resolved_amount := maxi(amount, 0)
 	if player_instance == player:
 		_update_personal_xirang_hud(resolved_amount)
-	if player_instance.current_xirang == resolved_amount:
-		return
-	var delta := resolved_amount - player_instance.current_xirang
-	player_instance.current_xirang = resolved_amount
-	player_instance.xirang_changed.emit(resolved_amount, delta)
+	player_instance.set_xirang_balance(resolved_amount)
 
 
 func _update_personal_xirang_hud(amount: int) -> void:
@@ -5634,7 +5632,7 @@ func _bind_local_inventory_strip(player_instance: Player) -> void:
 
 func _set_local_player_controls_locked(locked: bool) -> void:
 	if player != null and is_instance_valid(player):
-		player.set_controls_locked(locked)
+		player.set_control_lock(ROUTE_INPUT_CONTROL_LOCK_OWNER, locked)
 
 
 func _clear_player_instances() -> void:

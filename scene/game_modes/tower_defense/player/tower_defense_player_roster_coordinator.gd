@@ -39,6 +39,8 @@ var _singleplayer_tango_charge_started_at := -1.0
 var _tango_minimum_charge_seconds := 0.0
 var _tango_maximum_charge_seconds := 0.0
 var _tango_threshold_epsilon := 0.0
+var _snapshot_encoder := PlayerSnapshotEncoder.new()
+var _applying_party_xirang_ledger := false
 
 
 func setup(
@@ -66,7 +68,7 @@ func setup(
 	local_peer_id = peer_id
 	_player_parent = player_parent
 	_spawn_point = spawn_point
-	_run_state = run_state
+	_bind_run_state(run_state)
 	_research_coordinator = research_coordinator
 	_production_coordinator = production_coordinator
 	peer_players = shared_peer_players
@@ -119,6 +121,7 @@ func get_selected_singleplayer_character_id() -> StringName:
 
 
 func configure_singleplayer(character_id: StringName) -> Player:
+	_snapshot_encoder.clear()
 	var player_instance := _instantiate_player(character_id)
 	if player_instance == null:
 		return null
@@ -134,6 +137,7 @@ func configure_singleplayer(character_id: StringName) -> Player:
 
 
 func configure_multiplayer_players() -> Player:
+	_snapshot_encoder.clear()
 	local_player = null
 	peer_players.clear()
 	spawn_slot_indices.clear()
@@ -187,20 +191,19 @@ func register_research_players() -> void:
 
 
 func apply_initial_player_xirang() -> void:
-	var players: Array[Player] = []
-	if runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
-		if local_player != null:
-			players.append(local_player)
-	else:
-		for player_variant in peer_players.values():
-			var player_instance := player_variant as Player
-			if player_instance != null and is_instance_valid(player_instance):
-				players.append(player_instance)
-	for player_instance in players:
-		if player_instance.current_xirang == INITIAL_PLAYER_XIRANG:
-			continue
-		player_instance.current_xirang = INITIAL_PLAYER_XIRANG
-		player_instance.xirang_changed.emit(player_instance.current_xirang, 0)
+	# Client 的 Player 由 Host 实时快照驱动，不能用本地初始值反写共享账本。
+	if runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+		return
+	var initial_balances: Dictionary = {}
+	for peer_id in get_active_peer_ids():
+		initial_balances[peer_id] = INITIAL_PLAYER_XIRANG
+	if initial_balances.is_empty():
+		return
+	if not _run_state.set_party_xirang_balances(initial_balances):
+		push_error("PlayerRosterCoordinator: 无法原子初始化玩家息壤账本。")
+		return
+	# 账本数值未变化时 RunState 不会重复发信号，仍需显式收敛新建节点。
+	_sync_all_player_xirang_from_run_state()
 
 
 func grant_starting_package(
@@ -263,6 +266,7 @@ func remove_multiplayer_player(peer_id: int) -> Player:
 		_production_coordinator.deactivate_personal_output_peer(peer_id)
 	var player_instance := peer_players.get(peer_id) as Player
 	peer_players.erase(peer_id)
+	_snapshot_encoder.forget_peer(peer_id)
 	enemy_retarget_requested.emit()
 	spawn_slot_indices.erase(peer_id)
 	player_names.erase(peer_id)
@@ -290,6 +294,7 @@ func prepare_restore_metadata(
 	player_names.erase(old_peer_id)
 	player_character_ids.erase(old_peer_id)
 	spawn_slot_indices.erase(old_peer_id)
+	_snapshot_encoder.forget_peer(old_peer_id)
 	player_names[new_peer_id] = player_name
 	player_character_ids[new_peer_id] = character_id
 	spawn_slot_indices[new_peer_id] = maxi(spawn_slot_index, 0)
@@ -314,6 +319,13 @@ func restore_multiplayer_player_runtime(
 		_run_state.get_max_health_penalty_for_peer(new_peer_id)
 	)
 	player_instance.name = "Player_%d" % new_peer_id
+	if (
+		state != null
+		and runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	):
+		# 断线快照保存的是离线前瞬时值；跨 Rogue/Fate 后持久账本可能已
+		# 前进。Host 恢复时先规范化快照，避免稍后的瞬时状态恢复倒灌旧币值。
+		state.current_xirang = _run_state.get_party_xirang_balance(new_peer_id)
 	player_instance.position = (
 		state.position
 		if state != null
@@ -327,6 +339,7 @@ func restore_multiplayer_player_runtime(
 	)
 	_bind_player_lifecycle(player_instance, new_peer_id)
 	peer_players[new_peer_id] = player_instance
+	_sync_player_xirang_from_run_state(player_instance, new_peer_id)
 	if _research_coordinator != null:
 		if _research_coordinator.player_technology_levels.has(old_peer_id):
 			if not _research_coordinator.remap_player_peer_state(old_peer_id, new_peer_id):
@@ -385,12 +398,12 @@ func get_world_spawn_position(
 	)
 
 
-func set_combat_actions_locked_for_all(locked: bool) -> void:
+func set_combat_action_lock_for_all(
+	owner: StringName,
+	locked: bool
+) -> void:
 	for player_instance in get_all_players():
-		if player_instance.is_dead:
-			continue
-		player_instance.set_combat_actions_locked(locked)
-		player_instance.set_controls_locked(false)
+		player_instance.set_combat_action_lock(owner, locked)
 
 
 func get_fixed_respawn_position(peer_id: int) -> Variant:
@@ -432,49 +445,13 @@ func update_remote_passive_state(delta: float) -> void:
 
 
 func collect_snapshot_states() -> Array[SnapshotManager.PlayerState]:
-	return collect_snapshot_states_from(peer_players)
+	return _snapshot_encoder.collect(peer_players)
 
 
 static func collect_snapshot_states_from(
 	players: Dictionary
 ) -> Array[SnapshotManager.PlayerState]:
-	var states: Array[SnapshotManager.PlayerState] = []
-	for peer_id_variant in players:
-		var peer_id := int(peer_id_variant)
-		var player_instance := players.get(peer_id) as Player
-		if player_instance == null or not is_instance_valid(player_instance):
-			continue
-		var state := SnapshotManager.PlayerState.new()
-		state.peer_id = peer_id
-		state.character_id = player_instance.get_character_id()
-		state.position = player_instance.global_position
-		state.velocity = player_instance.velocity
-		state.facing = player_instance.get_multiplayer_facing_id()
-		state.anim_state = player_instance.get_multiplayer_anim_state()
-		state.current_health = player_instance.current_health
-		state.max_health = player_instance.max_health
-		state.current_xirang = player_instance.current_xirang
-		state.is_dead = player_instance.is_dead
-		state.invincibility_time_left = player_instance.invincibility_time_left
-		state.skill1_unlocked = player_instance.skill1_unlocked
-		state.skill1_charge = player_instance.skill1_charge
-		state.skill1_charge_duration = player_instance.skill1_charge_duration
-		state.skill1_upgrade_level = player_instance.skill1_upgrade_level
-		state.form_mode = player_instance.get_multiplayer_form_mode()
-		state.shot_pattern = player_instance.get_multiplayer_shot_pattern()
-		state.ammo_capacity = player_instance.get_multiplayer_ammo_capacity()
-		state.current_ammo = player_instance.get_multiplayer_current_ammo()
-		state.is_reloading = player_instance.get_multiplayer_is_reloading()
-		state.reload_progress = player_instance.get_multiplayer_reload_progress()
-		state.primary_cooldown_ratio = clampf(
-			player_instance.get_primary_cooldown_ratio(), 0.0, 1.0
-		)
-		state.effective_move_speed_multiplier = (
-			player_instance.get_authoritative_effective_move_speed_ratio()
-		)
-		state.void_battery_charged = player_instance.has_void_battery_charge()
-		states.append(state)
-	return states
+	return PlayerSnapshotEncoder.collect_once(players)
 
 
 func request_tango_charge_started(direction: Vector2) -> bool:
@@ -696,6 +673,82 @@ func _bind_player_lifecycle(player_instance: Player, peer_id: int) -> void:
 	var revived_callback := player_revived.emit.bind(peer_id)
 	if not player_instance.revived.is_connected(revived_callback):
 		player_instance.revived.connect(revived_callback)
+	var xirang_callback := _on_player_xirang_changed.bind(peer_id)
+	if not player_instance.xirang_changed.is_connected(xirang_callback):
+		player_instance.xirang_changed.connect(xirang_callback)
+
+
+func _bind_run_state(run_state: RunStateStore) -> void:
+	if (
+		_run_state != null
+		and _run_state.party_xirang_ledger_changed.is_connected(
+			_on_party_xirang_ledger_changed
+		)
+	):
+		_run_state.party_xirang_ledger_changed.disconnect(
+			_on_party_xirang_ledger_changed
+		)
+	_run_state = run_state
+	assert(_run_state != null, "PlayerRosterCoordinator 缺少 RunState。")
+	if not _run_state.party_xirang_ledger_changed.is_connected(
+		_on_party_xirang_ledger_changed
+	):
+		_run_state.party_xirang_ledger_changed.connect(
+			_on_party_xirang_ledger_changed
+		)
+
+
+func _on_player_xirang_changed(
+	current_xirang: int,
+	_delta: int,
+	peer_id: int
+) -> void:
+	if (
+		_applying_party_xirang_ledger
+		or runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		or _run_state == null
+		or current_xirang < 0
+	):
+		return
+	var ledger_peer_id := 0 if runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER else peer_id
+	if ledger_peer_id < 0:
+		return
+	if not _run_state.set_party_xirang_balance(ledger_peer_id, current_xirang):
+		push_error(
+			"PlayerRosterCoordinator: 无法提交玩家 %d 的权威息壤镜像。"
+			% ledger_peer_id
+		)
+
+
+func _on_party_xirang_ledger_changed(_snapshot: Dictionary) -> void:
+	_sync_all_player_xirang_from_run_state()
+
+
+func _sync_all_player_xirang_from_run_state() -> void:
+	if _run_state == null or _applying_party_xirang_ledger:
+		return
+	_applying_party_xirang_ledger = true
+	if runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
+		_sync_player_xirang_from_run_state(local_player, 0)
+	else:
+		for peer_id in get_active_peer_ids():
+			_sync_player_xirang_from_run_state(get_player(peer_id), peer_id)
+	_applying_party_xirang_ledger = false
+
+
+func _sync_player_xirang_from_run_state(
+	player_instance: Player,
+	ledger_peer_id: int
+) -> void:
+	if (
+		_run_state == null
+		or player_instance == null
+		or not is_instance_valid(player_instance)
+		or ledger_peer_id < 0
+	):
+		return
+	var authoritative_amount := _run_state.get_party_xirang_balance(ledger_peer_id)
+	player_instance.set_xirang_balance(authoritative_amount)
 
 
 func _get_character_id(peer_id: int) -> StringName:

@@ -26,7 +26,7 @@ class ProbeRuntime:
 		return peer_players.get(peer_id) as Player
 
 	func get_enemy_for_net_id(net_id: int) -> Enemy:
-		return multiplayer_enemies_by_net_id.get(net_id) as Enemy
+		return get_network_enemy(net_id)
 
 	func get_pickup_for_net_id(_net_id: int) -> Pickup:
 		return null
@@ -149,7 +149,7 @@ func _run() -> void:
 		var live_enemy := Enemy.new()
 		live_enemy.config = enemy_config
 		live_enemy.global_position = Vector2(96.0, 112.0)
-		runtime.multiplayer_enemies_by_net_id[900] = live_enemy
+		runtime.register_network_enemy(900, live_enemy)
 		coordinator.send_live_spawn_roster_to_peer(8)
 		_expect(
 			_lifecycle_peer_sends.size() == 1
@@ -158,7 +158,7 @@ func _run() -> void:
 			== &"net_enemy_spawned_batch",
 			"迟加入修复必须定向发送当前 live enemy roster。"
 		)
-		runtime.multiplayer_enemies_by_net_id.erase(900)
+		runtime.unregister_network_enemy(900, live_enemy)
 		live_enemy.free()
 
 	coordinator.broadcast_enemy_action(
@@ -303,7 +303,7 @@ func _run() -> void:
 		var damage_enemy := Enemy.new()
 		damage_enemy.config = enemy_config
 		damage_enemy.current_health = 1000
-		runtime.multiplayer_enemies_by_net_id[950] = damage_enemy
+		runtime.register_network_enemy(950, damage_enemy)
 		var projectile_id := MpProjectileCoordinator.encode_projectile_id(2, 17)
 		projectile_coordinator.remember_projectile_record(
 			projectile_id,
@@ -349,14 +349,14 @@ func _run() -> void:
 			) == PackedByteArray([3]),
 			"已确认敌人伤害必须按50ms节流汇入一次同时携带粒子与闪红表现位的批广播。"
 		)
-		runtime.multiplayer_enemies_by_net_id.erase(950)
+		runtime.unregister_network_enemy(950, damage_enemy)
 		damage_enemy.free()
 
 	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	net_manager.host_mode = false
 	net_manager.client_mode = true
 	var feedback_probe := FeedbackProbeEnemy.new()
-	coordinator.net_enemies[951] = feedback_probe
+	coordinator.register_client_enemy(951, feedback_probe, 0.0)
 	coordinator.apply_damage_feedback_batch(
 		PackedInt32Array([951]),
 		PackedInt32Array([90]),
@@ -373,12 +373,19 @@ func _run() -> void:
 		and feedback_probe.last_impact_direction == Vector2.ZERO,
 		"零方向权威命中必须保留闪红并剥离定向粒子表现位。"
 	)
-	coordinator.apply_network_health(feedback_probe, 80, 2)
+	var applied_new_health := coordinator.apply_network_health(feedback_probe, 80, 2)
+	var rejected_stale_health := coordinator.apply_network_health(feedback_probe, 70, 1)
+	var rejected_equal_health := coordinator.apply_network_health(feedback_probe, 60, 2)
 	_expect(
-		feedback_probe.feedback_count == 1,
-		"纯血量快照必须只更新状态，不得推断或重放命中闪红。"
+		applied_new_health
+		and not rejected_stale_health
+		and not rejected_equal_health
+		and feedback_probe.current_health == 80
+		and feedback_probe.health_revision == 2
+		and feedback_probe.feedback_count == 1,
+		"血量快照必须原子更新状态/版本并拒绝 stale/equal revision，且不得重放命中闪红。"
 	)
-	coordinator.net_enemies.erase(951)
+	runtime.unregister_network_enemy(951, feedback_probe)
 	feedback_probe.free()
 	coordinator.receive_enemy_lightning_chain(
 		PackedVector2Array([Vector2.ZERO, Vector2(4.0, 4.0)])

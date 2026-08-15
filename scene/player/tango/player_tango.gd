@@ -1497,8 +1497,8 @@ func _update_animation() -> void:
 	super._update_animation()
 
 
-func set_controls_locked(locked: bool) -> void:
-	super.set_controls_locked(locked)
+func _on_controls_lock_changed(locked: bool) -> void:
+	super._on_controls_lock_changed(locked)
 	if locked:
 		_finish_electric_surge_state()
 

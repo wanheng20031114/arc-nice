@@ -235,15 +235,11 @@ func on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
 		and _enemy_coordinator.has_active_enemy(enemy_id)
 	)
 	if resolves_active_wave or resolves_boss_step:
-		_campaign_coordinator.current_wave_escaped = mini(
-			_campaign_coordinator.current_wave_escaped + 1,
-			_campaign_coordinator.current_wave_total
+		var recorded_escape := _enemy_coordinator.try_resolve_active_enemy_escape(
+			enemy_id
 		)
-		_campaign_coordinator.current_wave_resolved = mini(
-			_campaign_coordinator.current_wave_resolved + 1,
-			_campaign_coordinator.current_wave_total
-		)
-		_enemy_coordinator.remove_active_enemy(enemy_id)
+		resolves_active_wave = resolves_active_wave and recorded_escape
+		resolves_boss_step = resolves_boss_step and recorded_escape
 	_enemy_coordinator.remove_hud_alive_enemy(enemy_id)
 	_enemy_coordinator.emit_multiplayer_enemy_escaped(enemy)
 	enemy.remove_for_home_escape()

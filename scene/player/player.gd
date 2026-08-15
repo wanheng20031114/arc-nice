@@ -2,6 +2,11 @@ extends CharacterBody2D
 
 class_name Player
 
+const LEGACY_CONTROL_LOCK_OWNER := &"legacy_controls"
+const LEGACY_COMBAT_ACTION_LOCK_OWNER := &"legacy_combat_actions"
+const DEATH_CONTROL_LOCK_OWNER := &"player_death"
+const WORLD_MOVEMENT_COMBAT_ACTION_LOCK_OWNER := &"world_movement"
+
 signal xirang_changed(total: int, added_amount: int)
 signal health_changed(current: int, maximum: int)
 signal attack_speed_changed(attack_speed: float)
@@ -36,8 +41,14 @@ var _active_dash_distance: float = 0.0
 var multiplayer_dash_protection_time_left: float = 0.0
 var remote_dash_visual_time_left: float = 0.0
 var is_dead: bool = false
-var controls_locked: bool = false
-var combat_actions_locked: bool = false
+var _control_lock_owners: Dictionary[StringName, bool] = {}
+var _combat_action_lock_owners: Dictionary[StringName, bool] = {}
+var controls_locked: bool:
+	get:
+		return not _control_lock_owners.is_empty()
+var combat_actions_locked: bool:
+	get:
+		return not _combat_action_lock_owners.is_empty()
 var world_movement_mode: bool = false
 var world_movement_dash_enabled: bool = false
 var tower_defense_death_presentation_active: bool = false
@@ -1958,23 +1969,60 @@ func clear_tower_defense_fate_modifiers() -> void:
 	)
 
 
-func set_controls_locked(locked: bool) -> void:
-	controls_locked = locked
+func set_control_lock(owner: StringName, locked: bool) -> void:
+	if owner.is_empty():
+		push_error("Player control lock owner must not be empty.")
+		return
+	var was_locked := controls_locked
+	if locked:
+		_control_lock_owners[owner] = true
+	else:
+		_control_lock_owners.erase(owner)
+	if controls_locked == was_locked:
+		return
 	if controls_locked:
 		_finish_dash()
 		mouse_fire_held = false
 		velocity = Vector2.ZERO
 		footstep_audio.stop()
+	_on_controls_lock_changed(controls_locked)
 	_refresh_dash_ready_visual()
 
 
-func set_combat_actions_locked(locked: bool) -> void:
-	combat_actions_locked = locked
+func set_combat_action_lock(owner: StringName, locked: bool) -> void:
+	if owner.is_empty():
+		push_error("Player combat-action lock owner must not be empty.")
+		return
+	var was_locked := combat_actions_locked
+	if locked:
+		_combat_action_lock_owners[owner] = true
+	else:
+		_combat_action_lock_owners.erase(owner)
+	if combat_actions_locked == was_locked:
+		return
 	if combat_actions_locked:
 		mouse_fire_held = false
 		network_shoot_input = Vector2.ZERO
 		network_reload_requested = false
 	_on_combat_actions_lock_changed(combat_actions_locked)
+
+
+## 兼容旧调用者；该接口只管理自己的 legacy owner，不能清除其他租约。
+func set_controls_locked(locked: bool) -> void:
+	set_control_lock(LEGACY_CONTROL_LOCK_OWNER, locked)
+
+
+## 兼容旧调用者；该接口只管理自己的 legacy owner，不能清除其他租约。
+func set_combat_actions_locked(locked: bool) -> void:
+	set_combat_action_lock(LEGACY_COMBAT_ACTION_LOCK_OWNER, locked)
+
+
+func has_control_lock(owner: StringName) -> bool:
+	return not owner.is_empty() and _control_lock_owners.has(owner)
+
+
+func has_combat_action_lock(owner: StringName) -> bool:
+	return not owner.is_empty() and _combat_action_lock_owners.has(owner)
 
 
 func are_combat_actions_locked() -> bool:
@@ -2006,7 +2054,10 @@ func set_world_movement_mode(
 	world_movement_dash_enabled = enabled and allow_dash
 	if mode_changed and enabled:
 		_set_character_combat_hud_suppressed(true)
-	set_combat_actions_locked(enabled)
+	set_combat_action_lock(
+		WORLD_MOVEMENT_COMBAT_ACTION_LOCK_OWNER,
+		enabled
+	)
 	if enabled:
 		_finish_dash()
 		health_bar.hide()
@@ -2038,6 +2089,10 @@ func set_world_movement_mode(
 
 ## 子类通过此钩子保存并隐藏自身专属战斗 HUD；基础类不探测子类节点。
 func _set_character_combat_hud_suppressed(_suppressed: bool) -> void:
+	pass
+
+
+func _on_controls_lock_changed(_locked: bool) -> void:
 	pass
 
 
@@ -2093,8 +2148,6 @@ func configure_multiplayer_control(
 	_set_nameplate_local_highlight(highlight_as_local_player)
 	_set_nameplate_layer_visible(not safe_display_name.is_empty())
 	_update_nameplate_position()
-	if not uses_local_input:
-		controls_locked = false
 	set_process_input(uses_local_input and not world_movement_mode)
 	set_process_unhandled_input(uses_local_input and not world_movement_mode)
 	_refresh_dash_ready_visual()
@@ -2420,10 +2473,7 @@ func apply_multiplayer_realtime_state(
 	var previous_skill1_upgrade_level := skill1_upgrade_level
 	var previous_skill1_charge_duration := skill1_charge_duration
 	var snapshot_max_health := maxi(new_max_health, 1)
-	var clamped_xirang := maxi(new_current_xirang, 0)
-	if current_xirang != clamped_xirang:
-		current_xirang = clamped_xirang
-		xirang_changed.emit(current_xirang, 0)
+	set_xirang_balance(new_current_xirang)
 	# xirang_changed can synchronously rebuild collectible-derived stats. Apply
 	# the Host maximum afterwards so that callback ordering cannot replace the
 	# authoritative snapshot with a temporarily stale local inventory result.
@@ -2594,8 +2644,8 @@ func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invi
 	reset_physics_interpolation()
 	_set_multiplayer_visual_offset(Vector2.ZERO)
 	is_dead = false
+	set_control_lock(DEATH_CONTROL_LOCK_OWNER, false)
 	night_light.set_emission_allowed(true)
-	controls_locked = false
 	mouse_fire_held = false
 	velocity = Vector2.ZERO
 	current_health = max_health if revived_health < 0 else clampi(revived_health, 1, max_health)
@@ -2658,36 +2708,10 @@ func set_multiplayer_revive_countdown(seconds_left: int) -> void:
 func apply_multiplayer_death_state() -> void:
 	var was_dead := is_dead
 	_set_multiplayer_visual_offset(Vector2.ZERO)
-	is_dead = true
-	night_light.set_emission_allowed(false)
-	clear_damage_over_time_statuses()
-	clear_cold_status()
-	clear_timed_move_slows()
-	controls_locked = true
-	_finish_dash()
-	_stop_remote_dash_visual()
-	multiplayer_dash_protection_time_left = 0.0
-	tower_defense_fate_hurt_speed_time_left = 0.0
-	mouse_fire_held = false
 	network_move_input = Vector2.ZERO
 	network_shoot_input = Vector2.ZERO
 	network_reload_requested = false
-	velocity = Vector2.ZERO
-	_update_movement_status_visuals(Vector2.ZERO)
-	var health_condition_may_change := current_health != 0
-	current_health = 0
-	if health_condition_may_change:
-		_refresh_collectible_stats(false)
-	invincibility_time_left = 0.0
-	_set_hurt_blink_enabled(false)
-	_stop_dodge_feedback()
-	_stop_revive_glow_effect()
-	shooting_timer.stop()
-	_cleanup_character_combat_on_death()
-	footstep_audio.stop()
-	health_bar.set_health(0, max_health)
-	health_bar.visible = false
-	_update_skill1_charge_bar()
+	_enter_death_state()
 	if plays_multiplayer_death_animation():
 		var keep_completed_tower_death_hidden := (
 			tower_defense_death_presentation_active
@@ -2706,7 +2730,6 @@ func apply_multiplayer_death_state() -> void:
 		collision_shape.set_deferred("disabled", true)
 	if tower_defense_death_presentation_active:
 		_apply_tower_defense_hidden_death_state()
-	_refresh_dash_ready_visual()
 	health_changed.emit(current_health, max_health)
 	if not was_dead:
 		death_audio.play()
@@ -2725,7 +2748,7 @@ func apply_permanent_death_presentation() -> void:
 
 
 func _apply_tower_defense_hidden_death_state(force_hide_body: bool = false) -> void:
-	controls_locked = true
+	set_control_lock(DEATH_CONTROL_LOCK_OWNER, true)
 	mouse_fire_held = false
 	velocity = Vector2.ZERO
 	var keep_death_animation_visible := (
@@ -2771,8 +2794,7 @@ func grant_xirang_reward(
 ) -> bool:
 	if amount <= 0:
 		return false
-	current_xirang += amount
-	xirang_changed.emit(current_xirang, amount)
+	set_xirang_balance(current_xirang + amount)
 	# Enemy kill rewards are deposited directly and have no physical orb to
 	# absorb, so their default path must stay silent. Keep the cue available for
 	# a future explicit pickup mechanic instead of coupling it to every grant.
@@ -2802,11 +2824,23 @@ func get_xirang() -> int:
 	return current_xirang
 
 
+## 运行时息壤余额的唯一绝对写入口。调用方只声明最终余额；Player 负责
+## 归一化、幂等判断和一次变化通知，避免各网络确认/模式桥各自维护赋值与
+## signal 顺序。
+func set_xirang_balance(amount: int) -> bool:
+	var resolved_amount := maxi(amount, 0)
+	if current_xirang == resolved_amount:
+		return false
+	var delta := resolved_amount - current_xirang
+	current_xirang = resolved_amount
+	xirang_changed.emit(current_xirang, delta)
+	return true
+
+
 func try_spend_xirang(amount: int) -> bool:
 	if amount <= 0 or current_xirang < amount:
 		return false
-	current_xirang -= amount
-	xirang_changed.emit(current_xirang, -amount)
+	set_xirang_balance(current_xirang - amount)
 	return true
 
 
@@ -2893,8 +2927,7 @@ func _grant_xirang_unrestricted(amount: int) -> bool:
 	if amount <= 0:
 		return false
 
-	current_xirang += amount
-	xirang_changed.emit(current_xirang, amount)
+	set_xirang_balance(current_xirang + amount)
 	_play_xirang_pickup_audio()
 	return true
 
@@ -2926,8 +2959,7 @@ func try_purchase_skill1(cost: int) -> bool:
 	if current_xirang < cost:
 		return false
 
-	current_xirang -= cost
-	xirang_changed.emit(current_xirang, -cost)
+	set_xirang_balance(current_xirang - cost)
 	unlock_skill1()
 	return true
 
@@ -2969,8 +3001,7 @@ func try_upgrade_skill1(free: bool = false) -> bool:
 	if not free:
 		if current_xirang < upgrade_cost:
 			return false
-		current_xirang -= upgrade_cost
-		xirang_changed.emit(current_xirang, -upgrade_cost)
+		set_xirang_balance(current_xirang - upgrade_cost)
 
 	_apply_next_skill1_upgrade()
 	return true
@@ -5801,7 +5832,18 @@ func _die() -> void:
 	if peer_id > 0:
 		apply_multiplayer_death_state()
 		return
+	_enter_death_state()
+	death_audio.play()
+	_play_death_animation()
+	died.emit()
+
+
+## 单机与多人死亡共享的唯一状态清理入口。网络输入/碰撞/尸体表现属于
+## 各模式的边界责任，留在调用方；生命、持续状态、角色资源与通用 HUD
+## 必须在这里原子进入死亡态，避免两条路径随角色机制扩展而漂移。
+func _enter_death_state() -> void:
 	is_dead = true
+	set_control_lock(DEATH_CONTROL_LOCK_OWNER, true)
 	night_light.set_emission_allowed(false)
 	clear_damage_over_time_statuses()
 	clear_cold_status()
@@ -5813,6 +5855,10 @@ func _die() -> void:
 	mouse_fire_held = false
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals(Vector2.ZERO)
+	var health_condition_may_change := current_health != 0
+	current_health = 0
+	if health_condition_may_change:
+		_refresh_collectible_stats(false)
 	invincibility_time_left = 0.0
 	_set_hurt_blink_enabled(false)
 	_stop_dodge_feedback()
@@ -5820,13 +5866,10 @@ func _die() -> void:
 	shooting_timer.stop()
 	_cleanup_character_combat_on_death()
 	footstep_audio.stop()
-	death_audio.play()
 	health_bar.set_health(0, max_health)
 	health_bar.visible = false
 	_update_skill1_charge_bar()
 	_refresh_dash_ready_visual()
-	_play_death_animation()
-	died.emit()
 
 
 func _play_death_animation() -> void:

@@ -322,14 +322,11 @@ func build_live_pickup_records() -> Array[Dictionary]:
 	if not is_host_authority():
 		return records
 	var sorted_ids: Array[int] = []
-	for net_id_variant in _runtime.multiplayer_pickups.keys():
-		sorted_ids.append(int(net_id_variant))
+	for net_id in _runtime.get_network_pickup_ids():
+		sorted_ids.append(net_id)
 	sorted_ids.sort()
 	for net_id in sorted_ids:
-		var pickup_variant: Variant = _runtime.multiplayer_pickups.get(net_id)
-		if pickup_variant == null or not is_instance_valid(pickup_variant):
-			continue
-		var pickup := pickup_variant as Pickup
+		var pickup := _runtime.get_network_pickup(net_id)
 		if (
 			pickup == null
 			or pickup.config == null
@@ -369,8 +366,7 @@ func send_live_pickup_roster_to_peer(peer_id: int) -> int:
 func receive_pickup_removed(net_id: int) -> void:
 	if not is_client_view() or net_id <= 0:
 		return
-	var pickup := _runtime.get_pickup_for_net_id(net_id)
-	_runtime.multiplayer_pickups.erase(net_id)
+	var pickup := _runtime.unregister_network_pickup(net_id)
 	if pickup != null and is_instance_valid(pickup):
 		pickup.queue_free()
 
@@ -397,10 +393,10 @@ func receive_pickup_spawned(
 	pickup.config = pickup_config
 	_runtime.enemy_container.add_child(pickup)
 	pickup.global_position = spawn_position
-	pickup.set_meta("net_id", net_id)
 	pickup.collision_layer = 0
 	pickup.collision_mask = 0
-	_runtime.multiplayer_pickups[net_id] = pickup
+	if not _runtime.register_network_pickup(net_id, pickup):
+		pickup.queue_free()
 
 
 func receive_pickup_collected(

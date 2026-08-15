@@ -315,6 +315,9 @@ func _test_multiplayer_profile_forwarding_contract() -> void:
 	)
 
 	var mp_game_source := FileAccess.get_file_as_string(MP_GAME_SCRIPT_PATH)
+	var transactions_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/transactions/mp_transactions_coordinator.gd"
+	)
 	_expect(
 		mp_game_source.contains(
 			"mode_adapter.profile_inventory_item_use_requested.connect(\n"
@@ -322,15 +325,23 @@ func _test_multiplayer_profile_forwarding_contract() -> void:
 			+ "\t)"
 		)
 		and mp_game_source.contains(
-			"func request_multiplayer_inventory_item_use(slot_index: int) -> void:\n"
-			+ "\ttransactions_coordinator.request_inventory_item_use(slot_index)"
+			"transactions_coordinator.request_inventory_item_use(slot_index)"
 		)
 		and mp_game_source.contains(
 			"mode_adapter.profile_inventory_item_discard_requested.connect(\n"
 			+ "\t\trequest_multiplayer_inventory_item_discard\n"
 			+ "\t)"
+		)
+		and mp_game_source.contains(
+			"transactions_coordinator.request_inventory_item_discard(slot_index)"
+		)
+		and transactions_source.contains(
+			"func request_inventory_item_use(slot_index: int) -> void:"
+		)
+		and transactions_source.contains(
+			"func request_inventory_item_discard(slot_index: int) -> void:"
 		),
-		"Rogue 的手动与快捷使用请求必须复用 MpTransactionsCoordinator 链路。"
+		"Rogue 的手动与快捷使用请求必须经 MpGame 边界进入唯一 Transactions owner。"
 	)
 
 
@@ -533,7 +544,7 @@ func _test_client_active_flow_updates() -> void:
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	game.wave_state = CombatFlowState.State.PRE_WAVE
 	game.current_flow_step = wave
-	game.current_wave_total = 0
+	game.reset_wave_progress(0)
 	game.wave_start_audio.stop()
 	game.apply_remote_flow_state(
 		wave.step_id,

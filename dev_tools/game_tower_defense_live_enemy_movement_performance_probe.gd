@@ -170,7 +170,7 @@ func _prepare_player_and_camera() -> void:
 		return
 	game.player.global_position = FIXTURE_CENTER
 	game.player.velocity = Vector2.ZERO
-	game.player.controls_locked = false
+	game.player.set_controls_locked(false)
 	game.player.uses_local_input = true
 	# The diagnostic is about movement/navigation cost, not combat resolution.
 	game.player.max_health = 1_000_000
@@ -455,7 +455,7 @@ func _reset_phase(
 	game.player.velocity = Vector2.ZERO
 	# A real-window benchmark can otherwise absorb unrelated keyboard input while
 	# its stationary control phase is running in the background.
-	game.player.controls_locked = not should_move
+	game.player.set_controls_locked(not should_move)
 	game.player.uses_local_input = should_move
 	game.player.is_dead = false
 	game.player.current_health = game.player.max_health

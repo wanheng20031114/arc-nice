@@ -545,7 +545,7 @@ func _prepare_runtime() -> void:
 	game.current_base_health = BASE_PROBE_HEALTH
 	game.player.global_position = FIXTURE_CENTER
 	game.player.velocity = Vector2.ZERO
-	game.player.controls_locked = false
+	game.player.set_controls_locked(false)
 	game.player.uses_local_input = true
 	# Player.apply_damage() refreshes collectible-derived stats after a hit. Keep
 	# the underlying probe health in sync so a long boss cycle cannot silently
@@ -579,7 +579,7 @@ func _prepare_runtime() -> void:
 		# forced nearby player objective with a distant gate for part of the cohort.
 		game.set_physics_process(false)
 		if phase == ProbePhase.BURST:
-			game.player.controls_locked = true
+			game.player.set_controls_locked(true)
 			game.player.uses_local_input = false
 			_release_movement_input()
 	elif phase == ProbePhase.BOSS:

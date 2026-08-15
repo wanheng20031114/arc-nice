@@ -4,6 +4,7 @@ class_name TowerDefenseRogueExplorationCoordinator
 const SNAPSHOT_SCHEMA_VERSION := 1
 const INVALID_DAY := 0
 const DEFAULT_ROGUE_CORE_HEALTH := 100
+const COMBAT_ACTION_LOCK_OWNER := &"tower_rogue_exploration"
 
 signal exploration_started(day_number: int, snapshot: Dictionary)
 signal exploration_snapshot_changed(snapshot: Dictionary)
@@ -22,8 +23,6 @@ var _home_defense: TowerDefenseHomeDefenseCoordinator = null
 var _plant_placement: TowerDefensePlantPlacementCoordinator = null
 var _plant_placement_controller: PlantPlacementController = null
 var _multiplayer_adapter: TowerDefenseMultiplayerModeAdapter = null
-var _state_timer: Timer = null
-var _enemy_spawn_timer: Timer = null
 var _terrain_decay_timer: Timer = null
 var _production: ProductionCoordinator = null
 var _research: ResearchCoordinator = null
@@ -75,8 +74,6 @@ func setup(
 	plant_placement: TowerDefensePlantPlacementCoordinator,
 	plant_placement_controller: PlantPlacementController,
 	multiplayer_adapter: TowerDefenseMultiplayerModeAdapter,
-	state_timer: Timer,
-	enemy_spawn_timer: Timer,
 	terrain_decay_timer: Timer,
 	production: ProductionCoordinator,
 	research: ResearchCoordinator,
@@ -90,8 +87,6 @@ func setup(
 	_plant_placement = plant_placement
 	_plant_placement_controller = plant_placement_controller
 	_multiplayer_adapter = multiplayer_adapter
-	_state_timer = state_timer
-	_enemy_spawn_timer = enemy_spawn_timer
 	_terrain_decay_timer = terrain_decay_timer
 	_production = production
 	_research = research
@@ -122,8 +117,6 @@ func is_bound() -> bool:
 		and _plant_placement != null
 		and _plant_placement_controller != null
 		and _multiplayer_adapter != null
-		and _state_timer != null
-		and _enemy_spawn_timer != null
 		and _terrain_decay_timer != null
 		and _production != null
 		and _research != null
@@ -259,11 +252,16 @@ func enter_exploration(day_number: int, next_step: FlowStepConfig) -> bool:
 			return false
 		_daily_grant_ledger[day_number] = daily_action_points
 
+	if not _campaign.transition_to_rogue_exploration(next_step):
+		_cache_rogue_core_from_run_state()
+		_restore_tower_core()
+		_restore_tower_runtime()
+		_route.set_embedded_presentation_active(false)
+		_active_day = INVALID_DAY
+		_next_step_id = &""
+		_campaign.enter_defeat()
+		return false
 	_active = true
-	_campaign.wave_state = CombatFlowState.State.ROGUE_EXPLORATION
-	_campaign.countdown_seconds = 0
-	_state_timer.stop()
-	_enemy_spawn_timer.stop()
 	_multiplayer_adapter.set_merchant_active(false)
 	_campaign.publish_flow_state(CombatFlowState.State.ROGUE_EXPLORATION)
 	set_process(true)
@@ -376,8 +374,8 @@ func _freeze_tower_runtime() -> void:
 	# AudioStreamPlayer 会在所属节点停处理时改变暂停态；先显式暂停同一个
 	# playback，再禁用子树，恢复时才能继续原播放位置。
 	for player_variant in _saved_music_paused.keys():
-		var audio_player := player_variant as Node
-		if audio_player != null and is_instance_valid(audio_player):
+		var audio_player := _get_valid_saved_node(player_variant)
+		if audio_player != null:
 			audio_player.set(&"stream_paused", true)
 	if _saved_terrain_decay_was_running:
 		_terrain_decay_timer.stop()
@@ -386,14 +384,17 @@ func _freeze_tower_runtime() -> void:
 	_plant_placement.cancel_placement()
 	_plant_placement_controller.set_placement_input_enabled(false)
 	_plant_placement_controller.set_process_unhandled_input(false)
-	_player_roster.set_combat_actions_locked_for_all(true)
+	_player_roster.set_combat_action_lock_for_all(
+		COMBAT_ACTION_LOCK_OWNER,
+		true
+	)
 	for child_variant in _saved_process_modes.keys():
-		var child := child_variant as Node
-		if child != null and is_instance_valid(child):
+		var child := _get_valid_saved_node(child_variant)
+		if child != null:
 			child.process_mode = Node.PROCESS_MODE_DISABLED
 	for child_variant in _saved_visibility.keys():
-		var child := child_variant as Node
-		if child != null and is_instance_valid(child):
+		var child := _get_valid_saved_node(child_variant)
+		if child != null:
 			child.set(&"visible", false)
 
 
@@ -407,16 +408,16 @@ func _restore_tower_runtime() -> void:
 		tower_environment.environment = _saved_tower_environment
 	_runtime.map_camera.enabled = _saved_tower_camera_enabled
 	for child_variant in _saved_process_modes.keys():
-		var child := child_variant as Node
-		if child != null and is_instance_valid(child):
+		var child := _get_valid_saved_node(child_variant)
+		if child != null:
 			child.process_mode = int(_saved_process_modes[child_variant])
 	for child_variant in _saved_visibility.keys():
-		var child := child_variant as Node
-		if child != null and is_instance_valid(child):
+		var child := _get_valid_saved_node(child_variant)
+		if child != null:
 			child.set(&"visible", bool(_saved_visibility[child_variant]))
 	for player_variant in _saved_music_paused.keys():
-		var audio_player := player_variant as Node
-		if audio_player != null and is_instance_valid(audio_player):
+		var audio_player := _get_valid_saved_node(player_variant)
+		if audio_player != null:
 			audio_player.set(
 				&"stream_paused",
 				bool(_saved_music_paused[player_variant])
@@ -446,7 +447,10 @@ func _restore_tower_runtime() -> void:
 	_plant_placement_controller.set_process_unhandled_input(
 		_saved_placement_unhandled_input_enabled
 	)
-	_player_roster.set_combat_actions_locked_for_all(false)
+	_player_roster.set_combat_action_lock_for_all(
+		COMBAT_ACTION_LOCK_OWNER,
+		false
+	)
 	_tower_runtime_frozen = false
 
 
@@ -502,6 +506,12 @@ static func _has_property(object: Object, property_name: StringName) -> bool:
 	return false
 
 
+static func _get_valid_saved_node(value: Variant) -> Node:
+	if value == null or not is_instance_valid(value):
+		return null
+	return value as Node
+
+
 func get_route() -> RogueRouteGame:
 	return _route
 
@@ -518,6 +528,31 @@ func is_exploration_active() -> bool:
 
 func is_tower_runtime_suspended() -> bool:
 	return _active or _presentation_exit_pending
+
+
+## 重连会在 Rogue 已冻结塔防子树之后创建新的 Player。该节点必须加入
+## 同一份表现租约，否则它会在隐藏的塔防世界中继续处理本地输入和角色
+## 状态。把它的原始 process/visibility 纳入既有恢复账本，Rogue 退出时
+## 即可与入口时存在的玩家原子恢复，不需要重跑整套冻结流程。
+func synchronize_reconnected_player_suspension(peer_id: int) -> bool:
+	if (
+		peer_id <= 0
+		or not _tower_runtime_frozen
+		or not is_tower_runtime_suspended()
+		or _player_roster == null
+	):
+		return false
+	var player_instance := _player_roster.get_player(peer_id)
+	if player_instance == null or not is_instance_valid(player_instance):
+		return false
+	if not _saved_process_modes.has(player_instance):
+		_saved_process_modes[player_instance] = player_instance.process_mode
+	if not _saved_visibility.has(player_instance):
+		_saved_visibility[player_instance] = player_instance.visible
+	player_instance.set_combat_action_lock(COMBAT_ACTION_LOCK_OWNER, true)
+	player_instance.process_mode = Node.PROCESS_MODE_DISABLED
+	player_instance.visible = false
+	return true
 
 
 func has_pending_presentation_exit() -> bool:

@@ -101,7 +101,7 @@ func _prepare_player() -> void:
 		return
 	game.player.global_position = FIXTURE_CENTER
 	game.player.velocity = Vector2.ZERO
-	game.player.controls_locked = false
+	game.player.set_controls_locked(false)
 	game.player.uses_local_input = true
 	if game.map_camera != null:
 		game.map_camera.position = Vector2.ZERO

@@ -100,6 +100,8 @@ func _run_round(
 			3:
 				var start_step := campaign.get_start_flow_step()
 				var initial_seconds := random.randi_range(4, 30)
+				# A/B 基线刻意复现抽取前的逐字段写入；普通测试必须使用
+				# replace_flow_state_for_fixture，勿照搬此旧路径。
 				campaign.wave_state = CombatFlowState.State.PRE_WAVE
 				campaign.current_flow_step = start_step
 				campaign.next_flow_step_after_rest = start_step
@@ -119,6 +121,7 @@ func _run_round(
 				trace_hash = _combine_hash(trace_hash, campaign.countdown_seconds)
 			_:
 				var initial_seconds := random.randi_range(5, 30)
+				# 同上：保留旧写法只为比较计时行为，不是生产状态入口。
 				campaign.wave_state = CombatFlowState.State.PRE_WAVE
 				campaign.current_flow_step = campaign.get_start_flow_step()
 				campaign.countdown_seconds = initial_seconds

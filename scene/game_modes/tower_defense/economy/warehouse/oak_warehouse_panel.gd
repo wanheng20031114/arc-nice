@@ -1,6 +1,8 @@
 extends CanvasLayer
 class_name OakWarehousePanel
 
+const CONTROL_LOCK_OWNER := &"tower_warehouse_panel"
+
 signal opened
 signal closed
 
@@ -215,7 +217,7 @@ func open() -> void:
 	overlay.show()
 	set_process_input(true)
 	set_process_unhandled_input(true)
-	tracked_player.set_controls_locked(true)
+	tracked_player.set_control_lock(CONTROL_LOCK_OWNER, true)
 	_clear_selection()
 	_refresh_all()
 	_focus_first_item_slot()
@@ -238,9 +240,8 @@ func close() -> void:
 		was_open
 		and closing_player != null
 		and is_instance_valid(closing_player)
-		and not closing_player.is_dead
 	):
-		closing_player.set_controls_locked(false)
+		closing_player.set_control_lock(CONTROL_LOCK_OWNER, false)
 	_unbind_warehouse()
 	_clear_slot_contents()
 	if not was_open:
@@ -705,7 +706,7 @@ func _on_quick_use_binding_changed(
 	_config_path: String,
 	_preferred_slot_index: int
 ) -> void:
-	if owner_peer_id != run_state.active_multiplayer_peer_id:
+	if owner_peer_id != run_state.get_active_multiplayer_peer_id():
 		return
 	_refresh_all()
 
@@ -1220,11 +1221,17 @@ func _is_network_locked() -> bool:
 
 
 func _is_multiplayer_inventory_context() -> bool:
-	return multiplayer_storage_enabled or run_state.active_multiplayer_peer_id > 0
+	return (
+		multiplayer_storage_enabled
+		or run_state.get_active_multiplayer_peer_id() > 0
+	)
 
 
 func _is_waiting_for_multiplayer_storage_configuration() -> bool:
-	return run_state.active_multiplayer_peer_id > 0 and not multiplayer_storage_enabled
+	return (
+		run_state.get_active_multiplayer_peer_id() > 0
+		and not multiplayer_storage_enabled
+	)
 
 
 func _get_storage_peer_id() -> int:

@@ -255,7 +255,7 @@ func _prepare_player_and_camera() -> void:
 		return
 	game.player.global_position = FIXTURE_CENTER
 	game.player.velocity = Vector2.ZERO
-	game.player.controls_locked = true
+	game.player.set_controls_locked(true)
 	game.player.uses_local_input = false
 	game.player.max_health = PROBE_ENEMY_HEALTH
 	game.player.current_health = PROBE_ENEMY_HEALTH
@@ -825,7 +825,7 @@ func _reset_fixture(should_move: bool, synchronize_corn: bool = false) -> void:
 
 	game.player.global_position = FIXTURE_CENTER
 	game.player.velocity = Vector2.ZERO
-	game.player.controls_locked = not should_move
+	game.player.set_controls_locked(not should_move)
 	game.player.uses_local_input = should_move
 	game.player.max_health = PROBE_ENEMY_HEALTH
 	game.player.current_health = PROBE_ENEMY_HEALTH

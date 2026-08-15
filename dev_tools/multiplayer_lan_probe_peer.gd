@@ -2799,11 +2799,9 @@ func _wait_for_first_client_enemy_id(mp_game: Node, timeout_seconds: float) -> i
 		var coordinator := mp_game.get_node_or_null("EnemyCoordinator") as MpEnemyCoordinator
 		if coordinator == null:
 			return 0
-		var enemies := coordinator.net_enemies
-		for enemy_id_variant in enemies:
-			var enemy_id := int(enemy_id_variant)
-			var enemy_variant: Variant = enemies.get(enemy_id)
-			if enemy_id > 0 and enemy_variant != null and is_instance_valid(enemy_variant):
+		for enemy_id in coordinator.get_remote_enemy_ids():
+			var enemy := coordinator.get_client_enemy(enemy_id)
+			if enemy_id > 0 and enemy != null and is_instance_valid(enemy):
 				return enemy_id
 		await process_frame
 	return 0
@@ -2815,9 +2813,8 @@ func _wait_for_client_enemy_removed(mp_game: Node, enemy_id: int, timeout_second
 		var coordinator := mp_game.get_node_or_null("EnemyCoordinator") as MpEnemyCoordinator
 		if coordinator == null:
 			return true
-		var enemies := coordinator.net_enemies
-		var enemy_variant: Variant = enemies.get(enemy_id)
-		if enemy_variant == null or not is_instance_valid(enemy_variant):
+		var enemy := coordinator.get_client_enemy(enemy_id)
+		if enemy == null or not is_instance_valid(enemy):
 			return true
 		await process_frame
 	return false
@@ -3506,8 +3503,7 @@ func _get_runtime_linglan_boss(game: Variant) -> LinglanBoss:
 func _wait_for_first_host_enemy_net_id(game: Variant, timeout_seconds: float) -> int:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
-		for net_id_variant in game.multiplayer_enemies_by_net_id:
-			var net_id := int(net_id_variant)
+		for net_id in game.get_network_enemy_ids():
 			var enemy: Enemy = game.get_enemy_for_net_id(net_id)
 			if net_id > 0 and enemy != null and is_instance_valid(enemy):
 				return net_id
@@ -3636,11 +3632,7 @@ func _get_valid_client_enemy(mp_game: Node, enemy_id: int) -> Enemy:
 	var coordinator := mp_game.get_node_or_null("EnemyCoordinator") as MpEnemyCoordinator
 	if coordinator == null:
 		return null
-	var enemies := coordinator.net_enemies
-	var enemy_variant: Variant = enemies.get(enemy_id)
-	if enemy_variant == null or not is_instance_valid(enemy_variant):
-		return null
-	return enemy_variant as Enemy
+	return coordinator.get_client_enemy(enemy_id)
 
 
 func _wait_for_peer_removed_from_host(
@@ -3773,15 +3765,11 @@ func _configure_probe_wave_flow(game: Variant) -> void:
 	if tower_game != null:
 		var tower_campaign := tower_game.campaign_coordinator
 		tower_campaign.current_wave_index = 0
-		tower_campaign.current_wave_total = 0
-		tower_campaign.current_wave_spawned = 0
-		tower_campaign.current_wave_defeated = 0
+		tower_campaign.reset_wave_progress(0)
 	else:
 		game.pre_wave_duration = 30.0
 		game.current_wave_index = 0
-		game.current_wave_total = 0
-		game.current_wave_spawned = 0
-		game.current_wave_defeated = 0
+		game.reset_wave_progress(0)
 
 
 func _configure_probe_boss_flow(game: Variant) -> void:
@@ -3805,12 +3793,11 @@ func _configure_probe_boss_flow(game: Variant) -> void:
 			boss_resources
 		)
 		var tower_campaign := tower_game.campaign_coordinator
-		tower_campaign.current_flow_step = null
-		tower_campaign.next_flow_step_after_rest = null
+		tower_campaign.replace_flow_state_for_fixture(
+			tower_campaign.wave_state
+		)
 		tower_campaign.current_wave_index = 0
-		tower_campaign.current_wave_total = 0
-		tower_campaign.current_wave_spawned = 0
-		tower_campaign.current_wave_defeated = 0
+		tower_campaign.reset_wave_progress(0)
 		tower_game.boss_coordinator.linglan_boss_started = false
 	else:
 		game.bosses = boss_resources
@@ -3820,9 +3807,7 @@ func _configure_probe_boss_flow(game: Variant) -> void:
 		game.next_flow_step_after_rest = null
 		game.linglan_boss_started = false
 		game.current_wave_index = 0
-		game.current_wave_total = 0
-		game.current_wave_spawned = 0
-		game.current_wave_defeated = 0
+		game.reset_wave_progress(0)
 
 
 func _create_probe_waves() -> Array[WaveConfig]:
@@ -3945,8 +3930,8 @@ func _spawn_host_probe_enemy(game: Variant) -> int:
 			_fail("Host probe could not resolve an active wave spawn-point mask.")
 			return 0
 	var previous_ids: Dictionary = {}
-	for net_id_variant in game.multiplayer_enemies_by_net_id:
-		previous_ids[int(net_id_variant)] = true
+	for net_id in game.get_network_enemy_ids():
+		previous_ids[net_id] = true
 	var spawned := (
 		tower_game.enemy_coordinator.try_spawn_enemy(BASIC_ENEMY_CONFIG)
 		if tower_game != null
@@ -3956,8 +3941,7 @@ func _spawn_host_probe_enemy(game: Variant) -> int:
 		_fail("Host probe failed to spawn test enemy.")
 		return 0
 	await _wait_frames(2)
-	for net_id_variant in game.multiplayer_enemies_by_net_id:
-		var net_id := int(net_id_variant)
+	for net_id in game.get_network_enemy_ids():
 		if net_id > 0 and not previous_ids.has(net_id):
 			# The probe owns this authoritative instance. Keep its network config id
 			# intact while preventing an unrelated random pickup drop on forced exit.

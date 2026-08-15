@@ -19,6 +19,8 @@ const SPECIAL_GAME_INVENTORY_FULL_LINE := (
 	"背包空间不足。请先整理背包，再次与我交互即可继续结算。"
 )
 const SPECIAL_GAME_TIMEOUT_STATUS := "主机响应超时，请再次操作重试"
+const SPECIAL_GAME_REQUEST_CONTROL_LOCK_OWNER := &"luoxi_special_game_request"
+const SPECIAL_GAME_CONTROL_LOCK_OWNER := &"luoxi_special_game"
 
 @onready var special_game_overlay: LuoxiSpecialGameOverlay = $LuoxiSpecialGameOverlay
 
@@ -103,9 +105,12 @@ func _handle_mode_request_timeout(
 	if expired_kind == AuthoritativeRequestKind.SPECIAL_GAME_START:
 		if (
 			special_game_request_player != null
-			and not special_game_request_player.is_dead
+			and is_instance_valid(special_game_request_player)
 		):
-			special_game_request_player.set_controls_locked(false)
+			special_game_request_player.set_control_lock(
+				SPECIAL_GAME_REQUEST_CONTROL_LOCK_OWNER,
+				false
+			)
 		result_visible = true
 		dialogue_bubble.say(AUTHORITATIVE_OFFER_TIMEOUT_LINE)
 	elif expired_kind in [
@@ -159,7 +164,6 @@ func apply_special_game_started(result: Dictionary) -> void:
 	special_game_dialogue_active = false
 	special_game_resume_pending = false
 	special_game_player = request_player
-	special_game_request_player = null
 	active_player = special_game_player
 	choice_visible = false
 	result_visible = false
@@ -167,8 +171,12 @@ func apply_special_game_started(result: Dictionary) -> void:
 	dialogue_bubble.hide_bubble()
 	special_game_overlay.show_game(special_game_session_revision)
 	_apply_special_game_revealed_state(result)
-	if special_game_player != null and not special_game_player.is_dead:
-		special_game_player.set_controls_locked(true)
+	if special_game_player != null and is_instance_valid(special_game_player):
+		special_game_player.set_control_lock(
+			SPECIAL_GAME_CONTROL_LOCK_OWNER,
+			true
+		)
+	_release_special_game_request_player()
 
 
 func apply_special_game_card_revealed(result: Dictionary) -> void:
@@ -231,7 +239,10 @@ func _request_special_game_start() -> void:
 	if active_player == null or active_player.is_dead:
 		return
 	special_game_request_player = active_player
-	special_game_request_player.set_controls_locked(true)
+	special_game_request_player.set_control_lock(
+		SPECIAL_GAME_REQUEST_CONTROL_LOCK_OWNER,
+		true
+	)
 	dialogue_bubble.hide_bubble()
 	_arm_authoritative_request_timeout(
 		AuthoritativeRequestKind.SPECIAL_GAME_START
@@ -333,8 +344,11 @@ func _close_special_game_overlay() -> void:
 	special_game_resume_pending = false
 	_release_special_game_request_player()
 	var closing_player := special_game_player
-	if special_game_player != null and not special_game_player.is_dead:
-		special_game_player.set_controls_locked(false)
+	if special_game_player != null and is_instance_valid(special_game_player):
+		special_game_player.set_control_lock(
+			SPECIAL_GAME_CONTROL_LOCK_OWNER,
+			false
+		)
 	special_game_player = null
 	if (
 		closing_player != null
@@ -347,8 +361,11 @@ func _close_special_game_overlay() -> void:
 func _suspend_special_game_for_inventory() -> void:
 	special_game_overlay.hide_game()
 	special_game_resume_pending = true
-	if special_game_player != null and not special_game_player.is_dead:
-		special_game_player.set_controls_locked(false)
+	if special_game_player != null and is_instance_valid(special_game_player):
+		special_game_player.set_control_lock(
+			SPECIAL_GAME_CONTROL_LOCK_OWNER,
+			false
+		)
 	result_visible = true
 	dialogue_bubble.say(SPECIAL_GAME_INVENTORY_FULL_LINE)
 
@@ -357,10 +374,11 @@ func _release_special_game_request_player() -> void:
 	if (
 		special_game_request_player != null
 		and is_instance_valid(special_game_request_player)
-		and not special_game_request_player.is_dead
-		and special_game_request_player != special_game_player
 	):
-		special_game_request_player.set_controls_locked(false)
+		special_game_request_player.set_control_lock(
+			SPECIAL_GAME_REQUEST_CONTROL_LOCK_OWNER,
+			false
+		)
 	special_game_request_player = null
 
 

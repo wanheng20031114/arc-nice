@@ -153,8 +153,7 @@ func apply_skill1_purchase_state(
 	if player_instance == null or not is_instance_valid(player_instance):
 		return
 	if player_instance.current_xirang != current_xirang:
-		player_instance.current_xirang = current_xirang
-		player_instance.xirang_changed.emit(current_xirang, 0)
+		player_instance.set_xirang_balance(current_xirang)
 	if skill1_unlocked and not player_instance.has_skill1():
 		player_instance.unlock_skill1()
 	if skill1_upgrade_level >= 0:

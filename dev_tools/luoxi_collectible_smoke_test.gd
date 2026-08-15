@@ -12,6 +12,9 @@ const RUBY_COLLECTIBLE := preload("res://resources/config/collectibles/collectib
 const ARCHER_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_archer.tres")
 const ROLLER_SKATES_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_roller_skates.tres")
 const POWER_WHEEL_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_power_wheel.tres")
+const COMBAT_RUNTIME_FIXTURE := preload(
+	"res://dev_tools/fixtures/combat_runtime_test_fixture.gd"
+)
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -436,22 +439,27 @@ func _test_full_inventory_keeps_luoxi_choice_available() -> void:
 
 
 func _test_apple_piercing_bullet_effect() -> void:
+	var runtime := COMBAT_RUNTIME_FIXTURE.new() as CombatRuntimeTestFixture
+	runtime.install_base_runtime_nodes()
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	test_root.add_child(runtime)
 	var player := PLAYER_SCENE.instantiate() as Player
 	var enemy_a := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	var enemy_b := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	var bullet := BULLET_SCENE.instantiate() as Bullet
-	test_root.add_child(player)
-	test_root.add_child(enemy_a)
-	test_root.add_child(enemy_b)
-	enemy_a.setup(BASIC_CONFIG, player, null)
-	enemy_b.setup(BASIC_CONFIG, player, null)
+	runtime.add_child(player)
+	runtime.enemy_container.add_child(enemy_a)
+	runtime.enemy_container.add_child(enemy_b)
+	enemy_a.setup(BASIC_CONFIG, player, null, runtime)
+	enemy_b.setup(BASIC_CONFIG, player, null, runtime)
 	await process_frame
 	await physics_frame
 
 	enemy_a.current_health = 10
 	enemy_b.current_health = 10
 	bullet.setup(Vector2.RIGHT, 3, true)
-	test_root.add_child(bullet)
+	bullet.bind_gameplay_context(runtime, runtime.get_multiplayer_gameplay_gateway())
+	runtime.add_child(bullet)
 	bullet.global_position = Vector2(-1000.0, -1000.0)
 
 	_expect(bullet.try_hit_enemy(enemy_a), "Piercing bullet must hit the first enemy.")
@@ -462,10 +470,7 @@ func _test_apple_piercing_bullet_effect() -> void:
 	_expect(bullet.try_hit_enemy(enemy_b), "Piercing bullet must hit a second enemy.")
 	_expect(enemy_b.current_health == 7, "Piercing bullet must damage the second enemy.")
 
-	bullet.queue_free()
-	enemy_a.queue_free()
-	enemy_b.queue_free()
-	player.queue_free()
+	runtime.queue_free()
 	await process_frame
 	await physics_frame
 

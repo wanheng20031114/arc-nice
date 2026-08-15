@@ -558,6 +558,14 @@ func synchronize_reconnected_player_presentation_lease(peer_id: int) -> bool:
 	)
 
 
+func synchronize_reconnected_player_rogue_suspension(peer_id: int) -> bool:
+	return (
+		_rogue_exploration_coordinator != null
+		and _rogue_exploration_coordinator
+			.synchronize_reconnected_player_suspension(peer_id)
+	)
+
+
 func apply_remote_flow_state(
 	step_id: StringName,
 	state: int,
@@ -589,7 +597,6 @@ func apply_remote_boss_started(
 		or boss_config == null
 	):
 		return
-	_campaign_coordinator.current_flow_step = boss_config
 	_boss_coordinator.apply_remote_started(net_id, boss_config, spawn_position)
 
 
@@ -658,9 +665,7 @@ func apply_skill1_purchase_state(
 	var player_instance := _get_player(peer_id)
 	if player_instance == null or not is_instance_valid(player_instance):
 		return
-	if player_instance.current_xirang != current_xirang:
-		player_instance.current_xirang = current_xirang
-		player_instance.xirang_changed.emit(current_xirang, 0)
+	player_instance.set_xirang_balance(current_xirang)
 	if skill1_unlocked and not player_instance.has_skill1():
 		player_instance.unlock_skill1()
 	if skill1_upgrade_level >= 0:
@@ -2174,6 +2179,7 @@ func _on_wave_progress_changed(
 		tower_runtime != null
 		and tower_runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		and _campaign_coordinator.current_flow_step is WaveConfig
 	):
 		wave_progress_changed.emit(
 			wave_number,

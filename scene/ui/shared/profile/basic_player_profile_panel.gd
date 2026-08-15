@@ -13,6 +13,7 @@ signal multiplayer_simple_crafting_requested(
 signal multiplayer_simple_crafting_cancel_requested(request_token: int)
 
 const DESIGN_SIZE := Vector2(724.0, 543.0)
+const CONTROL_LOCK_OWNER := &"basic_player_profile"
 
 @onready var overlay: Control = $Overlay
 @onready var panel_root: Control = $Overlay/PanelRoot
@@ -134,7 +135,7 @@ func open() -> void:
 	if tracked_player == null or tracked_player.is_dead or overlay.visible:
 		return
 	overlay.visible = true
-	tracked_player.set_controls_locked(true)
+	tracked_player.set_control_lock(CONTROL_LOCK_OWNER, true)
 	opened.emit()
 	inventory_view.clear_selection()
 	inventory_view.refresh()
@@ -148,8 +149,8 @@ func close() -> void:
 	simple_crafting_panel.cancel_pending_request()
 	overlay.visible = false
 	inventory_view.clear_selection()
-	if tracked_player != null and not tracked_player.is_dead:
-		tracked_player.set_controls_locked(false)
+	if tracked_player != null and is_instance_valid(tracked_player):
+		tracked_player.set_control_lock(CONTROL_LOCK_OWNER, false)
 	closed.emit()
 
 
@@ -209,7 +210,7 @@ func _request_quick_use_item() -> bool:
 	):
 		return false
 	var owner_peer_id := tracked_player.peer_id if tracked_player.peer_id > 0 else 0
-	if run_state.active_multiplayer_peer_id != owner_peer_id:
+	if run_state.get_active_multiplayer_peer_id() != owner_peer_id:
 		return false
 	var slot_index := run_state.get_quick_use_slot_index(owner_peer_id)
 	if slot_index < 0:
@@ -290,7 +291,7 @@ func _on_inventory_item_quick_use_toggle_requested(slot_index: int) -> void:
 	if tracked_player == null or not is_instance_valid(tracked_player):
 		return
 	var owner_peer_id := tracked_player.peer_id if tracked_player.peer_id > 0 else 0
-	if run_state.active_multiplayer_peer_id != owner_peer_id:
+	if run_state.get_active_multiplayer_peer_id() != owner_peer_id:
 		return
 	run_state.toggle_quick_use_binding(slot_index, owner_peer_id)
 

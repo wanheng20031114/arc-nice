@@ -51,6 +51,16 @@ class TestGame:
 class TestMultiplayerAdapter:
 	extends TowerDefenseMultiplayerModeAdapter
 
+	var special_game_supported := true
+	var finish_requests: Array[int] = []
+
+	func supports_luoxi_special_game() -> bool:
+		return special_game_supported
+
+	func request_luoxi_special_game_finish(session_revision: int) -> bool:
+		finish_requests.append(session_revision)
+		return true
+
 	func apply_luoxi_player_health_loss(
 		target_player: Player,
 		amount: int,
@@ -132,13 +142,15 @@ func _test_ticket_dialogue_and_atomic_consumption() -> void:
 	var merchant := LuoxiMerchant.new()
 	merchant.is_active = true
 	var dialogue_probe := LUOXI_SCENE.instantiate() as TowerDefenseLuoxiMerchant
+	var dialogue_adapter := TestMultiplayerAdapter.new()
+	dialogue_probe.bind_multiplayer_mode_adapter(dialogue_adapter)
 	test_root.add_child(dialogue_probe)
 	var lines := dialogue_probe.call("_build_dialogue_lines", player_instance) as Array
 	_expect(
 		lines == ["我注意到你持有赌怪专用券", "是否要使用赌怪专用券？"],
 		"持券玩家必须优先进入两句精确的特殊对话。"
 	)
-	(test_root as TestSceneRoot).special_game_supported = false
+	dialogue_adapter.special_game_supported = false
 	var unsupported_lines := dialogue_probe.call(
 		"_build_dialogue_lines",
 		player_instance
@@ -147,8 +159,9 @@ func _test_ticket_dialogue_and_atomic_consumption() -> void:
 		unsupported_lines == LuoxiMerchant.DIALOGUE_LINES,
 		"不支持特殊牌局的标准模式不得被持券对话截断。"
 	)
-	(test_root as TestSceneRoot).special_game_supported = true
+	dialogue_adapter.special_game_supported = true
 	dialogue_probe.queue_free()
+	dialogue_adapter.free()
 
 	var game := TestGame.new()
 	game.player = player_instance
@@ -284,6 +297,9 @@ func _test_player_death_voids_pending_rewards() -> void:
 	run_state.begin_new_run(&"weishidaier", false)
 	var player_instance := _make_player(0, 100)
 	var game := TestGame.new()
+	# 事务测试以轻量 Player 探针运行；走 Host adapter 的生命入口，避免
+	# 将完整 Player 场景/HUD 生命周期混入 Luoxi 规则测试。
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	game.player = player_instance
 	game.damageable_players = [player_instance]
 	var coordinator := _make_coordinator(game)
@@ -394,6 +410,8 @@ func _test_overlay_copy_and_xirang_icon_contract() -> void:
 func _test_merchant_session_ui_guards() -> void:
 	var merchant := LUOXI_SCENE.instantiate() as TowerDefenseLuoxiMerchant
 	var player_instance := PLAYER_SCENE.instantiate() as Player
+	var merchant_adapter := TestMultiplayerAdapter.new()
+	merchant.bind_multiplayer_mode_adapter(merchant_adapter)
 	test_root.add_child(merchant)
 	test_root.add_child(player_instance)
 	await process_frame
@@ -403,7 +421,10 @@ func _test_merchant_session_ui_guards() -> void:
 	merchant.special_game_session_revision = 51
 	merchant.nearby_players[player_instance.get_instance_id()] = player_instance
 	merchant.special_game_overlay.show_game(51)
-	player_instance.set_controls_locked(true)
+	player_instance.set_control_lock(
+		TowerDefenseLuoxiMerchant.SPECIAL_GAME_CONTROL_LOCK_OWNER,
+		true
+	)
 	merchant.apply_special_game_finished({
 		"result_code": LuoxiSpecialGameCoordinator.ResultCode.INVENTORY_FULL,
 		"session_revision": 51,
@@ -423,7 +444,10 @@ func _test_merchant_session_ui_guards() -> void:
 	)
 
 	merchant.special_game_request_player = player_instance
-	player_instance.set_controls_locked(true)
+	player_instance.set_control_lock(
+		TowerDefenseLuoxiMerchant.SPECIAL_GAME_REQUEST_CONTROL_LOCK_OWNER,
+		true
+	)
 	merchant.apply_special_game_started({
 		"result_code": LuoxiSpecialGameCoordinator.ResultCode.SUCCESS,
 		"session_revision": 51,
@@ -436,9 +460,12 @@ func _test_merchant_session_ui_guards() -> void:
 
 	merchant.active_player = player_instance
 	merchant.special_game_request_player = player_instance
-	player_instance.set_controls_locked(true)
+	player_instance.set_control_lock(
+		TowerDefenseLuoxiMerchant.SPECIAL_GAME_REQUEST_CONTROL_LOCK_OWNER,
+		true
+	)
 	merchant.nearby_players.erase(player_instance.get_instance_id())
-	var finish_count_before := (test_root as TestSceneRoot).finish_requests.size()
+	var finish_count_before := merchant_adapter.finish_requests.size()
 	merchant.apply_special_game_started({
 		"result_code": LuoxiSpecialGameCoordinator.ResultCode.SUCCESS,
 		"session_revision": 52,
@@ -447,14 +474,15 @@ func _test_merchant_session_ui_guards() -> void:
 	_expect(not merchant.special_game_overlay.is_open(), "离开范围后的晚到开局回包不得打开界面。")
 	_expect(not player_instance.controls_locked, "拒绝晚到开局回包时必须恢复玩家控制。")
 	_expect(
-		(test_root as TestSceneRoot).finish_requests.size() == finish_count_before + 1
-		and (test_root as TestSceneRoot).finish_requests[-1] == 52,
+		merchant_adapter.finish_requests.size() == finish_count_before + 1
+		and merchant_adapter.finish_requests[-1] == 52,
 		"被放弃的晚到牌局必须显式请求服务端结束，不能遗留会话。"
 	)
 
 	merchant.queue_free()
 	player_instance.queue_free()
 	await process_frame
+	merchant_adapter.free()
 
 
 func _make_coordinator(game: TestGame) -> LuoxiSpecialGameCoordinator:
@@ -475,7 +503,7 @@ func _configure_coordinator(
 	rng: RandomNumberGenerator
 ) -> void:
 	game.campaign = TowerDefenseCampaignCoordinator.new()
-	game.campaign.wave_state = game.wave_state
+	game.campaign.replace_flow_state_for_fixture(game.wave_state)
 	var home := TestHomeDefenseCoordinator.new()
 	home.test_game = game
 	game.home = home

@@ -407,7 +407,7 @@ func _run_live_gameplay_probe() -> void:
 		game.player.max_health = 1_000_000_000
 		game.player.current_health = 1_000_000_000
 		game.player.is_dead = false
-		game.player.controls_locked = true
+		game.player.set_controls_locked(true)
 		game.player.uses_local_input = false
 
 	var enemy_count_before := game.enemy_container.get_child_count()

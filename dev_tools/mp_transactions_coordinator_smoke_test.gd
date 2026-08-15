@@ -379,7 +379,7 @@ func _rpc_entry_captures_sender_first(source: String, function_name: String) -> 
 	if line_end < 0:
 		return false
 	return source.substr(body_offset, line_end - body_offset).strip_edges() == (
-		"var sender_id := multiplayer.get_remote_sender_id()"
+		"var sender_id := _get_rpc_sender_id()"
 	)
 
 

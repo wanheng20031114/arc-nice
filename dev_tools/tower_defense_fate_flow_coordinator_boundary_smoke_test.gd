@@ -82,8 +82,19 @@ func _test_static_boundaries() -> void:
 	)
 	_expect(
 		flow_source.contains("campaign_coordinator.apply_remote_flow_state(")
+		and flow_source.contains(
+			"campaign_coordinator.transition_to_fate_interlude("
+		)
+		and flow_source.contains(
+			"campaign_coordinator.synchronize_remote_fate_interlude_state()"
+		)
 		and flow_source.contains("presentation_coordinator.transition_world_to_day()")
-		and flow_source.contains("multiplayer_gateway.player_teleport_requested.emit("),
+		and flow_source.contains("multiplayer_gateway.player_teleport_requested.emit(")
+		and not flow_source.contains(
+			"campaign_coordinator.wave_state = CombatFlowState.State"
+		)
+		and not flow_source.contains("configured_state_timer:")
+		and not flow_source.contains("configured_enemy_spawn_timer:"),
 		"FateFlowCoordinator 未直连 Campaign/Presentation/Gateway。"
 	)
 	_expect(
@@ -245,7 +256,9 @@ func _test_runtime_binding_and_behavior() -> void:
 	var interrupted_next_step := game.campaign_coordinator.get_flow_step_by_id(
 		&"wave_05"
 	)
-	game.campaign_coordinator.wave_state = CombatFlowState.State.INTERMISSION
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.INTERMISSION
+	)
 	game.settings_panel.open()
 	game.player_profile_panel.open()
 	game.debug_collectible_window.open()
@@ -287,11 +300,14 @@ func _test_runtime_binding_and_behavior() -> void:
 		== game.xiaocong_fate_interlude.get_player_spawn_position(0),
 		"Host Fate 揭幕竞态测试未进入房间表现阶段。"
 	)
-	game.campaign_coordinator.wave_state = CombatFlowState.State.VICTORY
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.VICTORY
+	)
 	for _host_abort_frame in range(180):
 		if (
 			not game.xiaocong_fate_interlude.is_active
 			and not flow.interlude_systems_frozen
+			and not game.xiaocong_fate_interlude.scene_transition_layer.visible
 			and game.player.global_position
 			== roster.get_world_spawn_position(0)
 		):
@@ -300,6 +316,7 @@ func _test_runtime_binding_and_behavior() -> void:
 	_expect(
 		not game.xiaocong_fate_interlude.is_active
 		and not flow.interlude_systems_frozen
+		and not game.xiaocong_fate_interlude.scene_transition_layer.visible
 		and not game.player.combat_actions_locked
 		and game.player.global_position == roster.get_world_spawn_position(0),
 		(
@@ -307,13 +324,80 @@ func _test_runtime_binding_and_behavior() -> void:
 			+ "并恢复权威玩家位置。"
 		)
 	)
-	game.campaign_coordinator.wave_state = CombatFlowState.State.INTERMISSION
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.INTERMISSION
+	)
+
+	var rogue := game.rogue_exploration_coordinator
+	rogue.call(&"_freeze_tower_runtime")
+	rogue.call(&"_begin_pending_presentation_exit")
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.ROGUE_EXPLORATION
+	)
+	flow.enter_interlude(interrupted_next_step)
+	_expect(
+		game.player.has_combat_action_lock(
+			TowerDefenseRogueExplorationCoordinator.COMBAT_ACTION_LOCK_OWNER
+		)
+		and game.player.has_combat_action_lock(
+			TowerDefenseFateFlowCoordinator.COMBAT_ACTION_LOCK_OWNER
+		),
+		(
+			"Host Rogue→Fate 遮幕交接前必须同时持有两个战斗锁 owner。"
+			+ " rogue=%s fate=%s aggregate=%s"
+			% [
+				game.player.has_combat_action_lock(
+					TowerDefenseRogueExplorationCoordinator.COMBAT_ACTION_LOCK_OWNER
+				),
+				game.player.has_combat_action_lock(
+					TowerDefenseFateFlowCoordinator.COMBAT_ACTION_LOCK_OWNER
+				),
+				game.player.combat_actions_locked,
+			]
+		)
+	)
+	for _host_handoff_frame in range(240):
+		if (
+			not rogue.has_pending_presentation_exit()
+			and game.xiaocong_fate_interlude.is_active
+		):
+			break
+		await process_frame
+	_expect(
+		not game.player.has_combat_action_lock(
+			TowerDefenseRogueExplorationCoordinator.COMBAT_ACTION_LOCK_OWNER
+		)
+		and game.player.has_combat_action_lock(
+			TowerDefenseFateFlowCoordinator.COMBAT_ACTION_LOCK_OWNER
+		),
+		"Host Rogue 表现退出后必须只释放 Rogue owner，并保留 Fate owner。"
+	)
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.VICTORY
+	)
+	for _host_handoff_abort_frame in range(240):
+		if (
+			not game.xiaocong_fate_interlude.is_active
+			and not flow.interlude_systems_frozen
+			and not game.player.combat_actions_locked
+		):
+			break
+		await process_frame
+	_expect(
+		not game.xiaocong_fate_interlude.is_active
+		and not flow.interlude_systems_frozen
+		and not game.player.combat_actions_locked,
+		"Host Rogue→Fate 中断后必须完整释放两个流程租约。"
+	)
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.INTERMISSION
+	)
 
 	game.plant_placement_controller.set_placement_input_enabled(true)
 	game.plant_placement_controller.set_process_unhandled_input(true)
-	var rogue := game.rogue_exploration_coordinator
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-	roster.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	roster.set_runtime_identity(CombatRuntimeBase.RuntimeMode.CLIENT_VIEW, 1)
+	roster.peer_players[1] = game.player
 	_expect(
 		game.plant_placement_controller.placement_input_enabled,
 		"Rogue freeze 前的建造输入测试前置状态必须为启用。"
@@ -324,7 +408,9 @@ func _test_runtime_binding_and_behavior() -> void:
 		"Rogue freeze 必须在禁用输入前捕获建造输入 lease。"
 	)
 	rogue.call(&"_begin_pending_presentation_exit")
-	game.campaign_coordinator.wave_state = CombatFlowState.State.ROGUE_EXPLORATION
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.ROGUE_EXPLORATION
+	)
 	var inactive_repair_state: Dictionary = game.fate_manager.export_state()
 	inactive_repair_state["revision"] = game.fate_manager.state_revision + 1
 	inactive_repair_state["active"] = false
@@ -392,7 +478,9 @@ func _test_runtime_binding_and_behavior() -> void:
 	game.plant_placement_controller.set_process_unhandled_input(true)
 	rogue.call(&"_freeze_tower_runtime")
 	rogue.call(&"_begin_pending_presentation_exit")
-	game.campaign_coordinator.wave_state = CombatFlowState.State.ROGUE_EXPLORATION
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.ROGUE_EXPLORATION
+	)
 	var early_fate_state: Dictionary = game.fate_manager.export_state()
 	early_fate_state["revision"] = game.fate_manager.state_revision + 1
 	early_fate_state["active"] = true
@@ -413,6 +501,15 @@ func _test_runtime_binding_and_behavior() -> void:
 		&"wave_05",
 		CombatFlowState.State.FATE_INTERLUDE,
 		0
+	)
+	_expect(
+		game.player.has_combat_action_lock(
+			TowerDefenseRogueExplorationCoordinator.COMBAT_ACTION_LOCK_OWNER
+		)
+		and game.player.has_combat_action_lock(
+			TowerDefenseFateFlowCoordinator.COMBAT_ACTION_LOCK_OWNER
+		),
+		"Rogue→Fate 遮幕交接前必须同时持有两个战斗锁 owner。"
 	)
 	for _handoff_frame in range(120):
 		if (
@@ -459,7 +556,9 @@ func _test_runtime_binding_and_behavior() -> void:
 		)
 	)
 
-	game.campaign_coordinator.wave_state = CombatFlowState.State.ROGUE_EXPLORATION
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.ROGUE_EXPLORATION
+	)
 	rogue.call(&"_freeze_tower_runtime")
 	rogue.call(&"_begin_pending_presentation_exit")
 	game.campaign_coordinator.apply_remote_flow_state(
@@ -509,7 +608,9 @@ func _test_runtime_binding_and_behavior() -> void:
 		)
 	)
 
-	game.campaign_coordinator.wave_state = CombatFlowState.State.ROGUE_EXPLORATION
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.ROGUE_EXPLORATION
+	)
 	rogue.call(&"_freeze_tower_runtime")
 	rogue.call(&"_begin_pending_presentation_exit")
 	game.campaign_coordinator.apply_remote_flow_state(
@@ -546,7 +647,9 @@ func _test_runtime_binding_and_behavior() -> void:
 		)
 	)
 
-	game.campaign_coordinator.wave_state = CombatFlowState.State.INTERMISSION
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.INTERMISSION
+	)
 	game.settings_panel.open()
 	game.plant_placement_controller.set_placement_input_enabled(true)
 	game.plant_placement_controller.set_process_unhandled_input(true)

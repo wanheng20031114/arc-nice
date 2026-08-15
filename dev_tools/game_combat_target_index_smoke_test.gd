@@ -245,14 +245,18 @@ func _test_nearest_combat_target_contracts() -> void:
 	client_queued.queue_free()
 	var freed_client_enemy := _new_tree_safe_test_enemy()
 	freed_client_enemy.free()
-	enemy_coordinator.net_enemies.assign({
-		501: client_nearest,
-		502: client_tie_a,
-		503: client_tie_b,
-		504: client_dead,
-		505: client_queued,
-		506: freed_client_enemy,
-	})
+	for entry in [
+		[501, client_nearest],
+		[502, client_tie_a],
+		[503, client_tie_b],
+		[504, client_dead],
+		[505, client_queued],
+	]:
+		enemy_coordinator.register_client_enemy(
+			int(entry[0]),
+			entry[1] as Enemy,
+			0.0
+		)
 	var client_exclusions: Dictionary = {
 		client_nearest.get_instance_id(): true,
 	}
@@ -351,7 +355,7 @@ func _test_queued_target_query_contracts() -> void:
 	multiplayer_game.set("enemy_coordinator", enemy_coordinator)
 	multiplayer_game.set("net_manager", net_manager)
 	multiplayer_game.set("game", game)
-	enemy_coordinator.net_enemies.assign({701: queued_enemy})
+	enemy_coordinator.register_client_enemy(701, queued_enemy, 0.0)
 	sorted_targets.append(queued_enemy)
 	unordered_targets.append(queued_enemy)
 	multiplayer_game.call(

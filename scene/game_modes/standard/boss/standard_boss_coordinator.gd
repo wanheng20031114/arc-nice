@@ -685,7 +685,6 @@ func _instantiate_remote_proxy(
 		runtime_port
 	)
 	boss_enemy.configure_multiplayer_proxy()
-	boss_enemy.set_meta("net_id", net_id)
 	boss_proxy_created.emit(boss_enemy, net_id)
 	return boss_enemy
 

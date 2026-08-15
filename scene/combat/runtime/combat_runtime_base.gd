@@ -85,9 +85,13 @@ enum WorldLightingPolicy {
 var player: Player = null
 var multiplayer_local_peer_id: int = 0
 var peer_players: Dictionary = {}
-var multiplayer_pickups: Dictionary = {}
-var multiplayer_enemy_ids_by_instance: Dictionary = {}
-var multiplayer_enemies_by_net_id: Dictionary = {}
+var _network_pickup_net_id_by_instance_id: Dictionary[int, int] = {}
+var _network_pickup_by_net_id: Dictionary[int, Pickup] = {}
+## Network enemy identity has one owner: the combat runtime. Callers must use the
+## atomic registry API below so net-id, instance-id and CombatTargetIndex cannot
+## drift apart during replacement, terminal events or session teardown.
+var _network_enemy_net_id_by_instance_id: Dictionary[int, int] = {}
+var _network_enemy_by_net_id: Dictionary[int, Enemy] = {}
 var combat_target_index = CombatTargetIndexScript.new()
 var _singleplayer_combat_target_index_enabled := false
 var _singleplayer_combat_target_index_force_local_queries := false
@@ -330,6 +334,288 @@ func register_combat_target(net_id: int, enemy: Enemy) -> void:
 
 func unregister_combat_target(net_id: int) -> void:
 	combat_target_index.unregister_enemy(net_id)
+
+
+func register_network_enemy(net_id: int, enemy: Enemy) -> bool:
+	if net_id <= 0 or enemy == null or not is_instance_valid(enemy):
+		return false
+	var instance_id := enemy.get_instance_id()
+	var previous_net_id := int(
+		_network_enemy_net_id_by_instance_id.get(instance_id, 0)
+	)
+	if previous_net_id > 0 and previous_net_id != net_id:
+		unregister_network_enemy(previous_net_id, enemy)
+	var previous_enemy := _get_valid_network_enemy_entry(net_id)
+	if _network_enemy_by_net_id.has(net_id):
+		if previous_enemy == null or not is_instance_valid(previous_enemy):
+			unregister_network_enemy(net_id)
+		elif previous_enemy != enemy:
+			unregister_network_enemy(net_id, previous_enemy)
+	enemy.set_meta(&"net_id", net_id)
+	_network_enemy_by_net_id[net_id] = enemy
+	_network_enemy_net_id_by_instance_id[instance_id] = net_id
+	register_combat_target(net_id, enemy)
+	return true
+
+
+func unregister_network_enemy(
+	net_id: int,
+	expected_enemy: Enemy = null
+) -> Enemy:
+	if net_id <= 0:
+		return null
+	var registered_enemy := _get_valid_network_enemy_entry(net_id)
+	if (
+		expected_enemy != null
+		and is_instance_valid(expected_enemy)
+		and registered_enemy != expected_enemy
+	):
+		if registered_enemy == null:
+			var expected_instance_id := expected_enemy.get_instance_id()
+			if int(_network_enemy_net_id_by_instance_id.get(
+				expected_instance_id,
+				0
+			)) == net_id:
+				_network_enemy_net_id_by_instance_id.erase(expected_instance_id)
+			_network_enemy_by_net_id.erase(net_id)
+			unregister_combat_target(net_id)
+		return null
+	_network_enemy_by_net_id.erase(net_id)
+	unregister_combat_target(net_id)
+	if registered_enemy != null and is_instance_valid(registered_enemy):
+		var instance_id := registered_enemy.get_instance_id()
+		if int(_network_enemy_net_id_by_instance_id.get(instance_id, 0)) == net_id:
+			_network_enemy_net_id_by_instance_id.erase(instance_id)
+	else:
+		_erase_network_enemy_reverse_mappings(net_id)
+	return registered_enemy
+
+
+func unregister_network_enemy_by_instance_id(instance_id: int) -> int:
+	if instance_id <= 0:
+		return 0
+	var net_id := int(_network_enemy_net_id_by_instance_id.get(instance_id, 0))
+	if net_id <= 0:
+		return 0
+	var enemy := _get_valid_network_enemy_entry(net_id)
+	if enemy != null and is_instance_valid(enemy) and enemy.get_instance_id() != instance_id:
+		_network_enemy_net_id_by_instance_id.erase(instance_id)
+		return 0
+	unregister_network_enemy(net_id, enemy)
+	return net_id
+
+
+func get_network_enemy(net_id: int) -> Enemy:
+	if net_id <= 0:
+		return null
+	var enemy := _get_valid_network_enemy_entry(net_id)
+	if enemy == null:
+		unregister_network_enemy(net_id)
+		return null
+	var instance_id := enemy.get_instance_id()
+	if int(_network_enemy_net_id_by_instance_id.get(instance_id, 0)) != net_id:
+		# An inconsistent entry is not returned as valid gameplay state. Repair the
+		# exact pair rather than allowing two identity truths to survive.
+		unregister_network_enemy(net_id, enemy)
+		return null
+	return enemy
+
+
+func get_network_enemy_net_id_by_instance_id(instance_id: int) -> int:
+	if instance_id <= 0:
+		return 0
+	var net_id := int(_network_enemy_net_id_by_instance_id.get(instance_id, 0))
+	if net_id <= 0:
+		return 0
+	var enemy := _get_valid_network_enemy_entry(net_id)
+	if enemy == null or enemy.get_instance_id() != instance_id:
+		_network_enemy_net_id_by_instance_id.erase(instance_id)
+		return 0
+	return net_id
+
+
+func has_network_enemy(net_id: int) -> bool:
+	return get_network_enemy(net_id) != null
+
+
+func get_network_enemy_count() -> int:
+	return get_network_enemies().size()
+
+
+func get_network_enemy_ids() -> Array[int]:
+	var result: Array[int] = []
+	for net_id_variant in _network_enemy_by_net_id:
+		result.append(int(net_id_variant))
+	return result
+
+
+func get_network_enemies() -> Array[Enemy]:
+	var result: Array[Enemy] = []
+	for net_id in get_network_enemy_ids():
+		var enemy := get_network_enemy(net_id)
+		if enemy != null:
+			result.append(enemy)
+	return result
+
+
+func clear_network_enemy_registry() -> void:
+	for net_id in get_network_enemy_ids():
+		unregister_network_enemy(net_id)
+	_network_enemy_by_net_id.clear()
+	_network_enemy_net_id_by_instance_id.clear()
+
+
+func _erase_network_enemy_reverse_mappings(net_id: int) -> void:
+	var stale_instance_ids: Array[int] = []
+	for instance_id_variant in _network_enemy_net_id_by_instance_id:
+		if int(_network_enemy_net_id_by_instance_id[instance_id_variant]) == net_id:
+			stale_instance_ids.append(int(instance_id_variant))
+	for instance_id in stale_instance_ids:
+		_network_enemy_net_id_by_instance_id.erase(instance_id)
+
+
+func _get_valid_network_enemy_entry(net_id: int) -> Enemy:
+	var enemy_variant: Variant = _network_enemy_by_net_id.get(net_id)
+	if enemy_variant == null or not is_instance_valid(enemy_variant):
+		return null
+	return enemy_variant as Enemy
+
+
+func register_network_pickup(net_id: int, pickup: Pickup) -> bool:
+	if net_id <= 0 or pickup == null or not is_instance_valid(pickup):
+		return false
+	var instance_id := pickup.get_instance_id()
+	var previous_net_id := int(
+		_network_pickup_net_id_by_instance_id.get(instance_id, 0)
+	)
+	if previous_net_id > 0 and previous_net_id != net_id:
+		unregister_network_pickup(previous_net_id, pickup)
+	var previous_pickup := _get_valid_network_pickup_entry(net_id)
+	if _network_pickup_by_net_id.has(net_id):
+		if previous_pickup == null:
+			unregister_network_pickup(net_id)
+		elif previous_pickup != pickup:
+			unregister_network_pickup(net_id, previous_pickup)
+	pickup.set_meta(&"net_id", net_id)
+	_network_pickup_by_net_id[net_id] = pickup
+	_network_pickup_net_id_by_instance_id[instance_id] = net_id
+	return true
+
+
+func unregister_network_pickup(
+	net_id: int,
+	expected_pickup: Pickup = null
+) -> Pickup:
+	if net_id <= 0:
+		return null
+	var registered_pickup := _get_valid_network_pickup_entry(net_id)
+	if (
+		expected_pickup != null
+		and is_instance_valid(expected_pickup)
+		and registered_pickup != expected_pickup
+	):
+		if registered_pickup == null:
+			var expected_instance_id := expected_pickup.get_instance_id()
+			if int(_network_pickup_net_id_by_instance_id.get(
+				expected_instance_id,
+				0
+			)) == net_id:
+				_network_pickup_net_id_by_instance_id.erase(expected_instance_id)
+			_network_pickup_by_net_id.erase(net_id)
+		return null
+	_network_pickup_by_net_id.erase(net_id)
+	if registered_pickup != null and is_instance_valid(registered_pickup):
+		var instance_id := registered_pickup.get_instance_id()
+		if int(_network_pickup_net_id_by_instance_id.get(instance_id, 0)) == net_id:
+			_network_pickup_net_id_by_instance_id.erase(instance_id)
+	else:
+		_erase_network_pickup_reverse_mappings(net_id)
+	return registered_pickup
+
+
+func unregister_network_pickup_by_instance_id(instance_id: int) -> int:
+	if instance_id <= 0:
+		return 0
+	var net_id := int(_network_pickup_net_id_by_instance_id.get(instance_id, 0))
+	if net_id <= 0:
+		return 0
+	var pickup := _get_valid_network_pickup_entry(net_id)
+	if (
+		pickup != null
+		and pickup.get_instance_id() != instance_id
+	):
+		_network_pickup_net_id_by_instance_id.erase(instance_id)
+		return 0
+	unregister_network_pickup(net_id, pickup)
+	return net_id
+
+
+func get_network_pickup(net_id: int) -> Pickup:
+	if net_id <= 0:
+		return null
+	var pickup := _get_valid_network_pickup_entry(net_id)
+	if pickup == null:
+		_network_pickup_by_net_id.erase(net_id)
+		_erase_network_pickup_reverse_mappings(net_id)
+		return null
+	var instance_id := pickup.get_instance_id()
+	if int(_network_pickup_net_id_by_instance_id.get(instance_id, 0)) != net_id:
+		unregister_network_pickup(net_id, pickup)
+		return null
+	return pickup
+
+
+func get_network_pickup_net_id_by_instance_id(instance_id: int) -> int:
+	if instance_id <= 0:
+		return 0
+	var net_id := int(_network_pickup_net_id_by_instance_id.get(instance_id, 0))
+	if net_id <= 0:
+		return 0
+	var pickup := _get_valid_network_pickup_entry(net_id)
+	if pickup == null or pickup.get_instance_id() != instance_id:
+		_network_pickup_net_id_by_instance_id.erase(instance_id)
+		return 0
+	return net_id
+
+
+func has_network_pickup(net_id: int) -> bool:
+	return get_network_pickup(net_id) != null
+
+
+func get_network_pickup_count() -> int:
+	var live_count := 0
+	for net_id in get_network_pickup_ids():
+		if get_network_pickup(net_id) != null:
+			live_count += 1
+	return live_count
+
+
+func get_network_pickup_ids() -> Array[int]:
+	var result: Array[int] = []
+	for net_id_variant in _network_pickup_by_net_id:
+		result.append(int(net_id_variant))
+	return result
+
+
+func clear_network_pickup_registry() -> void:
+	_network_pickup_by_net_id.clear()
+	_network_pickup_net_id_by_instance_id.clear()
+
+
+func _get_valid_network_pickup_entry(net_id: int) -> Pickup:
+	var pickup_variant: Variant = _network_pickup_by_net_id.get(net_id)
+	if pickup_variant == null or not is_instance_valid(pickup_variant):
+		return null
+	return pickup_variant as Pickup
+
+
+func _erase_network_pickup_reverse_mappings(net_id: int) -> void:
+	var stale_instance_ids: Array[int] = []
+	for instance_id_variant in _network_pickup_net_id_by_instance_id:
+		if int(_network_pickup_net_id_by_instance_id[instance_id_variant]) == net_id:
+			stale_instance_ids.append(int(instance_id_variant))
+	for instance_id in stale_instance_ids:
+		_network_pickup_net_id_by_instance_id.erase(instance_id)
 
 
 func find_nearest_enemy_attack_target_world(

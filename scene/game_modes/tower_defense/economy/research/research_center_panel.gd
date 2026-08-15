@@ -1,6 +1,8 @@
 extends CanvasLayer
 class_name ResearchCenterPanel
 
+const CONTROL_LOCK_OWNER := &"tower_research_panel"
+
 signal opened
 signal closed
 
@@ -175,7 +177,7 @@ func open_for(new_building: ResearchCenter, player: Player) -> void:
 	transient_status = ""
 	pending_multiplayer_player_level = -1
 	_bind_runtime_signals()
-	tracked_player.set_controls_locked(true)
+	tracked_player.set_control_lock(CONTROL_LOCK_OWNER, true)
 	_set_open_state(true)
 	_refresh_all()
 	building.on_shared_research_panel_opened(self)
@@ -194,7 +196,7 @@ func close() -> void:
 	pending_multiplayer_player_level = -1
 	_set_open_state(false)
 	if previous_player != null and is_instance_valid(previous_player):
-		previous_player.set_controls_locked(false)
+		previous_player.set_control_lock(CONTROL_LOCK_OWNER, false)
 	if previous_building != null and is_instance_valid(previous_building):
 		previous_building.on_shared_research_panel_closed(self)
 	closed.emit()
@@ -601,6 +603,8 @@ func _bind_runtime_signals() -> void:
 		tracked_player.xirang_changed.connect(_on_xirang_changed)
 	if not tracked_player.research_technology_level_changed.is_connected(_on_level_changed):
 		tracked_player.research_technology_level_changed.connect(_on_level_changed)
+	if not tracked_player.died.is_connected(_on_tracked_player_died):
+		tracked_player.died.connect(_on_tracked_player_died)
 	if not building.multiplayer_research_result.is_connected(_on_multiplayer_research_result):
 		building.multiplayer_research_result.connect(_on_multiplayer_research_result)
 
@@ -622,6 +626,8 @@ func _unbind_runtime_signals() -> void:
 			tracked_player.xirang_changed.disconnect(_on_xirang_changed)
 		if tracked_player.research_technology_level_changed.is_connected(_on_level_changed):
 			tracked_player.research_technology_level_changed.disconnect(_on_level_changed)
+		if tracked_player.died.is_connected(_on_tracked_player_died):
+			tracked_player.died.disconnect(_on_tracked_player_died)
 	if (
 		building != null
 		and building.multiplayer_research_result.is_connected(
@@ -637,6 +643,10 @@ func _on_xirang_changed(_total: int, _delta: int) -> void:
 
 func _on_level_changed(_level: int) -> void:
 	_refresh_dynamic_state()
+
+
+func _on_tracked_player_died() -> void:
+	close()
 
 
 func _on_multiplayer_research_result(

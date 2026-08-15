@@ -221,25 +221,21 @@ func _measure_extracted(pickup: Pickup, samples: Array[int]) -> int:
 		func(_net_id: int, _peer: int, _config: PickupConfig, _applied: bool) -> void:
 			counts["collected"] = int(counts["collected"]) + 1
 	)
-	var pickup_index: Dictionary = {}
-	var pending_exit_ids: Dictionary = {}
+	var runtime := StandardGame.new()
 	var enemy_container := Node2D.new()
 	var boss_container := Node2D.new()
 	var registry := StandardPickupRegistry.new()
 	registry.bind_standard_dependencies(
 		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
-		pickup_index,
+		runtime,
 		gateway,
 		enemy_container,
-		boss_container,
-		pending_exit_ids,
-		PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
+		boss_container
 	)
 	var started_at := Time.get_ticks_usec()
 	for event_index in range(EVENTS_PER_SAMPLE):
 		var net_id := event_index + 1
-		pickup.set_meta("net_id", net_id)
-		pickup_index[net_id] = pickup
+		runtime.register_network_pickup(net_id, pickup)
 		registry.handle_multiplayer_pickup_consumed(
 			pickup,
 			2,
@@ -248,19 +244,20 @@ func _measure_extracted(pickup: Pickup, samples: Array[int]) -> int:
 		registry.handle_multiplayer_pickup_tree_exited(net_id)
 	samples.append(Time.get_ticks_usec() - started_at)
 	var state_hash := hash([
-		pickup_index.size(),
-		pending_exit_ids.size(),
+		runtime.get_network_pickup_count(),
+		registry.pending_multiplayer_pickup_exit_ids.size(),
 		int(counts["removed"]),
 		int(counts["collected"]),
 	])
 	_expect(
-		pickup_index.is_empty()
-		and pending_exit_ids.is_empty()
+		runtime.get_network_pickup_count() == 0
+		and registry.pending_multiplayer_pickup_exit_ids.is_empty()
 		and int(counts["removed"]) == EVENTS_PER_SAMPLE
 		and int(counts["collected"]) == EVENTS_PER_SAMPLE,
 		"提取后 Pickup 轨迹必须与旧版严格一致。"
 	)
 	registry.free()
+	runtime.free()
 	enemy_container.free()
 	boss_container.free()
 	gateway.free()

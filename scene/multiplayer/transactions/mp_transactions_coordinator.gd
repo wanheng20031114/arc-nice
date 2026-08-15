@@ -590,8 +590,7 @@ func receive_upgrade_confirmation(
 	)
 	if not already_applied_on_host:
 		_apply_confirmed_upgrade_to_player(player_node, stat_type)
-	player_node.current_xirang = current_xirang
-	player_node.xirang_changed.emit(current_xirang, 0)
+	player_node.set_xirang_balance(current_xirang)
 	if free_upgrade and not already_applied_on_host:
 		player_node.play_lucky_upgrade_feedback()
 

@@ -1,6 +1,8 @@
 extends WaveCombatRuntimeBase
 class_name StandardGame
 
+const MODAL_CONTROL_LOCK_OWNER := &"standard_modal_ui"
+
 const TANGO_LASER_BULLET_POOL_SCENE := (
 	StandardPrewarmerCoordinator.TANGO_LASER_BULLET_POOL_SCENE
 )
@@ -88,36 +90,6 @@ var multiplayer_defeat_check_pending: bool:
 		return player_roster_coordinator.defeat_check_pending
 	set(value):
 		player_roster_coordinator.defeat_check_pending = value
-var _pending_multiplayer_pickup_exit_ids: Dictionary = {}
-var pending_multiplayer_pickup_exit_ids: Dictionary:
-	get:
-		var registry := pickup_registry
-		return (
-			registry.pending_multiplayer_pickup_exit_ids
-			if registry != null and registry.is_bound()
-			else _pending_multiplayer_pickup_exit_ids
-		)
-	set(value):
-		_pending_multiplayer_pickup_exit_ids = value
-		var registry := pickup_registry
-		if registry != null and registry.is_bound():
-			registry.pending_multiplayer_pickup_exit_ids = value
-var _next_multiplayer_pickup_net_id := (
-	PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
-)
-var next_multiplayer_pickup_net_id: int:
-	get:
-		var registry := pickup_registry
-		return (
-			registry.next_multiplayer_pickup_net_id
-			if registry != null and registry.is_bound()
-			else _next_multiplayer_pickup_net_id
-		)
-	set(value):
-		_next_multiplayer_pickup_net_id = value
-		var registry := pickup_registry
-		if registry != null and registry.is_bound():
-			registry.next_multiplayer_pickup_net_id = value
 
 var bosses: Array[Resource]:
 	get:
@@ -269,13 +241,7 @@ func get_player_for_peer(peer_id: int) -> Player:
 
 
 func get_pickup_for_net_id(net_id: int) -> Pickup:
-	var registry := pickup_registry
-	if registry != null and registry.is_bound():
-		return registry.get_pickup_for_net_id(net_id)
-	return PickupRegistryBase.get_pickup_from_index(
-		multiplayer_pickups,
-		net_id
-	)
+	return get_network_pickup(net_id)
 
 
 func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
@@ -320,12 +286,10 @@ func _initialize_mode_runtime_before_validation() -> void:
 		)
 	pickup_registry.bind_standard_dependencies(
 		runtime_mode,
-		multiplayer_pickups,
+		self,
 		get_multiplayer_gameplay_gateway(),
 		enemy_container,
-		boss_container,
-		_pending_multiplayer_pickup_exit_ids,
-		_next_multiplayer_pickup_net_id
+		boss_container
 	)
 	player_roster_coordinator.bind_dependencies(
 		self,
@@ -642,21 +606,21 @@ func _apply_remote_mode_flow_state(
 func _on_boss_proxy_created(boss: LinglanBoss, net_id: int) -> void:
 	if boss == null or net_id <= 0:
 		return
-	multiplayer_enemies_by_net_id[net_id] = boss
-	register_combat_target(net_id, boss)
-	multiplayer_enemy_ids_by_instance[boss.get_instance_id()] = net_id
+	register_network_enemy(net_id, boss)
 
 
 func _on_boss_enemy_removed(enemy_id: int) -> void:
-	active_wave_enemy_ids.erase(enemy_id)
+	remove_active_wave_enemy(enemy_id)
 	_mark_multiplayer_enemy_removed(enemy_id)
 
 
 func _on_boss_defeated(enemy: Enemy) -> void:
-	if enemy == null:
+	if (
+		enemy == null
+		or not try_resolve_active_wave_enemy_defeat(enemy.get_instance_id())
+	):
 		return
-	active_wave_enemy_ids.erase(enemy.get_instance_id())
-	current_wave_defeated = 1
+	remove_active_wave_enemy(enemy.get_instance_id())
 	_emit_multiplayer_enemy_defeated(enemy)
 
 
@@ -706,16 +670,17 @@ func _on_debug_collectible_window_closed() -> void:
 	_refresh_player_modal_ui_lock()
 
 func _lock_player_for_modal_ui() -> void:
-	if player != null and not player.is_dead:
-		player.set_controls_locked(true)
+	if player != null and is_instance_valid(player):
+		player.set_control_lock(MODAL_CONTROL_LOCK_OWNER, true)
 
 func _refresh_player_modal_ui_lock() -> void:
-	if player == null or player.is_dead:
+	if player == null or not is_instance_valid(player):
 		return
-	if settings_panel.is_open() or player_profile_panel.is_open() or debug_collectible_window.is_open():
-		player.set_controls_locked(true)
-	else:
-		player.set_controls_locked(false)
+	player.set_control_lock(
+		MODAL_CONTROL_LOCK_OWNER,
+		settings_panel.is_open()
+		or debug_collectible_window.is_open()
+	)
 
 func _toggle_full_screen() -> void:
 	var user_settings := get_node_or_null("/root/UserSettings")

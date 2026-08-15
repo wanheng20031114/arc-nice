@@ -1068,6 +1068,21 @@ func apply_multiplayer_health_snapshot(new_current_health: int) -> void:
 	current_health = maxi(new_current_health, 0)
 
 
+## Applies a client health snapshot and its monotonic watermark as one entity-owned
+## transition. Network coordinators must not update health and revision separately:
+## observers of virtual snapshot hooks (such as boss HUDs) then see one coherent
+## state, while duplicate and out-of-order packets are rejected here.
+func try_apply_multiplayer_health_snapshot(
+	new_current_health: int,
+	new_health_revision: int
+) -> bool:
+	if new_health_revision <= health_revision:
+		return false
+	health_revision = new_health_revision
+	apply_multiplayer_health_snapshot(new_current_health)
+	return true
+
+
 ## Unified authoritative sink shared by direct hits, status ticks and Host
 ## confirmations. Presentation and death remain entity-owned side effects.
 func apply_combat_damage(request: DamageRequest) -> DamageResult:

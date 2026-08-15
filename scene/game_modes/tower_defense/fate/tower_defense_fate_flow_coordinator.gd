@@ -1,6 +1,8 @@
 extends Node
 class_name TowerDefenseFateFlowCoordinator
 
+const COMBAT_ACTION_LOCK_OWNER := &"tower_fate_interlude"
+
 const XIAOCONG_INTERACTION_DISTANCE := 220.0
 
 signal local_interaction_requested
@@ -21,8 +23,6 @@ var presentation_coordinator: TowerDefensePresentationCoordinator
 var multiplayer_adapter: TowerDefenseMultiplayerModeAdapter
 var multiplayer_gateway: MultiplayerGameplayGateway
 var xiaocong_fate_interlude: XiaocongFateInterlude
-var enemy_spawn_timer: Timer
-var state_timer: Timer
 var plant_terrain_decay_timer: Timer
 var production_coordinator: ProductionCoordinator
 var research_coordinator: ResearchCoordinator
@@ -58,8 +58,6 @@ func setup(
 	configured_multiplayer_adapter: TowerDefenseMultiplayerModeAdapter,
 	configured_multiplayer_gateway: MultiplayerGameplayGateway,
 	configured_interlude: XiaocongFateInterlude,
-	configured_enemy_spawn_timer: Timer,
-	configured_state_timer: Timer,
 	configured_terrain_decay_timer: Timer,
 	configured_production: ProductionCoordinator,
 	configured_research: ResearchCoordinator,
@@ -78,8 +76,6 @@ func setup(
 	multiplayer_adapter = configured_multiplayer_adapter
 	multiplayer_gateway = configured_multiplayer_gateway
 	xiaocong_fate_interlude = configured_interlude
-	enemy_spawn_timer = configured_enemy_spawn_timer
-	state_timer = configured_state_timer
 	plant_terrain_decay_timer = configured_terrain_decay_timer
 	production_coordinator = configured_production
 	research_coordinator = configured_research
@@ -103,8 +99,6 @@ func is_bound() -> bool:
 		and multiplayer_adapter != null
 		and multiplayer_gateway != null
 		and xiaocong_fate_interlude != null
-		and enemy_spawn_timer != null
-		and state_timer != null
 		and plant_terrain_decay_timer != null
 		and production_coordinator != null
 		and research_coordinator != null
@@ -271,13 +265,10 @@ func enter_interlude(next_step: FlowStepConfig) -> void:
 	)
 	if not rogue_handoff:
 		set_interlude_systems_frozen(true)
-	campaign_coordinator.wave_state = CombatFlowState.State.FATE_INTERLUDE
-	if not rogue_handoff:
-		set_player_combat_locked(true)
-	campaign_coordinator.next_flow_step_after_rest = next_step
-	campaign_coordinator.countdown_seconds = 0
-	enemy_spawn_timer.stop()
-	state_timer.stop()
+	# Fate 先取得自己的战斗锁，再让 Rogue 在黑幕下释放旧租约。
+	# 两个 owner 的重叠保证转场边界不存在一帧可战斗窗口。
+	set_player_combat_locked(true)
+	campaign_coordinator.transition_to_fate_interlude(next_step)
 	var completed_day := campaign_coordinator.get_day_number_for_wave(
 		campaign_coordinator.current_wave_index + 1
 	)
@@ -374,15 +365,14 @@ func apply_remote_interlude_flow(day_number: int) -> void:
 	var rogue_handoff := (
 		rogue_exploration_coordinator.has_pending_presentation_exit()
 	)
-	# Client 可能已由 Campaign 预先取得 Fate freeze lease。先提交 flow state，
-	# 再关闭旧 modal，确保其 closed 信号刷新放置输入时仍保持禁用。
-	campaign_coordinator.wave_state = CombatFlowState.State.FATE_INTERLUDE
+	# Client 可能已由 Campaign 预先取得 Fate freeze lease。先原子提交
+	# flow state/timer，再关闭旧 modal，确保其 closed 信号刷新放置输入时
+	# 仍保持禁用。
+	campaign_coordinator.synchronize_remote_fate_interlude_state()
 	multiplayer_adapter.cancel_all_luoxi_special_games()
 	plant_placement_coordinator.close_outer_modals_for_mode_transfer()
 	if not rogue_handoff:
 		set_interlude_systems_frozen(true)
-	state_timer.stop()
-	enemy_spawn_timer.stop()
 	set_player_combat_locked(true)
 	if remote_entry_in_progress:
 		return
@@ -626,7 +616,10 @@ func set_interlude_systems_frozen(frozen: bool) -> void:
 
 
 func set_player_combat_locked(locked: bool) -> void:
-	player_roster_coordinator.set_combat_actions_locked_for_all(locked)
+	player_roster_coordinator.set_combat_action_lock_for_all(
+		COMBAT_ACTION_LOCK_OWNER,
+		locked
+	)
 
 
 func synchronize_reconnected_player_presentation_lease(peer_id: int) -> bool:
@@ -641,8 +634,7 @@ func synchronize_reconnected_player_presentation_lease(peer_id: int) -> bool:
 	var player_instance := _get_player(peer_id)
 	if player_instance == null or not is_instance_valid(player_instance):
 		return false
-	player_instance.set_combat_actions_locked(true)
-	player_instance.set_controls_locked(false)
+	player_instance.set_combat_action_lock(COMBAT_ACTION_LOCK_OWNER, true)
 	if (
 		player_roster_coordinator.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY

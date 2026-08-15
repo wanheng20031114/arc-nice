@@ -680,10 +680,7 @@ func _test_multiplayer_batch_bridge() -> void:
 	mp_game.game = bridge_game
 	mp_game.tower_mode_adapter = tower_mode_adapter
 	var enemy_net_id := 808
-	bridge_game.multiplayer_enemy_ids_by_instance[
-		enemy.get_instance_id()
-	] = enemy_net_id
-	bridge_game.multiplayer_enemies_by_net_id[enemy_net_id] = enemy
+	bridge_game.register_network_enemy(enemy_net_id, enemy)
 	var health_before := enemy.current_health
 	var accepted := mp_game.apply_authoritative_plant_enemy_damage_batch(
 		77,
@@ -729,7 +726,7 @@ func _test_multiplayer_batch_bridge() -> void:
 	)
 	bridge_game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	net_manager_stub.host = true
-	bridge_game.multiplayer_enemy_ids_by_instance.clear()
+	bridge_game.clear_network_enemy_registry()
 	_expect(
 		not mp_game.apply_authoritative_plant_enemy_damage_batch(
 			77,

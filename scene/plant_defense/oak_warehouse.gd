@@ -540,7 +540,7 @@ func transfer_player_item_count_to_storage(
 	transfer_count: int,
 	run_state: RunStateStore
 ) -> bool:
-	if run_state == null or run_state.active_multiplayer_peer_id > 0:
+	if run_state == null or run_state.get_active_multiplayer_peer_id() > 0:
 		return false
 	var item := run_state.get_item(slot_index)
 	var source_count := run_state.get_item_count(slot_index)
@@ -580,7 +580,7 @@ func transfer_storage_item_count_to_player(
 	transfer_count: int,
 	run_state: RunStateStore
 ) -> bool:
-	if run_state == null or run_state.active_multiplayer_peer_id > 0:
+	if run_state == null or run_state.get_active_multiplayer_peer_id() > 0:
 		return false
 	var item := get_storage_item(slot_index)
 	var source_count := get_storage_item_count(slot_index)
@@ -618,7 +618,7 @@ func can_move_stack_to_slot(
 ) -> bool:
 	if (
 		run_state == null
-		or (peer_id <= 0 and run_state.active_multiplayer_peer_id > 0)
+		or (peer_id <= 0 and run_state.get_active_multiplayer_peer_id() > 0)
 		or source_container < OakWarehouseProtocol.ItemContainer.PLAYER
 		or source_container > OakWarehouseProtocol.ItemContainer.STORAGE
 		or target_container < OakWarehouseProtocol.ItemContainer.PLAYER

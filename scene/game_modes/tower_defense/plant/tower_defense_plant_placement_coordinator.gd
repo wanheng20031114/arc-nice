@@ -1,6 +1,8 @@
 extends Node
 class_name TowerDefensePlantPlacementCoordinator
 
+const CONTROL_LOCK_OWNER := &"tower_placement_and_modal"
+
 signal placement_mode_changed(active: bool)
 signal placement_input_enabled_changed(enabled: bool)
 signal player_controls_lock_changed(locked: bool)
@@ -88,7 +90,9 @@ func setup(
 	_local_peer_id = maxi(local_peer_id, 0)
 	_sandbox_free_building_enabled = sandbox_free_building_enabled
 	_flow_state = initial_flow_state
-	_last_player_controls_locked = local_player.controls_locked
+	_last_player_controls_locked = local_player.has_control_lock(
+		CONTROL_LOCK_OWNER
+	)
 
 	_placement_controller.setup(_plant_system, _local_player)
 	_configure_controller_session()
@@ -134,7 +138,9 @@ func set_local_player(local_player: Player) -> void:
 		push_error("TowerDefensePlantPlacementCoordinator: 本地玩家不能为空。")
 		return
 	_local_player = local_player
-	_last_player_controls_locked = local_player.controls_locked
+	_last_player_controls_locked = local_player.has_control_lock(
+		CONTROL_LOCK_OWNER
+	)
 	if _placement_controller == null or _plant_system == null:
 		return
 	_placement_controller.setup(_plant_system, _local_player)
@@ -455,7 +461,7 @@ func _on_debug_collectible_visibility_changed() -> void:
 
 
 func _refresh_player_controls_lock() -> void:
-	if _local_player == null or not is_instance_valid(_local_player) or _local_player.is_dead:
+	if _local_player == null or not is_instance_valid(_local_player):
 		return
 	var locked := (
 		has_exclusive_modal_open()
@@ -464,7 +470,7 @@ func _refresh_player_controls_lock() -> void:
 			and _placement_controller.is_active()
 		)
 	)
-	_local_player.set_controls_locked(locked)
+	_local_player.set_control_lock(CONTROL_LOCK_OWNER, locked)
 	if locked != _last_player_controls_locked:
 		_last_player_controls_locked = locked
 		player_controls_lock_changed.emit(locked)

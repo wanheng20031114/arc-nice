@@ -181,6 +181,7 @@ func _run_spawn_scenario(seed_value: int, exercise_cap: bool) -> Dictionary:
 		marker.name = point_name
 		probe.active_wave_spawn_points.append(marker)
 	probe.call("_build_wave_spawn_queue", wave)
+	probe.reset_wave_progress(probe.pending_enemy_configs.size())
 
 	for tick_index in range(EXPECTED_ALIVE_CAP):
 		var spawned_before := probe.current_wave_spawned

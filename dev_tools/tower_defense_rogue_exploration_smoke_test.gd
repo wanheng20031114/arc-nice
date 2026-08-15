@@ -299,6 +299,11 @@ func _run() -> void:
 				"关闭作战结算后必须释放战场并解除路线 busy。"
 			)
 
+	var expected_xirang_after_rogue := run_state.get_party_xirang_balance(0)
+	_expect(
+		expected_xirang_after_rogue == route_player.current_xirang,
+		"Rogue 路线实体与跨场景息壤账本必须在退出探索前一致。"
+	)
 	route_player.apply_multiplayer_death_state()
 	_set_route_action_points_for_boundary_test(route, 0)
 	var entered_fate := await _wait_for_fate_interlude_entry(game, coordinator)
@@ -341,11 +346,13 @@ func _run() -> void:
 		and not game.production_coordinator.authoritative_processing_enabled
 		and not game.research_coordinator.authoritative_processing_enabled
 		and game.plant_terrain_decay_timer.is_stopped()
+		and game.player.current_xirang == expected_xirang_after_rogue
+		and run_state.get_party_xirang_balance(0) == expected_xirang_after_rogue
 		and game.player.global_position
 			== game.player_roster_coordinator.get_world_spawn_position(0),
 		(
-			"小葱命运结束后必须返回塔防出生点、续接休整，并保持进入 Rogue"
-			+ " 前已经停用的生产、研究与衰减状态。"
+			"小葱命运结束后必须返回塔防出生点、保留 Rogue 息壤结算、"
+			+ "续接休整，并保持进入 Rogue 前已经停用的生产、研究与衰减状态。"
 		)
 	)
 	_expect(
@@ -702,14 +709,18 @@ func _verify_snapshot_ordering_and_idempotence() -> void:
 	# 淘汰，inactive 只收敛账本，不能新建无人消费的 pending。
 	coordinator.set("_daily_grant_ledger", {})
 	coordinator.set("_map_generation_epoch", 0)
-	game.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.WAVE_ACTIVE
+	)
 	game.campaign_coordinator.current_wave_index = 4
 	_expect(
 		not coordinator.apply_multiplayer_snapshot(active_snapshot),
 		"Campaign 已进入更后日时必须按日序淘汰旧 Rogue active 快照。"
 	)
 	game.campaign_coordinator.current_wave_index = 0
-	game.campaign_coordinator.wave_state = CombatFlowState.State.FATE_INTERLUDE
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.FATE_INTERLUDE
+	)
 	var superseded_active_applied := coordinator.apply_multiplayer_snapshot(
 		active_snapshot
 	)

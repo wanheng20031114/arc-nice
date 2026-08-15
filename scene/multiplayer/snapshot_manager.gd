@@ -559,7 +559,12 @@ static func _normalize_enemy_locomotion_state(state: int) -> int:
 	)
 
 
-static func _copy_player_state(source: PlayerState) -> PlayerState:
+## 返回一份由调用方独占的玩家状态。实时解码器和 roster 采样器都会复用
+## PlayerState 对象；需要跨帧保存（例如断线重连）时必须先复制，不能长期
+## 持有它们的工作缓冲区引用。
+static func copy_player_state(source: PlayerState) -> PlayerState:
+	if source == null:
+		return null
 	var copy := PlayerState.new()
 	_copy_player_state_into(source, copy)
 	return copy

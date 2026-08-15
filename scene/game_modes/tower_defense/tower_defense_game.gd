@@ -145,18 +145,6 @@ var random_generator := RandomNumberGenerator.new()
 var multiplayer_player_names: Dictionary = {}
 var multiplayer_player_character_ids: Dictionary = {}
 var multiplayer_spawn_slot_indices: Dictionary[int, int] = {}
-var _pending_multiplayer_pickup_exit_ids: Dictionary = {}
-var pending_multiplayer_pickup_exit_ids: Dictionary:
-	get:
-		return (
-			pickup_registry.pending_multiplayer_pickup_exit_ids
-			if pickup_registry != null and pickup_registry.is_bound()
-			else _pending_multiplayer_pickup_exit_ids
-		)
-	set(value):
-		_pending_multiplayer_pickup_exit_ids = value
-		if pickup_registry != null and pickup_registry.is_bound():
-			pickup_registry.pending_multiplayer_pickup_exit_ids = value
 var maximum_base_health: int:
 	get:
 		return home_defense_coordinator.maximum_base_health
@@ -177,18 +165,6 @@ var has_received_remote_base_health_snapshot: bool:
 		return home_defense_coordinator.has_received_remote_base_health_snapshot
 	set(value):
 		home_defense_coordinator.has_received_remote_base_health_snapshot = value
-var _next_multiplayer_pickup_net_id := PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
-var next_multiplayer_pickup_net_id: int:
-	get:
-		return (
-			pickup_registry.next_multiplayer_pickup_net_id
-			if pickup_registry != null and pickup_registry.is_bound()
-			else _next_multiplayer_pickup_net_id
-		)
-	set(value):
-		_next_multiplayer_pickup_net_id = value
-		if pickup_registry != null and pickup_registry.is_bound():
-			pickup_registry.next_multiplayer_pickup_net_id = value
 var navigation_prewarm_requested: bool:
 	get:
 		return prewarmer_coordinator != null and prewarmer_coordinator.navigation_prewarm_requested
@@ -548,12 +524,10 @@ func _configure_pickup_registry() -> bool:
 		return false
 	pickup_registry.bind_tower_dependencies(
 		runtime_mode,
-		multiplayer_pickups,
+		self,
 		get_multiplayer_gameplay_gateway(),
 		enemy_container,
-		boss_container,
-		_pending_multiplayer_pickup_exit_ids,
-		_next_multiplayer_pickup_net_id
+		boss_container
 	)
 	if not pickup_registry.is_bound():
 		push_error("TowerDefenseGame: PickupRegistry 依赖绑定不完整。")
@@ -704,8 +678,6 @@ func _configure_rogue_exploration() -> bool:
 		plant_placement_coordinator,
 		plant_placement_controller,
 		tower_multiplayer_mode_adapter,
-		state_timer,
-		enemy_spawn_timer,
 		plant_terrain_decay_timer,
 		production_coordinator,
 		research_coordinator,
@@ -952,8 +924,6 @@ func _configure_xiaocong_fate_flow() -> bool:
 		tower_multiplayer_mode_adapter,
 		multiplayer_gateway,
 		xiaocong_fate_interlude,
-		enemy_spawn_timer,
-		state_timer,
 		plant_terrain_decay_timer,
 		production_coordinator,
 		research_coordinator,
@@ -1027,16 +997,11 @@ func get_player_for_peer(peer_id: int) -> Player:
 
 
 func get_enemy_for_net_id(net_id: int) -> Enemy:
-	var enemy := enemy_coordinator.get_enemy(net_id)
-	if enemy == null:
-		unregister_combat_target(net_id)
-	return enemy
+	return get_network_enemy(net_id)
 
 
 func get_pickup_for_net_id(net_id: int) -> Pickup:
-	if pickup_registry != null and pickup_registry.is_bound():
-		return pickup_registry.get_pickup_for_net_id(net_id)
-	return PickupRegistryBase.get_pickup_from_index(multiplayer_pickups, net_id)
+	return get_network_pickup(net_id)
 
 
 func _register_static_multiplayer_pickups() -> void:

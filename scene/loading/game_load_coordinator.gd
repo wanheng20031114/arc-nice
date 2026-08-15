@@ -562,8 +562,7 @@ func _append_inventory_runtime_resources(
 	if run_state == null:
 		return
 	_append_inventory_snapshot_resources(manifest, run_state.export_inventory_snapshot())
-	for peer_id_variant in run_state.multiplayer_inventories.keys():
-		var peer_id := int(peer_id_variant)
+	for peer_id in run_state.get_registered_inventory_peer_ids():
 		if peer_id > 0 and run_state.has_multiplayer_peer_state(peer_id):
 			_append_inventory_snapshot_resources(
 				manifest,

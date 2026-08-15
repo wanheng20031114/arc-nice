@@ -76,11 +76,12 @@ func _run() -> void:
 	telemetry.count_sample_interval_seconds = 0.05
 	telemetry.start(game)
 
-	_expect(game.waves.size() == 12, "Telemetry pressure fixture requires twelve waves.")
-	if game.waves.is_empty():
+	var campaign := game.campaign_coordinator
+	_expect(campaign.waves.size() == 12, "Telemetry pressure fixture requires twelve waves.")
+	if campaign.waves.is_empty():
 		await _finish()
 		return
-	var first_wave: WaveConfig = game.waves[0]
+	var first_wave: WaveConfig = campaign.waves[0]
 	_expect(
 		first_wave.get_total_enemy_count() == EXPECTED_WAVE_TOTAL,
 		"Telemetry pressure fixture requires the 1200-enemy first wave."
@@ -90,12 +91,12 @@ func _run() -> void:
 		"Telemetry pressure fixture requires the 300-enemy active cap."
 	)
 
-	game.campaign_coordinator.begin_flow_step(first_wave)
+	campaign.begin_flow_step(first_wave)
 	game.enemy_spawn_timer.stop()
 	telemetry.sample_runtime_counts(game)
 	var pressure_spawn_frames := 0
 	while (
-		game.current_wave_spawned < EXPECTED_MAX_ALIVE
+		campaign.current_wave_spawned < EXPECTED_MAX_ALIVE
 		and pressure_spawn_frames < 600
 	):
 		var batch_started_usec: int = telemetry.begin_enemy_spawn_batch()
@@ -106,11 +107,11 @@ func _run() -> void:
 		await process_frame
 		pressure_spawn_frames += 1
 	_expect(
-		game.current_wave_spawned == EXPECTED_MAX_ALIVE,
+		campaign.current_wave_spawned == EXPECTED_MAX_ALIVE,
 		(
 			"Pressure fixture must reach the 300-enemy cap within 600 frames; "
 			+ "spawned %d."
-		) % game.current_wave_spawned
+		) % campaign.current_wave_spawned
 	)
 
 	var counts: Dictionary = telemetry.sample_runtime_counts(game)

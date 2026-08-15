@@ -204,6 +204,26 @@ func _test_host_wiring_order_and_authority_bridge() -> void:
 		"既有静态 Standard adapter 必须完成强类型依赖注入。"
 	)
 	merchant_events.clear()
+	var progress_enemy := Enemy.new()
+	game.reset_wave_progress(1, 1)
+	game.register_active_wave_enemy(progress_enemy)
+	var first_resolution := game.try_resolve_active_wave_enemy_defeat(
+		progress_enemy.get_instance_id()
+	)
+	var duplicate_resolution := game.try_resolve_active_wave_enemy_defeat(
+		progress_enemy.get_instance_id()
+	)
+	var progress_before_invalid := game.get_wave_progress_snapshot()
+	_expect(
+		first_resolution
+		and not duplicate_resolution
+		and game.current_wave_defeated == 1
+		and not game.apply_wave_progress_snapshot(2, 1, 2)
+		and game.get_wave_progress_snapshot() == progress_before_invalid,
+		"通用波次进度必须拒绝重复终结与 defeated>spawned 的非法快照。"
+	)
+	game.remove_active_wave_enemy(progress_enemy.get_instance_id())
+	progress_enemy.free()
 
 	game.call("_set_merchant_active", true)
 	game.call("_set_merchant_active", true)
@@ -272,7 +292,7 @@ func _test_host_wiring_order_and_authority_bridge() -> void:
 			var boss_net_id := int(boss.get_meta("net_id", 0))
 			_expect(
 				boss_net_id > 0
-				and game.multiplayer_enemies_by_net_id.get(boss_net_id) == boss
+				and game.get_network_enemy(boss_net_id) == boss
 				and combat_events == [
 					"flow:%d" % CombatFlowState.State.BOSS_ACTIVE,
 					"boss:%d" % boss_net_id,

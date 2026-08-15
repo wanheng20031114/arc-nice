@@ -38,13 +38,11 @@ func _verify_real_runtime_escape_ordering() -> void:
 	var nonlethal := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	game.enemy_container.add_child(nonlethal)
 	nonlethal.setup(BASIC_CONFIG, game.player, game.grid_pathfinder)
-	game.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
-	game.campaign_coordinator.current_flow_step = game.campaign_coordinator.waves[0]
-	game.campaign_coordinator.current_wave_total = 1
-	game.campaign_coordinator.current_wave_spawned = 1
-	game.campaign_coordinator.current_wave_defeated = 0
-	game.campaign_coordinator.current_wave_escaped = 0
-	game.campaign_coordinator.current_wave_resolved = 0
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.WAVE_ACTIVE,
+		game.campaign_coordinator.waves[0]
+	)
+	game.campaign_coordinator.reset_wave_progress(1, 1)
 	game.enemy_coordinator.clear_queue()
 	game.enemy_coordinator.clear_active_enemies()
 	game.enemy_coordinator.register_external_enemy(nonlethal)
@@ -70,13 +68,11 @@ func _verify_real_runtime_escape_ordering() -> void:
 	var lethal := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	game.enemy_container.add_child(lethal)
 	lethal.setup(BASIC_CONFIG, game.player, game.grid_pathfinder)
-	game.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
-	game.campaign_coordinator.current_flow_step = game.campaign_coordinator.waves[0]
-	game.campaign_coordinator.current_wave_total = 1
-	game.campaign_coordinator.current_wave_spawned = 1
-	game.campaign_coordinator.current_wave_defeated = 0
-	game.campaign_coordinator.current_wave_escaped = 0
-	game.campaign_coordinator.current_wave_resolved = 0
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.WAVE_ACTIVE,
+		game.campaign_coordinator.waves[0]
+	)
+	game.campaign_coordinator.reset_wave_progress(1, 1)
 	game.enemy_coordinator.clear_queue()
 	game.enemy_coordinator.clear_active_enemies()
 	game.enemy_coordinator.register_external_enemy(lethal)

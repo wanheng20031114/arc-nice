@@ -351,6 +351,17 @@ func _run() -> void:
 	)
 	panel.close()
 	_expect(not panel.is_open() and not player.controls_locked, "关闭生产面板必须恢复玩家控制。")
+	if second_station != null:
+		panel.open_for(station, player)
+		panel.bind_building(second_station, player)
+		_expect(
+			not panel.is_open()
+			and not player.has_control_lock(
+				ProductionBuildingPanel.CONTROL_LOCK_OWNER
+			)
+			and panel.is_bound_to_building(second_station),
+			"可见生产面板重绑建筑时必须先关闭旧会话并释放旧玩家锁。"
+		)
 	station.nearby_player = player
 	station.call("_set_interaction_target", true)
 	var interact_event := InputEventKey.new()

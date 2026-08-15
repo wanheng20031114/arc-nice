@@ -558,6 +558,8 @@ func _dispatch_extracted_event(
 ) -> void:
 	match event_kind:
 		0:
+			# A/B 事件生成器刻意保留旧字段写入以固定历史 trace；普通测试
+			# 必须通过 Campaign fixture API 配置倒计时。
 			campaign.countdown_seconds = random_generator.randi_range(0, 90)
 			adapter.publish_flow_state(
 				random_generator.randi_range(

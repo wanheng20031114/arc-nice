@@ -281,6 +281,7 @@ func _test_wave_alive_cap() -> void:
 	probe.current_flow_step = wave
 	probe.enemy_spawn_timer = Timer.new()
 	probe.call("_build_wave_spawn_queue", wave)
+	probe.reset_wave_progress(probe.pending_enemy_configs.size())
 	for _tick in range(15):
 		probe.call("_spawn_wave_batch")
 	_expect(
@@ -297,7 +298,7 @@ func _test_wave_alive_cap() -> void:
 			probe.pending_enemy_configs.size(),
 		]
 	)
-	probe.active_wave_enemy_ids.erase(1)
+	probe.remove_active_wave_enemy(1)
 	probe.call("_spawn_wave_batch")
 	_expect(
 		probe.spawn_attempts == 11

@@ -62,7 +62,9 @@ func _run() -> void:
 
 func _exercise_full_catalog_tower_spawn(game: TowerDefenseGame) -> void:
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	game.campaign_coordinator.wave_state = CombatFlowState.State.INTERMISSION
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.INTERMISSION
+	)
 	game.enemy_coordinator.clear_queue()
 	game.enemy_coordinator.clear_active_enemies()
 	game.enemy_coordinator.clear_hud_enemies()
@@ -187,13 +189,11 @@ func _exercise_spawn_terminal_chain(game: TowerDefenseGame) -> void:
 	)
 
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	game.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.WAVE_ACTIVE
+	)
 	game.campaign_coordinator.current_wave_index = 2
-	game.campaign_coordinator.current_wave_total = 1
-	game.campaign_coordinator.current_wave_spawned = 1
-	game.campaign_coordinator.current_wave_defeated = 0
-	game.campaign_coordinator.current_wave_escaped = 0
-	game.campaign_coordinator.current_wave_resolved = 0
+	game.campaign_coordinator.reset_wave_progress(1, 1)
 	game.enemy_coordinator.clear_queue()
 	game.enemy_coordinator.clear_active_enemies()
 	game.enemy_coordinator.clear_hud_enemies()
@@ -208,13 +208,14 @@ func _exercise_spawn_terminal_chain(game: TowerDefenseGame) -> void:
 	var spawned := game.enemy_coordinator.try_spawn_enemy(ENEMY_CONFIG, 9)
 	_expect(spawned, "EnemyCoordinator 未能完成普通波次敌人实例化。")
 	_expect(spawned_ids == [47], "出生广播或稳定 net id 顺序发生变化。")
-	var enemy := game.multiplayer_enemies_by_net_id.get(47) as Enemy
+	var enemy := game.get_network_enemy(47)
 	_expect(enemy != null, "实例化敌人未注册到多人索引。")
 	if enemy == null:
 		return
 	_expect(game.enemy_coordinator.has_active_enemy(enemy.get_instance_id()), "实例化敌人未进入 active 集合。")
 	_expect(game.enemy_coordinator.hud_enemy_count() == 1, "实例化敌人未进入 HUD 存活集合。")
 
+	enemy.defeated.emit(enemy)
 	enemy.defeated.emit(enemy)
 	_expect(defeated_ids == [47], "击败广播未严格复用出生 net id。")
 	_expect(
@@ -223,15 +224,15 @@ func _exercise_spawn_terminal_chain(game: TowerDefenseGame) -> void:
 	)
 	_expect(
 		game.campaign_coordinator.current_wave_resolved == 1,
-		"已结算计数未写入 Campaign 唯一状态。"
+		"重复 defeated 信号不得重复写入 Campaign 已结算计数。"
 	)
 	var enemy_instance_id := enemy.get_instance_id()
 	enemy.queue_free()
 	await process_frame
 	await physics_frame
 	_expect(removed_ids == [47], "tree exit 未产生唯一 enemy_removed 终止事件。")
-	_expect(not game.multiplayer_enemies_by_net_id.has(47), "tree exit 后 net→enemy 索引残留。")
-	_expect(not game.multiplayer_enemy_ids_by_instance.has(enemy_instance_id), "tree exit 后 instance→net 索引残留。")
+	_expect(not game.has_network_enemy(47), "tree exit 后 net→enemy 索引残留。")
+	_expect(game.get_network_enemy_net_id_by_instance_id(enemy_instance_id) == 0, "tree exit 后 instance→net 索引残留。")
 	_expect(game.enemy_coordinator.hud_enemy_count() == 0, "tree exit 后 HUD 存活集合残留。")
 	_expect(completed_count[0] == 1, "波次完成判定应且只应触发一次。")
 

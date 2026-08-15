@@ -2084,11 +2084,8 @@ func _apply_authoritative_plant_damage_request(
 ) -> bool:
 	if enemy == null or not is_instance_valid(enemy) or request == null:
 		return false
-	var enemy_net_id := int(
-		_runtime.multiplayer_enemy_ids_by_instance.get(
-			enemy.get_instance_id(),
-			0
-		)
+	var enemy_net_id := _runtime.get_network_enemy_net_id_by_instance_id(
+		enemy.get_instance_id()
 	)
 	if enemy_net_id <= 0:
 		return false

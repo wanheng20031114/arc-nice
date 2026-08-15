@@ -81,7 +81,10 @@ func _run() -> void:
 	await _verify_singleplayer_combat_target_index_and_agave(game)
 	_verify_enemy_contract(game)
 	_verify_home_damage_resources()
-	_expect(game.bosses.size() == 1, "Tower-defense Campaign must contain the Linglan Boss step.")
+	_expect(
+		game.campaign_coordinator.bosses.size() == 1,
+		"Tower-defense Campaign must contain the Linglan Boss step."
+	)
 	await _verify_escape_resolution(game)
 
 	game.queue_free()
@@ -261,14 +264,14 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 	var spawn5 := game.enemy_coordinator.enemy_spawn_points_by_name.get(&"Spawn5") as Marker2D
 	var spawn6 := game.enemy_coordinator.enemy_spawn_points_by_name.get(&"Spawn6") as Marker2D
 	_expect(spawn5 != null and spawn6 != null, "Linglan spawn anchors Spawn5/6 must exist.")
-	if spawn5 == null or spawn6 == null or game.bosses.is_empty():
+	var boss_coordinator := game.boss_coordinator
+	var boss_config := boss_coordinator.get_first_boss_config()
+	if spawn5 == null or spawn6 == null or boss_config == null:
 		return
 	var expected_spawn := (
 		(spawn5.global_position + spawn6.global_position) * 0.5
 		+ Vector2.LEFT * 96.0
 	).round()
-	var boss_config := game.bosses[0] as BossConfig
-	var boss_coordinator := game.boss_coordinator
 	var resolved_spawn := boss_coordinator.get_linglan_spawn_global_position(
 		boss_config
 	)
@@ -316,9 +319,11 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 	var existing_enemy_ids := {}
 	for enemy_child in game.enemy_container.get_children():
 		existing_enemy_ids[enemy_child.get_instance_id()] = true
-	var original_wave_state: CombatFlowState.State = game.wave_state
+	var original_wave_state: CombatFlowState.State = (
+		game.campaign_coordinator.wave_state
+	)
 	var original_random_state := game.random_generator.state
-	game.wave_state = CombatFlowState.State.BOSS_ACTIVE
+	game.campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE
 	var slime_spawn_position := resolved_spawn + Vector2(-12.0, 8.0)
 	boss_coordinator.spawn_random_slime(slime_spawn_position)
 	var spawned_slime: Enemy = null
@@ -337,7 +342,7 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 	if spawned_slime != null:
 		spawned_slime.queue_free()
 		await process_frame
-	game.wave_state = original_wave_state
+	game.campaign_coordinator.wave_state = original_wave_state
 	game.random_generator.state = original_random_state
 	_expect(
 		boss_coordinator.get_skill_target_global_position(Vector2i.ZERO).is_equal_approx(
@@ -429,9 +434,11 @@ func _verify_remote_linglan_airdrop_visual(
 	landing_position: Vector2
 ) -> void:
 	var original_runtime_mode := game.runtime_mode
-	var original_wave_state: CombatFlowState.State = game.wave_state
+	var original_wave_state: CombatFlowState.State = (
+		game.campaign_coordinator.wave_state
+	)
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-	game.wave_state = CombatFlowState.State.BOSS_ACTIVE
+	game.campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE
 	game.linglan_boss_runtime_port.apply_remote_airdrop_started(
 		sniper_config,
 		landing_position,
@@ -463,11 +470,11 @@ func _verify_remote_linglan_airdrop_visual(
 		"The remote airdrop visual must retire when the authoritative enemy proxy takes over."
 	)
 	game.runtime_mode = original_runtime_mode
-	game.wave_state = original_wave_state
+	game.campaign_coordinator.wave_state = original_wave_state
 
 
 func _verify_physical_home_gate_trigger(game: TowerDefenseGame) -> void:
-	var targets := game.get_home_objective_targets()
+	var targets := game.home_defense_coordinator.get_home_targets()
 	if targets.is_empty():
 		return
 	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
@@ -479,19 +486,20 @@ func _verify_physical_home_gate_trigger(game: TowerDefenseGame) -> void:
 	enemy.set_physics_process(false)
 	enemy.global_position = targets[0].global_position + Vector2(48.0, 0.0)
 	await physics_frame
-	var health_before := game.current_base_health
+	var health_before := game.home_defense_coordinator.current_base_health
 	enemy.global_position = targets[0].global_position
 	for _frame in range(3):
 		await physics_frame
 		await process_frame
 	_expect(
-		game.current_base_health == health_before - BASIC_CONFIG.home_damage,
+		game.home_defense_coordinator.current_base_health
+		== health_before - BASIC_CONFIG.home_damage,
 		"Enemy CharacterBody2D entering a Home Area2D must damage the base."
 	)
 	_expect(
 		game.wave_hud.core_value_label.text == "%d/%d" % [
-			game.current_base_health,
-			game.maximum_base_health,
+			game.home_defense_coordinator.current_base_health,
+			game.home_defense_coordinator.maximum_base_health,
 		],
 		"Physical gate damage must update the centered core-health metric immediately."
 	)
@@ -499,16 +507,16 @@ func _verify_physical_home_gate_trigger(game: TowerDefenseGame) -> void:
 		not is_instance_valid(enemy) or enemy.is_dead,
 		"The physical Home trigger must immediately resolve and remove its enemy."
 	)
-	game.current_base_health = game.maximum_base_health
-	game.base_health_revision = 0
-	game.current_wave_escaped = 0
-	game.current_wave_resolved = 0
+	game.home_defense_coordinator.set_authoritative_base_health(
+		game.home_defense_coordinator.maximum_base_health,
+		game.home_defense_coordinator.maximum_base_health
+	)
+	game.campaign_coordinator.reset_wave_progress(0)
 	game.home_defense_coordinator.clear_resolved_enemy_ids()
-	game.call("_update_base_health_display")
 
 
 func _verify_far_linear_enemy_reaches_home(game: TowerDefenseGame) -> void:
-	var targets := game.get_home_objective_targets()
+	var targets := game.home_defense_coordinator.get_home_targets()
 	if targets.is_empty() or game.enemy_coordinator.enemy_spawn_points.is_empty():
 		return
 	var spawn_position := game.enemy_coordinator.enemy_spawn_points[0].global_position
@@ -547,14 +555,18 @@ func _verify_far_linear_enemy_reaches_home(game: TowerDefenseGame) -> void:
 	)
 
 	game.set_physics_process(false)
-	var health_before := game.current_base_health
+	var health_before := game.home_defense_coordinator.current_base_health
 	for _frame in range(420):
 		await physics_frame
 		await process_frame
-		if not is_instance_valid(enemy) or game.current_base_health < health_before:
+		if (
+			not is_instance_valid(enemy)
+			or game.home_defense_coordinator.current_base_health < health_before
+		):
 			break
 	_expect(
-		game.current_base_health == health_before - BASIC_CONFIG.home_damage,
+		game.home_defense_coordinator.current_base_health
+		== health_before - BASIC_CONFIG.home_damage,
 		"A far linear enemy must transition through flow navigation and physically reach Home."
 	)
 	_expect(
@@ -562,16 +574,16 @@ func _verify_far_linear_enemy_reaches_home(game: TowerDefenseGame) -> void:
 		"The completed far-to-Home journey must resolve the enemy exactly once."
 	)
 	game.set_physics_process(true)
-	game.current_base_health = game.maximum_base_health
-	game.base_health_revision = 0
-	game.current_wave_escaped = 0
-	game.current_wave_resolved = 0
+	game.home_defense_coordinator.set_authoritative_base_health(
+		game.home_defense_coordinator.maximum_base_health,
+		game.home_defense_coordinator.maximum_base_health
+	)
+	game.campaign_coordinator.reset_wave_progress(0)
 	game.home_defense_coordinator.clear_resolved_enemy_ids()
-	game.call("_update_base_health_display")
 
 
 func _verify_target_selection(game: TowerDefenseGame) -> void:
-	var targets := game.get_home_objective_targets()
+	var targets := game.home_defense_coordinator.get_home_targets()
 	if targets.is_empty():
 		return
 	var logical_tile_width := float(game.ground_tile_map_layer.tile_set.tile_size.x)
@@ -699,7 +711,7 @@ func _verify_target_selection(game: TowerDefenseGame) -> void:
 		AGAVE_CONFIG
 	)
 	_expect(
-		game.call(
+		game.enemy_coordinator.call(
 			"_pick_enemy_objective",
 			near_gate,
 			game.player,
@@ -708,7 +720,7 @@ func _verify_target_selection(game: TowerDefenseGame) -> void:
 		"A land-only melee enemy must skip a nearer water building and pursue an eligible grass building."
 	)
 	_expect(
-		game.call(
+		game.enemy_coordinator.call(
 			"_pick_enemy_objective",
 			near_gate,
 			game.player,
@@ -718,7 +730,7 @@ func _verify_target_selection(game: TowerDefenseGame) -> void:
 	)
 	grass_plant.is_dead = true
 	_expect(
-		game.call(
+		game.enemy_coordinator.call(
 			"_pick_enemy_objective",
 			near_gate,
 			game.player,
@@ -727,7 +739,7 @@ func _verify_target_selection(game: TowerDefenseGame) -> void:
 		"A land-only melee enemy must fall back to Home instead of wandering around the only water building."
 	)
 	_expect(
-		game.call(
+		game.enemy_coordinator.call(
 			"_pick_enemy_objective",
 			near_gate,
 			game.player,
@@ -793,7 +805,11 @@ func _register_target_probe_plant(
 	plant_config: PlantDefenseConfig = AGAVE_CONFIG
 ) -> PlantDefense:
 	var plant := PlantDefense.new()
-	game.plant_container.add_child(plant)
+	plant.bind_gameplay_context(
+		game.plant_system.combat_runtime,
+		game.plant_system.tower_multiplayer_mode_adapter
+	)
+	game.plant_system.plant_container.add_child(plant)
 	plant.global_position = global_position
 	plant.config = plant_config
 	var cell := game.ground_tile_map_layer.local_to_map(
@@ -872,7 +888,11 @@ func _verify_singleplayer_combat_target_index_and_agave(
 	if agave == null:
 		return
 	var fixture_origin := Vector2(5000.0, 5000.0)
-	game.plant_container.add_child(agave)
+	agave.bind_gameplay_context(
+		game.plant_system.combat_runtime,
+		game.plant_system.tower_multiplayer_mode_adapter
+	)
+	game.plant_system.plant_container.add_child(agave)
 	agave.global_position = fixture_origin
 	agave.setup(AGAVE_CONFIG, game.player, [Vector2i(300, 300)])
 	agave.attack_timer.stop()
@@ -1030,8 +1050,7 @@ func _verify_enemy_contract(game: TowerDefenseGame) -> void:
 		not enemy.can_target_water_plant_objectives(),
 		"A land-only melee enemy must reject water-building objectives."
 	)
-	game.call(
-		"_finalize_authoritative_enemy_spawn",
+	game.enemy_coordinator.finalize_authoritative_enemy_spawn(
 		enemy,
 		BASIC_CONFIG,
 		enemy.global_position,
@@ -1043,7 +1062,7 @@ func _verify_enemy_contract(game: TowerDefenseGame) -> void:
 	)
 	_expect(enemy.target_player == game.player, "setup() must retain the combat player.")
 	_expect(enemy.objective_target == game.player, "setup() must default movement to the player.")
-	var gate_targets := game.get_home_objective_targets()
+	var gate_targets := game.home_defense_coordinator.get_home_targets()
 	if not gate_targets.is_empty():
 		enemy.set_objective_target(gate_targets[0])
 		_expect(not enemy.is_objective_targeting_player(), "A gate objective must be distinct from the combat player.")
@@ -1089,22 +1108,23 @@ func _verify_escape_resolution(game: TowerDefenseGame) -> void:
 	var defeated_state := {"emitted": false}
 	enemy.defeated.connect(func(_defeated_enemy: Enemy) -> void: defeated_state["emitted"] = true)
 
-	game.wave_state = CombatFlowState.State.WAVE_ACTIVE
-	game.current_wave_total = 2
-	game.current_wave_spawned = 1
-	game.current_wave_defeated = 0
-	game.current_wave_escaped = 0
-	game.current_wave_resolved = 0
-	game.enemy_coordinator.active_wave_enemy_ids.clear()
-	game.enemy_coordinator.active_wave_enemy_ids[enemy.get_instance_id()] = true
-	var health_before := game.current_base_health
+	game.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
+	game.campaign_coordinator.reset_wave_progress(2, 1)
+	game.enemy_coordinator.clear_active_enemies()
+	game.enemy_coordinator.register_external_enemy(enemy)
+	var health_before := game.home_defense_coordinator.current_base_health
 	game.home_defense_coordinator.on_enemy_reached_home(enemy, Vector2i(2, 22))
 	game.home_defense_coordinator.on_enemy_reached_home(enemy, Vector2i(3, 22))
 
-	_expect(game.current_base_health == health_before - BASIC_CONFIG.home_damage, "Overlapping gates must damage the base exactly once.")
-	_expect(game.current_wave_defeated == 0, "Escaped enemies must not count as defeated.")
-	_expect(game.current_wave_escaped == 1, "Escaped enemies must increment escaped once.")
-	_expect(game.current_wave_resolved == 1, "Escaped enemies must increment resolved once.")
+	_expect(
+		game.home_defense_coordinator.current_base_health
+		== health_before - BASIC_CONFIG.home_damage,
+		"Overlapping gates must damage the base exactly once."
+	)
+	var escaped_progress := game.campaign_coordinator.get_wave_progress_snapshot()
+	_expect(int(escaped_progress.get("defeated", -1)) == 0, "Escaped enemies must not count as defeated.")
+	_expect(int(escaped_progress.get("escaped", -1)) == 1, "Escaped enemies must increment escaped once.")
+	_expect(int(escaped_progress.get("resolved", -1)) == 1, "Escaped enemies must increment resolved once.")
 	_expect(not bool(defeated_state["emitted"]), "Escaped enemies must not emit defeated.")
 	_expect(enemy.is_dead and not enemy.visible, "Escaped enemies must disappear immediately.")
 	await process_frame
@@ -1115,8 +1135,13 @@ func _verify_escape_resolution(game: TowerDefenseGame) -> void:
 		"Escaped enemies must not grant a Xirang kill reward."
 	)
 
-	game.call("_apply_base_damage", game.current_base_health)
-	_expect(game.wave_state == CombatFlowState.State.DEFEAT, "Base health reaching zero must cause defeat.")
+	game.home_defense_coordinator.apply_base_damage(
+		game.home_defense_coordinator.current_base_health
+	)
+	_expect(
+		game.campaign_coordinator.wave_state == CombatFlowState.State.DEFEAT,
+		"Base health reaching zero must cause defeat."
+	)
 
 	var linglan_config := load(
 		"res://resources/config/enemies/linglan_boss.tres"
@@ -1127,39 +1152,40 @@ func _verify_escape_resolution(game: TowerDefenseGame) -> void:
 		game.boss_container.add_child(linglan)
 		linglan.config = linglan_config
 		game.boss_coordinator.linglan_boss = linglan
-		game.maximum_base_health = 250
-		game.current_base_health = 250
-		game.wave_state = CombatFlowState.State.BOSS_ACTIVE
-		game.current_wave_total = 1
-		game.current_wave_spawned = 1
-		game.current_wave_escaped = 0
-		game.current_wave_resolved = 0
+		game.home_defense_coordinator.set_authoritative_base_health(250, 250)
+		game.campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE
+		game.campaign_coordinator.reset_wave_progress(1, 1)
 		game.home_defense_coordinator.clear_resolved_enemy_ids()
-		game.enemy_coordinator.active_wave_enemy_ids.clear()
-		game.enemy_coordinator.active_wave_enemy_ids[linglan.get_instance_id()] = true
+		game.enemy_coordinator.clear_active_enemies()
+		game.enemy_coordinator.register_external_enemy(linglan)
 		game.home_defense_coordinator.on_enemy_reached_home(
 			linglan,
 			Vector2i(2, 22)
 		)
 		_expect(
-			game.current_base_health == 0
-			and game.wave_state == CombatFlowState.State.DEFEAT,
+			game.home_defense_coordinator.current_base_health == 0
+			and game.campaign_coordinator.wave_state == CombatFlowState.State.DEFEAT,
 			"An escaped Linglan must destroy even an upgraded core instead of completing the Boss step."
 		)
 		await process_frame
 		await process_frame
 		game.boss_coordinator.linglan_boss = null
 
-	game.current_base_health = game.maximum_base_health
-	game.wave_state = CombatFlowState.State.WAVE_ACTIVE
-	game.current_flow_step = null
-	game.current_wave_total = 1
-	game.current_wave_spawned = 1
-	game.current_wave_resolved = 1
+	game.home_defense_coordinator.set_authoritative_base_health(
+		game.home_defense_coordinator.maximum_base_health,
+		game.home_defense_coordinator.maximum_base_health
+	)
+	game.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
+	game.campaign_coordinator.current_flow_step = null
+	game.campaign_coordinator.reset_wave_progress(1, 1)
+	game.campaign_coordinator.try_resolve_wave_enemy_escape()
 	game.enemy_coordinator.clear_queue()
-	game.enemy_coordinator.active_wave_enemy_ids.clear()
+	game.enemy_coordinator.clear_active_enemies()
 	game.enemy_coordinator.check_wave_completion()
-	_expect(game.wave_state == CombatFlowState.State.VICTORY, "Wave completion must use resolved, allowing escaped enemies to finish a wave.")
+	_expect(
+		game.campaign_coordinator.wave_state == CombatFlowState.State.VICTORY,
+		"Wave completion must use resolved, allowing escaped enemies to finish a wave."
+	)
 
 
 func _count_reward_nodes(node: Node) -> int:

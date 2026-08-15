@@ -127,10 +127,10 @@ class PoolRuntime:
 		return peer_players.get(peer_id) as Player
 
 	func get_enemy_for_net_id(net_id: int) -> Enemy:
-		return multiplayer_enemies_by_net_id.get(net_id) as Enemy
+		return get_network_enemy(net_id)
 
 	func get_pickup_for_net_id(net_id: int) -> Pickup:
-		return multiplayer_pickups.get(net_id) as Pickup
+		return get_network_pickup(net_id)
 
 	func remove_multiplayer_player(peer_id: int) -> void:
 		peer_players.erase(peer_id)

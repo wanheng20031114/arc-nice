@@ -397,7 +397,7 @@ func _test_electric_surge_character_contract() -> void:
 		"A late same-sequence volley must not resurrect an expired automatic barrage."
 	)
 	player.play_remote_electric_surge_started(43, Vector2.ZERO, 3.0)
-	player.set_controls_locked(true)
+	player.set_control_lock(&"tango_smoke_external", true)
 	_expect(
 		not player.is_electric_surge_active()
 		and not player.is_electric_surge_auto_fire_active()
@@ -405,7 +405,7 @@ func _test_electric_surge_character_contract() -> void:
 		and player.magic_defense == base_magic_defense,
 		"Locking Tango's controls must clear the surge and both research defenses."
 	)
-	player.set_controls_locked(false)
+	player.set_control_lock(&"tango_smoke_external", false)
 	player.set_research_technology_level(0)
 	for child in test_root.get_children():
 		if child is TangoElectricSurgeField:

@@ -12,6 +12,7 @@ const OLD_PEER_ID := 202
 const FATE_BYSTANDER_PEER_ID := 250
 const FATE_BYSTANDER_RECONNECTED_PEER_ID := 260
 const NEW_PEER_ID := 303
+const ROGUE_RECONNECTED_PEER_ID := 313
 const FATE_RECONNECTED_PEER_ID := 707
 const POST_FATE_RECONNECTED_PEER_ID := 909
 const RESTORED_POSITION := Vector2(384.0, 256.0)
@@ -319,6 +320,18 @@ func _test_authoritative_player_state_remap() -> void:
 	game.multiplayer_gateway.player_teleport_requested.connect(
 		_on_fixture_player_teleport_requested
 	)
+	# Roster 的瞬时采样默认 revision=0；制造一个真实可靠生命 revision，
+	# 证明断线捕获必须由 MpPlayerCoordinator 在同一事务内附上水位。
+	mp_game.player_coordinator.apply_player_damage_confirmation(
+		OLD_PEER_ID,
+		expected_health,
+		false,
+		7,
+		11,
+		Vector2.LEFT,
+		EnemyConfig.DamageType.PHYSICAL,
+		false
+	)
 	var admitted_actions_at_once := 0
 	for _attempt in range(int(MpPlayerCoordinator.PLAYER_ACTION_INGRESS_RATE_BURST) + 1):
 		if mp_game._consume_remote_player_action_admission(
@@ -347,6 +360,20 @@ func _test_authoritative_player_state_remap() -> void:
 	)
 	mp_game.player_coordinator._dead_player_revive_last_seconds[OLD_PEER_ID] = 5
 	mp_game.call("_on_net_player_left", OLD_PEER_ID)
+	var captured_reconnect_state := (
+		mp_game._disconnected_player_reconnect_states.get(OLD_PEER_ID, {})
+		as Dictionary
+	)
+	var captured_player_state := (
+		captured_reconnect_state.get("state") as SnapshotManager.PlayerState
+	)
+	_expect(
+		captured_player_state != null
+		and captured_player_state.current_health == expected_health
+		and captured_player_state.health_revision == 7
+		and int(captured_reconnect_state.get("health_revision", 0)) == 7,
+		"断线捕获必须把节点生命值与可靠 revision 作为同一份权威重连状态保存。"
+	)
 	for _frame in 3:
 		await process_frame
 		await physics_frame
@@ -415,6 +442,59 @@ func _test_authoritative_player_state_remap() -> void:
 			expected_revive_at,
 		]
 	)
+	var rogue_coordinator := game.rogue_exploration_coordinator
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.ROGUE_EXPLORATION
+	)
+	rogue_coordinator.set("_active", true)
+	rogue_coordinator.call("_freeze_tower_runtime")
+	_expect(
+		not restored.visible
+		and restored.process_mode == Node.PROCESS_MODE_DISABLED
+		and restored.has_combat_action_lock(&"tower_rogue_exploration"),
+		"Rogue 入口必须冻结并隐藏既有 Tower Player。"
+	)
+	mp_game.call("_on_net_player_left", NEW_PEER_ID)
+	for _frame in 3:
+		await process_frame
+		await physics_frame
+	mp_game.call(
+		"_on_net_player_reconnected",
+		NEW_PEER_ID,
+		ROGUE_RECONNECTED_PEER_ID,
+		"RogueReconnect",
+		&"weishidaier"
+	)
+	var rogue_restored := game.get_player_for_peer(
+		ROGUE_RECONNECTED_PEER_ID
+	) as Player
+	_expect(
+		rogue_restored != null
+		and not rogue_restored.visible
+		and rogue_restored.process_mode == Node.PROCESS_MODE_DISABLED
+		and rogue_restored.has_combat_action_lock(
+			&"tower_rogue_exploration"
+		),
+		(
+			"Active Rogue reconnect must enroll the new Tower Player in the "
+			+ "existing visibility/process/combat suspension lease."
+		)
+	)
+	rogue_coordinator.set("_active", false)
+	rogue_coordinator.call("_restore_tower_runtime")
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.INTERMISSION
+	)
+	_expect(
+		rogue_restored != null
+		and rogue_restored.visible
+		and rogue_restored.process_mode == Node.PROCESS_MODE_INHERIT
+		and not rogue_restored.has_combat_action_lock(
+			&"tower_rogue_exploration"
+		),
+		"Rogue 退出必须按同一账本恢复重连玩家的原始表现与战斗租约。"
+	)
+	restored = rogue_restored
 	var bystander_before_boundary := game.get_player_for_peer(
 		FATE_BYSTANDER_PEER_ID
 	) as Player
@@ -472,15 +552,17 @@ func _test_authoritative_player_state_remap() -> void:
 		) == 2,
 		"A pre-Rogue disconnect must return to its stable PlayerSpawn slot after the boundary."
 	)
-	game.campaign_coordinator.wave_state = CombatFlowState.State.FATE_INTERLUDE
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.FATE_INTERLUDE
+	)
 	game.fate_flow_coordinator.teleport_authoritative_players_to_room()
 	var stale_fate_position := Vector2(917.0, 563.0)
 	restored.global_position = stale_fate_position
 	restored.velocity = Vector2(21.0, -7.0)
-	mp_game.call("_on_net_player_left", NEW_PEER_ID)
+	mp_game.call("_on_net_player_left", ROGUE_RECONNECTED_PEER_ID)
 	var fate_reconnect_state := (
 		mp_game._disconnected_player_reconnect_states.get(
-			NEW_PEER_ID,
+			ROGUE_RECONNECTED_PEER_ID,
 			{}
 		) as Dictionary
 	)
@@ -498,7 +580,7 @@ func _test_authoritative_player_state_remap() -> void:
 		await physics_frame
 	mp_game.call(
 		"_on_net_player_reconnected",
-		NEW_PEER_ID,
+		ROGUE_RECONNECTED_PEER_ID,
 		FATE_RECONNECTED_PEER_ID,
 		"FateReconnect",
 		&"weishidaier"
@@ -534,7 +616,9 @@ func _test_authoritative_player_state_remap() -> void:
 	)
 	mp_game.call("_on_net_player_left", FATE_RECONNECTED_PEER_ID)
 	game.fate_flow_coordinator.restore_authoritative_players_from_room()
-	game.campaign_coordinator.wave_state = CombatFlowState.State.INTERMISSION
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		CombatFlowState.State.INTERMISSION
+	)
 	mp_game.call(
 		"_on_net_player_reconnected",
 		FATE_RECONNECTED_PEER_ID,

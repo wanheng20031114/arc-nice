@@ -83,7 +83,13 @@ class PlayerProbe:
 		pass
 
 	func set_controls_locked(locked: bool) -> void:
-		controls_locked = locked
+		set_control_lock(&"probe_legacy", locked)
+
+	func set_control_lock(owner: StringName, locked: bool) -> void:
+		if locked:
+			_control_lock_owners[owner] = true
+		else:
+			_control_lock_owners.erase(owner)
 
 
 class SettingsPanelProbe:
@@ -257,6 +263,25 @@ func _run() -> void:
 	_expect(
 		controller.input_enabled and not local_player.controls_locked,
 		"关闭最后一个 modal 必须恢复放置输入与玩家移动。"
+	)
+
+	settings_panel.open_state = true
+	settings_panel.opened.emit()
+	local_player.is_dead = true
+	local_player.set_control_lock(Player.DEATH_CONTROL_LOCK_OWNER, true)
+	settings_panel.open_state = false
+	settings_panel.closed.emit()
+	_expect(
+		not local_player.has_control_lock(coordinator.CONTROL_LOCK_OWNER)
+		and local_player.controls_locked,
+		"死亡期间关闭 modal 必须释放放置 owner，同时保留死亡 owner。"
+	)
+	local_player.is_dead = false
+	local_player.set_control_lock(Player.DEATH_CONTROL_LOCK_OWNER, false)
+	coordinator.refresh_interaction_state()
+	_expect(
+		controller.input_enabled and not local_player.controls_locked,
+		"复活只释放死亡 owner 后，不得残留放置控制锁。"
 	)
 
 	coordinator.set_flow_state(CombatFlowState.State.FATE_INTERLUDE)

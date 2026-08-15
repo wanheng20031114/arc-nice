@@ -252,7 +252,14 @@ func _test_host_binding_and_authority_bridges() -> void:
 			])
 	)
 
-	game.campaign_coordinator.countdown_seconds = 7
+	var host_wave_step := game.campaign_coordinator.get_start_flow_step()
+	_expect(host_wave_step is WaveConfig, "Host fixture 必须存在起始 Wave step。")
+	game.campaign_coordinator.replace_flow_state_for_fixture(
+		game.campaign_coordinator.wave_state,
+		host_wave_step,
+		game.campaign_coordinator.next_flow_step_after_rest,
+		7
+	)
 	adapter.publish_flow_state(CombatFlowState.State.PRE_WAVE)
 	adapter.publish_authoritative_base_health(83, 100, 4)
 	game.enemy_coordinator.wave_progress_changed.emit(3, 5, 1, 6, 9)
@@ -311,6 +318,19 @@ func _test_host_binding_and_authority_bridges() -> void:
 		"多人固定复活点必须与玩家稳定出生槽一致。"
 	)
 	_test_rogue_boundary_full_health_network_contract(game, adapter)
+	var boss_step := game.campaign_coordinator.get_flow_step_by_id(
+		&"boss_01_linglan"
+	) as BossConfig
+	_expect(boss_step != null, "Host fixture 必须存在 Boss step。")
+	if boss_step != null:
+		var wave_event_count_before_boss := wave_events.size()
+		game.campaign_coordinator.transition_to_boss_intro(boss_step)
+		adapter.call("_on_wave_progress_changed", 12, 12, 0, 12, 12)
+		_expect(
+			wave_events.size() == wave_event_count_before_boss
+			and adapter.get_wave_progress_snapshot().is_empty(),
+			"Boss flow 不得继续发布通用 wave_progress 事件或快照。"
+		)
 
 	await _cleanup_game(game)
 

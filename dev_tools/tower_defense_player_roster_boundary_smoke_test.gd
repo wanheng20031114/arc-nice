@@ -58,6 +58,47 @@ func _test_host_roster_and_snapshot_parity() -> void:
 	)
 	_expect(_peer_ids(game.peer_players) == [1, 2, 3], "塔防玩家必须按 peer ID 排序出生。")
 	_expect(game.player == game.get_player_for_peer(2), "塔防必须选择本地 peer 玩家。")
+	var run_state := root.get_node("RunState") as RunStateStore
+	_expect(
+		run_state.get_party_xirang_balance(1)
+		== TowerDefensePlayerRosterCoordinator.INITIAL_PLAYER_XIRANG
+		and run_state.get_party_xirang_balance(2)
+		== TowerDefensePlayerRosterCoordinator.INITIAL_PLAYER_XIRANG
+		and run_state.get_party_xirang_balance(3)
+		== TowerDefensePlayerRosterCoordinator.INITIAL_PLAYER_XIRANG,
+		"Host 初始息壤必须一次写入跨 Tower/Rogue 共用的 RunState 账本。"
+	)
+	game.get_player_for_peer(1).grant_xirang_reward(37)
+	_expect(
+		run_state.get_party_xirang_balance(1)
+		== TowerDefensePlayerRosterCoordinator.INITIAL_PLAYER_XIRANG + 37,
+		"Host Player 的权威息壤变化必须同步写入持久账本。"
+	)
+	_expect(
+		run_state.set_party_xirang_balances({1: 111, 2: 222, 3: 333})
+		and game.get_player_for_peer(1).current_xirang == 111
+		and game.get_player_for_peer(2).current_xirang == 222
+		and game.get_player_for_peer(3).current_xirang == 333,
+		"Rogue/party 账本变化必须反向收敛所有隐藏的 Tower Player 镜像。"
+	)
+	roster.set_runtime_identity(CombatRuntimeBase.RuntimeMode.CLIENT_VIEW, 2)
+	game.get_player_for_peer(2).set_xirang_balance(999)
+	_expect(
+		run_state.get_party_xirang_balance(2) == 222,
+		"Client Player 镜像变化不得反写 Host 权威 RunState 账本。"
+	)
+	roster.set_runtime_identity(CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY, 2)
+	_expect(
+		run_state.set_party_xirang_balance(2, 222)
+		and game.get_player_for_peer(2).current_xirang == 999,
+		"幂等账本写入不应伪造变化信号。"
+	)
+	# 显式重新发布一个跨幕值，模拟 Rogue 结算后 Tower 镜像恢复。
+	_expect(
+		run_state.set_party_xirang_balance(2, 444)
+		and game.get_player_for_peer(2).current_xirang == 444,
+		"跨幕账本的新 revision 必须恢复 Tower Player 镜像。"
+	)
 	var expected_names := game.multiplayer_player_names.duplicate()
 	var expected_character_ids := game.multiplayer_player_character_ids.duplicate()
 	roster.configure_roster(
@@ -105,14 +146,20 @@ func _test_host_roster_and_snapshot_parity() -> void:
 		and not game.multiplayer_player_names.has(3),
 		"移除玩家必须同步清理实体、出生槽与名单。"
 	)
+	_expect(
+		run_state.remap_multiplayer_peer_state(3, 4),
+		"生产重连顺序必须先原子迁移玩家持久账本。"
+	)
 	var restored := game.restore_multiplayer_player(
 		3, 4, "Restored", &"tango", null, 2, {"wave_death_count": 2}
 	)
 	_expect(restored != null, "塔防必须能恢复断线玩家。")
 	_expect(
 		game.multiplayer_spawn_slot_indices.get(4) == 2
-		and game.player_wave_death_counts.get(4) == 2,
-		"恢复玩家必须保留出生槽和波次死亡次数。"
+		and game.player_wave_death_counts.get(4) == 2
+		and restored.current_xirang == 333
+		and run_state.get_party_xirang_balance(4) == 333,
+		"恢复玩家必须保留出生槽、波次死亡次数及已迁移的息壤账本。"
 	)
 	legacy_states.clear()
 	coordinator_states.clear()

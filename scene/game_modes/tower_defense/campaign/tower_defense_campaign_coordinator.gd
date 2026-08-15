@@ -43,6 +43,12 @@ var current_wave_escaped := 0
 var current_wave_resolved := 0
 var countdown_seconds := 0
 
+# Replicated wave progress has no independent revision and arrives on both the
+# reliable flow channel and the ordered progress channel. Keep its wave epoch
+# separate from current_flow_step so a late packet from the previous wave
+# cannot overwrite a newer flow state.
+var _last_remote_wave_progress_number := 0
+
 var progression_started_msec := 0
 var first_defense_tower_seconds := -1.0
 var water_chain_online_seconds := -1.0
@@ -198,6 +204,82 @@ func stop_enemy_spawn_timer() -> void:
 		_enemy_spawn_timer.stop()
 
 
+## 以下转场命令是非倒计时流程写入 Campaign 状态的唯一公共入口。
+## 调用方负责各自的表现与业务启动；Campaign 原子维护 step/state/countdown
+## 并停止两个只属于塔防流程的 timer，避免流程节点只改一半状态。
+func transition_to_fate_interlude(next_step: FlowStepConfig) -> void:
+	next_flow_step_after_rest = next_step
+	_commit_non_countdown_flow_state(CombatFlowState.State.FATE_INTERLUDE)
+
+
+## 远端 Fate 的 step_id 表示 Host 当前流程节点，后继节点由 Fate 快照持有；
+## 因此这里只提交表现对应的 state/timer，不伪造 next_flow_step_after_rest。
+func synchronize_remote_fate_interlude_state() -> void:
+	next_flow_step_after_rest = null
+	_commit_non_countdown_flow_state(CombatFlowState.State.FATE_INTERLUDE)
+
+
+func transition_to_rogue_exploration(next_step: FlowStepConfig) -> bool:
+	if next_step == null:
+		push_error("TowerDefenseCampaignCoordinator: Rogue 转场缺少后继流程节点。")
+		return false
+	next_flow_step_after_rest = next_step
+	_commit_non_countdown_flow_state(CombatFlowState.State.ROGUE_EXPLORATION)
+	return true
+
+
+func transition_to_boss_intro(boss_step: BossConfig) -> bool:
+	if boss_step == null:
+		push_error("TowerDefenseCampaignCoordinator: Boss intro 缺少 BossConfig。")
+		return false
+	var entering_boss_flow := wave_state not in [
+		CombatFlowState.State.BOSS_INTRO,
+		CombatFlowState.State.BOSS_ACTIVE,
+	]
+	current_flow_step = boss_step
+	next_flow_step_after_rest = null
+	if entering_boss_flow:
+		reset_wave_progress(1, 1)
+	_commit_non_countdown_flow_state(CombatFlowState.State.BOSS_INTRO)
+	return true
+
+
+func transition_to_boss_active(boss_step: BossConfig) -> bool:
+	if boss_step == null:
+		push_error("TowerDefenseCampaignCoordinator: Boss active 缺少 BossConfig。")
+		return false
+	var entering_boss_flow := wave_state not in [
+		CombatFlowState.State.BOSS_INTRO,
+		CombatFlowState.State.BOSS_ACTIVE,
+	]
+	current_flow_step = boss_step
+	next_flow_step_after_rest = null
+	if entering_boss_flow:
+		reset_wave_progress(1, 1)
+	_commit_non_countdown_flow_state(CombatFlowState.State.BOSS_ACTIVE)
+	return true
+
+
+## 仅供无完整 runtime 的边界测试设置竞态前置状态；生产流程不得调用。
+func replace_flow_state_for_fixture(
+	state: CombatFlowState.State,
+	flow_step: FlowStepConfig = null,
+	next_step: FlowStepConfig = null,
+	seconds: int = 0
+) -> void:
+	wave_state = state
+	current_flow_step = flow_step
+	next_flow_step_after_rest = next_step
+	countdown_seconds = maxi(seconds, 0)
+
+
+func _commit_non_countdown_flow_state(state: CombatFlowState.State) -> void:
+	wave_state = state
+	countdown_seconds = 0
+	stop_state_timer()
+	stop_enemy_spawn_timer()
+
+
 func clear() -> void:
 	active_campaign = null
 	singleplayer_campaign = null
@@ -206,6 +288,129 @@ func clear() -> void:
 	waves.clear()
 	bosses.clear()
 	configuration_errors.clear()
+	_last_remote_wave_progress_number = 0
+	reset_wave_progress(0)
+
+
+## CampaignCoordinator is the sole writer of aggregate wave progress. Enemy and
+## home coordinators own lifecycle decisions, then record them through these
+## methods so resolved always equals defeated + escaped and never exceeds total.
+func reset_wave_progress(total: int, spawned: int = 0) -> void:
+	current_wave_total = maxi(total, 0)
+	current_wave_spawned = clampi(spawned, 0, current_wave_total)
+	current_wave_defeated = 0
+	current_wave_escaped = 0
+	current_wave_resolved = 0
+
+
+func record_wave_spawns(count: int) -> int:
+	if count <= 0:
+		return 0
+	var previous_spawned := current_wave_spawned
+	current_wave_spawned = clampi(
+		current_wave_spawned + count,
+		0,
+		current_wave_total
+	)
+	return current_wave_spawned - previous_spawned
+
+
+func try_resolve_wave_enemy_defeat() -> bool:
+	if current_wave_resolved >= current_wave_spawned:
+		return false
+	current_wave_defeated += 1
+	current_wave_resolved = current_wave_defeated + current_wave_escaped
+	return true
+
+
+func try_resolve_wave_enemy_escape() -> bool:
+	if current_wave_resolved >= current_wave_spawned:
+		return false
+	current_wave_escaped += 1
+	current_wave_resolved = current_wave_defeated + current_wave_escaped
+	return true
+
+
+func apply_remote_wave_progress(
+	wave_number: int,
+	defeated: int,
+	escaped: int,
+	resolved: int,
+	total: int
+) -> bool:
+	# Boss 与最后一波可能共享 wave_number，但 Boss 有独立的权威生命与
+	# 生命周期复制。进入 Boss step 后必须彻底隔离通用 wave_progress 流，
+	# 否则跨 RPC channel 迟到的末波包无法仅凭数值与 Boss 包区分。
+	if current_flow_step is BossConfig:
+		return false
+	if (
+		wave_number <= 0
+		or defeated < 0
+		or escaped < 0
+		or resolved < 0
+		or total < 0
+		or defeated + escaped != resolved
+		or resolved > total
+	):
+		return false
+	var current_flow_wave_number := current_wave_index + 1
+	if (
+		wave_number < current_flow_wave_number
+		or wave_number < _last_remote_wave_progress_number
+	):
+		return false
+	var starts_new_remote_wave := (
+		wave_number > _last_remote_wave_progress_number
+	)
+	if (
+		not starts_new_remote_wave
+		and (
+			defeated < current_wave_defeated
+			or escaped < current_wave_escaped
+			or resolved < current_wave_resolved
+		)
+	):
+		return false
+	if starts_new_remote_wave:
+		current_wave_spawned = 0
+	current_wave_index = wave_number - 1
+	current_wave_total = total
+	current_wave_defeated = defeated
+	current_wave_escaped = escaped
+	current_wave_resolved = resolved
+	# The wire snapshot intentionally omits the host-only spawn scheduler count.
+	# Every resolved enemy proves that at least one enemy was spawned, which is
+	# the exact lower bound needed to preserve resolved <= spawned on clients.
+	current_wave_spawned = clampi(
+		maxi(current_wave_spawned, current_wave_resolved),
+		0,
+		current_wave_total
+	)
+	_last_remote_wave_progress_number = wave_number
+	return true
+
+
+func is_wave_progress_complete() -> bool:
+	return (
+		current_wave_spawned >= current_wave_total
+		and current_wave_resolved == current_wave_total
+	)
+
+
+func get_wave_progress_snapshot() -> Dictionary:
+	return {
+		"wave_number": current_wave_index + 1,
+		"defeated": current_wave_defeated,
+		"escaped": current_wave_escaped,
+		"resolved": current_wave_resolved,
+		"total": current_wave_total,
+	}
+
+
+func get_replicated_wave_progress_snapshot() -> Dictionary:
+	if not current_flow_step is WaveConfig:
+		return {}
+	return get_wave_progress_snapshot()
 
 
 func replace_runtime_state_for_fixture(
@@ -450,18 +655,15 @@ func begin_wave_config(wave_config: WaveConfig) -> void:
 	)
 	_state_timer.stop()
 	_multiplayer_adapter.set_merchant_active(false)
-	current_wave_spawned = 0
-	current_wave_defeated = 0
-	current_wave_escaped = 0
-	current_wave_resolved = 0
 	_home_defense_coordinator.clear_resolved_enemy_ids()
 	_enemy_coordinator.clear_active_enemies()
 	_enemy_coordinator.clear_hud_alive_enemies()
-	current_wave_total = _enemy_coordinator.begin_wave(
+	var wave_total := _enemy_coordinator.begin_wave(
 		wave_config,
 		_progression_config,
 		_runtime_port.get_progression_player_count()
 	)
+	reset_wave_progress(wave_total)
 	_presentation_coordinator.update_wave_music(wave_config)
 	_enemy_coordinator.show_wave_progress()
 	if not phase_announcement_started:
@@ -652,8 +854,10 @@ func apply_remote_flow_state(
 				)
 				start_client_flow_countdown(typed_state, step_id, seconds)
 		CombatFlowState.State.WAVE_ACTIVE:
-			_state_timer.stop()
-			wave_state = CombatFlowState.State.WAVE_ACTIVE
+			next_flow_step_after_rest = null
+			_commit_non_countdown_flow_state(
+				CombatFlowState.State.WAVE_ACTIVE
+			)
 			var wave_number := maxi(current_wave_index + 1, 1)
 			_presentation_coordinator.apply_wave_start_lighting(wave_number)
 			var phase_started := _announce_wave_phase_start(wave_number)
@@ -683,9 +887,10 @@ func apply_remote_flow_state(
 				get_day_number_for_wave(maxi(current_wave_index + 1, 1))
 			)
 		CombatFlowState.State.ROGUE_EXPLORATION:
-			_state_timer.stop()
-			_enemy_spawn_timer.stop()
-			wave_state = CombatFlowState.State.ROGUE_EXPLORATION
+			next_flow_step_after_rest = null
+			_commit_non_countdown_flow_state(
+				CombatFlowState.State.ROGUE_EXPLORATION
+			)
 			_multiplayer_adapter.set_local_merchants_active(false)
 		CombatFlowState.State.VICTORY:
 			enter_victory(false)

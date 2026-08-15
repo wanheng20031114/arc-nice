@@ -155,6 +155,9 @@ func _test_rogue_roster() -> void:
 
 
 func _test_mode_source_boundaries() -> void:
+	var shared_source := FileAccess.get_file_as_string(
+		"res://scene/combat/player/combat_player_roster_coordinator_base.gd"
+	)
 	var standard_source := FileAccess.get_file_as_string(
 		"res://scene/game_modes/standard/player/standard_player_roster_coordinator.gd"
 	)
@@ -166,6 +169,17 @@ func _test_mode_source_boundaries() -> void:
 	)
 	var rogue_flow_test_source := FileAccess.get_file_as_string(
 		"res://dev_tools/rogue_combat_singleplayer_flow_smoke_test.gd"
+	)
+	_expect(
+		standard_source.contains("extends CombatPlayerRosterCoordinatorBase")
+		and rogue_source.contains("extends CombatPlayerRosterCoordinatorBase"),
+		"普通与肉鸽玩家编排必须共用中性基类，只在子类保留模式差异。"
+	)
+	_expect(
+		shared_source.contains("func configure_multiplayer_players()")
+		and not standard_source.contains("func configure_multiplayer_players()")
+		and not rogue_source.contains("func configure_multiplayer_players()"),
+		"玩家出生、快照与生命周期编排不得在普通/肉鸽模式重复实现。"
 	)
 	_expect(not standard_source.contains("RoguePlayerRosterCoordinator"), "普通玩家编排不得引用肉鸽实现。")
 	_expect(not rogue_source.contains("StandardPlayerRosterCoordinator"), "肉鸽玩家编排不得引用普通实现。")

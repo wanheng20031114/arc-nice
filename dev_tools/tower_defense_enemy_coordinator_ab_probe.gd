@@ -86,31 +86,29 @@ func _run() -> void:
 		)
 
 		game.random_generator.seed = seed
+		# A/B 基线需要复现抽取前的原始状态布置；普通 fixture 不得绕过
+		# Campaign replace_flow_state_for_fixture/typed transition API。
 		game.campaign_coordinator.current_flow_step = wave
 		game.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
 		game.campaign_coordinator.current_wave_index = round_index
-		game.campaign_coordinator.current_wave_spawned = 0
-		game.campaign_coordinator.current_wave_defeated = 0
-		game.campaign_coordinator.current_wave_escaped = 0
-		game.campaign_coordinator.current_wave_resolved = 0
 		game.enemy_coordinator.clear_active_enemies()
 		game.enemy_coordinator.clear_hud_enemies()
 		game.enemy_coordinator.clear_queue()
 		game.enemy_coordinator.active_wave_spawn_points.assign(spawn_points)
-		game.multiplayer_enemy_ids_by_instance.clear()
-		game.multiplayer_enemies_by_net_id.clear()
+		game.clear_network_enemy_registry()
 		game.enemy_coordinator.next_multiplayer_enemy_net_id = first_net_id
-		game.campaign_coordinator.current_wave_total = game.enemy_coordinator.begin_wave(
+		var wave_total := game.enemy_coordinator.begin_wave(
 			wave,
 			PROGRESSION,
 			PLAYER_COUNT
 		)
+		game.campaign_coordinator.reset_wave_progress(wave_total)
 		game.enemy_coordinator.spawn_wave_batch(64)
 
 		var spawned_enemies: Array[Enemy] = []
 		for enemy_offset in range(game.campaign_coordinator.current_wave_total):
 			var net_id := first_net_id + enemy_offset
-			var enemy := game.multiplayer_enemies_by_net_id.get(net_id) as Enemy
+			var enemy := game.get_network_enemy(net_id)
 			_expect(enemy != null, "A/B 普通波次未按连续 net id 注册敌人 %d。" % net_id)
 			if enemy != null:
 				spawned_enemies.append(enemy)

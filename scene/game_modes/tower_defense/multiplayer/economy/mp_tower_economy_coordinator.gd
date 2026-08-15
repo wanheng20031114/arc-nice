@@ -762,9 +762,7 @@ func receive_research_state_updated(
 	var changed_player := _runtime.get_player_for_peer(changed_player_peer_id)
 	if changed_player == null or not is_instance_valid(changed_player):
 		return
-	var delta := current_xirang - changed_player.current_xirang
-	changed_player.current_xirang = current_xirang
-	changed_player.xirang_changed.emit(current_xirang, delta)
+	changed_player.set_xirang_balance(current_xirang)
 
 
 func broadcast_warehouse_snapshot(warehouse: OakWarehouse) -> void:

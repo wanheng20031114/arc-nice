@@ -18,6 +18,8 @@ func _init() -> void:
 func _run() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier")
+	_test_inventory_owner_read_api(run_state)
+	run_state.begin_new_run(&"weishidaier")
 	_test_local_revision_and_snapshot(run_state)
 	_test_peer_slot_state_and_snapshot(run_state)
 	_test_collectible_effect_cap_does_not_limit_carrying(run_state)
@@ -33,6 +35,28 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_inventory_owner_read_api(run_state: RunStateStore) -> void:
+	_expect(
+		run_state.get_active_multiplayer_peer_id() == 0,
+		"新局本地背包映射必须通过只读 API 报告单人 owner=0。"
+	)
+	_expect(
+		run_state.get_registered_inventory_peer_ids() == PackedInt32Array([0]),
+		"未注册多人背包时，只读 owner 列表必须只包含本地背包。"
+	)
+	const PEER_ID := 23
+	run_state.set_active_multiplayer_peer(PEER_ID)
+	_expect(
+		run_state.get_active_multiplayer_peer_id() == PEER_ID,
+		"切换多人背包后，只读 API 必须报告当前 owner。"
+	)
+	_expect(
+		run_state.get_registered_inventory_peer_ids()
+		== PackedInt32Array([PEER_ID]),
+		"已注册多人背包时，只读 owner 列表必须返回稳定排序的 peer。"
+	)
 
 
 func _test_local_revision_and_snapshot(run_state: RunStateStore) -> void:

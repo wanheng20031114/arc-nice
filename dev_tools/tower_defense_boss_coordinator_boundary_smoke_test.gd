@@ -212,9 +212,7 @@ func _test_static_structure_and_order_guards() -> void:
 			"ensure_runtime_nodes",
 			"reset_wave_death_counts",
 			"linglan_boss_started = true",
-			"campaign_coordinator.wave_state = CombatFlowState.State.BOSS_INTRO",
-			"campaign_coordinator.stop_enemy_spawn_timer()",
-			"campaign_coordinator.stop_state_timer()",
+			"campaign_coordinator.transition_to_boss_intro(",
 			"enemy_coordinator.clear_queue()",
 			"enemy_coordinator.clear_active_enemies()",
 			"home_defense_coordinator.clear_resolved_enemy_ids()",
@@ -241,8 +239,7 @@ func _test_static_structure_and_order_guards() -> void:
 	_expect_order(
 		remote_intro_source,
 		[
-			"campaign_coordinator.stop_state_timer()",
-			"campaign_coordinator.wave_state = CombatFlowState.State.BOSS_INTRO",
+			"campaign_coordinator.transition_to_boss_intro(",
 			"multiplayer_adapter.set_local_merchants_active(false)",
 			"presentation_coordinator.show_boss_progress(0, 1)",
 			"active_boss_config = boss_config",
@@ -258,8 +255,7 @@ func _test_static_structure_and_order_guards() -> void:
 	_expect_order(
 		remote_active_source,
 		[
-			"campaign_coordinator.stop_state_timer()",
-			"campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE",
+			"campaign_coordinator.transition_to_boss_active(",
 			"multiplayer_adapter.set_local_merchants_active(false)",
 			"presentation_coordinator.show_boss_progress(0, 1)",
 			"restore_remote_camera_if_intro_complete()",
@@ -307,9 +303,7 @@ func _test_static_structure_and_order_guards() -> void:
 	_expect_order(
 		proxy_index_source,
 		[
-			"_multiplayer_enemies_by_net_id[net_id] = enemy",
-			"_runtime.register_combat_target(net_id, enemy)",
-			"_multiplayer_enemy_ids_by_instance[enemy.get_instance_id()] = net_id",
+			"_runtime.register_network_enemy(net_id, enemy)",
 		],
 		"client Boss proxy EnemyCoordinator indices"
 	)
@@ -497,9 +491,9 @@ func _test_runtime_binding_and_behavior() -> void:
 	_expect(proxy != null and coordinator.linglan_boss == proxy, "正 net_id 未创建 Boss proxy。")
 	if proxy != null:
 		_expect(
-			game.multiplayer_enemies_by_net_id.get(73) == proxy
+			game.get_network_enemy(73) == proxy
 			and game.combat_target_index.get_enemy(73) == proxy
-			and int(game.multiplayer_enemy_ids_by_instance.get(proxy.get_instance_id(), 0)) == 73,
+			and game.get_network_enemy_net_id_by_instance_id(proxy.get_instance_id()) == 73,
 			"Boss proxy 必须按共享三索引契约完整登记。"
 		)
 
