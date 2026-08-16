@@ -1,7 +1,8 @@
 extends SceneTree
 
-const MAIN_MENU_SCENE := preload("res://scene/main_menu.tscn")
-const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
+const MAIN_MENU_SCENE_PATH := "res://scene/main_menu.tscn"
+const GAME_SCENE_PATH := "res://scene/game_modes/standard/standard_game.tscn"
+const SETTINGS_PANEL_SCENE := preload("res://scene/settings/settings_panel.tscn")
 const SETTINGS_MANAGER_SCRIPT := preload("res://scene/settings/settings_manager.gd")
 const NODE_ADDED_CALLBACK_BENCHMARK_COUNT := 512
 
@@ -21,14 +22,23 @@ func _run() -> void:
 	_backup_settings_config()
 	_test_project_resolution_defaults()
 	_test_user_settings_singleton()
-	_test_config_file_reset()
+	await _test_config_file_reset()
+	await _test_manager_exit_flush()
+	if OS.get_cmdline_user_args().has("--persistence-only"):
+		await _test_settings_panel_flush_boundary()
+		_restore_settings_config()
+		_finish()
+		return
 	_test_static_audio_bus_contract()
 	await _test_node_added_audio_router_removal()
 	await _test_settings_panel_scene()
 	await _test_audio_bus_assignment()
 	_test_hotkey_defaults_and_event_helpers()
 	_restore_settings_config()
+	_finish()
 
+
+func _finish() -> void:
 	if failures.is_empty():
 		print("SETTINGS_SMOKE_TEST_OK")
 		quit(0)
@@ -146,11 +156,21 @@ func _test_user_settings_singleton() -> void:
 	_expect(settings.has_method("set_fullscreen_enabled"), "Fullscreen setting API must exist.")
 	_expect(settings.has_method("get_current_screen_size"), "Fullscreen target screen-size API must exist.")
 	_expect(settings.has_method("reset_all_settings"), "Full settings reset API must exist.")
+	_expect(settings.has_method("flush_pending_save"), "Settings must expose an explicit save flush boundary.")
+	_expect(settings.has_method("is_save_pending"), "Settings must expose pending-save observability.")
+	_expect(settings.has_signal("persistence_finished"), "Settings persistence results must be observable.")
 	_expect(str(settings.call("get_config_path")) == "user://settings.cfg", "Settings config path must be stable.")
 	_expect(settings.has_method("get_config_file_system_path"), "Settings file system path API must exist.")
 	_expect(
 		str(settings.call("get_config_file_system_path")).ends_with("settings.cfg"),
 		"Settings file system path must point to settings.cfg."
+	)
+	var settings_source := FileAccess.get_file_as_string(
+		"res://scene/settings/settings_manager.gd"
+	)
+	_expect(
+		not settings_source.contains("OS.get_executable_path"),
+		"Exported builds must not place mutable settings beside the executable."
 	)
 	_test_resolution_scaling_behavior()
 
@@ -158,16 +178,106 @@ func _test_user_settings_singleton() -> void:
 func _test_config_file_reset() -> void:
 	var settings := _settings()
 	var config_path := str(settings.call("get_config_path"))
-	settings.call("set_volume_percent", &"master", 37.0)
-	settings.call("set_volume_percent", &"music", 38.0)
-	settings.call("set_volume_percent", &"sfx", 39.0)
-	_expect(FileAccess.file_exists(config_path), "Changing settings must create settings config file.")
-	settings.call("reset_all_settings")
+	_expect(int(settings.call("reset_all_settings")) == OK, "Initial settings reset must succeed.")
+	_expect(not FileAccess.file_exists(config_path), "Initial reset must remove settings config file.")
+
+	var save_results: Array[int] = []
+	var persistence_observer := func(operation: StringName, _path: String, error_code: int) -> void:
+		if operation == &"save":
+			save_results.append(error_code)
+	settings.connect(&"persistence_finished", persistence_observer)
+	_expect(
+		int(settings.call("set_volume_percent", &"master", 37.0)) == OK,
+		"Master volume mutation must be accepted."
+	)
+	_expect(
+		int(settings.call("set_volume_percent", &"music", 38.0)) == OK,
+		"Music volume mutation must be accepted."
+	)
+	_expect(
+		int(settings.call("set_volume_percent", &"sfx", 39.0)) == OK,
+		"SFX volume mutation must be accepted."
+	)
+	_expect(bool(settings.call("is_save_pending")), "Slider mutations must share one pending save lease.")
+	_expect(
+		not FileAccess.file_exists(config_path),
+		"Volume changes must not synchronously write once per slider event."
+	)
+	_expect(
+		_float_close(float(settings.call("get_volume_percent", &"music")), 38.0),
+		"Pending values must be read from the in-memory source of truth."
+	)
+	await create_timer(SETTINGS_MANAGER_SCRIPT.SAVE_DEBOUNCE_SECONDS + 0.1).timeout
+	await process_frame
+	settings.disconnect(&"persistence_finished", persistence_observer)
+	_expect(not bool(settings.call("is_save_pending")), "Debounce expiry must flush the pending settings save.")
+	_expect(FileAccess.file_exists(config_path), "Debounce flush must create settings config file.")
+	_expect(
+		save_results == [OK],
+		"Three same-lease slider mutations must produce exactly one successful disk write."
+	)
+	var persisted_config := ConfigFile.new()
+	_expect(persisted_config.load(config_path) == OK, "Debounced settings file must be readable.")
+	_expect(
+		_float_close(float(persisted_config.get_value("audio", "sfx_volume", -1.0)), 39.0),
+		"Debounce flush must persist the last in-memory slider value."
+	)
+	_expect(
+		int(settings.call("set_volume_percent", &"unknown", 50.0)) == ERR_INVALID_PARAMETER,
+		"Unknown audio channels must fail predictably."
+	)
+	var replacement_key := InputEventKey.new()
+	replacement_key.physical_keycode = KEY_Z
+	_expect(
+		int(settings.call("set_action_event", "move_up", 0, replacement_key)) == OK,
+		"Discrete binding mutations must report their save result."
+	)
+	_expect(
+		not bool(settings.call("is_save_pending")),
+		"Discrete settings must commit immediately instead of joining the slider debounce lease."
+	)
+	var discrete_config := ConfigFile.new()
+	_expect(
+		discrete_config.load(config_path) == OK
+			and discrete_config.has_section_key("input_bindings", "move_up"),
+		"A successful discrete save must be visible in the settings file before returning."
+	)
+
+	_expect(int(settings.call("reset_all_settings")) == OK, "Settings reset must report success.")
 	_expect(not FileAccess.file_exists(config_path), "Reset all settings must remove settings config file.")
 	_expect(_float_close(float(settings.call("get_volume_percent", &"master")), 100.0), "Master volume must reset to default.")
 	_expect(_float_close(float(settings.call("get_volume_percent", &"music")), 70.0), "Music volume must reset to default.")
 	_expect(_float_close(float(settings.call("get_volume_percent", &"sfx")), 100.0), "SFX volume must reset to default.")
 	_expect(not bool(settings.call("is_fullscreen_enabled")), "Fullscreen must reset to default.")
+
+
+func _test_manager_exit_flush() -> void:
+	var settings := _settings()
+	var config_path := str(settings.call("get_config_path"))
+	var lifecycle_manager := SETTINGS_MANAGER_SCRIPT.new()
+	lifecycle_manager.name = "SettingsExitFlushFixture"
+	root.add_child(lifecycle_manager)
+	await process_frame
+	_expect(
+		int(lifecycle_manager.call("set_volume_percent", &"music", 46.0)) == OK,
+		"Lifecycle fixture must accept a pending volume mutation."
+	)
+	_expect(
+		bool(lifecycle_manager.call("is_save_pending")),
+		"Lifecycle fixture must own a pending save before exit."
+	)
+	lifecycle_manager.queue_free()
+	await process_frame
+	var persisted_config := ConfigFile.new()
+	_expect(
+		persisted_config.load(config_path) == OK
+			and _float_close(float(persisted_config.get_value("audio", "music_volume", -1.0)), 46.0),
+		"Manager exit must synchronously flush the last pending value."
+	)
+	_expect(
+		int(settings.call("reset_all_settings")) == OK,
+		"Lifecycle flush fixture cleanup must remove its settings file."
+	)
 
 
 func _test_resolution_scaling_behavior() -> void:
@@ -195,8 +305,46 @@ func _test_resolution_scaling_behavior() -> void:
 	settings.call("set_resolution_index", 0)
 
 
+func _test_settings_panel_flush_boundary() -> void:
+	var panel := SETTINGS_PANEL_SCENE.instantiate() as Control
+	_expect(panel != null, "Focused settings panel fixture must instantiate.")
+	if panel == null:
+		return
+	root.add_child(panel)
+	await process_frame
+	panel.call("open")
+	await process_frame
+	var music_slider := panel.get_node_or_null(
+		"Center/Panel/Margin/Layout/Scroll/Content/AudioSection/MusicRow/MusicSlider"
+	) as HSlider
+	_expect(music_slider != null, "Focused settings panel fixture must expose MusicSlider.")
+	if music_slider != null:
+		music_slider.value = 63.0
+		_expect(
+			bool(_settings().call("is_save_pending")),
+			"Focused panel slider mutation must enter the debounce lease."
+		)
+	panel.call("close")
+	_expect(
+		not bool(_settings().call("is_save_pending")),
+		"Focused panel close must flush its pending slider save."
+	)
+	var persisted_config := ConfigFile.new()
+	_expect(
+		persisted_config.load(str(_settings().call("get_config_path"))) == OK
+			and _float_close(float(persisted_config.get_value("audio", "music_volume", -1.0)), 63.0),
+		"Focused panel close must persist its latest slider value."
+	)
+	panel.queue_free()
+	await process_frame
+
+
 func _test_settings_panel_scene() -> void:
-	var menu := MAIN_MENU_SCENE.instantiate()
+	var main_menu_scene := load(MAIN_MENU_SCENE_PATH) as PackedScene
+	_expect(main_menu_scene != null, "Main menu scene resource must load.")
+	if main_menu_scene == null:
+		return
+	var menu := main_menu_scene.instantiate()
 	_expect(menu != null, "Main menu scene must instantiate.")
 	if menu == null:
 		return
@@ -292,15 +440,35 @@ func _test_settings_panel_scene() -> void:
 		if hotkey_hint != null:
 			_expect(not hotkey_hint.visible, "Hotkey hint must not occupy the settings panel by default.")
 			_expect(hotkey_hint.text.is_empty(), "Hotkey hint must start empty by default.")
+		if music_slider != null:
+			music_slider.value = 64.0
+			_expect(
+				bool(_settings().call("is_save_pending")),
+				"Panel slider changes must enter the manager debounce lease."
+			)
 		panel.call("close")
 		_expect(not panel.visible, "Settings panel must hide after close().")
+		_expect(
+			not bool(_settings().call("is_save_pending")),
+			"Closing the settings panel must flush its pending slider save."
+		)
+		var closed_config := ConfigFile.new()
+		_expect(
+			closed_config.load(str(_settings().call("get_config_path"))) == OK
+				and _float_close(float(closed_config.get_value("audio", "music_volume", -1.0)), 64.0),
+			"Panel close must persist the latest slider value before hiding."
+		)
 
 	menu.queue_free()
 	await process_frame
 
 
 func _test_audio_bus_assignment() -> void:
-	var game := GAME_SCENE.instantiate()
+	var game_scene := load(GAME_SCENE_PATH) as PackedScene
+	_expect(game_scene != null, "StandardGame scene resource must load for audio bus test.")
+	if game_scene == null:
+		return
+	var game := game_scene.instantiate()
 	_expect(game != null, "StandardGame scene must instantiate for audio bus test.")
 	if game == null:
 		return

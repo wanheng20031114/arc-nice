@@ -61,6 +61,10 @@ func _settings() -> Node:
 
 func _ready() -> void:
 	hide()
+	var settings := _settings()
+	var persistence_callback := Callable(self, "_on_persistence_finished")
+	if not settings.is_connected(&"persistence_finished", persistence_callback):
+		settings.connect(&"persistence_finished", persistence_callback)
 	_populate_resolution_options()
 	_collect_hotkey_rows()
 	_connect_controls()
@@ -91,6 +95,12 @@ func close() -> void:
 	if not visible:
 		return
 	_stop_capture()
+	# 关闭面板是音量防抖租约的显式提交边界。
+	var flush_error := int(_settings().call("flush_pending_save"))
+	if flush_error != OK:
+		# 持久化故障不能扣住暂停/模态租约；管理器保留 dirty，面板下次打开
+		# 会从 last_persistence_error 恢复提示并允许再次尝试。
+		_set_persistence_hint(flush_error)
 	hide()
 	var viewport := get_viewport()
 	if viewport != null:
@@ -155,7 +165,8 @@ func _refresh_from_settings() -> void:
 	_update_volume_labels()
 	_refresh_hotkey_rows()
 	if not _is_capture_active():
-		_set_hint("")
+		# 管理器可能早于面板加载并发现损坏配置；打开面板时仍要呈现该结果。
+		_set_persistence_hint(int(settings.call("get_last_persistence_error")))
 
 
 func _set_slider_value(slider: HSlider, value: float) -> void:
@@ -194,19 +205,19 @@ func _refresh_hotkey_rows() -> void:
 
 
 func _on_resolution_selected(index: int) -> void:
-	_settings().call("set_resolution_index", index)
-	_set_hint("")
+	var save_error := int(_settings().call("set_resolution_index", index))
+	_set_persistence_hint(save_error)
 
 
 func _on_fullscreen_toggled(enabled: bool) -> void:
-	_settings().call("set_fullscreen_enabled", enabled)
+	var save_error := int(_settings().call("set_fullscreen_enabled", enabled))
 	resolution_option.disabled = enabled
 	if enabled:
-		_set_hint("")
+		_set_persistence_hint(save_error)
 	else:
 		_populate_resolution_options()
 		resolution_option.select(int(_settings().call("get_selected_resolution_index")))
-		_set_hint("")
+		_set_persistence_hint(save_error)
 
 
 func _on_volume_changed(value: float, channel: StringName) -> void:
@@ -222,28 +233,49 @@ func _on_bind_slot_pressed(action: String, slot_idx: int) -> void:
 
 
 func _on_reset_action_pressed(action: String) -> void:
-	_settings().call("reset_action", action)
+	var save_error := int(_settings().call("reset_action", action))
 	_stop_capture()
 	_refresh_hotkey_rows()
-	_set_hint("“%s”已恢复默认。" % str(ACTION_DISPLAY_NAMES.get(action, action)))
+	if save_error == OK:
+		_set_hint("“%s”已恢复默认。" % str(ACTION_DISPLAY_NAMES.get(action, action)))
+	else:
+		_set_persistence_hint(save_error)
 
 
 func _on_reset_all_pressed() -> void:
-	_settings().call("reset_all_bindings")
+	var save_error := int(_settings().call("reset_all_bindings"))
 	_stop_capture()
 	_refresh_hotkey_rows()
-	_set_hint("所有热键已恢复默认。")
+	if save_error == OK:
+		_set_hint("所有热键已恢复默认。")
+	else:
+		_set_persistence_hint(save_error)
 
 
 func _on_reset_settings_pressed() -> void:
-	_settings().call("reset_all_settings")
+	var reset_error := int(_settings().call("reset_all_settings"))
 	_stop_capture()
 	_refresh_from_settings()
-	_set_hint("配置文件已删除，所有设置已恢复默认。")
+	if reset_error == OK:
+		_set_hint("配置文件已删除，所有设置已恢复默认。")
+	else:
+		_set_persistence_hint(reset_error)
 
 
 func _on_close_pressed() -> void:
 	close()
+
+
+func _on_persistence_finished(_operation: StringName, _path: String, error_code: int) -> void:
+	if error_code != OK and visible:
+		_set_persistence_hint(error_code)
+
+
+func _set_persistence_hint(error_code: int) -> void:
+	if error_code == OK:
+		_set_hint("")
+	else:
+		_set_hint("设置保存失败（错误码 %d），请检查配置目录权限。" % error_code)
 
 
 func _input(event: InputEvent) -> void:
@@ -271,10 +303,15 @@ func _handle_capture_input(event: InputEvent) -> void:
 				_mark_input_handled()
 				return
 			if key_event.physical_keycode == KEY_BACKSPACE or key_event.physical_keycode == KEY_DELETE:
-				_settings().call("clear_action_event", _capture_action, _capture_slot)
+				var clear_error := int(
+					_settings().call("clear_action_event", _capture_action, _capture_slot)
+				)
 				_stop_capture()
 				_refresh_hotkey_rows()
-				_set_hint("该槽位已清空。")
+				if clear_error == OK:
+					_set_hint("该槽位已清空。")
+				else:
+					_set_persistence_hint(clear_error)
 				_mark_input_handled()
 				return
 	var settings := _settings()
@@ -286,10 +323,15 @@ func _handle_capture_input(event: InputEvent) -> void:
 		_set_hint("该输入已用于“%s”，请换一个。" % str(ACTION_DISPLAY_NAMES.get(owner_action, owner_action)))
 		_mark_input_handled()
 		return
-	settings.call("set_action_event", _capture_action, _capture_slot, captured)
+	var save_error := int(
+		settings.call("set_action_event", _capture_action, _capture_slot, captured)
+	)
 	_stop_capture()
 	_refresh_hotkey_rows()
-	_set_hint("热键已保存。")
+	if save_error == OK:
+		_set_hint("热键已保存。")
+	else:
+		_set_persistence_hint(save_error)
 	_mark_input_handled()
 
 

@@ -1,7 +1,8 @@
 extends Node
 
-const CONFIG_FILE_NAME := "settings.cfg"
-const EDITOR_CONFIG_PATH := "user://settings.cfg"
+# 设置文件只属于当前用户，不依赖编辑器/导出包所在目录是否可写。
+const CONFIG_PATH := "user://settings.cfg"
+const SAVE_DEBOUNCE_SECONDS := 0.25
 const SECTION_DISPLAY := "display"
 const SECTION_AUDIO := "audio"
 const SECTION_BINDINGS := "input_bindings"
@@ -20,6 +21,9 @@ const MAX_BINDINGS_PER_ACTION := 3
 const JOYPAD_MOTION_THRESHOLD := 0.55
 const PLANT_ACTION := "plant"
 const PLANT_DEFAULT_PHYSICAL_KEYCODE := KEY_T
+
+# 所有持久化尝试都从同一信号对外反馈；error_code 为 OK 时表示已落盘/删除。
+signal persistence_finished(operation: StringName, config_path: String, error_code: int)
 
 const BINDABLE_ACTIONS: Array[String] = [
 	"move_up",
@@ -49,13 +53,34 @@ const RESOLUTION_OPTIONS: Array[Dictionary] = [
 
 var _defaults_captured: bool = false
 var _default_events_by_action: Dictionary = {}
+var _config := ConfigFile.new()
+var _config_loaded: bool = false
+var _config_dirty: bool = false
+var _save_time_left: float = 0.0
+var _last_persistence_error: Error = OK
 
 
 func _ready() -> void:
+	set_process(false)
+	_ensure_config_loaded()
 	_ensure_audio_buses()
 	_ensure_builtin_action_defaults()
 	_capture_default_bindings()
 	apply_all()
+
+
+func _process(delta: float) -> void:
+	if not _config_dirty:
+		set_process(false)
+		return
+	_save_time_left = maxf(_save_time_left - maxf(delta, 0.0), 0.0)
+	if _save_time_left <= 0.0:
+		flush_pending_save()
+
+
+func _exit_tree() -> void:
+	# 面板没来得及关闭或程序直接退出时，仍要兑现最后一次音量修改。
+	flush_pending_save()
 
 
 func apply_all() -> void:
@@ -65,25 +90,41 @@ func apply_all() -> void:
 
 
 func get_config_path() -> String:
-	if OS.has_feature("editor"):
-		return EDITOR_CONFIG_PATH
-	return _get_exported_config_path()
+	return CONFIG_PATH
 
 
 func get_config_file_system_path() -> String:
-	var config_path := get_config_path()
-	if _is_local_config_path(config_path):
-		return ProjectSettings.globalize_path(config_path)
-	return config_path
+	return ProjectSettings.globalize_path(CONFIG_PATH)
 
 
-func reset_all_settings() -> void:
-	_delete_config_file()
+func get_last_persistence_error() -> Error:
+	return _last_persistence_error
+
+
+func is_save_pending() -> bool:
+	return _config_dirty
+
+
+func flush_pending_save() -> Error:
+	if not _config_dirty:
+		return OK
+	return _save_config()
+
+
+func reset_all_settings() -> Error:
+	var delete_error := _delete_config_file()
+	if delete_error != OK:
+		return delete_error
+	_cancel_pending_save()
+	# 删除成功后同时替换内存副本，避免磁盘与运行时出现两个真相源。
+	_config = ConfigFile.new()
+	_config_loaded = true
 	_capture_default_bindings()
 	for action in BINDABLE_ACTIONS:
 		_restore_action_default(action)
 	_apply_default_resolution()
 	_apply_default_audio()
+	return OK
 
 
 func get_resolution_options() -> Array[Dictionary]:
@@ -98,37 +139,39 @@ func get_windowed_resolution_options_for_size(_screen_size: Vector2i) -> Array[D
 
 
 func get_selected_resolution_index() -> int:
-	var config := _load_config()
-	var resolution_id := str(config.get_value(SECTION_DISPLAY, "resolution", DEFAULT_RESOLUTION_ID))
+	_ensure_config_loaded()
+	var resolution_id := str(_config.get_value(SECTION_DISPLAY, "resolution", DEFAULT_RESOLUTION_ID))
 	for idx in range(RESOLUTION_OPTIONS.size()):
 		if str(RESOLUTION_OPTIONS[idx].get("id", "")) == resolution_id:
 			return idx
 	return _get_default_resolution_index()
 
 
-func set_resolution_index(index: int) -> void:
+func set_resolution_index(index: int) -> Error:
 	var safe_index := clampi(index, 0, RESOLUTION_OPTIONS.size() - 1)
 	var option := RESOLUTION_OPTIONS[safe_index]
-	var config := _load_config()
-	config.set_value(SECTION_DISPLAY, "resolution", str(option.get("id", DEFAULT_RESOLUTION_ID)))
-	_save_config(config)
+	var save_error := _set_config_value_immediately(
+		SECTION_DISPLAY,
+		"resolution",
+		str(option.get("id", DEFAULT_RESOLUTION_ID))
+	)
 	if not is_fullscreen_enabled():
 		_apply_windowed_resolution_option(option)
+	return save_error
 
 
 func is_fullscreen_enabled() -> bool:
-	var config := _load_config()
-	return bool(config.get_value(SECTION_DISPLAY, "fullscreen", DEFAULT_FULLSCREEN))
+	_ensure_config_loaded()
+	return bool(_config.get_value(SECTION_DISPLAY, "fullscreen", DEFAULT_FULLSCREEN))
 
 
-func set_fullscreen_enabled(enabled: bool) -> void:
-	var config := _load_config()
-	config.set_value(SECTION_DISPLAY, "fullscreen", enabled)
-	_save_config(config)
+func set_fullscreen_enabled(enabled: bool) -> Error:
+	var save_error := _set_config_value_immediately(SECTION_DISPLAY, "fullscreen", enabled)
 	if enabled:
 		_apply_fullscreen_resolution()
 	else:
 		_apply_saved_windowed_resolution()
+	return save_error
 
 
 func get_current_screen_size() -> Vector2i:
@@ -136,18 +179,23 @@ func get_current_screen_size() -> Vector2i:
 
 
 func get_volume_percent(channel: StringName) -> float:
-	var config := _load_config()
+	_ensure_config_loaded()
 	var key := _volume_key(channel)
 	var default_value := _volume_default(channel)
-	return clampf(float(config.get_value(SECTION_AUDIO, key, default_value)), 0.0, 100.0)
+	return clampf(float(_config.get_value(SECTION_AUDIO, key, default_value)), 0.0, 100.0)
 
 
-func set_volume_percent(channel: StringName, percent: float) -> void:
+func set_volume_percent(channel: StringName, percent: float) -> Error:
+	if not _is_volume_channel(channel):
+		return ERR_INVALID_PARAMETER
 	var clamped := clampf(percent, 0.0, 100.0)
-	var config := _load_config()
-	config.set_value(SECTION_AUDIO, _volume_key(channel), clamped)
-	_save_config(config)
+	_ensure_config_loaded()
+	var changed := _set_config_value(SECTION_AUDIO, _volume_key(channel), clamped)
+	if changed or _config_dirty:
+		_queue_config_save()
 	_apply_volume(channel, clamped)
+	# 音量在内存与音频总线上已经生效；落盘结果由 flush API/信号反馈。
+	return OK
 
 
 func get_supported_events(action: String) -> Array:
@@ -162,45 +210,45 @@ func get_supported_events(action: String) -> Array:
 	return result
 
 
-func set_action_event(action: String, slot_index: int, event: InputEvent) -> void:
+func set_action_event(action: String, slot_index: int, event: InputEvent) -> Error:
 	if not _is_bindable_action(action):
-		return
+		return ERR_INVALID_PARAMETER
 	if slot_index < 0 or slot_index >= MAX_BINDINGS_PER_ACTION:
-		return
+		return ERR_INVALID_PARAMETER
 	if not _is_supported_binding_event(event):
-		return
+		return ERR_INVALID_PARAMETER
 	var events := get_supported_events(action)
 	while events.size() < MAX_BINDINGS_PER_ACTION:
 		events.append(null)
 	events[slot_index] = _clone_binding_event(event)
 	_apply_action_events(action, _compact_supported_events(events))
-	_save_bindings()
+	return _save_bindings()
 
 
-func clear_action_event(action: String, slot_index: int) -> void:
+func clear_action_event(action: String, slot_index: int) -> Error:
 	if not _is_bindable_action(action):
-		return
+		return ERR_INVALID_PARAMETER
 	if slot_index < 0 or slot_index >= MAX_BINDINGS_PER_ACTION:
-		return
+		return ERR_INVALID_PARAMETER
 	var events := get_supported_events(action)
 	while events.size() < MAX_BINDINGS_PER_ACTION:
 		events.append(null)
 	events[slot_index] = null
 	_apply_action_events(action, _compact_supported_events(events))
-	_save_bindings()
+	return _save_bindings()
 
 
-func reset_action(action: String) -> void:
+func reset_action(action: String) -> Error:
 	if not _is_bindable_action(action):
-		return
+		return ERR_INVALID_PARAMETER
 	_restore_action_default(action)
-	_save_bindings()
+	return _save_bindings()
 
 
-func reset_all_bindings() -> void:
+func reset_all_bindings() -> Error:
 	for action in BINDABLE_ACTIONS:
 		_restore_action_default(action)
-	_save_bindings()
+	return _save_bindings()
 
 
 func find_event_owner(event: InputEvent, excluded_action: String = "", excluded_slot: int = -1) -> String:
@@ -298,35 +346,80 @@ func normalize_captured_event(event: InputEvent) -> InputEvent:
 	return null
 
 
-func _load_config() -> ConfigFile:
-	var config := ConfigFile.new()
-	config.load(get_config_path())
-	return config
-
-
-func _save_config(config: ConfigFile) -> void:
-	config.save(get_config_path())
-
-
-func _delete_config_file() -> void:
-	var config_path := get_config_path()
-	if not FileAccess.file_exists(config_path):
+func _ensure_config_loaded() -> void:
+	if _config_loaded:
 		return
-	var dir := DirAccess.open(config_path.get_base_dir())
+	_config_loaded = true
+	var load_error := _config.load(CONFIG_PATH)
+	if load_error == OK or load_error == ERR_FILE_NOT_FOUND:
+		return
+	# 损坏文件可能只解析出一半字段；失败时整份回到默认，禁止使用半成品状态。
+	_config = ConfigFile.new()
+	_report_persistence_result(&"load", load_error)
+
+
+func _set_config_value(section: String, key: String, value: Variant) -> bool:
+	_ensure_config_loaded()
+	if _config.has_section_key(section, key) and _config.get_value(section, key) == value:
+		return false
+	_config.set_value(section, key, value)
+	_config_dirty = true
+	return true
+
+
+func _set_config_value_immediately(section: String, key: String, value: Variant) -> Error:
+	_set_config_value(section, key, value)
+	if not _config_dirty:
+		return OK
+	return flush_pending_save()
+
+
+func _queue_config_save() -> void:
+	_save_time_left = SAVE_DEBOUNCE_SECONDS
+	if is_inside_tree():
+		set_process(true)
+
+
+func _cancel_pending_save() -> void:
+	_config_dirty = false
+	_save_time_left = 0.0
+	set_process(false)
+
+
+func _save_config() -> Error:
+	_ensure_config_loaded()
+	var save_error := _config.save(CONFIG_PATH)
+	if save_error == OK:
+		_config_dirty = false
+		_save_time_left = 0.0
+	# 失败后保留 dirty，供显式 flush 或下一次修改重试，但停止逐帧刷错误日志。
+	set_process(false)
+	_report_persistence_result(&"save", save_error)
+	return save_error
+
+
+func _delete_config_file() -> Error:
+	if not FileAccess.file_exists(CONFIG_PATH):
+		_report_persistence_result(&"delete", OK)
+		return OK
+	var dir := DirAccess.open(CONFIG_PATH.get_base_dir())
 	if dir == null:
-		push_warning("Unable to open settings directory for reset.")
-		return
-	var error := dir.remove(config_path.get_file())
-	if error != OK:
-		push_warning("Unable to remove settings config: %s" % error)
+		var open_error := DirAccess.get_open_error()
+		_report_persistence_result(&"delete", open_error)
+		return open_error
+	var delete_error := dir.remove(CONFIG_PATH.get_file())
+	_report_persistence_result(&"delete", delete_error)
+	return delete_error
 
 
-func _get_exported_config_path() -> String:
-	return OS.get_executable_path().get_base_dir().path_join(CONFIG_FILE_NAME)
-
-
-func _is_local_config_path(path: String) -> bool:
-	return path.begins_with("user://") or path.begins_with("res://")
+func _report_persistence_result(operation: StringName, error_code: Error) -> void:
+	_last_persistence_error = error_code
+	persistence_finished.emit(operation, CONFIG_PATH, int(error_code))
+	if error_code != OK:
+		push_error(
+			"设置持久化失败：操作=%s，路径=%s，错误码=%d"
+			% [operation, CONFIG_PATH, int(error_code)]
+		)
 
 
 func _apply_saved_resolution() -> void:
@@ -344,7 +437,6 @@ func _apply_default_resolution() -> void:
 func _apply_saved_windowed_resolution() -> void:
 	var index := get_selected_resolution_index()
 	var option := RESOLUTION_OPTIONS[index]
-	_store_resolution_if_changed(option)
 	_apply_windowed_resolution_option(option)
 
 
@@ -391,16 +483,6 @@ func _center_window(window: Window) -> void:
 	window.position = centered
 
 
-func _store_resolution_if_changed(option: Dictionary) -> void:
-	var config := _load_config()
-	var current_id := str(config.get_value(SECTION_DISPLAY, "resolution", DEFAULT_RESOLUTION_ID))
-	var option_id := str(option.get("id", DEFAULT_RESOLUTION_ID))
-	if current_id == option_id:
-		return
-	config.set_value(SECTION_DISPLAY, "resolution", option_id)
-	_save_config(config)
-
-
 func _get_current_screen_size() -> Vector2i:
 	var screen := DisplayServer.window_get_current_screen()
 	var screen_size := DisplayServer.screen_get_size(screen)
@@ -432,6 +514,10 @@ func _apply_volume(channel: StringName, percent: float) -> void:
 	var clamped := clampf(percent, 0.0, 100.0)
 	AudioServer.set_bus_mute(bus_index, clamped <= 0.0)
 	AudioServer.set_bus_volume_db(bus_index, -80.0 if clamped <= 0.0 else linear_to_db(clamped / 100.0))
+
+
+func _is_volume_channel(channel: StringName) -> bool:
+	return channel == &"master" or channel == &"music" or channel == &"sfx"
 
 
 func _volume_key(channel: StringName) -> String:
@@ -504,11 +590,11 @@ func _ensure_builtin_action_defaults() -> void:
 
 
 func _apply_saved_bindings() -> void:
-	var config := _load_config()
+	_ensure_config_loaded()
 	for action in BINDABLE_ACTIONS:
-		if not config.has_section_key(SECTION_BINDINGS, action):
+		if not _config.has_section_key(SECTION_BINDINGS, action):
 			continue
-		var encoded_events: Variant = config.get_value(SECTION_BINDINGS, action, [])
+		var encoded_events: Variant = _config.get_value(SECTION_BINDINGS, action, [])
 		if not (encoded_events is Array):
 			continue
 		var restored_events: Array = []
@@ -521,14 +607,16 @@ func _apply_saved_bindings() -> void:
 		_apply_action_events(action, restored_events)
 
 
-func _save_bindings() -> void:
-	var config := _load_config()
+func _save_bindings() -> Error:
+	var changed := false
 	for action in BINDABLE_ACTIONS:
 		var serialized_events: Array[String] = []
 		for event in get_supported_events(action):
 			serialized_events.append(var_to_str(event))
-		config.set_value(SECTION_BINDINGS, action, serialized_events)
-	_save_config(config)
+		changed = _set_config_value(SECTION_BINDINGS, action, serialized_events) or changed
+	if not changed and not _config_dirty:
+		return OK
+	return flush_pending_save()
 
 
 func _restore_action_default(action: String) -> void:
