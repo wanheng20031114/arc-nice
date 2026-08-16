@@ -37,27 +37,43 @@ static var heavy_attack_active_voice_count := 0
 static var rapid_fire_peak_active_voice_count := 0
 static var heavy_attack_peak_active_voice_count := 0
 static var peak_active_voice_count := 0
+static var _metric_scope_refs: Dictionary = {}
 
 
 static func play_rapid_fire(
 	audio_player: AudioStreamPlayer2D,
-	from_position: float = 0.0
+	from_position: float = 0.0,
+	explicit_audio_scope: Node = null
 ) -> bool:
 	return _play_limited_audio(
 		audio_player,
 		AttackAudioClass.RAPID_FIRE,
-		from_position
+		from_position,
+		explicit_audio_scope
 	)
 
 
 static func play_heavy_attack(
 	audio_player: AudioStreamPlayer2D,
-	from_position: float = 0.0
+	from_position: float = 0.0,
+	explicit_audio_scope: Node = null
 ) -> bool:
 	return _play_limited_audio(
 		audio_player,
 		AttackAudioClass.HEAVY_ATTACK,
-		from_position
+		from_position,
+		explicit_audio_scope
+	)
+
+
+static func stop_rapid_fire(audio_player: AudioStreamPlayer2D) -> void:
+	if audio_player == null:
+		return
+	audio_player.stop()
+	_remove_voice(
+		audio_player,
+		RAPID_FIRE_AUDIO_GROUP,
+		AttackAudioClass.RAPID_FIRE
 	)
 
 
@@ -91,9 +107,11 @@ static func reset_metrics() -> void:
 	rapid_fire_peak_active_voice_count = 0
 	heavy_attack_peak_active_voice_count = 0
 	peak_active_voice_count = 0
+	_metric_scope_refs.clear()
 
 
 static func get_metrics() -> Dictionary:
+	_refresh_active_voice_metrics()
 	return {
 		&"requests": play_request_count,
 		&"admitted": play_admitted_count,
@@ -114,18 +132,22 @@ static func get_metrics() -> Dictionary:
 
 
 static func get_active_voice_count(
-	tree: SceneTree,
+	audio_scope: Node,
 	audio_class: AttackAudioClass
 ) -> int:
-	if tree == null:
+	if audio_scope == null:
 		return 0
-	return _count_active_voices(tree, _get_audio_group(audio_class))
+	return SPATIAL_VOICE_LIMITER.get_active_voice_count(
+		audio_scope,
+		_get_audio_group(audio_class)
+	)
 
 
 static func _play_limited_audio(
 	audio_player: AudioStreamPlayer2D,
 	audio_class: AttackAudioClass,
-	from_position: float
+	from_position: float,
+	explicit_audio_scope: Node
 ) -> bool:
 	_record_request(audio_class)
 	if audio_player == null:
@@ -145,14 +167,18 @@ static func _play_limited_audio(
 	if audio_player.stream == null or not audio_player.is_inside_tree():
 		_record_rejection(audio_class)
 		return false
-	var tree := audio_player.get_tree()
-	if tree == null:
+	var audio_scope := SPATIAL_VOICE_LIMITER.resolve_audio_scope(
+		audio_player,
+		explicit_audio_scope
+	)
+	if audio_scope == null:
 		_record_rejection(audio_class)
 		return false
 
 	var audio_group := _get_audio_group(audio_class)
 	var active_count := SPATIAL_VOICE_LIMITER.claim_voice(
 		audio_player,
+		audio_scope,
 		audio_group,
 		_get_voice_cap(audio_class)
 	)
@@ -187,7 +213,8 @@ static func _play_limited_audio(
 		return false
 
 	_record_admission(audio_class)
-	_update_active_voice_metrics(audio_class, active_count + 1)
+	_track_metric_scope(audio_scope)
+	_refresh_active_voice_metrics()
 	return true
 
 
@@ -215,22 +242,47 @@ static func _record_rejection(audio_class: AttackAudioClass) -> void:
 		heavy_attack_rejected_count += 1
 
 
-static func _update_active_voice_metrics(
-	audio_class: AttackAudioClass,
-	active_count: int
-) -> void:
-	if audio_class == AttackAudioClass.RAPID_FIRE:
-		rapid_fire_active_voice_count = active_count
-		rapid_fire_peak_active_voice_count = maxi(
-			rapid_fire_peak_active_voice_count,
-			active_count
+static func _track_metric_scope(audio_scope: Node) -> void:
+	if audio_scope == null or not is_instance_valid(audio_scope):
+		return
+	_metric_scope_refs[audio_scope.get_instance_id()] = weakref(audio_scope)
+
+
+static func _refresh_active_voice_metrics() -> void:
+	rapid_fire_active_voice_count = 0
+	heavy_attack_active_voice_count = 0
+	var stale_scope_ids: Array[int] = []
+	# 指标按显式 scope 弱引用聚合；它只读取各域账本，不回退到全树 group。
+	# 因此双运行时各一个声部会报告 2，任一域释放也不会覆盖另一域。
+	for scope_id_variant in _metric_scope_refs:
+		var scope_id := int(scope_id_variant)
+		var scope_ref := _metric_scope_refs[scope_id] as WeakRef
+		var audio_scope := scope_ref.get_ref() as Node if scope_ref != null else null
+		if audio_scope == null or not is_instance_valid(audio_scope):
+			stale_scope_ids.append(scope_id)
+			continue
+		rapid_fire_active_voice_count += (
+			SPATIAL_VOICE_LIMITER.get_active_voice_count(
+				audio_scope,
+				RAPID_FIRE_AUDIO_GROUP
+			)
 		)
-	else:
-		heavy_attack_active_voice_count = active_count
-		heavy_attack_peak_active_voice_count = maxi(
-			heavy_attack_peak_active_voice_count,
-			active_count
+		heavy_attack_active_voice_count += (
+			SPATIAL_VOICE_LIMITER.get_active_voice_count(
+				audio_scope,
+				HEAVY_ATTACK_AUDIO_GROUP
+			)
 		)
+	for stale_scope_id in stale_scope_ids:
+		_metric_scope_refs.erase(stale_scope_id)
+	rapid_fire_peak_active_voice_count = maxi(
+		rapid_fire_peak_active_voice_count,
+		rapid_fire_active_voice_count
+	)
+	heavy_attack_peak_active_voice_count = maxi(
+		heavy_attack_peak_active_voice_count,
+		heavy_attack_active_voice_count
+	)
 	peak_active_voice_count = maxi(
 		peak_active_voice_count,
 		rapid_fire_active_voice_count + heavy_attack_active_voice_count
@@ -252,37 +304,17 @@ static func _on_audio_finished(
 static func _remove_voice(
 	audio_player: AudioStreamPlayer2D,
 	audio_group: StringName,
-	audio_class: AttackAudioClass
+	_audio_class: AttackAudioClass
 ) -> void:
-	var tree: SceneTree = null
+	var audio_scope: Node = null
 	if is_instance_valid(audio_player):
-		if audio_player.is_inside_tree():
-			tree = audio_player.get_tree()
-		if audio_player.is_in_group(audio_group):
-			audio_player.remove_from_group(audio_group)
-	var active_count := _count_active_voices(tree, audio_group) if tree != null else 0
-	if audio_class == AttackAudioClass.RAPID_FIRE:
-		rapid_fire_active_voice_count = active_count
-	else:
-		heavy_attack_active_voice_count = active_count
-
-
-static func _count_active_voices(
-	tree: SceneTree,
-	audio_group: StringName
-) -> int:
-	var active_count := 0
-	for node in tree.get_nodes_in_group(audio_group):
-		var audio_player := node as AudioStreamPlayer2D
-		if audio_player == null:
-			if is_instance_valid(node):
-				node.remove_from_group(audio_group)
-			continue
-		if not audio_player.playing:
-			audio_player.remove_from_group(audio_group)
-			continue
-		active_count += 1
-	return active_count
+		audio_scope = SPATIAL_VOICE_LIMITER.get_claimed_scope(
+			audio_player,
+			audio_group
+		)
+	SPATIAL_VOICE_LIMITER.release_voice(audio_player, audio_group)
+	_track_metric_scope(audio_scope)
+	_refresh_active_voice_metrics()
 
 
 static func _restore_base_volume(audio_player: AudioStreamPlayer2D) -> void:

@@ -68,10 +68,15 @@ func _reset_effect_state() -> void:
 	self_modulate = Color.WHITE
 
 
-func _play_collapse_audio() -> void:
+func _play_collapse_audio(explicit_audio_scope: Node = null) -> void:
 	_stop_collapse_audio()
+	var audio_scope := SPATIAL_AUDIO_VOICE_LIMITER.resolve_audio_scope(
+		collapse_audio,
+		explicit_audio_scope
+	)
 	var active_voice_count := SPATIAL_AUDIO_VOICE_LIMITER.claim_voice(
 		collapse_audio,
+		audio_scope,
 		COLLAPSE_AUDIO_GROUP,
 		MAX_SIMULTANEOUS_COLLAPSE_VOICES
 	)
@@ -103,8 +108,10 @@ func _on_collapse_audio_finished() -> void:
 
 
 func _remove_collapse_audio_voice() -> void:
-	if collapse_audio.is_in_group(COLLAPSE_AUDIO_GROUP):
-		collapse_audio.remove_from_group(COLLAPSE_AUDIO_GROUP)
+	SPATIAL_AUDIO_VOICE_LIMITER.release_voice(
+		collapse_audio,
+		COLLAPSE_AUDIO_GROUP
+	)
 
 
 func _on_finished() -> void:

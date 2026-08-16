@@ -252,7 +252,7 @@ func _test_plant_placement_mix() -> void:
 		placement_effects.append(stacked_effect)
 	await process_frame
 	for stacked_effect in placement_effects:
-		stacked_effect.call("_play_placement_audio")
+		stacked_effect.call("_play_placement_audio", root)
 	var active_placement_voices := get_nodes_in_group(
 		PlantPlacementParticles.PLACEMENT_AUDIO_GROUP
 	)
@@ -302,7 +302,7 @@ func _test_plant_collapse_mix() -> void:
 	)
 
 	for effect in collapse_effects:
-		effect.call("_play_collapse_audio")
+		effect.call("_play_collapse_audio", root)
 	var active_collapse_voices := get_nodes_in_group(
 		PlantRemovalSmoke.COLLAPSE_AUDIO_GROUP
 	)
@@ -382,7 +382,7 @@ func _test_combat_audio_limiter() -> void:
 		audio_player.volume_db = -6.0
 		audio_root.add_child(audio_player)
 		hit_players.append(audio_player)
-		AUDIO_LIMITER.play_enemy_hit(audio_player)
+		AUDIO_LIMITER.play_enemy_hit(audio_player, audio_root)
 	var active_hits := _count_playing(hit_players)
 	_expect(active_hits == 5, "Enemy hit audio limiter must drop excessive simultaneous hit sounds.")
 	_expect(
@@ -401,7 +401,7 @@ func _test_combat_audio_limiter() -> void:
 		audio_player.volume_db = -5.0
 		audio_root.add_child(audio_player)
 		death_players.append(audio_player)
-		AUDIO_LIMITER.play_enemy_death(audio_player)
+		AUDIO_LIMITER.play_enemy_death(audio_player, audio_root)
 	_expect(
 		_count_playing(death_players) == 4,
 		"Enemy death audio limiter must drop excessive simultaneous death sounds."
@@ -431,8 +431,8 @@ func _test_limited_audio_replay_lifecycle() -> void:
 		func() -> void:
 			hit_finished_events[0] = int(hit_finished_events[0]) + 1
 	)
-	AUDIO_LIMITER.play_enemy_hit(hit_player)
-	AUDIO_LIMITER.play_enemy_hit(hit_player)
+	AUDIO_LIMITER.play_enemy_hit(hit_player, audio_root)
+	AUDIO_LIMITER.play_enemy_hit(hit_player, audio_root)
 	await physics_frame
 	await process_frame
 	_expect(
@@ -444,7 +444,7 @@ func _test_limited_audio_replay_lifecycle() -> void:
 		and hit_player.is_in_group(AUDIO_LIMITER.ENEMY_HIT_AUDIO_GROUP)
 		and hit_player.get_signal_connection_list(&"finished").size() == 2
 		and AUDIO_LIMITER._count_active_audio_players(
-			self,
+			audio_root,
 			AUDIO_LIMITER.ENEMY_HIT_AUDIO_GROUP
 		) == 1,
 		"An intermediate hit finish must retain one voice and one limiter connection."
@@ -468,8 +468,8 @@ func _test_limited_audio_replay_lifecycle() -> void:
 		func() -> void:
 			plant_finished_events[0] = int(plant_finished_events[0]) + 1
 	)
-	PLANT_AUDIO_LIMITER.play_burst(plant_player)
-	PLANT_AUDIO_LIMITER.play_burst(plant_player)
+	PLANT_AUDIO_LIMITER.play_burst(plant_player, 0.0, audio_root)
+	PLANT_AUDIO_LIMITER.play_burst(plant_player, 0.0, audio_root)
 	await physics_frame
 	await process_frame
 	_expect(
@@ -480,7 +480,7 @@ func _test_limited_audio_replay_lifecycle() -> void:
 		plant_player.playing
 		and plant_player.is_in_group(PLANT_AUDIO_LIMITER.AUDIO_GROUP)
 		and plant_player.get_signal_connection_list(&"finished").size() == 2
-		and PLANT_AUDIO_LIMITER.get_active_voice_count(self) == 1,
+		and PLANT_AUDIO_LIMITER.get_active_voice_count(audio_root) == 1,
 		"An intermediate plant finish must retain one voice and one limiter connection."
 	)
 	await create_timer(ENEMY_HIT_STREAM.get_length() + 0.1).timeout
@@ -514,7 +514,7 @@ func _test_spatial_audio_priority() -> void:
 		audio_player.position = Vector2(500.0 - float(index) * 80.0, 0.0)
 		audio_root.add_child(audio_player)
 		active_players.append(audio_player)
-		AUDIO_LIMITER.play_enemy_hit(audio_player)
+		AUDIO_LIMITER.play_enemy_hit(audio_player, audio_root)
 
 	var near_player := AudioStreamPlayer2D.new()
 	near_player.stream = ENEMY_HIT_STREAM
@@ -522,12 +522,12 @@ func _test_spatial_audio_priority() -> void:
 	near_player.max_distance = 800.0
 	near_player.position = Vector2(24.0, 0.0)
 	audio_root.add_child(near_player)
-	AUDIO_LIMITER.play_enemy_hit(near_player)
+	AUDIO_LIMITER.play_enemy_hit(near_player, audio_root)
 	_expect(near_player.playing, "A nearer hit sound must replace the farthest saturated voice.")
 	_expect(not active_players[0].playing, "Spatial replacement must stop the farthest active hit sound.")
 	_expect(
 		AUDIO_LIMITER._count_active_audio_players(
-			self,
+			audio_root,
 			AUDIO_LIMITER.ENEMY_HIT_AUDIO_GROUP
 		) == AUDIO_LIMITER.MAX_SIMULTANEOUS_ENEMY_HITS,
 		"Spatial replacement must preserve the hard hit-audio voice cap."
@@ -539,7 +539,7 @@ func _test_spatial_audio_priority() -> void:
 	farther_player.max_distance = 800.0
 	farther_player.position = Vector2(700.0, 0.0)
 	audio_root.add_child(farther_player)
-	AUDIO_LIMITER.play_enemy_hit(farther_player)
+	AUDIO_LIMITER.play_enemy_hit(farther_player, audio_root)
 	_expect(not farther_player.playing, "A farther request must not evict a nearer saturated voice.")
 
 	var inaudible_player := AudioStreamPlayer2D.new()
@@ -548,7 +548,7 @@ func _test_spatial_audio_priority() -> void:
 	inaudible_player.max_distance = 100.0
 	inaudible_player.position = Vector2(200.0, 0.0)
 	audio_root.add_child(inaudible_player)
-	AUDIO_LIMITER.play_enemy_hit(inaudible_player)
+	AUDIO_LIMITER.play_enemy_hit(inaudible_player, audio_root)
 	_expect(not inaudible_player.playing, "A request beyond max_distance must not consume a voice.")
 
 	_stop_audio_players(audio_root)

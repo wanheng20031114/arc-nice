@@ -121,10 +121,15 @@ func _reset_effect_state() -> void:
 	scale = Vector2.ONE
 
 
-func _play_placement_audio() -> void:
+func _play_placement_audio(explicit_audio_scope: Node = null) -> void:
 	_stop_placement_audio()
+	var audio_scope := SPATIAL_AUDIO_VOICE_LIMITER.resolve_audio_scope(
+		placement_audio,
+		explicit_audio_scope
+	)
 	var active_voice_count := SPATIAL_AUDIO_VOICE_LIMITER.claim_voice(
 		placement_audio,
+		audio_scope,
 		PLACEMENT_AUDIO_GROUP,
 		MAX_SIMULTANEOUS_PLACEMENT_VOICES
 	)
@@ -156,8 +161,10 @@ func _on_placement_audio_finished() -> void:
 
 
 func _remove_placement_audio_voice() -> void:
-	if placement_audio.is_in_group(PLACEMENT_AUDIO_GROUP):
-		placement_audio.remove_from_group(PLACEMENT_AUDIO_GROUP)
+	SPATIAL_AUDIO_VOICE_LIMITER.release_voice(
+		placement_audio,
+		PLACEMENT_AUDIO_GROUP
+	)
 
 
 func _kill_effect_tween() -> void:

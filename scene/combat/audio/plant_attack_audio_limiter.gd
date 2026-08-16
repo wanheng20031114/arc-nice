@@ -8,7 +8,8 @@ const MAX_SIMULTANEOUS_VOICES := 6
 
 static func play_burst(
 	audio_player: AudioStreamPlayer2D,
-	elapsed_seconds: float = 0.0
+	elapsed_seconds: float = 0.0,
+	explicit_audio_scope: Node = null
 ) -> bool:
 	if (
 		audio_player == null
@@ -22,11 +23,15 @@ static func play_burst(
 	if stream_length > 0.0 and playback_offset >= stream_length:
 		return false
 
-	var tree := audio_player.get_tree()
-	if tree == null:
+	var audio_scope := SPATIAL_VOICE_LIMITER.resolve_audio_scope(
+		audio_player,
+		explicit_audio_scope
+	)
+	if audio_scope == null:
 		return false
 	var active_count := SPATIAL_VOICE_LIMITER.claim_voice(
 		audio_player,
+		audio_scope,
 		AUDIO_GROUP,
 		MAX_SIMULTANEOUS_VOICES
 	)
@@ -45,24 +50,13 @@ static func play_burst(
 	return true
 
 
-static func get_active_voice_count(tree: SceneTree) -> int:
-	if tree == null:
+static func get_active_voice_count(audio_scope: Node) -> int:
+	if audio_scope == null:
 		return 0
-	return _count_active_voices(tree)
-
-
-static func _count_active_voices(tree: SceneTree) -> int:
-	var active_count := 0
-	for node in tree.get_nodes_in_group(AUDIO_GROUP):
-		var audio_player := node as AudioStreamPlayer2D
-		if audio_player == null:
-			node.remove_from_group(AUDIO_GROUP)
-			continue
-		if not audio_player.playing:
-			_remove_voice(audio_player)
-			continue
-		active_count += 1
-	return active_count
+	return SPATIAL_VOICE_LIMITER.get_active_voice_count(
+		audio_scope,
+		AUDIO_GROUP
+	)
 
 
 static func _on_audio_finished(audio_player: AudioStreamPlayer2D) -> void:
@@ -74,5 +68,4 @@ static func _on_audio_finished(audio_player: AudioStreamPlayer2D) -> void:
 
 
 static func _remove_voice(audio_player: AudioStreamPlayer2D) -> void:
-	if audio_player != null and audio_player.is_in_group(AUDIO_GROUP):
-		audio_player.remove_from_group(AUDIO_GROUP)
+	SPATIAL_VOICE_LIMITER.release_voice(audio_player, AUDIO_GROUP)

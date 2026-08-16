@@ -367,10 +367,10 @@ func _test_explosion_audio_limiter() -> void:
 	)
 
 	var stopped_player := _create_audio_player(audio_root, EXPLOSION_STREAM, -5.0)
-	EXPLOSION_AUDIO_LIMITER.play(stopped_player)
+	EXPLOSION_AUDIO_LIMITER.play(stopped_player, audio_root)
 	stopped_player.stop()
 	var replacement_player := _create_audio_player(audio_root, EXPLOSION_STREAM, -5.0)
-	EXPLOSION_AUDIO_LIMITER.play(replacement_player)
+	EXPLOSION_AUDIO_LIMITER.play(replacement_player, audio_root)
 	_expect(
 		not stopped_player.is_in_group(EXPLOSION_AUDIO_LIMITER.EXPLOSION_AUDIO_GROUP),
 		"Stopped explosion audio must be pruned before the next limited playback."
@@ -381,10 +381,10 @@ func _test_explosion_audio_limiter() -> void:
 		"Stopped audio must not attenuate the next explosion."
 	)
 	replacement_player.stop()
-	EXPLOSION_AUDIO_LIMITER._count_active_explosion_players(self)
+	EXPLOSION_AUDIO_LIMITER._count_active_explosion_players(audio_root)
 
 	var natural_player := _create_audio_player(audio_root, _create_short_audio_stream(), -5.0)
-	EXPLOSION_AUDIO_LIMITER.play(natural_player)
+	EXPLOSION_AUDIO_LIMITER.play(natural_player, audio_root)
 	_expect(natural_player.playing, "Short explosion audio must begin playback.")
 	for _frame_index in range(120):
 		if not natural_player.playing:
@@ -413,7 +413,7 @@ func _test_audio_limiter_category(
 	for _index in range(max_simultaneous_count + 1):
 		var audio_player := _create_audio_player(audio_root, EXPLOSION_STREAM, -5.0)
 		players.append(audio_player)
-		_play_audio_limiter_category(category, audio_player)
+		_play_audio_limiter_category(category, audio_player, audio_root)
 
 	_expect(players[0].playing, "%s first audio must play." % category)
 	_expect(
@@ -437,7 +437,7 @@ func _test_audio_limiter_category(
 		"%s stacked attenuation changed." % category
 	)
 	_expect(
-		EXPLOSION_AUDIO_LIMITER._count_active_audio_players(self, audio_group)
+		EXPLOSION_AUDIO_LIMITER._count_active_audio_players(audio_root, audio_group)
 		== max_simultaneous_count,
 		"%s active audio count must equal its concurrency cap." % category
 	)
@@ -445,7 +445,7 @@ func _test_audio_limiter_category(
 	for audio_player in players:
 		audio_player.stop()
 	_expect(
-		EXPLOSION_AUDIO_LIMITER._count_active_audio_players(self, audio_group) == 0,
+		EXPLOSION_AUDIO_LIMITER._count_active_audio_players(audio_root, audio_group) == 0,
 		"%s stopped audio must not accumulate in the limiter group." % category
 	)
 	_expect(
@@ -454,14 +454,18 @@ func _test_audio_limiter_category(
 	)
 
 
-func _play_audio_limiter_category(category: StringName, audio_player: AudioStreamPlayer2D) -> void:
+func _play_audio_limiter_category(
+	category: StringName,
+	audio_player: AudioStreamPlayer2D,
+	audio_scope: Node
+) -> void:
 	match category:
 		&"explosion":
-			EXPLOSION_AUDIO_LIMITER.play(audio_player)
+			EXPLOSION_AUDIO_LIMITER.play(audio_player, audio_scope)
 		&"enemy_hit":
-			EXPLOSION_AUDIO_LIMITER.play_enemy_hit(audio_player)
+			EXPLOSION_AUDIO_LIMITER.play_enemy_hit(audio_player, audio_scope)
 		&"enemy_death":
-			EXPLOSION_AUDIO_LIMITER.play_enemy_death(audio_player)
+			EXPLOSION_AUDIO_LIMITER.play_enemy_death(audio_player, audio_scope)
 
 
 func _create_audio_player(

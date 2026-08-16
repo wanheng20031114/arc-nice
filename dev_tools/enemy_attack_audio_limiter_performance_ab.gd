@@ -143,20 +143,20 @@ func _add_audio_player(
 func _measure_phase(use_limiter: bool) -> Dictionary:
 	_stop_all_players()
 	LIMITER.get_active_voice_count(
-		self,
+		fixture,
 		LIMITER.AttackAudioClass.RAPID_FIRE
 	)
 	LIMITER.get_active_voice_count(
-		self,
+		fixture,
 		LIMITER.AttackAudioClass.HEAVY_ATTACK
 	)
 	LIMITER.limiting_enabled = use_limiter
 	LIMITER.reset_metrics()
 	var started_usec := Time.get_ticks_usec()
 	for player in rapid_players:
-		LIMITER.play_rapid_fire(player)
+		LIMITER.play_rapid_fire(player, 0.0, fixture)
 	for player in heavy_players:
-		LIMITER.play_heavy_attack(player)
+		LIMITER.play_heavy_attack(player, 0.0, fixture)
 	var elapsed_usec := Time.get_ticks_usec() - started_usec
 	var playing_count := _count_playing(rapid_players) + _count_playing(heavy_players)
 	return {

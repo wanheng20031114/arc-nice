@@ -4,6 +4,9 @@ const FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tsc
 const IMPACT_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn")
 const IMPACT_AUDIO := preload("res://resources/audio/capoo_mage_fireball_impact.wav")
 const EXPLOSION_AUDIO_LIMITER := preload("res://scene/combat/audio/explosion_audio_limiter.gd")
+const SPATIAL_AUDIO_VOICE_LIMITER := preload(
+	"res://scene/combat/audio/spatial_audio_voice_limiter.gd"
+)
 
 const POOL_PREWARM := 2
 const POOL_CAPACITY := 2
@@ -58,6 +61,10 @@ func _run() -> void:
 	runtime = PoolRuntime.new()
 	runtime.name = "CapooMageImpactPoolSmokeRuntime"
 	root.add_child(runtime)
+	_expect(
+		SPATIAL_AUDIO_VOICE_LIMITER.register_audio_scope(runtime),
+		"Impact pool fixture must declare its explicit spatial-audio scope."
+	)
 	current_scene = runtime
 	runtime.configure_pool(IMPACT_SCENE, POOL_PREWARM, POOL_CAPACITY)
 
@@ -149,7 +156,7 @@ func _verify_rejected_audio_does_not_hold_lease() -> void:
 		blocker.max_distance = 220.0
 		runtime.add_child(blocker)
 		blocker.global_position = Vector2.ZERO
-		EXPLOSION_AUDIO_LIMITER.play(blocker)
+		EXPLOSION_AUDIO_LIMITER.play(blocker, runtime)
 		blockers.append(blocker)
 
 	_spawn_impact(Vector2.ZERO)
@@ -187,7 +194,7 @@ func _verify_preempted_audio_does_not_hold_lease() -> void:
 		blocker.max_distance = 220.0
 		runtime.add_child(blocker)
 		blocker.global_position = Vector2(180.0, float(blocker_index))
-		EXPLOSION_AUDIO_LIMITER.play(blocker)
+		EXPLOSION_AUDIO_LIMITER.play(blocker, runtime)
 		blockers.append(blocker)
 
 	_spawn_impact(Vector2.ZERO)

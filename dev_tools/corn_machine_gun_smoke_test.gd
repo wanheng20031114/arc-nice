@@ -1009,13 +1009,17 @@ func _test_shared_audio_limiter() -> void:
 		player.max_polyphony = 1
 		audio_root.add_child(player)
 		players.append(player)
-		if AUDIO_LIMITER.play_burst(player, 0.01 if index == 0 else 0.0):
+		if AUDIO_LIMITER.play_burst(
+			player,
+			0.01 if index == 0 else 0.0,
+			audio_root
+		):
 			accepted_count += 1
 	_expect(accepted_count == 6, "共享植物攻击音频必须只接受前6个并发声部。")
 	_expect(players[0].playing, "音频限制器必须支持从 elapsed 偏移开始播放。")
 	_expect(not players.back().playing, "第7个并发植物攻击声部必须被拒绝。")
 	_expect(
-		AUDIO_LIMITER.get_active_voice_count(self) == 6,
+		AUDIO_LIMITER.get_active_voice_count(audio_root) == 6,
 		"活动植物攻击音频计数必须等于共享上限。"
 	)
 
@@ -1024,13 +1028,17 @@ func _test_shared_audio_limiter() -> void:
 	expired_player.max_polyphony = 1
 	audio_root.add_child(expired_player)
 	_expect(
-		not AUDIO_LIMITER.play_burst(expired_player, FIRE_STREAM.get_length()),
+		not AUDIO_LIMITER.play_burst(
+			expired_player,
+			FIRE_STREAM.get_length(),
+			audio_root
+		),
 		"elapsed 超过音频长度时不得从头重播过期的一轮音效。"
 	)
 	for player in players:
 		player.stop()
 	_expect(
-		AUDIO_LIMITER.get_active_voice_count(self) == 0,
+		AUDIO_LIMITER.get_active_voice_count(audio_root) == 0,
 		"停止的音频必须立即从共享声部计数中清理。"
 	)
 
@@ -1040,17 +1048,24 @@ func _test_shared_audio_limiter() -> void:
 	for index in range(AUDIO_LIMITER.MAX_SIMULTANEOUS_VOICES):
 		players[index].position = Vector2(600.0 - float(index) * 80.0, 0.0)
 		players[index].max_distance = 800.0
-		_expect(AUDIO_LIMITER.play_burst(players[index]), "镜头内声部必须可重新占用共享槽位。")
+		_expect(
+			AUDIO_LIMITER.play_burst(players[index], 0.0, audio_root),
+			"镜头内声部必须可重新占用共享槽位。"
+		)
 	var near_player := AudioStreamPlayer2D.new()
 	near_player.stream = FIRE_STREAM
 	near_player.max_polyphony = 1
 	near_player.max_distance = 800.0
 	near_player.position = Vector2(24.0, 0.0)
 	audio_root.add_child(near_player)
-	_expect(AUDIO_LIMITER.play_burst(near_player), "更近的植物攻击音效必须替换最远声部。")
+	_expect(
+		AUDIO_LIMITER.play_burst(near_player, 0.0, audio_root),
+		"更近的植物攻击音效必须替换最远声部。"
+	)
 	_expect(not players[0].playing, "空间优先级必须停止最远的植物攻击声部。")
 	_expect(
-		AUDIO_LIMITER.get_active_voice_count(self) == AUDIO_LIMITER.MAX_SIMULTANEOUS_VOICES,
+		AUDIO_LIMITER.get_active_voice_count(audio_root)
+		== AUDIO_LIMITER.MAX_SIMULTANEOUS_VOICES,
 		"空间替换后植物攻击音效仍必须严格遵守共享上限。"
 	)
 	var far_player := AudioStreamPlayer2D.new()
@@ -1059,14 +1074,20 @@ func _test_shared_audio_limiter() -> void:
 	far_player.max_distance = 800.0
 	far_player.position = Vector2(700.0, 0.0)
 	audio_root.add_child(far_player)
-	_expect(not AUDIO_LIMITER.play_burst(far_player), "更远的请求不得抢占镜头附近声部。")
+	_expect(
+		not AUDIO_LIMITER.play_burst(far_player, 0.0, audio_root),
+		"更远的请求不得抢占镜头附近声部。"
+	)
 	var inaudible_player := AudioStreamPlayer2D.new()
 	inaudible_player.stream = FIRE_STREAM
 	inaudible_player.max_polyphony = 1
 	inaudible_player.max_distance = 100.0
 	inaudible_player.position = Vector2(200.0, 0.0)
 	audio_root.add_child(inaudible_player)
-	_expect(not AUDIO_LIMITER.play_burst(inaudible_player), "max_distance 外的植物攻击音效不得占槽。")
+	_expect(
+		not AUDIO_LIMITER.play_burst(inaudible_player, 0.0, audio_root),
+		"max_distance 外的植物攻击音效不得占槽。"
+	)
 	audio_root.queue_free()
 
 

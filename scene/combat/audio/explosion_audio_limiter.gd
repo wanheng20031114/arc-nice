@@ -17,9 +17,13 @@ const ENEMY_DEATH_STACK_ATTENUATION_DB := 4.0
 const ENEMY_DEATH_MAX_STACK_ATTENUATION_DB := 16.0
 
 
-static func play(audio_player: AudioStreamPlayer2D) -> void:
+static func play(
+	audio_player: AudioStreamPlayer2D,
+	explicit_audio_scope: Node = null
+) -> void:
 	_play_limited_audio(
 		audio_player,
+		explicit_audio_scope,
 		EXPLOSION_AUDIO_GROUP,
 		MAX_SIMULTANEOUS_EXPLOSIONS,
 		STACK_ATTENUATION_DB,
@@ -37,9 +41,13 @@ static func stop(audio_player: AudioStreamPlayer2D) -> void:
 	_remove_audio_player_from_group(audio_player, EXPLOSION_AUDIO_GROUP)
 
 
-static func play_enemy_hit(audio_player: AudioStreamPlayer2D) -> void:
+static func play_enemy_hit(
+	audio_player: AudioStreamPlayer2D,
+	explicit_audio_scope: Node = null
+) -> void:
 	_play_limited_audio(
 		audio_player,
+		explicit_audio_scope,
 		ENEMY_HIT_AUDIO_GROUP,
 		MAX_SIMULTANEOUS_ENEMY_HITS,
 		ENEMY_HIT_STACK_ATTENUATION_DB,
@@ -54,9 +62,13 @@ static func stop_enemy_hit(audio_player: AudioStreamPlayer2D) -> void:
 	_remove_audio_player_from_group(audio_player, ENEMY_HIT_AUDIO_GROUP)
 
 
-static func play_enemy_death(audio_player: AudioStreamPlayer2D) -> void:
+static func play_enemy_death(
+	audio_player: AudioStreamPlayer2D,
+	explicit_audio_scope: Node = null
+) -> void:
 	_play_limited_audio(
 		audio_player,
+		explicit_audio_scope,
 		ENEMY_DEATH_AUDIO_GROUP,
 		MAX_SIMULTANEOUS_ENEMY_DEATHS,
 		ENEMY_DEATH_STACK_ATTENUATION_DB,
@@ -73,6 +85,7 @@ static func stop_enemy_death(audio_player: AudioStreamPlayer2D) -> void:
 
 static func _play_limited_audio(
 	audio_player: AudioStreamPlayer2D,
+	explicit_audio_scope: Node,
 	audio_group: StringName,
 	max_simultaneous_count: int,
 	stack_attenuation_db: float,
@@ -81,13 +94,16 @@ static func _play_limited_audio(
 	if audio_player == null or audio_player.stream == null:
 		return
 
-	var tree := audio_player.get_tree()
-	if tree == null:
-		audio_player.play()
+	var audio_scope := SPATIAL_VOICE_LIMITER.resolve_audio_scope(
+		audio_player,
+		explicit_audio_scope
+	)
+	if audio_scope == null:
 		return
 
 	var active_count := SPATIAL_VOICE_LIMITER.claim_voice(
 		audio_player,
+		audio_scope,
 		audio_group,
 		max_simultaneous_count
 	)
@@ -116,24 +132,18 @@ static func _play_limited_audio(
 		_remove_audio_player_from_group(audio_player, audio_group)
 
 
-static func _count_active_explosion_players(tree: SceneTree) -> int:
-	return _count_active_audio_players(tree, EXPLOSION_AUDIO_GROUP)
+static func _count_active_explosion_players(audio_scope: Node) -> int:
+	return _count_active_audio_players(audio_scope, EXPLOSION_AUDIO_GROUP)
 
 
-static func _count_active_audio_players(tree: SceneTree, audio_group: StringName) -> int:
-	var active_count := 0
-	for node in tree.get_nodes_in_group(audio_group):
-		var audio_player := node as AudioStreamPlayer2D
-		if audio_player == null:
-			node.remove_from_group(audio_group)
-			continue
-		if not is_instance_valid(audio_player):
-			continue
-		if not audio_player.playing:
-			_remove_audio_player_from_group(audio_player, audio_group)
-			continue
-		active_count += 1
-	return active_count
+static func _count_active_audio_players(
+	audio_scope: Node,
+	audio_group: StringName
+) -> int:
+	return SPATIAL_VOICE_LIMITER.get_active_voice_count(
+		audio_scope,
+		audio_group
+	)
 
 
 static func _on_limited_audio_finished(
@@ -154,5 +164,4 @@ static func _remove_audio_player_from_group(
 ) -> void:
 	if not is_instance_valid(audio_player):
 		return
-	if audio_player.is_in_group(audio_group):
-		audio_player.remove_from_group(audio_group)
+	SPATIAL_VOICE_LIMITER.release_voice(audio_player, audio_group)

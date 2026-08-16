@@ -10,6 +10,9 @@ const PLACEMENT_PARTICLES_SCENE := preload(
 const REMOVAL_SMOKE_SCENE := preload(
 	"res://scene/game_modes/tower_defense/plant/presentation/plant_removal_smoke.tscn"
 )
+const SPATIAL_AUDIO_VOICE_LIMITER := preload(
+	"res://scene/combat/audio/spatial_audio_voice_limiter.gd"
+)
 const LIFECYCLE_SHADER := preload("res://resources/shader/plant_lifecycle.gdshader")
 const CULTIVATION_LIFECYCLE_SHADER := preload(
 	"res://resources/shader/plant_cultivation_center_lifecycle_glow.gdshader"
@@ -34,6 +37,10 @@ func _run() -> void:
 	fixture_root = Node2D.new()
 	fixture_root.name = "PlantLifecycleVfxSmokeFixture"
 	root.add_child(fixture_root)
+	_expect(
+		SPATIAL_AUDIO_VOICE_LIMITER.register_audio_scope(fixture_root),
+		"生命周期夹具必须显式声明独立空间音频 scope。"
+	)
 	await process_frame
 
 	_test_scene_lifecycle_contracts()

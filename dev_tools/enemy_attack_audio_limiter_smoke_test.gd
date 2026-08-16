@@ -41,6 +41,7 @@ func _run() -> void:
 
 	_test_call_site_contract()
 	_test_independent_voice_caps_and_metrics()
+	_test_scope_aggregated_active_metrics()
 	_test_direct_play_ab_switch()
 	await _test_from_position_and_early_stop()
 
@@ -85,7 +86,7 @@ func _test_independent_voice_caps_and_metrics() -> void:
 			Vector2(40.0 + float(index) * 8.0, 0.0)
 		)
 		rapid_players.append(player)
-		LIMITER.play_rapid_fire(player)
+		LIMITER.play_rapid_fire(player, 0.0, fixture)
 
 	var heavy_players: Array[AudioStreamPlayer2D] = []
 	for index in range(LIMITER.MAX_SIMULTANEOUS_HEAVY_ATTACK_VOICES + 2):
@@ -95,7 +96,7 @@ func _test_independent_voice_caps_and_metrics() -> void:
 			Vector2(40.0 + float(index) * 8.0, 24.0)
 		)
 		heavy_players.append(player)
-		LIMITER.play_heavy_attack(player)
+		LIMITER.play_heavy_attack(player, 0.0, fixture)
 
 	var metrics := LIMITER.get_metrics()
 	_expect(
@@ -145,11 +146,11 @@ func _test_independent_voice_caps_and_metrics() -> void:
 	_stop_audio_players(heavy_players)
 	_expect(
 		LIMITER.get_active_voice_count(
-			self,
+			fixture,
 			LIMITER.AttackAudioClass.RAPID_FIRE
 		) == 0
 		and LIMITER.get_active_voice_count(
-			self,
+			fixture,
 			LIMITER.AttackAudioClass.HEAVY_ATTACK
 		) == 0,
 		"Stopped attack players must release both limiter voice groups."
@@ -167,7 +168,7 @@ func _test_direct_play_ab_switch() -> void:
 			Vector2(float(index) * 4.0, 48.0)
 		)
 		direct_players.append(player)
-		LIMITER.play_rapid_fire(player)
+		LIMITER.play_rapid_fire(player, 0.0, fixture)
 
 	var metrics := LIMITER.get_metrics()
 	_expect(
@@ -185,13 +186,61 @@ func _test_direct_play_ab_switch() -> void:
 	LIMITER.limiting_enabled = true
 
 
+func _test_scope_aggregated_active_metrics() -> void:
+	LIMITER.limiting_enabled = true
+	LIMITER.reset_metrics()
+	var tower_scope := Node2D.new()
+	tower_scope.name = "TowerAudioMetricsScope"
+	fixture.add_child(tower_scope)
+	var nested_rogue_scope := Node2D.new()
+	nested_rogue_scope.name = "NestedRogueAudioMetricsScope"
+	tower_scope.add_child(nested_rogue_scope)
+	var tower_player := _add_audio_player(
+		RAPID_STREAM,
+		-10.0,
+		Vector2(16.0, 64.0),
+		tower_scope
+	)
+	var rogue_player := _add_audio_player(
+		RAPID_STREAM,
+		-10.0,
+		Vector2(24.0, 64.0),
+		nested_rogue_scope
+	)
+	LIMITER.play_rapid_fire(tower_player, 0.0, tower_scope)
+	LIMITER.play_rapid_fire(rogue_player, 0.0, nested_rogue_scope)
+	var combined_metrics := LIMITER.get_metrics()
+	_expect(
+		int(combined_metrics[&"rapid_active"]) == 2
+		and int(combined_metrics[&"rapid_peak"]) == 2
+		and int(combined_metrics[&"peak_active"]) == 2,
+		"Active/peak metrics must aggregate exact Tower and nested Rogue scopes."
+	)
+
+	LIMITER.stop_rapid_fire(tower_player)
+	var after_tower_release := LIMITER.get_metrics()
+	_expect(
+		int(after_tower_release[&"rapid_active"]) == 1,
+		"Releasing Tower audio must preserve the nested Rogue active metric."
+	)
+	LIMITER.play_heavy_attack(rogue_player, 0.0, nested_rogue_scope)
+	var reclassified_metrics := LIMITER.get_metrics()
+	_expect(
+		int(reclassified_metrics[&"rapid_active"]) == 0
+		and int(reclassified_metrics[&"heavy_active"]) == 1,
+		"One physical player reclassified across groups must not double-count metrics."
+	)
+	LIMITER.stop_heavy_attack(rogue_player)
+	tower_scope.queue_free()
+
+
 func _test_from_position_and_early_stop() -> void:
 	for limiter_enabled in [true, false]:
 		LIMITER.limiting_enabled = limiter_enabled
 		LIMITER.reset_metrics()
 		var player := _add_audio_player(HEAVY_STREAM, -12.0, Vector2.ZERO)
 		_expect(
-			LIMITER.play_heavy_attack(player, 0.2),
+			LIMITER.play_heavy_attack(player, 0.2, fixture),
 			"Heavy limiter must admit an offset playback request in both A/B paths."
 		)
 		await process_frame
@@ -204,7 +253,7 @@ func _test_from_position_and_early_stop() -> void:
 		_expect(
 			not player.playing
 			and LIMITER.get_active_voice_count(
-				self,
+				fixture,
 				LIMITER.AttackAudioClass.HEAVY_ATTACK
 			) == 0,
 			"Early action cancellation must stop audio and release its limiter voice."
@@ -218,7 +267,8 @@ func _test_from_position_and_early_stop() -> void:
 func _add_audio_player(
 	stream: AudioStream,
 	base_volume_db: float,
-	player_position: Vector2
+	player_position: Vector2,
+	player_parent: Node = null
 ) -> AudioStreamPlayer2D:
 	var player := AudioStreamPlayer2D.new()
 	player.stream = stream
@@ -226,7 +276,8 @@ func _add_audio_player(
 	player.max_distance = 1000.0
 	player.max_polyphony = 3
 	player.position = player_position
-	fixture.add_child(player)
+	var resolved_parent := player_parent if player_parent != null else fixture
+	resolved_parent.add_child(player)
 	return player
 
 
