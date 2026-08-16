@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 76,
-		"协议v76必须隔离同局成员身份，并保留v74旧局CH6、v73会话成员及既有模式接线。"
+		NetConstants.PROTOCOL_VERSION == 77,
+		"协议v77必须校验内容摘要、隔离同局成员身份，并保留既有模式接线。"
 	)
 	_expect(
 		not GameModeCatalog.is_selectable_for_audience(

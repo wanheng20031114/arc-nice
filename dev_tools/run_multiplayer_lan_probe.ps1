@@ -3,7 +3,7 @@ param(
     [string]$GodotExe = "C:\Program Files\Godot\Godot_console.exe",
     [int]$Port = 29270,
     [int]$TimeoutSeconds = 65,
-    [ValidateSet("full", "leave", "wave", "boss", "tower_defense", "death_revive", "mode_contract")]
+    [ValidateSet("handshake", "full", "leave", "wave", "boss", "tower_defense", "death_revive", "mode_contract")]
     [string]$Scenario = "full",
     [ValidateSet("standard", "tower_defense", "test_arena_p1", "test_arena_p1b", "test_arena_p1c", "test_arena_p1d", "test_arena_p2")]
     [string]$GameMode = "standard",

@@ -142,7 +142,10 @@ extends RefCounted
 ## v76：Relay 模式的逻辑 Host 可经由 Relay 服务端可靠踢出不兼容或投影超时成员。
 ## 该控制 RPC 避免 Relay 拓扑中 Host 侧 get_peer(target != 1) 为 null 而让
 ## RECONNECTING 成员永久滞留；v75 及更旧客户端/Relay stub 不具备该控制面，不能加入。
-const PROTOCOL_VERSION := 76
+## v77：注册握手新增 schema 1 内容摘要与 Host 明确 accepted/rejected 回执；Client
+## 只有在本地 ACTIVE roster 和匹配的 accepted 三元组同时到达后才进入大厅。
+## v76 客户端无法证明敌人、道具、Campaign 及依赖闭包与 Host 相同，不能加入。
+const PROTOCOL_VERSION := 77
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF

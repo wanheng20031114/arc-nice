@@ -6,6 +6,7 @@ const USERNAME_CARET_BLINK_INTERVAL := 0.48
 const STATE_DISCONNECTED := NetManagerStore.ConnectionState.DISCONNECTED
 const STATE_HOSTING_LAN := NetManagerStore.ConnectionState.HOSTING_LAN
 const STATE_CONNECTING_LAN := NetManagerStore.ConnectionState.CONNECTING_LAN
+const STATE_REGISTERING := NetManagerStore.ConnectionState.REGISTERING
 const STATE_CONNECTED_IN_LOBBY := NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY
 const STATE_LOADING_GAME := NetManagerStore.ConnectionState.LOADING_GAME
 
@@ -1290,6 +1291,9 @@ func _on_net_state_changed(new_state: NetManagerStore.ConnectionState) -> void:
 		STATE_CONNECTING_LAN:
 			if current_view == LobbyView.ROOM_WAIT:
 				wait_status_label.text = "正在连接公网 Relay..." if is_relay else "正在连接局域网主机..."
+		STATE_REGISTERING:
+			if current_view == LobbyView.ROOM_WAIT:
+				wait_status_label.text = "连接已建立，正在校验联机内容与成员身份…"
 		STATE_HOSTING_LAN:
 			if is_relay:
 				wait_status_label.text = "已连接 Relay，正在开放房间。"
@@ -1298,6 +1302,8 @@ func _on_net_state_changed(new_state: NetManagerStore.ConnectionState) -> void:
 				wait_status_label.text = "局域网主机已创建，等待玩家加入。"
 			_refresh_wait_player_list()
 		STATE_CONNECTED_IN_LOBBY:
+			# provisional 公网成员只能在 ENet Host 同时接受内容摘要和 ACTIVE
+			# roster 后确认；REGISTERING 期间绝不能把不兼容构建升级成长租约。
 			if (
 				public_room_lease.has_active_lease()
 				and not public_room_lease.is_public_host()

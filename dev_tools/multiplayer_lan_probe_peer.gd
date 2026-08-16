@@ -64,14 +64,16 @@ const RECONNECT_HEALTH_DAMAGE := 11
 const RECONNECT_TARGET_POSITION := Vector2(384.0, 256.0)
 
 const STATE_HOSTING_LAN := 1
-const STATE_LOADING_GAME := 4
-const STATE_IN_GAME := 5
+const STATE_CONNECTED_IN_LOBBY := 4
+const STATE_LOADING_GAME := 5
+const STATE_IN_GAME := 6
 const DEFAULT_TIMEOUT_SECONDS := 12.0
 const DEFAULT_RUN_SECONDS := 3.0
 const PROBE_MODE_LAN := "lan"
 const PROBE_MODE_RELAY := "relay"
 const CLIENT2_PLAYER_NAME := "client2"
 const CLIENT4_PLAYER_NAME := "client4"
+const PROBE_SCENARIO_HANDSHAKE := "handshake"
 const PROBE_SCENARIO_FULL := "full"
 const PROBE_SCENARIO_LEAVE := "leave"
 const PROBE_SCENARIO_WAVE := "wave"
@@ -246,6 +248,11 @@ func _run_host(
 			% [expected_players, int(net_manager.call("get_room_max_players"))]
 		)
 		return
+	if probe_scenario == PROBE_SCENARIO_HANDSHAKE:
+		# focused 场景只证明真实 Relay 上的注册门；不进入玩法
+		# 运行时，避免把内容兼容回归与波次/投影回归混为一谈。
+		await _wait_seconds(run_seconds)
+		return
 	net_manager.host_start_game()
 	if not await _wait_for_connection_state(net_manager, STATE_LOADING_GAME, 3.0):
 		_fail("Host did not enter loading state.")
@@ -288,6 +295,18 @@ func _run_client(
 			% [expected_players, int(net_manager.call("get_room_max_players"))]
 		)
 		return
+	if probe_scenario == PROBE_SCENARIO_HANDSHAKE:
+		if not await _wait_for_exact_connection_state(
+			net_manager,
+			STATE_CONNECTED_IN_LOBBY,
+			timeout_seconds
+		):
+			_fail("Client roster arrived without a matching registration acceptance.")
+			return
+		# Client 比 Host 多保留两秒，由 Host 先结束 transport；避免多个
+		# Client 同帧退出时把断开期 roster 广播噪声误当成握手失败。
+		await _wait_seconds(run_seconds + 2.0)
+		return
 	if not await _wait_for_connection_state(net_manager, STATE_LOADING_GAME, timeout_seconds):
 		_fail("Client did not receive Host start-game event.")
 		return
@@ -309,6 +328,9 @@ func _run_mp_game_probe(
 	keepalive_seconds: float = 0.0,
 	events_enabled: bool = false
 ) -> void:
+	if not _initialize_multiplayer_run_state_fixture(net_manager, expected_players):
+		_fail("Probe failed to initialize the authoritative multiplayer RunState roster.")
+		return
 	var mp_game := MP_GAME_SCENE.instantiate()
 	if mp_game == null:
 		_fail("MpGame scene did not instantiate.")
@@ -435,6 +457,57 @@ func _run_mp_game_probe(
 		mp_game.queue_free()
 		await _wait_cleanup_frames(8)
 	await _cleanup_current_scene()
+
+
+## Headless probe 直接进入 MpGame，因此必须显式复制 Lobby 的新局
+## 边界：begin_new_run 后立即用完整 session roster/revision 建立持久账本。
+## 禁止 ensure/fallback 和重复初始化，否则会把真实账本时序问题藏在 fixture 里。
+func _initialize_multiplayer_run_state_fixture(
+	net_manager: Node,
+	expected_players: int
+) -> bool:
+	var typed_net_manager := net_manager as NetManagerStore
+	var run_state := root.get_node_or_null("RunState") as RunStateStore
+	if (
+		typed_net_manager == null
+		or run_state == null
+		or run_state.run_started
+		or run_state.get_multiplayer_session_membership_revision() != -1
+		or not run_state.get_registered_multiplayer_peer_ids().is_empty()
+	):
+		return false
+	var local_peer_id := typed_net_manager.get_local_peer_id()
+	var session_peer_ids := typed_net_manager.get_session_member_peer_ids()
+	var membership_revision := typed_net_manager.get_session_membership_revision()
+	if (
+		local_peer_id <= 0
+		or session_peer_ids.size() != expected_players
+		or not session_peer_ids.has(local_peer_id)
+		or membership_revision <= 0
+	):
+		return false
+	var game_mode_definition := GameModeCatalog.get_definition(
+		int(typed_net_manager.get_current_game_mode())
+	)
+	if game_mode_definition == null:
+		return false
+	run_state.begin_new_run(
+		typed_net_manager.get_player_character_id(local_peer_id),
+		game_mode_definition.include_starting_inventory
+	)
+	if (
+		not run_state.run_started
+		or not run_state.reconcile_multiplayer_session_membership(
+			session_peer_ids,
+			membership_revision
+		)
+	):
+		return false
+	return (
+		run_state.get_multiplayer_session_membership_revision()
+		== membership_revision
+		and run_state.get_registered_multiplayer_peer_ids() == session_peer_ids
+	)
 
 
 func _uses_tower_defense_runtime() -> bool:

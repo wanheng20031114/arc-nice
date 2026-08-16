@@ -333,6 +333,8 @@ func _run() -> void:
 	_compare_rpc_surfaces("NetManager", main_net_manager_rpcs, relay_net_manager_rpcs)
 	for required_method in [
 		"_rpc_register_player",
+		"_rpc_registration_accepted",
+		"_rpc_content_rejected",
 		"_rpc_protocol_rejected",
 		"_rpc_join_rejected",
 		"_rpc_relay_kick_peer",
@@ -355,8 +357,14 @@ func _run() -> void:
 			)
 			and String(main_net_manager_rpcs["_rpc_register_player"]).contains(
 				"reconnect_token:String=\"\""
+			)
+			and String(main_net_manager_rpcs["_rpc_register_player"]).contains(
+				"content_manifest_schema:int=-1"
+			)
+			and String(main_net_manager_rpcs["_rpc_register_player"]).contains(
+				"content_digest:String=\"\""
 			),
-			"Player registration must carry protocol and private reconnect identity fields."
+			"Player registration must carry protocol, reconnect identity, schema, and digest fields."
 		)
 	_expect_rpc_mode(main_net_manager_rpcs, "_rpc_relay_kick_peer", "any_peer")
 	_expect_rpc_channel(main_net_manager_rpcs, "_rpc_relay_kick_peer", 0)
@@ -376,10 +384,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 76,
-		"协议v76必须冻结 Relay Host 可靠 kick 控制面，并保留 v75 成员身份、v74 会话世代及既有资源合同。"
+		NetConstants.PROTOCOL_VERSION == 77,
+		"协议v77必须由 ENet Host 校验内容摘要，并保留 Relay kick、成员身份与会话世代合同。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v76 must retain eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v77 must retain eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -418,7 +426,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v76 hosts must accept exactly v76 and reject v75."
+		"Protocol v77 hosts must accept exactly v77 and reject v76."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -429,7 +437,9 @@ func _test_registration_protocol_handshake_source() -> void:
 	var compile_error := registration_call_regex.compile(
 		(
 			"(?ms)_rpc_register_player\\.rpc_id\\s*\\(.*?"
-			+ "NetConstants\\.PROTOCOL_VERSION\\s*,\\s*local_reconnect_token\\s*\\)"
+			+ "NetConstants\\.PROTOCOL_VERSION\\s*,\\s*local_reconnect_token\\s*,\\s*"
+			+ "_get_local_content_manifest_schema\\(\\)\\s*,\\s*"
+			+ "_get_local_content_digest\\(\\)\\s*\\)"
 		)
 	)
 	if compile_error != OK:
@@ -437,7 +447,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		return
 	_expect(
 		registration_call_regex.search_all(source).size() == 2,
-		"LAN and Relay registration must both send NetConstants.PROTOCOL_VERSION."
+		"LAN and Relay registration must both send protocol, schema, and content digest."
 	)
 	var whitespace_regex := RegEx.new()
 	if whitespace_regex.compile("\\s+") != OK:
@@ -447,6 +457,12 @@ func _test_registration_protocol_handshake_source() -> void:
 	_expect(
 		compact_source.contains("ifnot_is_protocol_version_compatible(protocol_version):"),
 		"Host registration must reject an incompatible protocol before adding the player."
+	)
+	_expect(
+		compact_source.contains("orcontent_manifest_schema!=_get_local_content_manifest_schema()")
+		and compact_source.contains("orcontent_digest!=_get_local_content_digest()")
+		and compact_source.contains("_send_content_rejected_to_peer(sender_id)"),
+		"Host registration must reject a mismatched content identity before member or reconnect mutation."
 	)
 	_expect(
 		compact_source.contains(
@@ -486,11 +502,11 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 76")
+		and relay_source.contains("const PROTOCOL_VERSION := 77")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
 		(
-			"Relay server must declare v76, accept the room capacity, and provision "
+			"Relay server must declare v77, accept the room capacity, and provision "
 			+ "the same eight ENet channels as clients."
 		)
 	)

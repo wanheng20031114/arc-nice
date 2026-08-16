@@ -5,6 +5,9 @@ const STANDARD_GAME_SCENE := preload(
 	"res://scene/game_modes/standard/standard_game.tscn"
 )
 const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
+const RUNTIME_CONTENT_MANIFEST := preload(
+	"res://resources/config/generated/runtime_content_manifest.gd"
+)
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 const NET_MANAGER_SOURCE_PATH := "res://scene/multiplayer/net_manager.gd"
 const WOOD_MATERIAL: PickupConfig = preload(
@@ -975,7 +978,9 @@ func _test_lobby_ingress_is_bounded_and_idempotent() -> void:
 		"weishidaier",
 		true,
 		NET_CONSTANTS.PROTOCOL_VERSION,
-		reconnect_token
+		reconnect_token,
+		RUNTIME_CONTENT_MANIFEST.SCHEMA_VERSION,
+		RUNTIME_CONTENT_MANIFEST.CONTENT_SHA256
 	)
 	var replayed := net_manager._handle_player_registration(
 		OLD_PEER_ID,
@@ -983,7 +988,9 @@ func _test_lobby_ingress_is_bounded_and_idempotent() -> void:
 		"hoe_cat",
 		false,
 		NET_CONSTANTS.PROTOCOL_VERSION,
-		"dddddddddddddddddddddddddddddddd"
+		"dddddddddddddddddddddddddddddddd",
+		RUNTIME_CONTENT_MANIFEST.SCHEMA_VERSION,
+		RUNTIME_CONTENT_MANIFEST.CONTENT_SHA256
 	)
 	var character_changed := net_manager._handle_player_character_request(
 		OLD_PEER_ID,

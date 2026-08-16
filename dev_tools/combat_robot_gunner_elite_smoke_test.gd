@@ -296,9 +296,9 @@ func _test_burst_scheduler_and_half_speed() -> void:
 
 func _test_network_pool_and_fate_contract() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 76
+		NET_CONSTANTS.PROTOCOL_VERSION == 77
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
-		"协议v76必须隔离同局成员身份并保留v74旧局CH6、v73会话成员、精英紫弹资源语义，且不增加ENet频道。"
+		"协议v77必须校验内容摘要、隔离同局成员身份，保留精英紫弹语义且不增加 ENet 信道。"
 	)
 	_expect(
 		CombatAttackRegistry.encode_player_hit_source(

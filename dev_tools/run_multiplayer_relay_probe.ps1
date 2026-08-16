@@ -2,7 +2,7 @@ param(
     [string]$GodotExe = "C:\Program Files\Godot\Godot_console.exe",
     [int]$Port = 40230,
     [int]$TimeoutSeconds = 130,
-    [ValidateSet("full", "leave", "wave", "tower_defense", "reconnect")]
+    [ValidateSet("handshake", "full", "leave", "wave", "tower_defense", "reconnect")]
     [string]$Scenario = "full",
     [ValidateSet("standard", "tower_defense")]
     [string]$GameMode = "standard",

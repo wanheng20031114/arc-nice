@@ -2,6 +2,9 @@ extends Node
 class_name NetManagerStore
 
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
+const RuntimeContentManifestScript := preload(
+	"res://resources/config/generated/runtime_content_manifest.gd"
+)
 const MultiplayerReconnectTypesScript := preload(
 	"res://scene/multiplayer/reconnect/multiplayer_reconnect_types.gd"
 )
@@ -44,6 +47,7 @@ const RECONNECT_LOAD_TIMEOUT_MILLISECONDS := 30_000
 const RECONNECT_PROJECTION_TIMEOUT_MILLISECONDS := 3_000
 const RECONNECT_DELIVERY_PREPARATION_TIMEOUT_MILLISECONDS := 3_000
 const LATE_REGISTRATION_TIMEOUT_MILLISECONDS := 5_000
+const REGISTRATION_TIMEOUT_MILLISECONDS := 5_000
 const LOBBY_COMMAND_RATE_PER_SECOND := 6.0
 const LOBBY_COMMAND_RATE_BURST := 12.0
 const MAX_LOBBY_PLAYER_NAME_WIRE_LENGTH := 64
@@ -80,6 +84,7 @@ enum ConnectionState {
 	DISCONNECTED,
 	HOSTING_LAN,
 	CONNECTING_LAN,
+	REGISTERING,
 	CONNECTED_IN_LOBBY,
 	LOADING_GAME,
 	IN_GAME,
@@ -120,6 +125,10 @@ var _connect_started_msec: int = 0
 var _connect_timeout_ms: int = 0
 var _connect_target_description: String = ""
 var _connected_signal_handled: bool = false
+## transport 已连通并不等于成员已获准。accepted 三元组与本地 ACTIVE roster
+## 分别到达后才提交 CONNECTED_IN_LOBBY，避免先确认公网占位再被内容门拒绝。
+var _registration_accepted_tuple: Dictionary = {}
+var _registration_started_msec: int = 0
 var _expected_game_load_peers: Dictionary = {}
 var _ready_game_load_peers: Dictionary = {}
 var _reported_game_load_ready_count: int = 0
@@ -174,6 +183,7 @@ static func get_autoload_instance() -> NetManagerStore:
 func _physics_process(_delta: float) -> void:
 	_physics_frame_count += 1
 	_poll_pending_connection()
+	_poll_registration_timeout()
 	_poll_reconnect_deadlines()
 	if _relay_register_pending:
 		_try_send_relay_registration()
@@ -471,6 +481,27 @@ func get_room_max_players() -> int:
 	return room_max_players
 
 
+## 生成清单失效表示这个构建无法证明自身运行时内容。LAN 与 Relay 都以 ENet
+## Host 为最终兼容门，因此任何创建/加入必须在分配 socket 或成员身份前关闭。
+func _validate_local_content_manifest_admission() -> bool:
+	if _is_local_content_manifest_valid():
+		return true
+	connection_failed.emit("本地联机内容清单无效，请重新生成并校验当前构建。")
+	return false
+
+
+func _is_local_content_manifest_valid() -> bool:
+	return RuntimeContentManifestScript.is_valid()
+
+
+func _get_local_content_manifest_schema() -> int:
+	return RuntimeContentManifestScript.SCHEMA_VERSION
+
+
+func _get_local_content_digest() -> String:
+	return RuntimeContentManifestScript.CONTENT_SHA256
+
+
 func is_multiplayer_active() -> bool:
 	return (
 		not _disconnect_in_progress
@@ -500,6 +531,8 @@ func host_create_lan_server(
 	port: int = NetConstants.ENET_PORT_DEFAULT,
 	max_players: int = NetConstants.MAX_PLAYERS
 ) -> Error:
+	if not _validate_local_content_manifest_admission():
+		return ERR_FILE_CORRUPT
 	if not _validate_host_game_mode_admission():
 		return ERR_UNAVAILABLE
 	_ensure_local_reconnect_token()
@@ -576,6 +609,8 @@ func host_create_server(
 
 
 func client_connect_lan(host_ip: String, port: int = NetConstants.ENET_PORT_DEFAULT) -> Error:
+	if not _validate_local_content_manifest_admission():
+		return ERR_FILE_CORRUPT
 	_ensure_local_reconnect_token()
 	var pending_game_mode := current_game_mode
 	var pending_room_max_players := room_max_players
@@ -626,6 +661,8 @@ func host_create_relay_room(
 	target_relay_port: int,
 	max_players: int = NetConstants.MAX_PLAYERS
 ) -> Error:
+	if not _validate_local_content_manifest_admission():
+		return ERR_FILE_CORRUPT
 	if not _validate_host_game_mode_admission():
 		return ERR_UNAVAILABLE
 	_ensure_local_reconnect_token()
@@ -688,6 +725,8 @@ func client_join_relay_room(
 	target_relay_port: int,
 	target_host_peer_id: int
 ) -> Error:
+	if not _validate_local_content_manifest_admission():
+		return ERR_FILE_CORRUPT
 	_ensure_local_reconnect_token()
 	var pending_game_mode := current_game_mode
 	var pending_room_max_players := room_max_players
@@ -763,6 +802,7 @@ func disconnect_from_game() -> void:
 	_runtime_mode_selection_audience = GameModeDefinition.SelectionAudience.RELEASE
 	room_max_players = NetConstants.MAX_PLAYERS
 	_relay_register_pending = false
+	_clear_registration_handshake()
 	_clear_connection_attempt()
 	_physics_frame_count = 0
 	_set_connection_state(ConnectionState.DISCONNECTED)
@@ -1296,6 +1336,7 @@ func _handle_connected_to_server() -> void:
 		return
 
 	connected_players.clear()
+	_begin_registration_handshake()
 	if conn_mode == ConnMode.RELAY:
 		_relay_register_pending = true
 		_try_send_relay_registration()
@@ -1306,10 +1347,11 @@ func _handle_connected_to_server() -> void:
 		String(local_character_id),
 		local_character_confirmed,
 		NetConstants.PROTOCOL_VERSION,
-		local_reconnect_token
+		local_reconnect_token,
+		_get_local_content_manifest_schema(),
+		_get_local_content_digest()
 	)
-	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
-	_debug_log("NetManager: 已连接到 LAN Host")
+	_debug_log("NetManager: LAN transport 已连接，正在等待内容与成员注册回执")
 
 
 func _on_connection_failed() -> void:
@@ -1328,6 +1370,7 @@ func _on_server_disconnected() -> void:
 
 
 func _begin_connection_attempt(timeout_ms: int, target_description: String) -> void:
+	_clear_registration_handshake()
 	_connect_started_msec = Time.get_ticks_msec()
 	_connect_timeout_ms = timeout_ms
 	_connect_target_description = target_description
@@ -1338,6 +1381,17 @@ func _clear_connection_attempt() -> void:
 	_connect_started_msec = 0
 	_connect_timeout_ms = 0
 	_connect_target_description = ""
+
+
+func _begin_registration_handshake() -> void:
+	_registration_accepted_tuple.clear()
+	_registration_started_msec = Time.get_ticks_msec()
+	_set_connection_state(ConnectionState.REGISTERING)
+
+
+func _clear_registration_handshake() -> void:
+	_registration_accepted_tuple.clear()
+	_registration_started_msec = 0
 
 
 func _poll_pending_connection() -> void:
@@ -1364,6 +1418,20 @@ func _poll_pending_connection() -> void:
 	_fail_pending_connection("连接%s超时，请检查服务器 UDP 端口和防火墙" % target)
 
 
+func _poll_registration_timeout(now_msec: int = -1) -> void:
+	if (
+		connection_state != ConnectionState.REGISTERING
+		or net_role != NetRole.CLIENT
+		or _registration_started_msec <= 0
+	):
+		return
+	var resolved_now_msec := Time.get_ticks_msec() if now_msec < 0 else now_msec
+	if resolved_now_msec - _registration_started_msec < REGISTRATION_TIMEOUT_MILLISECONDS:
+		return
+	connection_failed.emit("联机内容与成员注册超时，请确认 Host 使用相同构建。")
+	disconnect_from_game()
+
+
 func _fail_pending_connection(reason: String) -> void:
 	connection_failed.emit(reason)
 	disconnect_from_game()
@@ -1385,10 +1453,11 @@ func _try_send_relay_registration() -> void:
 		String(local_character_id),
 		local_character_confirmed,
 		NetConstants.PROTOCOL_VERSION,
-		local_reconnect_token
+		local_reconnect_token,
+		_get_local_content_manifest_schema(),
+		_get_local_content_digest()
 	)
-	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
-	_debug_log("NetManager: 已连接到 Relay Host %d" % target_host_id)
+	_debug_log("NetManager: Relay transport 已连接，正在等待 Host %d 注册回执" % target_host_id)
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
@@ -1397,7 +1466,9 @@ func _rpc_register_player(
 	character_id: String = "weishidaier",
 	character_confirmed: bool = true,
 	protocol_version: int = -1,
-	reconnect_token: String = ""
+	reconnect_token: String = "",
+	content_manifest_schema: int = -1,
+	content_digest: String = ""
 ) -> void:
 	_handle_player_registration(
 		multiplayer.get_remote_sender_id(),
@@ -1405,7 +1476,9 @@ func _rpc_register_player(
 		character_id,
 		character_confirmed,
 		protocol_version,
-		reconnect_token
+		reconnect_token,
+		content_manifest_schema,
+		content_digest
 	)
 
 
@@ -1415,7 +1488,9 @@ func _handle_player_registration(
 	character_id: String,
 	character_confirmed: bool,
 	protocol_version: int,
-	reconnect_token: String
+	reconnect_token: String,
+	content_manifest_schema: int,
+	content_digest: String
 ) -> bool:
 	if not is_host() or sender_id <= 0:
 		return false
@@ -1438,6 +1513,21 @@ func _handle_player_registration(
 			% [sender_id, protocol_version, NetConstants.PROTOCOL_VERSION]
 		)
 		_rpc_protocol_rejected.rpc_id(sender_id, NetConstants.PROTOCOL_VERSION)
+		call_deferred("_disconnect_incompatible_peer", sender_id)
+		return false
+	if (
+		not _is_local_content_manifest_valid()
+		or content_manifest_schema != _get_local_content_manifest_schema()
+		or not _is_valid_content_digest_wire(content_digest)
+		or content_digest != _get_local_content_digest()
+	):
+		push_warning(
+			# digest 是未信任 wire 字段；无论过长还是含控制字符都不能
+			# 原样写入日志，只记录定长结构信息供人类定位。
+			"NetManager: 拒绝 peer %d 的内容清单 schema=%d digest_length=%d。"
+			% [sender_id, content_manifest_schema, content_digest.length()]
+		)
+		_send_content_rejected_to_peer(sender_id)
 		call_deferred("_disconnect_incompatible_peer", sender_id)
 		return false
 	var normalized_reconnect_token := reconnect_token.strip_edges().to_lower()
@@ -1498,6 +1588,7 @@ func _handle_player_registration(
 	player_joined.emit(sender_id, connected_players[sender_id])
 	player_list_changed.emit()
 	_emit_room_capacity_changed()
+	_send_registration_accepted_to_peer(sender_id)
 	_broadcast_player_list_to_clients()
 	_debug_log("NetManager: 玩家注册, id=%d, name=%s" % [sender_id, connected_players[sender_id]])
 	return true
@@ -1575,6 +1666,9 @@ func _begin_peer_reconnect(
 		"completion_signal_active": false,
 		"delivery_preparation_active": false,
 	}
+	# 重连者先拿到与当前 transport 身份绑定的 accepted 三元组，再按同一可靠
+	# 信道接收映射为本地 ACTIVE 的目标 roster 与 start，不能越过内容门加载。
+	_send_registration_accepted_to_peer(new_peer_id)
 	_rpc_sync_player_list.rpc_id(
 		new_peer_id,
 		_build_session_member_list_array(new_peer_id),
@@ -1798,11 +1892,154 @@ func _request_relay_peer_disconnect(peer_id: int) -> bool:
 	return true
 
 
+func _is_valid_content_digest_wire(content_digest: String) -> bool:
+	return RuntimeContentManifestScript.is_valid_wire_digest(content_digest)
+
+
+## accepted 三元组绑定实际 transport peer、schema 与摘要。Host 只能发送本机
+## 生成常量，Client 不从网络覆盖自己的内容身份。
+func _send_registration_accepted_to_peer(peer_id: int) -> void:
+	if (
+		peer_id <= 0
+		or not is_inside_tree()
+		or not multiplayer.has_multiplayer_peer()
+		or not is_peer_control_send_ready(peer_id)
+	):
+		return
+	_rpc_registration_accepted.rpc_id(
+		peer_id,
+		peer_id,
+		_get_local_content_manifest_schema(),
+		_get_local_content_digest()
+	)
+
+
+func _send_content_rejected_to_peer(peer_id: int) -> void:
+	if (
+		peer_id <= 0
+		or not is_inside_tree()
+		or not multiplayer.has_multiplayer_peer()
+		or not is_peer_control_send_ready(peer_id)
+	):
+		return
+	_rpc_content_rejected.rpc_id(
+		peer_id,
+		_get_local_content_manifest_schema(),
+		_get_local_content_digest()
+	)
+
+
 ## 该方法只由 Relay 服务端的同路径 stub 执行。普通游戏实例绝不处理来自
 ## 逻辑客户端的踢人请求；Host 仅通过 _request_relay_peer_disconnect 发往 peer 1。
 @rpc("any_peer", "call_remote", "reliable", 0)
 func _rpc_relay_kick_peer(target_peer_id: int) -> void:
 	pass
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_registration_accepted(
+	registered_peer_id: int,
+	content_manifest_schema: int,
+	content_digest: String
+) -> void:
+	_handle_registration_accepted(
+		multiplayer.get_remote_sender_id(),
+		registered_peer_id,
+		content_manifest_schema,
+		content_digest
+	)
+
+
+func _handle_registration_accepted(
+	sender_id: int,
+	registered_peer_id: int,
+	content_manifest_schema: int,
+	content_digest: String
+) -> bool:
+	if (
+		is_host()
+		or net_role != NetRole.CLIENT
+		or connection_state != ConnectionState.REGISTERING
+		or sender_id <= 0
+		or sender_id != get_host_peer_id()
+		or registered_peer_id <= 0
+		or registered_peer_id != get_local_peer_id()
+		or not _is_local_content_manifest_valid()
+		or content_manifest_schema != _get_local_content_manifest_schema()
+		or not _is_valid_content_digest_wire(content_digest)
+		or content_digest != _get_local_content_digest()
+	):
+		return false
+	var accepted_tuple := {
+		"peer_id": registered_peer_id,
+		"schema": content_manifest_schema,
+		"digest": content_digest,
+	}
+	if not _registration_accepted_tuple.is_empty():
+		return _registration_accepted_tuple == accepted_tuple
+	_registration_accepted_tuple = accepted_tuple
+	_try_complete_client_registration()
+	return true
+
+
+func _try_complete_client_registration() -> bool:
+	if (
+		net_role != NetRole.CLIENT
+		or connection_state != ConnectionState.REGISTERING
+		or _registration_accepted_tuple.is_empty()
+	):
+		return false
+	var local_peer_id := get_local_peer_id()
+	if (
+		local_peer_id <= 0
+		or int(_registration_accepted_tuple.get("peer_id", 0)) != local_peer_id
+		or int(_registration_accepted_tuple.get("schema", -1))
+		!= _get_local_content_manifest_schema()
+		or str(_registration_accepted_tuple.get("digest", ""))
+		!= _get_local_content_digest()
+		or not connected_players.has(local_peer_id)
+		or not is_session_member_active(local_peer_id)
+	):
+		return false
+	_registration_started_msec = 0
+	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
+	_debug_log("NetManager: 内容摘要与 ACTIVE 成员身份均已获 Host 接受")
+	return true
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_content_rejected(
+	expected_content_manifest_schema: int,
+	expected_content_digest: String
+) -> void:
+	_handle_content_rejected(
+		multiplayer.get_remote_sender_id(),
+		expected_content_manifest_schema,
+		expected_content_digest
+	)
+
+
+func _handle_content_rejected(
+	sender_id: int,
+	expected_content_manifest_schema: int,
+	expected_content_digest: String
+) -> bool:
+	if (
+		is_host()
+		or net_role != NetRole.CLIENT
+		or connection_state != ConnectionState.REGISTERING
+		or sender_id <= 0
+		or sender_id != get_host_peer_id()
+		or expected_content_manifest_schema <= 0
+		or not _is_valid_content_digest_wire(expected_content_digest)
+	):
+		return false
+	connection_failed.emit(
+		"联机内容不匹配：Host 需要清单 schema %d / %s，请使用相同构建。"
+		% [expected_content_manifest_schema, expected_content_digest]
+	)
+	disconnect_from_game()
+	return true
 
 
 @rpc("authority", "call_remote", "reliable", 0)
@@ -1925,6 +2162,7 @@ func _rpc_sync_player_list(
 			and int(current_game_mode) == game_mode
 			and room_max_players == max_players
 		):
+			_try_complete_client_registration()
 			return
 		host_peer_id = resolved_host_id
 		set_multiplayer_authority(host_peer_id)
@@ -1932,6 +2170,7 @@ func _rpc_sync_player_list(
 		room_max_players = max_players
 		player_list_changed.emit()
 		_emit_room_capacity_changed()
+		_try_complete_client_registration()
 		return
 	var previous_players := connected_players.duplicate()
 	var previous_characters := connected_player_characters.duplicate()
@@ -2004,6 +2243,7 @@ func _rpc_sync_player_list(
 		)
 	player_list_changed.emit()
 	_emit_room_capacity_changed()
+	_try_complete_client_registration()
 
 
 @rpc("authority", "call_remote", "reliable", 0)
@@ -2016,6 +2256,8 @@ func _rpc_start_game(game_mode: int = 0, session_id: int = 0) -> void:
 ## wire 解码与运行准入在这里汇合：roster 可记录隐藏模式，但 start 必须
 ## 匹配本机显式受众。拒绝时立即断开，避免 Client 永久停在大厅等待加载。
 func _apply_authoritative_start_game(game_mode: int, session_id: int) -> bool:
+	if net_role == NetRole.CLIENT and connection_state == ConnectionState.REGISTERING:
+		return false
 	if session_id <= 0 or session_id > NetConstants.MAX_GAME_SESSION_INCARNATION:
 		return false
 	if not _is_known_game_mode(game_mode):

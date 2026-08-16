@@ -26,7 +26,10 @@ relay_servers/
 └── README.md
 ```
 
-当前网络基线为协议 v76、8 个 ENet 通道。v76 新增 Relay Host 到 Relay 服务端的可靠
+当前网络基线为协议 v77、8 个 ENet 通道。v77 在 ENet Host 的玩家注册阶段
+增加内容清单 schema 与 SHA-256 摘要门禁；只有摘要匹配且 ACTIVE 成员投影就绪
+后，客户端才进入大厅已连接态。测试服保持现有明文 HTTP 大厅协议，摘要不进入
+公网大厅 API，最终准入以 ENet Host 为准。v76 新增 Relay Host 到 Relay 服务端的可靠
 踢人控制面：服务端仅接受已登记逻辑 Host 的请求，并只断开同房目标，以保证不兼容或
 投影超时成员即便忽略 join_rejected 也会有界终结。v73 的 CH0 roster 将 transport 在线玩家
 与仍在重连宽限期内的会话成员分离，并携带单调 membership revision；v74 为携带玩家

@@ -674,6 +674,7 @@ func _on_connection_state_changed(
 ) -> void:
 	match new_state:
 		NetManagerStore.ConnectionState.CONNECTING_LAN, \
+		NetManagerStore.ConnectionState.REGISTERING, \
 		NetManagerStore.ConnectionState.HOSTING_LAN, \
 		NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY:
 			mark_lobby_phase()

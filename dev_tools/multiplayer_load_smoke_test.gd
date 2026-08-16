@@ -262,7 +262,7 @@ func _test_net_manager_lan_lifecycle() -> void:
 	)
 	net_manager.set_local_character_id(&"weishidaier", true)
 	net_manager.host_start_game()
-	_expect(int(net_manager.connection_state) == 4, "Host start must enter loading state.")
+	_expect(int(net_manager.connection_state) == 5, "Host start must enter loading state.")
 	_expect(not bool(net_manager.host_game_ready), "Host game ready must stay false until MpGame is ready.")
 	var loading_progress: Dictionary = net_manager.get_game_load_progress()
 	_expect(
@@ -273,11 +273,11 @@ func _test_net_manager_lan_lifecycle() -> void:
 	)
 	net_manager.mark_in_game()
 	_expect(
-		int(net_manager.connection_state) == 4,
+		int(net_manager.connection_state) == 5,
 		"Host mark_in_game must not bypass the loading roster barrier."
 	)
 	net_manager.report_game_loaded()
-	_expect(int(net_manager.connection_state) == 5, "The final loaded peer must enter in-game state.")
+	_expect(int(net_manager.connection_state) == 6, "The final loaded peer must enter in-game state.")
 	_expect(bool(net_manager.host_game_ready), "The completed barrier must publish host ready state.")
 	net_manager.disconnect_from_game()
 	_expect(not net_manager.is_multiplayer_active(), "NetManager must cleanly disconnect after LAN host smoke.")
@@ -290,14 +290,15 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 76, "The multiplayer protocol version must be 76.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v76 must retain eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 77, "The multiplayer protocol version must be 77.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v77 must retain eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 75))
+		not bool(net_manager.call("_is_protocol_version_compatible", 76))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 75))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 71))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 70))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 69))
@@ -366,7 +367,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"Protocol v76 must reject v75 and all older or unversioned clients."
+		"Protocol v77 must reject v76 and all older or unversioned clients."
 	)
 
 	var rejection_reasons: Array[String] = []
@@ -5320,7 +5321,7 @@ func _begin_multiplayer_session_fixture(
 			return false
 		peer_ids.append(peer_id)
 	peer_ids.sort()
-	# v76 的 CH6 测试不能只伪造 RunState：发送与接收边界都从同一份成员
+	# v77 的 CH6 测试不能只伪造 RunState：发送与接收边界都从同一份成员
 	# roster 解析 participant。夹具以 peer ID 作为稳定、唯一的测试世代。
 	var fixture_members: Dictionary[int, Dictionary] = {}
 	for peer_id in peer_ids:

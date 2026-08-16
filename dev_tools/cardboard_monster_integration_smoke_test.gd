@@ -90,11 +90,11 @@ func _test_fate_and_wire_boundaries() -> void:
 		"命运精英映射必须保持10项，纸箱怪不得拥有精英替换。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 76
+		NET_CONSTANTS.PROTOCOL_VERSION == 77
 		and NET_CONSTANTS.CHANNEL_COUNT == 8
 		and CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET
 		== 18,
-		"协议v76必须隔离同局成员身份并保留v74旧局CH6、v73会话成员、纸箱怪及既有wire合同。"
+		"协议v77必须校验内容摘要、隔离同局成员身份，并保留纸箱怪及既有 wire 合同。"
 	)
 
 

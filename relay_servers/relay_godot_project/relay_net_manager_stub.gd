@@ -8,7 +8,26 @@ func _rpc_register_player(
 	character_id: String = "weishidaier",
 	character_confirmed: bool = true,
 	protocol_version: int = -1,
-	reconnect_token: String = ""
+	reconnect_token: String = "",
+	content_manifest_schema: int = -1,
+	content_digest: String = ""
+) -> void:
+	pass
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_registration_accepted(
+	registered_peer_id: int,
+	content_manifest_schema: int,
+	content_digest: String
+) -> void:
+	pass
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_content_rejected(
+	expected_content_manifest_schema: int,
+	expected_content_digest: String
 ) -> void:
 	pass
 

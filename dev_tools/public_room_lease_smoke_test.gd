@@ -469,6 +469,7 @@ func _test_unique_source_contract() -> void:
 		and lobby_source.contains("_public_request_channel_quarantined")
 		and lobby_source.contains("_public_request_in_flight")
 		and lobby_source.contains("_request_public_member_confirmation()")
+		and lobby_source.contains("STATE_REGISTERING:")
 		and lobby_source.contains("STATE_CONNECTED_IN_LOBBY:"),
 		"大厅退出必须取消普通命令，排空旧 HTTP 回调后走独立租约清理通道。"
 	)
@@ -493,8 +494,11 @@ func _test_unique_source_contract() -> void:
 		client_begin_start >= 0
 		and client_begin_end > client_begin_start
 		and client_begin_source.contains("client_join_relay_room")
-		and not client_begin_source.contains("PublicRequest.CONFIRM_ACQUISITION"),
-		"成员必须先连接 Relay，再由 CONNECTED_IN_LOBBY 确认 provisional 身份。"
+		and not client_begin_source.contains("PublicRequest.CONFIRM_ACQUISITION")
+		and net_source.contains("_rpc_registration_accepted")
+		and net_source.contains("_try_complete_client_registration")
+		and net_source.contains("is_session_member_active(local_peer_id)"),
+		"成员必须先通过摘要 accepted 与本地 ACTIVE roster，再由 CONNECTED_IN_LOBBY 确认 provisional 身份。"
 	)
 	_expect(
 		mp_game_source.contains(
