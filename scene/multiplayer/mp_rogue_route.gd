@@ -50,6 +50,7 @@ var _net_manager: NetManagerStore = null
 var _run_state: RunStateStore = null
 var _runtime_prepared := false
 var _return_scheduled := false
+var _public_return_in_progress := false
 var _snapshot_request_pending := false
 var _snapshot_request_retry_at_msec := 0
 var _snapshot_request_retry_exponent := 0
@@ -2621,6 +2622,14 @@ func _on_return_requested() -> void:
 	if _embedded_campaign_mode:
 		embedded_return_requested.emit()
 		return
+	if _public_return_in_progress:
+		return
+	_public_return_in_progress = true
+	var public_room_lease := PublicRoomLeaseStore.get_autoload_instance()
+	if public_room_lease != null:
+		await public_room_lease.release_current_and_wait(&"rogue_return_to_lobby")
+	if not is_inside_tree():
+		return
 	if _net_manager != null:
 		_net_manager.disconnect_from_game()
 	_return_to_lobby()
@@ -2630,7 +2639,16 @@ func _return_to_lobby() -> void:
 	if _return_scheduled:
 		return
 	_return_scheduled = true
-	call_deferred("_change_to_lobby")
+	call_deferred("_release_before_change_to_lobby")
+
+
+func _release_before_change_to_lobby() -> void:
+	# P3 的任意启动/运行失败都通过同一个清理门，避免只覆盖返回按钮。
+	var public_room_lease := PublicRoomLeaseStore.get_autoload_instance()
+	if public_room_lease != null:
+		await public_room_lease.release_current_and_wait(&"rogue_return_to_lobby")
+	if is_inside_tree():
+		_change_to_lobby()
 
 
 func _change_to_lobby() -> void:

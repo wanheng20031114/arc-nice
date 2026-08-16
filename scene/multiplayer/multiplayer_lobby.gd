@@ -1,7 +1,6 @@
 extends Control
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
-const PUBLIC_LOBBY_API_BASE_URL := _NetConstants.PUBLIC_LOBBY_API_BASE_URL
 const USERNAME_CARET_SIZE := Vector2(2.0, 34.0)
 const USERNAME_CARET_BLINK_INTERVAL := 0.48
 const STATE_DISCONNECTED := NetManagerStore.ConnectionState.DISCONNECTED
@@ -25,10 +24,10 @@ enum PublicRequest {
 	CREATE_ROOM,
 	JOIN_ROOM,
 	QUICK_MATCH,
+	CONFIRM_ACQUISITION,
 	HOST_READY,
 	UPDATE_ROOM,
-	LEAVE_ROOM,
-	DESTROY_ROOM,
+	ACQUISITION_PREFLIGHT,
 }
 
 @onready var username_panel: PanelContainer = $LobbyCenter/UsernamePanel
@@ -79,23 +78,26 @@ enum PublicRequest {
 @onready var public_lobby_request: HTTPRequest = $PublicLobbyRequest
 @onready var character_choice_overlay: PlayerCharacterChoiceOverlay = $PlayerCharacterChoiceOverlay
 @onready var net_manager: NetManagerStore = NetManagerStore.get_autoload_instance()
+@onready var public_room_lease: PublicRoomLeaseStore = (
+	PublicRoomLeaseStore.get_autoload_instance()
+)
 @onready var run_state: RunStateStore = get_node_or_null("/root/RunState") as RunStateStore
 
 var current_view: LobbyView = LobbyView.USERNAME_INPUT
 var is_starting_game: bool = false
 var pending_public_request: PublicRequest = PublicRequest.NONE
-var current_public_room_id: String = ""
-var current_public_host_token: String = ""
-var current_public_member_token: String = ""
-var current_public_room_name: String = ""
-var current_public_is_host: bool = false
-var current_public_room_game_mode: NetManagerStore.GameMode = NetManagerStore.GameMode.STANDARD
+var _pending_public_request_lease_generation := 0
+var _pending_public_request_acquisition_token := ""
+var _pending_public_acquisition_command: Dictionary = {}
+var _pending_public_room_after_confirm: Dictionary = {}
+var _public_request_in_flight := false
+var _public_request_channel_quarantined := false
+var _public_request_channel_quarantine_generation := 0
+var _queued_public_request: Dictionary = {}
 var relay_host_ready_sent: bool = false
 var pending_start_after_public_status: bool = false
 var keep_room_view_after_connection_failure: bool = false
-var public_cleanup_in_progress: bool = false
-var public_cleanup_pending_dispatch: bool = false
-var public_cleanup_status_message: String = ""
+var public_release_in_progress := false
 var current_room_max_players: int = _NetConstants.DEFAULT_ROOM_MAX_PLAYERS
 var _username_panel_intro_tween: Tween
 var _username_panel_intro_target_position := Vector2.ZERO
@@ -105,6 +107,7 @@ var _game_mode_icon_cache: Dictionary = {}
 
 
 func _ready() -> void:
+	assert(public_room_lease != null, "MultiplayerLobby 缺少 PublicRoomLease 自动加载实例。")
 	_sync_local_character_selection()
 	_configure_game_mode_selector()
 	max_players_spin.min_value = _NetConstants.MIN_ROOM_PLAYERS
@@ -287,7 +290,6 @@ func _apply_room_game_mode(room_data: Dictionary, as_host: bool) -> bool:
 	if not applied:
 		_show_public_error("当前连接状态不能应用房间游戏模式。")
 		return false
-	current_public_room_game_mode = game_mode
 	_select_game_mode_in_selector(game_mode)
 	_update_room_mode_label()
 	return true
@@ -486,6 +488,19 @@ func _on_lan_mode_pressed() -> void:
 
 
 func _on_back_to_mode_select() -> void:
+	if public_release_in_progress:
+		return
+	if public_room_lease.has_active_lease():
+		public_release_in_progress = true
+		_cancel_pending_public_command_for_release()
+		await public_room_lease.release_current_and_wait(
+			&"lobby_back_to_mode_select"
+		)
+		if not is_inside_tree():
+			return
+		public_release_in_progress = false
+	elif pending_public_request != PublicRequest.NONE:
+		_cancel_pending_public_command_for_release()
 	_show_view(LobbyView.MODE_SELECT)
 
 
@@ -545,37 +560,63 @@ func _request_public_health() -> void:
 
 
 func _request_public_rooms() -> void:
-	if current_view != LobbyView.PUBLIC_BROWSER:
+	if (
+		current_view != LobbyView.PUBLIC_BROWSER
+		or public_release_in_progress
+		or public_room_lease.has_active_lease()
+	):
 		return
 	browser_status_label.text = "正在刷新房间列表..."
 	_send_public_request(PublicRequest.LIST_ROOMS, "/rooms", HTTPClient.METHOD_GET)
 
 
 func _on_create_public_room_pressed() -> void:
+	if not _can_begin_public_membership():
+		return
 	if not _prepare_selected_host_game_mode():
 		return
 	var body := {
 		"name": room_name_input.text.strip_edges(),
-		"host_name": net_manager.local_player_name,
+		"host_name": str(net_manager.local_player_name).strip_edges(),
 		"max_players": int(max_players_spin.value),
 		"game_mode": _get_selected_game_mode_key(),
 	}
+	if not _begin_public_acquisition_request(
+		&"create",
+		PublicRequest.CREATE_ROOM,
+		"/rooms",
+		body,
+		body
+	):
+		_show_public_error("无法建立创建房间的临时身份，请稍后重试。")
+		return
 	browser_status_label.text = "正在创建公网房间..."
-	_send_public_request(PublicRequest.CREATE_ROOM, "/rooms", HTTPClient.METHOD_POST, body)
 
 
 func _on_quick_match_pressed() -> void:
+	if not _can_begin_public_membership():
+		return
 	if not _prepare_selected_host_game_mode():
 		return
 	var body := {
-		"player_name": net_manager.local_player_name,
+		"player_name": str(net_manager.local_player_name).strip_edges(),
 		"game_mode": _get_selected_game_mode_key(),
 	}
+	if not _begin_public_acquisition_request(
+		&"quick_match",
+		PublicRequest.QUICK_MATCH,
+		"/matchmaking/quick",
+		body,
+		body
+	):
+		_show_public_error("无法建立快速匹配的临时身份，请稍后重试。")
+		return
 	browser_status_label.text = "正在快速匹配..."
-	_send_public_request(PublicRequest.QUICK_MATCH, "/matchmaking/quick", HTTPClient.METHOD_POST, body)
 
 
 func _on_public_room_selected(room_id: String, game_mode_key: String) -> void:
+	if not _can_begin_public_membership():
+		return
 	var definition := GameModeCatalog.get_definition_by_wire_key(game_mode_key)
 	if (
 		definition == null
@@ -589,11 +630,65 @@ func _on_public_room_selected(room_id: String, game_mode_key: String) -> void:
 		return
 	_select_game_mode_in_selector(game_mode)
 	var body := {
-		"player_name": net_manager.local_player_name,
+		"player_name": str(net_manager.local_player_name).strip_edges(),
 		"game_mode": game_mode_key,
 	}
+	var preflight_payload := body.duplicate(true)
+	preflight_payload["room_id"] = room_id
+	if not _begin_public_acquisition_request(
+		&"join",
+		PublicRequest.JOIN_ROOM,
+		"/rooms/%s/join" % room_id,
+		body,
+		preflight_payload
+	):
+		_show_public_error("无法建立加入房间的临时身份，请稍后重试。")
+		return
 	browser_status_label.text = "正在加入房间..."
-	_send_public_request(PublicRequest.JOIN_ROOM, "/rooms/%s/join" % room_id, HTTPClient.METHOD_POST, body)
+
+
+func _begin_public_acquisition_request(
+	action_name: StringName,
+	request_action: PublicRequest,
+	path: String,
+	actual_body: Dictionary,
+	preflight_payload: Dictionary
+) -> bool:
+	var lease_generation := public_room_lease.begin_acquisition(
+		str(net_manager.local_player_name),
+		action_name
+	)
+	if lease_generation <= 0:
+		return false
+	_pending_public_acquisition_command = {
+		"lease_generation": lease_generation,
+		"action_name": action_name,
+		"request_action": request_action,
+		"path": path,
+		"body": actual_body.duplicate(true),
+	}
+	_send_public_request(
+		PublicRequest.ACQUISITION_PREFLIGHT,
+		"/acquisitions/preflight",
+		HTTPClient.METHOD_POST,
+		{
+			"action": str(action_name),
+			"payload": preflight_payload.duplicate(true),
+		}
+	)
+	return true
+
+
+func _can_begin_public_membership() -> bool:
+	if (
+		not public_release_in_progress
+		and pending_public_request == PublicRequest.NONE
+		and not public_room_lease.has_active_lease()
+		and not net_manager.is_multiplayer_active()
+	):
+		return true
+	browser_status_label.text = "上一房间会话或身份仍在释放，请稍候。"
+	return false
 
 
 func _send_public_request(
@@ -605,21 +700,63 @@ func _send_public_request(
 	if pending_public_request != PublicRequest.NONE:
 		return
 	pending_public_request = action
+	_pending_public_request_lease_generation = (
+		public_room_lease.get_lease_generation()
+		if public_room_lease.has_active_lease()
+		else 0
+	)
+	_pending_public_request_acquisition_token = (
+		public_room_lease.get_acquisition_token()
+		if public_room_lease.has_active_lease()
+		else ""
+	)
 	var headers := PackedStringArray()
 	var body_text := ""
 	if method != HTTPClient.METHOD_GET:
 		headers.append("Content-Type: application/json")
 		body_text = JSON.stringify(body)
+	if _public_request_channel_quarantined:
+		# 冻结隔离期内的唯一下一条命令；token/payload 不从后续 UI 状态重建。
+		_queued_public_request = {
+			"action": action,
+			"path": path,
+			"headers": headers,
+			"method": method,
+			"body_text": body_text,
+		}
+		return
+	_dispatch_public_request(path, headers, method, body_text)
+
+
+func _dispatch_public_request(
+	path: String,
+	headers: PackedStringArray,
+	method: HTTPClient.Method,
+	body_text: String
+) -> void:
+	if pending_public_request == PublicRequest.NONE or _public_request_in_flight:
+		return
+	_public_request_in_flight = true
 	var err := public_lobby_request.request(
-		PUBLIC_LOBBY_API_BASE_URL + path,
+		public_room_lease.get_public_lobby_api_base_url() + path,
 		headers,
 		method,
 		body_text
 	)
 	if err != OK:
+		_public_request_in_flight = false
+		_quarantine_public_request_channel()
+		var action := pending_public_request
 		pending_public_request = PublicRequest.NONE
+		_pending_public_request_lease_generation = 0
+		_pending_public_request_acquisition_token = ""
+		_queued_public_request.clear()
 		_cancel_public_request_side_effect(action)
-		_show_public_error("请求公网大厅失败: %s" % error_string(err))
+		var message := "请求公网大厅失败: %s" % error_string(err)
+		if _is_membership_acquisition_action(action):
+			call_deferred("_cleanup_failed_public_membership", message)
+		else:
+			_show_public_error(message)
 
 
 func _on_public_lobby_request_completed(
@@ -628,19 +765,66 @@ func _on_public_lobby_request_completed(
 	_headers: PackedStringArray,
 	body: PackedByteArray
 ) -> void:
+	# Godot 会 deferred 派发完成，且内部回调先取消节点；隔离到本轮队列排空，
+	# 避免同步失败/超时留下的第二个旧回调取消下一条真实请求。
+	_quarantine_public_request_channel()
+	if not _public_request_in_flight:
+		return
+	_public_request_in_flight = false
 	var action := pending_public_request
+	var expected_lease_generation := _pending_public_request_lease_generation
+	var expected_acquisition_token := _pending_public_request_acquisition_token
 	pending_public_request = PublicRequest.NONE
+	_pending_public_request_lease_generation = 0
+	_pending_public_request_acquisition_token = ""
+	_queued_public_request.clear()
+	# 离房会主动取消普通命令；迟到的取消回调不能覆盖清理反馈。
+	if action == PublicRequest.NONE:
+		return
+	if (
+		expected_lease_generation > 0
+		and (
+			not public_room_lease.has_active_lease()
+			or public_room_lease.get_lease_generation()
+			!= expected_lease_generation
+			or public_room_lease.get_acquisition_token()
+			!= expected_acquisition_token
+		)
+	):
+		return
 	var body_text := body.get_string_from_utf8()
 	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
 		_cancel_public_request_side_effect(action)
-		_show_public_error(_format_public_request_error(response_code, body_text))
-		if public_cleanup_pending_dispatch:
-			call_deferred("_dispatch_failed_public_membership_cleanup")
+		var message := _format_public_request_error(response_code, body_text)
+		if _is_membership_acquisition_action(action):
+			_cleanup_failed_public_membership(message)
+		else:
+			_show_public_error(message)
 		return
 
 	var parsed: Variant = null
 	if not body_text.is_empty():
 		parsed = JSON.parse_string(body_text)
+	if action == PublicRequest.ACQUISITION_PREFLIGHT:
+		_handle_acquisition_preflight_response(
+			parsed as Dictionary,
+			expected_lease_generation
+		)
+		return
+	if _is_acquisition_command_action(action):
+		var acquisition_response := parsed as Dictionary
+		if acquisition_response == null or not acquisition_response.has(
+			"acquisition_token"
+		):
+			_cleanup_failed_public_membership("公网大厅响应缺少 acquisition 身份。")
+			return
+		if str(acquisition_response.get("acquisition_token", "")) != (
+			expected_acquisition_token
+		):
+			_cleanup_failed_public_membership(
+				"公网大厅响应的 capability 与当前命令不匹配。"
+			)
+			return
 
 	match action:
 		PublicRequest.HEALTH:
@@ -658,6 +842,10 @@ func _on_public_lobby_request_completed(
 				_begin_public_host_room(data)
 			else:
 				_begin_public_client_room(data)
+		PublicRequest.CONFIRM_ACQUISITION:
+			_pending_public_room_after_confirm.clear()
+			wait_status_label.text = "成员身份已确认，等待开始。"
+			_refresh_wait_player_list()
 		PublicRequest.HOST_READY:
 			relay_host_ready_sent = true
 			wait_status_label.text = "公网房间已创建，等待玩家加入。"
@@ -669,20 +857,12 @@ func _on_public_lobby_request_completed(
 				if int(net_manager.connection_state) == int(STATE_LOADING_GAME):
 					_start_multiplayer_game()
 				else:
-					wait_status_label.text = "开局已取消：仍有玩家尚未确认角色。"
-		PublicRequest.LEAVE_ROOM, PublicRequest.DESTROY_ROOM:
-			var cleanup_message := public_cleanup_status_message
-			var was_failure_cleanup := public_cleanup_in_progress
-			_clear_public_room_state()
-			if current_view != LobbyView.USERNAME_INPUT:
-				_show_view(LobbyView.PUBLIC_BROWSER)
-				_request_public_rooms()
-				if was_failure_cleanup:
-					browser_status_label.text = "%s；目录房间占位已释放，正在刷新列表…" % cleanup_message
+					# 云端已经进入 IN_GAME，不能退回一份表面仍可等待的本地房间。
+					_cleanup_failed_public_membership(
+						"开局已取消：仍有玩家尚未确认角色"
+					)
 		_:
 			pass
-	if public_cleanup_pending_dispatch:
-		call_deferred("_dispatch_failed_public_membership_cleanup")
 
 
 func _format_public_request_error(response_code: int, body_text: String) -> String:
@@ -708,13 +888,68 @@ func _show_public_error(message: String) -> void:
 func _cancel_public_request_side_effect(action: PublicRequest) -> void:
 	if action == PublicRequest.UPDATE_ROOM:
 		pending_start_after_public_status = false
+	elif action == PublicRequest.CONFIRM_ACQUISITION:
+		_pending_public_room_after_confirm.clear()
+	elif action == PublicRequest.ACQUISITION_PREFLIGHT:
+		_pending_public_acquisition_command.clear()
+
+
+func _is_membership_acquisition_action(action: PublicRequest) -> bool:
+	return action in [
+		PublicRequest.ACQUISITION_PREFLIGHT,
+		PublicRequest.CREATE_ROOM,
+		PublicRequest.JOIN_ROOM,
+		PublicRequest.QUICK_MATCH,
+		PublicRequest.CONFIRM_ACQUISITION,
+		PublicRequest.HOST_READY,
+	]
+
+
+func _is_acquisition_command_action(action: PublicRequest) -> bool:
+	return action in [
+		PublicRequest.CREATE_ROOM,
+		PublicRequest.JOIN_ROOM,
+		PublicRequest.QUICK_MATCH,
+	]
+
+
+func _handle_acquisition_preflight_response(
+	data: Dictionary,
+	expected_lease_generation: int
+) -> void:
+	if data == null:
+		_pending_public_acquisition_command.clear()
+		_cleanup_failed_public_membership("公网大厅 preflight 响应为空。")
+		return
+	var acquisition_token := str(data.get("acquisition_token", "")).strip_edges()
+	var command := _pending_public_acquisition_command.duplicate(true)
 	if (
-		public_cleanup_in_progress
-		and action in [PublicRequest.LEAVE_ROOM, PublicRequest.DESTROY_ROOM]
+		acquisition_token.is_empty()
+		or command.is_empty()
+		or int(command.get("lease_generation", 0))
+		!= expected_lease_generation
 	):
-		_clear_public_room_state()
-		if current_view != LobbyView.USERNAME_INPUT:
-			_show_view(LobbyView.PUBLIC_BROWSER)
+		_pending_public_acquisition_command.clear()
+		_cleanup_failed_public_membership("公网大厅 preflight 响应缺少有效 capability。")
+		return
+	var action_name := StringName(command.get("action_name", &""))
+	if not public_room_lease.bind_acquisition_capability(
+		expected_lease_generation,
+		action_name,
+		acquisition_token
+	):
+		_pending_public_acquisition_command.clear()
+		_cleanup_failed_public_membership("公网大厅返回了无法绑定的 capability。")
+		return
+	var body := (command.get("body", {}) as Dictionary).duplicate(true)
+	body["acquisition_token"] = acquisition_token
+	_pending_public_acquisition_command.clear()
+	_send_public_request(
+		int(command.get("request_action", PublicRequest.NONE)) as PublicRequest,
+		str(command.get("path", "")),
+		HTTPClient.METHOD_POST,
+		body
+	)
 
 
 func _render_public_rooms(rooms: Array) -> void:
@@ -757,29 +992,32 @@ func _render_public_rooms(rooms: Array) -> void:
 
 func _begin_public_host_room(data: Dictionary) -> void:
 	if data == null:
-		_show_public_error("创建公网房间失败：响应为空")
+		_cleanup_failed_public_membership("创建公网房间失败：响应为空")
 		return
 	var relay_ip := str(data.get("relay_ip", ""))
 	var relay_port := int(data.get("relay_port", 0))
 	var room_id := _get_public_room_id(data)
 	var host_token := str(data.get("host_token", ""))
 	var member_token := str(data.get("member_token", ""))
-
-	current_public_room_id = room_id
-	current_public_host_token = host_token
-	current_public_member_token = member_token
-	current_public_room_name = str(data.get("name", "公网房间"))
-	current_public_is_host = true
+	var acquisition_token := str(data.get("acquisition_token", ""))
 	relay_host_ready_sent = false
+	var identity_adopted := public_room_lease.adopt_room(
+		room_id,
+		str(net_manager.local_player_name),
+		member_token,
+		host_token,
+		true,
+		acquisition_token
+	)
 
 	if (
 		relay_ip.is_empty()
 		or relay_port <= 0
-		or room_id.is_empty()
-		or host_token.is_empty()
-		or member_token.is_empty()
+		or not identity_adopted
 	):
-		_cleanup_failed_public_membership("创建公网房间失败：Relay 信息不完整")
+		_cleanup_failed_public_membership(
+			"创建公网房间失败：Relay 或认证信息不完整"
+		)
 		return
 	if not _apply_room_game_mode(data, true):
 		_cleanup_failed_public_membership("创建公网房间失败：游戏模式无效")
@@ -788,39 +1026,41 @@ func _begin_public_host_room(data: Dictionary) -> void:
 	var max_players := _get_room_max_players(data)
 	var err: Error = net_manager.host_create_relay_room(relay_ip, relay_port, max_players)
 	if err != OK:
-		net_manager.clear_public_room_context()
 		_cleanup_failed_public_membership("连接 Relay 失败: %s" % error_string(err))
 		return
-	net_manager.set_public_room_context(room_id, host_token, true)
 	_enter_room_wait(data)
 	wait_status_label.text = "正在连接公网 Relay..."
 
 
 func _begin_public_client_room(data: Dictionary) -> void:
 	if data == null:
-		_show_public_error("加入公网房间失败：响应为空")
+		_cleanup_failed_public_membership("加入公网房间失败：响应为空")
 		return
 	var relay_ip := str(data.get("relay_ip", ""))
 	var relay_port := int(data.get("relay_port", 0))
 	var host_peer_id := int(data.get("host_peer_id", 0))
 	var room_id := _get_public_room_id(data)
 	var member_token := str(data.get("member_token", ""))
-
-	current_public_room_id = room_id
-	current_public_host_token = ""
-	current_public_member_token = member_token
-	current_public_room_name = str(data.get("name", "公网房间"))
-	current_public_is_host = false
+	var acquisition_token := str(data.get("acquisition_token", ""))
 	relay_host_ready_sent = false
+	var identity_adopted := public_room_lease.adopt_room(
+		room_id,
+		str(net_manager.local_player_name),
+		member_token,
+		"",
+		false,
+		acquisition_token
+	)
 
 	if (
 		relay_ip.is_empty()
 		or relay_port <= 0
 		or host_peer_id <= 0
-		or room_id.is_empty()
-		or member_token.is_empty()
+		or not identity_adopted
 	):
-		_cleanup_failed_public_membership("加入公网房间失败：Relay 信息不完整")
+		_cleanup_failed_public_membership(
+			"加入公网房间失败：Relay 或认证信息不完整"
+		)
 		return
 	if not _apply_room_game_mode(data, false):
 		_cleanup_failed_public_membership("加入公网房间失败：游戏模式无效")
@@ -829,19 +1069,46 @@ func _begin_public_client_room(data: Dictionary) -> void:
 	if not net_manager.set_pending_room_max_players(max_players):
 		_cleanup_failed_public_membership("加入公网房间失败：无法应用房间人数上限")
 		return
-
+	# HTTP 响应只取得 provisional 占位；Relay 真正连通后才向目录确认长租约。
+	_pending_public_room_after_confirm = data.duplicate(true)
 	var err: Error = net_manager.client_join_relay_room(relay_ip, relay_port, host_peer_id)
 	if err != OK:
-		net_manager.clear_public_room_context()
 		_cleanup_failed_public_membership("连接 Relay 失败: %s" % error_string(err))
 		return
-	net_manager.set_public_room_context(room_id, "", false)
 	_enter_room_wait(data)
-	wait_status_label.text = "正在连接公网 Relay..."
+	wait_status_label.text = "正在连接公网 Relay，成员身份尚未确认…"
+
+
+func _request_public_member_confirmation() -> void:
+	if (
+		_pending_public_room_after_confirm.is_empty()
+		or public_room_lease.is_public_host()
+		or pending_public_request != PublicRequest.NONE
+	):
+		return
+	var room_id := public_room_lease.get_room_id()
+	var player_name := public_room_lease.get_player_name()
+	var member_token := public_room_lease.get_member_token()
+	if room_id.is_empty() or player_name.is_empty() or member_token.is_empty():
+		_cleanup_failed_public_membership("确认公网成员身份失败：成员身份缺失")
+		return
+	wait_status_label.text = "Relay 已连接，正在确认成员身份…"
+	_send_public_request(
+		PublicRequest.CONFIRM_ACQUISITION,
+		"/acquisitions/confirm",
+		HTTPClient.METHOD_POST,
+		{
+			"room_id": room_id,
+			"player_name": player_name,
+			"member_token": member_token,
+		}
+	)
 
 
 func _request_public_host_ready() -> void:
-	if current_public_room_id.is_empty() or current_public_host_token.is_empty():
+	var room_id := public_room_lease.get_room_id()
+	var host_token := public_room_lease.get_host_token()
+	if room_id.is_empty() or host_token.is_empty():
 		return
 	if relay_host_ready_sent or pending_public_request != PublicRequest.NONE:
 		return
@@ -849,29 +1116,31 @@ func _request_public_host_ready() -> void:
 	if host_peer_id <= 0:
 		return
 	var body := {
-		"host_token": current_public_host_token,
+		"host_token": host_token,
 		"host_peer_id": host_peer_id,
 	}
 	_send_public_request(
 		PublicRequest.HOST_READY,
-		"/rooms/%s/host_ready" % current_public_room_id,
+		"/rooms/%s/host_ready" % room_id,
 		HTTPClient.METHOD_POST,
 		body
 	)
 
 
 func _request_public_room_status(status: String) -> void:
-	if current_public_room_id.is_empty() or current_public_host_token.is_empty():
+	var room_id := public_room_lease.get_room_id()
+	var host_token := public_room_lease.get_host_token()
+	if room_id.is_empty() or host_token.is_empty():
 		return
 	if pending_public_request != PublicRequest.NONE:
 		return
 	var body := {
-		"host_token": current_public_host_token,
+		"host_token": host_token,
 		"status": status,
 	}
 	_send_public_request(
 		PublicRequest.UPDATE_ROOM,
-		"/rooms/%s" % current_public_room_id,
+		"/rooms/%s" % room_id,
 		HTTPClient.METHOD_PATCH,
 		body
 	)
@@ -919,7 +1188,7 @@ func _refresh_wait_player_list() -> void:
 		start_game_btn.disabled = (
 			net_manager.connected_players.size() < 2
 			or not net_manager.are_all_player_characters_confirmed()
-			or (current_public_is_host and not relay_host_ready_sent)
+			or (public_room_lease.is_public_host() and not relay_host_ready_sent)
 		)
 	_update_choose_character_button()
 
@@ -1008,7 +1277,7 @@ func _on_net_connection_failed(reason: String) -> void:
 	if current_view == LobbyView.ROOM_WAIT:
 		keep_room_view_after_connection_failure = true
 		wait_status_label.text = "连接失败: %s" % reason
-		if not current_public_room_id.is_empty():
+		if public_room_lease.has_active_lease():
 			_cleanup_failed_public_membership("连接失败: %s" % reason)
 	else:
 		lan_status_label.text = "连接失败: %s" % reason
@@ -1029,7 +1298,14 @@ func _on_net_state_changed(new_state: NetManagerStore.ConnectionState) -> void:
 				wait_status_label.text = "局域网主机已创建，等待玩家加入。"
 			_refresh_wait_player_list()
 		STATE_CONNECTED_IN_LOBBY:
-			wait_status_label.text = "已连接，等待开始。"
+			if (
+				public_room_lease.has_active_lease()
+				and not public_room_lease.is_public_host()
+				and not _pending_public_room_after_confirm.is_empty()
+			):
+				_request_public_member_confirmation()
+			else:
+				wait_status_label.text = "已连接，等待开始。"
 			_update_room_mode_label()
 			_refresh_wait_player_list()
 		STATE_LOADING_GAME:
@@ -1052,7 +1328,7 @@ func _on_start_game() -> void:
 		wait_status_label.text = "请等待所有玩家确认角色。"
 		_refresh_wait_player_list()
 		return
-	if current_public_is_host and not current_public_room_id.is_empty():
+	if public_room_lease.is_public_host() and public_room_lease.has_active_lease():
 		pending_start_after_public_status = true
 		wait_status_label.text = "正在通知公网大厅开始游戏..."
 		_request_public_room_status("in_game")
@@ -1099,124 +1375,132 @@ func _change_to_multiplayer_game() -> void:
 
 
 func _on_leave_room() -> void:
-	var was_public := not current_public_room_id.is_empty()
-	var room_id := current_public_room_id
-	var host_token := current_public_host_token
-	var member_token := current_public_member_token
-	var player_name: String = str(net_manager.local_player_name)
-	var was_host := current_public_is_host
-	net_manager.disconnect_from_game()
-	if was_public and not room_id.is_empty():
-		if not member_token.is_empty():
-			_send_public_request(
-				PublicRequest.LEAVE_ROOM,
-				"/rooms/%s/leave" % room_id,
-				HTTPClient.METHOD_POST,
-				{
-					"player_name": player_name,
-					"member_token": member_token,
-				}
-			)
-		elif was_host and not host_token.is_empty():
-			_send_public_request(
-				PublicRequest.DESTROY_ROOM,
-				"/rooms/%s" % room_id,
-				HTTPClient.METHOD_DELETE,
-				{"host_token": host_token}
-			)
-	_clear_public_room_state()
-	if was_public:
-		_show_view(LobbyView.PUBLIC_BROWSER)
-	else:
+	if public_release_in_progress:
+		return
+	if not public_room_lease.has_active_lease():
+		net_manager.disconnect_from_game()
+		_clear_public_room_state()
 		_show_view(LobbyView.LAN_DIRECT)
 		lan_status_label.text = "已离开房间。"
+		return
+	public_release_in_progress = true
+	leave_room_btn.disabled = true
+	wait_status_label.text = "正在认证释放公网房间身份…"
+	_cancel_pending_public_command_for_release()
+	var result := await public_room_lease.release_current_and_wait(&"lobby_leave")
+	if not is_inside_tree():
+		return
+	# 远端失败也已到达有界终点；此处才清本地传输和大厅表现。
+	net_manager.disconnect_from_game()
+	_clear_public_room_state()
+	public_release_in_progress = false
+	leave_room_btn.disabled = false
+	_show_view(LobbyView.PUBLIC_BROWSER)
+	_request_public_rooms()
+	browser_status_label.text = (
+		"已离开公网房间，正在刷新列表…"
+		if bool(result.get("success", false))
+		else "本地已离开；云端未确认释放，服务端租约将自动回收。"
+	)
 
 
 func _cleanup_failed_public_membership(message: String) -> void:
-	if public_cleanup_in_progress:
+	if public_release_in_progress:
 		return
 	if current_view == LobbyView.ROOM_WAIT:
 		wait_status_label.text = "%s；正在释放公网房间占位…" % message
-
-	if current_public_room_id.is_empty():
-		_clear_public_room_state()
-		if current_view != LobbyView.USERNAME_INPUT:
-			_show_view(LobbyView.PUBLIC_BROWSER)
-			browser_status_label.text = message
-		return
-
-	if (
-		current_public_member_token.is_empty()
-		and (
-			not current_public_is_host
-			or current_public_host_token.is_empty()
-		)
-	):
-		_clear_public_room_state()
-		if current_view != LobbyView.USERNAME_INPUT:
-			_show_view(LobbyView.PUBLIC_BROWSER)
-			browser_status_label.text = "%s；响应缺少成员令牌，无法自动释放目录房间。" % message
-		return
-
-	public_cleanup_in_progress = true
-	public_cleanup_pending_dispatch = true
-	public_cleanup_status_message = message
+	public_release_in_progress = true
 	pending_start_after_public_status = false
-	_dispatch_failed_public_membership_cleanup()
+	_cancel_pending_public_command_for_release()
+	_release_failed_public_membership(message)
 
 
-func _dispatch_failed_public_membership_cleanup() -> void:
+func _release_failed_public_membership(message: String) -> void:
+	var had_authenticated_lease := public_room_lease.has_active_lease()
+	var result := await public_room_lease.release_current_and_wait(
+		&"membership_setup_failed"
+	)
+	if not is_inside_tree():
+		return
+	if net_manager.is_multiplayer_active():
+		net_manager.disconnect_from_game()
+	_clear_public_room_state()
+	public_release_in_progress = false
+	if current_view == LobbyView.USERNAME_INPUT:
+		return
+	_show_view(LobbyView.PUBLIC_BROWSER)
+	if not had_authenticated_lease:
+		browser_status_label.text = "%s；响应缺少可用认证身份，无法主动释放。" % message
+	elif bool(result.get("success", false)):
+		browser_status_label.text = "%s；目录房间占位已释放。" % message
+	else:
+		browser_status_label.text = "%s；本地已退出，云端将按租约自动回收。" % message
+
+
+func _cancel_pending_public_command_for_release() -> void:
+	var cancelled_action := pending_public_request
+	_public_request_in_flight = false
+	pending_public_request = PublicRequest.NONE
+	_pending_public_request_lease_generation = 0
+	_pending_public_request_acquisition_token = ""
+	_queued_public_request.clear()
+	_cancel_public_request_side_effect(cancelled_action)
+	if public_lobby_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		public_lobby_request.cancel_request()
+	_quarantine_public_request_channel()
+
+
+func _quarantine_public_request_channel() -> void:
+	_public_request_channel_quarantine_generation += 1
+	_public_request_channel_quarantined = true
+	_finish_public_request_channel_quarantine.call_deferred(
+		_public_request_channel_quarantine_generation
+	)
+
+
+func _finish_public_request_channel_quarantine(generation: int) -> void:
+	if generation != _public_request_channel_quarantine_generation:
+		return
+	_public_request_channel_quarantined = false
+	if _queued_public_request.is_empty():
+		return
+	var queued := _queued_public_request.duplicate(true)
+	_queued_public_request.clear()
 	if (
-		not public_cleanup_in_progress
-		or not public_cleanup_pending_dispatch
-		or pending_public_request != PublicRequest.NONE
+		pending_public_request == PublicRequest.NONE
+		or int(queued.get("action", PublicRequest.NONE))
+		!= int(pending_public_request)
+		or _public_request_in_flight
 	):
 		return
-
-	public_cleanup_pending_dispatch = false
-	var cleanup_action := PublicRequest.LEAVE_ROOM
-	var cleanup_path := "/rooms/%s/leave" % current_public_room_id
-	var cleanup_body := {
-		"player_name": str(net_manager.local_player_name),
-		"member_token": current_public_member_token,
-	}
-	if current_public_member_token.is_empty() and current_public_is_host:
-		cleanup_action = PublicRequest.DESTROY_ROOM
-		cleanup_path = "/rooms/%s" % current_public_room_id
-		cleanup_body = {"host_token": current_public_host_token}
-
-	var cleanup_method := HTTPClient.METHOD_POST
-	if cleanup_action == PublicRequest.DESTROY_ROOM:
-		cleanup_method = HTTPClient.METHOD_DELETE
-	_send_public_request(
-		cleanup_action,
-		cleanup_path,
-		cleanup_method,
-		cleanup_body
+	_dispatch_public_request(
+		str(queued.get("path", "")),
+		queued.get("headers", PackedStringArray()) as PackedStringArray,
+		int(queued.get("method", HTTPClient.METHOD_GET)) as HTTPClient.Method,
+		str(queued.get("body_text", ""))
 	)
 
 
 func _on_back_to_main_menu() -> void:
+	if public_release_in_progress:
+		return
+	public_release_in_progress = true
+	_cancel_pending_public_command_for_release()
+	await public_room_lease.release_current_and_wait(&"lobby_back_to_menu")
+	if not is_inside_tree():
+		return
 	net_manager.disconnect_from_game()
 	get_tree().change_scene_to_file("res://scene/main_menu.tscn")
 
 
 func _clear_public_room_state() -> void:
-	current_public_room_id = ""
-	current_public_host_token = ""
-	current_public_member_token = ""
-	current_public_room_name = ""
-	current_public_is_host = false
-	current_public_room_game_mode = NetManagerStore.GameMode.STANDARD
+	# 这里只重置场景表现；跨场景身份只能由 PublicRoomLease 在有界清理后释放。
 	relay_host_ready_sent = false
 	pending_start_after_public_status = false
 	keep_room_view_after_connection_failure = false
-	public_cleanup_in_progress = false
-	public_cleanup_pending_dispatch = false
-	public_cleanup_status_message = ""
+	_pending_public_acquisition_command.clear()
+	_pending_public_room_after_confirm.clear()
 	current_room_max_players = _NetConstants.DEFAULT_ROOM_MAX_PLAYERS
-	if net_manager != null:
-		net_manager.clear_public_room_context()
 
 
 func _get_public_room_id(room_data: Dictionary) -> String:

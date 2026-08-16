@@ -105,6 +105,9 @@ var _displayed_progress := 0.0
 var _target_progress := 0.0
 var _request_generation := 0
 var _net_manager: NetManagerStore = null
+var _public_room_lease: PublicRoomLeaseStore = null
+var _multiplayer_failure_release_in_progress := false
+var _back_navigation_in_progress := false
 
 
 func _ready() -> void:
@@ -113,6 +116,7 @@ func _ready() -> void:
 	retry_button.pressed.connect(_on_retry_pressed)
 	back_button.pressed.connect(_on_back_pressed)
 	_net_manager = NetManagerStore.get_autoload_instance()
+	_public_room_lease = PublicRoomLeaseStore.get_autoload_instance()
 	if _net_manager != null:
 		_net_manager.game_load_progress_changed.connect(
 			_on_game_load_progress_changed
@@ -301,6 +305,8 @@ func is_loading() -> bool:
 
 
 func _begin_load(target_scene_path: String, manifest: Array[String], multiplayer_load: bool) -> void:
+	if _back_navigation_in_progress:
+		return
 	_release_active_attempt(&"replaced")
 	_clear_failed_retry_request()
 	_request_generation += 1
@@ -312,6 +318,8 @@ func _begin_load(target_scene_path: String, manifest: Array[String], multiplayer
 	_target_progress = 0.0
 	_state = LoadState.REQUESTING
 	action_row.hide()
+	back_button.disabled = false
+	retry_button.disabled = false
 	retry_button.visible = not multiplayer_load
 	back_button.text = "返回大厅" if multiplayer_load else "返回主菜单"
 	readiness_label.text = ""
@@ -654,6 +662,18 @@ func _show_error(message: String) -> void:
 	action_row.show()
 	overlay.show()
 	loading_failed.emit(message)
+	if _is_multiplayer_load and not _multiplayer_failure_release_in_progress:
+		_multiplayer_failure_release_in_progress = true
+		call_deferred("_release_failed_multiplayer_load")
+
+
+func _release_failed_multiplayer_load() -> void:
+	# 加载失败已经不能继续占有目录成员；清理有界结束后才清本地会话。
+	if _public_room_lease != null:
+		await _public_room_lease.release_current_and_wait(&"multiplayer_load_failed")
+	if _net_manager != null and _net_manager.is_multiplayer_active():
+		_net_manager.disconnect_from_game()
+	_multiplayer_failure_release_in_progress = false
 
 
 func _on_retry_pressed() -> void:
@@ -669,16 +689,42 @@ func _on_retry_pressed() -> void:
 
 
 func _on_back_pressed() -> void:
+	if _back_navigation_in_progress:
+		return
+	_back_navigation_in_progress = true
+	back_button.disabled = true
+	retry_button.disabled = true
 	_invalidate_and_release_active_attempt(&"returned")
 	_clear_failed_retry_request()
 	_state = LoadState.IDLE
 	overlay.hide()
 	if _is_multiplayer_load:
+		if _public_room_lease != null:
+			await _public_room_lease.release_current_and_wait(
+				&"multiplayer_load_back"
+			)
 		if _net_manager != null:
 			_net_manager.disconnect_from_game()
-		get_tree().change_scene_to_file(MULTIPLAYER_LOBBY_SCENE_PATH)
+		await _finish_back_navigation(MULTIPLAYER_LOBBY_SCENE_PATH)
 	elif get_tree().current_scene == null or get_tree().current_scene.scene_file_path != MAIN_MENU_SCENE_PATH:
-		get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
+		await _finish_back_navigation(MAIN_MENU_SCENE_PATH)
+	else:
+		_back_navigation_in_progress = false
+		back_button.disabled = false
+		retry_button.disabled = false
+
+
+func _finish_back_navigation(target_scene_path: String) -> void:
+	var tree := get_tree()
+	if tree == null:
+		_back_navigation_in_progress = false
+		return
+	var error := tree.change_scene_to_file(target_scene_path)
+	if error == OK:
+		await tree.scene_changed
+	_back_navigation_in_progress = false
+	back_button.disabled = false
+	retry_button.disabled = false
 
 
 func _append_character_scene(manifest: Array[String], character_id: StringName) -> void:

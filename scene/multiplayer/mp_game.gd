@@ -112,7 +112,9 @@ const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 	$PeerLedgerCoordinator
 )
 @onready var tower_rogue_route_bridge: MpRogueRoute = $TowerRogueRouteBridge
-@onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
+@onready var public_room_lease: PublicRoomLeaseStore = (
+	PublicRoomLeaseStore.get_autoload_instance()
+)
 
 var game: CombatRuntimeBase = null
 var _gameplay_gateway: MultiplayerGameplayGateway = null
@@ -143,6 +145,8 @@ var _peer_result_repair_needed := false
 var _pending_reconnected_player_projections: Dictionary[int, Dictionary] = {}
 ## 已完成映射以 old peer 为键，既能幂等识别同一通知，也能拒绝 old->多个 new。
 var _completed_reconnected_player_projections: Dictionary[int, int] = {}
+var _public_return_in_progress := false
+var _lobby_return_in_progress := false
 
 
 func _ready() -> void:
@@ -158,10 +162,7 @@ func _ready() -> void:
 		push_error("MpGame: 顶层会话无法取得重连首帧准备能力。")
 		call_deferred("_return_to_lobby")
 		return
-	session_coordinator.bind_transport_dependencies(
-		net_manager,
-		public_room_keepalive_request
-	)
+	session_coordinator.bind_transport_dependencies(net_manager)
 	_connect_session_coordinator_signals()
 	player_coordinator.randomize_revive_generator()
 	merchant_transactions_coordinator.randomize_offer_generator()
@@ -4910,6 +4911,14 @@ func _clear_pending_player_revives() -> void:
 
 func _on_game_return_to_lobby_requested() -> void:
 	if net_manager != null and net_manager.is_multiplayer_active():
+		if _public_return_in_progress:
+			return
+		_public_return_in_progress = true
+		# 公网身份先结束；断开 ENet 后再由既有状态信号统一切回大厅。
+		if public_room_lease != null:
+			await public_room_lease.release_current_and_wait(&"game_return_to_lobby")
+		if not is_inside_tree():
+			return
 		net_manager.disconnect_from_game()
 		return
 	_return_to_lobby()
@@ -6911,8 +6920,6 @@ func _on_connection_state_changed(new_state: int) -> void:
 			_request_runtime_state_from_host()
 			if _peer_result_repair_needed:
 				_schedule_peer_result_full_repair()
-
-
 func _on_net_player_left(peer_id: int) -> void:
 	if peer_id <= 0:
 		return
@@ -7740,6 +7747,23 @@ func _clear_peer_network_state(peer_id: int) -> void:
 
 
 func _return_to_lobby() -> void:
+	if _lobby_return_in_progress:
+		return
+	_lobby_return_in_progress = true
+	if embedded_runtime:
+		# 内嵌战斗不拥有 SceneTree；失败只终结共享传输，由外层会话决定落点。
+		if net_manager != null and net_manager.is_multiplayer_active():
+			net_manager.disconnect_from_game()
+		return
+	# 初始化失败、远端断线和主动返回都必须经过同一个跨场景清理门。
+	if public_room_lease != null:
+		await public_room_lease.release_current_and_wait(&"mp_game_return_to_lobby")
+	if not is_inside_tree():
+		return
+	_complete_return_to_lobby()
+
+
+func _complete_return_to_lobby() -> void:
 	_clear_reconnected_player_projection_state()
 	_clear_peer_result_repair_state()
 	if peer_ledger_coordinator != null:

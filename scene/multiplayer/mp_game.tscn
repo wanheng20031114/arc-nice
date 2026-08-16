@@ -49,9 +49,6 @@ script = ExtResource("1_mpgame")
 script = ExtResource("14_tower_rogue_bridge")
 auto_bind_scene_runtime = false
 
-[node name="PublicRoomKeepaliveRequest" type="HTTPRequest" parent="."]
-timeout = 10.0
-
 [connection signal="upgrade_request_to_host" from="TransactionsCoordinator" to="." method="_on_transaction_upgrade_request_to_host"]
 [connection signal="inventory_item_use_request_to_host" from="TransactionsCoordinator" to="." method="_on_transaction_inventory_item_use_request_to_host"]
 [connection signal="inventory_item_discard_request_to_host" from="TransactionsCoordinator" to="." method="_on_transaction_inventory_item_discard_request_to_host"]

@@ -1,0 +1,23 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/multiplayer/public_room/public_room_lease.gd" id="1_lease"]
+
+[node name="PublicRoomLease" type="Node"]
+process_mode = 3
+script = ExtResource("1_lease")
+
+[node name="KeepaliveRequest" type="HTTPRequest" parent="."]
+timeout = 3.0
+
+[node name="ReleaseRequest" type="HTTPRequest" parent="."]
+timeout = 2.0
+
+[node name="ReleaseRetryTimer" type="Timer" parent="."]
+process_callback = 1
+wait_time = 0.25
+one_shot = true
+
+[node name="ReleaseDeadlineTimer" type="Timer" parent="."]
+process_callback = 1
+wait_time = 4.75
+one_shot = true

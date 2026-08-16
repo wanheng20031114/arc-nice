@@ -173,8 +173,19 @@ const UPNP_DISCOVER_TIMEOUT_MS := 2000
 const ENET_PORT_DEFAULT := 29170
 const RELAY_PORT_RANGE_START := 40001
 const RELAY_PORT_RANGE_END := 40100
-const PUBLIC_LOBBY_API_BASE_URL := "http://47.123.6.127:8000"
+## 当前默认值仅指向测试服；正式服上线前必须在部署环境改为受信任 HTTPS 地址。
+const TEST_SERVER_PUBLIC_LOBBY_API_BASE_URL := "http://47.123.6.127:8000"
+const PUBLIC_LOBBY_API_BASE_URL_ENV := "ARC_PUBLIC_LOBBY_API_BASE_URL"
+## 服务端进入 IN_GAME 后的 180 秒 idle lease 以 60 秒节奏续租。
 const PUBLIC_ROOM_KEEPALIVE_INTERVAL_SECONDS := 60.0
+
+
+## 公网大厅地址只允许从这一处读取，避免 lease/场景各自漂移。
+static func get_public_lobby_api_base_url() -> String:
+	var configured := OS.get_environment(PUBLIC_LOBBY_API_BASE_URL_ENV).strip_edges()
+	if configured.is_empty():
+		configured = TEST_SERVER_PUBLIC_LOBBY_API_BASE_URL
+	return configured.trim_suffix("/")
 
 ## ENet 信道定义
 ## 0: 认证、加载、完整状态恢复 — reliable

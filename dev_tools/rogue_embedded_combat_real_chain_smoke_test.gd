@@ -336,30 +336,22 @@ func _test_embedded_client_view_damage_authority() -> void:
 	var projectile_coordinator := mp_game.get_node(
 		"ProjectileCoordinator"
 	) as MpProjectileCoordinator
-	var keepalive_request := mp_game.get_node(
-		"PublicRoomKeepaliveRequest"
-	) as HTTPRequest
 	_expect(
 		net_manager != null
 		and session_coordinator != null
 		and player_coordinator != null
-		and projectile_coordinator != null
-		and keepalive_request != null,
-		"真实 MpGame 场景必须提供会话、玩家、弹体协调器及保活请求节点。"
+		and projectile_coordinator != null,
+		"真实 MpGame 场景必须提供会话、玩家与弹体协调器。"
 	)
 	if (
 		net_manager == null
 		or session_coordinator == null
 		or player_coordinator == null
 		or projectile_coordinator == null
-		or keepalive_request == null
 	):
 		await _dispose_shell(route_shell)
 		return
-	session_coordinator.bind_transport_dependencies(
-		net_manager,
-		keepalive_request
-	)
+	session_coordinator.bind_transport_dependencies(net_manager)
 	var wave := _create_one_enemy_wave()
 	var battle := await _create_battle(
 		mp_game,

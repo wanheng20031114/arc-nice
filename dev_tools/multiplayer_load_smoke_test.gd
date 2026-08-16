@@ -80,7 +80,7 @@ func _run() -> void:
 	_test_net_manager_protocol_version_gate()
 	_test_net_manager_game_mode_authority()
 	_test_net_manager_lan_lifecycle()
-	_test_public_room_context_lifecycle()
+	await _test_public_room_context_lifecycle()
 	_test_net_manager_player_list_sync_diff()
 	_test_recent_event_cache()
 	_test_snapshot_packet_metrics()
@@ -146,8 +146,8 @@ func _test_scene_instantiation() -> void:
 	_expect(mp_game != null, "mp_game.tscn must instantiate.")
 	if mp_game != null:
 		_expect(
-			mp_game.get_node_or_null("PublicRoomKeepaliveRequest") is HTTPRequest,
-			"MpGame must keep a native HTTPRequest node for public room keepalive."
+			root.get_node_or_null("PublicRoomLease/KeepaliveRequest") is HTTPRequest,
+			"Project autoload must keep the native cross-scene keepalive request."
 		)
 		_expect(
 			mp_game.get_node_or_null("SessionCoordinator") is MpSessionCoordinator,
@@ -513,25 +513,45 @@ func _test_net_manager_game_mode_authority() -> void:
 
 func _test_public_room_context_lifecycle() -> void:
 	var net_manager := root.get_node_or_null("NetManager")
-	_expect(net_manager != null, "NetManager autoload is missing for public room context test.")
-	if net_manager == null:
+	var public_room_lease := root.get_node_or_null(
+		"PublicRoomLease"
+	) as PublicRoomLeaseStore
+	_expect(
+		net_manager != null and public_room_lease != null,
+		"Public room lifecycle autoloads are missing."
+	)
+	if net_manager == null or public_room_lease == null:
 		return
 
 	net_manager.disconnect_from_game()
-	net_manager.set_public_room_context(" room-a ", " token-a ", true)
+	public_room_lease.suspend_transport_for_fixture(true)
 	_expect(
-		str(net_manager.get("public_room_id")) == "room-a",
-		"NetManager must trim and store public room id."
+		public_room_lease.adopt_room(
+			" room-a ",
+			" Host ",
+			" member-a ",
+			" token-a ",
+			true
+		),
+		"PublicRoomLease must adopt the authenticated room identity."
 	)
-	_expect(
-		str(net_manager.get("public_host_token")) == "token-a",
-		"NetManager must trim and store public host token."
-	)
-	_expect(bool(net_manager.get("public_is_host")), "NetManager must store public host role.")
 	net_manager.disconnect_from_game()
-	_expect(str(net_manager.get("public_room_id")).is_empty(), "Disconnect must clear public room id.")
-	_expect(str(net_manager.get("public_host_token")).is_empty(), "Disconnect must clear public host token.")
-	_expect(not bool(net_manager.get("public_is_host")), "Disconnect must clear public host role.")
+	_expect(
+		public_room_lease.get_room_id() == "room-a"
+		and public_room_lease.get_host_token() == "token-a",
+		"Transport disconnect must not clear authentication before remote cleanup."
+	)
+	public_room_lease.request_release(&"multiplayer_load_fixture")
+	await process_frame
+	public_room_lease.complete_release_attempt_for_fixture(
+		HTTPRequest.RESULT_SUCCESS,
+		204
+	)
+	_expect(
+		not public_room_lease.has_active_lease(),
+		"Remote confirmation must clear the cross-scene room identity."
+	)
+	public_room_lease.suspend_transport_for_fixture(false)
 
 
 func _test_net_manager_player_list_sync_diff() -> void:
@@ -2547,7 +2567,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			"net_inventory_item_used",
 			3,
 			0,
-			"",
+			WOOD_MATERIAL.resource_path,
 			true,
 			stacked_inventory_snapshot,
 			false,

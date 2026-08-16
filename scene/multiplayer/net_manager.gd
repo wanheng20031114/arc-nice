@@ -99,9 +99,6 @@ var connected_player_characters: Dictionary = {}
 var confirmed_character_peers: Dictionary = {}
 var host_peer_id: int = 1
 var host_game_ready: bool = false
-var public_room_id: String = ""
-var public_host_token: String = ""
-var public_is_host: bool = false
 var current_game_mode: GameMode = GameMode.STANDARD
 ## 开发 Host 权限只能由显式 fixture API 获取，并在断线时恢复为 RELEASE。
 var _host_mode_selection_audience := GameModeDefinition.SelectionAudience.RELEASE
@@ -367,18 +364,6 @@ func get_session_membership_snapshot(recipient_peer_id: int = 0) -> Dictionary:
 		"revision": _session_membership_revision,
 		"members": _build_session_member_list_array(recipient_peer_id),
 	}
-
-
-func set_public_room_context(room_id: String, host_token: String, is_public_host: bool) -> void:
-	public_room_id = room_id.strip_edges()
-	public_host_token = host_token.strip_edges()
-	public_is_host = is_public_host
-
-
-func clear_public_room_context() -> void:
-	public_room_id = ""
-	public_host_token = ""
-	public_is_host = false
 
 
 func set_host_game_mode(game_mode: GameMode) -> bool:
@@ -773,7 +758,6 @@ func disconnect_from_game() -> void:
 	_ready_game_load_peers.clear()
 	_reported_game_load_ready_count = 0
 	_reported_game_load_total_count = 0
-	clear_public_room_context()
 	_set_current_game_mode(GameMode.STANDARD)
 	_host_mode_selection_audience = GameModeDefinition.SelectionAudience.RELEASE
 	_runtime_mode_selection_audience = GameModeDefinition.SelectionAudience.RELEASE
