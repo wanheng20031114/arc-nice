@@ -8,7 +8,7 @@
 
 [resource]
 script = ExtResource("1_script")
-recipe_id = &"wooden_core_to_speed_tower"
+recipe_id = &"speed_tower_assembly"
 display_name = "移速强化塔组装"
 input_items = Array[ExtResource("5_pickup_script")]([ExtResource("2_plank"), ExtResource("3_sapling")])
 input_amounts = Array[int]([10, 2])

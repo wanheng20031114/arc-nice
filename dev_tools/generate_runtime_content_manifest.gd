@@ -19,6 +19,11 @@ const SCHEMA_VERSION := 1
 const EXPECTED_ENEMY_COUNT := 64
 const EXPECTED_PICKUP_COUNT := 181
 const EXPECTED_CAMPAIGN_COUNT := 26
+## 这些玩法资源不是敌人、道具或 Campaign 根，但其中的稳定 ID 会直接进入
+## 多人命令与运行时快照，必须参与同构建内容摘要。
+const EXPLICIT_GAMEPLAY_DEPENDENCY_ROOTS := [
+	"res://scene/plant_defense/wood_processing_station.tscn",
+]
 const TEXT_EXTENSIONS := {
 	"cfg": true,
 	"csv": true,
@@ -227,6 +232,14 @@ func _build_dependency_entries(
 	for roots in [enemy_roots, pickup_roots, campaign_roots]:
 		for entry in roots:
 			all_root_paths.append(str(entry.get("path", "")))
+	for gameplay_root in EXPLICIT_GAMEPLAY_DEPENDENCY_ROOTS:
+		if (
+			not _is_safe_resource_path(gameplay_root)
+			or not FileAccess.file_exists(gameplay_root)
+		):
+			failures.append("显式玩法依赖根不存在或路径非法：%s。" % gameplay_root)
+			continue
+		all_root_paths.append(gameplay_root)
 	var visited := _collect_dependency_closure(all_root_paths, false)
 
 	# ResourceLoader 只能发现 ext_resource/preload，不会把 @export_file

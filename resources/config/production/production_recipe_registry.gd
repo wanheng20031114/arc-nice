@@ -42,9 +42,9 @@ const RECIPE_ORDER: Array[StringName] = [
 	&"plant_cultivation_center_assembly",
 	&"research_center_assembly",
 	&"excavator_assembly",
-	&"wooden_core_to_life_tower",
-	&"wooden_core_to_speed_tower",
-	&"wooden_core_to_attack_speed_tower",
+	&"life_tower_assembly",
+	&"speed_tower_assembly",
+	&"attack_speed_tower_assembly",
 	&"sapling_propagation",
 	&"sapling_to_wood",
 	&"water_to_bottle",
@@ -109,14 +109,14 @@ const RECIPE_ID_TO_PATH := {
 	&"excavator_assembly": (
 		"res://resources/config/production/excavator_assembly.tres"
 	),
-	&"wooden_core_to_life_tower": (
-		"res://resources/config/production/wooden_core_to_life_tower.tres"
+	&"life_tower_assembly": (
+		"res://resources/config/production/life_tower_assembly.tres"
 	),
-	&"wooden_core_to_speed_tower": (
-		"res://resources/config/production/wooden_core_to_speed_tower.tres"
+	&"speed_tower_assembly": (
+		"res://resources/config/production/speed_tower_assembly.tres"
 	),
-	&"wooden_core_to_attack_speed_tower": (
-		"res://resources/config/production/wooden_core_to_attack_speed_tower.tres"
+	&"attack_speed_tower_assembly": (
+		"res://resources/config/production/attack_speed_tower_assembly.tres"
 	),
 	&"sapling_propagation": (
 		"res://resources/config/production/sapling_propagation.tres"
@@ -174,9 +174,9 @@ const RECIPE_ID_TO_PRODUCER_ID := {
 	&"plant_cultivation_center_assembly": WOOD_PROCESSING_STATION_PRODUCER_ID,
 	&"research_center_assembly": WOOD_PROCESSING_STATION_PRODUCER_ID,
 	&"excavator_assembly": WOOD_PROCESSING_STATION_PRODUCER_ID,
-	&"wooden_core_to_life_tower": WOOD_PROCESSING_STATION_PRODUCER_ID,
-	&"wooden_core_to_speed_tower": WOOD_PROCESSING_STATION_PRODUCER_ID,
-	&"wooden_core_to_attack_speed_tower": WOOD_PROCESSING_STATION_PRODUCER_ID,
+	&"life_tower_assembly": WOOD_PROCESSING_STATION_PRODUCER_ID,
+	&"speed_tower_assembly": WOOD_PROCESSING_STATION_PRODUCER_ID,
+	&"attack_speed_tower_assembly": WOOD_PROCESSING_STATION_PRODUCER_ID,
 	&"sapling_propagation": PLANTING_BASE_PRODUCER_ID,
 	&"sapling_to_wood": PLANTING_BASE_PRODUCER_ID,
 	&"water_to_bottle": WATER_COLLECTOR_PRODUCER_ID,

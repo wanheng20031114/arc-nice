@@ -14,8 +14,16 @@ const LINGLAN_BOSS_DYNAMIC_SCENE_PATHS := [
 	"res://scene/boss/linglan/boss_health_hud.tscn",
 	"res://scene/boss/linglan/linglan_boss_intro_vfx.tscn",
 ]
+const WOOD_PROCESSING_STATION_PATH := (
+	"res://scene/plant_defense/wood_processing_station.tscn"
+)
+const ENHANCEMENT_TOWER_RECIPE_PATHS := [
+	"res://resources/config/production/life_tower_assembly.tres",
+	"res://resources/config/production/speed_tower_assembly.tres",
+	"res://resources/config/production/attack_speed_tower_assembly.tres",
+]
 const GOLDEN_CONTENT_SHA256 := (
-	"9bb964e94ed90c599a2c105b6383a4e13dbecd10f7d40789a1337c69a0374486"
+	"f6c2595d639ed42d2f63c1d503510fa2f234d553a881b3a95be0ad4815186150"
 )
 
 var failures: Array[String] = []
@@ -106,6 +114,38 @@ func _validate_manifest(manifest: Dictionary) -> void:
 	)
 	_validate_explicit_boss_dependency_closure(dependency_hashes)
 	_validate_boss_digest_mutation_sensitivity(canonical_lines, dependency_hashes)
+	_validate_production_recipe_dependency_closure(
+		canonical_lines,
+		dependency_hashes
+	)
+
+
+func _validate_production_recipe_dependency_closure(
+	canonical_lines: PackedStringArray,
+	dependency_hashes: Dictionary[String, String]
+) -> void:
+	_expect(
+		dependency_hashes.has(WOOD_PROCESSING_STATION_PATH),
+		"木头加工站必须作为多人生产内容摘要的显式玩法依赖根。"
+	)
+	for recipe_path_variant in ENHANCEMENT_TOWER_RECIPE_PATHS:
+		var recipe_path := str(recipe_path_variant)
+		_expect(
+			dependency_hashes.has(recipe_path),
+			"强化塔配方必须进入多人生产内容摘要：%s。" % recipe_path
+		)
+		if not dependency_hashes.has(recipe_path):
+			continue
+		var mutated_recipe_source := (
+			_get_canonical_text(recipe_path)
+			+ "\n# production recipe manifest mutation fixture"
+		)
+		_expect_dependency_mutation_changes_digest(
+			canonical_lines,
+			recipe_path,
+			mutated_recipe_source.sha256_text(),
+			recipe_path
+		)
 
 
 func _validate_explicit_boss_dependency_closure(
@@ -227,7 +267,7 @@ func _expect_dependency_mutation_changes_digest(
 	_expect(
 		"\n".join(mutated_lines).sha256_text()
 		!= RuntimeContentManifestScript.CONTENT_SHA256,
-		"任一显式 Boss 字段/文件变化都必须改变最终摘要：%s。" % mutation_label
+		"任一显式玩法依赖字段或文件变化都必须改变最终摘要：%s。" % mutation_label
 	)
 
 

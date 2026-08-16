@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "9bb964e94ed90c599a2c105b6383a4e13dbecd10f7d40789a1337c69a0374486",
+	"content_sha256": "f6c2595d639ed42d2f63c1d503510fa2f234d553a881b3a95be0ad4815186150",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -1842,55 +1842,55 @@
 		},
 		{
 			"path": "res://resources/config/buildings/building_agave_cannon.tres",
-			"sha256": "3b51e18dc30ce30c8ebf2b1f2ad8284bb60e9e8d53ddfeaf5571f82f59f3dc3f"
+			"sha256": "8bd635b75265eb8b4ae44611f4fa12c2b04bd5dfb74e97cdefe00f23877236f5"
 		},
 		{
 			"path": "res://resources/config/buildings/building_attack_speed_tower.tres",
-			"sha256": "dbe2f31922e9331ab6bd40665505d9a33395080c49fb8d8e5b497a90da1b1bc8"
+			"sha256": "c8ea39982ef00858b7a0189a550176cc82fb3cf113cd6cf4927499d87afc67bb"
 		},
 		{
 			"path": "res://resources/config/buildings/building_bamboo_mortar.tres",
-			"sha256": "1cf5f70e8e103ecb03432c786e089de592ee27b1f344b997c150cf1c882bdc4b"
+			"sha256": "36ef7977921e15d6714acc2bae51146e438b9e022cb5656224bffe8ac9a71c97"
 		},
 		{
 			"path": "res://resources/config/buildings/building_corn_machine_gun.tres",
-			"sha256": "ce3f42b9b07809cc3f7325b4daa07c56444b7e6c1a4486f6d4e16f569d71e6bf"
+			"sha256": "058bd9bb1816376957b76216f755a7910a566fc0cd51f5b259a57eed73ddb7c0"
 		},
 		{
 			"path": "res://resources/config/buildings/building_excavator.tres",
-			"sha256": "b12789bf8c06988b3ec10316e562de73e784812b3d25d14983b4ac31e475468b"
+			"sha256": "321de0e43049d8d41fd0b96d515afbddcba9365125aaaf59b9e45ab1ef6cdf66"
 		},
 		{
 			"path": "res://resources/config/buildings/building_grape_arc_tower.tres",
-			"sha256": "dec2c868a73b7f33c03ec8a14dbb5aa351eb1d0fac81e4e1b09f5c3ada501df9"
+			"sha256": "37a72a40c16b5f1d3f44aed3aad1f646d2a7e6f0139fb4d366195dac016d634b"
 		},
 		{
 			"path": "res://resources/config/buildings/building_hydrangea_rain_tower.tres",
-			"sha256": "443c3798553c59a509513ebe96b2b792ee876b8bd70126ef609084fcaf20e677"
+			"sha256": "c39deb82210bff0e87cba6aa6cd835b1089a69d03096565322403f5ab0dddb7b"
 		},
 		{
 			"path": "res://resources/config/buildings/building_life_tower.tres",
-			"sha256": "cad622830aff5eb46508dbf50445a9fd1dde96a8cc6f17a2da997409b2de95ba"
+			"sha256": "bd2aebc3b2f63f3a2a23d706b7888f041845869c6dc031fc3043b80c5bbf8af1"
 		},
 		{
 			"path": "res://resources/config/buildings/building_oak_warehouse.tres",
-			"sha256": "f7ae3a876ed18164c3e648a67e513e7e2f0df84c4c2a68544990589224d5b96e"
+			"sha256": "8399235a9cba72401eeb2c8b214304d5d5ed0873fcf8d79cc7cdc1d1dd94a2ce"
 		},
 		{
 			"path": "res://resources/config/buildings/building_orange_charging_tower.tres",
-			"sha256": "71c804e033bbbf74151a5e7aa3eaaa9ada10f2fd41ecd9018a62c5336dcec7b3"
+			"sha256": "cbf2eb48f7ebe9e50c885b2dfd417973913cc55b6201e8e5c9023f84369222fc"
 		},
 		{
 			"path": "res://resources/config/buildings/building_plant_cultivation_center.tres",
-			"sha256": "a6c50e1e96fc7ff48efc1113890eb682b8112eb0d2607ef231b7b2b1b7e7055a"
+			"sha256": "369456b9cfde7c02e3f198cd54869fb824597196de629c836a9ffb3560deea43"
 		},
 		{
 			"path": "res://resources/config/buildings/building_planting_base.tres",
-			"sha256": "801ca5c7e70597a8f2d1a387a5ab731dc62e83624eebc1c9e4098a2b08c6815f"
+			"sha256": "b0d30e435f03920ed8321cc489494abddd72cf1c675c7b6f178e7fdef764e79c"
 		},
 		{
 			"path": "res://resources/config/buildings/building_research_center.tres",
-			"sha256": "2d7bf4ffa1fe6a495e0ee897f78c72ed4a3c42cbda831af57a7da0b7f9d500ac"
+			"sha256": "5eba8a651e15eca4e70af9e7f1497da8f3e9ea34fe098e0d1840aa72f10c51bd"
 		},
 		{
 			"path": "res://resources/config/buildings/building_simple_fence.tres",
@@ -1898,23 +1898,23 @@
 		},
 		{
 			"path": "res://resources/config/buildings/building_speed_tower.tres",
-			"sha256": "b155c997b6e469e552002d70b5910193e1e3e50f8865bec000563a4e0dc87589"
+			"sha256": "f5162ff813066ce1267ae6104d444faa5ba1d235f4ac493d0610bcdd092a0ef3"
 		},
 		{
 			"path": "res://resources/config/buildings/building_stone_mill.tres",
-			"sha256": "19e950a76e221f6b61c7989efb6cca48b5a6cadc9e27832fa38f9d8e443d3c2e"
+			"sha256": "b7781f708256f3931aa2000e1b1b1c69f5cfcc42712665d322f5918dfa2d6e04"
 		},
 		{
 			"path": "res://resources/config/buildings/building_vegetation_stake.tres",
-			"sha256": "a09e995821c447e336e47c839ff524efa190875a7e9bb01112899b7d1f8f50b9"
+			"sha256": "ff252d1912fd254dda69c874cdda214d4af8e0156b68fe4c94f98a2bb622e6dc"
 		},
 		{
 			"path": "res://resources/config/buildings/building_water_collector.tres",
-			"sha256": "2d679cc64f56b254cdcc7358e9d72a883af72b1e8c74e1012d92bb0a3cff4073"
+			"sha256": "fe7e9195272a7e879152da5a0e7934a2d143d3116503a33b4eb82dbc41d52b91"
 		},
 		{
 			"path": "res://resources/config/buildings/building_wood_processing_station.tres",
-			"sha256": "5e191789bb85cd64d68d8ceed2c16d5acc722db6d439178b99019e72ed669366"
+			"sha256": "5c54a579b6394f870ebaafb8c097ffd46bd1ff1ed5c4969cc4deb3d0edd30957"
 		},
 		{
 			"path": "res://resources/config/campaigns/rogue_combat/abandoned_mine_01/campaign.tres",
@@ -2382,7 +2382,7 @@
 		},
 		{
 			"path": "res://resources/config/campaigns/tower_defense/formal/wave_01.tres",
-			"sha256": "db9f619fa23a80c008dd3a0ffb56fefe46fa4c599907bc58f1238a57f7571619"
+			"sha256": "f5a8f9ccf6badc3803beed68ce0692361b5ff3b67497abb85b76426d671d0e7a"
 		},
 		{
 			"path": "res://resources/config/campaigns/tower_defense/formal/wave_02.tres",
@@ -3054,7 +3054,7 @@
 		},
 		{
 			"path": "res://resources/config/consumables/sea_cucumber.tres",
-			"sha256": "f07263545a840b98d7ffd2d7984485500ff2fb37f52f58e0a0524df9eeb80691"
+			"sha256": "efede73a1dd0d94de4e26c3c1832d56db6887183da9069cdaf272447fd9a9c81"
 		},
 		{
 			"path": "res://resources/config/consumables/skill_charge_battery.tres",
@@ -3569,8 +3569,56 @@
 			"sha256": "f5e272347b138d2780eb6404ecb53ece70c21c661b0ed583f2023bc554ddfb6d"
 		},
 		{
+			"path": "res://resources/config/production/attack_speed_tower_assembly.tres",
+			"sha256": "b20b50e93241520502cba760b05428a2b68c30d474ab3bfa5a5ad5c6b9701d80"
+		},
+		{
+			"path": "res://resources/config/production/excavator_assembly.tres",
+			"sha256": "4074ef33fc4ef3f6e3d7cc468dede4f30e62bcfd8a5cd6e49a0d294ec280981d"
+		},
+		{
+			"path": "res://resources/config/production/gambler_ticket_assembly.tres",
+			"sha256": "122b589c54bd3b61e28c0041f70a8b4297f8cb6956ea5364c6262d4a4f18300c"
+		},
+		{
+			"path": "res://resources/config/production/life_tower_assembly.tres",
+			"sha256": "d868dd57644680751d3eae8afc5e921f8beef252ba1db9793f64247fc5d9b1a0"
+		},
+		{
+			"path": "res://resources/config/production/plant_cultivation_center_assembly.tres",
+			"sha256": "46eca0ea98c9844619c4b2a1e23b6f8ba06ca65a55eca692b54b7e2184869251"
+		},
+		{
+			"path": "res://resources/config/production/planting_base_assembly.tres",
+			"sha256": "4c4ff5e9f4c59cac9ee3ca1477bae4813a8e4d3e35a652ffd217ff31da361cfe"
+		},
+		{
+			"path": "res://resources/config/production/production_recipe.gd",
+			"sha256": "eb37875b39e77f8a4d067711f9cf6d7cdbc87d827212024d704a5b0d3050f543"
+		},
+		{
+			"path": "res://resources/config/production/research_center_assembly.tres",
+			"sha256": "b89a6a45b3fce9ca16cfe131f122db2f22bb1c1971f2ec6099aec7ab4095bfcd"
+		},
+		{
+			"path": "res://resources/config/production/speed_tower_assembly.tres",
+			"sha256": "7b9014574b38703f5543952e6fd4ea9ff434b6e01e134d69b4d3c966c04a2b13"
+		},
+		{
+			"path": "res://resources/config/production/water_collector_assembly.tres",
+			"sha256": "c3ac8147b903712e948029fd7aa23e6b0a9c45dc39d7ba45b86061a9c1d85f84"
+		},
+		{
 			"path": "res://resources/config/production/water_source.tres",
 			"sha256": "cda122d457ef2df66036e06e5a93db1abd1d24bda4f65d91a3ddfa52348fc207"
+		},
+		{
+			"path": "res://resources/config/production/wood_to_plank.tres",
+			"sha256": "4e480c5883e0273c180e1910d872bfa743f2c161daa91043e4f0dcea3f53ef15"
+		},
+		{
+			"path": "res://resources/config/production/wooden_core_assembly.tres",
+			"sha256": "7091fc0b2bf5ad673aa6bdc5dabb66de33ecd4d09bb3358f2151ee4005ee64b7"
 		},
 		{
 			"path": "res://resources/config/waves/wave_campaign_config.gd",
@@ -3609,12 +3657,28 @@
 			"sha256": "e872aefd4e1361c03d931d6426859d535413d44da0a2dac836307150d251e24f"
 		},
 		{
+			"path": "res://resources/shader/plant_lifecycle.gdshader",
+			"sha256": "dbdafb9dddea1d8ccd0504381f89d817a66ff4779e95f9681fcf2710755eaf6b"
+		},
+		{
+			"path": "res://resources/shader/plant_lifecycle_material.tres",
+			"sha256": "8db5962de529d284bc90409205aacfdbc39afc5a8b0a74748839d204453a6b61"
+		},
+		{
+			"path": "res://resources/shader/plant_lifecycle_noise.tres",
+			"sha256": "8480c7ec521130e9d075c6243352778a5369421e7e004b01054c628c9a602eff"
+		},
+		{
 			"path": "res://resources/shader/rapid_projectile_single_pass.gdshader",
 			"sha256": "76140a3c5015099afcb209b378eeed73c486a8838b5bc637c022db276b47ae4b"
 		},
 		{
 			"path": "res://resources/shader/rapid_projectile_single_pass.tres",
 			"sha256": "f1523342d53750e3dcbe5f1d40172c0d1aabcf258ee2bc6766a13cef77ac10bc"
+		},
+		{
+			"path": "res://resources/shader/wood_processing_station_border.gdshader",
+			"sha256": "a8ca49da5e63e2bf16390f821ebcbe0d690c18f7cfb76db5d2ff14d136ccc65c"
 		},
 		{
 			"path": "res://resources/terrain/dual_grid/sky_blue_water_reference_tile_32.png",
@@ -6411,6 +6475,26 @@
 		{
 			"path": "res://scene/lighting/projectile_emission_halo.tscn",
 			"sha256": "7ad13f954b471c7dffd1808f6933f2c8f582d5d83aa689d7d52aa95714ad4da4"
+		},
+		{
+			"path": "res://scene/plant_defense/day_night_progress_border.gd",
+			"sha256": "5a1e6d26f739a82fafa3ed58552ee3d4131d561fdc62a531089e4601538aa570"
+		},
+		{
+			"path": "res://scene/plant_defense/ui/plant_health_bar.gd",
+			"sha256": "043d9044c4f722a9ea88e980dfbbf87830d736f9dab6d67a36c24d593a2dd408"
+		},
+		{
+			"path": "res://scene/plant_defense/ui/plant_health_bar.tscn",
+			"sha256": "537ac2dad9a18cf13cf5ecde89b651fb868a01f15942388b892d62b9567b5f72"
+		},
+		{
+			"path": "res://scene/plant_defense/wood_processing_station.gd",
+			"sha256": "a791789f4dd9592b188a95f2bcd21d93f5c936b75c14ffd83a6bfeb62b64be3f"
+		},
+		{
+			"path": "res://scene/plant_defense/wood_processing_station.tscn",
+			"sha256": "b11cb21b72bc93708107774bf6f3115c480f32c388f3d04b732eabec51a8fa84"
 		}
 	]
 }

@@ -78,13 +78,13 @@ const ORANGE_CHARGING_TOWER_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/wooden_core_to_orange_charging_tower.tres"
 )
 const LIFE_TOWER_RECIPE: ProductionRecipe = preload(
-	"res://resources/config/production/wooden_core_to_life_tower.tres"
+	"res://resources/config/production/life_tower_assembly.tres"
 )
 const SPEED_TOWER_RECIPE: ProductionRecipe = preload(
-	"res://resources/config/production/wooden_core_to_speed_tower.tres"
+	"res://resources/config/production/speed_tower_assembly.tres"
 )
 const ATTACK_SPEED_TOWER_RECIPE: ProductionRecipe = preload(
-	"res://resources/config/production/wooden_core_to_attack_speed_tower.tres"
+	"res://resources/config/production/attack_speed_tower_assembly.tres"
 )
 const WOOD_PROCESSING_STATION_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/simple_wood_processing_station.tres"

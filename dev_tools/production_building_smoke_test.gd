@@ -260,7 +260,7 @@ func _run() -> void:
 		panel.recipe_scroll.get_global_rect().encloses(
 			panel.recipe_rows[9].get_global_rect()
 		)
-		and station.active_recipe_id == &"wooden_core_to_speed_tower"
+		and station.active_recipe_id == &"speed_tower_assembly"
 		and panel.recipe_rows[9].button_pressed
 		and panel.input_slots[0].visible
 		and panel.input_slots[0].item == PLANK
@@ -281,7 +281,7 @@ func _run() -> void:
 		panel.recipe_scroll.get_global_rect().encloses(
 			panel.recipe_rows[10].get_global_rect()
 		)
-		and station.active_recipe_id == &"wooden_core_to_attack_speed_tower"
+		and station.active_recipe_id == &"attack_speed_tower_assembly"
 		and panel.recipe_rows[10].button_pressed
 		and panel.input_slots[0].visible
 		and panel.input_slots[0].item == PLANK
@@ -475,7 +475,7 @@ func _run() -> void:
 		)
 		and _recipe_matches(
 			station.recipes[8],
-			&"wooden_core_to_life_tower",
+			&"life_tower_assembly",
 			[PLANK, SAPLING],
 			[10, 2],
 			LIFE_TOWER_ITEM,
@@ -485,7 +485,7 @@ func _run() -> void:
 		)
 		and _recipe_matches(
 			station.recipes[9],
-			&"wooden_core_to_speed_tower",
+			&"speed_tower_assembly",
 			[PLANK, SAPLING],
 			[10, 2],
 			SPEED_TOWER_ITEM,
@@ -495,7 +495,7 @@ func _run() -> void:
 		)
 		and _recipe_matches(
 			station.recipes[10],
-			&"wooden_core_to_attack_speed_tower",
+			&"attack_speed_tower_assembly",
 			[PLANK, SAPLING],
 			[10, 2],
 			ATTACK_SPEED_TOWER_ITEM,
@@ -871,21 +871,21 @@ func _test_utility_building_recipe_transactions(
 			"output_item": RESEARCH_CENTER_ITEM,
 		},
 		{
-			"recipe_id": &"wooden_core_to_life_tower",
+			"recipe_id": &"life_tower_assembly",
 			"display_name": "生命强化塔",
 			"input_items": [PLANK, SAPLING],
 			"input_amounts": [10, 2],
 			"output_item": LIFE_TOWER_ITEM,
 		},
 		{
-			"recipe_id": &"wooden_core_to_speed_tower",
+			"recipe_id": &"speed_tower_assembly",
 			"display_name": "移速强化塔",
 			"input_items": [PLANK, SAPLING],
 			"input_amounts": [10, 2],
 			"output_item": SPEED_TOWER_ITEM,
 		},
 		{
-			"recipe_id": &"wooden_core_to_attack_speed_tower",
+			"recipe_id": &"attack_speed_tower_assembly",
 			"display_name": "攻速强化塔",
 			"input_items": [PLANK, SAPLING],
 			"input_amounts": [10, 2],

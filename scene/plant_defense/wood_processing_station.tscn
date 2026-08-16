@@ -16,9 +16,9 @@
 [ext_resource type="Script" path="res://scene/plant_defense/day_night_progress_border.gd" id="14_night_border"]
 [ext_resource type="Resource" path="res://resources/config/production/excavator_assembly.tres" id="15_excavator_recipe"]
 [ext_resource type="Resource" path="res://resources/config/production/gambler_ticket_assembly.tres" id="16_ticket_recipe"]
-[ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_life_tower.tres" id="17_life_tower_recipe"]
-[ext_resource type="Resource" uid="uid://btu6d5wgn6na7" path="res://resources/config/production/wooden_core_to_speed_tower.tres" id="18_speed_tower_recipe"]
-[ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_attack_speed_tower.tres" id="19_attack_speed_tower_recipe"]
+[ext_resource type="Resource" path="res://resources/config/production/life_tower_assembly.tres" id="17_life_tower_recipe"]
+[ext_resource type="Resource" uid="uid://btu6d5wgn6na7" path="res://resources/config/production/speed_tower_assembly.tres" id="18_speed_tower_recipe"]
+[ext_resource type="Resource" path="res://resources/config/production/attack_speed_tower_assembly.tres" id="19_attack_speed_tower_recipe"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("8_border_shader")

@@ -21,9 +21,9 @@ const EXPECTED_RECIPE_IDS: Array[StringName] = [
 	&"plant_cultivation_center_assembly",
 	&"research_center_assembly",
 	&"excavator_assembly",
-	&"wooden_core_to_life_tower",
-	&"wooden_core_to_speed_tower",
-	&"wooden_core_to_attack_speed_tower",
+	&"life_tower_assembly",
+	&"speed_tower_assembly",
+	&"attack_speed_tower_assembly",
 	&"sapling_propagation",
 	&"sapling_to_wood",
 	&"water_to_bottle",
@@ -72,6 +72,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_registry_contract()
+	_test_enhancement_tower_recipe_ids_and_inputs()
 	_test_runtime_source_closure()
 	_test_research_gate_closure()
 	if failures.is_empty():
@@ -278,6 +279,28 @@ func _test_research_gate_closure() -> void:
 		and hydrangea.description.contains("植物培育中心"),
 		"紫阳花科研必须同时说明并索引简易制作与植物培育配方。"
 	)
+
+
+func _test_enhancement_tower_recipe_ids_and_inputs() -> void:
+	for recipe_id in [
+		&"life_tower_assembly",
+		&"speed_tower_assembly",
+		&"attack_speed_tower_assembly",
+	]:
+		var recipe := RecipeRegistry.get_recipe(recipe_id)
+		_expect(
+			recipe != null
+			and recipe.recipe_id == recipe_id
+			and not String(recipe.recipe_id).contains("wooden_core")
+			and recipe.input_items.size() == 2
+			and recipe.input_amounts == [10, 2]
+			and recipe.input_items[0].resource_path
+			== "res://resources/config/materials/material_plank.tres"
+			and recipe.input_items[1].resource_path
+			== "res://resources/config/materials/material_sapling.tres",
+			"强化塔组装配方ID必须与10木板、2树苗的真实投入一致：%s。"
+			% recipe_id
+		)
 
 
 func _expect(condition: bool, message: String) -> void:
