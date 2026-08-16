@@ -2339,6 +2339,8 @@ func _run_host_replication_probe(net_manager: Node, mp_game: Node, game: Variant
 		var initial_reward_player := game.get_player_for_peer(initial_peer_id) as Player
 		if initial_reward_player != null and is_instance_valid(initial_reward_player):
 			xirang_before_by_peer[initial_peer_id] = initial_reward_player.current_xirang
+	if not _resolve_host_probe_enemy_terminal_slot(game, spawned_enemy):
+		return
 	spawned_enemy.call("_die")
 	if not await _wait_for_host_enemy_removed(game, spawned_enemy_id, 2.0):
 		_fail("Host probe enemy net id was not cleared after death.")
@@ -3981,6 +3983,31 @@ func _get_peer_id_by_name(net_manager: Node, player_name: String) -> int:
 
 func _spawn_host_probe_enemy(game: Variant) -> int:
 	var tower_game := game as TowerDefenseGame
+	if _get_active_wave_enemy_count(game) != 0:
+		_fail("Host probe requires an empty active-wave enemy ledger before fixture spawn.")
+		return 0
+	var fixture_slot_ready := false
+	if tower_game != null:
+		fixture_slot_ready = (
+			tower_game.campaign_coordinator.replace_wave_terminal_state_for_fixture(
+				1,
+				0,
+				0
+			)
+		)
+	else:
+		var wave_game := game as WaveCombatRuntimeBase
+		if wave_game == null:
+			_fail("Host probe runtime does not expose a wave terminal fixture contract.")
+			return 0
+		fixture_slot_ready = wave_game.replace_wave_terminal_state_for_fixture(
+			1,
+			0,
+			0
+		)
+	if not fixture_slot_ready:
+		_fail("Host probe could not establish one authoritative fixture enemy slot.")
+		return 0
 	var active_spawn_points: Array[Marker2D] = (
 		tower_game.enemy_coordinator.active_wave_spawn_points
 		if tower_game != null
@@ -4027,6 +4054,29 @@ func _spawn_host_probe_enemy(game: Variant) -> int:
 			return net_id
 	_fail("Host probe spawned enemy without a new net id.")
 	return 0
+
+
+func _resolve_host_probe_enemy_terminal_slot(game: Variant, enemy: Enemy) -> bool:
+	if enemy == null or not is_instance_valid(enemy):
+		_fail("Host probe cannot resolve an invalid fixture enemy terminal slot.")
+		return false
+	var tower_game := game as TowerDefenseGame
+	var resolved := false
+	if tower_game != null:
+		resolved = tower_game.enemy_coordinator.try_resolve_active_enemy_defeat(
+			enemy.get_instance_id()
+		)
+	else:
+		var wave_game := game as WaveCombatRuntimeBase
+		if wave_game == null:
+			_fail("Host probe runtime does not expose a wave terminal domain contract.")
+			return false
+		resolved = wave_game.try_resolve_active_wave_enemy_defeat(
+			enemy.get_instance_id()
+		)
+	if not resolved:
+		_fail("Host probe could not resolve its authoritative fixture enemy slot.")
+	return resolved
 
 
 func _get_active_wave_enemy_count(game: Variant) -> int:

@@ -2407,7 +2407,10 @@ func get_remote_enemy_count() -> int:
 
 
 func get_remote_enemy_ids() -> Array[int]:
-	return _runtime.get_network_enemy_ids() if is_bound() else []
+	var result: Array[int] = []
+	if is_bound():
+		result.assign(_runtime.get_network_enemy_ids())
+	return result
 
 
 func get_all_client_combat_targets() -> Array[Enemy]:

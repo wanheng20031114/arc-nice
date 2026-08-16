@@ -113,6 +113,13 @@ func _run() -> void:
 		quit(1)
 		return
 	get_root().add_child(coordinator)
+	var unbound_enemy_ids: Array[int] = coordinator.get_remote_enemy_ids()
+	_expect(
+		unbound_enemy_ids.is_empty()
+		and unbound_enemy_ids.is_typed()
+		and unbound_enemy_ids.get_typed_builtin() == TYPE_INT,
+		"EnemyCoordinator 未绑定时必须返回显式 Array[int] 空集合。"
+	)
 	coordinator.bind_runtime(runtime)
 	_expect(coordinator.is_bound(), "EnemyCoordinator 必须强类型绑定战斗运行时。")
 	var projectile_coordinator := (
@@ -168,6 +175,13 @@ func _run() -> void:
 		live_enemy.config = enemy_config
 		live_enemy.global_position = Vector2(96.0, 112.0)
 		runtime.register_network_enemy(900, live_enemy)
+		var bound_enemy_ids: Array[int] = coordinator.get_remote_enemy_ids()
+		_expect(
+			bound_enemy_ids == [900]
+			and bound_enemy_ids.is_typed()
+			and bound_enemy_ids.get_typed_builtin() == TYPE_INT,
+			"EnemyCoordinator 绑定后必须返回保留内容的显式 Array[int]。"
+		)
 		coordinator.send_live_spawn_roster_to_peer(8)
 		_expect(
 			_lifecycle_peer_sends.size() == 1
