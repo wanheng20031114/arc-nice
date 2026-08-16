@@ -37,6 +37,7 @@ class PlacementControllerProbe:
 	var active := false
 	var input_enabled := true
 	var multiplayer_requests_enabled := false
+	var configured_production_coordinator: ProductionCoordinator = null
 	var configured_inventory_peer_id := -1
 	var configured_free_placement := false
 
@@ -52,10 +53,12 @@ class PlacementControllerProbe:
 
 	func configure_inventory_catalog(
 		new_run_state: RunStateStore,
+		new_production_coordinator: ProductionCoordinator,
 		new_inventory_peer_id: int,
 		allow_free_placement: bool
 	) -> void:
 		run_state = new_run_state
+		configured_production_coordinator = new_production_coordinator
 		configured_inventory_peer_id = new_inventory_peer_id
 		configured_free_placement = allow_free_placement
 
@@ -184,6 +187,7 @@ func _run() -> void:
 	var plant_system := PlantSystem.new()
 	var plant_runtime := TowerDefensePlantRuntimeCoordinator.new()
 	var run_state := RunStateStore.new()
+	var production_coordinator := ProductionCoordinator.new()
 	var local_player := PlayerProbe.new()
 	var object_pool := SessionObjectPool.new()
 	var settings_panel := SettingsPanelProbe.new()
@@ -194,6 +198,7 @@ func _run() -> void:
 		plant_system,
 		plant_runtime,
 		run_state,
+		production_coordinator,
 		local_player,
 		object_pool,
 		settings_panel,
@@ -221,6 +226,7 @@ func _run() -> void:
 	)
 	_expect(
 		controller.multiplayer_requests_enabled
+		and controller.configured_production_coordinator == production_coordinator
 		and controller.configured_inventory_peer_id == 17
 		and controller.configured_free_placement,
 		"HOST 配置必须把本地 peer 与沙盒开关显式交给放置控制器。"
@@ -236,6 +242,7 @@ func _run() -> void:
 	)
 	_expect(
 		not controller.multiplayer_requests_enabled
+		and controller.configured_production_coordinator == production_coordinator
 		and controller.configured_inventory_peer_id == 0
 		and not controller.configured_free_placement,
 		"切回单人会话必须清除多人请求、peer 与免费放置状态。"
@@ -363,6 +370,7 @@ func _run() -> void:
 	plant_system.free()
 	plant_runtime.free()
 	run_state.free()
+	production_coordinator.free()
 	local_player.free()
 	object_pool.free()
 	settings_panel.free()

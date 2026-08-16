@@ -921,10 +921,10 @@ func _test_multiplayer_and_runtime_source_contract() -> void:
 		)
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 78
+		NET_CONSTANTS.PROTOCOL_VERSION == 79
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
 		(
-			"Protocol v78 must retain the generated content digest and same-session participant identities while retaining v74 stale-session CH6 rejection, the v73 session roster, v71 sewer, v69 Vegetation research, v68 six-cell spread, v67 Attack Speed Tower, v66 Speed Tower, v38 projectile, v39 shield-state, v63 resource, "
+			"Protocol v79 must retain the generated content digest and same-session participant identities while retaining v74 stale-session CH6 rejection, the v73 session roster, v71 sewer, v69 Vegetation research, v68 six-cell spread, v67 Attack Speed Tower, v66 Speed Tower, v38 projectile, v39 shield-state, v63 resource, "
 			+ "v40 slime semantics while isolating ninja boost visuals, ghost IDs, "
 			+ "reconnect activation, P1E status confirmation, and the elite robot resource contract without adding channels."
 		)

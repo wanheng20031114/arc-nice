@@ -24,6 +24,7 @@ var _placement_controller: PlantPlacementController = null
 var _plant_system: PlantSystem = null
 var _plant_runtime_coordinator: TowerDefensePlantRuntimeCoordinator = null
 var _run_state: RunStateStore = null
+var _production_coordinator: ProductionCoordinator = null
 var _local_player: Player = null
 var _session_object_pool: SessionObjectPool = null
 var _settings_panel: SettingsPanel = null
@@ -44,6 +45,7 @@ func setup(
 	plant_system: PlantSystem,
 	plant_runtime_coordinator: TowerDefensePlantRuntimeCoordinator,
 	run_state: RunStateStore,
+	production_coordinator: ProductionCoordinator,
 	local_player: Player,
 	session_object_pool: SessionObjectPool,
 	settings_panel: SettingsPanel,
@@ -61,6 +63,7 @@ func setup(
 		or plant_system == null
 		or plant_runtime_coordinator == null
 		or run_state == null
+		or production_coordinator == null
 		or local_player == null
 		or session_object_pool == null
 	):
@@ -79,6 +82,7 @@ func setup(
 	_plant_system = plant_system
 	_plant_runtime_coordinator = plant_runtime_coordinator
 	_run_state = run_state
+	_production_coordinator = production_coordinator
 	_local_player = local_player
 	_session_object_pool = session_object_pool
 	_settings_panel = settings_panel
@@ -109,6 +113,7 @@ func is_bound() -> bool:
 		and _plant_system != null
 		and _plant_runtime_coordinator != null
 		and _run_state != null
+		and _production_coordinator != null
 		and _local_player != null
 		and _session_object_pool != null
 		and _settings_panel != null
@@ -337,6 +342,7 @@ func _configure_controller_session() -> void:
 	)
 	_placement_controller.configure_inventory_catalog(
 		_run_state,
+		_production_coordinator,
 		resolve_inventory_peer_id(_runtime_mode, _local_peer_id),
 		_sandbox_free_building_enabled
 	)

@@ -353,11 +353,15 @@ func _refresh_selection(ensure_visible: bool) -> void:
 	confirm_button.text = (
 		"免费放置 %s" % selected_config.display_name
 		if free_placement_mode
-		else "放置 %s（持有 %d）" % [selected_config.display_name, owned_count]
+		else "放置 %s（可用 %d）" % [selected_config.display_name, owned_count]
 	)
 	selected_summary.text = "%s  ·  %s  ·  %s" % [
 		selected_config.display_name,
-		"沙盒免费" if free_placement_mode else "持有 %d" % owned_count,
+		(
+			"沙盒免费"
+			if free_placement_mode
+			else "可用 %d（背包 + 共享仓库）" % owned_count
+		),
 		PlantDefenseConfig.get_placement_surface_label(
 			selected_config.placement_surface
 		),

@@ -456,6 +456,97 @@ func apply_remote_placement_rejected(request_id: int) -> void:
 	_plant_placement_controller.notify_multiplayer_placement_rejected(request_id)
 
 
+func request_singleplayer_catalog_placement(
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i,
+	run_state: RunStateStore,
+	placement_player: Player,
+	flow_locked: bool,
+	free_building_enabled: bool
+) -> void:
+	if flow_locked or request_id <= 0 or not _is_valid_placement_player(placement_player):
+		_notify_local_placement_rejected(request_id)
+		return
+	var plant_config := _plant_system.get_config(plant_id) if _plant_system != null else null
+	if (
+		plant_config == null
+		or not plant_config.is_valid()
+		or not _plant_system.is_placement_valid_for_player(
+			anchor,
+			plant_config,
+			placement_player
+		)
+	):
+		_notify_local_placement_rejected(request_id)
+		return
+	if free_building_enabled:
+		if _plant_system.try_place_for_player(
+			plant_config,
+			anchor,
+			placement_player
+		) == null:
+			_notify_local_placement_rejected(request_id)
+		return
+	if run_state == null:
+		_notify_local_placement_rejected(request_id)
+		return
+	var building_item := BuildingItemRegistry.get_item(plant_id)
+	if not _is_canonical_building_item(building_item, plant_id):
+		_notify_local_placement_rejected(request_id)
+		return
+	var inventory_slot := _find_inventory_item_slot(
+		run_state,
+		0,
+		building_item
+	)
+	if inventory_slot >= 0:
+		var inventory_revision := run_state.get_inventory_revision()
+		if not run_state.try_consume_item_at_slot_if_revision(
+			inventory_slot,
+			building_item,
+			inventory_revision,
+			false
+		):
+			_notify_local_placement_rejected(request_id)
+			return
+		var placed_plant := _plant_system.try_place_for_player(
+			plant_config,
+			anchor,
+			placement_player
+		)
+		if placed_plant == null:
+			var restored := run_state.try_add_item_count_to_slot_if_revision(
+				building_item,
+				1,
+				inventory_slot,
+				run_state.get_inventory_revision(),
+				false
+			)
+			if not restored:
+				push_error(
+					"Failed to restore a catalog building item after placement."
+				)
+		run_state.notify_inventory_transaction_completed()
+		if placed_plant == null:
+			_notify_local_placement_rejected(request_id)
+		return
+	if _production_coordinator == null:
+		_notify_local_placement_rejected(request_id)
+		return
+	var result := _production_coordinator.try_consume_item_requirements_with_action(
+		[{"item": building_item, "count": 1}],
+		func() -> bool:
+			return _plant_system.try_place_for_player(
+				plant_config,
+				anchor,
+				placement_player
+			) != null
+	)
+	if result != ProductionCoordinator.RESULT_SUCCESS:
+		_notify_local_placement_rejected(request_id)
+
+
 func request_singleplayer_inventory_placement(
 	request_id: int,
 	plant_id: StringName,
@@ -536,6 +627,127 @@ func request_multiplayer_free_placement(
 	_spawn_authoritative_plant(
 		requester_peer_id, request_id, plant_config, anchor, placement_player
 	)
+
+
+func request_multiplayer_catalog_placement(
+	requester_peer_id: int,
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i,
+	run_state: RunStateStore,
+	placement_player: Player,
+	flow_locked: bool,
+	free_building_enabled: bool
+) -> void:
+	if _runtime_mode != CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY:
+		return
+	if free_building_enabled:
+		request_multiplayer_free_placement(
+			requester_peer_id,
+			request_id,
+			plant_id,
+			anchor,
+			placement_player,
+			flow_locked,
+			true
+		)
+		return
+	if flow_locked:
+		_reject_placement(request_id, requester_peer_id, PLACEMENT_REJECT_FLOW_LOCKED)
+		return
+	if request_id <= 0 or requester_peer_id <= 0 or run_state == null:
+		_reject_placement(request_id, requester_peer_id, PLACEMENT_REJECT_INVALID_REQUEST)
+		return
+	if not _is_valid_placement_player(placement_player):
+		_reject_placement(request_id, requester_peer_id, PLACEMENT_REJECT_INVALID_PLAYER)
+		return
+	var plant_config := _plant_system.get_config(plant_id) if _plant_system != null else null
+	if plant_config == null or not plant_config.is_valid() or not plant_config.supports_multiplayer:
+		_reject_placement(request_id, requester_peer_id, PLACEMENT_REJECT_INVALID_CONFIG)
+		return
+	if not _plant_system.is_placement_valid_for_player(anchor, plant_config, placement_player):
+		_reject_placement(request_id, requester_peer_id, PLACEMENT_REJECT_INVALID_POSITION)
+		return
+	var building_item := BuildingItemRegistry.get_item(plant_id)
+	if not _is_canonical_building_item(building_item, plant_id):
+		_reject_placement(
+			request_id,
+			requester_peer_id,
+			PLACEMENT_REJECT_INVALID_INVENTORY_ITEM
+		)
+		return
+	var inventory_slot := _find_inventory_item_slot(
+		run_state,
+		requester_peer_id,
+		building_item
+	)
+	if inventory_slot >= 0:
+		var inventory_revision := run_state.get_inventory_revision_for_peer(
+			requester_peer_id
+		)
+		if not run_state.try_consume_item_at_slot_for_peer_if_revision(
+			requester_peer_id,
+			inventory_slot,
+			building_item,
+			inventory_revision,
+			false
+		):
+			_reject_placement(
+				request_id,
+				requester_peer_id,
+				PLACEMENT_REJECT_STALE_INVENTORY
+			)
+			return
+		var placed_plant := _spawn_authoritative_plant(
+			requester_peer_id,
+			request_id,
+			plant_config,
+			anchor,
+			placement_player
+		)
+		if placed_plant == null:
+			var restored := run_state.try_add_item_count_to_slot_for_peer_if_revision(
+				requester_peer_id,
+				building_item,
+				1,
+				inventory_slot,
+				run_state.get_inventory_revision_for_peer(requester_peer_id),
+				false
+			)
+			if not restored:
+				push_error(
+					"Failed to restore a peer catalog building item after placement."
+				)
+		run_state.notify_inventory_transaction_completed()
+		inventory_changed.emit(requester_peer_id)
+		return
+	if _production_coordinator == null:
+		_reject_placement(
+			request_id,
+			requester_peer_id,
+			PLACEMENT_REJECT_INVALID_INVENTORY_ITEM
+		)
+		return
+	var result := _production_coordinator.try_consume_item_requirements_with_action(
+		[{"item": building_item, "count": 1}],
+		func() -> bool:
+			return _spawn_authoritative_plant(
+				requester_peer_id,
+				request_id,
+				plant_config,
+				anchor,
+				placement_player
+			) != null
+	)
+	if result not in [
+		ProductionCoordinator.RESULT_SUCCESS,
+		ProductionCoordinator.RESULT_ACTION_FAILED,
+	]:
+		_reject_placement(
+			request_id,
+			requester_peer_id,
+			PLACEMENT_REJECT_INVALID_INVENTORY_ITEM
+		)
 
 
 func request_multiplayer_inventory_placement(
@@ -1282,6 +1494,44 @@ static func _is_valid_placement_player(placement_player: Player) -> bool:
 		placement_player != null
 		and is_instance_valid(placement_player)
 		and not placement_player.is_dead
+	)
+
+
+static func _find_inventory_item_slot(
+	run_state: RunStateStore,
+	peer_id: int,
+	item: PickupConfig
+) -> int:
+	if run_state == null or item == null or peer_id < 0:
+		return -1
+	for slot_index in RunStateStore.INVENTORY_CAPACITY:
+		var stored_item := (
+			run_state.get_item_for_peer(peer_id, slot_index)
+			if peer_id > 0
+			else run_state.get_item(slot_index)
+		)
+		var stored_count := (
+			run_state.get_item_count_for_peer(peer_id, slot_index)
+			if peer_id > 0
+			else run_state.get_item_count(slot_index)
+		)
+		if (
+			stored_count > 0
+			and PickupConfig.inventory_identity_matches(stored_item, item)
+		):
+			return slot_index
+	return -1
+
+
+static func _is_canonical_building_item(
+	item: PickupConfig,
+	plant_id: StringName
+) -> bool:
+	return (
+		item != null
+		and item.pickup_type == PickupConfig.PickupType.BUILDING
+		and item.placeable_plant_id == plant_id
+		and not item.resource_path.is_empty()
 	)
 
 

@@ -25,7 +25,7 @@ func _run() -> void:
 	await _test_formal_inventory_catalog_and_placement()
 	await _test_catalog_layout(DEFAULT_VIEWPORT)
 	await _test_catalog_layout(SMALL_VIEWPORT)
-	await _test_host_rejects_free_placement()
+	await _test_host_rejects_unowned_catalog_placement()
 	await _cleanup_root()
 	if failures.is_empty():
 		print("FORMAL_BUILDING_CATALOG_SMOKE_TEST_OK")
@@ -153,6 +153,14 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 		"HUD-local selection and outer vertical position must survive reopen."
 	)
 
+	await _test_shared_warehouse_catalog_placement(
+		game,
+		run_state,
+		controller,
+		hud,
+		corn
+	)
+
 	await _place_formal_catalog_building(
 		game,
 		run_state,
@@ -208,9 +216,9 @@ func _place_formal_catalog_building(
 	_expect(
 		controller.is_placing()
 		and controller.placement_source
-		== PlantPlacementController.PlacementSource.INVENTORY_ITEM
-		and controller.inventory_slot_index >= 0,
-		"%s confirmation must enter the inventory placement path." % label
+		== PlantPlacementController.PlacementSource.CATALOG_ITEM
+		and controller.inventory_slot_index == -1,
+		"%s confirmation must enter the authoritative catalog-item path." % label
 	)
 	_expect(
 		not controller.valid_anchors.is_empty(),
@@ -245,6 +253,151 @@ func _place_formal_catalog_building(
 		"Formal T placement must register all four %s cells and consume one item from the stack."
 		% label
 	)
+
+
+func _test_shared_warehouse_catalog_placement(
+	game: TowerDefenseGame,
+	run_state: RunStateStore,
+	controller: PlantPlacementController,
+	hud: PlantSelectionHUD,
+	config: PlantDefenseConfig
+) -> void:
+	var item := BuildingItemRegistry.get_item(config.plant_id)
+	_expect(item != null, "Shared-warehouse catalog fixture needs a building item.")
+	if item == null:
+		return
+	var warehouse := await _create_operational_warehouse(game)
+	if warehouse == null:
+		return
+	_expect(
+		controller.is_selecting() and hud.is_open(),
+		"Authoring an operational warehouse must not close the open T catalog."
+	)
+	var card := _find_card(hud, config)
+	_expect(
+		card != null and card.owned_count == 0 and card.select_button.disabled,
+		"The warehouse catalog fixture must start with no owned target building."
+	)
+	if card == null:
+		return
+
+	_expect(
+		warehouse.try_add_storage_item_count(item, 1),
+		"The first shared-warehouse building item must be accepted."
+	)
+	await process_frame
+	_expect(
+		card.owned_count == 1 and not card.select_button.disabled,
+		"An open T catalog must refresh immediately after shared storage changes."
+	)
+	_expect(
+		warehouse.try_add_storage_item_count(item, 1),
+		"The second shared-warehouse building item must stack."
+	)
+	_expect(
+		run_state.try_add_item_count(item, 1),
+		"The local player inventory must accept the priority-payment fixture item."
+	)
+	await process_frame
+	_expect(
+		card.owned_count == 3
+		and run_state.get_inventory_item_total(item) == 1
+		and warehouse.get_storage_item_total(item) == 2,
+		"T catalog ownership must equal this player's backpack plus shared warehouses."
+	)
+
+	hud.call("_select_config", config)
+	hud.call("_confirm_selection")
+	await process_frame
+	_expect(
+		controller.is_placing()
+		and controller.placement_source
+		== PlantPlacementController.PlacementSource.CATALOG_ITEM
+		and controller.inventory_slot_index == -1,
+		"T confirmation must preserve a generic catalog source until Host resolution."
+	)
+	var first_plant_count := game.get_node("PlantContainer").get_child_count()
+	if not _place_current_catalog_selection(controller):
+		return
+	await process_frame
+	_expect(
+		game.get_node("PlantContainer").get_child_count() == first_plant_count + 1
+		and run_state.get_inventory_item_total(item) == 0
+		and warehouse.get_storage_item_total(item) == 2,
+		"Catalog placement must consume the local backpack before shared storage."
+	)
+
+	_expect(
+		controller.open_selection(),
+		"The T catalog must reopen for the warehouse-only placement case."
+	)
+	await _wait_layout_frames(2)
+	card = _find_card(hud, config)
+	_expect(
+		card != null
+		and card.owned_count == 2
+		and not card.select_button.disabled,
+		"Warehouse-only ownership must keep the T card enabled."
+	)
+	if card == null:
+		return
+	hud.call("_select_config", config)
+	hud.call("_confirm_selection")
+	await process_frame
+	var second_plant_count := game.get_node("PlantContainer").get_child_count()
+	if not _place_current_catalog_selection(controller):
+		return
+	await process_frame
+	_expect(
+		game.get_node("PlantContainer").get_child_count() == second_plant_count + 1
+		and run_state.get_inventory_item_total(item) == 0
+		and warehouse.get_storage_item_total(item) == 1,
+		"With an empty backpack, T placement must consume one item remotely from storage."
+	)
+
+
+func _create_operational_warehouse(game: TowerDefenseGame) -> OakWarehouse:
+	var warehouse_config := PlantDefenseRegistry.get_config(
+		PlantDefenseRegistry.OAK_WAREHOUSE_ID
+	)
+	var anchors := game.plant_system.get_valid_anchors(warehouse_config)
+	_expect(
+		warehouse_config != null and not anchors.is_empty(),
+		"Shared-warehouse catalog fixture needs a valid authored warehouse anchor."
+	)
+	if warehouse_config == null or anchors.is_empty():
+		return null
+	var warehouse := game.plant_system.try_place(
+		warehouse_config,
+		anchors.back()
+	) as OakWarehouse
+	_expect(warehouse != null, "The catalog fixture must place a real OakWarehouse.")
+	if warehouse == null:
+		return null
+	if not warehouse.is_operational:
+		await warehouse.construction_finished
+	_expect(
+		warehouse.is_operational
+		and game.production_coordinator.warehouses.has(warehouse),
+		"The shared warehouse must be operational and registered with production."
+	)
+	return warehouse
+
+
+func _place_current_catalog_selection(controller: PlantPlacementController) -> bool:
+	_expect(
+		controller.is_placing()
+		and controller.placement_source
+		== PlantPlacementController.PlacementSource.CATALOG_ITEM
+		and not controller.valid_anchors.is_empty(),
+		"The catalog item must expose an authoritative valid placement anchor."
+	)
+	if not controller.is_placing() or controller.valid_anchors.is_empty():
+		controller.cancel_placement()
+		return false
+	controller.call("_set_hovered_anchor", controller.valid_anchors[0], true)
+	controller.call("_try_place_hovered")
+	return true
 
 
 func _test_catalog_layout(viewport_size: Vector2i) -> void:
@@ -308,16 +461,20 @@ func _test_catalog_layout(viewport_size: Vector2i) -> void:
 	await process_frame
 
 
-func _test_host_rejects_free_placement() -> void:
+func _test_host_rejects_unowned_catalog_placement() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier")
+	_expect(
+		run_state.register_multiplayer_peer_states(PackedInt32Array([1, 2])),
+		"The Host catalog rejection fixture must register its authoritative roster."
+	)
 	var game := GAME_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	game.configure_multiplayer(
 		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
 		1,
 		{1: "Host", 2: "Client"},
-		{1: &"weishidaier", 2: &"weishidaier"}
+		{1: &"weishidaier", 2: &"hoe_cat"}
 	)
 	root.add_child(game)
 	current_scene = game
@@ -339,22 +496,75 @@ func _test_host_rejects_free_placement() -> void:
 			})
 	)
 	var plant_container := game.get_node("PlantContainer") as Node2D
+	var agave_config := PlantDefenseRegistry.get_config(
+		PlantDefenseRegistry.AGAVE_CANNON_ID
+	)
+	var remote_player := game.get_player_for_peer(2)
+	var valid_anchors := game.plant_system.get_valid_anchors_for_player(
+		agave_config,
+		remote_player
+	)
+	_expect(
+		agave_config != null
+		and remote_player != null
+		and not valid_anchors.is_empty(),
+		"The Host rejection fixture needs a valid remote-player placement anchor."
+	)
+	if agave_config == null or remote_player == null or valid_anchors.is_empty():
+		return
+	var agave_item := BuildingItemRegistry.get_item(
+		PlantDefenseRegistry.AGAVE_CANNON_ID
+	)
 	var plant_count_before: int = plant_container.get_child_count()
 	game.tower_multiplayer_mode_adapter.request_authoritative_plant_placement(
 		2,
 		77,
 		PlantDefenseRegistry.AGAVE_CANNON_ID,
-		Vector2i.ZERO
+		valid_anchors[0]
 	)
 	_expect(
 		rejections.size() == 1
 		and rejections[0]["request_id"] == 77
 		and rejections[0]["peer_id"] == 2
 		and rejections[0]["reason"]
-		== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FREE_DISABLED
-		and plant_container.get_child_count() == plant_count_before,
-		"Formal host must reject the legacy free-placement RPC before placement."
+		== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_INVENTORY_ITEM
+		and plant_container.get_child_count() == plant_count_before
+		and run_state.get_inventory_item_total_for_peer(2, agave_item) == 0,
+		"Formal Host must reject an unowned T item instead of granting a free building."
 	)
+
+	var shared_warehouse := await _create_operational_warehouse(game)
+	if shared_warehouse != null:
+		_expect(
+			shared_warehouse.try_add_storage_item_count(agave_item, 1),
+			"The Host catalog fixture must seed one shared Agave building item."
+		)
+		valid_anchors = game.plant_system.get_valid_anchors_for_player(
+			agave_config,
+			remote_player
+		)
+		_expect(
+			not valid_anchors.is_empty(),
+			"The remote player must retain a valid anchor after the warehouse is built."
+		)
+		if not valid_anchors.is_empty():
+			plant_count_before = plant_container.get_child_count()
+			game.tower_multiplayer_mode_adapter.request_authoritative_plant_placement(
+				2,
+				78,
+				PlantDefenseRegistry.AGAVE_CANNON_ID,
+				valid_anchors[0]
+			)
+			_expect(
+				rejections.size() == 1
+				and plant_container.get_child_count() == plant_count_before + 1
+				and run_state.get_inventory_item_total_for_peer(2, agave_item) == 0
+				and shared_warehouse.get_storage_item_total(agave_item) == 0,
+				(
+					"A formal Host must let a remote player build from shared storage "
+					+ "without moving the item through that player's backpack."
+				)
+			)
 	_expect(
 		tower_adapter.allows_debug_collectible_grants(),
 		"Formal host debug builds must retain adapter collectible grants."

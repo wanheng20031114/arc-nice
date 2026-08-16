@@ -114,7 +114,7 @@ theme_override_colors/font_color = Color(0.72, 0.92, 0.65, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 12
 theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
-text = "持有 ×0"
+text = "可用 ×0"
 
 [node name="Surface" type="Label" parent="Margin/Content/Top/Summary"]
 layout_mode = 2

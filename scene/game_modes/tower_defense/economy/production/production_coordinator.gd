@@ -11,6 +11,7 @@ const RESULT_STORAGE_FULL := &"storage_full"
 const RESULT_UNAVAILABLE := &"unavailable"
 const RESULT_OUTPUT_PEER_UNAVAILABLE := &"output_peer_unavailable"
 const RESULT_OUTPUT_SLOT_OCCUPIED := &"output_slot_occupied"
+const RESULT_ACTION_FAILED := &"action_failed"
 
 
 ## Sparse overlay for one warehouse. The first write to a slot captures both
@@ -318,6 +319,35 @@ func get_total_item_count(item: PickupConfig) -> int:
 
 
 func try_consume_item_requirements(requirements: Array[Dictionary]) -> StringName:
+	return _try_consume_item_requirements_transaction(
+		requirements,
+		Callable(),
+		false
+	)
+
+
+## Atomically debits shared-storage requirements around one synchronous action.
+## Warehouse writes remain unpublished while the action runs. A false action
+## result restores every touched slot and revision, so listeners can never
+## observe a placement debit that later has to be refunded.
+func try_consume_item_requirements_with_action(
+	requirements: Array[Dictionary],
+	commit_action: Callable
+) -> StringName:
+	if not commit_action.is_valid():
+		return RESULT_UNAVAILABLE
+	return _try_consume_item_requirements_transaction(
+		requirements,
+		commit_action,
+		true
+	)
+
+
+func _try_consume_item_requirements_transaction(
+	requirements: Array[Dictionary],
+	commit_action: Callable,
+	run_commit_action: bool
+) -> StringName:
 	if not authoritative_processing_enabled or requirements.is_empty():
 		return RESULT_UNAVAILABLE
 	var ordered_warehouses := _get_ordered_operational_warehouses()
@@ -343,6 +373,18 @@ func try_consume_item_requirements(requirements: Array[Dictionary]) -> StringNam
 	if not _apply_storage_journal(journal):
 		_storage_transaction_in_progress = previous_transaction_state
 		return RESULT_UNAVAILABLE
+	if run_commit_action and not bool(commit_action.call()):
+		var rolled_back := _rollback_storage_journal(
+			journal,
+			journal.warehouse_journals.size() - 1
+		)
+		_storage_transaction_in_progress = previous_transaction_state
+		if not rolled_back:
+			push_error(
+				"Production action transaction could not restore its storage debit."
+			)
+			return RESULT_UNAVAILABLE
+		return RESULT_ACTION_FAILED
 	_publish_storage_journal_changes(journal)
 	_finish_storage_transaction(previous_transaction_state)
 	return RESULT_SUCCESS

@@ -816,6 +816,7 @@ func _configure_plant_placement_coordinator() -> bool:
 		plant_system,
 		plant_runtime_coordinator,
 		run_state,
+		production_coordinator,
 		player,
 		session_object_pool,
 		settings_panel,

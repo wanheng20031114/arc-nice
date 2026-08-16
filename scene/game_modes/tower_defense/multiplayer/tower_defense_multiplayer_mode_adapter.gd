@@ -822,9 +822,24 @@ func _handle_plant_placement_requested(
 	var tower_runtime := get_tower_runtime()
 	if (
 		tower_runtime == null
-		or tower_runtime.runtime_mode
+		or _plant_runtime_coordinator == null
+		or _run_state == null
+	):
+		return
+	if (
+		tower_runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	):
+		_plant_runtime_coordinator.set_runtime_mode(tower_runtime.runtime_mode)
+		_plant_runtime_coordinator.request_singleplayer_catalog_placement(
+			request_id,
+			plant_id,
+			anchor,
+			_run_state,
+			tower_runtime.player,
+			is_fate_interlude_active(),
+			tower_runtime.sandbox_free_building_enabled
+		)
 		return
 	plant_placement_requested.emit(request_id, plant_id, anchor)
 
@@ -838,7 +853,11 @@ func _handle_inventory_plant_placement_requested(
 	item_config_path: String
 ) -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime == null or _plant_runtime_coordinator == null:
+	if (
+		tower_runtime == null
+		or _plant_runtime_coordinator == null
+		or _run_state == null
+	):
 		return
 	if (
 		tower_runtime.runtime_mode
@@ -1403,14 +1422,19 @@ func request_authoritative_plant_placement(
 	anchor: Vector2i
 ) -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime == null or _plant_runtime_coordinator == null:
+	if (
+		tower_runtime == null
+		or _plant_runtime_coordinator == null
+		or _run_state == null
+	):
 		return
 	_plant_runtime_coordinator.set_runtime_mode(tower_runtime.runtime_mode)
-	_plant_runtime_coordinator.request_multiplayer_free_placement(
+	_plant_runtime_coordinator.request_multiplayer_catalog_placement(
 		requester_peer_id,
 		request_id,
 		plant_id,
 		anchor,
+		_run_state,
 		_get_player(requester_peer_id),
 		_campaign_coordinator.wave_state == CombatFlowState.State.FATE_INTERLUDE,
 		tower_runtime.sandbox_free_building_enabled

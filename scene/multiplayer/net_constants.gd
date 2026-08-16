@@ -147,7 +147,10 @@ extends RefCounted
 ## v76 客户端无法证明敌人、道具、Campaign 及依赖闭包与 Host 相同，不能加入。
 ## v78：P3 Route 新增 Host 权威玩家升级请求，并在路线完整快照末尾追加逐玩家
 ## progression ledger；v77 客户端既没有该 RPC，也会按旧五参解码完整快照。
-const PROTOCOL_VERSION := 78
+## v79：正式塔防的通用 T 目录放置请求改为 canonical 建筑物品的 Host 权威付费；
+## Host 按请求者本人背包优先、共享仓库补足的顺序扣除物品。v78 Host 只把同形状
+## 请求理解为沙盒免费放置，无法识别该正式付费语义，不能与 v79 客户端混联。
+const PROTOCOL_VERSION := 79
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF

@@ -296,9 +296,9 @@ func _test_burst_scheduler_and_half_speed() -> void:
 
 func _test_network_pool_and_fate_contract() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 78
+		NET_CONSTANTS.PROTOCOL_VERSION == 79
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
-		"协议v78必须保留内容摘要、同局成员身份和精英紫弹语义，且不增加 ENet 信道。"
+		"协议v79必须保留内容摘要、同局成员身份和精英紫弹语义，且不增加 ENet 信道。"
 	)
 	_expect(
 		CombatAttackRegistry.encode_player_hit_source(

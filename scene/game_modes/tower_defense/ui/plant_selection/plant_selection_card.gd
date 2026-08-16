@@ -60,7 +60,7 @@ func update_availability(
 	owned_label.text = (
 		"沙盒免费"
 		if free_placement_mode
-		else "持有 ×%d" % owned_count
+		else "可用 ×%d" % owned_count
 	)
 	select_button.disabled = not can_confirm()
 	select_button.text = (

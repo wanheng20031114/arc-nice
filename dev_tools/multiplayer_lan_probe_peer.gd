@@ -1267,7 +1267,7 @@ func _run_host_tower_defense_runtime_probe(
 		mp_game.callv("rpc_id", [peer_id, &"net_base_health_changed", 50, 100, 2])
 	await _wait_seconds(0.75)
 
-	if not await _wait_for_host_plant_requests(mp_game, net_manager, 101, 5.0):
+	if not await _wait_for_host_plant_requests(mp_game, net_manager, 100, 5.0):
 		_fail("Host did not receive every client's competing plant-placement request.")
 		return
 	await _wait_seconds(0.5)
@@ -1291,7 +1291,7 @@ func _run_host_tower_defense_runtime_probe(
 	):
 		_fail("Competing formal placements did not consume exactly one Agave building item.")
 		return
-	print("LAN_PROBE_EVENT host_td_inventory_placement_atomic plant=agave_cannon")
+	print("LAN_PROBE_EVENT host_td_catalog_placement_atomic plant=agave_cannon")
 	for peer_id_variant in net_manager.connected_players:
 		var peer_id := int(peer_id_variant)
 		if peer_id != int(net_manager.get_local_peer_id()):
@@ -1518,13 +1518,14 @@ func _run_client_tower_defense_runtime_probe(
 	)
 	var run_state := root.get_node("RunState") as RunStateStore
 	var local_peer_id := int(net_manager.get_local_peer_id())
-	var local_agave_before_rejection := _get_peer_item_total(
+	var local_agave_before_catalog := _get_peer_item_total(
 		run_state,
 		local_peer_id,
 		AGAVE_BUILDING_ITEM
 	)
-	# Formal servers must reject the legacy free-placement RPC even when its
-	# plant id and anchor are otherwise valid.
+	# The generic plant request is the formal T-catalog transaction. Both clients
+	# compete for the same anchor; Host resolves each requester's backpack first
+	# and accepts exactly one placement.
 	var tower_world_coordinator := mp_game.get_node("TowerWorldCoordinator")
 	tower_world_coordinator.call(
 		"_on_local_plant_placement_requested",
@@ -1532,29 +1533,9 @@ func _run_client_tower_defense_runtime_probe(
 		&"agave_cannon",
 		shared_plant_anchor
 	)
-	if not await _wait_for_dictionary_flag(rejection_state, &"received", 3.0):
-		_fail("Formal Host did not reject the legacy free-placement RPC.")
-		return
-	if (
-		_get_peer_item_total(run_state, local_peer_id, AGAVE_BUILDING_ITEM)
-		!= local_agave_before_rejection
-	):
-		_fail("Formal free-placement rejection changed the client's Agave inventory.")
-		return
-	rejection_state[&"received"] = false
-	if not _submit_local_inventory_plant_request(
-		net_manager,
-		mp_game,
-		run_state,
-		101,
-		&"agave_cannon",
-		shared_plant_anchor
-	):
-		_fail("Client could not submit its formal Agave inventory placement.")
-		return
 	var plant := await _wait_for_client_plant(game, 1, 5.0)
 	if plant == null:
-		_fail("Client did not spawn the authoritative plant replica.")
+		_fail("Client T-catalog request did not spawn the authoritative plant replica.")
 		return
 	var local_player := game.get_player_for_peer(local_peer_id) as Player
 	var won_competition := plant.owner_player == local_player
@@ -1566,9 +1547,9 @@ func _run_client_tower_defense_runtime_probe(
 		_fail("Winning client unexpectedly received a placement rejection.")
 		return
 	var expected_agave_count := (
-		local_agave_before_rejection - 1
+		local_agave_before_catalog - 1
 		if won_competition
-		else local_agave_before_rejection
+		else local_agave_before_catalog
 	)
 	if not await _wait_for_peer_item_total(
 		run_state,

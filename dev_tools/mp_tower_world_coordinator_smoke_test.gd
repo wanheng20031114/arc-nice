@@ -74,6 +74,9 @@ class HostNetManager:
 	func get_local_peer_id() -> int:
 		return 1
 
+	func is_gameplay_ingress_admitted(peer_id: int) -> bool:
+		return peer_id == 2
+
 
 class ClientNetManager:
 	extends NetManagerStore
@@ -546,7 +549,7 @@ func _test_static_boundary(mp_game: MultiplayerGameplaySession) -> void:
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
 		rpc_pattern.search_all(source).size() == 144,
-		"TowerWorld 提取必须保留 protocol-v78 的 144 个 MpGame RPC 门面。"
+		"TowerWorld 提取必须保留 protocol-v79 的 144 个 MpGame RPC 门面。"
 	)
 	for function_name in [
 		"net_plant_placement_requested",

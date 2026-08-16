@@ -172,7 +172,7 @@ theme_override_colors/font_color = Color(0.58, 0.72, 0.58, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 12
 theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
-text = "全部建筑均可查看；只有背包持有数量大于 0 时才能确认放置"
+text = "全部建筑均可查看；背包与共享仓库的可用数量合计大于 0 时即可放置"
 
 [node name="Divider" type="ColorRect" parent="Root/ScreenMargin/Content/Margin/Layout"]
 custom_minimum_size = Vector2(0, 1)

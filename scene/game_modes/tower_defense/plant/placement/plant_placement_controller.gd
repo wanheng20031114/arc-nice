@@ -26,6 +26,7 @@ enum PlacementState {
 enum PlacementSource {
 	SANDBOX_FREE,
 	INVENTORY_ITEM,
+	CATALOG_ITEM,
 }
 
 const PLACEMENT_MARKER_SCENE := preload(
@@ -59,6 +60,7 @@ var inventory_slot_index := -1
 var inventory_expected_revision := -1
 var inventory_item_config_path := ""
 var run_state: RunStateStore = null
+var production_coordinator: ProductionCoordinator = null
 var inventory_peer_id := 0
 var placement_input_enabled := true
 
@@ -93,11 +95,13 @@ func set_multiplayer_request_mode(enabled: bool) -> void:
 
 func configure_inventory_catalog(
 	new_run_state: RunStateStore,
+	new_production_coordinator: ProductionCoordinator,
 	new_inventory_peer_id: int,
 	allow_free_placement: bool
 ) -> void:
-	_disconnect_inventory_state()
+	_disconnect_catalog_state()
 	run_state = new_run_state
+	production_coordinator = new_production_coordinator
 	inventory_peer_id = maxi(new_inventory_peer_id, 0)
 	free_placement_enabled = allow_free_placement
 	if (
@@ -105,6 +109,15 @@ func configure_inventory_catalog(
 		and not run_state.inventory_changed.is_connected(_on_inventory_changed)
 	):
 		run_state.inventory_changed.connect(_on_inventory_changed)
+	if (
+		production_coordinator != null
+		and not production_coordinator.storage_totals_changed.is_connected(
+			_on_shared_storage_totals_changed
+		)
+	):
+		production_coordinator.storage_totals_changed.connect(
+			_on_shared_storage_totals_changed
+		)
 
 
 func set_free_placement_enabled(enabled: bool) -> void:
@@ -148,7 +161,7 @@ func open_selection() -> bool:
 	if configs.is_empty():
 		selection_unavailable.emit()
 		return false
-	_clear_inventory_placement_source()
+	_clear_placement_source()
 	_set_placement_state(PlacementState.SELECTING)
 	placement_mode_changed.emit(true)
 	player_lock_requested.emit(true)
@@ -219,7 +232,7 @@ func cancel_placement() -> void:
 	selection_hud.close()
 	_clear_world_preview()
 	selected_config = null
-	_clear_inventory_placement_source()
+	_clear_placement_source()
 	_set_placement_state(PlacementState.IDLE)
 	placement_mode_changed.emit(false)
 	player_lock_requested.emit(false)
@@ -280,7 +293,7 @@ func _begin_placing(config: PlantDefenseConfig) -> void:
 	if placement_state != PlacementState.SELECTING or config == null:
 		return
 	if not free_placement_enabled:
-		_begin_catalog_inventory_placement(config)
+		_begin_catalog_item_placement(config)
 		return
 	selection_hud.close()
 	_set_placement_state(PlacementState.PLACING)
@@ -288,22 +301,15 @@ func _begin_placing(config: PlantDefenseConfig) -> void:
 	_start_placing(config)
 
 
-func _begin_catalog_inventory_placement(config: PlantDefenseConfig) -> void:
-	var item := BuildingItemRegistry.get_item(config.plant_id)
-	var slot_index := _find_inventory_item_slot(item)
-	if item == null or slot_index < 0:
+func _begin_catalog_item_placement(config: PlantDefenseConfig) -> void:
+	if _get_catalog_item_count(config) <= 0:
 		_refresh_open_catalog_counts()
 		selection_unavailable.emit()
 		return
-	var revision := _get_inventory_revision()
-	if not begin_inventory_placement(
-		config,
-		slot_index,
-		revision,
-		item.resource_path
-	):
-		_refresh_open_catalog_counts()
-		selection_unavailable.emit()
+	selection_hud.close()
+	_set_placement_state(PlacementState.PLACING)
+	placement_source = PlacementSource.CATALOG_ITEM
+	_start_placing(config)
 
 
 func _start_placing(config: PlantDefenseConfig) -> void:
@@ -404,7 +410,10 @@ func _try_place_hovered() -> void:
 			requested_item_path
 		)
 		return
-	if multiplayer_request_mode:
+	if (
+		placement_source == PlacementSource.CATALOG_ITEM
+		or multiplayer_request_mode
+	):
 		var request_id := next_multiplayer_request_id
 		next_multiplayer_request_id += 1
 		var requested_config := selected_config
@@ -429,7 +438,7 @@ func _finish_placement_interaction() -> void:
 	selection_hud.close()
 	_clear_world_preview()
 	selected_config = null
-	_clear_inventory_placement_source()
+	_clear_placement_source()
 	_set_placement_state(PlacementState.IDLE)
 	placement_mode_changed.emit(false)
 	player_lock_requested.emit(false)
@@ -456,11 +465,11 @@ func _clear_markers() -> void:
 func _update_hint_text() -> void:
 	if selected_config == null:
 		return
-	var cost_hint := (
-		"  ·  落地消耗 1 个建筑物品"
-		if placement_source == PlacementSource.INVENTORY_ITEM
-		else ""
-	)
+	var cost_hint := ""
+	if placement_source == PlacementSource.INVENTORY_ITEM:
+		cost_hint = "  ·  落地消耗背包 1 个建筑物品"
+	elif placement_source == PlacementSource.CATALOG_ITEM:
+		cost_hint = "  ·  落地消耗背包或共享仓库 1 个建筑物品"
 	placement_hint_label.text = "%s  ·  %d 个可放置位置%s  ·  左键放置  ·  右键 / Esc / 植物键取消" % [
 		selected_config.display_name,
 		valid_anchors.size(),
@@ -486,7 +495,7 @@ func _set_placement_state(next_state: PlacementState) -> void:
 	state_changed.emit(previous_state, placement_state)
 
 
-func _clear_inventory_placement_source() -> void:
+func _clear_placement_source() -> void:
 	placement_source = PlacementSource.SANDBOX_FREE
 	inventory_slot_index = -1
 	inventory_expected_revision = -1
@@ -499,8 +508,18 @@ func _get_catalog_item_counts(
 	var counts := {}
 	for config in configs:
 		var item := BuildingItemRegistry.get_item(config.plant_id)
-		counts[config.plant_id] = _get_inventory_item_total(item)
+		counts[config.plant_id] = (
+			_get_inventory_item_total(item)
+			+ _get_shared_warehouse_item_total(item)
+		)
 	return counts
+
+
+func _get_catalog_item_count(config: PlantDefenseConfig) -> int:
+	if config == null:
+		return 0
+	var item := BuildingItemRegistry.get_item(config.plant_id)
+	return _get_inventory_item_total(item) + _get_shared_warehouse_item_total(item)
 
 
 func _get_inventory_item_total(item: PickupConfig) -> int:
@@ -513,36 +532,10 @@ func _get_inventory_item_total(item: PickupConfig) -> int:
 	)
 
 
-func _get_inventory_revision() -> int:
-	if run_state == null:
-		return -1
-	return (
-		run_state.get_inventory_revision_for_peer(inventory_peer_id)
-		if inventory_peer_id > 0
-		else run_state.get_inventory_revision()
-	)
-
-
-func _find_inventory_item_slot(item: PickupConfig) -> int:
-	if run_state == null or item == null:
-		return -1
-	for slot_index in RunStateStore.INVENTORY_CAPACITY:
-		var stored_item := (
-			run_state.get_item_for_peer(inventory_peer_id, slot_index)
-			if inventory_peer_id > 0
-			else run_state.get_item(slot_index)
-		)
-		var stored_count := (
-			run_state.get_item_count_for_peer(inventory_peer_id, slot_index)
-			if inventory_peer_id > 0
-			else run_state.get_item_count(slot_index)
-		)
-		if (
-			stored_count > 0
-			and PickupConfig.inventory_identity_matches(stored_item, item)
-		):
-			return slot_index
-	return -1
+func _get_shared_warehouse_item_total(item: PickupConfig) -> int:
+	if production_coordinator == null or item == null:
+		return 0
+	return production_coordinator.get_total_item_count(item)
 
 
 func _refresh_open_catalog_counts() -> void:
@@ -557,6 +550,10 @@ func _on_inventory_changed() -> void:
 	_refresh_open_catalog_counts()
 
 
+func _on_shared_storage_totals_changed() -> void:
+	_refresh_open_catalog_counts()
+
+
 func _disconnect_owner_player() -> void:
 	if owner_player == null or not is_instance_valid(owner_player):
 		return
@@ -566,13 +563,23 @@ func _disconnect_owner_player() -> void:
 		owner_player.tree_exiting.disconnect(_on_owner_player_unavailable)
 
 
-func _disconnect_inventory_state() -> void:
+func _disconnect_catalog_state() -> void:
 	if (
 		run_state != null
 		and is_instance_valid(run_state)
 		and run_state.inventory_changed.is_connected(_on_inventory_changed)
 	):
 		run_state.inventory_changed.disconnect(_on_inventory_changed)
+	if (
+		production_coordinator != null
+		and is_instance_valid(production_coordinator)
+		and production_coordinator.storage_totals_changed.is_connected(
+			_on_shared_storage_totals_changed
+		)
+	):
+		production_coordinator.storage_totals_changed.disconnect(
+			_on_shared_storage_totals_changed
+		)
 
 
 func _on_owner_player_unavailable() -> void:
@@ -581,6 +588,6 @@ func _on_owner_player_unavailable() -> void:
 
 func _exit_tree() -> void:
 	_disconnect_owner_player()
-	_disconnect_inventory_state()
+	_disconnect_catalog_state()
 	if placement_state != PlacementState.IDLE:
 		player_lock_requested.emit(false)
