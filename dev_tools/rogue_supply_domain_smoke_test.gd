@@ -16,8 +16,8 @@ func _run() -> void:
 	var run_state := RunStateStore.new()
 	root.add_child(run_state)
 	run_state.begin_new_run(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID, false)
-	run_state.ensure_multiplayer_peer_state(1)
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(1)
+	run_state.register_multiplayer_peer_state(2)
 	var graph := RogueRouteGenerator.generate(DEFAULT_CONFIG, 0x51A77E)
 	_expect(graph != null, "物资测试必须能生成路线图。")
 	if graph == null:
@@ -424,7 +424,7 @@ func _test_timeout_and_pending_lifecycle(
 	run_state.begin_new_run(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID, false)
 	var peers: Array[int] = [101, 102]
 	for peer_id in peers:
-		run_state.ensure_multiplayer_peer_state(peer_id)
+		run_state.register_multiplayer_peer_state(peer_id)
 	run_state.set_party_light_stone_amount(20)
 	var graph := RogueRouteGenerator.generate(DEFAULT_CONFIG, 0x771122)
 	var route_state := RogueRouteRuntimeState.new()
@@ -592,7 +592,11 @@ func _test_timeout_and_pending_lifecycle(
 		), "在线玩家必须能结束 B 节点。")
 
 		_expect(
-			run_state.remap_multiplayer_peer_state(102, 122)
+			run_state.remap_multiplayer_peer_state(
+				102,
+				122,
+				run_state.get_multiplayer_session_membership_revision() + 1
+			) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED
 			and session.migrate_peer(102, 122)
 			and session.has_pending_collectible_for_peer(122)
 			and session.get_pending_collectible_occurrence_for_peer(122)
@@ -656,7 +660,11 @@ func _test_timeout_and_pending_lifecycle(
 			int(state["revision"])
 		), "A2 在线玩家必须结束节点。")
 		_expect(
-			run_state.remap_multiplayer_peer_state(101, 121)
+			run_state.remap_multiplayer_peer_state(
+				101,
+				121,
+				run_state.get_multiplayer_session_membership_revision() + 1
+			) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED
 			and session.migrate_peer(101, 121),
 			"A2 pending 身份必须迁移到重连 peer。"
 		)
@@ -708,7 +716,7 @@ func _test_full_inventory_collectible_retry() -> void:
 	root.add_child(run_state)
 	run_state.begin_new_run(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID, false)
 	var peer_id := 201
-	run_state.ensure_multiplayer_peer_state(peer_id)
+	run_state.register_multiplayer_peer_state(peer_id)
 	var basketball := load(
 		"res://resources/config/collectibles/collectible_basketball.tres"
 	) as PickupConfig
@@ -804,7 +812,7 @@ func _test_full_inventory_envelope_drop() -> void:
 		run_state.queue_free()
 		return
 	for peer_id in [11, 12]:
-		run_state.ensure_multiplayer_peer_state(peer_id)
+		run_state.register_multiplayer_peer_state(peer_id)
 		for _slot_index in range(RunStateStore.INVENTORY_CAPACITY + 1):
 			if not run_state.try_add_item_for_peer(peer_id, basketball):
 				break

@@ -262,7 +262,7 @@ func _test_authoritative_cas_and_schema_guards() -> void:
 func _test_multiplayer_identity_lifecycle() -> void:
 	var isolated := RunStateStore.new()
 	isolated.begin_new_run(&"tiyi", false)
-	isolated.ensure_multiplayer_peer_state(11)
+	isolated.register_multiplayer_peer_state(11)
 	var next_status := (
 		isolated.build_party_status_ledger_with_player_stat_bonus(
 			11,
@@ -287,7 +287,8 @@ func _test_multiplayer_identity_lifecycle() -> void:
 	)
 	var revision_before_remap := isolated.party_status_ledger_revision
 	_expect(
-		isolated.remap_multiplayer_peer_state(11, 22)
+		isolated.remap_multiplayer_peer_state(11, 22, 0)
+		== RunStateStore.MultiplayerPeerRemapResult.MIGRATED
 		and isolated.get_player_stat_bonus_value(22, &"move_speed") == 5
 		and isolated.get_player_stat_bonus_value(
 			22,
@@ -302,13 +303,16 @@ func _test_multiplayer_identity_lifecycle() -> void:
 		== revision_before_remap + 1,
 		"重连身份迁移必须将含冲刺冷却的绝对属性账本移动到新 peer 并只推进一次 revision。"
 	)
-	var revision_before_prune := isolated.party_status_ledger_revision
+	var revision_before_final_departure := isolated.party_status_ledger_revision
 	_expect(
-		isolated.prune_multiplayer_peer_states(PackedInt32Array()) == 1
+		isolated.reconcile_multiplayer_session_membership(
+			PackedInt32Array(),
+			1
+		)
 		and isolated.get_player_stat_bonus_value(22, &"move_speed") == 0
 		and isolated.party_status_ledger_revision
-		== revision_before_prune + 1,
-		"清理离队 peer 时必须删除属性账本并推进一次 revision。"
+		== revision_before_final_departure + 1,
+		"较新权威成员表清理离队 peer 时必须删除属性账本并推进一次 revision。"
 	)
 	isolated.free()
 

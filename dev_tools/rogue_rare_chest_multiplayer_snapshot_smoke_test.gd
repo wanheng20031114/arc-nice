@@ -20,8 +20,8 @@ func _run() -> void:
 		run_state.name = "RunState"
 		root.add_child(run_state)
 	run_state.begin_new_run(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID, false)
-	run_state.ensure_multiplayer_peer_state(1)
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(1)
+	run_state.register_multiplayer_peer_state(2)
 	var names := {1: "甲", 2: "乙"}
 	var characters := {
 		1: PlayerCharacterRegistry.WEISHIDAIER_ID,
@@ -360,7 +360,11 @@ func _test_reconnect_does_not_recreate_historical_peer(
 		# 避免其余背包监听器以 old id 做创建型读取。
 		migrating_player.peer_id = NEW_PEER_ID
 	_expect(
-		run_state.remap_multiplayer_peer_state(OLD_PEER_ID, NEW_PEER_ID)
+		run_state.remap_multiplayer_peer_state(
+			OLD_PEER_ID,
+			NEW_PEER_ID,
+			run_state.get_multiplayer_session_membership_revision() + 1
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED
 		and host_route.migrate_multiplayer_player(
 			OLD_PEER_ID,
 			NEW_PEER_ID,

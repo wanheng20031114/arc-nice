@@ -11,7 +11,7 @@ const MIN_CLIENTS := 2
 const MAX_CLIENTS := 8
 const DEFAULT_MAX_CLIENTS := MAX_CLIENTS
 const CHANNEL_COUNT := 8
-const PROTOCOL_VERSION := 72
+const PROTOCOL_VERSION := 76
 
 var _port: int = DEFAULT_PORT
 var _idle_timeout_sec: float = DEFAULT_IDLE_TIMEOUT_SEC
@@ -130,3 +130,42 @@ func _on_peer_connected(peer_id: int) -> void:
 func _on_peer_disconnected(peer_id: int) -> void:
 	var connected_count := multiplayer.get_peers().size()
 	print("[Relay] 玩家断开 peer_id=%d (剩余 %d 人)" % [peer_id, connected_count])
+
+
+## Relay 的 server_relay 拓扑下，逻辑 Host 只有到服务端（peer 1）的
+## ENet 连接，不能自行取得其他逻辑客户端的 ENetPacketPeer。这个控制面只
+## 接受本房间已登记 Host 发出的可靠请求；任何客户端都不能借此踢出他人。
+func request_host_peer_disconnect(sender_peer_id: int, target_peer_id: int) -> bool:
+	var connected_peers := multiplayer.get_peers()
+	if not is_authorized_host_kick_request(
+		_host_peer_id,
+		sender_peer_id,
+		target_peer_id,
+		connected_peers
+	):
+		push_warning(
+			"[Relay] 拒绝未经授权的断开请求 sender=%d target=%d host=%d"
+			% [sender_peer_id, target_peer_id, _host_peer_id]
+		)
+		return false
+	var peer := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if peer == null:
+		return false
+	peer.disconnect_peer(target_peer_id, true)
+	return true
+
+
+static func is_authorized_host_kick_request(
+	registered_host_peer_id: int,
+	sender_peer_id: int,
+	target_peer_id: int,
+	connected_peers: PackedInt32Array
+) -> bool:
+	return (
+		registered_host_peer_id > 0
+		and sender_peer_id == registered_host_peer_id
+		and target_peer_id > 0
+		and target_peer_id != registered_host_peer_id
+		and connected_peers.has(sender_peer_id)
+		and connected_peers.has(target_peer_id)
+	)

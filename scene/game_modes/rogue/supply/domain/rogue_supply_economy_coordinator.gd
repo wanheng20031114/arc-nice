@@ -751,8 +751,10 @@ func _is_collectible_compatible_with_character(
 func _prepare_peer_ids(peer_ids: Array[int]) -> Array[int]:
 	var peers := _normalize_peer_ids(peer_ids)
 	for peer_id in peers:
-		if peer_id > 0:
-			_run_state.ensure_multiplayer_peer_state(peer_id)
+		if peer_id > 0 and not _run_state.has_multiplayer_peer_state(peer_id):
+			# 补给领域只结算认证 roster；缺失账本是会话边界错误，
+			# 不能在奖励事务中临时创建成员。
+			return []
 	return peers
 
 

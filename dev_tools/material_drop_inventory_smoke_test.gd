@@ -514,7 +514,7 @@ func _test_local_and_peer_stack_limits() -> void:
 	_expect(run_state.discard_item(0), "Deleting a material stack must succeed.")
 	_expect(run_state.get_item(0) == null and run_state.get_item_count(0) == 0, "Deleting a material stack must clear the whole selected slot.")
 
-	run_state.ensure_multiplayer_peer_state(7)
+	run_state.register_multiplayer_peer_state(7)
 	for _index in range(999):
 		_expect(run_state.try_add_item_for_peer(7, SAPLING), "Peer sapling copy must fit before 999.")
 	_expect(run_state.get_item_count_for_peer(7, 1) == 999, "Peer material stacks must use the same 999 limit.")

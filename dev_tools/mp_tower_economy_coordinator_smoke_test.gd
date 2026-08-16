@@ -5,6 +5,7 @@ const ECONOMY_SCENE := preload(
 )
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const MP_GAME_SOURCE_PATH := "res://scene/multiplayer/mp_game.gd"
+const WOOD_CONFIG := preload("res://resources/config/materials/material_wood.tres")
 
 
 class TestRuntime:
@@ -32,6 +33,19 @@ class TestRuntime:
 
 	func remove_multiplayer_player(_peer_id: int) -> void:
 		pass
+
+	func ensure_reconnected_multiplayer_player(
+		_old_peer_id: int,
+		_new_peer_id: int,
+		_player_name: String,
+		_character_id: StringName,
+		_state: SnapshotManager.PlayerState,
+		_spawn_slot_index: int,
+		_reconnect_state: Dictionary = {}
+	) -> CombatRuntimeBase.ReconnectedPlayerProjection:
+		return CombatRuntimeBase.ReconnectedPlayerProjection.new(
+			CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATE_FAILED
+		)
 
 	func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 		return []
@@ -68,6 +82,7 @@ func _run() -> void:
 		return
 	_test_static_boundary(coordinator)
 	_test_warehouse_pending_snapshot(coordinator)
+	_test_warehouse_transaction_rechecks_both_ledgers()
 	_test_production_pending_state(coordinator)
 	_test_research_rejection_result(coordinator)
 	coordinator.free()
@@ -89,7 +104,7 @@ func _test_static_boundary(coordinator: MpTowerEconomyCoordinator) -> void:
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
 		rpc_pattern.search_all(source).size() == 144,
-		"Tower economy extraction must preserve all 144 protocol-v72 MpGame RPC facades."
+		"Tower economy extraction must preserve all 144 protocol-v76 MpGame RPC facades."
 	)
 	for function_name in [
 		"net_warehouse_command_requested",
@@ -139,6 +154,60 @@ func _test_warehouse_pending_snapshot(
 		"Removed warehouses must reject late pending snapshots."
 	)
 	coordinator.notify_plant_available(21)
+
+
+func _test_warehouse_transaction_rechecks_both_ledgers() -> void:
+	var run_state := RunStateStore.new()
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.register_multiplayer_peer_state(7),
+		"仓库原子事务夹具必须建立玩家持久账本。"
+	)
+	var incoming_inventory := run_state.export_inventory_snapshot_for_peer(7)
+	incoming_inventory["revision"] = 1
+	var incoming_slots: Array = []
+	for raw_slot in incoming_inventory.get("slots", []) as Array:
+		var slot := (raw_slot as Dictionary).duplicate(true)
+		slot["revision"] = 1
+		incoming_slots.append(slot)
+	incoming_inventory["slots"] = incoming_slots
+	var warehouse := OakWarehouse.new()
+	warehouse.storage_items.resize(OakWarehouse.STORAGE_CAPACITY)
+	warehouse.storage_stack_counts.resize(OakWarehouse.STORAGE_CAPACITY)
+	warehouse.storage_stack_counts.fill(0)
+	warehouse.configure_persistent_storage_identity(77)
+	var incoming_storage := warehouse.export_storage_snapshot()
+	incoming_storage["revision"] = 1
+	var prepared_inventory := run_state.prepare_inventory_snapshot_for_peer(
+		7,
+		incoming_inventory
+	)
+	var prepared_storage := warehouse.prepare_storage_snapshot(incoming_storage)
+	_expect(
+		not prepared_inventory.is_empty() and not prepared_storage.is_empty(),
+		"仓库原子事务夹具必须先成功 prepare 两侧账本。"
+	)
+	# 模拟 prepare 后被另一条可靠信道推进背包 revision；最终 CAS 必须在
+	# 第一笔事务写入前发现竞争，不能先改仓库再失败。
+	_expect(
+		run_state.try_add_item_for_peer(7, WOOD_CONFIG),
+		"竞争夹具必须真实推进玩家背包 revision。"
+	)
+	var raced_inventory := run_state.export_inventory_snapshot_for_peer(7)
+	var storage_before := warehouse.export_storage_snapshot()
+	_expect(
+		not MpTowerEconomyCoordinator.commit_prepared_warehouse_transaction(
+			run_state,
+			warehouse,
+			prepared_inventory,
+			prepared_storage
+		)
+		and run_state.export_inventory_snapshot_for_peer(7) == raced_inventory
+		and warehouse.export_storage_snapshot() == storage_before,
+		"prepare 后背包 revision 改变时，两侧事务写入都必须为零。"
+	)
+	warehouse.free()
+	run_state.free()
 
 
 func _test_production_pending_state(

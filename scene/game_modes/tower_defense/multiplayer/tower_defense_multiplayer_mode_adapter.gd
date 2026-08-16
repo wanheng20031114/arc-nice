@@ -2,6 +2,9 @@ extends MultiplayerModeAdapter
 class_name TowerDefenseMultiplayerModeAdapter
 
 const MAIN_MENU_SCENE_PATH := "res://scene/main_menu.tscn"
+const MultiplayerReconnectTypesScript := preload(
+	"res://scene/multiplayer/reconnect/multiplayer_reconnect_types.gd"
+)
 
 signal test_arena_manual_night_changed(enabled: bool)
 signal base_health_changed(
@@ -331,6 +334,27 @@ func handle_rogue_exploration_peer_reconnected(
 	)
 
 
+func handle_rogue_combat_reconnected_member_ready(
+	old_peer_id: int,
+	new_peer_id: int,
+	outcome: MultiplayerReconnectTypesScript.RuntimeProjectionOutcome
+) -> bool:
+	if (
+		_rogue_exploration_coordinator == null
+		or _tower_runtime == null
+		or _tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		return false
+	if not _rogue_exploration_coordinator.is_exploration_active():
+		return true
+	return _rogue_exploration_coordinator.handle_reconnected_member_ready(
+		old_peer_id,
+		new_peer_id,
+		outcome
+	)
+
+
 func _bind_tower_runtime(runtime_instance: TowerDefenseGame) -> void:
 	_tower_runtime = runtime_instance
 	bind_runtime(runtime_instance)
@@ -504,7 +528,7 @@ func remove_multiplayer_player(peer_id: int) -> void:
 		_fate_coordinator.remove_eligible_peer(peer_id)
 
 
-func restore_multiplayer_player(
+func ensure_reconnected_multiplayer_player(
 	old_peer_id: int,
 	new_peer_id: int,
 	player_name: String,
@@ -512,41 +536,41 @@ func restore_multiplayer_player(
 	state: SnapshotManager.PlayerState,
 	spawn_slot_index: int,
 	reconnect_state: Dictionary = {}
-) -> Player:
+) -> CombatRuntimeBase.ReconnectedPlayerProjection:
 	var tower_runtime := get_tower_runtime()
 	if (
 		tower_runtime == null
 		or _player_roster_coordinator == null
 		or new_peer_id <= 0
-		or tower_runtime.peer_players.has(new_peer_id)
 		or not PlayerCharacterRegistry.is_valid_character_id(character_id)
 	):
-		return null
-	if not _player_roster_coordinator.prepare_restore_metadata(
-		old_peer_id,
-		new_peer_id,
-		player_name,
-		character_id,
-		spawn_slot_index
-	):
-		return null
-	remap_luoxi_collectible_claims(old_peer_id, new_peer_id)
-	var player_instance := (
-		_player_roster_coordinator.restore_multiplayer_player_runtime(
+		return CombatRuntimeBase.ReconnectedPlayerProjection.new(
+			CombatRuntimeBase.ReconnectedPlayerProjectionStatus.INVALID_REQUEST
+		)
+	var projection := (
+		_player_roster_coordinator.ensure_reconnected_multiplayer_player(
 			old_peer_id,
 			new_peer_id,
+			player_name,
 			character_id,
 			state,
 			spawn_slot_index,
 			reconnect_state
 		)
 	)
-	if player_instance == null:
-		return null
+	if not projection.is_success():
+		return projection
+	if (
+		projection.status
+		== CombatRuntimeBase.ReconnectedPlayerProjectionStatus.EXISTING_CURRENT
+	):
+		return projection
+	# 模式附属状态只在本次新建 Player 投影后迁移一次；通知重放不得重复结算。
+	remap_luoxi_collectible_claims(old_peer_id, new_peer_id)
 	if _fate_coordinator != null:
 		_fate_coordinator.apply_player_modifiers_to_all()
 	_enemy_coordinator.request_retarget()
-	return player_instance
+	return projection
 
 
 func synchronize_reconnected_player_presentation_lease(peer_id: int) -> bool:
@@ -1735,9 +1759,11 @@ func get_research_runtime_state() -> Dictionary:
 	return _research_coordinator.export_runtime_state()
 
 
-func apply_remote_research_runtime_state(state: Dictionary) -> void:
-	if _research_coordinator != null:
-		_research_coordinator.apply_multiplayer_runtime_state(state)
+func apply_remote_research_runtime_state(state: Dictionary) -> bool:
+	return (
+		_research_coordinator != null
+		and _research_coordinator.apply_multiplayer_runtime_state(state)
+	)
 
 
 func connect_research_milestone_changed(callback: Callable) -> bool:

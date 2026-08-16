@@ -108,8 +108,10 @@ func begin_authority(
 		):
 			_reset()
 			return false
-		if peer_id > 0:
-			run_state.ensure_multiplayer_peer_state(peer_id)
+		if peer_id > 0 and not run_state.has_multiplayer_peer_state(peer_id):
+			# 奖励选择只绑定认证 roster，不能借由一次奖励会话创建持久成员。
+			_reset()
+			return false
 		states[peer_id] = {
 			"peer_id": peer_id,
 			"stable_identity": identity,
@@ -167,8 +169,9 @@ func restore_authority(
 	_is_authority = true
 	_apply_prepared_snapshot(prepared)
 	for peer_id in _participant_peer_ids:
-		if peer_id > 0:
-			_run_state.ensure_multiplayer_peer_state(peer_id)
+		if peer_id > 0 and not _run_state.has_multiplayer_peer_state(peer_id):
+			_reset()
+			return false
 	return true
 
 
@@ -380,6 +383,11 @@ func remap_disconnected_peer(old_peer_id: int, new_peer_id: int) -> bool:
 		or old_peer_id == new_peer_id
 		or not _peer_states.has(old_peer_id)
 		or _peer_states.has(new_peer_id)
+		or _run_state == null
+		or (
+			new_peer_id > 0
+			and not _run_state.has_multiplayer_peer_state(new_peer_id)
+		)
 	):
 		return false
 	var state := _peer_states[old_peer_id] as Dictionary
@@ -394,8 +402,6 @@ func remap_disconnected_peer(old_peer_id: int, new_peer_id: int) -> bool:
 	_participant_peer_ids.erase(old_peer_id)
 	_participant_peer_ids.append(new_peer_id)
 	_participant_peer_ids.sort()
-	if new_peer_id > 0:
-		_run_state.ensure_multiplayer_peer_state(new_peer_id)
 	_bump_revision()
 	return true
 

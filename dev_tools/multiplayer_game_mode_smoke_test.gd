@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 72,
-		"协议v72必须隔离塔防四日地下探索，并保留v71地下水道及既有模式接线。"
+		NetConstants.PROTOCOL_VERSION == 76,
+		"协议v76必须隔离同局成员身份，并保留v74旧局CH6、v73会话成员及既有模式接线。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
@@ -176,13 +176,16 @@ func _run() -> void:
 		"_rpc_sync_player_list",
 		[{
 			"id": 1,
+			"participant_incarnation": 1,
 			"name": "Host",
 			"character_id": "weishidaier",
 			"character_confirmed": true,
+			"session_state": int(NetManagerStore.SessionMemberState.ACTIVE),
 		}],
 		1,
 		NetManagerStore.GameMode.TEST_ARENA_P1B,
-		3
+		3,
+		1
 	)
 	_expect(
 		net_manager.get_current_game_mode() == NetManagerStore.GameMode.TEST_ARENA_P1B,

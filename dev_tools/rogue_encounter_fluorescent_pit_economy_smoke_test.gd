@@ -557,7 +557,7 @@ func _new_run_state(
 	run_state.begin_new_run(character_id, false)
 	for peer_id in peer_ids:
 		if peer_id > 0:
-			run_state.ensure_multiplayer_peer_state(peer_id)
+			run_state.register_multiplayer_peer_state(peer_id)
 	return run_state
 
 

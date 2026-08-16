@@ -142,6 +142,49 @@ func _run() -> void:
 		"net_route_avatar_corrected",
 	]:
 		_expect(main_rpcs.has(required_method), "Gameplay RPC %s must be registered." % required_method)
+	# v75 的玩家结果全部共享末尾 participant + session；完整 surface 比较锁定
+	# 两者顺序，这里再显式锁定 17 类覆盖面。
+	var session_bound_peer_result_methods := PackedStringArray([
+		"net_warehouse_command_result",
+		"net_inventory_snapshot",
+		"net_research_state_updated",
+		"net_pickup_collected",
+		"net_upgrade_confirmed",
+		"net_inventory_item_used",
+		"net_inventory_item_discarded",
+		"net_simple_crafting_result",
+		"net_skill1_purchase_confirmed",
+		"net_luoxi_collectible_offer_state",
+		"net_luoxi_collectible_confirmed",
+		"net_luoxi_collectible_refresh_confirmed",
+		"net_luoxi_special_game_started",
+		"net_luoxi_special_game_card_revealed",
+		"net_luoxi_special_game_finished",
+		"net_cheat_xirang_confirmed",
+		"net_debug_collectible_granted",
+	])
+	for result_method in session_bound_peer_result_methods:
+		_expect_rpc_signature_contains(
+			main_rpcs,
+			result_method,
+			"participant_incarnation:int=0"
+		)
+		_expect_rpc_signature_contains(
+			main_rpcs,
+			result_method,
+			"session_incarnation:int=0"
+		)
+		_expect(
+			String(main_rpcs[result_method]).contains(
+				"participant_incarnation:int=0,session_incarnation:int=0"
+			),
+			"%s 必须按 participant、session 的固定顺序追加身份 trailer。"
+			% result_method
+		)
+	_expect(
+		session_bound_peer_result_methods.size() == 17,
+		"v75 必须让全部17类 peer-bearing CH6 结果携带成员与会话世代。"
+	)
 	if main_rpcs.has("net_tiyi_high_noon_requested"):
 		_expect(
 			String(main_rpcs["net_tiyi_high_noon_requested"]).contains("activation_id:int"),
@@ -292,6 +335,7 @@ func _run() -> void:
 		"_rpc_register_player",
 		"_rpc_protocol_rejected",
 		"_rpc_join_rejected",
+		"_rpc_relay_kick_peer",
 		"_rpc_set_player_character",
 		"_rpc_sync_player_list",
 		"_rpc_start_game",
@@ -314,6 +358,8 @@ func _run() -> void:
 			),
 			"Player registration must carry protocol and private reconnect identity fields."
 		)
+	_expect_rpc_mode(main_net_manager_rpcs, "_rpc_relay_kick_peer", "any_peer")
+	_expect_rpc_channel(main_net_manager_rpcs, "_rpc_relay_kick_peer", 0)
 	if main_net_manager_rpcs.has("_rpc_sync_player_list"):
 		_expect(
 			String(main_net_manager_rpcs["_rpc_sync_player_list"]).contains("game_mode:int=0")
@@ -330,10 +376,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 72,
-		"协议v72必须隔离塔防四日地下探索，并保留v71地下水道及既有资源合同。"
+		NetConstants.PROTOCOL_VERSION == 76,
+		"协议v76必须冻结 Relay Host 可靠 kick 控制面，并保留 v75 成员身份、v74 会话世代及既有资源合同。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v72 must retain eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v76 must retain eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -372,7 +418,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v72 hosts must accept exactly v72 and reject v71."
+		"Protocol v76 hosts must accept exactly v76 and reject v75."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -440,11 +486,11 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 72")
+		and relay_source.contains("const PROTOCOL_VERSION := 76")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
 		(
-			"Relay server must declare v72, accept the room capacity, and provision "
+			"Relay server must declare v76, accept the room capacity, and provision "
 			+ "the same eight ENet channels as clients."
 		)
 	)
@@ -459,6 +505,13 @@ func _test_relay_channel_count() -> void:
 			"rogue_route_stub.set_multiplayer_authority(_host_peer_id)"
 		),
 		"Relay must mount the P3 stub at /root/MpRogueRoute and assign Host authority."
+	)
+	_expect(
+		relay_source.contains("func request_host_peer_disconnect(")
+		and relay_source.contains("is_authorized_host_kick_request(")
+		and relay_source.contains("peer.disconnect_peer(target_peer_id, true)")
+		and relay_source.contains("sender_peer_id == registered_host_peer_id"),
+		"Relay kick control must authenticate its registered Host sender and disconnect only the requested live target."
 	)
 
 

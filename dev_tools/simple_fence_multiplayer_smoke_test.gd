@@ -145,8 +145,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 72,
-		"协议v72必须隔离塔防四日地下探索并保留v71地下水道、P1D/P1E与既有wire合同。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 76,
+		"协议v76必须隔离同局成员身份并保留v74旧局CH6、v73会话成员、P1D/P1E与既有wire合同。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)
@@ -163,7 +163,7 @@ func _run() -> void:
 func _test_host_authoritative_fence_crafting() -> Dictionary:
 	var run_state := RunStateStore.new()
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(REMOTE_PEER_ID)
+	run_state.register_multiplayer_peer_state(REMOTE_PEER_ID)
 	_expect(
 		run_state.try_add_item_count_for_peer(REMOTE_PEER_ID, WOOD, 3),
 		"Host围栏制造夹具必须能为远端Peer准备3份木头。"

@@ -1191,12 +1191,22 @@ func commit_prepared_storage_snapshot(
 	prepared: Dictionary,
 	emit_change_signal: bool = true
 ) -> bool:
-	if prepared.is_empty() or not _is_prepared_storage_snapshot_current(prepared):
+	if prepared.is_empty() or not is_prepared_storage_snapshot_current(prepared):
 		return false
-	_commit_prepared_storage_snapshot(prepared)
+	commit_prevalidated_storage_snapshot(prepared)
 	if emit_change_signal:
 		notify_storage_snapshot_committed()
 	return true
+
+
+func is_prepared_storage_snapshot_current(prepared: Dictionary) -> bool:
+	return _is_prepared_storage_snapshot_current(prepared)
+
+
+## 与 RunState 的 prevalidated 提交入口配对；调用方必须先同时复核两侧，
+## 再在无 await/无 signal 的提交段写入，确保玩家背包与仓库零/全提交。
+func commit_prevalidated_storage_snapshot(prepared: Dictionary) -> void:
+	_commit_prepared_storage_snapshot(prepared)
 
 
 func notify_storage_snapshot_committed() -> void:

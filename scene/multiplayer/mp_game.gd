@@ -22,6 +22,9 @@ const MpCollectiblePresentationCoordinatorScript := preload(
 const MpNetworkDiagnosticsCoordinatorScript := preload(
 	"res://scene/multiplayer/network_diagnostics/mp_network_diagnostics_coordinator.gd"
 )
+const MpPeerLedgerCoordinatorScript := preload(
+	"res://scene/multiplayer/peer_ledger/mp_peer_ledger_coordinator.gd"
+)
 const CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE := (
 	MpProjectileCoordinatorScript.CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE
 )
@@ -31,6 +34,48 @@ const GAME_RUNTIME_CLIENT_VIEW := 2
 const STATE_DISCONNECTED := 0
 const STATE_IN_GAME := 5
 const RECENT_EVENT_PRUNE_INTERVAL_SECONDS := 5.0
+const PEER_RESULT_INVENTORY_SNAPSHOT := &"inventory_snapshot"
+const PEER_RESULT_WAREHOUSE_COMMAND := &"warehouse_command"
+const PEER_RESULT_PICKUP_COLLECTED := &"pickup_collected"
+const PEER_RESULT_UPGRADE_CONFIRMED := &"upgrade_confirmed"
+const PEER_RESULT_INVENTORY_ITEM_USED := &"inventory_item_used"
+const PEER_RESULT_INVENTORY_ITEM_DISCARDED := &"inventory_item_discarded"
+const PEER_RESULT_SIMPLE_CRAFTING := &"simple_crafting"
+const PEER_RESULT_SKILL1_PURCHASE := &"skill1_purchase"
+const PEER_RESULT_RESEARCH_STATE := &"research_state"
+const PEER_RESULT_LUOXI_OFFER_STATE := &"luoxi_offer_state"
+const PEER_RESULT_LUOXI_COLLECTIBLE := &"luoxi_collectible"
+const PEER_RESULT_LUOXI_REFRESH := &"luoxi_refresh"
+const PEER_RESULT_LUOXI_SPECIAL_STARTED := &"luoxi_special_started"
+const PEER_RESULT_LUOXI_SPECIAL_CARD := &"luoxi_special_card"
+const PEER_RESULT_LUOXI_SPECIAL_FINISHED := &"luoxi_special_finished"
+const PEER_RESULT_CHEAT_XIRANG := &"cheat_xirang"
+const PEER_RESULT_DEBUG_COLLECTIBLE := &"debug_collectible"
+## 这 17 个 RPC 的两个末尾身份参数统一由发送边界追加。字典值指出 subject
+## 所在参数；warehouse 的 -1 表示 subject 位于首个 Dictionary 的 peer_id。
+const PEER_RESULT_RPC_METHODS := {
+	&"net_warehouse_command_result": -1,
+	&"net_inventory_snapshot": 0,
+	&"net_research_state_updated": 1,
+	&"net_pickup_collected": 1,
+	&"net_upgrade_confirmed": 0,
+	&"net_inventory_item_used": 0,
+	&"net_inventory_item_discarded": 0,
+	&"net_simple_crafting_result": 0,
+	&"net_skill1_purchase_confirmed": 0,
+	&"net_luoxi_collectible_offer_state": 0,
+	&"net_luoxi_collectible_confirmed": 0,
+	&"net_luoxi_collectible_refresh_confirmed": 0,
+	&"net_luoxi_special_game_started": 0,
+	&"net_luoxi_special_game_card_revealed": 0,
+	&"net_luoxi_special_game_finished": 0,
+	&"net_cheat_xirang_confirmed": 0,
+	&"net_debug_collectible_granted": 0,
+}
+const SUBJECT_IDENTITY_MARKER := &"__canonical_peer_subject__"
+const PLAYER_PROJECTION_RETRY_INTERVAL_SECONDS := 0.25
+const PLAYER_PROJECTION_RETRY_TIMEOUT_SECONDS := 2.0
+const PLAYER_PROJECTION_MAX_ATTEMPTS := 5
 # Application payload budget. Keep room for Godot RPC, ENet, UDP/IP headers before MTU pressure.
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 # Multiplayer protocol map:
@@ -63,6 +108,9 @@ const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 @onready var network_diagnostics_coordinator: MpNetworkDiagnosticsCoordinatorScript = (
 	$NetworkDiagnosticsCoordinator
 )
+@onready var peer_ledger_coordinator: MpPeerLedgerCoordinatorScript = (
+	$PeerLedgerCoordinator
+)
 @onready var tower_rogue_route_bridge: MpRogueRoute = $TowerRogueRouteBridge
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
@@ -78,13 +126,38 @@ var _client_host_game_ready: bool = false
 var _embedded_runtime_active := false
 var _embedded_participant_peer_ids: Dictionary[int, bool] = {}
 var _suspended_embedded_participant_peer_ids: Dictionary[int, bool] = {}
+## 身份已经迁移、但 Player 尚未完成投影的内嵌战斗参与者。该集合只是一份
+## 能力租约，不复制成员身份或 Player 状态；完成、挂起或最终离场时必须释放。
+var _projecting_embedded_participant_peer_ids: Dictionary[int, bool] = {}
 ## exploration session uses CH_AUTH while the established tower flow RPC uses
 ## CH_WORLD_EVENT. Preserve each channel's protocol and defer the cross-channel
 ## transition until both authoritative halves describe the same active state.
 var _pending_tower_rogue_flow_state: Dictionary = {}
+var _peer_ledger_generation := 0
+var _peer_result_repair_queued := false
+## repair_needed 是异常修复的唯一债务真源；queued 只表示已有 deferred 调度，
+## SessionCoordinator 则唯一拥有网络请求租约与冷却。
+var _peer_result_repair_needed := false
+## 身份已提交但 Player 尚未建立时，只保存重试时钟与认证参数；权威瞬时状态
+## 仍唯一存放在 `_disconnected_player_reconnect_states`，避免出现第二份状态副本。
+var _pending_reconnected_player_projections: Dictionary[int, Dictionary] = {}
+## 已完成映射以 old peer 为键，既能幂等识别同一通知，也能拒绝 old->多个 new。
+var _completed_reconnected_player_projections: Dictionary[int, int] = {}
 
 
 func _ready() -> void:
+	if (
+		net_manager == null
+		or (
+			not embedded_runtime
+			and not net_manager.register_reconnect_delivery_preparer(
+				prepare_reconnected_member_delivery
+			)
+		)
+	):
+		push_error("MpGame: 顶层会话无法取得重连首帧准备能力。")
+		call_deferred("_return_to_lobby")
+		return
 	session_coordinator.bind_transport_dependencies(
 		net_manager,
 		public_room_keepalive_request
@@ -93,6 +166,7 @@ func _ready() -> void:
 	player_coordinator.randomize_revive_generator()
 	merchant_transactions_coordinator.randomize_offer_generator()
 	_connect_world_flow_coordinator_signals()
+	_connect_peer_ledger_signals()
 	set_multiplayer_authority(_get_host_peer_id())
 	if not net_manager.connection_state_changed.is_connected(_on_connection_state_changed):
 		net_manager.connection_state_changed.connect(_on_connection_state_changed)
@@ -100,6 +174,18 @@ func _ready() -> void:
 		net_manager.player_left.connect(_on_net_player_left)
 	if not net_manager.player_reconnected.is_connected(_on_net_player_reconnected):
 		net_manager.player_reconnected.connect(_on_net_player_reconnected)
+	if not net_manager.session_membership_changed.is_connected(
+		_on_session_membership_changed
+	):
+		net_manager.session_membership_changed.connect(
+			_on_session_membership_changed
+		)
+	if not net_manager.session_member_final_departed.is_connected(
+		_on_session_member_final_departed
+	):
+		net_manager.session_member_final_departed.connect(
+			_on_session_member_final_departed
+		)
 	if net_manager.is_host():
 		if not _setup_game(GAME_RUNTIME_HOST_AUTHORITY):
 			call_deferred("_return_to_lobby")
@@ -135,6 +221,12 @@ func _connect_session_coordinator_signals() -> void:
 		session_coordinator.runtime_repair_plant_roster_requested.connect(
 			_on_session_runtime_repair_plant_roster_requested
 		)
+	if not session_coordinator.client_runtime_repair_available.is_connected(
+		_on_client_runtime_repair_available
+	):
+		session_coordinator.client_runtime_repair_available.connect(
+			_on_client_runtime_repair_available
+		)
 
 
 func _on_session_rpc_to_peer_requested(
@@ -151,6 +243,12 @@ func _on_session_runtime_repair_plant_roster_requested(peer_id: int) -> void:
 	if peer_id <= 0 or not is_inside_tree() or not net_manager.is_host():
 		return
 	_send_live_plant_roster_to_peer(peer_id)
+
+
+func _on_client_runtime_repair_available() -> void:
+	if not _peer_result_repair_needed:
+		return
+	_schedule_peer_result_full_repair()
 
 
 func _connect_world_flow_coordinator_signals() -> void:
@@ -197,6 +295,89 @@ func _connect_world_flow_coordinator_signals() -> void:
 		var target: Callable = binding[1]
 		if not source.is_connected(target):
 			source.connect(target)
+
+
+func _connect_peer_ledger_signals() -> void:
+	var signal_bindings: Array[Array] = [
+		[
+			peer_ledger_coordinator.envelope_rejected,
+			_on_peer_result_envelope_rejected,
+		],
+		[
+			peer_ledger_coordinator.pending_envelope_expired,
+			_on_peer_result_envelope_expired,
+		],
+	]
+	for binding in signal_bindings:
+		var source: Signal = binding[0]
+		var target: Callable = binding[1]
+		if not source.is_connected(target):
+			source.connect(target)
+
+
+func _on_peer_result_envelope_rejected(
+	peer_id: int,
+	stream_id: StringName,
+	revision: int,
+	reason: StringName
+) -> void:
+	push_warning(
+		"MpGame: 玩家 %d 的跨信道结果被拒绝，stream=%s revision=%d reason=%s。"
+		% [peer_id, stream_id, revision, reason]
+	)
+	_request_peer_result_full_repair()
+
+
+func _on_peer_result_envelope_expired(
+	peer_id: int,
+	stream_id: StringName,
+	revision: int
+) -> void:
+	push_warning(
+		"MpGame: 玩家 %d 的跨信道结果已过期，stream=%s revision=%d。"
+		% [peer_id, stream_id, revision]
+	)
+	_request_peer_result_full_repair()
+
+
+func _request_peer_result_full_repair() -> void:
+	if net_manager == null or not net_manager.is_client():
+		return
+	_peer_result_repair_needed = true
+	if _peer_ledger_generation <= 0:
+		# 当前局的 RPC 可能在场景 `_ready` 完成账本 bind 前抵达。债务保留到
+		# bind 成功；退出场景会显式清理，旧局故障不得污染下一局。
+		return
+	_schedule_peer_result_full_repair()
+
+
+func _schedule_peer_result_full_repair() -> void:
+	if _peer_result_repair_queued:
+		return
+	# 同一帧可能同时出现 conflict signal 与 claim 汇总；调度层先合并一次，
+	# 跨帧放大控制由 SessionCoordinator 的 in-flight 租约统一负责。
+	_peer_result_repair_queued = true
+	call_deferred(
+		"_flush_peer_result_full_repair",
+		_peer_ledger_generation
+	)
+
+
+func _flush_peer_result_full_repair(expected_generation: int) -> void:
+	_peer_result_repair_queued = false
+	if (
+		not _peer_result_repair_needed
+		or expected_generation <= 0
+		or expected_generation != _peer_ledger_generation
+	):
+		return
+	if _request_runtime_state_from_host(true):
+		_peer_result_repair_needed = false
+
+
+func _clear_peer_result_repair_state() -> void:
+	_peer_result_repair_queued = false
+	_peer_result_repair_needed = false
 
 
 func _on_world_flow_rpc_to_peer_requested(
@@ -401,6 +582,15 @@ func _on_enemy_snapshot_send_requested(
 
 
 func _exit_tree() -> void:
+	if net_manager != null and not embedded_runtime:
+		net_manager.unregister_reconnect_delivery_preparer(
+			prepare_reconnected_member_delivery
+		)
+	_clear_reconnected_player_projection_state()
+	_clear_peer_result_repair_state()
+	if peer_ledger_coordinator != null:
+		peer_ledger_coordinator.unbind_session(self)
+	_peer_ledger_generation = 0
 	if net_manager != null and net_manager.is_host():
 		_capture_shared_warehouse_ledger()
 	if tower_rogue_route_bridge != null:
@@ -415,6 +605,24 @@ func _exit_tree() -> void:
 		and net_manager.player_reconnected.is_connected(_on_net_player_reconnected)
 	):
 		net_manager.player_reconnected.disconnect(_on_net_player_reconnected)
+	if (
+		net_manager != null
+		and net_manager.session_membership_changed.is_connected(
+			_on_session_membership_changed
+		)
+	):
+		net_manager.session_membership_changed.disconnect(
+			_on_session_membership_changed
+		)
+	if (
+		net_manager != null
+		and net_manager.session_member_final_departed.is_connected(
+			_on_session_member_final_departed
+		)
+	):
+		net_manager.session_member_final_departed.disconnect(
+			_on_session_member_final_departed
+		)
 	if game != null:
 		if (
 			_mode_adapter != null
@@ -553,6 +761,8 @@ func activate_embedded_runtime() -> bool:
 	game.activate_runtime()
 	if net_manager.is_client():
 		_request_runtime_state_from_host()
+		if _peer_result_repair_needed:
+			_schedule_peer_result_full_repair()
 	return true
 
 
@@ -601,7 +811,9 @@ func suspend_embedded_participant_for_current_combat(
 		_embedded_participant_peer_ids.erase(roster_peer_id)
 		_embedded_participant_peer_ids[peer_id] = true
 		_suspended_embedded_participant_peer_ids.erase(roster_peer_id)
+		_projecting_embedded_participant_peer_ids.erase(roster_peer_id)
 		_clear_peer_network_state(roster_peer_id)
+	_projecting_embedded_participant_peer_ids.erase(peer_id)
 	_suspended_embedded_participant_peer_ids[peer_id] = true
 	_clear_peer_network_state(peer_id)
 	if game != null:
@@ -628,6 +840,7 @@ func get_runtime_preparation_progress() -> Dictionary:
 
 
 func _process(delta: float) -> void:
+	_update_pending_reconnected_player_projections(delta)
 	if embedded_runtime and not _embedded_runtime_active:
 		return
 	session_coordinator.update_transport(delta)
@@ -1486,7 +1699,10 @@ func _consume_remote_player_action_admission(
 func _is_embedded_participant_suspended(peer_id: int) -> bool:
 	return (
 		embedded_runtime
-		and _suspended_embedded_participant_peer_ids.has(peer_id)
+		and (
+			_suspended_embedded_participant_peer_ids.has(peer_id)
+			or _projecting_embedded_participant_peer_ids.has(peer_id)
+		)
 	)
 
 
@@ -1515,9 +1731,16 @@ func _is_tower_management_suspended() -> bool:
 	)
 
 
-## Explicit sender seam for authoritative request dispatch and smoke tests.
+## 玩法 RPC 统一在解析 sender 时消费 NetManager 的成员/投影租约。控制面 RPC
+## 必须直接读取 multiplayer.get_remote_sender_id()，避免 repair/reconnect 被误挡。
 func _get_rpc_sender_id() -> int:
-	return multiplayer.get_remote_sender_id()
+	var sender_id := multiplayer.get_remote_sender_id()
+	if (
+		net_manager == null
+		or not net_manager.is_gameplay_ingress_admitted(sender_id)
+	):
+		return 0
+	return sender_id
 
 
 func _get_tower_plant(net_id: int) -> PlantDefense:
@@ -1704,6 +1927,97 @@ func is_client_view_runtime() -> bool:
 	return net_manager != null and net_manager.is_client()
 
 
+func _get_persistent_session_peer_ids() -> PackedInt32Array:
+	var peer_ids := PackedInt32Array()
+	if net_manager == null:
+		return peer_ids
+	for peer_id in net_manager.get_session_member_peer_ids():
+		peer_ids.append(peer_id)
+	return peer_ids
+
+
+func _on_session_membership_changed(
+	_peer_ids: PackedInt32Array,
+	membership_revision: int
+) -> void:
+	# 全局 RunState membership 只由顶层会话投影。内嵌战斗 roster 是可丢弃
+	# 子集，若拿它反写同一 revision 会把路线 spectator 误删并触发整局分叉。
+	if embedded_runtime:
+		return
+	if run_state == null or not run_state.run_started or membership_revision <= 0:
+		return
+	if run_state.reconcile_multiplayer_session_membership(
+		_get_persistent_session_peer_ids(),
+		membership_revision
+	):
+		return
+	_fail_session_membership_projection(
+		"MpGame 无法原子收敛会话成员 revision=%d。" % membership_revision
+	)
+
+
+## NetManager 的 PREPARING_DELIVERY 同步命令。失败会在成员仍是
+## RECONNECTING 时 fail-close；最终 ready 信号只保留给不可失败的观察通知。
+func prepare_reconnected_member_delivery(
+	old_peer_id: int,
+	new_peer_id: int,
+	outcome: ReconnectedPlayerProjectionOutcome,
+	_membership_revision: int
+) -> bool:
+	if (
+		net_manager == null
+		or not net_manager.is_host()
+		or new_peer_id <= 0
+		or not net_manager.is_reconnect_delivery_preparing(new_peer_id)
+	):
+		return false
+	if tower_mode_adapter == null:
+		return true
+	if not _send_tower_rogue_exploration_snapshot_to_peer(new_peer_id, true):
+		return false
+	return tower_mode_adapter.handle_rogue_combat_reconnected_member_ready(
+		old_peer_id,
+		new_peer_id,
+		outcome
+	)
+
+
+func _on_session_member_final_departed(
+	peer_id: int,
+	membership_revision: int,
+	_reason: StringName
+) -> void:
+	if peer_id <= 0 or membership_revision <= 0:
+		return
+	# player_left 只表示 transport 投影消失；断线宽限期间，持久 RunState、
+	# 重连捕获和跨信道幂等水位都必须继续存在。只有 NetManager 确认成员最终
+	# 离场后，才在同一边界清理这些跨 transport 生命周期的数据。
+	if (
+		not embedded_runtime
+		and
+		run_state != null
+		and run_state.run_started
+		and not run_state.reconcile_multiplayer_session_membership(
+			_get_persistent_session_peer_ids(),
+			membership_revision
+		)
+	):
+		_fail_session_membership_projection(
+			"MpGame 无法收敛最终离场成员 %d，revision=%d。"
+			% [peer_id, membership_revision]
+		)
+		return
+	_clear_final_departed_peer_identity_state(peer_id)
+
+
+func _fail_session_membership_projection(reason: String) -> void:
+	push_error("MpGame: %s" % reason)
+	if net_manager == null:
+		return
+	if not net_manager.terminate_for_session_membership_projection_failure(reason):
+		push_error("MpGame: 无法终止成员账本已经分叉的多人会话。")
+
+
 func _setup_game(mode: int) -> bool:
 	if embedded_runtime and _embedded_participant_peer_ids.is_empty():
 		push_error("MpGame: 内嵌战斗缺少冻结的参战玩家名单。")
@@ -1733,6 +2047,21 @@ func _setup_game(mode: int) -> bool:
 	var runtime_character_ids := _filter_embedded_peer_map(
 		net_manager.get_player_character_map()
 	)
+	# 持久账本使用完整 ACTIVE∪SUSPENDED_GRACE；内嵌战斗只消费其中冻结的
+	# participant 子集，永远不拥有或改写全局 membership。
+	if embedded_runtime:
+		for peer_id_variant in _embedded_participant_peer_ids.keys():
+			if not run_state.has_multiplayer_peer_state(int(peer_id_variant)):
+				push_error("MpGame: 内嵌参战者缺少顶层会话持久账本。")
+				_discard_unparented_game_runtime()
+				return false
+	elif not run_state.reconcile_multiplayer_session_membership(
+		_get_persistent_session_peer_ids(),
+		net_manager.get_session_membership_revision()
+	):
+		push_error("MpGame: 无法收敛权威会话成员与运行时账本。")
+		_discard_unparented_game_runtime()
+		return false
 	game.configure_multiplayer(
 		mode,
 		local_peer_id,
@@ -1863,6 +2192,24 @@ func _setup_game(mode: int) -> bool:
 		tower_economy_coordinator.reset_session_state()
 		tower_world_coordinator.reset_session_state()
 		tower_fate_coordinator.reset_session_state()
+	var peer_ledger_role := (
+		MpPeerLedgerCoordinatorScript.RuntimeRole.HOST
+		if net_manager.is_host()
+		else MpPeerLedgerCoordinatorScript.RuntimeRole.CLIENT
+	)
+	_peer_ledger_generation = peer_ledger_coordinator.bind_session(
+		self,
+		peer_ledger_role,
+		net_manager.get_game_session_incarnation(),
+		run_state.has_multiplayer_peer_state,
+		_is_peer_result_envelope_ready,
+		_commit_pending_peer_ledger_envelope
+	)
+	if _peer_ledger_generation <= 0:
+		push_error("MpGame: 无法绑定跨信道玩家账本协调器。")
+		return false
+	if _peer_result_repair_needed:
+		_schedule_peer_result_full_repair()
 	session_coordinator.bind_world_manifest_dependencies(
 		world_flow_coordinator,
 		enemy_coordinator,
@@ -1957,13 +2304,20 @@ func _setup_game(mode: int) -> bool:
 		tower_rogue_route_bridge.set_embedded_exploration_active(
 			tower_adapter.is_rogue_exploration_active()
 		)
-	run_state.set_active_multiplayer_peer(local_peer_id)
+	if not run_state.set_active_multiplayer_peer(local_peer_id):
+		push_error("MpGame: 本机 peer 尚未注册为持久账本成员。")
+		return false
 	if net_manager.is_host() and _has_tower_mode():
 		tower_world_coordinator.broadcast_base_health_snapshot()
 	return true
 
 
 func _discard_unparented_game_runtime() -> void:
+	_clear_reconnected_player_projection_state()
+	_clear_peer_result_repair_state()
+	if peer_ledger_coordinator != null:
+		peer_ledger_coordinator.unbind_session(self)
+	_peer_ledger_generation = 0
 	if game != null and session_coordinator != null:
 		session_coordinator.unbind_runtime(game)
 	if game != null and merchant_transactions_coordinator != null:
@@ -2002,18 +2356,606 @@ func _get_game_scene_path_for_mode(game_mode: int) -> String:
 	return definition.multiplayer_runtime_scene_path if definition != null else ""
 
 
-func _request_runtime_state_from_host() -> void:
-	if not session_coordinator.try_begin_client_runtime_state_request(
+## CH6 权威结果可能先于 CH0 身份迁移到达。所有入口都先用 Host 分配的成员
+## 世代解析当前 canonical peer；PeerLedger 只缓存完整事务，不再猜测旧传输身份。
+func _receive_authoritative_peer_result(
+	wire_peer_id: int,
+	result_type: StringName,
+	stream_id: StringName,
+	revision: int,
+	payload: Dictionary,
+	participant_incarnation: int,
+	session_incarnation: int,
+	applied_replay_policy: int = (
+		MpPeerLedgerCoordinatorScript.AppliedReplayPolicy.TRACK_REVISION
+	)
+) -> bool:
+	if not _is_current_authoritative_session_incarnation(
+		session_incarnation,
+		stream_id
+	):
+		return false
+	var peer_id := (
+		net_manager.resolve_session_participant_peer_id(participant_incarnation)
+		if net_manager != null
+		else 0
+	)
+	if wire_peer_id <= 0 or peer_id <= 0:
+		push_warning(
+			"MpGame: 拒绝无法解析成员身份的 CH6 结果，wire_peer=%d participant=%d stream=%s。"
+			% [wire_peer_id, participant_incarnation, stream_id]
+		)
+		_request_peer_result_full_repair()
+		return false
+	var envelope_result := peer_ledger_coordinator.receive_authoritative_result(
+		_peer_ledger_generation,
+		session_incarnation,
+		peer_id,
+		result_type,
+		stream_id,
+		revision,
+		payload,
+		-1,
+		applied_replay_policy
+	)
+	if MpPeerLedgerCoordinatorScript.is_accepted_result(envelope_result):
+		return true
+	push_warning(
+		"MpGame: 拒绝玩家 %d 的 %s 权威结果，session=%d stream=%s revision=%d code=%d。"
+		% [
+			wire_peer_id,
+			result_type,
+			session_incarnation,
+			stream_id,
+			revision,
+			envelope_result,
+		]
+	)
+	_request_peer_result_full_repair()
+	return false
+
+
+## 同一 RPC 也承载不属于任何玩家的全局科研推进；它不进入玩家账本，但仍须
+## 遵守相同 wire 世代，避免旧局全局状态越过玩家信封边界。
+func _is_current_authoritative_session_incarnation(
+	session_incarnation: int,
+	stream_id: StringName
+) -> bool:
+	var expected_session_incarnation := (
+		peer_ledger_coordinator.get_session_incarnation()
+		if peer_ledger_coordinator != null
+		else 0
+	)
+	if (
+		session_incarnation > 0
+		and session_incarnation == expected_session_incarnation
+	):
+		return true
+	push_warning(
+		"MpGame: 拒绝 CH6 结果，session=%d expected=%d stream=%s。"
+		% [session_incarnation, expected_session_incarnation, stream_id]
+	)
+	_request_peer_result_full_repair()
+	return false
+
+
+## 空快照是否有效由具体事务决定；非空快照必须先通过纯协议校验，不能等到
+## 身份认领后才发现缓存内容无法提交。
+func _get_authoritative_inventory_revision(
+	peer_id: int,
+	inventory_snapshot: Dictionary,
+	empty_revision: int = -1
+) -> int:
+	if inventory_snapshot.is_empty():
+		return empty_revision
+	if not run_state.validate_inventory_snapshot_envelope(
+		peer_id,
+		inventory_snapshot
+	):
+		return -1
+	return int(inventory_snapshot["revision"])
+
+
+## 只有真正读写 Player 瞬时状态的结果需要等待 Player 投影。其余结果
+## 仅依赖 RunState/领域账本，不应被断线期间的节点缺席拖住。该查询不写
+## 任何状态，实际协议校验仍由下方领域 receiver 唯一负责。
+func _is_peer_result_envelope_ready(
+	peer_id: int,
+	result_type: StringName,
+	payload: Dictionary
+) -> bool:
+	if net_manager != null and not net_manager.is_session_member_active(peer_id):
+		# 断线宽限期的 late CH6 必须留在 PeerLedger；否则领域状态会在
+		# old peer 下提交，随后身份 remap 只能迁移账本却迁不走领域副作用。
+		var runtime_projection_ready := (
+			net_manager.is_session_member_reconnecting(peer_id)
+			and (
+				_completed_reconnected_player_projections.values().has(peer_id)
+				or _suspended_embedded_participant_peer_ids.has(peer_id)
+			)
+		)
+		if not runtime_projection_ready:
+			return false
+	var requires_player_projection := result_type in [
+		PEER_RESULT_UPGRADE_CONFIRMED,
+		PEER_RESULT_SKILL1_PURCHASE,
+		PEER_RESULT_RESEARCH_STATE,
+		PEER_RESULT_LUOXI_OFFER_STATE,
+		PEER_RESULT_LUOXI_REFRESH,
+		PEER_RESULT_CHEAT_XIRANG,
+	]
+	if result_type == PEER_RESULT_PICKUP_COLLECTED:
+		requires_player_projection = bool(
+			payload.get("applied_immediately", false)
+		)
+	elif result_type == PEER_RESULT_LUOXI_SPECIAL_FINISHED:
+		var special_result_variant: Variant = payload.get("result", {})
+		requires_player_projection = (
+			typeof(special_result_variant) == TYPE_DICTIONARY
+			and (special_result_variant as Dictionary).has("current_xirang")
+		)
+	if not requires_player_projection:
+		return true
+	if game == null or not is_instance_valid(game):
+		return false
+	var player_node := game.get_player_for_peer(peer_id)
+	return (
+		player_node != null
+		and is_instance_valid(player_node)
+		and not player_node.is_queued_for_deletion()
+	)
+
+
+## PeerLedgerCoordinator 只编排身份、投影就绪、乱序与容量；认领和即时
+## 提交都回到同一个原领域 receiver，避免把 durable 账本从 request_id、
+## UI token 或实体终结拆开。
+func _commit_pending_peer_ledger_envelope(
+	peer_id: int,
+	result_type: StringName,
+	stream_id: StringName,
+	_revision: int,
+	payload: Dictionary
+) -> bool:
+	match result_type:
+		PEER_RESULT_INVENTORY_SNAPSHOT:
+			return transactions_coordinator.receive_inventory_snapshot(
+				peer_id,
+				_rehydrate_inventory_snapshot(peer_id, payload),
+				bool(payload["force_inventory_repair"])
+			)
+		PEER_RESULT_WAREHOUSE_COMMAND:
+			var warehouse_result := _decode_subject_dictionary(
+				peer_id,
+				payload["result"] as Dictionary
+			)
+			return tower_economy_coordinator.receive_warehouse_command_result(
+				warehouse_result
+			)
+		PEER_RESULT_PICKUP_COLLECTED:
+			return world_flow_coordinator.receive_pickup_collected(
+				int(payload["net_id"]),
+				peer_id,
+				str(payload["config_path"]),
+				bool(payload["applied_immediately"]),
+				_rehydrate_inventory_snapshot(peer_id, payload)
+			)
+		PEER_RESULT_UPGRADE_CONFIRMED:
+			return transactions_coordinator.receive_upgrade_confirmation(
+				peer_id,
+				int(payload["stat_type"]),
+				int(payload["level"]),
+				int(payload["current_xirang"]),
+				bool(payload["success"]),
+				bool(payload["free_upgrade"])
+			)
+		PEER_RESULT_INVENTORY_ITEM_USED:
+			return transactions_coordinator.receive_inventory_item_used(
+				peer_id,
+				int(payload["slot_index"]),
+				str(payload["config_path"]),
+				bool(payload["success"]),
+				_rehydrate_inventory_snapshot(peer_id, payload),
+				bool(payload["force_inventory_repair"])
+			)
+		PEER_RESULT_INVENTORY_ITEM_DISCARDED:
+			return transactions_coordinator.receive_inventory_item_discarded(
+				peer_id,
+				int(payload["slot_index"]),
+				bool(payload["success"]),
+				_rehydrate_inventory_snapshot(peer_id, payload),
+				bool(payload["force_inventory_repair"])
+			)
+		PEER_RESULT_SIMPLE_CRAFTING:
+			return transactions_coordinator.receive_simple_crafting_result(
+				peer_id,
+				int(payload["request_id"]),
+				str(payload["recipe_id"]),
+				str(payload["result"]),
+				_resolve_crafting_inventory_snapshot(peer_id, payload),
+				bool(payload["force_inventory_repair"])
+			)
+		PEER_RESULT_SKILL1_PURCHASE:
+			return transactions_coordinator.receive_skill1_purchase_confirmation(
+				peer_id,
+				int(payload["current_xirang"]),
+				bool(payload["skill1_unlocked"]),
+				int(payload["result_code"]),
+				int(payload["skill1_upgrade_level"]),
+				float(payload["skill1_charge_duration"])
+			)
+		PEER_RESULT_RESEARCH_STATE:
+			return tower_economy_coordinator.receive_research_state_updated(
+				_decode_research_state_for_subject(peer_id, payload),
+				peer_id,
+				int(payload["current_xirang"])
+			)
+		PEER_RESULT_LUOXI_OFFER_STATE:
+			return merchant_transactions_coordinator.receive_luoxi_collectible_offer_state(
+				peer_id,
+				int(payload["offer_revision"]),
+				PackedStringArray(payload["config_paths"] as Array),
+				int(payload["refresh_count"]),
+				int(payload["current_xirang"]),
+				int(payload["refresh_result_code"])
+			)
+		PEER_RESULT_LUOXI_COLLECTIBLE:
+			return merchant_transactions_coordinator.receive_luoxi_collectible_confirmation(
+				peer_id,
+				int(payload["choice_index"]),
+				str(payload["config_path"]),
+				int(payload["result_code"]),
+				int(payload["offer_revision"]),
+				_rehydrate_inventory_snapshot(peer_id, payload)
+			)
+		PEER_RESULT_LUOXI_REFRESH:
+			return merchant_transactions_coordinator.receive_luoxi_collectible_refresh_confirmation(
+				peer_id,
+				int(payload["result_code"]),
+				int(payload["refresh_count"]),
+				int(payload["current_xirang"])
+			)
+		PEER_RESULT_LUOXI_SPECIAL_STARTED:
+			return merchant_transactions_coordinator.receive_luoxi_special_game_started(
+				peer_id,
+				_decode_subject_dictionary(
+					peer_id,
+					payload["result"] as Dictionary
+				),
+				_rehydrate_inventory_snapshot(peer_id, payload)
+			)
+		PEER_RESULT_LUOXI_SPECIAL_CARD:
+			return merchant_transactions_coordinator.receive_luoxi_special_game_card_revealed(
+				peer_id,
+				_decode_subject_dictionary(
+					peer_id,
+					payload["result"] as Dictionary
+				)
+			)
+		PEER_RESULT_LUOXI_SPECIAL_FINISHED:
+			return merchant_transactions_coordinator.receive_luoxi_special_game_finished(
+				peer_id,
+				_decode_subject_dictionary(
+					peer_id,
+					payload["result"] as Dictionary
+				),
+				_rehydrate_inventory_snapshot(peer_id, payload)
+			)
+		PEER_RESULT_CHEAT_XIRANG:
+			return merchant_transactions_coordinator.receive_cheat_xirang_confirmation(
+				peer_id,
+				int(payload["current_xirang"]),
+				int(payload["added_amount"])
+			)
+		PEER_RESULT_DEBUG_COLLECTIBLE:
+			return merchant_transactions_coordinator.receive_debug_collectible_granted(
+				peer_id,
+				str(payload["config_path"]),
+				bool(payload["success"]),
+				_rehydrate_inventory_snapshot(peer_id, payload)
+			)
+	push_warning(
+		"MpGame: 未识别的玩家权威结果 type=%s stream=%s。"
+		% [result_type, stream_id]
+	)
+	return false
+
+
+func _rehydrate_inventory_snapshot(
+	peer_id: int,
+	payload: Dictionary
+) -> Dictionary:
+	var inventory_snapshot := (
+		payload.get("inventory_snapshot", {}) as Dictionary
+	).duplicate(true)
+	if not inventory_snapshot.is_empty():
+		inventory_snapshot["peer_id"] = peer_id
+	return inventory_snapshot
+
+
+func _resolve_crafting_inventory_snapshot(
+	peer_id: int,
+	payload: Dictionary
+) -> Dictionary:
+	var inventory_snapshot := _rehydrate_inventory_snapshot(peer_id, payload)
+	if inventory_snapshot.is_empty():
+		return inventory_snapshot
+	var incoming_revision := int(inventory_snapshot.get("revision", -1))
+	var current_revision := run_state.get_inventory_revision_for_peer(peer_id)
+	if incoming_revision >= current_revision:
+		return inventory_snapshot
+	# CH0/其他 CH6 可能已经提交了更晚背包。制作结果仍需用 request_id 结算
+	# 本地 UI token；用当前权威账本作为 fence，绝不能为了旧结果倒退库存。
+	return run_state.export_inventory_snapshot_for_peer(peer_id)
+
+
+func _make_identity_neutral_inventory_snapshot(snapshot: Dictionary) -> Dictionary:
+	var neutral := snapshot.duplicate(true)
+	neutral.erase("peer_id")
+	return neutral
+
+
+## 部分领域 Dictionary 会重复携带 subject peer。codec 把每一层 peer_id
+## 替换为不含旧值的标记；提交时再用 participant 解析后的 canonical peer 回填。
+## 若出现与 envelope subject 不一致的身份，整包拒绝，绝不让嵌套 old id 穿透。
+func _encode_subject_dictionary(
+	peer_id: int,
+	source: Dictionary
+) -> Dictionary:
+	return _encode_subject_value(peer_id, source)
+
+
+func _encode_subject_value(peer_id: int, value: Variant) -> Dictionary:
+	if typeof(value) == TYPE_DICTIONARY:
+		var encoded_dictionary := {}
+		for key in (value as Dictionary).keys():
+			if (
+				typeof(key) in [TYPE_STRING, TYPE_STRING_NAME]
+				and str(key) == String(SUBJECT_IDENTITY_MARKER)
+			):
+				return {"accepted": false, "value": {}}
+			if (
+				typeof(key) in [TYPE_STRING, TYPE_STRING_NAME]
+				and str(key) == "peer_id"
+			):
+				if typeof((value as Dictionary)[key]) != TYPE_INT:
+					return {"accepted": false, "value": {}}
+				if int((value as Dictionary)[key]) != peer_id:
+					return {"accepted": false, "value": {}}
+				encoded_dictionary[SUBJECT_IDENTITY_MARKER] = true
+				continue
+			var child := _encode_subject_value(
+				peer_id,
+				(value as Dictionary)[key]
+			)
+			if not bool(child.get("accepted", false)):
+				return {"accepted": false, "value": {}}
+			encoded_dictionary[key] = child["value"]
+		return {"accepted": true, "value": encoded_dictionary}
+	if typeof(value) == TYPE_ARRAY:
+		var encoded_array: Array = []
+		for child_value in value as Array:
+			var child := _encode_subject_value(peer_id, child_value)
+			if not bool(child.get("accepted", false)):
+				return {"accepted": false, "value": {}}
+			encoded_array.append(child["value"])
+		return {"accepted": true, "value": encoded_array}
+	return {"accepted": true, "value": value}
+
+
+func _decode_subject_dictionary(
+	peer_id: int,
+	encoded: Dictionary
+) -> Dictionary:
+	return _decode_subject_value(peer_id, encoded) as Dictionary
+
+
+func _decode_subject_value(peer_id: int, value: Variant) -> Variant:
+	if typeof(value) == TYPE_DICTIONARY:
+		var decoded_dictionary := {}
+		for key in (value as Dictionary).keys():
+			if key == SUBJECT_IDENTITY_MARKER:
+				decoded_dictionary["peer_id"] = peer_id
+				continue
+			decoded_dictionary[key] = _decode_subject_value(
+				peer_id,
+				(value as Dictionary)[key]
+			)
+		return decoded_dictionary
+	if typeof(value) == TYPE_ARRAY:
+		var decoded_array: Array = []
+		for child_value in value as Array:
+			decoded_array.append(_decode_subject_value(peer_id, child_value))
+		return decoded_array
+	return value
+
+
+func _encode_research_state_for_subject(
+	peer_id: int,
+	state: Dictionary
+) -> Dictionary:
+	var encoded := _encode_subject_dictionary(peer_id, state)
+	if not bool(encoded.get("accepted", false)):
+		return {"accepted": false}
+	var neutral_state := (encoded["value"] as Dictionary).duplicate(true)
+	var player_levels := (
+		neutral_state.get("player_levels", {}) as Dictionary
+	).duplicate(true)
+	var has_changed_level := player_levels.has(peer_id)
+	var changed_level := int(player_levels.get(peer_id, 0))
+	player_levels.erase(peer_id)
+	neutral_state["player_levels"] = player_levels
+	return {
+		"accepted": true,
+		"state": neutral_state,
+		"has_changed_player_level": has_changed_level,
+		"changed_player_level": changed_level,
+	}
+
+
+func _decode_research_state_for_subject(
+	peer_id: int,
+	payload: Dictionary
+) -> Dictionary:
+	var state := _decode_subject_dictionary(
+		peer_id,
+		payload["state"] as Dictionary
+	)
+	if bool(payload["has_changed_player_level"]):
+		var player_levels := (
+			state.get("player_levels", {}) as Dictionary
+		).duplicate(true)
+		player_levels[peer_id] = int(payload["changed_player_level"])
+		state["player_levels"] = player_levels
+	return state
+
+
+func _claim_pending_peer_ledgers(peer_id: int) -> bool:
+	if _peer_ledger_generation <= 0:
+		push_warning("MpGame: 玩家身份已迁移，但跨信道账本协调器未绑定。")
+		return false
+	var claim := peer_ledger_coordinator.claim_authenticated_peer(
+		_peer_ledger_generation,
+		peer_id
+	)
+	if not bool(claim.get("accepted", false)):
+		push_warning("MpGame: 无法认领玩家 %d 的跨信道账本。" % peer_id)
+		_request_peer_result_full_repair()
+		return false
+	var rejected_count := int(claim.get("rejected", 0))
+	if rejected_count <= 0:
+		return true
+	push_warning(
+		"MpGame: 玩家 %d 有 %d 份跨信道账本提交失败，申请完整状态修复。"
+		% [peer_id, rejected_count]
+	)
+	_request_peer_result_full_repair()
+	return false
+
+
+## 重连身份事务只迁移持久身份与 old/new 结果记录。结果认领必须等 Player
+## 或 SUSPENDED 终态先建立，否则依赖表现节点的完整 CH6 信封会被提前拒绝。
+func _commit_reconnected_peer_identity(
+	old_peer_id: int,
+	new_peer_id: int,
+	membership_revision: int
+) -> bool:
+	var remap_result := run_state.remap_multiplayer_peer_state(
+		old_peer_id,
+		new_peer_id,
+		membership_revision
+	)
+	if remap_result not in [
+		RunStateStore.MultiplayerPeerRemapResult.MIGRATED,
+		RunStateStore.MultiplayerPeerRemapResult.ALREADY_CURRENT,
+	]:
+		_abort_reconnected_peer_result_identity(old_peer_id, new_peer_id)
+		push_error(
+			"MpGame: 重连玩家 %d -> %d 的持久账本事务失败，result=%d revision=%d。"
+			% [old_peer_id, new_peer_id, remap_result, membership_revision]
+		)
+		return false
+	if _peer_ledger_generation <= 0:
+		push_error("MpGame: 身份事务已提交，但跨信道结果协调器没有活动租约。")
+		return false
+	if net_manager.is_client() and _peer_ledger_generation > 0:
+		var ledger_remap := peer_ledger_coordinator.remap_authenticated_peer(
+			_peer_ledger_generation,
+			old_peer_id,
+			new_peer_id
+		)
+		if not bool(ledger_remap.get("accepted", false)):
+			_abort_reconnected_peer_result_identity(old_peer_id, new_peer_id)
+			push_warning(
+				"MpGame: 玩家 %d -> %d 的跨信道记录迁移失败：%s。"
+				% [old_peer_id, new_peer_id, ledger_remap.get("reason", &"")]
+			)
+			_request_peer_result_full_repair()
+			return false
+		elif int(ledger_remap.get("conflicts", 0)) > 0:
+			_abort_reconnected_peer_result_identity(old_peer_id, new_peer_id)
+			push_warning(
+				"MpGame: 玩家 %d -> %d 的跨信道结果发生 %d 个冲突，申请完整状态修复。"
+				% [
+					old_peer_id,
+					new_peer_id,
+					int(ledger_remap["conflicts"]),
+				]
+			)
+			_request_peer_result_full_repair()
+			return false
+	return true
+
+
+func _finalize_reconnected_projection_and_claim(
+	old_peer_id: int,
+	new_peer_id: int,
+	outcome: ReconnectedPlayerProjectionOutcome
+) -> bool:
+	if not _claim_pending_peer_ledgers(new_peer_id):
+		_fail_reconnected_peer_identity(
+			old_peer_id,
+			new_peer_id,
+			"重连投影已建立，但跨信道权威结果无法认领。"
+		)
+		return false
+	# 结果认领已在 Player/路线之后成功；从这一行开始，RESTORED 参与者才拥有
+	# 完整战斗能力。SUSPENDED 由独立终态租约继续排除，不与 PROJECTING 混用。
+	_projecting_embedded_participant_peer_ids.erase(new_peer_id)
+	# capture 只服务本次 old transport。RESTORED 已复制到 Player，SUSPENDED
+	# 明确不会在本轮重建 Player；两者都不能留下可被 raw peer ID 复用的旧记录。
+	_disconnected_player_reconnect_states.erase(old_peer_id)
+	_publish_reconnected_player_projection_outcome(
+		old_peer_id,
+		new_peer_id,
+		outcome
+	)
+	return true
+
+
+func _abort_reconnected_peer_result_identity(
+	old_peer_id: int,
+	new_peer_id: int
+) -> void:
+	if _peer_ledger_generation <= 0 or peer_ledger_coordinator == null:
+		return
+	# 身份门失败后本次连接会同步终止；先在领域边界撤销整条 old/new
+	# 结果租约，不能依赖稍后的场景切换间接清理跨信道状态。
+	peer_ledger_coordinator.abort_authenticated_peer_remap(
+		_peer_ledger_generation,
+		old_peer_id,
+		new_peer_id
+	)
+
+
+func _request_runtime_state_from_host(is_runtime_repair: bool = false) -> bool:
+	var repair_request_id := 0
+	if is_runtime_repair:
+		repair_request_id = (
+			session_coordinator.try_begin_client_runtime_repair_request(
+				net_manager.is_client(),
+				_client_host_game_ready
+			)
+		)
+		if repair_request_id <= 0:
+			return false
+	elif not session_coordinator.try_begin_client_runtime_state_request(
 		net_manager.is_client(),
 		_client_host_game_ready
 	):
-		return
+		return false
 	tower_world_coordinator.begin_runtime_state_request()
-	_rpc_to_peer(
+	var request_sent := _rpc_to_peer(
 		_get_host_peer_id(),
 		&"net_runtime_state_requested",
 		[not world_flow_coordinator.has_received_flow_state()]
 	)
+	if not request_sent and repair_request_id > 0:
+		# 发送边界拒绝时释放租约并保留 deferred；不能把“本地未发送”误当成
+		# 远端修复完成，也不能立即无界重发。
+		session_coordinator.fail_client_runtime_repair_request(
+			repair_request_id
+		)
+	return request_sent
 
 
 func _send_live_plant_roster_to_peer(peer_id: int) -> void:
@@ -2068,11 +3010,9 @@ func _filter_embedded_peer_map(source: Dictionary) -> Dictionary:
 	return filtered
 
 
-# The coordinator first creates this stable RPC path on every participant,
-# then opens its prepare/activate barrier. StandardGame._ready() can emit merchant or
-# inventory signals before that barrier; suppress those transient packets so
-# they never target a client path that has not been created yet. Activation's
-# runtime-state request repairs every authoritative state channel.
+# 协调器先在所有参与者创建稳定 RPC 路径，再打开 prepare/activate 屏障。
+# StandardGame._ready() 可能在屏障前发出商店或背包信号；此时抑制瞬时包，
+# 激活后的完整运行时修复会补齐所有权威状态信道。
 func _rpc_to_peer(
 	peer_id: int,
 	method_name: StringName,
@@ -2081,24 +3021,89 @@ func _rpc_to_peer(
 ) -> bool:
 	if peer_id <= 0:
 		return false
+	var wire_args := _build_outbound_rpc_arguments(method_name, args)
+	if PEER_RESULT_RPC_METHODS.has(method_name) and wire_args.is_empty():
+		return false
 	var rpc_args: Array = [peer_id, method_name]
-	rpc_args.append_array(args)
+	rpc_args.append_array(wire_args)
 	callv(&"rpc_id", rpc_args)
 	if record_outbound:
-		_record_outbound_rpc(method_name, args)
+		_record_outbound_rpc(method_name, wire_args)
 	return true
 
 
 func _rpc_to_connected_clients(method_name: StringName, args: Array = []) -> void:
 	if embedded_runtime and not _embedded_runtime_active:
 		return
+	var wire_args := _build_outbound_rpc_arguments(method_name, args)
+	if PEER_RESULT_RPC_METHODS.has(method_name) and wire_args.is_empty():
+		return
 	var peer_ids := _get_connected_client_peer_ids()
 	for peer_id in peer_ids:
 		var rpc_args: Array = [peer_id, method_name]
-		rpc_args.append_array(args)
+		rpc_args.append_array(wire_args)
 		callv("rpc_id", rpc_args)
 	if not peer_ids.is_empty():
-		_record_outbound_rpc(method_name, args, peer_ids.size())
+		_record_outbound_rpc(method_name, wire_args, peer_ids.size())
+
+
+## CH6 结果由唯一发送边界追加成员世代与游戏世代。成员世代描述结果 subject，
+## 绝不能误用 `_rpc_to_peer` 的接收者；领域协调器仍只负责业务参数。
+func _build_outbound_rpc_arguments(
+	method_name: StringName,
+	args: Array
+) -> Array:
+	var wire_args := args.duplicate()
+	if not PEER_RESULT_RPC_METHODS.has(method_name):
+		return wire_args
+	var session_incarnation := net_manager.get_game_session_incarnation()
+	if session_incarnation <= 0:
+		push_error(
+			"MpGame: CH6 玩家结果缺少有效会话世代，拒绝发送 %s。"
+			% method_name
+		)
+		return []
+	var subject_peer_id := _extract_peer_result_subject_peer_id(method_name, args)
+	if subject_peer_id < 0:
+		push_error("MpGame: 无法提取 CH6 结果 %s 的 subject，拒绝发送。" % method_name)
+		return []
+	var participant_incarnation := 0
+	if subject_peer_id == 0:
+		if method_name != &"net_research_state_updated":
+			push_error("MpGame: 只有全局科研结果允许使用 peer 0。")
+			return []
+	else:
+		participant_incarnation = net_manager.get_session_participant_incarnation(
+			subject_peer_id
+		)
+		if participant_incarnation <= 0:
+			push_error(
+				"MpGame: CH6 结果 %s 的成员 %d 没有活动 participant incarnation。"
+				% [method_name, subject_peer_id]
+			)
+			return []
+	wire_args.append(participant_incarnation)
+	wire_args.append(session_incarnation)
+	return wire_args
+
+
+func _extract_peer_result_subject_peer_id(
+	method_name: StringName,
+	args: Array
+) -> int:
+	if not PEER_RESULT_RPC_METHODS.has(method_name):
+		return -1
+	var argument_index := int(PEER_RESULT_RPC_METHODS[method_name])
+	if argument_index < 0:
+		if args.is_empty() or typeof(args[0]) != TYPE_DICTIONARY:
+			return -1
+		var result := args[0] as Dictionary
+		if typeof(result.get("peer_id")) != TYPE_INT:
+			return -1
+		return int(result["peer_id"])
+	if argument_index >= args.size() or typeof(args[argument_index]) != TYPE_INT:
+		return -1
+	return int(args[argument_index])
 
 
 func _record_outbound_rpc(
@@ -3211,7 +4216,7 @@ func _rpc_player_hit_report(
 	_impact_direction: Vector2,
 	_damage_flags: int
 ) -> void:
-	var sender_id := multiplayer.get_remote_sender_id()
+	var sender_id := _get_rpc_sender_id()
 	player_coordinator.reject_untrusted_player_hit_report(
 		sender_id,
 		_source_id,
@@ -3306,7 +4311,7 @@ func net_xirang_orb_spawned(orb_id: int, amount: int, spawn_position: Vector2) -
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func _rpc_xirang_orb_collected(orb_id: int) -> void:
-	var _sender_id := multiplayer.get_remote_sender_id()
+	var _sender_id := _get_rpc_sender_id()
 	pass
 
 
@@ -3711,12 +4716,22 @@ func _broadcast_tower_rogue_exploration_snapshots() -> void:
 		_send_tower_rogue_exploration_snapshot_to_peer(peer_id)
 
 
-func _send_tower_rogue_exploration_snapshot_to_peer(peer_id: int) -> bool:
+func _send_tower_rogue_exploration_snapshot_to_peer(
+	peer_id: int,
+	reconnect_delivery: bool = false
+) -> bool:
+	var send_ready := (
+		net_manager.is_peer_send_ready(peer_id)
+		or (
+			reconnect_delivery
+			and net_manager.is_reconnect_delivery_preparing(peer_id)
+		)
+	)
 	if (
 		not net_manager.is_host()
 		or tower_mode_adapter == null
 		or peer_id <= 0
-		or not net_manager.is_peer_send_ready(peer_id)
+		or not send_ready
 	):
 		return false
 	var snapshot := (
@@ -4351,8 +5366,43 @@ func net_production_snapshot_requested(building_net_id: int) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 6)
-func net_warehouse_command_result(result: Dictionary) -> void:
-	tower_economy_coordinator.receive_warehouse_command_result(result)
+func net_warehouse_command_result(
+	result: Dictionary,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
+) -> void:
+	var peer_id := int(result.get("peer_id", 0))
+	var request_id := int(result.get("request_id", 0))
+	var warehouse_net_id := int(result.get("warehouse_net_id", 0))
+	var inventory_snapshot := result.get("inventory_snapshot", {}) as Dictionary
+	var inventory_revision := _get_authoritative_inventory_revision(
+		peer_id,
+		inventory_snapshot
+	)
+	var result_revision := request_id
+	var encoded_result := _encode_subject_dictionary(peer_id, result)
+	if (
+		request_id <= 0
+		or warehouse_net_id <= 0
+		or inventory_revision < 0
+		or typeof(result.get("storage_snapshot")) != TYPE_DICTIONARY
+		or (result.get("storage_snapshot", {}) as Dictionary).is_empty()
+		or not bool(encoded_result.get("accepted", false))
+	):
+		result_revision = -1
+	_receive_authoritative_peer_result(
+		peer_id,
+		PEER_RESULT_WAREHOUSE_COMMAND,
+		StringName("warehouse/%d/%d" % [warehouse_net_id, request_id]),
+		result_revision,
+		{
+			"result": (
+				encoded_result.get("value", {}) as Dictionary
+			).duplicate(true),
+		},
+		participant_incarnation,
+		session_incarnation
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -4377,12 +5427,24 @@ func net_production_state_batch(
 func net_inventory_snapshot(
 	peer_id: int,
 	snapshot: Dictionary,
-	force_inventory_repair: bool = false
+	force_inventory_repair: bool = false,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	transactions_coordinator.receive_inventory_snapshot(
+	var revision := _get_authoritative_inventory_revision(peer_id, snapshot)
+	_receive_authoritative_peer_result(
 		peer_id,
-		snapshot,
-		force_inventory_repair
+		PEER_RESULT_INVENTORY_SNAPSHOT,
+		&"inventory/snapshot",
+		revision,
+		{
+			"inventory_snapshot": _make_identity_neutral_inventory_snapshot(
+				snapshot
+			),
+			"force_inventory_repair": force_inventory_repair,
+		},
+		participant_incarnation,
+		session_incarnation
 	)
 
 
@@ -4419,12 +5481,61 @@ func net_research_command_result(
 func net_research_state_updated(
 	state: Dictionary,
 	changed_player_peer_id: int,
-	current_xirang: int
+	current_xirang: int,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	tower_economy_coordinator.receive_research_state_updated(
-		state,
+	if changed_player_peer_id == 0:
+		# 全局研究推进不以某位玩家为 subject，保留独立领域入口；失败仍走
+		# 同一个完整修复出口，不能伪造 peer 0 塞进玩家结果账本。
+		if not _is_current_authoritative_session_incarnation(
+			session_incarnation,
+			&"research/state"
+		):
+			return
+		if participant_incarnation != 0:
+			push_warning("MpGame: 全局科研结果不得绑定玩家 participant incarnation。")
+			_request_peer_result_full_repair()
+			return
+		if not tower_economy_coordinator.receive_research_state_updated(
+			state,
+			0,
+			current_xirang
+		):
+			_request_peer_result_full_repair()
+		return
+	if changed_player_peer_id < 0:
+		push_warning("MpGame: 科研结果携带非法 subject peer。")
+		_request_peer_result_full_repair()
+		return
+	var encoded_state := _encode_research_state_for_subject(
 		changed_player_peer_id,
-		current_xirang
+		state
+	)
+	var revision := (
+		int(state["revision"])
+		if typeof(state.get("revision")) == TYPE_INT
+		else -1
+	)
+	if not bool(encoded_state.get("accepted", false)) or current_xirang < 0:
+		revision = -1
+	_receive_authoritative_peer_result(
+		changed_player_peer_id,
+		PEER_RESULT_RESEARCH_STATE,
+		&"research/state",
+		revision,
+		{
+			"state": encoded_state.get("state", {}),
+			"has_changed_player_level": bool(
+				encoded_state.get("has_changed_player_level", false)
+			),
+			"changed_player_level": int(
+				encoded_state.get("changed_player_level", 0)
+			),
+			"current_xirang": current_xirang,
+		},
+		participant_incarnation,
+		session_incarnation
 	)
 
 
@@ -4837,14 +5948,32 @@ func net_pickup_collected(
 	collector_peer_id: int,
 	config_path: String,
 	applied_immediately: bool,
-	inventory_snapshot: Dictionary = {}
+	inventory_snapshot: Dictionary = {},
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	world_flow_coordinator.receive_pickup_collected(
-		net_id,
+	var revision := _get_authoritative_inventory_revision(
 		collector_peer_id,
-		config_path,
-		applied_immediately,
-		inventory_snapshot
+		inventory_snapshot,
+		0 if applied_immediately else -1
+	)
+	if net_id <= 0 or config_path.is_empty():
+		revision = -1
+	_receive_authoritative_peer_result(
+		collector_peer_id,
+		PEER_RESULT_PICKUP_COLLECTED,
+		StringName("pickup/%d" % net_id),
+		revision,
+		{
+			"net_id": net_id,
+			"config_path": config_path,
+			"applied_immediately": applied_immediately,
+			"inventory_snapshot": _make_identity_neutral_inventory_snapshot(
+				inventory_snapshot
+			),
+		},
+		participant_incarnation,
+		session_incarnation
 	)
 
 
@@ -5185,15 +6314,33 @@ func net_upgrade_confirmed(
 	level: int,
 	current_xirang: int,
 	success: bool,
-	free_upgrade: bool = false
+	free_upgrade: bool = false,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	transactions_coordinator.receive_upgrade_confirmation(
+	var revision := level
+	if (
+		not RunStateStore.MAX_UPGRADE_LEVELS.has(stat_type)
+		or level < 0
+		or level > int(RunStateStore.MAX_UPGRADE_LEVELS[stat_type])
+	):
+		revision = -1
+	_receive_authoritative_peer_result(
 		peer_id,
-		stat_type,
-		level,
-		current_xirang,
-		success,
-		free_upgrade
+		PEER_RESULT_UPGRADE_CONFIRMED,
+		StringName(
+			"upgrade/%d/%d/%d" % [stat_type, level, int(success)]
+		),
+		revision,
+		{
+			"stat_type": stat_type,
+			"level": level,
+			"current_xirang": current_xirang,
+			"success": success,
+			"free_upgrade": free_upgrade,
+		},
+		participant_incarnation,
+		session_incarnation
 	)
 
 
@@ -5204,15 +6351,33 @@ func net_inventory_item_used(
 	config_path: String,
 	success: bool,
 	inventory_snapshot: Dictionary,
-	force_inventory_repair: bool = false
+	force_inventory_repair: bool = false,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	transactions_coordinator.receive_inventory_item_used(
+	var revision := _get_authoritative_inventory_revision(
 		peer_id,
-		slot_index,
-		config_path,
-		success,
-		inventory_snapshot,
-		force_inventory_repair
+		inventory_snapshot
+	)
+	_receive_authoritative_peer_result(
+		peer_id,
+		PEER_RESULT_INVENTORY_ITEM_USED,
+		StringName(
+			"inventory-use/%d/%d/%d/%d"
+			% [revision, slot_index, int(success), config_path.hash()]
+		),
+		revision,
+		{
+			"slot_index": slot_index,
+			"config_path": config_path,
+			"success": success,
+			"inventory_snapshot": _make_identity_neutral_inventory_snapshot(
+				inventory_snapshot
+			),
+			"force_inventory_repair": force_inventory_repair,
+		},
+		participant_incarnation,
+		session_incarnation
 	)
 
 
@@ -5222,14 +6387,32 @@ func net_inventory_item_discarded(
 	slot_index: int,
 	success: bool,
 	inventory_snapshot: Dictionary,
-	force_inventory_repair: bool = false
+	force_inventory_repair: bool = false,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	transactions_coordinator.receive_inventory_item_discarded(
+	var revision := _get_authoritative_inventory_revision(
 		peer_id,
-		slot_index,
-		success,
-		inventory_snapshot,
-		force_inventory_repair
+		inventory_snapshot
+	)
+	_receive_authoritative_peer_result(
+		peer_id,
+		PEER_RESULT_INVENTORY_ITEM_DISCARDED,
+		StringName(
+			"inventory-discard/%d/%d/%d"
+			% [revision, slot_index, int(success)]
+		),
+		revision,
+		{
+			"slot_index": slot_index,
+			"success": success,
+			"inventory_snapshot": _make_identity_neutral_inventory_snapshot(
+				inventory_snapshot
+			),
+			"force_inventory_repair": force_inventory_repair,
+		},
+		participant_incarnation,
+		session_incarnation
 	)
 
 
@@ -5240,15 +6423,35 @@ func net_simple_crafting_result(
 	recipe_id: String,
 	result: String,
 	inventory_snapshot: Dictionary,
-	force_inventory_repair: bool = false
+	force_inventory_repair: bool = false,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	transactions_coordinator.receive_simple_crafting_result(
+	var inventory_revision := _get_authoritative_inventory_revision(
 		peer_id,
-		request_id,
-		recipe_id,
-		result,
-		inventory_snapshot,
-		force_inventory_repair
+		inventory_snapshot
+	)
+	var result_revision := request_id if inventory_revision >= 0 else -1
+	if request_id <= 0:
+		result_revision = -1
+	# request_id 是制作 UI token 的稳定映射，必须成为独立流，不能被较新的
+	# 背包 revision 覆盖后让旧面板永远等不到结算。
+	_receive_authoritative_peer_result(
+		peer_id,
+		PEER_RESULT_SIMPLE_CRAFTING,
+		StringName("craft/%d" % request_id),
+		result_revision,
+		{
+			"request_id": request_id,
+			"recipe_id": recipe_id,
+			"result": result,
+			"inventory_snapshot": _make_identity_neutral_inventory_snapshot(
+				inventory_snapshot
+			),
+			"force_inventory_repair": force_inventory_repair,
+		},
+		participant_incarnation,
+		session_incarnation
 	)
 
 
@@ -5259,15 +6462,47 @@ func net_skill1_purchase_confirmed(
 	skill1_unlocked: bool,
 	result_code: int,
 	skill1_upgrade_level: int = -1,
-	skill1_charge_duration: float = -1.0
+	skill1_charge_duration: float = -1.0,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	transactions_coordinator.receive_skill1_purchase_confirmation(
+	var revision := 0
+	if (
+		peer_id <= 0
+		or current_xirang < 0
+		or result_code < MerchantPurchaseResult.SkillUpgrade.SUCCESS
+		or result_code > MerchantPurchaseResult.SkillUpgrade.UPGRADE_MAXED
+		or skill1_upgrade_level < -1
+		or skill1_upgrade_level > Player.SKILL1_MAX_UPGRADE_LEVEL
+		or not is_finite(skill1_charge_duration)
+		or (skill1_charge_duration != -1.0 and skill1_charge_duration <= 0.0)
+	):
+		revision = -1
+	# 协议没有 request_id；把每种可见结算状态分成独立有界流，既保留失败
+	# 提示，也避免同等级的重复可靠包制造伪冲突。
+	_receive_authoritative_peer_result(
 		peer_id,
-		current_xirang,
-		skill1_unlocked,
-		result_code,
-		skill1_upgrade_level,
-		skill1_charge_duration
+		PEER_RESULT_SKILL1_PURCHASE,
+		StringName(
+			"skill1/%d/%d/%d/%d"
+			% [
+				skill1_upgrade_level,
+				current_xirang,
+				int(skill1_unlocked),
+				result_code,
+			]
+		),
+		revision,
+		{
+			"current_xirang": current_xirang,
+			"skill1_unlocked": skill1_unlocked,
+			"result_code": result_code,
+			"skill1_upgrade_level": skill1_upgrade_level,
+			"skill1_charge_duration": skill1_charge_duration,
+		},
+		participant_incarnation,
+		session_incarnation,
+		MpPeerLedgerCoordinatorScript.AppliedReplayPolicy.DOMAIN_OWNED
 	)
 
 
@@ -5278,15 +6513,40 @@ func net_luoxi_collectible_offer_state(
 	config_paths: PackedStringArray,
 	refresh_count: int,
 	current_xirang: int,
-	refresh_result_code: int = -1
+	refresh_result_code: int = -1,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	merchant_transactions_coordinator.receive_luoxi_collectible_offer_state(
+	var revision := offer_revision
+	if refresh_count < 0 or current_xirang < 0:
+		revision = -1
+	var includes_operation_feedback := refresh_result_code >= 0
+	_receive_authoritative_peer_result(
 		peer_id,
-		offer_revision,
-		config_paths,
-		refresh_count,
-		current_xirang,
-		refresh_result_code
+		PEER_RESULT_LUOXI_OFFER_STATE,
+		(
+			StringName(
+				"luoxi/offer-feedback/%d/%d"
+				% [refresh_result_code, current_xirang]
+			)
+			if includes_operation_feedback
+			else &"luoxi/offer"
+		),
+		revision,
+		{
+			"offer_revision": offer_revision,
+			"config_paths": Array(config_paths),
+			"refresh_count": refresh_count,
+			"current_xirang": current_xirang,
+			"refresh_result_code": refresh_result_code,
+		},
+		participant_incarnation,
+		session_incarnation,
+		(
+			MpPeerLedgerCoordinatorScript.AppliedReplayPolicy.DOMAIN_OWNED
+			if includes_operation_feedback
+			else MpPeerLedgerCoordinatorScript.AppliedReplayPolicy.TRACK_REVISION
+		)
 	)
 
 
@@ -5297,15 +6557,34 @@ func net_luoxi_collectible_confirmed(
 	config_path: String,
 	result_code: int,
 	offer_revision: int = 0,
-	inventory_snapshot: Dictionary = {}
+	inventory_snapshot: Dictionary = {},
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	merchant_transactions_coordinator.receive_luoxi_collectible_confirmation(
+	var inventory_revision := _get_authoritative_inventory_revision(
 		peer_id,
-		choice_index,
-		config_path,
-		result_code,
-		offer_revision,
-		inventory_snapshot
+		inventory_snapshot,
+		maxi(offer_revision, 0)
+	)
+	_receive_authoritative_peer_result(
+		peer_id,
+		PEER_RESULT_LUOXI_COLLECTIBLE,
+		StringName(
+			"luoxi-claim/%d/%d/%d"
+			% [offer_revision, choice_index, result_code]
+		),
+		inventory_revision,
+		{
+			"choice_index": choice_index,
+			"config_path": config_path,
+			"result_code": result_code,
+			"offer_revision": offer_revision,
+			"inventory_snapshot": _make_identity_neutral_inventory_snapshot(
+				inventory_snapshot
+			),
+		},
+		participant_incarnation,
+		session_incarnation
 	)
 
 
@@ -5314,13 +6593,26 @@ func net_luoxi_collectible_refresh_confirmed(
 	peer_id: int,
 	result_code: int,
 	refresh_count: int,
-	current_xirang: int
+	current_xirang: int,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	merchant_transactions_coordinator.receive_luoxi_collectible_refresh_confirmation(
+	var revision := refresh_count
+	if current_xirang < 0:
+		revision = -1
+	_receive_authoritative_peer_result(
 		peer_id,
-		result_code,
-		refresh_count,
-		current_xirang
+		PEER_RESULT_LUOXI_REFRESH,
+		StringName("luoxi-refresh/%d/%d" % [result_code, current_xirang]),
+		revision,
+		{
+			"result_code": result_code,
+			"refresh_count": refresh_count,
+			"current_xirang": current_xirang,
+		},
+		participant_incarnation,
+		session_incarnation,
+		MpPeerLedgerCoordinatorScript.AppliedReplayPolicy.DOMAIN_OWNED
 	)
 
 
@@ -5328,23 +6620,92 @@ func net_luoxi_collectible_refresh_confirmed(
 func net_luoxi_special_game_started(
 	peer_id: int,
 	result: Dictionary,
-	inventory_snapshot: Dictionary = {}
+	inventory_snapshot: Dictionary = {},
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	merchant_transactions_coordinator.receive_luoxi_special_game_started(
+	var session_revision := (
+		int(result["session_revision"])
+		if typeof(result.get("session_revision")) == TYPE_INT
+		else -1
+	)
+	var inventory_revision := _get_authoritative_inventory_revision(
 		peer_id,
-		result,
-		inventory_snapshot
+		inventory_snapshot,
+		maxi(session_revision, 0)
+	)
+	var encoded_result := _encode_subject_dictionary(peer_id, result)
+	var result_code_valid := (
+		typeof(result.get("result_code")) == TYPE_INT
+		and int(result["result_code"])
+		>= LuoxiSpecialGameCoordinator.ResultCode.SUCCESS
+		and int(result["result_code"])
+		<= LuoxiSpecialGameCoordinator.ResultCode.PLAYER_DIED
+	)
+	if (
+		session_revision < 0
+		or not result_code_valid
+		or not bool(encoded_result.get("accepted", false))
+	):
+		inventory_revision = -1
+	_receive_authoritative_peer_result(
+		peer_id,
+		PEER_RESULT_LUOXI_SPECIAL_STARTED,
+		StringName(
+			"luoxi-special-start/%d/%d"
+			% [session_revision, int(result.get("result_code", -1))]
+		),
+		inventory_revision,
+		{
+			"result": encoded_result.get("value", {}),
+			"inventory_snapshot": _make_identity_neutral_inventory_snapshot(
+				inventory_snapshot
+			),
+		},
+		participant_incarnation,
+		session_incarnation
 	)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
 func net_luoxi_special_game_card_revealed(
 	peer_id: int,
-	result: Dictionary
+	result: Dictionary,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	merchant_transactions_coordinator.receive_luoxi_special_game_card_revealed(
+	var session_revision := (
+		int(result["session_revision"])
+		if typeof(result.get("session_revision")) == TYPE_INT
+		else -1
+	)
+	var card_index := (
+		int(result["card_index"])
+		if typeof(result.get("card_index")) == TYPE_INT
+		else -1
+	)
+	var encoded_result := _encode_subject_dictionary(peer_id, result)
+	var revision := session_revision
+	var result_code_valid := (
+		typeof(result.get("result_code")) == TYPE_INT
+		and int(result["result_code"])
+		>= LuoxiSpecialGameCoordinator.ResultCode.SUCCESS
+		and int(result["result_code"])
+		<= LuoxiSpecialGameCoordinator.ResultCode.PLAYER_DIED
+	)
+	if not result_code_valid or not bool(encoded_result.get("accepted", false)):
+		revision = -1
+	_receive_authoritative_peer_result(
 		peer_id,
-		result
+		PEER_RESULT_LUOXI_SPECIAL_CARD,
+		StringName(
+			"luoxi-card/%d/%d/%d"
+			% [session_revision, card_index, int(result.get("result_code", -1))]
+		),
+		revision,
+		{"result": encoded_result.get("value", {})},
+		participant_incarnation,
+		session_incarnation
 	)
 
 
@@ -5352,12 +6713,50 @@ func net_luoxi_special_game_card_revealed(
 func net_luoxi_special_game_finished(
 	peer_id: int,
 	result: Dictionary,
-	inventory_snapshot: Dictionary = {}
+	inventory_snapshot: Dictionary = {},
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	merchant_transactions_coordinator.receive_luoxi_special_game_finished(
+	var session_revision := (
+		int(result["session_revision"])
+		if typeof(result.get("session_revision")) == TYPE_INT
+		else -1
+	)
+	var inventory_revision := _get_authoritative_inventory_revision(
 		peer_id,
-		result,
-		inventory_snapshot
+		inventory_snapshot,
+		maxi(session_revision, 0)
+	)
+	var encoded_result := _encode_subject_dictionary(peer_id, result)
+	var result_code_valid := (
+		typeof(result.get("result_code")) == TYPE_INT
+		and int(result["result_code"])
+		>= LuoxiSpecialGameCoordinator.ResultCode.SUCCESS
+		and int(result["result_code"])
+		<= LuoxiSpecialGameCoordinator.ResultCode.PLAYER_DIED
+	)
+	if (
+		session_revision < 0
+		or not result_code_valid
+		or not bool(encoded_result.get("accepted", false))
+	):
+		inventory_revision = -1
+	_receive_authoritative_peer_result(
+		peer_id,
+		PEER_RESULT_LUOXI_SPECIAL_FINISHED,
+		StringName(
+			"luoxi-special-finish/%d/%d"
+			% [session_revision, int(result.get("result_code", -1))]
+		),
+		inventory_revision,
+		{
+			"result": encoded_result.get("value", {}),
+			"inventory_snapshot": _make_identity_neutral_inventory_snapshot(
+				inventory_snapshot
+			),
+		},
+		participant_incarnation,
+		session_incarnation
 	)
 
 
@@ -5398,11 +6797,27 @@ func net_collectible_follow_visual_effect(
 
 
 @rpc("authority", "call_remote", "reliable", 6)
-func net_cheat_xirang_confirmed(peer_id: int, current_xirang: int, added_amount: int) -> void:
-	merchant_transactions_coordinator.receive_cheat_xirang_confirmation(
+func net_cheat_xirang_confirmed(
+	peer_id: int,
+	current_xirang: int,
+	added_amount: int,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
+) -> void:
+	var revision := current_xirang
+	if added_amount <= 0:
+		revision = -1
+	_receive_authoritative_peer_result(
 		peer_id,
-		current_xirang,
-		added_amount
+		PEER_RESULT_CHEAT_XIRANG,
+		&"cheat/xirang",
+		revision,
+		{
+			"current_xirang": current_xirang,
+			"added_amount": added_amount,
+		},
+		participant_incarnation,
+		session_incarnation
 	)
 
 
@@ -5411,13 +6826,32 @@ func net_debug_collectible_granted(
 	peer_id: int,
 	config_path: String,
 	success: bool,
-	inventory_snapshot: Dictionary = {}
+	inventory_snapshot: Dictionary = {},
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
-	merchant_transactions_coordinator.receive_debug_collectible_granted(
+	var inventory_revision := _get_authoritative_inventory_revision(
 		peer_id,
-		config_path,
-		success,
-		inventory_snapshot
+		inventory_snapshot,
+		0
+	)
+	_receive_authoritative_peer_result(
+		peer_id,
+		PEER_RESULT_DEBUG_COLLECTIBLE,
+		StringName(
+			"debug-grant/%d/%d/%d"
+			% [inventory_revision, int(success), config_path.hash()]
+		),
+		inventory_revision,
+		{
+			"config_path": config_path,
+			"success": success,
+			"inventory_snapshot": _make_identity_neutral_inventory_snapshot(
+				inventory_snapshot
+			),
+		},
+		participant_incarnation,
+		session_incarnation
 	)
 
 
@@ -5467,20 +6901,34 @@ func _on_connection_state_changed(new_state: int) -> void:
 		if embedded_runtime:
 			if _embedded_runtime_active and net_manager.is_client():
 				_request_runtime_state_from_host()
+				if _peer_result_repair_needed:
+					_schedule_peer_result_full_repair()
 			return
 		_client_host_game_ready = true
 		if game != null:
 			game.activate_runtime()
 		if net_manager.is_client():
 			_request_runtime_state_from_host()
+			if _peer_result_repair_needed:
+				_schedule_peer_result_full_repair()
 
 
 func _on_net_player_left(peer_id: int) -> void:
 	if peer_id <= 0:
 		return
-	if embedded_runtime and not _embedded_participant_peer_ids.has(peer_id):
+	if embedded_runtime and not _is_known_embedded_reconnect_identity(peer_id):
 		return
-	_capture_disconnected_player_reconnect_state(peer_id)
+	var member_already_final := (
+		net_manager != null
+		and net_manager.get_session_membership_revision() > 0
+		and not net_manager.has_session_member(peer_id)
+	)
+	if not member_already_final:
+		var reused_pending_capture := (
+			_rebase_reconnect_projection_state_for_disconnected_peer(peer_id)
+		)
+		if not reused_pending_capture:
+			_capture_disconnected_player_reconnect_state(peer_id)
 	if tower_mode_adapter != null:
 		tower_rogue_route_bridge.capture_embedded_route_peer_before_removal(
 			peer_id
@@ -5493,6 +6941,42 @@ func _on_net_player_left(peer_id: int) -> void:
 	_clear_peer_network_state(peer_id)
 	if game != null:
 		game.remove_multiplayer_player(peer_id)
+
+
+func _clear_final_departed_peer_identity_state(peer_id: int) -> void:
+	_disconnected_player_reconnect_states.erase(peer_id)
+	for old_peer_id_variant in (
+		_pending_reconnected_player_projections.keys().duplicate()
+	):
+		var old_peer_id := int(old_peer_id_variant)
+		var pending := (
+			_pending_reconnected_player_projections.get(old_peer_id, {})
+			as Dictionary
+		)
+		if (
+			old_peer_id != peer_id
+			and int(pending.get("new_peer_id", 0)) != peer_id
+		):
+			continue
+		_pending_reconnected_player_projections.erase(old_peer_id)
+		_disconnected_player_reconnect_states.erase(old_peer_id)
+	for old_peer_id_variant in (
+		_completed_reconnected_player_projections.keys().duplicate()
+	):
+		var old_peer_id := int(old_peer_id_variant)
+		if (
+			old_peer_id != peer_id
+			and int(_completed_reconnected_player_projections[old_peer_id])
+			!= peer_id
+		):
+			continue
+		_completed_reconnected_player_projections.erase(old_peer_id)
+		_disconnected_player_reconnect_states.erase(old_peer_id)
+	_embedded_participant_peer_ids.erase(peer_id)
+	_suspended_embedded_participant_peer_ids.erase(peer_id)
+	_projecting_embedded_participant_peer_ids.erase(peer_id)
+	if _peer_ledger_generation > 0 and peer_ledger_coordinator != null:
+		peer_ledger_coordinator.clear_peer(_peer_ledger_generation, peer_id)
 
 
 func _capture_disconnected_player_reconnect_state(peer_id: int) -> void:
@@ -5541,11 +7025,66 @@ func _capture_disconnected_player_reconnect_state(peer_id: int) -> void:
 	_disconnected_player_reconnect_states[peer_id] = reconnect_state
 
 
+## 内嵌战斗的 canonical participant 必须在身份账本提交点迁移，不能等待
+## Player 节点创建。prepare 只读校验目标是否空闲；commit 随后只有字典键迁移，
+## 不再包含可能失败的步骤，因此不会制造“RunState 已迁移、战斗 roster 未迁移”。
+func _prepare_embedded_participant_identity_remap(
+	old_peer_id: int,
+	new_peer_id: int
+) -> bool:
+	if not embedded_runtime:
+		return true
+	if _embedded_participant_peer_ids.has(old_peer_id):
+		return not _embedded_participant_peer_ids.has(new_peer_id)
+	var pending := (
+		_pending_reconnected_player_projections.get(old_peer_id, {})
+		as Dictionary
+	)
+	return (
+		int(pending.get("new_peer_id", 0)) == new_peer_id
+		and _embedded_participant_peer_ids.has(new_peer_id)
+		and _projecting_embedded_participant_peer_ids.has(new_peer_id)
+	)
+
+
+func _commit_embedded_participant_identity_remap(
+	old_peer_id: int,
+	new_peer_id: int
+) -> void:
+	# pending 重放已经提交过这次键迁移，只需保持原 PROJECTING 租约。
+	if not embedded_runtime or not _embedded_participant_peer_ids.has(old_peer_id):
+		return
+	var was_suspended := _suspended_embedded_participant_peer_ids.has(old_peer_id)
+	var was_projecting := _projecting_embedded_participant_peer_ids.has(old_peer_id)
+	_embedded_participant_peer_ids.erase(old_peer_id)
+	_embedded_participant_peer_ids[new_peer_id] = true
+	_suspended_embedded_participant_peer_ids.erase(old_peer_id)
+	_projecting_embedded_participant_peer_ids.erase(old_peer_id)
+	if was_suspended:
+		_suspended_embedded_participant_peer_ids[new_peer_id] = true
+	elif was_projecting:
+		_projecting_embedded_participant_peer_ids[new_peer_id] = true
+	else:
+		# 正常重连从身份提交到 Player/路线/CH6 全部收敛前都不可参与战斗。
+		_projecting_embedded_participant_peer_ids[new_peer_id] = true
+
+
+func _is_known_embedded_reconnect_identity(peer_id: int) -> bool:
+	if _embedded_participant_peer_ids.has(peer_id):
+		return true
+	for pending_variant in _pending_reconnected_player_projections.values():
+		var pending := pending_variant as Dictionary
+		if int(pending.get("new_peer_id", 0)) == peer_id:
+			return true
+	return _completed_reconnected_player_projections.values().has(peer_id)
+
+
 func _on_net_player_reconnected(
 	old_peer_id: int,
 	new_peer_id: int,
 	player_name: String,
-	character_id: StringName
+	character_id: StringName,
+	membership_revision: int
 ) -> void:
 	if (
 		old_peer_id <= 0
@@ -5558,54 +7097,253 @@ func _on_net_player_reconnected(
 		and _embedded_participant_peer_ids.has(old_peer_id)
 		and _suspended_embedded_participant_peer_ids.has(old_peer_id)
 	):
-		_embedded_participant_peer_ids.erase(old_peer_id)
-		_embedded_participant_peer_ids[new_peer_id] = true
-		_suspended_embedded_participant_peer_ids.erase(old_peer_id)
-		_suspended_embedded_participant_peer_ids[new_peer_id] = true
+		if not _prepare_embedded_participant_identity_remap(
+			old_peer_id,
+			new_peer_id
+		):
+			_fail_reconnected_peer_identity(
+				old_peer_id,
+				new_peer_id,
+				"内嵌战斗目标身份已被其他参与者占用。"
+			)
+			return
+		if not _commit_reconnected_peer_identity(
+			old_peer_id,
+			new_peer_id,
+			membership_revision
+		):
+			_fail_reconnected_peer_identity(
+				old_peer_id,
+				new_peer_id,
+				"内嵌战斗身份账本无法原子迁移。"
+			)
+			return
+		_commit_embedded_participant_identity_remap(old_peer_id, new_peer_id)
 		_clear_peer_network_state(old_peer_id)
 		_clear_peer_network_state(new_peer_id)
+		_finalize_reconnected_projection_and_claim(
+			old_peer_id,
+			new_peer_id,
+			ReconnectedPlayerProjectionOutcome.SUSPENDED
+		)
 		return
-	if game == null:
+	var completed_new_peer_id := int(
+		_completed_reconnected_player_projections.get(old_peer_id, 0)
+	)
+	if completed_new_peer_id > 0 and completed_new_peer_id != new_peer_id:
+		push_error(
+			"MpGame: 已完成身份 %d 不得同时投影到 %d/%d。"
+			% [old_peer_id, completed_new_peer_id, new_peer_id]
+		)
+		_fail_reconnected_peer_identity(
+			old_peer_id,
+			new_peer_id,
+			"同一个旧身份被映射到多个新连接。"
+		)
+		return
+	var pending_projection := (
+		_pending_reconnected_player_projections.get(old_peer_id, {})
+		as Dictionary
+	)
+	if (
+		not pending_projection.is_empty()
+		and int(pending_projection.get("new_peer_id", 0)) != new_peer_id
+	):
+		# 必须在身份账本提交前拒绝一对多映射；否则一次异常重放会创建
+		# 第二份 new-id 持久身份，而后续投影重试已无法安全判断真源。
+		push_error(
+			"MpGame: 待恢复身份 %d 不得同时投影到 %d/%d。"
+			% [
+				old_peer_id,
+				int(pending_projection.get("new_peer_id", 0)),
+				new_peer_id,
+			]
+		)
+		_fail_reconnected_peer_identity(
+			old_peer_id,
+			new_peer_id,
+			"待恢复身份出现一对多映射。"
+		)
+		return
+	if completed_new_peer_id == new_peer_id:
+		if game == null:
+			# 已完成事务没有第二份 capture 可重放；运行时重建完成后由权威
+			# roster/keyframe 恢复表现；对当前作战显式报告无法继续参战。
+			_publish_reconnected_player_projection_outcome(
+				old_peer_id,
+				new_peer_id,
+				ReconnectedPlayerProjectionOutcome.SUSPENDED
+			)
+			return
+		var replay_projection := game.ensure_reconnected_multiplayer_player(
+			old_peer_id,
+			new_peer_id,
+			player_name,
+			character_id,
+			null,
+			0,
+			{}
+		)
+		if (
+			replay_projection.status
+			!= CombatRuntimeBase.ReconnectedPlayerProjectionStatus.EXISTING_CURRENT
+		):
+			push_error(
+				"MpGame: 已完成的重连投影 %d -> %d 重放时不再是 current，status=%d。"
+				% [old_peer_id, new_peer_id, replay_projection.status]
+			)
+			_fail_reconnected_peer_identity(
+				old_peer_id,
+				new_peer_id,
+				"已完成的玩家投影不再对应当前身份。"
+			)
+		else:
+			_publish_reconnected_player_projection_outcome(
+				old_peer_id,
+				new_peer_id,
+				ReconnectedPlayerProjectionOutcome.RESTORED
+			)
 		return
 	var reconnect_state := (
 		_disconnected_player_reconnect_states.get(old_peer_id, {}) as Dictionary
 	)
+	var embedded_participant_projection := false
 	if embedded_runtime:
-		if not _embedded_participant_peer_ids.has(old_peer_id):
-			return
-		# A client that rejoined after this peer disconnected has no local capture.
-		# Restore a remote placeholder; the Host's next new-id player keyframe and
-		# reliable inventory snapshot converge every authoritative field. The Host
-		# must never synthesize missing authority state.
-		if reconnect_state.is_empty() and not net_manager.is_client():
-			push_error(
-				"MpGame: 房主缺少参战玩家 %d 的权威重连状态。"
-				% old_peer_id
+		embedded_participant_projection = (
+			_prepare_embedded_participant_identity_remap(
+				old_peer_id,
+				new_peer_id
+			)
+		)
+		if not embedded_participant_projection:
+			_publish_reconnected_player_projection_outcome(
+				old_peer_id,
+				new_peer_id,
+				ReconnectedPlayerProjectionOutcome.SUSPENDED
 			)
 			return
-	var run_state_was_remapped := false
-	if run_state.has_multiplayer_peer_state(old_peer_id):
-		var preserve_newer_client_inventory: bool = (
-			embedded_runtime and net_manager.is_client()
-		)
-		if not run_state.remap_multiplayer_peer_state(
+		# 后加入的观察客户端没有该玩家的本地断线捕获，只恢复一个远端占位
+		# Player；Host 随后的新身份关键帧与可靠背包快照会收敛全部权威字段。
+		# Host 缺失 capture 会在统一校验入口进入有界重试，不能在此静默丢通知。
+	if not _commit_reconnected_peer_identity(
+		old_peer_id,
+		new_peer_id,
+		membership_revision
+	):
+		_fail_reconnected_peer_identity(
 			old_peer_id,
 			new_peer_id,
-			preserve_newer_client_inventory,
-			preserve_newer_client_inventory
-		):
-			push_error(
-				"MpGame: 无法迁移重连玩家 %d -> %d 的背包状态。"
-				% [old_peer_id, new_peer_id]
+			"持久身份或跨信道结果无法原子迁移。"
+		)
+		return
+	if embedded_participant_projection:
+		_commit_embedded_participant_identity_remap(old_peer_id, new_peer_id)
+	_attempt_reconnected_player_projection(
+		old_peer_id,
+		new_peer_id,
+		player_name,
+		character_id,
+		reconnect_state
+	)
+
+## 内嵌 MpGame 只发布组件结果，由外层路线/塔防唯一聚合；顶层 MpGame 才能
+## 向 NetManager 提交会话终态。这样多个世界不会各报一个互相冲突的 enum。
+func _publish_reconnected_player_projection_outcome(
+	old_peer_id: int,
+	new_peer_id: int,
+	outcome: ReconnectedPlayerProjectionOutcome
+) -> void:
+	reconnected_player_projection_resolved.emit(old_peer_id, new_peer_id, outcome)
+	if embedded_runtime or net_manager == null or not net_manager.is_host():
+		return
+	if not net_manager.report_reconnected_runtime_projection(
+		old_peer_id,
+		new_peer_id,
+		outcome
+	):
+		push_error(
+			"MpGame: NetManager 拒绝重连 Player 投影终态：%d -> %d outcome=%d。"
+			% [old_peer_id, new_peer_id, outcome]
+		)
+
+
+## 身份门失败必须在同一调用栈同步终止，不能只记录错误并让半个成员继续进入游戏。
+func _fail_reconnected_peer_identity(
+	old_peer_id: int,
+	new_peer_id: int,
+	reason: String
+) -> void:
+	push_error("MpGame: 重连身份提交失败：peer=%d reason=%s" % [new_peer_id, reason])
+	_publish_reconnected_player_projection_outcome(
+		old_peer_id,
+		new_peer_id,
+		ReconnectedPlayerProjectionOutcome.FAILED
+	)
+	# 内嵌组件失败由外层聚合器决定是整局 fail-close，还是安全降级为本轮
+	# 作战 spectator；组件不得越权终止拥有它的多人会话。
+	if embedded_runtime or net_manager == null:
+		return
+	if not net_manager.terminate_for_runtime_projection_failure(new_peer_id, reason):
+		push_error("MpGame: 无法终止身份提交失败的 peer=%d。" % new_peer_id)
+
+
+func _attempt_reconnected_player_projection(
+	old_peer_id: int,
+	new_peer_id: int,
+	player_name: String,
+	character_id: StringName,
+	reconnect_state: Dictionary
+) -> bool:
+	if game == null:
+		_remember_pending_reconnected_player_projection(
+			old_peer_id,
+			new_peer_id,
+			player_name,
+			character_id,
+			CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATE_FAILED
+		)
+		return false
+	var captured_player_state := (
+		reconnect_state.get("state") as SnapshotManager.PlayerState
+	)
+	if (
+		net_manager.is_host()
+		and (
+			captured_player_state == null
+			or captured_player_state.peer_id != old_peer_id
+			or captured_player_state.character_id != character_id
+			or not SnapshotManager.is_player_snapshot_state_serializable(
+				captured_player_state
 			)
-			return
-		run_state_was_remapped = true
-	else:
-		run_state.ensure_multiplayer_peer_state(new_peer_id)
-	var player_state := reconnect_state.get("state") as SnapshotManager.PlayerState
+		)
+	):
+		# Host 的断线快照是 Player 瞬时状态唯一来源；结构损坏不会因等待
+		# 自动恢复，必须立即 fail-close，不能把永久错误伪装成暂时缺节点。
+		_fail_reconnected_peer_identity(
+			old_peer_id,
+			new_peer_id,
+			"断线 Player 快照身份、角色或数值结构无效。"
+		)
+		return false
+	if (
+		net_manager.is_host()
+		and not player_coordinator.begin_reconnected_transport_lease(
+			old_peer_id,
+			new_peer_id,
+			reconnect_state
+		)
+	):
+		# 输入水位账本是确定性协议数据；缺键/越界不会随场景加载变好。
+		_fail_reconnected_peer_identity(
+			old_peer_id,
+			new_peer_id,
+			"断线输入流账本无效。"
+		)
+		return false
+	var player_state := SnapshotManager.copy_player_state(captured_player_state)
 	if player_state != null:
 		player_state.peer_id = new_peer_id
-	var player_node := game.restore_multiplayer_player(
+	var projection := game.ensure_reconnected_multiplayer_player(
 		old_peer_id,
 		new_peer_id,
 		player_name,
@@ -5614,39 +7352,31 @@ func _on_net_player_reconnected(
 		int(reconnect_state.get("spawn_slot_index", 0)),
 		reconnect_state
 	)
-	if player_node == null or not is_instance_valid(player_node):
-		if run_state_was_remapped:
-			if not run_state.remap_multiplayer_peer_state(new_peer_id, old_peer_id):
-				push_error(
-					"MpGame: 无法回滚重连玩家 %d -> %d 的背包状态。"
-					% [new_peer_id, old_peer_id]
-				)
-		if player_state != null:
-			player_state.peer_id = old_peer_id
-		push_error(
-			"MpGame: 无法恢复重连玩家 %d -> %d 的运行时节点。"
-			% [old_peer_id, new_peer_id]
-		)
-		return
-	if embedded_runtime:
-		_embedded_participant_peer_ids.erase(old_peer_id)
-		_embedded_participant_peer_ids[new_peer_id] = true
+	if not projection.is_success():
+		if projection.status == (
+			CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATE_FAILED
+		):
+			_remember_pending_reconnected_player_projection(
+				old_peer_id,
+				new_peer_id,
+				player_name,
+				character_id,
+				projection.status
+			)
+		else:
+			_fail_reconnected_peer_identity(
+				old_peer_id,
+				new_peer_id,
+				"Player 投影发生不可重试冲突，status=%s。"
+				% _get_reconnected_player_projection_status_name(projection.status)
+			)
+		return false
+	var player_node := projection.player
 	player_coordinator.restore_reconnect_life_state(
 		new_peer_id,
 		reconnect_state,
 		net_manager.is_host()
 	)
-	if (
-		net_manager.is_host()
-		and not player_coordinator.restore_reconnect_ingress_state(
-			new_peer_id,
-			reconnect_state
-		)
-	):
-		push_error(
-			"MpGame: 玩家 %d -> %d 的输入序列重连账本无效。"
-			% [old_peer_id, new_peer_id]
-		)
 	merchant_transactions_coordinator.restore_reconnect_state(
 		new_peer_id,
 		reconnect_state
@@ -5717,7 +7447,6 @@ func _on_net_player_reconnected(
 				"MpGame: 无法将跨幕间重连玩家 %d 权威传送回塔防出生点。"
 				% new_peer_id
 			)
-	_disconnected_player_reconnect_states.erase(old_peer_id)
 	if tower_mode_adapter != null:
 		var route_migrated := false
 		if net_manager.is_host():
@@ -5740,16 +7469,245 @@ func _on_net_player_reconnected(
 				)
 			)
 		if not route_migrated:
+			if net_manager.is_host():
+				_fail_reconnected_peer_identity(
+					old_peer_id,
+					new_peer_id,
+					"Host 无法迁移地下探索路线身份。"
+				)
+				return false
 			push_warning(
-				"MpGame: 地下探索玩家 %d -> %d 将由下一份权威快照修复。"
+				"MpGame: Client 地下探索玩家 %d -> %d 将由权威快照修复。"
 				% [old_peer_id, new_peer_id]
 			)
 		tower_rogue_route_bridge.migrate_embedded_peer_transport_state(
 			old_peer_id,
 			new_peer_id
 		)
-		if net_manager.is_host():
-			_send_tower_rogue_exploration_snapshot_to_peer(new_peer_id)
+	_pending_reconnected_player_projections.erase(old_peer_id)
+	_completed_reconnected_player_projections[old_peer_id] = new_peer_id
+	# Player、路线与 completed marker 均已建立，此时认领才不会把 Player-dependent
+	# 结果误当成领域拒绝；失败会在 ready 发布前统一 fail-close。
+	if not _finalize_reconnected_projection_and_claim(
+		old_peer_id,
+		new_peer_id,
+		ReconnectedPlayerProjectionOutcome.RESTORED
+	):
+		return false
+	return true
+
+
+func _remember_pending_reconnected_player_projection(
+	old_peer_id: int,
+	new_peer_id: int,
+	player_name: String,
+	character_id: StringName,
+	projection_status: int
+) -> void:
+	var pending := (
+		_pending_reconnected_player_projections.get(old_peer_id, {}) as Dictionary
+	)
+	if (
+		not pending.is_empty()
+		and int(pending.get("new_peer_id", 0)) != new_peer_id
+	):
+		push_error(
+			"MpGame: old peer %d 同时指向两个待恢复身份 %d/%d。"
+			% [old_peer_id, int(pending["new_peer_id"]), new_peer_id]
+		)
+		return
+	if pending.is_empty():
+		pending = {
+			"new_peer_id": new_peer_id,
+			"player_name": player_name,
+			"character_id": character_id,
+			"attempts": 1,
+			"elapsed_seconds": 0.0,
+			"retry_time_left": PLAYER_PROJECTION_RETRY_INTERVAL_SECONDS,
+		}
+		push_warning(
+			"MpGame: 玩家 %d -> %d 的 Player 投影暂不可用，进入有界重试，status=%s。"
+			% [
+				old_peer_id,
+				new_peer_id,
+				_get_reconnected_player_projection_status_name(projection_status),
+			]
+		)
+		if net_manager.is_client() and is_inside_tree():
+			# 完整修复与本地投影重试并行：修复补状态，但绝不负责创建 Player。
+			_request_peer_result_full_repair()
+	pending["last_status"] = projection_status
+	_pending_reconnected_player_projections[old_peer_id] = pending
+
+
+func _update_pending_reconnected_player_projections(delta: float) -> void:
+	if _pending_reconnected_player_projections.is_empty():
+		return
+	var safe_delta := maxf(delta, 0.0)
+	var pending_old_peer_ids := (
+		_pending_reconnected_player_projections.keys().duplicate()
+	)
+	for old_peer_id_variant in pending_old_peer_ids:
+		var old_peer_id := int(old_peer_id_variant)
+		var pending := (
+			_pending_reconnected_player_projections.get(old_peer_id, {})
+			as Dictionary
+		).duplicate(true)
+		if pending.is_empty():
+			continue
+		var new_peer_id := int(pending.get("new_peer_id", 0))
+		if int(
+			_completed_reconnected_player_projections.get(old_peer_id, 0)
+		) == new_peer_id:
+			_pending_reconnected_player_projections.erase(old_peer_id)
+			continue
+		pending["elapsed_seconds"] = (
+			float(pending.get("elapsed_seconds", 0.0)) + safe_delta
+		)
+		pending["retry_time_left"] = (
+			float(pending.get("retry_time_left", 0.0)) - safe_delta
+		)
+		var attempts := int(pending.get("attempts", 1))
+		if (
+			attempts >= PLAYER_PROJECTION_MAX_ATTEMPTS
+			or float(pending["elapsed_seconds"])
+			>= PLAYER_PROJECTION_RETRY_TIMEOUT_SECONDS
+		):
+			_pending_reconnected_player_projections[old_peer_id] = pending
+			_exhaust_reconnected_player_projection(old_peer_id)
+			continue
+		if float(pending["retry_time_left"]) > 0.0:
+			_pending_reconnected_player_projections[old_peer_id] = pending
+			continue
+		pending["attempts"] = attempts + 1
+		pending["retry_time_left"] = PLAYER_PROJECTION_RETRY_INTERVAL_SECONDS
+		_pending_reconnected_player_projections[old_peer_id] = pending
+		_attempt_reconnected_player_projection(
+			old_peer_id,
+			new_peer_id,
+			str(pending.get("player_name", "")),
+			StringName(pending.get("character_id", &"")),
+			_disconnected_player_reconnect_states.get(old_peer_id, {})
+			as Dictionary
+		)
+
+
+func _exhaust_reconnected_player_projection(old_peer_id: int) -> void:
+	var pending := (
+		_pending_reconnected_player_projections.get(old_peer_id, {}) as Dictionary
+	)
+	if pending.is_empty():
+		return
+	_pending_reconnected_player_projections.erase(old_peer_id)
+	var new_peer_id := int(pending.get("new_peer_id", 0))
+	var attempts := int(pending.get("attempts", 0))
+	var status := int(pending.get(
+		"last_status",
+		CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATE_FAILED
+	))
+	var reason := (
+		"玩家 %d 的战斗运行时投影在 %d 次尝试后仍失败（%s），会话已终止。"
+		% [
+			new_peer_id,
+			attempts,
+			_get_reconnected_player_projection_status_name(status),
+		]
+	)
+	push_error("MpGame: %s" % reason)
+	_publish_reconnected_player_projection_outcome(
+		old_peer_id,
+		new_peer_id,
+		ReconnectedPlayerProjectionOutcome.FAILED
+	)
+	if net_manager.is_client() and is_inside_tree():
+		_request_peer_result_full_repair()
+	var termination_started := (
+		net_manager != null
+		and net_manager.terminate_for_runtime_projection_failure(
+			new_peer_id,
+			reason
+		)
+	)
+	if termination_started:
+		# 终止会话后该捕获不再有合法消费者；正常失败阶段始终保留到这里。
+		_disconnected_player_reconnect_states.erase(old_peer_id)
+	else:
+		push_error(
+			"MpGame: 无法终止 Player 投影失败的 peer %d，会话状态需要人工检查。"
+			% new_peer_id
+		)
+
+
+func _get_reconnected_player_projection_status_name(status: int) -> StringName:
+	match status:
+		CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATED:
+			return &"created"
+		CombatRuntimeBase.ReconnectedPlayerProjectionStatus.EXISTING_CURRENT:
+			return &"existing_current"
+		CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CONFLICT:
+			return &"conflict"
+		CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CAPTURE_STATE_INVALID:
+			return &"capture_state_invalid"
+		CombatRuntimeBase.ReconnectedPlayerProjectionStatus.INGRESS_STATE_INVALID:
+			return &"ingress_state_invalid"
+		CombatRuntimeBase.ReconnectedPlayerProjectionStatus.INVALID_REQUEST:
+			return &"invalid_request"
+		_:
+			return &"create_failed"
+
+
+func _clear_reconnected_player_projection_state() -> void:
+	_pending_reconnected_player_projections.clear()
+	_completed_reconnected_player_projections.clear()
+	_projecting_embedded_participant_peer_ids.clear()
+
+
+func _rebase_reconnect_projection_state_for_disconnected_peer(peer_id: int) -> bool:
+	var capture_rebased := false
+	for completed_old_peer_id_variant in (
+		_completed_reconnected_player_projections.keys().duplicate()
+	):
+		var completed_old_peer_id := int(completed_old_peer_id_variant)
+		if (
+			completed_old_peer_id == peer_id
+			or int(_completed_reconnected_player_projections[completed_old_peer_id])
+			== peer_id
+		):
+			_completed_reconnected_player_projections.erase(completed_old_peer_id)
+	for old_peer_id_variant in (
+		_pending_reconnected_player_projections.keys().duplicate()
+	):
+		var old_peer_id := int(old_peer_id_variant)
+		var pending := (
+			_pending_reconnected_player_projections.get(old_peer_id, {})
+			as Dictionary
+		)
+		if int(pending.get("new_peer_id", 0)) != peer_id:
+			continue
+		_pending_reconnected_player_projections.erase(old_peer_id)
+		if (
+			old_peer_id != peer_id
+			and _disconnected_player_reconnect_states.has(old_peer_id)
+		):
+			# new peer 在投影收敛前再次断线时，把唯一捕获向当前认证身份推进；
+			# 下一次 new->newer 重连仍能消费它，同时停止已失效的轮询。
+			var rebased_capture := (
+				_disconnected_player_reconnect_states[old_peer_id]
+				as Dictionary
+			).duplicate(true)
+			var captured_player_state := (
+				rebased_capture.get("state") as SnapshotManager.PlayerState
+			)
+			if captured_player_state != null:
+				var rebased_player_state := SnapshotManager.copy_player_state(
+					captured_player_state
+				)
+				rebased_player_state.peer_id = peer_id
+				rebased_capture["state"] = rebased_player_state
+			_disconnected_player_reconnect_states[peer_id] = rebased_capture
+			_disconnected_player_reconnect_states.erase(old_peer_id)
+			capture_rebased = true
+	return capture_rebased
 
 
 func _clear_peer_network_state(peer_id: int) -> void:
@@ -5782,6 +7740,11 @@ func _clear_peer_network_state(peer_id: int) -> void:
 
 
 func _return_to_lobby() -> void:
+	_clear_reconnected_player_projection_state()
+	_clear_peer_result_repair_state()
+	if peer_ledger_coordinator != null:
+		peer_ledger_coordinator.unbind_session(self)
+	_peer_ledger_generation = 0
 	player_coordinator.reset_session_state()
 	enemy_coordinator.reset_session_state()
 	projectile_coordinator.reset_session_state()

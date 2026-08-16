@@ -123,6 +123,16 @@ enum RoutePresentationLease {
 	UNDERGROUND_SHOP = 4,
 }
 
+## 路线 Player 的 old->new 身份投影结果。READY 只来自纯预检；MIGRATED
+## 表示所有路线身份字段已作为一个提交换键，ALREADY_CURRENT 用于可靠重放。
+enum ReconnectedPlayerIdentityProjectionResult {
+	INVALID,
+	READY,
+	MIGRATED,
+	ALREADY_CURRENT,
+	CONFLICT,
+}
+
 const ROUTE_PRESENTATION_FULL_HIDE_MASK := (
 	RoutePresentationLease.COMBAT
 	| RoutePresentationLease.MAGICAL_ENCOUNTER
@@ -4992,48 +5002,286 @@ func migrate_multiplayer_player(
 	player_name: String,
 	character_id: StringName
 ) -> bool:
+	# 普通调用者只迁移仍在树中的 Player；断线后缺失节点的重建由重连
+	# preparation 显式携带 fallback pose，不能在这里猜出生位置。
+	if get_player_for_peer(old_peer_id) == null:
+		return false
+	var stable_key := str(_player_stable_keys.get(old_peer_id, ""))
+	var preparation := prepare_reconnected_multiplayer_player_identity(
+		old_peer_id,
+		new_peer_id,
+		player_name,
+		character_id,
+		stable_key,
+		Vector2.ZERO
+	)
+	var preparation_result := int(preparation.get(
+		"result",
+		ReconnectedPlayerIdentityProjectionResult.INVALID
+	))
+	if preparation_result == (
+		ReconnectedPlayerIdentityProjectionResult.ALREADY_CURRENT
+	):
+		return true
+	if preparation_result != ReconnectedPlayerIdentityProjectionResult.READY:
+		discard_reconnected_multiplayer_player_identity(preparation)
+		return false
+	var commit_result := commit_reconnected_multiplayer_player_identity(
+		preparation
+	)
+	if commit_result != ReconnectedPlayerIdentityProjectionResult.MIGRATED:
+		discard_reconnected_multiplayer_player_identity(preparation)
+		return false
+	finalize_reconnected_multiplayer_player_identity(preparation)
+	return true
+
+
+## 纯预检并准备一次路线身份投影。缺失旧 Player 时会预先实例化但不入树，
+## 因而后续持久账本尚未提交前即可发现资源/角色配置错误。
+func prepare_reconnected_multiplayer_player_identity(
+	old_peer_id: int,
+	new_peer_id: int,
+	player_name: String,
+	character_id: StringName,
+	stable_participant_key: String,
+	fallback_position: Vector2
+) -> Dictionary:
+	var result := _classify_reconnected_multiplayer_player_identity(
+		old_peer_id,
+		new_peer_id,
+		character_id,
+		stable_participant_key
+	)
+	if result == ReconnectedPlayerIdentityProjectionResult.ALREADY_CURRENT:
+		return {
+			"result": result,
+			"old_peer_id": old_peer_id,
+			"new_peer_id": new_peer_id,
+		}
+	if result != ReconnectedPlayerIdentityProjectionResult.READY:
+		return {"result": result}
+
+	var player_instance := get_player_for_peer(old_peer_id)
+	var creates_player := player_instance == null
+	if creates_player:
+		if not fallback_position.is_finite() or player_container == null:
+			return {
+				"result": ReconnectedPlayerIdentityProjectionResult.INVALID,
+			}
+		player_instance = _instantiate_route_player(character_id)
+		if player_instance == null:
+			return {
+				"result": ReconnectedPlayerIdentityProjectionResult.INVALID,
+			}
+	var stable_key := stable_participant_key
+	if stable_key.is_empty():
+		stable_key = str(_player_stable_keys.get(old_peer_id, ""))
+	return {
+		"result": ReconnectedPlayerIdentityProjectionResult.READY,
+		"old_peer_id": old_peer_id,
+		"new_peer_id": new_peer_id,
+		"player_name": player_name,
+		"character_id": character_id,
+		"stable_participant_key": stable_key,
+		"player": player_instance,
+		"creates_player": creates_player,
+		"preserved_position": (
+			fallback_position
+			if creates_player
+			else player_instance.global_position
+		),
+		"preserved_velocity": (
+			Vector2.ZERO if creates_player else player_instance.velocity
+		),
+		"committed": false,
+	}
+
+
+## preparation 通过后，此提交只执行固定换键，不刷新 UI、不读取 RunState、
+## 不发路线信号。调用方可在其后提交持久账本，再统一 finalize 表现。
+func commit_reconnected_multiplayer_player_identity(
+	preparation: Dictionary
+) -> ReconnectedPlayerIdentityProjectionResult:
+	var prepared_result := int(preparation.get(
+		"result",
+		ReconnectedPlayerIdentityProjectionResult.INVALID
+	))
+	if prepared_result == (
+		ReconnectedPlayerIdentityProjectionResult.ALREADY_CURRENT
+	):
+		return ReconnectedPlayerIdentityProjectionResult.ALREADY_CURRENT
+	if (
+		prepared_result != ReconnectedPlayerIdentityProjectionResult.READY
+		or bool(preparation.get("committed", false))
+	):
+		return ReconnectedPlayerIdentityProjectionResult.INVALID
+	var old_peer_id := int(preparation.get("old_peer_id", 0))
+	var new_peer_id := int(preparation.get("new_peer_id", 0))
+	var character_id := StringName(preparation.get("character_id", &""))
+	var stable_key := str(preparation.get("stable_participant_key", ""))
+	var current_result := _classify_reconnected_multiplayer_player_identity(
+		old_peer_id,
+		new_peer_id,
+		character_id,
+		stable_key
+	)
+	if current_result != ReconnectedPlayerIdentityProjectionResult.READY:
+		return current_result
+	var player_instance := preparation.get("player") as Player
+	var creates_player := bool(preparation.get("creates_player", false))
+	if (
+		player_instance == null
+		or not is_instance_valid(player_instance)
+		or (creates_player and player_instance.get_parent() != null)
+		or (not creates_player and get_player_for_peer(old_peer_id) != player_instance)
+	):
+		return ReconnectedPlayerIdentityProjectionResult.INVALID
+
+	# 从这里开始没有可失败分支：路线字典、Player 身份、本地 owner 与稳定身份
+	# 在同一调用栈成为 new peer，替代过去只暂存 peer_id/背包 owner 的双真源。
+	peer_players.erase(old_peer_id)
+	peer_players[new_peer_id] = player_instance
+	_player_names.erase(old_peer_id)
+	_player_character_ids.erase(old_peer_id)
+	_player_stable_keys.erase(old_peer_id)
+	_player_names[new_peer_id] = str(preparation.get("player_name", ""))
+	_player_character_ids[new_peer_id] = character_id
+	if not stable_key.is_empty():
+		_player_stable_keys[new_peer_id] = stable_key
+	if _local_peer_id == old_peer_id:
+		_local_peer_id = new_peer_id
+		player = player_instance
+	if (
+		route_inventory_strip != null
+		and route_inventory_strip.inventory_owner_peer_id == old_peer_id
+	):
+		route_inventory_strip.inventory_owner_peer_id = new_peer_id
+	player_instance.peer_id = new_peer_id
+	player_instance.name = "RoutePlayer_%d" % new_peer_id
+	player_instance.global_position = (
+		preparation.get("preserved_position", Vector2.ZERO) as Vector2
+	)
+	player_instance.velocity = (
+		preparation.get("preserved_velocity", Vector2.ZERO) as Vector2
+	)
+	if creates_player:
+		player_container.add_child(player_instance)
+	preparation["committed"] = true
+	preparation["result"] = ReconnectedPlayerIdentityProjectionResult.MIGRATED
+	return ReconnectedPlayerIdentityProjectionResult.MIGRATED
+
+
+## 持久账本与路线身份都已提交后才刷新依赖 RunState 的 Player、HUD 和交互。
+func finalize_reconnected_multiplayer_player_identity(
+	preparation: Dictionary
+) -> void:
+	if int(preparation.get("result", -1)) != (
+		ReconnectedPlayerIdentityProjectionResult.MIGRATED
+	):
+		return
+	var new_peer_id := int(preparation.get("new_peer_id", 0))
+	var player_instance := preparation.get("player") as Player
+	if player_instance == null or get_player_for_peer(new_peer_id) != player_instance:
+		return
+	_configure_multiplayer_player_node(
+		player_instance,
+		new_peer_id,
+		str(preparation.get("player_name", ""))
+	)
+	player_instance.global_position = (
+		preparation.get("preserved_position", Vector2.ZERO) as Vector2
+	)
+	player_instance.velocity = (
+		preparation.get("preserved_velocity", Vector2.ZERO) as Vector2
+	)
+	_sync_route_player_xirang_from_run_state()
+	_sync_party_status_from_run_state()
+	_sync_encounter_player_character_ids()
+	_configure_encounter_overlay_context()
+	_sync_underground_shop_identity_context()
+	if new_peer_id == _local_peer_id:
+		_attach_camera_to_local_player()
+
+
+func discard_reconnected_multiplayer_player_identity(
+	preparation: Dictionary
+) -> void:
+	if (
+		preparation.is_empty()
+		or bool(preparation.get("committed", false))
+		or not bool(preparation.get("creates_player", false))
+	):
+		return
+	var player_instance := preparation.get("player") as Player
+	if (
+		player_instance != null
+		and is_instance_valid(player_instance)
+		and player_instance.get_parent() == null
+	):
+		player_instance.free()
+	preparation.clear()
+
+
+func _classify_reconnected_multiplayer_player_identity(
+	old_peer_id: int,
+	new_peer_id: int,
+	character_id: StringName,
+	stable_participant_key: String
+) -> ReconnectedPlayerIdentityProjectionResult:
 	if (
 		not _multiplayer_avatar_mode
 		or old_peer_id <= 0
 		or new_peer_id <= 0
 		or old_peer_id == new_peer_id
-		or peer_players.has(new_peer_id)
+		or not PlayerCharacterRegistry.is_valid_character_id(character_id)
 	):
-		return false
-	var player_instance := get_player_for_peer(old_peer_id)
+		return ReconnectedPlayerIdentityProjectionResult.INVALID
+	var old_player := get_player_for_peer(old_peer_id)
+	var new_player := get_player_for_peer(new_peer_id)
+	if new_player != null:
+		if (
+			old_player != null
+			or new_player.peer_id != new_peer_id
+			or new_player.get_character_id() != character_id
+			or not _player_names.has(new_peer_id)
+			or not _player_character_ids.has(new_peer_id)
+			or _player_names.has(old_peer_id)
+			or _player_character_ids.has(old_peer_id)
+			or _player_stable_keys.has(old_peer_id)
+			or StringName(_player_character_ids.get(new_peer_id, &""))
+			!= character_id
+			or (
+				not stable_participant_key.is_empty()
+				and str(_player_stable_keys.get(new_peer_id, ""))
+				!= stable_participant_key
+			)
+			or (
+				route_inventory_strip != null
+				and route_inventory_strip.inventory_owner_peer_id == old_peer_id
+			)
+		):
+			return ReconnectedPlayerIdentityProjectionResult.CONFLICT
+		return ReconnectedPlayerIdentityProjectionResult.ALREADY_CURRENT
 	if (
-		player_instance == null
-		or player_instance.get_character_id() != character_id
+		_player_names.has(new_peer_id)
+		or _player_character_ids.has(new_peer_id)
+		or _player_stable_keys.has(new_peer_id)
 	):
-		return false
-	var preserved_position := player_instance.global_position
-	var preserved_velocity := player_instance.velocity
-	peer_players.erase(old_peer_id)
-	peer_players[new_peer_id] = player_instance
-	_player_names.erase(old_peer_id)
-	_player_character_ids.erase(old_peer_id)
-	var stable_key := str(_player_stable_keys.get(old_peer_id, ""))
-	_player_stable_keys.erase(old_peer_id)
-	_player_names[new_peer_id] = player_name
-	_player_character_ids[new_peer_id] = character_id
-	if not stable_key.is_empty():
-		_player_stable_keys[new_peer_id] = stable_key
-	_sync_encounter_player_character_ids()
-	player_instance.name = "RoutePlayer_%d" % new_peer_id
-	if old_peer_id == _local_peer_id:
-		_local_peer_id = new_peer_id
-	_configure_multiplayer_player_node(
-		player_instance,
-		new_peer_id,
-		player_name
-	)
-	player_instance.global_position = preserved_position
-	player_instance.velocity = preserved_velocity
-	_sync_route_player_xirang_from_run_state()
-	_sync_party_status_from_run_state()
-	_configure_encounter_overlay_context()
-	_sync_underground_shop_identity_context()
-	return true
+		return ReconnectedPlayerIdentityProjectionResult.CONFLICT
+	if old_player != null:
+		if (
+			old_player.peer_id != old_peer_id
+			or old_player.get_character_id() != character_id
+		):
+			return ReconnectedPlayerIdentityProjectionResult.CONFLICT
+		var old_stable_key := str(_player_stable_keys.get(old_peer_id, ""))
+		if (
+			not stable_participant_key.is_empty()
+			and not old_stable_key.is_empty()
+			and old_stable_key != stable_participant_key
+		):
+			return ReconnectedPlayerIdentityProjectionResult.CONFLICT
+	return ReconnectedPlayerIdentityProjectionResult.READY
 
 
 func _add_multiplayer_player(
@@ -5083,23 +5331,6 @@ func _configure_multiplayer_player_node(
 
 func get_player_for_peer(peer_id: int) -> Player:
 	return peer_players.get(peer_id) as Player
-
-
-## 重连身份迁移会先提交 RunState；在其 inventory_changed 信号发出前，
-## 同步暂存本地路线栏的背包 owner，避免 UI 读取已删除的旧 peer 并重建空键。
-func stage_inventory_owner_peer_remap(
-	old_peer_id: int,
-	new_peer_id: int
-) -> bool:
-	if (
-		route_inventory_strip == null
-		or old_peer_id <= 0
-		or new_peer_id <= 0
-		or route_inventory_strip.inventory_owner_peer_id != old_peer_id
-	):
-		return false
-	route_inventory_strip.inventory_owner_peer_id = new_peer_id
-	return true
 
 
 func get_local_avatar_snapshot() -> Dictionary:
@@ -5204,8 +5435,7 @@ func _configure_singleplayer_player() -> void:
 
 
 func _sync_route_player_xirang_from_run_state() -> void:
-	var run_state := get_node_or_null("/root/RunState") as RunStateStore
-	if run_state == null:
+	if _run_state == null:
 		return
 	if _multiplayer_avatar_mode:
 		var peer_ids: Array[int] = []
@@ -5216,27 +5446,18 @@ func _sync_route_player_xirang_from_run_state() -> void:
 		peer_ids.sort()
 		for peer_id in peer_ids:
 			var peer_player := peer_players.get(peer_id) as Player
-			var ledger_peer_id := (
-				peer_player.peer_id
-				if peer_player != null and peer_player.peer_id > 0
-				else peer_id
-			)
-			# RunState remap 会先删除 old transport，再同步发账本信号。此时
-			# Route 的 peer 字典可能尚未换键；跳过缺失状态，禁止创建型 getter
-			# 把已删除的 old peer 背包/账本重新建回来。
-			if (
-				ledger_peer_id > 0
-				and not run_state.has_multiplayer_peer_state(ledger_peer_id)
-			):
+			# 路线身份提交保证字典键与 Player.peer_id 同时换键；缺少持久
+			# 成员只可能是事务尚未完成，绝不能在表现同步中补建账本。
+			if not _run_state.has_multiplayer_peer_state(peer_id):
 				continue
 			_apply_route_player_xirang(
 				peer_player,
-				run_state.get_party_xirang_balance(ledger_peer_id)
+				_run_state.get_party_xirang_balance(peer_id)
 			)
 		return
 	_apply_route_player_xirang(
 		player,
-		run_state.get_party_xirang_balance(SINGLEPLAYER_PEER_ID)
+		_run_state.get_party_xirang_balance(SINGLEPLAYER_PEER_ID)
 	)
 
 

@@ -407,7 +407,11 @@ func _prepare_purchase_transaction(
 		target["stack_count"] = 1
 	else:
 		target["stack_count"] = int(target["stack_count"]) + 1
-	inventory["revision"] = expected_inventory_revision + 1
+	if not RunStateStore.advance_inventory_snapshot_revision(
+		inventory,
+		expected_inventory_revision
+	):
+		return {}
 	_apply_xirang_delta(
 		transaction["xirang_ledger"] as Dictionary,
 		peer_id,
@@ -438,7 +442,11 @@ func _prepare_sell_transaction(
 	else:
 		slot["config_path"] = ""
 		slot["stack_count"] = 0
-	inventory["revision"] = expected_inventory_revision + 1
+	if not RunStateStore.advance_inventory_snapshot_revision(
+		inventory,
+		expected_inventory_revision
+	):
+		return {}
 	_apply_xirang_delta(
 		transaction["xirang_ledger"] as Dictionary,
 		peer_id,

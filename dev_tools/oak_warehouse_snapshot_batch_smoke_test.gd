@@ -195,7 +195,7 @@ func _test_inventory_and_storage_notifications_are_atomic(
 ) -> void:
 	var run_state := RunStateStore.new()
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(CLIENT_PEER_ID)
+	run_state.register_multiplayer_peer_state(CLIENT_PEER_ID)
 	_expect(
 		run_state.try_add_item_for_peer(CLIENT_PEER_ID, WHITE_CRYSTAL),
 		"背包—仓库原子通知夹具必须准备1个Peer白色水晶。"
@@ -204,13 +204,20 @@ func _test_inventory_and_storage_notifications_are_atomic(
 		run_state.export_inventory_snapshot_for_peer(CLIENT_PEER_ID)
 	).duplicate(true)
 	inventory_snapshot["revision"] = int(inventory_snapshot["revision"]) + 1
+	var inventory_item_removed := false
 	for raw_slot_value in inventory_snapshot.get("slots", []) as Array:
 		var raw_slot := raw_slot_value as Dictionary
-		if str(raw_slot.get("config_path", "")) != WHITE_CRYSTAL.resource_path:
+		# 背包快照的顶层与逐槽 revision 是同一个原子水位；测试构造也必须
+		# 同步推进二者，否则协议层应当把它当作撕裂快照拒绝。
+		raw_slot["revision"] = int(inventory_snapshot["revision"])
+		if (
+			inventory_item_removed
+			or str(raw_slot.get("config_path", "")) != WHITE_CRYSTAL.resource_path
+		):
 			continue
 		raw_slot["config_path"] = ""
 		raw_slot["stack_count"] = 0
-		break
+		inventory_item_removed = true
 	var storage_snapshot := first_warehouse.export_storage_snapshot().duplicate(true)
 	storage_snapshot["revision"] = int(storage_snapshot["revision"]) + 1
 	for raw_slot_value in storage_snapshot.get("slots", []) as Array:
@@ -225,6 +232,9 @@ func _test_inventory_and_storage_notifications_are_atomic(
 	)
 	var prepared_storage := first_warehouse.prepare_storage_snapshot(
 		storage_snapshot
+	)
+	var inventory_current_before_storage := (
+		run_state.is_prepared_inventory_snapshot_current(prepared_inventory)
 	)
 	var observations: Array[Vector2i] = []
 	var record_combined_state := func() -> void:
@@ -242,6 +252,9 @@ func _test_inventory_and_storage_notifications_are_atomic(
 		prepared_storage,
 		false
 	)
+	var inventory_current_after_storage := (
+		run_state.is_prepared_inventory_snapshot_current(prepared_inventory)
+	)
 	var inventory_committed := run_state.commit_prepared_inventory_snapshot_for_peer(
 		prepared_inventory,
 		false
@@ -253,7 +266,21 @@ func _test_inventory_and_storage_notifications_are_atomic(
 		storage_committed
 		and inventory_committed
 		and observations == [Vector2i(0, 3), Vector2i(0, 3)],
-		"背包与仓库必须先静默完成双方提交，再让任一监听器观察最终组合。"
+		(
+			(
+				"背包与仓库必须先静默完成双方提交，再让任一监听器观察最终组合；"
+				+ "prepared_empty=%s current_before=%s current_after=%s storage=%s "
+				+ "inventory=%s observations=%s。"
+			)
+			% [
+				prepared_inventory.is_empty(),
+				inventory_current_before_storage,
+				inventory_current_after_storage,
+				storage_committed,
+				inventory_committed,
+				observations,
+			]
+		)
 	)
 	run_state.free()
 

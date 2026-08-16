@@ -41,8 +41,8 @@ func _run() -> void:
 
 func _test_warehouse_first_atomic_purchase() -> void:
 	var run_state := _new_run_state()
-	run_state.ensure_multiplayer_peer_state(1)
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(1)
+	run_state.register_multiplayer_peer_state(2)
 	_expect(run_state.try_add_item_count_for_peer(1, PLANK, 4), "应能放入付款木板。")
 	_expect(
 		run_state.replace_shared_warehouse_snapshots([
@@ -100,7 +100,7 @@ func _test_four_player_mixed_payment_and_receiver() -> void:
 	var run_state := _new_run_state()
 	var peers: Array[int] = [41, 42, 43, 44]
 	for peer_id in peers:
-		run_state.ensure_multiplayer_peer_state(peer_id)
+		run_state.register_multiplayer_peer_state(peer_id)
 	for peer_id in [41, 42, 43]:
 		_expect(
 			run_state.try_add_item_count_for_peer(peer_id, PLANK, 2),
@@ -165,7 +165,7 @@ func _test_four_player_mixed_payment_and_receiver() -> void:
 
 func _test_full_inventory_never_charges() -> void:
 	var run_state := _new_run_state()
-	run_state.ensure_multiplayer_peer_state(3)
+	run_state.register_multiplayer_peer_state(3)
 	for _slot_index in RunStateStore.INVENTORY_CAPACITY:
 		_expect(
 			run_state.try_add_item_for_peer(3, BASKETBALL),
@@ -200,7 +200,7 @@ func _test_full_inventory_never_charges() -> void:
 
 func _test_party_item_query_across_stores() -> void:
 	var run_state := _new_run_state()
-	run_state.ensure_multiplayer_peer_state(8)
+	run_state.register_multiplayer_peer_state(8)
 	_expect(run_state.try_add_item_for_peer(8, BASKETBALL), "玩家背包应能持有篮球。")
 	_expect(
 		run_state.replace_shared_warehouse_snapshots([
@@ -229,7 +229,7 @@ func _test_party_item_query_across_stores() -> void:
 func _test_session_personal_progress_and_timeout() -> void:
 	var run_state := _new_run_state()
 	for peer_id in [1, 2]:
-		run_state.ensure_multiplayer_peer_state(peer_id)
+		run_state.register_multiplayer_peer_state(peer_id)
 	_expect(
 		run_state.try_add_item_count_for_peer(1, PLANK, 10),
 		"改票测试应准备可用的付费选项。"
@@ -312,7 +312,7 @@ func _test_session_personal_progress_and_timeout() -> void:
 func _test_snapshot_replay_and_peer_migration() -> void:
 	var run_state := _new_run_state()
 	for peer_id in [11, 12]:
-		run_state.ensure_multiplayer_peer_state(peer_id)
+		run_state.register_multiplayer_peer_state(peer_id)
 	_expect(
 		run_state.try_add_item_count_for_peer(12, PLANK, 10),
 		"断线可用性测试应让玩家12独立持有10块木板。"
@@ -352,7 +352,11 @@ func _test_snapshot_replay_and_peer_migration() -> void:
 		"唯一木板来源掉线后，付费选项必须立即禁用。"
 	)
 	_expect(
-		run_state.remap_multiplayer_peer_state(12, 22),
+		run_state.remap_multiplayer_peer_state(
+			12,
+			22,
+			run_state.get_multiplayer_session_membership_revision() + 1
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED,
 		"Session 迁移前应先原子迁移 RunState 背包。"
 	)
 	_expect(authority.migrate_peer(12, 22), "重连应迁移遭遇身份。")
@@ -385,6 +389,12 @@ func _test_snapshot_replay_and_peer_migration() -> void:
 		"参与者身份与内嵌经济快照都应迁移到新peer。"
 	)
 	var remote_run_state := _new_run_state()
+	_expect(
+		remote_run_state.register_multiplayer_peer_states(
+			PackedInt32Array([11, 22])
+		),
+		"远端遭遇快照应用前必须先投影权威会话成员。"
+	)
 	var remote_economy := RogueEncounterEconomyCoordinator.new()
 	remote_economy.configure(remote_run_state)
 	var remote := RogueEncounterSession.new()
@@ -443,6 +453,10 @@ func _test_route_map_unique_assignment() -> void:
 
 func _test_run_history_persistence_and_exhausted_fallback() -> void:
 	var host_run_state := _new_run_state()
+	_expect(
+		host_run_state.register_multiplayer_peer_state(1),
+		"遭遇历史权威夹具必须先注册参与成员。"
+	)
 	var host_economy := RogueEncounterEconomyCoordinator.new()
 	host_economy.configure(host_run_state)
 	var host_session := RogueEncounterSession.new()
@@ -476,6 +490,10 @@ func _test_run_history_persistence_and_exhausted_fallback() -> void:
 		"RunState 应记录完整六种遭遇且 Session 快照应选择鬼影。"
 	)
 	var client_run_state := _new_run_state()
+	_expect(
+		client_run_state.register_multiplayer_peer_state(1),
+		"遭遇历史远端夹具必须先注册权威参与成员。"
+	)
 	var client_economy := RogueEncounterEconomyCoordinator.new()
 	client_economy.configure(client_run_state)
 	var client_session := RogueEncounterSession.new()
@@ -525,7 +543,7 @@ func _test_run_history_persistence_and_exhausted_fallback() -> void:
 
 func _test_dynamic_option_availability() -> void:
 	var run_state := _new_run_state()
-	run_state.ensure_multiplayer_peer_state(51)
+	run_state.register_multiplayer_peer_state(51)
 	_expect(
 		run_state.try_add_item_count_for_peer(51, PLANK, 10),
 		"经济变更测试应准备10块木板。"
@@ -568,7 +586,7 @@ func _test_dynamic_option_availability() -> void:
 
 func _test_settled_result_and_spectator_migration() -> void:
 	var run_state := _new_run_state()
-	run_state.ensure_multiplayer_peer_state(61)
+	run_state.register_multiplayer_peer_state(61)
 	_expect(
 		run_state.try_add_item_count_for_peer(61, PLANK, 10),
 		"结算迁移测试应准备10块木板。"
@@ -609,7 +627,11 @@ func _test_settled_result_and_spectator_migration() -> void:
 		"单人付费票应立即完成结算。"
 	)
 	_expect(
-		run_state.remap_multiplayer_peer_state(61, 62),
+		run_state.remap_multiplayer_peer_state(
+			61,
+			62,
+			run_state.get_multiplayer_session_membership_revision() + 1
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED,
 		"结算结果迁移前应迁移RunState背包。"
 	)
 	_expect(session.migrate_peer(61, 62), "结果阶段也应迁移参与者身份。")
@@ -648,7 +670,7 @@ func _test_settled_result_and_spectator_migration() -> void:
 func _test_deterministic_tie_and_no_vote() -> void:
 	var run_state := _new_run_state()
 	for peer_id in [31, 32]:
-		run_state.ensure_multiplayer_peer_state(peer_id)
+		run_state.register_multiplayer_peer_state(peer_id)
 	_expect(run_state.try_add_item_count_for_peer(31, PLANK, 20), "平票测试应有木板。")
 	var economy := RogueEncounterEconomyCoordinator.new()
 	economy.configure(run_state)
@@ -741,7 +763,7 @@ func _test_deterministic_tie_and_no_vote() -> void:
 
 func _test_slime_session_options_and_result_pages() -> void:
 	var run_state := _new_run_state()
-	run_state.ensure_multiplayer_peer_state(71)
+	run_state.register_multiplayer_peer_state(71)
 	var economy := RogueEncounterEconomyCoordinator.new()
 	economy.configure(run_state)
 	var session := RogueEncounterSession.new()
@@ -806,6 +828,10 @@ func _test_slime_session_options_and_result_pages() -> void:
 	)
 
 	var remote_run_state := _new_run_state()
+	_expect(
+		remote_run_state.register_multiplayer_peer_state(71),
+		"史莱姆远端快照应用前必须先注册权威参与成员。"
+	)
 	var remote_economy := RogueEncounterEconomyCoordinator.new()
 	remote_economy.configure(remote_run_state)
 	var remote_session := RogueEncounterSession.new()
@@ -869,7 +895,7 @@ func _test_ghost_shadow_results_and_no_economy() -> void:
 	)
 
 	var run_state := _new_run_state()
-	run_state.ensure_multiplayer_peer_state(71)
+	run_state.register_multiplayer_peer_state(71)
 	var economy := RogueEncounterEconomyCoordinator.new()
 	economy.configure(run_state)
 	var economy_before := economy.export_snapshot([71])
@@ -984,6 +1010,10 @@ func _test_ghost_shadow_results_and_no_economy() -> void:
 	)
 
 	var remote_run_state := _new_run_state()
+	_expect(
+		remote_run_state.register_multiplayer_peer_state(71),
+		"鬼影远端快照应用前必须先注册权威参与成员。"
+	)
 	var remote_economy := RogueEncounterEconomyCoordinator.new()
 	remote_economy.configure(remote_run_state)
 	var remote_session := RogueEncounterSession.new()
@@ -1005,7 +1035,7 @@ func _test_ghost_shadow_results_and_no_economy() -> void:
 func _test_suitcase_frenzy_results_and_safe_timeout() -> void:
 	var run_state := _new_run_state()
 	for peer_id in [81, 82]:
-		run_state.ensure_multiplayer_peer_state(peer_id)
+		run_state.register_multiplayer_peer_state(peer_id)
 	var economy := RogueEncounterEconomyCoordinator.new()
 	economy.configure(run_state)
 	var economy_before := economy.export_snapshot([81, 82])
@@ -1153,6 +1183,12 @@ func _test_suitcase_frenzy_results_and_safe_timeout() -> void:
 		"全员超时必须固定安全离开、无结果页立即完成且不触发战斗。"
 	)
 	var remote_run_state := _new_run_state()
+	_expect(
+		remote_run_state.register_multiplayer_peer_states(
+			PackedInt32Array([81, 82])
+		),
+		"疯穿箱子远端快照应用前必须先注册权威参与成员。"
+	)
 	var remote_economy := RogueEncounterEconomyCoordinator.new()
 	remote_economy.configure(remote_run_state)
 	var remote_session := RogueEncounterSession.new()
@@ -1180,7 +1216,7 @@ func _test_suitcase_frenzy_results_and_safe_timeout() -> void:
 func _test_fluorescent_pit_multiround_session() -> void:
 	var run_state := _new_run_state()
 	for peer_id in [1, 2]:
-		run_state.ensure_multiplayer_peer_state(peer_id)
+		run_state.register_multiplayer_peer_state(peer_id)
 	var economy := RogueEncounterEconomyCoordinator.new()
 	economy.configure(run_state)
 	var session := RogueEncounterSession.new()
@@ -1238,7 +1274,11 @@ func _test_fluorescent_pit_multiround_session() -> void:
 	)
 	_expect(session.remove_peer(2), "结果页期间掉线应移出ACK屏障。")
 	_expect(
-		run_state.remap_multiplayer_peer_state(2, 22)
+		run_state.remap_multiplayer_peer_state(
+			2,
+			22,
+			run_state.get_multiplayer_session_membership_revision() + 1
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED
 		and session.migrate_peer(2, 22),
 		"结果页期间重连应迁移身份但不加入本轮ACK对象。"
 	)
@@ -1318,6 +1358,12 @@ func _test_fluorescent_pit_multiround_session() -> void:
 		"结果ACK必须校验序号、按peer幂等，并在全员确认终局后完成遭遇。"
 	)
 	var remote_run_state := _new_run_state()
+	_expect(
+		remote_run_state.register_multiplayer_peer_states(
+			PackedInt32Array([1, 22])
+		),
+		"坑洞远端快照应用前必须先注册迁移后的权威参与成员。"
+	)
 	var remote_economy := RogueEncounterEconomyCoordinator.new()
 	remote_economy.configure(remote_run_state)
 	var remote_session := RogueEncounterSession.new()
@@ -1338,7 +1384,7 @@ func _test_fluorescent_pit_multiround_session() -> void:
 
 func _test_fluorescent_pit_core_failure_session() -> void:
 	var run_state := _new_run_state()
-	run_state.ensure_multiplayer_peer_state(51)
+	run_state.register_multiplayer_peer_state(51)
 	_expect(run_state.set_party_core_health(2, 100), "核心归零测试应设置2点核心生命。")
 	var economy := RogueEncounterEconomyCoordinator.new()
 	economy.configure(run_state)

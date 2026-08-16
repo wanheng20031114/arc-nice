@@ -49,7 +49,7 @@ func _test_controller_route_and_snapshot_contracts() -> void:
 		PlayerCharacterRegistry.DEFAULT_CHARACTER_ID,
 		false
 	)
-	host_run_state.ensure_multiplayer_peer_state(1)
+	host_run_state.register_multiplayer_peer_state(1)
 	_expect(
 		host_run_state.set_party_xirang_balance(1, 20_000),
 		"Host 必须能初始化个人息壤。"
@@ -204,7 +204,7 @@ func _test_controller_route_and_snapshot_contracts() -> void:
 		PlayerCharacterRegistry.DEFAULT_CHARACTER_ID,
 		false
 	)
-	client_run_state.ensure_multiplayer_peer_state(1)
+	client_run_state.register_multiplayer_peer_state(1)
 	var client_route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	client_route.auto_initialize = false
 	client_route.manage_return_locally = false
@@ -277,7 +277,11 @@ func _test_reconnect_snapshot_recovery(
 	)
 	host_controller.remove_peer(1)
 	_expect(
-		host_run_state.remap_multiplayer_peer_state(1, 70),
+		host_run_state.remap_multiplayer_peer_state(
+			1,
+			70,
+			host_run_state.get_multiplayer_session_membership_revision() + 1
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED,
 		"认证重连前必须先原子迁移个人背包与息壤。"
 	)
 	host_controller.set_identity_context(
@@ -329,7 +333,7 @@ func _test_full_snapshot_atomic_rejection(
 		PlayerCharacterRegistry.DEFAULT_CHARACTER_ID,
 		false
 	)
-	client_run_state.ensure_multiplayer_peer_state(1)
+	client_run_state.register_multiplayer_peer_state(1)
 	var route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	route.auto_initialize = false
 	route.manage_return_locally = false
@@ -512,7 +516,7 @@ func _test_valid_full_snapshot_application(
 		PlayerCharacterRegistry.DEFAULT_CHARACTER_ID,
 		false
 	)
-	valid_run_state.ensure_multiplayer_peer_state(1)
+	valid_run_state.register_multiplayer_peer_state(1)
 	var valid_route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	valid_route.auto_initialize = false
 	valid_route.manage_return_locally = false

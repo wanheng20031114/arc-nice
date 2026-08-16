@@ -5,6 +5,9 @@ signal embedded_authoritative_snapshot_changed
 signal embedded_return_requested
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
+const MultiplayerReconnectTypesScript := preload(
+	"res://scene/multiplayer/reconnect/multiplayer_reconnect_types.gd"
+)
 const MULTIPLAYER_LOBBY_SCENE_PATH := (
 	"res://scene/multiplayer/multiplayer_lobby.tscn"
 )
@@ -104,12 +107,14 @@ func _ready() -> void:
 	_combat_coordinator.bind_network_dependencies(
 		_route,
 		_net_manager,
-		_run_state
+		_run_state,
+		RogueCombatMultiplayerCoordinator.SessionProjectionOwner.THIS_COORDINATOR
 	)
 
 	_connect_route_signals()
 	set_multiplayer_authority(_get_host_peer_id())
-	_connect_net_manager_signals()
+	if not _connect_net_manager_signals():
+		return
 	if not _configure_route_players():
 		push_error("MpRogueRoute: 无法按房间角色表创建 P3 玩家。")
 		call_deferred("_return_to_lobby")
@@ -174,7 +179,8 @@ func bind_embedded_campaign_runtime(
 	_combat_coordinator.bind_network_dependencies(
 		_route,
 		_net_manager,
-		_run_state
+		_run_state,
+		RogueCombatMultiplayerCoordinator.SessionProjectionOwner.ENCLOSING_RUNTIME
 	)
 	_connect_route_signals()
 	set_multiplayer_authority(_get_host_peer_id())
@@ -639,7 +645,13 @@ func _disconnect_route_signals() -> void:
 		_route.return_requested.disconnect(_on_return_requested)
 
 
-func _connect_net_manager_signals() -> void:
+func _connect_net_manager_signals() -> bool:
+	if not _net_manager.register_reconnect_delivery_preparer(
+		prepare_reconnected_member_delivery
+	):
+		push_error("MpRogueRoute: 无法取得顶层重连首帧准备能力。")
+		call_deferred("_return_to_lobby")
+		return false
 	if not _net_manager.connection_state_changed.is_connected(
 		_on_connection_state_changed
 	):
@@ -650,11 +662,27 @@ func _connect_net_manager_signals() -> void:
 		_net_manager.player_left.connect(_on_player_left)
 	if not _net_manager.player_joined.is_connected(_on_player_joined):
 		_net_manager.player_joined.connect(_on_player_joined)
+	if not _net_manager.session_membership_changed.is_connected(
+		_on_session_membership_changed
+	):
+		_net_manager.session_membership_changed.connect(
+			_on_session_membership_changed
+		)
+	if not _net_manager.session_member_final_departed.is_connected(
+		_on_session_member_final_departed
+	):
+		_net_manager.session_member_final_departed.connect(
+			_on_session_member_final_departed
+		)
+	return true
 
 
 func _disconnect_net_manager_signals() -> void:
 	if _net_manager == null or not is_instance_valid(_net_manager):
 		return
+	_net_manager.unregister_reconnect_delivery_preparer(
+		prepare_reconnected_member_delivery
+	)
 	if _net_manager.connection_state_changed.is_connected(
 		_on_connection_state_changed
 	):
@@ -667,6 +695,18 @@ func _disconnect_net_manager_signals() -> void:
 		_net_manager.player_left.disconnect(_on_player_left)
 	if _net_manager.player_joined.is_connected(_on_player_joined):
 		_net_manager.player_joined.disconnect(_on_player_joined)
+	if _net_manager.session_membership_changed.is_connected(
+		_on_session_membership_changed
+	):
+		_net_manager.session_membership_changed.disconnect(
+			_on_session_membership_changed
+		)
+	if _net_manager.session_member_final_departed.is_connected(
+		_on_session_member_final_departed
+	):
+		_net_manager.session_member_final_departed.disconnect(
+			_on_session_member_final_departed
+		)
 
 
 func _report_game_loaded() -> void:
@@ -695,28 +735,100 @@ func _on_connection_state_changed(new_state: int) -> void:
 		_synchronize_after_barrier()
 
 
+func _on_session_membership_changed(
+	_peer_ids: PackedInt32Array,
+	membership_revision: int
+) -> void:
+	if membership_revision <= 0:
+		return
+	if _reconcile_run_state_to_session_membership():
+		return
+	_fail_session_membership_projection(
+		"路线无法原子收敛会话成员 revision=%d。" % membership_revision
+	)
+
+
+func _on_session_member_final_departed(
+	peer_id: int,
+	_membership_revision: int,
+	_reason: StringName
+) -> void:
+	if peer_id <= 0:
+		return
+	# player_left 只撤销路线 Player，并保留姿态供宽限重连；final departure
+	# 才终结该身份的持久账本和姿态捕获。reconcile 使用 NetManager 当前完整
+	# 成员集，避免再次把 transport connected_players 当作会话成员真源。
+	if not _reconcile_run_state_to_session_membership():
+		_fail_session_membership_projection(
+			"路线无法清理最终离场成员 %d 的持久账本。" % peer_id
+		)
+		return
+	_disconnected_avatar_poses.erase(peer_id)
+	_clear_avatar_peer_sync_state(peer_id)
+
+
+func _reconcile_run_state_to_session_membership() -> bool:
+	if _run_state == null or _net_manager == null or not _run_state.run_started:
+		return false
+	return _run_state.reconcile_multiplayer_session_membership(
+		_net_manager.get_session_member_peer_ids(),
+		_net_manager.get_session_membership_revision()
+	)
+
+
+func _fail_session_membership_projection(reason: String) -> void:
+	push_error("MpRogueRoute: %s" % reason)
+	if _net_manager == null:
+		return
+	if not _net_manager.terminate_for_session_membership_projection_failure(reason):
+		push_error("MpRogueRoute: 无法终止成员账本已经分叉的多人会话。")
+
+
 func _on_player_reconnected(
 	old_peer_id: int,
 	new_peer_id: int,
 	player_name: String,
-	character_id: StringName
+	character_id: StringName,
+	membership_revision: int
 ) -> void:
-	# Host 需等待 NetManager 先把身份通知排入各客户端的可靠信道；既有客户端
-	# 则立即清理 old peer，保证后续同信道全量经济快照不会与旧背包并存。
-	if not _is_host():
-		_finish_player_reconnect(
-			old_peer_id,
-			new_peer_id,
-			player_name,
-			character_id
-		)
-		return
-	call_deferred(
-		"_finish_player_reconnect",
+	# NetManager 会在该信号返回后继续发布 roster/ready；路线身份门必须同步
+	# 完成，失败也必须同步终止，不能用 deferred 猜测多个监听者的执行顺序。
+	if not _finish_player_reconnect(
 		old_peer_id,
 		new_peer_id,
 		player_name,
-		character_id
+		character_id,
+		membership_revision
+	):
+		_fail_reconnected_route_identity(
+			new_peer_id,
+			"路线持久身份或玩家投影无法原子迁移。"
+		)
+
+
+## P3 顶层路线在 NetManager PREPARING_DELIVERY 内同步补发完整路线与当前
+## 作战 prepare。任何一步失败都在 ACTIVE/host-ready 发布前终止该成员。
+func prepare_reconnected_member_delivery(
+	old_peer_id: int,
+	new_peer_id: int,
+	outcome: MultiplayerReconnectTypesScript.RuntimeProjectionOutcome,
+	_membership_revision: int
+) -> bool:
+	if (
+		not _is_host()
+		or new_peer_id <= 0
+		or _net_manager == null
+		or not _net_manager.is_reconnect_delivery_preparing(new_peer_id)
+		or _combat_coordinator == null
+		or not is_instance_valid(_combat_coordinator)
+	):
+		return false
+	if not _send_full_snapshot_to_peer(new_peer_id, true):
+		return false
+	return _combat_coordinator.handle_reconnected_member_ready(
+		old_peer_id,
+		new_peer_id,
+		outcome
 	)
 
 
@@ -724,21 +836,20 @@ func _finish_player_reconnect(
 	old_peer_id: int,
 	new_peer_id: int,
 	player_name: String,
-	character_id: StringName
+	character_id: StringName,
+	membership_revision: int
 ) -> bool:
-	if not is_inside_tree():
-		return false
-	var route_already_uses_new_peer := (
-		_route != null
-		and _route.get_player_for_peer(old_peer_id) == null
-		and _route.get_player_for_peer(new_peer_id) != null
-		and _route.get_player_for_peer(new_peer_id).get_character_id()
-		== character_id
-	)
-	if not route_already_uses_new_peer and not _can_migrate_reconnected_player(
-		old_peer_id,
-		new_peer_id,
-		character_id
+	if (
+		not is_inside_tree()
+		or _net_manager == null
+		or _route == null
+		or _run_state == null
+		or membership_revision <= 0
+		or _net_manager.get_session_membership_revision() != membership_revision
+		or (
+			not _net_manager.is_session_member_active(new_peer_id)
+			and not _net_manager.is_session_member_reconnecting(new_peer_id)
+		)
 	):
 		return false
 	var stable_participant_key := _net_manager.get_stable_participant_key(
@@ -750,46 +861,114 @@ func _finish_player_reconnect(
 			% new_peer_id
 		)
 		return false
-	var shared_run_state := get_node_or_null("/root/RunState") as RunStateStore
-	var had_old_run_state := (
-		shared_run_state != null
-		and shared_run_state.has_multiplayer_peer_state(old_peer_id)
-	)
-	var had_new_run_state := (
-		shared_run_state != null
-		and shared_run_state.has_multiplayer_peer_state(new_peer_id)
-	)
-	if not _migrate_reconnected_run_state(
-		old_peer_id,
-		new_peer_id,
-		not _is_host()
-	):
-		push_error(
-			"MpRogueRoute: 无法迁移重连玩家 %d -> %d 的背包状态。"
-			% [old_peer_id, new_peer_id]
+	_prune_disconnected_avatar_poses()
+	var preserved_pose := _get_avatar_pose_for_peer(old_peer_id)
+	if preserved_pose.is_empty():
+		preserved_pose = (
+			_disconnected_avatar_poses.get(old_peer_id, {}) as Dictionary
+		).duplicate(true)
+	var fallback_position := _get_reconnect_avatar_fallback_position()
+	if not preserved_pose.is_empty():
+		fallback_position = _route.clamp_avatar_position(
+			preserved_pose.get("position", fallback_position) as Vector2
 		)
+	var route_preparation := (
+		_route.prepare_reconnected_multiplayer_player_identity(
+			old_peer_id,
+			new_peer_id,
+			player_name,
+			character_id,
+			stable_participant_key,
+			fallback_position
+		)
+	)
+	var route_preparation_result := int(route_preparation.get(
+		"result",
+		RogueRouteGame.ReconnectedPlayerIdentityProjectionResult.INVALID
+	))
+	if route_preparation_result not in [
+		RogueRouteGame.ReconnectedPlayerIdentityProjectionResult.READY,
+		RogueRouteGame.ReconnectedPlayerIdentityProjectionResult.ALREADY_CURRENT,
+	]:
+		_route.discard_reconnected_multiplayer_player_identity(route_preparation)
 		return false
-	if not route_already_uses_new_peer and not _migrate_reconnected_player(
+	var run_state_preparation := _run_state.prepare_multiplayer_peer_state_remap(
 		old_peer_id,
 		new_peer_id,
-		player_name,
-		character_id
-	):
-		if _is_host() and had_old_run_state and not had_new_run_state:
-			_rollback_reconnected_run_state(old_peer_id, new_peer_id)
+		membership_revision
+	)
+	if run_state_preparation not in [
+		RunStateStore.MultiplayerPeerRemapResult.MIGRATED,
+		RunStateStore.MultiplayerPeerRemapResult.ALREADY_CURRENT,
+	]:
+		_route.discard_reconnected_multiplayer_player_identity(route_preparation)
+		push_error(
+			"MpRogueRoute: 重连玩家 %d -> %d 的 RunState 预检失败，result=%d。"
+			% [old_peer_id, new_peer_id, run_state_preparation]
+		)
 		return false
 	if (
-		not stable_participant_key.is_empty()
-		and not _route.set_multiplayer_participant_stable_key(
-			new_peer_id,
-			stable_participant_key
-		)
+		route_preparation_result
+		== RogueRouteGame.ReconnectedPlayerIdentityProjectionResult.ALREADY_CURRENT
+		and run_state_preparation
+		!= RunStateStore.MultiplayerPeerRemapResult.ALREADY_CURRENT
 	):
+		# 路线已是 new、持久账本仍是 old 不是可靠重放，而是此前留下的半事务。
+		return false
+	if route_preparation_result == (
+		RogueRouteGame.ReconnectedPlayerIdentityProjectionResult.READY
+	):
+		var route_commit_result := (
+			_route.commit_reconnected_multiplayer_player_identity(
+				route_preparation
+			)
+		)
+		if route_commit_result != (
+			RogueRouteGame.ReconnectedPlayerIdentityProjectionResult.MIGRATED
+		):
+			_route.discard_reconnected_multiplayer_player_identity(
+				route_preparation
+			)
+			push_error(
+				"MpRogueRoute: 路线身份在提交前已改变，result=%d。"
+				% route_commit_result
+			)
+			return false
+	var remap_result := _run_state.remap_multiplayer_peer_state(
+		old_peer_id,
+		new_peer_id,
+		membership_revision
+	)
+	if remap_result != run_state_preparation:
+		# route commit 不读取或写入 RunState，且中间没有 await/信号发布；
+		# 因而纯预检与正式提交结果必须相同，否则属于内部事务违约。
 		push_error(
-			"MpRogueRoute: 无法为重连玩家 %d 恢复稳定参与者身份。"
-			% new_peer_id
+			"MpRogueRoute: RunState 预检/提交结果漂移：prepared=%d committed=%d。"
+			% [run_state_preparation, remap_result]
 		)
 		return false
+	if route_preparation_result == (
+		RogueRouteGame.ReconnectedPlayerIdentityProjectionResult.READY
+	):
+		_route.finalize_reconnected_multiplayer_player_identity(
+			route_preparation
+		)
+	if not preserved_pose.is_empty():
+		if not _route.apply_avatar_snapshot(
+			new_peer_id,
+			preserved_pose.get("position", fallback_position) as Vector2,
+			preserved_pose.get("velocity", Vector2.ZERO) as Vector2,
+			int(preserved_pose.get("facing", 0)),
+			int(preserved_pose.get("anim_state", 0)),
+			true
+		):
+			push_warning(
+				"MpRogueRoute: 身份已提交，但玩家 %d 的保留姿态无效，将由权威快照修复。"
+				% new_peer_id
+			)
+	_disconnected_avatar_poses.erase(old_peer_id)
+	_clear_avatar_peer_sync_state(old_peer_id)
+	_clear_avatar_peer_sync_state(new_peer_id)
 	if _is_host():
 		_route_repair_request_rate_buckets.erase(old_peer_id)
 		_route_repair_request_rate_buckets.erase(new_peer_id)
@@ -804,159 +983,46 @@ func _finish_player_reconnect(
 			_briefing_cover_ready_peers.erase(old_peer_id)
 			if not _briefing_move_commit_started:
 				_briefing_cover_expected_peers[new_peer_id] = true
-		_send_full_snapshot_to_peer(new_peer_id)
-	return true
-
-
-func _can_migrate_reconnected_player(
-	old_peer_id: int,
-	new_peer_id: int,
-	character_id: StringName
-) -> bool:
-	if (
-		old_peer_id <= 0
-		or new_peer_id <= 0
-		or old_peer_id == new_peer_id
-		or _route == null
-		or _route.get_player_for_peer(new_peer_id) != null
-	):
-		return false
-	var old_player := _route.get_player_for_peer(old_peer_id)
-	if old_player != null:
-		return old_player.get_character_id() == character_id
-	# The reconnect signal was authenticated by NetManager's Host RPC. A client
-	# that itself rejoined later may never have observed the old avatar, so it
-	# must be allowed to create a placeholder for the new authoritative identity.
-	return PlayerCharacterRegistry.is_valid_character_id(character_id)
-
-
-func _migrate_reconnected_run_state(
-	old_peer_id: int,
-	new_peer_id: int,
-	replace_existing_target: bool = false
-) -> bool:
-	if (
-		old_peer_id <= 0
-		or new_peer_id <= 0
-		or old_peer_id == new_peer_id
-	):
-		return false
-	var shared_run_state := get_node_or_null("/root/RunState") as RunStateStore
-	if shared_run_state == null:
-		return false
-	# RunState.remap_multiplayer_peer_state() 会同步发出 inventory_changed。
-	# 仍在路线树中的旧 Player 若继续以 old_peer_id 响应该信号，会立刻重建
-	# 一个空的旧背包。先只暂存其背包查询身份；权威字典与节点名仍由后续
-	# _migrate_reconnected_player() 一次性迁移。
-	var live_player: Player = null
-	if _route != null:
-		live_player = _route.get_player_for_peer(old_peer_id)
-	var staged_live_peer := (
-		live_player != null
-		and is_instance_valid(live_player)
-		and live_player.peer_id == old_peer_id
+	var runtime_projection_outcome := (
+		MultiplayerReconnectTypesScript.RuntimeProjectionOutcome.RESTORED
 	)
-	var staged_inventory_owner := (
-		_route != null
-		and _route.stage_inventory_owner_peer_remap(
-			old_peer_id,
-			new_peer_id
-		)
-	)
-	if staged_live_peer:
-		live_player.peer_id = new_peer_id
-	var migrated := true
-	if shared_run_state.has_multiplayer_peer_state(old_peer_id):
-		migrated = shared_run_state.remap_multiplayer_peer_state(
-			old_peer_id,
-			new_peer_id,
-			replace_existing_target,
-			replace_existing_target
-		)
-	else:
-		shared_run_state.ensure_multiplayer_peer_state(new_peer_id)
-		migrated = shared_run_state.has_multiplayer_peer_state(new_peer_id)
-	if not migrated and staged_live_peer:
-		live_player.peer_id = old_peer_id
-	if not migrated and staged_inventory_owner:
-		_route.stage_inventory_owner_peer_remap(new_peer_id, old_peer_id)
-	return migrated
-
-
-func _rollback_reconnected_run_state(
-	old_peer_id: int,
-	new_peer_id: int
-) -> bool:
-	var shared_run_state := get_node_or_null("/root/RunState") as RunStateStore
-	if shared_run_state == null:
-		return false
-	var live_player: Player = null
-	if _route != null:
-		live_player = _route.get_player_for_peer(old_peer_id)
-	if (
-		live_player != null
-		and is_instance_valid(live_player)
-		and live_player.peer_id == new_peer_id
-	):
-		live_player.peer_id = old_peer_id
-	return shared_run_state.remap_multiplayer_peer_state(
-		new_peer_id,
-		old_peer_id
-	)
-
-
-func _migrate_reconnected_player(
-	old_peer_id: int,
-	new_peer_id: int,
-	player_name: String,
-	character_id: StringName
-) -> bool:
-	if (
-		old_peer_id <= 0
-		or new_peer_id <= 0
-		or old_peer_id == new_peer_id
-		or _route == null
-	):
-		return false
-	var preserved_pose := _get_avatar_pose_for_peer(old_peer_id)
-	var old_player := _route.get_player_for_peer(old_peer_id)
-	var migrated := false
-	if old_player != null:
-		migrated = _route.migrate_multiplayer_player(
-			old_peer_id,
-			new_peer_id,
-			player_name,
-			character_id
-		)
-	else:
-		_prune_disconnected_avatar_poses()
-		preserved_pose = _disconnected_avatar_poses.get(old_peer_id, {}) as Dictionary
-		var fallback_position := _get_reconnect_avatar_fallback_position()
-		migrated = _route.add_multiplayer_player(
-			new_peer_id,
-			player_name,
-			character_id,
-			(
-				preserved_pose.get("position", fallback_position) as Vector2
-				if not preserved_pose.is_empty()
-				else fallback_position
+	var waits_for_embedded_projection := false
+	if _combat_coordinator != null and is_instance_valid(_combat_coordinator):
+		waits_for_embedded_projection = (
+			_combat_coordinator.reconnect_requires_embedded_player_projection(
+				old_peer_id
 			)
 		)
-	if not migrated:
-		return false
-	if not preserved_pose.is_empty():
-		_route.apply_avatar_snapshot(
-			new_peer_id,
-			preserved_pose.get("position", Vector2.ZERO) as Vector2,
-			preserved_pose.get("velocity", Vector2.ZERO) as Vector2,
-			int(preserved_pose.get("facing", 0)),
-			int(preserved_pose.get("anim_state", 0)),
-			true
+		if not _combat_coordinator.handle_reconnected_identity_committed(
+			old_peer_id,
+			new_peer_id
+		):
+			return false
+		runtime_projection_outcome = (
+			MultiplayerReconnectTypesScript.RuntimeProjectionOutcome.SUSPENDED
 		)
-	_disconnected_avatar_poses.erase(old_peer_id)
-	_clear_avatar_peer_sync_state(old_peer_id)
-	_clear_avatar_peer_sync_state(new_peer_id)
+	if (
+		_is_host()
+		and not waits_for_embedded_projection
+		and not _net_manager.report_reconnected_runtime_projection(
+			old_peer_id,
+			new_peer_id,
+			runtime_projection_outcome
+		)
+	):
+		return false
 	return true
+
+
+func _fail_reconnected_route_identity(new_peer_id: int, reason: String) -> void:
+	push_error(
+		"MpRogueRoute: 重连身份提交失败：peer=%d reason=%s"
+		% [new_peer_id, reason]
+	)
+	if _net_manager == null:
+		return
+	if not _net_manager.terminate_for_runtime_projection_failure(new_peer_id, reason):
+		push_error("MpRogueRoute: 无法终止身份失败的 peer=%d。" % new_peer_id)
 
 
 func _get_reconnect_avatar_fallback_position() -> Vector2:
@@ -983,7 +1049,10 @@ func _on_player_left(peer_id: int) -> void:
 			_route.host_remove_shop_peer(peer_id)
 		_prune_disconnected_avatar_poses()
 		var preserved_pose := _get_avatar_pose_for_peer(peer_id)
-		if not preserved_pose.is_empty():
+		var retains_session_membership := (
+			_net_manager != null and _net_manager.has_session_member(peer_id)
+		)
+		if retains_session_membership and not preserved_pose.is_empty():
 			preserved_pose["stored_at_msec"] = Time.get_ticks_msec()
 			_disconnected_avatar_poses[peer_id] = preserved_pose.duplicate(true)
 		_route.remove_multiplayer_player(peer_id)
@@ -1016,6 +1085,13 @@ func _on_player_joined(peer_id: int, player_name: String) -> void:
 		if anchor != null
 		else Vector2.ZERO
 	)
+	# player_joined 只代表 transport ACTIVE；持久成员统一从 NetManager
+	# 会话 revision 收敛，禁止路线节点自行创建第二套成员真源。
+	if not _reconcile_run_state_to_session_membership():
+		_fail_session_membership_projection(
+			"路线无法收敛新加入玩家 %d 的持久账本。" % peer_id
+		)
+		return
 	if not _route.add_multiplayer_player(
 		peer_id,
 		player_name,
@@ -1545,22 +1621,33 @@ func _broadcast_full_snapshot() -> void:
 		_send_full_snapshot_to_peer(peer_id)
 
 
-func _send_full_snapshot_to_peer(peer_id: int) -> void:
+func _send_full_snapshot_to_peer(
+	peer_id: int,
+	reconnect_delivery: bool = false
+) -> bool:
+	var send_ready := (
+		_is_peer_send_ready(peer_id)
+		or (
+			reconnect_delivery
+			and _net_manager != null
+			and _net_manager.is_reconnect_delivery_preparing(peer_id)
+		)
+	)
 	if (
 		not _is_host()
 		or peer_id <= 0
 		or peer_id == _get_host_peer_id()
 		or not _has_network_peer()
-		or not _is_peer_send_ready(peer_id)
+		or not send_ready
 		or not _refresh_authoritative_snapshot_cache()
 	):
-		return
+		return false
 	var shop_state := _route.export_shop_snapshot_for_peer(peer_id)
 	var encounter_state := _route.export_encounter_snapshot(peer_id)
 	var economy_state := _route.export_encounter_economy_snapshot(peer_id)
 	if encounter_state.is_empty() or economy_state.is_empty():
-		return
-	_send_route_rpc(
+		return false
+	return _send_route_rpc(
 		peer_id,
 		&"net_route_full_snapshot",
 		[
@@ -1619,7 +1706,8 @@ func _admit_route_repair_request(peer_id: int) -> bool:
 
 func _admit_route_encounter_command(peer_id: int) -> bool:
 	return (
-		_is_registered_route_peer(peer_id)
+		_is_gameplay_ingress_admitted(peer_id)
+		and _is_registered_route_peer(peer_id)
 		and _consume_peer_rate_token(
 			_route_encounter_command_rate_buckets,
 			peer_id,
@@ -1631,13 +1719,21 @@ func _admit_route_encounter_command(peer_id: int) -> bool:
 
 func _admit_route_shop_command(peer_id: int) -> bool:
 	return (
-		_is_registered_route_peer(peer_id)
+		_is_gameplay_ingress_admitted(peer_id)
+		and _is_registered_route_peer(peer_id)
 		and _consume_peer_rate_token(
 			_route_shop_command_rate_buckets,
 			peer_id,
 			ROUTE_SHOP_COMMAND_RATE_PER_SECOND,
 			ROUTE_SHOP_COMMAND_RATE_BURST
 		)
+	)
+
+
+func _is_gameplay_ingress_admitted(peer_id: int) -> bool:
+	return (
+		_net_manager != null
+		and _net_manager.is_gameplay_ingress_admitted(peer_id)
 	)
 
 
@@ -1744,6 +1840,12 @@ func _configure_route_players() -> bool:
 			return false
 		if not stable_key.is_empty():
 			participant_stable_keys[peer_id] = stable_key
+	if _run_state == null:
+		return false
+	# 路线 Player 只创建在线投影；持久账本从会话成员全集收敛，保留仍在
+	# grace 的离线玩家，等待重连 alias 或 final departure。
+	if not _reconcile_run_state_to_session_membership():
+		return false
 	if not _route.configure_multiplayer_players(
 		local_peer_id,
 		player_names.duplicate(),
@@ -1751,12 +1853,9 @@ func _configure_route_players() -> bool:
 		participant_stable_keys
 	):
 		return false
-	if _run_state == null:
-		return false
 	# 与 MpGame 保持相同生命周期：进入多人运行时绑定本机 peer；切场不清空，
 	# 让路线、战斗与遭遇继续共享同一背包。
-	_run_state.set_active_multiplayer_peer(local_peer_id)
-	return true
+	return _run_state.set_active_multiplayer_peer(local_peer_id)
 
 
 func _send_local_avatar_pose() -> void:
@@ -2097,7 +2196,10 @@ func net_shop_exit_ack(
 	var sender_id := _get_route_rpc_sender_id()
 	# 退出回执关闭本地 UI 后没有人工重试入口，不能与高频买卖共用会
 	# 静默耗尽的 token bucket；仍严格要求已注册、可发送的 RPC sender。
-	if not _is_registered_route_peer(sender_id):
+	if (
+		not _is_gameplay_ingress_admitted(sender_id)
+		or not _is_registered_route_peer(sender_id)
+	):
 		return
 	_route.host_submit_shop_exit(
 		sender_id,
@@ -2143,7 +2245,8 @@ func net_route_avatar_input(
 		return
 	var sender_id := _get_route_rpc_sender_id()
 	if (
-		sender_id <= 0
+		not _is_gameplay_ingress_admitted(sender_id)
+		or sender_id <= 0
 		or sender_id == _get_host_peer_id()
 		or sequence <= int(_last_client_avatar_sequences.get(sender_id, 0))
 		or sequence > AVATAR_MAX_SEQUENCE
@@ -2445,23 +2548,7 @@ func _apply_full_snapshot_from_peer(
 	_latest_economy_snapshot = economy_state.duplicate(true)
 	_latest_shop_snapshot = shop_state.duplicate(true)
 	_reconcile_pending_shop_exit_ack(shop_state)
-	_prune_client_inventory_states_to_connected_players()
 	return true
-
-
-func _prune_client_inventory_states_to_connected_players() -> int:
-	if not is_inside_tree() or not _is_client() or _net_manager == null:
-		return 0
-	if _run_state == null:
-		return 0
-	var connected_players := _net_manager.connected_players
-	var allowed_peer_ids := PackedInt32Array()
-	for raw_peer_id in connected_players.keys():
-		var peer_id := int(raw_peer_id)
-		if peer_id > 0:
-			allowed_peer_ids.append(peer_id)
-	allowed_peer_ids.sort()
-	return _run_state.prune_multiplayer_peer_states(allowed_peer_ids)
 
 
 @rpc("authority", "call_remote", "reliable", 0)

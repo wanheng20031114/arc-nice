@@ -12,8 +12,8 @@ func _run() -> void:
 	var run_state := RunStateStore.new()
 	root.add_child(run_state)
 	run_state.begin_new_run(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID, false)
-	run_state.ensure_multiplayer_peer_state(1)
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(1)
+	run_state.register_multiplayer_peer_state(2)
 	var economy := RogueRareChestEconomyCoordinator.new()
 	root.add_child(economy)
 	economy.reset_runtime(run_state, {
@@ -28,8 +28,8 @@ func _run() -> void:
 		PlayerCharacterRegistry.DEFAULT_CHARACTER_ID,
 		false
 	)
-	session_run_state.ensure_multiplayer_peer_state(1)
-	session_run_state.ensure_multiplayer_peer_state(2)
+	session_run_state.register_multiplayer_peer_state(1)
+	session_run_state.register_multiplayer_peer_state(2)
 	var session_economy := RogueRareChestEconomyCoordinator.new()
 	root.add_child(session_economy)
 	session_economy.reset_runtime(session_run_state, {

@@ -405,40 +405,77 @@ func receive_pickup_collected(
 	config_path: String,
 	applied_immediately: bool,
 	inventory_snapshot: Dictionary = {}
-) -> void:
-	if not is_client_view():
-		return
-	receive_pickup_removed(net_id)
+) -> bool:
+	if not is_client_view() or net_id <= 0 or collector_peer_id <= 0:
+		return false
 	if config_path.is_empty():
-		return
+		return false
 	var pickup_config := load(config_path) as PickupConfig
 	if pickup_config == null:
-		return
+		return false
+	# CH5 spawn 与 CH6 collect 可跨信道乱序，且 applied LRU 只提供有界去重。
+	# 因此世界注册表本身是最终幂等 fence：只有仍存在且配置一致的同一实例
+	# 才能消费效果或背包结果，迟到重复包和 collect-before-spawn 都请求修复。
+	var expected_pickup := _runtime.get_network_pickup(net_id)
+	if (
+		expected_pickup == null
+		or not is_instance_valid(expected_pickup)
+		or expected_pickup.config == null
+		or expected_pickup.config.resource_path != config_path
+	):
+		return false
 	if applied_immediately:
 		var player_node := _runtime.get_player_for_peer(collector_peer_id)
 		if player_node == null or not is_instance_valid(player_node):
-			return
-		player_node.apply_pickup(pickup_config, false)
-		return
+			# 即时效果与世界终结属于同一领域结果；Player 投影暂缺时保持两边
+			# 都未写，交由 typed ingress 请求完整 PlayerState/世界清单修复。
+			return false
+		var applied := player_node.apply_pickup(pickup_config, false)
+		if not applied:
+			return false
+		return _remove_expected_pickup(net_id, expected_pickup)
 	if inventory_snapshot.is_empty():
-		return
-	# 背包是跨场景持久账本，必须先于可销毁的 Player 表现节点提交。
+		return false
+	# 背包是跨场景持久账本。先 prepare/CAS，静默提交后再移除世界实体，
+	# 最后统一通知；无效 config/快照必须保持掉落实体完全不变。
 	var inventory_revision_before := (
 		_run_state.get_inventory_revision_for_peer(collector_peer_id)
 	)
-	if not _run_state.apply_inventory_snapshot_for_peer(
+	var prepared_inventory := _run_state.prepare_inventory_snapshot_for_peer(
 		collector_peer_id,
 		inventory_snapshot
+	)
+	if prepared_inventory.is_empty():
+		return false
+	if not _run_state.commit_prepared_inventory_snapshot_for_peer(
+		prepared_inventory,
+		false
 	):
-		return
+		return false
+	if not _remove_expected_pickup(net_id, expected_pickup):
+		return false
 	if (
 		_run_state.get_inventory_revision_for_peer(collector_peer_id)
 		<= inventory_revision_before
 	):
-		return
+		return true
+	_run_state.notify_inventory_snapshot_committed()
 	var player_node := _runtime.get_player_for_peer(collector_peer_id)
 	if player_node != null and is_instance_valid(player_node):
 		player_node.play_world_inventory_pickup_feedback(pickup_config)
+	return true
+
+
+func _remove_expected_pickup(net_id: int, expected_pickup: Pickup) -> bool:
+	var removed_pickup := _runtime.unregister_network_pickup(
+		net_id,
+		expected_pickup
+	)
+	if removed_pickup == null or removed_pickup != expected_pickup:
+		return false
+	if is_instance_valid(removed_pickup):
+		removed_pickup.queue_free()
+	return true
 
 
 func reset_session_state() -> void:

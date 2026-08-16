@@ -7,11 +7,15 @@ signal rpc_to_peer_requested(
 	arguments: Array
 )
 signal runtime_repair_plant_roster_requested(peer_id: int)
+signal client_runtime_repair_available
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 
 const RUNTIME_STATE_REQUEST_RATE_PER_SECOND := 0.5
 const RUNTIME_STATE_REQUEST_RATE_BURST := 2.0
+const CLIENT_RUNTIME_REPAIR_LEASE_SECONDS := 2.0
+const CLIENT_RUNTIME_REPAIR_COOLDOWN_SECONDS := 0.25
+const MAX_CLIENT_RUNTIME_REPAIR_REQUEST_ID := 0x7FFFFFFF
 const HOST_TIME_OFFSET_SMOOTH_WEIGHT := 0.08
 
 
@@ -37,7 +41,17 @@ var _merchant_transactions_coordinator: MpMerchantTransactionsCoordinator = null
 var _tower_fate_coordinator: MpTowerFateCoordinator = null
 var _network_diagnostics_coordinator: MpNetworkDiagnosticsCoordinator = null
 var _tower_mode_adapter: TowerDefenseMultiplayerModeAdapter = null
-var _runtime_state_requested := false
+## 首次进局同步是一局一次的启动屏障；后续异常修复使用下面独立的短租约，
+## 不能再由这个 one-shot 标记永久挡住。
+var _initial_runtime_state_requested := false
+## 修复 request id 只标识客户端本地租约，不进入 wire。序列跨 session reset
+## 保持单调，旧 deferred/timeout 回调不能误释放后来建立的新租约。
+var _client_runtime_repair_request_sequence := 0
+var _client_runtime_repair_in_flight_id := 0
+var _client_runtime_repair_lease_time_left := 0.0
+var _client_runtime_repair_cooldown_time_left := 0.0
+var _client_runtime_repair_deferred := false
+var _client_runtime_repair_availability_announced := false
 var _runtime_state_request_rate_buckets: Dictionary = {}
 var _net_time_origin: float = 0.0
 var _has_host_time_offset := false
@@ -86,6 +100,7 @@ func unbind_transport_dependencies() -> void:
 
 
 func update_transport(delta: float) -> void:
+	_update_client_runtime_repair_lease(maxf(delta, 0.0))
 	if not should_send_public_room_keepalive():
 		_public_room_keepalive_time_left = 0.0
 		return
@@ -283,11 +298,114 @@ func try_begin_client_runtime_state_request(
 		not is_bound()
 		or not is_client
 		or not host_game_ready
-		or _runtime_state_requested
+		or _initial_runtime_state_requested
 	):
 		return false
-	_runtime_state_requested = true
+	_initial_runtime_state_requested = true
 	return true
+
+
+## PeerLedger 等运行时异常走可重入修复租约。活动租约和冷却期内的多次故障
+## 只合并成一笔 deferred 债务；调用者不得为每个 reject 各发一份全量状态。
+func try_begin_client_runtime_repair_request(
+	is_client: bool,
+	host_game_ready: bool
+) -> int:
+	if not is_bound() or not is_client or not host_game_ready:
+		return 0
+	if (
+		_client_runtime_repair_in_flight_id > 0
+		or _client_runtime_repair_cooldown_time_left > 0.0
+	):
+		if not _client_runtime_repair_deferred:
+			_client_runtime_repair_deferred = true
+			_client_runtime_repair_availability_announced = false
+		return 0
+	if (
+		_client_runtime_repair_request_sequence
+		>= MAX_CLIENT_RUNTIME_REPAIR_REQUEST_ID
+	):
+		push_error("MpSessionCoordinator: 客户端运行时修复 request id 已耗尽。")
+		return 0
+	_client_runtime_repair_request_sequence += 1
+	_client_runtime_repair_in_flight_id = (
+		_client_runtime_repair_request_sequence
+	)
+	_client_runtime_repair_lease_time_left = CLIENT_RUNTIME_REPAIR_LEASE_SECONDS
+	_client_runtime_repair_cooldown_time_left = 0.0
+	_client_runtime_repair_deferred = false
+	_client_runtime_repair_availability_announced = false
+	return _client_runtime_repair_in_flight_id
+
+
+## completion 只释放完全匹配的本地租约。当前协议没有跨信道“全部应用”证明，
+## 正式流程主要依靠有界超时释放；该入口供未来明确完成证据及测试使用。
+func complete_client_runtime_repair_request(request_id: int) -> bool:
+	return _release_client_runtime_repair_lease(request_id)
+
+
+## 本地发送边界失败并不表示 repair 债务消失；释放匹配租约后保留一笔
+## deferred，待冷却结束重新通知 MpGame。它与远端“完成”语义严格分离。
+func fail_client_runtime_repair_request(request_id: int) -> bool:
+	if not _release_client_runtime_repair_lease(request_id):
+		return false
+	_client_runtime_repair_deferred = true
+	_client_runtime_repair_availability_announced = false
+	return true
+
+
+## timeout 回调必须携带创建时的 request id；旧回调命中新租约时严格无效。
+func expire_client_runtime_repair_request(request_id: int) -> bool:
+	return _release_client_runtime_repair_lease(request_id)
+
+
+func get_client_runtime_repair_in_flight_id() -> int:
+	return _client_runtime_repair_in_flight_id
+
+
+func has_deferred_client_runtime_repair() -> bool:
+	return _client_runtime_repair_deferred
+
+
+func _release_client_runtime_repair_lease(request_id: int) -> bool:
+	if (
+		request_id <= 0
+		or request_id != _client_runtime_repair_in_flight_id
+	):
+		return false
+	_client_runtime_repair_in_flight_id = 0
+	_client_runtime_repair_lease_time_left = 0.0
+	_client_runtime_repair_cooldown_time_left = (
+		CLIENT_RUNTIME_REPAIR_COOLDOWN_SECONDS
+	)
+	return true
+
+
+func _update_client_runtime_repair_lease(delta: float) -> void:
+	if _client_runtime_repair_in_flight_id > 0:
+		_client_runtime_repair_lease_time_left = maxf(
+			_client_runtime_repair_lease_time_left - delta,
+			0.0
+		)
+		if _client_runtime_repair_lease_time_left <= 0.0:
+			var expired_request_id := _client_runtime_repair_in_flight_id
+			expire_client_runtime_repair_request(expired_request_id)
+		return
+	if _client_runtime_repair_cooldown_time_left > 0.0:
+		_client_runtime_repair_cooldown_time_left = maxf(
+			_client_runtime_repair_cooldown_time_left - delta,
+			0.0
+		)
+		if _client_runtime_repair_cooldown_time_left > 0.0:
+			return
+	if (
+		_client_runtime_repair_deferred
+		and not _client_runtime_repair_availability_announced
+	):
+		# 先落标记再发信号，避免同步回调重入 update 时重复通知。若此刻尚未
+		# ready，MpGame 仍保留 repair 债务，并在下一次 IN_GAME 主动重试。
+		_client_runtime_repair_availability_announced = true
+		client_runtime_repair_available.emit()
 
 
 func admit_authoritative_runtime_state_request(
@@ -530,7 +648,12 @@ func clear_peer(peer_id: int) -> void:
 
 
 func reset_session_state() -> void:
-	_runtime_state_requested = false
+	_initial_runtime_state_requested = false
+	_client_runtime_repair_in_flight_id = 0
+	_client_runtime_repair_lease_time_left = 0.0
+	_client_runtime_repair_cooldown_time_left = 0.0
+	_client_runtime_repair_deferred = false
+	_client_runtime_repair_availability_announced = false
 	_runtime_state_request_rate_buckets.clear()
 	reset_transport_state()
 
@@ -541,7 +664,7 @@ func reset_transport_state() -> void:
 
 
 func has_requested_runtime_state() -> bool:
-	return _runtime_state_requested
+	return _initial_runtime_state_requested
 
 
 func _clear_world_manifest_dependencies() -> void:

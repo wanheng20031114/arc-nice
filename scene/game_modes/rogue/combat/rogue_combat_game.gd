@@ -269,7 +269,7 @@ func remove_multiplayer_player(peer_id: int) -> void:
 	player_roster_coordinator.remove_multiplayer_player(peer_id)
 
 
-func restore_multiplayer_player(
+func ensure_reconnected_multiplayer_player(
 	old_peer_id: int,
 	new_peer_id: int,
 	player_name: String,
@@ -277,8 +277,8 @@ func restore_multiplayer_player(
 	state: SnapshotManager.PlayerState,
 	spawn_slot_index: int,
 	_reconnect_state: Dictionary = {}
-) -> Player:
-	return player_roster_coordinator.restore_multiplayer_player(
+) -> CombatRuntimeBase.ReconnectedPlayerProjection:
+	return player_roster_coordinator.ensure_reconnected_multiplayer_player(
 		old_peer_id,
 		new_peer_id,
 		player_name,

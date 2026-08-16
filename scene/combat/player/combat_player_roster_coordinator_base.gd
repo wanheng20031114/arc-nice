@@ -161,40 +161,102 @@ func remove_multiplayer_player(peer_id: int) -> void:
 		run_multiplayer_defeat_check_after_grace()
 
 
-func restore_multiplayer_player(
+## 重连 Player 是持久身份的场景投影：已有 new-id 节点时复用并校准，
+## 尚未创建时才实例化。这样 CH0 身份通知可安全重放，也不会复制 Player。
+func ensure_reconnected_multiplayer_player(
 	old_peer_id: int,
 	new_peer_id: int,
 	player_name: String,
 	character_id: StringName,
 	state: SnapshotManager.PlayerState,
 	spawn_slot_index: int
-) -> Player:
+) -> CombatRuntimeBase.ReconnectedPlayerProjection:
 	if (
-		new_peer_id <= 0
-		or runtime.peer_players.has(new_peer_id)
+		old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
 		or not PlayerCharacterRegistry.is_valid_character_id(character_id)
 	):
-		return null
+		return CombatRuntimeBase.ReconnectedPlayerProjection.new(
+			CombatRuntimeBase.ReconnectedPlayerProjectionStatus.INVALID_REQUEST
+		)
+	var old_player := runtime.peer_players.get(old_peer_id) as Player
+	if (
+		old_player != null
+		and (
+			not is_instance_valid(old_player)
+			or old_player.is_queued_for_deletion()
+		)
+	):
+		runtime.peer_players.erase(old_peer_id)
+		old_player = null
+	var player_instance := runtime.peer_players.get(new_peer_id) as Player
+	if (
+		player_instance != null
+		and (
+			not is_instance_valid(player_instance)
+			or player_instance.is_queued_for_deletion()
+		)
+	):
+		runtime.peer_players.erase(new_peer_id)
+		player_instance = null
+	if old_player != null:
+		push_error(
+			"Combat player roster: 重连时 old=%d 的 Player 尚未退出，拒绝与 new=%d 并存。"
+			% [old_peer_id, new_peer_id]
+		)
+		return CombatRuntimeBase.ReconnectedPlayerProjection.new(
+			CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CONFLICT
+		)
+	if (
+		player_instance != null
+		and player_instance.get_character_id() != character_id
+	):
+		push_error(
+			"Combat player roster: 重连目标 %d 的既有角色与认证角色不一致。"
+			% new_peer_id
+		)
+		return CombatRuntimeBase.ReconnectedPlayerProjection.new(
+			CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CONFLICT
+		)
+	var reused_existing := player_instance != null
+	if not reused_existing:
+		player_instance = _instantiate_player_character(character_id)
+		if player_instance == null:
+			return CombatRuntimeBase.ReconnectedPlayerProjection.new(
+				CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATE_FAILED
+			)
+
+	# 只有 Player 已存在后才提交 roster 元数据；实例化失败不会留下半套投影。
 	player_names.erase(old_peer_id)
 	player_character_ids.erase(old_peer_id)
 	_snapshot_encoder.forget_peer(old_peer_id)
 	player_names[new_peer_id] = player_name
 	player_character_ids[new_peer_id] = character_id
-	peer_restored.emit(old_peer_id, new_peer_id)
-	var player_instance := _instantiate_player_character(character_id)
-	if player_instance == null:
-		return null
 	player_instance.name = "Player_%d" % new_peer_id
-	player_instance.position = (
-		state.position
-		if state != null
-		else player_spawn.position + get_spawn_offset(spawn_slot_index)
-	)
-	runtime.add_child(player_instance)
+	if state != null:
+		player_instance.position = state.position
+	elif not reused_existing:
+		player_instance.position = (
+			player_spawn.position + get_spawn_offset(spawn_slot_index)
+		)
+	if not reused_existing:
+		runtime.add_child(player_instance)
 	_configure_multiplayer_control(player_instance, new_peer_id)
 	_connect_multiplayer_death(player_instance, new_peer_id)
 	runtime.peer_players[new_peer_id] = player_instance
-	return player_instance
+	if new_peer_id == runtime.multiplayer_local_peer_id:
+		runtime.player = player_instance
+	if not reused_existing:
+		peer_restored.emit(old_peer_id, new_peer_id)
+	return CombatRuntimeBase.ReconnectedPlayerProjection.new(
+		(
+			CombatRuntimeBase.ReconnectedPlayerProjectionStatus.EXISTING_CURRENT
+			if reused_existing
+			else CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATED
+		),
+		player_instance
+	)
 
 
 func get_player_for_peer(peer_id: int) -> Player:

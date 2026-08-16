@@ -354,7 +354,10 @@ func consume_remote_transaction_admission(
 	# from alternating transaction RPC types to multiply admitted work.
 	if peer_id == _get_local_peer_id():
 		return true
-	if _suspended_peer_ids.has(peer_id):
+	if (
+		_suspended_peer_ids.has(peer_id)
+		or not _net_manager.is_gameplay_ingress_admitted(peer_id)
+	):
 		return false
 	return _consume_peer_rate_token(
 		_player_transaction_ingress_rate_buckets,
@@ -574,10 +577,10 @@ func receive_inventory_snapshot(
 	peer_id: int,
 	snapshot: Dictionary,
 	force_inventory_repair: bool = false
-) -> void:
+) -> bool:
 	if _run_state == null or peer_id <= 0 or snapshot.is_empty():
-		return
-	_run_state.apply_inventory_snapshot_for_peer(
+		return false
+	return _run_state.apply_inventory_snapshot_for_peer(
 		peer_id,
 		snapshot,
 		force_inventory_repair
@@ -591,23 +594,36 @@ func receive_upgrade_confirmation(
 	current_xirang: int,
 	success: bool,
 	free_upgrade: bool = false
-) -> void:
-	if not success or not is_bound() or peer_id <= 0:
-		return
+) -> bool:
+	if (
+		not is_bound()
+		or peer_id <= 0
+		or current_xirang < 0
+		or not RunStateStore.MAX_UPGRADE_LEVELS.has(stat_type)
+		or level < 0
+		or level > int(RunStateStore.MAX_UPGRADE_LEVELS[stat_type])
+	):
+		return false
+	if not success:
+		return true
 	# 升级等级属于 RunState 持久账本；Player 只负责当前场景中的属性表现。
-	_run_state.ensure_multiplayer_peer_state(peer_id)
-	_run_state.set_upgrade_level_for_peer(peer_id, stat_type, level)
+	var previous_level := _run_state.get_upgrade_level_for_peer(peer_id, stat_type)
+	if not _run_state.set_upgrade_level_for_peer(peer_id, stat_type, level):
+		return false
 	var player_node: Player = _runtime.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
-		return
+		return true
 	var already_applied_on_host := (
 		_net_manager.is_host() and peer_id == _get_local_peer_id()
 	)
-	if not already_applied_on_host:
+	if not already_applied_on_host and previous_level != level:
 		_apply_confirmed_upgrade_to_player(player_node, stat_type)
 	player_node.set_xirang_balance(current_xirang)
+	if player_node.current_xirang != current_xirang:
+		return false
 	if free_upgrade and not already_applied_on_host:
 		player_node.play_lucky_upgrade_feedback()
+	return true
 
 
 func receive_inventory_item_used(
@@ -617,21 +633,23 @@ func receive_inventory_item_used(
 	success: bool,
 	inventory_snapshot: Dictionary,
 	force_inventory_repair: bool = false
-) -> void:
+) -> bool:
 	if not is_bound() or peer_id <= 0 or inventory_snapshot.is_empty():
-		return
+		return false
 	var revision_before := _commit_received_inventory_snapshot(
 		peer_id,
 		inventory_snapshot,
 		force_inventory_repair
 	)
-	if revision_before < 0 or not success:
-		return
+	if revision_before < 0:
+		return false
+	if not success:
+		return true
 	# 消耗品表现依赖 Player 节点，但背包账本不依赖。断线/重连导致节点
 	# 暂时缺席时只跳过表现；可靠事务快照已经在上方完成收敛。
 	var player_node: Player = _runtime.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
-		return
+		return true
 	if (
 		int(inventory_snapshot.get("revision", -1)) > revision_before
 		and not config_path.is_empty()
@@ -639,6 +657,7 @@ func receive_inventory_item_used(
 		var item := load(config_path) as PickupConfig
 		if item != null:
 			player_node.apply_inventory_item_use_replay(item)
+	return true
 
 
 func receive_inventory_item_discarded(
@@ -647,14 +666,14 @@ func receive_inventory_item_discarded(
 	_success: bool,
 	inventory_snapshot: Dictionary,
 	force_inventory_repair: bool = false
-) -> void:
+) -> bool:
 	if not is_bound() or peer_id <= 0 or inventory_snapshot.is_empty():
-		return
-	_commit_received_inventory_snapshot(
+		return false
+	return _commit_received_inventory_snapshot(
 		peer_id,
 		inventory_snapshot,
 		force_inventory_repair
-	)
+	) >= 0
 
 
 func receive_simple_crafting_result(
@@ -664,32 +683,33 @@ func receive_simple_crafting_result(
 	result: String,
 	inventory_snapshot: Dictionary,
 	force_inventory_repair: bool = false
-) -> void:
+) -> bool:
 	if (
 		not is_bound()
 		or peer_id <= 0
 		or request_id <= 0
 		or inventory_snapshot.is_empty()
 	):
-		return
+		return false
 	var last_result_id := int(_last_simple_crafting_result_ids.get(peer_id, 0))
 	if request_id <= last_result_id:
-		return
+		return true
 	if _commit_received_inventory_snapshot(
 		peer_id,
 		inventory_snapshot,
 		force_inventory_repair and peer_id == _get_local_peer_id()
 	) < 0:
-		return
+		return false
 	_last_simple_crafting_result_ids[peer_id] = request_id
 	if peer_id != _get_local_peer_id():
-		return
+		return true
 	var ui_request_token := take_local_simple_crafting_request_token(request_id)
 	_mode_adapter.show_simple_crafting_result(
 		StringName(recipe_id),
 		_normalize_crafting_result_code(StringName(result)),
 		ui_request_token
 	)
+	return true
 
 
 ## CH6 事务结果首先收敛持久背包账本；Player 只是可选的表现载体。
@@ -719,9 +739,22 @@ func receive_skill1_purchase_confirmation(
 	result_code: int,
 	skill1_upgrade_level: int = -1,
 	skill1_charge_duration: float = -1.0
-) -> void:
-	if not is_bound():
-		return
+) -> bool:
+	if (
+		not is_bound()
+		or peer_id <= 0
+		or current_xirang < 0
+		or result_code < MerchantPurchaseResult.SkillUpgrade.SUCCESS
+		or result_code > MerchantPurchaseResult.SkillUpgrade.UPGRADE_MAXED
+		or skill1_upgrade_level < -1
+		or skill1_upgrade_level > Player.SKILL1_MAX_UPGRADE_LEVEL
+		or not is_finite(skill1_charge_duration)
+		or (skill1_charge_duration != -1.0 and skill1_charge_duration <= 0.0)
+	):
+		return false
+	var player_node := _runtime.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return false
 	_mode_adapter.apply_skill1_purchase_state(
 		peer_id,
 		current_xirang,
@@ -731,6 +764,16 @@ func receive_skill1_purchase_confirmation(
 	)
 	if peer_id == _get_local_peer_id():
 		_mode_adapter.show_local_skill1_purchase_result(result_code)
+	if player_node.current_xirang != current_xirang:
+		return false
+	if skill1_unlocked and not player_node.has_skill1():
+		return false
+	if (
+		skill1_upgrade_level >= 0
+		and player_node.skill1_upgrade_level != skill1_upgrade_level
+	):
+		return false
+	return true
 
 
 func track_local_simple_crafting_request(

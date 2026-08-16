@@ -2,30 +2,55 @@
 extends Node2D
 class_name MultiplayerGameplaySession
 
+const MultiplayerReconnectTypesScript := preload(
+	"res://scene/multiplayer/reconnect/multiplayer_reconnect_types.gd"
+)
+
+## 保留既有公开名称，实际枚举由重连领域统一定义，避免 NetManager 与各游戏
+## 运行时各自维护一套数值契约。
+const ReconnectedPlayerProjectionOutcome := (
+	MultiplayerReconnectTypesScript.RuntimeProjectionOutcome
+)
+
 signal embedded_runtime_prepared
+## 内嵌战斗的重连 Player 投影必须给外层流程一个明确终态。外层只组合
+## 该结果与路线身份提交，不再读取某一帧里是否恰好存在 Player 来猜监听顺序。
+signal reconnected_player_projection_resolved(
+	old_peer_id: int,
+	new_peer_id: int,
+	outcome: MultiplayerReconnectTypesScript.RuntimeProjectionOutcome
+)
 
 @export_group("内嵌战斗运行时")
 @export_file("*.tscn") var runtime_scene_path_override := ""
 @export var embedded_runtime := false
 
 
-## Freezes the participant roster before an embedded combat session enters the
-## scene tree. Route spectators remain connected to the enclosing multiplayer
-## session but are deliberately excluded from this combat runtime.
+## Host 在成员仍为 RECONNECTING 时同步调用；实现必须在返回 true 前把该成员
+## 首帧所需快照全部排入传输。这里是可失败命令，不得改由 ready 通知承载。
+@abstract
+func prepare_reconnected_member_delivery(
+	old_peer_id: int,
+	new_peer_id: int,
+	outcome: MultiplayerReconnectTypesScript.RuntimeProjectionOutcome,
+	membership_revision: int
+) -> bool
+
+
+## 内嵌战斗入树前冻结参战 roster；路线旁观者仍属于外层会话，但不会获得
+## 本战斗的 Player、快照、事务或结算状态。
 @abstract
 func configure_embedded_participant_roster(
 	peer_ids: PackedInt32Array
 ) -> bool
 
 
-## Activates a prepared embedded combat runtime after the route transition and
-## multiplayer preparation barrier have both completed.
+## 仅在路线转场与多人准备屏障都完成后激活已预热的内嵌战斗。
 @abstract
 func activate_embedded_runtime() -> bool
 
 
-## Removes one participant from the current embedded combat without disconnecting
-## the peer from the enclosing route session.
+## 只暂停当前内嵌战斗参与权，不断开其外层路线会话身份。
 @abstract
 func suspend_embedded_participant_for_current_combat(
 	peer_id: int,
@@ -33,7 +58,7 @@ func suspend_embedded_participant_for_current_combat(
 ) -> bool
 
 
-## Returns the concrete combat runtime owned by this multiplayer session.
+## 返回本多人会话唯一拥有的具体战斗运行时。
 @abstract
 func get_game_runtime() -> CombatRuntimeBase
 

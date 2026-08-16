@@ -1,6 +1,10 @@
 extends Node
 class_name RunStateStore
 
+## 跨场景局内账本的唯一真源。多人身份必须先由会话生命周期显式注册，
+## Inventory、升级与队伍经济只接受已注册成员的原子事务；所有查询保持纯读，
+## 不得因为 UI 或网络校验而暗中创建玩家、初始物品或 revision。
+
 signal inventory_changed
 signal quick_use_binding_changed(
 	owner_peer_id: int,
@@ -14,6 +18,7 @@ signal party_xirang_ledger_changed(snapshot: Dictionary)
 signal party_light_stone_ledger_changed(snapshot: Dictionary)
 signal party_status_ledger_changed(snapshot: Dictionary)
 signal rogue_encounter_history_changed(snapshot: Dictionary)
+signal multiplayer_peer_membership_changed(peer_ids: PackedInt32Array)
 
 const INVENTORY_CAPACITY := 20
 const PARTY_ECONOMY_SCHEMA_VERSION := 7
@@ -61,6 +66,15 @@ enum StatType {
 	DODGE,
 }
 
+## old->new 重连身份迁移的显式结果。调用方必须区分已提交、幂等重放与
+## 身份冲突，不能再把“目标已存在”含糊地当成可覆盖成功。
+enum MultiplayerPeerRemapResult {
+	INVALID,
+	MIGRATED,
+	ALREADY_CURRENT,
+	CONFLICT,
+}
+
 const MAX_UPGRADE_LEVELS := {
 	StatType.ATTACK: 10,
 	StatType.HEALTH: 10,
@@ -90,6 +104,15 @@ var multiplayer_inventories: Dictionary = {}
 var multiplayer_inventory_stack_counts: Dictionary = {}
 var multiplayer_inventory_revisions: Dictionary = {}
 var multiplayer_upgrade_levels: Dictionary = {}
+## 多人账本成员的唯一真源。只有完成认证/身份表收敛的 peer 才能显式注册；
+## Player 节点是否已经生成不参与成员判定，避免跨信道结果依赖场景节点时序。
+var _registered_multiplayer_peer_ids: Dictionary[int, bool] = {}
+## NetManager 会话成员 revision 的本地投影。-1 表示尚未接收本次网络会话的
+## 权威 roster；它只约束成员增删，不参与背包等 CH6 分账本 revision。
+var _multiplayer_session_membership_revision: int = -1
+## 本局已经提交的重连身份事务证明。键为退役 old peer，值同时记录 new peer
+## 与权威 roster revision；可靠 RPC 重放只能命中完全相同的证明。
+var _multiplayer_peer_remap_aliases: Dictionary[int, Dictionary] = {}
 ## Per-run, presentation-facing shortcut preferences. These are deliberately
 ## separate from authoritative inventory snapshots and revisions: clients resolve
 ## their own binding to a concrete slot, then reuse the normal reliable use
@@ -165,6 +188,9 @@ func begin_new_run(
 	multiplayer_inventory_stack_counts.clear()
 	multiplayer_inventory_revisions.clear()
 	multiplayer_upgrade_levels.clear()
+	_registered_multiplayer_peer_ids.clear()
+	_multiplayer_session_membership_revision = -1
+	_multiplayer_peer_remap_aliases.clear()
 	_clear_all_quick_use_bindings()
 	shared_warehouse_snapshots.clear()
 	shared_warehouse_ledger_revision = 0
@@ -182,6 +208,7 @@ func begin_new_run(
 	run_started = true
 	inventory_changed.emit()
 	upgrade_changed.emit()
+	multiplayer_peer_membership_changed.emit(PackedInt32Array())
 
 
 func ensure_run_started() -> void:
@@ -209,13 +236,13 @@ func record_rogue_encounter(encounter_id: StringName) -> bool:
 
 
 func has_rogue_encountered(encounter_id: StringName) -> bool:
-	ensure_run_started()
-	return rogue_encounter_ids.has(encounter_id)
+	return run_started and rogue_encounter_ids.has(encounter_id)
 
 
 func get_rogue_encountered_ids() -> Array[StringName]:
-	ensure_run_started()
 	var result: Array[StringName] = []
+	if not run_started:
+		return result
 	for encounter_id in RogueEncounterRegistry.get_pool_entries(
 		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
 	):
@@ -225,7 +252,8 @@ func get_rogue_encountered_ids() -> Array[StringName]:
 
 
 func export_rogue_encounter_history_ledger() -> Dictionary:
-	ensure_run_started()
+	if not run_started:
+		return {}
 	var encounter_ids: Array[String] = []
 	for encounter_id in get_rogue_encountered_ids():
 		encounter_ids.append(String(encounter_id))
@@ -241,12 +269,12 @@ func try_add_item(item: PickupConfig) -> bool:
 
 
 func can_add_item_count(item: PickupConfig, count: int = 1) -> bool:
-	ensure_run_started()
+	if not run_started:
+		return false
 	if active_multiplayer_peer_id > 0:
 		return can_add_item_count_for_peer(active_multiplayer_peer_id, item, count)
 	if item == null or not item.can_store_in_inventory or count <= 0:
 		return false
-	_ensure_local_inventory_shape()
 	return _get_available_item_capacity(inventory, inventory_stack_counts, item) >= count
 
 
@@ -267,14 +295,14 @@ func can_add_item_counts(
 	items: Array[PickupConfig],
 	counts: Array[int]
 ) -> bool:
-	ensure_run_started()
+	if not run_started:
+		return false
 	if active_multiplayer_peer_id > 0:
 		return can_add_item_counts_for_peer(
 			active_multiplayer_peer_id,
 			items,
 			counts
 		)
-	_ensure_local_inventory_shape()
 	return not _simulate_add_item_counts(
 		inventory,
 		inventory_stack_counts,
@@ -313,14 +341,14 @@ func get_simple_crafting_result(
 	recipe: ProductionRecipe,
 	completed_global_research_ids: Array[StringName] = []
 ) -> StringName:
-	ensure_run_started()
+	if not run_started:
+		return CRAFT_RESULT_INVALID_RECIPE
 	if active_multiplayer_peer_id > 0:
 		return get_simple_crafting_result_for_peer(
 			active_multiplayer_peer_id,
 			recipe,
 			completed_global_research_ids
 		)
-	_ensure_local_inventory_shape()
 	return _get_crafting_simulation_result(
 		_simulate_simple_crafting(
 			inventory,
@@ -367,13 +395,13 @@ func try_craft_inventory_recipe_if_revision(
 
 
 func get_inventory_item_total(item: PickupConfig) -> int:
-	ensure_run_started()
+	if not run_started:
+		return 0
 	if active_multiplayer_peer_id > 0:
 		return get_inventory_item_total_for_peer(
 			active_multiplayer_peer_id,
 			item
 		)
-	_ensure_local_inventory_shape()
 	return _get_item_total_in_arrays(
 		inventory,
 		inventory_stack_counts,
@@ -499,7 +527,8 @@ func get_item(slot_index: int) -> PickupConfig:
 func get_item_count(slot_index: int) -> int:
 	if active_multiplayer_peer_id > 0:
 		return get_item_count_for_peer(active_multiplayer_peer_id, slot_index)
-	_ensure_local_inventory_shape()
+	if not run_started:
+		return 0
 	if slot_index < 0 or slot_index >= inventory.size() or inventory[slot_index] == null:
 		return 0
 	return maxi(inventory_stack_counts[slot_index], 1)
@@ -563,9 +592,8 @@ func get_quick_use_bound_config_path(owner_peer_id: int = -1) -> String:
 	return str(binding.get("config_path", ""))
 
 
-## Resolves a binding against the latest inventory shape. The preferred slot is
-## retained while it still contains that item; otherwise the lowest matching
-## slot becomes preferred. No match keeps the item path dormant and returns -1.
+## 纯只读地把绑定解析到最新背包：首选槽仍匹配时直接返回，否则返回最低的
+## 匹配槽；没有物品时保持绑定休眠。getter 不回写“首选槽”，避免读取改状态。
 func get_quick_use_slot_index(owner_peer_id: int = -1) -> int:
 	var resolved_owner := _resolve_quick_use_owner_peer_id(owner_peer_id)
 	if not _quick_use_bindings_by_owner.has(resolved_owner):
@@ -584,11 +612,7 @@ func get_quick_use_slot_index(owner_peer_id: int = -1) -> int:
 	for slot_index in INVENTORY_CAPACITY:
 		if not _quick_use_slot_matches_path(resolved_owner, slot_index, config_path):
 			continue
-		binding["preferred_slot_index"] = slot_index
-		_quick_use_bindings_by_owner[resolved_owner] = binding
 		return slot_index
-	binding["preferred_slot_index"] = -1
-	_quick_use_bindings_by_owner[resolved_owner] = binding
 	return -1
 
 
@@ -668,12 +692,15 @@ func get_upgrade_cost(stat_type: int) -> int:
 	return costs[current_level]
 
 
-func set_active_multiplayer_peer(peer_id: int) -> void:
-	active_multiplayer_peer_id = maxi(peer_id, 0)
-	if active_multiplayer_peer_id > 0:
-		ensure_multiplayer_peer_state(active_multiplayer_peer_id)
+func set_active_multiplayer_peer(peer_id: int) -> bool:
+	if peer_id < 0 or (peer_id > 0 and not has_multiplayer_peer_state(peer_id)):
+		return false
+	if active_multiplayer_peer_id == peer_id:
+		return true
+	active_multiplayer_peer_id = peer_id
 	inventory_changed.emit()
 	upgrade_changed.emit()
+	return true
 
 
 ## 当前本地界面所映射的多人背包 owner。0 表示使用单人背包。
@@ -682,48 +709,24 @@ func get_active_multiplayer_peer_id() -> int:
 	return active_multiplayer_peer_id
 
 
-func ensure_multiplayer_peer_state(peer_id: int) -> void:
-	if peer_id <= 0:
-		return
-	var created_inventory := false
-	if not multiplayer_inventories.has(peer_id):
-		var peer_inventory: Array[PickupConfig] = []
-		peer_inventory.resize(INVENTORY_CAPACITY)
-		multiplayer_inventories[peer_id] = peer_inventory
-		created_inventory = true
-	if not multiplayer_inventory_stack_counts.has(peer_id):
-		var peer_counts: Array[int] = []
-		peer_counts.resize(INVENTORY_CAPACITY)
-		peer_counts.fill(0)
-		multiplayer_inventory_stack_counts[peer_id] = peer_counts
-	if created_inventory and _include_starting_inventory_for_new_peers:
-		_seed_starting_inventory(
-			multiplayer_inventories[peer_id] as Array,
-			multiplayer_inventory_stack_counts[peer_id] as Array
-		)
-	if not multiplayer_inventory_revisions.has(peer_id):
-		multiplayer_inventory_revisions[peer_id] = 0
-	if not multiplayer_upgrade_levels.has(peer_id):
-		multiplayer_upgrade_levels[peer_id] = {
-			StatType.ATTACK: 0,
-			StatType.HEALTH: 0,
-			StatType.ATTACK_SPEED: 0,
-			StatType.DODGE: 0,
-		}
-	if not party_xirang_balances.has(peer_id):
-		party_xirang_balances[peer_id] = 0
-		party_xirang_ledger_revision += 1
-		party_xirang_ledger_changed.emit(export_party_xirang_ledger())
-	var status_ledger_changed := false
-	if not max_health_penalties.has(peer_id):
-		max_health_penalties[peer_id] = 0
-		status_ledger_changed = true
-	if not player_stat_bonuses.has(peer_id):
-		player_stat_bonuses[peer_id] = _make_empty_player_stat_bonuses()
-		status_ledger_changed = true
-	if status_ledger_changed:
-		party_status_ledger_revision += 1
-		party_status_ledger_changed.emit(export_party_status_ledger())
+## 认证层唯一允许创建多人账本成员的入口。一次注册会原子建立该 peer 的
+## 背包、升级、息壤和永久状态；即使 Player 节点尚未生成，结果也可安全入账。
+func register_multiplayer_peer_state(peer_id: int) -> bool:
+	return register_multiplayer_peer_states(PackedInt32Array([peer_id]))
+
+
+## 整批注册认证 roster。所有成员先在临时区完成准备，再一次性提交；无论新增
+## 多少 peer，每类账本 revision 最多前进一步、每类信号最多发布一次。
+func register_multiplayer_peer_states(peer_ids: PackedInt32Array) -> bool:
+	if not run_started:
+		return false
+	var preparation := _prepare_multiplayer_peer_registrations(peer_ids)
+	if not bool(preparation.get("valid", false)):
+		return false
+	return _commit_multiplayer_membership_delta(
+		preparation.get("states", {}) as Dictionary,
+		PackedInt32Array()
+	)
 
 
 func try_add_item_for_peer(peer_id: int, item: PickupConfig) -> bool:
@@ -731,9 +734,12 @@ func try_add_item_for_peer(peer_id: int, item: PickupConfig) -> bool:
 
 
 func can_add_item_count_for_peer(peer_id: int, item: PickupConfig, count: int = 1) -> bool:
-	ensure_run_started()
-	ensure_multiplayer_peer_state(peer_id)
-	if item == null or not item.can_store_in_inventory or count <= 0:
+	if (
+		not has_multiplayer_peer_state(peer_id)
+		or item == null
+		or not item.can_store_in_inventory
+		or count <= 0
+	):
 		return false
 
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
@@ -742,8 +748,8 @@ func can_add_item_count_for_peer(peer_id: int, item: PickupConfig, count: int = 
 
 
 func try_add_item_count_for_peer(peer_id: int, item: PickupConfig, count: int = 1) -> bool:
-	ensure_run_started()
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return false
 	if not can_add_item_count_for_peer(peer_id, item, count):
 		return false
 
@@ -760,8 +766,8 @@ func can_add_item_counts_for_peer(
 	items: Array[PickupConfig],
 	counts: Array[int]
 ) -> bool:
-	ensure_run_started()
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return false
 	return not _simulate_add_item_counts(
 		multiplayer_inventories[peer_id] as Array,
 		multiplayer_inventory_stack_counts[peer_id] as Array,
@@ -777,8 +783,8 @@ func try_add_item_counts_for_peer_if_revision(
 	expected_revision: int,
 	emit_change: bool = true
 ) -> bool:
-	ensure_run_started()
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return false
 	if expected_revision != get_inventory_revision_for_peer(peer_id):
 		return false
 	var simulated := _simulate_add_item_counts(
@@ -804,8 +810,8 @@ func get_simple_crafting_result_for_peer(
 	recipe: ProductionRecipe,
 	completed_global_research_ids: Array[StringName] = []
 ) -> StringName:
-	ensure_run_started()
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return CRAFT_RESULT_INVALID_RECIPE
 	return _get_crafting_simulation_result(
 		_simulate_simple_crafting(
 			multiplayer_inventories[peer_id] as Array,
@@ -823,8 +829,8 @@ func try_craft_inventory_recipe_for_peer_if_revision(
 	emit_change: bool = true,
 	completed_global_research_ids: Array[StringName] = []
 ) -> StringName:
-	ensure_run_started()
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return CRAFT_RESULT_INVALID_RECIPE
 	if expected_revision != get_inventory_revision_for_peer(peer_id):
 		return CRAFT_RESULT_STALE_REVISION
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
@@ -850,8 +856,8 @@ func get_inventory_item_total_for_peer(
 	peer_id: int,
 	item: PickupConfig
 ) -> int:
-	ensure_run_started()
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return 0
 	return _get_item_total_in_arrays(
 		multiplayer_inventories[peer_id] as Array,
 		multiplayer_inventory_stack_counts[peer_id] as Array,
@@ -866,8 +872,8 @@ func try_consume_item_count_for_peer_if_revision(
 	expected_revision: int,
 	emit_change: bool = true
 ) -> bool:
-	ensure_run_started()
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return false
 	if (
 		expected_revision != get_inventory_revision_for_peer(peer_id)
 		or item == null
@@ -898,8 +904,8 @@ func try_consume_item_at_slot_for_peer_if_revision(
 	expected_revision: int,
 	emit_change: bool = true
 ) -> bool:
-	ensure_run_started()
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return false
 	if expected_revision != get_inventory_revision_for_peer(peer_id):
 		return false
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
@@ -918,8 +924,7 @@ func try_consume_item_at_slot_for_peer_if_revision(
 
 
 func try_use_item_for_peer(peer_id: int, slot_index: int, player: Player) -> bool:
-	ensure_multiplayer_peer_state(peer_id)
-	if player == null:
+	if not has_multiplayer_peer_state(peer_id) or player == null:
 		return false
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
 	if slot_index < 0 or slot_index >= peer_inventory.size():
@@ -945,7 +950,8 @@ func try_use_item_for_peer(peer_id: int, slot_index: int, player: Player) -> boo
 
 
 func discard_item_for_peer(peer_id: int, slot_index: int) -> bool:
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return false
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
 	if slot_index < 0 or slot_index >= peer_inventory.size():
 		return false
@@ -966,137 +972,491 @@ func get_inventory_revision() -> int:
 
 
 func get_inventory_revision_for_peer(peer_id: int) -> int:
-	if peer_id <= 0:
-		return 0
-	ensure_multiplayer_peer_state(peer_id)
-	return int(multiplayer_inventory_revisions.get(peer_id, 0))
+	if not has_multiplayer_peer_state(peer_id):
+		return -1
+	return int(multiplayer_inventory_revisions[peer_id])
 
 
 func has_multiplayer_peer_state(peer_id: int) -> bool:
-	return (
-		peer_id > 0
-		and multiplayer_inventories.has(peer_id)
-		and multiplayer_inventory_stack_counts.has(peer_id)
-		and multiplayer_inventory_revisions.has(peer_id)
-	)
+	return peer_id > 0 and _registered_multiplayer_peer_ids.has(peer_id)
 
 
-## Atomically migrates a reconnect identity. When independent reliable channels
-## deliver the Host's new-id inventory before the old->new identity RPC, clients
-## may preserve that equal-or-newer inventory while still migrating the old
-## peer's upgrades and party ledgers. Only one final signal set is published.
+## 成员表是身份真源；该检查只用于提交前验证内部多账本不变量，绝不补建状态。
+func _has_complete_registered_multiplayer_peer_state(peer_id: int) -> bool:
+	if not has_multiplayer_peer_state(peer_id):
+		return false
+	if (
+		not multiplayer_inventories.has(peer_id)
+		or not multiplayer_inventory_stack_counts.has(peer_id)
+		or not multiplayer_inventory_revisions.has(peer_id)
+		or not multiplayer_upgrade_levels.has(peer_id)
+		or not party_xirang_balances.has(peer_id)
+		or not max_health_penalties.has(peer_id)
+		or not player_stat_bonuses.has(peer_id)
+	):
+		return false
+	if (
+		typeof(multiplayer_inventories[peer_id]) != TYPE_ARRAY
+		or typeof(multiplayer_inventory_stack_counts[peer_id]) != TYPE_ARRAY
+		or typeof(multiplayer_inventory_revisions[peer_id]) != TYPE_INT
+		or int(multiplayer_inventory_revisions[peer_id]) < 0
+		or typeof(multiplayer_upgrade_levels[peer_id]) != TYPE_DICTIONARY
+		or typeof(party_xirang_balances[peer_id]) != TYPE_INT
+		or int(party_xirang_balances[peer_id]) < 0
+		or typeof(max_health_penalties[peer_id]) != TYPE_INT
+		or int(max_health_penalties[peer_id]) < 0
+		or typeof(player_stat_bonuses[peer_id]) != TYPE_DICTIONARY
+	):
+		return false
+	if not _is_valid_multiplayer_inventory_storage(
+		multiplayer_inventories[peer_id] as Array,
+		multiplayer_inventory_stack_counts[peer_id] as Array
+	):
+		return false
+	if not _is_valid_multiplayer_upgrade_storage(
+		multiplayer_upgrade_levels[peer_id] as Dictionary
+	):
+		return false
+	if _decode_player_stat_bonuses(
+		player_stat_bonuses[peer_id] as Dictionary
+	).is_empty():
+		return false
+	return _is_valid_quick_use_binding_storage(peer_id)
+
+
+## 返回稳定排序的已认证多人账本成员，不包含单人 owner=0。
+func get_registered_multiplayer_peer_ids() -> PackedInt32Array:
+	var peer_ids := PackedInt32Array()
+	for raw_peer_id in _registered_multiplayer_peer_ids.keys():
+		peer_ids.append(int(raw_peer_id))
+	peer_ids.sort()
+	return peer_ids
+
+
+func get_multiplayer_session_membership_revision() -> int:
+	return _multiplayer_session_membership_revision
+
+
+## 将 NetManager 的 ACTIVE ∪ SUSPENDED_GRACE roster 投影到持久账本。
+## 已有成员完全不改写，因此先到的 CH6 背包/经济结果不会被较晚 roster 覆盖。
+## 同一 revision 必须内容相同；重连替换必须先走 old->new remap，禁止删旧建新。
+func reconcile_multiplayer_session_membership(
+	peer_ids: PackedInt32Array,
+	membership_revision: int
+) -> bool:
+	if not run_started or membership_revision < 0:
+		return false
+	var normalized_peer_ids := PackedInt32Array()
+	var seen: Dictionary[int, bool] = {}
+	for peer_id in peer_ids:
+		if peer_id <= 0 or seen.has(peer_id):
+			return false
+		seen[peer_id] = true
+		normalized_peer_ids.append(peer_id)
+	normalized_peer_ids.sort()
+	var current_peer_ids := get_registered_multiplayer_peer_ids()
+	if membership_revision < _multiplayer_session_membership_revision:
+		return false
+	if membership_revision == _multiplayer_session_membership_revision:
+		return normalized_peer_ids == current_peer_ids
+
+	var added_peer_ids := PackedInt32Array()
+	var removed_peer_ids := PackedInt32Array()
+	for peer_id in normalized_peer_ids:
+		if not has_multiplayer_peer_state(peer_id):
+			added_peer_ids.append(peer_id)
+	for peer_id in current_peer_ids:
+		if not seen.has(peer_id):
+			removed_peer_ids.append(peer_id)
+	# IN_GAME 的一进一出只能表示尚未完成的重连 alias。先拒绝，等
+	# player_reconnected 完整迁移账本后再消费同一 roster revision。
+	if not added_peer_ids.is_empty() and not removed_peer_ids.is_empty():
+		return false
+	var preparation := _prepare_multiplayer_peer_registrations(added_peer_ids)
+	if not bool(preparation.get("valid", false)):
+		return false
+	if not _commit_multiplayer_membership_delta(
+		preparation.get("states", {}) as Dictionary,
+		removed_peer_ids,
+		membership_revision
+	):
+		return false
+	return true
+
+
+## 把一次权威 old->new 重连作为单一成员事务提交。目标身份必须在所有分账本
+## 中完全空缺；任何双份身份都判为冲突，禁止按 revision 拼接两个玩家状态。
+## membership_revision 与 alias 证明会和全部分账本一起先落地，再发布信号。
 func remap_multiplayer_peer_state(
 	old_peer_id: int,
 	new_peer_id: int,
-	replace_existing_target: bool = false,
-	preserve_newer_target_inventory: bool = false
-) -> bool:
-	if (
-		old_peer_id <= 0
-		or new_peer_id <= 0
-		or old_peer_id == new_peer_id
-		or not has_multiplayer_peer_state(old_peer_id)
-		or (
-			has_multiplayer_peer_state(new_peer_id)
-			and not replace_existing_target
-		)
-	):
-		return false
-	var keep_target_inventory := (
-		preserve_newer_target_inventory
-		and has_multiplayer_peer_state(new_peer_id)
-		and get_inventory_revision_for_peer(new_peer_id)
-		>= get_inventory_revision_for_peer(old_peer_id)
+	membership_revision: int
+) -> MultiplayerPeerRemapResult:
+	var preparation_result := prepare_multiplayer_peer_state_remap(
+		old_peer_id,
+		new_peer_id,
+		membership_revision
 	)
-	var remapped_inventory: Array = (
-		multiplayer_inventories[new_peer_id] as Array
-		if keep_target_inventory
-		else multiplayer_inventories[old_peer_id] as Array
-	)
-	var remapped_counts: Array = (
-		multiplayer_inventory_stack_counts[new_peer_id] as Array
-		if keep_target_inventory
-		else multiplayer_inventory_stack_counts[old_peer_id] as Array
-	)
-	var remapped_revision: int = int(
-		multiplayer_inventory_revisions[new_peer_id]
-		if keep_target_inventory
-		else multiplayer_inventory_revisions[old_peer_id]
-	)
-	multiplayer_inventories[new_peer_id] = remapped_inventory
-	multiplayer_inventory_stack_counts[new_peer_id] = remapped_counts
-	multiplayer_inventory_revisions[new_peer_id] = remapped_revision
-	_remap_quick_use_binding(old_peer_id, new_peer_id, keep_target_inventory)
-	if multiplayer_upgrade_levels.has(old_peer_id):
-		multiplayer_upgrade_levels[new_peer_id] = multiplayer_upgrade_levels[old_peer_id]
-	if party_xirang_balances.has(old_peer_id):
-		party_xirang_balances[new_peer_id] = int(party_xirang_balances[old_peer_id])
-		party_xirang_balances.erase(old_peer_id)
-		party_xirang_ledger_revision += 1
-	var status_ledger_remapped := false
-	if max_health_penalties.has(old_peer_id):
-		max_health_penalties[new_peer_id] = int(max_health_penalties[old_peer_id])
-		max_health_penalties.erase(old_peer_id)
-		status_ledger_remapped = true
-	if player_stat_bonuses.has(old_peer_id):
-		player_stat_bonuses[new_peer_id] = (
-			player_stat_bonuses[old_peer_id] as Dictionary
+	if preparation_result != MultiplayerPeerRemapResult.MIGRATED:
+		return preparation_result
+
+	var old_binding_exists := _quick_use_bindings_by_owner.has(old_peer_id)
+	var remapped_binding: Dictionary = {}
+	if old_binding_exists:
+		remapped_binding = (
+			_quick_use_bindings_by_owner[old_peer_id] as Dictionary
 		).duplicate(true)
-		player_stat_bonuses.erase(old_peer_id)
-		status_ledger_remapped = true
-	if status_ledger_remapped:
-		party_status_ledger_revision += 1
+
+	# 预检之后只执行不会失败的键迁移。成员 revision、alias 和全部分账本在
+	# 任何 signal 前成为同一个可观察提交，监听者不会看到 old/new 双份状态。
+	multiplayer_inventories[new_peer_id] = multiplayer_inventories[old_peer_id]
+	multiplayer_inventory_stack_counts[new_peer_id] = (
+		multiplayer_inventory_stack_counts[old_peer_id]
+	)
+	multiplayer_inventory_revisions[new_peer_id] = (
+		multiplayer_inventory_revisions[old_peer_id]
+	)
+	multiplayer_upgrade_levels[new_peer_id] = (
+		multiplayer_upgrade_levels[old_peer_id]
+	)
+	party_xirang_balances[new_peer_id] = int(party_xirang_balances[old_peer_id])
+	max_health_penalties[new_peer_id] = int(max_health_penalties[old_peer_id])
+	player_stat_bonuses[new_peer_id] = (
+		player_stat_bonuses[old_peer_id] as Dictionary
+	).duplicate(true)
+	if old_binding_exists:
+		_quick_use_bindings_by_owner[new_peer_id] = remapped_binding
+		_quick_use_bindings_by_owner.erase(old_peer_id)
+
 	multiplayer_inventories.erase(old_peer_id)
 	multiplayer_inventory_stack_counts.erase(old_peer_id)
 	multiplayer_inventory_revisions.erase(old_peer_id)
 	multiplayer_upgrade_levels.erase(old_peer_id)
+	party_xirang_balances.erase(old_peer_id)
+	max_health_penalties.erase(old_peer_id)
+	player_stat_bonuses.erase(old_peer_id)
+	_registered_multiplayer_peer_ids.erase(old_peer_id)
+	_registered_multiplayer_peer_ids[new_peer_id] = true
 	if active_multiplayer_peer_id == old_peer_id:
 		active_multiplayer_peer_id = new_peer_id
+	party_xirang_ledger_revision += 1
+	party_status_ledger_revision += 1
+	_multiplayer_session_membership_revision = membership_revision
+	_multiplayer_peer_remap_aliases[old_peer_id] = {
+		"new_peer_id": new_peer_id,
+		"membership_revision": membership_revision,
+	}
+
+	if old_binding_exists:
+		quick_use_binding_changed.emit(old_peer_id, "", -1)
+		quick_use_binding_changed.emit(
+			new_peer_id,
+			str(remapped_binding["config_path"]),
+			int(remapped_binding["preferred_slot_index"])
+		)
 	inventory_changed.emit()
 	upgrade_changed.emit()
 	party_xirang_ledger_changed.emit(export_party_xirang_ledger())
 	party_status_ledger_changed.emit(export_party_status_ledger())
+	multiplayer_peer_membership_changed.emit(
+		get_registered_multiplayer_peer_ids()
+	)
+	return MultiplayerPeerRemapResult.MIGRATED
+
+
+## 纯预检一次 old->new 成员事务。MIGRATED 在这里表示“按当前状态提交将
+## 成功迁移”，不是已经写入；remap 本身复用该 validator，避免两套判定漂移。
+func prepare_multiplayer_peer_state_remap(
+	old_peer_id: int,
+	new_peer_id: int,
+	membership_revision: int
+) -> MultiplayerPeerRemapResult:
+	if (
+		not run_started
+		or old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
+		or membership_revision < 0
+	):
+		return MultiplayerPeerRemapResult.INVALID
+	if _multiplayer_peer_remap_aliases.has(old_peer_id):
+		return _classify_multiplayer_peer_remap_replay(
+			old_peer_id,
+			new_peer_id,
+			membership_revision
+		)
+	if (
+		membership_revision <= _multiplayer_session_membership_revision
+		or not has_multiplayer_peer_state(old_peer_id)
+	):
+		return MultiplayerPeerRemapResult.INVALID
+	if has_multiplayer_peer_state(new_peer_id):
+		return MultiplayerPeerRemapResult.CONFLICT
+	# 注册表之外残留任意 new peer 键同样是身份冲突，不能覆盖后伪装成完整迁移。
+	if not _is_multiplayer_peer_storage_vacant(new_peer_id):
+		return MultiplayerPeerRemapResult.CONFLICT
+	if (
+		not _has_complete_registered_multiplayer_peer_state(old_peer_id)
+		or _multiplayer_peer_remap_aliases.has(new_peer_id)
+	):
+		return MultiplayerPeerRemapResult.INVALID
+	return MultiplayerPeerRemapResult.MIGRATED
+
+
+## alias 只证明本局已经原子提交过完全相同的身份事务；同一 old 指向其他
+## new/revision 表示权威身份历史互相矛盾，必须显式上报冲突。
+func _classify_multiplayer_peer_remap_replay(
+	old_peer_id: int,
+	new_peer_id: int,
+	membership_revision: int
+) -> MultiplayerPeerRemapResult:
+	var raw_alias: Variant = _multiplayer_peer_remap_aliases.get(old_peer_id)
+	if typeof(raw_alias) != TYPE_DICTIONARY:
+		return MultiplayerPeerRemapResult.INVALID
+	var alias := raw_alias as Dictionary
+	if (
+		typeof(alias.get("new_peer_id")) != TYPE_INT
+		or typeof(alias.get("membership_revision")) != TYPE_INT
+	):
+		return MultiplayerPeerRemapResult.INVALID
+	if (
+		int(alias["new_peer_id"]) != new_peer_id
+		or int(alias["membership_revision"]) != membership_revision
+	):
+		return MultiplayerPeerRemapResult.CONFLICT
+	if _multiplayer_session_membership_revision < membership_revision:
+		return MultiplayerPeerRemapResult.INVALID
+	# alias 只是事务证明，不能掩盖后来重新长出的 old 状态或残缺的当前 new。
+	# 精确重放只有在物理账本也处于提交后的规范形态时才算已完成。
+	if not _is_multiplayer_peer_storage_vacant(old_peer_id):
+		return MultiplayerPeerRemapResult.CONFLICT
+	if not _has_complete_registered_multiplayer_peer_state(new_peer_id):
+		return MultiplayerPeerRemapResult.INVALID
+	return MultiplayerPeerRemapResult.ALREADY_CURRENT
+
+
+## 迁移目标必须在每一个按 peer 分区的存储中都为空；只检查成员表会漏掉
+## 异常中断遗留的半份账本，并在随后赋值时静默覆盖真实故障证据。
+func _is_multiplayer_peer_storage_vacant(peer_id: int) -> bool:
+	return (
+		not _registered_multiplayer_peer_ids.has(peer_id)
+		and not multiplayer_inventories.has(peer_id)
+		and not multiplayer_inventory_stack_counts.has(peer_id)
+		and not multiplayer_inventory_revisions.has(peer_id)
+		and not multiplayer_upgrade_levels.has(peer_id)
+		and not party_xirang_balances.has(peer_id)
+		and not max_health_penalties.has(peer_id)
+		and not player_stat_bonuses.has(peer_id)
+		and not _quick_use_bindings_by_owner.has(peer_id)
+	)
+
+
+func _is_valid_multiplayer_inventory_storage(items: Array, counts: Array) -> bool:
+	if items.size() != INVENTORY_CAPACITY or counts.size() != INVENTORY_CAPACITY:
+		return false
+	for slot_index in INVENTORY_CAPACITY:
+		var raw_item: Variant = items[slot_index]
+		var raw_count: Variant = counts[slot_index]
+		if typeof(raw_count) != TYPE_INT:
+			return false
+		var count := int(raw_count)
+		if raw_item == null:
+			if count != 0:
+				return false
+			continue
+		if (
+			not raw_item is PickupConfig
+			or count <= 0
+			or count > PickupConfig.get_inventory_stack_limit(raw_item as PickupConfig)
+		):
+			return false
 	return true
 
 
-## 客户端收到房主全量身份表后清理本局已不再存在的 peer，避免重连前后的
-## old/new 背包同时参与默认全队统计。仅处理多人键，不影响单人 peer=0。
-func prune_multiplayer_peer_states(
-	allowed_peer_ids: PackedInt32Array
-) -> int:
-	var allowed: Dictionary = {}
-	for peer_id in allowed_peer_ids:
-		if peer_id > 0:
-			allowed[peer_id] = true
-	var stale_peer_ids: Array[int] = []
-	for raw_peer_id in multiplayer_inventories.keys():
+func _is_valid_multiplayer_upgrade_storage(levels: Dictionary) -> bool:
+	if levels.size() != MAX_UPGRADE_LEVELS.size():
+		return false
+	for raw_stat_type in MAX_UPGRADE_LEVELS.keys():
+		var stat_type := int(raw_stat_type)
+		if typeof(levels.get(stat_type)) != TYPE_INT:
+			return false
+		var level := int(levels[stat_type])
+		if level < 0 or level > int(MAX_UPGRADE_LEVELS[stat_type]):
+			return false
+	return true
+
+
+func _is_valid_quick_use_binding_storage(peer_id: int) -> bool:
+	if not _quick_use_bindings_by_owner.has(peer_id):
+		return true
+	var raw_binding: Variant = _quick_use_bindings_by_owner[peer_id]
+	if typeof(raw_binding) != TYPE_DICTIONARY:
+		return false
+	var binding := raw_binding as Dictionary
+	return (
+		binding.size() == 2
+		and typeof(binding.get("config_path")) == TYPE_STRING
+		and not str(binding["config_path"]).is_empty()
+		and typeof(binding.get("preferred_slot_index")) == TYPE_INT
+		and int(binding["preferred_slot_index"]) >= 0
+		and int(binding["preferred_slot_index"]) < INVENTORY_CAPACITY
+	)
+
+
+## 成员最终离场后，其整个重连 alias 祖先链都不再属于会话身份。提交删除时
+## 同步清掉这些证明，避免 Godot 在同局复用 transport ID 时命中旧事务。
+func _remove_multiplayer_peer_remap_aliases_for_departures(
+	removed_peer_ids: Array[int]
+) -> void:
+	if removed_peer_ids.is_empty() or _multiplayer_peer_remap_aliases.is_empty():
+		return
+	var retired_peer_ids: Dictionary[int, bool] = {}
+	for peer_id in removed_peer_ids:
+		retired_peer_ids[peer_id] = true
+	var changed := true
+	while changed:
+		changed = false
+		for raw_old_peer_id in _multiplayer_peer_remap_aliases.keys():
+			var old_peer_id := int(raw_old_peer_id)
+			var raw_alias: Variant = _multiplayer_peer_remap_aliases[old_peer_id]
+			if typeof(raw_alias) != TYPE_DICTIONARY:
+				if retired_peer_ids.has(old_peer_id):
+					_multiplayer_peer_remap_aliases.erase(old_peer_id)
+					changed = true
+				continue
+			var alias := raw_alias as Dictionary
+			var new_peer_id := int(alias.get("new_peer_id", 0))
+			if (
+				not retired_peer_ids.has(old_peer_id)
+				and not retired_peer_ids.has(new_peer_id)
+			):
+				continue
+			_multiplayer_peer_remap_aliases.erase(old_peer_id)
+			retired_peer_ids[old_peer_id] = true
+			changed = true
+
+
+func _prepare_multiplayer_peer_registrations(
+	peer_ids: PackedInt32Array
+) -> Dictionary:
+	var prepared_states: Dictionary = {}
+	var seen_peer_ids: Dictionary[int, bool] = {}
+	for peer_id in peer_ids:
+		if peer_id <= 0:
+			return {"valid": false}
+		if seen_peer_ids.has(peer_id):
+			continue
+		seen_peer_ids[peer_id] = true
+		if has_multiplayer_peer_state(peer_id):
+			if not _has_complete_registered_multiplayer_peer_state(peer_id):
+				return {"valid": false}
+			continue
+		# 新身份必须在全部按 peer 分区的存储中都没有足迹。否则注册会把异常
+		# 中断留下的半份账本覆盖掉，并把本应修复的损坏伪装成正常新成员。
+		if not _is_multiplayer_peer_storage_vacant(peer_id):
+			return {"valid": false}
+		var peer_inventory: Array[PickupConfig] = []
+		peer_inventory.resize(INVENTORY_CAPACITY)
+		var peer_counts: Array[int] = []
+		peer_counts.resize(INVENTORY_CAPACITY)
+		peer_counts.fill(0)
+		if _include_starting_inventory_for_new_peers:
+			_seed_starting_inventory(peer_inventory, peer_counts)
+		prepared_states[peer_id] = {
+			"inventory": peer_inventory,
+			"counts": peer_counts,
+			"upgrade_levels": {
+				StatType.ATTACK: 0,
+				StatType.HEALTH: 0,
+				StatType.ATTACK_SPEED: 0,
+				StatType.DODGE: 0,
+			},
+			"stat_bonuses": _make_empty_player_stat_bonuses(),
+		}
+	return {
+		"valid": true,
+		"states": prepared_states,
+	}
+
+
+func _commit_multiplayer_membership_delta(
+	prepared_states: Dictionary,
+	removed_peer_ids: PackedInt32Array,
+	committed_membership_revision: int = -2
+) -> bool:
+	var new_peer_ids: Array[int] = []
+	for raw_peer_id in prepared_states.keys():
 		var peer_id := int(raw_peer_id)
-		if peer_id > 0 and not allowed.has(peer_id):
-			stale_peer_ids.append(peer_id)
-	if stale_peer_ids.is_empty():
-		return 0
-	for peer_id in stale_peer_ids:
-		clear_quick_use_binding(peer_id)
+		if peer_id <= 0 or not _is_multiplayer_peer_storage_vacant(peer_id):
+			return false
+		new_peer_ids.append(peer_id)
+	new_peer_ids.sort()
+	var normalized_removed_peer_ids: Array[int] = []
+	var seen_removed: Dictionary[int, bool] = {}
+	for peer_id in removed_peer_ids:
+		if peer_id <= 0 or seen_removed.has(peer_id):
+			return false
+		seen_removed[peer_id] = true
+		if not _has_complete_registered_multiplayer_peer_state(peer_id):
+			return false
+		normalized_removed_peer_ids.append(peer_id)
+	if new_peer_ids.is_empty() and normalized_removed_peer_ids.is_empty():
+		if committed_membership_revision >= -1:
+			_multiplayer_session_membership_revision = (
+				committed_membership_revision
+			)
+		return true
+
+	# 所有分账本先一次性写齐/删除，最后才发布观察信号，外部永远看不到半个成员。
+	for peer_id in new_peer_ids:
+		var prepared := prepared_states[peer_id] as Dictionary
+		multiplayer_inventories[peer_id] = prepared["inventory"]
+		multiplayer_inventory_stack_counts[peer_id] = prepared["counts"]
+		multiplayer_inventory_revisions[peer_id] = 0
+		multiplayer_upgrade_levels[peer_id] = prepared["upgrade_levels"]
+		party_xirang_balances[peer_id] = 0
+		max_health_penalties[peer_id] = 0
+		player_stat_bonuses[peer_id] = prepared["stat_bonuses"]
+	for peer_id in new_peer_ids:
+		_registered_multiplayer_peer_ids[peer_id] = true
+	var cleared_quick_use_peer_ids: Array[int] = []
+	for peer_id in normalized_removed_peer_ids:
+		if _quick_use_bindings_by_owner.erase(peer_id):
+			cleared_quick_use_peer_ids.append(peer_id)
 		multiplayer_inventories.erase(peer_id)
 		multiplayer_inventory_stack_counts.erase(peer_id)
 		multiplayer_inventory_revisions.erase(peer_id)
 		multiplayer_upgrade_levels.erase(peer_id)
+		_registered_multiplayer_peer_ids.erase(peer_id)
 		party_xirang_balances.erase(peer_id)
 		max_health_penalties.erase(peer_id)
 		player_stat_bonuses.erase(peer_id)
 		if active_multiplayer_peer_id == peer_id:
 			active_multiplayer_peer_id = 0
+	_remove_multiplayer_peer_remap_aliases_for_departures(
+		normalized_removed_peer_ids
+	)
+	party_xirang_ledger_revision += 1
+	party_status_ledger_revision += 1
+	# revision 与所有成员分账本属于同一提交；必须在任何观察信号前推进，
+	# 否则监听者会看到新 roster 配旧 revision 的撕裂状态。
+	if committed_membership_revision >= -1:
+		_multiplayer_session_membership_revision = committed_membership_revision
+	for peer_id in cleared_quick_use_peer_ids:
+		quick_use_binding_changed.emit(peer_id, "", -1)
 	inventory_changed.emit()
 	upgrade_changed.emit()
-	party_xirang_ledger_revision += 1
 	party_xirang_ledger_changed.emit(export_party_xirang_ledger())
-	party_status_ledger_revision += 1
 	party_status_ledger_changed.emit(export_party_status_ledger())
-	return stale_peer_ids.size()
+	multiplayer_peer_membership_changed.emit(
+		get_registered_multiplayer_peer_ids()
+	)
+	return true
 
 
 func get_inventory_slot_state(slot_index: int) -> Dictionary:
-	_ensure_local_inventory_shape()
+	if not run_started:
+		return {}
 	return _make_inventory_slot_state(
 		slot_index,
 		inventory,
@@ -1106,7 +1466,8 @@ func get_inventory_slot_state(slot_index: int) -> Dictionary:
 
 
 func get_inventory_slot_state_for_peer(peer_id: int, slot_index: int) -> Dictionary:
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return {}
 	return _make_inventory_slot_state(
 		slot_index,
 		multiplayer_inventories[peer_id] as Array,
@@ -1116,7 +1477,8 @@ func get_inventory_slot_state_for_peer(peer_id: int, slot_index: int) -> Diction
 
 
 func export_inventory_snapshot() -> Dictionary:
-	_ensure_local_inventory_shape()
+	if not run_started:
+		return {}
 	return _make_inventory_snapshot(
 		0,
 		inventory,
@@ -1126,7 +1488,8 @@ func export_inventory_snapshot() -> Dictionary:
 
 
 func export_inventory_snapshot_for_peer(peer_id: int) -> Dictionary:
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return {}
 	return _make_inventory_snapshot(
 		peer_id,
 		multiplayer_inventories[peer_id] as Array,
@@ -1136,9 +1499,16 @@ func export_inventory_snapshot_for_peer(peer_id: int) -> Dictionary:
 
 
 func apply_inventory_snapshot(snapshot: Dictionary) -> bool:
+	if not run_started:
+		return false
 	var decoded := _decode_inventory_snapshot(snapshot, 0, inventory_revision)
 	if decoded.is_empty():
 		return false
+	if int(decoded["revision"]) == inventory_revision:
+		return (
+			decoded["items"] == inventory
+			and decoded["counts"] == inventory_stack_counts
+		)
 	inventory.assign(decoded["items"] as Array)
 	inventory_stack_counts.assign(decoded["counts"] as Array)
 	inventory_revision = int(decoded["revision"])
@@ -1159,6 +1529,99 @@ func apply_inventory_snapshot_for_peer(
 	return commit_prepared_inventory_snapshot_for_peer(prepared)
 
 
+## 纯 wire 层校验：不依赖 Run 是否开始、peer 是否已注册或本地 revision 水位。
+## 跨信道协调器可先验证未知 peer 的 CH6 包，再决定是否放入待注册账本。
+func validate_inventory_snapshot_envelope(
+	peer_id: int,
+	snapshot: Dictionary
+) -> bool:
+	if (
+		peer_id <= 0
+		or typeof(snapshot.get("peer_id")) != TYPE_INT
+		or int(snapshot["peer_id"]) != peer_id
+		or typeof(snapshot.get("revision")) != TYPE_INT
+		or int(snapshot["revision"]) < 0
+		or typeof(snapshot.get("slots")) != TYPE_ARRAY
+	):
+		return false
+	var revision := int(snapshot["revision"])
+	var raw_slots := snapshot["slots"] as Array
+	if raw_slots.size() != INVENTORY_CAPACITY:
+		return false
+	var seen_slot_indices: Dictionary[int, bool] = {}
+	for raw_slot_value in raw_slots:
+		if typeof(raw_slot_value) != TYPE_DICTIONARY:
+			return false
+		var raw_slot := raw_slot_value as Dictionary
+		if (
+			typeof(raw_slot.get("slot_index")) != TYPE_INT
+			or typeof(raw_slot.get("revision")) != TYPE_INT
+			or typeof(raw_slot.get("config_path")) != TYPE_STRING
+			or typeof(raw_slot.get("stack_count")) != TYPE_INT
+		):
+			return false
+		var slot_index := int(raw_slot["slot_index"])
+		if (
+			slot_index < 0
+			or slot_index >= INVENTORY_CAPACITY
+			or seen_slot_indices.has(slot_index)
+			or int(raw_slot["revision"]) != revision
+		):
+			return false
+		seen_slot_indices[slot_index] = true
+		var decoded_item := _decode_inventory_item(
+			raw_slot["config_path"] as String,
+			int(raw_slot["stack_count"])
+		)
+		if not bool(decoded_item.get("valid", false)):
+			return false
+	return seen_slot_indices.size() == INVENTORY_CAPACITY
+
+
+## 权威领域在 detached wire snapshot 上提交一次变更时，只能通过此入口推进
+## revision。顶层与每个槽位是同一个 CAS 水位，禁止调用者只改其中一份。
+static func advance_inventory_snapshot_revision(
+	snapshot: Dictionary,
+	expected_revision: int
+) -> bool:
+	if (
+		expected_revision < 0
+		or typeof(snapshot.get("peer_id")) != TYPE_INT
+		or int(snapshot.get("peer_id", -1)) < 0
+		or typeof(snapshot.get("revision")) != TYPE_INT
+		or int(snapshot.get("revision", -1)) != expected_revision
+		or typeof(snapshot.get("slots")) != TYPE_ARRAY
+	):
+		return false
+	var slots := snapshot["slots"] as Array
+	if slots.size() != INVENTORY_CAPACITY:
+		return false
+	var seen_slot_indices: Dictionary[int, bool] = {}
+	for raw_slot_value in slots:
+		if typeof(raw_slot_value) != TYPE_DICTIONARY:
+			return false
+		var slot := raw_slot_value as Dictionary
+		if (
+			typeof(slot.get("slot_index")) != TYPE_INT
+			or typeof(slot.get("revision")) != TYPE_INT
+			or int(slot.get("revision", -1)) != expected_revision
+		):
+			return false
+		var slot_index := int(slot["slot_index"])
+		if (
+			slot_index < 0
+			or slot_index >= INVENTORY_CAPACITY
+			or seen_slot_indices.has(slot_index)
+		):
+			return false
+		seen_slot_indices[slot_index] = true
+	var next_revision := expected_revision + 1
+	snapshot["revision"] = next_revision
+	for raw_slot_value in slots:
+		(raw_slot_value as Dictionary)["revision"] = next_revision
+	return true
+
+
 ## Decodes an authoritative peer inventory snapshot without publishing or
 ## mutating its arrays. Network transactions can preflight inventory and
 ## warehouse payloads together before either side becomes observable.
@@ -1167,9 +1630,11 @@ func prepare_inventory_snapshot_for_peer(
 	snapshot: Dictionary,
 	allow_revision_rewind: bool = false
 ) -> Dictionary:
-	if peer_id <= 0:
+	if (
+		not has_multiplayer_peer_state(peer_id)
+		or not validate_inventory_snapshot_envelope(peer_id, snapshot)
+	):
 		return {}
-	ensure_multiplayer_peer_state(peer_id)
 	var current_revision := get_inventory_revision_for_peer(peer_id)
 	# Inventory revisions are a monotonic cross-channel fence. A CH0 combat
 	# settlement can legitimately overtake an older CH6 repair response; allowing
@@ -1186,6 +1651,14 @@ func prepare_inventory_snapshot_for_peer(
 	)
 	if decoded.is_empty():
 		return {}
+	if (
+		int(decoded["revision"]) == current_revision
+		and (
+			decoded["items"] != multiplayer_inventories[peer_id]
+			or decoded["counts"] != multiplayer_inventory_stack_counts[peer_id]
+		)
+	):
+		return {}
 	decoded["peer_id"] = peer_id
 	decoded["expected_current_revision"] = current_revision
 	decoded["allow_revision_rewind"] = allow_revision_rewind
@@ -1196,10 +1669,29 @@ func commit_prepared_inventory_snapshot_for_peer(
 	prepared: Dictionary,
 	emit_change_signal: bool = true
 ) -> bool:
+	if not is_prepared_inventory_snapshot_current(prepared):
+		return false
+	var peer_id := int(prepared.get("peer_id", 0))
+	var prepared_items := prepared["items"] as Array
+	var prepared_counts := prepared["counts"] as Array
+	var peer_inventory := multiplayer_inventories[peer_id] as Array
+	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
+	var changed := (
+		int(prepared["revision"]) != get_inventory_revision_for_peer(peer_id)
+		or prepared_items != peer_inventory
+		or prepared_counts != peer_counts
+	)
+	commit_prevalidated_inventory_snapshot_for_peer(prepared)
+	if changed and emit_change_signal:
+		notify_inventory_snapshot_committed()
+	return true
+
+
+func is_prepared_inventory_snapshot_current(prepared: Dictionary) -> bool:
 	var peer_id := int(prepared.get("peer_id", 0))
 	if (
 		peer_id <= 0
-		or not has_multiplayer_peer_state(peer_id)
+		or not _has_complete_registered_multiplayer_peer_state(peer_id)
 		or int(prepared.get("expected_current_revision", -1))
 		!= get_inventory_revision_for_peer(peer_id)
 		or (prepared.get("items", []) as Array).size() != INVENTORY_CAPACITY
@@ -1227,14 +1719,20 @@ func commit_prepared_inventory_snapshot_for_peer(
 			or count > PickupConfig.get_inventory_stack_limit(item)
 		):
 			return false
+	return true
+
+
+## 仅供已经同时复核多个账本的 owner 在无 await/无 signal 的提交段调用。
+## 该入口故意不再返回失败，保证跨仓库事务一旦开始写入就不会留下半提交。
+func commit_prevalidated_inventory_snapshot_for_peer(prepared: Dictionary) -> void:
+	var peer_id := int(prepared["peer_id"])
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
 	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
+	var prepared_items := prepared["items"] as Array
+	var prepared_counts := prepared["counts"] as Array
 	peer_inventory.assign(prepared_items)
 	peer_counts.assign(prepared_counts)
 	multiplayer_inventory_revisions[peer_id] = int(prepared["revision"])
-	if emit_change_signal:
-		notify_inventory_snapshot_committed()
-	return true
 
 
 func notify_inventory_snapshot_committed() -> void:
@@ -1242,7 +1740,8 @@ func notify_inventory_snapshot_committed() -> void:
 
 
 func apply_inventory_slot_state_for_peer(peer_id: int, slot_state: Dictionary) -> bool:
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return false
 	var slot_index := int(slot_state.get("slot_index", -1))
 	var new_revision := int(slot_state.get("revision", -1))
 	var current_revision := get_inventory_revision_for_peer(peer_id)
@@ -1436,6 +1935,11 @@ func move_item_stack_to_slot(
 		target_slot_index
 	)
 	_bump_local_inventory_revision()
+	_update_quick_use_preferred_slot_after_move(
+		0,
+		source_slot_index,
+		target_slot_index
+	)
 	if emit_change:
 		inventory_changed.emit()
 	return true
@@ -1446,7 +1950,8 @@ func clear_item_slot_for_peer_if_revision(
 	slot_index: int,
 	expected_revision: int
 ) -> bool:
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return false
 	if expected_revision != get_inventory_revision_for_peer(peer_id):
 		return false
 	return discard_item_for_peer(peer_id, slot_index)
@@ -1458,7 +1963,8 @@ func take_item_stack_for_peer_if_revision(
 	expected_revision: int,
 	emit_change: bool = true
 ) -> Dictionary:
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return {"success": false}
 	if expected_revision != get_inventory_revision_for_peer(peer_id):
 		return {"success": false}
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
@@ -1489,7 +1995,8 @@ func take_item_count_at_slot_for_peer_if_revision(
 	expected_revision: int,
 	emit_change: bool = true
 ) -> Dictionary:
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return {"success": false}
 	if expected_revision != get_inventory_revision_for_peer(peer_id):
 		return {"success": false}
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
@@ -1526,7 +2033,8 @@ func try_add_item_count_for_peer_if_revision(
 	expected_revision: int,
 	emit_change: bool = true
 ) -> bool:
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return false
 	if expected_revision != get_inventory_revision_for_peer(peer_id):
 		return false
 	if not can_add_item_count_for_peer(peer_id, item, count):
@@ -1547,7 +2055,8 @@ func can_add_item_count_to_slot_for_peer(
 	target_slot_index: int,
 	expected_revision: int = -1
 ) -> bool:
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return false
 	if expected_revision >= 0 and expected_revision != get_inventory_revision_for_peer(peer_id):
 		return false
 	return _can_add_item_count_to_slot_in_arrays(
@@ -1595,7 +2104,8 @@ func move_item_stack_to_slot_for_peer_if_revision(
 	expected_revision: int,
 	emit_change: bool = true
 ) -> bool:
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return false
 	if expected_revision != get_inventory_revision_for_peer(peer_id):
 		return false
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
@@ -1614,6 +2124,11 @@ func move_item_stack_to_slot_for_peer_if_revision(
 		target_slot_index
 	)
 	_bump_inventory_revision_for_peer(peer_id)
+	_update_quick_use_preferred_slot_after_move(
+		peer_id,
+		source_slot_index,
+		target_slot_index
+	)
 	if emit_change:
 		inventory_changed.emit()
 	return true
@@ -1624,7 +2139,8 @@ func notify_inventory_transaction_completed() -> void:
 
 
 func get_item_for_peer(peer_id: int, slot_index: int) -> PickupConfig:
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return null
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
 	if slot_index < 0 or slot_index >= peer_inventory.size():
 		return null
@@ -1632,7 +2148,8 @@ func get_item_for_peer(peer_id: int, slot_index: int) -> PickupConfig:
 
 
 func get_item_count_for_peer(peer_id: int, slot_index: int) -> int:
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return 0
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
 	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
 	if slot_index < 0 or slot_index >= peer_inventory.size() or peer_inventory[slot_index] == null:
@@ -1680,6 +2197,8 @@ func clear_shared_warehouse_ledger(emit_change_signal: bool = true) -> void:
 
 
 func export_shared_warehouse_ledger() -> Dictionary:
+	if not run_started:
+		return {}
 	var ordered_ids: Array[int] = []
 	for raw_warehouse_id in shared_warehouse_snapshots.keys():
 		ordered_ids.append(int(raw_warehouse_id))
@@ -1738,18 +2257,9 @@ func get_shared_warehouse_item_total(item: PickupConfig) -> int:
 
 
 func get_registered_inventory_peer_ids() -> PackedInt32Array:
-	var peer_ids := PackedInt32Array()
-	if multiplayer_inventories.is_empty():
+	var peer_ids := get_registered_multiplayer_peer_ids()
+	if peer_ids.is_empty():
 		peer_ids.append(0)
-		return peer_ids
-	var ordered_peer_ids: Array[int] = []
-	for raw_peer_id in multiplayer_inventories.keys():
-		var peer_id := int(raw_peer_id)
-		if peer_id > 0:
-			ordered_peer_ids.append(peer_id)
-	ordered_peer_ids.sort()
-	for peer_id in ordered_peer_ids:
-		peer_ids.append(peer_id)
 	return peer_ids
 
 
@@ -1757,8 +2267,7 @@ func get_party_item_total(
 	item: PickupConfig,
 	peer_ids: PackedInt32Array = PackedInt32Array()
 ) -> int:
-	ensure_run_started()
-	if item == null:
+	if not run_started or item == null:
 		return 0
 	var resolved_peer_ids := (
 		peer_ids.duplicate()
@@ -1790,13 +2299,10 @@ func get_party_xirang_ledger_revision() -> int:
 
 
 func get_party_xirang_balance(peer_id: int) -> int:
-	ensure_run_started()
-	if peer_id < 0:
+	if not run_started or peer_id < 0:
 		return 0
-	if peer_id > 0:
-		ensure_multiplayer_peer_state(peer_id)
-	elif not party_xirang_balances.has(0):
-		party_xirang_balances[0] = 0
+	if peer_id > 0 and not has_multiplayer_peer_state(peer_id):
+		return 0
 	return maxi(int(party_xirang_balances.get(peer_id, 0)), 0)
 
 
@@ -1805,11 +2311,11 @@ func set_party_xirang_balance(
 	amount: int,
 	emit_change_signal: bool = true
 ) -> bool:
-	ensure_run_started()
 	if peer_id < 0 or amount < 0:
 		return false
-	if peer_id > 0:
-		ensure_multiplayer_peer_state(peer_id)
+	if peer_id > 0 and not has_multiplayer_peer_state(peer_id):
+		return false
+	ensure_run_started()
 	var clamped_amount := maxi(amount, 0)
 	if int(party_xirang_balances.get(peer_id, 0)) == clamped_amount:
 		return true
@@ -1826,7 +2332,6 @@ func set_party_xirang_balances(
 	balances: Dictionary,
 	emit_change_signal: bool = true
 ) -> bool:
-	ensure_run_started()
 	if balances.is_empty():
 		return false
 	var normalized: Dictionary[int, int] = {}
@@ -1843,6 +2348,7 @@ func set_party_xirang_balances(
 		):
 			return false
 		normalized[peer_id] = int(balances[peer_id_variant])
+	ensure_run_started()
 	var changed := false
 	for peer_id in normalized:
 		var amount: int = normalized[peer_id]
@@ -1859,7 +2365,8 @@ func set_party_xirang_balances(
 
 
 func export_party_xirang_ledger() -> Dictionary:
-	ensure_run_started()
+	if not run_started:
+		return {}
 	var values: Dictionary = {}
 	var peer_ids: Array[int] = []
 	for raw_peer_id in party_xirang_balances.keys():
@@ -1880,12 +2387,10 @@ func export_party_xirang_ledger() -> Dictionary:
 
 
 func get_party_light_stone_ledger_revision() -> int:
-	ensure_run_started()
 	return party_light_stone_ledger_revision
 
 
 func get_party_light_stone_amount() -> int:
-	ensure_run_started()
 	return party_light_stone_amount
 
 
@@ -1931,7 +2436,8 @@ func try_change_party_light_stone_amount(
 
 
 func export_party_light_stone_ledger() -> Dictionary:
-	ensure_run_started()
+	if not run_started:
+		return {}
 	return {
 		"schema_version": PARTY_LIGHT_STONE_LEDGER_SCHEMA_VERSION,
 		"revision": party_light_stone_ledger_revision,
@@ -1971,17 +2477,14 @@ func apply_party_light_stone_ledger(
 
 
 func get_party_status_ledger_revision() -> int:
-	ensure_run_started()
 	return party_status_ledger_revision
 
 
 func get_party_core_health() -> int:
-	ensure_run_started()
 	return party_core_current
 
 
 func get_party_core_maximum_health() -> int:
-	ensure_run_started()
 	return party_core_maximum
 
 
@@ -2029,13 +2532,10 @@ func apply_party_core_health_loss(
 
 
 func get_max_health_penalty_for_peer(peer_id: int) -> int:
-	ensure_run_started()
-	if peer_id < 0:
+	if not run_started or peer_id < 0:
 		return 0
-	if peer_id > 0:
-		ensure_multiplayer_peer_state(peer_id)
-	elif not max_health_penalties.has(0):
-		max_health_penalties[0] = 0
+	if peer_id > 0 and not has_multiplayer_peer_state(peer_id):
+		return 0
 	return maxi(int(max_health_penalties.get(peer_id, 0)), 0)
 
 
@@ -2044,11 +2544,11 @@ func set_max_health_penalty_for_peer(
 	amount: int,
 	emit_change_signal: bool = true
 ) -> bool:
-	ensure_run_started()
 	if peer_id < 0 or amount < 0:
 		return false
-	if peer_id > 0:
-		ensure_multiplayer_peer_state(peer_id)
+	if peer_id > 0 and not has_multiplayer_peer_state(peer_id):
+		return false
+	ensure_run_started()
 	if int(max_health_penalties.get(peer_id, 0)) == amount:
 		return true
 	max_health_penalties[peer_id] = amount
@@ -2078,13 +2578,12 @@ func add_max_health_penalty_for_peer(
 
 
 func get_player_stat_bonuses(peer_id: int) -> Dictionary:
-	ensure_run_started()
-	if peer_id < 0:
+	if not run_started or peer_id < 0:
 		return _make_empty_player_stat_bonuses()
 	if peer_id > 0 and not has_multiplayer_peer_state(peer_id):
 		return _make_empty_player_stat_bonuses()
 	if not player_stat_bonuses.has(peer_id):
-		player_stat_bonuses[peer_id] = _make_empty_player_stat_bonuses()
+		return _make_empty_player_stat_bonuses()
 	return _normalize_player_stat_bonuses(
 		player_stat_bonuses[peer_id] as Dictionary
 	)
@@ -2108,9 +2607,9 @@ func build_party_status_ledger_with_player_stat_bonus(
 	stat_id: StringName,
 	delta: int
 ) -> Dictionary:
-	ensure_run_started()
 	if (
-		peer_id < 0
+		not run_started
+		or peer_id < 0
 		or delta <= 0
 		or not PLAYER_STAT_BONUS_HARD_CAPS.has(stat_id)
 		or (peer_id > 0 and not has_multiplayer_peer_state(peer_id))
@@ -2138,7 +2637,8 @@ func build_party_status_ledger_with_player_stat_bonus(
 
 
 func export_party_status_ledger() -> Dictionary:
-	ensure_run_started()
+	if not run_started:
+		return {}
 	var exported_penalties: Dictionary = {}
 	var exported_bonuses: Dictionary = {}
 	var peer_ids: Array[int] = []
@@ -2174,7 +2674,8 @@ func apply_party_status_ledger(
 	allow_revision_rewind: bool = false,
 	emit_change_signal: bool = true
 ) -> bool:
-	ensure_run_started()
+	if not run_started:
+		return false
 	var decoded := _decode_party_status_ledger(
 		snapshot,
 		-1 if allow_revision_rewind else party_status_ledger_revision
@@ -2184,6 +2685,11 @@ func apply_party_status_ledger(
 	var incoming_revision := int(decoded["revision"])
 	var incoming_penalties := decoded["max_health_penalties"] as Dictionary
 	var incoming_bonuses := decoded["player_stat_bonuses"] as Dictionary
+	if (
+		not _contains_exact_registered_ledger_peer_ids(incoming_penalties)
+		or not _contains_exact_registered_ledger_peer_ids(incoming_bonuses)
+	):
+		return false
 	if (
 		not allow_revision_rewind
 		and incoming_revision == party_status_ledger_revision
@@ -2215,7 +2721,8 @@ func apply_party_status_ledger(
 func export_party_economy_snapshot(
 	peer_ids: PackedInt32Array = PackedInt32Array()
 ) -> Dictionary:
-	ensure_run_started()
+	if not run_started:
+		return {}
 	var resolved_peer_ids := (
 		peer_ids.duplicate()
 		if not peer_ids.is_empty()
@@ -2453,6 +2960,24 @@ func _inventory_slot_state_matches(
 		current_path == str(slot_state.get("config_path", ""))
 		and current_count == int(slot_state.get("stack_count", 0))
 	)
+
+
+## 已解码账本使用 int peer key；0 属于单人本地账本，正数必须来自显式 roster。
+func _contains_only_registered_ledger_peer_ids(values: Dictionary) -> bool:
+	for raw_peer_id in values.keys():
+		var peer_id := int(raw_peer_id)
+		if peer_id < 0 or (peer_id > 0 and not has_multiplayer_peer_state(peer_id)):
+			return false
+	return true
+
+
+func _contains_exact_registered_ledger_peer_ids(values: Dictionary) -> bool:
+	if not _contains_only_registered_ledger_peer_ids(values) or not values.has(0):
+		return false
+	for peer_id in get_registered_multiplayer_peer_ids():
+		if not values.has(peer_id):
+			return false
+	return values.size() == _registered_multiplayer_peer_ids.size() + 1
 
 
 func _decode_shared_warehouse_ledger(
@@ -2788,7 +3313,8 @@ func _prepare_party_economy_snapshot(
 	expected_status_revision: int,
 	expected_light_stone_revision: int
 ) -> Dictionary:
-	ensure_run_started()
+	if not run_started:
+		return {}
 	if (
 		typeof(snapshot.get("schema_version")) != TYPE_INT
 		or int(snapshot["schema_version"]) != PARTY_ECONOMY_SCHEMA_VERSION
@@ -2841,7 +3367,12 @@ func _prepare_party_economy_snapshot(
 		snapshot["xirang_ledger"] as Dictionary,
 		-1 if allow_revision_rewind else party_xirang_ledger_revision
 	)
-	if decoded_xirang_ledger.is_empty():
+	if (
+		decoded_xirang_ledger.is_empty()
+		or not _contains_exact_registered_ledger_peer_ids(
+			decoded_xirang_ledger["values"] as Dictionary
+		)
+	):
 		return {}
 	var incoming_xirang_revision := int(decoded_xirang_ledger["revision"])
 	if (
@@ -2882,7 +3413,15 @@ func _prepare_party_economy_snapshot(
 		snapshot["party_status_ledger"] as Dictionary,
 		-1 if allow_revision_rewind else party_status_ledger_revision
 	)
-	if decoded_status_ledger.is_empty():
+	if (
+		decoded_status_ledger.is_empty()
+		or not _contains_exact_registered_ledger_peer_ids(
+			decoded_status_ledger["max_health_penalties"] as Dictionary
+		)
+		or not _contains_exact_registered_ledger_peer_ids(
+			decoded_status_ledger["player_stat_bonuses"] as Dictionary
+		)
+	):
 		return {}
 	var incoming_status_revision := int(decoded_status_ledger["revision"])
 	if (
@@ -2936,7 +3475,15 @@ func _prepare_party_economy_snapshot(
 		if typeof(raw_inventory.get("peer_id")) != TYPE_INT:
 			return {}
 		var peer_id := int(raw_inventory["peer_id"])
-		if peer_id < 0 or prepared_inventories.has(peer_id):
+		if (
+			peer_id < 0
+			or prepared_inventories.has(peer_id)
+			or (peer_id > 0 and not has_multiplayer_peer_state(peer_id))
+			or (
+				peer_id > 0
+				and not validate_inventory_snapshot_envelope(peer_id, raw_inventory)
+			)
+		):
 			return {}
 		var current_revision := _get_inventory_revision_without_creating(peer_id)
 		if require_single_revision_step:
@@ -2961,6 +3508,22 @@ func _prepare_party_economy_snapshot(
 		).has(peer_id):
 			return {}
 		var incoming_revision := int(decoded_inventory["revision"])
+		if incoming_revision == current_revision:
+			var current_items: Array = (
+				inventory
+				if peer_id == 0
+				else multiplayer_inventories[peer_id] as Array
+			)
+			var current_counts: Array = (
+				inventory_stack_counts
+				if peer_id == 0
+				else multiplayer_inventory_stack_counts[peer_id] as Array
+			)
+			if (
+				decoded_inventory["items"] != current_items
+				or decoded_inventory["counts"] != current_counts
+			):
+				return {}
 		if (
 			require_single_revision_step
 			and incoming_revision != current_revision
@@ -3006,7 +3569,12 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 		var peer_id := int(raw_peer_id)
 		var prepared_inventory := prepared_inventories[raw_peer_id] as Dictionary
 		if (
-			int(prepared_inventory.get("expected_current_revision", -1))
+			(
+				peer_id > 0
+				and not _has_complete_registered_multiplayer_peer_state(peer_id)
+			)
+			or peer_id < 0
+			or int(prepared_inventory.get("expected_current_revision", -1))
 			!= _get_inventory_revision_without_creating(peer_id)
 		):
 			return false
@@ -3093,7 +3661,6 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 			inventory_stack_counts.assign(next_counts)
 			inventory_revision = next_revision
 			continue
-		ensure_multiplayer_peer_state(peer_id)
 		var peer_items := multiplayer_inventories[peer_id] as Array
 		var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
 		any_inventory_changed = any_inventory_changed or (
@@ -3126,9 +3693,9 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 func _get_inventory_revision_without_creating(peer_id: int) -> int:
 	if peer_id == 0:
 		return inventory_revision
-	if peer_id < 0:
+	if not has_multiplayer_peer_state(peer_id):
 		return -1
-	return int(multiplayer_inventory_revisions.get(peer_id, 0))
+	return int(multiplayer_inventory_revisions[peer_id])
 
 
 func _ensure_local_inventory_shape() -> void:
@@ -3185,39 +3752,28 @@ func _clear_all_quick_use_bindings() -> void:
 		quick_use_binding_changed.emit(int(owner_peer_id_variant), "", -1)
 
 
-func _remap_quick_use_binding(
-	old_peer_id: int,
-	new_peer_id: int,
-	keep_target_inventory: bool
+## 背包事务明确知道整栈从哪个槽移动到哪个槽，因此在同一提交中更新首选
+## marker；getter 只负责解析，不再通过读取偷偷改写偏好状态。
+func _update_quick_use_preferred_slot_after_move(
+	owner_peer_id: int,
+	source_slot_index: int,
+	target_slot_index: int
 ) -> void:
-	var old_binding_exists := _quick_use_bindings_by_owner.has(old_peer_id)
-	var target_binding_exists := _quick_use_bindings_by_owner.has(new_peer_id)
-	if not old_binding_exists and not target_binding_exists:
+	if not _quick_use_bindings_by_owner.has(owner_peer_id):
 		return
-	if keep_target_inventory:
-		# The target's newer authoritative inventory snapshot does not carry this
-		# client-local preference. Preserve an already-remapped target binding, or
-		# migrate the old peer's binding when the target has none.
-		if old_binding_exists and not target_binding_exists:
-			_quick_use_bindings_by_owner[new_peer_id] = (
-				_quick_use_bindings_by_owner[old_peer_id] as Dictionary
-			).duplicate(true)
-	else:
-		if old_binding_exists:
-			_quick_use_bindings_by_owner[new_peer_id] = (
-				_quick_use_bindings_by_owner[old_peer_id] as Dictionary
-			).duplicate(true)
-		else:
-			_quick_use_bindings_by_owner.erase(new_peer_id)
-	_quick_use_bindings_by_owner.erase(old_peer_id)
-	if old_binding_exists:
-		quick_use_binding_changed.emit(old_peer_id, "", -1)
-	if old_binding_exists or target_binding_exists:
-		quick_use_binding_changed.emit(
-			new_peer_id,
-			get_quick_use_bound_config_path(new_peer_id),
-			get_quick_use_slot_index(new_peer_id)
-		)
+	var binding := _quick_use_bindings_by_owner[owner_peer_id] as Dictionary
+	if int(binding.get("preferred_slot_index", -1)) != source_slot_index:
+		return
+	var config_path := str(binding.get("config_path", ""))
+	if not _quick_use_slot_matches_path(
+		owner_peer_id,
+		target_slot_index,
+		config_path
+	):
+		return
+	binding["preferred_slot_index"] = target_slot_index
+	_quick_use_bindings_by_owner[owner_peer_id] = binding
+	quick_use_binding_changed.emit(owner_peer_id, config_path, target_slot_index)
 
 
 func _seed_starting_inventory(items: Array, counts: Array) -> void:
@@ -3542,8 +4098,7 @@ func _get_crafting_simulation_result(simulation: Dictionary) -> StringName:
 
 
 func try_upgrade_for_peer(peer_id: int, stat_type: int, player: Player) -> bool:
-	ensure_multiplayer_peer_state(peer_id)
-	if player == null:
+	if not has_multiplayer_peer_state(peer_id) or player == null:
 		return false
 	player.consume_last_base_upgrade_free_flag()
 
@@ -3580,14 +4135,17 @@ func try_upgrade_for_peer(peer_id: int, stat_type: int, player: Player) -> bool:
 
 
 func get_upgrade_level_for_peer(peer_id: int, stat_type: int) -> int:
-	ensure_multiplayer_peer_state(peer_id)
+	if not has_multiplayer_peer_state(peer_id):
+		return 0
 	var peer_levels := multiplayer_upgrade_levels[peer_id] as Dictionary
 	return peer_levels.get(stat_type, 0)
 
 
 func get_upgrade_cost_for_peer(peer_id: int, stat_type: int) -> int:
-	ensure_multiplayer_peer_state(peer_id)
-	if not MAX_UPGRADE_LEVELS.has(stat_type):
+	if (
+		not has_multiplayer_peer_state(peer_id)
+		or not MAX_UPGRADE_LEVELS.has(stat_type)
+	):
 		return -1
 	var current_level: int = get_upgrade_level_for_peer(peer_id, stat_type)
 	var costs: Array = UPGRADE_COSTS.get(stat_type, [])
@@ -3596,11 +4154,21 @@ func get_upgrade_cost_for_peer(peer_id: int, stat_type: int) -> int:
 	return costs[current_level]
 
 
-func set_upgrade_level_for_peer(peer_id: int, stat_type: int, level: int) -> void:
-	ensure_multiplayer_peer_state(peer_id)
+func set_upgrade_level_for_peer(peer_id: int, stat_type: int, level: int) -> bool:
+	if not has_multiplayer_peer_state(peer_id):
+		return false
 	var peer_levels := multiplayer_upgrade_levels[peer_id] as Dictionary
 	if not peer_levels.has(stat_type):
-		return
-	peer_levels[stat_type] = clampi(level, 0, MAX_UPGRADE_LEVELS.get(stat_type, 0))
+		return false
+	var maximum_level := int(MAX_UPGRADE_LEVELS.get(stat_type, -1))
+	var current_level := int(peer_levels[stat_type])
+	# 升级确认是本局单调账本。可靠信道/repair 的迟到低水位只能拒绝，不能
+	# 因为每个 level 使用不同事务 stream 而把已经生效的高等级回滚。
+	if level < current_level or level < 0 or level > maximum_level:
+		return false
+	if current_level == level:
+		return true
+	peer_levels[stat_type] = level
 	if peer_id == active_multiplayer_peer_id:
 		upgrade_changed.emit()
+	return true

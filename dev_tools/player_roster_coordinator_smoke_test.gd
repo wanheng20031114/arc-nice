@@ -29,6 +29,14 @@ func _run() -> void:
 
 
 func _test_standard_roster() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.register_multiplayer_peer_states(
+			PackedInt32Array([1, 2, 3])
+		),
+		"普通模式 roster 夹具必须先注册认证玩家账本。"
+	)
 	var game := STANDARD_SCENE.instantiate() as StandardGame
 	_expect(game != null, "普通模式场景必须实例化为 StandardGame。")
 	if game == null:
@@ -54,6 +62,27 @@ func _test_standard_roster() -> void:
 		game.get_player_for_peer(3).get_character_id() == &"tango",
 		"普通模式必须使用 peer 的权威角色 ID。"
 	)
+	var peer_restored_events: Array[PackedInt32Array] = []
+	roster.peer_restored.connect(func(old_peer_id: int, new_peer_id: int) -> void:
+		peer_restored_events.append(PackedInt32Array([old_peer_id, new_peer_id]))
+	)
+	var old_conflict_player := game.get_player_for_peer(1)
+	var new_conflict_player := game.get_player_for_peer(3)
+	var conflict_projection := game.ensure_reconnected_multiplayer_player(
+		1,
+		3,
+		"Third",
+		&"tango",
+		null,
+		2
+	)
+	_expect(
+		conflict_projection.status
+		== CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CONFLICT
+		and is_same(old_conflict_player, game.get_player_for_peer(1))
+		and is_same(new_conflict_player, game.get_player_for_peer(3)),
+		"普通模式发现 old/new Player 同时存在时必须显式冲突且不改写 roster。"
+	)
 
 	var first_output := game.collect_player_snapshot_states()
 	var first_state := first_output[0]
@@ -69,7 +98,12 @@ func _test_standard_roster() -> void:
 
 	var removed_state := second_output[2]
 	game.remove_multiplayer_player(3)
-	var restored := game.restore_multiplayer_player(
+	_expect(
+		run_state.remap_multiplayer_peer_state(3, 4, 0)
+		== RunStateStore.MultiplayerPeerRemapResult.MIGRATED,
+		"普通模式恢复 Player 前必须先迁移持久身份。"
+	)
+	var restored_projection := game.ensure_reconnected_multiplayer_player(
 		3,
 		4,
 		"Restored",
@@ -77,7 +111,47 @@ func _test_standard_roster() -> void:
 		null,
 		2
 	)
-	_expect(restored != null, "普通模式必须能恢复断线玩家。")
+	var restored := restored_projection.player
+	_expect(
+		restored_projection.status
+		== CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATED
+		and restored != null,
+		"普通模式首次恢复必须报告 CREATED 并建立 Player。"
+	)
+	var character_conflict_projection := game.ensure_reconnected_multiplayer_player(
+		99,
+		4,
+		"WrongCharacter",
+		&"weishidaier",
+		null,
+		2
+	)
+	_expect(
+		character_conflict_projection.status
+		== CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CONFLICT
+		and is_same(restored, game.get_player_for_peer(4))
+		and game.multiplayer_player_names.get(4) == "Restored"
+		and game.multiplayer_player_character_ids.get(4) == &"tango",
+		"普通模式角色身份冲突必须显式失败，且不得污染既有 new-id 元数据。"
+	)
+	var replayed_projection := game.ensure_reconnected_multiplayer_player(
+		3,
+		4,
+		"Restored",
+		&"tango",
+		null,
+		2
+	)
+	_expect(
+		replayed_projection.status
+		== CombatRuntimeBase.ReconnectedPlayerProjectionStatus.EXISTING_CURRENT
+		and is_same(restored, replayed_projection.player)
+		and peer_restored_events == [PackedInt32Array([3, 4])],
+		(
+			"普通模式重放重连通知时必须复用既有 new-id Player，"
+			+ "且不得重复发出 peer_restored。"
+		)
+	)
 	_expect(
 		restored != null
 		and restored.position.is_equal_approx(
@@ -118,6 +192,14 @@ func _test_standard_roster() -> void:
 
 
 func _test_rogue_roster() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.register_multiplayer_peer_states(
+			PackedInt32Array([1, 2, 3])
+		),
+		"肉鸽 roster 夹具必须先注册认证玩家账本。"
+	)
 	var game := ROGUE_SCENE.instantiate() as RogueCombatGame
 	_expect(game != null, "肉鸽作战场景必须实例化为 RogueCombatGame。")
 	if game == null:
@@ -149,6 +231,52 @@ func _test_rogue_roster() -> void:
 	_expect(
 		is_same(first_output, second_output) and is_same(first_state, second_output[0]),
 		"肉鸽必须持有自身实例级玩家快照缓存。"
+	)
+	var old_conflict_player := game.get_player_for_peer(1)
+	var existing_player := game.get_player_for_peer(3)
+	var conflict_projection := game.ensure_reconnected_multiplayer_player(
+		1,
+		3,
+		"Third",
+		&"weishidaier",
+		null,
+		2
+	)
+	_expect(
+		conflict_projection.status
+		== CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CONFLICT
+		and is_same(old_conflict_player, game.get_player_for_peer(1))
+		and is_same(existing_player, game.get_player_for_peer(3)),
+		"肉鸽模式发现 old/new Player 同时存在时必须显式冲突且不改写 roster。"
+	)
+	var character_conflict_projection := game.ensure_reconnected_multiplayer_player(
+		99,
+		3,
+		"WrongCharacter",
+		&"tango",
+		null,
+		2
+	)
+	_expect(
+		character_conflict_projection.status
+		== CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CONFLICT
+		and is_same(existing_player, game.get_player_for_peer(3))
+		and game.multiplayer_player_character_ids.get(3) == &"weishidaier",
+		"肉鸽模式角色身份冲突必须显式失败，且不得替换既有 Player。"
+	)
+	var replayed_projection := game.ensure_reconnected_multiplayer_player(
+		99,
+		3,
+		"ThirdReplayed",
+		&"weishidaier",
+		null,
+		2
+	)
+	_expect(
+		replayed_projection.status
+		== CombatRuntimeBase.ReconnectedPlayerProjectionStatus.EXISTING_CURRENT
+		and is_same(existing_player, replayed_projection.player),
+		"肉鸽模式重放重连通知时必须复用既有 new-id Player。"
 	)
 	game.queue_free()
 	await process_frame

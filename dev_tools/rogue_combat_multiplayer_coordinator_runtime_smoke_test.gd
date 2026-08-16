@@ -31,8 +31,16 @@ const EMERGENCY_CONFIG: RogueCombatEncounterConfig = preload(
 
 class FakeNetManager extends NetManagerStore:
 	var send_ready_peer_ids: Dictionary = {}
+	var reconnect_delivery_preparing_peer_ids: Dictionary = {}
+	var reconnecting_peer_ids: Dictionary = {}
+	var participant_incarnations: Dictionary = {}
+	var gameplay_ingress_admitted := true
 	var host_role := true
 	var local_peer_id := 1
+	var runtime_projection_reports: Array[Dictionary] = []
+	var terminated_projection_peers: Array[int] = []
+	var terminated_membership_projection_reasons: Array[String] = []
+	var accepted_projection_outcomes: Dictionary = {}
 
 	func is_host() -> bool:
 		return host_role
@@ -48,6 +56,48 @@ class FakeNetManager extends NetManagerStore:
 
 	func is_peer_send_ready(peer_id: int) -> bool:
 		return send_ready_peer_ids.has(peer_id)
+
+	func is_reconnect_delivery_preparing(peer_id: int) -> bool:
+		return reconnect_delivery_preparing_peer_ids.has(peer_id)
+
+	func is_session_member_reconnecting(peer_id: int) -> bool:
+		return reconnecting_peer_ids.has(peer_id)
+
+	func get_session_participant_incarnation(peer_id: int) -> int:
+		return int(participant_incarnations.get(peer_id, peer_id))
+
+	func is_gameplay_ingress_admitted(_peer_id: int) -> bool:
+		return gameplay_ingress_admitted
+
+	func report_reconnected_runtime_projection(
+		old_peer_id: int,
+		new_peer_id: int,
+		outcome: MultiplayerReconnectTypesScript.RuntimeProjectionOutcome
+	) -> bool:
+		if accepted_projection_outcomes.has(new_peer_id):
+			return (
+				int(accepted_projection_outcomes[new_peer_id]) == int(outcome)
+			)
+		accepted_projection_outcomes[new_peer_id] = int(outcome)
+		runtime_projection_reports.append({
+			"old_peer_id": old_peer_id,
+			"new_peer_id": new_peer_id,
+			"outcome": int(outcome),
+		})
+		return true
+
+	func terminate_for_runtime_projection_failure(
+		peer_id: int,
+		_reason: String
+	) -> bool:
+		terminated_projection_peers.append(peer_id)
+		return true
+
+	func terminate_for_session_membership_projection_failure(
+		reason: String
+	) -> bool:
+		terminated_membership_projection_reasons.append(reason)
+		return true
 
 
 class RewardCombatGameHarness extends RogueCombatGame:
@@ -65,6 +115,7 @@ class RuntimeCoordinatorHarness extends RogueCombatMultiplayerCoordinator:
 	var host_settlement_commit_observations: Array[Dictionary] = []
 	var host_settlement_broadcasts: Array[Dictionary] = []
 	var settlement_event_order: Array[String] = []
+	var reconnect_prepare_dispatches: Array[Dictionary] = []
 
 	func _create_embedded_runtime() -> bool:
 		return create_runtime_result
@@ -119,6 +170,16 @@ class RuntimeCoordinatorHarness extends RogueCombatMultiplayerCoordinator:
 			"tombstone_present": _settled_occurrences.has(occurrence_key),
 		})
 
+	func _dispatch_reconnected_combat_prepare(
+		new_peer_id: int,
+		activate_immediately: bool
+	) -> void:
+		reconnect_prepare_dispatches.append({
+			"peer_id": new_peer_id,
+			"activate_immediately": activate_immediately,
+			"occurrence_key": _active_occurrence_key,
+		})
+
 
 var _failures: PackedStringArray = []
 var _fixture_root: Node2D = null
@@ -133,6 +194,24 @@ func _init() -> void:
 
 func _run() -> void:
 	await _create_fixture()
+	if "--projection-order-only" in OS.get_cmdline_user_args():
+		_test_route_first_reconnect_waits_for_player_projection()
+		_test_pending_reconnect_projection_survives_phase_change()
+		_test_reconnect_prepare_waits_for_post_ready_lease()
+		_test_standalone_projection_owner_reports_once()
+		_test_canonical_peer_survives_failed_two_hop_reconnect()
+		_test_projection_outcome_cas_conflicts()
+		_test_client_failed_projection_fails_closed()
+		_test_stale_outcome_first_is_rejected()
+		await _destroy_fixture()
+		if _failures.is_empty():
+			print("ROGUE_RECONNECT_PROJECTION_ORDER_SMOKE_TEST_OK")
+			quit(0)
+			return
+		for failure in _failures:
+			push_error(failure)
+		quit(1)
+		return
 	_test_prepare_requires_route_resolved_config()
 	_test_terminal_safe_releases_protocol_but_keeps_result()
 	_test_next_prepare_collects_stale_result()
@@ -150,6 +229,14 @@ func _run() -> void:
 	_test_player_left_preserves_participant_and_shrinks_barriers()
 	_test_client_abort_admission_is_prepare_only()
 	_test_reconnect_prepare_marker_lifecycle()
+	_test_route_first_reconnect_waits_for_player_projection()
+	_test_pending_reconnect_projection_survives_phase_change()
+	_test_reconnect_prepare_waits_for_post_ready_lease()
+	_test_standalone_projection_owner_reports_once()
+	_test_canonical_peer_survives_failed_two_hop_reconnect()
+	_test_projection_outcome_cas_conflicts()
+	_test_client_failed_projection_fails_closed()
+	_test_stale_outcome_first_is_rejected()
 	_test_prepare_barrier_timeout_aborts_entry()
 	_test_reconnect_activation_timeout_downgrades_peer()
 	_test_terminal_spectator_sync_retries_send_ready()
@@ -236,7 +323,7 @@ func _configure_emergency_reward_fixture(
 	var character_ids: Dictionary = {}
 	var base_xirang: Dictionary = {}
 	for peer_id in peer_ids:
-		run_state.ensure_multiplayer_peer_state(peer_id)
+		run_state.register_multiplayer_peer_state(peer_id)
 		_coordinator._participant_peer_ids[peer_id] = true
 		stable_keys[peer_id] = "emergency-fixture:%d" % peer_id
 		character_ids[peer_id] = &"weishidaier"
@@ -342,6 +429,7 @@ func _test_emergency_reward_snapshot_is_peer_private() -> void:
 func _test_emergency_disconnect_forfeit_and_reward_commit() -> void:
 	var occurrence_key := "emergency:runtime:disconnect:2"
 	var session := _configure_emergency_reward_fixture([1, 2], occurrence_key)
+	var run_state := root.get_node("RunState") as RunStateStore
 	_coordinator._disconnected_participants[2] = {
 		"entry_xirang": 702,
 		"last_combat_xirang": 702,
@@ -351,8 +439,13 @@ func _test_emergency_disconnect_forfeit_and_reward_commit() -> void:
 		"选择阶段断线必须立即把玩家标记为 forfeit。"
 	)
 	_expect(
-		session.remap_disconnected_peer(2, 3),
-		"断线玩家重连应只迁移最终基础奖励投递 peer。"
+		run_state.remap_multiplayer_peer_state(
+			2,
+			3,
+			run_state.get_multiplayer_session_membership_revision() + 1
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED
+		and session.remap_disconnected_peer(2, 3),
+		"断线玩家重连必须先提交持久账本身份，再迁移最终基础奖励投递 peer。"
 	)
 	var remapped_state := session.get_peer_state(3)
 	_expect(
@@ -448,7 +541,11 @@ func _test_emergency_reconnect_reward_rollback_state_remaps() -> void:
 	}
 	_expect(
 		session.mark_peer_disconnected(2, occurrence_key)
-		and run_state.remap_multiplayer_peer_state(2, 3)
+		and run_state.remap_multiplayer_peer_state(
+			2,
+			3,
+			run_state.get_multiplayer_session_membership_revision() + 1
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED
 		and session.remap_disconnected_peer(2, 3),
 		"奖励阶段重连夹具必须先迁移会话与 RunState 身份。"
 	)
@@ -532,6 +629,7 @@ func _test_emergency_reconnect_reward_rollback_state_remaps() -> void:
 func _test_completed_emergency_choice_can_disconnect_and_remap() -> void:
 	var occurrence_key := "emergency:runtime:completed-disconnect:3"
 	var session := _configure_emergency_reward_fixture([1, 2], occurrence_key)
+	var run_state := root.get_node("RunState") as RunStateStore
 	for round_index in range(2):
 		_expect(
 			bool(session.submit_choice(
@@ -551,6 +649,11 @@ func _test_completed_emergency_choice_can_disconnect_and_remap() -> void:
 	).duplicate()
 	_expect(
 		session.mark_peer_disconnected(2, occurrence_key)
+		and run_state.remap_multiplayer_peer_state(
+			2,
+			4,
+			run_state.get_multiplayer_session_membership_revision() + 1
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED
 		and session.remap_disconnected_peer(2, 4),
 		"已完成选择但仍在等待时断线，也必须能迁移到重连 peer。"
 	)
@@ -567,6 +670,7 @@ func _test_completed_emergency_choice_can_disconnect_and_remap() -> void:
 func _test_ready_emergency_choice_can_disconnect_and_remap() -> void:
 	var occurrence_key := "emergency:runtime:ready-disconnect:4"
 	var session := _configure_emergency_reward_fixture([1], occurrence_key)
+	var run_state := root.get_node("RunState") as RunStateStore
 	for round_index in range(2):
 		_expect(
 			bool(session.submit_choice(
@@ -580,6 +684,11 @@ func _test_ready_emergency_choice_can_disconnect_and_remap() -> void:
 	_expect(session.is_ready_to_settle(), "全员完成后会话必须进入 READY。")
 	_expect(
 		session.mark_peer_disconnected(1, occurrence_key)
+		and run_state.remap_multiplayer_peer_state(
+			1,
+			5,
+			run_state.get_multiplayer_session_membership_revision() + 1
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED
 		and session.remap_disconnected_peer(1, 5),
 		"READY 与最终 CAS 之间断线仍必须能标记并迁移基础奖励投递 peer。"
 	)
@@ -609,7 +718,8 @@ func _create_fixture() -> void:
 	_coordinator.bind_network_dependencies(
 		_route,
 		_fake_net_manager,
-		root.get_node("RunState") as RunStateStore
+		root.get_node("RunState") as RunStateStore,
+		RogueCombatMultiplayerCoordinator.SessionProjectionOwner.THIS_COORDINATOR
 	)
 	_expect(
 		FORMAL_CONFIG.is_ready_to_enable(),
@@ -821,8 +931,8 @@ func _test_pending_reconnect_is_spectator_before_settlement_broadcast() -> void:
 	_reset_fixture_state()
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(1)
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(1)
+	run_state.register_multiplayer_peer_state(2)
 	var occurrence_key := "combat:runtime:settlement-pending-reconnect:2d"
 	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
 	_coordinator._active_node_id = 19
@@ -915,7 +1025,7 @@ func _test_real_reward_mutation_rolls_back_after_commit_failure() -> void:
 	_reset_fixture_state()
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(1)
+	run_state.register_multiplayer_peer_state(1)
 	var occurrence_key := "combat:runtime:reward-rollback:2f"
 	_seed_route_combat(20, 2002, occurrence_key)
 	var runtime := (
@@ -1033,8 +1143,8 @@ func _test_disconnected_original_participant_receives_victory_rewards() -> void:
 	_reset_fixture_state()
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(1)
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(1)
+	run_state.register_multiplayer_peer_state(2)
 	var occurrence_key := "followup_combat:runtime:disconnected-reward:2g"
 	var combat_game := RewardCombatGameHarness.new()
 	var connected_player := PlayerCharacterRegistry.instantiate_character(
@@ -1263,6 +1373,513 @@ func _test_client_abort_admission_is_prepare_only() -> void:
 	_reset_fixture_state()
 
 
+func _test_route_first_reconnect_waits_for_player_projection() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:route-first-reconnect:3c"
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._entry_xirang_by_peer = {1: 500, 2: 700}
+	_coordinator._participant_character_ids = {1: &"weishidaier", 2: &"tiyi"}
+	_coordinator._participant_stable_keys = {1: "account:1", 2: "account:2"}
+	_coordinator._last_combat_xirang_by_peer = {1: 500, 2: 760}
+	_coordinator._disconnected_participants = {
+		2: {
+			"entry_xirang": 700,
+			"last_combat_xirang": 760,
+			"was_prepared": true,
+			"was_terminal_ready": false,
+		},
+	}
+	# 客户端分支无需实际 ENet peer，也能验证 roster 决策是否被监听顺序改变。
+	_fake_net_manager.host_role = false
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+	runtime.reconnected_player_projection_resolved.connect(
+		_coordinator._on_embedded_reconnected_player_projection_resolved
+	)
+
+	# 模拟 MpRogueRoute 比动态创建的 MpGame 更早连接 player_reconnected。
+	_coordinator.handle_reconnected_identity_committed(2, 3)
+	_expect(
+		not _coordinator._participant_peer_ids.has(2)
+		and _coordinator._participant_peer_ids.has(3)
+		and _coordinator._disconnected_participants.has(3)
+		and _coordinator._reconnecting_peer_ids.has(3)
+		and _coordinator._pending_reconnected_identity_resolutions.has(3)
+		and not _coordinator._pending_reconnect_prepare_peers.has(3)
+		and runtime.suspended_peers.is_empty(),
+		"路线监听者先到时必须立即推进规范 raw peer，同时保持 PROJECTING 能力门。"
+	)
+	runtime.reconnected_player_projection_resolved.emit(
+		2,
+		3,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+	_expect(
+		not _coordinator._participant_peer_ids.has(2)
+		and _coordinator._participant_peer_ids.has(3)
+		and not _coordinator._pending_reconnected_identity_resolutions.has(3)
+		and not _coordinator._pending_reconnect_prepare_peers.has(3)
+		and runtime.suspended_peers.is_empty(),
+		"MpGame 明确恢复后只开放能力，不能再次迁移或错误降级客户端。"
+	)
+	_coordinator.handle_reconnected_identity_committed(2, 3)
+	_expect(
+		not _coordinator._pending_spectator_peers.has(3)
+		and not _coordinator._reconnecting_peer_ids.has(3),
+		"已完成的 reconnect 精确重放必须幂等，不能把当前参战者重新排入观战队列。"
+	)
+	_reset_fixture_state()
+
+
+func _test_standalone_projection_owner_reports_once() -> void:
+	_reset_fixture_state()
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = "combat:runtime:aggregate-owner:3h"
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._entry_xirang_by_peer = {1: 500, 2: 700}
+	_coordinator._disconnected_participants = {
+		2: {
+			"entry_xirang": 700,
+			"was_prepared": true,
+			"was_terminal_ready": false,
+		},
+	}
+	_expect(
+		_coordinator.handle_reconnected_identity_committed(2, 3),
+		"独立路线必须先接受 route identity 结果。"
+	)
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		2,
+		3,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+	_expect(
+		_fake_net_manager.runtime_projection_reports.size() == 1
+		and int(
+			_fake_net_manager.runtime_projection_reports[0].get("old_peer_id", 0)
+		) == 2
+		and int(
+			_fake_net_manager.runtime_projection_reports[0].get("new_peer_id", 0)
+		) == 3
+		and int(_fake_net_manager.runtime_projection_reports[0].get("outcome", -1))
+		== MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+		and _fake_net_manager.terminated_projection_peers.is_empty(),
+		"独立 P3 只能由作战聚合器向 NetManager 报告一次会话终态。"
+	)
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		2,
+		3,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+	_expect(
+		_fake_net_manager.runtime_projection_reports.size() == 1,
+		"内嵌 Player 结果重放不得产生第二个会话聚合报告。"
+	)
+	_reset_fixture_state()
+
+
+func _test_canonical_peer_survives_failed_two_hop_reconnect() -> void:
+	_reset_fixture_state()
+	_coordinator._session_projection_owner = (
+		COORDINATOR.SessionProjectionOwner.ENCLOSING_RUNTIME
+	)
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = "combat:runtime:two-hop:3i"
+	_coordinator._participant_peer_ids = {2: true}
+	_coordinator._entry_xirang_by_peer = {2: 700}
+	_coordinator._participant_character_ids = {2: &"tiyi"}
+	_coordinator._participant_stable_keys = {2: "account:2"}
+	_coordinator._participant_incarnations = {2: 202}
+	_coordinator._last_combat_xirang_by_peer = {2: 760}
+	_coordinator._disconnected_participants = {
+		2: {
+			"entry_xirang": 700,
+			"last_combat_xirang": 760,
+			"was_prepared": true,
+			"was_terminal_ready": false,
+		},
+	}
+	_fake_net_manager.host_role = false
+	_expect(
+		_coordinator.handle_reconnected_identity_committed(2, 7),
+		"2 -> 7 的 route identity 应先提交规范作战 peer。"
+	)
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		2,
+		7,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.FAILED
+	)
+	_expect(
+		_coordinator._participant_peer_ids.has(7)
+		and not _coordinator._participant_peer_ids.has(2)
+		and _coordinator._disconnected_participants.has(7),
+		"CREATE_FAILED 只能关闭 7 的战斗能力，不能把规范身份退回 2。"
+	)
+
+	# 7 在降级后再次掉线，并于结算阶段迁到 8；所有冻结奖励与结算地址
+	# 必须沿同一规范身份继续前进，不能残留 2/7 的状态副本。
+	_coordinator._on_player_left(7)
+	_coordinator._phase = COORDINATOR.ProtocolPhase.SETTLED
+	_coordinator._settlement_received = true
+	_coordinator._pending_settlement = {
+		"final_xirang_by_peer": {7: 880},
+		"inventory_snapshots_by_peer": {7: {"peer_id": 7, "items": []}},
+		"results_by_peer": {7: {"peer_id": 7, "victory": true}},
+	}
+	_expect(
+		_coordinator.handle_reconnected_identity_committed(7, 8),
+		"7 -> 8 的第二跳必须以当前规范 peer 继续迁移。"
+	)
+	var settlement_results := (
+		_coordinator._pending_settlement.get("results_by_peer", {}) as Dictionary
+	)
+	_expect(
+		_coordinator._participant_peer_ids == {8: true}
+		and _coordinator._entry_xirang_by_peer.has(8)
+		and not _coordinator._entry_xirang_by_peer.has(2)
+		and not _coordinator._entry_xirang_by_peer.has(7)
+		and _coordinator._participant_character_ids.has(8)
+		and _coordinator._participant_stable_keys.has(8)
+		and _coordinator._participant_incarnations.get(8, 0) == 202
+		and _coordinator._last_combat_xirang_by_peer.has(8)
+		and settlement_results.has(8)
+		and not settlement_results.has(7)
+		and int((settlement_results[8] as Dictionary).get("peer_id", 0)) == 8,
+		"两跳后 roster、冻结奖励与结算 payload 的唯一 raw peer 必须是 8。"
+	)
+	_reset_fixture_state()
+
+
+func _test_projection_outcome_cas_conflicts() -> void:
+	_reset_fixture_state()
+	_coordinator._session_projection_owner = (
+		COORDINATOR.SessionProjectionOwner.ENCLOSING_RUNTIME
+	)
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = "combat:runtime:outcome-cas:3j"
+	_coordinator._participant_peer_ids = {2: true}
+	_coordinator._entry_xirang_by_peer = {2: 700}
+	_coordinator._participant_incarnations = {2: 22}
+	_coordinator._disconnected_participants = {
+		2: {"entry_xirang": 700, "was_prepared": true},
+	}
+	_fake_net_manager.host_role = false
+	_fake_net_manager.reconnecting_peer_ids[3] = true
+	_fake_net_manager.participant_incarnations[3] = 22
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		2,
+		3,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED
+	)
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		2,
+		3,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+	_coordinator.handle_reconnected_identity_committed(2, 3)
+	var downgraded := (
+		_coordinator._resolved_reconnected_identity_resolutions.get(3, {})
+		as Dictionary
+	)
+	_expect(
+		int(downgraded.get("effective_outcome", -1))
+		== MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED
+		and _coordinator._disconnected_participants.has(3)
+		and not _coordinator._pending_reconnect_prepare_peers.has(3),
+		"外层 owner 的 SUSPENDED -> RESTORED 冲突必须保持降级，禁止升级。"
+	)
+
+	_reset_fixture_state()
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = "combat:runtime:outcome-cas:3k"
+	_coordinator._participant_peer_ids = {4: true}
+	_coordinator._entry_xirang_by_peer = {4: 800}
+	_coordinator._participant_incarnations = {4: 44}
+	_coordinator._disconnected_participants = {
+		4: {"entry_xirang": 800, "was_prepared": true},
+	}
+	_coordinator.handle_reconnected_identity_committed(4, 5)
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		4,
+		5,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		4,
+		5,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED
+	)
+	_expect(
+		_fake_net_manager.runtime_projection_reports.size() == 1
+		and _fake_net_manager.terminated_projection_peers == [5],
+		"独立 owner 已完成后的冲突终态必须 fail-close，不能生成第二次有效报告。"
+	)
+	_reset_fixture_state()
+
+
+func _test_client_failed_projection_fails_closed() -> void:
+	_reset_fixture_state()
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = "combat:runtime:client-failed:3l"
+	_coordinator._participant_peer_ids = {2: true}
+	_coordinator._entry_xirang_by_peer = {2: 700}
+	_coordinator._participant_incarnations = {2: 22}
+	_coordinator._disconnected_participants = {
+		2: {"entry_xirang": 700, "was_prepared": true},
+	}
+	_fake_net_manager.host_role = false
+	_coordinator.handle_reconnected_identity_committed(2, 3)
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		2,
+		3,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.FAILED
+	)
+	_expect(
+		_fake_net_manager.terminated_membership_projection_reasons.size() == 1
+		and _coordinator._participant_peer_ids.has(3)
+		and _coordinator._disconnected_participants.has(3),
+		"THIS_COORDINATOR 的 Client FAILED 必须本地终止且保留已提交的规范身份。"
+	)
+	_reset_fixture_state()
+
+
+func _test_stale_outcome_first_is_rejected() -> void:
+	_reset_fixture_state()
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = "combat:runtime:stale-outcome:3m"
+	_coordinator._participant_peer_ids = {2: true}
+	_coordinator._entry_xirang_by_peer = {2: 700}
+	_coordinator._participant_incarnations = {2: 22}
+	_coordinator._disconnected_participants = {
+		2: {"entry_xirang": 700, "was_prepared": true},
+	}
+	_fake_net_manager.host_role = false
+	_fake_net_manager.reconnecting_peer_ids[7] = true
+	_fake_net_manager.participant_incarnations[7] = 999
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		2,
+		7,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+	_expect(
+		not _coordinator._pending_reconnected_identity_resolutions.has(7),
+		"不同 incarnation 即使 raw peer 仍为 RECONNECTING 也不能新建 pending。"
+	)
+	_fake_net_manager.participant_incarnations[7] = 22
+	_fake_net_manager.reconnecting_peer_ids.erase(7)
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		2,
+		7,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+	_expect(
+		not _coordinator._pending_reconnected_identity_resolutions.has(7),
+		"非 RECONNECTING 的迟到 2 -> 7 outcome 必须被拒绝。"
+	)
+	_fake_net_manager.reconnecting_peer_ids[7] = true
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		2,
+		7,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+	_expect(
+		_coordinator._pending_reconnected_identity_resolutions.has(7),
+		"同 incarnation 的当前 RECONNECTING 成员仍必须支持合法 component-first。"
+	)
+	_coordinator._clear_pending_reconnected_identity_resolution(7)
+	_fake_net_manager.reconnecting_peer_ids.erase(7)
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		2,
+		7,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+	_expect(
+		not _coordinator._pending_reconnected_identity_resolutions.has(7)
+		and not _coordinator._reconnecting_peer_ids.has(7),
+		"事务清理后迟到的旧 hop outcome 不得复活能力门。"
+	)
+	_reset_fixture_state()
+
+
+func _test_reconnect_prepare_waits_for_post_ready_lease() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:post-ready:3f"
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_node_id = 39
+	_coordinator._active_content_seed = 3909
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._active_combat_config_id = FORMAL_CONFIG.encounter_id
+	_coordinator._active_config_signature = "fixture-signature"
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._entry_xirang_by_peer = {1: 500, 2: 700}
+	_coordinator._disconnected_participants = {
+		2: {
+			"entry_xirang": 700,
+			"was_prepared": true,
+			"was_terminal_ready": false,
+		},
+	}
+
+	# Player 组件先完成时只建立 intent；PREPARING_DELIVERY 租约到达前
+	# 不得误降级 spectator，也不得提前发送 prepare。
+	_coordinator._finish_player_reconnected(
+		2,
+		3,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+	_expect(
+		_coordinator._pending_reconnect_prepare_peers.has(3)
+		and _coordinator.reconnect_prepare_dispatches.is_empty(),
+		"Player 投影先到时，PREPARING_DELIVERY 前必须零 prepare 发包。"
+	)
+	_fake_net_manager.reconnect_delivery_preparing_peer_ids[3] = true
+	_expect(
+		_coordinator.handle_reconnected_member_ready(
+			2,
+			3,
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+		)
+		and _coordinator.reconnect_prepare_dispatches.size() == 1
+		and bool(
+			_coordinator.reconnect_prepare_dispatches[0].get(
+				"activate_immediately",
+				false
+			)
+		),
+		"PREPARING_DELIVERY 租约到达后必须恰好一次发送立即激活 prepare。"
+	)
+	_expect(
+		_coordinator.handle_reconnected_member_ready(
+			2,
+			3,
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+		)
+		and _coordinator.reconnect_prepare_dispatches.size() == 1,
+		"重复 PREPARING_DELIVERY 租约必须幂等，不能重复发送 prepare。"
+	)
+
+	# 反向顺序：route 已提交后 ready 可以先于内嵌 Player，租约必须保留。
+	_reset_fixture_state()
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_node_id = 40
+	_coordinator._active_content_seed = 4010
+	_coordinator._active_occurrence_key = "combat:runtime:ready-first:3g"
+	_coordinator._active_combat_config_id = FORMAL_CONFIG.encounter_id
+	_coordinator._active_config_signature = "fixture-signature"
+	_coordinator._participant_peer_ids = {1: true, 4: true}
+	_coordinator._entry_xirang_by_peer = {1: 500, 4: 800}
+	_coordinator._disconnected_participants = {
+		4: {
+			"entry_xirang": 800,
+			"was_prepared": true,
+			"was_terminal_ready": false,
+		},
+	}
+	_coordinator._reconnecting_peer_ids[5] = true
+	_fake_net_manager.send_ready_peer_ids[5] = true
+	_expect(
+		_coordinator.handle_reconnected_member_ready(
+			4,
+			5,
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+		)
+		and _coordinator.reconnect_prepare_dispatches.is_empty(),
+		"ready 先到时必须只保留租约，不能在 Player 投影前发包。"
+	)
+	_coordinator._finish_player_reconnected(
+		4,
+		5,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+	_expect(
+		_coordinator.reconnect_prepare_dispatches.size() == 1
+		and int(_coordinator.reconnect_prepare_dispatches[0].get("peer_id", 0)) == 5,
+		"Player 投影后必须消费先到的 ready 租约且仅发送一次。"
+	)
+	_reset_fixture_state()
+
+
+func _test_pending_reconnect_projection_survives_phase_change() -> void:
+	_reset_fixture_state()
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = "combat:runtime:phase-boundary-reconnect:3d"
+	_coordinator._participant_peer_ids = {2: true}
+	_coordinator._entry_xirang_by_peer = {2: 700}
+	_coordinator._participant_character_ids = {2: &"tiyi"}
+	_coordinator._participant_stable_keys = {2: "account:2"}
+	_coordinator._last_combat_xirang_by_peer = {2: 760}
+	_coordinator._disconnected_participants = {
+		2: {
+			"entry_xirang": 700,
+			"last_combat_xirang": 760,
+			"was_prepared": true,
+			"was_terminal_ready": false,
+		},
+	}
+	_fake_net_manager.host_role = false
+
+	# 路线结果在 ACTIVE 先到，Player 结果到达前协议推进到奖励阶段。
+	# 这个阶段变化不能使已启动的身份事务永远留在 pending。
+	_coordinator.handle_reconnected_identity_committed(2, 3)
+	_coordinator._phase = COORDINATOR.ProtocolPhase.REWARD_SELECTING
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		2,
+		3,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+	_expect(
+		not _coordinator._pending_reconnected_identity_resolutions.has(3)
+		and not _coordinator._reconnecting_peer_ids.has(3)
+		and not _coordinator._participant_peer_ids.has(2)
+		and _coordinator._participant_peer_ids.has(3),
+		"阶段推进后仍必须消费 ACTIVE 已启动的路线/Player 投影汇合事务。"
+	)
+
+	# 反向顺序也必须消费同一 pending，不能因为路线结果到达时阶段已改变
+	# 而绕开先到的 Player 明确结果。
+	_reset_fixture_state()
+	_fake_net_manager.host_role = false
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = "combat:runtime:phase-boundary-reconnect:3e"
+	_coordinator._participant_peer_ids = {4: true}
+	_coordinator._entry_xirang_by_peer = {4: 800}
+	_coordinator._participant_character_ids = {4: &"tiyi"}
+	_coordinator._participant_stable_keys = {4: "account:4"}
+	_coordinator._participant_incarnations = {4: 44}
+	_coordinator._last_combat_xirang_by_peer = {4: 830}
+	_coordinator._disconnected_participants = {
+		4: {
+			"entry_xirang": 800,
+			"last_combat_xirang": 830,
+			"was_prepared": true,
+			"was_terminal_ready": false,
+		},
+	}
+	_fake_net_manager.reconnecting_peer_ids[5] = true
+	_fake_net_manager.participant_incarnations[5] = 44
+	_coordinator._on_embedded_reconnected_player_projection_resolved(
+		4,
+		5,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+	_coordinator._phase = COORDINATOR.ProtocolPhase.REWARD_SELECTING
+	_coordinator.handle_reconnected_identity_committed(4, 5)
+	_expect(
+		not _coordinator._pending_reconnected_identity_resolutions.has(5)
+		and not _coordinator._reconnecting_peer_ids.has(5)
+		and not _coordinator._participant_peer_ids.has(4)
+		and _coordinator._participant_peer_ids.has(5),
+		"Player 投影先到且阶段推进后，路线提交仍必须汇合同一身份事务。"
+	)
+	_reset_fixture_state()
+
+
 func _test_reconnect_prepare_marker_lifecycle() -> void:
 	_reset_fixture_state()
 	var occurrence_key := "combat:runtime:reconnect-marker:3b"
@@ -1273,8 +1890,16 @@ func _test_reconnect_prepare_marker_lifecycle() -> void:
 	_coordinator._pending_reconnect_prepare_peers[2] = {
 		"occurrence_key": occurrence_key,
 		"deadline_msec": 0,
+		"prepare_dispatched": false,
 	}
 
+	_fake_net_manager.gameplay_ingress_admitted = false
+	_coordinator._accept_combat_prepared(2, occurrence_key)
+	_expect(
+		not _coordinator._prepared_peers.has(2),
+		"RECONNECTING 成员不得在玩法租约生效前推进 prepare barrier。"
+	)
+	_fake_net_manager.gameplay_ingress_admitted = true
 	_coordinator._accept_combat_prepared(2, occurrence_key)
 	_expect(
 		_coordinator._prepared_peers.has(2)
@@ -1292,6 +1917,16 @@ func _test_reconnect_prepare_marker_lifecycle() -> void:
 		),
 		"重复 PREPARED 不得伪装成激活成功或提前关闭失败窗口。"
 	)
+	_coordinator._accept_combat_activated(2, occurrence_key)
+	_expect(
+		_coordinator._pending_reconnect_prepare_peers.has(2),
+		"Host 尚未实际发送 prepare 时，伪造 ACTIVATED 不得消费恢复租约。"
+	)
+	var pending := (
+		_coordinator._pending_reconnect_prepare_peers[2] as Dictionary
+	)
+	pending["prepare_dispatched"] = true
+	_coordinator._pending_reconnect_prepare_peers[2] = pending
 	_coordinator._accept_combat_activated(2, occurrence_key)
 	_expect(
 		not _coordinator._pending_reconnect_prepare_peers.has(2)
@@ -1497,7 +2132,11 @@ func _test_reconnect_remaps_terminal_settlement() -> void:
 	_coordinator._combat_network = runtime
 
 	# remote_sender_id 无法在单进程伪造；直接覆盖相同的房主本地迁移分支。
-	_coordinator._finish_player_reconnected(2, 3)
+	_coordinator._finish_player_reconnected(
+		2,
+		3,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED
+	)
 
 	_expect(
 		not _coordinator._participant_peer_ids.has(2)
@@ -1576,7 +2215,11 @@ func _test_host_missing_reconnect_runtime_becomes_spectator() -> void:
 	_coordinator.add_child(runtime)
 	_coordinator._combat_network = runtime
 
-	_coordinator._finish_player_reconnected(2, 3)
+	_coordinator._finish_player_reconnected(
+		2,
+		3,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED
+	)
 
 	_expect(
 		not _coordinator._participant_peer_ids.has(2)
@@ -1620,7 +2263,11 @@ func _test_active_reconnect_spectator_receives_later_settlement() -> void:
 	_coordinator.add_child(runtime)
 	_coordinator._combat_network = runtime
 
-	_coordinator._finish_player_reconnected(2, 3)
+	_coordinator._finish_player_reconnected(
+		2,
+		3,
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED
+	)
 	var first_dispatch := (
 		_coordinator.terminal_spectator_dispatches[0]
 		if not _coordinator.terminal_spectator_dispatches.is_empty()
@@ -1683,8 +2330,8 @@ func _test_route_spectator_settlement_converges_economy() -> void:
 	var node_id := 44
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(1)
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(1)
+	run_state.register_multiplayer_peer_state(2)
 	_expect(
 		run_state.try_add_item_count_for_peer(2, WOOD_MATERIAL, 1),
 		"观战结算夹具必须先建立旧客户端背包。"
@@ -1692,11 +2339,15 @@ func _test_route_spectator_settlement_converges_economy() -> void:
 
 	var authoritative := RunStateStore.new()
 	authoritative.begin_new_run(&"weishidaier", false)
-	authoritative.ensure_multiplayer_peer_state(1)
-	authoritative.ensure_multiplayer_peer_state(2)
+	authoritative.register_multiplayer_peer_state(1)
+	authoritative.register_multiplayer_peer_state(2)
 	_expect(
-		authoritative.try_add_item_count_for_peer(2, WOOD_MATERIAL, 5),
-		"观战结算夹具必须建立 Host 权威背包。"
+		authoritative.try_add_item_count_for_peer(2, WOOD_MATERIAL, 1)
+		and authoritative.try_add_item_count_for_peer(2, WOOD_MATERIAL, 4),
+		(
+			"观战结算夹具必须从客户端已知基线继续推进 Host revision，"
+			+ "不能制造同 revision 异内容的伪权威快照。"
+		)
 	)
 
 	_fake_net_manager.host_role = false
@@ -2149,9 +2800,20 @@ func _reset_fixture_state() -> void:
 	_coordinator.host_settlement_commit_observations.clear()
 	_coordinator.host_settlement_broadcasts.clear()
 	_coordinator.settlement_event_order.clear()
+	_coordinator.reconnect_prepare_dispatches.clear()
 	_fake_net_manager.send_ready_peer_ids.clear()
+	_fake_net_manager.reconnect_delivery_preparing_peer_ids.clear()
+	_fake_net_manager.reconnecting_peer_ids.clear()
+	_fake_net_manager.participant_incarnations.clear()
+	_fake_net_manager.runtime_projection_reports.clear()
+	_fake_net_manager.terminated_projection_peers.clear()
+	_fake_net_manager.terminated_membership_projection_reasons.clear()
+	_fake_net_manager.accepted_projection_outcomes.clear()
 	_fake_net_manager.host_role = true
 	_fake_net_manager.local_peer_id = 1
+	_coordinator._session_projection_owner = (
+		RogueCombatMultiplayerCoordinator.SessionProjectionOwner.THIS_COORDINATOR
+	)
 	_route.hide_combat_result()
 	_route._clear_normal_combat_state()
 	_route.set_route_presentation_enabled(true)

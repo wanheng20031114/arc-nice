@@ -6,6 +6,15 @@ const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
 const MpProjectileCoordinator := preload(
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
 )
+const MpTowerWorldCoordinatorScript := preload(
+	"res://scene/game_modes/tower_defense/multiplayer/world/mp_tower_world_coordinator.gd"
+)
+const MP_TOWER_WORLD_COORDINATOR_PATH := (
+	"res://scene/game_modes/tower_defense/multiplayer/world/mp_tower_world_coordinator.gd"
+)
+const MP_SESSION_COORDINATOR_PATH := (
+	"res://scene/multiplayer/session/mp_session_coordinator.gd"
+)
 const BULLET_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
 const TOWER_DEFENSE_PLANT_RUNTIME_PATH := (
 	"res://scene/game_modes/tower_defense/plant/tower_defense_plant_runtime_coordinator.gd"
@@ -131,25 +140,47 @@ class TerrainTowerModeAdapter:
 		)
 
 
-class TerrainRepairMpGame:
-	extends "res://scene/multiplayer/mp_game.gd"
+class CapturingTowerWorldCoordinator:
+	extends "res://scene/game_modes/tower_defense/multiplayer/world/mp_tower_world_coordinator.gd"
 
 	var repair_request_count := 0
+	var bamboo_batches: Array[Array] = []
 
-	func _request_terrain_snapshot_repair() -> void:
-		if bool(get("_client_waiting_for_terrain_snapshot")):
-			return
-		set("_client_waiting_for_terrain_snapshot", true)
+	func start_capture() -> void:
+		if not terrain_snapshot_request_to_host.is_connected(
+			_capture_terrain_snapshot_request
+		):
+			terrain_snapshot_request_to_host.connect(
+				_capture_terrain_snapshot_request
+			)
+		if not bamboo_mortar_visual_batch_broadcast_requested.is_connected(
+			_capture_bamboo_batch
+		):
+			bamboo_mortar_visual_batch_broadcast_requested.connect(
+				_capture_bamboo_batch
+			)
+
+	func _capture_terrain_snapshot_request(_known_revision: int) -> void:
 		repair_request_count += 1
 
-
-class TerrainWatchdogMpGame:
-	extends "res://scene/multiplayer/mp_game.gd"
-
-	var repair_request_count := 0
-
-	func _transmit_terrain_snapshot_repair_request() -> void:
-		repair_request_count += 1
+	func _capture_bamboo_batch(
+		plant_net_ids: PackedInt32Array,
+		action_ids: PackedInt32Array,
+		stages: PackedByteArray,
+		spawn_positions: PackedVector2Array,
+		landing_positions: PackedVector2Array,
+		windup_durations: PackedFloat32Array,
+		host_times: PackedFloat64Array
+	) -> void:
+		bamboo_batches.append([
+			plant_net_ids,
+			action_ids,
+			stages,
+			spawn_positions,
+			landing_positions,
+			windup_durations,
+			host_times,
+		])
 
 
 class ProjectileRuntimeStub:
@@ -185,21 +216,6 @@ class ProjectileRuntimeStub:
 		pass
 
 
-class BambooBatchRecordingMpGame:
-	extends "res://scene/multiplayer/mp_game.gd"
-
-	var outbound_calls: Array[Dictionary] = []
-
-	func _rpc_to_connected_clients(
-		method_name: StringName,
-		args: Array = []
-	) -> void:
-		outbound_calls.append({
-			"method_name": method_name,
-			"args": args.duplicate(true),
-		})
-
-
 var failures: Array[String] = []
 
 
@@ -213,7 +229,7 @@ func _run() -> void:
 		_test_v25_high_value_player_snapshot_contract()
 		_test_player_codec_and_reuse()
 		if failures.is_empty():
-			print("PROTOCOL_V70_PLAYER_SNAPSHOT_SMOKE_TEST_OK")
+			print("PROTOCOL_V76_PLAYER_SNAPSHOT_SMOKE_TEST_OK")
 			quit()
 			return
 		for failure in failures:
@@ -237,7 +253,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V70_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V76_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -246,10 +262,10 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 72, "Protocol must be v72.")
+	_expect(NetConstants.PROTOCOL_VERSION == 76, "Protocol must be v76.")
 	_expect(
 		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
-		"Protocol v72 must retain scene-specific bits 5..6 for shield stages, ninja boost, and main-battle airborne visuals."
+		"Protocol v76 must retain scene-specific bits 5..6 for shield stages, ninja boost, and main-battle airborne visuals."
 	)
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
@@ -267,7 +283,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v72 channel assignments must remain stable."
+		"Protocol v76 channel assignments must remain stable."
 	)
 
 
@@ -384,64 +400,64 @@ func _test_v25_high_value_player_snapshot_contract() -> void:
 
 
 func _test_terrain_delta_revision_repair_contract() -> void:
-	var mp_game := TerrainRepairMpGame.new()
+	var mp_game := MpGameScript.new()
 	var runtime := TerrainRuntimeStub.new()
 	var net_stub := TerrainClientNetManagerStub.new()
-	_bind_tower_mode_fixture(mp_game, runtime)
 	mp_game.game = runtime
 	mp_game.net_manager = net_stub
+	var world := _bind_tower_world_fixture(mp_game, runtime, net_stub)
 	var cell_xy := PackedInt32Array([4, 7])
 	var grass := PackedInt32Array([2])
 	var dirt := PackedInt32Array([1])
 
-	mp_game.call("net_terrain_delta", 1, cell_xy, grass)
+	world.receive_terrain_delta(1, cell_xy, grass)
 	_expect(
-		mp_game.repair_request_count == 1
+		world.repair_request_count == 1
 		and runtime.delta_revisions.is_empty()
-		and int(mp_game.get("_client_terrain_revision")) == -1,
+		and int(world.get("_client_terrain_revision")) == -1,
 		"A delta before the first snapshot must request repair without mutating terrain."
 	)
 
-	mp_game.call("net_terrain_snapshot_chunk", 1, 5, 0, 1, cell_xy, grass)
+	world.receive_terrain_snapshot_chunk(1, 5, 0, 1, cell_xy, grass)
 	_expect(
 		runtime.snapshot_revisions == [5]
-		and bool(mp_game.get("_client_has_terrain_snapshot"))
-		and not bool(mp_game.get("_client_waiting_for_terrain_snapshot"))
-		and int(mp_game.get("_client_terrain_revision")) == 5,
+		and bool(world.get("_client_has_terrain_snapshot"))
+		and not bool(world.get("_client_waiting_for_terrain_snapshot"))
+		and int(world.get("_client_terrain_revision")) == 5,
 		"A complete snapshot must apply atomically and establish the client revision."
 	)
 
-	mp_game.call("net_terrain_delta", 5, cell_xy, dirt)
+	world.receive_terrain_delta(5, cell_xy, dirt)
 	_expect(
 		runtime.delta_revisions.is_empty()
-		and mp_game.repair_request_count == 1,
+		and world.repair_request_count == 1,
 		"A stale or duplicate terrain delta must be ignored without requesting repair."
 	)
-	mp_game.call("net_terrain_delta", 7, cell_xy, dirt)
-	mp_game.call("net_terrain_delta", 6, cell_xy, dirt)
+	world.receive_terrain_delta(7, cell_xy, dirt)
+	world.receive_terrain_delta(6, cell_xy, dirt)
 	_expect(
 		runtime.delta_revisions.is_empty()
-		and mp_game.repair_request_count == 2
-		and bool(mp_game.get("_client_waiting_for_terrain_snapshot"))
-		and int(mp_game.get("_client_terrain_revision")) == 5,
+		and world.repair_request_count == 2
+		and bool(world.get("_client_waiting_for_terrain_snapshot"))
+		and int(world.get("_client_terrain_revision")) == 5,
 		"A revision gap must request one repair and reject later deltas while waiting."
 	)
 
-	mp_game.call("net_terrain_snapshot_chunk", 2, 7, 0, 1, cell_xy, dirt)
-	mp_game.call("net_terrain_delta", 8, cell_xy, grass)
+	world.receive_terrain_snapshot_chunk(2, 7, 0, 1, cell_xy, dirt)
+	world.receive_terrain_delta(8, cell_xy, grass)
 	_expect(
 		runtime.snapshot_revisions == [5, 7]
 		and runtime.delta_revisions == [8]
-		and int(mp_game.get("_client_terrain_revision")) == 8,
+		and int(world.get("_client_terrain_revision")) == 8,
 		"After repair, exactly the next revision must apply once and advance the client."
 	)
 
 	runtime.accept_delta = false
-	mp_game.call("net_terrain_delta", 9, cell_xy, dirt)
+	world.receive_terrain_delta(9, cell_xy, dirt)
 	_expect(
 		runtime.delta_revisions == [8]
-		and mp_game.repair_request_count == 3
-		and int(mp_game.get("_client_terrain_revision")) == 8,
+		and world.repair_request_count == 3
+		and int(world.get("_client_terrain_revision")) == 8,
 		"A runtime-rejected delta must preserve the prior revision and request repair."
 	)
 	mp_game.free()
@@ -450,34 +466,34 @@ func _test_terrain_delta_revision_repair_contract() -> void:
 
 
 func _test_terrain_snapshot_repair_watchdog_contract() -> void:
-	var mp_game := TerrainWatchdogMpGame.new()
+	var mp_game := MpGameScript.new()
 	var runtime := TerrainRuntimeStub.new()
 	var net_stub := TerrainClientNetManagerStub.new()
-	_bind_tower_mode_fixture(mp_game, runtime)
 	mp_game.game = runtime
 	mp_game.net_manager = net_stub
+	var world := _bind_tower_world_fixture(mp_game, runtime, net_stub)
 
-	mp_game.call("_request_terrain_snapshot_repair")
-	mp_game.call("_request_terrain_snapshot_repair")
+	world.call("_request_terrain_snapshot_repair")
+	world.call("_request_terrain_snapshot_repair")
 	_expect(
-		mp_game.repair_request_count == 1
-		and bool(mp_game.get("_client_waiting_for_terrain_snapshot")),
+		world.repair_request_count == 1
+		and bool(world.get("_client_waiting_for_terrain_snapshot")),
 		"Terrain repair must send one request while a snapshot is already pending."
 	)
-	mp_game.call("_update_terrain_snapshot_repair_watchdog", 1.99)
+	world.update_client(1.99)
 	_expect(
-		mp_game.repair_request_count == 1,
+		world.repair_request_count == 1,
 		"Terrain repair watchdog must not retry before its conservative timeout."
 	)
-	mp_game.call("_update_terrain_snapshot_repair_watchdog", 0.02)
+	world.update_client(0.02)
 	_expect(
-		mp_game.repair_request_count == 2,
+		world.repair_request_count == 2,
 		"Terrain repair watchdog must retry a silent or Host-rate-limited request."
 	)
 	for _frame_index in range(60):
-		mp_game.call("_update_terrain_snapshot_repair_watchdog", 1.0 / 60.0)
+		world.update_client(1.0 / 60.0)
 	_expect(
-		mp_game.repair_request_count == 2,
+		world.repair_request_count == 2,
 		"Terrain repair watchdog must not create a per-frame request storm."
 	)
 
@@ -487,8 +503,7 @@ func _test_terrain_snapshot_repair_watchdog_contract() -> void:
 		first_chunk_xy.append(cell_x)
 		first_chunk_xy.append(0)
 		first_chunk_types.append(1)
-	mp_game.call(
-		"net_terrain_snapshot_chunk",
+	world.receive_terrain_snapshot_chunk(
 		41,
 		0,
 		0,
@@ -496,20 +511,19 @@ func _test_terrain_snapshot_repair_watchdog_contract() -> void:
 		first_chunk_xy,
 		first_chunk_types
 	)
-	mp_game.call("_update_terrain_snapshot_repair_watchdog", 1.99)
+	world.update_client(1.99)
 	_expect(
-		mp_game.repair_request_count == 2,
+		world.repair_request_count == 2,
 		"Every valid terrain chunk must rearm the watchdog while assembly progresses."
 	)
-	mp_game.call("_update_terrain_snapshot_repair_watchdog", 0.02)
+	world.update_client(0.02)
 	_expect(
-		mp_game.repair_request_count == 3
-		and (mp_game.get("_pending_terrain_snapshot_batches") as Dictionary).is_empty(),
+		world.repair_request_count == 3
+		and (world.get("_pending_terrain_snapshot_batches") as Dictionary).is_empty(),
 		"A stalled partial terrain snapshot must be discarded before retrying."
 	)
 
-	mp_game.call(
-		"net_terrain_snapshot_chunk",
+	world.receive_terrain_snapshot_chunk(
 		42,
 		0,
 		0,
@@ -517,11 +531,10 @@ func _test_terrain_snapshot_repair_watchdog_contract() -> void:
 		first_chunk_xy,
 		first_chunk_types
 	)
-	mp_game.call("_update_terrain_snapshot_repair_watchdog", 1.5)
+	world.update_client(1.5)
 	var last_chunk_xy := PackedInt32Array([96, 0])
 	var last_chunk_types := PackedInt32Array([1])
-	mp_game.call(
-		"net_terrain_snapshot_chunk",
+	world.receive_terrain_snapshot_chunk(
 		42,
 		0,
 		1,
@@ -531,15 +544,15 @@ func _test_terrain_snapshot_repair_watchdog_contract() -> void:
 	)
 	_expect(
 		runtime.snapshot_revisions == [0]
-		and not bool(mp_game.get("_client_waiting_for_terrain_snapshot"))
-		and is_zero_approx(float(mp_game.get(
+		and not bool(world.get("_client_waiting_for_terrain_snapshot"))
+		and is_zero_approx(float(world.get(
 			"_terrain_snapshot_repair_watchdog_time_left"
 		))),
 		"A complete terrain snapshot must cancel the repair watchdog."
 	)
-	mp_game.call("_update_terrain_snapshot_repair_watchdog", 10.0)
+	world.update_client(10.0)
 	_expect(
-		mp_game.repair_request_count == 3,
+		world.repair_request_count == 3,
 		"A completed terrain snapshot must not trigger a later watchdog retry."
 	)
 	mp_game.free()
@@ -547,10 +560,11 @@ func _test_terrain_snapshot_repair_watchdog_contract() -> void:
 	net_stub.free()
 
 
-func _bind_tower_mode_fixture(
+func _bind_tower_world_fixture(
 	mp_game: MultiplayerGameplaySession,
-	runtime: TerrainRuntimeStub
-) -> void:
+	runtime: TerrainRuntimeStub,
+	net_manager: NetManagerStore
+) -> CapturingTowerWorldCoordinator:
 	var tower_adapter := TerrainTowerModeAdapter.new()
 	tower_adapter.name = "MultiplayerModeAdapter"
 	mp_game.add_child(tower_adapter)
@@ -559,6 +573,33 @@ func _bind_tower_mode_fixture(
 	runtime.multiplayer_mode_adapter = tower_adapter
 	mp_game.set("_mode_adapter", tower_adapter)
 	mp_game.set("tower_mode_adapter", tower_adapter)
+	# 世界协调器的绑定边界要求依赖身份完整；这些节点只提供本用例不会触及的端口。
+	var session_coordinator := MpSessionCoordinator.new()
+	var transactions := MpTransactionsCoordinator.new()
+	var enemy_coordinator := MpEnemyCoordinator.new()
+	var tower_economy := MpTowerEconomyCoordinator.new()
+	var world := CapturingTowerWorldCoordinator.new()
+	for child in [
+		session_coordinator,
+		transactions,
+		enemy_coordinator,
+		tower_economy,
+		world,
+	]:
+		mp_game.add_child(child)
+	world.start_capture()
+	world.bind_session(
+		mp_game,
+		session_coordinator,
+		runtime,
+		tower_adapter,
+		net_manager,
+		transactions,
+		enemy_coordinator,
+		tower_economy
+	)
+	mp_game.set("tower_world_coordinator", world)
+	return world
 
 
 func _test_player_codec_and_reuse() -> void:
@@ -650,15 +691,8 @@ func _test_shared_snapshot_cohort_lifecycle() -> void:
 		"One shared cohort must retain one player baseline instead of one per member."
 	)
 
-	var mp_game := MpGameScript.new()
-	var session_coordinator := MpSessionCoordinator.new()
-	session_coordinator.name = "SessionCoordinator"
-	mp_game.add_child(session_coordinator)
-	mp_game.session_coordinator = session_coordinator
 	var player_coordinator := MpPlayerCoordinator.new()
-	player_coordinator.name = "PlayerCoordinator"
-	mp_game.add_child(player_coordinator)
-	mp_game.player_coordinator = player_coordinator
+	var enemy_coordinator := MpEnemyCoordinator.new()
 	var cohort_peers := player_coordinator.get("_snapshot_cohort_peers") as Dictionary
 	var keyframe_times := (
 		player_coordinator.get("_last_keyframe_time_by_peer") as Dictionary
@@ -670,9 +704,11 @@ func _test_shared_snapshot_cohort_lifecycle() -> void:
 		0.0,
 		true
 	)
-	var mp_snapshot_mgr := mp_game.get("snapshot_mgr") as SnapshotManager
 	var player_snapshot_mgr := (
 		player_coordinator.get("_snapshot_manager") as SnapshotManager
+	)
+	var enemy_snapshot_mgr := (
+		enemy_coordinator.get("_snapshot_manager") as SnapshotManager
 	)
 	player_snapshot_mgr.encode_player_snapshots_for_cohort(
 		cohort_id,
@@ -682,26 +718,29 @@ func _test_shared_snapshot_cohort_lifecycle() -> void:
 	var enemy_state := SnapshotManager.EnemyState.new()
 	enemy_state.net_id = 11
 	enemy_state.position = Vector2(20.0, 30.0)
-	mp_snapshot_mgr.encode_enemy_snapshot_range_for_cohort(
+	enemy_snapshot_mgr.encode_enemy_snapshot_range_for_cohort(
 		cohort_id,
 		[enemy_state],
 		0,
 		1,
 		true
 	)
-	var enemy_cohort_peers := mp_game.get("_enemy_snapshot_cohort_peers") as Dictionary
-	var enemy_keyframe_times := mp_game.get("_last_enemy_keyframe_time_by_peer") as Dictionary
-	mp_game.call(
+	var enemy_cohort_peers := (
+		enemy_coordinator.get("_snapshot_cohort_peers") as Dictionary
+	)
+	var enemy_keyframe_times := (
+		enemy_coordinator.get("_last_keyframe_time_by_peer") as Dictionary
+	)
+	enemy_coordinator.call(
 		"_commit_snapshot_cohort_send",
-		enemy_cohort_peers,
-		enemy_keyframe_times,
 		ready_peers,
 		0.0,
 		true
 	)
 
 	var temporarily_ready: Array[int] = [2, 4]
-	mp_game.call("_sync_snapshot_cohort_readiness", temporarily_ready)
+	player_coordinator.sync_snapshot_cohort_readiness(temporarily_ready)
+	enemy_coordinator.sync_snapshot_cohort_readiness(temporarily_ready)
 	_expect(
 		cohort_peers.size() == 2
 		and cohort_peers.has(2)
@@ -755,26 +794,28 @@ func _test_shared_snapshot_cohort_lifecycle() -> void:
 		"A stable cohort must still emit its periodic 0.5-second keyframe."
 	)
 
-	mp_game.call("_clear_peer_network_state", 3)
+	player_coordinator.clear_peer(3)
+	enemy_coordinator.clear_peer(3)
 	_expect(
 		not cohort_peers.has(3)
 		and not enemy_cohort_peers.has(3)
 		and not keyframe_times.has(3)
 		and not enemy_keyframe_times.has(3)
 		and player_snapshot_mgr.player_send_baselines_by_peer.has(cohort_id)
-		and mp_snapshot_mgr.enemy_send_baselines_by_peer.has(cohort_id),
+		and enemy_snapshot_mgr.enemy_send_baselines_by_peer.has(cohort_id),
 		"Disconnect cleanup must detach one member while preserving a live shared baseline."
 	)
 	var no_ready_peers: Array[int] = []
-	mp_game.call("_sync_snapshot_cohort_readiness", no_ready_peers)
+	player_coordinator.sync_snapshot_cohort_readiness(no_ready_peers)
+	enemy_coordinator.sync_snapshot_cohort_readiness(no_ready_peers)
 	_expect(
 		cohort_peers.is_empty()
 		and enemy_cohort_peers.is_empty()
 		and not player_snapshot_mgr.player_send_baselines_by_peer.has(cohort_id)
-		and not mp_snapshot_mgr.enemy_send_baselines_by_peer.has(cohort_id),
+		and not enemy_snapshot_mgr.enemy_send_baselines_by_peer.has(cohort_id),
 		"An empty cohort must release both shared send baselines."
 	)
-	var empty_enemy_packet := mp_snapshot_mgr.encode_enemy_snapshot_range_for_cohort(
+	var empty_enemy_packet := enemy_snapshot_mgr.encode_enemy_snapshot_range_for_cohort(
 		cohort_id,
 		[],
 		0,
@@ -786,19 +827,20 @@ func _test_shared_snapshot_cohort_lifecycle() -> void:
 		and SnapshotManager.decode_all_enemy_snapshots(empty_enemy_packet).is_empty(),
 		"An empty enemy cohort frame must remain a valid zero-roster packet."
 	)
-	mp_game.free()
+	player_coordinator.free()
+	enemy_coordinator.free()
 
 
 func _test_terrain_payload_contract() -> void:
-	var mp_game := MpGameScript.new()
+	var world := MpTowerWorldCoordinatorScript.new()
 	var cell_xy := PackedInt32Array([0, 0, 1, -2, 5, 7])
 	var terrain_types := PackedInt32Array([-1, 1, 2])
 	_expect(
-		bool(mp_game.call("_is_valid_terrain_payload", cell_xy, terrain_types, 96)),
+		bool(world.call("_is_valid_terrain_payload", cell_xy, terrain_types, 96)),
 		"Terrain payloads must preserve EMPTY=-1 alongside grass and dirt."
 	)
 	_expect(
-		not bool(mp_game.call(
+		not bool(world.call(
 			"_is_valid_terrain_payload",
 			PackedInt32Array([0, 0, 0, 0]),
 			PackedInt32Array([1, 2]),
@@ -813,7 +855,7 @@ func _test_terrain_payload_contract() -> void:
 		maximum_cell_xy.append(0)
 		maximum_types.append(1)
 	_expect(
-		not bool(mp_game.call(
+		not bool(world.call(
 			"_is_valid_terrain_payload",
 			maximum_cell_xy,
 			maximum_types,
@@ -821,11 +863,12 @@ func _test_terrain_payload_contract() -> void:
 		)),
 		"Terrain chunks must reject a 97th cell."
 	)
-	mp_game.free()
+	world.free()
 
 
 func _test_bamboo_mortar_payload_contract() -> void:
 	var mp_game := MpGameScript.new()
+	var world := MpTowerWorldCoordinatorScript.new()
 	_expect(
 		int(mp_game.call(
 			"_get_rpc_traffic_channel",
@@ -836,11 +879,14 @@ func _test_bamboo_mortar_payload_contract() -> void:
 	var mp_game_source := FileAccess.get_file_as_string(
 		"res://scene/multiplayer/mp_game.gd"
 	)
+	var world_source := FileAccess.get_file_as_string(
+		MP_TOWER_WORLD_COORDINATOR_PATH
+	)
 	_expect(
-		mp_game_source.contains(
+		world_source.contains(
 			"const BAMBOO_MORTAR_VISUAL_FLUSH_INTERVAL_SECONDS := 0.05"
 		)
-		and mp_game_source.contains(
+		and world_source.contains(
 			"const BAMBOO_MORTAR_VISUAL_MAX_RECORDS_PER_PACKET := 24"
 		)
 		and mp_game_source.contains(
@@ -848,15 +894,15 @@ func _test_bamboo_mortar_payload_contract() -> void:
 		),
 		"Bamboo mortar visuals must flush every 0.05 seconds in reliable CH_WORLD_EVENT packets of at most 24."
 	)
-	var removal_function_index := mp_game_source.find(
+	var removal_function_index := world_source.find(
 		"func _on_host_plant_removed"
 	)
-	var removal_flush_index := mp_game_source.find(
+	var removal_flush_index := world_source.find(
 		"_flush_bamboo_mortar_visuals()",
 		removal_function_index
 	)
-	var removal_rpc_index := mp_game_source.find(
-		'_rpc_to_connected_clients(&"net_plant_removed"',
+	var removal_rpc_index := world_source.find(
+		'&"net_plant_removed"',
 		removal_function_index
 	)
 	_expect(
@@ -866,7 +912,7 @@ func _test_bamboo_mortar_payload_contract() -> void:
 		"Host must flush Bamboo visual records before sending plant removal on the same ordered channel."
 	)
 	_expect(
-		bool(mp_game.call(
+		bool(world.call(
 			"_is_valid_bamboo_mortar_visual_payload",
 			PackedInt32Array([11, 12]),
 			PackedInt32Array([21, 22]),
@@ -885,7 +931,7 @@ func _test_bamboo_mortar_payload_contract() -> void:
 		"Bamboo mortar payloads must accept equal-length finite windup/fire records."
 	)
 	_expect(
-		not bool(mp_game.call(
+		not bool(world.call(
 			"_is_valid_bamboo_mortar_visual_payload",
 			PackedInt32Array([11, 12]),
 			PackedInt32Array([21]),
@@ -895,7 +941,7 @@ func _test_bamboo_mortar_payload_contract() -> void:
 			PackedFloat32Array([4.0, 4.0]),
 			PackedFloat64Array([0.0, 1.25])
 		))
-		and not bool(mp_game.call(
+		and not bool(world.call(
 			"_is_valid_bamboo_mortar_visual_payload",
 			PackedInt32Array([11]),
 			PackedInt32Array([21]),
@@ -905,7 +951,7 @@ func _test_bamboo_mortar_payload_contract() -> void:
 			PackedFloat32Array([4.0]),
 			PackedFloat64Array([0.0])
 		))
-		and not bool(mp_game.call(
+		and not bool(world.call(
 			"_is_valid_bamboo_mortar_visual_payload",
 			PackedInt32Array([11]),
 			PackedInt32Array([21]),
@@ -915,7 +961,7 @@ func _test_bamboo_mortar_payload_contract() -> void:
 			PackedFloat32Array([4.0]),
 			PackedFloat64Array([0.0])
 		))
-		and not bool(mp_game.call(
+		and not bool(world.call(
 			"_is_valid_bamboo_mortar_visual_payload",
 			PackedInt32Array([11]),
 			PackedInt32Array([21]),
@@ -943,7 +989,7 @@ func _test_bamboo_mortar_payload_contract() -> void:
 		oversized_windup_durations.append(4.0)
 		oversized_times.append(float(record_index))
 	_expect(
-		not bool(mp_game.call(
+		not bool(world.call(
 			"_is_valid_bamboo_mortar_visual_payload",
 			oversized_ids,
 			oversized_actions,
@@ -956,12 +1002,13 @@ func _test_bamboo_mortar_payload_contract() -> void:
 		"Bamboo mortar visual packets must reject a 25th record."
 	)
 	_expect(
-		mp_game_source.contains('"windup_elapsed_seconds"')
-		and mp_game_source.contains('"projectile_elapsed_seconds"')
-		and mp_game_source.contains("+ sample_age"),
+		world_source.contains('"windup_elapsed_seconds"')
+		and world_source.contains('"projectile_elapsed_seconds"')
+		and world_source.contains("+ sample_age"),
 		"Plant runtime repair must add network sample age to bamboo windup and projectile visual progress."
 	)
-	var recorder := BambooBatchRecordingMpGame.new()
+	var recorder := CapturingTowerWorldCoordinator.new()
+	recorder.start_capture()
 	var record_count := 300
 	var plant_ids := PackedInt32Array()
 	var action_ids := PackedInt32Array()
@@ -986,22 +1033,18 @@ func _test_bamboo_mortar_payload_contract() -> void:
 	recorder.set("_pending_bamboo_mortar_windup_durations", windup_durations)
 	recorder.set("_pending_bamboo_mortar_host_times", host_times)
 	recorder.call("_flush_bamboo_mortar_visuals")
-	var first_args := (
-		recorder.outbound_calls[0].get("args", []) as Array
-		if recorder.outbound_calls.size() >= 1
+	var first_args: Array = (
+		recorder.bamboo_batches[0]
+		if recorder.bamboo_batches.size() >= 1
 		else []
 	)
-	var last_args := (
-		recorder.outbound_calls.back().get("args", []) as Array
-		if not recorder.outbound_calls.is_empty()
+	var last_args: Array = (
+		recorder.bamboo_batches.back()
+		if not recorder.bamboo_batches.is_empty()
 		else []
 	)
 	_expect(
-		recorder.outbound_calls.size() == 13
-		and recorder.outbound_calls[0].get("method_name")
-		== &"net_bamboo_mortar_visual_batch"
-		and recorder.outbound_calls.back().get("method_name")
-		== &"net_bamboo_mortar_visual_batch"
+		recorder.bamboo_batches.size() == 13
 		and first_args.size() == 7
 		and last_args.size() == 7
 		and (first_args[0] as PackedInt32Array).size() == 24
@@ -1013,11 +1056,13 @@ func _test_bamboo_mortar_payload_contract() -> void:
 		"Bamboo visual flush must split 300 records into thirteen ordered packets and clear the queue."
 	)
 	recorder.free()
+	world.free()
 	mp_game.free()
 
 
 func _test_corn_burst_payload_contract() -> void:
 	var mp_game := MpGameScript.new()
+	var world := MpTowerWorldCoordinatorScript.new()
 	_expect(
 		int(mp_game.call(
 			"_get_rpc_traffic_channel",
@@ -1025,45 +1070,27 @@ func _test_corn_burst_payload_contract() -> void:
 		)) == NetConstants.CH_PROJECTILE,
 		"Corn burst traffic metrics must be attributed to CH_PROJECTILE."
 	)
-	var mp_game_source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
+	var world_source := FileAccess.get_file_as_string(
+		MP_TOWER_WORLD_COORDINATOR_PATH
+	)
 	_expect(
-		mp_game_source.contains(
+		world_source.contains(
 			"const CORN_MACHINE_GUN_BURST_FLUSH_INTERVAL_SECONDS := 0.05"
 		)
-		and mp_game_source.contains(
+		and world_source.contains(
 			"const CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET := 32"
 		),
 		"Corn burst visuals must flush every 0.05 seconds in packets of at most 32."
 	)
-	var exit_start := mp_game_source.find("func _exit_tree()")
-	var exit_end := mp_game_source.find("\n\nfunc ", exit_start + 1)
-	var exit_body := (
-		mp_game_source.substr(exit_start, exit_end - exit_start)
-		if exit_start >= 0 and exit_end > exit_start
-		else ""
-	)
 	_expect(
-		exit_body.contains("_pending_corn_machine_gun_burst_visuals.clear()")
-		and exit_body.contains(
-			"_pending_corn_machine_gun_burst_action_ids.clear()"
-		)
-		and exit_body.contains(
-			"_pending_corn_machine_gun_burst_directions.clear()"
-		)
-		and exit_body.contains(
-			"_pending_corn_machine_gun_burst_host_times.clear()"
-		),
-		"MpGame exit must discard every packed column of queued corn burst visuals."
-	)
-	_expect(
-		mp_game_source.contains(
+		world_source.contains(
 			"_pending_corn_machine_gun_burst_host_times.append(host_action_time)"
 		)
-		and mp_game_source.contains("_map_host_timestamp_to_client_time("),
+		and world_source.contains("_get_remote_action_elapsed("),
 		"Corn burst records must carry Host time and map it before client playback."
 	)
 	_expect(
-		bool(mp_game.call(
+		bool(world.call(
 			"_is_valid_corn_machine_gun_burst_payload",
 			PackedInt32Array([11, 12]),
 			PackedInt32Array([21, 22]),
@@ -1073,7 +1100,7 @@ func _test_corn_burst_payload_contract() -> void:
 		"Corn burst payloads must accept equal-length finite records."
 	)
 	_expect(
-		not bool(mp_game.call(
+		not bool(world.call(
 			"_is_valid_corn_machine_gun_burst_payload",
 			PackedInt32Array([11, 12]),
 			PackedInt32Array([21]),
@@ -1083,14 +1110,14 @@ func _test_corn_burst_payload_contract() -> void:
 		"Corn burst payloads must reject mismatched packed-array lengths."
 	)
 	_expect(
-		not bool(mp_game.call(
+		not bool(world.call(
 			"_is_valid_corn_machine_gun_burst_payload",
 			PackedInt32Array([11]),
 			PackedInt32Array([21]),
 			PackedVector2Array([Vector2(NAN, 0.0)]),
 			PackedFloat64Array([0.0])
 		))
-		and not bool(mp_game.call(
+		and not bool(world.call(
 			"_is_valid_corn_machine_gun_burst_payload",
 			PackedInt32Array([11]),
 			PackedInt32Array([21]),
@@ -1109,7 +1136,7 @@ func _test_corn_burst_payload_contract() -> void:
 		oversized_directions.append(Vector2.RIGHT)
 		oversized_times.append(float(record_index))
 	_expect(
-		not bool(mp_game.call(
+		not bool(world.call(
 			"_is_valid_corn_machine_gun_burst_payload",
 			oversized_ids,
 			oversized_actions,
@@ -1118,6 +1145,40 @@ func _test_corn_burst_payload_contract() -> void:
 		)),
 		"Corn burst packets must reject a 33rd record."
 	)
+	world.set(
+		"_pending_corn_machine_gun_burst_visuals",
+		PackedInt32Array([11])
+	)
+	world.set(
+		"_pending_corn_machine_gun_burst_action_ids",
+		PackedInt32Array([21])
+	)
+	world.set(
+		"_pending_corn_machine_gun_burst_directions",
+		PackedVector2Array([Vector2.RIGHT])
+	)
+	world.set(
+		"_pending_corn_machine_gun_burst_host_times",
+		PackedFloat64Array([0.0])
+	)
+	world.reset_session_state()
+	_expect(
+		(world.get("_pending_corn_machine_gun_burst_visuals") as PackedInt32Array).is_empty()
+		and (
+			world.get("_pending_corn_machine_gun_burst_action_ids")
+			as PackedInt32Array
+		).is_empty()
+		and (
+			world.get("_pending_corn_machine_gun_burst_directions")
+			as PackedVector2Array
+		).is_empty()
+		and (
+			world.get("_pending_corn_machine_gun_burst_host_times")
+			as PackedFloat64Array
+		).is_empty(),
+		"World session teardown must discard every packed column of queued corn burst visuals."
+	)
+	world.free()
 	mp_game.free()
 
 
@@ -1431,10 +1492,9 @@ func _test_projectile_origin_lane_runtime_contract() -> void:
 
 	# The Host echo for a predicted client-lane shot must update the same node
 	# instead of creating a duplicate proxy.
-	mp_game.call(
-		"net_projectile_fired",
+	coordinator.receive_projectile_fired(
 		client_lane_id,
-		"player_bullet",
+		&"player_bullet",
 		2,
 		Vector2(10.0, 20.0),
 		Vector2.UP,
@@ -1443,8 +1503,9 @@ func _test_projectile_origin_lane_runtime_contract() -> void:
 		1.5,
 		false,
 		0,
-		-1.0,
-		0
+		0,
+		0.0,
+		0.0
 	)
 	var reconciled_record := coordinator.get_projectile_record(client_lane_id)
 	_expect(
@@ -1459,10 +1520,9 @@ func _test_projectile_origin_lane_runtime_contract() -> void:
 
 	# A distinct Host-authoritative projectile for the same remote owner and
 	# counter must coexist under the Host lane without replacing that prediction.
-	mp_game.call(
-		"net_projectile_fired",
+	coordinator.receive_projectile_fired(
 		host_lane_id,
-		"player_bullet",
+		&"player_bullet",
 		2,
 		Vector2(30.0, 40.0),
 		Vector2.LEFT,
@@ -1471,8 +1531,9 @@ func _test_projectile_origin_lane_runtime_contract() -> void:
 		1.25,
 		false,
 		0,
-		-1.0,
-		0
+		0,
+		0.0,
+		0.0
 	)
 	var host_bullet := known_projectiles.get(host_lane_id) as Bullet
 	_expect(
@@ -1608,21 +1669,35 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 
 
 func _test_runtime_state_send_order() -> void:
-	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
-	var request_start := source.find("func net_runtime_state_requested(")
-	var request_end := source.find("\n\nfunc ", request_start + 1)
+	var mp_game_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/mp_game.gd"
+	)
+	var session_source := FileAccess.get_file_as_string(
+		MP_SESSION_COORDINATOR_PATH
+	)
+	var request_start := mp_game_source.find("func net_runtime_state_requested(")
+	var request_end := mp_game_source.find("\n\nfunc ", request_start + 1)
 	var request_body := (
-		source.substr(request_start, request_end - request_start)
+		mp_game_source.substr(request_start, request_end - request_start)
 		if request_start >= 0 and request_end > request_start
 		else ""
 	)
-	var handler_start := source.find(
+	var handler_start := mp_game_source.find(
 		"func _handle_authoritative_runtime_state_request("
 	)
-	var handler_end := source.find("\n\nfunc ", handler_start + 1)
+	var handler_end := mp_game_source.find("\n\nfunc ", handler_start + 1)
 	var handler_body := (
-		source.substr(handler_start, handler_end - handler_start)
+		mp_game_source.substr(handler_start, handler_end - handler_start)
 		if handler_start >= 0 and handler_end > handler_start
+		else ""
+	)
+	var admission_start := session_source.find(
+		"func admit_authoritative_runtime_state_request("
+	)
+	var admission_end := session_source.find("\n\nfunc ", admission_start + 1)
+	var admission_body := (
+		session_source.substr(admission_start, admission_end - admission_start)
+		if admission_start >= 0 and admission_end > admission_start
 		else ""
 	)
 	_expect(
@@ -1635,19 +1710,31 @@ func _test_runtime_state_send_order() -> void:
 		)
 		and handler_body.contains("net_manager.is_host()")
 		and handler_body.contains("_get_net_time()")
-		and handler_body.contains("_send_runtime_state_to_peer(sender_id"),
+		and handler_body.contains(
+			"session_coordinator.send_authoritative_runtime_state_to_peer("
+		)
+		and admission_body.contains("_consume_runtime_state_request_token(")
+		and admission_body.contains("_runtime.get_player_for_peer(sender_id)"),
 		"Complete-state repair requests must come from a registered in-game peer."
 	)
-	var function_start := source.find("func _send_runtime_state_to_peer(")
-	var function_end := source.find("\n\nfunc ", function_start + 1)
+	var function_start := session_source.find(
+		"func send_authoritative_runtime_state_to_peer("
+	)
+	var function_end := session_source.find("\n\nfunc ", function_start + 1)
 	var function_body := (
-		source.substr(function_start, function_end - function_start)
+		session_source.substr(function_start, function_end - function_start)
 		if function_start >= 0 and function_end > function_start
 		else ""
 	)
-	var terrain_position := function_body.find("_send_terrain_snapshot_to_peer")
-	var plant_position := function_body.find("_send_live_plant_roster_to_peer")
-	var other_position := function_body.find("_send_live_enemy_roster_to_peer")
+	var terrain_position := function_body.find(
+		"_tower_world_coordinator.request_terrain_snapshot_for_peer"
+	)
+	var plant_position := function_body.find(
+		"runtime_repair_plant_roster_requested.emit"
+	)
+	var other_position := function_body.find(
+		"_enemy_coordinator.send_live_spawn_roster_to_peer"
+	)
 	var manifest_position := function_body.find("_send_runtime_world_manifest_to_peer")
 	_expect(
 		terrain_position >= 0

@@ -61,6 +61,40 @@ enum WorldLightingPolicy {
 	FIXED_NIGHT,
 }
 
+## Player 投影结果区分“本次建立”和“此前已收敛”，让调用方只在 CREATED
+## 时迁移一次附属状态；冲突与创建失败都保持可观察，不能退化成含糊的 null。
+enum ReconnectedPlayerProjectionStatus {
+	CREATED,
+	EXISTING_CURRENT,
+	CONFLICT,
+	CREATE_FAILED,
+	CAPTURE_STATE_INVALID,
+	INGRESS_STATE_INVALID,
+	INVALID_REQUEST,
+}
+
+class ReconnectedPlayerProjection:
+	extends RefCounted
+
+	var status: int
+	var player: Player
+
+
+	func _init(configured_status: int, configured_player: Player = null) -> void:
+		status = configured_status
+		player = configured_player
+
+
+	func is_success() -> bool:
+		return (
+			status == ReconnectedPlayerProjectionStatus.CREATED
+			or status == ReconnectedPlayerProjectionStatus.EXISTING_CURRENT
+		) and (
+			player != null
+			and is_instance_valid(player)
+			and not player.is_queued_for_deletion()
+		)
+
 @export var runtime_mode: RuntimeMode = RuntimeMode.SINGLEPLAYER
 
 @export_group("世界光照")
@@ -197,7 +231,10 @@ func _set_fixed_world_lighting(night_factor: float) -> void:
 @abstract func get_enemy_for_net_id(net_id: int) -> Enemy
 @abstract func get_pickup_for_net_id(net_id: int) -> Pickup
 @abstract func remove_multiplayer_player(peer_id: int) -> void
-func restore_multiplayer_player(
+## 身份账本提交后，用同一个强类型入口确保 new peer 的场景投影存在。
+## 客户端 setup 可能已经创建该节点，实现必须幂等复用并重新校准，而不是
+## 把“已经存在”误判成恢复失败；失败必须用明确状态返回，不能用 null 混淆。
+func ensure_reconnected_multiplayer_player(
 	_old_peer_id: int,
 	_new_peer_id: int,
 	_player_name: String,
@@ -205,8 +242,11 @@ func restore_multiplayer_player(
 	_state: SnapshotManager.PlayerState,
 	_spawn_slot_index: int,
 	_reconnect_state: Dictionary = {}
-) -> Player:
-	return null
+) -> ReconnectedPlayerProjection:
+	# 纯测试/辅助运行时可以明确声明不支持重连投影；正式多人模式必须覆写。
+	return ReconnectedPlayerProjection.new(
+		ReconnectedPlayerProjectionStatus.INVALID_REQUEST
+	)
 @abstract func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]
 @abstract func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]
 @abstract func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void

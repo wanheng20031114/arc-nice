@@ -1,11 +1,12 @@
 extends SceneTree
 
 ## Stage 5 refactors runtime ownership, but it must not silently change any
-## network-facing method or scene identity. The three hashes below deliberately
+## network-facing method or scene identity. The four RPC surfaces below deliberately
 ## cover separate dimensions so a failure identifies whether names, arguments,
 ## or @rpc transport metadata drifted.
 
 const MP_GAME_SOURCE_PATH := "res://scene/multiplayer/mp_game.gd"
+const NET_MANAGER_SOURCE_PATH := "res://scene/multiplayer/net_manager.gd"
 const MP_ROGUE_ROUTE_SOURCE_PATH := "res://scene/multiplayer/mp_rogue_route.gd"
 const ROGUE_COMBAT_COORDINATOR_SOURCE_PATH := (
 	"res://scene/game_modes/rogue/combat/rogue_combat_multiplayer_coordinator.gd"
@@ -18,10 +19,21 @@ const EXPECTED_MP_GAME_RPC_NAME_HASH := (
 	"38bec6fc80f0571d5c58747ed1a8aa3d7c07c9fe09b0a250c571755cee4b3ac3"
 )
 const EXPECTED_MP_GAME_RPC_SIGNATURE_HASH := (
-	"7f6040dffac9b4ee81e1c364dc1464a6c03fe7d71898df871a95f8b5c831f1a6"
+	"86d697528a6de6a91bad047f19ec02dfc8c6580e67954b236fd83d37e0327272"
 )
 const EXPECTED_MP_GAME_RPC_ANNOTATION_HASH := (
 	"ce88c99b4dc303ca72838ad54a41e5a7b4a00ff0a1b21651a9106346fbcc5aad"
+)
+
+const EXPECTED_NET_MANAGER_RPC_COUNT := 11
+const EXPECTED_NET_MANAGER_RPC_NAME_HASH := (
+	"965628da4b9be23fe5459a5fc948d5f08be9b0386e2daec712f7ac2b58399b73"
+)
+const EXPECTED_NET_MANAGER_RPC_SIGNATURE_HASH := (
+	"199e96a9c7bf1da30ba12f916253aa74a619cb6e82fb7cd447d892c6a0564e3f"
+)
+const EXPECTED_NET_MANAGER_RPC_ANNOTATION_HASH := (
+	"47e7f65d1d110551311003f91226f448649deed3b36522e811986d1c47911d1b"
 )
 
 const EXPECTED_MP_ROGUE_ROUTE_RPC_COUNT := 16
@@ -92,6 +104,14 @@ func _run() -> void:
 		EXPECTED_MP_GAME_RPC_NAME_HASH,
 		EXPECTED_MP_GAME_RPC_SIGNATURE_HASH,
 		EXPECTED_MP_GAME_RPC_ANNOTATION_HASH
+	)
+	_test_rpc_surface(
+		"NetManager",
+		NET_MANAGER_SOURCE_PATH,
+		EXPECTED_NET_MANAGER_RPC_COUNT,
+		EXPECTED_NET_MANAGER_RPC_NAME_HASH,
+		EXPECTED_NET_MANAGER_RPC_SIGNATURE_HASH,
+		EXPECTED_NET_MANAGER_RPC_ANNOTATION_HASH
 	)
 	_test_rpc_surface(
 		"MpRogueRoute",
@@ -320,8 +340,8 @@ func _strip_quotes(value: String) -> String:
 
 
 func _test_protocol_and_wire_values() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 72, "多人协议必须保持 v72。")
-	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v72 必须保持 8 个 ENet 信道。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 76, "多人协议必须保持 v76。")
+	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v76 必须保持 8 个 ENet 信道。")
 	_expect(GameModeCatalog.MODE_STANDARD == 0, "standard wire value 必须保持 0。")
 	_expect(GameModeCatalog.MODE_TOWER_DEFENSE == 1, "tower_defense wire value 必须保持 1。")
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P1 == 2, "test_arena_p1 wire value 必须保持 2。")
@@ -364,7 +384,7 @@ func _test_protocol_and_wire_values() -> void:
 		_expect(
 			int(CombatFlowState.State.get(state_name, -1))
 			== int(expected_flow_values[state_name]),
-			"CombatFlowState.%s 的 v72 wire value 改变。" % state_name
+			"CombatFlowState.%s 的 v76 wire value 改变。" % state_name
 		)
 
 

@@ -56,6 +56,7 @@ class TestNetManager:
 	extends NetManagerStore
 
 	var host_mode := true
+	var gameplay_admitted := true
 
 	func is_host() -> bool:
 		return host_mode
@@ -71,6 +72,9 @@ class TestNetManager:
 
 	func is_peer_send_ready(peer_id: int) -> bool:
 		return peer_id > 0
+
+	func is_gameplay_ingress_admitted(peer_id: int) -> bool:
+		return gameplay_admitted and peer_id > 0
 
 
 class TestTowerAdapter:
@@ -149,7 +153,7 @@ func _test_static_boundary(coordinator: MpTowerFateCoordinator) -> void:
 	_expect(
 		rpc_pattern.search_all(source).size() == 144,
 		(
-			"Tower fate extraction must preserve all 144 protocol-v72 MpGame "
+			"Tower fate extraction must preserve all 144 protocol-v76 MpGame "
 			+ "RPC facades, including the embedded Rogue transport."
 		)
 	)
@@ -222,6 +226,24 @@ func _test_host_and_client_paths(coordinator: MpTowerFateCoordinator) -> void:
 
 	coordinator.clear_peer(2)
 	adapter.interaction_peers.clear()
+	var votes_before_denial := adapter.votes.size()
+	var choices_before_denial := adapter.collectible_choices.size()
+	net_manager.gameplay_admitted = false
+	coordinator.handle_remote_interaction(2)
+	coordinator.handle_remote_vote(
+		2,
+		String(TowerDefenseFateRegistry.OPTION_BASE_REBUILD),
+		""
+	)
+	coordinator.handle_remote_collectible_choice(2, 1)
+	_expect(
+		adapter.interaction_peers.is_empty()
+		and adapter.votes.size() == votes_before_denial
+		and adapter.collectible_choices.size() == choices_before_denial
+		and (coordinator.get("_transaction_rate_buckets") as Dictionary).is_empty(),
+		"重连 ready 前 Fate 请求必须零写且不能创建领域限流状态。"
+	)
+	net_manager.gameplay_admitted = true
 	for request_index in range(11):
 		coordinator.handle_remote_interaction(2)
 	_expect(

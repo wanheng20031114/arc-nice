@@ -473,7 +473,7 @@ func _test_full_inventory_disconnect_does_not_block_party() -> void:
 		return
 	var run_state := CountingRunState.new()
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(7)
+	run_state.register_multiplayer_peer_state(7)
 	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
 		_expect(
 			run_state.try_add_item_for_peer(7, filler),

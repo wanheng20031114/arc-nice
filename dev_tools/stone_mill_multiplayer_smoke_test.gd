@@ -1,6 +1,9 @@
 extends SceneTree
 
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
+const PEER_LEDGER_SCRIPT := preload(
+	"res://scene/multiplayer/peer_ledger/mp_peer_ledger_coordinator.gd"
+)
 const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 const WOOD := preload(
 	"res://resources/config/materials/material_wood.tres"
@@ -41,6 +44,15 @@ class HostNetManagerStub:
 	func get_local_peer_id() -> int:
 		return 1
 
+	func is_gameplay_ingress_admitted(peer_id: int) -> bool:
+		return peer_id > 0
+
+	func get_session_participant_incarnation(peer_id: int) -> int:
+		return peer_id if peer_id > 0 else 0
+
+	func resolve_session_participant_peer_id(participant_incarnation: int) -> int:
+		return participant_incarnation if participant_incarnation > 0 else 0
+
 
 class ClientNetManagerStub:
 	extends NetManagerStore
@@ -53,6 +65,15 @@ class ClientNetManagerStub:
 
 	func get_local_peer_id() -> int:
 		return 2
+
+	func is_gameplay_ingress_admitted(peer_id: int) -> bool:
+		return peer_id > 0
+
+	func get_session_participant_incarnation(peer_id: int) -> int:
+		return peer_id if peer_id > 0 else 0
+
+	func resolve_session_participant_peer_id(participant_incarnation: int) -> int:
+		return participant_incarnation if participant_incarnation > 0 else 0
 
 
 class CapturingMpGame:
@@ -110,6 +131,23 @@ class TestTowerRuntime:
 		})
 
 
+class TestTowerModeAdapter:
+	extends TowerDefenseMultiplayerModeAdapter
+
+	## 宽夹具只装配本用例需要的塔防端口，避免伪造整棵正式场景依赖树。
+	func bind_research_fixture(coordinator: ResearchCoordinator) -> void:
+		_research_coordinator = coordinator
+
+	func show_simple_crafting_result(
+		recipe_id: StringName,
+		result: StringName,
+		request_token: int
+	) -> void:
+		var runtime := get_tower_runtime() as TestTowerRuntime
+		if runtime != null:
+			runtime.show_simple_crafting_result(recipe_id, result, request_token)
+
+
 class RejectingStonePlantSystem:
 	extends PlantSystem
 
@@ -140,8 +178,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 72,
-		"多人协议v72必须隔离塔防四日地下探索并保留v71地下水道、P1D/P1E与既有wire合同。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 76,
+		"多人协议v76必须隔离同局成员身份并保留v74旧局CH6、v73会话成员、P1D/P1E与既有wire合同。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()
@@ -160,7 +198,7 @@ func _run() -> void:
 func _test_host_authoritative_crafting() -> Dictionary:
 	var run_state := RunStateStore.new()
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(REMOTE_PEER_ID)
+	run_state.register_multiplayer_peer_state(REMOTE_PEER_ID)
 	_expect(
 		run_state.try_add_item_count_for_peer(REMOTE_PEER_ID, WOOD, 10)
 		and run_state.try_add_item_count_for_peer(
@@ -292,6 +330,7 @@ func _test_host_authoritative_crafting() -> Dictionary:
 
 	var round_trip_state := RunStateStore.new()
 	round_trip_state.begin_new_run(&"weishidaier", false)
+	round_trip_state.register_multiplayer_peer_state(REMOTE_PEER_ID)
 	_expect(
 		round_trip_state.apply_inventory_snapshot_for_peer(
 			REMOTE_PEER_ID,
@@ -316,7 +355,7 @@ func _test_host_authoritative_crafting() -> Dictionary:
 func _test_host_research_gated_crafting() -> void:
 	var run_state := RunStateStore.new()
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(REMOTE_PEER_ID)
+	run_state.register_multiplayer_peer_state(REMOTE_PEER_ID)
 	_expect(
 		run_state.try_add_item_count_for_peer(
 			REMOTE_PEER_ID,
@@ -334,9 +373,12 @@ func _test_host_research_gated_crafting() -> void:
 	var player := Player.new()
 	var research_coordinator := ResearchCoordinator.new()
 	var runtime := TestTowerRuntime.new()
-	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime)
-	runtime.peer_players = {REMOTE_PEER_ID: player}
 	runtime.research_coordinator = research_coordinator
+	var tower_adapter := _bind_tower_multiplayer_mode_adapter(
+		runtime,
+		research_coordinator
+	)
+	runtime.peer_players = {REMOTE_PEER_ID: player}
 	var net_manager := HostNetManagerStub.new()
 	var mp_game := CapturingMpGame.new()
 	mp_game.net_manager = net_manager
@@ -450,6 +492,7 @@ func _test_inventory_building_placement_authenticity(
 ) -> void:
 	var run_state := RunStateStore.new()
 	run_state.begin_new_run(&"weishidaier", false)
+	run_state.register_multiplayer_peer_state(REMOTE_PEER_ID)
 	_expect(
 		run_state.apply_inventory_snapshot_for_peer(
 			REMOTE_PEER_ID,
@@ -565,12 +608,15 @@ func _test_inventory_building_placement_authenticity(
 
 
 func _bind_tower_multiplayer_mode_adapter(
-	runtime: TowerDefenseGame
-) -> TowerDefenseMultiplayerModeAdapter:
-	var adapter := TowerDefenseMultiplayerModeAdapter.new()
+	runtime: TowerDefenseGame,
+	research_coordinator: ResearchCoordinator = null
+) -> TestTowerModeAdapter:
+	var adapter := TestTowerModeAdapter.new()
 	adapter.name = "MultiplayerModeAdapter"
 	runtime.add_child(adapter)
 	adapter.bind_runtime(runtime)
+	if research_coordinator != null:
+		adapter.bind_research_fixture(research_coordinator)
 	runtime.multiplayer_mode_adapter = adapter
 	runtime.tower_multiplayer_mode_adapter = adapter
 	return adapter
@@ -595,6 +641,24 @@ func _bind_transactions_coordinator(
 		run_state,
 		{}
 	)
+	net_manager.loading_session_id = 1
+	var peer_ledger := PEER_LEDGER_SCRIPT.new()
+	peer_ledger.name = "PeerLedgerCoordinator"
+	mp_game.add_child(peer_ledger)
+	mp_game.peer_ledger_coordinator = peer_ledger
+	var peer_ledger_role := (
+		PEER_LEDGER_SCRIPT.RuntimeRole.HOST
+		if net_manager.is_host()
+		else PEER_LEDGER_SCRIPT.RuntimeRole.CLIENT
+	)
+	mp_game._peer_ledger_generation = peer_ledger.bind_session(
+		mp_game,
+		peer_ledger_role,
+		net_manager.get_game_session_incarnation(),
+		run_state.has_multiplayer_peer_state,
+		Callable(mp_game, "_is_peer_result_envelope_ready"),
+		Callable(mp_game, "_commit_pending_peer_ledger_envelope")
+	)
 	transactions.simple_crafting_result_broadcast_requested.connect(
 		mp_game.capture_simple_crafting_result
 	)
@@ -606,12 +670,17 @@ func _test_client_rejects_bad_authoritative_snapshot(
 ) -> void:
 	var run_state := RunStateStore.new()
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(REMOTE_PEER_ID)
+	run_state.register_multiplayer_peer_state(REMOTE_PEER_ID)
 	var player := Player.new()
 	var runtime := TestTowerRuntime.new()
 	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime)
 	runtime.peer_players = {REMOTE_PEER_ID: player}
 	var net_manager := ClientNetManagerStub.new()
+	_configure_active_session_member_fixture(net_manager, REMOTE_PEER_ID)
+	_expect(
+		net_manager.is_session_member_active(REMOTE_PEER_ID),
+		"客户端制作结果夹具必须先建立活跃会话成员，才能立即提交 CH6 结果。"
+	)
 	var mp_game := CapturingMpGame.new()
 	mp_game.net_manager = net_manager
 	mp_game.run_state = run_state
@@ -643,7 +712,9 @@ func _test_client_rejects_bad_authoritative_snapshot(
 		"stone_mill",
 		String(RunStateStore.CRAFT_RESULT_SUCCESS),
 		bad_snapshot,
-		false
+		false,
+		net_manager.get_session_participant_incarnation(REMOTE_PEER_ID),
+		net_manager.get_game_session_incarnation()
 	)
 	var last_result_ids := (
 		transactions.get("_last_simple_crafting_result_ids") as Dictionary
@@ -657,6 +728,10 @@ func _test_client_rejects_bad_authoritative_snapshot(
 		stone_mill_slot >= 0
 		and not last_result_ids.has(REMOTE_PEER_ID)
 		and int(ui_tokens.get(77, 0)) == 9001
+		and not mp_game.peer_ledger_coordinator.has_pending_envelope(
+			REMOTE_PEER_ID,
+			&"craft/77"
+		)
 		and runtime.shown_crafting_results.is_empty()
 		and run_state.get_inventory_revision_for_peer(REMOTE_PEER_ID) == 0
 		and run_state.get_inventory_item_total_for_peer(
@@ -672,7 +747,9 @@ func _test_client_rejects_bad_authoritative_snapshot(
 		"stone_mill",
 		String(RunStateStore.CRAFT_RESULT_SUCCESS),
 		authoritative_snapshot,
-		false
+		false,
+		net_manager.get_session_participant_incarnation(REMOTE_PEER_ID),
+		net_manager.get_game_session_incarnation()
 	)
 	last_result_ids = (
 		transactions.get("_last_simple_crafting_result_ids") as Dictionary
@@ -702,6 +779,27 @@ func _test_client_rejects_bad_authoritative_snapshot(
 	runtime.free()
 	player.free()
 	run_state.free()
+
+
+func _configure_active_session_member_fixture(
+	net_manager: NetManagerStore,
+	peer_id: int
+) -> void:
+	if net_manager == null or peer_id <= 0:
+		return
+	var fixture_members: Dictionary[int, Dictionary] = {}
+	fixture_members[peer_id] = {
+		"player_name": "Client",
+		"character_id": PlayerCharacterRegistry.DEFAULT_CHARACTER_ID,
+		"character_confirmed": true,
+		"state": int(NetManagerStore.SessionMemberState.ACTIVE),
+		"participant_incarnation": peer_id,
+		"reconnect_token": "",
+		"grace_expires_msec": 0,
+	}
+	net_manager.set("_session_members", fixture_members)
+	net_manager.set("_session_membership_revision", 1)
+	net_manager.loading_session_id = 1
 
 
 func _find_peer_item_slot(

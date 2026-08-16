@@ -133,7 +133,21 @@ extends RefCounted
 ## ROGUE_EXPLORATION=8；塔防完整快照可携带带 epoch/每日幂等发放账本的路线状态，
 ## 支持同图跨日、断线重连与失败后下一日换图。v71 客户端无法解释该状态及快照，
 ## 也可能重复发放行动力或错误恢复塔防世界，不能安全加入。
-const PROTOCOL_VERSION := 72
+## v73：CH0 roster 明确区分传输在线与重连宽限成员，并携带单调成员 revision；
+## v72 客户端会把宽限成员误当在线 Player，也无法安全执行 final departure。
+## v74：17 类携带玩家身份的 CH6 权威结果新增 Host 会话世代。v73 客户端
+## 无法隔离断开后重开房间的旧可靠包，可能把旧局结果提交到新局同号玩家。
+## v75：CH0 roster 为每个成员新增 Host 单调分配的 participant incarnation；
+## 17 类 CH6 结果以该世代解析当前 peer，隔离同局 transport ID 复用产生的 ABA。
+## v76：Relay 模式的逻辑 Host 可经由 Relay 服务端可靠踢出不兼容或投影超时成员。
+## 该控制 RPC 避免 Relay 拓扑中 Host 侧 get_peer(target != 1) 为 null 而让
+## RECONNECTING 成员永久滞留；v75 及更旧客户端/Relay stub 不具备该控制面，不能加入。
+const PROTOCOL_VERSION := 76
+
+## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
+const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF
+## 成员世代同样只递增不回绕，但生命周期属于 Host 成员账本而非单局流程。
+const MAX_PARTICIPANT_INCARNATION := 0x7FFFFFFF
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

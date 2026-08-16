@@ -40,6 +40,29 @@ class TestRuntime:
 	func remove_multiplayer_player(_peer_id: int) -> void:
 		pass
 
+	func ensure_reconnected_multiplayer_player(
+		_old_peer_id: int,
+		new_peer_id: int,
+		_player_name: String,
+		_character_id: StringName,
+		_state: SnapshotManager.PlayerState,
+		_spawn_slot_index: int,
+		_reconnect_state: Dictionary = {}
+	) -> CombatRuntimeBase.ReconnectedPlayerProjection:
+		var player := (
+			test_player
+			if test_player != null and test_player.peer_id == new_peer_id
+			else null
+		)
+		return CombatRuntimeBase.ReconnectedPlayerProjection.new(
+			(
+				CombatRuntimeBase.ReconnectedPlayerProjectionStatus.EXISTING_CURRENT
+				if player != null
+				else CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATE_FAILED
+			),
+			player
+		)
+
 	func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 		return []
 
@@ -157,6 +180,28 @@ class MerchantAdapter:
 		local_special_methods.append(&"finish")
 
 
+class TrackingLuoxiMerchant:
+	extends LuoxiMerchant
+
+	var applied_refresh_result_codes: Array[int] = []
+	var applied_xirang_balances: Array[int] = []
+
+	func apply_authoritative_offer_state(
+		offer_revision: int,
+		config_paths: PackedStringArray,
+		_confirmed_refresh_count: int,
+		confirmed_current_xirang: int,
+		refresh_result_code: int = -1
+	) -> bool:
+		if active_player == null or offer_revision <= 0 or config_paths.is_empty():
+			return false
+		applied_refresh_result_codes.append(refresh_result_code)
+		applied_xirang_balances.append(confirmed_current_xirang)
+		active_player.set_xirang_balance(confirmed_current_xirang)
+		authoritative_offer_revision = offer_revision
+		return true
+
+
 var failures: Array[String] = []
 
 
@@ -195,7 +240,7 @@ func _test_static_boundary(
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
 		rpc_pattern.search_all(source).size() == 144,
-		"Merchant extraction must preserve all 144 protocol-v72 MpGame RPC facades."
+		"Merchant extraction must preserve all 144 protocol-v76 MpGame RPC facades."
 	)
 	for function_name in [
 		"net_luoxi_collectible_offer_requested",
@@ -239,7 +284,7 @@ func _test_offer_refresh_choice_and_special_game(
 ) -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run()
-	run_state.ensure_multiplayer_peer_state(1)
+	run_state.register_multiplayer_peer_state(1)
 	var test_root := Node2D.new()
 	test_root.name = "MerchantTransactionsSmokeTest"
 	root.add_child(test_root)
@@ -310,6 +355,16 @@ func _test_offer_refresh_choice_and_special_game(
 		and broadcast_methods.has(&"net_luoxi_collectible_confirmed"),
 		"Choice confirmation must resolve the authoritative refreshed path exactly once."
 	)
+	coordinator.request_luoxi_collectible_refresh(2)
+	var rejected_refresh_state := _get_offer_state(coordinator, 1)
+	_expect(
+		int(rejected_refresh_state.get("offer_revision", 0)) == 3
+		and int(rejected_refresh_state.get("refresh_result_code", -1))
+		== MerchantPurchaseResult.OfferRefresh.INVALID_PLAYER
+		and int(rejected_refresh_state.get("current_xirang", -1))
+		== player.current_xirang,
+		"刷新失败也必须提交新的完整快照 revision，不能改写既有报价版本。"
+	)
 
 	_expect(
 		coordinator.supports_luoxi_special_game(),
@@ -333,6 +388,7 @@ func _test_offer_refresh_choice_and_special_game(
 	var granted_item := load(first_paths[0]) as PickupConfig
 	var authoritative_state := RunStateStore.new()
 	authoritative_state.begin_new_run(&"weishidaier", false)
+	authoritative_state.register_multiplayer_peer_state(1)
 	_expect(
 		granted_item != null
 		and authoritative_state.try_add_item_for_peer(1, granted_item),
@@ -356,6 +412,14 @@ func _test_offer_refresh_choice_and_special_game(
 	)
 	authoritative_state.free()
 
+	_test_deferred_offer_presentation(
+		coordinator,
+		adapter,
+		net_manager,
+		player,
+		first_paths
+	)
+
 	coordinator.unbind_runtime(runtime)
 	net_manager.free()
 	adapter.free()
@@ -365,6 +429,86 @@ func _test_offer_refresh_choice_and_special_game(
 	for _cleanup_frame in 4:
 		await process_frame
 		await physics_frame
+
+
+func _test_deferred_offer_presentation(
+	coordinator: MpMerchantTransactionsCoordinator,
+	adapter: MerchantAdapter,
+	net_manager: HostNetManager,
+	player: Player,
+	offer_paths: Array[String]
+) -> void:
+	adapter.merchant = null
+	player.set_xirang_balance(1000)
+	var accepted_without_merchant := (
+		coordinator.receive_luoxi_collectible_offer_state(
+			1,
+			50,
+			PackedStringArray(offer_paths),
+			2,
+			777,
+			MerchantPurchaseResult.OfferRefresh.INSUFFICIENT_XIRANG
+		)
+	)
+	var cached_state := _get_offer_state(coordinator, 1)
+	_expect(
+		accepted_without_merchant
+		and int(cached_state.get("offer_revision", 0)) == 50
+		and int(cached_state.get("current_xirang", -1)) == 777
+		and int(cached_state.get("refresh_result_code", -1))
+		== MerchantPurchaseResult.OfferRefresh.INSUFFICIENT_XIRANG
+		and player.current_xirang == 1000,
+		"商人缺席时必须原子保留完整报价结果，并推迟 Player/UI 投影。"
+	)
+	_expect(
+		not coordinator.receive_luoxi_collectible_offer_state(
+			1,
+			49,
+			PackedStringArray(offer_paths),
+			2,
+			777,
+			MerchantPurchaseResult.OfferRefresh.INSUFFICIENT_XIRANG
+		)
+		and not coordinator.receive_luoxi_collectible_offer_state(
+			1,
+			50,
+			PackedStringArray(offer_paths),
+			2,
+			776,
+			MerchantPurchaseResult.OfferRefresh.INSUFFICIENT_XIRANG
+		),
+		"旧 revision 与同 revision 异载荷都必须被领域缓存拒绝。"
+	)
+
+	var tracking_merchant := TrackingLuoxiMerchant.new()
+	tracking_merchant.active_player = player
+	adapter.merchant = tracking_merchant
+	net_manager.net_role = NetManagerStore.NetRole.CLIENT
+	coordinator.request_luoxi_collectible_offer()
+	coordinator.request_luoxi_collectible_offer()
+	_expect(
+		tracking_merchant.applied_refresh_result_codes
+		== [MerchantPurchaseResult.OfferRefresh.INSUFFICIENT_XIRANG, -1]
+		and tracking_merchant.applied_xirang_balances == [777, 777]
+		and player.current_xirang == 777,
+		"商人恢复后开窗必须重放完整快照，但同 revision 的反馈只能消费一次。"
+	)
+	var duplicate_applied := coordinator.receive_luoxi_collectible_offer_state(
+		1,
+		50,
+		PackedStringArray(offer_paths),
+		2,
+		777,
+		MerchantPurchaseResult.OfferRefresh.INSUFFICIENT_XIRANG
+	)
+	_expect(
+		duplicate_applied
+		and tracking_merchant.applied_refresh_result_codes.size() == 2,
+		"可靠信封重复到达不得再次投影同一报价或反馈。"
+	)
+	net_manager.net_role = NetManagerStore.NetRole.HOST
+	adapter.merchant = null
+	tracking_merchant.free()
 
 
 func _get_offer_state(

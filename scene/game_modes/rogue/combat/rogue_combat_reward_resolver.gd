@@ -137,7 +137,11 @@ static func resolve_party_rewards(
 	for raw_peer_id in touched_peer_ids.keys():
 		var peer_id := int(raw_peer_id)
 		var inventory_snapshot := next_inventory_snapshots[peer_id] as Dictionary
-		inventory_snapshot["revision"] = int(expected_inventory_revisions[peer_id]) + 1
+		if not RunStateStore.advance_inventory_snapshot_revision(
+			inventory_snapshot,
+			int(expected_inventory_revisions[peer_id])
+		):
+			return _make_party_failure(FAILURE_TRANSACTION_CONFLICT)
 
 	var current_xirang_ledger := party_snapshot.get("xirang_ledger", {}) as Dictionary
 	var next_xirang_ledger := current_xirang_ledger.duplicate(true)
@@ -599,7 +603,11 @@ static func commit_emergency_party_rewards(
 			reward_config.random_item_reward_count,
 			reward_config.random_item_reward_count
 		))
-		next_inventory["revision"] = expected_revision + 1
+		if not RunStateStore.advance_inventory_snapshot_revision(
+			next_inventory,
+			expected_revision
+		):
+			return _make_emergency_party_failure(FAILURE_TRANSACTION_CONFLICT)
 		results_by_peer[peer_id] = {
 			"occurrence_id": String(occurrence_id),
 			"content_seed": content_seed,

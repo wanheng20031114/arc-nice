@@ -563,8 +563,8 @@ func _test_economy_transactions() -> void:
 	var run_state := RunStateStore.new()
 	root.add_child(run_state)
 	run_state.begin_new_run(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID, false)
-	run_state.ensure_multiplayer_peer_state(1)
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(1)
+	run_state.register_multiplayer_peer_state(2)
 	_expect(run_state.set_party_xirang_balance(1, 20000), "玩家1息壤余额必须可初始化。")
 	_expect(run_state.set_party_xirang_balance(2, 20000), "玩家2息壤余额必须可初始化。")
 	var offers_a := RogueUndergroundShopOfferGenerator.generate_offers(

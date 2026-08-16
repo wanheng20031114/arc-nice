@@ -290,14 +290,15 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 72, "The multiplayer protocol version must be 72.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v72 must retain eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 76, "The multiplayer protocol version must be 76.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v76 must retain eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 71))
+		not bool(net_manager.call("_is_protocol_version_compatible", 75))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 71))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 70))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 69))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 68))
@@ -365,7 +366,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"Protocol v72 must reject v71 and all older or unversioned clients."
+		"Protocol v76 must reject v75 and all older or unversioned clients."
 	)
 
 	var rejection_reasons: Array[String] = []
@@ -562,13 +563,14 @@ func _test_net_manager_player_list_sync_diff() -> void:
 	net_manager.call(
 		"_rpc_sync_player_list",
 		[
-			{"id": 1, "name": "Host", "character_id": "weishidaier", "character_confirmed": true},
-			{"id": 2, "name": "Renamed", "character_id": "hoe_cat", "character_confirmed": true},
-			{"id": 4, "name": "New", "character_id": "hoe_cat", "character_confirmed": false},
+			{"id": 1, "participant_incarnation": 1, "name": "Host", "character_id": "weishidaier", "character_confirmed": true, "session_state": int(NetManagerStore.SessionMemberState.ACTIVE)},
+			{"id": 2, "participant_incarnation": 2, "name": "Renamed", "character_id": "hoe_cat", "character_confirmed": true, "session_state": int(NetManagerStore.SessionMemberState.ACTIVE)},
+			{"id": 4, "participant_incarnation": 4, "name": "New", "character_id": "hoe_cat", "character_confirmed": false, "session_state": int(NetManagerStore.SessionMemberState.ACTIVE)},
 		],
 		1,
 		NetManagerStore.GameMode.TEST_ARENA_P2,
-		5
+		5,
+		1
 	)
 	net_manager.player_left.disconnect(left_callback)
 	net_manager.player_joined.disconnect(joined_callback)
@@ -861,12 +863,10 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 		return
 	game.configure_multiplayer(1, 1, {1: "Host", 2: "Client", 3: "Third"})
 	game.set("auto_start_waves", false)
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game, false)
 	await process_frame
 	_expect(game.peer_players.has(2), "StandardGame must create peer player 2 before cleanup.")
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
-	if run_state != null:
-		run_state.begin_new_run(&"weishidaier", false)
 	var remote_player := game.peer_players.get(2) as PlayerWeishidaier
 	if remote_player != null:
 		remote_player.attack_damage = 37
@@ -1179,7 +1179,7 @@ func _test_player_snapshot_roster_reconcile() -> void:
 		return
 	game.configure_multiplayer(2, 2, {1: "Host", 2: "Client", 3: "Leaving", 4: "Other"})
 	game.set("auto_start_waves", false)
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
 	_expect(game.peer_players.size() == 4, "Client view must start with four visual peer players.")
 	var stale_player := game.get_player_for_peer(3) as Player
@@ -1289,7 +1289,7 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 		return
 	game.configure_multiplayer(2, 2, {1: "Host", 2: "Client"})
 	game.set("auto_start_waves", false)
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
 
 	var enemy_a := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
@@ -1498,7 +1498,7 @@ func _test_enemy_snapshot_death_and_empty_roster_cleanup() -> void:
 		return
 	game.configure_multiplayer(2, 2, {1: "Host", 2: "Client"})
 	game.set("auto_start_waves", false)
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
 
 	var enemy_dead := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
@@ -1595,7 +1595,7 @@ func _test_host_remote_player_position_writeback() -> void:
 		return
 	host_game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
 	host_game.set("auto_start_waves", false)
-	root.add_child(host_game)
+	_enter_multiplayer_runtime_fixture(host_game)
 	await process_frame
 	var remote_player := host_game.get_player_for_peer(2) as Player
 	_expect(remote_player != null, "Remote player writeback test must create peer 2.")
@@ -1674,7 +1674,7 @@ func _test_projectile_time_compensation() -> void:
 		{1: "Host", 2: "Client"}
 	)
 	game.auto_start_waves = false
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
 	var mp_game := MP_GAME_SCENE.instantiate()
 	_expect(mp_game != null, "MpGame scene must instantiate for projectile compensation test.")
@@ -1769,7 +1769,7 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 		return
 	client_game.configure_multiplayer(2, 2, {1: "Host", 2: "Client"})
 	client_game.set("auto_start_waves", false)
-	root.add_child(client_game)
+	_enter_multiplayer_runtime_fixture(client_game)
 	await process_frame
 	var enemy := KNIGHT_CONFIG.enemy_scene.instantiate() as Enemy
 	_expect(enemy != null, "Enemy action timeline test must instantiate an enemy.")
@@ -1938,7 +1938,7 @@ func _test_host_remote_player_form_buff_expires() -> void:
 		return
 	game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
 	game.set("auto_start_waves", false)
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
 
 	var remote_player := game.get_player_for_peer(2) as PlayerWeishidaier
@@ -2015,8 +2015,19 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 	}
 	game.configure_multiplayer(1, 1, player_names)
 	game.set("auto_start_waves", false)
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
+	# 该宽夹具会直接调用 Host 玩法门面，必须显式复现正式 IN_GAME transport；
+	# 仅有 RunState/成员 roster 不再足以绕过统一入站租约。
+	var fixture_net_manager := root.get_node("NetManager") as NetManagerStore
+	var ingress_previous_role := fixture_net_manager.net_role
+	var ingress_previous_connection_state := fixture_net_manager.connection_state
+	var fixture_connected_players := fixture_net_manager.connected_players
+	var ingress_previous_connected_players := fixture_connected_players.duplicate(true)
+	fixture_net_manager.net_role = NetManagerStore.NetRole.HOST
+	fixture_net_manager.connection_state = NetManagerStore.ConnectionState.IN_GAME
+	fixture_connected_players.clear()
+	fixture_connected_players.merge(player_names, true)
 	_expect(game.peer_players.size() == 4, "Host authority game must create four peer players.")
 	_expect(game.collect_player_snapshot_states().size() == 4, "Four-player host snapshots must include every peer.")
 	for peer_id in [1, 2, 3, 4]:
@@ -2037,17 +2048,19 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		game.queue_free()
 		await process_frame
 		await physics_frame
+		fixture_connected_players.clear()
+		fixture_connected_players.merge(ingress_previous_connected_players, true)
+		fixture_net_manager.net_role = ingress_previous_role
+		fixture_net_manager.connection_state = ingress_previous_connection_state
 		return
 	_bind_multiplayer_runtime(mp_game, game)
-	var net_manager := root.get_node_or_null("NetManager")
+	var net_manager := fixture_net_manager
 	if net_manager != null:
 		mp_game.set("net_manager", net_manager)
 	var run_state := root.get_node_or_null("RunState")
 	if run_state != null:
 		var typed_run_state := run_state as RunStateStore
-		typed_run_state.begin_new_run()
 		for starting_peer_id in [1, 2, 3, 4]:
-			typed_run_state.ensure_multiplayer_peer_state(starting_peer_id)
 			_expect(
 				typed_run_state.get_item_for_peer(starting_peer_id, 0)
 				== WOOD_MATERIAL
@@ -2061,6 +2074,13 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		root.add_child(snapshot_client)
 		snapshot_client.begin_new_run()
 		_expect(
+			snapshot_client.reconcile_multiplayer_session_membership(
+				PackedInt32Array([2]),
+				1
+			),
+			"Snapshot client fixture must establish peer 2 before applying CH6 state."
+		)
+		_expect(
 			snapshot_client.apply_inventory_snapshot_for_peer(2, starting_snapshot)
 			and snapshot_client.apply_inventory_snapshot_for_peer(2, starting_snapshot)
 			and snapshot_client.get_item_count_for_peer(2, 0)
@@ -2068,7 +2088,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			"Replaying the initial peer snapshot must not duplicate starting wood."
 		)
 		snapshot_client.free()
-		typed_run_state.begin_new_run(&"weishidaier", false)
+		_begin_multiplayer_session_fixture(player_names, false)
 		mp_game.set("run_state", run_state)
 		mp_game.transactions_coordinator.apply_authoritative_upgrade(
 			0,
@@ -2079,7 +2099,17 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			not (run_state.get("multiplayer_upgrade_levels") as Dictionary).has(0),
 			"Invalid peer upgrade requests must not create peer 0 run state."
 		)
-		mp_game.call("net_upgrade_confirmed", 99, RunStateStore.StatType.ATTACK, 1, 25, true)
+		mp_game.call(
+			"net_upgrade_confirmed",
+			99,
+			RunStateStore.StatType.ATTACK,
+			1,
+			25,
+			true,
+			false,
+			9999,
+			net_manager.get_game_session_incarnation()
+		)
 		_expect(
 			not (run_state.get("multiplayer_upgrade_levels") as Dictionary).has(99),
 			"Upgrade confirms for missing peers must not create run state."
@@ -2225,10 +2255,30 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			"Invalid player damage/revive confirms must not pollute health revisions."
 		)
 		var base_attack := peer_four.attack_damage
-		mp_game.call("net_upgrade_confirmed", 4, RunStateStore.StatType.ATTACK, 1, 75, true)
+		mp_game.call(
+			"net_upgrade_confirmed",
+			4,
+			RunStateStore.StatType.ATTACK,
+			1,
+			75,
+			true,
+			false,
+			net_manager.get_session_participant_incarnation(4),
+			net_manager.get_game_session_incarnation()
+		)
 		_expect(peer_four.attack_damage == base_attack + 4, "Upgrade confirm must apply to the selected peer.")
 		_expect(peer_four.current_xirang == 75, "Upgrade confirm must update the selected peer's xirang.")
-		mp_game.call("net_skill1_purchase_confirmed", 4, 25, true, 0)
+		mp_game.call(
+			"net_skill1_purchase_confirmed",
+			4,
+			25,
+			true,
+			0,
+			-1,
+			-1.0,
+			net_manager.get_session_participant_incarnation(4),
+			net_manager.get_game_session_incarnation()
+		)
 		_expect(peer_four.has_skill1(), "Skill1 state confirm must preserve the selected peer's starting skill.")
 		_expect(peer_four.current_xirang == 25, "Skill1 state confirm must update xirang.")
 		peer_four.current_xirang = 225
@@ -2251,7 +2301,9 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			true,
 			MerchantPurchaseResult.SkillUpgrade.UPGRADE_SUCCESS,
 			2,
-			peer_four.skill1_charge_duration - 2.0
+			peer_four.skill1_charge_duration - 2.0,
+			net_manager.get_session_participant_incarnation(4),
+			net_manager.get_game_session_incarnation()
 		)
 		_expect(peer_four.current_xirang == 777, "Skill1 upgrade confirm must update xirang.")
 		_expect(peer_four.skill1_upgrade_level == 2, "Skill1 upgrade confirm must update upgrade level.")
@@ -2412,6 +2464,11 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 				"A direct enemy kill reward must not imitate an absorbed Xirang orb."
 			)
 		peer_two.is_dead = false
+		# 前段直接调用 Host 玩法门面；以下则是 Host 广播到客户端的 CH6
+		# 回执。Host 不能回写远端权威背包，故 fixture 在投递窗口显式切回
+		# 非 Host 接收侧，而不是放宽生产端的 Host 写入边界。
+		var inventory_confirmation_previous_role := net_manager.net_role
+		net_manager.net_role = NetManagerStore.NetRole.NONE
 		_expect(run_state.try_add_item_for_peer(3, HEALTH_PICKUP), "Peer 3 health pickup must fit for inventory use confirmation testing.")
 		peer_three.current_health = maxi(peer_three.max_health - HEALTH_PICKUP.heal_amount, 1)
 		var inventory_before_missing_use: Dictionary = (
@@ -2424,7 +2481,10 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			0,
 			HEALTH_PICKUP.resource_path,
 			true,
-			{}
+			{},
+			false,
+			net_manager.get_session_participant_incarnation(3),
+			net_manager.get_game_session_incarnation()
 		)
 		_expect(
 			run_state.export_inventory_snapshot_for_peer(3) == inventory_before_missing_use
@@ -2439,7 +2499,16 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		var inventory_before_missing_discard: Dictionary = (
 			run_state.export_inventory_snapshot_for_peer(3)
 		)
-		mp_game.call("net_inventory_item_discarded", 3, 0, true, {})
+		mp_game.call(
+			"net_inventory_item_discarded",
+			3,
+			0,
+			true,
+			{},
+			false,
+			net_manager.get_session_participant_incarnation(3),
+			net_manager.get_game_session_incarnation()
+		)
 		_expect(
 			run_state.export_inventory_snapshot_for_peer(3) == inventory_before_missing_discard,
 			"Inventory discard confirmations missing an authoritative snapshot must not mutate inventory."
@@ -2466,16 +2535,24 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			stacked_slot["revision"] = int(
 				stacked_inventory_snapshot["revision"]
 			)
+		var applied_envelopes_before_use: int = (
+			mp_game.peer_ledger_coordinator.get_applied_envelope_count()
+		)
 		mp_game.call(
 			"net_inventory_item_used",
 			3,
 			0,
 			"",
 			true,
-			stacked_inventory_snapshot
+			stacked_inventory_snapshot,
+			false,
+			net_manager.get_session_participant_incarnation(3),
+			net_manager.get_game_session_incarnation()
 		)
 		_expect(
-			run_state.get_item_count_for_peer(3, 0) == 2,
+			run_state.get_item_count_for_peer(3, 0) == 2
+			and mp_game.peer_ledger_coordinator.get_applied_envelope_count()
+			== applied_envelopes_before_use + 1,
 			"Authoritative inventory use confirmation must preserve the remainder of a stack."
 		)
 		var stale_host_repair_snapshot: Dictionary = (
@@ -2511,7 +2588,9 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			0,
 			false,
 			stale_host_repair_snapshot,
-			true
+			true,
+			net_manager.get_session_participant_incarnation(3),
+			net_manager.get_game_session_incarnation()
 		)
 		_expect(
 			run_state.get_item_count_for_peer(3, 0) == 3
@@ -2522,7 +2601,16 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		var inventory_before_second_missing_discard: Dictionary = (
 			run_state.export_inventory_snapshot_for_peer(3)
 		)
-		mp_game.call("net_inventory_item_discarded", 3, 0, true, {})
+		mp_game.call(
+			"net_inventory_item_discarded",
+			3,
+			0,
+			true,
+			{},
+			false,
+			net_manager.get_session_participant_incarnation(3),
+			net_manager.get_game_session_incarnation()
+		)
 		_expect(
 			run_state.export_inventory_snapshot_for_peer(3)
 			== inventory_before_second_missing_discard,
@@ -2532,6 +2620,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			run_state.discard_item_for_peer(3, 0),
 			"Second missing-discard-snapshot coverage must clean up its inventory fixture."
 		)
+		net_manager.net_role = inventory_confirmation_previous_role
 		var peer_inventories := run_state.get("multiplayer_inventories") as Dictionary
 		mp_game.call(
 			"net_inventory_item_used",
@@ -2539,9 +2628,21 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			0,
 			HEALTH_PICKUP.resource_path,
 			true,
-			{}
+			{},
+			false,
+			9999,
+			net_manager.get_game_session_incarnation()
 		)
-		mp_game.call("net_inventory_item_discarded", 99, 0, true, {})
+		mp_game.call(
+			"net_inventory_item_discarded",
+			99,
+			0,
+			true,
+			{},
+			false,
+			9999,
+			net_manager.get_game_session_incarnation()
+		)
 		_expect(not peer_inventories.has(99), "Inventory confirms for missing peers must not create peer run state.")
 		var bound_mode_adapter := game.get_multiplayer_mode_adapter()
 		var merchant_transactions := (
@@ -2590,6 +2691,10 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 	game.queue_free()
 	await process_frame
 	await physics_frame
+	fixture_connected_players.clear()
+	fixture_connected_players.merge(ingress_previous_connected_players, true)
+	fixture_net_manager.net_role = ingress_previous_role
+	fixture_net_manager.connection_state = ingress_previous_connection_state
 
 
 func _test_multiplayer_character_scene_registry() -> void:
@@ -2604,7 +2709,7 @@ func _test_multiplayer_character_scene_registry() -> void:
 		{1: &"weishidaier", 2: &"hoe_cat", 3: &"tiyi"}
 	)
 	_stop_audio_players(game)
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
 	var host_player := game.get_player_for_peer(1)
 	var local_player := game.get_player_for_peer(2)
@@ -2824,7 +2929,7 @@ func _test_host_authoritative_hoe_actions() -> void:
 	)
 	host_game.set("auto_start_waves", false)
 	_stop_audio_players(host_game)
-	root.add_child(host_game)
+	_enter_multiplayer_runtime_fixture(host_game)
 	await process_frame
 	var hoe_player := host_game.get_player_for_peer(1) as PlayerHoeCat
 	_expect(hoe_player != null, "Host roster must instantiate Hoe Cat for authoritative action coverage.")
@@ -3026,7 +3131,7 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 	)
 	host_game.set("auto_start_waves", false)
 	_stop_audio_players(host_game)
-	root.add_child(host_game)
+	_enter_multiplayer_runtime_fixture(host_game)
 	await process_frame
 	var tiyi_player := host_game.get_player_for_peer(1) as PlayerTiyi
 	_expect(tiyi_player != null, "Host roster must instantiate Tiyi for protocol coverage.")
@@ -3164,6 +3269,7 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 		"High-noon completion must clear active state without rewinding its sequence."
 	)
 	tiyi_player.cancel_remote_high_noon(2)
+	_settle_direct_wave_enemy_fixture(host_game, target_enemy)
 
 	connected_players.clear()
 	connected_players.merge(previous_players, true)
@@ -3182,10 +3288,10 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		return
 	host_game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
 	host_game.set("auto_start_waves", false)
-	root.add_child(host_game)
+	_enter_multiplayer_runtime_fixture(host_game)
 	await process_frame
 	_expect(
-		_prepare_direct_enemy_spawn_points(host_game),
+		_prepare_direct_enemy_spawn_points(host_game, 2),
 		"Enemy hit test must resolve its Campaign wave spawn-point mask."
 	)
 	_expect(host_game.call("_try_spawn_enemy", BASIC_CONFIG), "Host must spawn an enemy for hit dedupe test.")
@@ -3448,6 +3554,8 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		if host_net_manager != null:
 			host_net_manager.set("net_role", previous_role)
 		mp_game.free()
+	_settle_direct_wave_enemy_fixture(host_game, host_enemy)
+	_settle_direct_wave_enemy_fixture(host_game, second_host_enemy)
 	_stop_audio_players(host_game)
 	host_game.queue_free()
 	await process_frame
@@ -3459,7 +3567,7 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		return
 	client_game.configure_multiplayer(2, 2, {1: "Host", 2: "Client"})
 	client_game.set("auto_start_waves", false)
-	root.add_child(client_game)
+	_enter_multiplayer_runtime_fixture(client_game, false)
 	await process_frame
 	var client_mp_game := MP_GAME_SCENE.instantiate()
 	var net_manager := root.get_node("NetManager") as NetManagerStore
@@ -3470,7 +3578,6 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		client_mp_game.set("net_manager", net_manager)
 	var client_run_state := root.get_node_or_null("RunState") as RunStateStore
 	if client_run_state != null:
-		client_run_state.begin_new_run(&"weishidaier", false)
 		client_run_state.set_active_multiplayer_peer(2)
 		client_mp_game.set("run_state", client_run_state)
 
@@ -3562,7 +3669,10 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			9001,
 			2,
 			PICKUP_SPEED_CONFIG.resource_path,
-			true
+			true,
+			{},
+			net_manager.get_session_participant_incarnation(2),
+			net_manager.get_game_session_incarnation()
 		)
 		await process_frame
 		_expect(not client_game.has_network_pickup(9001), "Pickup collected event must erase pickup index.")
@@ -3608,7 +3718,9 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			2,
 			WHITE_CRYSTAL_MATERIAL.resource_path,
 			false,
-			pickup_inventory_snapshot
+			pickup_inventory_snapshot,
+			net_manager.get_session_participant_incarnation(2),
+			net_manager.get_game_session_incarnation()
 		)
 		await process_frame
 		_expect(not client_game.has_network_pickup(9002), "Stored pickup confirm must erase pickup index.")
@@ -3629,7 +3741,9 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			2,
 			WHITE_CRYSTAL_MATERIAL.resource_path,
 			false,
-			pickup_inventory_snapshot
+			pickup_inventory_snapshot,
+			net_manager.get_session_participant_incarnation(2),
+			net_manager.get_game_session_incarnation()
 		)
 		_expect(
 			not client_player.powerup_audio.playing,
@@ -3650,7 +3764,10 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			9003,
 			2,
 			HEALTH_PICKUP.resource_path,
-			false
+			false,
+			{},
+			net_manager.get_session_participant_incarnation(2),
+			net_manager.get_game_session_incarnation()
 		)
 		_expect(
 			client_run_state.get_inventory_revision_for_peer(2)
@@ -3807,7 +3924,7 @@ func _test_multiplayer_revive_position_uses_living_players() -> void:
 		return
 	game.configure_multiplayer(1, 1, {1: "Host", 2: "Dead", 3: "RemoteAlive"})
 	game.set("auto_start_waves", false)
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
 
 	var mp_game := MP_GAME_SCENE.instantiate()
@@ -3888,7 +4005,7 @@ func _test_tower_defense_spawn_slots_and_fixed_respawn() -> void:
 	game.configure_multiplayer(CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY, 1, player_names)
 	game.auto_start_waves = false
 	_expect(game.linglan_boss_enabled, "Tower-defense Linglan must be enabled by the authored scene.")
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
 	await physics_frame
 	var mode_adapter := (
@@ -3976,7 +4093,7 @@ func _test_multiplayer_revive_resets_remote_visual_interpolator() -> void:
 		return
 	game.configure_multiplayer(2, 2, {1: "Host", 2: "Local", 3: "Remote"})
 	game.set("auto_start_waves", false)
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
 
 	var remote_player := game.get_player_for_peer(3) as Player
@@ -4036,7 +4153,7 @@ func _test_client_local_damage_confirm_starts_hurt_blink() -> void:
 		return
 	game.configure_multiplayer(2, 2, {1: "Host", 2: "Local"})
 	game.set("auto_start_waves", false)
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
 
 	var local_player := game.get_player_for_peer(2) as Player
@@ -4158,7 +4275,7 @@ func _test_linglan_boss_registration_uses_boss_event_only() -> void:
 		return
 	game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
 	game.set("auto_start_waves", false)
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
 
 	var boss_enemy_config := LINGLAN_BOSS_CONFIG.call("get_enemy_config") as EnemyConfig
@@ -4214,7 +4331,7 @@ func _test_linglan_airdrop_replication_contract() -> void:
 		return
 	game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
 	game.auto_start_waves = false
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
 	game.campaign_coordinator.replace_flow_state_for_fixture(
 		CombatFlowState.State.BOSS_ACTIVE
@@ -4356,7 +4473,7 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 		{1: "Host", 2: "Client"}
 	)
 	explicit_runtime.auto_start_waves = false
-	root.add_child(explicit_runtime)
+	_enter_multiplayer_runtime_fixture(explicit_runtime)
 	await process_frame
 	var gameplay_gateway := explicit_runtime.get_multiplayer_gameplay_gateway()
 
@@ -4417,7 +4534,7 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 		return
 	game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
 	game.set("auto_start_waves", false)
-	root.add_child(game)
+	_enter_multiplayer_runtime_fixture(game)
 	await process_frame
 	var mp_game := MP_GAME_SCENE.instantiate()
 	_expect(mp_game != null, "Sakura rocket multiplayer test must instantiate MpGame.")
@@ -4523,7 +4640,7 @@ func _test_multiplayer_cheat_xirang_confirm() -> void:
 
 	host_game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
 	host_game.set("auto_start_waves", false)
-	root.add_child(host_game)
+	_enter_multiplayer_runtime_fixture(host_game, false)
 	await process_frame
 	_bind_multiplayer_runtime(mp_game, host_game)
 
@@ -4538,7 +4655,6 @@ func _test_multiplayer_cheat_xirang_confirm() -> void:
 		)
 		_expect(remote_player.current_xirang == 1015, "Cheat confirm must update the selected peer's xirang.")
 		var run_state := root.get_node("RunState") as RunStateStore
-		run_state.begin_new_run(&"weishidaier", false)
 		mp_game.set("run_state", run_state)
 		mp_game.merchant_transactions_coordinator.receive_debug_collectible_granted(
 			2,
@@ -4560,7 +4676,7 @@ func _test_game_runtime_modes() -> void:
 	var host_game := GAME_SCENE.instantiate()
 	host_game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
 	host_game.set("auto_start_waves", false)
-	root.add_child(host_game)
+	_enter_multiplayer_runtime_fixture(host_game)
 	await process_frame
 	_expect(host_game.peer_players.size() == 2, "Host authority game must create peer players.")
 	var host_guardian_system := host_game.get_node(
@@ -4602,6 +4718,7 @@ func _test_game_runtime_modes() -> void:
 	var spawned_enemy: Enemy = host_game.get_enemy_for_net_id(1)
 	_expect(spawned_enemy != null, "Host authority game must index spawned enemies by net id.")
 	if spawned_enemy != null:
+		_settle_direct_wave_enemy_fixture(host_game, spawned_enemy)
 		spawned_enemy.queue_free()
 		await process_frame
 		await physics_frame
@@ -4613,7 +4730,7 @@ func _test_game_runtime_modes() -> void:
 	var client_game := GAME_SCENE.instantiate()
 	client_game.configure_multiplayer(2, 2, {1: "Host", 2: "Client"})
 	client_game.set("auto_start_waves", false)
-	root.add_child(client_game)
+	_enter_multiplayer_runtime_fixture(client_game)
 	await process_frame
 	_expect(client_game.peer_players.size() == 2, "Client view game must create visual peer players.")
 	_expect(not client_game.auto_start_waves, "Client view must not start local waves.")
@@ -4656,7 +4773,7 @@ func _test_game_runtime_modes() -> void:
 		{1: "Host", 2: "Client"}
 	)
 	tower_client_game.set("auto_start_waves", false)
-	root.add_child(tower_client_game)
+	_enter_multiplayer_runtime_fixture(tower_client_game)
 	await process_frame
 	var tower_client_guardian_system := tower_client_game.get_node(
 		"GuardianAuraSystem"
@@ -4710,7 +4827,7 @@ func _test_test_arena_multiplayer_runtime_modes() -> void:
 			{1: &"weishidaier", 2: &"weishidaier"}
 		)
 		arena.auto_start_waves = false
-		root.add_child(arena)
+		_enter_multiplayer_runtime_fixture(arena)
 		await process_frame
 		await physics_frame
 		var active_campaign := arena.campaign_coordinator.active_campaign
@@ -5141,6 +5258,74 @@ func _has_active_damage_number_text(game: StandardGame, expected_text: String) -
 	return game.damage_number_pool.has_active_text(expected_text)
 
 
+## 联机运行时的 `_ready()` 会立即消费身份账本，因此夹具必须复现正式流程：
+## 先提交完整会话 roster，再让场景进入树。配置 Player 节点本身不负责创建账本成员。
+func _enter_multiplayer_runtime_fixture(
+	game: CombatRuntimeBase,
+	include_starting_inventory: bool = true
+) -> void:
+	var player_names := game.get("multiplayer_player_names") as Dictionary
+	_expect(
+		not player_names.is_empty(),
+		"A multiplayer runtime fixture must expose its configured player roster."
+	)
+	_begin_multiplayer_session_fixture(player_names, include_starting_inventory)
+	root.add_child(game)
+
+
+## 测试会在同一进程串行运行多套独立联机会话。每套会话都从新的 RunState
+## 开始，并以 revision=1 原子登记 roster，避免前一夹具的账本或成员泄漏。
+func _begin_multiplayer_session_fixture(
+	player_names: Dictionary,
+	include_starting_inventory: bool = true
+) -> bool:
+	var run_state := root.get_node_or_null("RunState") as RunStateStore
+	var net_manager := root.get_node_or_null("NetManager") as NetManagerStore
+	if run_state == null:
+		_expect(false, "RunState autoload is required for multiplayer runtime fixtures.")
+		return false
+	if net_manager == null:
+		_expect(false, "NetManager autoload is required for multiplayer runtime fixtures.")
+		return false
+	var peer_ids: Array[int] = []
+	for raw_peer_id in player_names.keys():
+		var peer_id := int(raw_peer_id)
+		if peer_id <= 0 or peer_ids.has(peer_id):
+			_expect(false, "Multiplayer fixture roster contains an invalid peer id.")
+			return false
+		peer_ids.append(peer_id)
+	peer_ids.sort()
+	# v76 的 CH6 测试不能只伪造 RunState：发送与接收边界都从同一份成员
+	# roster 解析 participant。夹具以 peer ID 作为稳定、唯一的测试世代。
+	var fixture_members: Dictionary[int, Dictionary] = {}
+	for peer_id in peer_ids:
+		fixture_members[peer_id] = {
+			"player_name": str(player_names.get(peer_id, "Player")),
+			"character_id": PlayerCharacterRegistry.DEFAULT_CHARACTER_ID,
+			"character_confirmed": true,
+			"state": int(NetManagerStore.SessionMemberState.ACTIVE),
+			"participant_incarnation": peer_id,
+			"reconnect_token": "",
+			"grace_expires_msec": 0,
+		}
+	net_manager.set("_session_members", fixture_members)
+	net_manager.set("_session_membership_revision", 1)
+	net_manager.set(
+		"_last_host_participant_incarnation",
+		maxi(
+			int(net_manager.get("_last_host_participant_incarnation")),
+			int(peer_ids[-1]) if not peer_ids.is_empty() else 0
+		)
+	)
+	run_state.begin_new_run(&"weishidaier", include_starting_inventory)
+	var committed := run_state.reconcile_multiplayer_session_membership(
+		PackedInt32Array(peer_ids),
+		1
+	)
+	_expect(committed, "Multiplayer fixture roster must commit atomically to RunState.")
+	return committed
+
+
 func _bind_multiplayer_runtime(
 	mp_game,
 	game: CombatRuntimeBase
@@ -5219,9 +5404,28 @@ func _bind_mp_game_coordinators(
 		as MpNetworkDiagnosticsCoordinator
 	)
 	mp_game.network_diagnostics_coordinator = network_diagnostics_coordinator
+	var peer_ledger_coordinator := (
+		mp_game.get_node("PeerLedgerCoordinator") as MpPeerLedgerCoordinator
+	)
+	mp_game.peer_ledger_coordinator = peer_ledger_coordinator
 	if game != null:
 		var net_manager := mp_game.net_manager as NetManagerStore
 		var run_state := mp_game.run_state as RunStateStore
+		if net_manager.get_game_session_incarnation() <= 0:
+			net_manager.loading_session_id = 1
+		var peer_ledger_role := (
+			MpPeerLedgerCoordinator.RuntimeRole.HOST
+			if net_manager.is_host()
+			else MpPeerLedgerCoordinator.RuntimeRole.CLIENT
+		)
+		mp_game._peer_ledger_generation = peer_ledger_coordinator.bind_session(
+			mp_game,
+			peer_ledger_role,
+			net_manager.get_game_session_incarnation(),
+			run_state.has_multiplayer_peer_state,
+			Callable(mp_game, "_is_peer_result_envelope_ready"),
+			Callable(mp_game, "_commit_pending_peer_ledger_envelope")
+		)
 		var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
 		var mode_adapter := game.get_multiplayer_mode_adapter()
 		session_coordinator.bind_runtime(game)
@@ -5297,8 +5501,11 @@ func _bind_mp_game_coordinators(
 	return player_coordinator
 
 
-func _prepare_direct_enemy_spawn_points(game: StandardGame) -> bool:
-	if game == null:
+func _prepare_direct_enemy_spawn_points(
+	game: StandardGame,
+	direct_enemy_count: int = 1
+) -> bool:
+	if game == null or direct_enemy_count <= 0:
 		return false
 	var campaign_waves: Array = game.get("waves")
 	if campaign_waves.is_empty():
@@ -5306,7 +5513,32 @@ func _prepare_direct_enemy_spawn_points(game: StandardGame) -> bool:
 	var wave_config := campaign_waves[0] as WaveConfig
 	if wave_config == null:
 		return false
-	return bool(game.call("_resolve_wave_spawn_points", wave_config))
+	# 直接生成夹具绕过正式 `_begin_wave_config()`，仍必须先建立同样的波次
+	# 终结账本容量；否则实体登记被拒绝恰好说明夹具缺失了领域前置条件。
+	return (
+		game.replace_wave_terminal_state_for_fixture(direct_enemy_count, 0, 0, 0, 0)
+		and bool(game.call("_resolve_wave_spawn_points", wave_config))
+	)
+
+
+## 直接生成的实体没有正式流程节点替它发布终结事件；夹具销毁前显式按
+## REMOVED 收口，验证账本与网络索引走正常拆卸路径，避免把树退出当成异常。
+func _settle_direct_wave_enemy_fixture(
+	game: StandardGame,
+	enemy: Enemy
+) -> void:
+	if game == null or enemy == null or not is_instance_valid(enemy):
+		return
+	var enemy_id := enemy.get_instance_id()
+	if not game.wave_enemy_terminal_ledger.is_enemy_active(enemy_id):
+		return
+	_expect(
+		game.try_resolve_active_wave_enemy(
+			enemy_id,
+			CombatTypes.EnemyTerminalReason.REMOVED
+		),
+		"A direct enemy fixture must commit its terminal state before tree exit."
+	)
 
 
 func _expect(condition: bool, message: String) -> void:

@@ -568,9 +568,11 @@ func handle_authoritative_research_command(
 		)
 
 
-func receive_warehouse_command_result(result: Dictionary) -> void:
+## 仓库结果同时提交背包与仓储两个账本。返回值让跨信道协调器能够在
+## 玩家身份稍后到达时，明确判断这份原子结果是已提交还是需要整包修复。
+func receive_warehouse_command_result(result: Dictionary) -> bool:
 	if not is_bound():
-		return
+		return false
 	var metric_key := _get_warehouse_transaction_metric_key(
 		int(result.get("warehouse_net_id", 0)),
 		int(result.get("request_id", 0))
@@ -593,33 +595,56 @@ func receive_warehouse_command_result(result: Dictionary) -> void:
 		or not is_instance_valid(warehouse)
 		or not warehouse.is_current_multiplayer_storage_result(result)
 	):
-		return
+		return false
 	var peer_id := OakWarehouseProtocolScript.get_int_field(result, "peer_id", 0)
 	var inventory_snapshot := result.get("inventory_snapshot", {}) as Dictionary
 	var storage_snapshot := result.get("storage_snapshot", {}) as Dictionary
 	if peer_id <= 0 or inventory_snapshot.is_empty() or storage_snapshot.is_empty():
-		return
+		return false
 	if _net_manager.is_host():
 		warehouse.complete_multiplayer_storage_request(result)
-		return
+		return true
 	var prepared_inventory := _run_state.prepare_inventory_snapshot_for_peer(
 		peer_id,
 		inventory_snapshot
 	)
 	var prepared_storage := warehouse.prepare_storage_snapshot(storage_snapshot)
 	if prepared_inventory.is_empty() or prepared_storage.is_empty():
-		return
-	if not warehouse.commit_prepared_storage_snapshot(prepared_storage, false):
-		return
-	if not _run_state.commit_prepared_inventory_snapshot_for_peer(
+		return false
+	if not commit_prepared_warehouse_transaction(
+		_run_state,
+		warehouse,
 		prepared_inventory,
-		false
+		prepared_storage
 	):
-		push_error("MpTowerEconomyCoordinator: warehouse inventory revision changed during commit.")
-		return
-	_run_state.notify_inventory_snapshot_committed()
-	warehouse.notify_storage_snapshot_committed()
+		return false
 	warehouse.complete_multiplayer_storage_request(result)
+	return true
+
+
+## 背包与仓库属于一个权威结果。先对两份 prepared 状态做最后一次 CAS
+## 复核，再进入不再失败且不发 signal 的写段；两个账本都写完后才统一通知。
+static func commit_prepared_warehouse_transaction(
+	run_state: RunStateStore,
+	warehouse: OakWarehouse,
+	prepared_inventory: Dictionary,
+	prepared_storage: Dictionary
+) -> bool:
+	if (
+		run_state == null
+		or warehouse == null
+		or not is_instance_valid(warehouse)
+		or not run_state.is_prepared_inventory_snapshot_current(
+			prepared_inventory
+		)
+		or not warehouse.is_prepared_storage_snapshot_current(prepared_storage)
+	):
+		return false
+	run_state.commit_prevalidated_inventory_snapshot_for_peer(prepared_inventory)
+	warehouse.commit_prevalidated_storage_snapshot(prepared_storage)
+	run_state.notify_inventory_snapshot_committed()
+	warehouse.notify_storage_snapshot_committed()
+	return true
 
 
 func receive_production_command_result(result: Dictionary) -> void:
@@ -753,16 +778,23 @@ func receive_research_state_updated(
 	state: Dictionary,
 	changed_player_peer_id: int,
 	current_xirang: int
-) -> void:
+) -> bool:
 	if not is_bound() or state.is_empty():
-		return
-	_tower_adapter.apply_remote_research_runtime_state(state)
-	if changed_player_peer_id <= 0 or current_xirang < 0:
-		return
-	var changed_player := _runtime.get_player_for_peer(changed_player_peer_id)
-	if changed_player == null or not is_instance_valid(changed_player):
-		return
+		return false
+	var changed_player: Player = null
+	if changed_player_peer_id > 0:
+		if current_xirang < 0:
+			return false
+		changed_player = _runtime.get_player_for_peer(changed_player_peer_id)
+		if changed_player == null or not is_instance_valid(changed_player):
+			return false
+	# 研究协调器拥有协议校验与 revision CAS；上层只消费它的真实提交结果。
+	if not _tower_adapter.apply_remote_research_runtime_state(state):
+		return false
+	if changed_player_peer_id <= 0:
+		return true
 	changed_player.set_xirang_balance(current_xirang)
+	return true
 
 
 func broadcast_warehouse_snapshot(warehouse: OakWarehouse) -> void:

@@ -36,6 +36,25 @@ class ProbeRuntime:
 	func remove_multiplayer_player(peer_id: int) -> void:
 		peer_players.erase(peer_id)
 
+	func ensure_reconnected_multiplayer_player(
+		_old_peer_id: int,
+		new_peer_id: int,
+		_player_name: String,
+		_character_id: StringName,
+		_state: SnapshotManager.PlayerState,
+		_spawn_slot_index: int,
+		_reconnect_state: Dictionary = {}
+	) -> CombatRuntimeBase.ReconnectedPlayerProjection:
+		var player := get_player_for_peer(new_peer_id)
+		return CombatRuntimeBase.ReconnectedPlayerProjection.new(
+			(
+				CombatRuntimeBase.ReconnectedPlayerProjectionStatus.EXISTING_CURRENT
+				if player != null
+				else CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATE_FAILED
+			),
+			player
+		)
+
 	func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 		return []
 
@@ -309,7 +328,7 @@ func _run() -> void:
 			],
 			"迟加入拾取物清单必须按固定参数顺序向目标 peer 出站。"
 		)
-		run_state.ensure_multiplayer_peer_state(7)
+		run_state.register_multiplayer_peer_state(7)
 		_expect(
 			run_state.try_add_item_for_peer(7, pickup_config),
 			"Host smoke 必须先构造已提交的拾取物背包状态。"
@@ -376,6 +395,35 @@ func _run() -> void:
 	_expect(immediate_pickup_config != null, "即时拾取配置必须可加载。")
 	if pickup_config != null and immediate_pickup_config != null:
 		coordinator.receive_pickup_spawned(
+			46,
+			PICKUP_CONFIG_PATH,
+			Vector2.ZERO
+		)
+		_expect(
+			not coordinator.receive_pickup_collected(46, 7, "", false, {})
+			and runtime.has_network_pickup(46),
+			"无效配置的拾取结果必须零写，不能提前移除世界掉落。"
+		)
+		coordinator.receive_pickup_spawned(
+			47,
+			PICKUP_CONFIG_PATH,
+			Vector2.ZERO
+		)
+		_expect(
+			not coordinator.receive_pickup_collected(
+				47,
+				7,
+				PICKUP_CONFIG_PATH,
+				false,
+				{}
+			)
+			and runtime.has_network_pickup(47),
+			"无效背包快照的拾取结果必须零写，不能留下世界/账本半提交。"
+		)
+		coordinator.receive_pickup_removed(46)
+		coordinator.receive_pickup_removed(47)
+
+		coordinator.receive_pickup_spawned(
 			41,
 			PICKUP_CONFIG_PATH,
 			Vector2(21, 22)
@@ -400,27 +448,67 @@ func _run() -> void:
 			IMMEDIATE_PICKUP_CONFIG_PATH,
 			Vector2.ZERO
 		)
-		coordinator.receive_pickup_collected(
+		var immediate_pickup_applied := coordinator.receive_pickup_collected(
 			42,
 			7,
 			IMMEDIATE_PICKUP_CONFIG_PATH,
 			true
 		)
 		_expect(
-			not runtime.has_network_pickup(42)
+			immediate_pickup_applied
+			and not runtime.has_network_pickup(42)
 			and collector.immediate_apply_count == 1
 			and not collector.immediate_apply_healing
 			and collector.last_pickup_config == immediate_pickup_config,
-			"即时拾取必须先清理实例，再以禁用治疗的客户端重放应用。"
+			"即时拾取必须成功重放效果后再终结世界实例，并禁用重复治疗。"
+		)
+		_expect(
+			not coordinator.receive_pickup_collected(
+				42,
+				7,
+				IMMEDIATE_PICKUP_CONFIG_PATH,
+				true
+			)
+			and collector.immediate_apply_count == 1,
+			"即时拾取可靠重放即使越过 applied LRU，也必须由世界实例 fence 阻止重复效果。"
+		)
+		_expect(
+			not coordinator.receive_pickup_collected(
+				49,
+				7,
+				IMMEDIATE_PICKUP_CONFIG_PATH,
+				true
+			)
+			and collector.immediate_apply_count == 1,
+			"CH6 collect 先于 CH5 spawn 时不得提前应用即时效果，应等待完整状态修复。"
 		)
 
-		run_state.ensure_multiplayer_peer_state(7)
+		coordinator.receive_pickup_spawned(
+			48,
+			IMMEDIATE_PICKUP_CONFIG_PATH,
+			Vector2.ZERO
+		)
+		runtime.peer_players.erase(7)
+		_expect(
+			not coordinator.receive_pickup_collected(
+				48,
+				7,
+				IMMEDIATE_PICKUP_CONFIG_PATH,
+				true
+			)
+			and runtime.has_network_pickup(48),
+			"即时效果缺少 Player 投影时必须零写，等待完整状态修复同时收敛效果与世界实体。"
+		)
+		runtime.peer_players[7] = collector
+		coordinator.receive_pickup_removed(48)
+
+		run_state.register_multiplayer_peer_state(7)
 		coordinator.receive_pickup_spawned(
 			43,
 			PICKUP_CONFIG_PATH,
 			Vector2.ZERO
 		)
-		coordinator.receive_pickup_collected(
+		var inventory_pickup_applied := coordinator.receive_pickup_collected(
 			43,
 			7,
 			PICKUP_CONFIG_PATH,
@@ -431,12 +519,13 @@ func _run() -> void:
 			run_state.get_inventory_revision_for_peer(7)
 		)
 		_expect(
-			not runtime.has_network_pickup(43)
+			inventory_pickup_applied
+			and not runtime.has_network_pickup(43)
 			and applied_inventory_revision
 			== int(authoritative_inventory_snapshot.get("revision", -1))
 			and collector.inventory_feedback_count == 1
 			and collector.last_pickup_config == pickup_config,
-			"背包拾取必须应用更新的 revision 快照并只播放一次收入反馈。"
+			"有效背包必须先提交账本，再移除掉落并只播放一次收入反馈。"
 		)
 		coordinator.receive_pickup_spawned(
 			44,
@@ -459,6 +548,17 @@ func _run() -> void:
 		)
 		var lifecycle_gap_snapshot := authoritative_inventory_snapshot.duplicate(true)
 		lifecycle_gap_snapshot["revision"] = applied_inventory_revision + 1
+		var lifecycle_gap_slots: Array = []
+		for raw_slot in lifecycle_gap_snapshot["slots"] as Array:
+			var slot := (raw_slot as Dictionary).duplicate(true)
+			slot["revision"] = applied_inventory_revision + 1
+			lifecycle_gap_slots.append(slot)
+		lifecycle_gap_snapshot["slots"] = lifecycle_gap_slots
+		coordinator.receive_pickup_spawned(
+			45,
+			PICKUP_CONFIG_PATH,
+			Vector2.ZERO
+		)
 		runtime.peer_players.erase(7)
 		coordinator.receive_pickup_collected(
 			45,
@@ -470,6 +570,7 @@ func _run() -> void:
 		_expect(
 			run_state.get_inventory_revision_for_peer(7)
 			== applied_inventory_revision + 1
+			and not runtime.has_network_pickup(45)
 			and collector.inventory_feedback_count == 1,
 			"Player 节点缺席时，拾取结果仍必须推进背包账本且不伪造表现。"
 		)
@@ -570,7 +671,10 @@ func _test_pickup_delegation_contract() -> void:
 			"_gameplay_gateway.pickup_collected, _on_host_pickup_collected"
 		)
 		and coordinator_source.contains(
-			"_run_state.apply_inventory_snapshot_for_peer("
+			"_run_state.prepare_inventory_snapshot_for_peer("
+		)
+		and coordinator_source.contains(
+			"_run_state.commit_prepared_inventory_snapshot_for_peer("
 		)
 		and coordinator_source.contains("signal rpc_to_peer_requested(")
 		and coordinator_source.contains("signal rpc_broadcast_requested("),

@@ -42,7 +42,7 @@ func _test_validation_is_read_only() -> void:
 	root.add_child(store)
 	store.begin_new_run(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID, false)
 	_expect(store.try_add_item_count(WOOD, 3), "测试必须建立非零本地背包 revision。")
-	store.ensure_multiplayer_peer_state(1)
+	_expect(store.register_multiplayer_peer_state(1), "远端账本必须先显式注册。")
 	_expect(
 		store.try_add_item_count_for_peer(1, HEALTH_POTION, 2),
 		"测试必须建立非零远端背包 revision。"

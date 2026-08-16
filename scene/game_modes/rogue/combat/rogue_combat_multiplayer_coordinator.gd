@@ -55,6 +55,13 @@ enum ProtocolPhase {
 	SETTLED,
 }
 
+enum SessionProjectionOwner {
+	## 外层 MpGame 已拥有会话级 Player 投影，本协调器只管理当前作战参与者。
+	ENCLOSING_RUNTIME,
+	## 独立 P3 路线没有另一层游戏运行时，由本协调器汇总内嵌 Player 结果。
+	THIS_COORDINATOR,
+}
+
 var _route: RogueRouteGame = null
 var _net_manager: NetManagerStore = null
 var _run_state: RunStateStore = null
@@ -71,13 +78,26 @@ var _participant_peer_ids: Dictionary = {}
 var _entry_xirang_by_peer: Dictionary = {}
 var _participant_character_ids: Dictionary = {}
 var _participant_stable_keys: Dictionary = {}
+## participant incarnation 是跨 raw peer 重连仍不变的会话身份。它只用于
+## 校验 component-first 结果确实属于当前参战者，不能拿 raw peer 猜同一性。
+var _participant_incarnations: Dictionary[int, int] = {}
 var _last_combat_xirang_by_peer: Dictionary = {}
 var _disconnected_participants: Dictionary = {}
 var _pending_spectator_peers: Dictionary = {}
 var _reconnecting_peer_ids: Dictionary = {}
 var _pending_reconnect_prepare_peers: Dictionary = {}
+## NetManager 只在 PREPARING_DELIVERY 控制面阶段发布该一次性投递租约。
+## 与 prepare intent 分开保存，使“Player 先恢复”与“投递租约先到”可交换。
+var _reconnected_member_ready_outcomes: Dictionary[int, Dictionary] = {}
+## 路线身份提交与内嵌 Player 投影来自同一个 reconnect 信号的不同监听者。
+## 以 new peer 为键汇合两个明确结果，彻底消除信号连接先后顺序的影响。
+var _pending_reconnected_identity_resolutions: Dictionary[int, Dictionary] = {}
+## pending 被消费后仍保留首次终态，既让可靠信号重放幂等，也让冲突终态
+## fail-close/降级，而不是重新创建一笔看似合法的 outcome-first 事务。
+var _resolved_reconnected_identity_resolutions: Dictionary[int, Dictionary] = {}
 var _pending_terminal_spectator_syncs: Dictionary = {}
 var _route_spectator_occurrence_key := ""
+var _session_projection_owner := SessionProjectionOwner.ENCLOSING_RUNTIME
 
 var _expected_prepared_peers: Dictionary = {}
 var _prepared_peers: Dictionary = {}
@@ -122,11 +142,19 @@ var _terminal_sequence_serial := 0
 func bind_network_dependencies(
 	route_instance: RogueRouteGame,
 	net_manager_instance: NetManagerStore,
-	run_state_instance: RunStateStore
+	run_state_instance: RunStateStore,
+	session_projection_owner: SessionProjectionOwner
 ) -> void:
 	assert(route_instance != null, "肉鸽作战协调器缺少路线运行时。")
 	assert(net_manager_instance != null, "肉鸽作战协调器缺少 NetManagerStore。")
 	assert(run_state_instance != null, "肉鸽作战协调器缺少 RunStateStore。")
+	assert(
+		session_projection_owner in [
+			SessionProjectionOwner.ENCLOSING_RUNTIME,
+			SessionProjectionOwner.THIS_COORDINATOR,
+		],
+		"肉鸽作战协调器缺少明确的会话投影所有者。"
+	)
 	assert(
 		_route == null or _route == route_instance,
 		"肉鸽作战协调器不得在会话中途更换路线运行时。"
@@ -142,6 +170,7 @@ func bind_network_dependencies(
 	_route = route_instance
 	_net_manager = net_manager_instance
 	_run_state = run_state_instance
+	_session_projection_owner = session_projection_owner
 	_emergency_reward_overlay = _route.emergency_reward_choice_overlay
 	_connect_emergency_reward_overlay_signals()
 	_enabled = _has_enabled_multiplayer_combat_pool(_route)
@@ -387,10 +416,6 @@ func _connect_net_manager_signals() -> void:
 		_net_manager.player_left.connect(_on_player_left)
 	if not _net_manager.player_joined.is_connected(_on_player_joined):
 		_net_manager.player_joined.connect(_on_player_joined)
-	if not _net_manager.player_reconnected.is_connected(
-		_on_player_reconnected
-	):
-		_net_manager.player_reconnected.connect(_on_player_reconnected)
 
 
 func _disconnect_route_signals() -> void:
@@ -437,10 +462,6 @@ func _disconnect_net_manager_signals() -> void:
 		_net_manager.player_left.disconnect(_on_player_left)
 	if _net_manager.player_joined.is_connected(_on_player_joined):
 		_net_manager.player_joined.disconnect(_on_player_joined)
-	if _net_manager.player_reconnected.is_connected(
-		_on_player_reconnected
-	):
-		_net_manager.player_reconnected.disconnect(_on_player_reconnected)
 
 
 func _on_combat_requested(
@@ -556,6 +577,8 @@ func _begin_protocol(
 	_entry_xirang_by_peer = entry_xirang_by_peer.duplicate(true)
 	_last_combat_xirang_by_peer = _entry_xirang_by_peer.duplicate(true)
 	if not _freeze_participant_reward_identities() and _is_host():
+		return false
+	if not _freeze_participant_incarnations():
 		return false
 	_reset_emergency_reward_selection()
 	_disconnected_participants.clear()
@@ -687,6 +710,12 @@ func _create_embedded_runtime() -> bool:
 	):
 		instance.embedded_runtime_prepared.connect(
 			_on_embedded_runtime_prepared
+		)
+	if not instance.reconnected_player_projection_resolved.is_connected(
+		_on_embedded_reconnected_player_projection_resolved
+	):
+		instance.reconnected_player_projection_resolved.connect(
+			_on_embedded_reconnected_player_projection_resolved
 		)
 	_combat_network = instance
 	add_child(instance)
@@ -856,6 +885,7 @@ func _accept_combat_prepared(sender_id: int, occurrence_key: String) -> void:
 	if (
 		not _is_host()
 		or sender_id <= 0
+		or not _is_gameplay_ingress_admitted(sender_id)
 		or _phase != ProtocolPhase.PREPARING
 		or occurrence_key != _active_occurrence_key
 		or not _expected_prepared_peers.has(sender_id)
@@ -878,8 +908,9 @@ func _accept_combat_activated(sender_id: int, occurrence_key: String) -> void:
 	if (
 		not _is_host()
 		or sender_id <= 0
+		or not _is_gameplay_ingress_admitted(sender_id)
 		or occurrence_key != _active_occurrence_key
-		or not _is_pending_reconnect_prepare(sender_id, occurrence_key)
+		or not _is_dispatched_reconnect_prepare(sender_id, occurrence_key)
 		or not (
 			_phase in [
 				ProtocolPhase.ACTIVE,
@@ -894,6 +925,7 @@ func _accept_combat_activated(sender_id: int, occurrence_key: String) -> void:
 	):
 		return
 	_pending_reconnect_prepare_peers.erase(sender_id)
+	_reconnected_member_ready_outcomes.erase(sender_id)
 
 
 func _try_activate_host_barrier() -> void:
@@ -1536,8 +1568,11 @@ func net_emergency_reward_choice_requested(
 ) -> void:
 	if not _is_host() or occurrence_key != _active_occurrence_key:
 		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if not _net_manager.is_gameplay_ingress_admitted(sender_id):
+		return
 	_handle_emergency_reward_choice_request(
-		multiplayer.get_remote_sender_id(),
+		sender_id,
 		expected_revision,
 		round_index,
 		offer_index
@@ -1576,8 +1611,10 @@ func net_emergency_reward_completion_retry_requested(
 	occurrence_key: String,
 	expected_revision: int
 ) -> void:
+	var sender_id := multiplayer.get_remote_sender_id()
 	if (
 		not _is_host()
+		or not _net_manager.is_gameplay_ingress_admitted(sender_id)
 		or occurrence_key != _active_occurrence_key
 		or _emergency_reward_session == null
 		or expected_revision < 1
@@ -1585,7 +1622,7 @@ func net_emergency_reward_completion_retry_requested(
 	):
 		return
 	_handle_emergency_reward_completion_retry(
-		multiplayer.get_remote_sender_id()
+		sender_id
 	)
 
 
@@ -2074,6 +2111,7 @@ func _downgrade_pending_reconnects_before_settlement_broadcast(
 				peer_id
 			)
 		_pending_reconnect_prepare_peers.erase(peer_id)
+		_reconnected_member_ready_outcomes.erase(peer_id)
 		_pending_spectator_peers.erase(peer_id)
 		_send_terminal_reconnect_spectator(peer_id, occurrence_key)
 	# The caller tests the terminal barrier only after the ordinary participant
@@ -2472,13 +2510,14 @@ func _mark_local_terminal_ready() -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 0)
 func net_combat_terminal_ready(occurrence_key: String) -> void:
+	var sender_id := multiplayer.get_remote_sender_id()
 	if (
 		not _is_host()
+		or not _is_gameplay_ingress_admitted(sender_id)
 		or not _settlement_received
 		or occurrence_key != _active_occurrence_key
 	):
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
 	if (
 		not _expected_terminal_peers.has(sender_id)
 		or _terminal_ready_peers.has(sender_id)
@@ -2635,10 +2674,14 @@ func _reset_protocol_state() -> void:
 	_entry_xirang_by_peer.clear()
 	_participant_character_ids.clear()
 	_participant_stable_keys.clear()
+	_participant_incarnations.clear()
 	_last_combat_xirang_by_peer.clear()
 	_disconnected_participants.clear()
 	_reconnecting_peer_ids.clear()
 	_pending_reconnect_prepare_peers.clear()
+	_reconnected_member_ready_outcomes.clear()
+	_pending_reconnected_identity_resolutions.clear()
+	_resolved_reconnected_identity_resolutions.clear()
 	_expected_prepared_peers.clear()
 	_prepared_peers.clear()
 	_activate_when_prepared = false
@@ -2692,6 +2735,8 @@ func net_combat_abort_requested(
 	reason: StringName
 ) -> void:
 	var sender_id := multiplayer.get_remote_sender_id()
+	if not _is_gameplay_ingress_admitted(sender_id):
+		return
 	if _can_accept_client_abort_request(sender_id, occurrence_key, reason):
 		_abort_authoritative_protocol(reason)
 		return
@@ -2755,6 +2800,20 @@ func _is_pending_reconnect_prepare(
 		and not occurrence_key.is_empty()
 		and str(pending.get("occurrence_key", "")) == occurrence_key
 	)
+
+
+## 激活确认只能消费 Host 已实际发出的本次 prepare 租约。身份已提交但尚未
+## 进入 PREPARING_DELIVERY 的玩家即使知道 occurrence_key，也不能提前关闭恢复窗口。
+func _is_dispatched_reconnect_prepare(
+	peer_id: int,
+	occurrence_key: String
+) -> bool:
+	if not _is_pending_reconnect_prepare(peer_id, occurrence_key):
+		return false
+	var pending := (
+		_pending_reconnect_prepare_peers.get(peer_id, {}) as Dictionary
+	)
+	return bool(pending.get("prepare_dispatched", false))
 
 
 func _withdraw_failed_runtime_participant(
@@ -2851,6 +2910,8 @@ func _apply_protocol_abort(occurrence_key: String) -> void:
 func _on_player_left(peer_id: int) -> void:
 	_pending_spectator_peers.erase(peer_id)
 	_pending_terminal_spectator_syncs.erase(peer_id)
+	_reconnected_member_ready_outcomes.erase(peer_id)
+	_clear_pending_reconnected_identity_resolution(peer_id)
 	if _phase == ProtocolPhase.IDLE or peer_id <= 0:
 		return
 	_pending_reconnect_prepare_peers.erase(peer_id)
@@ -2977,15 +3038,41 @@ func _release_local_combat_to_route_spectator(occurrence_key: String) -> void:
 		)
 
 
-func _on_player_reconnected(
+## 只由 MpRogueRoute 在 RunState、路线 Player 与稳定参与者身份全部提交后调用。
+## raw peer 是作战结算的规范地址，因此这里立即 old -> new；Player 投影能力
+## 仍由 _reconnecting_peer_ids 关闭，直到明确 RESTORED/SUSPENDED/FAILED。
+func handle_reconnected_identity_committed(
 	old_peer_id: int,
-	new_peer_id: int,
-	_player_name: String,
-	_character_id: StringName
-) -> void:
+	new_peer_id: int
+) -> bool:
+	if old_peer_id <= 0 or new_peer_id <= 0 or old_peer_id == new_peer_id:
+		return false
 	_pending_spectator_peers.erase(new_peer_id)
-	_reconnecting_peer_ids[new_peer_id] = true
+	var resolved := (
+		_resolved_reconnected_identity_resolutions.get(new_peer_id, {})
+		as Dictionary
+	)
+	var pending_replay := (
+		_pending_reconnected_identity_resolutions.get(new_peer_id, {})
+		as Dictionary
+	)
+	if (
+		_participant_peer_ids.has(new_peer_id)
+		and not _participant_peer_ids.has(old_peer_id)
+		and int(pending_replay.get("old_peer_id", 0)) == old_peer_id
+		and bool(pending_replay.get("route_committed", false))
+	):
+		# PROJECTING 中的 route 重放只确认同一事务；能力门必须继续保持。
+		return true
+	if (
+		_participant_peer_ids.has(new_peer_id)
+		and not _participant_peer_ids.has(old_peer_id)
+		and int(resolved.get("old_peer_id", 0)) == old_peer_id
+	):
+		# 已完成事务的 route 重放不能重开 PROJECTING，也不能撤销既有能力门。
+		return true
 	if _phase == ProtocolPhase.IDLE:
+		_reconnecting_peer_ids[new_peer_id] = true
 		if _is_host() and not _local_result_occurrence_key.is_empty():
 			call_deferred(
 				"_send_terminal_reconnect_spectator",
@@ -2994,39 +3081,445 @@ func _on_player_reconnected(
 			)
 		else:
 			_reconnecting_peer_ids.erase(new_peer_id)
-		return
-	# MpRogueRoute 与 MpGame 也监听相同信号；延后两次，确保身份和 Player
-	# 节点已先完成 old -> new 迁移。
-	call_deferred(
-		"_defer_finish_player_reconnected",
+		return true
+	var pending := _get_reconnected_identity_resolution(
 		old_peer_id,
 		new_peer_id
 	)
+	if pending.is_empty():
+		return false
+	if not pending.has("requires_projection"):
+		pending["requires_projection"] = (
+			_reconnect_requires_embedded_player_projection(old_peer_id)
+		)
+	var expected_incarnation := int(
+		_participant_incarnations.get(old_peer_id, 0)
+	)
+	if expected_incarnation <= 0 and _net_manager != null:
+		expected_incarnation = (
+			_net_manager.get_session_participant_incarnation(old_peer_id)
+		)
+	if expected_incarnation <= 0:
+		push_error(
+			"RogueCombatMultiplayerCoordinator: 无法确认参战者 %d 的 incarnation。"
+			% old_peer_id
+		)
+		return false
+	pending["participant_incarnation"] = expected_incarnation
+	var disconnected_record := _commit_reconnected_participant_identity(
+		old_peer_id,
+		new_peer_id
+	)
+	if disconnected_record.is_empty():
+		return false
+	pending["disconnected_record"] = disconnected_record.duplicate(true)
+	pending["route_committed"] = true
+	if (
+		not bool(pending.get("requires_projection", false))
+		and int(pending.get("projection_outcome", -1)) < 0
+	):
+		pending["projection_outcome"] = int(
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED
+		)
+		pending["first_projection_outcome"] = int(
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED
+		)
+	_pending_reconnected_identity_resolutions[new_peer_id] = pending
+	_try_resolve_reconnected_identity(new_peer_id)
+	return true
 
 
-func _defer_finish_player_reconnected(
+## 外层路线用该纯查询决定本次 ready 是否还必须等待内嵌 MpGame 的 Player
+## 投影终态；不能通过“当前是否恰好有 Player 节点”猜测监听顺序。
+func reconnect_requires_embedded_player_projection(old_peer_id: int) -> bool:
+	return _reconnect_requires_embedded_player_projection(old_peer_id)
+
+
+func _on_embedded_reconnected_player_projection_resolved(
+	old_peer_id: int,
+	new_peer_id: int,
+	outcome: MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome
+) -> void:
+	if (
+		old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
+		or outcome not in [
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED,
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED,
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.FAILED,
+		]
+	):
+		return
+	if _resolved_reconnected_identity_resolutions.has(new_peer_id):
+		_handle_resolved_projection_outcome_replay(
+			old_peer_id,
+			new_peer_id,
+			int(outcome)
+		)
+		return
+	var has_pending_resolution := (
+		_pending_reconnected_identity_resolutions.has(new_peer_id)
+	)
+	if (
+		not has_pending_resolution
+		and not _can_admit_outcome_first_reconnect(old_peer_id, new_peer_id)
+	):
+		# component 结果可先于 route 监听者，但只能为 NetManager 当前同一
+		# incarnation 的 RECONNECTING 成员建事务；迟到的旧 hop 直接丢弃。
+		return
+	_pending_spectator_peers.erase(new_peer_id)
+	_reconnecting_peer_ids[new_peer_id] = true
+	var pending := _get_reconnected_identity_resolution(
+		old_peer_id,
+		new_peer_id
+	)
+	if pending.is_empty():
+		return
+	if not pending.has("requires_projection"):
+		pending["requires_projection"] = true
+	if not pending.has("participant_incarnation"):
+		pending["participant_incarnation"] = int(
+			_participant_incarnations.get(old_peer_id, 0)
+		)
+	pending = _merge_reconnected_projection_outcome(
+		pending,
+		old_peer_id,
+		new_peer_id,
+		int(outcome)
+	)
+	_pending_reconnected_identity_resolutions[new_peer_id] = pending
+	_try_resolve_reconnected_identity(new_peer_id)
+
+
+func _get_reconnected_identity_resolution(
 	old_peer_id: int,
 	new_peer_id: int
-) -> void:
-	call_deferred(
-		"_finish_player_reconnected",
-		old_peer_id,
-		new_peer_id
+) -> Dictionary:
+	if old_peer_id <= 0 or new_peer_id <= 0 or old_peer_id == new_peer_id:
+		return {}
+	var pending := (
+		_pending_reconnected_identity_resolutions.get(new_peer_id, {})
+		as Dictionary
+	).duplicate(true)
+	if pending.is_empty():
+		return {
+			"old_peer_id": old_peer_id,
+			"route_committed": false,
+			"projection_outcome": -1,
+			"first_projection_outcome": -1,
+		}
+	if int(pending.get("old_peer_id", 0)) != old_peer_id:
+		push_error(
+			"RogueCombatMultiplayerCoordinator: new peer %d 同时等待 old peer %d/%d。"
+			% [new_peer_id, int(pending.get("old_peer_id", 0)), old_peer_id]
+		)
+		return {}
+	return pending
+
+
+func _can_admit_outcome_first_reconnect(
+	old_peer_id: int,
+	new_peer_id: int
+) -> bool:
+	if (
+		_net_manager == null
+		or not _reconnect_requires_embedded_player_projection(old_peer_id)
+		or not _net_manager.is_session_member_reconnecting(new_peer_id)
+	):
+		return false
+	var expected_incarnation := int(
+		_participant_incarnations.get(old_peer_id, 0)
+	)
+	var current_incarnation := (
+		_net_manager.get_session_participant_incarnation(new_peer_id)
+	)
+	return (
+		expected_incarnation > 0
+		and current_incarnation == expected_incarnation
 	)
 
 
-func _finish_player_reconnected(old_peer_id: int, new_peer_id: int) -> void:
+## 投影终态是一次性 CAS：相同值是可靠重放，不同值永远不能把 FAILED 或
+## SUSPENDED 升回 RESTORED。独立 owner fail-close，外层 owner 降级旁观。
+func _merge_reconnected_projection_outcome(
+	pending: Dictionary,
+	old_peer_id: int,
+	new_peer_id: int,
+	outcome: int
+) -> Dictionary:
+	var current_outcome := int(pending.get("first_projection_outcome", -1))
+	if current_outcome < 0:
+		pending["first_projection_outcome"] = outcome
+		pending["projection_outcome"] = outcome
+		if (
+			outcome
+			== MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.FAILED
+			and _session_projection_owner == SessionProjectionOwner.THIS_COORDINATOR
+		):
+			pending["fail_close_required"] = true
+		return pending
+	if current_outcome == outcome:
+		return pending
+	push_error(
+		"RogueCombatMultiplayerCoordinator: 重连投影终态冲突，old=%d new=%d first=%d replay=%d。"
+		% [old_peer_id, new_peer_id, current_outcome, outcome]
+	)
+	pending["projection_conflicted"] = true
+	if _session_projection_owner == SessionProjectionOwner.THIS_COORDINATOR:
+		pending["projection_outcome"] = int(
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.FAILED
+		)
+		pending["fail_close_required"] = true
+	else:
+		pending["projection_outcome"] = int(
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED
+		)
+	return pending
+
+
+func _try_resolve_reconnected_identity(new_peer_id: int) -> void:
+	var pending := (
+		_pending_reconnected_identity_resolutions.get(new_peer_id, {})
+		as Dictionary
+	)
+	if (
+		pending.is_empty()
+		or not bool(pending.get("route_committed", false))
+		or int(pending.get("projection_outcome", -1)) < 0
+	):
+		return
+	var old_peer_id := int(pending.get("old_peer_id", 0))
+	var outcome := int(pending.get("projection_outcome", -1))
+	var resolved_record := pending.duplicate(true)
+	resolved_record["effective_outcome"] = outcome
+	if (
+		outcome
+		== MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.FAILED
+		and _session_projection_owner == SessionProjectionOwner.THIS_COORDINATOR
+	):
+		resolved_record["fail_close_dispatched"] = true
+	_resolved_reconnected_identity_resolutions[new_peer_id] = resolved_record
+	_pending_reconnected_identity_resolutions.erase(new_peer_id)
+	if outcome == (
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.FAILED
+	):
+		if _session_projection_owner == SessionProjectionOwner.THIS_COORDINATOR:
+			if not bool(pending.get("fail_close_dispatched", false)):
+				_fail_close_owned_projection(
+					old_peer_id,
+					new_peer_id,
+					"独立路线无法恢复重连 Player 投影。"
+				)
+		else:
+			# 塔防外层 Player 已恢复时，内嵌战斗失败只会把本轮作战降级为
+			# spectator；不得让一个组件越过外层聚合器终止整个会话。
+			_finish_player_reconnected(
+				old_peer_id,
+				new_peer_id,
+				MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED
+			)
+		return
+	_finish_player_reconnected(old_peer_id, new_peer_id, outcome)
+	if _session_projection_owner == SessionProjectionOwner.THIS_COORDINATOR:
+		_report_session_projection_outcome(
+			old_peer_id,
+			new_peer_id,
+			outcome
+		)
+
+
+func _handle_resolved_projection_outcome_replay(
+	old_peer_id: int,
+	new_peer_id: int,
+	outcome: int
+) -> void:
+	var resolved := (
+		_resolved_reconnected_identity_resolutions.get(new_peer_id, {})
+		as Dictionary
+	).duplicate(true)
+	if resolved.is_empty() or int(resolved.get("old_peer_id", 0)) != old_peer_id:
+		return
+	if int(resolved.get("first_projection_outcome", -1)) == outcome:
+		return
+	if bool(resolved.get("replay_conflict_handled", false)):
+		return
+	push_error(
+		"RogueCombatMultiplayerCoordinator: 已完成重连收到冲突投影，old=%d new=%d first=%d replay=%d。"
+		% [
+			old_peer_id,
+			new_peer_id,
+			int(resolved.get("first_projection_outcome", -1)),
+			outcome,
+		]
+	)
+	resolved["replay_conflict_handled"] = true
+	if _session_projection_owner == SessionProjectionOwner.THIS_COORDINATOR:
+		resolved["effective_outcome"] = int(
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.FAILED
+		)
+		var should_fail_close := not bool(
+			resolved.get("fail_close_dispatched", false)
+		)
+		resolved["fail_close_dispatched"] = true
+		_resolved_reconnected_identity_resolutions[new_peer_id] = resolved
+		if should_fail_close:
+			_fail_close_owned_projection(
+				old_peer_id,
+				new_peer_id,
+				"已完成的独立路线重连收到冲突的 Player 投影终态。"
+			)
+		return
+	resolved["effective_outcome"] = int(
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED
+	)
+	_resolved_reconnected_identity_resolutions[new_peer_id] = resolved
+	var disconnected_record := (
+		resolved.get("disconnected_record", {}) as Dictionary
+	).duplicate(true)
+	_keep_reconnected_participant_as_spectator(
+		old_peer_id,
+		new_peer_id,
+		disconnected_record
+	)
+
+
+func _fail_close_owned_projection(
+	old_peer_id: int,
+	new_peer_id: int,
+	reason: String
+) -> bool:
+	if _net_manager == null:
+		return false
+	if _is_host():
+		return _report_session_projection_outcome(
+			old_peer_id,
+			new_peer_id,
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.FAILED
+		)
+	# Client 没有会话级报告权；本地视图已经不可证明收敛，必须退出整局。
+	return _net_manager.terminate_for_session_membership_projection_failure(reason)
+
+
+func _report_session_projection_outcome(
+	old_peer_id: int,
+	new_peer_id: int,
+	outcome: MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome
+) -> bool:
+	if _net_manager == null:
+		return false
+	if not _is_host():
+		if outcome == (
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.FAILED
+		):
+			return _net_manager.terminate_for_session_membership_projection_failure(
+				"独立路线无法提交本地重连 Player 投影。"
+			)
+		return true
+	if _net_manager.report_reconnected_runtime_projection(
+		old_peer_id,
+		new_peer_id,
+		outcome
+	):
+		return true
+	push_error(
+		"RogueCombatMultiplayerCoordinator: 会话聚合器拒绝重连投影终态，"
+		+ "old=%d new=%d outcome=%d。" % [old_peer_id, new_peer_id, outcome]
+	)
+	_net_manager.terminate_for_runtime_projection_failure(
+		new_peer_id,
+		"路线作战无法提交唯一的重连投影终态。"
+	)
+	return false
+
+
+func _reconnect_requires_embedded_player_projection(old_peer_id: int) -> bool:
+	return (
+		old_peer_id > 0
+		and not _terminal_safe_broadcast
+		and _phase in [ProtocolPhase.PREPARING, ProtocolPhase.ACTIVE]
+		and (
+			_participant_peer_ids.has(old_peer_id)
+			or _disconnected_participants.has(old_peer_id)
+		)
+	)
+
+
+func _clear_pending_reconnected_identity_resolution(peer_id: int) -> void:
+	if peer_id <= 0:
+		return
+	_reconnecting_peer_ids.erase(peer_id)
+	_reconnected_member_ready_outcomes.erase(peer_id)
+	for new_peer_id_variant in (
+		_pending_reconnected_identity_resolutions.keys().duplicate()
+	):
+		var new_peer_id := int(new_peer_id_variant)
+		var pending := (
+			_pending_reconnected_identity_resolutions[new_peer_id] as Dictionary
+		)
+		if (
+			new_peer_id == peer_id
+			or int(pending.get("old_peer_id", 0)) == peer_id
+		):
+			_pending_reconnected_identity_resolutions.erase(new_peer_id)
+			_reconnecting_peer_ids.erase(new_peer_id)
+	for new_peer_id_variant in (
+		_resolved_reconnected_identity_resolutions.keys().duplicate()
+	):
+		var new_peer_id := int(new_peer_id_variant)
+		var resolved := (
+			_resolved_reconnected_identity_resolutions[new_peer_id] as Dictionary
+		)
+		if (
+			new_peer_id == peer_id
+			or int(resolved.get("old_peer_id", 0)) == peer_id
+		):
+			_resolved_reconnected_identity_resolutions.erase(new_peer_id)
+
+
+func _finish_player_reconnected(
+	old_peer_id: int,
+	new_peer_id: int,
+	projection_outcome: int = (
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	)
+) -> void:
 	if (
 		_phase == ProtocolPhase.IDLE
 		or old_peer_id <= 0
 		or new_peer_id <= 0
-		or (
-			not _participant_peer_ids.has(old_peer_id)
-			and not _disconnected_participants.has(old_peer_id)
-		)
 	):
 		_reconnecting_peer_ids.erase(new_peer_id)
 		if _is_host() and _phase != ProtocolPhase.IDLE:
+			_pending_spectator_peers[new_peer_id] = true
+			call_deferred("_defer_route_spectator_sync", new_peer_id)
+		return
+	var disconnected_record: Dictionary = {}
+	if (
+		_participant_peer_ids.has(old_peer_id)
+		or _disconnected_participants.has(old_peer_id)
+	):
+		# 聚焦测试与仅处理终结阶段的调用方可能直接进入；正式流程已由路线层
+		# 先提交规范 peer 身份，避免监听顺序成为隐藏依赖。
+		disconnected_record = _commit_reconnected_participant_identity(
+			old_peer_id,
+			new_peer_id
+		)
+	elif _participant_peer_ids.has(new_peer_id):
+		disconnected_record = (
+			_disconnected_participants.get(new_peer_id, {}) as Dictionary
+		).duplicate(true)
+		if disconnected_record.is_empty():
+			var resolved := (
+				_resolved_reconnected_identity_resolutions.get(new_peer_id, {})
+				as Dictionary
+			)
+			disconnected_record = (
+				resolved.get("disconnected_record", {}) as Dictionary
+			).duplicate(true)
+	if disconnected_record.is_empty():
+		_reconnecting_peer_ids.erase(new_peer_id)
+		if _is_host():
 			_pending_spectator_peers[new_peer_id] = true
 			call_deferred("_defer_route_spectator_sync", new_peer_id)
 		return
@@ -3038,26 +3531,6 @@ func _finish_player_reconnected(old_peer_id: int, new_peer_id: int) -> void:
 			)
 		_reconnecting_peer_ids.erase(new_peer_id)
 		return
-
-	if (
-		_is_host()
-		and _phase == ProtocolPhase.REWARD_SELECTING
-		and _emergency_reward_session != null
-	):
-		if not _emergency_reward_session.remap_disconnected_peer(
-			old_peer_id,
-			new_peer_id
-		):
-			_reconnecting_peer_ids.erase(new_peer_id)
-			_abort_authoritative_protocol(
-				&"emergency_reward_reconnect_remap_failed"
-			)
-			return
-	var host_runtime_missing := _host_runtime_is_missing_peer(new_peer_id)
-	var disconnected_record := _remap_reconnected_participant_identity(
-		old_peer_id,
-		new_peer_id
-	)
 	if _phase == ProtocolPhase.REWARD_SELECTING:
 		if _is_host():
 			_keep_reconnected_participant_as_spectator(
@@ -3081,10 +3554,11 @@ func _finish_player_reconnected(old_peer_id: int, new_peer_id: int) -> void:
 			disconnected_record
 		)
 		return
-	if host_runtime_missing:
-		# MpGame had no authoritative PlayerState to restore. Keep the canonical
-		# identity migrated for route economy/settlement, but never send a prepare
-		# that the Host itself cannot simulate.
+	if projection_outcome != (
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+	):
+		# MpGame 已明确该身份不能回到当前战场。身份仍用于路线经济与结算，
+		# 但不得再发送本机无法模拟的 prepare。
 		_keep_reconnected_participant_as_spectator(
 			old_peer_id,
 			new_peer_id,
@@ -3092,29 +3566,174 @@ func _finish_player_reconnected(old_peer_id: int, new_peer_id: int) -> void:
 		)
 		return
 
+	_disconnected_participants.erase(new_peer_id)
+	if (
+		_phase == ProtocolPhase.PREPARING
+		and not _activation_dispatch_started
+	):
+		_expected_prepared_peers[new_peer_id] = true
 	_reconnecting_peer_ids.erase(new_peer_id)
 	if not _is_host():
 		return
-	if not _is_peer_send_ready(new_peer_id):
-		_keep_reconnected_participant_as_spectator(
-			old_peer_id,
-			new_peer_id,
-			disconnected_record
+	# 身份信号返回前 NetManager 仍处于 PROJECTING。这里只建立作战恢复意图；
+	# PREPARING_DELIVERY 租约到达后再真正发包。
+	_pending_reconnect_prepare_peers[new_peer_id] = {
+		"old_peer_id": old_peer_id,
+		"occurrence_key": _active_occurrence_key,
+		"deadline_msec": 0,
+		"prepare_dispatched": false,
+	}
+	_try_dispatch_reconnected_combat_prepare(new_peer_id)
+
+
+## route identity commit 的唯一原子边界。这里迁移所有长期 raw-peer 数据，但把
+## new peer 留在 disconnected + reconnecting(PROJECTING)，绝不顺手授予战斗能力。
+func _commit_reconnected_participant_identity(
+	old_peer_id: int,
+	new_peer_id: int
+) -> Dictionary:
+	if (
+		old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
+	):
+		return {}
+	if (
+		_participant_peer_ids.has(new_peer_id)
+		and not _participant_peer_ids.has(old_peer_id)
+	):
+		return (
+			_disconnected_participants.get(new_peer_id, {}) as Dictionary
+		).duplicate(true)
+	if (
+		not _participant_peer_ids.has(old_peer_id)
+		and not _disconnected_participants.has(old_peer_id)
+	):
+		return {}
+	if (
+		_participant_peer_ids.has(new_peer_id)
+		or _disconnected_participants.has(new_peer_id)
+	):
+		push_error(
+			"RogueCombatMultiplayerCoordinator: 拒绝覆盖已存在的作战 peer %d。"
+			% new_peer_id
 		)
-		return
+		return {}
+	if (
+		_is_host()
+		and _phase == ProtocolPhase.REWARD_SELECTING
+		and _emergency_reward_session != null
+		and not _emergency_reward_session.remap_disconnected_peer(
+			old_peer_id,
+			new_peer_id
+		)
+	):
+		_abort_authoritative_protocol(&"emergency_reward_reconnect_remap_failed")
+		return {}
+	var participant_incarnation := int(
+		_participant_incarnations.get(old_peer_id, 0)
+	)
+	if participant_incarnation <= 0 and _net_manager != null:
+		participant_incarnation = (
+			_net_manager.get_session_participant_incarnation(old_peer_id)
+		)
+	if participant_incarnation <= 0:
+		return {}
+	_participant_incarnations[old_peer_id] = participant_incarnation
+	var disconnected_record := _remap_reconnected_participant_identity(
+		old_peer_id,
+		new_peer_id,
+		false
+	)
+	_resolved_reconnected_identity_resolutions.erase(old_peer_id)
+	_disconnected_participants[new_peer_id] = disconnected_record.duplicate(true)
+	_reconnecting_peer_ids.erase(old_peer_id)
+	_reconnecting_peer_ids[new_peer_id] = true
+	return disconnected_record
+
+
+## NetManager 在 PREPARING_DELIVERY 内同步调用。该租约与 Player 投影结果按
+## new peer 汇合，二者先后顺序不影响最终一次性发包。
+func handle_reconnected_member_ready(
+	old_peer_id: int,
+	new_peer_id: int,
+	outcome: MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome
+) -> bool:
+	if (
+		not _is_host()
+		or old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
+		or outcome not in [
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED,
+			MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED,
+		]
+	):
+		return false
+	_reconnected_member_ready_outcomes[new_peer_id] = {
+		"old_peer_id": old_peer_id,
+		"outcome": int(outcome),
+	}
+	if outcome == (
+		MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.SUSPENDED
+	):
+		return true
+	if _pending_reconnect_prepare_peers.has(new_peer_id):
+		return _try_dispatch_reconnected_combat_prepare(new_peer_id)
+	# 外层塔防可以先 ready，内嵌 Player 结果随后到达；保留租约等待意图。
+	return (
+		_phase == ProtocolPhase.IDLE
+		or _terminal_safe_broadcast
+		or _reconnecting_peer_ids.has(new_peer_id)
+		or _disconnected_participants.has(new_peer_id)
+		or _participant_peer_ids.has(new_peer_id)
+	)
+
+
+func _try_dispatch_reconnected_combat_prepare(new_peer_id: int) -> bool:
+	var pending := (
+		_pending_reconnect_prepare_peers.get(new_peer_id, {}) as Dictionary
+	)
+	var ready := (
+		_reconnected_member_ready_outcomes.get(new_peer_id, {}) as Dictionary
+	)
+	if pending.is_empty() or ready.is_empty():
+		return true
+	if (
+		int(pending.get("old_peer_id", 0))
+		!= int(ready.get("old_peer_id", 0))
+		or int(ready.get("outcome", -1))
+		!= MultiplayerGameplaySession.ReconnectedPlayerProjectionOutcome.RESTORED
+		or str(pending.get("occurrence_key", "")) != _active_occurrence_key
+		or _active_occurrence_key.is_empty()
+	):
+		return false
+	if bool(pending.get("prepare_dispatched", false)):
+		return true
+	if not _is_reconnect_prepare_delivery_ready(new_peer_id):
+		return false
 	var activate_immediately := _phase in [
 		ProtocolPhase.ACTIVE,
 		ProtocolPhase.REWARD_SELECTING,
 		ProtocolPhase.SETTLED,
 	] or _activation_dispatch_started
-	_pending_reconnect_prepare_peers[new_peer_id] = {
-		"occurrence_key": _active_occurrence_key,
-		"deadline_msec": (
-			Time.get_ticks_msec() + RECONNECT_ACTIVATION_TIMEOUT_MSEC
-			if activate_immediately
-			else 0
-		),
-	}
+	pending["prepare_dispatched"] = true
+	pending["deadline_msec"] = (
+		Time.get_ticks_msec() + RECONNECT_ACTIVATION_TIMEOUT_MSEC
+		if activate_immediately
+		else 0
+	)
+	_pending_reconnect_prepare_peers[new_peer_id] = pending
+	_dispatch_reconnected_combat_prepare(new_peer_id, activate_immediately)
+	return true
+
+
+## 单一可替换发送边界让状态机测试验证“PREPARING_DELIVERY 租约内一次”，
+## 无需伪造 ENet。正式实现仍只发送权威快照，不在此改任何领域状态。
+func _dispatch_reconnected_combat_prepare(
+	new_peer_id: int,
+	activate_immediately: bool
+) -> void:
 	net_combat_prepare.rpc_id(
 		new_peer_id,
 		_active_node_id,
@@ -3141,6 +3760,7 @@ func _keep_reconnected_participant_as_spectator(
 ) -> void:
 	_disconnected_participants[new_peer_id] = disconnected_record.duplicate(true)
 	_pending_reconnect_prepare_peers.erase(new_peer_id)
+	_reconnected_member_ready_outcomes.erase(new_peer_id)
 	_expected_prepared_peers.erase(new_peer_id)
 	_prepared_peers.erase(new_peer_id)
 	_expected_terminal_peers.erase(new_peer_id)
@@ -3155,24 +3775,10 @@ func _keep_reconnected_participant_as_spectator(
 		new_peer_id,
 		_active_occurrence_key
 	)
-
-
-func _host_runtime_is_missing_peer(peer_id: int) -> bool:
-	if not _is_host() or peer_id <= 0:
-		return false
-	if _combat_network == null or not is_instance_valid(_combat_network):
-		return true
-	var runtime := _combat_network.get_game_runtime()
-	return (
-		runtime == null
-		or not is_instance_valid(runtime)
-		or runtime.get_player_for_peer(peer_id) == null
-	)
-
-
 func _remap_reconnected_participant_identity(
 	old_peer_id: int,
-	new_peer_id: int
+	new_peer_id: int,
+	include_combat_barriers: bool = true
 ) -> Dictionary:
 	var disconnected_record := (
 		(_disconnected_participants[old_peer_id] as Dictionary).duplicate(true)
@@ -3198,6 +3804,11 @@ func _remap_reconnected_participant_identity(
 			record.get("entry_xirang", 0)
 		)
 	_remap_frozen_reward_identity(old_peer_id, new_peer_id)
+	if _participant_incarnations.has(old_peer_id):
+		_participant_incarnations[new_peer_id] = (
+			_participant_incarnations[old_peer_id]
+		)
+		_participant_incarnations.erase(old_peer_id)
 	_disconnected_participants.erase(old_peer_id)
 	_pending_reconnect_prepare_peers.erase(old_peer_id)
 	_expected_prepared_peers.erase(old_peer_id)
@@ -3205,12 +3816,15 @@ func _remap_reconnected_participant_identity(
 	_expected_terminal_peers.erase(old_peer_id)
 	_terminal_ready_peers.erase(old_peer_id)
 	if (
+		include_combat_barriers
+		and
 		_phase == ProtocolPhase.PREPARING
 		and not _activation_dispatch_started
 	):
 		_expected_prepared_peers[new_peer_id] = true
-	elif _phase == ProtocolPhase.SETTLED:
+	elif include_combat_barriers and _phase == ProtocolPhase.SETTLED:
 		_expected_terminal_peers[new_peer_id] = true
+	if _phase == ProtocolPhase.SETTLED:
 		_remap_pending_settlement_peer(old_peer_id, new_peer_id)
 	return disconnected_record
 
@@ -3418,6 +4032,24 @@ func _freeze_participant_reward_identities() -> bool:
 	)
 
 
+## incarnation 与 raw peer 分离保存。组件结果先到时，只有 NetManager 当前
+## RECONNECTING 成员携带同一 incarnation 才能为它创建投影事务。
+func _freeze_participant_incarnations() -> bool:
+	_participant_incarnations.clear()
+	if _net_manager == null:
+		return false
+	for peer_id_variant in _participant_peer_ids.keys():
+		var peer_id := int(peer_id_variant)
+		var participant_incarnation := (
+			_net_manager.get_session_participant_incarnation(peer_id)
+		)
+		if participant_incarnation <= 0:
+			_participant_incarnations.clear()
+			return false
+		_participant_incarnations[peer_id] = participant_incarnation
+	return _participant_incarnations.size() == _participant_peer_ids.size()
+
+
 func _capture_live_combat_xirang(peer_id: int = -1) -> void:
 	if _combat_game == null or not is_instance_valid(_combat_game):
 		return
@@ -3601,4 +4233,27 @@ func _is_peer_send_ready(peer_id: int) -> bool:
 		_net_manager != null
 		and peer_id > 0
 		and _net_manager.is_peer_send_ready(peer_id)
+	)
+
+
+## reconnect prepare 是 ACTIVE 发布前唯一允许的玩法投递。NetManager 的
+## PREPARING_DELIVERY 租约只开放这个窄出口，不放宽其他 gameplay ingress。
+func _is_reconnect_prepare_delivery_ready(peer_id: int) -> bool:
+	return (
+		_is_peer_send_ready(peer_id)
+		or (
+			_net_manager != null
+			and peer_id > 0
+			and _net_manager.is_reconnect_delivery_preparing(peer_id)
+		)
+	)
+
+
+## 玩法 RPC 只接受 ACTIVE 会话成员；重连身份已认证但 Player/路线投影尚未
+## 完成时仍属于控制面，不能提前修改作战 barrier 或权威结算状态。
+func _is_gameplay_ingress_admitted(peer_id: int) -> bool:
+	return (
+		_net_manager != null
+		and peer_id > 0
+		and _net_manager.is_gameplay_ingress_admitted(peer_id)
 	)

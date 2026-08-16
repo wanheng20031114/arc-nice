@@ -427,7 +427,7 @@ func _run() -> void:
 	profile_panel.close()
 	profile_panel.queue_free()
 
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(2)
 	coordinator.configure_multiplayer_output_peers([2])
 	var committed_peer_ids: Array[int] = []
 	coordinator.personal_inventory_output_committed.connect(
@@ -1010,7 +1010,7 @@ func _test_authoritative_placement_rollback_sync(
 	player: Player
 ) -> void:
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(2)
 	_expect(
 		run_state.try_add_item_for_peer(2, AGAVE_BUILDING_ITEM),
 		"多人回滚测试必须能准备加农炮建筑物品。"

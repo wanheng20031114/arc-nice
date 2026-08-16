@@ -1,6 +1,9 @@
 extends Node
 class_name TowerDefenseRogueExplorationCoordinator
 
+const MultiplayerReconnectTypesScript := preload(
+	"res://scene/multiplayer/reconnect/multiplayer_reconnect_types.gd"
+)
 const SNAPSHOT_SCHEMA_VERSION := 1
 const INVALID_DAY := 0
 const DEFAULT_ROGUE_CORE_HEALTH := 100
@@ -158,7 +161,8 @@ func _configure_route_runtime_identity() -> bool:
 	_multiplayer_combat_coordinator.bind_network_dependencies(
 		_route,
 		_net_manager,
-		_run_state
+		_run_state,
+		RogueCombatMultiplayerCoordinator.SessionProjectionOwner.ENCLOSING_RUNTIME
 	)
 	return _multiplayer_combat_coordinator.is_enabled()
 
@@ -865,8 +869,29 @@ func host_migrate_reconnected_peer(
 		var stable_key := _net_manager.get_stable_participant_key(new_peer_id)
 		if not stable_key.is_empty():
 			_route.set_multiplayer_participant_stable_key(new_peer_id, stable_key)
+	# 路线身份与当前内嵌作战身份属于同一个重连事务。内嵌 Player 结果可在
+	# 本调用前后到达，作战协调器会按 new peer 汇合，不能靠监听顺序探测节点。
+	if not _multiplayer_combat_coordinator.handle_reconnected_identity_committed(
+		old_peer_id,
+		new_peer_id
+	):
+		return false
 	exploration_snapshot_changed.emit(export_multiplayer_snapshot_for_peer(new_peer_id))
 	return true
+
+
+func handle_reconnected_member_ready(
+	old_peer_id: int,
+	new_peer_id: int,
+	outcome: MultiplayerReconnectTypesScript.RuntimeProjectionOutcome
+) -> bool:
+	if not _is_local_authority() or _multiplayer_combat_coordinator == null:
+		return false
+	return _multiplayer_combat_coordinator.handle_reconnected_member_ready(
+		old_peer_id,
+		new_peer_id,
+		outcome
+	)
 
 
 func _on_route_return_requested() -> void:

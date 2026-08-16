@@ -26,6 +26,11 @@ class FakeNetManager:
 	extends NetManagerStore
 
 	var host_role := false
+	var gameplay_admitted := true
+	var fixture_membership_revision := 1
+	var fixture_stable_participant_keys: Dictionary[int, String] = {}
+	var fixture_pending_reconnect_old_peers: Dictionary[int, int] = {}
+	var fixture_runtime_projection_reports: Array[Dictionary] = []
 
 
 	func _init() -> void:
@@ -49,12 +54,97 @@ class FakeNetManager:
 		return peer_id > 0 and peer_id != host_peer_id
 
 
+	func is_gameplay_ingress_admitted(peer_id: int) -> bool:
+		return gameplay_admitted and peer_id > 0
+
+
 	func get_player_character_map() -> Dictionary:
 		return connected_player_characters.duplicate(true)
 
 
 	func get_stable_participant_key(peer_id: int) -> String:
-		return "test-participant:%d" % peer_id if peer_id > 0 else ""
+		if peer_id <= 0:
+			return ""
+		return fixture_stable_participant_keys.get(
+			peer_id,
+			"test-participant:%d" % peer_id
+		)
+
+
+	func is_session_member_active(peer_id: int) -> bool:
+		return (
+			peer_id > 0
+			and connected_players.has(peer_id)
+			and not fixture_pending_reconnect_old_peers.has(peer_id)
+		)
+
+
+	func is_session_member_reconnecting(peer_id: int) -> bool:
+		return (
+			peer_id > 0
+			and connected_players.has(peer_id)
+			and fixture_pending_reconnect_old_peers.has(peer_id)
+		)
+
+
+	func has_session_member(peer_id: int) -> bool:
+		return peer_id > 0 and connected_players.has(peer_id)
+
+
+	func get_session_member_peer_ids() -> PackedInt32Array:
+		var peer_ids := PackedInt32Array()
+		for raw_peer_id in connected_players.keys():
+			var peer_id := int(raw_peer_id)
+			if peer_id > 0:
+				peer_ids.append(peer_id)
+		peer_ids.sort()
+		return peer_ids
+
+
+	func get_session_membership_revision() -> int:
+		return fixture_membership_revision
+
+
+	func begin_fixture_reconnect(old_peer_id: int, new_peer_id: int) -> bool:
+		if (
+			old_peer_id <= 0
+			or new_peer_id <= 0
+			or old_peer_id == new_peer_id
+			or not connected_players.has(new_peer_id)
+			or fixture_pending_reconnect_old_peers.has(new_peer_id)
+		):
+			return false
+		fixture_pending_reconnect_old_peers[new_peer_id] = old_peer_id
+		return true
+
+
+	func cancel_fixture_reconnect(new_peer_id: int) -> void:
+		fixture_pending_reconnect_old_peers.erase(new_peer_id)
+
+
+	func report_reconnected_runtime_projection(
+		old_peer_id: int,
+		new_peer_id: int,
+		outcome: MultiplayerReconnectTypes.RuntimeProjectionOutcome
+	) -> bool:
+		if (
+			not host_role
+			or int(fixture_pending_reconnect_old_peers.get(new_peer_id, 0))
+			!= old_peer_id
+			or outcome not in [
+				MultiplayerReconnectTypes.RuntimeProjectionOutcome.RESTORED,
+				MultiplayerReconnectTypes.RuntimeProjectionOutcome.SUSPENDED,
+			]
+		):
+			return false
+		fixture_runtime_projection_reports.append({
+			"old_peer_id": old_peer_id,
+			"new_peer_id": new_peer_id,
+			"outcome": int(outcome),
+			"membership_revision": fixture_membership_revision,
+		})
+		fixture_pending_reconnect_old_peers.erase(new_peer_id)
+		return true
 
 
 class ManifestNetManager:
@@ -486,6 +576,45 @@ class ReconnectWrapperStub:
 		return true
 
 
+class JoinRegistrationRouteProbe:
+	extends RogueRouteGame
+
+	var run_state: RunStateStore = null
+	var add_called := false
+	var ledger_registered_before_add := false
+	var stable_key_recorded := false
+
+
+	func _ready() -> void:
+		pass
+
+
+	func get_player_for_peer(_peer_id: int) -> Player:
+		return null
+
+
+	func add_multiplayer_player(
+		peer_id: int,
+		_player_name: String,
+		_character_id: StringName,
+		_spawn_position: Vector2
+	) -> bool:
+		add_called = true
+		ledger_registered_before_add = (
+			run_state != null
+			and run_state.has_multiplayer_peer_state(peer_id)
+		)
+		return true
+
+
+	func set_multiplayer_participant_stable_key(
+		_peer_id: int,
+		stable_key: String
+	) -> bool:
+		stable_key_recorded = not stable_key.is_empty()
+		return stable_key_recorded
+
+
 class BriefingTimeoutRouteStub:
 	extends RogueRouteGame
 
@@ -506,6 +635,7 @@ func _init() -> void:
 func _run() -> void:
 	_test_mode_and_loading_contract()
 	_test_stable_participant_identity_contract()
+	_test_p3_player_joined_registers_ledger_before_projection()
 	_test_briefing_cover_timeout_contract()
 	_test_embedded_inactive_gate_contract()
 	_test_tower_rogue_cross_channel_flow_gate()
@@ -993,9 +1123,9 @@ func _dispatch_tower_client_transaction_requests(
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 72,
+		NetConstants.PROTOCOL_VERSION == 76,
 		(
-			"协议 v72 必须隔离塔防四日地下探索，同时保留v71地下水道、v69植被科研、v68六格扩散、v67攻速强化塔、v66移速强化塔、P1E入口、神奇遭遇本局历史、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
+			"协议 v76 必须隔离重连身份事务，同时保留v74旧局CH6结果、v73会话成员、v71地下水道、v69植被科研、v68六格扩散、v67攻速强化塔、v66移速强化塔、P1E入口、神奇遭遇本局历史、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
 			+ "狭路相逢波次资源合同，并隔离 P1C 与纸箱怪资源、"
 			+ "精英战斗机器人、精英持枪机器人弹丸与消耗品资源合同，且保留"
 			+ "精英操作员无人机、精英盾兵、物资节点共享光石/行动力状态、"
@@ -1049,6 +1179,44 @@ func _test_mode_and_loading_contract() -> void:
 		and not bool(coordinator.call("_uses_tower_defense_runtime", ROUTE_SCENE_PATH)),
 		"P3 必须绕过 campaign、背包和塔防运行时，但保留角色场景。"
 	)
+
+
+func _test_p3_player_joined_registers_ledger_before_projection() -> void:
+	const JOINED_PEER_ID := 81
+	var run_state := RunStateStore.new()
+	run_state.begin_new_run(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID, false)
+	var net_manager := FakeNetManager.new()
+	net_manager.host_role = false
+	net_manager.connected_players = {
+		net_manager.host_peer_id: "Host",
+		JOINED_PEER_ID: "LateJoin",
+	}
+	net_manager.connected_player_characters = {
+		net_manager.host_peer_id: PlayerCharacterRegistry.WEISHIDAIER_ID,
+		JOINED_PEER_ID: PlayerCharacterRegistry.TANGO_ID,
+	}
+	var route_probe := JoinRegistrationRouteProbe.new()
+	route_probe.run_state = run_state
+	var wrapper := ReconnectWrapperStub.new()
+	wrapper.set("_runtime_prepared", true)
+	wrapper.set("_route", route_probe)
+	wrapper.set("_net_manager", net_manager)
+	wrapper.set("_run_state", run_state)
+	wrapper.call("_on_player_joined", JOINED_PEER_ID, "LateJoin")
+	_expect(
+		route_probe.add_called
+		and route_probe.ledger_registered_before_add
+		and route_probe.stable_key_recorded
+		and run_state.has_multiplayer_peer_state(JOINED_PEER_ID),
+		(
+			"P3 运行中 player_joined 必须先显式注册完整持久账本，再创建路线 Player "
+			+ "并绑定稳定参与者身份。"
+		)
+	)
+	wrapper.free()
+	route_probe.free()
+	net_manager.free()
+	run_state.free()
 
 
 func _test_stable_participant_identity_contract() -> void:
@@ -1301,6 +1469,21 @@ func _test_snapshot_and_delta_contract() -> void:
 	var fake_net_manager := FakeNetManager.new()
 	wrapper.set("_route", client_route)
 	wrapper.set("_net_manager", fake_net_manager)
+	fake_net_manager.gameplay_admitted = false
+	wrapper.set("_route_encounter_command_rate_buckets", {})
+	wrapper.set("_route_shop_command_rate_buckets", {})
+	_expect(
+		not bool(wrapper.call("_admit_route_encounter_command", 31))
+		and not bool(wrapper.call("_admit_route_shop_command", 31))
+		and (
+			wrapper.get("_route_encounter_command_rate_buckets") as Dictionary
+		).is_empty()
+		and (
+			wrapper.get("_route_shop_command_rate_buckets") as Dictionary
+		).is_empty(),
+		"重连玩法租约提交前，路线命令必须零写且不能消耗限流预算。"
+	)
+	fake_net_manager.gameplay_admitted = true
 	_expect(
 		bool(wrapper.call("_consume_route_repair_request", 21, 1000.0))
 		and bool(wrapper.call("_consume_route_repair_request", 21, 1000.0))
@@ -2787,7 +2970,7 @@ func _test_incremental_avatar_reconnect(
 		_expect(false, "重连测试必须取得常驻 RunState。")
 		return
 	shared_run_state.begin_new_run(&"weishidaier", false)
-	shared_run_state.ensure_multiplayer_peer_state(old_peer_id)
+	shared_run_state.register_multiplayer_peer_state(old_peer_id)
 	shared_run_state.set_active_multiplayer_peer(old_peer_id)
 	_expect(
 		shared_run_state.try_add_item_count_for_peer(old_peer_id, PLANK, 3),
@@ -2801,18 +2984,40 @@ func _test_incremental_avatar_reconnect(
 	reconnect_wrapper.set("_net_manager", fake_net_manager)
 	reconnect_wrapper.set("_run_state", shared_run_state)
 	root.add_child(reconnect_wrapper)
+	fake_net_manager.fixture_stable_participant_keys[migrated_peer_id] = (
+		fake_net_manager.get_stable_participant_key(old_peer_id)
+	)
+	fake_net_manager.connected_players[migrated_peer_id] = "ClientReconnected"
+	_expect(
+		fake_net_manager.begin_fixture_reconnect(old_peer_id, migrated_peer_id),
+		"原位重连夹具必须先建立 RECONNECTING 投影租约。"
+	)
 	var live_reconnect_succeeded := bool(reconnect_wrapper.call(
 		"_finish_player_reconnect",
 		old_peer_id,
 		migrated_peer_id,
 		"ClientReconnected",
-		PlayerCharacterRegistry.TANGO_ID
+		PlayerCharacterRegistry.TANGO_ID,
+		fake_net_manager.fixture_membership_revision
 	))
 	_expect(
 		live_reconnect_succeeded
 		and host_route.get_player_for_peer(old_peer_id) == null
 		and host_route.get_player_for_peer(migrated_peer_id) == old_player,
 		"仍在场的重连 peer 必须原位迁移同一角色节点。"
+	)
+	_expect(
+		fake_net_manager.fixture_runtime_projection_reports.size() == 1
+		and fake_net_manager.fixture_runtime_projection_reports[0]
+		== {
+			"old_peer_id": old_peer_id,
+			"new_peer_id": migrated_peer_id,
+			"outcome": int(
+				MultiplayerReconnectTypes.RuntimeProjectionOutcome.RESTORED
+			),
+			"membership_revision": fake_net_manager.fixture_membership_revision,
+		},
+		"原位迁移完成后必须恰好提交一次 RESTORED 运行时终态。"
 	)
 	_expect(
 		not shared_run_state.has_multiplayer_peer_state(old_peer_id)
@@ -2844,15 +3049,51 @@ func _test_incremental_avatar_reconnect(
 		"player_left 只能移除离线 peer，并保留其他玩家实例与位置。"
 	)
 	var replacement_peer_id := migrated_peer_id + 1
+	fake_net_manager.fixture_membership_revision += 1
+	fake_net_manager.fixture_stable_participant_keys[replacement_peer_id] = (
+		fake_net_manager.get_stable_participant_key(migrated_peer_id)
+	)
+	fake_net_manager.connected_players[replacement_peer_id] = "ClientRestored"
+	_expect(
+		fake_net_manager.begin_fixture_reconnect(
+			migrated_peer_id,
+			replacement_peer_id
+		),
+		"离线姿态补建夹具必须先建立 RECONNECTING 投影租约。"
+	)
 	_expect(
 		bool(reconnect_wrapper.call(
 			"_finish_player_reconnect",
 			migrated_peer_id,
 			replacement_peer_id,
 			"ClientRestored",
-			PlayerCharacterRegistry.TANGO_ID
+			PlayerCharacterRegistry.TANGO_ID,
+			fake_net_manager.fixture_membership_revision
 		)),
 		"已收到 player_left 的重连 peer 必须从保存姿态增量补建。"
+	)
+	_expect(
+		fake_net_manager.fixture_runtime_projection_reports.size() == 2
+		and int(
+			fake_net_manager.fixture_runtime_projection_reports[1].get(
+				"old_peer_id",
+				0
+			)
+		) == migrated_peer_id
+		and int(
+			fake_net_manager.fixture_runtime_projection_reports[1].get(
+				"new_peer_id",
+				0
+			)
+		) == replacement_peer_id
+		and int(
+			fake_net_manager.fixture_runtime_projection_reports[1].get(
+				"outcome",
+				-1
+			)
+		)
+		== int(MultiplayerReconnectTypes.RuntimeProjectionOutcome.RESTORED),
+		"离线补建完成后必须提交第二个独立 RESTORED 终态。"
 	)
 	var replacement := host_route.get_player_for_peer(replacement_peer_id)
 	_expect(
@@ -2870,20 +3111,75 @@ func _test_incremental_avatar_reconnect(
 		"增量补建必须恢复离线玩家原位置，并保持未重连玩家完全不动。"
 	)
 	var collision_peer_id := replacement_peer_id + 1
-	shared_run_state.ensure_multiplayer_peer_state(collision_peer_id)
+	shared_run_state.register_multiplayer_peer_state(collision_peer_id)
+	fake_net_manager.fixture_membership_revision += 1
+	fake_net_manager.fixture_stable_participant_keys[collision_peer_id] = (
+		fake_net_manager.get_stable_participant_key(replacement_peer_id)
+	)
+	fake_net_manager.connected_players[collision_peer_id] = "ClientRemapped"
 	_expect(
-		not bool(reconnect_wrapper.call(
-			"_migrate_reconnected_run_state",
+		fake_net_manager.begin_fixture_reconnect(
 			replacement_peer_id,
 			collision_peer_id
-		))
-		and shared_run_state.has_multiplayer_peer_state(replacement_peer_id)
-		and shared_run_state.has_multiplayer_peer_state(collision_peer_id)
-		and host_route.get_player_for_peer(replacement_peer_id) == replacement,
-		"目标 peer 已有背包时必须原子拒绝迁移，并在迁移角色与遭遇前中止。"
+		),
+		"冲突夹具必须从真实 RECONNECTING 前置状态开始。"
+	)
+	var collision_route_preparation := (
+		host_route.prepare_reconnected_multiplayer_player_identity(
+			replacement_peer_id,
+			collision_peer_id,
+			"ClientRemapped",
+			PlayerCharacterRegistry.TANGO_ID,
+			fake_net_manager.get_stable_participant_key(collision_peer_id),
+			replacement.global_position
+		)
+	)
+	var collision_route_preflight := int(collision_route_preparation.get(
+		"result",
+		RogueRouteGame.ReconnectedPlayerIdentityProjectionResult.INVALID
+	))
+	var collision_run_state_preflight := (
+		shared_run_state.prepare_multiplayer_peer_state_remap(
+			replacement_peer_id,
+			collision_peer_id,
+			fake_net_manager.fixture_membership_revision
+		)
+	)
+	host_route.discard_reconnected_multiplayer_player_identity(
+		collision_route_preparation
 	)
 	_expect(
-		shared_run_state.try_add_item_count_for_peer(
+		collision_route_preflight
+		== RogueRouteGame.ReconnectedPlayerIdentityProjectionResult.READY
+		and collision_run_state_preflight
+		== RunStateStore.MultiplayerPeerRemapResult.CONFLICT
+		and shared_run_state.has_multiplayer_peer_state(replacement_peer_id)
+		and shared_run_state.has_multiplayer_peer_state(collision_peer_id)
+		and host_route.get_player_for_peer(replacement_peer_id) == replacement
+		and replacement.peer_id == replacement_peer_id
+		and host_route.get_player_for_peer(collision_peer_id) == null,
+		"目标 peer 已有账本时必须在路线提交前拒绝，Player/字典不得留下半写。"
+	)
+	_expect(
+		fake_net_manager.fixture_runtime_projection_reports.size() == 2,
+		"身份预检冲突不得误报 RESTORED 或消费运行时投影租约。"
+	)
+	fake_net_manager.cancel_fixture_reconnect(collision_peer_id)
+	_expect(
+		shared_run_state.reconcile_multiplayer_session_membership(
+			PackedInt32Array([replacement_peer_id]),
+			fake_net_manager.fixture_membership_revision
+		),
+		"顺序测试前必须由同一会话 revision 清理冲突目标。"
+	)
+	fake_net_manager.fixture_membership_revision += 1
+	_expect(
+		shared_run_state.remap_multiplayer_peer_state(
+			replacement_peer_id,
+			collision_peer_id,
+			fake_net_manager.fixture_membership_revision
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED
+		and shared_run_state.try_add_item_count_for_peer(
 			collision_peer_id,
 			PLANK,
 			2
@@ -2893,10 +3189,10 @@ func _test_incremental_avatar_reconnect(
 			PLANK,
 			2
 		),
-		"客户端冲突夹具必须预建 revision 更新的 Host new-peer 背包。"
+		"MpGame 监听者先到夹具必须先完成严格 RunState alias 并推进 new-peer revision。"
 	)
-	var target_revision := (
-		shared_run_state.get_inventory_revision_for_peer(collision_peer_id)
+	var target_revision := shared_run_state.get_inventory_revision_for_peer(
+		collision_peer_id
 	)
 	fake_net_manager.host_role = false
 	_expect(
@@ -2905,28 +3201,29 @@ func _test_incremental_avatar_reconnect(
 			replacement_peer_id,
 			collision_peer_id,
 			"ClientRemapped",
-			PlayerCharacterRegistry.TANGO_ID
+			PlayerCharacterRegistry.TANGO_ID,
+			fake_net_manager.fixture_membership_revision
 		))
 		and not shared_run_state.has_multiplayer_peer_state(replacement_peer_id)
 		and shared_run_state.has_multiplayer_peer_state(collision_peer_id)
 		and shared_run_state.get_inventory_item_total_for_peer(
 			collision_peer_id,
 			PLANK
-		) == 4
+		) == 7
 		and shared_run_state.get_inventory_revision_for_peer(collision_peer_id)
 		== target_revision
 		and shared_run_state.active_multiplayer_peer_id == collision_peer_id
-		and shared_run_state.get_party_item_total(PLANK) == 4
+		and shared_run_state.get_party_item_total(PLANK) == 7
 		and shared_run_state.has_party_item(PLANK),
 		(
-			"CH6 先到时必须保留 revision 更新的 Host new-peer 背包，同时迁移"
-			+ " old peer 身份且不得双计。"
+			"RunState/MpGame 监听者先到时，路线必须识别 ALREADY_CURRENT 并只投影"
+			+ " Player 身份，不能覆盖 new-peer 账本。"
 		)
 	)
 	var newer_old_peer_id := collision_peer_id + 10
 	var older_target_peer_id := collision_peer_id + 11
-	shared_run_state.ensure_multiplayer_peer_state(newer_old_peer_id)
-	shared_run_state.ensure_multiplayer_peer_state(older_target_peer_id)
+	shared_run_state.register_multiplayer_peer_state(newer_old_peer_id)
+	shared_run_state.register_multiplayer_peer_state(older_target_peer_id)
 	_expect(
 		shared_run_state.try_add_item_count_for_peer(
 			newer_old_peer_id,
@@ -2946,26 +3243,74 @@ func _test_incremental_avatar_reconnect(
 		and shared_run_state.remap_multiplayer_peer_state(
 			newer_old_peer_id,
 			older_target_peer_id,
-			true,
-			true
+			shared_run_state.get_multiplayer_session_membership_revision() + 1
 		)
-		and not shared_run_state.has_multiplayer_peer_state(newer_old_peer_id)
+		== RunStateStore.MultiplayerPeerRemapResult.CONFLICT
+		and shared_run_state.has_multiplayer_peer_state(newer_old_peer_id)
+		and shared_run_state.has_multiplayer_peer_state(older_target_peer_id)
+		and shared_run_state.get_inventory_item_total_for_peer(
+			newer_old_peer_id,
+			PLANK
+		) == 6
 		and shared_run_state.get_inventory_item_total_for_peer(
 			older_target_peer_id,
 			PLANK
-		) == 6,
-		"new-id 背包 revision 较旧时，原子重连必须保留 old 的更新内容。"
+		) == 1,
+		"old/new 双份账本必须判为身份冲突，不能按 revision 拼接玩家状态。"
 	)
-	shared_run_state.prune_multiplayer_peer_states(PackedInt32Array([
+	var desired_session_peer_ids := PackedInt32Array([
 		fake_net_manager.host_peer_id,
 		observer_peer_id,
 		collision_peer_id,
-	]))
+	])
+	var expanded_session_peer_ids := (
+		shared_run_state.get_registered_multiplayer_peer_ids()
+	)
+	for session_peer_id in desired_session_peer_ids:
+		if not expanded_session_peer_ids.has(session_peer_id):
+			expanded_session_peer_ids.append(session_peer_id)
+	_expect(
+		shared_run_state.reconcile_multiplayer_session_membership(
+			expanded_session_peer_ids,
+			shared_run_state.get_multiplayer_session_membership_revision() + 1
+		),
+		"恢复真实会话夹具前必须先由 roster 补齐缺少的持久成员。"
+	)
+	_expect(
+		shared_run_state.reconcile_multiplayer_session_membership(
+			desired_session_peer_ids,
+			shared_run_state.get_multiplayer_session_membership_revision() + 1
+		),
+		"随后必须由下一版 roster 原子移除冲突测试的候选身份。"
+	)
+	fake_net_manager.connected_players = {
+		fake_net_manager.host_peer_id: "Host",
+		observer_peer_id: "Observer",
+		collision_peer_id: "ReconnectedClient",
+	}
+	fake_net_manager.connected_player_characters = {
+		fake_net_manager.host_peer_id:
+			PlayerCharacterRegistry.WEISHIDAIER_ID,
+		observer_peer_id: PlayerCharacterRegistry.WEISHIDAIER_ID,
+		collision_peer_id: PlayerCharacterRegistry.TANGO_ID,
+	}
 	var unseen_old_peer_id := collision_peer_id + 20
 	var unseen_new_peer_id := collision_peer_id + 21
 	fake_net_manager.connected_players[unseen_new_peer_id] = "LateReconnect"
 	fake_net_manager.connected_player_characters[unseen_new_peer_id] = (
 		PlayerCharacterRegistry.WEISHIDAIER_ID
+	)
+	shared_run_state.register_multiplayer_peer_state(unseen_old_peer_id)
+	fake_net_manager.fixture_membership_revision = (
+		shared_run_state.get_multiplayer_session_membership_revision() + 1
+	)
+	_expect(
+		shared_run_state.remap_multiplayer_peer_state(
+			unseen_old_peer_id,
+			unseen_new_peer_id,
+			fake_net_manager.fixture_membership_revision
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED,
+		"缺失旧 avatar 夹具必须先模拟较早监听者提交的持久身份 alias。"
 	)
 	var host_anchor := host_route.get_player_for_peer(fake_net_manager.host_peer_id)
 	var host_anchor_position := (
@@ -2977,7 +3322,8 @@ func _test_incremental_avatar_reconnect(
 			unseen_old_peer_id,
 			unseen_new_peer_id,
 			"LateReconnect",
-			PlayerCharacterRegistry.WEISHIDAIER_ID
+			PlayerCharacterRegistry.WEISHIDAIER_ID,
+			fake_net_manager.fixture_membership_revision
 		))
 		and host_route.get_player_for_peer(unseen_new_peer_id) != null
 		and host_route.get_player_for_peer(unseen_new_peer_id).global_position
@@ -2993,7 +3339,7 @@ func _test_incremental_avatar_reconnect(
 	fake_net_manager.connected_players.erase(unseen_new_peer_id)
 	fake_net_manager.connected_player_characters.erase(unseen_new_peer_id)
 	var reconnecting_client_old_peer_id := collision_peer_id + 100
-	shared_run_state.ensure_multiplayer_peer_state(
+	shared_run_state.register_multiplayer_peer_state(
 		reconnecting_client_old_peer_id
 	)
 	_expect(
@@ -3009,6 +3355,13 @@ func _test_incremental_avatar_reconnect(
 		observer_peer_id: "Observer",
 		collision_peer_id: "ReconnectedClient",
 	}
+	fake_net_manager.fixture_membership_revision += 1
+	_expect(
+		bool(reconnect_wrapper.call(
+			"_reconcile_run_state_to_session_membership"
+		)),
+		"重连者本人必须先用 CH0 会话 roster 清理已 final departure 的旧身份。"
+	)
 	# 此段把同一 Route 实例切作“重连者本人”夹具；私人 encounter 快照
 	# 必须绑定其真实本地 transport id，不能再喂公共 target=-1。
 	host_route.set("_local_peer_id", collision_peer_id)
@@ -3031,12 +3384,12 @@ func _test_incremental_avatar_reconnect(
 		and shared_run_state.get_inventory_item_total_for_peer(
 			collision_peer_id,
 			PLANK
-		) == 4
+		) == 7
 		and shared_run_state.get_inventory_revision_for_peer(collision_peer_id)
 		== target_revision
 		and shared_run_state.active_multiplayer_peer_id == collision_peer_id
-		and shared_run_state.get_party_item_total(PLANK) == 4,
-		"未收到 old→new 通知的重连者本人必须在首次 Host 全量后清除旧键且不重复统计。"
+		and shared_run_state.get_party_item_total(PLANK) == 7,
+		"未收到 old→new 通知的重连者本人必须由 CH0 roster 清除旧键，经济全量不得按 transport roster 二次裁剪。"
 	)
 	# 塔防内嵌路线的玩家由 Tower coordinator 先从 roster 移除；Bridge
 	# 必须在此之前保存非零独特姿态，并在 old→new 身份迁移后覆盖安全锚点。

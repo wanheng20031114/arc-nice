@@ -324,7 +324,7 @@ func _test_local_output_slot_and_runtime_state(
 	var peer_output_item := excavator.get_buffered_output_item()
 	for _stack_index in range(4):
 		excavator.advance_shared_production_tick(20.0)
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(2)
 	coordinator.configure_multiplayer_output_peers([2])
 	var committed_peer_ids: Array[int] = []
 	coordinator.personal_inventory_output_committed.connect(

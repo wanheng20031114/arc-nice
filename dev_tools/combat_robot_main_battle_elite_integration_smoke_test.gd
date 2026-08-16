@@ -268,7 +268,7 @@ func _test_selectable_p1e_entry_contract() -> void:
 
 func _test_protocol_boundaries() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 72
+		NET_CONSTANTS.PROTOCOL_VERSION == 76
 		and NET_CONSTANTS.CHANNEL_COUNT == 8
 		and CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET
 		== 18
@@ -276,7 +276,7 @@ func _test_protocol_boundaries() -> void:
 			&"combat_robot_main_battle_elite"
 		) == CombatAttackRegistry.PlayerHitWireId.INVALID
 		and CombatAttackRegistry.decode_player_hit_source(19) == &"",
-		"协议v72必须隔离塔防四日地下探索并保留v71地下水道、P1E和攻击来源合同。"
+		"协议v76必须隔离同局成员身份并保留v74旧局CH6、v73会话成员、P1E和攻击来源合同。"
 	)
 
 

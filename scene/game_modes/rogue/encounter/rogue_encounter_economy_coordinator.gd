@@ -328,11 +328,11 @@ func resolve_invisible_sea_cucumber(
 	):
 		return _make_result(false, RESULT_INVALID_REQUEST)
 	var ordered_peer_ids := _normalize_peer_ids(eligible_peer_ids)
-	if ordered_peer_ids.is_empty():
+	if (
+		ordered_peer_ids.is_empty()
+		or not _has_registered_peer_ledgers(ordered_peer_ids)
+	):
 		return _make_result(false, RESULT_INVALID_REQUEST)
-	for peer_id in ordered_peer_ids:
-		if peer_id > 0:
-			_run_state.ensure_multiplayer_peer_state(peer_id)
 	match option_id:
 		OPTION_STOMP_SEA_CUCUMBER:
 			return _resolve_sea_cucumber_stomp(
@@ -413,9 +413,11 @@ func _resolve_sea_cucumber_stomp(
 			reward_count
 		) != reward_count:
 			return _make_result(false, RESULT_STALE_STATE)
-		target_inventory["revision"] = (
-			int(expected_inventory_revisions[receiver_peer_id]) + 1
-		)
+		if not RunStateStore.advance_inventory_snapshot_revision(
+			target_inventory,
+			int(expected_inventory_revisions[receiver_peer_id])
+		):
+			return _make_result(false, RESULT_STALE_STATE)
 		destination = "inventory"
 		transaction_required = true
 	if transaction_required and not _run_state.apply_authoritative_party_transaction(
@@ -504,9 +506,11 @@ func _resolve_sea_cucumber_technique(
 		1
 	) != 1:
 		return _make_result(false, RESULT_STALE_STATE)
-	payer_inventory["revision"] = (
-		int(expected_inventory_revisions[cup_payer_peer_id]) + 1
-	)
+	if not RunStateStore.advance_inventory_snapshot_revision(
+		payer_inventory,
+		int(expected_inventory_revisions[cup_payer_peer_id])
+	):
+		return _make_result(false, RESULT_STALE_STATE)
 	var next_status := next_snapshot["party_status_ledger"] as Dictionary
 	var stat_bonus_totals: Array[Dictionary] = []
 	for peer_id in ordered_peer_ids:
@@ -606,9 +610,11 @@ func _resolve_sea_cucumber_feast(
 		var next_inventory := next_inventory_snapshots[peer_id] as Dictionary
 		if not _add_item_to_inventory(next_inventory, sea_cucumber):
 			return _make_result(false, RESULT_STALE_STATE)
-		next_inventory["revision"] = (
-			int(expected_inventory_revisions[peer_id]) + 1
-		)
+		if not RunStateStore.advance_inventory_snapshot_revision(
+			next_inventory,
+			int(expected_inventory_revisions[peer_id])
+		):
+			return _make_result(false, RESULT_STALE_STATE)
 		rewards.append({
 			"peer_id": peer_id,
 			"config_path": SEA_CUCUMBER_PATH,
@@ -748,11 +754,11 @@ func resolve_fluorescent_pit(
 	):
 		return _make_result(false, RESULT_INVALID_REQUEST)
 	var ordered_peer_ids := _normalize_peer_ids(eligible_peer_ids)
-	if ordered_peer_ids.is_empty():
+	if (
+		ordered_peer_ids.is_empty()
+		or not _has_registered_peer_ledgers(ordered_peer_ids)
+	):
 		return _make_result(false, RESULT_INVALID_REQUEST)
-	for peer_id in ordered_peer_ids:
-		if peer_id > 0:
-			_run_state.ensure_multiplayer_peer_state(peer_id)
 
 	if option_id == OPTION_LEAVE_PIT:
 		var leave_result := _make_pit_result(
@@ -1000,11 +1006,12 @@ func _resolve_pit_collectible(
 			"failure_reason": "" if granted else "inventory_full",
 			"discarded_count": 0 if granted else 1,
 		})
-	_bump_touched_inventory_revisions(
+	if not _bump_touched_inventory_revisions(
 		next_inventory_snapshots,
 		expected_inventory_revisions,
 		touched_peer_ids
-	)
+	):
+		return _make_result(false, RESULT_STALE_STATE)
 	if any_reward_granted and not _run_state.apply_authoritative_party_transaction(
 		next_snapshot,
 		int((party_snapshot["warehouse_ledger"] as Dictionary)["revision"]),
@@ -1148,11 +1155,11 @@ func resolve_slime_talkers(
 	):
 		return _make_result(false, RESULT_INVALID_REQUEST)
 	var ordered_peer_ids := _normalize_peer_ids(eligible_peer_ids)
-	if ordered_peer_ids.is_empty():
+	if (
+		ordered_peer_ids.is_empty()
+		or not _has_registered_peer_ledgers(ordered_peer_ids)
+	):
 		return _make_result(false, RESULT_INVALID_REQUEST)
-	for peer_id in ordered_peer_ids:
-		if peer_id > 0:
-			_run_state.ensure_multiplayer_peer_state(peer_id)
 
 	if option_id == OPTION_LEAVE_SLIMES:
 		return _finalize_resolution(
@@ -1316,11 +1323,12 @@ func _resolve_slime_help(
 		result["xirang_reward_each"] = xirang_amount
 		result["xirang_totals"] = xirang_totals
 
-	_bump_touched_inventory_revisions(
+	if not _bump_touched_inventory_revisions(
 		next_inventory_snapshots,
 		expected_inventory_revisions,
 		touched_peer_ids
-	)
+	):
+		return _make_result(false, RESULT_STALE_STATE)
 	if not _run_state.apply_authoritative_party_transaction(
 		next_snapshot,
 		int((party_snapshot["warehouse_ledger"] as Dictionary)["revision"]),
@@ -1378,9 +1386,11 @@ func _resolve_slime_kick(
 	var transaction_required := false
 	if _get_wire_slot_capacity(target_slots, gel) >= SLIME_GEL_REWARD_COUNT:
 		_add_item_count_to_wire_slots(target_slots, gel, SLIME_GEL_REWARD_COUNT)
-		target_inventory["revision"] = (
-			int(expected_inventory_revisions[receiver_peer_id]) + 1
-		)
+		if not RunStateStore.advance_inventory_snapshot_revision(
+			target_inventory,
+			int(expected_inventory_revisions[receiver_peer_id])
+		):
+			return _make_result(false, RESULT_STALE_STATE)
 		destination = "inventory"
 		result_code = RESULT_SLIME_KICK_INVENTORY
 		transaction_required = true
@@ -1513,11 +1523,11 @@ func resolve_chicken_bro(
 	):
 		return _make_result(false, RESULT_INVALID_REQUEST)
 	var ordered_peer_ids := _normalize_peer_ids(eligible_peer_ids)
-	if ordered_peer_ids.is_empty():
+	if (
+		ordered_peer_ids.is_empty()
+		or not _has_registered_peer_ledgers(ordered_peer_ids)
+	):
 		return _make_result(false, RESULT_INVALID_REQUEST)
-	for peer_id in ordered_peer_ids:
-		if peer_id > 0:
-			_run_state.ensure_multiplayer_peer_state(peer_id)
 
 	var basketball := load(BASKETBALL_PATH) as PickupConfig
 	var plank := load(PLANK_PATH) as PickupConfig
@@ -1638,7 +1648,11 @@ func resolve_chicken_bro(
 	for raw_peer_id in touched_peer_ids.keys():
 		var peer_id := int(raw_peer_id)
 		var next_inventory := next_inventory_snapshots[peer_id] as Dictionary
-		next_inventory["revision"] = int(expected_inventory_revisions[peer_id]) + 1
+		if not RunStateStore.advance_inventory_snapshot_revision(
+			next_inventory,
+			int(expected_inventory_revisions[peer_id])
+		):
+			return _make_result(false, RESULT_STALE_STATE)
 
 	if not _run_state.apply_authoritative_party_transaction(
 		next_snapshot,
@@ -1962,6 +1976,16 @@ func _normalize_peer_ids(peer_ids: Array[int]) -> Array[int]:
 	return result
 
 
+func _has_registered_peer_ledgers(peer_ids: Array[int]) -> bool:
+	if _run_state == null:
+		return false
+	for peer_id in peer_ids:
+		if peer_id > 0 and not _run_state.has_multiplayer_peer_state(peer_id):
+			# 遭遇结算只能修改身份层已注册的账本；领域层不拥有成员创建权。
+			return false
+	return true
+
+
 func _to_packed_peer_ids(peer_ids: Array[int]) -> PackedInt32Array:
 	var packed := PackedInt32Array()
 	for peer_id in peer_ids:
@@ -1998,16 +2022,21 @@ func _bump_touched_inventory_revisions(
 	inventory_snapshots: Dictionary,
 	expected_revisions: Dictionary,
 	touched_peer_ids: Dictionary
-) -> void:
+) -> bool:
 	for raw_peer_id in touched_peer_ids.keys():
 		var peer_id := int(raw_peer_id)
 		if (
 			not inventory_snapshots.has(peer_id)
 			or not expected_revisions.has(peer_id)
 		):
-			continue
+			return false
 		var inventory_snapshot := inventory_snapshots[peer_id] as Dictionary
-		inventory_snapshot["revision"] = int(expected_revisions[peer_id]) + 1
+		if not RunStateStore.advance_inventory_snapshot_revision(
+			inventory_snapshot,
+			int(expected_revisions[peer_id])
+		):
+			return false
+	return true
 
 
 func _is_valid_xirang_ledger(ledger: Dictionary) -> bool:

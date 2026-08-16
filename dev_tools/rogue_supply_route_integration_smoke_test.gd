@@ -203,7 +203,7 @@ func _run() -> void:
 	# 玩家2的 completed+pending 奖励必须跨作战/商店暂压并在最后 lease
 	# 释放后从 Session 快照完整恢复，不能丢失或盖住外部场景。
 	run_state.set_party_light_stone_amount(1)
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(2)
 	_expect(
 		route.supply_session.start_for_node(
 			79,

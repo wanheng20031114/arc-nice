@@ -214,6 +214,7 @@ func _admit_domain_request(peer_id: int) -> bool:
 	if (
 		not _is_host_bound()
 		or peer_id <= 0
+		or not _net_manager.is_gameplay_ingress_admitted(peer_id)
 		or _runtime.get_player_for_peer(peer_id) == null
 	):
 		return false

@@ -348,7 +348,7 @@ func _new_run_state(peer_ids: Array[int]) -> RunStateStore:
 	var run_state := RunStateStore.new()
 	run_state.begin_new_run(&"weishidaier", false)
 	for peer_id in peer_ids:
-		run_state.ensure_multiplayer_peer_state(peer_id)
+		run_state.register_multiplayer_peer_state(peer_id)
 	return run_state
 
 

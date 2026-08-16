@@ -15,9 +15,9 @@ func _init() -> void:
 func _run() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run()
-	run_state.ensure_multiplayer_peer_state(2)
-	run_state.ensure_multiplayer_peer_state(3)
-	run_state.ensure_multiplayer_peer_state(4)
+	run_state.register_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(3)
+	run_state.register_multiplayer_peer_state(4)
 
 	var test_root := Node2D.new()
 	test_root.name = "LuoxiAuthoritativeOfferSmokeTest"

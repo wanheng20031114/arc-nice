@@ -40,6 +40,25 @@ class TestRuntime:
 	func remove_multiplayer_player(_peer_id: int) -> void:
 		pass
 
+	func ensure_reconnected_multiplayer_player(
+		_old_peer_id: int,
+		new_peer_id: int,
+		_player_name: String,
+		_character_id: StringName,
+		_state: SnapshotManager.PlayerState,
+		_spawn_slot_index: int,
+		_reconnect_state: Dictionary = {}
+	) -> CombatRuntimeBase.ReconnectedPlayerProjection:
+		var player := players.get(new_peer_id) as Player
+		return CombatRuntimeBase.ReconnectedPlayerProjection.new(
+			(
+				CombatRuntimeBase.ReconnectedPlayerProjectionStatus.EXISTING_CURRENT
+				if player != null
+				else CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATE_FAILED
+			),
+			player
+		)
+
 	func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 		return []
 
@@ -48,6 +67,15 @@ class TestRuntime:
 
 	func play_remote_enemy_spawn_effect(_spawn_global_position: Vector2) -> void:
 		pass
+
+
+class TestNetManager:
+	extends NetManagerStore
+
+	var gameplay_admitted := true
+
+	func is_gameplay_ingress_admitted(peer_id: int) -> bool:
+		return gameplay_admitted and peer_id > 0
 
 
 var failures: Array[String] = []
@@ -71,6 +99,7 @@ func _run() -> void:
 	_test_shared_ingress_budget(coordinator)
 	_test_cached_crafting_replay_has_independent_budget(coordinator)
 	_test_consumable_single_settlement(coordinator)
+	_test_upgrade_confirmation_is_monotonic(coordinator)
 	_test_inventory_results_survive_player_lifecycle_gap(coordinator)
 	coordinator.free()
 	_finish()
@@ -91,7 +120,7 @@ func _test_static_mp_game_boundary(coordinator: MpTransactionsCoordinator) -> vo
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
 		rpc_pattern.search_all(source).size() == 144,
-		"Transactions 提取必须保留 protocol-v72 的 144 个 MpGame RPC 门面。"
+		"Transactions 提取必须保留 protocol-v76 的 144 个 MpGame RPC 门面。"
 	)
 	for function_name in [
 		"net_upgrade_selected",
@@ -111,6 +140,13 @@ func _test_static_mp_game_boundary(coordinator: MpTransactionsCoordinator) -> vo
 		and not source.contains("func _apply_skill1_purchase_for_peer")
 		and source.contains("transactions_coordinator.handle_remote_upgrade_selection"),
 		"共享事务实现必须归 TransactionsCoordinator，MpGame 仅保留薄 RPC 门面。"
+	)
+	_expect(
+		source.contains("net_manager.is_gameplay_ingress_admitted(sender_id)")
+		and coordinator.get_script().source_code.contains(
+			"_net_manager.is_gameplay_ingress_admitted(peer_id)"
+		),
+		"warehouse/transaction 等玩法 RPC 必须共享 NetManager 入站租约。"
 	)
 	_expect(
 		not coordinator.get_script().source_code.contains("current_scene")
@@ -171,7 +207,7 @@ func _test_shared_ingress_budget(coordinator: MpTransactionsCoordinator) -> void
 	var session := MP_GAME_SCENE.instantiate() as MultiplayerGameplaySession
 	var runtime := TestRuntime.new()
 	var adapter := MultiplayerModeAdapter.new()
-	var net_manager := NetManagerStore.new()
+	var net_manager := TestNetManager.new()
 	var run_state := RunStateStore.new()
 	var suspended_peers: Dictionary[int, bool] = {8: true}
 	root.add_child(net_manager)
@@ -197,6 +233,14 @@ func _test_shared_ingress_budget(coordinator: MpTransactionsCoordinator) -> void
 		not coordinator.consume_remote_transaction_admission(8, 100.0),
 		"内嵌战斗中被暂停的参与者不得提交事务。"
 	)
+	net_manager.gameplay_admitted = false
+	_expect(
+		not coordinator.consume_remote_transaction_admission(9, 100.0)
+		and not (coordinator.get(
+			"_player_transaction_ingress_rate_buckets"
+		) as Dictionary).has(9),
+		"重连 ready 前的事务必须零写拒绝，不能连限流账本都提前创建。"
+	)
 	coordinator.unbind_session(session)
 	net_manager.free()
 	adapter.free()
@@ -213,11 +257,11 @@ func _test_cached_crafting_replay_has_independent_budget(
 	var session := MP_GAME_SCENE.instantiate() as MultiplayerGameplaySession
 	var runtime := TestRuntime.new()
 	var adapter := MultiplayerModeAdapter.new()
-	var net_manager := NetManagerStore.new()
+	var net_manager := TestNetManager.new()
 	var run_state := RunStateStore.new()
 	var suspended_peers: Dictionary[int, bool] = {}
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(PEER_ID)
+	run_state.register_multiplayer_peer_state(PEER_ID)
 	root.add_child(net_manager)
 	net_manager.net_role = NetManagerStore.NetRole.HOST
 	coordinator.bind_session(
@@ -285,10 +329,12 @@ func _test_consumable_single_settlement(
 	var session := MP_GAME_SCENE.instantiate() as MultiplayerGameplaySession
 	var runtime := TestRuntime.new()
 	var adapter := MultiplayerModeAdapter.new()
-	var net_manager := NetManagerStore.new()
+	var net_manager := TestNetManager.new()
 	var host_run_state := RunStateStore.new()
 	var suspended_peers: Dictionary[int, bool] = {}
 	var host_player := PLAYER_SCENE.instantiate() as Player
+	host_run_state.begin_new_run(&"weishidaier", false)
+	host_run_state.register_multiplayer_peer_state(PEER_ID)
 	root.add_child(net_manager)
 	root.add_child(host_player)
 	host_player.set_physics_process(false)
@@ -370,6 +416,8 @@ func _test_consumable_single_settlement(
 
 	var client_run_state := RunStateStore.new()
 	var client_player := PLAYER_SCENE.instantiate() as Player
+	client_run_state.begin_new_run(&"weishidaier", false)
+	client_run_state.register_multiplayer_peer_state(PEER_ID)
 	root.add_child(client_player)
 	client_player.set_physics_process(false)
 	runtime.players[PEER_ID] = client_player
@@ -422,11 +470,75 @@ func _test_consumable_single_settlement(
 	client_run_state.free()
 
 
+func _test_upgrade_confirmation_is_monotonic(
+	coordinator: MpTransactionsCoordinator
+) -> void:
+	const PEER_ID := 7
+	var session := MP_GAME_SCENE.instantiate() as MultiplayerGameplaySession
+	var runtime := TestRuntime.new()
+	var adapter := MultiplayerModeAdapter.new()
+	var net_manager := TestNetManager.new()
+	var run_state := RunStateStore.new()
+	var player := PLAYER_SCENE.instantiate() as Player
+	var suspended_peers: Dictionary[int, bool] = {}
+	run_state.begin_new_run(&"weishidaier", false)
+	run_state.register_multiplayer_peer_state(PEER_ID)
+	root.add_child(net_manager)
+	root.add_child(player)
+	player.set_physics_process(false)
+	runtime.players[PEER_ID] = player
+	net_manager.net_role = NetManagerStore.NetRole.CLIENT
+	coordinator.bind_session(
+		session,
+		runtime,
+		adapter,
+		net_manager,
+		run_state,
+		suspended_peers
+	)
+	var high_applied := coordinator.receive_upgrade_confirmation(
+		PEER_ID,
+		RunStateStore.StatType.ATTACK,
+		2,
+		10,
+		true
+	)
+	var attack_after_high := player.attack_damage
+	var late_low_applied := coordinator.receive_upgrade_confirmation(
+		PEER_ID,
+		RunStateStore.StatType.ATTACK,
+		1,
+		20,
+		true
+	)
+	_expect(
+		high_applied
+		and not late_low_applied
+		and run_state.get_upgrade_level_for_peer(
+			PEER_ID,
+			RunStateStore.StatType.ATTACK
+		) == 2
+		and is_equal_approx(player.attack_damage, attack_after_high)
+		and player.current_xirang == 10,
+		"高等级升级确认提交后，迟到低等级必须拒绝且不得回滚 Player 或息壤表现。"
+	)
+	coordinator.unbind_session(session)
+	_stop_audio_players(player)
+	player.free()
+	net_manager.free()
+	adapter.free()
+	runtime.free()
+	session.free()
+	run_state.free()
+
+
 func _test_inventory_results_survive_player_lifecycle_gap(
 	coordinator: MpTransactionsCoordinator
 ) -> void:
 	const PEER_ID := 7
 	var authoritative_state := RunStateStore.new()
+	authoritative_state.begin_new_run(&"weishidaier", false)
+	authoritative_state.register_multiplayer_peer_state(PEER_ID)
 	_expect(
 		authoritative_state.try_add_item_count_for_peer(PEER_ID, ROCK_POTION, 2),
 		"事务乱序夹具必须建立权威背包。"
@@ -457,9 +569,11 @@ func _test_inventory_results_survive_player_lifecycle_gap(
 	var session := MP_GAME_SCENE.instantiate() as MultiplayerGameplaySession
 	var runtime := TestRuntime.new()
 	var adapter := MultiplayerModeAdapter.new()
-	var net_manager := NetManagerStore.new()
+	var net_manager := TestNetManager.new()
 	var client_state := RunStateStore.new()
 	var suspended_peers: Dictionary[int, bool] = {}
+	client_state.begin_new_run(&"weishidaier", false)
+	client_state.register_multiplayer_peer_state(PEER_ID)
 	root.add_child(net_manager)
 	net_manager.net_role = NetManagerStore.NetRole.CLIENT
 	coordinator.bind_session(

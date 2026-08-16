@@ -22,7 +22,7 @@ func _initialize() -> void:
 func _run() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(1)
+	run_state.register_multiplayer_peer_state(1)
 	var fixture := Node2D.new()
 	fixture.name = "SharedWarehouseLedgerBridgeSmokeTest"
 	root.add_child(fixture)

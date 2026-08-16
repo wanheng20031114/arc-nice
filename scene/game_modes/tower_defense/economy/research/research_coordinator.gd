@@ -350,7 +350,9 @@ func export_runtime_state() -> Dictionary:
 	}
 
 
-func apply_multiplayer_runtime_state(state: Dictionary) -> void:
+## 返回值表示权威研究账本是否已收敛；旧 revision 幂等接受，同 revision
+## 内容冲突或协议无效则明确拒绝，供上层可靠结果信封触发完整修复。
+func apply_multiplayer_runtime_state(state: Dictionary) -> bool:
 	if (
 		state.is_empty()
 		or typeof(state.get("schema")) != TYPE_INT
@@ -362,12 +364,14 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> void:
 		or typeof(state.get("global_elapsed")) != TYPE_DICTIONARY
 		or typeof(state.get("player_levels")) != TYPE_DICTIONARY
 	):
-		return
+		return false
 	var incoming_revision := int(state["revision"])
 	if incoming_revision < 0:
-		return
-	if has_remote_snapshot and incoming_revision <= research_revision:
-		return
+		return false
+	if has_remote_snapshot and incoming_revision < research_revision:
+		return true
+	if has_remote_snapshot and incoming_revision == research_revision:
+		return export_runtime_state() == state
 	var active_wire_id := String(state["active_global_research_id"])
 	var active_config := (
 		GlobalResearchRegistry.get_config_by_wire_id(active_wire_id)
@@ -375,7 +379,7 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> void:
 		else null
 	)
 	if not active_wire_id.is_empty() and active_config == null:
-		return
+		return false
 
 	var incoming_states := state["global_states"] as Dictionary
 	var incoming_elapsed := state["global_elapsed"] as Dictionary
@@ -384,7 +388,7 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> void:
 		incoming_states.size() != registered_config_count
 		or incoming_elapsed.size() != registered_config_count
 	):
-		return
+		return false
 	var normalized_states := {}
 	var normalized_elapsed := {}
 	var researching_count := 0
@@ -396,7 +400,7 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> void:
 			or typeof(incoming_states[wire_id]) != TYPE_INT
 			or typeof(incoming_elapsed[wire_id]) not in [TYPE_INT, TYPE_FLOAT]
 		):
-			return
+			return false
 		var research_state := int(incoming_states[wire_id])
 		var elapsed := float(incoming_elapsed[wire_id])
 		if (
@@ -406,23 +410,23 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> void:
 			or elapsed < 0.0
 			or elapsed > config.duration_seconds + 0.0001
 		):
-			return
+			return false
 		match research_state:
 			GlobalResearchState.AVAILABLE:
 				if elapsed > 0.0001:
-					return
+					return false
 			GlobalResearchState.RESEARCHING:
 				if elapsed + 0.0001 >= config.duration_seconds:
-					return
+					return false
 			GlobalResearchState.COMPLETED:
 				if absf(elapsed - config.duration_seconds) > 0.0001:
-					return
+					return false
 		if research_state == GlobalResearchState.RESEARCHING:
 			researching_count += 1
 			if active_config == null or active_config.research_id != config.research_id:
-				return
+				return false
 		elif active_config != null and active_config.research_id == config.research_id:
-			return
+			return false
 		normalized_states[config.research_id] = research_state
 		normalized_elapsed[config.research_id] = clampf(
 			elapsed,
@@ -430,11 +434,11 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> void:
 			config.duration_seconds
 		)
 	if researching_count != (1 if active_config != null else 0):
-		return
+		return false
 
 	var incoming_levels := state["player_levels"] as Dictionary
 	if incoming_levels.size() > MAX_MULTIPLAYER_PLAYER_LEVEL_ENTRIES:
-		return
+		return false
 	var normalized_levels := {}
 	for player_key_variant in incoming_levels:
 		var level_variant: Variant = incoming_levels[player_key_variant]
@@ -445,7 +449,7 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> void:
 			or int(level_variant) < 0
 			or int(level_variant) > Player.RESEARCH_TECHNOLOGY_MAX_LEVEL
 		):
-			return
+			return false
 		normalized_levels[int(player_key_variant)] = int(level_variant)
 
 	has_remote_snapshot = true
@@ -460,6 +464,7 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> void:
 	_apply_player_levels_to_runtime()
 	_refresh_timer_state()
 	research_state_changed.emit()
+	return true
 
 
 func _get_player_key(player: Player) -> int:

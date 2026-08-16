@@ -212,7 +212,7 @@ func _test_multiplayer_owner_lifecycle() -> void:
 	const RACING_OLD_PEER_ID := 51
 	const RACING_NEW_PEER_ID := 61
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(OLD_PEER_ID)
+	run_state.register_multiplayer_peer_state(OLD_PEER_ID)
 	_expect(
 		run_state.try_add_item_for_peer(OLD_PEER_ID, ROCK_POTION),
 		"多人绑定测试必须给旧 peer 加入岩石药水。"
@@ -223,20 +223,57 @@ func _test_multiplayer_owner_lifecycle() -> void:
 		and run_state.get_inventory_revision_for_peer(OLD_PEER_ID) == revision_before_binding,
 		"多人本地偏好绑定不得改变 Host 权威背包 revision。"
 	)
+	var remap_observations: Array[Dictionary] = []
+	var observe_remap_binding := func(
+		owner_peer_id: int,
+		_config_path: String,
+		_preferred_slot_index: int
+	) -> void:
+		if owner_peer_id not in [OLD_PEER_ID, NEW_PEER_ID]:
+			return
+		remap_observations.append({
+			"old_registered": run_state.has_multiplayer_peer_state(OLD_PEER_ID),
+			"new_registered": run_state.has_multiplayer_peer_state(NEW_PEER_ID),
+			"membership_revision": (
+				run_state.get_multiplayer_session_membership_revision()
+			),
+			"old_path": run_state.get_quick_use_bound_config_path(OLD_PEER_ID),
+			"new_path": run_state.get_quick_use_bound_config_path(NEW_PEER_ID),
+		})
+	run_state.quick_use_binding_changed.connect(observe_remap_binding)
 	_expect(
-		run_state.remap_multiplayer_peer_state(OLD_PEER_ID, NEW_PEER_ID)
+		run_state.remap_multiplayer_peer_state(
+			OLD_PEER_ID,
+			NEW_PEER_ID,
+			0
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED
 		and run_state.get_quick_use_bound_config_path(OLD_PEER_ID).is_empty()
 		and run_state.get_quick_use_bound_config_path(NEW_PEER_ID) == ROCK_POTION.resource_path
 		and run_state.get_quick_use_slot_index(NEW_PEER_ID) == 0,
 		"同进程重连 remap 必须把快捷绑定和实际背包一起迁移。"
+	)
+	run_state.quick_use_binding_changed.disconnect(observe_remap_binding)
+	var remap_was_atomic := remap_observations.size() == 2
+	for observation in remap_observations:
+		remap_was_atomic = (
+			remap_was_atomic
+			and not bool(observation["old_registered"])
+			and bool(observation["new_registered"])
+			and int(observation["membership_revision"]) == 0
+			and str(observation["old_path"]).is_empty()
+			and str(observation["new_path"]) == ROCK_POTION.resource_path
+		)
+	_expect(
+		remap_was_atomic,
+		"old 清除与 new 建立两个快捷绑定信号都只能观察到完整迁移后的账本。"
 	)
 	run_state.set_active_multiplayer_peer(NEW_PEER_ID)
 	_expect(
 		run_state.get_quick_use_slot_index() == 0,
 		"默认 owner 查询必须解析到当前 active multiplayer peer。"
 	)
-	run_state.ensure_multiplayer_peer_state(RACING_OLD_PEER_ID)
-	run_state.ensure_multiplayer_peer_state(RACING_NEW_PEER_ID)
+	run_state.register_multiplayer_peer_state(RACING_OLD_PEER_ID)
+	run_state.register_multiplayer_peer_state(RACING_NEW_PEER_ID)
 	_expect(
 		run_state.try_add_item_for_peer(RACING_OLD_PEER_ID, ROCK_POTION)
 		and run_state.set_quick_use_binding(0, RACING_OLD_PEER_ID)
@@ -247,20 +284,27 @@ func _test_multiplayer_owner_lifecycle() -> void:
 		run_state.remap_multiplayer_peer_state(
 			RACING_OLD_PEER_ID,
 			RACING_NEW_PEER_ID,
-			true,
-			true
+			1
 		)
-		and run_state.get_quick_use_bound_config_path(RACING_OLD_PEER_ID).is_empty()
-		and run_state.get_quick_use_bound_config_path(RACING_NEW_PEER_ID)
+		== RunStateStore.MultiplayerPeerRemapResult.CONFLICT
+		and run_state.get_quick_use_bound_config_path(RACING_OLD_PEER_ID)
 		== ROCK_POTION.resource_path
-		and run_state.get_quick_use_slot_index(RACING_NEW_PEER_ID) == -1
+		and run_state.get_quick_use_bound_config_path(RACING_NEW_PEER_ID)
+		.is_empty()
+		and run_state.get_quick_use_slot_index(RACING_OLD_PEER_ID) == 0
 		and run_state.get_item_for_peer(RACING_NEW_PEER_ID, 0) == HEALING_POTION,
-		"较新的 new-peer 背包快照先到时必须保留该背包，同时迁移旧身份的本地快捷偏好为休眠绑定。"
+		"old/new 双份账本必须整体判冲突，不能拼接新背包与旧快捷偏好。"
 	)
-	run_state.prune_multiplayer_peer_states(PackedInt32Array())
+	_expect(
+		run_state.reconcile_multiplayer_session_membership(
+			PackedInt32Array(),
+			1
+		),
+		"最终离场必须通过较新权威成员表统一清理。"
+	)
 	_expect(
 		run_state.get_quick_use_bound_config_path(NEW_PEER_ID).is_empty(),
-		"prune 已离开玩家时必须清理对应的本地快捷绑定。"
+		"权威成员表移除玩家时必须清理对应的本地快捷绑定。"
 	)
 	run_state.set_active_multiplayer_peer(0)
 
@@ -323,7 +367,7 @@ func _test_basic_profile_singleplayer_dispatch() -> void:
 func _test_tower_profile_multiplayer_dispatch() -> void:
 	const PEER_ID := 41
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(PEER_ID)
+	run_state.register_multiplayer_peer_state(PEER_ID)
 	run_state.set_active_multiplayer_peer(PEER_ID)
 	_expect(
 		run_state.try_add_item_count_for_peer(PEER_ID, ROCK_POTION, 2)

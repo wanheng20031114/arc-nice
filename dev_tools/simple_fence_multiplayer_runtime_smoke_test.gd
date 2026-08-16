@@ -54,8 +54,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 72,
-		"多人运行时协议v72必须隔离塔防四日地下探索并保留v71地下水道、P1D/P1E与既有wire合同。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 76,
+		"多人运行时协议v76必须隔离同局成员身份并保留v74旧局CH6、v73会话成员、P1D/P1E与既有wire合同。"
 	)
 	host_game = TOWER_DEFENSE_SCENE.instantiate() as TowerDefenseGame
 	_expect(host_game != null, "围栏多人运行时测试必须能实例化真实塔防场景。")
@@ -74,7 +74,7 @@ func _run() -> void:
 	host_game.peer_players[owner_peer_id] = host_game.player
 	var run_state := root.get_node("RunState") as RunStateStore
 	var fence_item := BuildingItemRegistry.get_item(SIMPLE_FENCE_CONFIG.plant_id)
-	run_state.ensure_multiplayer_peer_state(owner_peer_id)
+	run_state.register_multiplayer_peer_state(owner_peer_id)
 	_expect(
 		fence_item != null
 		and run_state.try_add_item_count_for_peer(owner_peer_id, fence_item, 3),

@@ -47,7 +47,15 @@ func _test_inventory_owner_read_api(run_state: RunStateStore) -> void:
 		"未注册多人背包时，只读 owner 列表必须只包含本地背包。"
 	)
 	const PEER_ID := 23
-	run_state.set_active_multiplayer_peer(PEER_ID)
+	_expect(
+		not run_state.set_active_multiplayer_peer(PEER_ID),
+		"未注册 peer 不得通过界面映射隐式创建账本。"
+	)
+	_expect(
+		run_state.register_multiplayer_peer_state(PEER_ID),
+		"认证生命周期必须能显式注册多人账本成员。"
+	)
+	_expect(run_state.set_active_multiplayer_peer(PEER_ID), "已注册 peer 必须可映射到本地界面。")
 	_expect(
 		run_state.get_active_multiplayer_peer_id() == PEER_ID,
 		"切换多人背包后，只读 API 必须报告当前 owner。"
@@ -83,14 +91,14 @@ func _test_local_revision_and_snapshot(run_state: RunStateStore) -> void:
 
 func _test_peer_slot_state_and_snapshot(run_state: RunStateStore) -> void:
 	const PEER_ID := 3
-	run_state.ensure_multiplayer_peer_state(PEER_ID)
+	_expect(run_state.register_multiplayer_peer_state(PEER_ID), "Peer账本必须显式注册。")
 	_expect(
 		run_state.get_item_for_peer(PEER_ID, 0) == WOOD
 		and run_state.get_item_count_for_peer(PEER_ID, 0) == 5
 		and run_state.get_inventory_revision_for_peer(PEER_ID) == 0,
 		"每个新建Peer背包必须自带5份木头且revision保持为0。"
 	)
-	run_state.ensure_multiplayer_peer_state(PEER_ID)
+	_expect(run_state.register_multiplayer_peer_state(PEER_ID), "重复注册必须幂等成功。")
 	_expect(
 		run_state.get_item_count_for_peer(PEER_ID, 0) == 5,
 		"重复确保同一Peer状态时不得再次发放初始木头。"
@@ -104,6 +112,23 @@ func _test_peer_slot_state_and_snapshot(run_state: RunStateStore) -> void:
 		"精确槽状态必须包含路径、数量和peer revision。"
 	)
 	var initial_snapshot := run_state.export_inventory_snapshot_for_peer(PEER_ID)
+	var advanced_snapshot := initial_snapshot.duplicate(true)
+	_expect(
+		RunStateStore.advance_inventory_snapshot_revision(advanced_snapshot, 1)
+		and int(advanced_snapshot.get("revision", -1)) == 2
+		and run_state.validate_inventory_snapshot_envelope(
+			PEER_ID,
+			advanced_snapshot
+		)
+		and not RunStateStore.advance_inventory_snapshot_revision(
+			advanced_snapshot,
+			1
+		),
+		(
+			"wire 背包 revision 必须由唯一入口同时推进顶层与全部槽位，"
+			+ "陈旧 expected revision 不得重复盖章。"
+		)
+	)
 	_expect(run_state.discard_item_for_peer(PEER_ID, 0), "Peer堆叠必须能整槽移除。")
 	_expect(
 		not run_state.apply_inventory_snapshot_for_peer(PEER_ID, initial_snapshot),
@@ -140,6 +165,7 @@ func _test_peer_slot_state_and_snapshot(run_state: RunStateStore) -> void:
 
 func _test_stacked_item_use(run_state: RunStateStore) -> void:
 	const PEER_ID := 4
+	_expect(run_state.register_multiplayer_peer_state(PEER_ID), "消耗品测试Peer必须显式注册。")
 	var fixture := Node.new()
 	root.add_child(fixture)
 	var player := PLAYER_SCENE.instantiate() as Player
@@ -170,6 +196,7 @@ func _test_stacked_item_use(run_state: RunStateStore) -> void:
 
 func _test_collectible_effect_cap_does_not_limit_carrying(run_state: RunStateStore) -> void:
 	const PEER_ID := 5
+	_expect(run_state.register_multiplayer_peer_state(PEER_ID), "收藏品测试Peer必须显式注册。")
 	_expect(
 		run_state.try_add_item_count_for_peer(PEER_ID, APPLE, APPLE.collectible_max_copies),
 		"Host必须允许收藏品达到配置的效果生效份数上限。"
@@ -205,7 +232,7 @@ func _test_inventory_locked_fate_stone(run_state: RunStateStore) -> void:
 	)
 
 	const PEER_ID := 7
-	run_state.ensure_multiplayer_peer_state(PEER_ID)
+	_expect(run_state.register_multiplayer_peer_state(PEER_ID), "命运石测试Peer必须显式注册。")
 	_expect(
 		run_state.try_add_item_for_peer(PEER_ID, XIAOCONG_FATE_STONE),
 		"Host必须能把命运石写入Peer背包。"
@@ -242,7 +269,7 @@ func _test_starting_inventory_opt_out(run_state: RunStateStore) -> void:
 		run_state.get_item(0) == null and run_state.get_inventory_revision() == 0,
 		"隔离测试必须能显式创建无初始物资且revision为0的本地背包。"
 	)
-	run_state.ensure_multiplayer_peer_state(PEER_ID)
+	_expect(run_state.register_multiplayer_peer_state(PEER_ID), "空背包测试Peer必须显式注册。")
 	_expect(
 		run_state.get_item_for_peer(PEER_ID, 0) == null
 		and run_state.get_inventory_revision_for_peer(PEER_ID) == 0,

@@ -434,6 +434,9 @@ class ProbeNetManager:
 	func get_host_peer_id() -> int:
 		return 1
 
+	func is_gameplay_ingress_admitted(peer_id: int) -> bool:
+		return peer_id > 0
+
 
 var failures: Array[String] = []
 var _probe_net_time := 24.0
@@ -891,7 +894,8 @@ func _run() -> void:
 		"序列重同步租约必须保留到完整姿态校验成功，并恢复持续输入流。"
 	)
 
-	# 重连换 peer id 时沿用同一客户端递增序列；Host 必须迁移接纳水位。
+	# 客户端 MpGame/Coordinator 会随真实重连重建，新的 transport 从序列 1
+	# 重新发送；Host 只能延续 Dash 冷却，不能迁移旧连接的防重放水位。
 	coordinator.clear_peer(6)
 	coordinator.handle_client_player_state(
 		6,
@@ -922,28 +926,44 @@ func _run() -> void:
 	runtime.probe_player_snapshot_states = [reconnect_snapshot]
 	var ingress_reconnect_state := coordinator.capture_player_reconnect_state(6)
 	_expect(
-		int(ingress_reconnect_state.get("player_input_sequence", 0)) == 250
-		and int(ingress_reconnect_state.get("dash_request_sequence", 0)) == 200,
-		"重连捕获必须包含姿态和 Dash 两条输入水位。"
+		not ingress_reconnect_state.has("player_input_sequence")
+		and not ingress_reconnect_state.has("player_input_rebase_pending")
+		and not ingress_reconnect_state.has("dash_request_sequence")
+		and is_equal_approx(
+			float(ingress_reconnect_state.get("dash_last_accepted_at", -1.0)),
+			42.0
+		),
+		"重连捕获只能携带 Dash 冷却，不得把 transport 序列持久化为角色状态。"
 	)
 	coordinator.clear_peer(6)
 	runtime.peer_players.erase(6)
+	_expect(
+		not coordinator.begin_reconnected_transport_lease(
+			6,
+			7,
+			{}
+		),
+		"缺失 Dash 冷却的重连状态必须明确拒绝，不能暴露半初始化租约。"
+	)
+	_expect(
+		coordinator.begin_reconnected_transport_lease(
+			6,
+			7,
+			ingress_reconnect_state
+		)
+		and coordinator.get_last_accepted_player_input_sequence(7) == 0
+		and coordinator.get_last_accepted_dash_request_sequence(7) == 0
+		and is_equal_approx(
+			coordinator.get_last_dash_accepted_time(7),
+			42.0
+		),
+		"新 transport 必须从初始序列开始，同时延续角色的 Dash 冷却时间。"
+	)
 	boundary_player.peer_id = 7
 	runtime.peer_players[7] = boundary_player
-	_expect(
-		not coordinator.restore_reconnect_ingress_state(
-			7,
-			{"player_input_sequence": 250}
-		),
-		"缺字段的重连输入账本必须明确拒绝，不能静默重置水位。"
-	)
-	_expect(
-		coordinator.restore_reconnect_ingress_state(7, ingress_reconnect_state),
-		"合法重连输入账本必须迁移到新 peer id。"
-	)
 	coordinator.handle_client_player_state(
 		7,
-		251,
+		1,
 		Vector2.ZERO,
 		Vector2.ZERO,
 		Vector2.ZERO,
@@ -958,11 +978,49 @@ func _run() -> void:
 		and not coordinator.try_accept_client_dash_request(
 			7,
 			boundary_player,
-			200,
+			1,
 			Vector2.RIGHT,
 			Vector2.RIGHT
-		),
-		"重连后下一姿态序列必须连续，旧 Dash 重放必须保持拒绝。"
+		)
+		and _probe_player_state_rejections.back() == &"dash_cooldown",
+		"重建客户端的首个输入必须接纳，而未结束的 Dash 冷却仍必须生效。"
+	)
+	_probe_net_time = 43.0
+	_expect(
+		coordinator.try_accept_client_dash_request(
+			7,
+			boundary_player,
+			1,
+			Vector2.RIGHT,
+			Vector2.RIGHT
+		)
+		and coordinator.get_last_accepted_dash_request_sequence(7) == 1,
+		"冷却结束后，新 transport 的首个 Dash 序列必须可接纳。"
+	)
+	coordinator.handle_client_player_state(
+		6,
+		251,
+		Vector2(32.0, 0.0),
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		Vector2.ZERO,
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	_expect(
+		coordinator.get_last_accepted_player_input_sequence(6) == 0
+		and coordinator.get_last_accepted_player_input_sequence(7) == 1
+		and coordinator.get_last_accepted_dash_request_sequence(7) == 1
+		and coordinator.begin_reconnected_transport_lease(
+			6,
+			7,
+			ingress_reconnect_state
+		)
+		and coordinator.get_last_accepted_player_input_sequence(7) == 1
+		and coordinator.get_last_accepted_dash_request_sequence(7) == 1,
+		"old peer 的迟到输入只能在旧租约内被拒绝，不得推进 new peer 水位。"
 	)
 	coordinator.clear_peer(7)
 	runtime.peer_players.erase(7)

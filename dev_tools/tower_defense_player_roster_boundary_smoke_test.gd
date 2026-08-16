@@ -33,6 +33,14 @@ func _finish(exit_code: int) -> void:
 
 
 func _test_host_roster_and_snapshot_parity() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.register_multiplayer_peer_states(
+			PackedInt32Array([1, 2, 3])
+		),
+		"塔防 roster 夹具必须先注册认证玩家账本。"
+	)
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "塔防场景必须实例化为 TowerDefenseGame。")
 	if game == null:
@@ -58,7 +66,6 @@ func _test_host_roster_and_snapshot_parity() -> void:
 	)
 	_expect(_peer_ids(game.peer_players) == [1, 2, 3], "塔防玩家必须按 peer ID 排序出生。")
 	_expect(game.player == game.get_player_for_peer(2), "塔防必须选择本地 peer 玩家。")
-	var run_state := root.get_node("RunState") as RunStateStore
 	_expect(
 		run_state.get_party_xirang_balance(1)
 		== TowerDefensePlayerRosterCoordinator.INITIAL_PLAYER_XIRANG
@@ -120,6 +127,18 @@ func _test_host_roster_and_snapshot_parity() -> void:
 		_peer_state_ids(coordinator_states) == [1, 2, 3],
 		"玩家快照必须保留既有 Dictionary 插入顺序。"
 	)
+	var old_conflict_player := game.get_player_for_peer(1)
+	var new_conflict_player := game.get_player_for_peer(2)
+	var conflict_projection := game.ensure_reconnected_multiplayer_player(
+		1, 2, "Local", &"tango", null, 1
+	)
+	_expect(
+		conflict_projection.status
+		== CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CONFLICT
+		and is_same(old_conflict_player, game.get_player_for_peer(1))
+		and is_same(new_conflict_player, game.get_player_for_peer(2)),
+		"塔防发现 old/new Player 同时存在时必须显式冲突且不改写 roster。"
+	)
 
 	roster.reset_wave_death_counts()
 	var delays: Array[int] = []
@@ -147,13 +166,40 @@ func _test_host_roster_and_snapshot_parity() -> void:
 		"移除玩家必须同步清理实体、出生槽与名单。"
 	)
 	_expect(
-		run_state.remap_multiplayer_peer_state(3, 4),
+		run_state.remap_multiplayer_peer_state(3, 4, 0)
+		== RunStateStore.MultiplayerPeerRemapResult.MIGRATED,
 		"生产重连顺序必须先原子迁移玩家持久账本。"
 	)
-	var restored := game.restore_multiplayer_player(
+	var restored_projection := game.ensure_reconnected_multiplayer_player(
 		3, 4, "Restored", &"tango", null, 2, {"wave_death_count": 2}
 	)
-	_expect(restored != null, "塔防必须能恢复断线玩家。")
+	var restored := restored_projection.player
+	_expect(
+		restored_projection.status
+		== CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATED
+		and restored != null,
+		"塔防首次恢复必须报告 CREATED 并建立 Player。"
+	)
+	var character_conflict_projection := game.ensure_reconnected_multiplayer_player(
+		99, 4, "WrongCharacter", &"weishidaier", null, 2
+	)
+	_expect(
+		character_conflict_projection.status
+		== CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CONFLICT
+		and is_same(restored, game.get_player_for_peer(4))
+		and game.multiplayer_player_names.get(4) == "Restored"
+		and game.multiplayer_player_character_ids.get(4) == &"tango",
+		"塔防角色身份冲突必须显式失败，且不得污染既有 new-id 元数据。"
+	)
+	var replayed_projection := game.ensure_reconnected_multiplayer_player(
+		3, 4, "Restored", &"tango", null, 2, {"wave_death_count": 2}
+	)
+	_expect(
+		replayed_projection.status
+		== CombatRuntimeBase.ReconnectedPlayerProjectionStatus.EXISTING_CURRENT
+		and is_same(restored, replayed_projection.player),
+		"塔防重放重连通知时必须复用既有 new-id Player。"
+	)
 	_expect(
 		game.multiplayer_spawn_slot_indices.get(4) == 2
 		and game.player_wave_death_counts.get(4) == 2

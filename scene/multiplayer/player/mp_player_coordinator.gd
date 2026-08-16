@@ -158,6 +158,8 @@ var _last_player_state_correction_times: Dictionary[int, float] = {}
 var _last_dash_request_sequences: Dictionary[int, int] = {}
 var _last_dash_confirmed_sequences: Dictionary[int, int] = {}
 var _last_dash_accepted_times: Dictionary[int, float] = {}
+## new peer -> old peer，仅用于保证同一重连租约初始化幂等，不复制会话身份账本。
+var _reconnect_transport_lease_sources: Dictionary[int, int] = {}
 var _hoe_action_sequences_by_peer: Dictionary[int, int] = {}
 var _last_hoe_action_request_ids: Dictionary[int, int] = {}
 var _tango_charge_sequences_by_peer: Dictionary[int, int] = {}
@@ -374,6 +376,20 @@ func is_client_input_state_active(
 
 func get_realtime_input_sequence() -> int:
 	return _realtime_input_sequence
+
+
+## 这两个水位只属于当前 transport 租约，用于诊断 Host 是否接纳了输入。
+## 它们不会进入角色持久状态，也不会在 old peer 与 new peer 之间迁移。
+func get_last_accepted_player_input_sequence(peer_id: int) -> int:
+	return int(_last_player_state_sequences.get(peer_id, 0))
+
+
+func get_last_accepted_dash_request_sequence(peer_id: int) -> int:
+	return int(_last_dash_request_sequences.get(peer_id, 0))
+
+
+func get_last_dash_accepted_time(peer_id: int) -> float:
+	return float(_last_dash_accepted_times.get(peer_id, -1.0))
 
 
 func bind_player_action_dependencies(
@@ -2648,6 +2664,7 @@ func consume_remote_player_action_admission(
 		not has_player_action_dependencies()
 		or not _action_net_manager.is_host()
 		or peer_id <= 0
+		or not _action_net_manager.is_gameplay_ingress_admitted(peer_id)
 		or bool(_is_embedded_participant_suspended_callable.call(peer_id))
 		or _runtime.get_player_for_peer(peer_id) == null
 	):
@@ -3941,17 +3958,8 @@ func capture_player_reconnect_state(peer_id: int) -> Dictionary:
 	# 旧水位，Host 的下一次生命事件可能小于已应用快照而被客户端拒绝。
 	reconnect_state["health_revision"] = captured_health_revision
 	reconnect_state["applied_health_revision"] = captured_health_revision
-	# 输入序列属于连接身份租约；重连换 peer id 时必须与角色状态一起迁移，
-	# 否则 Host 会把客户端继续递增的合法序列误判为异常跳跃。
-	reconnect_state["player_input_sequence"] = int(
-		_last_player_state_sequences.get(peer_id, 0)
-	)
-	reconnect_state["player_input_rebase_pending"] = (
-		_player_state_sequence_rebase_pending.has(peer_id)
-	)
-	reconnect_state["dash_request_sequence"] = int(
-		_last_dash_request_sequences.get(peer_id, 0)
-	)
+	# Dash 冷却是角色玩法状态，必须跨重连延续；输入与 Dash 请求序列则属于
+	# transport 租约，客户端协调器重建后会从 1 重新发送，不能写入此快照。
 	reconnect_state["dash_last_accepted_at"] = float(
 		_last_dash_accepted_times.get(peer_id, -1.0)
 	)
@@ -3986,52 +3994,60 @@ func restore_reconnect_life_state(
 		)
 
 
-## 将旧连接的输入水位迁到新 peer。该状态只由 Host 的捕获入口生成，
-## 校验失败代表内部重连账本损坏，不能静默改写成另一套序列语义。
-func restore_reconnect_ingress_state(
-	peer_id: int,
+## 为认证后的 new peer 开启全新的输入租约。请求序列从初始水位重新计数；
+## 只有 Dash 冷却属于角色玩法状态，会从断线快照中延续。
+##
+## 此入口先完整校验再修改 old/new 两端，重试调用也只会得到同一结果。
+func begin_reconnected_transport_lease(
+	old_peer_id: int,
+	new_peer_id: int,
 	reconnect_state: Dictionary
 ) -> bool:
-	if peer_id <= 0:
+	if (
+		old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
+	):
 		return false
 	if (
-		not reconnect_state.has("player_input_sequence")
-		or not reconnect_state.has("player_input_rebase_pending")
-		or not reconnect_state.has("dash_request_sequence")
-		or not reconnect_state.has("dash_last_accepted_at")
-		or typeof(reconnect_state["player_input_sequence"]) != TYPE_INT
-		or typeof(reconnect_state["player_input_rebase_pending"]) != TYPE_BOOL
-		or typeof(reconnect_state["dash_request_sequence"]) != TYPE_INT
+		not reconnect_state.has("dash_last_accepted_at")
 		or typeof(reconnect_state["dash_last_accepted_at"]) != TYPE_FLOAT
 	):
 		return false
-	var input_sequence := int(reconnect_state.get("player_input_sequence", 0))
-	var dash_sequence := int(reconnect_state.get("dash_request_sequence", 0))
-	var input_rebase_pending := bool(
-		reconnect_state.get("player_input_rebase_pending", false)
-	)
 	var dash_accepted_at := float(
 		reconnect_state.get("dash_last_accepted_at", -1.0)
 	)
-	if (
-		input_sequence < 0
-		or input_sequence > PLAYER_STATE_MAX_SEQUENCE
-		or dash_sequence < 0
-		or dash_sequence > PLAYER_STATE_MAX_SEQUENCE
-		or not is_finite(dash_accepted_at)
-	):
+	if not is_finite(dash_accepted_at) or dash_accepted_at < -1.0:
 		return false
-	_last_player_state_sequences[peer_id] = input_sequence
-	if input_rebase_pending:
-		_player_state_sequence_rebase_pending[peer_id] = true
-	else:
-		_player_state_sequence_rebase_pending.erase(peer_id)
-	_last_dash_request_sequences[peer_id] = dash_sequence
+	if _reconnect_transport_lease_sources.has(new_peer_id):
+		return int(_reconnect_transport_lease_sources[new_peer_id]) == old_peer_id
+	if is_bound():
+		var conflicting_player := _runtime.get_player_for_peer(new_peer_id)
+		if conflicting_player != null and is_instance_valid(conflicting_player):
+			return false
+
+	_clear_transport_ingress_lease(old_peer_id)
+	_clear_transport_ingress_lease(new_peer_id)
+	_last_dash_accepted_times.erase(old_peer_id)
 	if dash_accepted_at >= 0.0:
-		_last_dash_accepted_times[peer_id] = dash_accepted_at
+		_last_dash_accepted_times[new_peer_id] = dash_accepted_at
 	else:
-		_last_dash_accepted_times.erase(peer_id)
+		_last_dash_accepted_times.erase(new_peer_id)
+	_reconnect_transport_lease_sources.erase(old_peer_id)
+	_reconnect_transport_lease_sources[new_peer_id] = old_peer_id
 	return true
+
+
+## 清理连接级防重放、修正限流和姿态证据；Dash 冷却由调用方按角色状态迁移。
+func _clear_transport_ingress_lease(peer_id: int) -> void:
+	_last_player_state_sequences.erase(peer_id)
+	_player_state_sequence_rebase_pending.erase(peer_id)
+	_last_player_state_correction_times.erase(peer_id)
+	_last_dash_request_sequences.erase(peer_id)
+	_last_dash_confirmed_sequences.erase(peer_id)
+	_accepted_player_state_positions.erase(peer_id)
+	_accepted_player_state_times.erase(peer_id)
+	_player_action_ingress_rate_buckets.erase(peer_id)
 
 
 func prune_recent_player_hit_events(now: float) -> void:
@@ -4799,12 +4815,9 @@ func clear_peer(peer_id: int) -> void:
 	_player_health_revisions.erase(peer_id)
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
-	_last_player_state_sequences.erase(peer_id)
-	_player_state_sequence_rebase_pending.erase(peer_id)
-	_last_player_state_correction_times.erase(peer_id)
-	_last_dash_request_sequences.erase(peer_id)
-	_last_dash_confirmed_sequences.erase(peer_id)
+	_clear_transport_ingress_lease(peer_id)
 	_last_dash_accepted_times.erase(peer_id)
+	_reconnect_transport_lease_sources.erase(peer_id)
 	_hoe_action_sequences_by_peer.erase(peer_id)
 	_last_hoe_action_request_ids.erase(peer_id)
 	_last_tango_charge_request_ids.erase(peer_id)
@@ -4821,9 +4834,6 @@ func clear_peer(peer_id: int) -> void:
 	if peer_id == _get_action_local_peer_id():
 		_local_tango_active_request_id = 0
 		_local_tango_release_pending = false
-	_accepted_player_state_positions.erase(peer_id)
-	_accepted_player_state_times.erase(peer_id)
-	_player_action_ingress_rate_buckets.erase(peer_id)
 
 
 func reset_session_state() -> void:
@@ -4862,6 +4872,7 @@ func reset_session_state() -> void:
 	_last_dash_request_sequences.clear()
 	_last_dash_confirmed_sequences.clear()
 	_last_dash_accepted_times.clear()
+	_reconnect_transport_lease_sources.clear()
 	_hoe_action_sequences_by_peer.clear()
 	_last_hoe_action_request_ids.clear()
 	_tango_charge_sequences_by_peer.clear()

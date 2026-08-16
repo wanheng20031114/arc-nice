@@ -77,6 +77,10 @@ func _run() -> void:
 func _test_strict_common_reward_and_extra_xirang() -> void:
 	var run_state := CountingRunState.new()
 	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.register_multiplayer_peer_state(77),
+		"多人奖励测试必须先由认证生命周期建立 peer77 持久账本。"
+	)
 	var result := REWARD_RESOLVER.resolve_reward(
 		run_state,
 		&"narrow-road-encounter-1",
@@ -396,7 +400,7 @@ func _test_eight_player_reward_batch_uses_one_cas() -> void:
 	var base_xirang_by_peer: Dictionary = {}
 	var stable_keys_by_peer: Dictionary = {}
 	for peer_id in range(1, 9):
-		run_state.ensure_multiplayer_peer_state(peer_id)
+		run_state.register_multiplayer_peer_state(peer_id)
 		peer_ids.append(peer_id)
 		players_by_peer[peer_id] = Player.new()
 		base_xirang_by_peer[peer_id] = 1000 + peer_id * 10
@@ -446,7 +450,7 @@ func _test_eight_player_reward_batch_uses_one_cas() -> void:
 func _test_disconnected_player_uses_frozen_character_identity() -> void:
 	var run_state := CountingRunState.new()
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(7)
+	run_state.register_multiplayer_peer_state(7)
 	var result := REWARD_RESOLVER.resolve_party_rewards(
 		run_state,
 		&"suitcase-battle-disconnected-smoke",

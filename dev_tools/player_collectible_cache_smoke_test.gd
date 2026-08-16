@@ -94,8 +94,8 @@ func _test_preowned_health_condition_and_maximum_changes() -> void:
 
 func _test_peer_keyed_cache_and_first_configuration_health() -> void:
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(2)
-	run_state.ensure_multiplayer_peer_state(3)
+	run_state.register_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(3)
 	_expect(run_state.try_add_item_for_peer(2, LIFE_RING), "Peer 2 life ring must fit.")
 	for copy_index in range(6):
 		_expect(

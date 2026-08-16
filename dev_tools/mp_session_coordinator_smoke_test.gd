@@ -135,6 +135,7 @@ func _run() -> void:
 		not coordinator.try_begin_client_runtime_state_request(true, true),
 		"同一会话只能发起一次初始修复请求。"
 	)
+	_test_client_runtime_repair_lease(coordinator)
 
 	_expect(
 		coordinator.admit_authoritative_runtime_state_request(true, 7, 10.0),
@@ -354,6 +355,98 @@ func _run() -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _test_client_runtime_repair_lease(
+	coordinator: MpSessionCoordinator
+) -> void:
+	var available_count := [0]
+	coordinator.client_runtime_repair_available.connect(func() -> void:
+		available_count[0] += 1
+	)
+	var first_request_id := (
+		coordinator.try_begin_client_runtime_repair_request(true, true)
+	)
+	_expect(
+		first_request_id > 0,
+		"首次进局同步 one-shot 已使用后，运行时 reject 仍必须能发一条 repair。"
+	)
+	_expect(
+		coordinator.try_begin_client_runtime_repair_request(true, true) == 0
+		and coordinator.has_deferred_client_runtime_repair(),
+		"活动 repair 租约内的重复故障必须合并为一笔 deferred 债务。"
+	)
+	_expect(
+		coordinator.complete_client_runtime_repair_request(first_request_id),
+		"匹配的完成通知必须释放当前 repair 租约。"
+	)
+	coordinator.update_transport(
+		MpSessionCoordinator.CLIENT_RUNTIME_REPAIR_COOLDOWN_SECONDS + 0.01
+	)
+	_expect(
+		available_count[0] == 1,
+		"完成后的冷却结束必须只通知一次 deferred repair 可重试。"
+	)
+	var second_request_id := (
+		coordinator.try_begin_client_runtime_repair_request(true, true)
+	)
+	_expect(
+		second_request_id > first_request_id,
+		"完成并冷却后必须允许建立新一代 repair 租约。"
+	)
+	_expect(
+		not coordinator.complete_client_runtime_repair_request(first_request_id)
+		and not coordinator.expire_client_runtime_repair_request(first_request_id)
+		and coordinator.get_client_runtime_repair_in_flight_id()
+		== second_request_id,
+		"旧完成或旧超时回调不得释放后来建立的新租约。"
+	)
+	_expect(
+		coordinator.try_begin_client_runtime_repair_request(true, true) == 0,
+		"第二代 repair in-flight 时仍必须合并重复故障。"
+	)
+	coordinator.update_transport(
+		MpSessionCoordinator.CLIENT_RUNTIME_REPAIR_LEASE_SECONDS + 0.01
+	)
+	_expect(
+		coordinator.get_client_runtime_repair_in_flight_id() == 0,
+		"repair 租约超时必须有界释放 in-flight。"
+	)
+	coordinator.update_transport(
+		MpSessionCoordinator.CLIENT_RUNTIME_REPAIR_COOLDOWN_SECONDS + 0.01
+	)
+	_expect(
+		available_count[0] == 2,
+		"超时后的冷却结束必须重新开放合并后的 repair。"
+	)
+	var third_request_id := (
+		coordinator.try_begin_client_runtime_repair_request(true, true)
+	)
+	_expect(
+		third_request_id > second_request_id,
+		"超时并冷却后必须允许再次发起 repair。"
+	)
+	coordinator.try_begin_client_runtime_repair_request(true, true)
+	coordinator.reset_session_state()
+	_expect(
+		not coordinator.has_requested_runtime_state()
+		and coordinator.get_client_runtime_repair_in_flight_id() == 0
+		and not coordinator.has_deferred_client_runtime_repair(),
+		"session reset 必须同时清理首次同步、repair 租约与 deferred 债务。"
+	)
+	_expect(
+		not coordinator.complete_client_runtime_repair_request(third_request_id),
+		"reset 前的旧完成回调不得命中新 session。"
+	)
+	var post_reset_request_id := (
+		coordinator.try_begin_client_runtime_repair_request(true, true)
+	)
+	_expect(
+		post_reset_request_id > third_request_id,
+		"repair request id 必须跨 reset 单调，防止旧回调误释放新租约。"
+	)
+	coordinator.complete_client_runtime_repair_request(post_reset_request_id)
+	coordinator.reset_session_state()
 
 
 func _test_static_delegation_contract() -> void:

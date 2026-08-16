@@ -968,7 +968,7 @@ func remove_multiplayer_player(peer_id: int) -> void:
 	tower_multiplayer_mode_adapter.remove_multiplayer_player(peer_id)
 
 
-func restore_multiplayer_player(
+func ensure_reconnected_multiplayer_player(
 	old_peer_id: int,
 	new_peer_id: int,
 	player_name: String,
@@ -976,16 +976,21 @@ func restore_multiplayer_player(
 	state: SnapshotManager.PlayerState,
 	spawn_slot_index: int,
 	reconnect_state: Dictionary = {}
-) -> Player:
-	return tower_multiplayer_mode_adapter.restore_multiplayer_player(
-		old_peer_id,
-		new_peer_id,
-		player_name,
-		character_id,
-		state,
-		spawn_slot_index,
-		reconnect_state
+) -> CombatRuntimeBase.ReconnectedPlayerProjection:
+	var projection := (
+		tower_multiplayer_mode_adapter.ensure_reconnected_multiplayer_player(
+			old_peer_id,
+			new_peer_id,
+			player_name,
+			character_id,
+			state,
+			spawn_slot_index,
+			reconnect_state
+		)
 	)
+	if new_peer_id == multiplayer_local_peer_id and projection.is_success():
+		player = projection.player
+	return projection
 
 
 func get_player_for_peer(peer_id: int) -> Player:

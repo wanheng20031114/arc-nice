@@ -679,7 +679,11 @@ func net_production_snapshot_requested(building_net_id: int) -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 6)
-func net_warehouse_command_result(result: Dictionary) -> void:
+func net_warehouse_command_result(
+	result: Dictionary,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
+) -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -707,7 +711,9 @@ func net_research_command_result(
 func net_research_state_updated(
 	state: Dictionary,
 	changed_player_peer_id: int,
-	current_xirang: int
+	current_xirang: int,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
@@ -715,7 +721,9 @@ func net_research_state_updated(
 func net_inventory_snapshot(
 	peer_id: int,
 	snapshot: Dictionary,
-	force_inventory_repair: bool = false
+	force_inventory_repair: bool = false,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
@@ -819,7 +827,9 @@ func net_pickup_collected(
 	collector_peer_id: int,
 	config_path: String,
 	applied_immediately: bool,
-	inventory_snapshot: Dictionary = {}
+	inventory_snapshot: Dictionary = {},
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
@@ -947,7 +957,9 @@ func net_upgrade_confirmed(
 	level: int,
 	current_xirang: int,
 	success: bool,
-	free_upgrade: bool = false
+	free_upgrade: bool = false,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
@@ -958,7 +970,9 @@ func net_inventory_item_used(
 	config_path: String,
 	success: bool,
 	inventory_snapshot: Dictionary,
-	force_inventory_repair: bool = false
+	force_inventory_repair: bool = false,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
@@ -968,7 +982,9 @@ func net_inventory_item_discarded(
 	slot_index: int,
 	success: bool,
 	inventory_snapshot: Dictionary,
-	force_inventory_repair: bool = false
+	force_inventory_repair: bool = false,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
@@ -979,7 +995,9 @@ func net_simple_crafting_result(
 	recipe_id: String,
 	result: String,
 	inventory_snapshot: Dictionary,
-	force_inventory_repair: bool = false
+	force_inventory_repair: bool = false,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
@@ -990,7 +1008,9 @@ func net_skill1_purchase_confirmed(
 	skill1_unlocked: bool,
 	result_code: int,
 	skill1_upgrade_level: int = -1,
-	skill1_charge_duration: float = -1.0
+	skill1_charge_duration: float = -1.0,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
@@ -1001,7 +1021,9 @@ func net_luoxi_collectible_offer_state(
 	config_paths: PackedStringArray,
 	refresh_count: int,
 	current_xirang: int,
-	refresh_result_code: int = -1
+	refresh_result_code: int = -1,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
@@ -1012,7 +1034,9 @@ func net_luoxi_collectible_confirmed(
 	config_path: String,
 	result_code: int,
 	offer_revision: int = 0,
-	inventory_snapshot: Dictionary = {}
+	inventory_snapshot: Dictionary = {},
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
@@ -1021,7 +1045,9 @@ func net_luoxi_collectible_refresh_confirmed(
 	peer_id: int,
 	result_code: int,
 	refresh_count: int,
-	current_xirang: int
+	current_xirang: int,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
@@ -1029,14 +1055,18 @@ func net_luoxi_collectible_refresh_confirmed(
 func net_luoxi_special_game_started(
 	peer_id: int,
 	result: Dictionary,
-	inventory_snapshot: Dictionary = {}
+	inventory_snapshot: Dictionary = {},
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 6)
 func net_luoxi_special_game_card_revealed(
 	peer_id: int,
-	result: Dictionary
+	result: Dictionary,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
@@ -1044,7 +1074,9 @@ func net_luoxi_special_game_card_revealed(
 func net_luoxi_special_game_finished(
 	peer_id: int,
 	result: Dictionary,
-	inventory_snapshot: Dictionary = {}
+	inventory_snapshot: Dictionary = {},
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass
 
@@ -1070,7 +1102,13 @@ func net_collectible_follow_visual_effect(
 	pass
 
 @rpc("authority", "call_remote", "reliable", 6)
-func net_cheat_xirang_confirmed(peer_id: int, current_xirang: int, added_amount: int) -> void:
+func net_cheat_xirang_confirmed(
+	peer_id: int,
+	current_xirang: int,
+	added_amount: int,
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
+) -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -1078,6 +1116,8 @@ func net_debug_collectible_granted(
 	peer_id: int,
 	config_path: String,
 	success: bool,
-	inventory_snapshot: Dictionary = {}
+	inventory_snapshot: Dictionary = {},
+	participant_incarnation: int = 0,
+	session_incarnation: int = 0
 ) -> void:
 	pass

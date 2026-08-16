@@ -1959,7 +1959,7 @@ func _test_multiplayer_authority_contracts() -> void:
 	)
 
 	var run_state := root.get_node("RunState") as RunStateStore
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(2)
 	_expect(
 		run_state.try_add_item_for_peer(2, AGAVE_BUILDING_ITEM),
 		"权威背包建造测试必须能向请求玩家加入加农炮建筑物品。"

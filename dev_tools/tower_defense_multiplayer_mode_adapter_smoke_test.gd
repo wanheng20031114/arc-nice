@@ -118,9 +118,9 @@ func _test_static_contract() -> void:
 		"TowerDefenseGame 必须显式注入并核验塔防 MultiplayerAdapter。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 72
+		NET_CONSTANTS.PROTOCOL_VERSION == 76
 		and GameModeCatalog.MODE_TOWER_DEFENSE == 1,
-		"塔防 wire=1 与协议 v72 必须保持冻结。"
+		"塔防 wire=1 与协议 v76 必须保持冻结。"
 	)
 	var mp_game_script := load(MP_GAME_SOURCE_PATH) as Script
 	_expect(mp_game_script != null, "MpGame 脚本必须可加载。")
@@ -144,7 +144,24 @@ func _test_static_contract() -> void:
 	)
 
 
+## 塔防 `_ready()` 会立即读取权威成员账本；夹具必须先显式建立完整 roster，
+## 不能再依赖 Player 节点创建时顺带补建 RunState 身份。
+func _prepare_run_state_roster_fixture() -> bool:
+	var run_state := root.get_node_or_null("RunState") as RunStateStore
+	_expect(run_state != null, "塔防多人适配器夹具需要 RunState autoload。")
+	if run_state == null:
+		return false
+	run_state.begin_new_run(&"weishidaier", false)
+	var committed := run_state.register_multiplayer_peer_states(
+		PackedInt32Array([1, 2])
+	)
+	_expect(committed, "塔防多人适配器夹具必须在场景入树前原子登记 roster。")
+	return committed
+
+
 func _test_host_binding_and_authority_bridges() -> void:
+	if not _prepare_run_state_roster_fixture():
+		return
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "塔防 Host fixture 必须可实例化。")
 	if game == null:
@@ -426,6 +443,8 @@ func _test_revive_commit(_peer_id: int, _position: Vector2) -> void:
 
 
 func _test_client_remote_state_and_authority_gates() -> void:
+	if not _prepare_run_state_roster_fixture():
+		return
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "塔防 Client fixture 必须可实例化。")
 	if game == null:

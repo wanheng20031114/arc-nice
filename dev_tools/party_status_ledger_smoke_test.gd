@@ -47,8 +47,8 @@ func _test_default_state_and_atomic_transaction(run_state: RunStateStore) -> voi
 		"新局必须建立100/100、无最大生命惩罚且revision为0的状态账本。"
 	)
 
-	run_state.ensure_multiplayer_peer_state(1)
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(1)
+	run_state.register_multiplayer_peer_state(2)
 	var party_snapshot := run_state.export_party_economy_snapshot(
 		PackedInt32Array([1, 2])
 	)
@@ -200,8 +200,8 @@ func _test_tower_defense_hydration_and_writeback(
 
 func _test_tower_defense_client_mirror(run_state: RunStateStore) -> void:
 	run_state.begin_new_run(&"weishidaier", false)
-	run_state.ensure_multiplayer_peer_state(1)
-	run_state.ensure_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(1)
+	run_state.register_multiplayer_peer_state(2)
 	_expect(
 		run_state.set_party_core_health(76, 100)
 		and run_state.set_max_health_penalty_for_peer(2, 20),
