@@ -8,7 +8,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
+
+os.environ.setdefault(
+    "ACQUISITION_CAPABILITY_HMAC_SECRET",
+    "test-only-acquisition-hmac-secret-32-bytes-minimum",
+)
 
 from relay_servers.lobby_api import main as lobby_main
 from relay_servers.lobby_api import config
@@ -43,7 +48,42 @@ class ManualClock:
         self.now += seconds
 
 
+def direct_request() -> Request:
+    return Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/",
+            "raw_path": b"/",
+            "query_string": b"",
+            "headers": [],
+            "client": ("198.51.100.52", 12345),
+            "server": ("testserver", 80),
+        }
+    )
+
+
 class RoomLifecycleLeaseTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._legacy_patch = patch.object(
+            lobby_main.config,
+            "ALLOW_LEGACY_ACQUISITION_REQUESTS",
+            True,
+        )
+        self._admission_patch = patch.object(
+            lobby_main,
+            "_consume_acquisition_admission",
+            return_value=None,
+        )
+        self._legacy_patch.start()
+        self._admission_patch.start()
+
+    def tearDown(self) -> None:
+        self._admission_patch.stop()
+        self._legacy_patch.stop()
+
     def _create_attached_room(
         self,
         manager: RoomManager,
@@ -624,6 +664,7 @@ class RoomLifecycleLeaseTests(unittest.TestCase):
                 lobby_main.join_room(
                     room.id,
                     JoinRoomRequest(player_name="Late"),
+                    direct_request(),
                 )
             )
 

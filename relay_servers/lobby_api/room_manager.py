@@ -4,10 +4,12 @@
 
 from __future__ import annotations
 
+import math
 import secrets
 import time
 import threading
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Optional
 
@@ -23,6 +25,75 @@ class RoomExpirationReason(str, Enum):
     EXPLICITLY_CLOSED = "explicitly_closed"
     RELAY_EXITED = "relay_exited"
     RELAY_START_FAILED = "relay_start_failed"
+    ACQUISITION_UNCONFIRMED = "acquisition_unconfirmed"
+
+
+class AcquisitionAction(str, Enum):
+    """一个随机令牌只能绑定一种带规范参数的成员获取命令。"""
+
+    CREATE = "create"
+    JOIN = "join"
+    QUICK_MATCH = "quick_match"
+
+
+class AcquisitionClaimState(str, Enum):
+    NEW = "new"
+    PENDING = "pending"
+    FROZEN = "frozen"
+
+
+class AcquisitionConflictError(RuntimeError):
+    """同一秘密令牌被复用于不同命令或参数。"""
+
+
+class AcquisitionCancelledError(RuntimeError):
+    """该令牌已经取消；迟到命令不得重新提交。"""
+
+
+class AcquisitionCapacityError(RuntimeError):
+    """安全索引没有空间时 fail-close。"""
+
+
+@dataclass
+class _AcquisitionRecord:
+    token: str = field(repr=False)
+    member_token: str = field(repr=False)
+    action: AcquisitionAction
+    canonical_payload: tuple[str, ...]
+    room_id: str
+    player_name: str
+    is_host: bool
+    capability_expires_at: float
+    provisional_deadline: Optional[float]
+    frozen_response: Optional[dict] = field(default=None, repr=False)
+
+
+@dataclass
+class _AcquisitionTombstone:
+    """取消记录同时受单调保留期和签名可提交窗口保护。"""
+
+    retention_deadline: float
+    capability_expires_at: float
+
+
+@dataclass(frozen=True)
+class AcquisitionClaim:
+    token: str = field(repr=False)
+    action: AcquisitionAction
+    canonical_payload: tuple[str, ...]
+    room_id: str
+    player_name: str
+    is_host: bool
+    capability_expires_at: float
+    host_token: str = field(repr=False)
+    state: AcquisitionClaimState
+    frozen_response: Optional[dict] = field(default=None, repr=False)
+
+
+class AcquisitionReleaseResult(str, Enum):
+    RELEASED = "released"
+    ALREADY_RELEASED = "already_released"
+    TOMBSTONED_UNKNOWN = "tombstoned_unknown"
 
 
 @dataclass(frozen=True)
@@ -78,21 +149,280 @@ class RoomManager:
     def __init__(
         self,
         clock: Callable[[], float] = time.monotonic,
+        capability_clock: Callable[[], float] = time.time,
         room_idle_timeout_seconds: float = config.ROOM_IDLE_TIMEOUT_SECONDS,
         game_max_duration_seconds: float = config.GAME_MAX_DURATION_SECONDS,
+        acquisition_provisional_timeout_seconds: float = (
+            config.ACQUISITION_PROVISIONAL_TIMEOUT_SECONDS
+        ),
+        acquisition_tombstone_ttl_seconds: float = (
+            config.ACQUISITION_TOMBSTONE_TTL_SECONDS
+        ),
+        acquisition_token_capacity: int = config.ACQUISITION_TOKEN_CAPACITY,
     ) -> None:
         if room_idle_timeout_seconds <= 0:
             raise ValueError("room_idle_timeout_seconds 必须大于 0")
         if game_max_duration_seconds <= 0:
             raise ValueError("game_max_duration_seconds 必须大于 0")
+        if acquisition_provisional_timeout_seconds <= 0:
+            raise ValueError("acquisition_provisional_timeout_seconds 必须大于 0")
+        if (
+            acquisition_tombstone_ttl_seconds
+            <= acquisition_provisional_timeout_seconds
+        ):
+            raise ValueError("acquisition tombstone TTL 必须长于 provisional timeout")
+        if acquisition_token_capacity <= 0:
+            raise ValueError("acquisition_token_capacity 必须大于 0")
         self._rooms: dict[str, RoomInfo] = {}
         self._lock = threading.Lock()
         self._clock = clock
+        self._capability_clock = capability_clock
         self._room_idle_timeout_seconds = room_idle_timeout_seconds
         self._game_max_duration_seconds = game_max_duration_seconds
+        self._acquisition_provisional_timeout_seconds = (
+            acquisition_provisional_timeout_seconds
+        )
+        self._acquisition_tombstone_ttl_seconds = acquisition_tombstone_ttl_seconds
+        self._acquisition_token_capacity = acquisition_token_capacity
+        self._acquisitions: dict[str, _AcquisitionRecord] = {}
+        self._member_acquisition_tokens: dict[str, str] = {}
+        self._acquisition_tombstones: dict[str, _AcquisitionTombstone] = {}
+        self._acquisition_saturation_deadline = 0.0
+        self._acquisition_saturation_capability_deadline = 0.0
         self._pending_terminations: dict[tuple[int, int], RoomTerminationGrant] = {}
         self._relay_start_attempts: dict[str, int] = {}
         self._next_relay_start_attempt_id = 1
+
+    def _prune_acquisition_tombstones_locked(self, now: float) -> None:
+        capability_now = self._checked_capability_now_locked()
+        for token, tombstone in list(self._acquisition_tombstones.items()):
+            # 单调 TTL 已过仍不能忘记一个当前可提交的签名，否则取消后的迟到请求会复活。
+            if (
+                now >= tombstone.retention_deadline
+                and capability_now >= tombstone.capability_expires_at
+            ):
+                self._acquisition_tombstones.pop(token, None)
+
+    def _checked_capability_now_locked(self) -> float:
+        now = self._capability_clock()
+        if not math.isfinite(now) or now < 0:
+            raise RuntimeError("capability clock 必须返回有限非负数")
+        return now
+
+    @staticmethod
+    def _checked_capability_deadline(capability_expires_at: float) -> float:
+        deadline = float(capability_expires_at)
+        if not math.isfinite(deadline) or deadline <= 0:
+            raise ValueError("capability expiry 必须是有限正数")
+        return deadline
+
+    def _require_live_capability_deadline_locked(
+        self,
+        capability_expires_at: float,
+    ) -> float:
+        deadline = self._checked_capability_deadline(capability_expires_at)
+        if self._checked_capability_now_locked() >= deadline:
+            raise AcquisitionCancelledError("acquisition capability 已过期")
+        return deadline
+
+    def _reserve_acquisition_token_locked(self, now: float) -> None:
+        """活动项预留未来墓碑槽；容量耗尽时不能接受不受保护的新令牌。"""
+        self._prune_acquisition_tombstones_locked(now)
+        capability_now = self._checked_capability_now_locked()
+        if (
+            now < self._acquisition_saturation_deadline
+            or capability_now < self._acquisition_saturation_capability_deadline
+        ):
+            raise AcquisitionCapacityError("acquisition 取消索引仍处于饱和隔离期")
+        if (
+            len(self._acquisitions) + len(self._acquisition_tombstones)
+            >= self._acquisition_token_capacity
+        ):
+            raise AcquisitionCapacityError("acquisition 安全索引已满")
+
+    def _write_acquisition_tombstone_locked(
+        self,
+        token: str,
+        now: float,
+        capability_expires_at: float,
+    ) -> None:
+        capability_deadline = self._checked_capability_deadline(
+            capability_expires_at
+        )
+        self._prune_acquisition_tombstones_locked(now)
+        existing = self._acquisition_tombstones.get(token)
+        if existing is not None:
+            existing.retention_deadline = max(
+                existing.retention_deadline,
+                now + self._acquisition_tombstone_ttl_seconds,
+            )
+            existing.capability_expires_at = max(
+                existing.capability_expires_at,
+                capability_deadline,
+            )
+            return
+        # 每个活动项都在进入索引前预留了这一槽；未知 token 则先显式检查。
+        if (
+            len(self._acquisitions) + len(self._acquisition_tombstones)
+            >= self._acquisition_token_capacity
+        ):
+            raise AcquisitionCapacityError("acquisition 取消墓碑已满")
+        self._acquisition_tombstones[token] = _AcquisitionTombstone(
+            retention_deadline=now + self._acquisition_tombstone_ttl_seconds,
+            capability_expires_at=capability_deadline,
+        )
+
+    def _retire_acquisition_locked(self, token: str, now: float) -> None:
+        record = self._acquisitions.pop(token, None)
+        if record is None:
+            tombstone = self._acquisition_tombstones.get(token)
+            if tombstone is None:
+                return
+            self._write_acquisition_tombstone_locked(
+                token,
+                now,
+                tombstone.capability_expires_at,
+            )
+            return
+        if (
+            record is not None
+            and self._member_acquisition_tokens.get(record.member_token) == token
+        ):
+            self._member_acquisition_tokens.pop(record.member_token, None)
+        self._write_acquisition_tombstone_locked(
+            token,
+            now,
+            record.capability_expires_at,
+        )
+
+    def _retire_room_acquisitions_locked(self, room_id: str, now: float) -> None:
+        tokens = [
+            token
+            for token, record in self._acquisitions.items()
+            if record.room_id == room_id
+        ]
+        for token in tokens:
+            self._retire_acquisition_locked(token, now)
+
+    def _expire_provisional_acquisitions_locked(self, now: float) -> None:
+        self._prune_acquisition_tombstones_locked(now)
+        expired_tokens = [
+            token
+            for token, record in self._acquisitions.items()
+            if (
+                record.provisional_deadline is not None
+                and now >= record.provisional_deadline
+            )
+        ]
+        for token in expired_tokens:
+            record = self._acquisitions.get(token)
+            if record is None:
+                continue
+            room = self._rooms.get(record.room_id)
+            if room is not None and record.is_host:
+                self._remove_room_locked(
+                    room,
+                    RoomExpirationReason.ACQUISITION_UNCONFIRMED,
+                    now=now,
+                )
+                continue
+            if room is not None:
+                member = room.players.get(record.player_name)
+                if member is not None and secrets.compare_digest(
+                    member.member_token,
+                    record.member_token,
+                ):
+                    room.players.pop(record.player_name, None)
+            self._retire_acquisition_locked(token, now)
+
+    def _get_existing_acquisition_claim_locked(
+        self,
+        token: str,
+        action: AcquisitionAction,
+        canonical_payload: tuple[str, ...],
+        capability_expires_at: float,
+        now: float,
+    ) -> Optional[AcquisitionClaim]:
+        self._expire_provisional_acquisitions_locked(now)
+        if token in self._acquisition_tombstones:
+            raise AcquisitionCancelledError("acquisition 已取消")
+        record = self._acquisitions.get(token)
+        if record is None:
+            return None
+        if (
+            record.action != action
+            or record.canonical_payload != canonical_payload
+            or record.capability_expires_at != capability_expires_at
+        ):
+            raise AcquisitionConflictError("同一 acquisition token 的命令或参数不一致")
+        room = self._get_live_room_locked(record.room_id, now)
+        if room is None:
+            self._retire_acquisition_locked(token, now)
+            raise AcquisitionCancelledError("acquisition 所属房间已终结")
+        state = (
+            AcquisitionClaimState.FROZEN
+            if record.frozen_response is not None
+            else AcquisitionClaimState.PENDING
+        )
+        return AcquisitionClaim(
+            token=record.token,
+            action=record.action,
+            canonical_payload=record.canonical_payload,
+            room_id=record.room_id,
+            player_name=record.player_name,
+            is_host=record.is_host,
+            capability_expires_at=record.capability_expires_at,
+            host_token=room.host_token if record.is_host else "",
+            state=state,
+            frozen_response=(
+                deepcopy(record.frozen_response)
+                if record.frozen_response is not None
+                else None
+            ),
+        )
+
+    def _register_acquisition_locked(
+        self,
+        token: str,
+        action: AcquisitionAction,
+        canonical_payload: tuple[str, ...],
+        room: RoomInfo,
+        player_name: str,
+        is_host: bool,
+        capability_expires_at: float,
+        now: float,
+    ) -> AcquisitionClaim:
+        self._reserve_acquisition_token_locked(now)
+        member = room.players.get(player_name)
+        if member is None:
+            raise RuntimeError("acquisition 成员占位不存在")
+        while member.member_token in self._member_acquisition_tokens:
+            member.member_token = secrets.token_urlsafe(24)
+        self._acquisitions[token] = _AcquisitionRecord(
+            token=token,
+            member_token=member.member_token,
+            action=action,
+            canonical_payload=canonical_payload,
+            room_id=room.id,
+            player_name=player_name,
+            is_host=is_host,
+            capability_expires_at=capability_expires_at,
+            provisional_deadline=(
+                now + self._acquisition_provisional_timeout_seconds
+            ),
+        )
+        self._member_acquisition_tokens[member.member_token] = token
+        return AcquisitionClaim(
+            token=token,
+            action=action,
+            canonical_payload=canonical_payload,
+            room_id=room.id,
+            player_name=player_name,
+            is_host=is_host,
+            capability_expires_at=capability_expires_at,
+            host_token=room.host_token if is_host else "",
+            state=AcquisitionClaimState.NEW,
+        )
 
     def _expiration_reason_locked(
         self,
@@ -130,9 +460,12 @@ class RoomManager:
         reason: RoomExpirationReason,
         *,
         relay_already_reaped: bool = False,
+        now: Optional[float] = None,
     ) -> None:
+        removal_time = self._clock() if now is None else now
         self._rooms.pop(room.id, None)
         self._relay_start_attempts.pop(room.id, None)
+        self._retire_room_acquisitions_locked(room.id, removal_time)
         room.status = RoomStatus.CLOSED
         if not relay_already_reaped:
             self._queue_termination_locked(room, reason)
@@ -142,6 +475,7 @@ class RoomManager:
         room_id: str,
         now: float,
     ) -> Optional[RoomInfo]:
+        self._expire_provisional_acquisitions_locked(now)
         room = self._rooms.get(room_id)
         if room is None:
             return None
@@ -152,12 +486,13 @@ class RoomManager:
         return room
 
     def _expire_all_locked(self, now: float) -> list[ExpiredRoom]:
+        self._expire_provisional_acquisitions_locked(now)
         expired: list[ExpiredRoom] = []
         for room in list(self._rooms.values()):
             reason = self._expiration_reason_locked(room, now)
             if reason is None:
                 continue
-            self._remove_room_locked(room, reason)
+            self._remove_room_locked(room, reason, now=now)
             expired.append(ExpiredRoom(room=room, reason=reason))
         return expired
 
@@ -193,23 +528,343 @@ class RoomManager:
             if len(self._rooms) >= config.MAX_ROOMS:
                 return None
 
-            now = self._clock()
-            room = RoomInfo(
-                name=name,
-                host_name=host_name,
-                host_ip=host_ip,
-                port=port,
-                max_players=min(max(max_players, 2), config.MAX_PLAYERS_PER_ROOM),
-                game_mode=game_mode,
-                status=RoomStatus.STARTING,
-                idle_deadline=None,
-                absolute_deadline=now + self._game_max_duration_seconds,
+            return self._create_room_locked(
+                name,
+                host_name,
+                host_ip,
+                max_players,
+                port,
+                game_mode,
+                self._clock(),
             )
 
-            # Host 自身作为第一个玩家
-            room.players[host_name] = PlayerInfo(name=host_name)
-            self._rooms[room.id] = room
-            return room
+    def _create_room_locked(
+        self,
+        name: str,
+        host_name: str,
+        host_ip: str,
+        max_players: int,
+        port: int,
+        game_mode: GameMode,
+        now: float,
+    ) -> RoomInfo:
+        room = RoomInfo(
+            name=name,
+            host_name=host_name,
+            host_ip=host_ip,
+            port=port,
+            max_players=min(max(max_players, 2), config.MAX_PLAYERS_PER_ROOM),
+            game_mode=game_mode,
+            status=RoomStatus.STARTING,
+            idle_deadline=None,
+            absolute_deadline=now + self._game_max_duration_seconds,
+        )
+        room.players[host_name] = PlayerInfo(name=host_name)
+        self._rooms[room.id] = room
+        return room
+
+    def begin_create_acquisition(
+        self,
+        token: str,
+        canonical_payload: tuple[str, ...],
+        name: str,
+        host_name: str,
+        host_ip: str,
+        max_players: int,
+        game_mode: GameMode,
+        *,
+        capability_expires_at: float,
+    ) -> Optional[AcquisitionClaim]:
+        with self._lock:
+            now = self._clock()
+            capability_deadline = self._require_live_capability_deadline_locked(
+                capability_expires_at
+            )
+            existing = self._get_existing_acquisition_claim_locked(
+                token,
+                AcquisitionAction.CREATE,
+                canonical_payload,
+                capability_deadline,
+                now,
+            )
+            if existing is not None:
+                return existing
+            self._expire_all_locked(now)
+            if len(self._rooms) >= config.MAX_ROOMS:
+                return None
+            self._reserve_acquisition_token_locked(now)
+            room = self._create_room_locked(
+                name,
+                host_name,
+                host_ip,
+                max_players,
+                config.RELAY_PORT_START,
+                game_mode,
+                now,
+            )
+            return self._register_acquisition_locked(
+                token,
+                AcquisitionAction.CREATE,
+                canonical_payload,
+                room,
+                host_name,
+                True,
+                capability_deadline,
+                now,
+            )
+
+    def begin_join_acquisition(
+        self,
+        token: str,
+        canonical_payload: tuple[str, ...],
+        room_id: str,
+        player_name: str,
+        game_mode: GameMode,
+        *,
+        capability_expires_at: float,
+    ) -> Optional[AcquisitionClaim]:
+        with self._lock:
+            now = self._clock()
+            capability_deadline = self._require_live_capability_deadline_locked(
+                capability_expires_at
+            )
+            existing = self._get_existing_acquisition_claim_locked(
+                token,
+                AcquisitionAction.JOIN,
+                canonical_payload,
+                capability_deadline,
+                now,
+            )
+            if existing is not None:
+                return existing
+            self._reserve_acquisition_token_locked(now)
+            room = self._get_live_room_locked(room_id, now)
+            if (
+                room is None
+                or not room.is_joinable
+                or room.game_mode != game_mode
+                or player_name in room.players
+            ):
+                return None
+            room.players[player_name] = PlayerInfo(name=player_name)
+            return self._register_acquisition_locked(
+                token,
+                AcquisitionAction.JOIN,
+                canonical_payload,
+                room,
+                player_name,
+                False,
+                capability_deadline,
+                now,
+            )
+
+    def begin_quick_match_acquisition(
+        self,
+        token: str,
+        canonical_payload: tuple[str, ...],
+        player_name: str,
+        game_mode: GameMode,
+        *,
+        capability_expires_at: float,
+    ) -> Optional[AcquisitionClaim]:
+        """选房与占位在同一把锁内提交，避免扫描后容量被并发抢走。"""
+        with self._lock:
+            now = self._clock()
+            capability_deadline = self._require_live_capability_deadline_locked(
+                capability_expires_at
+            )
+            existing = self._get_existing_acquisition_claim_locked(
+                token,
+                AcquisitionAction.QUICK_MATCH,
+                canonical_payload,
+                capability_deadline,
+                now,
+            )
+            if existing is not None:
+                return existing
+            self._reserve_acquisition_token_locked(now)
+            self._expire_all_locked(now)
+            joinable = [
+                room
+                for room in self._rooms.values()
+                if (
+                    room.is_joinable
+                    and room.game_mode == game_mode
+                    and player_name not in room.players
+                )
+            ]
+            joinable.sort(key=lambda room: room.player_count, reverse=True)
+            if joinable:
+                room = joinable[0]
+                room.players[player_name] = PlayerInfo(name=player_name)
+                return self._register_acquisition_locked(
+                    token,
+                    AcquisitionAction.QUICK_MATCH,
+                    canonical_payload,
+                    room,
+                    player_name,
+                    False,
+                    capability_deadline,
+                    now,
+                )
+            if len(self._rooms) >= config.MAX_ROOMS:
+                return None
+            room = self._create_room_locked(
+                f"{player_name} 的房间",
+                player_name,
+                "",
+                4,
+                config.RELAY_PORT_START,
+                game_mode,
+                now,
+            )
+            return self._register_acquisition_locked(
+                token,
+                AcquisitionAction.QUICK_MATCH,
+                canonical_payload,
+                room,
+                player_name,
+                True,
+                capability_deadline,
+                now,
+            )
+
+    def freeze_acquisition_response(
+        self,
+        token: str,
+        canonical_payload: tuple[str, ...],
+        public_ip: str,
+    ) -> dict:
+        """同一锁内验证占位仍属该 token，并冻结所有幂等重放结果。"""
+        with self._lock:
+            now = self._clock()
+            self._expire_provisional_acquisitions_locked(now)
+            if token in self._acquisition_tombstones:
+                raise AcquisitionCancelledError("acquisition 已取消")
+            record = self._acquisitions.get(token)
+            if record is None:
+                raise AcquisitionCancelledError("acquisition 不存在")
+            if record.canonical_payload != canonical_payload:
+                raise AcquisitionConflictError("acquisition 参数不一致")
+            if record.frozen_response is not None:
+                return deepcopy(record.frozen_response)
+            room = self._get_live_room_locked(record.room_id, now)
+            member = room.players.get(record.player_name) if room is not None else None
+            if (
+                room is None
+                or member is None
+                or not secrets.compare_digest(
+                    member.member_token,
+                    record.member_token,
+                )
+            ):
+                self._retire_acquisition_locked(token, now)
+                raise AcquisitionCancelledError("acquisition 已失去成员占位")
+            response = room.to_join_dict(
+                public_ip,
+                include_host_token=record.is_host,
+                member_name=record.player_name,
+            )
+            response["acquisition_token"] = token
+            record.frozen_response = deepcopy(response)
+            return deepcopy(response)
+
+    def confirm_member_acquisition(
+        self,
+        room_id: str,
+        player_name: str,
+        member_token: str,
+    ) -> bool:
+        """Relay 连通后用独立成员秘密确认，避免 capability TTL 参与连接时序。"""
+        with self._lock:
+            now = self._clock()
+            self._expire_provisional_acquisitions_locked(now)
+            token = self._member_acquisition_tokens.get(member_token)
+            if token is None:
+                return False
+            record = self._acquisitions.get(token)
+            if (
+                record is None
+                or record.is_host
+                or record.room_id != room_id
+                or record.player_name != player_name
+                or not secrets.compare_digest(record.member_token, member_token)
+            ):
+                return False
+            room = self._get_live_room_locked(record.room_id, now)
+            member = room.players.get(record.player_name) if room is not None else None
+            if (
+                room is None
+                or member is None
+                or not secrets.compare_digest(member.member_token, member_token)
+            ):
+                return False
+            record.provisional_deadline = None
+            return True
+
+    def release_acquisition(
+        self,
+        token: str,
+        *,
+        capability_expires_at: float,
+    ) -> AcquisitionReleaseResult:
+        """token 即唯一删除能力；未知 token 写墓碑以拦截迟到提交。"""
+        with self._lock:
+            now = self._clock()
+            capability_deadline = self._checked_capability_deadline(
+                capability_expires_at
+            )
+            self._expire_provisional_acquisitions_locked(now)
+            if token in self._acquisition_tombstones:
+                self._write_acquisition_tombstone_locked(
+                    token,
+                    now,
+                    capability_deadline,
+                )
+                return AcquisitionReleaseResult.ALREADY_RELEASED
+            record = self._acquisitions.get(token)
+            if record is None:
+                try:
+                    self._reserve_acquisition_token_locked(now)
+                except AcquisitionCapacityError:
+                    # 无槽位记录这个未知秘密时，以同 TTL 的全局 fence 拒绝所有
+                    # 新 token；否则任一旧墓碑先过期后，该迟到命令仍可能提交。
+                    self._acquisition_saturation_deadline = max(
+                        self._acquisition_saturation_deadline,
+                        now + self._acquisition_tombstone_ttl_seconds,
+                    )
+                    self._acquisition_saturation_capability_deadline = max(
+                        self._acquisition_saturation_capability_deadline,
+                        capability_deadline,
+                    )
+                    raise
+                self._write_acquisition_tombstone_locked(
+                    token,
+                    now,
+                    capability_deadline,
+                )
+                return AcquisitionReleaseResult.TOMBSTONED_UNKNOWN
+            if record.capability_expires_at != capability_deadline:
+                raise AcquisitionConflictError(
+                    "同一 acquisition token 的签名截止时间不一致"
+                )
+            room = self._rooms.get(record.room_id)
+            if room is not None and record.is_host:
+                self._remove_room_locked(
+                    room,
+                    RoomExpirationReason.EXPLICITLY_CLOSED,
+                    now=now,
+                )
+            else:
+                if room is not None:
+                    member = room.players.get(record.player_name)
+                    if member is not None and secrets.compare_digest(
+                        member.member_token,
+                        record.member_token,
+                    ):
+                        room.players.pop(record.player_name, None)
+                self._retire_acquisition_locked(token, now)
+            return AcquisitionReleaseResult.RELEASED
 
     # ─── 查询 ────────────────────────────────────
 
@@ -301,6 +956,9 @@ class RoomManager:
                 )
                 return True, room
             room.players.pop(player_name, None)
+            acquisition_token = self._member_acquisition_tokens.get(member_token)
+            if acquisition_token is not None:
+                self._retire_acquisition_locked(acquisition_token, self._clock())
             return True, None
 
     # ─── 状态更新 ─────────────────────────────────
@@ -540,7 +1198,12 @@ class RoomManager:
                 removed.append(room)
             return removed
 
-    def mark_host_ready(self, room_id: str, host_token: str, host_peer_id: int) -> Optional[RoomInfo]:
+    def mark_host_ready(
+        self,
+        room_id: str,
+        host_token: str,
+        host_peer_id: int,
+    ) -> Optional[RoomInfo]:
         with self._lock:
             room = self._get_live_room_locked(room_id, self._clock())
             if room is None:
@@ -557,6 +1220,17 @@ class RoomManager:
             room.status = RoomStatus.WAITING
             if room.host_name in room.players:
                 room.players[room.host_name].peer_id = host_peer_id
+                host_member_token = room.players[room.host_name].member_token
+                acquisition_token = self._member_acquisition_tokens.get(
+                    host_member_token
+                )
+                acquisition = self._acquisitions.get(acquisition_token or "")
+                if (
+                    acquisition is not None
+                    and acquisition.room_id == room.id
+                    and acquisition.is_host
+                ):
+                    acquisition.provisional_deadline = None
             return room
 
     def keep_room_alive(

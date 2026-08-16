@@ -10,6 +10,7 @@ relay_servers/
 │   ├── main.py             # API 入口
 │   ├── models.py           # 数据模型
 │   ├── room_manager.py     # 房间生命周期管理
+│   ├── acquisition_security.py # HMAC capability 与单进程准入限流
 │   ├── relay_launcher.py   # Godot Headless Relay 启动器
 │   └── config.py           # 配置
 ├── relay_godot_project/    # Godot Headless Relay 项目
@@ -135,6 +136,18 @@ chmod +x scripts/*.sh
 | `RELAY_PROJECT_PATH` | `./relay_godot_project` | Relay 项目路径 |
 | `MAX_ROOMS` | `100` | 最大房间数，不得超过 Relay 端口数量 |
 | `MAX_PLAYERS_PER_ROOM` | `8` | 单房人数上限，必须在 2..8 |
+| `ACQUISITION_PROVISIONAL_TIMEOUT_SECONDS` | `60` | 创建/加入响应确认前的短租约，必须在 30..60 秒 |
+| `ACQUISITION_TOMBSTONE_TTL_SECONDS` | `120` | 取消墓碑与饱和隔离期限，必须在 120..600 秒且长于短租约 |
+| `ACQUISITION_TOKEN_CAPACITY` | `4096` | 活动 acquisition 与墓碑共享容量；必须至少为 `MAX_ROOMS * MAX_PLAYERS_PER_ROOM + 1`，至多 100000 |
+| `ACQUISITION_CAPABILITY_TTL_SECONDS` | `45` | preflight HMAC capability 有效期，必须在 15..60 秒 |
+| `ACQUISITION_CAPABILITY_HMAC_SECRET` | 无，必须配置 | HMAC 根秘密；至少 32 bytes、至少 12 种 byte，部署脚本生成 48-byte 随机值且不输出到日志 |
+| `ALLOW_LEGACY_ACQUISITION_REQUESTS` | `false` | 是否临时接受未携带 capability 的旧 CREATE/JOIN/QUICK；只能是 `true`/`false` |
+| `ACQUISITION_ADMISSION_GLOBAL_BURST` | `120` | 单进程 preflight/legacy 全局令牌桶 burst，1..10000 |
+| `ACQUISITION_ADMISSION_GLOBAL_REFILL_PER_SECOND` | `4.0` | 全局桶每秒补充量，0.01..1000 |
+| `ACQUISITION_ADMISSION_SOURCE_BURST` | `8` | 单直连来源 burst，不得高于全局 burst |
+| `ACQUISITION_ADMISSION_SOURCE_REFILL_PER_SECOND` | `0.5` | 单直连来源每秒补充量，0.01..1000 |
+| `ACQUISITION_ADMISSION_SOURCE_BUCKET_CAPACITY` | `4096` | 有界来源桶数量，必须不少于全局 burst，至多 100000 |
+| `ACQUISITION_ADMISSION_SOURCE_IDLE_TTL_SECONDS` | `600` | 空闲来源桶回收秒数，60..86400 |
 | `ROOM_IDLE_TIMEOUT_SECONDS` | `180` | 房主心跳租约；不得低于 120 秒，当前客户端每 60 秒续租 |
 | `RELAY_STARTUP_IDLE_TIMEOUT_SECONDS` | `120` | Relay 启动后从未收到 ENet 连接的回收期限 |
 | `RELAY_EMPTY_IDLE_TIMEOUT_SECONDS` | `120` | 曾连接后全员离线的回收期限；必须长于 90 秒重连宽限 |
@@ -148,6 +161,35 @@ chmod +x scripts/*.sh
 和 Relay 挂接都不会续租。当前客户端在大厅阶段不发送周期心跳，因此 STARTING/WAITING
 不建立空闲 deadline；首次进入 IN_GAME 时才启用 180 秒房主心跳租约。即使心跳持续
 成功，绝对生命周期到期后仍会回收。
+
+新客户端先向 `/acquisitions/preflight` 提交 action 与严格 payload。服务端只签发
+`acq1` HMAC capability，不创建 Room、不占 Relay；capability 绑定 action、长度前缀规范
+payload 的 SHA-256 指纹、短期 expiry 与 128-bit 随机 nonce。实际 CREATE/JOIN/QUICK
+必须携带该 capability，服务端在任何 Room/Relay 副作用前验签；同 capability、同参数
+会重放同一份冻结响应，动作或参数不同返回 HTTP 409，签名无效或过期则拒绝。JOIN/QUICK
+完成异步房间/Relay 对账后会在同锁 begin 紧前再次验签；CREATE 也走相同的最终验签与
+RoomManager expiry CAS，因此初验后等待到期的请求不会提交。
+
+提交后先授予 60 秒 provisional 短租约。响应中的 `member_token` 是与短期 capability
+不同的独立成员秘密：普通成员先连上 Relay，再用 `(room_id, player_name, member_token)`
+调用 `/acquisitions/confirm`；即使此时 capability 已过期仍可确认。房主由
+`/rooms/{id}/host_ready` 确认。未确认身份即使客户端崩溃且取消从未送达也会自动回收。
+响应到达后退出统一使用 `/rooms/{id}/leave` 与成员秘密；只有响应前不知道 room id 时，
+才用 `/acquisitions/release` 携 capability 取消迟到提交。
+
+`/acquisitions/release` 先离线验签。随机无效输入幂等返回 `ignored`，不会写墓碑；有效
+capability 在 expiry 后只额外接受 `ACQUISITION_TOMBSTONE_TTL_SECONDS` 的有界取消宽限，
+再旧同样忽略。宽限内若实际命令尚未到达，服务端写取消墓碑阻止迟到提交；若已提交，
+则精确移除成员或关闭房主房间。墓碑只有在单调保留 TTL 和其签名可提交窗口都结束后才
+能回收；即使异步对账等待超过墓碑 TTL，已取消请求也不能复活。墓碑索引饱和时继续对新
+acquisition fail-close，饱和 fence 同样同时受这两个截止时间保护。
+
+preflight 与显式 legacy 请求共用进程级 global/source 双令牌桶；同一把锁保证并发精确
+消费，global 已耗尽时不会为伪造新来源分配桶。来源只取 ASGI `Request.client.host`，
+明确忽略 `X-Forwarded-For`。`start_lobby.sh` 同时固定 `--workers 1` 和
+`--no-proxy-headers`：后者禁止 Uvicorn 在 FastAPI 之前用转发头改写 ASGI `client`，因此
+限流来源始终是原始 socket 对端。多 worker/多实例部署前必须把限流与 acquisition 状态迁到
+共享后端。若前置反向代理，source 桶看到的是直连代理地址，不得靠不受信请求头恢复客户端 IP。
 
 大厅使用可注入的单调时钟计算两个房间 deadline，Relay 使用 Godot 主循环的单调
 `ticks` 同时检查首次连接、全员离线和绝对生命周期。重启 Relay 只获得房间绝对
@@ -175,18 +217,34 @@ HTTP 403 拒绝。隐藏历史房间不会出现在公开房间列表中，也�
 |------|------|------|
 | `GET` | `/health` | 健康检查 |
 | `GET` | `/rooms` | 获取可加入房间列表 |
+| `POST` | `/acquisitions/preflight` | 限流后签发 action/payload 绑定的短期 HMAC capability；不占房间资源 |
 | `POST` | `/rooms` | 创建新房间 |
 | `POST` | `/rooms/{id}/join` | 加入房间 |
 | `POST` | `/rooms/{id}/host_ready` | 房主登记 Relay peer id 并开放加入 |
 | `POST` | `/rooms/{id}/keepalive` | 房主续租房间，避免游戏中被空闲清理 |
 | `POST` | `/rooms/{id}/leave` | 使用成员令牌离开房间；房主离开会关闭房间 |
+| `POST` | `/acquisitions/confirm` | Relay 连通后确认 provisional 成员身份 |
+| `POST` | `/acquisitions/release` | 不依赖 room id，按 acquisition secret 幂等取消或释放 |
 | `PATCH` | `/rooms/{id}` | 更新房间状态 |
 | `POST` | `/rooms/{id}/request_relay` | 请求 Relay 中继 |
 | `DELETE` | `/rooms/{id}` | 销毁房间 |
 | `POST` | `/matchmaking/quick` | 快速匹配 |
 
-创建房间或快速匹配自动创建房间时，响应会返回 `host_token`。只有房主需要保存它；普通 `join` 响应不会包含该字段。
-每次创建或加入房间的响应还会向当前成员返回独立、不可猜测的 `member_token`；该字段不会出现在房间列表或其他玩家资料中。调用 `POST /rooms/{id}/leave` 时必须同时提交当前成员的 `player_name` 与 `member_token`。房主使用该接口离开时会安全关闭房间，原有携带 `host_token` 的 `DELETE` 接口继续保留。
+创建房间或快速匹配自动创建房间时，响应会返回 `host_token`。只有房主需要保存它；普通
+`join` 响应不会包含该字段。受保护请求的响应还会原样返回短期 `acquisition_token`，并
+返回独立随机 `member_token`；二者不得相等，且都不会出现在房间列表或其他玩家资料中。
+
+新装部署默认 `ALLOW_LEGACY_ACQUISITION_REQUESTS=false`，缺 capability 的
+CREATE/JOIN/QUICK 以 HTTP 428 fail-close。若确有在线旧客户端需要滚动迁移，顺序必须是：
+滚动升级必须先部署服务端，再发布新客户端，最后关闭临时兼容开关。
+
+1. 先部署支持 preflight 的服务端，并由运维**显式**临时设置
+   `ALLOW_LEGACY_ACQUISITION_REQUESTS=true`；legacy 请求仍经过同一全局/来源限流。
+2. 发布会先 preflight、响应前用 capability release、响应后用 member leave 的新客户端。
+3. 确认旧客户端淘汰后恢复 `false`；部署模板始终保持 `false`，不能把兼容窗口当默认值。
+
+HMAC secret 只存在于服务端环境；不得写入客户端、响应或日志。轮换 secret 会立即使旧
+capability 失效，应与最长 60 秒 capability 和 120 秒取消宽限一起安排短维护窗口。
 
 以下房主操作必须在 JSON 请求体中携带 `host_token`：
 - `PATCH /rooms/{id}`
@@ -194,6 +252,14 @@ HTTP 403 拒绝。隐藏历史房间不会出现在公开房间列表中，也�
 - `POST /rooms/{id}/keepalive`
 - `POST /rooms/{id}/request_relay`
 - `DELETE /rooms/{id}`
+
+## 测试服 HTTP 边界
+
+当前 Godot 默认大厅地址 `http://47.123.6.127:8000` 明确只用于 **TEST SERVER**，可由
+`ARC_PUBLIC_LOBBY_API_BASE_URL` 在唯一配置读取口覆盖。本阶段按测试服要求保留明文 HTTP
+可用性，没有关闭证书校验，也没有伪造无法验证的 HTTPS IP。正式公网发布前必须改为
+受信任证书的 HTTPS 域名，或在大厅前部署终止 TLS 的反向代理，再把客户端环境变量指向
+该 HTTPS 地址；不能继续通过 HTTP 传输 capability、member/host token。
 
 ## 防火墙配置
 

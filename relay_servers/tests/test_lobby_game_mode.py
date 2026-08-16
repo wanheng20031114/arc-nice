@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import os
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+
+os.environ.setdefault(
+    "ACQUISITION_CAPABILITY_HMAC_SECRET",
+    "test-only-acquisition-hmac-secret-32-bytes-minimum",
+)
 
 from relay_servers.lobby_api import main as lobby_main
 from relay_servers.lobby_api.main import (
@@ -28,6 +34,23 @@ from relay_servers.lobby_api.models import (
 from relay_servers.lobby_api.room_manager import RoomManager
 
 
+def direct_request() -> Request:
+    return Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/",
+            "raw_path": b"/",
+            "query_string": b"",
+            "headers": [],
+            "client": ("198.51.100.50", 12345),
+            "server": ("testserver", 80),
+        }
+    )
+
+
 class LobbyGameModeTests(unittest.TestCase):
     ALL_GAME_MODES = (
         GameMode.STANDARD,
@@ -45,6 +68,25 @@ class LobbyGameModeTests(unittest.TestCase):
         for game_mode in ALL_GAME_MODES
         if game_mode not in RELEASE_GAME_MODES
     )
+
+    def setUp(self) -> None:
+        # 本文件验证历史大厅语义；旧协议只能在测试内显式打开迁移开关。
+        self._legacy_patch = patch.object(
+            lobby_main.config,
+            "ALLOW_LEGACY_ACQUISITION_REQUESTS",
+            True,
+        )
+        self._admission_patch = patch.object(
+            lobby_main,
+            "_consume_acquisition_admission",
+            return_value=None,
+        )
+        self._legacy_patch.start()
+        self._admission_patch.start()
+
+    def tearDown(self) -> None:
+        self._admission_patch.stop()
+        self._legacy_patch.stop()
 
     def _create_joinable_room(
         self,
@@ -188,7 +230,8 @@ class LobbyGameModeTests(unittest.TestCase):
                             CreateRoomRequest(
                                 host_name="ReleaseHost",
                                 game_mode=game_mode,
-                            )
+                            ),
+                            direct_request(),
                         )
                     )
                     room = manager.get_room(created["room_id"])
@@ -204,7 +247,8 @@ class LobbyGameModeTests(unittest.TestCase):
                             QuickMatchRequest(
                                 player_name="ReleaseClient",
                                 game_mode=game_mode,
-                            )
+                            ),
+                            direct_request(),
                         )
                     )
 
@@ -291,6 +335,7 @@ class LobbyGameModeTests(unittest.TestCase):
                             player_name="Mismatch",
                             game_mode=GameMode.STANDARD,
                         ),
+                        direct_request(),
                     )
                 )
             with self.assertRaises(HTTPException) as hidden_request:
@@ -301,6 +346,7 @@ class LobbyGameModeTests(unittest.TestCase):
                             player_name="HiddenWire",
                             game_mode=GameMode.TEST_ARENA_P1,
                         ),
+                        direct_request(),
                     )
                 )
             with self.assertRaises(HTTPException) as disguised_request:
@@ -311,6 +357,7 @@ class LobbyGameModeTests(unittest.TestCase):
                             player_name="ReleaseWire",
                             game_mode=GameMode.STANDARD,
                         ),
+                        direct_request(),
                     )
                 )
 
@@ -449,6 +496,7 @@ class LobbyGameModeTests(unittest.TestCase):
                 lobby_main.join_room(
                     room.id,
                     JoinRoomRequest(player_name="Member"),
+                    direct_request(),
                 )
             )
 

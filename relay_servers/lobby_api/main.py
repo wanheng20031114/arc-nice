@@ -2,21 +2,36 @@
 ARC NICE 多人大厅 API (FastAPI)
 
 启动方式:
-    uvicorn lobby_api.main:app --host 0.0.0.0 --port 8000
+    uvicorn lobby_api.main:app --host 0.0.0.0 --port 8000 --workers 1 --no-proxy-headers
 """
 
 from __future__ import annotations
 
 import asyncio
+import math
 from contextlib import asynccontextmanager, suppress
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from . import config
+from .acquisition_security import (
+    AcquisitionCapabilityClaims,
+    AcquisitionCapabilityError,
+    AcquisitionCapabilityExpiredError,
+    AcquisitionCapabilitySigner,
+    DualTokenBucketRateLimiter,
+    fingerprint_canonical_payload,
+)
 from .models import GameMode, RoomStatus, is_release_game_mode
 from .room_manager import (
+    AcquisitionAction,
+    AcquisitionCancelledError,
+    AcquisitionCapacityError,
+    AcquisitionClaim,
+    AcquisitionClaimState,
+    AcquisitionConflictError,
     RelayRestartGrant,
     RelayStartGrant,
     RoomManager,
@@ -28,9 +43,32 @@ from .relay_launcher import RelayLauncher, RelayProcessLease
 # ─── 全局实例 ────────────────────────────────────
 room_mgr = RoomManager()
 relay_launcher = RelayLauncher()
+acquisition_capability_signer = AcquisitionCapabilitySigner(
+    config.ACQUISITION_CAPABILITY_HMAC_SECRET,
+    config.ACQUISITION_CAPABILITY_TTL_SECONDS,
+)
+# 这是进程内边界，必须用单 worker 运行；多 worker 需要共享限流/租约后端。
+acquisition_admission_limiter = DualTokenBucketRateLimiter(
+    global_burst=config.ACQUISITION_ADMISSION_GLOBAL_BURST,
+    global_refill_per_second=(
+        config.ACQUISITION_ADMISSION_GLOBAL_REFILL_PER_SECOND
+    ),
+    source_burst=config.ACQUISITION_ADMISSION_SOURCE_BURST,
+    source_refill_per_second=(
+        config.ACQUISITION_ADMISSION_SOURCE_REFILL_PER_SECOND
+    ),
+    source_bucket_capacity=(
+        config.ACQUISITION_ADMISSION_SOURCE_BUCKET_CAPACITY
+    ),
+    source_idle_ttl_seconds=(
+        config.ACQUISITION_ADMISSION_SOURCE_IDLE_TTL_SECONDS
+    ),
+)
 _cleanup_task: Optional[asyncio.Task] = None
 # 单 worker 的事件循环共享同一启动任务；多 worker 部署仍需外部协调器。
 _relay_start_tasks: dict[str, asyncio.Task[tuple[int, int]]] = {}
+# acquisition task 由服务进程持有；单个断开的 HTTP waiter 不能取消 Relay CAS。
+_acquisition_tasks: dict[str, asyncio.Task[dict]] = {}
 
 
 # ─── 生命周期 ────────────────────────────────────
@@ -45,6 +83,18 @@ async def _periodic_cleanup() -> None:
         except Exception as exc:
             # 后台租约守护不能因单次基础设施异常永久退出。
             print(f"[Cleanup] 清理轮询异常，下一周期重试: {exc}")
+
+
+async def _cancel_inflight_shared_tasks() -> None:
+    """停服先收束脱离 HTTP waiter 的共享任务，再让 Launcher 终止进程。"""
+    tasks = set(_acquisition_tasks.values()) | set(_relay_start_tasks.values())
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    _acquisition_tasks.clear()
+    _relay_start_tasks.clear()
 
 
 def _cleanup_once() -> None:
@@ -105,6 +155,8 @@ async def lifespan(app: FastAPI):
             _cleanup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await _cleanup_task
+        await _cancel_inflight_shared_tasks()
+        await asyncio.to_thread(_flush_room_termination_grants)
         unterminated_leases = await asyncio.to_thread(relay_launcher.stop_all)
         if unterminated_leases:
             details = ", ".join(
@@ -122,40 +174,208 @@ app = FastAPI(title="ARC NICE Lobby", lifespan=lifespan)
 
 # ─── 请求/响应模型 ───────────────────────────────
 
-class CreateRoomRequest(BaseModel):
+class _StrictPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class CreateAcquisitionPayload(_StrictPayload):
     name: str = Field(default="", max_length=64)
     host_name: str = Field(min_length=1, max_length=32)
     max_players: int = Field(default=4, ge=2, le=8)
     game_mode: GameMode = GameMode.STANDARD
 
 
-class JoinRoomRequest(BaseModel):
+class CreateRoomRequest(CreateAcquisitionPayload):
+    acquisition_token: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=256,
+        repr=False,
+    )
+
+
+class JoinAcquisitionPayload(_StrictPayload):
+    room_id: str = Field(min_length=1, max_length=64)
     player_name: str = Field(min_length=1, max_length=32)
     game_mode: GameMode = GameMode.STANDARD
+
+
+class JoinRoomRequest(_StrictPayload):
+    player_name: str = Field(min_length=1, max_length=32)
+    game_mode: GameMode = GameMode.STANDARD
+    acquisition_token: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=256,
+        repr=False,
+    )
 
 
 class LeaveRoomRequest(BaseModel):
     player_name: str = Field(min_length=1, max_length=32)
-    member_token: str = Field(min_length=1, max_length=128)
+    member_token: str = Field(min_length=1, max_length=128, repr=False)
 
 
 class UpdateRoomRequest(BaseModel):
     status: str = Field(min_length=1, max_length=32)
-    host_token: str = Field(min_length=1, max_length=128)
+    host_token: str = Field(min_length=1, max_length=128, repr=False)
 
 
 class HostTokenRequest(BaseModel):
-    host_token: str = Field(min_length=1, max_length=128)
+    host_token: str = Field(min_length=1, max_length=128, repr=False)
 
 
 class HostReadyRequest(BaseModel):
-    host_token: str = Field(min_length=1, max_length=128)
+    host_token: str = Field(min_length=1, max_length=128, repr=False)
     host_peer_id: int = Field(ge=1)
 
 
-class QuickMatchRequest(BaseModel):
+class QuickMatchAcquisitionPayload(_StrictPayload):
     player_name: str = Field(min_length=1, max_length=32)
     game_mode: GameMode = GameMode.STANDARD
+
+
+class QuickMatchRequest(QuickMatchAcquisitionPayload):
+    acquisition_token: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=256,
+        repr=False,
+    )
+
+
+class AcquisitionTokenRequest(BaseModel):
+    acquisition_token: str = Field(
+        min_length=1,
+        max_length=256,
+        repr=False,
+    )
+
+
+class AcquisitionPreflightRequest(_StrictPayload):
+    action: str = Field(min_length=1, max_length=32)
+    payload: dict[str, object]
+
+
+class ConfirmMemberAcquisitionRequest(_StrictPayload):
+    room_id: str = Field(min_length=1, max_length=64)
+    player_name: str = Field(min_length=1, max_length=32)
+    member_token: str = Field(min_length=1, max_length=128, repr=False)
+
+
+def _canonical_create(req: CreateAcquisitionPayload) -> tuple[str, ...]:
+    room_name = req.name if req.name else f"{req.host_name} 的房间"
+    return (
+        room_name,
+        req.host_name,
+        str(req.max_players),
+        req.game_mode.value,
+    )
+
+
+def _canonical_join(
+    room_id: str,
+    player_name: str,
+    game_mode: GameMode,
+) -> tuple[str, ...]:
+    return (room_id, player_name, game_mode.value)
+
+
+def _canonical_quick(req: QuickMatchAcquisitionPayload) -> tuple[str, ...]:
+    return (req.player_name, req.game_mode.value)
+
+
+def _consume_acquisition_admission(request: Request) -> None:
+    """只采用直连 socket 来源；公网请求头不能扩大来源桶。"""
+    source = request.client.host if request.client is not None else "<unknown>"
+    decision = acquisition_admission_limiter.consume(source)
+    if decision.allowed:
+        return
+    retry_after = max(1, math.ceil(decision.retry_after_seconds))
+    raise HTTPException(
+        status_code=429,
+        detail="acquisition 请求过于频繁，请稍后重试",
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+def _require_command_capability(
+    request: Request,
+    token: Optional[str],
+    action: AcquisitionAction,
+    canonical_payload: tuple[str, ...],
+) -> Optional[AcquisitionCapabilityClaims]:
+    """验证新 capability；显式 legacy 模式仍经过同一准入限流。"""
+    if token is None:
+        if not config.ALLOW_LEGACY_ACQUISITION_REQUESTS:
+            raise HTTPException(
+                status_code=428,
+                detail="此服务要求先调用 acquisition preflight",
+            )
+        _consume_acquisition_admission(request)
+        return None
+    return _verify_command_capability(token, action, canonical_payload)
+
+
+def _verify_command_capability(
+    token: str,
+    action: AcquisitionAction,
+    canonical_payload: tuple[str, ...],
+) -> AcquisitionCapabilityClaims:
+    """验签并冻结 expiry；endpoint 会在最后一个 await 后再次调用。"""
+    try:
+        claims = acquisition_capability_signer.verify(token)
+    except AcquisitionCapabilityExpiredError as exc:
+        raise HTTPException(
+            status_code=410,
+            detail="acquisition capability 已过期，请重新 preflight",
+        ) from exc
+    except AcquisitionCapabilityError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="acquisition capability 无效",
+        ) from exc
+    expected_fingerprint = fingerprint_canonical_payload(
+        action.value,
+        canonical_payload,
+    )
+    if (
+        claims.action != action.value
+        or claims.payload_fingerprint != expected_fingerprint
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="acquisition capability 与动作或参数不匹配",
+        )
+    return claims
+
+
+def _parse_preflight_payload(
+    action: AcquisitionAction,
+    payload: dict[str, object],
+) -> tuple[tuple[str, ...], GameMode]:
+    try:
+        if action == AcquisitionAction.CREATE:
+            parsed = CreateAcquisitionPayload.model_validate(payload)
+            return _canonical_create(parsed), parsed.game_mode
+        if action == AcquisitionAction.JOIN:
+            parsed = JoinAcquisitionPayload.model_validate(payload)
+            return (
+                _canonical_join(
+                    parsed.room_id,
+                    parsed.player_name,
+                    parsed.game_mode,
+                ),
+                parsed.game_mode,
+            )
+        parsed = QuickMatchAcquisitionPayload.model_validate(payload)
+        return _canonical_quick(parsed), parsed.game_mode
+    except ValidationError as exc:
+        # payload 不含秘密；仍避免把 Pydantic 的原始 input 镜像回公网响应。
+        raise HTTPException(
+            status_code=422,
+            detail="acquisition preflight payload 无效",
+        ) from exc
 
 
 def _require_release_game_mode(game_mode: GameMode) -> None:
@@ -195,6 +415,78 @@ async def _ensure_room_relay(
     if response is None:
         raise HTTPException(status_code=404, detail="房间已过期或不存在")
     return response
+
+
+def _raise_acquisition_http_error(exc: Exception) -> None:
+    if isinstance(exc, AcquisitionConflictError):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, AcquisitionCancelledError):
+        raise HTTPException(status_code=410, detail=str(exc)) from exc
+    if isinstance(exc, AcquisitionCapacityError):
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    raise exc
+
+
+async def _complete_host_acquisition(claim: AcquisitionClaim) -> dict:
+    """Relay 启动与响应冻结属于同一 acquisition；失败必须精确回滚。"""
+    try:
+        await _get_or_start_room_relay(claim.room_id, claim.host_token)
+        return room_mgr.freeze_acquisition_response(
+            claim.token,
+            claim.canonical_payload,
+            config.PUBLIC_IP,
+        )
+    except BaseException:
+        try:
+            room_mgr.release_acquisition(
+                claim.token,
+                capability_expires_at=claim.capability_expires_at,
+            )
+            await asyncio.to_thread(_flush_room_termination_grants)
+        except AcquisitionCapacityError:
+            # 活动 acquisition 已预留墓碑槽；若此处失败说明内部不变量已破坏。
+            print("[Lobby] 严重错误: acquisition 回滚无法写取消墓碑")
+        raise
+
+
+def _forget_acquisition_task(
+    token: str,
+    task: asyncio.Task[dict],
+) -> None:
+    if _acquisition_tasks.get(token) is task:
+        _acquisition_tasks.pop(token, None)
+    if not task.cancelled():
+        task.exception()
+
+
+async def _resolve_acquisition_claim(claim: AcquisitionClaim) -> dict:
+    try:
+        if claim.state == AcquisitionClaimState.FROZEN:
+            return dict(claim.frozen_response or {})
+        if not claim.is_host:
+            return room_mgr.freeze_acquisition_response(
+                claim.token,
+                claim.canonical_payload,
+                config.PUBLIC_IP,
+            )
+        task = _acquisition_tasks.get(claim.token)
+        if task is None:
+            task = asyncio.create_task(_complete_host_acquisition(claim))
+            _acquisition_tasks[claim.token] = task
+            task.add_done_callback(
+                lambda done_task, token=claim.token: _forget_acquisition_task(
+                    token,
+                    done_task,
+                )
+            )
+        return await asyncio.shield(task)
+    except (
+        AcquisitionConflictError,
+        AcquisitionCancelledError,
+        AcquisitionCapacityError,
+    ) as exc:
+        _raise_acquisition_http_error(exc)
+        raise AssertionError("unreachable")
 
 
 async def _get_or_start_room_relay(
@@ -414,12 +706,77 @@ async def list_rooms() -> list[dict]:
     return result
 
 
+@app.post("/acquisitions/preflight")
+async def preflight_acquisition(
+    request: Request,
+    req: AcquisitionPreflightRequest,
+) -> dict:
+    """签发短期、参数绑定的能力；本端点绝不创建 Room 或占用 Relay。"""
+    _consume_acquisition_admission(request)
+    try:
+        action = AcquisitionAction(req.action)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="未知 acquisition action",
+        ) from exc
+    canonical_payload, game_mode = _parse_preflight_payload(action, req.payload)
+    _require_release_game_mode(game_mode)
+    issued = acquisition_capability_signer.issue(
+        action.value,
+        canonical_payload,
+    )
+    return {
+        "acquisition_token": issued.token,
+        "expires_at": issued.expires_at,
+    }
+
+
 @app.post("/rooms")
-async def create_room(req: CreateRoomRequest) -> dict:
+async def create_room(
+    req: CreateRoomRequest,
+    request: Request,
+) -> dict:
     """创建新房间。"""
     # 必须在创建 Room/Relay 之前准入，拒绝请求不能留下任何资源副作用。
     _require_release_game_mode(req.game_mode)
-    room_name = req.name if req.name else f"{req.host_name} 的房间"
+    canonical_payload = _canonical_create(req)
+    room_name = canonical_payload[0]
+    capability_claims = _require_command_capability(
+        request,
+        req.acquisition_token,
+        AcquisitionAction.CREATE,
+        canonical_payload,
+    )
+
+    if capability_claims is not None:
+        # 即使当前路径没有 await，也统一在同锁 begin 紧前重验并把签名截止交给 CAS。
+        capability_claims = _verify_command_capability(
+            req.acquisition_token or "",
+            AcquisitionAction.CREATE,
+            canonical_payload,
+        )
+        try:
+            claim = room_mgr.begin_create_acquisition(
+                req.acquisition_token or "",
+                canonical_payload,
+                room_name,
+                req.host_name,
+                "",
+                req.max_players,
+                req.game_mode,
+                capability_expires_at=capability_claims.expires_at,
+            )
+        except (
+            AcquisitionConflictError,
+            AcquisitionCancelledError,
+            AcquisitionCapacityError,
+        ) as exc:
+            _raise_acquisition_http_error(exc)
+            raise AssertionError("unreachable")
+        if claim is None:
+            raise HTTPException(status_code=503, detail="房间已满，无法创建更多房间")
+        return await _resolve_acquisition_claim(claim)
 
     room = room_mgr.create_room(
         name=room_name,
@@ -436,12 +793,59 @@ async def create_room(req: CreateRoomRequest) -> dict:
 
 
 @app.post("/rooms/{room_id}/join")
-async def join_room(room_id: str, req: JoinRoomRequest) -> dict:
+async def join_room(
+    room_id: str,
+    req: JoinRoomRequest,
+    request: Request,
+) -> dict:
     """加入指定房间。"""
     # 同时校验请求值和房间真实值：二者任一隐藏都不能借模式错配绕过。
     _require_release_game_mode(req.game_mode)
+    canonical_payload = _canonical_join(
+        room_id,
+        req.player_name,
+        req.game_mode,
+    )
+    capability_claims = _require_command_capability(
+        request,
+        req.acquisition_token,
+        AcquisitionAction.JOIN,
+        canonical_payload,
+    )
     await _require_release_room(room_id)
     await asyncio.to_thread(_reconcile_exited_relays)
+
+    if capability_claims is not None:
+        # 房间/Relay 对账会 await；其后必须重新验签，过期 capability 不得进入同锁 begin。
+        capability_claims = _verify_command_capability(
+            req.acquisition_token or "",
+            AcquisitionAction.JOIN,
+            canonical_payload,
+        )
+        try:
+            claim = room_mgr.begin_join_acquisition(
+                req.acquisition_token or "",
+                canonical_payload,
+                room_id,
+                req.player_name,
+                req.game_mode,
+                capability_expires_at=capability_claims.expires_at,
+            )
+        except (
+            AcquisitionConflictError,
+            AcquisitionCancelledError,
+            AcquisitionCapacityError,
+        ) as exc:
+            _raise_acquisition_http_error(exc)
+            raise AssertionError("unreachable")
+        await asyncio.to_thread(_flush_room_termination_grants)
+        if claim is None:
+            raise HTTPException(
+                status_code=404,
+                detail="房间不存在、已满、模式不匹配或玩家名重复",
+            )
+        return await _resolve_acquisition_claim(claim)
+
     room = room_mgr.join_room(room_id, req.player_name, req.game_mode)
     await asyncio.to_thread(_flush_room_termination_grants)
     if room is None:
@@ -536,6 +940,47 @@ async def leave_room(room_id: str, req: LeaveRoomRequest) -> dict:
     return {"status": "ok"}
 
 
+@app.post("/acquisitions/confirm")
+async def confirm_acquisition(req: ConfirmMemberAcquisitionRequest) -> dict:
+    """成员连通 Relay 后，以独立成员秘密确认临时占位。"""
+    if not room_mgr.confirm_member_acquisition(
+        req.room_id,
+        req.player_name,
+        req.member_token,
+    ):
+        await asyncio.to_thread(_flush_room_termination_grants)
+        raise HTTPException(status_code=410, detail="acquisition 已取消、过期或不存在")
+    await asyncio.to_thread(_flush_room_termination_grants)
+    return {
+        "status": "ok",
+        "room_id": req.room_id,
+        "player_name": req.player_name,
+    }
+
+
+@app.post("/acquisitions/release")
+async def release_acquisition(req: AcquisitionTokenRequest) -> dict:
+    """验证全局取消能力；随机或过旧输入幂等忽略且不写墓碑。"""
+    try:
+        capability_claims = acquisition_capability_signer.verify(
+            req.acquisition_token,
+            expiry_grace_seconds=(
+                config.ACQUISITION_TOMBSTONE_TTL_SECONDS
+            ),
+        )
+    except AcquisitionCapabilityError:
+        return {"status": "ok", "result": "ignored"}
+    try:
+        result = room_mgr.release_acquisition(
+            req.acquisition_token,
+            capability_expires_at=capability_claims.expires_at,
+        )
+    except AcquisitionCapacityError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    await asyncio.to_thread(_flush_room_termination_grants)
+    return {"status": "ok", "result": result.value}
+
+
 @app.patch("/rooms/{room_id}")
 async def update_room(room_id: str, req: UpdateRoomRequest) -> dict:
     """更新房间状态。"""
@@ -578,11 +1023,49 @@ async def destroy_room(room_id: str, req: HostTokenRequest) -> dict:
 
 
 @app.post("/matchmaking/quick")
-async def quick_match(req: QuickMatchRequest) -> dict:
+async def quick_match(
+    req: QuickMatchRequest,
+    request: Request,
+) -> dict:
     """快速匹配：找一个最佳房间加入。"""
     # 必须先于房间扫描和自动创建；隐藏请求不会触发 Room/Relay 生命周期。
     _require_release_game_mode(req.game_mode)
+    canonical_payload = _canonical_quick(req)
+    capability_claims = _require_command_capability(
+        request,
+        req.acquisition_token,
+        AcquisitionAction.QUICK_MATCH,
+        canonical_payload,
+    )
     await asyncio.to_thread(_reconcile_exited_relays)
+
+    if capability_claims is not None:
+        # Relay 对账之后紧邻 begin 再验一次；RoomManager 同锁还会复核该 expiry。
+        capability_claims = _verify_command_capability(
+            req.acquisition_token or "",
+            AcquisitionAction.QUICK_MATCH,
+            canonical_payload,
+        )
+        try:
+            claim = room_mgr.begin_quick_match_acquisition(
+                req.acquisition_token or "",
+                canonical_payload,
+                req.player_name,
+                req.game_mode,
+                capability_expires_at=capability_claims.expires_at,
+            )
+        except (
+            AcquisitionConflictError,
+            AcquisitionCancelledError,
+            AcquisitionCapacityError,
+        ) as exc:
+            _raise_acquisition_http_error(exc)
+            raise AssertionError("unreachable")
+        await asyncio.to_thread(_flush_room_termination_grants)
+        if claim is None:
+            raise HTTPException(status_code=503, detail="无法创建或加入房间")
+        return await _resolve_acquisition_claim(claim)
+
     room = room_mgr.find_match(req.game_mode)
     await asyncio.to_thread(_flush_room_termination_grants)
 

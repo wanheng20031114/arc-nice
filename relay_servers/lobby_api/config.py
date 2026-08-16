@@ -20,6 +20,47 @@ def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
     return value
 
 
+def _bounded_float(
+    name: str,
+    default: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    """读取有限有界浮点数；限流边界不能用 NaN/inf 绕过。"""
+    raw_value = os.getenv(name, str(default))
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} 必须是数字，当前值: {raw_value}") from exc
+    if not math.isfinite(value) or value < minimum or value > maximum:
+        raise ValueError(
+            f"{name} 必须在 {minimum}..{maximum} 之间，当前值: {value}"
+        )
+    return value
+
+
+def _strict_bool(name: str, default: bool) -> bool:
+    raw_value = os.getenv(name, "true" if default else "false").strip().lower()
+    if raw_value == "true":
+        return True
+    if raw_value == "false":
+        return False
+    raise ValueError(f"{name} 只能是 true 或 false，当前值: {raw_value}")
+
+
+def _required_secret(name: str, minimum_bytes: int = 32) -> bytes:
+    """读取不可预测的 HMAC secret；错误信息绝不回显 secret。"""
+    raw_value = os.getenv(name)
+    if raw_value is None or raw_value != raw_value.strip():
+        raise ValueError(f"{name} 必须显式配置且不能包含首尾空白")
+    encoded = raw_value.encode("utf-8")
+    if len(encoded) < minimum_bytes or len(set(encoded)) < 12:
+        raise ValueError(
+            f"{name} 强度不足：至少 {minimum_bytes} bytes 且字符种类不少于 12"
+        )
+    return encoded
+
+
 # ─── 网络 ────────────────────────────────────────
 LOBBY_HOST = os.getenv("LOBBY_HOST", "0.0.0.0")
 LOBBY_PORT = _bounded_int("LOBBY_PORT", 8000, 1, 65535)
@@ -65,6 +106,18 @@ def _seconds_at_least(name: str, default: float, minimum: float) -> float:
     value = _positive_seconds(name, default)
     if value < minimum:
         raise ValueError(f"{name} 不能低于 {minimum} 秒，当前值: {value}")
+    return value
+
+
+def _seconds_between(
+    name: str,
+    default: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    value = _seconds_at_least(name, default, minimum)
+    if value > maximum:
+        raise ValueError(f"{name} 不能高于 {maximum} 秒，当前值: {value}")
     return value
 
 
@@ -147,6 +200,91 @@ _require_strict_order(
 _relay_port_capacity = RELAY_PORT_END - RELAY_PORT_START + 1
 MAX_ROOMS = _bounded_int("MAX_ROOMS", 100, 1, _relay_port_capacity)
 MAX_PLAYERS_PER_ROOM = _bounded_int("MAX_PLAYERS_PER_ROOM", 8, 2, 8)
+
+# 创建/加入响应尚未被客户端确认前只授予短租约；这条服务端兜底不依赖
+# 客户端取消请求一定能送达。
+ACQUISITION_PROVISIONAL_TIMEOUT_SECONDS = _seconds_between(
+    "ACQUISITION_PROVISIONAL_TIMEOUT_SECONDS",
+    60.0,
+    30.0,
+    60.0,
+)
+# cancel 可能先于原请求到达；墓碑必须覆盖客户端 12 秒请求上限与临时租约。
+ACQUISITION_TOMBSTONE_TTL_SECONDS = _seconds_between(
+    "ACQUISITION_TOMBSTONE_TTL_SECONDS",
+    120.0,
+    120.0,
+    600.0,
+)
+_require_strict_order(
+    "ACQUISITION_PROVISIONAL_TIMEOUT_SECONDS",
+    ACQUISITION_PROVISIONAL_TIMEOUT_SECONDS,
+    "ACQUISITION_TOMBSTONE_TTL_SECONDS",
+    ACQUISITION_TOMBSTONE_TTL_SECONDS,
+)
+
+# 活动索引与取消墓碑共享容量，并为每个活动占位预留一个墓碑槽。
+ACQUISITION_TOKEN_CAPACITY = _bounded_int(
+    "ACQUISITION_TOKEN_CAPACITY",
+    4096,
+    MAX_ROOMS * MAX_PLAYERS_PER_ROOM + 1,
+    100_000,
+)
+
+# capability 只覆盖 preflight 到实际命令的短窗口；成员确认改用独立 member_token。
+ACQUISITION_CAPABILITY_TTL_SECONDS = _bounded_int(
+    "ACQUISITION_CAPABILITY_TTL_SECONDS",
+    45,
+    15,
+    60,
+)
+ACQUISITION_CAPABILITY_HMAC_SECRET = _required_secret(
+    "ACQUISITION_CAPABILITY_HMAC_SECRET"
+)
+
+# 旧客户端只能由部署者显式开启；生产模板默认拒绝无 capability 的 acquisition。
+ALLOW_LEGACY_ACQUISITION_REQUESTS = _strict_bool(
+    "ALLOW_LEGACY_ACQUISITION_REQUESTS",
+    False,
+)
+
+# preflight 与显式 legacy acquisition 共用一个进程内双层 token bucket。
+ACQUISITION_ADMISSION_GLOBAL_BURST = _bounded_int(
+    "ACQUISITION_ADMISSION_GLOBAL_BURST",
+    120,
+    1,
+    10_000,
+)
+ACQUISITION_ADMISSION_GLOBAL_REFILL_PER_SECOND = _bounded_float(
+    "ACQUISITION_ADMISSION_GLOBAL_REFILL_PER_SECOND",
+    4.0,
+    0.01,
+    1_000.0,
+)
+ACQUISITION_ADMISSION_SOURCE_BURST = _bounded_int(
+    "ACQUISITION_ADMISSION_SOURCE_BURST",
+    8,
+    1,
+    ACQUISITION_ADMISSION_GLOBAL_BURST,
+)
+ACQUISITION_ADMISSION_SOURCE_REFILL_PER_SECOND = _bounded_float(
+    "ACQUISITION_ADMISSION_SOURCE_REFILL_PER_SECOND",
+    0.5,
+    0.01,
+    1_000.0,
+)
+ACQUISITION_ADMISSION_SOURCE_BUCKET_CAPACITY = _bounded_int(
+    "ACQUISITION_ADMISSION_SOURCE_BUCKET_CAPACITY",
+    4096,
+    ACQUISITION_ADMISSION_GLOBAL_BURST,
+    100_000,
+)
+ACQUISITION_ADMISSION_SOURCE_IDLE_TTL_SECONDS = _bounded_float(
+    "ACQUISITION_ADMISSION_SOURCE_IDLE_TTL_SECONDS",
+    600.0,
+    60.0,
+    86_400.0,
+)
 
 # ─── 公网 IP ─────────────────────────────────────
 # 用于告诉客户端 Relay 地址，需设置为阿里云 ECS 公网 IP
