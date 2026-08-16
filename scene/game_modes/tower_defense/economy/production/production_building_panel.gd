@@ -344,7 +344,7 @@ func _refresh_recipe_rows() -> void:
 				input_label,
 				recipe.duration_seconds,
 			]
-			if recipe.outputs_to_player_inventory()
+			if _uses_compact_building_recipe_summary(recipe)
 			else "%s\n%s → %s" % [
 				recipe.display_name,
 				input_label,
@@ -369,6 +369,15 @@ func _refresh_recipe_rows() -> void:
 				else String(recipe.required_global_research_id)
 			)
 		row.disabled = _is_multiplayer_control_locked() or not recipe_unlocked
+
+
+func _uses_compact_building_recipe_summary(recipe: ProductionRecipe) -> bool:
+	return (
+		recipe != null
+		and recipe.output_items.size() == 1
+		and recipe.output_items[0] != null
+		and recipe.output_items[0].pickup_type == PickupConfig.PickupType.BUILDING
+	)
 
 
 func _refresh_material_rows() -> void:
@@ -764,7 +773,7 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 		else (
 			"产物格（点击领取）"
 			if recipe != null and recipe.outputs_to_local_slot()
-			else "产物"
+			else "仓库产物"
 		)
 	)
 	_set_control_rect(building_title, Rect2(96, 23, 536, 39))

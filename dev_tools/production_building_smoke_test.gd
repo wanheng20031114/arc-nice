@@ -267,8 +267,9 @@ func _run() -> void:
 		and panel.input_slots[1].stack_count == 2
 		and not panel.input_slots[2].visible
 		and panel.output_slots[0].visible
-		and panel.output_slots[0].item == SPEED_TOWER_ITEM,
-		"滚动到第十条配方后必须能选择移速强化塔，并显示10木板、2树苗与背包产物。"
+		and panel.output_slots[0].item == SPEED_TOWER_ITEM
+		and panel.output_title.text == "仓库产物",
+		"滚动到第十条配方后必须能选择移速强化塔，并显示10木板、2树苗与仓库产物。"
 	)
 	panel.recipe_scroll.ensure_control_visible(panel.recipe_rows[10])
 	await process_frame
@@ -288,7 +289,7 @@ func _run() -> void:
 		and not panel.input_slots[2].visible
 		and panel.output_slots[0].visible
 		and panel.output_slots[0].item == ATTACK_SPEED_TOWER_ITEM,
-		"滚动到第十一条配方后必须能选择攻速强化塔，并显示10木板、2树苗与背包产物。"
+		"滚动到第十一条配方后必须能选择攻速强化塔，并显示10木板、2树苗与仓库产物。"
 	)
 	panel.call("_on_recipe_row_pressed", 0)
 	_expect(
@@ -397,7 +398,7 @@ func _run() -> void:
 			PLANK,
 			2,
 			10.0,
-			false
+			true
 		)
 		and _recipe_matches(
 			station.recipes[1],
@@ -407,7 +408,7 @@ func _run() -> void:
 			WOODEN_CORE,
 			1,
 			10.0,
-			false
+			true
 		)
 		and _recipe_matches(
 			station.recipes[2],
@@ -417,7 +418,7 @@ func _run() -> void:
 			GAMBLER_TICKET,
 			1,
 			10.0,
-			false
+			true
 		)
 		and _recipe_matches(
 			station.recipes[3],
@@ -787,7 +788,7 @@ func _recipe_matches(
 	expected_output_item: PickupConfig,
 	expected_output_amount: int,
 	expected_duration_seconds: float,
-	expected_outputs_to_player_inventory: bool
+	expected_outputs_to_shared_storage: bool
 ) -> bool:
 	return (
 		recipe != null
@@ -798,8 +799,10 @@ func _recipe_matches(
 		and recipe.output_items == [expected_output_item]
 		and recipe.output_amounts == [expected_output_amount]
 		and not recipe.inputs_from_player_inventory()
-		and recipe.outputs_to_player_inventory()
-		== expected_outputs_to_player_inventory
+		and (
+			recipe.output_destination
+			== ProductionRecipe.OutputDestination.SHARED_STORAGE
+		) == expected_outputs_to_shared_storage
 		and is_equal_approx(
 			recipe.duration_seconds,
 			expected_duration_seconds
@@ -903,7 +906,8 @@ func _test_utility_building_recipe_transactions(
 			)
 		_expect(inputs_added, "%s配方必须能准备全部测试原料。" % display_name)
 		_expect(station.select_recipe(recipe_id), "必须能选择%s组装配方。" % display_name)
-		var output_total_before := run_state.get_inventory_item_total(output_item)
+		var warehouse_output_total_before := coordinator.get_total_item_count(output_item)
+		var inventory_output_total_before := run_state.get_inventory_item_total(output_item)
 		var inventory_revision_before := run_state.get_inventory_revision()
 		station.advance_shared_production_tick(29.0)
 		var inputs_unchanged := true
@@ -916,10 +920,13 @@ func _test_utility_building_recipe_transactions(
 			)
 		_expect(
 			inputs_unchanged
-			and run_state.get_inventory_item_total(output_item) == output_total_before
+			and coordinator.get_total_item_count(output_item)
+			== warehouse_output_total_before
+			and run_state.get_inventory_item_total(output_item)
+			== inventory_output_total_before
 			and run_state.get_inventory_revision() == inventory_revision_before
 			and is_equal_approx(station.progress_elapsed_seconds, 29.0),
-			"%s组装到29秒时不得扣料或提前进入背包。" % display_name
+			"%s组装到29秒时不得扣料或提前进入仓库。" % display_name
 		)
 		station.advance_shared_production_tick(1.0)
 		var inputs_consumed := true
@@ -930,11 +937,27 @@ func _test_utility_building_recipe_transactions(
 			)
 		_expect(
 			inputs_consumed
-			and run_state.get_inventory_item_total(output_item) == output_total_before + 1
-			and run_state.get_inventory_revision() == inventory_revision_before + 1
+			and coordinator.get_total_item_count(output_item)
+			== warehouse_output_total_before + 1
+			and run_state.get_inventory_item_total(output_item)
+			== inventory_output_total_before
+			and run_state.get_inventory_revision() == inventory_revision_before
 			and is_zero_approx(station.progress_elapsed_seconds),
-			"%s必须在第30秒原子扣料并作为建筑物品进入玩家背包。" % display_name
+			"%s必须在第30秒原子扣料并作为建筑物品进入共享仓库。" % display_name
 		)
+
+
+func _make_personal_output_recipe_fixture() -> ProductionRecipe:
+	var recipe := ProductionRecipe.new()
+	recipe.recipe_id = &"personal_output_contract_fixture"
+	recipe.display_name = "个人产物契约夹具"
+	var output_items: Array[PickupConfig] = [WATER_COLLECTOR_ITEM]
+	var output_amounts: Array[int] = [1]
+	recipe.output_items = output_items
+	recipe.output_amounts = output_amounts
+	recipe.output_destination = ProductionRecipe.OutputDestination.PLAYER_INVENTORY
+	recipe.duration_seconds = 1.0
+	return recipe
 
 
 func _test_multiplayer_production_contract(
@@ -978,6 +1001,8 @@ func _test_multiplayer_production_contract(
 		"领取产物命令必须可构造、通过严格校验并完整通过Host白名单规范化。"
 	)
 	var authority := config.plant_scene.instantiate() as ProductionBuilding
+	var personal_recipe := _make_personal_output_recipe_fixture()
+	authority.recipes.append(personal_recipe)
 	test_root.add_child(authority)
 	await process_frame
 	authority.setup(config, null, [Vector2i(4, 0)])
@@ -1064,9 +1089,9 @@ func _test_multiplayer_production_contract(
 		) == ProductionBuildingProtocol.RESULT_STALE_STATE
 		and authority.production_enabled
 		and authority.active_recipe_id == &"water_collector_assembly"
-		and authority.personal_output_peer_id == 2
+		and authority.personal_output_peer_id == 0
 		and authority.production_revision == 1,
-		"多人功能建筑配方必须绑定选择者Peer，且相同revision的后到命令必须零写入。"
+		"多人仓库产物配方不得绑定个人Peer，且相同revision的后到命令必须零写入。"
 	)
 	var invalid_recipe_command := ProductionBuildingProtocol.make_select_recipe_command(
 		3,
@@ -1082,16 +1107,31 @@ func _test_multiplayer_production_contract(
 		and authority.production_revision == 1,
 		"非法配方必须返回invalid_recipe且不得写入生产状态。"
 	)
+	var personal_command := ProductionBuildingProtocol.make_select_recipe_command(
+		4,
+		8,
+		2,
+		1,
+		personal_recipe.recipe_id
+	)
+	_expect(
+		authority.apply_authoritative_multiplayer_production_command(
+			personal_command
+		) == ProductionBuildingProtocol.RESULT_SUCCESS
+		and authority.active_recipe_id == personal_recipe.recipe_id
+		and authority.personal_output_peer_id == 2
+		and authority.production_revision == 2,
+		"合成的个人产物夹具必须继续覆盖选择者Peer绑定契约。"
+	)
 	var run_state := root.get_node("RunState") as RunStateStore
-	var personal_recipe := authority.get_recipe(&"water_collector_assembly")
 	coordinator.deactivate_personal_output_peer(2)
 	_expect(
 		authority.active_recipe_id == &""
 		and authority.personal_output_peer_id == 0
 		and authority.completion_wait_reason
 		== ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE
-		and authority.production_revision == 2
-		and replication_flags == [true, false]
+		and authority.production_revision == 3
+		and replication_flags == [true, true, false]
 		and not run_state.has_multiplayer_peer_state(2)
 		and coordinator.try_commit_recipe(personal_recipe, 2)
 		== ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE
@@ -1143,6 +1183,7 @@ func _test_multiplayer_production_contract(
 	)
 	mp_game.free()
 	var proxy := config.plant_scene.instantiate() as ProductionBuilding
+	proxy.recipes.append(personal_recipe)
 	test_root.add_child(proxy)
 	await process_frame
 	proxy.setup(config, null, [Vector2i(3, 0)], true, config.max_health, 1)
@@ -1231,7 +1272,7 @@ func _test_multiplayer_production_contract(
 	)
 	proxy.multiplayer_production_request_timer.stop()
 	var late_disconnected_peer_state := authoritative_state.duplicate(true)
-	late_disconnected_peer_state["active_recipe_id"] = "water_collector_assembly"
+	late_disconnected_peer_state["active_recipe_id"] = String(personal_recipe.recipe_id)
 	late_disconnected_peer_state["personal_output_peer_id"] = 2
 	late_disconnected_peer_state["progress_elapsed_seconds"] = 29.0
 	late_disconnected_peer_state["revision"] = 2

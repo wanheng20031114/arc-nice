@@ -187,9 +187,9 @@ func _test_assembly_recipe(wood_station: ProductionBuilding) -> void:
 		and EXCAVATOR_ASSEMBLY.input_amounts == [10]
 		and EXCAVATOR_ASSEMBLY.output_items == [EXCAVATOR_ITEM]
 		and EXCAVATOR_ASSEMBLY.output_amounts == [1]
-		and EXCAVATOR_ASSEMBLY.outputs_to_player_inventory()
+		and not EXCAVATOR_ASSEMBLY.outputs_to_player_inventory()
 		and is_equal_approx(EXCAVATOR_ASSEMBLY.duration_seconds, 30.0),
-		"挖土装置组装配方必须消耗10木板、耗时30秒并向玩家背包产出1个建筑物品。"
+		"挖土装置组装配方必须消耗10木板、耗时30秒并向共享仓库产出1个建筑物品。"
 	)
 	_expect(
 		wood_station != null

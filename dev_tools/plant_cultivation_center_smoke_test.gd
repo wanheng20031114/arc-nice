@@ -182,20 +182,20 @@ func _run() -> void:
 		and center.recipes[0].output_items == [AGAVE_BUILDING_ITEM]
 		and center.recipes[0].output_amounts == [1]
 		and is_equal_approx(center.recipes[0].duration_seconds, 20.0)
-		and center.recipes[0].outputs_to_player_inventory()
+		and not center.recipes[0].outputs_to_player_inventory()
 		and center.recipes[1].input_items == [WOODEN_CORE]
 		and center.recipes[1].input_amounts == [1]
 		and center.recipes[1].output_items == [CORN_BUILDING_ITEM]
 		and center.recipes[1].output_amounts == [1]
 		and is_equal_approx(center.recipes[1].duration_seconds, 20.0)
-		and center.recipes[1].outputs_to_player_inventory()
+		and not center.recipes[1].outputs_to_player_inventory()
 		and center.recipes[2].input_items == [WOODEN_CORE]
 		and center.recipes[2].input_amounts == [1]
 		and center.recipes[2].output_items
 		== [BAMBOO_MORTAR_BUILDING_ITEM]
 		and center.recipes[2].output_amounts == [1]
 		and is_equal_approx(center.recipes[2].duration_seconds, 30.0)
-		and center.recipes[2].outputs_to_player_inventory()
+		and not center.recipes[2].outputs_to_player_inventory()
 		and center.recipes[3].input_items == [WOODEN_CORE, WATER_BOTTLE]
 		and center.recipes[3].input_amounts == [2, 2]
 		and center.recipes[3].output_items
@@ -204,14 +204,14 @@ func _run() -> void:
 		and center.recipes[3].required_global_research_id
 		== GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
 		and is_equal_approx(center.recipes[3].duration_seconds, 30.0)
-		and center.recipes[3].outputs_to_player_inventory()
+		and not center.recipes[3].outputs_to_player_inventory()
 		and center.recipes[4].input_items
 		== [WOODEN_CORE, DIRT_BLOCK, WHITE_CRYSTAL_POWDER]
 		and center.recipes[4].input_amounts == [1, 2, 1]
 		and center.recipes[4].output_items == [GRAPE_ARC_TOWER_BUILDING_ITEM]
 		and center.recipes[4].output_amounts == [1]
 		and is_equal_approx(center.recipes[4].duration_seconds, 40.0)
-		and center.recipes[4].outputs_to_player_inventory()
+		and not center.recipes[4].outputs_to_player_inventory()
 		and center.recipes[5].input_items
 		== [WOODEN_CORE, SORCERER_VIOLET_POWDER]
 		and center.recipes[5].input_amounts == [1, 1]
@@ -221,7 +221,7 @@ func _run() -> void:
 		and center.recipes[5].required_global_research_id
 		== GlobalResearchRegistry.ORANGE_CHARGING_TOWER_CRAFTING_ID
 		and is_equal_approx(center.recipes[5].duration_seconds, 30.0)
-		and center.recipes[5].outputs_to_player_inventory(),
+		and not center.recipes[5].outputs_to_player_inventory(),
 		"培育中心必须只保留六种植物培育配方。"
 	)
 	_expect(
@@ -293,10 +293,10 @@ func _run() -> void:
 	center.advance_shared_production_tick(20.0)
 	_expect(
 		coordinator.get_total_item_count(WOODEN_CORE) == 0
-		and run_state.get_item(0) == AGAVE_BUILDING_ITEM
-		and run_state.get_item_count(0) == 1
+		and coordinator.get_total_item_count(AGAVE_BUILDING_ITEM) == 1
+		and run_state.get_inventory_item_total(AGAVE_BUILDING_ITEM) == 0
 		and is_zero_approx(center.progress_elapsed_seconds),
-		"单人完成配方时必须原子扣除木制核心并把加农炮建筑物品放入背包。"
+		"单人完成配方时必须原子扣除木制核心并把加农炮建筑物品放入共享仓库。"
 	)
 	_expect(
 		warehouse.try_add_storage_item_count(WOODEN_CORE, 2),
@@ -305,13 +305,9 @@ func _run() -> void:
 	center.advance_shared_production_tick(20.0)
 	center.advance_shared_production_tick(20.0)
 	_expect(
-		run_state.get_item(0) == AGAVE_BUILDING_ITEM
-		and run_state.get_item_count(0) == 1
-		and run_state.get_item(1) == AGAVE_BUILDING_ITEM
-		and run_state.get_item_count(1) == 1
-		and run_state.get_item(2) == AGAVE_BUILDING_ITEM
-		and run_state.get_item_count(2) == 1,
-		"相同建筑产物必须各自占用独立背包槽且数量固定为1。"
+		coordinator.get_total_item_count(AGAVE_BUILDING_ITEM) == 3
+		and run_state.get_inventory_item_total(AGAVE_BUILDING_ITEM) == 0,
+		"连续完成的相同建筑产物必须全部留在共享仓库，不得写入玩家背包。"
 	)
 	_expect(
 		warehouse.try_add_storage_item_count(WOODEN_CORE, 1)
@@ -320,9 +316,9 @@ func _run() -> void:
 	)
 	center.advance_shared_production_tick(20.0)
 	_expect(
-		run_state.get_item(3) == CORN_BUILDING_ITEM
-		and run_state.get_item_count(3) == 1,
-		"玉米机枪塔必须作为独立且不可叠加的建筑物品进入背包。"
+		coordinator.get_total_item_count(CORN_BUILDING_ITEM) == 1
+		and run_state.get_inventory_item_total(CORN_BUILDING_ITEM) == 0,
+		"玉米机枪塔必须作为建筑物品进入共享仓库。"
 	)
 	_expect(
 		not center.select_recipe(&"wooden_core_to_bamboo_mortar")
@@ -340,16 +336,16 @@ func _run() -> void:
 	)
 	center.advance_shared_production_tick(29.0)
 	_expect(
-		run_state.get_item(4) == null
+		coordinator.get_total_item_count(BAMBOO_MORTAR_BUILDING_ITEM) == 0
 		and is_equal_approx(center.progress_elapsed_seconds, 29.0),
 		"迫击炮培育到29秒时不得提前完成。"
 	)
 	center.advance_shared_production_tick(1.0)
 	_expect(
-		run_state.get_item(4) == BAMBOO_MORTAR_BUILDING_ITEM
-		and run_state.get_item_count(4) == 1
+		coordinator.get_total_item_count(BAMBOO_MORTAR_BUILDING_ITEM) == 1
+		and run_state.get_inventory_item_total(BAMBOO_MORTAR_BUILDING_ITEM) == 0
 		and is_zero_approx(center.progress_elapsed_seconds),
-		"迫击炮必须在累计30秒时完成并进入独立背包槽位。"
+		"迫击炮必须在累计30秒时完成并进入共享仓库。"
 	)
 	_expect(
 		not center.select_recipe(&"wooden_core_to_hydrangea_rain_tower")
@@ -367,18 +363,20 @@ func _run() -> void:
 	)
 	center.advance_shared_production_tick(29.0)
 	_expect(
-		run_state.get_item(5) == null
+		coordinator.get_total_item_count(HYDRANGEA_RAIN_TOWER_BUILDING_ITEM) == 0
 		and is_equal_approx(center.progress_elapsed_seconds, 29.0),
 		"紫阳花雨幕塔培育到29秒时不得提前完成。"
 	)
 	center.advance_shared_production_tick(1.0)
 	_expect(
-		run_state.get_item(5) == HYDRANGEA_RAIN_TOWER_BUILDING_ITEM
-		and run_state.get_item_count(5) == 1
+		coordinator.get_total_item_count(HYDRANGEA_RAIN_TOWER_BUILDING_ITEM) == 1
+		and run_state.get_inventory_item_total(
+			HYDRANGEA_RAIN_TOWER_BUILDING_ITEM
+		) == 0
 		and warehouse.get_storage_item_total(WOODEN_CORE) == 0
 		and warehouse.get_storage_item_total(WATER_BOTTLE) == 0
 		and is_zero_approx(center.progress_elapsed_seconds),
-		"紫阳花雨幕塔必须在累计30秒时原子消费两种材料并进入独立背包槽位。"
+		"紫阳花雨幕塔必须在累计30秒时原子消费两种材料并进入共享仓库。"
 	)
 	_expect(
 		not center.select_recipe(&"wooden_core_to_orange_charging_tower"),
@@ -395,18 +393,24 @@ func _run() -> void:
 	)
 	center.advance_shared_production_tick(29.0)
 	_expect(
-		run_state.get_item(6) == null
+		coordinator.get_total_item_count(ORANGE_CHARGING_TOWER_BUILDING_ITEM) == 0
 		and is_equal_approx(center.progress_elapsed_seconds, 29.0),
 		"橘充能塔培育到29秒时不得提前完成。"
 	)
 	center.advance_shared_production_tick(1.0)
 	_expect(
-		run_state.get_item(6) == ORANGE_CHARGING_TOWER_BUILDING_ITEM
-		and run_state.get_item_count(6) == 1
+		coordinator.get_total_item_count(ORANGE_CHARGING_TOWER_BUILDING_ITEM) == 1
+		and run_state.get_inventory_item_total(
+			ORANGE_CHARGING_TOWER_BUILDING_ITEM
+		) == 0
 		and warehouse.get_storage_item_total(WOODEN_CORE) == 0
 		and warehouse.get_storage_item_total(SORCERER_VIOLET_POWDER) == 0
 		and is_zero_approx(center.progress_elapsed_seconds),
-		"橘充能塔必须在累计30秒时原子消费两种材料并进入独立背包槽位。"
+		"橘充能塔必须在累计30秒时原子消费两种材料并进入共享仓库。"
+	)
+	_expect(
+		run_state.try_add_item(AGAVE_BUILDING_ITEM),
+		"背包详情夹具必须显式准备一个加农炮建筑物品。"
 	)
 	var profile_panel := (
 		PROFILE_PANEL_SCENE.instantiate() as TowerDefensePlayerProfilePanel
@@ -456,25 +460,32 @@ func _run() -> void:
 	coordinator.personal_inventory_output_committed.connect(
 		func(peer_id: int) -> void: committed_peer_ids.append(peer_id)
 	)
+	var agave_storage_total_before := coordinator.get_total_item_count(
+		AGAVE_BUILDING_ITEM
+	)
 	_expect(
 		warehouse.try_add_storage_item_count(WOODEN_CORE, 1)
 		and center.select_recipe(&"wooden_core_to_agave_cannon", 2),
-		"联机权威建筑必须记录选择配方的玩家。"
+		"联机权威建筑必须能选择共享仓库产物配方。"
 	)
 	center.advance_shared_production_tick(20.0)
 	_expect(
-		run_state.get_item_for_peer(2, 0) == AGAVE_BUILDING_ITEM
-		and run_state.get_item_count_for_peer(2, 0) == 1
-		and committed_peer_ids == [2]
-		and center.personal_output_peer_id == 2,
-		"联机产物只能进入配方选择者背包，并发出对应玩家的同步事件。"
+		coordinator.get_total_item_count(AGAVE_BUILDING_ITEM)
+		== agave_storage_total_before + 1
+		and run_state.get_inventory_item_total_for_peer(
+			2,
+			AGAVE_BUILDING_ITEM
+		) == 0
+		and committed_peer_ids.is_empty()
+		and center.personal_output_peer_id == 0,
+		"联机建筑产物必须进入共享仓库，不得绑定或写入选择者背包。"
 	)
 	var runtime_state := center.export_multiplayer_runtime_state()
 	_expect(
 		int(runtime_state.get("schema", 0))
 		== ProductionBuilding.RUNTIME_STATE_SCHEMA
-		and int(runtime_state.get("personal_output_peer_id", 0)) == 2,
-		"生产权威状态必须同步个人产物接收者。"
+		and int(runtime_state.get("personal_output_peer_id", 0)) == 0,
+		"共享仓库产物的权威状态不得携带个人产物接收者。"
 	)
 	coordinator.configure_local_output_peer()
 
@@ -489,7 +500,7 @@ func _run() -> void:
 		and panel.background.texture.resource_path
 		== "res://resources/texture/production/plant_cultivation_center_panel_background.png"
 		and panel.background.texture.get_size() == Vector2(728, 544)
-		and panel.output_title.text == "背包产物"
+		and panel.output_title.text == "仓库产物"
 		and panel.input_slots[0].visible
 		and not panel.input_slots[1].visible
 		and not panel.input_slots[2].visible
@@ -593,7 +604,7 @@ func _run() -> void:
 			== "培育葡萄电弧塔\n3 种原料 · 40秒"
 		and panel.recipe_rows[5].text
 			== "培育橘充能塔\n2 种原料 · 30秒",
-		"背包产物配方摘要必须只显示投入与耗时，避免在窄栏重复长产物名。"
+		"建筑产物配方摘要必须只显示投入与耗时，避免在窄栏重复长产物名。"
 	)
 	_expect(
 		panel.progress_label.position == Vector2(165.0, 314.0)

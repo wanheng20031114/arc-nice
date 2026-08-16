@@ -374,7 +374,7 @@ func _test_building_item_and_acquisition_closure() -> void:
 		== [BuildingItemRegistry.HYDRANGEA_RAIN_TOWER_ITEM]
 		and hydrangea_recipe.output_amounts == [1]
 		and is_equal_approx(hydrangea_recipe.duration_seconds, 30.0)
-		and hydrangea_recipe.outputs_to_player_inventory(),
+		and not hydrangea_recipe.outputs_to_player_inventory(),
 		"紫阳花雨幕塔必须在植物培育中心消耗2个木制核心和2个水瓶，并培育30秒。"
 	)
 	var orange_recipe := BuildingItemRegistry.get_primary_acquisition_recipe(
@@ -393,7 +393,7 @@ func _test_building_item_and_acquisition_closure() -> void:
 		== [BuildingItemRegistry.ORANGE_CHARGING_TOWER_ITEM]
 		and orange_recipe.output_amounts == [1]
 		and is_equal_approx(orange_recipe.duration_seconds, 30.0)
-		and orange_recipe.outputs_to_player_inventory(),
+		and not orange_recipe.outputs_to_player_inventory(),
 		"橘充能塔必须在独立科研完成后，才能于植物培育中心消耗1个木制核心和1份术士紫晶粉培育。"
 	)
 	var life_recipe := BuildingItemRegistry.get_primary_acquisition_recipe(
@@ -407,7 +407,7 @@ func _test_building_item_and_acquisition_closure() -> void:
 		and life_recipe.output_items == [BuildingItemRegistry.LIFE_TOWER_ITEM]
 		and life_recipe.output_amounts == [1]
 		and is_equal_approx(life_recipe.duration_seconds, 30.0)
-		and life_recipe.outputs_to_player_inventory(),
+		and not life_recipe.outputs_to_player_inventory(),
 		"生命强化塔必须在木头加工站消耗10个木板和2棵树苗，并组装30秒。"
 	)
 	var speed_recipe := BuildingItemRegistry.get_primary_acquisition_recipe(
@@ -421,7 +421,7 @@ func _test_building_item_and_acquisition_closure() -> void:
 		and speed_recipe.output_items == [BuildingItemRegistry.SPEED_TOWER_ITEM]
 		and speed_recipe.output_amounts == [1]
 		and is_equal_approx(speed_recipe.duration_seconds, 30.0)
-		and speed_recipe.outputs_to_player_inventory(),
+		and not speed_recipe.outputs_to_player_inventory(),
 		"移速强化塔必须在木头加工站消耗10个木板和2棵树苗，并组装30秒。"
 	)
 	var attack_speed_recipe := BuildingItemRegistry.get_primary_acquisition_recipe(
@@ -436,7 +436,7 @@ func _test_building_item_and_acquisition_closure() -> void:
 		== [BuildingItemRegistry.ATTACK_SPEED_TOWER_ITEM]
 		and attack_speed_recipe.output_amounts == [1]
 		and is_equal_approx(attack_speed_recipe.duration_seconds, 30.0)
-		and attack_speed_recipe.outputs_to_player_inventory(),
+		and not attack_speed_recipe.outputs_to_player_inventory(),
 		"攻速强化塔必须在木头加工站消耗10个木板和2棵树苗，并组装30秒。"
 	)
 

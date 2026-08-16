@@ -15,5 +15,5 @@ input_items = Array[ExtResource("6_pickup_script")]([ExtResource("2_core"), ExtR
 input_amounts = Array[int]([1, 2, 1])
 output_items = Array[ExtResource("6_pickup_script")]([ExtResource("5_building")])
 output_amounts = Array[int]([1])
-output_destination = 1
+output_destination = 0
 duration_seconds = 40.0
