@@ -8,10 +8,25 @@ const SNAPSHOT_SCHEMA_VERSION := 1
 const INVALID_DAY := 0
 const DEFAULT_ROGUE_CORE_HEALTH := 100
 const COMBAT_ACTION_LOCK_OWNER := &"tower_rogue_exploration"
+const SPATIAL_AUDIO_VOICE_LIMITER := preload(
+	"res://scene/combat/audio/spatial_audio_voice_limiter.gd"
+)
 
 signal exploration_started(day_number: int, snapshot: Dictionary)
 signal exploration_snapshot_changed(snapshot: Dictionary)
 signal exploration_finished(day_number: int, failed: bool)
+
+
+class TowerAudioPlaybackLease:
+	extends RefCounted
+
+	var player_ref: WeakRef = null
+	var parent_ref: WeakRef = null
+	var stream: AudioStream = null
+	var playback: AudioStreamPlayback = null
+	var was_paused := false
+	var preserve_playback := false
+
 
 @onready var _route: RogueRouteGame = $RogueRoute
 @onready var _multiplayer_combat_coordinator: RogueCombatMultiplayerCoordinator = (
@@ -46,7 +61,7 @@ var _route_identity_configured := false
 
 var _saved_process_modes: Dictionary = {}
 var _saved_visibility: Dictionary = {}
-var _saved_music_paused: Dictionary = {}
+var _saved_audio_playback_leases: Array[TowerAudioPlaybackLease] = []
 var _saved_tower_environment: Environment = null
 var _saved_tower_camera_enabled := false
 var _saved_terrain_decay_time_left := 0.0
@@ -345,6 +360,7 @@ func _freeze_tower_runtime() -> void:
 	) as WorldEnvironment
 	if tower_environment != null:
 		_saved_tower_environment = tower_environment.environment
+	var audio_playback_leases: Array[TowerAudioPlaybackLease] = []
 	for child in _runtime.get_children():
 		if child == self or child.name in [
 			&"MultiplayerGameplayGateway",
@@ -356,9 +372,12 @@ func _freeze_tower_runtime() -> void:
 		]:
 			continue
 		_saved_process_modes[child] = child.process_mode
-		_capture_music_pause_state(child)
-		if _has_property(child, &"visible"):
-			_saved_visibility[child] = bool(child.get(&"visible"))
+		_capture_audio_playback_leases(child, audio_playback_leases)
+		if child is CanvasItem:
+			_saved_visibility[child] = (child as CanvasItem).visible
+		elif child is CanvasLayer:
+			_saved_visibility[child] = (child as CanvasLayer).visible
+	_saved_audio_playback_leases = audio_playback_leases
 	_saved_terrain_decay_was_running = not _terrain_decay_timer.is_stopped()
 	if _saved_terrain_decay_was_running:
 		_saved_terrain_decay_time_left = _terrain_decay_timer.time_left
@@ -375,12 +394,15 @@ func _freeze_tower_runtime() -> void:
 	_runtime.map_camera.enabled = false
 	if tower_environment != null:
 		tower_environment.environment = null
-	# AudioStreamPlayer 会在所属节点停处理时改变暂停态；先显式暂停同一个
-	# playback，再禁用子树，恢复时才能继续原播放位置。
-	for player_variant in _saved_music_paused.keys():
-		var audio_player := _get_valid_saved_node(player_variant)
-		if audio_player != null:
-			audio_player.set(&"stream_paused", true)
+	# Music/循环声只暂停当前 playback；一次性 SFX 直接终止，不能在数分钟后续播。
+	for audio_lease in _saved_audio_playback_leases:
+		var audio_player := _get_current_audio_player(audio_lease)
+		if audio_player == null:
+			continue
+		if audio_lease.preserve_playback:
+			_set_audio_stream_paused(audio_player, true)
+		else:
+			_stop_transient_audio(audio_player)
 	if _saved_terrain_decay_was_running:
 		_terrain_decay_timer.stop()
 	_production.set_authoritative_processing_enabled(false)
@@ -405,6 +427,11 @@ func _freeze_tower_runtime() -> void:
 func _restore_tower_runtime() -> void:
 	if not _tower_runtime_frozen:
 		return
+	# PROCESS_MODE_DISABLED 的归还会让 Godot 自行改写 stream_paused；先为
+	# 当前播放代留守卫，防止它覆盖原暂停或冻结期新 playback 的状态。
+	var audio_pause_restore_guards: Array[TowerAudioPlaybackLease] = (
+		_build_audio_pause_restore_guards()
+	)
 	var tower_environment := _runtime.get_node_or_null(
 		"WorldEnvironment"
 	) as WorldEnvironment
@@ -413,22 +440,21 @@ func _restore_tower_runtime() -> void:
 	_runtime.map_camera.enabled = _saved_tower_camera_enabled
 	for child_variant in _saved_process_modes.keys():
 		var child := _get_valid_saved_node(child_variant)
-		if child != null:
+		if child != null and child.get_parent() == _runtime:
 			child.process_mode = int(_saved_process_modes[child_variant])
 	for child_variant in _saved_visibility.keys():
 		var child := _get_valid_saved_node(child_variant)
-		if child != null:
-			child.set(&"visible", bool(_saved_visibility[child_variant]))
-	for player_variant in _saved_music_paused.keys():
-		var audio_player := _get_valid_saved_node(player_variant)
+		if child is CanvasItem and child.get_parent() == _runtime:
+			(child as CanvasItem).visible = bool(_saved_visibility[child_variant])
+		elif child is CanvasLayer and child.get_parent() == _runtime:
+			(child as CanvasLayer).visible = bool(_saved_visibility[child_variant])
+	for restore_guard in audio_pause_restore_guards:
+		var audio_player := _get_current_audio_player(restore_guard)
 		if audio_player != null:
-			audio_player.set(
-				&"stream_paused",
-				bool(_saved_music_paused[player_variant])
-			)
+			_set_audio_stream_paused(audio_player, restore_guard.was_paused)
 	_saved_process_modes.clear()
 	_saved_visibility.clear()
-	_saved_music_paused.clear()
+	_saved_audio_playback_leases.clear()
 	_saved_tower_environment = null
 	if _runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		_production.set_authoritative_processing_enabled(
@@ -489,25 +515,164 @@ func _restore_tower_core() -> void:
 		)
 
 
-func _capture_music_pause_state(node: Node) -> void:
-	var has_playback := false
-	if node is AudioStreamPlayer:
-		has_playback = (node as AudioStreamPlayer).has_stream_playback()
-	elif node is AudioStreamPlayer2D:
-		has_playback = (node as AudioStreamPlayer2D).has_stream_playback()
-	elif node is AudioStreamPlayer3D:
-		has_playback = (node as AudioStreamPlayer3D).has_stream_playback()
-	if has_playback:
-		_saved_music_paused[node] = bool(node.get(&"stream_paused"))
+func _capture_audio_playback_leases(
+	node: Node,
+	leases: Array[TowerAudioPlaybackLease]
+) -> void:
+	# 嵌套 Rogue 是独立音频域；即使未来层级调整，也不能纳入 Tower 租约。
+	if node == self or self.is_ancestor_of(node):
+		return
+	if _is_audio_player(node) and _audio_player_has_playback(node):
+		var stream := _get_audio_stream(node)
+		var playback := _get_audio_playback(node)
+		if stream != null and playback != null:
+			var lease := TowerAudioPlaybackLease.new()
+			lease.player_ref = weakref(node)
+			lease.parent_ref = weakref(node.get_parent())
+			lease.stream = stream
+			lease.playback = playback
+			lease.was_paused = _is_audio_stream_paused(node)
+			lease.preserve_playback = _is_continuous_audio(stream)
+			leases.append(lease)
 	for child in node.get_children():
-		_capture_music_pause_state(child)
+		_capture_audio_playback_leases(child, leases)
 
 
-static func _has_property(object: Object, property_name: StringName) -> bool:
-	for property in object.get_property_list():
-		if StringName(property.get("name", &"")) == property_name:
-			return true
+func _get_current_audio_player(lease: TowerAudioPlaybackLease) -> Node:
+	if lease == null or lease.player_ref == null or lease.parent_ref == null:
+		return null
+	var audio_player := lease.player_ref.get_ref() as Node
+	var original_parent := lease.parent_ref.get_ref() as Node
+	if (
+		audio_player == null
+		or original_parent == null
+		or not is_instance_valid(audio_player)
+		or not is_instance_valid(original_parent)
+		or not audio_player.is_inside_tree()
+		or audio_player.get_parent() != original_parent
+		or not _runtime.is_ancestor_of(audio_player)
+		or self.is_ancestor_of(audio_player)
+		or _get_audio_stream(audio_player) != lease.stream
+		or _get_audio_playback(audio_player) != lease.playback
+	):
+		return null
+	return audio_player
+
+
+func _build_audio_pause_restore_guards() -> Array[TowerAudioPlaybackLease]:
+	var guards: Array[TowerAudioPlaybackLease] = []
+	for saved_lease in _saved_audio_playback_leases:
+		if saved_lease.player_ref == null:
+			continue
+		var audio_player := saved_lease.player_ref.get_ref() as Node
+		if (
+			audio_player == null
+			or not is_instance_valid(audio_player)
+			or not audio_player.is_inside_tree()
+			or not _runtime.is_ancestor_of(audio_player)
+			or self.is_ancestor_of(audio_player)
+			or not _audio_player_has_playback(audio_player)
+		):
+			continue
+		var stream := _get_audio_stream(audio_player)
+		var playback := _get_audio_playback(audio_player)
+		if stream == null or playback == null:
+			continue
+		var guard := TowerAudioPlaybackLease.new()
+		guard.player_ref = weakref(audio_player)
+		guard.parent_ref = weakref(audio_player.get_parent())
+		guard.stream = stream
+		guard.playback = playback
+		# 旧租约完全匹配时归还入口基线；否则只守住冻结期新播放代的现状。
+		guard.was_paused = (
+			saved_lease.was_paused
+			if _get_current_audio_player(saved_lease) == audio_player
+			else _is_audio_stream_paused(audio_player)
+		)
+		guards.append(guard)
+	return guards
+
+
+static func _is_audio_player(node: Node) -> bool:
+	return (
+		node is AudioStreamPlayer
+		or node is AudioStreamPlayer2D
+		or node is AudioStreamPlayer3D
+	)
+
+
+static func _audio_player_has_playback(node: Node) -> bool:
+	if node is AudioStreamPlayer:
+		return (node as AudioStreamPlayer).has_stream_playback()
+	if node is AudioStreamPlayer2D:
+		return (node as AudioStreamPlayer2D).has_stream_playback()
+	if node is AudioStreamPlayer3D:
+		return (node as AudioStreamPlayer3D).has_stream_playback()
 	return false
+
+
+static func _get_audio_stream(node: Node) -> AudioStream:
+	if node is AudioStreamPlayer:
+		return (node as AudioStreamPlayer).stream
+	if node is AudioStreamPlayer2D:
+		return (node as AudioStreamPlayer2D).stream
+	if node is AudioStreamPlayer3D:
+		return (node as AudioStreamPlayer3D).stream
+	return null
+
+
+static func _get_audio_playback(node: Node) -> AudioStreamPlayback:
+	if node is AudioStreamPlayer:
+		return (node as AudioStreamPlayer).get_stream_playback()
+	if node is AudioStreamPlayer2D:
+		return (node as AudioStreamPlayer2D).get_stream_playback()
+	if node is AudioStreamPlayer3D:
+		return (node as AudioStreamPlayer3D).get_stream_playback()
+	return null
+
+
+static func _is_continuous_audio(stream: AudioStream) -> bool:
+	# Bus 只负责混音，不能把 Music 上的一次性提示误判成可恢复的循环播放。
+	if stream is AudioStreamMP3:
+		return (stream as AudioStreamMP3).loop
+	if stream is AudioStreamOggVorbis:
+		return (stream as AudioStreamOggVorbis).loop
+	if stream is AudioStreamWAV:
+		return (
+			(stream as AudioStreamWAV).loop_mode
+			!= AudioStreamWAV.LOOP_DISABLED
+		)
+	# Generator 没有自然结束点，语义上也是长生命周期 playback。
+	return stream is AudioStreamGenerator
+
+
+static func _is_audio_stream_paused(node: Node) -> bool:
+	if node is AudioStreamPlayer:
+		return (node as AudioStreamPlayer).stream_paused
+	if node is AudioStreamPlayer2D:
+		return (node as AudioStreamPlayer2D).stream_paused
+	if node is AudioStreamPlayer3D:
+		return (node as AudioStreamPlayer3D).stream_paused
+	return false
+
+
+static func _set_audio_stream_paused(node: Node, paused: bool) -> void:
+	if node is AudioStreamPlayer:
+		(node as AudioStreamPlayer).stream_paused = paused
+	elif node is AudioStreamPlayer2D:
+		(node as AudioStreamPlayer2D).stream_paused = paused
+	elif node is AudioStreamPlayer3D:
+		(node as AudioStreamPlayer3D).stream_paused = paused
+
+
+static func _stop_transient_audio(node: Node) -> void:
+	if node is AudioStreamPlayer:
+		(node as AudioStreamPlayer).stop()
+	elif node is AudioStreamPlayer2D:
+		var player_2d := node as AudioStreamPlayer2D
+		SPATIAL_AUDIO_VOICE_LIMITER.preempt_all_voice_claims(player_2d)
+	elif node is AudioStreamPlayer3D:
+		(node as AudioStreamPlayer3D).stop()
 
 
 static func _get_valid_saved_node(value: Variant) -> Node:

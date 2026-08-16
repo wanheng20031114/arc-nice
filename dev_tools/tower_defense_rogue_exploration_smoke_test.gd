@@ -6,6 +6,16 @@ const TOWER_SCENE := preload(
 const FORMAL_PROGRESSION: TowerDefenseProgressionConfig = preload(
 	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
 )
+const SPATIAL_AUDIO_VOICE_LIMITER := preload(
+	"res://scene/combat/audio/spatial_audio_voice_limiter.gd"
+)
+const LOOPING_AUDIO_STREAM := preload(
+	"res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3"
+)
+const TRANSIENT_AUDIO_STREAM := preload(
+	"res://resources/audio/cowboy_explosion.wav"
+)
+const AUDIO_FREEZE_TEST_GROUP := &"tower_rogue_audio_freeze_test"
 const MAX_COMBAT_FIXTURE_SEED := 2048
 const MAX_COMBAT_WAIT_FRAMES := 600
 
@@ -58,10 +68,103 @@ func _run() -> void:
 	game.music_player.stream_paused = false
 	game.music_player.play(1.0)
 	var tower_music_playback := game.music_player.get_stream_playback()
+	var looping_sfx := _add_audio_player_2d(
+		game,
+		LOOPING_AUDIO_STREAM,
+		&"SFX"
+	)
+	var originally_paused_music := _add_audio_player(
+		game,
+		AudioStreamGenerator.new(),
+		&"Music"
+	)
+	var replaced_music := _add_audio_player(
+		game,
+		AudioStreamGenerator.new(),
+		&"Music"
+	)
+	var restarted_music := _add_audio_player(
+		game,
+		AudioStreamGenerator.new(),
+		&"Music"
+	)
+	var reparented_music := _add_audio_player(
+		game,
+		AudioStreamGenerator.new(),
+		&"Music"
+	)
+	var freed_music := _add_audio_player(
+		game,
+		AudioStreamGenerator.new(),
+		&"Music"
+	)
+	var transient_2d := AudioStreamPlayer2D.new()
+	transient_2d.stream = TRANSIENT_AUDIO_STREAM
+	transient_2d.bus = &"SFX"
+	game.add_child(transient_2d)
+	var transient_music := _add_audio_player(
+		game,
+		TRANSIENT_AUDIO_STREAM,
+		&"Music"
+	)
+	var transient_claim_result := SPATIAL_AUDIO_VOICE_LIMITER.claim_voice(
+		transient_2d,
+		game,
+		AUDIO_FREEZE_TEST_GROUP,
+		1
+	)
+	var transient_preemptions := [0]
+	transient_2d.set_meta(
+		SPATIAL_AUDIO_VOICE_LIMITER.VOICE_PREEMPTED_CALLBACK_META,
+		func() -> void: transient_preemptions[0] += 1
+	)
+	transient_2d.play()
+	var transient_3d := AudioStreamPlayer3D.new()
+	transient_3d.stream = TRANSIENT_AUDIO_STREAM
+	transient_3d.bus = &"SFX"
+	game.add_child(transient_3d)
+	transient_3d.play()
+	var nested_rogue_voice := AudioStreamPlayer2D.new()
+	nested_rogue_voice.stream = TRANSIENT_AUDIO_STREAM
+	nested_rogue_voice.bus = &"SFX"
+	route.add_child(nested_rogue_voice)
+	var nested_claim_result := SPATIAL_AUDIO_VOICE_LIMITER.claim_voice(
+		nested_rogue_voice,
+		route,
+		AUDIO_FREEZE_TEST_GROUP,
+		1
+	)
+	nested_rogue_voice.play()
+	await process_frame
+	originally_paused_music.stream_paused = true
+	await process_frame
+	var looping_sfx_playback := looping_sfx.get_stream_playback()
+	var paused_music_playback := originally_paused_music.get_stream_playback()
+	var replaced_music_playback := replaced_music.get_stream_playback()
+	var restarted_music_playback := restarted_music.get_stream_playback()
 	_expect(
 		game.music_player.has_stream_playback()
 		and tower_music_playback != null
-		and not game.music_player.stream_paused,
+		and not game.music_player.stream_paused
+		and looping_sfx_playback != null
+		and paused_music_playback != null
+		and replaced_music_playback != null
+		and restarted_music_playback != null
+		and originally_paused_music.stream_paused
+		and transient_claim_result == 0
+		and transient_2d.playing
+		and transient_music.playing
+		and transient_3d.playing
+		and nested_claim_result == 0
+		and nested_rogue_voice.playing
+		and SPATIAL_AUDIO_VOICE_LIMITER.get_active_voice_count(
+			game,
+			AUDIO_FREEZE_TEST_GROUP
+		) == 1
+		and SPATIAL_AUDIO_VOICE_LIMITER.get_active_voice_count(
+			route,
+			AUDIO_FREEZE_TEST_GROUP
+		) == 1,
 		"音乐冻结回归需要先建立一个有效且未暂停的 Tower playback。"
 	)
 	game.settings_panel.open()
@@ -93,8 +196,12 @@ func _run() -> void:
 		"Rogue 转场测试前必须先打开所有 Tower 高层 modal。"
 	)
 	var decay_time_before_freeze := game.plant_terrain_decay_timer.time_left
+	var tower_music_position_before_freeze := (
+		game.music_player.get_playback_position()
+	)
 	coordinator.call("_freeze_tower_runtime")
 	coordinator.call("_freeze_tower_runtime")
+	var tower_music_frozen_position := game.music_player.get_playback_position()
 	_expect(
 		not game.settings_panel.is_open()
 		and not game.player_profile_panel.is_open()
@@ -118,8 +225,48 @@ func _run() -> void:
 	)
 	_expect(
 		game.music_player.get_stream_playback() == tower_music_playback
-		and game.music_player.stream_paused,
-		"冻结边界必须暂停同一个 Tower 音乐 playback，不能 stop 或重建。"
+		and game.music_player.stream_paused
+		and looping_sfx.get_stream_playback() == looping_sfx_playback
+		and looping_sfx.stream_paused
+		and originally_paused_music.get_stream_playback() == paused_music_playback
+		and originally_paused_music.stream_paused
+		and not transient_2d.playing
+		and int(transient_preemptions[0]) == 1
+		and not transient_music.playing
+		and not transient_3d.playing
+		and nested_rogue_voice.playing
+		and not nested_rogue_voice.stream_paused
+		and SPATIAL_AUDIO_VOICE_LIMITER.get_active_voice_count(
+			game,
+			AUDIO_FREEZE_TEST_GROUP
+		) == 0
+		and SPATIAL_AUDIO_VOICE_LIMITER.get_active_voice_count(
+			route,
+			AUDIO_FREEZE_TEST_GROUP
+		) == 1
+		and absf(
+			tower_music_frozen_position - tower_music_position_before_freeze
+		) < 0.1,
+		"冻结必须保留循环 playback 位置、终止 Tower SFX，并隔离嵌套 Rogue 声部。"
+	)
+	var replacement_stream := AudioStreamGenerator.new()
+	replaced_music.stream = replacement_stream
+	replaced_music.play()
+	var replacement_playback := replaced_music.get_stream_playback()
+	replaced_music.stream_paused = true
+	restarted_music.stop()
+	restarted_music.play()
+	var restarted_music_generation := restarted_music.get_stream_playback()
+	restarted_music.stream_paused = true
+	reparented_music.reparent(route)
+	freed_music.free()
+	_expect(
+		replacement_playback != null
+		and replacement_playback != replaced_music_playback
+		and restarted_music_generation != null
+		and restarted_music_generation != restarted_music_playback
+		and reparented_music.stream_paused,
+		"冻结期替换 stream、重启 playback 与迁移节点必须产生失效租约。"
 	)
 	coordinator.call("_restore_tower_runtime")
 	_expect(
@@ -135,8 +282,33 @@ func _run() -> void:
 	)
 	_expect(
 		game.music_player.get_stream_playback() == tower_music_playback
-		and not game.music_player.stream_paused,
-		"恢复边界必须解除同一个 Tower 音乐 playback 的暂停。"
+		and not game.music_player.stream_paused
+		and absf(
+			game.music_player.get_playback_position()
+			- tower_music_frozen_position
+		) < 0.1
+		and looping_sfx.get_stream_playback() == looping_sfx_playback
+		and not looping_sfx.stream_paused
+		and originally_paused_music.stream_paused,
+		"恢复必须续接同一循环 playback 的位置，并保留进入前已有暂停。"
+	)
+	_expect(
+		replaced_music.stream == replacement_stream
+		and replaced_music.get_stream_playback() == replacement_playback
+		and replaced_music.stream_paused
+		and restarted_music.get_stream_playback() == restarted_music_generation
+		and restarted_music.stream_paused
+		and reparented_music.get_parent() == route
+		and reparented_music.stream_paused,
+		"替换 stream、重启 playback 或迁移节点后，旧暂停租约必须失效。"
+	)
+	_expect(
+		not transient_2d.playing
+		and int(transient_preemptions[0]) == 1
+		and not transient_music.playing
+		and not transient_3d.playing
+		and nested_rogue_voice.playing,
+		"恢复不得复活 Music/SFX 总线上的瞬态音频，也不得干预嵌套 Rogue 音频。"
 	)
 	var restored_tower_environment := (
 		game.get_node("WorldEnvironment") as WorldEnvironment
@@ -150,6 +322,21 @@ func _run() -> void:
 		and not game.music_player.stream_paused,
 		"重复恢复不得再次改写相机、环境或音乐，冻结租约必须严格幂等。"
 	)
+	SPATIAL_AUDIO_VOICE_LIMITER.release_all_voice_claims(nested_rogue_voice)
+	for audio_fixture in [
+		looping_sfx,
+		originally_paused_music,
+		replaced_music,
+		restarted_music,
+		reparented_music,
+		transient_2d,
+		transient_music,
+		transient_3d,
+		nested_rogue_voice,
+	]:
+		if is_instance_valid(audio_fixture):
+			audio_fixture.stop()
+			audio_fixture.free()
 	game.production_coordinator.set_authoritative_processing_enabled(false)
 	game.research_coordinator.set_authoritative_processing_enabled(false)
 	game.plant_terrain_decay_timer.stop()
@@ -748,6 +935,32 @@ func _verify_snapshot_ordering_and_idempotence() -> void:
 	for _cleanup_frame in range(8):
 		await process_frame
 		await physics_frame
+
+
+func _add_audio_player(
+	parent: Node,
+	stream: AudioStream,
+	bus: StringName
+) -> AudioStreamPlayer:
+	var audio_player := AudioStreamPlayer.new()
+	audio_player.stream = stream
+	audio_player.bus = bus
+	parent.add_child(audio_player)
+	audio_player.play()
+	return audio_player
+
+
+func _add_audio_player_2d(
+	parent: Node,
+	stream: AudioStream,
+	bus: StringName
+) -> AudioStreamPlayer2D:
+	var audio_player := AudioStreamPlayer2D.new()
+	audio_player.stream = stream
+	audio_player.bus = bus
+	parent.add_child(audio_player)
+	audio_player.play()
+	return audio_player
 
 
 func _set_route_action_points_for_boundary_test(

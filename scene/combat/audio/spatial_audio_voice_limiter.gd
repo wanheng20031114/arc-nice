@@ -195,6 +195,42 @@ static func release_voice(
 	_clear_membership(audio_player, audio_scope, audio_group)
 
 
+## 清空播放器持有的全部精确 scope/group 租约；普通池清理不伪装成抢占。
+static func release_all_voice_claims(audio_player: AudioStreamPlayer2D) -> void:
+	if audio_player == null or not is_instance_valid(audio_player):
+		return
+	var memberships := audio_player.get_meta(
+		_VOICE_SCOPE_MEMBERSHIPS_META,
+		{}
+	) as Dictionary
+	for group_variant in memberships.keys():
+		var audio_group := StringName(group_variant)
+		var audio_scope := _get_claimed_scope(audio_player, audio_group)
+		if audio_scope != null:
+			_release_from_scope_state(audio_player, audio_scope, audio_group)
+		_clear_membership(audio_player, audio_scope, audio_group)
+
+
+## 转场终止瞬态 playback 时复用距离抢占的完成语义，保证依赖音频完成
+## 回调的池对象仍能归还；一个物理播放器最多通知一次。
+static func preempt_all_voice_claims(audio_player: AudioStreamPlayer2D) -> void:
+	if audio_player == null or not is_instance_valid(audio_player):
+		return
+	var memberships := audio_player.get_meta(
+		_VOICE_SCOPE_MEMBERSHIPS_META,
+		{}
+	) as Dictionary
+	var had_active_claim := false
+	for group_variant in memberships.keys():
+		var audio_group := StringName(group_variant)
+		if _get_claimed_scope(audio_player, audio_group) != null:
+			had_active_claim = true
+	audio_player.stop()
+	release_all_voice_claims(audio_player)
+	if had_active_claim:
+		_notify_voice_preempted(audio_player)
+
+
 static func get_active_voice_count(
 	audio_scope: Node,
 	audio_group: StringName
@@ -324,6 +360,10 @@ static func _preempt_voice(
 	audio_player.stop()
 	_release_from_scope_state(audio_player, audio_scope, audio_group)
 	_clear_membership(audio_player, audio_scope, audio_group)
+	_notify_voice_preempted(audio_player)
+
+
+static func _notify_voice_preempted(audio_player: AudioStreamPlayer2D) -> void:
 	var preempted_callback: Variant = audio_player.get_meta(
 		VOICE_PREEMPTED_CALLBACK_META,
 		Callable()
