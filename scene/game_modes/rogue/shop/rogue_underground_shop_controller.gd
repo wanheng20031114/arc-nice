@@ -231,18 +231,22 @@ func export_snapshot_for_peer(
 func preflight_snapshot(
 	snapshot: Dictionary,
 	graph: RogueRouteGraph,
-	state: RogueRouteRuntimeState
+	state: RogueRouteRuntimeState,
+	validation_peer_id: int = -1
 ) -> bool:
+	var target_peer_id := (
+		validation_peer_id if validation_peer_id >= 0 else _local_peer_id
+	)
 	if (
 		not _is_snapshot_monotonic(snapshot)
 		or not _validate_snapshot_against_route(snapshot, graph, state)
-		or int(snapshot.get("target_peer_id", -1)) != _local_peer_id
+		or int(snapshot.get("target_peer_id", -1)) != target_peer_id
 		or typeof(snapshot.get("party_economy")) != TYPE_DICTIONARY
 		or not _validate_snapshot_consumable_prices(snapshot)
 	):
 		return false
 	var probe := RogueUndergroundShopSession.new()
-	var current := _session.export_snapshot_for_peer(_local_peer_id)
+	var current := _session.export_snapshot_for_peer(target_peer_id)
 	if not current.is_empty() and not probe.apply_snapshot(current):
 		# old→new 重连时客户端 Session 仍只缓存 old 的目标货架；此时
 		# export(new) 不是可解码快照。单调性已由真实 Session 字段检查，
@@ -250,7 +254,11 @@ func preflight_snapshot(
 		probe = RogueUndergroundShopSession.new()
 	if not probe.apply_snapshot(_extract_session_snapshot(snapshot)):
 		return false
-	return _validate_snapshot_economy_enrichment(snapshot, probe)
+	return _validate_snapshot_economy_enrichment(
+		snapshot,
+		probe,
+		target_peer_id
+	)
 
 
 func _validate_snapshot_consumable_prices(snapshot: Dictionary) -> bool:
@@ -287,8 +295,12 @@ func _validate_snapshot_consumable_prices(snapshot: Dictionary) -> bool:
 
 func _validate_snapshot_economy_enrichment(
 	snapshot: Dictionary,
-	price_session: RogueUndergroundShopSession
+	price_session: RogueUndergroundShopSession,
+	target_peer_id: int = -1
 ) -> bool:
+	var resolved_peer_id := (
+		target_peer_id if target_peer_id >= 0 else _local_peer_id
+	)
 	if (
 		_run_state == null
 		or typeof(snapshot.get("sell_slots")) != TYPE_ARRAY
@@ -302,7 +314,7 @@ func _validate_snapshot_economy_enrichment(
 		return false
 	var inventory := inventories[0] as Dictionary
 	if (
-		int(inventory.get("peer_id", -1)) != _local_peer_id
+		int(inventory.get("peer_id", -1)) != resolved_peer_id
 		or typeof(snapshot.get("inventory_revision")) != TYPE_INT
 		or int(snapshot["inventory_revision"])
 		!= int(inventory.get("revision", -1))
@@ -311,8 +323,8 @@ func _validate_snapshot_economy_enrichment(
 	var xirang_ledger := party_economy.get("xirang_ledger", {}) as Dictionary
 	var xirang_values := xirang_ledger.get("values", {}) as Dictionary
 	var balance_value: Variant = xirang_values.get(
-		_local_peer_id,
-		xirang_values.get(str(_local_peer_id), null)
+		resolved_peer_id,
+		xirang_values.get(str(resolved_peer_id), null)
 	)
 	if (
 		typeof(snapshot.get("xirang_revision")) != TYPE_INT
@@ -363,7 +375,7 @@ func _validate_snapshot_economy_enrichment(
 			else null
 		)
 		var sell_price := economy.get_sell_price_for_session(
-			_local_peer_id,
+			resolved_peer_id,
 			item,
 			price_session
 		)
@@ -394,27 +406,96 @@ func apply_snapshot(
 	graph: RogueRouteGraph,
 	state: RogueRouteRuntimeState
 ) -> bool:
+	var prepared := prepare_snapshot_transaction(
+		snapshot,
+		graph,
+		state
+	)
+	if not can_commit_prepared_snapshot_transaction(prepared):
+		return false
+	if not _run_state.apply_party_economy_snapshot(
+		prepared["party_economy"] as Dictionary
+	):
+		return false
+	commit_validated_snapshot_transaction(prepared)
+	complete_prepared_snapshot_presentation()
+	return true
+
+
+func prepare_snapshot_transaction(
+	snapshot: Dictionary,
+	graph: RogueRouteGraph,
+	state: RogueRouteRuntimeState,
+	validation_peer_id: int = -1
+) -> Dictionary:
+	var target_peer_id := (
+		validation_peer_id if validation_peer_id >= 0 else _local_peer_id
+	)
 	if (
 		_authority_enabled
 		or snapshot.is_empty()
 		or _run_state == null
-		or not preflight_snapshot(snapshot, graph, state)
+		or not preflight_snapshot(
+			snapshot,
+			graph,
+			state,
+			target_peer_id
+		)
 	):
-		return false
-	var party_economy := snapshot.get("party_economy", {}) as Dictionary
-	if party_economy.is_empty():
-		return false
+		return {}
 	var session_snapshot := _extract_session_snapshot(snapshot)
-	var decoded_session := RogueUndergroundShopSession.new()
-	if not decoded_session.apply_snapshot(session_snapshot):
-		return false
-	if not _run_state.apply_party_economy_snapshot(party_economy):
-		return false
-	if not _session.apply_snapshot(session_snapshot):
-		return false
-	_local_snapshot = snapshot.duplicate(true)
+	var prepared_session := _session.prepare_snapshot(session_snapshot)
+	if prepared_session.is_empty():
+		return {}
+	return {
+		"expected_authority_enabled": _authority_enabled,
+		"expected_local_peer_id": _local_peer_id,
+		"expected_local_snapshot": _local_snapshot.duplicate(true),
+		"target_peer_id": target_peer_id,
+		"session": prepared_session,
+		"party_economy": (
+			(snapshot["party_economy"] as Dictionary).duplicate(true)
+		),
+		"snapshot": snapshot.duplicate(true),
+	}
+
+
+func can_commit_prepared_snapshot_transaction(prepared: Dictionary) -> bool:
+	return (
+		prepared.size() == 7
+		and typeof(prepared.get("expected_authority_enabled")) == TYPE_BOOL
+		and bool(prepared["expected_authority_enabled"])
+		== _authority_enabled
+		and typeof(prepared.get("expected_local_peer_id")) == TYPE_INT
+		and int(prepared["expected_local_peer_id"]) == _local_peer_id
+		and typeof(prepared.get("expected_local_snapshot")) == TYPE_DICTIONARY
+		and prepared["expected_local_snapshot"] == _local_snapshot
+		and typeof(prepared.get("target_peer_id")) == TYPE_INT
+		and typeof(prepared.get("session")) == TYPE_DICTIONARY
+		and _session.can_commit_prepared_snapshot(
+			prepared["session"] as Dictionary
+		)
+		and typeof(prepared.get("party_economy")) == TYPE_DICTIONARY
+		and typeof(prepared.get("snapshot")) == TYPE_DICTIONARY
+	)
+
+
+func commit_validated_snapshot_transaction(prepared: Dictionary) -> void:
+	_session.commit_validated_snapshot(
+		prepared["session"] as Dictionary,
+		false
+	)
+	_local_snapshot = (
+		prepared["snapshot"] as Dictionary
+	).duplicate(true)
+
+
+func publish_prepared_snapshot_transaction(prepared: Dictionary) -> void:
+	_session.publish_prepared_snapshot(prepared["session"] as Dictionary)
+
+
+func complete_prepared_snapshot_presentation() -> void:
 	_sync_local_presentation(_local_snapshot)
-	return true
 
 
 func host_submit_purchase(

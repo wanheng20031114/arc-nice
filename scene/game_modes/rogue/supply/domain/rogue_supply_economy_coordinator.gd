@@ -281,30 +281,82 @@ func export_snapshot(peer_ids: Array[int] = []) -> Dictionary:
 
 
 func apply_remote_snapshot(snapshot: Dictionary) -> bool:
-	if not validate_remote_snapshot(snapshot):
+	var prepared := prepare_remote_snapshot(snapshot)
+	if not can_commit_prepared_remote_snapshot(prepared):
 		return false
+	if not _run_state.apply_party_economy_snapshot(
+		prepared["party_economy"] as Dictionary
+	):
+		return false
+	commit_validated_remote_snapshot(prepared)
+	return true
+
+
+## 路线全量事务先解码本域日志；Party Economy 由外层合并后只提交一次。
+func prepare_remote_snapshot(
+	snapshot: Dictionary,
+	structure_only: bool = false
+) -> Dictionary:
+	if not (
+		validate_remote_snapshot_structure(snapshot)
+		if structure_only
+		else validate_remote_snapshot(snapshot)
+	):
+		return {}
 	var decoded_occurrences: Variant = _decode_settled_occurrences(
 		snapshot["settled_occurrences"] as Array
 	)
-	if decoded_occurrences == null:
-		return false
 	var decoded_pending: Variant = _decode_pending_collectible_offers(
 		snapshot["pending_collectible_offers"] as Array
 	)
-	if decoded_pending == null:
-		return false
-	if not _run_state.apply_party_economy_snapshot(
-		snapshot["party_economy"] as Dictionary
-	):
-		return false
-	var changed := int(snapshot["revision"]) != _economy_revision
-	_economy_revision = int(snapshot["revision"])
-	_settled_occurrences = decoded_occurrences as Dictionary
-	_pending_collectible_offers = decoded_pending as Dictionary
+	if decoded_occurrences == null or decoded_pending == null:
+		return {}
+	return {
+		"expected_revision": _economy_revision,
+		"revision": int(snapshot["revision"]),
+		"settled_occurrences": decoded_occurrences,
+		"pending_collectible_offers": decoded_pending,
+		"party_economy": (
+			(snapshot["party_economy"] as Dictionary).duplicate(true)
+		),
+	}
+
+
+func can_commit_prepared_remote_snapshot(prepared: Dictionary) -> bool:
+	return (
+		prepared.size() == 5
+		and int(prepared.get("expected_revision", -1)) == _economy_revision
+		and typeof(prepared.get("revision")) == TYPE_INT
+		and typeof(prepared.get("settled_occurrences")) == TYPE_DICTIONARY
+		and typeof(prepared.get("pending_collectible_offers"))
+		== TYPE_DICTIONARY
+		and typeof(prepared.get("party_economy")) == TYPE_DICTIONARY
+	)
+
+
+func commit_validated_remote_snapshot(
+	prepared: Dictionary,
+	emit_change_signal: bool = true
+) -> void:
+	var changed := int(prepared["revision"]) != _economy_revision
+	_economy_revision = int(prepared["revision"])
+	_settled_occurrences = (
+		prepared["settled_occurrences"] as Dictionary
+	).duplicate(true)
+	_pending_collectible_offers = (
+		prepared["pending_collectible_offers"] as Dictionary
+	).duplicate(true)
 	_pending_collectible_sequence = _get_max_pending_collectible_sequence()
-	if changed:
+	if changed and emit_change_signal:
 		economy_changed.emit(export_snapshot())
-	return true
+
+
+func publish_prepared_remote_snapshot(prepared: Dictionary) -> void:
+	if int(prepared.get("revision", _economy_revision)) == int(
+		prepared.get("expected_revision", _economy_revision)
+	):
+		return
+	economy_changed.emit(export_snapshot())
 
 
 func validate_remote_snapshot(snapshot: Dictionary) -> bool:

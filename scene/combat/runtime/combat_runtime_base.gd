@@ -135,6 +135,7 @@ var runtime_activation_deferred := false
 var runtime_activated := false
 var _pending_xirang_kill_reward: int = 0
 var _xirang_kill_reward_flush_queued: bool = false
+var player_persistent_modifier_projector: PlayerPersistentModifierProjector = null
 
 
 func get_multiplayer_gameplay_gateway() -> MultiplayerGameplayGateway:
@@ -162,6 +163,12 @@ func get_multiplayer_mode_adapter() -> MultiplayerModeAdapter:
 func bind_player_runtime_context(player_instance: Player) -> void:
 	if player_instance != null:
 		player_instance.bind_combat_runtime(self)
+
+
+func configure_player_persistent_modifier_projector(
+	projector: PlayerPersistentModifierProjector
+) -> void:
+	player_persistent_modifier_projector = projector
 
 
 func bind_enemy_runtime_context(enemy_instance: Enemy) -> void:

@@ -257,6 +257,11 @@ func _run() -> void:
 	_test_gameplay_channel_contract(main_rpcs)
 	_expect_rpc_signature_contains(
 		main_rpcs,
+		"net_route_full_snapshot",
+		"progression_ledger:Dictionary"
+	)
+	_expect_rpc_signature_contains(
+		main_rpcs,
 		"net_player_damage_applied",
 		"confirmed_status_mask:int=0"
 	)
@@ -270,6 +275,7 @@ func _run() -> void:
 	)
 	for required_method in [
 		"net_request_route_full_snapshot",
+		"net_route_upgrade_requested",
 		"net_route_full_snapshot",
 		"net_route_move_delta",
 		"net_route_briefing_state",
@@ -306,6 +312,33 @@ func _run() -> void:
 			shop_request_method,
 			0
 		)
+	_expect_rpc_mode(
+		main_rogue_route_rpcs,
+		"net_route_upgrade_requested",
+		"any_peer"
+	)
+	_expect_rpc_channel(main_rogue_route_rpcs, "net_route_upgrade_requested", 0)
+	for request_field in [
+		"stat_type:int",
+		"expected_level:int",
+		"expected_xirang_revision:int",
+	]:
+		_expect_rpc_signature_contains(
+			main_rogue_route_rpcs,
+			"net_route_upgrade_requested",
+			request_field
+		)
+	_expect(
+		String(main_rogue_route_rpcs.get("net_route_upgrade_requested", "")).contains(
+			"stat_type:int,expected_level:int,expected_xirang_revision:int"
+		),
+		"Route upgrade requests must preserve the three-field CAS order."
+	)
+	_expect_rpc_signature_contains(
+		main_rogue_route_rpcs,
+		"net_route_full_snapshot",
+		"progression_ledger:Dictionary"
+	)
 	_expect_rpc_mode(
 		main_rogue_route_rpcs,
 		"net_shop_snapshot",
@@ -384,10 +417,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 77,
-		"协议v77必须由 ENet Host 校验内容摘要，并保留 Relay kick、成员身份与会话世代合同。"
+		NetConstants.PROTOCOL_VERSION == 78,
+		"协议v78必须新增 Route 升级事务与进度账本，并保留 v77 内容摘要和身份合同。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v77 must retain eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v78 must retain eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -426,7 +459,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v77 hosts must accept exactly v77 and reject v76."
+		"Protocol v78 hosts must accept exactly v78 and reject v77."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -502,11 +535,11 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 77")
+		and relay_source.contains("const PROTOCOL_VERSION := 78")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
 		(
-			"Relay server must declare v77, accept the room capacity, and provision "
+			"Relay server must declare v78, accept the room capacity, and provision "
 			+ "the same eight ENet channels as clients."
 		)
 	)

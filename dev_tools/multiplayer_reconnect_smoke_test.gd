@@ -454,6 +454,17 @@ func _test_observer_reuses_precreated_reconnect_target() -> void:
 		FIXTURE_OLD_PEER_ID
 	)
 	var membership_revision := _next_membership_revision(run_state)
+	_expect(
+		run_state.remap_multiplayer_peer_state(
+			FIXTURE_OLD_PEER_ID,
+			FIXTURE_NEW_PEER_ID,
+			membership_revision
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED,
+		(
+			"既有观察者 setup 必须先按权威 membership 原子迁移 old-id 全账本，"
+			+ "再允许场景预创建 new-id Player。"
+		)
+	)
 	var runtime := STANDARD_GAME_SCENE.instantiate() as StandardGame
 	runtime.auto_start_waves = false
 	runtime.configure_multiplayer(
@@ -522,8 +533,8 @@ func _test_observer_reuses_precreated_reconnect_target() -> void:
 		) == 1
 		and ledger_probe.claim_saw_remapped_identity,
 		(
-			"场景即使已见到 new-id Player，也只能复用表现节点；持久 old-id 账本"
-			+ "必须整体迁移到空目标，并在身份收敛后认领 CH6。"
+			"场景预创建 new-id Player 前必须已完成 ledger-first 身份迁移；"
+			+ "重连通知只能复用表现节点并在身份收敛后认领 CH6。"
 		)
 	)
 	mp_game.call(

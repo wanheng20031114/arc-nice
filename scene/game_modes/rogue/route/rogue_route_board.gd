@@ -55,6 +55,32 @@ func present_graph(
 	authority_enabled: bool,
 	prepare_entry_reveal_animation: bool = true
 ) -> bool:
+	var prepared := prepare_graph_presentation(
+		new_graph,
+		new_generation_config,
+		initial_current_node_id,
+		initial_action_points,
+		initial_visited_counts,
+		authority_enabled,
+		prepare_entry_reveal_animation
+	)
+	if not can_commit_prepared_graph_presentation(prepared):
+		discard_prepared_graph_presentation(prepared)
+		return false
+	commit_validated_graph_presentation(prepared)
+	return true
+
+
+## 在旧图仍完整显示时预先实例化新 cell；内容资源损坏会在任何清空前失败。
+func prepare_graph_presentation(
+	new_graph: RogueRouteGraph,
+	new_generation_config: RogueRouteGenerationConfig,
+	initial_current_node_id: int,
+	initial_action_points: int,
+	initial_visited_counts: PackedInt32Array,
+	authority_enabled: bool,
+	prepare_entry_reveal_animation: bool = true
+) -> Dictionary:
 	if (
 		new_graph == null
 		or new_generation_config == null
@@ -71,42 +97,126 @@ func present_graph(
 			initial_visited_counts
 		)
 	):
-		return false
-	_clear_cells()
-	graph = new_graph
-	generation_config = new_generation_config
-	current_node_id = initial_current_node_id
-	action_points = initial_action_points
-	move_action_cost = generation_config.move_action_cost
-	visited_counts = initial_visited_counts.duplicate()
-	_authority_enabled = authority_enabled
-	selected_node_id = INVALID_NODE_ID
-	for node_id in range(graph.get_node_count()):
+		return {}
+	var staged_cells: Array[RogueRouteCell] = []
+	for node_id in range(new_graph.get_node_count()):
 		var cell := CELL_SCENE.instantiate() as RogueRouteCell
 		if cell == null:
-			_clear_cells()
-			return false
-		cell_layer.add_child(cell)
-		var node_type := graph.get_node_type(node_id)
+			for staged_cell in staged_cells:
+				staged_cell.free()
+			return {}
+		var node_type := new_graph.get_node_type(node_id)
 		var is_empty := node_type == RogueRouteGraph.NodeType.EMPTY
 		var display_name := "空白区域"
 		var icon: Texture2D = null
 		if not is_empty:
-			var type_config := generation_config.get_type_config(node_type)
+			var type_config := new_generation_config.get_type_config(node_type)
 			if type_config != null:
 				display_name = type_config.display_name
 				icon = type_config.icon
 		cell.setup(node_id, display_name, icon, is_empty)
+		staged_cells.append(cell)
+	return {
+		"expected_baseline": _capture_graph_presentation_baseline(),
+		"graph": new_graph,
+		"generation_config": new_generation_config,
+		"current_node_id": initial_current_node_id,
+		"action_points": initial_action_points,
+		"visited_counts": initial_visited_counts.duplicate(),
+		"authority_enabled": authority_enabled,
+		"prepare_entry_reveal": prepare_entry_reveal_animation,
+		"cells": staged_cells,
+	}
+
+
+func can_commit_prepared_graph_presentation(prepared: Dictionary) -> bool:
+	if (
+		prepared.size() != 9
+		or typeof(prepared.get("expected_baseline")) != TYPE_DICTIONARY
+		or prepared["expected_baseline"]
+		!= _capture_graph_presentation_baseline()
+		or not prepared.get("graph") is RogueRouteGraph
+		or not prepared.get("generation_config")
+		is RogueRouteGenerationConfig
+		or typeof(prepared.get("current_node_id")) != TYPE_INT
+		or typeof(prepared.get("action_points")) != TYPE_INT
+		or typeof(prepared.get("visited_counts"))
+		!= TYPE_PACKED_INT32_ARRAY
+		or typeof(prepared.get("authority_enabled")) != TYPE_BOOL
+		or typeof(prepared.get("prepare_entry_reveal")) != TYPE_BOOL
+		or typeof(prepared.get("cells")) != TYPE_ARRAY
+	):
+		return false
+	var cells := prepared["cells"] as Array
+	var staged_graph := prepared["graph"] as RogueRouteGraph
+	if cells.size() != staged_graph.get_node_count():
+		return false
+	for cell_value in cells:
+		var cell := cell_value as RogueRouteCell
+		if (
+			cell == null
+			or not is_instance_valid(cell)
+			or cell.get_parent() != null
+		):
+			return false
+	return true
+
+
+func commit_validated_graph_presentation(prepared: Dictionary) -> void:
+	_clear_cells()
+	graph = prepared["graph"] as RogueRouteGraph
+	generation_config = (
+		prepared["generation_config"] as RogueRouteGenerationConfig
+	)
+	current_node_id = int(prepared["current_node_id"])
+	action_points = int(prepared["action_points"])
+	move_action_cost = generation_config.move_action_cost
+	visited_counts = (
+		prepared["visited_counts"] as PackedInt32Array
+	).duplicate()
+	_authority_enabled = bool(prepared["authority_enabled"])
+	selected_node_id = INVALID_NODE_ID
+	var staged_cells := prepared["cells"] as Array
+	for node_id in staged_cells.size():
+		var cell := staged_cells[node_id] as RogueRouteCell
+		cell_layer.add_child(cell)
 		cell.node_pressed.connect(_on_cell_pressed)
 		_cells[node_id] = cell
 	waiting_label.hide()
 	_layout_cells()
 	_update_cell_states()
-	if prepare_entry_reveal_animation:
-		prepare_entry_reveal(initial_current_node_id)
+	if bool(prepared["prepare_entry_reveal"]):
+		prepare_entry_reveal(current_node_id)
 	else:
 		complete_entry_reveal()
-	return true
+
+
+func discard_prepared_graph_presentation(prepared: Dictionary) -> void:
+	if typeof(prepared.get("cells")) != TYPE_ARRAY:
+		return
+	for cell_value in prepared["cells"] as Array:
+		var cell := cell_value as RogueRouteCell
+		if (
+			cell != null
+			and is_instance_valid(cell)
+			and cell.get_parent() == null
+		):
+			cell.free()
+	prepared.clear()
+
+
+func _capture_graph_presentation_baseline() -> Dictionary:
+	return {
+		"graph_hash": graph.compute_layout_hash() if graph != null else "",
+		"current_node_id": current_node_id,
+		"action_points": action_points,
+		"visited_counts": visited_counts.duplicate(),
+		"selected_node_id": selected_node_id,
+		"authority_enabled": _authority_enabled,
+		"interaction_locked": _interaction_locked,
+		"cell_count": _cells.size(),
+		"waiting_visible": waiting_label.visible if waiting_label != null else false,
+	}
 
 
 func show_waiting_for_host() -> void:

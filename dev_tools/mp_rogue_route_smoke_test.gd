@@ -660,7 +660,8 @@ func _test_embedded_inactive_gate_contract() -> void:
 	)
 	var stale_calls := [
 		[&"net_request_route_full_snapshot", []],
-		[&"net_route_full_snapshot", [{}, {}, {}, {}, {}]],
+		[&"net_route_upgrade_requested", [0, 0, 0]],
+		[&"net_route_full_snapshot", [{}, {}, {}, {}, {}, {}]],
 		[&"net_route_move_delta", [{}]],
 		[&"net_route_briefing_state", [{}]],
 		[&"net_route_briefing_cover_ready", ["briefing", 1, 1]],
@@ -1123,9 +1124,9 @@ func _dispatch_tower_client_transaction_requests(
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 77,
+		NetConstants.PROTOCOL_VERSION == 78,
 		(
-			"协议 v77 必须校验内容摘要并隔离重连身份事务，同时保留v74旧局CH6结果、v73会话成员、v71地下水道、v69植被科研、v68六格扩散、v67攻速强化塔、v66移速强化塔、P1E入口、神奇遭遇本局历史、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
+			"协议 v78 必须新增 Route 升级事务与完整进度账本，同时保留v77内容摘要、v74旧局CH6结果、v73会话成员、v71地下水道、v69植被科研、v68六格扩散、v67攻速强化塔、v66移速强化塔、P1E入口、神奇遭遇本局历史、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
 			+ "狭路相逢波次资源合同，并隔离 P1C 与纸箱怪资源、"
 			+ "精英战斗机器人、精英持枪机器人弹丸与消耗品资源合同，且保留"
 			+ "精英操作员无人机、精英盾兵、物资节点共享光石/行动力状态、"
@@ -1344,6 +1345,17 @@ func _test_lobby_contract() -> void:
 
 
 func _test_snapshot_and_delta_contract() -> void:
+	var shared_run_state := root.get_node_or_null("RunState") as RunStateStore
+	_expect(shared_run_state != null, "P3 快照测试必须取得常驻 RunState。")
+	if shared_run_state == null:
+		return
+	shared_run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		shared_run_state.register_multiplayer_peer_states(
+			PackedInt32Array([7, 8])
+		),
+		"P3 快照测试必须先注册 Host 与 Client 的完整持久账本。"
+	)
 	var host_route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	var client_route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	host_route.auto_initialize = false
@@ -1361,8 +1373,8 @@ func _test_snapshot_and_delta_contract() -> void:
 	client_route.start_client_waiting()
 	var layout := host_route.export_layout_snapshot()
 	var state := host_route.export_state_snapshot()
-	var encounter_state := host_route.export_encounter_snapshot(0)
-	var economy_state := host_route.export_encounter_economy_snapshot(0)
+	var encounter_state := host_route.export_encounter_snapshot(8)
+	var economy_state := host_route.export_encounter_economy_snapshot(8)
 	_expect(
 		(encounter_state.get("economy_snapshot", {}) as Dictionary).is_empty()
 		and not economy_state.is_empty(),
@@ -1378,11 +1390,12 @@ func _test_snapshot_and_delta_contract() -> void:
 	var wrapper_script := wrapper.get_script() as Script
 	var rpc_config: Dictionary = wrapper_script.get_rpc_config()
 	_expect(
-		rpc_config.size() == 16,
-		"MpRogueRoute 必须严格保留 16 个 v49 RPC 入口。"
+		rpc_config.size() == 17,
+		"MpRogueRoute v78 必须严格保留 17 个 RPC 入口。"
 	)
 	for rpc_name in [
 		&"net_request_route_full_snapshot",
+		&"net_route_upgrade_requested",
 		&"net_route_full_snapshot",
 		&"net_route_move_delta",
 		&"net_route_briefing_state",
@@ -1403,6 +1416,7 @@ func _test_snapshot_and_delta_contract() -> void:
 			"P3 完整快照与移动 delta 必须在可靠有序信道同步。"
 		)
 	for request_rpc_name in [
+		&"net_route_upgrade_requested",
 		&"net_shop_purchase_request",
 		&"net_shop_sell_request",
 		&"net_shop_exit_ack",
@@ -1479,6 +1493,7 @@ func _test_snapshot_and_delta_contract() -> void:
 	var fake_net_manager := FakeNetManager.new()
 	wrapper.set("_route", client_route)
 	wrapper.set("_net_manager", fake_net_manager)
+	wrapper.set("_run_state", shared_run_state)
 	fake_net_manager.gameplay_admitted = false
 	wrapper.set("_route_encounter_command_rate_buckets", {})
 	wrapper.set("_route_shop_command_rate_buckets", {})
@@ -1581,7 +1596,9 @@ func _test_snapshot_and_delta_contract() -> void:
 			layout,
 			state,
 			encounter_state,
-			economy_state
+			economy_state,
+			{},
+			shared_run_state.export_player_upgrade_ledger()
 		))
 		and not client_route.is_route_ready(),
 		"客户端必须拒绝非 Host 发来的完整快照。"
@@ -1602,7 +1619,9 @@ func _test_snapshot_and_delta_contract() -> void:
 			layout,
 			invalid_state,
 			encounter_state,
-			economy_state
+			economy_state,
+			{},
+			shared_run_state.export_player_upgrade_ledger()
 		))
 		and bool(wrapper.get("_snapshot_request_pending"))
 		and not bool(wrapper.call(
@@ -1615,26 +1634,91 @@ func _test_snapshot_and_delta_contract() -> void:
 		)),
 		"Host 坏快照不得锁死客户端；退避窗口结束后必须允许重新请求。"
 	)
+	var state_before_bad_progression := client_route.export_state_snapshot()
+	var economy_before_bad_progression := (
+		client_route.export_encounter_economy_snapshot(0)
+	)
+	var malformed_progression := shared_run_state.export_player_upgrade_ledger()
+	malformed_progression.erase("values")
 	_expect(
-		bool(wrapper.call(
+		not bool(wrapper.call(
 			"_apply_full_snapshot_from_peer",
 			fake_net_manager.host_peer_id,
 			layout,
 			state,
 			encounter_state,
-			economy_state
+			economy_state,
+			{},
+			malformed_progression
 		))
-		and client_route.is_route_ready()
-		and not bool(wrapper.get("_snapshot_request_pending"))
-		and int(wrapper.get("_snapshot_request_retry_at_msec")) == 0
-		and int(wrapper.get("_snapshot_request_retry_exponent")) == 0,
-		"客户端必须在坏快照后接受 Host 的正确快照并重置退避状态。"
+		and client_route.export_state_snapshot() == state_before_bad_progression
+		and client_route.export_encounter_economy_snapshot(0)
+		== economy_before_bad_progression,
+		"畸形成长账本必须在路线、经济与视觉提交前原子拒绝。"
 	)
 	var client_peer_id := fake_net_manager.host_peer_id + 1
 	fake_net_manager.connected_players = {
 		fake_net_manager.host_peer_id: "Host",
 		client_peer_id: "Client",
 	}
+	var staged_identity := client_route.prepare_multiplayer_players(
+		client_peer_id,
+		fake_net_manager.connected_players,
+		{
+			fake_net_manager.host_peer_id:
+				PlayerCharacterRegistry.WEISHIDAIER_ID,
+			client_peer_id: PlayerCharacterRegistry.TANGO_ID,
+		}
+	)
+	var staged_route := client_route.prepare_full_snapshot(
+		layout,
+		state,
+		encounter_state,
+		economy_state,
+		{},
+		client_peer_id
+	)
+	var staged_players: Array = []
+	if not staged_identity.is_empty():
+		staged_players = (
+			staged_identity["players"] as Dictionary
+		).values().duplicate()
+	var staged_board_cells: Array = []
+	if not staged_route.is_empty():
+		staged_board_cells = (
+			(staged_route["board"] as Dictionary)["cells"] as Array
+		).duplicate()
+	var rejected_late_progression := (
+		client_route.prepare_authoritative_player_progression(
+			{},
+			staged_route,
+			staged_identity
+		).is_empty()
+	)
+	client_route.discard_prepared_full_snapshot(staged_route)
+	client_route.discard_prepared_multiplayer_players(staged_identity)
+	var staged_objects_freed := true
+	for staged_player in staged_players:
+		staged_objects_freed = staged_objects_freed and not is_instance_valid(
+			staged_player
+		)
+	for staged_cell in staged_board_cells:
+		staged_objects_freed = staged_objects_freed and not is_instance_valid(
+			staged_cell
+		)
+	_expect(
+		not staged_players.is_empty()
+		and not staged_board_cells.is_empty()
+		and rejected_late_progression
+		and staged_objects_freed
+		and not client_route.is_route_ready()
+		and client_route.get_players_for_persistent_projection().is_empty()
+		and client_route.get_player_for_peer(client_peer_id) == null,
+		(
+			"树外 roster 与 board 已准备后若后域成长畸形，必须释放全部 staged "
+			+ "Player/cell，且零发布身份、路线、视觉与 Player。"
+		)
+	)
 	_expect(
 		client_route.configure_multiplayer_players(
 			client_peer_id,
@@ -1648,7 +1732,195 @@ func _test_snapshot_and_delta_contract() -> void:
 				client_peer_id: PlayerCharacterRegistry.TANGO_ID,
 			}
 		),
-		"客户端路线必须能创建本地与远端自由移动角色。"
+		"客户端路线必须能先按稳定账本创建本地与远端自由移动角色。"
+	)
+	var correct_snapshot_applied := bool(wrapper.call(
+			"_apply_full_snapshot_from_peer",
+			fake_net_manager.host_peer_id,
+			layout,
+			state,
+			encounter_state,
+			economy_state,
+			{},
+			shared_run_state.export_player_upgrade_ledger()
+		))
+	_expect(
+		correct_snapshot_applied
+		and client_route.is_route_ready()
+		and not bool(wrapper.get("_snapshot_request_pending"))
+		and int(wrapper.get("_snapshot_request_retry_at_msec")) == 0
+		and int(wrapper.get("_snapshot_request_retry_exponent")) == 0,
+		"客户端必须在坏快照后接受 Host 的正确快照并重置退避状态。"
+	)
+	var old_route_xirang_values := (
+		shared_run_state.party_xirang_balances.duplicate(true)
+	)
+	var old_route_xirang_revision := (
+		shared_run_state.party_xirang_ledger_revision
+	)
+	var repaired_peer_balance := (
+		shared_run_state.get_party_xirang_balance(client_peer_id) + 77
+	)
+	_expect(
+		shared_run_state.set_party_xirang_balance(
+			client_peer_id,
+			repaired_peer_balance,
+			false
+		),
+		"MpRoute 重入夹具必须构造下一份 Host Party 息壤高水位。"
+	)
+	var reentry_layout := host_route.export_layout_snapshot()
+	var reentry_state := host_route.export_state_snapshot()
+	var reentry_encounter := host_route.export_encounter_snapshot(client_peer_id)
+	var reentry_economy := (
+		host_route.export_encounter_economy_snapshot(client_peer_id)
+	)
+	var reentry_shop := host_route.export_shop_snapshot_for_peer(client_peer_id)
+	var reentry_progression := shared_run_state.export_player_upgrade_ledger()
+	shared_run_state.party_xirang_balances = old_route_xirang_values
+	shared_run_state.party_xirang_ledger_revision = old_route_xirang_revision
+	var reentry_observation := {
+		"owner_signal_count": 0,
+		"nested_apply_rejected": false,
+		"route_direct_apply_rejected": false,
+	}
+	var reentry_callback := func(_ledger: Dictionary) -> void:
+		reentry_observation["owner_signal_count"] += 1
+		reentry_observation["nested_apply_rejected"] = not bool(wrapper.call(
+			"_apply_full_snapshot_from_peer",
+			fake_net_manager.host_peer_id,
+			reentry_layout,
+			reentry_state,
+			reentry_encounter,
+			reentry_economy,
+			reentry_shop,
+			reentry_progression
+		))
+		reentry_observation["route_direct_apply_rejected"] = not (
+			client_route.apply_full_snapshot(
+				reentry_layout,
+				reentry_state,
+				reentry_encounter,
+				reentry_economy,
+				reentry_shop
+			)
+		)
+	shared_run_state.party_xirang_ledger_changed.connect(reentry_callback)
+	var reentry_outer_applied := bool(wrapper.call(
+		"_apply_full_snapshot_from_peer",
+		fake_net_manager.host_peer_id,
+		reentry_layout,
+		reentry_state,
+		reentry_encounter,
+		reentry_economy,
+		reentry_shop,
+		reentry_progression
+	))
+	shared_run_state.party_xirang_ledger_changed.disconnect(reentry_callback)
+	_expect(
+		reentry_outer_applied
+		and int(reentry_observation["owner_signal_count"]) == 1
+		and bool(reentry_observation["nested_apply_rejected"])
+		and bool(reentry_observation["route_direct_apply_rejected"])
+		and shared_run_state.get_party_xirang_balance(client_peer_id)
+		== repaired_peer_balance
+		and client_route.get_player_for_peer(client_peer_id).current_xirang
+		== repaired_peer_balance,
+		"MpRoute 首个 owner 回调同步重入必须零写拒绝，外层快照仍只提交/发布一次。"
+	)
+	var cas_layout_before := client_route.export_layout_snapshot()
+	var cas_state_before := client_route.export_state_snapshot()
+	var cas_encounter_before := client_route.export_encounter_snapshot(
+		client_peer_id
+	)
+	var cas_economy_before := client_route.export_encounter_economy_snapshot(
+		client_peer_id
+	)
+	var cas_shop_before := client_route.export_shop_snapshot_for_peer(
+		client_peer_id
+	)
+	var cas_party_before := shared_run_state.export_party_economy_snapshot()
+	var cas_progression_before := (
+		shared_run_state.export_player_upgrade_ledger()
+	)
+	var cas_player_before := {
+		"instance_id": client_route.get_player_for_peer(
+			client_peer_id
+		).get_instance_id(),
+		"health": client_route.get_player_for_peer(client_peer_id).current_health,
+		"max_health": client_route.get_player_for_peer(client_peer_id).max_health,
+		"attack": client_route.get_player_for_peer(client_peer_id).attack_damage,
+		"xirang": client_route.get_player_for_peer(client_peer_id).current_xirang,
+	}
+	var cas_prepared_progression := shared_run_state.prepare_player_upgrade_ledger(
+		cas_progression_before,
+		true
+	)
+	var cas_prepared_route := client_route.prepare_full_snapshot(
+		reentry_layout,
+		reentry_state,
+		reentry_encounter,
+		reentry_economy,
+		reentry_shop,
+		client_peer_id
+	)
+	var cas_prepared_player := client_route.prepare_authoritative_player_progression(
+		cas_prepared_progression,
+		cas_prepared_route
+	)
+	var staged_cells: Array = []
+	if not cas_prepared_route.is_empty():
+		staged_cells = (
+			(cas_prepared_route["board"] as Dictionary)["cells"] as Array
+		).duplicate()
+	var previous_commit_generation := int(
+		client_route.get("_full_snapshot_commit_generation")
+	)
+	client_route.set(
+		"_full_snapshot_commit_generation",
+		previous_commit_generation + 1
+	)
+	var route_cas_rejected := not client_route.can_commit_prepared_full_snapshot(
+		cas_prepared_route
+	)
+	client_route.discard_prepared_full_snapshot(cas_prepared_route)
+	client_route.set(
+		"_full_snapshot_commit_generation",
+		previous_commit_generation
+	)
+	var staged_cells_freed := true
+	for staged_cell in staged_cells:
+		staged_cells_freed = staged_cells_freed and not is_instance_valid(
+			staged_cell
+		)
+	var cas_player_after := client_route.get_player_for_peer(client_peer_id)
+	_expect(
+		not cas_prepared_progression.is_empty()
+		and not cas_prepared_player.is_empty()
+		and route_cas_rejected
+		and staged_cells_freed
+		and client_route.export_layout_snapshot() == cas_layout_before
+		and client_route.export_state_snapshot() == cas_state_before
+		and client_route.export_encounter_snapshot(client_peer_id)
+		== cas_encounter_before
+		and client_route.export_encounter_economy_snapshot(client_peer_id)
+		== cas_economy_before
+		and client_route.export_shop_snapshot_for_peer(client_peer_id)
+		== cas_shop_before
+		and shared_run_state.export_party_economy_snapshot()
+		== cas_party_before
+		and shared_run_state.export_player_upgrade_ledger()
+		== cas_progression_before
+		and cas_player_after.get_instance_id()
+		== int(cas_player_before["instance_id"])
+		and cas_player_after.current_health == int(cas_player_before["health"])
+		and cas_player_after.max_health == int(cas_player_before["max_health"])
+		and cas_player_after.attack_damage == int(cas_player_before["attack"])
+		and cas_player_after.current_xirang == int(cas_player_before["xirang"]),
+		(
+			"prepare 后 Route generation CAS 失效必须零写拒绝并释放全部树外 "
+			+ "board cells；路线/Party Economy/成长/Shop/Encounter/Player 均保持原样。"
+		)
 	)
 	var client_local_player := client_route.get_player_for_peer(client_peer_id)
 	var client_host_player := client_route.get_player_for_peer(
@@ -1851,6 +2123,17 @@ func _test_snapshot_and_delta_contract() -> void:
 
 
 func _test_briefing_network_contract() -> void:
+	var shared_run_state := root.get_node_or_null("RunState") as RunStateStore
+	_expect(shared_run_state != null, "简报联机测试必须取得常驻 RunState。")
+	if shared_run_state == null:
+		return
+	shared_run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		shared_run_state.register_multiplayer_peer_states(
+			PackedInt32Array([7, 8])
+		),
+		"简报联机测试必须先注册完整多人持久账本。"
+	)
 	var probe_route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	probe_route.auto_initialize = false
 	probe_route.manage_return_locally = false
@@ -1918,10 +2201,29 @@ func _test_briefing_network_contract() -> void:
 		fake_net_manager.host_peer_id: "Host",
 		fake_net_manager.host_peer_id + 1: "Client",
 	}
+	_expect(
+		client_route.configure_multiplayer_players(
+			fake_net_manager.host_peer_id + 1,
+			fake_net_manager.connected_players,
+			{
+				fake_net_manager.host_peer_id:
+					PlayerCharacterRegistry.WEISHIDAIER_ID,
+				fake_net_manager.host_peer_id + 1:
+					PlayerCharacterRegistry.TANGO_ID,
+			}
+		),
+		"简报客户端必须在收权威全快照前按账本创建稳定 Player roster。"
+	)
 	wrapper.set("_route", client_route)
 	wrapper.set("_net_manager", fake_net_manager)
-	var encounter_state := host_route.export_encounter_snapshot(0)
-	var economy_state := host_route.export_encounter_economy_snapshot(0)
+	wrapper.set("_run_state", shared_run_state)
+	var briefing_snapshot_peer_id := fake_net_manager.host_peer_id + 1
+	var encounter_state := host_route.export_encounter_snapshot(
+		briefing_snapshot_peer_id
+	)
+	var economy_state := host_route.export_encounter_economy_snapshot(
+		briefing_snapshot_peer_id
+	)
 	_expect(
 		bool(wrapper.call(
 			"_apply_full_snapshot_from_peer",
@@ -1929,7 +2231,13 @@ func _test_briefing_network_contract() -> void:
 			layout,
 			presented_state,
 			encounter_state,
-			economy_state
+			economy_state,
+			{},
+			(
+				shared_run_state.export_player_upgrade_ledger()
+				if shared_run_state != null
+				else {}
+			)
 		)),
 		"客户端完整快照必须恢复 Host 的 PRESENTED 简报。"
 	)
@@ -2047,6 +2355,107 @@ func _test_briefing_network_contract() -> void:
 			"_transition_serial"
 		)) == transition_serial,
 		"同 revision 的冲突简报必须原子拒绝，不能倒退到 PRESENTED。"
+	)
+
+	# 模拟本地旧战场仍持有同一 occurrence，而权威 full snapshot 将路线
+	# revision 回退并重建同 occurrence 的 Briefing。reconcile signal 只能
+	# 释放旧 stage，绝不能由 listener 再把新 PRESENTED/ENTERING 清空。
+	var combat_graph := client_route.get("_route_graph") as RogueRouteGraph
+	var combat_content_seed := combat_graph.get_node_content_seed(combat_node_id)
+	var reconcile_observation := {
+		"count": 0,
+		"occurrences": [],
+		"phases": [],
+		"route_reentry_rejected": true,
+	}
+	var reconcile_reentry_state := {"snapshot": presented_state}
+	var reconcile_callback := func(reconciled_occurrence: String) -> void:
+		reconcile_observation["count"] += 1
+		(reconcile_observation["occurrences"] as Array).append(
+			reconciled_occurrence
+		)
+		(reconcile_observation["phases"] as Array).append(
+			int(client_route.get("_briefing_phase"))
+		)
+		reconcile_observation["route_reentry_rejected"] = (
+			bool(reconcile_observation["route_reentry_rejected"])
+			and not client_route.apply_full_snapshot(
+				layout,
+				reconcile_reentry_state["snapshot"] as Dictionary,
+				encounter_state,
+				economy_state
+			)
+		)
+	client_route.normal_combat_snapshot_reconciled.connect(
+		reconcile_callback
+	)
+	client_route.call(
+		"_begin_normal_combat_stage",
+		combat_node_id,
+		combat_content_seed,
+		str(presented["occurrence_key"]),
+		StringName(presented.get("combat_config_id", ""))
+	)
+	var client_runtime_state := (
+		client_route.get("_runtime_state") as RogueRouteRuntimeState
+	)
+	client_runtime_state.state_revision += 1
+	var presented_reconcile_applied := bool(wrapper.call(
+		"_apply_full_snapshot_from_peer",
+		fake_net_manager.host_peer_id,
+		layout,
+		presented_state,
+		encounter_state,
+		economy_state,
+		{},
+		shared_run_state.export_player_upgrade_ledger()
+	))
+	_expect(
+		presented_reconcile_applied
+		and not client_route.is_normal_combat_active()
+		and client_route.export_briefing_state_snapshot() == presented,
+		"同 occurrence PRESENTED full snapshot 必须释放旧战场并精确保留新简报。"
+	)
+	client_route.call(
+		"_begin_normal_combat_stage",
+		combat_node_id,
+		combat_content_seed,
+		str(entering["occurrence_key"]),
+		StringName(entering.get("combat_config_id", ""))
+	)
+	client_runtime_state = client_route.get("_runtime_state") as RogueRouteRuntimeState
+	client_runtime_state.state_revision += 1
+	reconcile_reentry_state["snapshot"] = pre_move_state
+	var entering_reconcile_applied := bool(wrapper.call(
+		"_apply_full_snapshot_from_peer",
+		fake_net_manager.host_peer_id,
+		layout,
+		pre_move_state,
+		encounter_state,
+		economy_state,
+		{},
+		shared_run_state.export_player_upgrade_ledger()
+	))
+	client_route.normal_combat_snapshot_reconciled.disconnect(
+		reconcile_callback
+	)
+	_expect(
+		entering_reconcile_applied
+		and not client_route.is_normal_combat_active()
+		and client_route.export_briefing_state_snapshot() == entering
+		and int(reconcile_observation["count"]) == 2
+		and (reconcile_observation["occurrences"] as Array)
+		== [str(entering["occurrence_key"]), str(entering["occurrence_key"])]
+		and (reconcile_observation["phases"] as Array)
+		== [
+			RogueRouteGame.BriefingPhase.PRESENTED,
+			RogueRouteGame.BriefingPhase.ENTERING,
+		]
+		and bool(reconcile_observation["route_reentry_rejected"]),
+		(
+			"同 occurrence ENTERING full snapshot 必须精确保留新简报；两次 delayed "
+			+ "reconcile 回调都只能见到完整新状态且不得直接重入 Route。"
+		)
 	)
 
 	host_route.call(&"_on_node_briefing_confirmed")
@@ -2665,7 +3074,16 @@ func _test_fluorescent_pit_route_integration() -> void:
 		and local_pages.size() == 1
 		and str((local_pages[0] as Dictionary).get("text", ""))
 		== "最大生命：%d → %d" % [health_before, health_after],
-		"放射性结果页必须显示本地角色真实最大生命前后值。"
+		(
+			"放射性结果页必须显示本地角色真实最大生命前后值："
+			+ "before=%d after=%d phase=%s pages=%s。"
+			% [
+				health_before,
+				health_after,
+				str(radiation_result.get("phase", &"")),
+				str(local_pages),
+			]
+		)
 	)
 	var radiation_ack_forwarder := func(
 		occurrence_key: String,
@@ -3384,7 +3802,9 @@ func _test_incremental_avatar_reconnect(
 		host_route.export_layout_snapshot(),
 		host_route.export_state_snapshot(),
 		host_route.export_encounter_snapshot(collision_peer_id),
-		authoritative_economy
+		authoritative_economy,
+		{},
+		shared_run_state.export_player_upgrade_ledger()
 	))
 	_expect(
 		reconnect_full_applied
@@ -3418,11 +3838,24 @@ func _test_incremental_avatar_reconnect(
 			embedded_old_peer_id
 		)
 		var embedded_character_id := embedded_old_player.get_character_id()
-		var coordinator_migrated := host_route.migrate_multiplayer_player(
-			embedded_old_peer_id,
-			embedded_new_peer_id,
-			"EmbeddedReconnect",
-			embedded_character_id
+		# Tower 外层会先提交同一稳定参与者的 RunState 身份；路线只消费已经
+		# 成为 new peer 的权威账本，不能在 Player 节点里猜测或复制旧账本。
+		var embedded_ledger_migrated := (
+			shared_run_state.remap_multiplayer_peer_state(
+				embedded_old_peer_id,
+				embedded_new_peer_id,
+				shared_run_state.get_multiplayer_session_membership_revision() + 1
+			)
+			== RunStateStore.MultiplayerPeerRemapResult.MIGRATED
+		)
+		var coordinator_migrated := (
+			embedded_ledger_migrated
+			and host_route.migrate_multiplayer_player(
+				embedded_old_peer_id,
+				embedded_new_peer_id,
+				"EmbeddedReconnect",
+				embedded_character_id
+			)
 		)
 		# 模拟 Tower coordinator 在旧节点已被移除时采用 Host 安全锚点；
 		# Bridge 随后的 transport 迁移必须用缓存姿态覆盖该临时位置。
@@ -3435,7 +3868,8 @@ func _test_incremental_avatar_reconnect(
 			embedded_new_peer_id
 		)
 		_expect(
-			coordinator_migrated
+			embedded_ledger_migrated
+			and coordinator_migrated
 			and host_route.get_player_for_peer(embedded_new_peer_id) != null
 			and host_route.get_player_for_peer(embedded_new_peer_id).global_position
 			.is_equal_approx(embedded_position),

@@ -561,6 +561,12 @@ func _test_runtime_activation_gate() -> void:
 	_expect(game != null, "Standard runtime must instantiate for activation-gate coverage.")
 	if game == null:
 		return
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.register_multiplayer_peer_states(PackedInt32Array([1])),
+		"Activation-gate fixture must register the complete runtime roster first."
+	)
 	game.configure_multiplayer(
 		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
 		1,
@@ -597,6 +603,9 @@ func _test_runtime_activation_gate() -> void:
 	_expect_drone_projectile_pool(game)
 	game.queue_free()
 	await process_frame
+	# 本 case 的成员账本只服务激活屏障；清回无成员新局，避免后续会话
+	# 因复用 peer=1 而绕过自身的正式注册流程。
+	run_state.begin_new_run(&"weishidaier", false)
 
 
 func _test_mode_specific_mp_game_source() -> void:

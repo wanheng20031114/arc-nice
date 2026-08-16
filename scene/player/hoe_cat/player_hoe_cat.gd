@@ -387,6 +387,11 @@ func _update_character_combat_state(delta: float) -> void:
 
 func _cleanup_character_combat_on_death() -> void:
 	super._cleanup_character_combat_on_death()
+	_clear_character_scene_transients()
+
+
+func _clear_character_scene_transients() -> void:
+	super._clear_character_scene_transients()
 	_primary_visual_time_left = 0.0
 	_primary_visual_facing_suffix = &""
 	_whirlwind_visual_time_left = 0.0
@@ -413,6 +418,10 @@ func _cleanup_character_combat_on_death() -> void:
 		whirlwind_body_effect.stop()
 	if snow_wolf_sword_orbit != null:
 		snow_wolf_sword_orbit.deactivate()
+	if primary_attack_audio != null:
+		primary_attack_audio.stop()
+	if skill1_audio != null:
+		skill1_audio.stop()
 
 
 func _play_death_animation() -> void:

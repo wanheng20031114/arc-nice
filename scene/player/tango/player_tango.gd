@@ -1520,6 +1520,15 @@ func _cleanup_character_combat_on_death() -> void:
 		casting_units.hide()
 
 
+func _clear_character_scene_transients() -> void:
+	super._clear_character_scene_transients()
+	_finish_electric_surge_state()
+	_reset_tango_combat_state(true)
+	if casting_units != null:
+		casting_units.show()
+		_update_orbit_visuals(0.0)
+
+
 func _reset_character_resources_on_revive() -> void:
 	super._reset_character_resources_on_revive()
 	_clear_electric_surge_state()

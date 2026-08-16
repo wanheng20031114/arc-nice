@@ -24,6 +24,13 @@ signal reconnected_player_projection_resolved(
 @export_group("内嵌战斗运行时")
 @export_file("*.tscn") var runtime_scene_path_override := ""
 @export var embedded_runtime := false
+var player_persistent_modifier_projector: PlayerPersistentModifierProjector = null
+
+
+func configure_player_persistent_modifier_projector(
+	projector: PlayerPersistentModifierProjector
+) -> void:
+	player_persistent_modifier_projector = projector
 
 
 ## Host 在成员仍为 RECONNECTING 时同步调用；实现必须在返回 true 前把该成员

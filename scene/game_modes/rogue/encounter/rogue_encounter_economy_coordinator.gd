@@ -1694,23 +1694,71 @@ func export_snapshot(peer_ids: Array[int] = []) -> Dictionary:
 
 
 func apply_remote_snapshot(snapshot: Dictionary) -> bool:
-	if not validate_remote_snapshot(snapshot):
+	var prepared := prepare_remote_snapshot(snapshot)
+	if not can_commit_prepared_remote_snapshot(prepared):
 		return false
+	if not _run_state.apply_party_economy_snapshot(
+		prepared["party_economy"] as Dictionary
+	):
+		return false
+	commit_validated_remote_snapshot(prepared)
+	return true
+
+
+func prepare_remote_snapshot(
+	snapshot: Dictionary,
+	structure_only: bool = false
+) -> Dictionary:
+	if not (
+		validate_remote_snapshot_structure(snapshot)
+		if structure_only
+		else validate_remote_snapshot(snapshot)
+	):
+		return {}
 	var decoded_occurrences: Variant = _decode_settled_occurrences(
 		snapshot["settled_occurrences"] as Array
 	)
 	if decoded_occurrences == null:
-		return false
-	if not _run_state.apply_party_economy_snapshot(
-		snapshot["party_economy"] as Dictionary
-	):
-		return false
-	var changed: bool = int(snapshot["revision"]) != _economy_revision
-	_economy_revision = int(snapshot["revision"])
-	_settled_occurrences = decoded_occurrences as Dictionary
-	if changed:
+		return {}
+	return {
+		"expected_revision": _economy_revision,
+		"revision": int(snapshot["revision"]),
+		"settled_occurrences": decoded_occurrences,
+		"party_economy": (
+			(snapshot["party_economy"] as Dictionary).duplicate(true)
+		),
+	}
+
+
+func can_commit_prepared_remote_snapshot(prepared: Dictionary) -> bool:
+	return (
+		prepared.size() == 4
+		and int(prepared.get("expected_revision", -1)) == _economy_revision
+		and typeof(prepared.get("revision")) == TYPE_INT
+		and typeof(prepared.get("settled_occurrences")) == TYPE_DICTIONARY
+		and typeof(prepared.get("party_economy")) == TYPE_DICTIONARY
+	)
+
+
+func commit_validated_remote_snapshot(
+	prepared: Dictionary,
+	emit_change_signal: bool = true
+) -> void:
+	var changed: bool = int(prepared["revision"]) != _economy_revision
+	_economy_revision = int(prepared["revision"])
+	_settled_occurrences = (
+		prepared["settled_occurrences"] as Dictionary
+	).duplicate(true)
+	if changed and emit_change_signal:
 		economy_changed.emit(export_snapshot())
-	return true
+
+
+func publish_prepared_remote_snapshot(prepared: Dictionary) -> void:
+	if int(prepared.get("revision", _economy_revision)) == int(
+		prepared.get("expected_revision", _economy_revision)
+	):
+		return
+	economy_changed.emit(export_snapshot())
 
 
 func validate_remote_snapshot(snapshot: Dictionary) -> bool:

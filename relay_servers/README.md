@@ -26,8 +26,10 @@ relay_servers/
 └── README.md
 ```
 
-当前网络基线为协议 v77、8 个 ENet 通道。v77 在 ENet Host 的玩家注册阶段
-增加内容清单 schema 与 SHA-256 摘要门禁；只有摘要匹配且 ACTIVE 成员投影就绪
+当前网络基线为协议 v78、8 个 ENet 通道。v78 为 P3 Route 新增 Host 权威玩家
+升级请求，并在路线完整快照末尾追加逐玩家 progression ledger；v77 客户端既没有
+该 RPC，也会按旧五参解码完整快照。v77 在 ENet Host 的玩家注册阶段增加内容清单
+schema 与 SHA-256 摘要门禁；只有摘要匹配且 ACTIVE 成员投影就绪
 后，客户端才进入大厅已连接态。测试服保持现有明文 HTTP 大厅协议，摘要不进入
 公网大厅 API，最终准入以 ENet Host 为准。v76 新增 Relay Host 到 Relay 服务端的可靠
 踢人控制面：服务端仅接受已登记逻辑 Host 的请求，并只断开同房目标，以保证不兼容或
@@ -101,11 +103,11 @@ v35 的战斗机器人枪手弹丸及玩家受击来源 wire ID 17 保持兼容�
 P3 路线世界继续使用约 12Hz 的轻量角色姿态同步：
 Client 在输入信道上报，Host 校验后在玩家状态信道广播，非法位置通过可靠信道纠正。
 v34 的 P3 路线全量快照携带 `runtime_contract_hash`，Host 与 Client 必须使用相同的世界几何契约；
-v76 及更旧客户端不能加入 v77 房间。
+v77 及更旧客户端不能加入 v78 房间。
 Relay 只转发 RPC，不重复实现游戏状态逻辑；逻辑 Host 对不兼容、重连加载或
 运行时投影超时成员的断开请求会可靠发送至 Relay 服务端（peer 1）。Relay 只
 接受已登记 Host 的请求，并由服务端断开同房目标；普通客户端不能踢出其他成员。
-每次调整主项目 RPC 的名称、注解、参数或通道后，都必须同步两个 stub，并在仓库根目录运行：
+每次调整主项目 RPC 的名称、注解、参数或通道后，都必须同步对应 stub，并在仓库根目录运行：
 
 ```bash
 godot --headless --path . --script res://dev_tools/relay_rpc_parity_smoke_test.gd

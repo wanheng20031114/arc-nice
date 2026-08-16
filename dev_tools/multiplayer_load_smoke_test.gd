@@ -290,8 +290,8 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 77, "The multiplayer protocol version must be 77.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v77 must retain eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 78, "The multiplayer protocol version must be 78.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v78 must retain eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
@@ -367,7 +367,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"Protocol v77 must reject v76 and all older or unversioned clients."
+		"Protocol v78 must reject v77 and all older or unversioned clients."
 	)
 
 	var rejection_reasons: Array[String] = []
@@ -2294,19 +2294,37 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		)
 		_expect(peer_four.attack_damage == base_attack + 4, "Upgrade confirm must apply to the selected peer.")
 		_expect(peer_four.current_xirang == 75, "Upgrade confirm must update the selected peer's xirang.")
+		var skill1_level_before_repair := peer_four.skill1_upgrade_level
+		var skill1_duration_before_repair := peer_four.skill1_charge_duration
+		var skill1_feedback_visible_before_repair := (
+			game.merchant.purchase_result_visible
+		)
 		mp_game.call(
 			"net_skill1_purchase_confirmed",
 			4,
 			25,
 			true,
-			0,
-			-1,
-			-1.0,
+			MerchantPurchaseResult.SkillUpgrade.SUCCESS,
+			skill1_level_before_repair,
+			skill1_duration_before_repair,
 			net_manager.get_session_participant_incarnation(4),
 			net_manager.get_game_session_incarnation()
 		)
 		_expect(peer_four.has_skill1(), "Skill1 state confirm must preserve the selected peer's starting skill.")
-		_expect(peer_four.current_xirang == 25, "Skill1 state confirm must update xirang.")
+		_expect(
+			peer_four.skill1_upgrade_level == skill1_level_before_repair
+			and is_equal_approx(
+				peer_four.skill1_charge_duration,
+				skill1_duration_before_repair
+			)
+			and peer_four.current_xirang == 75
+			and game.merchant.purchase_result_visible
+			== skill1_feedback_visible_before_repair,
+			(
+				"Same-level Skill1 SUCCESS repair must preserve level and duration, "
+				+ "must not overwrite unrevisioned xirang, and must not show purchase UI."
+			)
+		)
 		peer_four.current_xirang = 225
 		var skill1_duration_before_upgrade := peer_four.skill1_charge_duration
 		var skill1_upgrade_result := game.try_purchase_skill1_for_peer(4)

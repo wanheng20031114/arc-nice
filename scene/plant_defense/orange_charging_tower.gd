@@ -112,7 +112,8 @@ func _on_removal_started(_mode: RemovalMode) -> void:
 	chamber_night_light.set_emission_allowed(false)
 	_stop_ground_rings()
 	_clear_all_player_charge_bonuses()
-	player_candidates.clear()
+	for candidate in player_candidates.keys():
+		_untrack_player_candidate(candidate as Player)
 	health_bar.hide()
 
 
@@ -124,7 +125,7 @@ func _on_player_aura_body_entered(body: Node2D) -> void:
 	var candidate := body as Player
 	if candidate == null:
 		return
-	player_candidates[candidate] = true
+	_track_player_candidate(candidate)
 	_reconcile_player(candidate)
 	_refresh_player_reconcile_timer()
 
@@ -134,7 +135,7 @@ func _on_player_aura_body_exited(body: Node2D) -> void:
 	if candidate == null:
 		return
 	_remove_player_charge_bonus(candidate)
-	player_candidates.erase(candidate)
+	_untrack_player_candidate(candidate)
 	_refresh_player_reconcile_timer()
 
 
@@ -164,8 +165,40 @@ func _seed_overlapping_player_candidates() -> void:
 	for body in player_aura_area.get_overlapping_bodies():
 		var candidate := body as Player
 		if candidate != null:
-			player_candidates[candidate] = true
+			_track_player_candidate(candidate)
 	_refresh_player_reconcile_timer()
+
+
+func _track_player_candidate(candidate: Player) -> void:
+	if candidate == null or not is_instance_valid(candidate):
+		return
+	player_candidates[candidate] = true
+	var callback := Callable(self, "_on_player_scene_transients_cleared").bind(
+		candidate
+	)
+	if not candidate.scene_transient_combat_state_cleared.is_connected(callback):
+		candidate.scene_transient_combat_state_cleared.connect(callback)
+
+
+func _untrack_player_candidate(candidate: Player) -> void:
+	if candidate == null:
+		return
+	var callback := Callable(self, "_on_player_scene_transients_cleared").bind(
+		candidate
+	)
+	if (
+		is_instance_valid(candidate)
+		and candidate.scene_transient_combat_state_cleared.is_connected(callback)
+	):
+		candidate.scene_transient_combat_state_cleared.disconnect(callback)
+	player_candidates.erase(candidate)
+
+
+func _on_player_scene_transients_cleared(candidate: Player) -> void:
+	# Player 先清空所有场景临时修饰器；仍覆盖它的橙子充能塔必须立即由
+	# 自身真源重投影，不能等待纠偏计时器造成面板短暂错误。
+	if player_candidates.has(candidate):
+		_reconcile_player(candidate)
 
 
 func _reconcile_player_candidates() -> void:
@@ -177,7 +210,7 @@ func _reconcile_player_candidates() -> void:
 		_reconcile_player(candidate)
 	for candidate in stale_candidates:
 		buffed_players.erase(candidate)
-		player_candidates.erase(candidate)
+		_untrack_player_candidate(candidate)
 	_refresh_player_reconcile_timer()
 
 

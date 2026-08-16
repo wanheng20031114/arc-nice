@@ -115,6 +115,38 @@ func register_player(player: Player) -> void:
 	)
 
 
+## 地下路线/作战只消费研究账本中的永久层：角色技术等级与
+## 已完成的全局移速研究。战斗内临时双防不在此入口，换场时由 Player 清零。
+func apply_persistent_player_modifiers(
+	player: Player,
+	ledger_peer_id: int
+) -> bool:
+	var expected_peer_id := player.peer_id if player != null and player.peer_id > 0 else 0
+	if (
+		player == null
+		or not is_instance_valid(player)
+		or ledger_peer_id != expected_peer_id
+		or not player_technology_levels.has(ledger_peer_id)
+		or typeof(player_technology_levels[ledger_peer_id]) != TYPE_INT
+	):
+		return false
+	var technology_level := int(player_technology_levels[ledger_peer_id])
+	if technology_level < 0 or technology_level > Player.RESEARCH_TECHNOLOGY_MAX_LEVEL:
+		return false
+	var move_speed_bonus := _get_completed_global_effect_total(
+		GlobalResearchConfig.EffectType.PLAYER_MOVE_SPEED
+	)
+	player.set_research_technology_level(technology_level)
+	player.set_research_global_move_speed_bonus(move_speed_bonus)
+	return (
+		player.get_research_technology_level() == technology_level
+		and is_equal_approx(
+			player.research_global_move_speed_bonus,
+			move_speed_bonus
+		)
+	)
+
+
 func remap_player_peer_state(old_peer_id: int, new_peer_id: int) -> bool:
 	if (
 		old_peer_id <= 0
@@ -350,9 +382,12 @@ func export_runtime_state() -> Dictionary:
 	}
 
 
-## 返回值表示权威研究账本是否已收敛；旧 revision 幂等接受，同 revision
-## 内容冲突或协议无效则明确拒绝，供上层可靠结果信封触发完整修复。
-func apply_multiplayer_runtime_state(state: Dictionary) -> bool:
+## 只读解码并冻结一份权威研究账本。地下探索外层全快照会先预检研究、
+## 命运、成长与路线经济，任一领域无效时都不能先发布默认属性的玩家。
+func prepare_multiplayer_runtime_state(
+	state: Dictionary,
+	allow_equal_authority_repair: bool = false
+) -> Dictionary:
 	if (
 		state.is_empty()
 		or typeof(state.get("schema")) != TYPE_INT
@@ -364,14 +399,10 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> bool:
 		or typeof(state.get("global_elapsed")) != TYPE_DICTIONARY
 		or typeof(state.get("player_levels")) != TYPE_DICTIONARY
 	):
-		return false
+		return {}
 	var incoming_revision := int(state["revision"])
 	if incoming_revision < 0:
-		return false
-	if has_remote_snapshot and incoming_revision < research_revision:
-		return true
-	if has_remote_snapshot and incoming_revision == research_revision:
-		return export_runtime_state() == state
+		return {}
 	var active_wire_id := String(state["active_global_research_id"])
 	var active_config := (
 		GlobalResearchRegistry.get_config_by_wire_id(active_wire_id)
@@ -379,7 +410,7 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> bool:
 		else null
 	)
 	if not active_wire_id.is_empty() and active_config == null:
-		return false
+		return {}
 
 	var incoming_states := state["global_states"] as Dictionary
 	var incoming_elapsed := state["global_elapsed"] as Dictionary
@@ -388,7 +419,7 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> bool:
 		incoming_states.size() != registered_config_count
 		or incoming_elapsed.size() != registered_config_count
 	):
-		return false
+		return {}
 	var normalized_states := {}
 	var normalized_elapsed := {}
 	var researching_count := 0
@@ -400,7 +431,7 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> bool:
 			or typeof(incoming_states[wire_id]) != TYPE_INT
 			or typeof(incoming_elapsed[wire_id]) not in [TYPE_INT, TYPE_FLOAT]
 		):
-			return false
+			return {}
 		var research_state := int(incoming_states[wire_id])
 		var elapsed := float(incoming_elapsed[wire_id])
 		if (
@@ -410,23 +441,23 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> bool:
 			or elapsed < 0.0
 			or elapsed > config.duration_seconds + 0.0001
 		):
-			return false
+			return {}
 		match research_state:
 			GlobalResearchState.AVAILABLE:
 				if elapsed > 0.0001:
-					return false
+					return {}
 			GlobalResearchState.RESEARCHING:
 				if elapsed + 0.0001 >= config.duration_seconds:
-					return false
+					return {}
 			GlobalResearchState.COMPLETED:
 				if absf(elapsed - config.duration_seconds) > 0.0001:
-					return false
+					return {}
 		if research_state == GlobalResearchState.RESEARCHING:
 			researching_count += 1
 			if active_config == null or active_config.research_id != config.research_id:
-				return false
+				return {}
 		elif active_config != null and active_config.research_id == config.research_id:
-			return false
+			return {}
 		normalized_states[config.research_id] = research_state
 		normalized_elapsed[config.research_id] = clampf(
 			elapsed,
@@ -434,11 +465,11 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> bool:
 			config.duration_seconds
 		)
 	if researching_count != (1 if active_config != null else 0):
-		return false
+		return {}
 
 	var incoming_levels := state["player_levels"] as Dictionary
 	if incoming_levels.size() > MAX_MULTIPLAYER_PLAYER_LEVEL_ENTRIES:
-		return false
+		return {}
 	var normalized_levels := {}
 	for player_key_variant in incoming_levels:
 		var level_variant: Variant = incoming_levels[player_key_variant]
@@ -449,22 +480,119 @@ func apply_multiplayer_runtime_state(state: Dictionary) -> bool:
 			or int(level_variant) < 0
 			or int(level_variant) > Player.RESEARCH_TECHNOLOGY_MAX_LEVEL
 		):
-			return false
+			return {}
 		normalized_levels[int(player_key_variant)] = int(level_variant)
 
-	has_remote_snapshot = true
-	research_revision = incoming_revision
-	global_research_states = normalized_states
-	global_research_elapsed = normalized_elapsed
-	active_global_research_id = (
+	var normalized_active_id := (
 		active_config.research_id if active_config != null else &""
 	)
-	player_technology_levels = normalized_levels
+	var values_changed := (
+		normalized_states != global_research_states
+		or normalized_elapsed != global_research_elapsed
+		or normalized_active_id != active_global_research_id
+		or normalized_levels != player_technology_levels
+	)
+	if (
+		has_remote_snapshot
+		and incoming_revision == research_revision
+		and values_changed
+		and not allow_equal_authority_repair
+	):
+		return {}
+	return {
+		"expected_has_remote_snapshot": has_remote_snapshot,
+		"expected_revision": research_revision,
+		"incoming_revision": incoming_revision,
+		"active_global_research_id": normalized_active_id,
+		"global_states": normalized_states,
+		"global_elapsed": normalized_elapsed,
+		"player_levels": normalized_levels,
+		"stale": has_remote_snapshot and incoming_revision < research_revision,
+		"changed": (
+			values_changed
+			or incoming_revision != research_revision
+			or not has_remote_snapshot
+		),
+	}
+
+
+## 预检之后只做不会失败的账本替换；expected revision 把同一帧内的准备与
+## 提交锁成一个 CAS，避免路线经济与另一代研究状态混合。
+func commit_prepared_multiplayer_runtime_state(prepared: Dictionary) -> bool:
+	if not can_commit_prepared_multiplayer_runtime_state(prepared):
+		return false
+	commit_validated_multiplayer_runtime_state(prepared, true)
+	return true
+
+
+## 外层全快照已统一完成 CAS 后只替换研究账本；世界/Player 投影与信号
+## 可以延迟到其他永久域和路线身份都提交完成后再发布。
+func commit_validated_multiplayer_runtime_state(
+	prepared: Dictionary,
+	publish_changes: bool = true
+) -> void:
+	var incoming_revision := int(prepared["incoming_revision"])
+	if bool(prepared["stale"]):
+		return
+	if not bool(prepared["changed"]):
+		return
+	has_remote_snapshot = true
+	research_revision = incoming_revision
+	global_research_states = (
+		prepared["global_states"] as Dictionary
+	).duplicate(true)
+	global_research_elapsed = (
+		prepared["global_elapsed"] as Dictionary
+	).duplicate(true)
+	active_global_research_id = StringName(
+		prepared["active_global_research_id"]
+	)
+	player_technology_levels = (
+		prepared["player_levels"] as Dictionary
+	).duplicate(true)
+	if publish_changes:
+		publish_prepared_multiplayer_runtime_state(prepared)
+
+
+func publish_prepared_multiplayer_runtime_state(prepared: Dictionary) -> void:
+	if bool(prepared["stale"]) or not bool(prepared["changed"]):
+		return
 	_apply_global_bonuses()
 	_apply_player_levels_to_runtime()
 	_refresh_timer_state()
 	research_state_changed.emit()
-	return true
+
+
+func can_commit_prepared_multiplayer_runtime_state(
+	prepared: Dictionary
+) -> bool:
+	if (
+		prepared.size() != 9
+		or typeof(prepared.get("expected_has_remote_snapshot")) != TYPE_BOOL
+		or typeof(prepared.get("expected_revision")) != TYPE_INT
+		or typeof(prepared.get("incoming_revision")) != TYPE_INT
+		or typeof(prepared.get("active_global_research_id")) != TYPE_STRING_NAME
+		or typeof(prepared.get("global_states")) != TYPE_DICTIONARY
+		or typeof(prepared.get("global_elapsed")) != TYPE_DICTIONARY
+		or typeof(prepared.get("player_levels")) != TYPE_DICTIONARY
+		or typeof(prepared.get("stale")) != TYPE_BOOL
+		or typeof(prepared.get("changed")) != TYPE_BOOL
+		or bool(prepared["expected_has_remote_snapshot"]) != has_remote_snapshot
+		or int(prepared["expected_revision"]) != research_revision
+	):
+		return false
+	var incoming_revision := int(prepared["incoming_revision"])
+	if bool(prepared["stale"]):
+		return has_remote_snapshot and incoming_revision < research_revision
+	return incoming_revision >= research_revision
+
+
+## 返回值表示权威研究账本是否已收敛；旧 revision 幂等接受，同 revision
+## 内容冲突或协议无效则明确拒绝，供上层可靠结果信封触发完整修复。
+func apply_multiplayer_runtime_state(state: Dictionary) -> bool:
+	return commit_prepared_multiplayer_runtime_state(
+		prepare_multiplayer_runtime_state(state)
+	)
 
 
 func _get_player_key(player: Player) -> int:

@@ -125,6 +125,7 @@ func _test_players_start_with_skill1_and_charge_requirements() -> void:
 
 
 func _test_dialogue_first_upgrade() -> void:
+	_begin_skill_upgrade_run()
 	var merchant := MERCHANT_SCENE.instantiate() as ZhuangfangyiMerchant
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(merchant)
@@ -184,6 +185,7 @@ func _test_dialogue_first_upgrade() -> void:
 
 
 func _test_dialogue_skill1_upgrade() -> void:
+	_begin_skill_upgrade_run()
 	var merchant := MERCHANT_SCENE.instantiate() as ZhuangfangyiMerchant
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(merchant)
@@ -250,11 +252,11 @@ func _test_dialogue_skill1_upgrade() -> void:
 
 
 func _test_skill1_upgrade_costs_and_charge_duration() -> void:
+	_begin_skill_upgrade_run()
 	var player := PLAYER_SCENE.instantiate() as Player
 	_add_player(player)
 	await process_frame
 	await physics_frame
-
 	player.current_xirang = 36700
 	var expected_costs := [200, 500, 1000, 5000, 10000, 20000]
 	var expected_duration := player.skill1_charge_duration
@@ -339,6 +341,11 @@ func _test_skill1_upgrade_costs_and_charge_duration() -> void:
 	player.queue_free()
 	await process_frame
 	await physics_frame
+
+
+func _begin_skill_upgrade_run() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
 
 
 func _test_explosion_audio_limiter() -> void:

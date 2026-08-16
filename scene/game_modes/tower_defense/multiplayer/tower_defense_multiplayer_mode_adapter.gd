@@ -1698,7 +1698,7 @@ func get_xiaocong_fate_state_snapshot() -> Dictionary:
 	)
 
 
-func apply_remote_xiaocong_fate_state(state: Dictionary) -> void:
+func apply_remote_xiaocong_fate_state(state: Dictionary) -> bool:
 	var tower_runtime := get_tower_runtime()
 	if (
 		tower_runtime == null
@@ -1708,8 +1708,8 @@ func apply_remote_xiaocong_fate_state(state: Dictionary) -> void:
 		!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 		or int(state.get("revision", 0)) < _fate_manager.state_revision
 	):
-		return
-	_fate_flow_coordinator.apply_remote_state(state)
+		return false
+	return _fate_flow_coordinator.apply_remote_state(state)
 
 
 func supports_test_arena_manual_night_sync() -> bool:

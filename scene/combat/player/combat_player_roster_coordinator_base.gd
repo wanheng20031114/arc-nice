@@ -57,6 +57,7 @@ func configure_peer_metadata(
 
 func configure_singleplayer_player() -> void:
 	_snapshot_encoder.clear()
+	runtime.player = null
 	var player_instance := _instantiate_player_character(
 		_get_selected_singleplayer_character_id()
 	)
@@ -65,6 +66,10 @@ func configure_singleplayer_player() -> void:
 	player_instance.name = "Player"
 	player_instance.position = player_spawn.position
 	runtime.add_child(player_instance)
+	if not _restore_player_for_combat_scene_entry(player_instance, 0):
+		# 成长账本是角色发布前置条件；失败时绝不能让作者基础 Player 进入运行时。
+		player_instance.queue_free()
+		return
 	runtime.player = player_instance
 
 
@@ -87,23 +92,49 @@ func configure_multiplayer_players() -> void:
 	for peer_id_variant in player_names:
 		peer_ids.append(int(peer_id_variant))
 	peer_ids.sort()
+	var staged_players: Dictionary[int, Player] = {}
 	for index in range(peer_ids.size()):
 		var peer_id := peer_ids[index]
 		var player_instance := _instantiate_player_character(
 			get_multiplayer_character_id(peer_id)
 		)
 		if player_instance == null:
-			continue
+			_discard_staged_multiplayer_players(staged_players)
+			return
 		player_instance.name = "Player_%d" % peer_id
 		player_instance.position = player_spawn.position + get_spawn_offset(index)
 		runtime.add_child(player_instance)
-		_configure_multiplayer_control(player_instance, peer_id)
+		_configure_multiplayer_control(
+			player_instance,
+			peer_id,
+			str(player_names.get(peer_id, "Player %d" % peer_id))
+		)
+		if not _restore_player_for_combat_scene_entry(player_instance, peer_id):
+			player_instance.queue_free()
+			_discard_staged_multiplayer_players(staged_players)
+			return
 		_connect_multiplayer_death(player_instance, peer_id)
+		staged_players[peer_id] = player_instance
+	# 多人 roster 只有全部稳定成员都完成账本投影后才一次发布，避免半套队伍
+	# 让 runtime preparation 误判为已就绪。
+	for peer_id in peer_ids:
+		var player_instance := staged_players[peer_id]
 		runtime.peer_players[peer_id] = player_instance
 		if peer_id == runtime.multiplayer_local_peer_id:
 			runtime.player = player_instance
 	if runtime.player == null and not peer_ids.is_empty():
 		runtime.player = runtime.peer_players.get(peer_ids[0]) as Player
+
+
+func _discard_staged_multiplayer_players(
+	staged_players: Dictionary[int, Player]
+) -> void:
+	for player_instance in staged_players.values():
+		if player_instance != null and is_instance_valid(player_instance):
+			player_instance.queue_free()
+	staged_players.clear()
+	runtime.peer_players.clear()
+	runtime.player = null
 
 
 func apply_initial_xirang() -> void:
@@ -227,12 +258,6 @@ func ensure_reconnected_multiplayer_player(
 				CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATE_FAILED
 			)
 
-	# 只有 Player 已存在后才提交 roster 元数据；实例化失败不会留下半套投影。
-	player_names.erase(old_peer_id)
-	player_character_ids.erase(old_peer_id)
-	_snapshot_encoder.forget_peer(old_peer_id)
-	player_names[new_peer_id] = player_name
-	player_character_ids[new_peer_id] = character_id
 	player_instance.name = "Player_%d" % new_peer_id
 	if state != null:
 		player_instance.position = state.position
@@ -242,7 +267,27 @@ func ensure_reconnected_multiplayer_player(
 		)
 	if not reused_existing:
 		runtime.add_child(player_instance)
-	_configure_multiplayer_control(player_instance, new_peer_id)
+	_configure_multiplayer_control(player_instance, new_peer_id, player_name)
+	if (
+		runtime.player_persistent_modifier_projector != null
+		and not runtime.player_persistent_modifier_projector.apply_to_player(
+			player_instance,
+			new_peer_id
+		)
+	):
+		if not reused_existing:
+			runtime.remove_child(player_instance)
+			player_instance.free()
+		return CombatRuntimeBase.ReconnectedPlayerProjection.new(
+			CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATE_FAILED
+		)
+	# 只有持久 owner 也完成投影后才提交 roster 元数据；任一失败
+	# 都不会留下只有场景身份、没有研究/命运的半套 Player。
+	player_names.erase(old_peer_id)
+	player_character_ids.erase(old_peer_id)
+	_snapshot_encoder.forget_peer(old_peer_id)
+	player_names[new_peer_id] = player_name
+	player_character_ids[new_peer_id] = character_id
 	_connect_multiplayer_death(player_instance, new_peer_id)
 	runtime.peer_players[new_peer_id] = player_instance
 	if new_peer_id == runtime.multiplayer_local_peer_id:
@@ -392,7 +437,8 @@ func _instantiate_player_character(character_id: StringName) -> Player:
 
 func _configure_multiplayer_control(
 	player_instance: Player,
-	peer_id: int
+	peer_id: int,
+	display_name: String
 ) -> void:
 	var accepts_local_input := (
 		peer_id == runtime.multiplayer_local_peer_id
@@ -408,7 +454,7 @@ func _configure_multiplayer_control(
 	player_instance.configure_multiplayer_control(
 		peer_id,
 		accepts_local_input,
-		str(player_names.get(peer_id, "Player %d" % peer_id)),
+		display_name,
 		predicts_local_movement,
 		peer_id == runtime.multiplayer_local_peer_id
 	)
@@ -424,6 +470,24 @@ func _configure_multiplayer_control(
 		)
 	):
 		player_instance.set_physics_process(false)
+
+
+func _restore_player_for_combat_scene_entry(
+	player_instance: Player,
+	ledger_peer_id: int
+) -> bool:
+	if player_instance == null or not is_instance_valid(player_instance):
+		return false
+	var progression := run_state.export_player_run_progression(ledger_peer_id)
+	if progression.is_empty():
+		push_error(
+			"Combat player roster 缺少玩家 %d 的本局成长账本。" % ledger_peer_id
+		)
+		return false
+	return player_instance.restore_run_scene_entry(
+		progression,
+		runtime.player_persistent_modifier_projector
+	)
 
 
 func _connect_multiplayer_death(player_instance: Player, peer_id: int) -> void:

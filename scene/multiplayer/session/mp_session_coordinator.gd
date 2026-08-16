@@ -402,6 +402,14 @@ func send_authoritative_runtime_state_to_peer(
 			&"net_inventory_snapshot",
 			inventory_arguments
 		)
+	for progression_repair in (
+		_transactions_coordinator.build_runtime_repair_progression_rpc_requests()
+	):
+		rpc_to_peer_requested.emit(
+			peer_id,
+			StringName(progression_repair["method"]),
+			progression_repair["arguments"] as Array
+		)
 	_merchant_transactions_coordinator.send_offer_state_if_present(peer_id)
 	_enemy_coordinator.send_live_spawn_roster_to_peer(peer_id)
 	_world_flow_coordinator.send_live_pickup_roster_to_peer(peer_id)

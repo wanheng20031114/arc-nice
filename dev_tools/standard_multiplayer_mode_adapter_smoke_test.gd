@@ -115,9 +115,9 @@ func _test_static_boundaries() -> void:
 		"Profile 五个请求必须静态直连既有 Standard adapter。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 77
+		NET_CONSTANTS.PROTOCOL_VERSION == 78
 		and GameModeCatalog.MODE_STANDARD == 0,
-		"Standard wire=0 与协议 v77 必须保持冻结。"
+		"Standard wire=0 与协议 v78 必须保持冻结。"
 	)
 	var mp_game_script := load(MP_GAME_SOURCE_PATH) as Script
 	_expect(mp_game_script != null, "MpGame 脚本必须可加载。")
@@ -133,6 +133,12 @@ func _test_host_wiring_order_and_authority_bridge() -> void:
 	_expect(game != null, "StandardGame host fixture 必须可实例化。")
 	if game == null:
 		return
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.register_multiplayer_peer_states(PackedInt32Array([1, 2])),
+		"Standard host fixture 必须先注册完整成员成长账本。"
+	)
 	game.auto_start_waves = false
 	game.configure_multiplayer(
 		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
@@ -332,6 +338,12 @@ func _test_client_remote_flow_bridge() -> void:
 	_expect(game != null, "StandardGame client fixture 必须可实例化。")
 	if game == null:
 		return
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.register_multiplayer_peer_states(PackedInt32Array([1, 2])),
+		"Standard client fixture 必须先注册完整成员成长账本。"
+	)
 	game.auto_start_waves = false
 	game.configure_multiplayer(
 		CombatRuntimeBase.RuntimeMode.CLIENT_VIEW,

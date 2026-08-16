@@ -7,12 +7,19 @@ const LEGACY_COMBAT_ACTION_LOCK_OWNER := &"legacy_combat_actions"
 const DEATH_CONTROL_LOCK_OWNER := &"player_death"
 const WORLD_MOVEMENT_COMBAT_ACTION_LOCK_OWNER := &"world_movement"
 
+enum XirangOwnership {
+	SCENE_LOCAL,
+	RUN_PARTY_LEDGER,
+}
+
 signal xirang_changed(total: int, added_amount: int)
 signal health_changed(current: int, maximum: int)
 signal attack_speed_changed(attack_speed: float)
 signal dodge_changed(chance: float)
 signal profile_display_changed
 signal research_technology_level_changed(level: int)
+## 场景瞬态已完成清空；仍存活的场景所有者可在同一帧重投影权威光环。
+signal scene_transient_combat_state_cleared
 signal died
 signal revived
 
@@ -33,6 +40,8 @@ var last_damage_taken: int = 0
 var last_damage_result: DamageResult = null
 var last_healing_received: int = 0
 var current_xirang: int = 0
+var xirang_ownership: XirangOwnership = XirangOwnership.SCENE_LOCAL
+var xirang_ledger_peer_id: int = -1
 var invincibility_time_left: float = 0.0
 var dash_time_left: float = 0.0
 var dash_distance_left: float = 0.0
@@ -302,6 +311,19 @@ var _sakura_runtime_load_requested := false
 var last_base_upgrade_was_free: bool = false
 var _last_skill_activation_msec: int = -MIN_SKILL_ACTIVATION_INTERVAL_MSEC
 var _base_stats_initialized: bool = false
+var _persistent_projection_batch_active := false
+var _persistent_projection_previous_signal_block := false
+var _persistent_projection_observable_baseline: Dictionary = {}
+var _persistent_projection_scene_entry_staged := false
+## 作者基础层只在首次初始化时从 PlayerCharacterConfig/场景导出值捕获一次。
+## `_base_*` 是“作者基础 + 本局基础升级”的可重建投影，禁止再把它当持久账本。
+var _authored_move_speed: float = 0.0
+var _authored_max_health: int = 0
+var _authored_attack_damage: float = 0.0
+var _authored_physical_defense: int = 0
+var _authored_magic_defense: int = 0
+var _authored_dodge_chance: float = 0.0
+var _authored_fire_interval: float = 0.0
 var _base_move_speed: float = 0.0
 var _base_max_health: int = 0
 var _run_max_health_penalty: int = 0
@@ -318,6 +340,12 @@ var _run_dodge_percent_points: int = 0
 var _run_dash_cooldown_reduction: int = 0
 var _base_dodge_chance: float = 0.0
 var _base_fire_interval: float = 0.0
+var _run_upgrade_levels := {
+	RunStateStore.StatType.ATTACK: 0,
+	RunStateStore.StatType.HEALTH: 0,
+	RunStateStore.StatType.ATTACK_SPEED: 0,
+	RunStateStore.StatType.DODGE: 0,
+}
 var multiplayer_visual_smoothing_enabled: bool = false
 var multiplayer_visual_offset: Vector2 = Vector2.ZERO
 var _body_sprite_base_position: Vector2 = Vector2.ZERO
@@ -436,8 +464,11 @@ func _ready() -> void:
 	_configure_homing_target_query()
 	_wall_overlap_expected_position = global_position
 	_initialize_base_stats()
+	# 先锁定场景作者配置的技能基础冷却，再消费 RunState 等级；否则新节点在
+	# level>0 时会把“作者冷却+等级减免”误反推成新的基础值。
+	_ensure_skill1_base_charge_duration()
 	_connect_collectible_refresh_signals()
-	_sync_run_stat_bonuses_from_run_state(false)
+	_sync_run_progression_from_run_state(false)
 	_rebuild_active_collectible_items_cache()
 	# Conditional health effects must evaluate an entering player as healthy,
 	# rather than against the construction-time current_health value of zero.
@@ -445,7 +476,6 @@ func _ready() -> void:
 		active_collectible_items_cache
 	)
 	_refresh_collectible_stats(false)
-	_ensure_skill1_base_charge_duration()
 	current_health = maxi(max_health, 1)
 	_initialize_character_resources()
 	shooting_timer.one_shot = true
@@ -531,14 +561,15 @@ func _initialize_base_stats() -> void:
 		attack_speed_units_per_attack
 		/ maxf(character_config.starting_attack_speed, 1.0)
 	)
-	_base_move_speed = move_speed
-	_base_max_health = max_health
-	_base_attack_damage = attack_damage
-	_base_physical_defense = physical_defense
-	_base_magic_defense = magic_defense
-	_base_dodge_chance = dodge_chance
-	_base_fire_interval = fire_interval
+	_authored_move_speed = move_speed
+	_authored_max_health = max_health
+	_authored_attack_damage = attack_damage
+	_authored_physical_defense = physical_defense
+	_authored_magic_defense = magic_defense
+	_authored_dodge_chance = dodge_chance
+	_authored_fire_interval = fire_interval
 	_base_stats_initialized = true
+	_rebuild_run_upgraded_base_stats()
 
 
 func _connect_collectible_refresh_signals() -> void:
@@ -553,6 +584,15 @@ func _connect_collectible_refresh_signals() -> void:
 	):
 		run_state.party_status_ledger_changed.connect(
 			_on_party_status_ledger_changed
+		)
+	if (
+		run_state != null
+		and not run_state.player_upgrade_ledger_changed.is_connected(
+			_on_player_upgrade_ledger_changed
+		)
+	):
+		run_state.player_upgrade_ledger_changed.connect(
+			_on_player_upgrade_ledger_changed
 		)
 	if not xirang_changed.is_connected(_on_collectible_xirang_changed):
 		xirang_changed.connect(_on_collectible_xirang_changed)
@@ -742,6 +782,12 @@ func _physics_process_world_movement(delta: float) -> void:
 
 
 func _update_character_combat_state(_delta: float) -> void:
+	pass
+
+
+## 子类只在这里清理“跨场景不得继承”的角色机制；死亡清理可能保留尸体
+## 表现或同场复活状态，不能被场景边界反向复用。
+func _clear_character_scene_transients() -> void:
 	pass
 
 
@@ -1851,7 +1897,11 @@ func set_run_max_health_penalty(amount: int) -> void:
 	if _run_max_health_penalty == clamped_amount:
 		return
 	_run_max_health_penalty = clamped_amount
-	if _base_stats_initialized and is_node_ready():
+	if (
+		_base_stats_initialized
+		and is_node_ready()
+		and not _persistent_projection_batch_active
+	):
 		_refresh_collectible_stats()
 
 
@@ -1949,7 +1999,7 @@ func configure_tower_defense_fate_modifiers(
 	if tower_defense_fate_hurt_move_speed_duration <= 0.0:
 		tower_defense_fate_hurt_speed_time_left = 0.0
 
-	if _base_stats_initialized:
+	if _base_stats_initialized and not _persistent_projection_batch_active:
 		_refresh_collectible_stats()
 		_update_movement_status_visuals(Vector2.ZERO)
 		_refresh_dash_ready_visual()
@@ -2113,7 +2163,7 @@ func configure_multiplayer_control(
 		and current_health >= max_health
 	)
 	peer_id = new_peer_id
-	_sync_run_stat_bonuses_from_run_state(false)
+	_sync_run_progression_from_run_state(false)
 	# Multiplayer inventories are keyed by peer. Rebind the immutable item cache
 	# as soon as this scene instance receives its authoritative peer identity.
 	_rebuild_active_collectible_items_cache()
@@ -2670,7 +2720,7 @@ func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invi
 	_refresh_dash_ready_visual()
 	if was_dead:
 		revived.emit()
-	if was_dead and uses_local_input:
+	if was_dead and uses_local_input and not _persistent_projection_batch_active:
 		_start_local_revive_glow_effect()
 
 
@@ -2682,6 +2732,8 @@ func apply_multiplayer_full_health_restore(
 	authoritative_max_health: int,
 	invincible_seconds: float = 0.0
 ) -> void:
+	# 该入口只用于跨探索/场景的全量恢复；与普通生命升级、治疗严格分离。
+	clear_scene_transient_combat_state(false)
 	var resolved_max_health := maxi(authoritative_max_health, 1)
 	max_health = resolved_max_health
 	revive_multiplayer(
@@ -2694,6 +2746,142 @@ func apply_multiplayer_full_health_restore(
 	health_bar.visible = true
 	health_bar.set_health(current_health, max_health)
 	health_changed.emit(current_health, max_health)
+
+
+## 生命升级沿用既有“购买后立即回满”语义，但不清除当前战斗状态；场景边界
+## 必须使用 restore_run_scene_entry，不能借此方法遗漏异常状态清理。
+func restore_current_health_to_maximum() -> void:
+	current_health = maxi(max_health, 1)
+	# 回满可能立即关闭低生命阈值收藏品，最终面板必须以回满后的条件重算。
+	_refresh_collectible_stats(false)
+	current_health = maxi(max_health, 1)
+	health_bar.visible = true
+	health_bar.set_health(current_health, max_health)
+	health_changed.emit(current_health, max_health)
+
+
+## 场景入口的唯一恢复事务：先投影作者基础之外的完整持久成长，再清空当前
+## 场景的临时战斗状态，最后按最终上限复活并回满。快照不含生命或状态，
+## 因此旧 Player、UI 缓存与网络瞬时值都不能倒灌到新场景。
+func restore_run_scene_entry(
+	progression_snapshot: Dictionary,
+	persistent_modifier_projector: PlayerPersistentModifierProjector = null
+) -> bool:
+	if not apply_run_progression_snapshot(progression_snapshot, false):
+		return false
+	var ledger_peer_id := peer_id if peer_id > 0 else 0
+	if (
+		persistent_modifier_projector != null
+		and not persistent_modifier_projector.apply_to_player(
+			self,
+			ledger_peer_id
+		)
+	):
+		return false
+	commit_validated_run_scene_entry_finalization()
+	return true
+
+
+## 持久成长与模式永久层已经由组合事务验证并投影后的无失败收口：只清
+## 场景瞬态，以健康条件重算最终上限，再复活、解锁并回满。
+func commit_validated_run_scene_entry_finalization() -> void:
+	clear_scene_transient_combat_state(false)
+	# 场景入口按“健康玩家”计算条件收藏品。若沿用旧场景低血值，低血条件
+	# 提供的临时 max-health 会被误当成新场景权威上限并锁回。
+	current_health = _get_collectible_health_condition_maximum(
+		_get_active_collectible_items()
+	)
+	_refresh_collectible_stats(false)
+	apply_multiplayer_full_health_restore(
+		global_position,
+		maxi(max_health, 1),
+		0.0
+	)
+
+
+## 这里只清理“场景内临时层”。背包、息壤、基础升级、稀有宝箱属性、研究
+## 等持久输入一律保留；Tower 的永久 Fate/Tower 汇总也由各自协调器继续拥有。
+func clear_scene_transient_combat_state(refresh_stats: bool = true) -> void:
+	clear_damage_over_time_statuses()
+	clear_cold_status()
+	clear_timed_move_slows()
+	_finish_dash()
+	_stop_remote_dash_visual()
+	multiplayer_dash_protection_time_left = 0.0
+	network_effective_move_speed_multiplier_override = 0.0
+	tower_defense_fate_hurt_speed_time_left = 0.0
+	invincibility_time_left = 0.0
+	_set_hurt_blink_enabled(false)
+	current_move_speed_multiplier = DEFAULT_MOVE_SPEED_MULTIPLIER
+	speed_buff_time_left = 0.0
+	rapid_fire_rate_multiplier = DEFAULT_FIRE_RATE_MULTIPLIER
+	rapid_buff_time_left = 0.0
+	temporary_attack_damage_multiplier = 1.0
+	attack_buff_time_left = 0.0
+	potion_physical_defense_bonus = 0
+	potion_physical_defense_time_left = 0.0
+	potion_magic_defense_bonus = 0
+	potion_magic_defense_time_left = 0.0
+	potion_regeneration_per_second = 0.0
+	potion_regeneration_time_left = 0.0
+	potion_regeneration_heal_accumulator = 0.0
+	potion_damage_reduction = 0.0
+	potion_damage_reduction_time_left = 0.0
+	potion_attack_damage_multiplier = 1.0
+	potion_attack_damage_time_left = 0.0
+	potion_fire_rate_multiplier = 1.0
+	potion_fire_rate_time_left = 0.0
+	potion_move_speed_multiplier = 1.0
+	potion_move_speed_time_left = 0.0
+	potion_dodge_chance_bonus = 0.0
+	potion_dodge_time_left = 0.0
+	potion_hide_time_left = 0.0
+	_set_consumable_hide_enabled(false)
+	void_battery_charged = false
+	_void_battery_prediction_pending = false
+	_void_battery_prediction_token = 0
+	collectible_swift_time_left = 0.0
+	collectible_swift_move_speed_multiplier = 1.0
+	damage_reduction_modifiers.clear()
+	_skill_charge_rate_modifiers.clear()
+	_skill_charge_rate_modifier_total = 0.0
+	research_temporary_physical_defense_bonus = 0
+	research_temporary_magic_defense_bonus = 0
+	collectible_periodic_deadlines.clear()
+	collectible_shot_counters.clear()
+	collectible_trigger_deadlines.clear()
+	_expired_collectible_trigger_cooldown_keys.clear()
+	_collectible_runtime_elapsed = 0.0
+	_collectible_periodic_elapsed = 0.0
+	_next_collectible_periodic_deadline = 0.0
+	_next_collectible_trigger_deadline = INF
+	skill1_charge = 0.0
+	_last_skill_activation_msec = -MIN_SKILL_ACTIVATION_INTERVAL_MSEC
+	last_base_upgrade_was_free = false
+	_pending_healing_number_amount = 0
+	_healing_number_flush_queued = false
+	mouse_fire_held = false
+	network_move_input = Vector2.ZERO
+	network_shoot_input = Vector2.ZERO
+	network_reload_requested = false
+	velocity = Vector2.ZERO
+	if shooting_timer != null:
+		shooting_timer.stop()
+	if dash_cooldown_timer != null:
+		dash_cooldown_timer.stop()
+	_stop_dodge_feedback()
+	_stop_revive_glow_effect()
+	_stop_dash_ready_reveal()
+	_dash_ready_visual_is_ready = false
+	footstep_time_left = 0.0
+	if footstep_audio != null:
+		footstep_audio.stop()
+	_clear_character_scene_transients()
+	scene_transient_combat_state_cleared.emit()
+	_update_movement_status_visuals(Vector2.ZERO)
+	_update_skill1_charge_bar()
+	if refresh_stats and is_node_ready():
+		_refresh_collectible_stats()
 
 
 func start_multiplayer_invincibility(seconds: float) -> void:
@@ -2824,6 +3012,41 @@ func get_xirang() -> int:
 	return current_xirang
 
 
+## 由 roster/场景所有者显式声明余额归属；RunState 升级事务只消费该强类型
+## 绑定，不根据场景名、余额相等或节点层级猜测经济域。
+func configure_xirang_ownership(
+	ownership: XirangOwnership,
+	ledger_peer_id: int = -1
+) -> bool:
+	if ownership == XirangOwnership.SCENE_LOCAL:
+		xirang_ownership = ownership
+		xirang_ledger_peer_id = -1
+		return true
+	if ledger_peer_id < 0 or (peer_id > 0 and ledger_peer_id != peer_id):
+		return false
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if (
+		run_state == null
+		or not run_state.run_started
+		or (
+			ledger_peer_id > 0
+			and not run_state.has_multiplayer_peer_state(ledger_peer_id)
+		)
+	):
+		return false
+	xirang_ownership = ownership
+	xirang_ledger_peer_id = ledger_peer_id
+	set_xirang_balance(run_state.get_party_xirang_balance(ledger_peer_id))
+	return true
+
+
+func uses_run_party_xirang_ledger(ledger_peer_id: int) -> bool:
+	return (
+		xirang_ownership == XirangOwnership.RUN_PARTY_LEDGER
+		and xirang_ledger_peer_id == ledger_peer_id
+	)
+
+
 ## 运行时息壤余额的唯一绝对写入口。调用方只声明最终余额；Player 负责
 ## 归一化、幂等判断和一次变化通知，避免各网络确认/模式桥各自维护赋值与
 ## signal 顺序。
@@ -2865,7 +3088,8 @@ func set_research_global_move_speed_bonus(bonus: float) -> void:
 	if is_equal_approx(research_global_move_speed_bonus, resolved_bonus):
 		return
 	research_global_move_speed_bonus = resolved_bonus
-	_refresh_collectible_stats(false)
+	if not _persistent_projection_batch_active:
+		_refresh_collectible_stats(false)
 
 
 func get_next_research_technology_cost() -> int:
@@ -2991,20 +3215,11 @@ func is_skill1_upgrade_maxed() -> bool:
 
 
 func try_upgrade_skill1(free: bool = false) -> bool:
-	if not skill1_unlocked:
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if run_state == null or not run_state.run_started:
 		return false
-	if is_skill1_upgrade_maxed():
-		return false
-	var upgrade_cost := get_skill1_upgrade_cost()
-	if upgrade_cost < 0:
-		return false
-	if not free:
-		if current_xirang < upgrade_cost:
-			return false
-		set_xirang_balance(current_xirang - upgrade_cost)
-
-	_apply_next_skill1_upgrade()
-	return true
+	var ledger_peer_id := peer_id if peer_id > 0 else 0
+	return run_state.try_upgrade_skill1_for_peer(ledger_peer_id, self, free)
 
 
 func try_upgrade_skill1_free() -> bool:
@@ -3017,6 +3232,8 @@ func apply_skill1_upgrade_state(upgrade_level: int, _charge_duration: float = -1
 	skill1_upgrade_level = clampi(upgrade_level, 0, SKILL1_MAX_UPGRADE_LEVEL)
 	_ensure_skill1_base_charge_duration()
 	_sync_skill1_charge_duration_to_upgrade_level()
+	if _persistent_projection_batch_active:
+		return
 	_update_skill1_charge_bar()
 	if (
 		skill1_upgrade_level != previous_level
@@ -3255,17 +3472,305 @@ func _on_collectible_inventory_changed() -> void:
 
 
 func _on_party_status_ledger_changed(_snapshot: Dictionary) -> void:
-	_sync_run_stat_bonuses_from_run_state(true)
+	_sync_run_progression_from_run_state(true)
 
 
-func _sync_run_stat_bonuses_from_run_state(refresh_stats: bool) -> void:
+func _on_player_upgrade_ledger_changed(_snapshot: Dictionary) -> void:
+	if _persistent_projection_batch_active:
+		return
+	_sync_run_progression_from_run_state(true)
+
+
+func _sync_run_progression_from_run_state(refresh_stats: bool) -> bool:
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state == null:
-		configure_run_stat_bonuses({}, refresh_stats)
+		return false
+	var ledger_peer_id := peer_id if peer_id > 0 else 0
+	var snapshot := run_state.export_player_run_progression(ledger_peer_id)
+	if snapshot.is_empty():
+		return false
+	return apply_run_progression_snapshot(snapshot, refresh_stats)
+
+
+## 将 RunState 的完整绝对成长快照投影到当前 Player。该方法不读取旧 Player，
+## 也不包含当前生命/状态；重复应用同一快照只会得到同一组面板数值。
+func apply_run_progression_snapshot(
+	snapshot: Dictionary,
+	refresh_stats: bool = true
+) -> bool:
+	if not _is_valid_run_progression_snapshot(snapshot):
+		return false
+	commit_validated_run_progression_snapshot(snapshot, refresh_stats)
+	return true
+
+
+func can_apply_run_progression_snapshot(snapshot: Dictionary) -> bool:
+	return _is_valid_run_progression_snapshot(snapshot)
+
+
+## 只消费由事务层刚完成身份与 schema 预检的绝对快照；不再保留第二套校验
+## 分支，保证跨域 commit 阶段不会在部分 Player 已写入后返回失败。
+func commit_validated_run_progression_snapshot(
+	snapshot: Dictionary,
+	refresh_stats: bool = true
+) -> void:
+	_initialize_base_stats()
+	var levels := snapshot["upgrade_levels"] as Dictionary
+	var bonuses := snapshot["stat_bonuses"] as Dictionary
+	configure_run_upgrade_levels(levels, false)
+	configure_run_stat_bonuses(bonuses, false)
+	var next_skill1_level := int(snapshot["skill1_upgrade_level"])
+	if skill1_upgrade_level != next_skill1_level:
+		apply_skill1_upgrade_state(next_skill1_level)
+	var next_penalty := int(snapshot["max_health_penalty"])
+	if _run_max_health_penalty != next_penalty:
+		_run_max_health_penalty = next_penalty
+	if refresh_stats and is_node_ready():
+		_refresh_collectible_stats()
+
+
+## 跨域 prepare 已冻结身份/快照后，先屏蔽该 Player 的所有 signal。staged
+## Player 入树触发 _ready 时也处于同一屏障内，外部监听者看不到半投影。
+func begin_validated_persistent_projection_batch() -> void:
+	assert(
+		not _persistent_projection_batch_active,
+		"Player 持久投影事务不得嵌套。"
+	)
+	_persistent_projection_batch_active = true
+	_persistent_projection_previous_signal_block = is_blocking_signals()
+	_persistent_projection_observable_baseline = (
+		_capture_persistent_projection_observable_state()
+	)
+	_persistent_projection_scene_entry_staged = false
+	set_block_signals(true)
+
+
+func is_validated_persistent_projection_batch_active() -> bool:
+	return _persistent_projection_batch_active
+
+
+## Party Economy 已在同一组合事务内静默提交后，只消费 prepare 阶段冻结
+## 的稳定成员余额。该入口不会读取 UI，也不会把场景本地余额误当成账本。
+func commit_validated_run_party_xirang_balance(
+	ledger_peer_id: int,
+	amount: int
+) -> void:
+	assert(
+		_persistent_projection_batch_active,
+		"Player Party 息壤投影必须处于持久事务屏障内。"
+	)
+	assert(
+		uses_run_party_xirang_ledger(ledger_peer_id),
+		"Player Party 息壤投影身份与稳定账本成员不一致。"
+	)
+	set_xirang_balance(amount)
+
+
+## 所有 owner/Route/outer state 已提交后、首个外部信号之前，在 signal 屏障
+## 内计算最终派生面板并完成场景边界恢复。此时 UI 所见也是完整新状态。
+func stage_validated_persistent_projection_publish(
+	scene_entry: bool,
+	restore_health_to_maximum: bool
+) -> void:
+	assert(
+		_persistent_projection_batch_active,
+		"Player 持久投影发布必须先取得事务屏障。"
+	)
+	if scene_entry:
+		_persistent_projection_scene_entry_staged = true
+		commit_validated_run_scene_entry_finalization()
+	else:
+		_refresh_collectible_stats(false)
+		if restore_health_to_maximum:
+			current_health = maxi(max_health, 1)
+			_refresh_collectible_stats(false)
+			current_health = maxi(max_health, 1)
+			if health_bar != null:
+				health_bar.visible = true
+				health_bar.set_health(current_health, max_health)
+	_update_skill1_charge_bar()
+
+
+## owner 信号发布完毕后解除屏障并一次性发布面板。若调用前本就由更外层
+## 屏蔽 signal，则保持其所有权，不擅自向外发通知。
+func publish_validated_persistent_projection_batch() -> void:
+	assert(
+		_persistent_projection_batch_active,
+		"Player 持久投影事务尚未开始。"
+	)
+	var should_publish := not _persistent_projection_previous_signal_block
+	var baseline := _persistent_projection_observable_baseline
+	var current := _capture_persistent_projection_observable_state()
+	var scene_entry_staged := _persistent_projection_scene_entry_staged
+	_persistent_projection_batch_active = false
+	set_block_signals(_persistent_projection_previous_signal_block)
+	_persistent_projection_previous_signal_block = false
+	_persistent_projection_observable_baseline = {}
+	_persistent_projection_scene_entry_staged = false
+	if not should_publish:
 		return
-	configure_run_stat_bonuses(
-		run_state.get_player_stat_bonuses(peer_id),
-		refresh_stats
+	if (
+		int(current["current_health"]) != int(baseline["current_health"])
+		or int(current["max_health"]) != int(baseline["max_health"])
+	):
+		health_changed.emit(current_health, max_health)
+	if not is_equal_approx(
+		float(current["dodge_chance"]),
+		float(baseline["dodge_chance"])
+	):
+		dodge_changed.emit(dodge_chance)
+	if int(current["research_level"]) != int(baseline["research_level"]):
+		research_technology_level_changed.emit(research_technology_level)
+	if int(current["xirang"]) != int(baseline["xirang"]):
+		xirang_changed.emit(
+			current_xirang,
+			current_xirang - int(baseline["xirang"])
+		)
+	if not is_equal_approx(
+		float(current["attack_speed"]),
+		float(baseline["attack_speed"])
+	):
+		attack_speed_changed.emit(get_attack_speed())
+	if scene_entry_staged:
+		scene_transient_combat_state_cleared.emit()
+	if bool(baseline["is_dead"]) and not is_dead:
+		revived.emit()
+		if uses_local_input:
+			_start_local_revive_glow_effect()
+	if current != baseline:
+		profile_display_changed.emit()
+
+
+func _capture_persistent_projection_observable_state() -> Dictionary:
+	return {
+		"current_health": current_health,
+		"max_health": max_health,
+		"attack_damage": attack_damage,
+		"move_speed": move_speed,
+		"physical_defense": physical_defense,
+		"magic_defense": magic_defense,
+		"dodge_chance": dodge_chance,
+		"attack_speed": get_attack_speed(),
+		"xirang": current_xirang,
+		"research_level": research_technology_level,
+		"skill1_level": skill1_upgrade_level,
+		"skill1_charge_duration": skill1_charge_duration,
+		"is_dead": is_dead,
+		"fate_max_health_multiplier": (
+			tower_defense_fate_max_health_multiplier
+		),
+		"fate_move_speed_multiplier": (
+			tower_defense_fate_move_speed_multiplier
+		),
+		"fate_dash_cooldown_reduction": (
+			tower_defense_fate_dash_cooldown_reduction
+		),
+	}
+
+
+func _is_valid_run_progression_snapshot(snapshot: Dictionary) -> bool:
+	if (
+		snapshot.size() != 6
+		or typeof(snapshot.get("schema_version")) != TYPE_INT
+		or int(snapshot["schema_version"])
+		!= RunStateStore.PLAYER_RUN_PROGRESSION_SCHEMA_VERSION
+		or typeof(snapshot.get("peer_id")) != TYPE_INT
+		or typeof(snapshot.get("upgrade_levels")) != TYPE_DICTIONARY
+		or typeof(snapshot.get("skill1_upgrade_level")) != TYPE_INT
+		or int(snapshot["skill1_upgrade_level"]) < 0
+		or int(snapshot["skill1_upgrade_level"]) > SKILL1_MAX_UPGRADE_LEVEL
+		or typeof(snapshot.get("stat_bonuses")) != TYPE_DICTIONARY
+		or typeof(snapshot.get("max_health_penalty")) != TYPE_INT
+		or int(snapshot["max_health_penalty"]) < 0
+	):
+		return false
+	var snapshot_peer_id := int(snapshot["peer_id"])
+	var expected_peer_id := peer_id if peer_id > 0 else 0
+	if snapshot_peer_id != expected_peer_id:
+		return false
+	var levels := snapshot["upgrade_levels"] as Dictionary
+	if levels.size() != RunStateStore.MAX_UPGRADE_LEVELS.size():
+		return false
+	for raw_stat_type in RunStateStore.MAX_UPGRADE_LEVELS.keys():
+		var stat_type := int(raw_stat_type)
+		if typeof(levels.get(stat_type)) != TYPE_INT:
+			return false
+		var level := int(levels[stat_type])
+		if level < 0 or level > int(RunStateStore.MAX_UPGRADE_LEVELS[stat_type]):
+			return false
+	var bonuses := snapshot["stat_bonuses"] as Dictionary
+	if bonuses.size() != RunStateStore.PLAYER_STAT_BONUS_KEYS.size():
+		return false
+	for stat_id in RunStateStore.PLAYER_STAT_BONUS_KEYS:
+		var stat_key := str(stat_id)
+		if typeof(bonuses.get(stat_key)) != TYPE_INT:
+			return false
+		var value := int(bonuses[stat_key])
+		if value < 0 or value > int(RunStateStore.PLAYER_STAT_BONUS_HARD_CAPS[stat_id]):
+			return false
+	return true
+
+
+## 基础升级使用绝对等级重建，不在场景节点上累计 delta。作者基础、run 成长
+## 与收藏品/永久奖励因此始终是三层独立输入。
+func configure_run_upgrade_levels(
+	levels: Dictionary,
+	refresh_stats: bool = true
+) -> bool:
+	if levels.size() != RunStateStore.MAX_UPGRADE_LEVELS.size():
+		return false
+	var normalized: Dictionary = {}
+	for raw_stat_type in RunStateStore.MAX_UPGRADE_LEVELS.keys():
+		var stat_type := int(raw_stat_type)
+		if typeof(levels.get(stat_type)) != TYPE_INT:
+			return false
+		var level := int(levels[stat_type])
+		if level < 0 or level > int(RunStateStore.MAX_UPGRADE_LEVELS[stat_type]):
+			return false
+		normalized[stat_type] = level
+	if normalized == _run_upgrade_levels:
+		return false
+	_run_upgrade_levels = normalized
+	_rebuild_run_upgraded_base_stats()
+	if refresh_stats and is_node_ready():
+		_refresh_collectible_stats()
+	return true
+
+
+func get_run_upgrade_levels() -> Dictionary:
+	return _run_upgrade_levels.duplicate(true)
+
+
+func _rebuild_run_upgraded_base_stats() -> void:
+	if not _base_stats_initialized:
+		return
+	var character_config := get_character_config()
+	assert(character_config != null, "Missing PlayerCharacterConfig for '%s'." % character_id)
+	_base_move_speed = _authored_move_speed
+	_base_max_health = (
+		_authored_max_health
+		+ int(_run_upgrade_levels[RunStateStore.StatType.HEALTH]) * 5
+	)
+	_base_attack_damage = (
+		_authored_attack_damage
+		+ float(_run_upgrade_levels[RunStateStore.StatType.ATTACK])
+		* character_config.attack_damage_per_upgrade
+	)
+	_base_physical_defense = _authored_physical_defense
+	_base_magic_defense = _authored_magic_defense
+	_base_dodge_chance = minf(
+		_authored_dodge_chance
+		+ float(_run_upgrade_levels[RunStateStore.StatType.DODGE])
+		* DODGE_UPGRADE_CHANCE_STEP,
+		1.0
+	)
+	_base_fire_interval = maxf(
+		_authored_fire_interval
+		* pow(
+			ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER,
+			float(_run_upgrade_levels[RunStateStore.StatType.ATTACK_SPEED])
+		),
+		0.01
 	)
 
 
@@ -5876,41 +6381,3 @@ func _play_death_animation() -> void:
 	body_sprite.visible = true
 	if body_sprite.sprite_frames != null and body_sprite.sprite_frames.has_animation(&"death"):
 		body_sprite.play(&"death")
-
-
-# 按当前角色的平衡配置升级基础攻击力。
-func upgrade_attack() -> void:
-	_initialize_base_stats()
-	var character_config := get_character_config()
-	assert(character_config != null, "Missing PlayerCharacterConfig for '%s'." % character_id)
-	_base_attack_damage += character_config.attack_damage_per_upgrade
-	_refresh_collectible_stats()
-
-
-# 升级生命值上限，每级 +5，并同步回满当前生命
-func upgrade_max_health() -> void:
-	_initialize_base_stats()
-	_base_max_health += 5
-	_refresh_collectible_stats(false)
-	current_health = max_health
-	# Full healing can deactivate health-threshold collectibles immediately.
-	_refresh_collectible_stats(false)
-	health_bar.set_health(current_health, max_health)
-	health_changed.emit(current_health, max_health)
-
-
-# 升级攻击速度，每级攻击间隔减少 5%
-func upgrade_attack_speed() -> void:
-	_initialize_base_stats()
-	_base_fire_interval *= ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER
-	fire_interval = _base_fire_interval
-	_refresh_shooting_timer_wait_time()
-
-
-# 升级闪避能力，每级闪避率 +2%
-func upgrade_dodge() -> void:
-	_base_dodge_chance = minf(
-		_base_dodge_chance + DODGE_UPGRADE_CHANCE_STEP,
-		1.0
-	)
-	_refresh_collectible_stats()

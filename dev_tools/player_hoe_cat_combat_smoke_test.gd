@@ -214,7 +214,12 @@ func _test_attack_upgrade_progression() -> void:
 	_stop_audio_players(upgrade_player)
 	var expected_attack_damage := [21, 26, 32, 37, 43, 48, 54, 59, 65, 70]
 	for upgrade_index in range(expected_attack_damage.size()):
-		upgrade_player.upgrade_attack()
+		var levels := upgrade_player.get_run_upgrade_levels()
+		levels[RunStateStore.StatType.ATTACK] = upgrade_index + 1
+		_expect(
+			upgrade_player.configure_run_upgrade_levels(levels, true),
+			"Hoe Cat must accept a complete absolute upgrade snapshot."
+		)
 		_expect(
 			upgrade_player.attack_damage == expected_attack_damage[upgrade_index],
 			"Hoe Cat attack upgrade level %d must reach %d attack damage."

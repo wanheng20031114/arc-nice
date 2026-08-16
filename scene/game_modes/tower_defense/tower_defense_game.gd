@@ -707,6 +707,7 @@ func _configure_rogue_exploration() -> bool:
 		plant_terrain_decay_timer,
 		production_coordinator,
 		research_coordinator,
+		fate_coordinator,
 		run_state
 	):
 		push_error("TowerDefenseGame: RogueExplorationCoordinator 依赖绑定失败。")

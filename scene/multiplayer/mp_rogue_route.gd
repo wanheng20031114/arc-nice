@@ -37,6 +37,8 @@ const ROUTE_ENCOUNTER_COMMAND_RATE_PER_SECOND := 4.0
 const ROUTE_ENCOUNTER_COMMAND_RATE_BURST := 6.0
 const ROUTE_SHOP_COMMAND_RATE_PER_SECOND := 6.0
 const ROUTE_SHOP_COMMAND_RATE_BURST := 8.0
+const ROUTE_UPGRADE_COMMAND_RATE_PER_SECOND := 6.0
+const ROUTE_UPGRADE_COMMAND_RATE_BURST := 8.0
 const SHOP_EXIT_ACK_RETRY_MSEC := 500
 const BRIEFING_COVER_BARRIER_TIMEOUT_MSEC := 10_000
 
@@ -54,6 +56,7 @@ var _public_return_in_progress := false
 var _snapshot_request_pending := false
 var _snapshot_request_retry_at_msec := 0
 var _snapshot_request_retry_exponent := 0
+var _full_snapshot_apply_in_progress := false
 var _latest_layout_snapshot: Dictionary = {}
 var _latest_state_snapshot: Dictionary = {}
 var _latest_encounter_snapshot: Dictionary = {}
@@ -79,6 +82,7 @@ var _last_avatar_correction_sequences: Dictionary = {}
 var _route_repair_request_rate_buckets: Dictionary = {}
 var _route_encounter_command_rate_buckets: Dictionary = {}
 var _route_shop_command_rate_buckets: Dictionary = {}
+var _route_upgrade_command_rate_buckets: Dictionary = {}
 var _pending_shop_exit_ack: Dictionary = {}
 var _pending_shop_exit_retry_at_msec := 0
 var _embedded_campaign_mode := false
@@ -277,6 +281,7 @@ func set_embedded_exploration_active(active: bool) -> void:
 		_route_repair_request_rate_buckets.clear()
 		_route_encounter_command_rate_buckets.clear()
 		_route_shop_command_rate_buckets.clear()
+		_route_upgrade_command_rate_buckets.clear()
 		# 离线玩家姿态是跨断线的语义状态，不属于当日 active 运输缓存；
 		# 保留到 authenticated reconnect 或既有 TTL 到期。
 		_reset_avatar_sync_state(true)
@@ -303,6 +308,7 @@ func clear_embedded_peer_transport_state(peer_id: int) -> void:
 	_route_repair_request_rate_buckets.erase(peer_id)
 	_route_encounter_command_rate_buckets.erase(peer_id)
 	_route_shop_command_rate_buckets.erase(peer_id)
+	_route_upgrade_command_rate_buckets.erase(peer_id)
 	if _is_host() and _briefing_cover_expected_peers.has(peer_id):
 		_briefing_cover_expected_peers.erase(peer_id)
 		_briefing_cover_ready_peers.erase(peer_id)
@@ -396,6 +402,7 @@ func migrate_embedded_peer_transport_state(
 		_route_repair_request_rate_buckets.erase(peer_id)
 		_route_encounter_command_rate_buckets.erase(peer_id)
 		_route_shop_command_rate_buckets.erase(peer_id)
+		_route_upgrade_command_rate_buckets.erase(peer_id)
 		_briefing_cover_expected_peers.erase(peer_id)
 		_briefing_cover_ready_peers.erase(peer_id)
 		_clear_avatar_peer_sync_state(peer_id)
@@ -457,6 +464,7 @@ func apply_embedded_route_rpc(
 		&"net_shop_sell_request",
 		&"net_shop_exit_ack",
 		&"net_shop_snapshot",
+		&"net_route_upgrade_requested",
 		&"net_route_avatar_input",
 		&"net_route_avatar_snapshot",
 		&"net_route_avatar_corrected",
@@ -529,6 +537,7 @@ func _exit_tree() -> void:
 	_route_repair_request_rate_buckets.clear()
 	_route_encounter_command_rate_buckets.clear()
 	_route_shop_command_rate_buckets.clear()
+	_route_upgrade_command_rate_buckets.clear()
 	_pending_shop_exit_ack.clear()
 	_pending_shop_exit_retry_at_msec = 0
 	_disconnect_net_manager_signals()
@@ -612,6 +621,12 @@ func _connect_route_signals() -> void:
 		_route.shop_exit_ack_requested.connect(
 			_on_local_shop_exit_ack_requested
 		)
+	if not _route.player_upgrade_requested.is_connected(
+		_on_local_player_upgrade_requested
+	):
+		_route.player_upgrade_requested.connect(
+			_on_local_player_upgrade_requested
+		)
 	if not _route.return_requested.is_connected(_on_return_requested):
 		_route.return_requested.connect(_on_return_requested)
 
@@ -680,6 +695,12 @@ func _disconnect_route_signals() -> void:
 	):
 		_route.shop_exit_ack_requested.disconnect(
 			_on_local_shop_exit_ack_requested
+		)
+	if _route.player_upgrade_requested.is_connected(
+		_on_local_player_upgrade_requested
+	):
+		_route.player_upgrade_requested.disconnect(
+			_on_local_player_upgrade_requested
 		)
 	if _route.return_requested.is_connected(_on_return_requested):
 		_route.return_requested.disconnect(_on_return_requested)
@@ -1016,6 +1037,8 @@ func _finish_player_reconnect(
 		_route_encounter_command_rate_buckets.erase(new_peer_id)
 		_route_shop_command_rate_buckets.erase(old_peer_id)
 		_route_shop_command_rate_buckets.erase(new_peer_id)
+		_route_upgrade_command_rate_buckets.erase(old_peer_id)
+		_route_upgrade_command_rate_buckets.erase(new_peer_id)
 		_route.host_migrate_encounter_peer(old_peer_id, new_peer_id)
 		_route.host_migrate_shop_peer_as_exited(old_peer_id, new_peer_id)
 		if _briefing_cover_expected_peers.has(old_peer_id):
@@ -1079,6 +1102,7 @@ func _on_player_left(peer_id: int) -> void:
 	_route_repair_request_rate_buckets.erase(peer_id)
 	_route_encounter_command_rate_buckets.erase(peer_id)
 	_route_shop_command_rate_buckets.erase(peer_id)
+	_route_upgrade_command_rate_buckets.erase(peer_id)
 	if _is_host() and _briefing_cover_expected_peers.has(peer_id):
 		_briefing_cover_expected_peers.erase(peer_id)
 		_briefing_cover_ready_peers.erase(peer_id)
@@ -1566,6 +1590,71 @@ func _on_local_shop_exit_ack_requested(
 	_try_send_pending_shop_exit_ack()
 
 
+func _on_local_player_upgrade_requested(
+	stat_type: int,
+	expected_level: int,
+	expected_xirang_revision: int
+) -> void:
+	if _route == null or _run_state == null:
+		return
+	var local_peer_id := _get_local_peer_id()
+	if _is_host():
+		_submit_authoritative_route_upgrade(
+			local_peer_id,
+			stat_type,
+			expected_level,
+			expected_xirang_revision
+		)
+		return
+	if not _is_client() or not _has_network_peer():
+		return
+	var host_peer_id := _get_host_peer_id()
+	if host_peer_id <= 0 or not _is_peer_send_ready(host_peer_id):
+		return
+	_send_route_rpc(
+		host_peer_id,
+		&"net_route_upgrade_requested",
+		[stat_type, expected_level, expected_xirang_revision]
+	)
+
+
+func _submit_authoritative_route_upgrade(
+	peer_id: int,
+	stat_type: int,
+	expected_level: int,
+	expected_xirang_revision: int
+) -> bool:
+	if (
+		not _is_host()
+		or _route == null
+		or _run_state == null
+		or not _route.is_route_ready()
+		or not RunStateStore.MAX_UPGRADE_LEVELS.has(stat_type)
+		or not _run_state.has_multiplayer_peer_state(peer_id)
+		or _run_state.get_upgrade_level_for_peer(peer_id, stat_type)
+		!= expected_level
+		or _run_state.get_party_xirang_ledger_revision()
+		!= expected_xirang_revision
+	):
+		return false
+	var route_player := _route.get_player_for_peer(peer_id)
+	if (
+		route_player == null
+		or not is_instance_valid(route_player)
+		or route_player.peer_id != peer_id
+		or not route_player.uses_run_party_xirang_ledger(peer_id)
+		or not _run_state.try_upgrade_for_peer(
+			peer_id,
+			stat_type,
+			route_player
+		)
+	):
+		return false
+	# RunState 已在任何信号前同时提交余额与等级；此后只广播绝对快照。
+	_broadcast_full_snapshot()
+	return true
+
+
 func _try_send_pending_shop_exit_ack(now_msec: int = -1) -> bool:
 	if (
 		not _is_client()
@@ -1652,6 +1741,18 @@ func _refresh_authoritative_state_cache() -> bool:
 	return true
 
 
+func _capture_player_health_upgrade_levels() -> Dictionary:
+	var result: Dictionary = {}
+	if _run_state == null:
+		return result
+	for peer_id in _run_state.get_registered_multiplayer_peer_ids():
+		result[peer_id] = _run_state.get_upgrade_level_for_peer(
+			peer_id,
+			RunStateStore.StatType.HEALTH
+		)
+	return result
+
+
 func _broadcast_full_snapshot() -> void:
 	if not _is_host() or not _has_network_peer():
 		return
@@ -1675,6 +1776,7 @@ func _send_full_snapshot_to_peer(
 	)
 	if (
 		not _is_host()
+		or _run_state == null
 		or peer_id <= 0
 		or peer_id == _get_host_peer_id()
 		or not _has_network_peer()
@@ -1685,7 +1787,12 @@ func _send_full_snapshot_to_peer(
 	var shop_state := _route.export_shop_snapshot_for_peer(peer_id)
 	var encounter_state := _route.export_encounter_snapshot(peer_id)
 	var economy_state := _route.export_encounter_economy_snapshot(peer_id)
-	if encounter_state.is_empty() or economy_state.is_empty():
+	var progression_ledger := _run_state.export_player_upgrade_ledger()
+	if (
+		encounter_state.is_empty()
+		or economy_state.is_empty()
+		or progression_ledger.is_empty()
+	):
 		return false
 	return _send_route_rpc(
 		peer_id,
@@ -1696,6 +1803,7 @@ func _send_full_snapshot_to_peer(
 			encounter_state.duplicate(true),
 			economy_state.duplicate(true),
 			shop_state.duplicate(true),
+			progression_ledger.duplicate(true),
 		]
 	)
 
@@ -1766,6 +1874,19 @@ func _admit_route_shop_command(peer_id: int) -> bool:
 			peer_id,
 			ROUTE_SHOP_COMMAND_RATE_PER_SECOND,
 			ROUTE_SHOP_COMMAND_RATE_BURST
+		)
+	)
+
+
+func _admit_route_upgrade_command(peer_id: int) -> bool:
+	return (
+		_is_gameplay_ingress_admitted(peer_id)
+		and _is_registered_route_peer(peer_id)
+		and _consume_peer_rate_token(
+			_route_upgrade_command_rate_buckets,
+			peer_id,
+			ROUTE_UPGRADE_COMMAND_RATE_PER_SECOND,
+			ROUTE_UPGRADE_COMMAND_RATE_BURST
 		)
 	)
 
@@ -2530,13 +2651,35 @@ func net_request_route_full_snapshot() -> void:
 	_send_full_snapshot_to_peer(sender_id)
 
 
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_upgrade_requested(
+	stat_type: int,
+	expected_level: int,
+	expected_xirang_revision: int
+) -> void:
+	if not _is_host():
+		return
+	var sender_id := _get_route_rpc_sender_id()
+	if not _admit_route_upgrade_command(sender_id):
+		return
+	if not _submit_authoritative_route_upgrade(
+		sender_id,
+		stat_type,
+		expected_level,
+		expected_xirang_revision
+	):
+		# 拒绝与过期请求都回收到 Host 高水位，不让本地 UI 猜测继续滞留。
+		_send_full_snapshot_to_peer(sender_id)
+
+
 @rpc("authority", "call_remote", "reliable", 0)
 func net_route_full_snapshot(
 	layout: Dictionary,
 	state: Dictionary,
 	encounter_state: Dictionary,
 	economy_state: Dictionary,
-	shop_state: Dictionary
+	shop_state: Dictionary,
+	progression_ledger: Dictionary
 ) -> void:
 	_apply_full_snapshot_from_peer(
 		_get_route_rpc_sender_id(),
@@ -2544,7 +2687,8 @@ func net_route_full_snapshot(
 		state,
 		encounter_state,
 		economy_state,
-		shop_state
+		shop_state,
+		progression_ledger
 	)
 
 
@@ -2554,12 +2698,46 @@ func _apply_full_snapshot_from_peer(
 	state: Dictionary,
 	encounter_state: Dictionary,
 	economy_state: Dictionary,
-	shop_state: Dictionary = {}
+	shop_state: Dictionary = {},
+	progression_ledger: Dictionary = {}
+) -> bool:
+	if (
+		_full_snapshot_apply_in_progress
+		or _route == null
+		or not _route.try_begin_full_snapshot_transaction()
+	):
+		return false
+	_full_snapshot_apply_in_progress = true
+	var applied := _apply_full_snapshot_from_peer_guarded(
+		sender_id,
+		layout,
+		state,
+		encounter_state,
+		economy_state,
+		shop_state,
+		progression_ledger
+	)
+	_full_snapshot_apply_in_progress = false
+	_route.end_full_snapshot_transaction()
+	return applied
+
+
+## RPC/owner signal 都可能同步回入；组合事务不排队第二份快照，也不允许
+## 嵌套取得 Player signal 屏障。public wrapper 会在所有返回路径释放门。
+func _apply_full_snapshot_from_peer_guarded(
+	sender_id: int,
+	layout: Dictionary,
+	state: Dictionary,
+	encounter_state: Dictionary,
+	economy_state: Dictionary,
+	shop_state: Dictionary = {},
+	progression_ledger: Dictionary = {}
 ) -> bool:
 	if (
 		not _is_client()
 		or sender_id != _get_host_peer_id()
 		or _route == null
+		or _run_state == null
 	):
 		return false
 	if (
@@ -2567,18 +2745,82 @@ func _apply_full_snapshot_from_peer(
 		or state.is_empty()
 		or encounter_state.is_empty()
 		or economy_state.is_empty()
+		or progression_ledger.is_empty()
 	):
 		_schedule_full_snapshot_retry()
 		return false
-	if not _route.apply_full_snapshot(
+	var prepared_progression := _run_state.prepare_player_upgrade_ledger(
+		progression_ledger.duplicate(true),
+		true
+	)
+	if prepared_progression.is_empty():
+		_schedule_full_snapshot_retry()
+		return false
+	var route_local_peer_id := _route.get_configured_local_peer_id()
+	var network_local_peer_id := _get_local_peer_id()
+	if (
+		route_local_peer_id <= 0
+		or (
+			network_local_peer_id > 0
+			and route_local_peer_id != network_local_peer_id
+		)
+	):
+		_schedule_full_snapshot_retry()
+		return false
+	var prepared_route := _route.prepare_full_snapshot(
 		layout.duplicate(true),
 		state.duplicate(true),
 		encounter_state.duplicate(true),
 		economy_state.duplicate(true),
-		shop_state.duplicate(true)
+		shop_state.duplicate(true),
+		route_local_peer_id
+	)
+	var prepared_player_projection := (
+		_route.prepare_authoritative_player_progression(
+			prepared_progression,
+			prepared_route
+		)
+		if not prepared_route.is_empty()
+		else {}
+	)
+	if (
+		prepared_route.is_empty()
+		or prepared_player_projection.is_empty()
+		or not _run_state.can_commit_prepared_player_upgrade_ledger(
+			prepared_progression
+		)
+		or not _route.can_commit_prepared_full_snapshot(prepared_route)
+		or not _route.can_commit_prepared_authoritative_player_progression(
+			prepared_player_projection
+		)
 	):
+		_route.discard_prepared_full_snapshot(prepared_route)
 		_schedule_full_snapshot_retry()
 		return false
+	_route.begin_validated_authoritative_player_projection(
+		prepared_player_projection
+	)
+	_run_state.commit_validated_player_upgrade_ledger(
+		prepared_progression,
+		false
+	)
+	_route.commit_validated_full_snapshot(prepared_route, false)
+	_route.commit_validated_authoritative_player_progression(
+		prepared_player_projection
+	)
+	_route.commit_validated_authoritative_player_xirang(
+		prepared_player_projection
+	)
+	_route.stage_validated_authoritative_player_projection_publish(
+		prepared_player_projection,
+		false
+	)
+	_run_state.publish_prepared_player_upgrade_ledger(prepared_progression)
+	_route.publish_prepared_full_snapshot_changes(prepared_route)
+	_route.publish_validated_authoritative_player_projection(
+		prepared_player_projection
+	)
+	_route.complete_prepared_full_snapshot_presentation()
 	_route.mark_runtime_preparation_complete(_route_preparation_generation)
 	if not _route.is_route_ready():
 		_schedule_full_snapshot_retry()

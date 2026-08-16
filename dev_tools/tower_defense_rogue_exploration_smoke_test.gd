@@ -20,6 +20,8 @@ const MAX_COMBAT_FIXTURE_SEED := 2048
 const MAX_COMBAT_WAIT_FRAMES := 600
 
 var failures: Array[String] = []
+var zero_action_points_case_completed := false
+var snapshot_ordering_case_completed := false
 
 
 func _init() -> void:
@@ -702,7 +704,15 @@ func _run() -> void:
 		await process_frame
 		await physics_frame
 	await _verify_zero_action_points_skip()
+	_expect(
+		zero_action_points_case_completed,
+		"零行动点异步夹具不得因 SCRIPT ERROR 提前中止后假绿。"
+	)
 	await _verify_snapshot_ordering_and_idempotence()
+	_expect(
+		snapshot_ordering_case_completed,
+		"快照顺序异步夹具不得因 SCRIPT ERROR 提前中止后假绿。"
+	)
 	if failures.is_empty():
 		print("TOWER_DEFENSE_ROGUE_EXPLORATION_SMOKE_TEST_OK")
 		quit(0)
@@ -713,6 +723,7 @@ func _run() -> void:
 
 
 func _verify_zero_action_points_skip() -> void:
+	zero_action_points_case_completed = false
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	game.progression_config = (
@@ -771,11 +782,40 @@ func _verify_zero_action_points_skip() -> void:
 	for _cleanup_frame in range(8):
 		await process_frame
 		await physics_frame
+	zero_action_points_case_completed = true
 
 
 func _verify_snapshot_ordering_and_idempotence() -> void:
+	snapshot_ordering_case_completed = false
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID, false)
+	var xirang_condition := load(
+		"res://resources/config/collectibles/collectible_copper_gear.tres"
+	) as PickupConfig
+	var original_xirang_condition := {
+		"attack_speed_xirang_step": xirang_condition.attack_speed_xirang_step,
+		"attack_speed_bonus_per_xirang_step": (
+			xirang_condition.attack_speed_bonus_per_xirang_step
+		),
+		"conditional_effect_id": xirang_condition.conditional_effect_id,
+		"conditional_xirang_threshold": (
+			xirang_condition.conditional_xirang_threshold
+		),
+		"conditional_attack_bonus": xirang_condition.conditional_attack_bonus,
+		"conditional_move_speed_bonus": (
+			xirang_condition.conditional_move_speed_bonus
+		),
+	}
+	xirang_condition.attack_speed_xirang_step = 1_000
+	xirang_condition.attack_speed_bonus_per_xirang_step = 1.0
+	xirang_condition.conditional_effect_id = PickupConfig.CONDITION_XIRANG_AT_LEAST
+	xirang_condition.conditional_xirang_threshold = 2_000
+	xirang_condition.conditional_attack_bonus = 13
+	xirang_condition.conditional_move_speed_bonus = 5.0
+	_expect(
+		run_state.try_add_item(xirang_condition),
+		"Tower outer signal 屏障夹具必须建立息壤条件收藏品。"
+	)
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	var fate := game.get_node_or_null("FateCoordinator") as FateCoordinator
@@ -797,6 +837,253 @@ func _verify_snapshot_ordering_and_idempotence() -> void:
 	await process_frame
 	run_state.set_party_core_health(28, 100)
 	var active_snapshot := coordinator.export_multiplayer_snapshot_for_peer(0)
+	var route_player := route.get_players_for_persistent_projection().get(0) as Player
+	var baseline_attack := route_player.attack_damage
+	var baseline_move_speed := route_player.move_speed
+	var baseline_attack_speed := route_player.get_attack_speed()
+	var old_xirang_values := run_state.party_xirang_balances.duplicate(true)
+	var old_xirang_revision := run_state.party_xirang_ledger_revision
+	var next_xirang_balance := run_state.get_party_xirang_balance(0) + 1_500
+	_expect(
+		run_state.set_party_xirang_balance(0, next_xirang_balance, false),
+		"Tower outer signal 屏障夹具必须先构造 Host 的下一份息壤高水位。"
+	)
+	var next_xirang_snapshot := coordinator.export_multiplayer_snapshot_for_peer(0)
+	# 同一进程模拟客户端仍停在旧高水位；Player 未收到 signal，因此余额与
+	# 条件派生面板也保持旧值，直到 outer 组合事务一次性提交。
+	run_state.party_xirang_balances = old_xirang_values
+	run_state.party_xirang_ledger_revision = old_xirang_revision
+	var player_signal_counts := {
+		"xirang": 0,
+		"attack_speed": 0,
+		"profile": 0,
+	}
+	route_player.xirang_changed.connect(func(_total: int, _delta: int) -> void:
+		player_signal_counts["xirang"] += 1
+	)
+	route_player.attack_speed_changed.connect(func(_value: float) -> void:
+		player_signal_counts["attack_speed"] += 1
+	)
+	route_player.profile_display_changed.connect(func() -> void:
+		player_signal_counts["profile"] += 1
+	)
+	var first_owner_observation := {
+		"count": 0,
+		"complete": false,
+		"player_signals_already_emitted": false,
+		"reentry_rejected": false,
+		"route_direct_reentry_rejected": false,
+	}
+	var first_owner_callback := func(_ledger: Dictionary) -> void:
+		first_owner_observation["count"] += 1
+		first_owner_observation["reentry_rejected"] = not (
+			coordinator.apply_multiplayer_snapshot(next_xirang_snapshot)
+		)
+		first_owner_observation["route_direct_reentry_rejected"] = not (
+			route.apply_full_snapshot(
+				next_xirang_snapshot["route_layout"] as Dictionary,
+				next_xirang_snapshot["route_state"] as Dictionary,
+				next_xirang_snapshot["encounter"] as Dictionary,
+				next_xirang_snapshot["economy"] as Dictionary,
+				next_xirang_snapshot["shop"] as Dictionary
+			)
+		)
+		first_owner_observation["player_signals_already_emitted"] = (
+			int(player_signal_counts["xirang"]) != 0
+			or int(player_signal_counts["attack_speed"]) != 0
+			or int(player_signal_counts["profile"]) != 0
+		)
+		first_owner_observation["complete"] = (
+			coordinator.is_exploration_active()
+			and run_state.get_party_xirang_balance(0) == next_xirang_balance
+			and route.export_state_snapshot()
+			== next_xirang_snapshot["route_state"]
+			and route_player.current_xirang == next_xirang_balance
+			and route_player.attack_damage == baseline_attack + 13
+			and is_equal_approx(
+				route_player.move_speed,
+				baseline_move_speed + 5.0
+			)
+			and route_player.get_attack_speed() > baseline_attack_speed
+			and route.get_players_for_persistent_projection().get(0)
+			== route_player
+		)
+	run_state.party_xirang_ledger_changed.connect(first_owner_callback)
+	route.set_authority_enabled(false)
+	var next_xirang_applied := coordinator.apply_multiplayer_snapshot(
+		next_xirang_snapshot
+	)
+	route.set_authority_enabled(true)
+	run_state.party_xirang_ledger_changed.disconnect(first_owner_callback)
+	_expect(
+		next_xirang_applied
+		and int(first_owner_observation["count"]) == 1
+		and bool(first_owner_observation["complete"])
+		and bool(first_owner_observation["reentry_rejected"])
+		and bool(
+			first_owner_observation["route_direct_reentry_rejected"]
+		)
+		and not bool(
+			first_owner_observation["player_signals_already_emitted"]
+		)
+		and int(player_signal_counts["xirang"]) == 1
+		and int(player_signal_counts["attack_speed"]) == 1
+		and int(player_signal_counts["profile"]) == 1,
+		(
+			"Tower active outer 的首个 owner 回调必须同时看见 outer/RunState/"
+			+ "Route/全部 Player 与息壤条件面板的新状态；Player 契约 signal "
+			+ "只能随后各发布一次。"
+		)
+	)
+	active_snapshot = coordinator.export_multiplayer_snapshot_for_peer(0)
+	# CH6 Research / CH5 Fate 可能先于旧 CH0 active 到达。owner 高水位
+	# 已推进时，旧 outer 必须全域拒绝，不能拿 stale token 回写 Route Player；
+	# 下一份同代自包含 outer 才统一投影新永久层。
+	var stale_persistent_owner_active_snapshot := active_snapshot.duplicate(true)
+	var newer_research_state := game.research_coordinator.export_runtime_state()
+	newer_research_state["revision"] = int(newer_research_state["revision"]) + 1
+	var newer_research_levels := newer_research_state["player_levels"] as Dictionary
+	newer_research_levels[0] = mini(
+		int(newer_research_levels[0]) + 1,
+		Player.RESEARCH_TECHNOLOGY_MAX_LEVEL
+	)
+	var prepared_newer_research := (
+		game.research_coordinator.prepare_multiplayer_runtime_state(
+			newer_research_state,
+			false
+		)
+	)
+	var newer_fate_state := fate.export_persistent_player_modifier_snapshot()
+	newer_fate_state["revision"] = int(newer_fate_state["revision"]) + 1
+	newer_fate_state["player_max_health_multiplier"] = 1.08
+	newer_fate_state["player_move_speed_multiplier"] = 1.06
+	newer_fate_state["player_dash_cooldown_reduction"] = 0.20
+	var prepared_newer_fate := fate.prepare_persistent_player_modifier_snapshot(
+		newer_fate_state,
+		false
+	)
+	_expect(
+		game.research_coordinator.commit_prepared_multiplayer_runtime_state(
+			prepared_newer_research
+		)
+		and fate.commit_prepared_persistent_player_modifier_snapshot(
+			prepared_newer_fate
+		),
+		"跨信道乱序夹具必须先推进 Research/Fate 权威高水位。"
+	)
+	# Host Fate manager 与永久投影 revision 同代；测试直接模拟已验 CH5
+	# commit 后的权威 manager 高水位，供随后 outer 导出自包含快照。
+	fate.manager.state_revision = int(newer_fate_state["revision"])
+	var stale_owner_player_baseline := {
+		"research": route_player.get_research_technology_level(),
+		"fate_max": route_player.tower_defense_fate_max_health_multiplier,
+		"fate_move": route_player.tower_defense_fate_move_speed_multiplier,
+		"attack": route_player.attack_damage,
+		"max_health": route_player.max_health,
+	}
+	var newer_research_committed := game.research_coordinator.export_runtime_state()
+	var newer_fate_committed := fate.export_persistent_player_modifier_snapshot()
+	route.set_authority_enabled(false)
+	var stale_owner_outer_applied := coordinator.apply_multiplayer_snapshot(
+		stale_persistent_owner_active_snapshot
+	)
+	route.set_authority_enabled(true)
+	_expect(
+		not stale_owner_outer_applied
+		and game.research_coordinator.export_runtime_state()
+		== newer_research_committed
+		and fate.export_persistent_player_modifier_snapshot()
+		== newer_fate_committed
+		and route_player.get_research_technology_level()
+		== int(stale_owner_player_baseline["research"])
+		and is_equal_approx(
+			route_player.tower_defense_fate_max_health_multiplier,
+			float(stale_owner_player_baseline["fate_max"])
+		)
+		and is_equal_approx(
+			route_player.tower_defense_fate_move_speed_multiplier,
+			float(stale_owner_player_baseline["fate_move"])
+		)
+		and route_player.attack_damage == int(
+			stale_owner_player_baseline["attack"]
+		)
+		and route_player.max_health == int(
+			stale_owner_player_baseline["max_health"]
+		),
+		"较新 Research/Fate 后到达的旧 active outer 必须零 owner/Player 回滚。"
+	)
+	var refreshed_persistent_outer := (
+		coordinator.export_multiplayer_snapshot_for_peer(0)
+	)
+	route.set_authority_enabled(false)
+	var refreshed_persistent_applied := coordinator.apply_multiplayer_snapshot(
+		refreshed_persistent_outer
+	)
+	route.set_authority_enabled(true)
+	_expect(
+		refreshed_persistent_applied
+		and route_player.get_research_technology_level()
+		== int(newer_research_levels[0])
+		and is_equal_approx(
+			route_player.tower_defense_fate_max_health_multiplier,
+			1.08
+		)
+		and is_equal_approx(
+			route_player.tower_defense_fate_move_speed_multiplier,
+			1.06
+		),
+		"同代新 outer 必须在 reveal 前把 Research/Fate 高水位绝对投影到 Route Player。"
+	)
+	active_snapshot = coordinator.export_multiplayer_snapshot_for_peer(0)
+	# 模拟 CH6/runtime repair 已把三类 Party 高水位推进，随后才到达旧 CH0
+	# active outer。路线表现可重建，但持久经济绝不能随 layout rewind 回退。
+	var stale_party_active_snapshot := active_snapshot.duplicate(true)
+	var stale_route_state_baseline := route.export_state_snapshot()
+	var stale_route_layout_baseline := route.export_layout_snapshot()
+	_expect(
+		run_state.set_party_xirang_balance(
+			0,
+			run_state.get_party_xirang_balance(0) + 37
+		)
+		and run_state.set_max_health_penalty_for_peer(
+			0,
+			run_state.get_max_health_penalty_for_peer(0) + 3
+		)
+		and run_state.try_add_item(RunStateStore.STARTING_WOOD),
+		"旧 CH0 回归夹具必须先推进息壤、状态与背包三类 Party 高水位。"
+	)
+	var newer_party_economy := run_state.export_party_economy_snapshot()
+	var player_panel_baseline := {
+		"current_health": route_player.current_health,
+		"max_health": route_player.max_health,
+		"move_speed": route_player.move_speed,
+		"attack_damage": route_player.attack_damage,
+	}
+	route.set_authority_enabled(false)
+	var stale_party_snapshot_applied := coordinator.apply_multiplayer_snapshot(
+		stale_party_active_snapshot
+	)
+	route.set_authority_enabled(true)
+	_expect(
+		not stale_party_snapshot_applied
+		and run_state.export_party_economy_snapshot() == newer_party_economy
+		and route.export_state_snapshot() == stale_route_state_baseline
+		and route.export_layout_snapshot() == stale_route_layout_baseline
+		and route_player.current_health == int(
+			player_panel_baseline["current_health"]
+		)
+		and route_player.max_health == int(player_panel_baseline["max_health"])
+		and route_player.move_speed == float(player_panel_baseline["move_speed"])
+		and route_player.attack_damage == int(
+			player_panel_baseline["attack_damage"]
+		),
+		(
+			"较新 CH6 后到达的旧 active CH0 必须全域拒绝：息壤、状态、背包、"
+			+ "路线与玩家面板均不得被旧快照回滚。"
+		)
+	)
+	# Host 下一份同代 outer 携带新高水位后应可继续正常同步。
+	active_snapshot = coordinator.export_multiplayer_snapshot_for_peer(0)
 	var jumped_active_snapshot := active_snapshot.duplicate(true)
 	jumped_active_snapshot["day"] = 2
 	jumped_active_snapshot["next_step_id"] = String(wave_nine.step_id)
@@ -891,6 +1178,93 @@ func _verify_snapshot_ordering_and_idempotence() -> void:
 		and bool(restore_signal_observation["route_visible"]),
 		"核心恢复同步发信号时 pending 必须仍持有 suspension 与 Rogue 最后一帧。"
 	)
+	# 模拟玩家在 Rogue 终局结算期间断线：客户端只持有旧 Tower Player，
+	# 重连时收到 inactive outer，必须一次修齐成长、完整 Party Economy、
+	# Research 与 Fate，而不能等待下一次 active 探索才纠正面板。
+	var inactive_repair := coordinator.export_multiplayer_snapshot_for_peer(0)
+	var repaired_progression := (
+		inactive_repair["player_upgrade_ledger"] as Dictionary
+	)
+	repaired_progression["revision"] = int(repaired_progression["revision"]) + 1
+	var repaired_progression_values := (
+		repaired_progression["values"] as Dictionary
+	)
+	var repaired_progression_owner := (
+		repaired_progression_values["0"] as Dictionary
+	)
+	var repaired_upgrade_levels := (
+		repaired_progression_owner["upgrade_levels"] as Dictionary
+	)
+	var repaired_attack_key := str(int(RunStateStore.StatType.ATTACK))
+	repaired_upgrade_levels[repaired_attack_key] = mini(
+		int(repaired_upgrade_levels[repaired_attack_key]) + 1,
+		int(RunStateStore.MAX_UPGRADE_LEVELS[RunStateStore.StatType.ATTACK])
+	)
+	var repaired_party := inactive_repair["party_economy"] as Dictionary
+	var repaired_xirang := repaired_party["xirang_ledger"] as Dictionary
+	repaired_xirang["revision"] = int(repaired_xirang["revision"]) + 1
+	var repaired_xirang_values := repaired_xirang["values"] as Dictionary
+	var repaired_balance := int(repaired_xirang_values["0"]) + 321
+	repaired_xirang_values["0"] = repaired_balance
+	var repaired_status := repaired_party["party_status_ledger"] as Dictionary
+	repaired_status["revision"] = int(repaired_status["revision"]) + 1
+	var repaired_bonuses := repaired_status["player_stat_bonuses"] as Dictionary
+	var repaired_owner_bonuses := repaired_bonuses["0"] as Dictionary
+	repaired_owner_bonuses["attack_damage"] = (
+		int(repaired_owner_bonuses["attack_damage"]) + 4
+	)
+	inactive_repair["party_xirang_ledger"] = repaired_xirang.duplicate(true)
+	inactive_repair["party_status_ledger"] = repaired_status.duplicate(true)
+	var repaired_research := inactive_repair["research_runtime_state"] as Dictionary
+	repaired_research["revision"] = int(repaired_research["revision"]) + 1
+	var repaired_research_levels := repaired_research["player_levels"] as Dictionary
+	var repaired_research_level := mini(
+		int(repaired_research_levels[0]) + 1,
+		Player.RESEARCH_TECHNOLOGY_MAX_LEVEL
+	)
+	repaired_research_levels[0] = repaired_research_level
+	var repaired_fate := (
+		inactive_repair["fate_persistent_player_modifiers"] as Dictionary
+	)
+	repaired_fate["revision"] = int(repaired_fate["revision"]) + 1
+	repaired_fate["player_max_health_multiplier"] = 1.15
+	repaired_fate["player_move_speed_multiplier"] = 1.10
+	repaired_fate["player_dash_cooldown_reduction"] = 0.25
+	var tower_player_before_repair := {
+		"attack": game.player.attack_damage,
+		"effective_move_ratio": (
+			game.player.get_authoritative_effective_move_speed_ratio()
+		),
+	}
+	var inactive_repair_applied := coordinator.apply_multiplayer_snapshot(
+		inactive_repair
+	)
+	_expect(
+		inactive_repair_applied
+		and run_state.export_player_upgrade_ledger() == repaired_progression
+		and run_state.export_party_economy_snapshot() == repaired_party
+		and game.research_coordinator.export_runtime_state() == repaired_research
+		and run_state.get_party_xirang_balance(0) == repaired_balance
+		and game.player.current_xirang == repaired_balance
+		and game.player.get_research_technology_level()
+		== repaired_research_level
+		and is_equal_approx(
+			game.player.tower_defense_fate_max_health_multiplier,
+			1.15
+		)
+		and is_equal_approx(
+			game.player.tower_defense_fate_move_speed_multiplier,
+			1.10
+		)
+		and game.player.attack_damage > int(tower_player_before_repair["attack"])
+		and game.player.get_authoritative_effective_move_speed_ratio() > float(
+			tower_player_before_repair["effective_move_ratio"]
+		),
+		(
+			"错过 Rogue settlement 后的 inactive reconnect 必须自包含修复成长、"
+			+ "Xirang/status/inventory、Research/Fate，并立即重投 Tower Player。"
+		)
+	)
 	# 模拟一个从未见过 Rogue 的新客户端：CH5 Fate 已先到，随后 CH0
 	# 才按自身可靠顺序补送旧 active→inactive。旧 active 必须被流程状态
 	# 淘汰，inactive 只收敛账本，不能新建无人消费的 pending。
@@ -912,7 +1286,7 @@ func _verify_snapshot_ordering_and_idempotence() -> void:
 		active_snapshot
 	)
 	var terminal_inactive_applied := coordinator.apply_multiplayer_snapshot(
-		inactive_snapshot
+		inactive_repair
 	)
 	_expect(
 		not superseded_active_applied
@@ -930,11 +1304,30 @@ func _verify_snapshot_ordering_and_idempotence() -> void:
 		"CH5 Fate 先到时，晚到的 CH0 active→inactive 只能收敛为无 pending 的终态。"
 	)
 	game.state_timer.stop()
+	xirang_condition.attack_speed_xirang_step = int(
+		original_xirang_condition["attack_speed_xirang_step"]
+	)
+	xirang_condition.attack_speed_bonus_per_xirang_step = float(
+		original_xirang_condition["attack_speed_bonus_per_xirang_step"]
+	)
+	xirang_condition.conditional_effect_id = StringName(
+		original_xirang_condition["conditional_effect_id"]
+	)
+	xirang_condition.conditional_xirang_threshold = int(
+		original_xirang_condition["conditional_xirang_threshold"]
+	)
+	xirang_condition.conditional_attack_bonus = int(
+		original_xirang_condition["conditional_attack_bonus"]
+	)
+	xirang_condition.conditional_move_speed_bonus = float(
+		original_xirang_condition["conditional_move_speed_bonus"]
+	)
 	current_scene = null
 	game.queue_free()
 	for _cleanup_frame in range(8):
 		await process_frame
 		await physics_frame
+	snapshot_ordering_case_completed = true
 
 
 func _add_audio_player(
@@ -987,7 +1380,7 @@ func _configure_adjacent_normal_combat_route(
 				continue
 			if not route.start_authoritative_session(seed, false, 5):
 				return {}
-			route.restore_embedded_players_to_full_health()
+			route.restore_players_for_route_scene_entry()
 			route.route_board.complete_entry_reveal()
 			return {
 				"seed": seed,

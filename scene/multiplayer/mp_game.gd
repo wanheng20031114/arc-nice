@@ -1214,6 +1214,9 @@ func _on_transaction_skill1_purchase_confirmation_broadcast_requested(
 			skill1_upgrade_level,
 			skill1_charge_duration
 		)
+		transactions_coordinator.show_authoritative_local_skill1_purchase_result(
+			result_code
+		)
 
 
 func _on_tower_economy_rpc_to_host_requested(
@@ -2151,6 +2154,9 @@ func _setup_game(mode: int) -> bool:
 	game = game_scene.instantiate() as CombatRuntimeBase
 	if game == null:
 		return _fail_game_setup("无法实例化所选多人游戏场景。")
+	game.configure_player_persistent_modifier_projector(
+		player_persistent_modifier_projector
+	)
 	game.defer_runtime_activation()
 
 	var local_peer_id: int = _get_local_peer_id()
@@ -2597,8 +2603,6 @@ func _is_peer_result_envelope_ready(
 		if not runtime_projection_ready:
 			return false
 	var requires_player_projection := result_type in [
-		PEER_RESULT_UPGRADE_CONFIRMED,
-		PEER_RESULT_SKILL1_PURCHASE,
 		PEER_RESULT_RESEARCH_STATE,
 		PEER_RESULT_LUOXI_OFFER_STATE,
 		PEER_RESULT_LUOXI_REFRESH,
@@ -5120,11 +5124,19 @@ func net_route_full_snapshot(
 	state: Dictionary,
 	encounter_state: Dictionary,
 	economy_state: Dictionary,
-	shop_state: Dictionary
+	shop_state: Dictionary,
+	progression_ledger: Dictionary
 ) -> void:
 	_dispatch_tower_rogue_route_rpc(
 		&"net_route_full_snapshot",
-		[layout, state, encounter_state, economy_state, shop_state]
+		[
+			layout,
+			state,
+			encounter_state,
+			economy_state,
+			shop_state,
+			progression_ledger,
+		]
 	)
 
 
@@ -6447,6 +6459,7 @@ func net_upgrade_confirmed(
 	session_incarnation: int = 0
 ) -> void:
 	var revision := level
+	var is_progression_state := success
 	if (
 		not RunStateStore.MAX_UPGRADE_LEVELS.has(stat_type)
 		or level < 0
@@ -6456,8 +6469,13 @@ func net_upgrade_confirmed(
 	_receive_authoritative_peer_result(
 		peer_id,
 		PEER_RESULT_UPGRADE_CONFIRMED,
-		StringName(
-			"upgrade/%d/%d/%d" % [stat_type, level, int(success)]
+		(
+			StringName("upgrade/%d" % stat_type)
+			if is_progression_state
+			else StringName(
+				"upgrade-feedback/%d/%d/%d"
+				% [stat_type, level, int(success)]
+			)
 		),
 		revision,
 		{
@@ -6468,7 +6486,10 @@ func net_upgrade_confirmed(
 			"free_upgrade": free_upgrade,
 		},
 		participant_incarnation,
-		session_incarnation
+		session_incarnation,
+		# 包内余额会随时间变化，同一等级的 runtime repair 由领域高水位
+		# 幂等收敛，不能在 PeerLedger 中因 payload 不同制造 revision 冲突。
+		MpPeerLedgerCoordinatorScript.AppliedReplayPolicy.DOMAIN_OWNED
 	)
 
 
@@ -6595,6 +6616,12 @@ func net_skill1_purchase_confirmed(
 	session_incarnation: int = 0
 ) -> void:
 	var revision := 0
+	var is_progression_repair := (
+		result_code == MerchantPurchaseResult.SkillUpgrade.SUCCESS
+		and skill1_upgrade_level >= 0
+	)
+	if is_progression_repair:
+		revision = skill1_upgrade_level
 	if (
 		peer_id <= 0
 		or current_xirang < 0
@@ -6606,19 +6633,23 @@ func net_skill1_purchase_confirmed(
 		or (skill1_charge_duration != -1.0 and skill1_charge_duration <= 0.0)
 	):
 		revision = -1
-	# 协议没有 request_id；把每种可见结算状态分成独立有界流，既保留失败
-	# 提示，也避免同等级的重复可靠包制造伪冲突。
+	# 既有 SUCCESS 码承载无 UI 的稳定 skill1/state 修复流；真实购买反馈仍按
+	# 原结算字段分流。二者都由领域内等级高水位处理迟到包。
 	_receive_authoritative_peer_result(
 		peer_id,
 		PEER_RESULT_SKILL1_PURCHASE,
-		StringName(
-			"skill1/%d/%d/%d/%d"
-			% [
-				skill1_upgrade_level,
-				current_xirang,
-				int(skill1_unlocked),
-				result_code,
-			]
+		(
+			&"skill1/state"
+			if is_progression_repair
+			else StringName(
+				"skill1/%d/%d/%d/%d"
+				% [
+					skill1_upgrade_level,
+					current_xirang,
+					int(skill1_unlocked),
+					result_code,
+				]
+			)
 		),
 		revision,
 		{
@@ -7508,14 +7539,24 @@ func _attempt_reconnected_player_projection(
 		reconnect_state
 	)
 	if player_state != null:
-		player_coordinator.restore_reconnected_player_snapshot(
+		var progression_snapshot := (
+			run_state.export_player_run_progression(new_peer_id)
+		)
+		if not player_coordinator.restore_reconnected_player_snapshot(
 			player_node,
 			player_state,
+			progression_snapshot,
 			_get_net_time(),
 			net_manager.is_host(),
 			_get_client_view_local_peer_id(),
 			player_coordinator.has_local_tango_prediction()
-		)
+		):
+			_fail_reconnected_peer_identity(
+				old_peer_id,
+				new_peer_id,
+				"断线瞬态无法在当前成长账本之上安全恢复。"
+			)
+			return false
 		if net_manager.is_host():
 			player_coordinator.remember_accepted_player_pose(
 				new_peer_id,

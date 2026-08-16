@@ -183,26 +183,87 @@ func validate_remote_snapshot_structure(snapshot: Dictionary) -> bool:
 
 
 func apply_remote_snapshot(snapshot: Dictionary) -> bool:
-	if not validate_remote_snapshot(snapshot):
+	var prepared := prepare_remote_snapshot(snapshot)
+	if not can_commit_prepared_remote_snapshot(prepared):
 		return false
+	commit_validated_remote_snapshot(prepared)
+	return true
+
+
+func prepare_remote_snapshot(
+	snapshot: Dictionary,
+	structure_only: bool = false
+) -> Dictionary:
+	if not (
+		validate_remote_snapshot_structure(snapshot)
+		if structure_only
+		else validate_remote_snapshot(snapshot)
+	):
+		return {}
 	var target_peer_id := int(snapshot["target_peer_id"])
 	var decoded: Variant = _decode_settled_choices(
 		snapshot["settled_choices"] as Array,
 		target_peer_id
 	)
 	if decoded == null:
-		return false
-	var changed := (
-		int(snapshot["revision"]) != _revision
-		or target_peer_id != _snapshot_target_peer_id
-		or (decoded as Dictionary) != _settled_choices
+		return {}
+	return {
+		"expected_revision": _revision,
+		"expected_target_peer_id": _snapshot_target_peer_id,
+		"expected_settled_choices": _settled_choices.duplicate(true),
+		"revision": int(snapshot["revision"]),
+		"target_peer_id": target_peer_id,
+		"settled_choices": (decoded as Dictionary).duplicate(true),
+	}
+
+
+func can_commit_prepared_remote_snapshot(prepared: Dictionary) -> bool:
+	return (
+		prepared.size() == 6
+		and int(prepared.get("expected_revision", -1)) == _revision
+		and int(prepared.get("expected_target_peer_id", -2))
+		== _snapshot_target_peer_id
+		and typeof(prepared.get("expected_settled_choices"))
+		== TYPE_DICTIONARY
+		and prepared["expected_settled_choices"] == _settled_choices
+		and typeof(prepared.get("revision")) == TYPE_INT
+		and typeof(prepared.get("target_peer_id")) == TYPE_INT
+		and typeof(prepared.get("settled_choices")) == TYPE_DICTIONARY
 	)
-	_revision = int(snapshot["revision"])
+
+
+func commit_validated_remote_snapshot(
+	prepared: Dictionary,
+	emit_change_signal: bool = true
+) -> void:
+	var target_peer_id := int(prepared["target_peer_id"])
+	var decoded := prepared["settled_choices"] as Dictionary
+	var changed: bool = (
+		int(prepared["revision"]) != _revision
+		or target_peer_id != _snapshot_target_peer_id
+		or decoded != _settled_choices
+	)
+	_revision = int(prepared["revision"])
 	_snapshot_target_peer_id = target_peer_id
-	_settled_choices = (decoded as Dictionary).duplicate(true)
+	_settled_choices = decoded.duplicate(true)
+	if changed and emit_change_signal:
+		economy_changed.emit(export_snapshot(target_peer_id))
+
+
+func publish_prepared_remote_snapshot(prepared: Dictionary) -> void:
+	var changed: bool = (
+		int(prepared.get("revision", _revision))
+		!= int(prepared.get("expected_revision", _revision))
+		or int(prepared.get("target_peer_id", _snapshot_target_peer_id))
+		!= int(prepared.get(
+			"expected_target_peer_id",
+			_snapshot_target_peer_id
+		))
+		or prepared.get("settled_choices", {})
+		!= prepared.get("expected_settled_choices", {})
+	)
 	if changed:
-		economy_changed.emit(snapshot.duplicate(true))
-	return true
+		economy_changed.emit(export_snapshot(_snapshot_target_peer_id))
 
 
 func _is_option_available(peer_id: int, option_id: StringName) -> bool:

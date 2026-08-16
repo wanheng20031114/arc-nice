@@ -553,7 +553,11 @@ func apply_authoritative_skill1_purchase(peer_id: int) -> void:
 	var result_code := _mode_adapter.try_purchase_skill1_for_peer(peer_id)
 	var current_xirang := player_node.current_xirang
 	var skill1_unlocked := player_node.has_skill1()
-	var skill1_upgrade_level := player_node.skill1_upgrade_level
+	var skill1_upgrade_level := (
+		player_node.skill1_upgrade_level
+		if result_code == MerchantPurchaseResult.SkillUpgrade.UPGRADE_SUCCESS
+		else -1
+	)
 	var skill1_charge_duration := player_node.skill1_charge_duration
 	skill1_purchase_confirmation_broadcast_requested.emit(
 		peer_id,
@@ -579,6 +583,56 @@ func build_runtime_repair_inventory_rpc_arguments() -> Array[Array]:
 			true,
 		])
 	return payloads
+
+
+## CH6 冻结协议下的成长修复使用既有逐字段确认入口。每项等级本身就是
+## 单调高水位，因此不比较各端本地 change counter；即使 Player 暂时缺席，
+## 接收端也能先把四项基础等级与技能等级提交到稳定成员的 RunState。
+func build_runtime_repair_progression_rpc_requests() -> Array[Dictionary]:
+	var requests: Array[Dictionary] = []
+	if not is_bound() or not _net_manager.is_host():
+		return requests
+	for peer_id in _run_state.get_registered_multiplayer_peer_ids():
+		var player_node: Player = _runtime.get_player_for_peer(peer_id)
+		var has_live_player := (
+			player_node != null
+			and is_instance_valid(player_node)
+			and not player_node.is_queued_for_deletion()
+		)
+		var current_xirang := (
+			player_node.current_xirang
+			if has_live_player
+			else _run_state.get_party_xirang_balance(peer_id)
+		)
+		var stat_types: Array = RunStateStore.MAX_UPGRADE_LEVELS.keys()
+		stat_types.sort()
+		for stat_type_variant in stat_types:
+			var stat_type := int(stat_type_variant)
+			requests.append({
+				"method": &"net_upgrade_confirmed",
+				"arguments": [
+					peer_id,
+					stat_type,
+					_run_state.get_upgrade_level_for_peer(peer_id, stat_type),
+					current_xirang,
+					true,
+					false,
+				],
+			})
+		var skill_level := _run_state.get_skill1_upgrade_level_for_peer(peer_id)
+		requests.append({
+			"method": &"net_skill1_purchase_confirmed",
+			"arguments": [
+				peer_id,
+				current_xirang,
+				has_live_player and player_node.has_skill1(),
+				# SUCCESS 不由真实购买产生，作为既有协议中的无 UI 状态修复码。
+				MerchantPurchaseResult.SkillUpgrade.SUCCESS,
+				skill_level,
+				player_node.skill1_charge_duration if has_live_player else -1.0,
+			],
+		})
+	return requests
 
 
 func receive_inventory_snapshot(
@@ -616,20 +670,31 @@ func receive_upgrade_confirmation(
 		return true
 	# 升级等级属于 RunState 持久账本；Player 只负责当前场景中的属性表现。
 	var previous_level := _run_state.get_upgrade_level_for_peer(peer_id, stat_type)
+	# 低于本地高水位的迟到确认已经被更完整的状态覆盖；把它作为领域幂等
+	# 接收，不能反复触发整局 repair，也不能用包内旧余额覆盖 Player。
+	if level <= previous_level:
+		return true
 	if not _run_state.set_upgrade_level_for_peer(peer_id, stat_type, level):
 		return false
 	var player_node: Player = _runtime.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return true
-	var already_applied_on_host := (
-		_net_manager.is_host() and peer_id == _get_local_peer_id()
-	)
-	if not already_applied_on_host and previous_level != level:
-		_apply_confirmed_upgrade_to_player(player_node, stat_type)
-	player_node.set_xirang_balance(current_xirang)
-	if player_node.current_xirang != current_xirang:
+	# Player 永远消费账本的完整绝对投影。Host 的本机确认与可靠 RPC 重放都
+	# 只是幂等收敛，不会再次累加基础值。
+	if not player_node.apply_run_progression_snapshot(
+		_run_state.export_player_run_progression(peer_id),
+		true
+	):
 		return false
-	if free_upgrade and not already_applied_on_host:
+	if previous_level != level and stat_type == RunStateStore.StatType.HEALTH:
+		player_node.restore_current_health_to_maximum()
+	# RUN_PARTY 余额只消费带 revision 的权威账本；CH6 购买确认的裸余额
+	# 仅在场景内账户上随真正前进的等级一次性投影。
+	if not player_node.uses_run_party_xirang_ledger(peer_id):
+		player_node.set_xirang_balance(current_xirang)
+		if player_node.current_xirang != current_xirang:
+			return false
+	if free_upgrade and not (_net_manager.is_host() and peer_id == _get_local_peer_id()):
 		player_node.play_lucky_upgrade_feedback()
 	return true
 
@@ -767,19 +832,54 @@ func receive_skill1_purchase_confirmation(
 		or (skill1_charge_duration != -1.0 and skill1_charge_duration <= 0.0)
 	):
 		return false
+	var is_local_result := peer_id == _get_local_peer_id()
+	var is_host_local_result := is_local_result and _net_manager.is_host()
+	# 技能等级与基础升级相同，先收敛到稳定成员的 RunState 账本；当前场景
+	# Player 可以尚未生成，迟加入/重连修复也不能因此丢弃持久确认。
+	# 失败反馈不承载新等级，因而不得用其载荷内的无 revision 余额
+	# 覆盖 Player。Host 本机反馈由权威发送点单独呈现，避免重放。
+	if skill1_upgrade_level < 0:
+		if (
+			is_local_result
+			and not is_host_local_result
+			and result_code != MerchantPurchaseResult.SkillUpgrade.SUCCESS
+		):
+			_mode_adapter.show_local_skill1_purchase_result(result_code)
+		return true
+	var current_skill_level := (
+		_run_state.get_skill1_upgrade_level_for_peer(peer_id)
+	)
+	if skill1_upgrade_level <= current_skill_level:
+		return true
+	if not _run_state.set_skill1_upgrade_level_for_peer(
+		peer_id,
+		skill1_upgrade_level
+	):
+		return false
 	var player_node := _runtime.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
+		return true
+	if not player_node.apply_run_progression_snapshot(
+		_run_state.export_player_run_progression(peer_id),
+		true
+	):
 		return false
-	_mode_adapter.apply_skill1_purchase_state(
-		peer_id,
-		current_xirang,
-		skill1_unlocked,
-		skill1_upgrade_level,
-		skill1_charge_duration
+	# RUN_PARTY 余额必须等带 revision 的 party/full snapshot；仅场景内账户
+	# 允许在等级真正前进时消费这份购买确认余额。
+	var applies_scene_local_balance := not player_node.uses_run_party_xirang_ledger(
+		peer_id
 	)
-	if peer_id == _get_local_peer_id():
+	if applies_scene_local_balance:
+		player_node.set_xirang_balance(current_xirang)
+	# SUCCESS 只承载 runtime repair；真实购买使用 UPGRADE_SUCCESS/失败码。
+	# 修复包绝不能让商人面板显示一次伪购买结果。
+	if (
+		is_local_result
+		and not is_host_local_result
+		and result_code != MerchantPurchaseResult.SkillUpgrade.SUCCESS
+	):
 		_mode_adapter.show_local_skill1_purchase_result(result_code)
-	if player_node.current_xirang != current_xirang:
+	if applies_scene_local_balance and player_node.current_xirang != current_xirang:
 		return false
 	if skill1_unlocked and not player_node.has_skill1():
 		return false
@@ -789,6 +889,18 @@ func receive_skill1_purchase_confirmation(
 	):
 		return false
 	return true
+
+
+## Host 本机在权威购买阶段已先推进账本，因此接收者会把同级包
+## 当作幂等重放。发送点仅对这一次真实结果补充 UI，runtime repair 不调用。
+func show_authoritative_local_skill1_purchase_result(result_code: int) -> void:
+	if (
+		not is_bound()
+		or not _net_manager.is_host()
+		or result_code == MerchantPurchaseResult.SkillUpgrade.SUCCESS
+	):
+		return
+	_mode_adapter.show_local_skill1_purchase_result(result_code)
 
 
 func track_local_simple_crafting_request(
@@ -910,21 +1022,6 @@ func _get_local_peer_id() -> int:
 	if _net_manager == null:
 		return 0
 	return _net_manager.get_local_peer_id()
-
-
-func _apply_confirmed_upgrade_to_player(
-	player_node: Player,
-	stat_type: int
-) -> void:
-	match stat_type:
-		RunStateStore.StatType.ATTACK:
-			player_node.upgrade_attack()
-		RunStateStore.StatType.HEALTH:
-			player_node.upgrade_max_health()
-		RunStateStore.StatType.ATTACK_SPEED:
-			player_node.upgrade_attack_speed()
-		RunStateStore.StatType.DODGE:
-			player_node.upgrade_dodge()
 
 
 func _normalize_crafting_result_code(result_code: StringName) -> StringName:

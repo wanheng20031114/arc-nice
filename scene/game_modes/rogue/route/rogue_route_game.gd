@@ -57,6 +57,11 @@ signal shop_exit_ack_requested(
 	occurrence_key: String,
 	expected_session_revision: int
 )
+signal player_upgrade_requested(
+	stat_type: int,
+	expected_level: int,
+	expected_xirang_revision: int
+)
 signal combat_requested(
 	node_id: int,
 	content_seed: int,
@@ -71,6 +76,7 @@ signal normal_combat_requested(
 	occurrence_key: String
 )
 signal normal_combat_stage_reset(occurrence_key: String)
+signal normal_combat_snapshot_reconciled(occurrence_key: String)
 signal combat_result_dismissed
 signal return_requested
 
@@ -221,6 +227,9 @@ var _route_graph: RogueRouteGraph = null
 var _runtime_state: RogueRouteRuntimeState = null
 var _authority_enabled := true
 var _route_ready := false
+var _full_snapshot_commit_generation := 0
+var _full_snapshot_transaction_active := false
+var _pending_full_snapshot_presentation: Dictionary = {}
 var _pending_node_id := INVALID_NODE_ID
 var _pending_revision := -1
 var _briefing_revision := 0
@@ -264,9 +273,13 @@ var _player_names: Dictionary = {}
 var _player_character_ids: Dictionary = {}
 var _player_stable_keys: Dictionary = {SINGLEPLAYER_PEER_ID: "singleplayer:local"}
 var _run_state: RunStateStore = null
+var _player_persistent_modifier_projector: PlayerPersistentModifierProjector = null
 var _run_failure_presented := false
 var _cached_max_health_penalties: Dictionary = {}
 var _max_health_transition_by_peer: Dictionary = {}
+## Player 也会直接订阅持久状态账本，信号顺序可能让路线观察到的节点已经是
+## 新上限；遭遇事务提交前冻结真实面板，供结果页使用而不依赖监听顺序。
+var _pending_encounter_max_health_before_vote: Dictionary = {}
 var _physics_interpolation_lease_token := (
 	GlobalRuntimePolicyLeaseStore.INVALID_LEASE_TOKEN
 )
@@ -336,6 +349,12 @@ func _ready() -> void:
 		player_profile_panel.opened.connect(_on_player_profile_opened)
 	if not player_profile_panel.closed.is_connected(_on_player_profile_closed):
 		player_profile_panel.closed.connect(_on_player_profile_closed)
+	if not player_profile_panel.multiplayer_upgrade_requested.is_connected(
+		_on_profile_multiplayer_upgrade_requested
+	):
+		player_profile_panel.multiplayer_upgrade_requested.connect(
+			_on_profile_multiplayer_upgrade_requested
+		)
 	if not player_profile_panel.multiplayer_inventory_item_discard_requested.is_connected(
 		_on_supply_profile_inventory_discard_requested
 	):
@@ -554,6 +573,20 @@ func configure_embedded_singleplayer_player() -> bool:
 	return combat_coordinator.is_enabled()
 
 
+## 外层模式只注入抽象持久投影器；路线与作战不依赖 Tower 具体类型。
+func configure_player_persistent_modifier_projector(
+	projector: PlayerPersistentModifierProjector
+) -> bool:
+	_player_persistent_modifier_projector = projector
+	var singleplayer_combat := get_node_or_null(
+		"SingleplayerCombatCoordinator"
+	) as RogueCombatSingleplayerCoordinator
+	if singleplayer_combat == null:
+		return false
+	singleplayer_combat.configure_player_persistent_modifier_projector(projector)
+	return true
+
+
 ## 只有权威路线可追加共享行动力；奖励 revision 会进入既有全量快照。
 func grant_authoritative_action_points(amount: int) -> bool:
 	return (
@@ -567,49 +600,315 @@ func get_action_points() -> int:
 	return _runtime_state.action_points if is_route_ready() else -1
 
 
-## 每次嵌入式探索显现前，从 RunState 刷新永久属性与最大生命惩罚，
-## 再把路线角色恢复到当前有效上限。多人各端对同一权威 RunState 快照
-## 做绝对值恢复，不产生奖励，也不会改写路线运行 revision。
-func restore_embedded_players_to_full_health() -> bool:
-	if not embedded_session:
-		return false
+## 每次从作战返回路线时，从 RunState 刷新永久属性与最大生命惩罚，
+## 再把路线角色恢复到当前有效上限。独立与嵌入式路线共用同一边界；
+## 多人各端对同一权威 RunState 快照做绝对值恢复。
+func restore_players_for_route_scene_entry(
+	combat_participant_peer_ids: Dictionary = {}
+) -> bool:
 	if _run_state == null:
 		_run_state = get_node_or_null("/root/RunState") as RunStateStore
 	if _run_state == null:
 		return false
-	var restored_any := false
+	if _multiplayer_avatar_mode or not combat_participant_peer_ids.is_empty():
+		if peer_players.is_empty():
+			# 作战返回只要求恢复当前仍存在的参战 avatar；断线成员或纯
+			# 观战端可以暂时没有 Route Player，后续创建入口会完成同一恢复。
+			# 初次进入路线未提供参战集合时仍必须 fail-close。
+			return not combat_participant_peer_ids.is_empty()
+		for raw_peer_id in peer_players.keys():
+			var peer_id := int(raw_peer_id)
+			# 作战返回只能恢复本次参战者；晚加入的纯路线观战者不会因
+			# 别人的终局结算免费治疗。缺席参战者由其后续创建入口恢复。
+			if (
+				not combat_participant_peer_ids.is_empty()
+				and not combat_participant_peer_ids.has(peer_id)
+			):
+				continue
+			var peer_player := peer_players.get(peer_id) as Player
+			if peer_player == null or not is_instance_valid(peer_player):
+				return false
+			if not _restore_embedded_player_to_full_health(peer_player, peer_id):
+				return false
+		return true
+	if player == null or not is_instance_valid(player):
+		return false
+	return _restore_embedded_player_to_full_health(
+		player,
+		SINGLEPLAYER_PEER_ID
+	)
+
+
+## Host 成长账本已提交后，路线中所有存活 Player 只消费各自 peer
+## 的绝对快照。previous_health_levels 只用于保留“生命升级即时回满”语义。
+func project_authoritative_player_progression(
+	previous_health_levels: Dictionary = {}
+) -> bool:
+	if _run_state == null:
+		return false
 	if _multiplayer_avatar_mode:
+		if peer_players.is_empty():
+			return false
 		for raw_peer_id in peer_players.keys():
 			var peer_id := int(raw_peer_id)
 			var peer_player := peer_players.get(peer_id) as Player
-			if peer_player == null or not is_instance_valid(peer_player):
-				continue
-			_restore_embedded_player_to_full_health(peer_player, peer_id)
-			restored_any = true
-		return restored_any
+			if (
+				peer_player == null
+				or not is_instance_valid(peer_player)
+				or not peer_player.apply_run_progression_snapshot(
+					_run_state.export_player_run_progression(peer_id),
+					true
+				)
+			):
+				return false
+			var previous_health_level := int(
+				previous_health_levels.get(peer_id, -1)
+			)
+			if (
+				previous_health_level >= 0
+				and _run_state.get_upgrade_level_for_peer(
+					peer_id,
+					RunStateStore.StatType.HEALTH
+				) > previous_health_level
+			):
+				peer_player.restore_current_health_to_maximum()
+		return true
 	if player == null or not is_instance_valid(player):
 		return false
-	_restore_embedded_player_to_full_health(player, SINGLEPLAYER_PEER_ID)
+	if not player.apply_run_progression_snapshot(
+		_run_state.export_player_run_progression(SINGLEPLAYER_PEER_ID),
+		true
+	):
+		return false
+	if (
+		int(previous_health_levels.get(SINGLEPLAYER_PEER_ID, -1)) >= 0
+		and _run_state.get_upgrade_level(RunStateStore.StatType.HEALTH)
+		> int(previous_health_levels[SINGLEPLAYER_PEER_ID])
+	):
+		player.restore_current_health_to_maximum()
 	return true
+
+
+## 全量快照事务在改写 RunState 前冻结每个现存 Route Player 的最终绝对
+## 成长快照与实例身份；坏 roster/projector 会让整个路线快照零写入。
+func prepare_authoritative_player_progression(
+	prepared_upgrade_ledger: Dictionary,
+	prepared_full_snapshot: Dictionary,
+	prepared_multiplayer_identity: Dictionary = {}
+) -> Dictionary:
+	if (
+		_run_state == null
+		or not can_commit_prepared_full_snapshot(prepared_full_snapshot)
+	):
+		return {}
+	var prepared_encounter := prepared_full_snapshot.get(
+		"encounter",
+		{}
+	) as Dictionary
+	var prepared_party_economy := prepared_encounter.get(
+		"party_economy",
+		{}
+	) as Dictionary
+	var players_by_peer: Dictionary = {}
+	var staged_identity := not prepared_multiplayer_identity.is_empty()
+	if staged_identity:
+		if not can_commit_prepared_multiplayer_players(
+			prepared_multiplayer_identity
+		):
+			return {}
+		players_by_peer = (
+			prepared_multiplayer_identity["players"] as Dictionary
+		)
+	elif _multiplayer_avatar_mode:
+		if peer_players.is_empty():
+			return {}
+		for raw_peer_id in peer_players.keys():
+			players_by_peer[int(raw_peer_id)] = peer_players[raw_peer_id]
+	else:
+		if player == null or not is_instance_valid(player):
+			return {}
+		players_by_peer[SINGLEPLAYER_PEER_ID] = player
+	var snapshots: Dictionary = {}
+	var instance_ids: Dictionary = {}
+	var restore_health: Dictionary = {}
+	var xirang_balances: Dictionary = {}
+	var prepared_xirang_values := (
+		(prepared_party_economy.get("xirang_ledger", {}) as Dictionary).get(
+			"values",
+			{}
+		) as Dictionary
+	)
+	for raw_peer_id in players_by_peer.keys():
+		var peer_id := int(raw_peer_id)
+		var player_instance := players_by_peer[raw_peer_id] as Player
+		if (
+			player_instance == null
+			or not is_instance_valid(player_instance)
+			or (peer_id > 0 and player_instance.peer_id != peer_id)
+			or typeof(prepared_xirang_values.get(peer_id)) != TYPE_INT
+			or int(prepared_xirang_values[peer_id]) < 0
+		):
+			return {}
+		var snapshot := (
+			_run_state.build_player_run_progression_from_prepared_ledgers(
+				peer_id,
+				prepared_upgrade_ledger,
+				prepared_party_economy
+			)
+		)
+		if not player_instance.can_apply_run_progression_snapshot(snapshot):
+			return {}
+		var incoming_levels := snapshot["upgrade_levels"] as Dictionary
+		snapshots[peer_id] = snapshot
+		instance_ids[peer_id] = player_instance.get_instance_id()
+		xirang_balances[peer_id] = int(prepared_xirang_values[peer_id])
+		restore_health[peer_id] = (
+			int(incoming_levels[RunStateStore.StatType.HEALTH])
+			> _run_state.get_upgrade_level_for_peer(
+				peer_id,
+				RunStateStore.StatType.HEALTH
+			)
+		)
+	return {
+		"players": players_by_peer,
+		"instance_ids": instance_ids,
+		"snapshots": snapshots,
+		"restore_health": restore_health,
+		"xirang_balances": xirang_balances,
+		"staged_identity": staged_identity,
+	}
+
+
+func can_commit_prepared_authoritative_player_progression(
+	prepared: Dictionary
+) -> bool:
+	if (
+		prepared.size() != 6
+		or typeof(prepared.get("players")) != TYPE_DICTIONARY
+		or typeof(prepared.get("instance_ids")) != TYPE_DICTIONARY
+		or typeof(prepared.get("snapshots")) != TYPE_DICTIONARY
+		or typeof(prepared.get("restore_health")) != TYPE_DICTIONARY
+		or typeof(prepared.get("xirang_balances")) != TYPE_DICTIONARY
+		or typeof(prepared.get("staged_identity")) != TYPE_BOOL
+	):
+		return false
+	var players := prepared["players"] as Dictionary
+	var instance_ids := prepared["instance_ids"] as Dictionary
+	var snapshots := prepared["snapshots"] as Dictionary
+	var restore_health := prepared["restore_health"] as Dictionary
+	var xirang_balances := prepared["xirang_balances"] as Dictionary
+	if (
+		players.is_empty()
+		or players.keys().size() != instance_ids.keys().size()
+		or instance_ids.keys().size() != snapshots.keys().size()
+		or instance_ids.keys().size() != restore_health.keys().size()
+		or instance_ids.keys().size() != xirang_balances.keys().size()
+	):
+		return false
+	for raw_peer_id in instance_ids.keys():
+		var peer_id := int(raw_peer_id)
+		var player_instance := players.get(peer_id) as Player
+		if (
+			player_instance == null
+			or not is_instance_valid(player_instance)
+			or player_instance.get_instance_id() != int(instance_ids[raw_peer_id])
+			or not snapshots.has(peer_id)
+			or not restore_health.has(peer_id)
+			or typeof(xirang_balances.get(peer_id)) != TYPE_INT
+			or int(xirang_balances[peer_id]) < 0
+			or not player_instance.can_apply_run_progression_snapshot(
+				snapshots[peer_id] as Dictionary
+			)
+			or (
+				bool(prepared["staged_identity"])
+				and player_instance.get_parent() != null
+			)
+			or (
+				not bool(prepared["staged_identity"])
+				and not player_instance.uses_run_party_xirang_ledger(peer_id)
+			)
+		):
+			return false
+	return true
+
+
+func commit_validated_authoritative_player_progression(
+	prepared: Dictionary
+) -> void:
+	var players := prepared["players"] as Dictionary
+	var snapshots := prepared["snapshots"] as Dictionary
+	for raw_peer_id in snapshots.keys():
+		var player_instance := players[raw_peer_id] as Player
+		player_instance.commit_validated_run_progression_snapshot(
+			snapshots[raw_peer_id] as Dictionary,
+			false
+		)
+
+
+## Party Economy、Route identity 均已静默提交后，将同一 prepare token 中
+## 冻结的最终余额写入全部 Player，再计算依赖息壤阈值的收藏品派生值。
+func commit_validated_authoritative_player_xirang(
+	prepared: Dictionary
+) -> void:
+	var players := prepared["players"] as Dictionary
+	var xirang_balances := prepared["xirang_balances"] as Dictionary
+	for raw_peer_id in players.keys():
+		var peer_id := int(raw_peer_id)
+		(players[raw_peer_id] as Player).commit_validated_run_party_xirang_balance(
+			peer_id,
+			int(xirang_balances[peer_id])
+		)
+
+
+func begin_validated_authoritative_player_projection(
+	prepared: Dictionary
+) -> void:
+	var players := prepared["players"] as Dictionary
+	for raw_peer_id in players.keys():
+		(players[raw_peer_id] as Player).begin_validated_persistent_projection_batch()
+
+
+## 持久成长与外层模式永久层都已绝对投影后的场景边界收口。只消费
+## preparation 中冻结的 Player，不再查可变 roster。
+func commit_validated_authoritative_player_scene_entry(
+	prepared: Dictionary
+) -> void:
+	stage_validated_authoritative_player_projection_publish(prepared, true)
+
+
+func stage_validated_authoritative_player_projection_publish(
+	prepared: Dictionary,
+	scene_entry: bool
+) -> void:
+	var players := prepared["players"] as Dictionary
+	var restore_health := prepared["restore_health"] as Dictionary
+	for raw_peer_id in players.keys():
+		(players[raw_peer_id] as Player).stage_validated_persistent_projection_publish(
+			scene_entry,
+			bool(restore_health[raw_peer_id])
+		)
+
+
+func publish_validated_authoritative_player_projection(
+	prepared: Dictionary
+) -> void:
+	var players := prepared["players"] as Dictionary
+	for raw_peer_id in players.keys():
+		(players[raw_peer_id] as Player).publish_validated_persistent_projection_batch()
 
 
 func _restore_embedded_player_to_full_health(
 	player_instance: Player,
 	ledger_peer_id: int
-) -> void:
-	player_instance.set_run_max_health_penalty(
-		_run_state.get_max_health_penalty_for_peer(ledger_peer_id)
-	)
-	player_instance.configure_run_stat_bonuses(
-		_run_state.get_player_stat_bonuses(ledger_peer_id),
-		true
-	)
-	# 即使绝对账本未变化，也要重算收藏品与惩罚的组合上限。
-	player_instance.refresh_collectible_stats()
-	player_instance.apply_multiplayer_full_health_restore(
-		player_instance.global_position,
-		maxi(player_instance.max_health, 1)
-	)
+) -> bool:
+	var progression := _run_state.export_player_run_progression(ledger_peer_id)
+	if not player_instance.restore_run_scene_entry(
+		progression,
+		_player_persistent_modifier_projector
+	):
+		push_error("Rogue 路线无法恢复玩家 %d 的本局成长账本。" % ledger_peer_id)
+		return false
+	return true
 
 
 ## 日终自动返回的唯一稳定性判定。每个持久交互 owner 都必须已经释放，
@@ -763,42 +1062,112 @@ func apply_full_snapshot(
 	economy_snapshot: Dictionary = {},
 	shop_snapshot: Dictionary = {}
 ) -> bool:
+	if not try_begin_full_snapshot_transaction():
+		return false
+	var applied := _apply_full_snapshot_guarded(
+		layout_snapshot,
+		state_snapshot,
+		encounter_snapshot,
+		economy_snapshot,
+		shop_snapshot
+	)
+	end_full_snapshot_transaction()
+	return applied
+
+
+## Tower outer、MpRoute 与 Route direct 共用同一同步租约。任何 owner signal
+## 回调都不能绕过外层 wrapper 再进入 Route validated commit/Player batch。
+func try_begin_full_snapshot_transaction() -> bool:
+	if _full_snapshot_transaction_active:
+		return false
+	_full_snapshot_transaction_active = true
+	return true
+
+
+func end_full_snapshot_transaction() -> void:
+	assert(
+		_full_snapshot_transaction_active,
+		"Route full snapshot 事务租约未持有。"
+	)
+	_full_snapshot_transaction_active = false
+
+
+func _apply_full_snapshot_guarded(
+	layout_snapshot: Dictionary,
+	state_snapshot: Dictionary,
+	encounter_snapshot: Dictionary = {},
+	economy_snapshot: Dictionary = {},
+	shop_snapshot: Dictionary = {}
+) -> bool:
+	var prepared := prepare_full_snapshot(
+		layout_snapshot,
+		state_snapshot,
+		encounter_snapshot,
+		economy_snapshot,
+		shop_snapshot
+	)
+	if not commit_prepared_full_snapshot(prepared):
+		discard_prepared_full_snapshot(prepared)
+		_set_status("房主路线全量快照无效、已过期或提交失败。", true)
+		return false
+	complete_prepared_full_snapshot_presentation()
+	return true
+
+
+## 只读构建路线五域事务 token。此阶段不改 UI、RunState、Session 或 Player，
+## 外层可与成长/Research/Fate 的 prepare 组合后再统一提交。
+func prepare_full_snapshot(
+	layout_snapshot: Dictionary,
+	state_snapshot: Dictionary,
+	encounter_snapshot: Dictionary = {},
+	economy_snapshot: Dictionary = {},
+	shop_snapshot: Dictionary = {},
+	validation_peer_id: int = -1,
+	authoritative_party_economy: Dictionary = {}
+) -> Dictionary:
+	var resolved_validation_peer_id := (
+		validation_peer_id
+		if validation_peer_id >= 0
+		else _get_local_encounter_peer_id()
+	)
+	if resolved_validation_peer_id < 0:
+		return {}
 	var briefing_value: Variant = state_snapshot.get(BRIEFING_STATE_FIELD)
 	if typeof(briefing_value) != TYPE_DICTIONARY:
-		_set_status("房主路线状态缺少作战简报快照。", true)
-		return false
+		return {}
 	var briefing_snapshot := (briefing_value as Dictionary).duplicate(true)
 	if str(layout_snapshot.get(ROUTE_CONTRACT_FIELD, "")) != (
 		_get_runtime_contract_hash()
 	):
-		_set_status("房主路线版本与本地运行配置不兼容。", true)
-		return false
+		return {}
 	var imported_graph := RogueRouteGraph.import_layout(
 		layout_snapshot,
 		generation_config
 	)
 	if imported_graph == null:
-		_set_status("房主路线布局快照无效。", true)
-		return false
+		return {}
 	var incoming_action_points := int(state_snapshot.get("action_points", -1))
 	if incoming_action_points < 0:
-		_set_status("房主路线状态快照无效。", true)
-		return false
+		return {}
 	var imported_state := RogueRouteRuntimeState.new()
 	if not imported_state.initialize(imported_graph, incoming_action_points):
-		_set_status("无法创建客户端路线状态。", true)
-		return false
+		return {}
 	if not imported_state.apply_remote_state(state_snapshot):
-		_set_status("房主路线状态与布局不匹配。", true)
-		return false
+		return {}
 	if not _validate_briefing_state_against(
 		briefing_snapshot,
 		imported_graph,
 		imported_state,
 		encounter_snapshot
 	):
-		_set_status("房主作战简报状态与路线不匹配。", true)
-		return false
+		return {}
+	var additional_party_economy_views := _get_shop_party_economy_views(
+		shop_snapshot
+	)
+	if not authoritative_party_economy.is_empty():
+		additional_party_economy_views.append(
+			authoritative_party_economy
+		)
 	if (
 		not shop_snapshot.is_empty()
 		and (
@@ -806,23 +1175,24 @@ func apply_full_snapshot(
 			or not underground_shop_controller.preflight_snapshot(
 			shop_snapshot,
 			imported_graph,
-			imported_state
+			imported_state,
+			resolved_validation_peer_id
 			)
 		)
 	):
-		_set_status("房主地下商店快照无效或已过期。", true)
-		return false
+		return {}
 	if (
 		not encounter_snapshot.is_empty()
 		and _prepare_encounter_snapshot_application(
 			encounter_snapshot,
 			economy_snapshot,
 			true,
-			imported_graph
+			imported_graph,
+			resolved_validation_peer_id,
+			additional_party_economy_views
 		).is_empty()
 	):
-		_set_status("房主遭遇或经济快照结构无效。", true)
-		return false
+		return {}
 	var layout_changed := (
 		_route_graph == null
 		or _route_graph.compute_layout_hash()
@@ -884,7 +1254,7 @@ func apply_full_snapshot(
 	) as Dictionary
 	if rare_chest_session != null and not incoming_rare_chest_state.is_empty():
 		var current_rare_chest_state := rare_chest_session.export_state_for_peer(
-			_get_local_encounter_peer_id()
+			resolved_validation_peer_id
 		)
 		var incoming_rare_revision := int(
 			incoming_rare_chest_state.get("revision", -1)
@@ -924,11 +1294,12 @@ func apply_full_snapshot(
 			encounter_snapshot,
 			economy_snapshot,
 			false,
-			imported_graph
+			imported_graph,
+			resolved_validation_peer_id,
+			additional_party_economy_views
 		).is_empty()
 	):
-		_set_status("房主遭遇或经济快照无效或已过期。", true)
-		return false
+		return {}
 	if not presentation_rewound and is_route_ready():
 		var incoming_briefing_revision := int(
 			briefing_snapshot["revision"]
@@ -940,66 +1311,269 @@ func apply_full_snapshot(
 				and briefing_snapshot != export_briefing_state_snapshot()
 			)
 		):
-			_set_status("房主作战简报快照已过期或发生冲突。", true)
-			return false
-	if presentation_rewound:
-		_reset_briefing_runtime(true)
-		_reset_normal_combat_stage(true)
-		_reset_encounter_runtime(false)
-		_reset_supply_runtime(false)
-		_reset_rare_chest_runtime(
-			false,
-			rare_chest_rewind_occurrence_key
+			return {}
+	var prepared_encounter := {}
+	if not encounter_snapshot.is_empty():
+		prepared_encounter = _prepare_encounter_snapshot_application(
+			encounter_snapshot,
+			economy_snapshot,
+			presentation_rewound,
+			imported_graph,
+			resolved_validation_peer_id,
+			additional_party_economy_views
 		)
-		_reset_underground_shop_runtime(false)
-
-	_set_route_reveal_input_locked(false)
-	if _briefing_phase == BriefingPhase.NONE:
-		_clear_pending_move(true)
-	elif move_confirmation.visible:
-		move_confirmation.dismiss()
-	set_authority_enabled(false)
-	if not route_board.present_graph(
+		if prepared_encounter.is_empty():
+			return {}
+	var prepared_shop: Dictionary = {}
+	if not shop_snapshot.is_empty():
+		prepared_shop = (
+			underground_shop_controller.prepare_snapshot_transaction(
+				shop_snapshot,
+				imported_graph,
+				imported_state,
+				resolved_validation_peer_id
+			)
+		)
+		if prepared_shop.is_empty():
+			return {}
+	var prepared_board := route_board.prepare_graph_presentation(
 		imported_graph,
 		generation_config,
 		imported_state.current_node_id,
 		imported_state.action_points,
 		imported_state.visited_counts,
 		false,
-		layout_changed or route_rewound or encounter_rewound
-	):
-		_set_status("客户端路线视觉层初始化失败。", true)
+		presentation_rewound
+	)
+	if prepared_board.is_empty():
+		return {}
+	return {
+		"expected_commit_generation": _full_snapshot_commit_generation,
+		"expected_baseline": _capture_full_snapshot_commit_baseline(
+			resolved_validation_peer_id
+		),
+		"validation_peer_id": resolved_validation_peer_id,
+		"imported_graph": imported_graph,
+		"imported_state": imported_state,
+		"briefing_snapshot": briefing_snapshot,
+		"encounter": prepared_encounter,
+		"shop": prepared_shop,
+		"board": prepared_board,
+		"layout_changed": layout_changed,
+		"presentation_rewound": presentation_rewound,
+		"rare_chest_rewind_occurrence_key": rare_chest_rewind_occurrence_key,
+	}
+
+
+func can_commit_prepared_full_snapshot(prepared: Dictionary) -> bool:
+	return (
+		prepared.size() == 12
+		and typeof(prepared.get("expected_commit_generation")) == TYPE_INT
+		and int(prepared["expected_commit_generation"])
+		== _full_snapshot_commit_generation
+		and typeof(prepared.get("expected_baseline")) == TYPE_DICTIONARY
+		and typeof(prepared.get("validation_peer_id")) == TYPE_INT
+		and prepared["expected_baseline"]
+		== _capture_full_snapshot_commit_baseline(
+			int(prepared["validation_peer_id"])
+		)
+		and prepared.get("imported_graph") is RogueRouteGraph
+		and prepared.get("imported_state") is RogueRouteRuntimeState
+		and typeof(prepared.get("briefing_snapshot")) == TYPE_DICTIONARY
+		and typeof(prepared.get("encounter")) == TYPE_DICTIONARY
+		and (
+			(prepared["encounter"] as Dictionary).is_empty()
+			or _can_commit_prepared_encounter_snapshot(
+				prepared["encounter"] as Dictionary
+			)
+		)
+		and typeof(prepared.get("shop")) == TYPE_DICTIONARY
+		and (
+			(prepared["shop"] as Dictionary).is_empty()
+			or underground_shop_controller.can_commit_prepared_snapshot_transaction(
+				prepared["shop"] as Dictionary
+			)
+		)
+		and typeof(prepared.get("board")) == TYPE_DICTIONARY
+		and route_board.can_commit_prepared_graph_presentation(
+			prepared["board"] as Dictionary
+		)
+		and typeof(prepared.get("layout_changed")) == TYPE_BOOL
+		and typeof(prepared.get("presentation_rewound")) == TYPE_BOOL
+		and typeof(prepared.get("rare_chest_rewind_occurrence_key"))
+		== TYPE_STRING
+	)
+
+
+## prepare 已完成全部 schema/revision/内容校验，且本函数无 await；CAS 通过
+## 后只消费冻结对象，不再重新解释 wire 字典，也不会创建任何 Player。
+func commit_prepared_full_snapshot(
+	prepared: Dictionary,
+	publish_changes: bool = true
+) -> bool:
+	if not can_commit_prepared_full_snapshot(prepared):
 		return false
+	commit_validated_full_snapshot(prepared, publish_changes)
+	return true
+
+
+## 调用方已经在同一同步调用栈完成组合 CAS 后使用的无失败提交入口。
+## 这里不再暴露 bool 分支，避免成长账本与路线五域之间出现“首域已写、
+## 后域返回 false”的伪事务形态。
+func commit_validated_full_snapshot(
+	prepared: Dictionary,
+	publish_changes: bool = true
+) -> void:
+	var imported_graph := prepared["imported_graph"] as RogueRouteGraph
+	var imported_state := prepared["imported_state"] as RogueRouteRuntimeState
+	var briefing_snapshot := prepared["briefing_snapshot"] as Dictionary
+	var prepared_encounter := prepared["encounter"] as Dictionary
+	var prepared_shop := prepared["shop"] as Dictionary
+	var prepared_board := prepared["board"] as Dictionary
+	var layout_changed := bool(prepared["layout_changed"])
+	var presentation_rewound := bool(prepared["presentation_rewound"])
+	var previous_briefing_phase := _briefing_phase
+	var interrupted_occurrence_key := _normal_combat_occurrence_key
+	var board_signals_were_blocked := route_board.is_blocking_signals()
+	route_board.set_block_signals(true)
+	# 首写之前已通过路线、表现、遭遇、商店和 Party Economy 的全部 CAS。
+	# 下面只消费冻结 token，不再解释 wire 字典或调用可失败入口。
+	if not prepared_encounter.is_empty():
+		_commit_validated_encounter_snapshot(prepared_encounter, false)
+	if not prepared_shop.is_empty():
+		underground_shop_controller.commit_validated_snapshot_transaction(
+			prepared_shop
+		)
+	route_board.commit_validated_graph_presentation(prepared_board)
 	_bind_runtime_state(imported_graph, imported_state)
+	_assign_briefing_state(briefing_snapshot)
 	_route_ready = true
+	if presentation_rewound:
+		# validated write 阶段只清内部旧 stage；UI reset 与通知延迟到所有
+		# 永久域和 Player 都提交后，避免 listener 回调重入新 Briefing。
+		_clear_normal_combat_state()
+	set_authority_enabled(false)
+	_pending_full_snapshot_presentation = {
+		"prepared": prepared,
+		"previous_briefing_phase": previous_briefing_phase,
+		"interrupted_occurrence_key": interrupted_occurrence_key,
+		"presentation_rewound": presentation_rewound,
+		"layout_changed": layout_changed,
+		"board_signals_were_blocked": board_signals_were_blocked,
+	}
+	if publish_changes:
+		_publish_prepared_full_snapshot_changes(prepared)
+	_full_snapshot_commit_generation += 1
+
+
+func publish_prepared_full_snapshot_changes(prepared: Dictionary) -> void:
+	_publish_prepared_full_snapshot_changes(prepared)
+
+
+func _publish_prepared_full_snapshot_changes(prepared: Dictionary) -> void:
+	var prepared_encounter := prepared["encounter"] as Dictionary
+	if not prepared_encounter.is_empty():
+		_publish_prepared_encounter_snapshot(prepared_encounter)
+	var prepared_shop := prepared["shop"] as Dictionary
+	if not prepared_shop.is_empty():
+		underground_shop_controller.publish_prepared_snapshot_transaction(
+			prepared_shop
+		)
+
+
+func discard_prepared_full_snapshot(prepared: Dictionary) -> void:
+	if typeof(prepared.get("board")) == TYPE_DICTIONARY:
+		route_board.discard_prepared_graph_presentation(
+			prepared["board"] as Dictionary
+		)
+	prepared.clear()
+
+
+func _get_shop_party_economy_views(shop_snapshot: Dictionary) -> Array:
+	if shop_snapshot.is_empty():
+		return []
+	var party_economy: Variant = shop_snapshot.get("party_economy", {})
+	return [party_economy]
+
+
+func complete_prepared_full_snapshot_presentation() -> void:
+	if _pending_full_snapshot_presentation.is_empty():
+		return
+	var pending := _pending_full_snapshot_presentation
+	_pending_full_snapshot_presentation = {}
+	var prepared := pending["prepared"] as Dictionary
+	var prepared_shop := prepared["shop"] as Dictionary
+	var layout_changed := bool(pending["layout_changed"])
+	var presentation_rewound := bool(pending["presentation_rewound"])
+	var interrupted_occurrence_key := str(
+		pending["interrupted_occurrence_key"]
+	)
+	var board_signals_were_blocked := bool(
+		pending["board_signals_were_blocked"]
+	)
+	route_board.set_block_signals(board_signals_were_blocked)
+	if not board_signals_were_blocked:
+		route_board.layout_bounds_changed.emit(route_board.get_world_bounds())
+	if presentation_rewound:
+		_reset_normal_combat_presentation_for_full_snapshot(
+			interrupted_occurrence_key
+		)
+	_set_route_reveal_input_locked(false)
+	if _briefing_phase == BriefingPhase.NONE:
+		_clear_pending_move(true)
+	elif move_confirmation.visible:
+		move_confirmation.dismiss()
 	if layout_changed:
 		_reposition_route_players_at_start()
-	if (
-		not encounter_snapshot.is_empty()
-		and not apply_encounter_snapshot(
-			encounter_snapshot,
-			economy_snapshot
-		)
-	):
-		_set_status("房主遭遇或经济快照无效。", true)
-		return false
-	if not apply_briefing_state_snapshot(briefing_snapshot):
-		_set_status("房主作战简报状态与路线不匹配。", true)
-		return false
+	_sync_briefing_presentation(int(pending["previous_briefing_phase"]))
 	if _briefing_phase != BriefingPhase.NONE:
 		route_board.select_node(_briefing_node_id)
 	_refresh_route_input_lock()
-	if not shop_snapshot.is_empty() and not apply_shop_snapshot(shop_snapshot):
-		_set_status("房主地下商店快照无效或已过期。", true)
-		return false
+	if not prepared_shop.is_empty():
+		underground_shop_controller.complete_prepared_snapshot_presentation()
 	_configure_camera_world_bounds()
 	if layout_changed:
 		_recenter_camera_on_player()
+	# Player 已在持久事务中取得最终余额；此处只在全部 owner/Player 发布后
+	# 刷新 HUD，避免 fresh identity 在 outer state 提交前暴露半事务 UI。
+	_sync_route_player_xirang_from_run_state()
 	_update_route_hud()
 	_show_node_content(_runtime_state.current_node_id, false)
 	_set_status("已同步房主路线。当前为只读模式。", false)
 	_try_play_route_entry_reveal()
-	return true
+
+
+func _capture_full_snapshot_commit_baseline(
+	validation_peer_id: int
+) -> Dictionary:
+	return {
+		"route_ready": _route_ready,
+		"layout_hash": (
+			_route_graph.compute_layout_hash() if _route_graph != null else ""
+		),
+		"route_state": (
+			_runtime_state.export_state() if _runtime_state != null else {}
+		),
+		"briefing": export_briefing_state_snapshot(),
+		"encounter": (
+			encounter_session.export_state()
+			if encounter_session != null
+			else {}
+		),
+		"supply": (
+			supply_session.export_state() if supply_session != null else {}
+		),
+		"rare_chest": (
+			rare_chest_session.export_state_for_peer(validation_peer_id)
+			if rare_chest_session != null
+			else {}
+		),
+		"party_economy": (
+			_run_state.export_party_economy_snapshot()
+			if _run_state != null and _run_state.run_started
+			else {}
+		),
+	}
 
 
 func _is_full_snapshot_rewound(
@@ -1355,32 +1929,118 @@ func apply_encounter_snapshot(
 		economy_snapshot,
 		false
 	)
-	if prepared.is_empty():
+	if not _can_commit_prepared_encounter_snapshot(prepared):
 		return false
-	var atomic_supply_state := prepared["supply_state"] as Dictionary
-	var atomic_snapshot := prepared["encounter_state"] as Dictionary
-	var rare_chest_state := prepared["rare_chest_state"] as Dictionary
-	var rare_chest_economy_snapshot := prepared[
-		"rare_chest_economy"
-	] as Dictionary
-	if not supply_session.apply_remote_state(atomic_supply_state):
-		return false
-	# Session 会先让 Economy 校验并提交账本，成功后才写入自身阶段字段；
-	# 任一经济字段无效时，遭遇 revision/phase 也保持原值。
-	if not encounter_session.apply_remote_state(atomic_snapshot):
-		return false
-	if not rare_chest_economy.apply_remote_snapshot(
-		rare_chest_economy_snapshot
-	):
-		return false
-	return rare_chest_session.apply_remote_state(rare_chest_state)
+	_commit_validated_encounter_snapshot(prepared)
+	return true
+
+
+func _can_commit_prepared_encounter_snapshot(prepared: Dictionary) -> bool:
+	return (
+		prepared.size() == 7
+		and _run_state != null
+		and typeof(prepared.get("party_economy")) == TYPE_DICTIONARY
+		and _run_state.can_commit_prepared_party_economy_snapshot(
+			prepared["party_economy"] as Dictionary
+		)
+		and typeof(prepared.get("supply_economy")) == TYPE_DICTIONARY
+		and supply_economy.can_commit_prepared_remote_snapshot(
+			prepared["supply_economy"] as Dictionary
+		)
+		and typeof(prepared.get("encounter_economy")) == TYPE_DICTIONARY
+		and encounter_economy.can_commit_prepared_remote_snapshot(
+			prepared["encounter_economy"] as Dictionary
+		)
+		and typeof(prepared.get("rare_chest_economy")) == TYPE_DICTIONARY
+		and rare_chest_economy.can_commit_prepared_remote_snapshot(
+			prepared["rare_chest_economy"] as Dictionary
+		)
+		and typeof(prepared.get("supply_session")) == TYPE_DICTIONARY
+		and supply_session.can_commit_prepared_remote_state(
+			prepared["supply_session"] as Dictionary
+		)
+		and typeof(prepared.get("encounter_session")) == TYPE_DICTIONARY
+		and encounter_session.can_commit_prepared_remote_state(
+			prepared["encounter_session"] as Dictionary
+		)
+		and typeof(prepared.get("rare_chest_session")) == TYPE_DICTIONARY
+		and rare_chest_session.can_commit_prepared_remote_state(
+			prepared["rare_chest_session"] as Dictionary
+		)
+	)
+
+
+## 所有 token 已在同一调用栈完成 CAS；以下写入不再调用任何可失败 API。
+func _commit_validated_encounter_snapshot(
+	prepared: Dictionary,
+	publish_changes: bool = true
+) -> void:
+	_run_state.commit_validated_party_economy_snapshot(
+		prepared["party_economy"] as Dictionary,
+		false
+	)
+	supply_economy.commit_validated_remote_snapshot(
+		prepared["supply_economy"] as Dictionary,
+		false
+	)
+	encounter_economy.commit_validated_remote_snapshot(
+		prepared["encounter_economy"] as Dictionary,
+		false
+	)
+	rare_chest_economy.commit_validated_remote_snapshot(
+		prepared["rare_chest_economy"] as Dictionary,
+		false
+	)
+	supply_session.commit_validated_remote_state(
+		prepared["supply_session"] as Dictionary,
+		false
+	)
+	encounter_session.commit_validated_remote_state(
+		prepared["encounter_session"] as Dictionary,
+		false
+	)
+	rare_chest_session.commit_validated_remote_state(
+		prepared["rare_chest_session"] as Dictionary,
+		false
+	)
+	if publish_changes:
+		_publish_prepared_encounter_snapshot(prepared)
+
+
+func _publish_prepared_encounter_snapshot(prepared: Dictionary) -> void:
+	# 全部域落地后再统一发布，监听者不会观察到只提交一半的 revision。
+	_run_state.publish_prepared_party_economy_snapshot(
+		prepared["party_economy"] as Dictionary
+	)
+	# Economy coordinator 的信号会回入 Session 并在已提交权威 revision 后
+	# 再次 bump。本事务直接由冻结 Session 发布经济视图，避免本地产生伪 revision。
+	supply_session.publish_prepared_remote_economy(
+		prepared["supply_session"] as Dictionary
+	)
+	encounter_session.publish_prepared_remote_economy(
+		prepared["encounter_session"] as Dictionary
+	)
+	rare_chest_economy.publish_prepared_remote_snapshot(
+		prepared["rare_chest_economy"] as Dictionary
+	)
+	supply_session.publish_prepared_remote_state(
+		prepared["supply_session"] as Dictionary
+	)
+	encounter_session.publish_prepared_remote_state(
+		prepared["encounter_session"] as Dictionary
+	)
+	rare_chest_session.publish_prepared_remote_state(
+		prepared["rare_chest_session"] as Dictionary
+	)
 
 
 func _prepare_encounter_snapshot_application(
 	encounter_snapshot: Dictionary,
 	economy_snapshot: Dictionary,
 	structure_only: bool,
-	validation_graph: RogueRouteGraph = null
+	validation_graph: RogueRouteGraph = null,
+	validation_peer_id: int = -1,
+	additional_party_economy_views: Array = []
 ) -> Dictionary:
 	if encounter_session == null or encounter_snapshot.is_empty():
 		return {}
@@ -1413,7 +2073,11 @@ func _prepare_encounter_snapshot_application(
 		or int(rare_chest_state.get("target_peer_id", -2))
 		!= int(rare_chest_economy_snapshot.get("target_peer_id", -3))
 		or int(rare_chest_state.get("target_peer_id", -2))
-		!= _get_local_encounter_peer_id()
+		!= (
+			validation_peer_id
+			if validation_peer_id >= 0
+			else _get_local_encounter_peer_id()
+		)
 	):
 		return {}
 	var atomic_supply_state := supply_state.duplicate(true)
@@ -1470,12 +2134,119 @@ func _prepare_encounter_snapshot_application(
 		base_economy_snapshot
 	):
 		return {}
+	var prepared_supply_economy := supply_economy.prepare_remote_snapshot(
+		supply_economy_snapshot,
+		structure_only
+	)
+	var prepared_encounter_economy := (
+		encounter_economy.prepare_remote_snapshot(
+			base_economy_snapshot,
+			structure_only
+		)
+	)
+	var prepared_rare_economy := rare_chest_economy.prepare_remote_snapshot(
+		rare_chest_economy_snapshot,
+		structure_only
+	)
+	var prepared_supply_session := supply_session.prepare_remote_state(
+		atomic_supply_state,
+		structure_only
+	)
+	var prepared_encounter_session := encounter_session.prepare_remote_state(
+		atomic_snapshot,
+		structure_only
+	)
+	var prepared_rare_session := rare_chest_session.prepare_remote_state(
+		rare_chest_state,
+		structure_only
+	)
+	var party_economy_views: Array = [
+		base_economy_snapshot.get("party_economy", {}) as Dictionary,
+		supply_economy_snapshot.get("party_economy", {}) as Dictionary,
+	]
+	party_economy_views.append_array(additional_party_economy_views)
+	var merged_party_economy := _merge_party_economy_snapshot_views(
+		party_economy_views
+	)
+	var prepared_party_economy := (
+		_run_state.prepare_party_economy_snapshot(
+			merged_party_economy,
+			# 路线布局/遭遇表现可以权威 rewind，但 RunState Party Economy
+			# 是跨场景持久高水位，绝不能随表现回退。
+			false
+		)
+		if _run_state != null and not merged_party_economy.is_empty()
+		else {}
+	)
+	if (
+		prepared_supply_economy.is_empty()
+		or prepared_encounter_economy.is_empty()
+		or prepared_rare_economy.is_empty()
+		or prepared_supply_session.is_empty()
+		or prepared_encounter_session.is_empty()
+		or prepared_rare_session.is_empty()
+		or prepared_party_economy.is_empty()
+	):
+		return {}
 	return {
-		"supply_state": atomic_supply_state,
-		"encounter_state": atomic_snapshot,
-		"rare_chest_state": rare_chest_state,
-		"rare_chest_economy": rare_chest_economy_snapshot,
+		"party_economy": prepared_party_economy,
+		"supply_economy": prepared_supply_economy,
+		"encounter_economy": prepared_encounter_economy,
+		"rare_chest_economy": prepared_rare_economy,
+		"supply_session": prepared_supply_session,
+		"encounter_session": prepared_encounter_session,
+		"rare_chest_session": prepared_rare_session,
 	}
+
+
+## 各遭遇子域携带同一组全局账本，但可只带目标相关背包。合并时严格
+## 要求重复 ledger 与同 peer 背包完全一致，拒绝 mixed-valid 双视图。
+func _merge_party_economy_snapshot_views(views: Array) -> Dictionary:
+	var canonical: Dictionary = {}
+	var inventories_by_peer: Dictionary = {}
+	for view_value in views:
+		if typeof(view_value) != TYPE_DICTIONARY:
+			return {}
+		var view := view_value as Dictionary
+		if view.is_empty():
+			return {}
+		if canonical.is_empty():
+			canonical = view.duplicate(true)
+			canonical["inventories"] = []
+		else:
+			for field_name in [
+				"schema_version",
+				"warehouse_ledger",
+				"xirang_ledger",
+				"light_stone_ledger",
+				"party_status_ledger",
+				"rogue_encounter_history_ledger",
+			]:
+				if view.get(field_name) != canonical.get(field_name):
+					return {}
+		if typeof(view.get("inventories")) != TYPE_ARRAY:
+			return {}
+		for inventory_value in view["inventories"] as Array:
+			if typeof(inventory_value) != TYPE_DICTIONARY:
+				return {}
+			var inventory := inventory_value as Dictionary
+			if typeof(inventory.get("peer_id")) != TYPE_INT:
+				return {}
+			var peer_id := int(inventory["peer_id"])
+			if inventories_by_peer.has(peer_id):
+				if inventories_by_peer[peer_id] != inventory:
+					return {}
+			else:
+				inventories_by_peer[peer_id] = inventory.duplicate(true)
+	var peer_ids: Array[int] = []
+	for raw_peer_id in inventories_by_peer.keys():
+		peer_ids.append(int(raw_peer_id))
+	peer_ids.sort()
+	var merged_inventories: Array[Dictionary] = []
+	for peer_id in peer_ids:
+		merged_inventories.append(inventories_by_peer[peer_id])
+	canonical["inventories"] = merged_inventories
+	return canonical
 
 
 func _validate_rare_chest_snapshot_consistency(
@@ -2067,6 +2838,7 @@ func host_submit_encounter_intro_ack(
 		)
 	)
 	if accepted:
+		_pending_encounter_max_health_before_vote.clear()
 		return true
 	return (
 		_authority_enabled
@@ -2085,6 +2857,12 @@ func host_submit_encounter_vote(
 	expected_revision: int,
 	option_id: StringName
 ) -> bool:
+	var previous_health_capture := (
+		_pending_encounter_max_health_before_vote.duplicate()
+	)
+	_pending_encounter_max_health_before_vote = (
+		_capture_route_player_max_health_by_peer()
+	)
 	var accepted := (
 		_authority_enabled
 		and encounter_session != null
@@ -2097,6 +2875,7 @@ func host_submit_encounter_vote(
 	)
 	if accepted:
 		return true
+	_pending_encounter_max_health_before_vote = previous_health_capture
 	accepted = (
 		_authority_enabled
 		and rare_chest_session != null
@@ -2495,6 +3274,7 @@ func _reset_encounter_runtime(authority: bool) -> void:
 	_encounter_presentation_serial += 1
 	_encounter_presented_active = false
 	_local_result_hold_completed_occurrence_key = ""
+	_pending_encounter_max_health_before_vote.clear()
 	if encounter_scene != null:
 		encounter_scene.hide_immediately()
 	_set_route_presentation_active(true)
@@ -2674,6 +3454,25 @@ func _clear_normal_combat_state() -> void:
 	_normal_combat_visit_count = 0
 	_normal_combat_occurrence_key = ""
 	_normal_combat_config_id = &""
+
+
+## 全量快照已经直接写入新的 Briefing，回退表现时只能清旧战斗 stage，不能
+## 复用会把新 Briefing 一并归零的通用 reset。
+func _reset_normal_combat_presentation_for_full_snapshot(
+	interrupted_occurrence_key: String
+) -> void:
+	if not is_node_ready():
+		return
+	combat_victory_presentation.interrupt_and_reset()
+	combat_scene_transition.hide_immediately()
+	hide_combat_result()
+	set_route_presentation_enabled(true)
+	_set_encounter_input_locked(
+		(encounter_session != null and encounter_session.is_active())
+		or (supply_session != null and supply_session.is_active())
+		or (rare_chest_session != null and rare_chest_session.is_active())
+	)
+	normal_combat_snapshot_reconciled.emit(interrupted_occurrence_key)
 
 
 func _begin_normal_combat_stage(
@@ -4015,7 +4814,7 @@ func _on_supply_inventory_requested() -> void:
 		or _has_modal_priority_over_supply()
 	):
 		return
-	player_profile_panel.configure_multiplayer_requests(not manage_return_locally)
+	_configure_profile_upgrade_authority()
 	player_profile_panel.open()
 
 
@@ -4199,6 +4998,7 @@ func _on_supply_state_changed(snapshot: Dictionary) -> void:
 	_set_encounter_input_locked(
 		(supply_session != null and supply_session.is_active())
 		or (encounter_session != null and encounter_session.is_active())
+		or _encounter_presented_active
 		or (rare_chest_session != null and rare_chest_session.is_active())
 	)
 	var result := snapshot.get("result", {}) as Dictionary
@@ -4948,42 +5748,224 @@ func configure_multiplayer_players(
 	player_character_ids: Dictionary,
 	participant_stable_keys: Dictionary = {}
 ) -> bool:
-	_clear_player_instances()
-	_multiplayer_avatar_mode = true
-	_local_peer_id = local_peer_id
-	_player_names = player_names.duplicate(true)
-	_player_character_ids = player_character_ids.duplicate(true)
-	_player_stable_keys = participant_stable_keys.duplicate(true)
-	_sync_encounter_player_character_ids()
+	var prepared := prepare_multiplayer_players(
+		local_peer_id,
+		player_names,
+		player_character_ids,
+		participant_stable_keys
+	)
+	if not can_commit_prepared_multiplayer_players(prepared):
+		discard_prepared_multiplayer_players(prepared)
+		return false
+	commit_validated_multiplayer_players(prepared)
+	return true
+
+
+## 先在树外实例化完整 roster。任何角色资源、身份或 RunState owner 缺失时，
+## 现有 Player/相机/UI 均保持原样。
+func prepare_multiplayer_players(
+	local_peer_id: int,
+	player_names: Dictionary,
+	player_character_ids: Dictionary,
+	participant_stable_keys: Dictionary = {}
+) -> Dictionary:
+	if (
+		local_peer_id <= 0
+		or player_container == null
+		or not player_names.has(local_peer_id)
+		or player_names.is_empty()
+		or _run_state == null
+		or not _run_state.run_started
+	):
+		return {}
 	var peer_ids: Array[int] = []
-	for peer_id_variant in player_names:
+	var normalized_names: Dictionary = {}
+	var normalized_character_ids: Dictionary = {}
+	var normalized_stable_keys: Dictionary = {}
+	for peer_id_variant in player_names.keys():
+		if typeof(peer_id_variant) != TYPE_INT:
+			return {}
 		var peer_id := int(peer_id_variant)
-		if peer_id > 0:
-			peer_ids.append(peer_id)
+		if (
+			peer_id <= 0
+			or peer_ids.has(peer_id)
+			or not player_character_ids.has(peer_id)
+			or not _run_state.has_multiplayer_peer_state(peer_id)
+		):
+			return {}
+		var character_id := StringName(player_character_ids[peer_id])
+		if not PlayerCharacterRegistry.is_valid_character_id(character_id):
+			return {}
+		peer_ids.append(peer_id)
+		normalized_names[peer_id] = str(player_names[peer_id])
+		normalized_character_ids[peer_id] = character_id
+		var stable_key := str(participant_stable_keys.get(peer_id, ""))
+		if not stable_key.is_empty():
+			normalized_stable_keys[peer_id] = stable_key
+	if player_character_ids.size() != peer_ids.size():
+		return {}
 	peer_ids.sort()
+	var staged_players: Dictionary = {}
 	for index in range(peer_ids.size()):
 		var peer_id := peer_ids[index]
-		var character_id := StringName(
-			player_character_ids.get(
-				peer_id,
-				PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
-			)
+		var player_instance := _instantiate_route_player(
+			normalized_character_ids[peer_id]
 		)
-		_add_multiplayer_player(
-			peer_id,
-			str(player_names.get(peer_id, "Player %d" % peer_id)),
-			character_id,
-			_get_avatar_spawn_position(index)
-		)
-	if player == null:
-		push_error("RogueRouteGame: 多人路线场景缺少本地角色。")
+		if player_instance == null:
+			for staged_value in staged_players.values():
+				(staged_value as Player).free()
+			return {}
+		player_instance.peer_id = peer_id
+		var progression_snapshot := _run_state.export_player_run_progression(peer_id)
+		if not player_instance.can_apply_run_progression_snapshot(
+			progression_snapshot
+		):
+			player_instance.free()
+			for staged_value in staged_players.values():
+				(staged_value as Player).free()
+			return {}
+		player_instance.name = "PreparedRoutePlayer_%d" % peer_id
+		player_instance.global_position = _get_avatar_spawn_position(index)
+		player_instance.visible = false
+		player_instance.process_mode = Node.PROCESS_MODE_DISABLED
+		staged_players[peer_id] = player_instance
+	return {
+		"expected_identity_baseline": _capture_multiplayer_identity_baseline(),
+		"local_peer_id": local_peer_id,
+		"peer_ids": peer_ids,
+		"player_names": normalized_names,
+		"player_character_ids": normalized_character_ids,
+		"participant_stable_keys": normalized_stable_keys,
+		"players": staged_players,
+	}
+
+
+func can_commit_prepared_multiplayer_players(prepared: Dictionary) -> bool:
+	if (
+		prepared.size() != 7
+		or typeof(prepared.get("expected_identity_baseline"))
+		!= TYPE_DICTIONARY
+		or prepared["expected_identity_baseline"]
+		!= _capture_multiplayer_identity_baseline()
+		or typeof(prepared.get("local_peer_id")) != TYPE_INT
+		or typeof(prepared.get("peer_ids")) != TYPE_ARRAY
+		or typeof(prepared.get("player_names")) != TYPE_DICTIONARY
+		or typeof(prepared.get("player_character_ids")) != TYPE_DICTIONARY
+		or typeof(prepared.get("participant_stable_keys")) != TYPE_DICTIONARY
+		or typeof(prepared.get("players")) != TYPE_DICTIONARY
+	):
 		return false
+	var peer_ids := prepared["peer_ids"] as Array[int]
+	var staged_players := prepared["players"] as Dictionary
+	if (
+		peer_ids.is_empty()
+		or not peer_ids.has(int(prepared["local_peer_id"]))
+		or staged_players.size() != peer_ids.size()
+	):
+		return false
+	for peer_id in peer_ids:
+		var player_instance := staged_players.get(peer_id) as Player
+		if (
+			player_instance == null
+			or not is_instance_valid(player_instance)
+			or player_instance.get_parent() != null
+			or player_instance.peer_id != peer_id
+			or not _run_state.has_multiplayer_peer_state(peer_id)
+			or not player_instance.can_apply_run_progression_snapshot(
+				_run_state.export_player_run_progression(peer_id)
+			)
+		):
+			return false
+	return true
+
+
+func commit_validated_multiplayer_players(prepared: Dictionary) -> void:
+	commit_validated_multiplayer_players_with_scene_policy(prepared, true)
+
+
+func commit_validated_multiplayer_players_with_scene_policy(
+	prepared: Dictionary,
+	restore_scene_entry: bool
+) -> void:
+	var old_players: Array[Player] = []
+	for old_value in peer_players.values():
+		var old_player := old_value as Player
+		if old_player != null and is_instance_valid(old_player):
+			old_players.append(old_player)
+	_bind_player_profile(null)
+	world.detach_camera_from_player()
+	_multiplayer_avatar_mode = true
+	_local_peer_id = int(prepared["local_peer_id"])
+	_player_names = (prepared["player_names"] as Dictionary).duplicate(true)
+	_player_character_ids = (
+		prepared["player_character_ids"] as Dictionary
+	).duplicate(true)
+	_player_stable_keys = (
+		prepared["participant_stable_keys"] as Dictionary
+	).duplicate(true)
+	var staged_players := prepared["players"] as Dictionary
+	var committed_players: Dictionary[int, Player] = {}
+	for peer_id in prepared["peer_ids"] as Array[int]:
+		var player_instance := staged_players[peer_id] as Player
+		player_container.add_child(player_instance)
+		_commit_validated_multiplayer_player_node(
+			player_instance,
+			peer_id,
+			str(_player_names[peer_id]),
+			restore_scene_entry
+		)
+		committed_players[peer_id] = player_instance
+	peer_players = committed_players
+	player = peer_players[_local_peer_id] as Player
+	for old_player in old_players:
+		if old_player.get_parent() == player_container:
+			player_container.remove_child(old_player)
+		old_player.queue_free()
+	for peer_id in prepared["peer_ids"] as Array[int]:
+		(peer_players[peer_id] as Player).name = "RoutePlayer_%d" % peer_id
+	_sync_encounter_player_character_ids()
 	_sync_route_player_xirang_from_run_state()
 	_sync_party_status_from_run_state()
+	_bind_player_profile(player)
+	_configure_profile_upgrade_authority()
 	_attach_camera_to_local_player()
 	_configure_encounter_overlay_context()
 	_sync_underground_shop_identity_context()
-	return true
+	prepared["committed"] = true
+
+
+func discard_prepared_multiplayer_players(prepared: Dictionary) -> void:
+	if bool(prepared.get("committed", false)):
+		return
+	var staged_players := prepared.get("players", {}) as Dictionary
+	for player_value in staged_players.values():
+		var player_instance := player_value as Player
+		if (
+			player_instance != null
+			and is_instance_valid(player_instance)
+			and player_instance.get_parent() == null
+		):
+			player_instance.free()
+	prepared.clear()
+
+
+func _capture_multiplayer_identity_baseline() -> Dictionary:
+	var instance_ids: Dictionary = {}
+	for raw_peer_id in peer_players.keys():
+		var player_instance := peer_players[raw_peer_id] as Player
+		instance_ids[int(raw_peer_id)] = (
+			player_instance.get_instance_id()
+			if player_instance != null and is_instance_valid(player_instance)
+			else 0
+		)
+	return {
+		"multiplayer_avatar_mode": _multiplayer_avatar_mode,
+		"local_peer_id": _local_peer_id,
+		"instance_ids": instance_ids,
+		"player_names": _player_names.duplicate(true),
+		"player_character_ids": _player_character_ids.duplicate(true),
+		"player_stable_keys": _player_stable_keys.duplicate(true),
+	}
 
 
 func add_multiplayer_player(
@@ -5037,6 +6019,17 @@ func migrate_multiplayer_player(
 	player_name: String,
 	character_id: StringName
 ) -> bool:
+	if _run_state == null:
+		_run_state = get_node_or_null("/root/RunState") as RunStateStore
+	# 该便捷入口只投影已由外层身份事务提交的新 peer 账本。若持久身份仍是
+	# old peer，先改 Player 会制造“节点已迁移、账本未迁移”的半状态。
+	if (
+		_run_state == null
+		or not _run_state.run_started
+		or _run_state.has_multiplayer_peer_state(old_peer_id)
+		or not _run_state.has_multiplayer_peer_state(new_peer_id)
+	):
+		return false
 	# 普通调用者只迁移仍在树中的 Player；断线后缺失节点的重建由重连
 	# preparation 显式携带 fallback pose，不能在这里猜出生位置。
 	if get_player_for_peer(old_peer_id) == null:
@@ -5218,11 +6211,13 @@ func finalize_reconnected_multiplayer_player_identity(
 	var player_instance := preparation.get("player") as Player
 	if player_instance == null or get_player_for_peer(new_peer_id) != player_instance:
 		return
-	_configure_multiplayer_player_node(
+	if not _configure_multiplayer_player_node(
 		player_instance,
 		new_peer_id,
 		str(preparation.get("player_name", ""))
-	)
+	):
+		push_error("Rogue 路线重连玩家无法绑定 Party Xirang 账本。")
+		return
 	player_instance.global_position = (
 		preparation.get("preserved_position", Vector2.ZERO) as Vector2
 	)
@@ -5332,7 +6327,11 @@ func _add_multiplayer_player(
 	player_instance.global_position = spawn_position
 	player_container.add_child(player_instance)
 	peer_players[peer_id] = player_instance
-	_configure_multiplayer_player_node(player_instance, peer_id, player_name)
+	if not _configure_multiplayer_player_node(player_instance, peer_id, player_name):
+		peer_players.erase(peer_id)
+		player_container.remove_child(player_instance)
+		player_instance.queue_free()
+		return false
 	return true
 
 
@@ -5340,7 +6339,7 @@ func _configure_multiplayer_player_node(
 	player_instance: Player,
 	peer_id: int,
 	player_name: String
-) -> void:
+) -> bool:
 	var accepts_local_input := peer_id == _local_peer_id
 	player_instance.configure_multiplayer_control(
 		peer_id,
@@ -5349,6 +6348,20 @@ func _configure_multiplayer_player_node(
 		accepts_local_input,
 		accepts_local_input
 	)
+	if not player_instance.configure_xirang_ownership(
+		Player.XirangOwnership.RUN_PARTY_LEDGER,
+		peer_id
+	):
+		return false
+	if _run_state == null:
+		_run_state = get_node_or_null("/root/RunState") as RunStateStore
+	# 节点 _ready 时尚未绑定网络 peer，不能保留默认 peer=0 的投影；
+	# 身份与余额 ownership 冻结后立即按该稳定成员绝对重建。
+	if (
+		_run_state == null
+		or not _restore_embedded_player_to_full_health(player_instance, peer_id)
+	):
+		return false
 	player_instance.set_world_movement_mode(true, false)
 	player_instance.set_multiplayer_visual_smoothing_enabled(
 		not accepts_local_input
@@ -5362,10 +6375,62 @@ func _configure_multiplayer_player_node(
 	if accepts_local_input:
 		player = player_instance
 		_bind_player_profile(player_instance)
+	return true
+
+
+## roster prepare 已验证身份、角色资源和持久成长快照；批量提交阶段只做
+## 固定 Player 绑定，不在中途发布 local Player/Profile，所有节点成功入树后
+## 再由 commit_validated_multiplayer_players 一次性切换公开 roster。
+func _commit_validated_multiplayer_player_node(
+	player_instance: Player,
+	peer_id: int,
+	player_name: String,
+	restore_scene_entry: bool
+) -> void:
+	var accepts_local_input := peer_id == _local_peer_id
+	player_instance.process_mode = Node.PROCESS_MODE_INHERIT
+	player_instance.visible = true
+	player_instance.configure_multiplayer_control(
+		peer_id,
+		accepts_local_input,
+		player_name,
+		accepts_local_input,
+		accepts_local_input
+	)
+	player_instance.configure_xirang_ownership(
+		Player.XirangOwnership.RUN_PARTY_LEDGER,
+		peer_id
+	)
+	if restore_scene_entry:
+		_restore_embedded_player_to_full_health(player_instance, peer_id)
+	player_instance.set_world_movement_mode(true, false)
+	player_instance.set_multiplayer_visual_smoothing_enabled(
+		not accepts_local_input
+	)
+	player_instance.physics_interpolation_mode = (
+		Node.PHYSICS_INTERPOLATION_MODE_ON
+		if accepts_local_input
+		else Node.PHYSICS_INTERPOLATION_MODE_OFF
+	)
+	player_instance.set_physics_process(accepts_local_input)
 
 
 func get_player_for_peer(peer_id: int) -> Player:
 	return peer_players.get(peer_id) as Player
+
+
+func get_configured_local_peer_id() -> int:
+	return _local_peer_id if _multiplayer_avatar_mode else SINGLEPLAYER_PEER_ID
+
+
+## Tower 外层组合事务只读取得当前已发布 roster；fresh client 则使用
+## prepare_multiplayer_players 返回的树外 staged roster，不从这里猜身份。
+func get_players_for_persistent_projection() -> Dictionary:
+	if _multiplayer_avatar_mode:
+		return peer_players.duplicate()
+	if player == null or not is_instance_valid(player):
+		return {}
+	return {SINGLEPLAYER_PEER_ID: player}
 
 
 func get_local_avatar_snapshot() -> Dictionary:
@@ -5452,12 +6517,20 @@ func _configure_singleplayer_player() -> void:
 	player_instance.name = "Player"
 	player_instance.global_position = _get_avatar_spawn_position(0)
 	player_container.add_child(player_instance)
+	if not player_instance.configure_xirang_ownership(
+		Player.XirangOwnership.RUN_PARTY_LEDGER,
+		SINGLEPLAYER_PEER_ID
+	):
+		player_container.remove_child(player_instance)
+		player_instance.queue_free()
+		return
 	player_instance.set_world_movement_mode(true, false)
 	player_instance.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	player_instance.reset_physics_interpolation()
 	player = player_instance
 	_bind_player_profile(player_instance)
 	_local_peer_id = SINGLEPLAYER_PEER_ID
+	_configure_profile_upgrade_authority()
 	_player_names = {SINGLEPLAYER_PEER_ID: "玩家"}
 	_player_character_ids = {SINGLEPLAYER_PEER_ID: character_id}
 	_player_stable_keys = {SINGLEPLAYER_PEER_ID: "singleplayer:local"}
@@ -5500,7 +6573,10 @@ func _apply_route_player_xirang(player_instance: Player, amount: int) -> void:
 	if player_instance == null or not is_instance_valid(player_instance):
 		return
 	var resolved_amount := maxi(amount, 0)
-	if player_instance == player:
+	if (
+		player_instance == player
+		and not player_instance.is_validated_persistent_projection_batch_active()
+	):
 		_update_personal_xirang_hud(resolved_amount)
 	player_instance.set_xirang_balance(resolved_amount)
 
@@ -5573,10 +6649,20 @@ func _on_party_status_ledger_changed(snapshot: Dictionary) -> void:
 				if peer_player.peer_id > 0
 				else dictionary_peer_id
 			)
-			before_max_health[status_peer_id] = peer_player.max_health
+			before_max_health[status_peer_id] = int(
+				_pending_encounter_max_health_before_vote.get(
+					status_peer_id,
+					peer_player.max_health
+				)
+			)
 			players_by_status_peer[status_peer_id] = peer_player
 	if not _multiplayer_avatar_mode and player != null and is_instance_valid(player):
-		before_max_health[SINGLEPLAYER_PEER_ID] = player.max_health
+		before_max_health[SINGLEPLAYER_PEER_ID] = int(
+			_pending_encounter_max_health_before_vote.get(
+				SINGLEPLAYER_PEER_ID,
+				player.max_health
+			)
+		)
 		players_by_status_peer[SINGLEPLAYER_PEER_ID] = player
 	_update_core_hud(
 		int(snapshot.get("core_current", 100)),
@@ -5606,6 +6692,21 @@ func _on_party_status_ledger_changed(snapshot: Dictionary) -> void:
 			"penalty_after": penalty_after,
 		}
 	_cache_max_health_penalties(snapshot)
+	_pending_encounter_max_health_before_vote.clear()
+
+
+func _capture_route_player_max_health_by_peer() -> Dictionary:
+	var result: Dictionary = {}
+	if _multiplayer_avatar_mode:
+		for raw_peer_id in peer_players.keys():
+			var peer_id := int(raw_peer_id)
+			var peer_player := peer_players.get(peer_id) as Player
+			if peer_player != null and is_instance_valid(peer_player):
+				result[peer_id] = peer_player.max_health
+		return result
+	if player != null and is_instance_valid(player):
+		result[SINGLEPLAYER_PEER_ID] = player.max_health
+	return result
 
 
 func _get_status_snapshot_penalty(
@@ -5806,16 +6907,47 @@ func _on_route_inventory_bag_requested() -> void:
 		and not _is_route_input_locked()
 		and _pending_node_id == INVALID_NODE_ID
 	):
+		_configure_profile_upgrade_authority()
 		player_profile_panel.open()
 
 
 func _on_player_profile_opened() -> void:
+	_configure_profile_upgrade_authority()
 	_refresh_route_input_lock()
 
 
 func _on_player_profile_closed() -> void:
-	player_profile_panel.configure_multiplayer_requests(false)
+	_configure_profile_upgrade_authority()
 	_refresh_route_input_lock()
+
+
+func _configure_profile_upgrade_authority() -> void:
+	if player_profile_panel == null:
+		return
+	# 多人路线不允许 UI 直接改本地 RunState；单人则保留原本地事务。
+	player_profile_panel.configure_multiplayer_requests(_multiplayer_avatar_mode)
+	player_profile_panel.configure_local_upgrade_authority(
+		not _multiplayer_avatar_mode
+	)
+
+
+func _on_profile_multiplayer_upgrade_requested(stat_type: int) -> void:
+	if (
+		not _multiplayer_avatar_mode
+		or _run_state == null
+		or player == null
+		or not is_instance_valid(player)
+		or _local_peer_id <= 0
+		or player.peer_id != _local_peer_id
+		or not _run_state.has_multiplayer_peer_state(_local_peer_id)
+		or not player.uses_run_party_xirang_ledger(_local_peer_id)
+	):
+		return
+	player_upgrade_requested.emit(
+		stat_type,
+		_run_state.get_upgrade_level_for_peer(_local_peer_id, stat_type),
+		_run_state.get_party_xirang_ledger_revision()
+	)
 
 
 func _on_supply_profile_inventory_discard_requested(slot_index: int) -> void:

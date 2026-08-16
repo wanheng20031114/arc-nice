@@ -131,6 +131,12 @@ func configure_singleplayer(character_id: StringName) -> Player:
 	player_instance.name = "Player"
 	player_instance.position = _spawn_point.position
 	_player_parent.add_child(player_instance)
+	if not player_instance.configure_xirang_ownership(
+		Player.XirangOwnership.RUN_PARTY_LEDGER,
+		0
+	):
+		player_instance.queue_free()
+		return null
 	_bind_player_lifecycle(player_instance, 0)
 	local_player = player_instance
 	return player_instance
@@ -162,6 +168,17 @@ func configure_multiplayer_players() -> Player:
 		_configure_multiplayer_control(player_instance, peer_id, str(
 			player_names.get(peer_id, "Player %d" % peer_id)
 		))
+		if not player_instance.configure_xirang_ownership(
+			Player.XirangOwnership.RUN_PARTY_LEDGER,
+			peer_id
+		):
+			player_instance.queue_free()
+			for configured_player in peer_players.values():
+				if configured_player != null and is_instance_valid(configured_player):
+					configured_player.queue_free()
+			peer_players.clear()
+			local_player = null
+			return null
 		_bind_player_lifecycle(player_instance, peer_id)
 		peer_players[peer_id] = player_instance
 		if _research_coordinator != null:
@@ -394,6 +411,15 @@ func ensure_reconnected_multiplayer_player(
 		new_peer_id,
 		str(player_names.get(new_peer_id, "Player %d" % new_peer_id))
 	)
+	if not player_instance.configure_xirang_ownership(
+		Player.XirangOwnership.RUN_PARTY_LEDGER,
+		new_peer_id
+	):
+		if not reused_existing:
+			player_instance.queue_free()
+		return CombatRuntimeBase.ReconnectedPlayerProjection.new(
+			CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATE_FAILED
+		)
 	_bind_player_lifecycle(player_instance, new_peer_id)
 	peer_players[new_peer_id] = player_instance
 	if new_peer_id == local_peer_id:
@@ -622,19 +648,29 @@ func force_revive_dead_players(emit_multiplayer: bool) -> void:
 ## 从跨场景 RunState 重新应用永久属性与最大生命惩罚后，再把全员恢复到
 ## 当前有效上限。多人权威由会话层产生健康 revision，避免只改 Host 节点。
 func restore_all_players_to_full_health(emit_multiplayer: bool) -> void:
-	refresh_players_from_run_state()
 	match runtime_mode:
 		CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
 			if local_player == null or not is_instance_valid(local_player):
 				return
-			local_player.revive_multiplayer(
-				local_player.global_position,
-				local_player.max_health,
-				_respawn_invincibility_seconds
-			)
+			var progression := _run_state.export_player_run_progression(0)
+			if not local_player.restore_run_scene_entry(progression):
+				push_error("Tower 单人玩家无法提交跨场景恢复边界。")
 		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY:
-			if emit_multiplayer:
-				restore_all_full_health_requested.emit()
+			if not emit_multiplayer:
+				return
+			# Host 先按健康态计算最终上限并清瞬态，随后健康 revision 才把同一
+			# 绝对结果广播到所有 Client；任一成员失败则整批不发布。
+			for player_instance in get_all_players():
+				var progression := _run_state.export_player_run_progression(
+					player_instance.peer_id
+				)
+				if not player_instance.restore_run_scene_entry(progression):
+					push_error(
+						"Tower 玩家%d无法提交跨场景恢复边界。"
+						% player_instance.peer_id
+					)
+					return
+			restore_all_full_health_requested.emit()
 
 
 func refresh_players_from_run_state() -> void:
@@ -646,13 +682,11 @@ func refresh_players_from_run_state() -> void:
 			if runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 			else player_instance.peer_id
 		)
-		player_instance.set_run_max_health_penalty(
-			_run_state.get_max_health_penalty_for_peer(runtime_peer_id)
-		)
-		player_instance.configure_run_stat_bonuses(
-			_run_state.get_player_stat_bonuses(runtime_peer_id),
-			true
-		)
+		var progression := _run_state.export_player_run_progression(runtime_peer_id)
+		if not player_instance.apply_run_progression_snapshot(progression, true):
+			push_error(
+				"Tower 玩家 %d 的本局成长账本缺失或无效。" % runtime_peer_id
+			)
 
 
 func update_singleplayer_respawn(delta: float) -> void:

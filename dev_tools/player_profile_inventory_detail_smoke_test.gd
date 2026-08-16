@@ -169,7 +169,12 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	_expect(profile_panel.physical_defense_value.text == str(player.physical_defense), "Profile panel must show current physical defense.")
 	_expect(profile_panel.magic_defense_value.text == str(player.magic_defense), "Profile panel must show current magic defense.")
 
-	player.upgrade_attack()
+	var upgrade_levels := player.get_run_upgrade_levels()
+	upgrade_levels[RunStateStore.StatType.ATTACK] = 1
+	_expect(
+		player.configure_run_upgrade_levels(upgrade_levels, true),
+		"Profile event testing must apply a complete absolute upgrade snapshot."
+	)
 	_expect(
 		profile_panel.attack_value.text == str(player.attack_damage),
 		"Profile panel attack text must update from the player state-change signal."

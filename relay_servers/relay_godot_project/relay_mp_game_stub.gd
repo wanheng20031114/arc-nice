@@ -378,7 +378,8 @@ func net_route_full_snapshot(
 	state: Dictionary,
 	encounter_state: Dictionary,
 	economy_state: Dictionary,
-	shop_state: Dictionary
+	shop_state: Dictionary,
+	progression_ledger: Dictionary
 ) -> void:
 	pass
 

@@ -68,6 +68,26 @@ func _cleanup_character_combat_on_death() -> void:
 	_update_ammo_bar()
 
 
+func _clear_character_scene_transients() -> void:
+	super._clear_character_scene_transients()
+	form_fire_rate_multiplier = DEFAULT_FIRE_RATE_MULTIPLIER
+	current_form_mode = PickupConfig.PlayerFormMode.NORMAL
+	current_shot_pattern = PickupConfig.ShotPattern.NORMAL
+	form_buff_time_left = 0.0
+	spiral_phase = 0.0
+	_authoritative_spiral_partner_pending = false
+	_authoritative_spiral_partner_deadline_msec = 0
+	_network_ammo_capacity_override = 0
+	is_reloading = false
+	reload_progress = 0.0
+	if primary_attack_audio != null:
+		primary_attack_audio.stop()
+	if reload_audio != null:
+		reload_audio.stop()
+	_update_armed_effect()
+	_update_ammo_bar()
+
+
 func _update_character_visual_state() -> void:
 	_update_armed_effect()
 

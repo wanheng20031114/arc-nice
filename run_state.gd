@@ -16,6 +16,7 @@ signal quick_use_binding_changed(
 	preferred_slot_index: int
 )
 signal upgrade_changed
+signal player_upgrade_ledger_changed(snapshot: Dictionary)
 signal selected_character_changed(character_id: StringName)
 signal shared_warehouse_ledger_changed(snapshot: Dictionary)
 signal party_xirang_ledger_changed(snapshot: Dictionary)
@@ -30,6 +31,8 @@ const SHARED_WAREHOUSE_LEDGER_SCHEMA_VERSION := 1
 const PARTY_XIRANG_LEDGER_SCHEMA_VERSION := 1
 const PARTY_LIGHT_STONE_LEDGER_SCHEMA_VERSION := 1
 const PARTY_STATUS_LEDGER_SCHEMA_VERSION := 3
+const PLAYER_RUN_PROGRESSION_SCHEMA_VERSION := 1
+const PLAYER_UPGRADE_LEDGER_SCHEMA_VERSION := 1
 const ROGUE_ENCOUNTER_HISTORY_LEDGER_SCHEMA_VERSION := 1
 const DEFAULT_PARTY_CORE_HEALTH := 100
 const PLAYER_STAT_BONUS_KEYS: Array[StringName] = [
@@ -103,11 +106,14 @@ var upgrade_levels := {
 	StatType.ATTACK_SPEED: 0,
 	StatType.DODGE: 0,
 }
+var skill1_upgrade_level: int = 0
+var player_upgrade_ledger_revision: int = 0
 var active_multiplayer_peer_id: int = 0
 var multiplayer_inventories: Dictionary = {}
 var multiplayer_inventory_stack_counts: Dictionary = {}
 var multiplayer_inventory_revisions: Dictionary = {}
 var multiplayer_upgrade_levels: Dictionary = {}
+var multiplayer_skill1_upgrade_levels: Dictionary = {}
 ## 多人账本成员的唯一真源。只有完成认证/身份表收敛的 peer 才能显式注册；
 ## Player 节点是否已经生成不参与成员判定，避免跨信道结果依赖场景节点时序。
 var _registered_multiplayer_peer_ids: Dictionary[int, bool] = {}
@@ -187,11 +193,14 @@ func begin_new_run(
 	inventory_revision = 0
 	for stat_type: int in upgrade_levels:
 		upgrade_levels[stat_type] = 0
+	skill1_upgrade_level = 0
+	player_upgrade_ledger_revision = 0
 	active_multiplayer_peer_id = 0
 	multiplayer_inventories.clear()
 	multiplayer_inventory_stack_counts.clear()
 	multiplayer_inventory_revisions.clear()
 	multiplayer_upgrade_levels.clear()
+	multiplayer_skill1_upgrade_levels.clear()
 	_registered_multiplayer_peer_ids.clear()
 	_multiplayer_session_membership_revision = -1
 	_multiplayer_peer_remap_aliases.clear()
@@ -212,6 +221,7 @@ func begin_new_run(
 	run_started = true
 	inventory_changed.emit()
 	upgrade_changed.emit()
+	player_upgrade_ledger_changed.emit(export_player_upgrade_ledger())
 	multiplayer_peer_membership_changed.emit(PackedInt32Array())
 
 
@@ -639,10 +649,19 @@ func is_quick_use_item(
 	)
 
 
-func try_upgrade(stat_type: int, player: Player) -> bool:
+func try_upgrade(
+	stat_type: int,
+	player: Player
+) -> bool:
 	if active_multiplayer_peer_id > 0:
 		return try_upgrade_for_peer(active_multiplayer_peer_id, stat_type, player)
-	if player == null:
+	if not run_started or player == null or player.peer_id > 0:
+		return false
+	var uses_party_ledger := player.uses_run_party_xirang_ledger(0)
+	if (
+		player.xirang_ownership == Player.XirangOwnership.RUN_PARTY_LEDGER
+		and not uses_party_ledger
+	):
 		return false
 	player.consume_last_base_upgrade_free_flag()
 	if not upgrade_levels.has(stat_type):
@@ -653,25 +672,37 @@ func try_upgrade(stat_type: int, player: Player) -> bool:
 	if current_level >= max_level:
 		return false
 	var upgrade_cost := get_upgrade_cost(stat_type)
-	if upgrade_cost < 0 or player.current_xirang < upgrade_cost:
+	var spend_balance := (
+		get_party_xirang_balance(0)
+		if uses_party_ledger
+		else player.current_xirang
+	)
+	if upgrade_cost < 0 or spend_balance < upgrade_cost:
 		return false
 
 	var free_upgrade := player.try_trigger_free_base_upgrade()
 	if not free_upgrade:
-		player.set_xirang_balance(player.current_xirang - upgrade_cost)
+		if uses_party_ledger:
+			party_xirang_balances[0] = spend_balance - upgrade_cost
+			party_xirang_ledger_revision += 1
+		else:
+			player.set_xirang_balance(spend_balance - upgrade_cost)
 	upgrade_levels[stat_type] = current_level + 1
+	_publish_player_upgrade_ledger_change(true)
+	if uses_party_ledger:
+		# 余额与等级已在任何信号前同时写入；两个投影信号只发布同一提交结果。
+		party_xirang_ledger_changed.emit(export_party_xirang_ledger())
+	# 等级先进入跨场景账本，Player 再消费完整绝对快照；节点缺失/重建时也
+	# 不需要重放每一级 delta，更不会把一次确认重复叠加。
+	var projection_succeeded := player.apply_run_progression_snapshot(
+		export_player_run_progression(0),
+		true
+	)
+	if not projection_succeeded:
+		push_error("单人升级账本已提交，但当前 Player 拒绝绝对成长投影。")
+	elif stat_type == StatType.HEALTH:
+		player.restore_current_health_to_maximum()
 
-	match stat_type:
-		StatType.ATTACK:
-			player.upgrade_attack()
-		StatType.HEALTH:
-			player.upgrade_max_health()
-		StatType.ATTACK_SPEED:
-			player.upgrade_attack_speed()
-		StatType.DODGE:
-			player.upgrade_dodge()
-
-	upgrade_changed.emit()
 	return true
 
 
@@ -679,6 +710,461 @@ func get_upgrade_level(stat_type: int) -> int:
 	if active_multiplayer_peer_id > 0:
 		return get_upgrade_level_for_peer(active_multiplayer_peer_id, stat_type)
 	return upgrade_levels.get(stat_type, 0)
+
+
+## 返回指定本局身份的完整基础升级绝对等级。单人固定使用 owner=0；多人只
+## 接受认证成员。调用方只能把它作为 Player 场景投影输入，不能持有并改写账本。
+func get_upgrade_levels_for_peer(peer_id: int) -> Dictionary:
+	if not run_started or peer_id < 0:
+		return {}
+	if peer_id == 0:
+		return upgrade_levels.duplicate(true)
+	if not has_multiplayer_peer_state(peer_id):
+		return {}
+	return (multiplayer_upgrade_levels[peer_id] as Dictionary).duplicate(true)
+
+
+## Player 的跨场景成长快照只包含作者基础值之外的本局持久层：基础升级、
+## 永久属性奖励与最大生命惩罚。当前生命和任何持续状态都故意不进入该快照，
+## 场景入口必须在投影完成后另行恢复满血并清理瞬态异常。
+func export_player_run_progression(peer_id: int) -> Dictionary:
+	var levels := get_upgrade_levels_for_peer(peer_id)
+	if levels.is_empty():
+		return {}
+	return {
+		"schema_version": PLAYER_RUN_PROGRESSION_SCHEMA_VERSION,
+		"peer_id": peer_id,
+		"upgrade_levels": levels,
+		"skill1_upgrade_level": get_skill1_upgrade_level_for_peer(peer_id),
+		"stat_bonuses": get_player_stat_bonuses(peer_id),
+		"max_health_penalty": get_max_health_penalty_for_peer(peer_id),
+	}
+
+
+func get_skill1_upgrade_level_for_peer(peer_id: int) -> int:
+	if not run_started or peer_id < 0:
+		return 0
+	if peer_id == 0:
+		return skill1_upgrade_level
+	if not has_multiplayer_peer_state(peer_id):
+		return 0
+	return int(multiplayer_skill1_upgrade_levels[peer_id])
+
+
+func get_player_upgrade_ledger_revision() -> int:
+	return player_upgrade_ledger_revision
+
+
+## 四项基础升级与技能等级共享一个带成员世代的完整权威账本。外层 peer 与
+## 内层 stat 都使用十进制字符串，确保 RPC/冻结夹具不会依赖 Variant 字典键。
+func export_player_upgrade_ledger() -> Dictionary:
+	if not run_started:
+		return {}
+	var values := {
+		"0": _make_player_upgrade_ledger_entry(upgrade_levels, skill1_upgrade_level),
+	}
+	for peer_id in get_registered_multiplayer_peer_ids():
+		values[str(peer_id)] = _make_player_upgrade_ledger_entry(
+			multiplayer_upgrade_levels[peer_id] as Dictionary,
+			int(multiplayer_skill1_upgrade_levels[peer_id])
+		)
+	return {
+		"schema_version": PLAYER_UPGRADE_LEDGER_SCHEMA_VERSION,
+		"revision": player_upgrade_ledger_revision,
+		"membership_revision": _multiplayer_session_membership_revision,
+		"values": values,
+	}
+
+
+## 便捷入口仍复用 prepare/commit CAS。该账本只消费已校验 Host 的全量快照；
+## CH6 逐字段确认另走单调 setter，不能调用此权威替换入口。
+func apply_player_upgrade_ledger(
+	snapshot: Dictionary,
+	allow_equal_authority_repair: bool = false
+) -> bool:
+	var prepared := prepare_player_upgrade_ledger(
+		snapshot,
+		allow_equal_authority_repair
+	)
+	return commit_prepared_player_upgrade_ledger(prepared)
+
+
+## 在任何路线/经济状态落地前冻结 Host 成长快照与当前 authority
+## revision。高于本地的 Host revision 是新权威，可以纠正本地误投影的高等级。
+func prepare_player_upgrade_ledger(
+	snapshot: Dictionary,
+	allow_equal_authority_repair: bool = false
+) -> Dictionary:
+	if not run_started:
+		return {}
+	var decoded := _decode_player_upgrade_ledger(snapshot)
+	if decoded.is_empty():
+		return {}
+	var incoming_revision := int(decoded["revision"])
+	if incoming_revision < player_upgrade_ledger_revision:
+		return {}
+	var incoming_values := decoded["values"] as Dictionary
+	var current_values := _capture_player_upgrade_ledger_values()
+	var values_changed := incoming_values != current_values
+	if (
+		incoming_revision == player_upgrade_ledger_revision
+		and values_changed
+		and not allow_equal_authority_repair
+	):
+		return {}
+	return {
+		"expected_authority_revision": player_upgrade_ledger_revision,
+		"expected_membership_revision": _multiplayer_session_membership_revision,
+		"incoming_revision": incoming_revision,
+		"values": incoming_values.duplicate(true),
+		"changed": (
+			values_changed
+			or incoming_revision != player_upgrade_ledger_revision
+		),
+	}
+
+
+## Route 全快照预检通过后才调用。任一 authority/membership 基线变化
+## 都拒绝提交，使路线经济与玩家成长不会混用两个世代。
+func commit_prepared_player_upgrade_ledger(prepared: Dictionary) -> bool:
+	if not can_commit_prepared_player_upgrade_ledger(prepared):
+		return false
+	commit_validated_player_upgrade_ledger(prepared)
+	return true
+
+
+func commit_validated_player_upgrade_ledger(
+	prepared: Dictionary,
+	emit_change_signals: bool = true
+) -> void:
+	var incoming_revision := int(prepared["incoming_revision"])
+	var incoming_values := prepared["values"] as Dictionary
+	if not bool(prepared["changed"]):
+		return
+	var owner_zero := incoming_values[0] as Dictionary
+	upgrade_levels = (owner_zero["upgrade_levels"] as Dictionary).duplicate(true)
+	skill1_upgrade_level = int(owner_zero["skill1_upgrade_level"])
+	for peer_id in get_registered_multiplayer_peer_ids():
+		var entry := incoming_values[peer_id] as Dictionary
+		multiplayer_upgrade_levels[peer_id] = (
+			entry["upgrade_levels"] as Dictionary
+		).duplicate(true)
+		multiplayer_skill1_upgrade_levels[peer_id] = int(
+			entry["skill1_upgrade_level"]
+		)
+	player_upgrade_ledger_revision = incoming_revision
+	if emit_change_signals:
+		publish_prepared_player_upgrade_ledger(prepared)
+
+
+func publish_prepared_player_upgrade_ledger(prepared: Dictionary) -> void:
+	if not bool(prepared.get("changed", false)):
+		return
+	upgrade_changed.emit()
+	player_upgrade_ledger_changed.emit(export_player_upgrade_ledger())
+
+
+## 组合尚未提交的成长与 Party Status token，供 Route 在首写前逐 Player
+## 验证最终绝对投影。返回值不读取 UI 或旧 Player 派生数值。
+func build_player_run_progression_from_prepared_ledgers(
+	peer_id: int,
+	prepared_upgrade: Dictionary,
+	prepared_party_economy: Dictionary
+) -> Dictionary:
+	if (
+		peer_id < 0
+		or not can_commit_prepared_player_upgrade_ledger(prepared_upgrade)
+		or not can_commit_prepared_party_economy_snapshot(
+			prepared_party_economy
+		)
+	):
+		return {}
+	var upgrade_values := prepared_upgrade["values"] as Dictionary
+	var status := prepared_party_economy.get(
+		"party_status_ledger",
+		{}
+	) as Dictionary
+	if (
+		not upgrade_values.has(peer_id)
+		or typeof(status.get("player_stat_bonuses")) != TYPE_DICTIONARY
+		or typeof(status.get("max_health_penalties")) != TYPE_DICTIONARY
+	):
+		return {}
+	var bonuses := status["player_stat_bonuses"] as Dictionary
+	var penalties := status["max_health_penalties"] as Dictionary
+	if not bonuses.has(peer_id) or not penalties.has(peer_id):
+		return {}
+	var entry := upgrade_values[peer_id] as Dictionary
+	return {
+		"schema_version": PLAYER_RUN_PROGRESSION_SCHEMA_VERSION,
+		"peer_id": peer_id,
+		"upgrade_levels": (
+			entry["upgrade_levels"] as Dictionary
+		).duplicate(true),
+		"skill1_upgrade_level": int(entry["skill1_upgrade_level"]),
+		"stat_bonuses": (bonuses[peer_id] as Dictionary).duplicate(true),
+		"max_health_penalty": int(penalties[peer_id]),
+	}
+
+
+func can_commit_prepared_player_upgrade_ledger(prepared: Dictionary) -> bool:
+	if (
+		not run_started
+		or prepared.size() != 5
+		or typeof(prepared.get("expected_authority_revision")) != TYPE_INT
+		or typeof(prepared.get("expected_membership_revision")) != TYPE_INT
+		or typeof(prepared.get("incoming_revision")) != TYPE_INT
+		or typeof(prepared.get("values")) != TYPE_DICTIONARY
+		or typeof(prepared.get("changed")) != TYPE_BOOL
+		or int(prepared["expected_authority_revision"])
+		!= player_upgrade_ledger_revision
+		or int(prepared["expected_membership_revision"])
+		!= _multiplayer_session_membership_revision
+	):
+		return false
+	var incoming_revision := int(prepared["incoming_revision"])
+	if incoming_revision < player_upgrade_ledger_revision:
+		return false
+	var incoming_values := prepared["values"] as Dictionary
+	if not _is_valid_decoded_player_upgrade_values(incoming_values):
+		return false
+	return (
+		bool(prepared["changed"])
+		or incoming_values == _capture_player_upgrade_ledger_values()
+	)
+
+
+func _is_valid_decoded_player_upgrade_values(values: Dictionary) -> bool:
+	if not _contains_exact_registered_ledger_peer_ids(values):
+		return false
+	for raw_peer_id in values.keys():
+		if typeof(raw_peer_id) != TYPE_INT:
+			return false
+		var entry_value: Variant = values[raw_peer_id]
+		if typeof(entry_value) != TYPE_DICTIONARY:
+			return false
+		var entry := entry_value as Dictionary
+		if (
+			entry.size() != 2
+			or typeof(entry.get("upgrade_levels")) != TYPE_DICTIONARY
+			or typeof(entry.get("skill1_upgrade_level")) != TYPE_INT
+		):
+			return false
+		var skill_level := int(entry["skill1_upgrade_level"])
+		if skill_level < 0 or skill_level > Player.SKILL1_MAX_UPGRADE_LEVEL:
+			return false
+		var levels := entry["upgrade_levels"] as Dictionary
+		if levels.size() != MAX_UPGRADE_LEVELS.size():
+			return false
+		for raw_stat_type in levels.keys():
+			if typeof(raw_stat_type) != TYPE_INT:
+				return false
+			var stat_type := int(raw_stat_type)
+			var level_value: Variant = levels[raw_stat_type]
+			if (
+				not MAX_UPGRADE_LEVELS.has(stat_type)
+				or typeof(level_value) != TYPE_INT
+				or int(level_value) < 0
+				or int(level_value) > int(MAX_UPGRADE_LEVELS[stat_type])
+			):
+				return false
+	return true
+
+
+func _make_player_upgrade_ledger_entry(
+	levels: Dictionary,
+	skill_level: int
+) -> Dictionary:
+	var wire_levels := {}
+	for raw_stat_type in MAX_UPGRADE_LEVELS.keys():
+		var stat_type := int(raw_stat_type)
+		wire_levels[str(stat_type)] = int(levels[stat_type])
+	return {
+		"upgrade_levels": wire_levels,
+		"skill1_upgrade_level": skill_level,
+	}
+
+
+func _capture_player_upgrade_ledger_values() -> Dictionary:
+	var values := {
+		0: {
+			"upgrade_levels": upgrade_levels.duplicate(true),
+			"skill1_upgrade_level": skill1_upgrade_level,
+		},
+	}
+	for peer_id in get_registered_multiplayer_peer_ids():
+		values[peer_id] = {
+			"upgrade_levels": (
+				multiplayer_upgrade_levels[peer_id] as Dictionary
+			).duplicate(true),
+			"skill1_upgrade_level": int(
+				multiplayer_skill1_upgrade_levels[peer_id]
+			),
+		}
+	return values
+
+
+func _decode_player_upgrade_ledger(snapshot: Dictionary) -> Dictionary:
+	if (
+		snapshot.size() != 4
+		or typeof(snapshot.get("schema_version")) != TYPE_INT
+		or int(snapshot["schema_version"]) != PLAYER_UPGRADE_LEDGER_SCHEMA_VERSION
+		or typeof(snapshot.get("revision")) != TYPE_INT
+		or int(snapshot["revision"]) < 0
+		or typeof(snapshot.get("membership_revision")) != TYPE_INT
+		or int(snapshot["membership_revision"])
+		!= _multiplayer_session_membership_revision
+		or typeof(snapshot.get("values")) != TYPE_DICTIONARY
+	):
+		return {}
+	var decoded_values := {}
+	for raw_peer_id in (snapshot["values"] as Dictionary).keys():
+		if (
+			typeof(raw_peer_id) != TYPE_INT
+			and (
+				typeof(raw_peer_id) != TYPE_STRING
+				or not str(raw_peer_id).is_valid_int()
+			)
+		):
+			return {}
+		var peer_id := int(raw_peer_id)
+		var raw_entry: Variant = (snapshot["values"] as Dictionary)[raw_peer_id]
+		if (
+			peer_id < 0
+			or decoded_values.has(peer_id)
+			or typeof(raw_entry) != TYPE_DICTIONARY
+			or (raw_entry as Dictionary).size() != 2
+			or typeof((raw_entry as Dictionary).get("upgrade_levels"))
+			!= TYPE_DICTIONARY
+			or typeof((raw_entry as Dictionary).get("skill1_upgrade_level"))
+			!= TYPE_INT
+		):
+			return {}
+		var skill_level := int((raw_entry as Dictionary)["skill1_upgrade_level"])
+		if skill_level < 0 or skill_level > Player.SKILL1_MAX_UPGRADE_LEVEL:
+			return {}
+		var raw_levels := (raw_entry as Dictionary)["upgrade_levels"] as Dictionary
+		if raw_levels.size() != MAX_UPGRADE_LEVELS.size():
+			return {}
+		var decoded_levels := {}
+		for raw_stat_type in raw_levels.keys():
+			if (
+				typeof(raw_stat_type) != TYPE_INT
+				and (
+					typeof(raw_stat_type) != TYPE_STRING
+					or not str(raw_stat_type).is_valid_int()
+				)
+			):
+				return {}
+			var stat_type := int(raw_stat_type)
+			var level_value: Variant = raw_levels[raw_stat_type]
+			if (
+				not MAX_UPGRADE_LEVELS.has(stat_type)
+				or decoded_levels.has(stat_type)
+				or typeof(level_value) != TYPE_INT
+				or int(level_value) < 0
+				or int(level_value) > int(MAX_UPGRADE_LEVELS[stat_type])
+			):
+				return {}
+			decoded_levels[stat_type] = int(level_value)
+		decoded_values[peer_id] = {
+			"upgrade_levels": decoded_levels,
+			"skill1_upgrade_level": skill_level,
+		}
+	if not _contains_exact_registered_ledger_peer_ids(decoded_values):
+		return {}
+	return {
+		"revision": int(snapshot["revision"]),
+		"values": decoded_values,
+	}
+
+
+func _publish_player_upgrade_ledger_change(
+	authority_commit: bool = false
+) -> void:
+	# revision 只统计权威购买提交；客户端逐字段确认的到达次数与 Host 不同，
+	# 只能触发本地绝对投影，绝不能伪造跨端 CAS 水位。
+	if authority_commit:
+		player_upgrade_ledger_revision += 1
+	upgrade_changed.emit()
+	player_upgrade_ledger_changed.emit(export_player_upgrade_ledger())
+
+
+## 技能升级与基础升级共用同一玩家成长所有权：先提交绝对等级，再投影
+## Player。技能充能值不进入账本，换场时由 Player 的瞬态清理归零。
+func try_upgrade_skill1_for_peer(
+	peer_id: int,
+	player: Player,
+	free: bool = false
+) -> bool:
+	if (
+		not run_started
+		or peer_id < 0
+		or player == null
+		or (peer_id > 0 and not has_multiplayer_peer_state(peer_id))
+		or (peer_id > 0 and player.peer_id != peer_id)
+		or (peer_id == 0 and player.peer_id > 0)
+		or not player.has_skill1()
+	):
+		return false
+	var uses_party_ledger := player.uses_run_party_xirang_ledger(peer_id)
+	if (
+		player.xirang_ownership == Player.XirangOwnership.RUN_PARTY_LEDGER
+		and not uses_party_ledger
+	):
+		return false
+	var current_level := get_skill1_upgrade_level_for_peer(peer_id)
+	if current_level >= Player.SKILL1_MAX_UPGRADE_LEVEL:
+		return false
+	# Player 可能刚从另一个场景生成，先按账本校准成本基线，不能信任旧节点。
+	player.apply_skill1_upgrade_state(current_level)
+	var upgrade_cost := player.get_skill1_upgrade_cost()
+	var spend_balance := (
+		get_party_xirang_balance(peer_id)
+		if uses_party_ledger
+		else player.current_xirang
+	)
+	if upgrade_cost < 0 or (not free and spend_balance < upgrade_cost):
+		return false
+	if not free:
+		if uses_party_ledger:
+			party_xirang_balances[peer_id] = spend_balance - upgrade_cost
+			party_xirang_ledger_revision += 1
+		else:
+			player.set_xirang_balance(spend_balance - upgrade_cost)
+	var next_level := current_level + 1
+	if peer_id == 0:
+		skill1_upgrade_level = next_level
+	else:
+		multiplayer_skill1_upgrade_levels[peer_id] = next_level
+	_publish_player_upgrade_ledger_change(true)
+	if uses_party_ledger:
+		party_xirang_ledger_changed.emit(export_party_xirang_ledger())
+	player.apply_skill1_upgrade_state(next_level)
+	return true
+
+
+## 可靠确认只允许技能等级单调收敛；Player 是否存在不参与持久提交。
+func set_skill1_upgrade_level_for_peer(peer_id: int, level: int) -> bool:
+	if (
+		not run_started
+		or peer_id < 0
+		or level < 0
+		or level > Player.SKILL1_MAX_UPGRADE_LEVEL
+		or (peer_id > 0 and not has_multiplayer_peer_state(peer_id))
+	):
+		return false
+	var current_level := get_skill1_upgrade_level_for_peer(peer_id)
+	if level < current_level:
+		return false
+	if level == current_level:
+		return true
+	if peer_id == 0:
+		skill1_upgrade_level = level
+	else:
+		multiplayer_skill1_upgrade_levels[peer_id] = level
+	_publish_player_upgrade_ledger_change()
+	return true
 
 
 func get_max_upgrade_level(stat_type: int) -> int:
@@ -994,6 +1480,7 @@ func _has_complete_registered_multiplayer_peer_state(peer_id: int) -> bool:
 		or not multiplayer_inventory_stack_counts.has(peer_id)
 		or not multiplayer_inventory_revisions.has(peer_id)
 		or not multiplayer_upgrade_levels.has(peer_id)
+		or not multiplayer_skill1_upgrade_levels.has(peer_id)
 		or not party_xirang_balances.has(peer_id)
 		or not max_health_penalties.has(peer_id)
 		or not player_stat_bonuses.has(peer_id)
@@ -1005,6 +1492,10 @@ func _has_complete_registered_multiplayer_peer_state(peer_id: int) -> bool:
 		or typeof(multiplayer_inventory_revisions[peer_id]) != TYPE_INT
 		or int(multiplayer_inventory_revisions[peer_id]) < 0
 		or typeof(multiplayer_upgrade_levels[peer_id]) != TYPE_DICTIONARY
+		or typeof(multiplayer_skill1_upgrade_levels[peer_id]) != TYPE_INT
+		or int(multiplayer_skill1_upgrade_levels[peer_id]) < 0
+		or int(multiplayer_skill1_upgrade_levels[peer_id])
+		> Player.SKILL1_MAX_UPGRADE_LEVEL
 		or typeof(party_xirang_balances[peer_id]) != TYPE_INT
 		or int(party_xirang_balances[peer_id]) < 0
 		or typeof(max_health_penalties[peer_id]) != TYPE_INT
@@ -1123,6 +1614,9 @@ func remap_multiplayer_peer_state(
 	multiplayer_upgrade_levels[new_peer_id] = (
 		multiplayer_upgrade_levels[old_peer_id]
 	)
+	multiplayer_skill1_upgrade_levels[new_peer_id] = int(
+		multiplayer_skill1_upgrade_levels[old_peer_id]
+	)
 	party_xirang_balances[new_peer_id] = int(party_xirang_balances[old_peer_id])
 	max_health_penalties[new_peer_id] = int(max_health_penalties[old_peer_id])
 	player_stat_bonuses[new_peer_id] = (
@@ -1136,6 +1630,7 @@ func remap_multiplayer_peer_state(
 	multiplayer_inventory_stack_counts.erase(old_peer_id)
 	multiplayer_inventory_revisions.erase(old_peer_id)
 	multiplayer_upgrade_levels.erase(old_peer_id)
+	multiplayer_skill1_upgrade_levels.erase(old_peer_id)
 	party_xirang_balances.erase(old_peer_id)
 	max_health_penalties.erase(old_peer_id)
 	player_stat_bonuses.erase(old_peer_id)
@@ -1160,6 +1655,7 @@ func remap_multiplayer_peer_state(
 		)
 	inventory_changed.emit()
 	upgrade_changed.emit()
+	player_upgrade_ledger_changed.emit(export_player_upgrade_ledger())
 	party_xirang_ledger_changed.emit(export_party_xirang_ledger())
 	party_status_ledger_changed.emit(export_party_status_ledger())
 	multiplayer_peer_membership_changed.emit(
@@ -1248,6 +1744,7 @@ func _is_multiplayer_peer_storage_vacant(peer_id: int) -> bool:
 		and not multiplayer_inventory_stack_counts.has(peer_id)
 		and not multiplayer_inventory_revisions.has(peer_id)
 		and not multiplayer_upgrade_levels.has(peer_id)
+		and not multiplayer_skill1_upgrade_levels.has(peer_id)
 		and not party_xirang_balances.has(peer_id)
 		and not max_health_penalties.has(peer_id)
 		and not player_stat_bonuses.has(peer_id)
@@ -1375,6 +1872,7 @@ func _prepare_multiplayer_peer_registrations(
 				StatType.ATTACK_SPEED: 0,
 				StatType.DODGE: 0,
 			},
+			"skill1_upgrade_level": 0,
 			"stat_bonuses": _make_empty_player_stat_bonuses(),
 		}
 	return {
@@ -1418,6 +1916,9 @@ func _commit_multiplayer_membership_delta(
 		multiplayer_inventory_stack_counts[peer_id] = prepared["counts"]
 		multiplayer_inventory_revisions[peer_id] = 0
 		multiplayer_upgrade_levels[peer_id] = prepared["upgrade_levels"]
+		multiplayer_skill1_upgrade_levels[peer_id] = int(
+			prepared["skill1_upgrade_level"]
+		)
 		party_xirang_balances[peer_id] = 0
 		max_health_penalties[peer_id] = 0
 		player_stat_bonuses[peer_id] = prepared["stat_bonuses"]
@@ -1431,6 +1932,7 @@ func _commit_multiplayer_membership_delta(
 		multiplayer_inventory_stack_counts.erase(peer_id)
 		multiplayer_inventory_revisions.erase(peer_id)
 		multiplayer_upgrade_levels.erase(peer_id)
+		multiplayer_skill1_upgrade_levels.erase(peer_id)
 		_registered_multiplayer_peer_ids.erase(peer_id)
 		party_xirang_balances.erase(peer_id)
 		max_health_penalties.erase(peer_id)
@@ -1450,6 +1952,7 @@ func _commit_multiplayer_membership_delta(
 		quick_use_binding_changed.emit(peer_id, "", -1)
 	inventory_changed.emit()
 	upgrade_changed.emit()
+	player_upgrade_ledger_changed.emit(export_player_upgrade_ledger())
 	party_xirang_ledger_changed.emit(export_party_xirang_ledger())
 	party_status_ledger_changed.emit(export_party_status_ledger())
 	multiplayer_peer_membership_changed.emit(
@@ -2673,6 +3176,128 @@ func export_party_status_ledger() -> Dictionary:
 	}
 
 
+## Tower 非探索期重连只需要补齐会改变玩家持久面板的两份 party 账本；
+## 背包仍由既有 runtime repair 拥有。两份账本先一起解码，旧 revision
+## 作为已消费重放接受但绝不回滚，较新 revision 才在同一提交中写入。
+func prepare_party_player_projection_ledgers(
+	xirang_snapshot: Dictionary,
+	status_snapshot: Dictionary
+) -> Dictionary:
+	if not run_started:
+		return {}
+	var decoded_xirang := _decode_party_xirang_ledger(xirang_snapshot, -1)
+	var decoded_status := _decode_party_status_ledger(status_snapshot, -1)
+	if decoded_xirang.is_empty() or decoded_status.is_empty():
+		return {}
+	var incoming_xirang_values := decoded_xirang["values"] as Dictionary
+	var incoming_penalties := (
+		decoded_status["max_health_penalties"] as Dictionary
+	)
+	var incoming_bonuses := (
+		decoded_status["player_stat_bonuses"] as Dictionary
+	)
+	if (
+		not _contains_exact_registered_ledger_peer_ids(incoming_xirang_values)
+		or not _contains_exact_registered_ledger_peer_ids(incoming_penalties)
+		or not _contains_exact_registered_ledger_peer_ids(incoming_bonuses)
+	):
+		return {}
+	var incoming_xirang_revision := int(decoded_xirang["revision"])
+	var incoming_status_revision := int(decoded_status["revision"])
+	if (
+		incoming_xirang_revision == party_xirang_ledger_revision
+		and incoming_xirang_values != party_xirang_balances
+	):
+		return {}
+	if (
+		incoming_status_revision == party_status_ledger_revision
+		and (
+			int(decoded_status["core_current"]) != party_core_current
+			or int(decoded_status["core_maximum"]) != party_core_maximum
+			or incoming_penalties != max_health_penalties
+			or incoming_bonuses != player_stat_bonuses
+		)
+	):
+		return {}
+	return {
+		"expected_xirang_revision": party_xirang_ledger_revision,
+		"expected_status_revision": party_status_ledger_revision,
+		"xirang": decoded_xirang,
+		"status": decoded_status,
+	}
+
+
+func commit_prepared_party_player_projection_ledgers(
+	prepared: Dictionary
+) -> bool:
+	if not can_commit_prepared_party_player_projection_ledgers(prepared):
+		return false
+	commit_validated_party_player_projection_ledgers(prepared, true)
+	return true
+
+
+## 外层组合事务已完成两份 revision CAS 后的无失败写入口。信号可延迟到
+## 成长、Research、Fate 与路线身份全部提交后再统一发布。
+func commit_validated_party_player_projection_ledgers(
+	prepared: Dictionary,
+	emit_change_signals: bool = true
+) -> void:
+	var decoded_xirang := prepared["xirang"] as Dictionary
+	var decoded_status := prepared["status"] as Dictionary
+	var incoming_xirang_revision := int(decoded_xirang["revision"])
+	var incoming_status_revision := int(decoded_status["revision"])
+	var xirang_changed := incoming_xirang_revision > party_xirang_ledger_revision
+	var status_changed := incoming_status_revision > party_status_ledger_revision
+	if xirang_changed:
+		party_xirang_balances = (
+			decoded_xirang["values"] as Dictionary
+		).duplicate(true)
+		party_xirang_ledger_revision = incoming_xirang_revision
+	if status_changed:
+		party_core_current = int(decoded_status["core_current"])
+		party_core_maximum = int(decoded_status["core_maximum"])
+		max_health_penalties = (
+			decoded_status["max_health_penalties"] as Dictionary
+		).duplicate(true)
+		player_stat_bonuses = (
+			decoded_status["player_stat_bonuses"] as Dictionary
+		).duplicate(true)
+		party_status_ledger_revision = incoming_status_revision
+	if emit_change_signals:
+		publish_prepared_party_player_projection_ledgers(prepared)
+
+
+func publish_prepared_party_player_projection_ledgers(
+	prepared: Dictionary
+) -> void:
+	var incoming_xirang_revision := int(
+		(prepared["xirang"] as Dictionary)["revision"]
+	)
+	var incoming_status_revision := int(
+		(prepared["status"] as Dictionary)["revision"]
+	)
+	if incoming_xirang_revision > int(prepared["expected_xirang_revision"]):
+		party_xirang_ledger_changed.emit(export_party_xirang_ledger())
+	if incoming_status_revision > int(prepared["expected_status_revision"]):
+		party_status_ledger_changed.emit(export_party_status_ledger())
+
+
+func can_commit_prepared_party_player_projection_ledgers(
+	prepared: Dictionary
+) -> bool:
+	return (
+		prepared.size() == 4
+		and typeof(prepared.get("expected_xirang_revision")) == TYPE_INT
+		and typeof(prepared.get("expected_status_revision")) == TYPE_INT
+		and typeof(prepared.get("xirang")) == TYPE_DICTIONARY
+		and typeof(prepared.get("status")) == TYPE_DICTIONARY
+		and int(prepared["expected_xirang_revision"])
+		== party_xirang_ledger_revision
+		and int(prepared["expected_status_revision"])
+		== party_status_ledger_revision
+	)
+
+
 func apply_party_status_ledger(
 	snapshot: Dictionary,
 	allow_revision_rewind: bool = false,
@@ -2762,7 +3387,20 @@ func apply_party_economy_snapshot(
 	snapshot: Dictionary,
 	allow_revision_rewind: bool = false
 ) -> bool:
-	var prepared := _prepare_party_economy_snapshot(
+	var prepared := prepare_party_economy_snapshot(
+		snapshot,
+		allow_revision_rewind
+	)
+	return commit_prepared_party_economy_snapshot(prepared)
+
+
+## 为跨领域全量快照只读解码 Party Economy。返回 token 冻结了所有账本
+## revision 与背包基线，调用方可先和路线、成长等域一起完成全量预检。
+func prepare_party_economy_snapshot(
+	snapshot: Dictionary,
+	allow_revision_rewind: bool = false
+) -> Dictionary:
+	return _prepare_party_economy_snapshot(
 		snapshot,
 		allow_revision_rewind,
 		false,
@@ -2772,7 +3410,134 @@ func apply_party_economy_snapshot(
 		-1,
 		-1
 	)
-	return _commit_prepared_party_economy_snapshot(prepared)
+
+
+## inactive Tower outer 只用旧快照推进流程终态；若独立 repair 已让本地每个
+## Party 子账本都不低于 incoming，则冻结“当前高水位”作为最终有效 token。
+## 任一 incoming 子域更高或同 revision 内容冲突仍严格拒绝，绝不做混合猜测。
+func prepare_party_economy_snapshot_or_current_if_fully_stale(
+	snapshot: Dictionary
+) -> Dictionary:
+	var strict := prepare_party_economy_snapshot(snapshot, false)
+	if not strict.is_empty():
+		return strict
+	var decoded_stale := prepare_party_economy_snapshot(snapshot, true)
+	if decoded_stale.is_empty():
+		return {}
+	if (
+		int((decoded_stale["warehouse_ledger"] as Dictionary)["revision"])
+		> shared_warehouse_ledger_revision
+		or int((decoded_stale["xirang_ledger"] as Dictionary)["revision"])
+		> party_xirang_ledger_revision
+		or int((decoded_stale["light_stone_ledger"] as Dictionary)["revision"])
+		> party_light_stone_ledger_revision
+		or int((decoded_stale["party_status_ledger"] as Dictionary)["revision"])
+		> party_status_ledger_revision
+		or int((decoded_stale[
+			"rogue_encounter_history_ledger"
+		] as Dictionary)["revision"]) > rogue_encounter_history_revision
+	):
+		return {}
+	var stale_changes := decoded_stale["changes"] as Dictionary
+	if (
+		(
+			int((decoded_stale["warehouse_ledger"] as Dictionary)["revision"])
+			== shared_warehouse_ledger_revision
+			and bool(stale_changes["warehouse"])
+		)
+		or (
+			int((decoded_stale["xirang_ledger"] as Dictionary)["revision"])
+			== party_xirang_ledger_revision
+			and bool(stale_changes["xirang"])
+		)
+		or (
+			int((decoded_stale["light_stone_ledger"] as Dictionary)["revision"])
+			== party_light_stone_ledger_revision
+			and bool(stale_changes["light_stone"])
+		)
+		or (
+			int((decoded_stale["party_status_ledger"] as Dictionary)["revision"])
+			== party_status_ledger_revision
+			and bool(stale_changes["status"])
+		)
+		or (
+			int((decoded_stale[
+				"rogue_encounter_history_ledger"
+			] as Dictionary)["revision"]) == rogue_encounter_history_revision
+			and bool(stale_changes["encounter_history"])
+		)
+	):
+		return {}
+	var peer_ids := PackedInt32Array()
+	for raw_peer_id in (decoded_stale["inventories"] as Dictionary).keys():
+		var peer_id := int(raw_peer_id)
+		var decoded_inventory := (
+			(decoded_stale["inventories"] as Dictionary)[raw_peer_id]
+			as Dictionary
+		)
+		if int(decoded_inventory["revision"]) > int(
+			decoded_inventory["expected_current_revision"]
+		):
+			return {}
+		peer_ids.append(peer_id)
+	return prepare_party_economy_snapshot(
+		export_party_economy_snapshot(peer_ids),
+		false
+	)
+
+
+func can_commit_prepared_party_economy_snapshot(
+	prepared: Dictionary
+) -> bool:
+	if (
+		prepared.is_empty()
+		or int(prepared.get("expected_warehouse_revision", -1))
+		!= shared_warehouse_ledger_revision
+		or int(prepared.get("expected_xirang_revision", -1))
+		!= party_xirang_ledger_revision
+		or int(prepared.get("expected_status_revision", -1))
+		!= party_status_ledger_revision
+		or int(prepared.get("expected_light_stone_revision", -1))
+		!= party_light_stone_ledger_revision
+		or int(prepared.get("expected_encounter_history_revision", -1))
+		!= rogue_encounter_history_revision
+	):
+		return false
+	var prepared_inventories := prepared.get("inventories", {}) as Dictionary
+	for raw_peer_id in prepared_inventories.keys():
+		var peer_id := int(raw_peer_id)
+		var prepared_inventory := prepared_inventories[raw_peer_id] as Dictionary
+		if (
+			(
+				peer_id > 0
+				and not _has_complete_registered_multiplayer_peer_state(peer_id)
+			)
+			or peer_id < 0
+			or int(prepared_inventory.get("expected_current_revision", -1))
+			!= _get_inventory_revision_without_creating(peer_id)
+		):
+			return false
+	return true
+
+
+## 仅消费刚通过 can_commit 的冻结 token。此入口不再校验 wire 字典；同一
+## 调用栈中没有 await 时，写入阶段没有可失败分支。
+func commit_validated_party_economy_snapshot(
+	prepared: Dictionary,
+	emit_change_signals: bool = true
+) -> void:
+	_commit_validated_party_economy_snapshot(prepared, emit_change_signals)
+
+
+func publish_prepared_party_economy_snapshot(prepared: Dictionary) -> void:
+	_publish_prepared_party_economy_snapshot(prepared)
+
+
+func commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
+	if not can_commit_prepared_party_economy_snapshot(prepared):
+		return false
+	_commit_validated_party_economy_snapshot(prepared, true)
+	return true
 
 
 ## 只读校验一份完整经济快照。复用正式应用路径的全部字段解码与
@@ -3552,38 +4317,60 @@ func _prepare_party_economy_snapshot(
 		"party_status_ledger": decoded_status_ledger,
 		"rogue_encounter_history_ledger": decoded_encounter_history,
 		"inventories": prepared_inventories,
+		"changes": {
+			"warehouse": (
+				int(decoded_ledger["revision"])
+				!= shared_warehouse_ledger_revision
+				or decoded_ledger["warehouses"]
+				!= shared_warehouse_snapshots
+			),
+			"xirang": (
+				int(decoded_xirang_ledger["revision"])
+				!= party_xirang_ledger_revision
+				or decoded_xirang_ledger["values"]
+				!= party_xirang_balances
+			),
+			"light_stone": (
+				int(decoded_light_stone_ledger["revision"])
+				!= party_light_stone_ledger_revision
+				or int(decoded_light_stone_ledger["amount"])
+				!= party_light_stone_amount
+			),
+			"status": (
+				int(decoded_status_ledger["revision"])
+				!= party_status_ledger_revision
+				or int(decoded_status_ledger["core_current"])
+				!= party_core_current
+				or int(decoded_status_ledger["core_maximum"])
+				!= party_core_maximum
+				or decoded_status_ledger["max_health_penalties"]
+				!= max_health_penalties
+				or decoded_status_ledger["player_stat_bonuses"]
+				!= player_stat_bonuses
+			),
+			"encounter_history": (
+				int(decoded_encounter_history["revision"])
+				!= rogue_encounter_history_revision
+				or decoded_encounter_history["encounter_ids"]
+				!= rogue_encounter_ids
+			),
+			"inventory": not prepared_inventories.is_empty(),
+		},
 	}
 
 
 func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
-	if (
-		prepared.is_empty()
-		or int(prepared.get("expected_warehouse_revision", -1))
-		!= shared_warehouse_ledger_revision
-		or int(prepared.get("expected_xirang_revision", -1))
-		!= party_xirang_ledger_revision
-		or int(prepared.get("expected_status_revision", -1))
-		!= party_status_ledger_revision
-		or int(prepared.get("expected_light_stone_revision", -1))
-		!= party_light_stone_ledger_revision
-		or int(prepared.get("expected_encounter_history_revision", -1))
-		!= rogue_encounter_history_revision
-	):
+	if not can_commit_prepared_party_economy_snapshot(prepared):
 		return false
+	_commit_validated_party_economy_snapshot(prepared, true)
+	return true
+
+
+func _commit_validated_party_economy_snapshot(
+	prepared: Dictionary,
+	emit_change_signals: bool
+) -> void:
 	var prepared_inventories := prepared.get("inventories", {}) as Dictionary
-	for raw_peer_id in prepared_inventories.keys():
-		var peer_id := int(raw_peer_id)
-		var prepared_inventory := prepared_inventories[raw_peer_id] as Dictionary
-		if (
-			(
-				peer_id > 0
-				and not _has_complete_registered_multiplayer_peer_state(peer_id)
-			)
-			or peer_id < 0
-			or int(prepared_inventory.get("expected_current_revision", -1))
-			!= _get_inventory_revision_without_creating(peer_id)
-		):
-			return false
 
 	var prepared_ledger := prepared["warehouse_ledger"] as Dictionary
 	var ledger_changed: bool = (
@@ -3678,22 +4465,26 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 		peer_counts.assign(next_counts)
 		multiplayer_inventory_revisions[peer_id] = next_revision
 
-	# 对外只在整个批次均已写入后各发布一次信号。
-	if any_inventory_changed:
+	if emit_change_signals:
+		_publish_prepared_party_economy_snapshot(prepared)
+
+
+func _publish_prepared_party_economy_snapshot(prepared: Dictionary) -> void:
+	var changes := prepared.get("changes", {}) as Dictionary
+	if bool(changes.get("inventory", false)):
 		inventory_changed.emit()
-	if ledger_changed:
+	if bool(changes.get("warehouse", false)):
 		shared_warehouse_ledger_changed.emit(export_shared_warehouse_ledger())
-	if xirang_changed:
+	if bool(changes.get("xirang", false)):
 		party_xirang_ledger_changed.emit(export_party_xirang_ledger())
-	if light_stone_changed:
+	if bool(changes.get("light_stone", false)):
 		party_light_stone_ledger_changed.emit(export_party_light_stone_ledger())
-	if status_changed:
+	if bool(changes.get("status", false)):
 		party_status_ledger_changed.emit(export_party_status_ledger())
-	if encounter_history_changed:
+	if bool(changes.get("encounter_history", false)):
 		rogue_encounter_history_changed.emit(
 			export_rogue_encounter_history_ledger()
 		)
-	return true
 
 
 func _get_inventory_revision_without_creating(peer_id: int) -> int:
@@ -4103,8 +4894,22 @@ func _get_crafting_simulation_result(simulation: Dictionary) -> StringName:
 	return StringName(result)
 
 
-func try_upgrade_for_peer(peer_id: int, stat_type: int, player: Player) -> bool:
-	if not has_multiplayer_peer_state(peer_id) or player == null:
+func try_upgrade_for_peer(
+	peer_id: int,
+	stat_type: int,
+	player: Player
+) -> bool:
+	if (
+		not has_multiplayer_peer_state(peer_id)
+		or player == null
+		or player.peer_id != peer_id
+	):
+		return false
+	var uses_party_ledger := player.uses_run_party_xirang_ledger(peer_id)
+	if (
+		player.xirang_ownership == Player.XirangOwnership.RUN_PARTY_LEDGER
+		and not uses_party_ledger
+	):
 		return false
 	player.consume_last_base_upgrade_free_flag()
 
@@ -4117,26 +4922,37 @@ func try_upgrade_for_peer(peer_id: int, stat_type: int, player: Player) -> bool:
 	if current_level >= max_level:
 		return false
 	var upgrade_cost := get_upgrade_cost_for_peer(peer_id, stat_type)
-	if upgrade_cost < 0 or player.current_xirang < upgrade_cost:
+	var spend_balance := (
+		get_party_xirang_balance(peer_id)
+		if uses_party_ledger
+		else player.current_xirang
+	)
+	if upgrade_cost < 0 or spend_balance < upgrade_cost:
 		return false
 
 	var free_upgrade := player.try_trigger_free_base_upgrade()
 	if not free_upgrade:
-		player.set_xirang_balance(player.current_xirang - upgrade_cost)
+		if uses_party_ledger:
+			party_xirang_balances[peer_id] = spend_balance - upgrade_cost
+			party_xirang_ledger_revision += 1
+		else:
+			player.set_xirang_balance(spend_balance - upgrade_cost)
 	peer_levels[stat_type] = current_level + 1
+	_publish_player_upgrade_ledger_change(true)
+	if uses_party_ledger:
+		party_xirang_ledger_changed.emit(export_party_xirang_ledger())
+	var projection_succeeded := player.apply_run_progression_snapshot(
+		export_player_run_progression(peer_id),
+		true
+	)
+	if not projection_succeeded:
+		push_error(
+			"玩家%d升级账本已提交，但当前 Player 拒绝绝对成长投影。"
+			% peer_id
+		)
+	elif stat_type == StatType.HEALTH:
+		player.restore_current_health_to_maximum()
 
-	match stat_type:
-		StatType.ATTACK:
-			player.upgrade_attack()
-		StatType.HEALTH:
-			player.upgrade_max_health()
-		StatType.ATTACK_SPEED:
-			player.upgrade_attack_speed()
-		StatType.DODGE:
-			player.upgrade_dodge()
-
-	if peer_id == active_multiplayer_peer_id:
-		upgrade_changed.emit()
 	return true
 
 
@@ -4175,6 +4991,5 @@ func set_upgrade_level_for_peer(peer_id: int, stat_type: int, level: int) -> boo
 	if current_level == level:
 		return true
 	peer_levels[stat_type] = level
-	if peer_id == active_multiplayer_peer_id:
-		upgrade_changed.emit()
+	_publish_player_upgrade_ledger_change()
 	return true

@@ -620,9 +620,10 @@ func _test_emergency_reconnect_reward_rollback_state_remaps() -> void:
 		"终局提交失败后必须恢复两名玩家息壤与共享光石，并保持 revision 单调。"
 	)
 	_expect(
-		_coordinator._phase == COORDINATOR.ProtocolPhase.IDLE
+		_coordinator._phase == COORDINATOR.ProtocolPhase.REWARD_SELECTING
+		and _coordinator._active_occurrence_key == occurrence_key
 		and _coordinator.host_settlement_broadcasts.is_empty(),
-		"重连后的奖励回滚成功时不得广播失败结算，节点协议应安全中止。"
+		"重连后的奖励回滚成功时不得广播失败结算；激活战斗必须留在屏障内等待可靠重试。"
 	)
 
 
@@ -760,6 +761,7 @@ func _test_terminal_safe_releases_protocol_but_keeps_result() -> void:
 	_coordinator._local_terminal_finalized = true
 	_coordinator._local_result_visible = true
 	_coordinator._local_result_occurrence_key = occurrence_key
+	_coordinator._local_result_participant_peer_ids = {1: true}
 	var runtime := (
 		FAKE_EMBEDDED_RUNTIME.instantiate()
 		as RogueCombatMultiplayerTestSession
@@ -888,14 +890,15 @@ func _test_host_settlement_commit_gates_broadcast() -> void:
 		and int(failed_observation.get("broadcast_count", -1)) == 0,
 		"本地结算提交必须发生在 settled tombstone 与首个远端广播之前。"
 	)
-	_assert_abort_recovered(NODE_ID, "Host 本地结算提交失败")
 	_expect(
-		not _coordinator._settlement_scheduled
-		and _coordinator._expected_prepared_peers.is_empty()
-		and _coordinator._prepared_peers.is_empty()
-		and _coordinator._expected_terminal_peers.is_empty()
-		and _coordinator._terminal_ready_peers.is_empty(),
-		"本地结算失败回滚后不得遗留 scheduled 标记或 prepare/terminal barrier。"
+		_coordinator._phase == COORDINATOR.ProtocolPhase.ACTIVE
+		and _coordinator._active_occurrence_key == occurrence_key
+		and _coordinator._combat_network == runtime
+		and _route.is_normal_combat_active()
+		and not _route._route_presentation_enabled
+		and _coordinator._settlement_scheduled
+		and not _coordinator._consumed_node_ids.has(NODE_ID),
+		"激活战斗结算失败必须保留战场与结算屏障，不能回图、免费回滚成本或消费节点。"
 	)
 
 	_reset_fixture_state()
@@ -1126,10 +1129,12 @@ func _test_real_reward_mutation_rolls_back_after_commit_failure() -> void:
 		)
 	)
 	_expect(
-		_coordinator._phase == COORDINATOR.ProtocolPhase.IDLE
+		_coordinator._phase == COORDINATOR.ProtocolPhase.ACTIVE
+		and _coordinator._active_occurrence_key == occurrence_key
+		and _coordinator._combat_network == runtime
 		and not _coordinator._consumed_node_ids.has(20)
 		and _coordinator.host_settlement_broadcasts.is_empty(),
-		"奖励回滚后必须返回可重试路线，且不得消费节点或广播失败结算。"
+		"奖励回滚后必须保留激活战场等待结算重试，且不得消费节点或广播失败结算。"
 	)
 	battle_player.queue_free()
 	combat_game.free()
@@ -2332,6 +2337,7 @@ func _test_route_spectator_settlement_converges_economy() -> void:
 	run_state.begin_new_run(&"weishidaier", false)
 	run_state.register_multiplayer_peer_state(1)
 	run_state.register_multiplayer_peer_state(2)
+	run_state.register_multiplayer_peer_state(3)
 	_expect(
 		run_state.try_add_item_count_for_peer(2, WOOD_MATERIAL, 1),
 		"观战结算夹具必须先建立旧客户端背包。"
@@ -2341,9 +2347,11 @@ func _test_route_spectator_settlement_converges_economy() -> void:
 	authoritative.begin_new_run(&"weishidaier", false)
 	authoritative.register_multiplayer_peer_state(1)
 	authoritative.register_multiplayer_peer_state(2)
+	authoritative.register_multiplayer_peer_state(3)
 	_expect(
 		authoritative.try_add_item_count_for_peer(2, WOOD_MATERIAL, 1)
-		and authoritative.try_add_item_count_for_peer(2, WOOD_MATERIAL, 4),
+		and authoritative.try_add_item_count_for_peer(2, WOOD_MATERIAL, 4)
+		and authoritative.set_party_xirang_balances({1: 600, 2: 777, 3: 333}),
 		(
 			"观战结算夹具必须从客户端已知基线继续推进 Host revision，"
 			+ "不能制造同 revision 异内容的伪权威快照。"
@@ -2364,10 +2372,31 @@ func _test_route_spectator_settlement_converges_economy() -> void:
 		"观战结算夹具必须创建路线角色。"
 	)
 	var route_player := _route.get_player_for_peer(2)
+	var late_join_route_player := _route.get_player_for_peer(3)
+	if late_join_route_player == null and _route.peer_players.has(3):
+		# 前序重连夹具可能留下已释放节点的字典占位；该 smoke 在同一 Route
+		# 复用多组身份，先清掉无效测试键再创建本组真实 late spectator。
+		_route.peer_players.erase(3)
+		_route._player_names.erase(3)
+		_route._player_character_ids.erase(3)
+		_route._player_stable_keys.erase(3)
+	_expect(
+		late_join_route_player != null
+		or _route.add_multiplayer_player(
+			3,
+			"PureLateJoinSpectator",
+			PlayerCharacterRegistry.WEISHIDAIER_ID,
+			Vector2(32.0, 0.0)
+		),
+		"终局观战恢复夹具必须创建未参战的 late-join 路线角色。"
+	)
+	late_join_route_player = _route.get_player_for_peer(3)
 	if route_player != null:
 		route_player.current_xirang = 100
+		route_player.current_health = 7
+	if late_join_route_player != null:
+		late_join_route_player.current_health = 9
 	_seed_route_combat(node_id, 4404, occurrence_key)
-	_coordinator._route_spectator_occurrence_key = occurrence_key
 	var settlement := {
 		"node_id": node_id,
 		"occurrence_key": occurrence_key,
@@ -2382,23 +2411,55 @@ func _test_route_spectator_settlement_converges_economy() -> void:
 			1: {"peer_id": 1, "victory": true},
 			2: {"peer_id": 2, "victory": true},
 		},
+		"party_xirang_ledger": authoritative.export_party_xirang_ledger(),
 	}
-
-	_expect(
-		_coordinator._apply_route_spectator_settlement(
-			occurrence_key,
-			settlement
-		),
-		"降级观战端必须接受同 occurrence 的 Host 经济结算。"
+	var economy_probe := run_state.export_party_economy_snapshot(
+		PackedInt32Array([1, 2])
 	)
+	economy_probe["inventories"] = [
+		(settlement["inventory_snapshots_by_peer"] as Dictionary)[1],
+		(settlement["inventory_snapshots_by_peer"] as Dictionary)[2],
+	]
+	economy_probe["xirang_ledger"] = settlement["party_xirang_ledger"]
+	_expect(
+		run_state.validate_party_economy_snapshot(economy_probe),
+		"终局观战经济夹具的 participant 背包与完整 Party 账本必须可原子预检。"
+	)
+
+	# 模拟参战者在终局重连后降级观战：release 必须在 reset 前冻结 {1,2}，
+	# 不能让随后变成空字典的活跃 roster 治疗未参战的 peer 3。
+	_coordinator._phase = COORDINATOR.ProtocolPhase.SETTLED
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._settlement_received = true
+	_coordinator._pending_settlement = settlement.duplicate(true)
+	_coordinator._release_local_combat_to_route_spectator(occurrence_key)
 	_expect(
 		run_state.get_inventory_item_total_for_peer(2, WOOD_MATERIAL) == 5
 		and run_state.get_inventory_revision_for_peer(2)
 		== authoritative.get_inventory_revision_for_peer(2)
 		and run_state.get_party_xirang_balance(2) == 777
 		and route_player != null
-		and route_player.current_xirang == 777,
-		"观战端背包 revision、物品、息壤账本与路线显示必须收敛到 Host。"
+		and route_player.current_xirang == 777
+		and route_player.current_health == route_player.max_health
+		and late_join_route_player != null
+		and late_join_route_player.current_health == 9,
+		(
+			"终局重连观战者必须收敛背包/息壤并满血，"
+			+ "pure late-join spectator 的生命值必须保持不变："
+			+ "items=%d balance=%d participant_hp=%d late_hp=%d key=%s。"
+			% [
+				run_state.get_inventory_item_total_for_peer(2, WOOD_MATERIAL),
+				run_state.get_party_xirang_balance(2),
+				route_player.current_health if route_player != null else -1,
+				(
+					late_join_route_player.current_health
+					if late_join_route_player != null
+					else -1
+				),
+				_coordinator._route_spectator_occurrence_key,
+			]
+		)
 	)
 	_route._sync_route_player_xirang_from_run_state()
 	_expect(
@@ -2413,7 +2474,59 @@ func _test_route_spectator_settlement_converges_economy() -> void:
 		and _coordinator._phase == COORDINATOR.ProtocolPhase.IDLE,
 		"观战经济结算必须结束本地路线战斗且不进入胜利/terminal 流程。"
 	)
+	# fresh reconnect 进程从未持有 ACTIVE roster，只能从三张已校验且 exact-key
+	# 的 Host settlement map 恢复本地真实 participant。
+	var fresh_occurrence_key := "%s:fresh" % occurrence_key
+	var fresh_settlement := settlement.duplicate(true)
+	fresh_settlement["occurrence_key"] = fresh_occurrence_key
+	fresh_settlement["node_id"] = node_id + 1
+	fresh_settlement["consume_node"] = false
+	if route_player != null:
+		route_player.current_health = 5
+	_seed_route_combat(node_id + 1, 4405, fresh_occurrence_key)
+	_coordinator._route_spectator_occurrence_key = fresh_occurrence_key
+	_coordinator._route_spectator_participant_peer_ids.clear()
+	var fresh_participant_applied := (
+		_coordinator._apply_route_spectator_settlement(
+			fresh_occurrence_key,
+			fresh_settlement,
+			{}
+		)
+	)
+	_expect(
+		fresh_participant_applied
+		and route_player != null
+		and route_player.current_health == route_player.max_health
+		and late_join_route_player != null
+		and late_join_route_player.current_health == 9,
+		"fresh terminal participant 必须从 exact settlement keyset 恢复，late spectator 不变。"
+	)
+
+	# 同一份 participant settlement 不含 peer 3；pure late joiner 即使先收到
+	# route-spectator 状态，也不能从空本地 roster 推导出治疗权限。
+	var pure_late_occurrence_key := "%s:pure-late" % occurrence_key
+	var pure_late_settlement := settlement.duplicate(true)
+	pure_late_settlement["occurrence_key"] = pure_late_occurrence_key
+	_fake_net_manager.local_peer_id = 3
+	if late_join_route_player != null:
+		late_join_route_player.current_health = 8
+	_coordinator._route_spectator_occurrence_key = pure_late_occurrence_key
+	_coordinator._route_spectator_participant_peer_ids.clear()
+	_expect(
+		not _coordinator._apply_route_spectator_settlement(
+			pure_late_occurrence_key,
+			pure_late_settlement,
+			{}
+		)
+		and late_join_route_player != null
+		and late_join_route_player.current_health == 8,
+		"pure late-join spectator 不在 settlement keyset 时必须零治疗拒绝。"
+	)
+	_coordinator._route_spectator_occurrence_key = ""
+	_coordinator._route_spectator_participant_peer_ids.clear()
+	_fake_net_manager.local_peer_id = 2
 	_route.remove_multiplayer_player(2)
+	_route.remove_multiplayer_player(3)
 	_route._multiplayer_avatar_mode = false
 	_fake_net_manager.host_role = true
 	_fake_net_manager.local_peer_id = 1

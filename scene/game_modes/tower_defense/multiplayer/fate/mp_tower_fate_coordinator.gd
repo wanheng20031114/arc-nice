@@ -192,14 +192,14 @@ func send_fate_state_to_peer(peer_id: int) -> void:
 	)
 
 
-func receive_fate_state(state: Dictionary, sender_id: int) -> void:
+func receive_fate_state(state: Dictionary, sender_id: int) -> bool:
 	if (
 		not is_bound()
 		or not _net_manager.is_client()
 		or sender_id != _net_manager.get_host_peer_id()
 	):
-		return
-	_tower_adapter.apply_remote_xiaocong_fate_state(state)
+		return false
+	return _tower_adapter.apply_remote_xiaocong_fate_state(state)
 
 
 func clear_peer(peer_id: int) -> void:

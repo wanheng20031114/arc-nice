@@ -31,6 +31,7 @@ const ARTIFICIAL_DEFENSE_SOURCE_ID := 880002
 const SLIME_SPEED_SOURCE_ID := 880003
 const ALL_ENEMY_SPEED_SOURCE_ID := 880004
 const RUNTIME_RESOURCE_WAIT_TIMEOUT_MSEC := 10_000
+const PERSISTENT_PLAYER_MODIFIER_SCHEMA_VERSION := 1
 
 @onready var manager: TowerDefenseFateManager = $TowerDefenseFateManager
 @onready var runtime_tick_timer: Timer = $RuntimeTickTimer
@@ -56,6 +57,8 @@ var random_generator := RandomNumberGenerator.new()
 var elite_enemy_config_by_base_path: Dictionary = {}
 var elite_enemy_config_loads_requested := false
 var runtime_preparation_failure_reason := ""
+var persistent_player_modifier_revision := 0
+var has_remote_persistent_player_modifier_snapshot := false
 
 
 func _ready() -> void:
@@ -263,7 +266,225 @@ func export_runtime_state() -> Dictionary:
 	}
 
 
-func apply_remote_runtime_state(state: Dictionary) -> void:
+## 地下探索外层快照只携带会改变玩家永久面板的命运层；精英偏置、双倍
+## 息壤和受击减速仍由 Tower/Fate 自己的实时状态信道拥有。
+func export_persistent_player_modifier_snapshot() -> Dictionary:
+	var buff_ids := PackedStringArray()
+	for buff_id in active_permanent_buff_ids:
+		buff_ids.append(String(buff_id))
+	return {
+		"schema_version": PERSISTENT_PLAYER_MODIFIER_SCHEMA_VERSION,
+		"revision": manager.state_revision,
+		"active_permanent_buff_ids": buff_ids,
+		"player_dash_cooldown_reduction": player_dash_cooldown_reduction,
+		"player_max_health_multiplier": player_max_health_multiplier,
+		"player_move_speed_multiplier": player_move_speed_multiplier,
+	}
+
+
+## 只读冻结命运永久层。相同 revision 的内容只有来自外层 Host 全快照时
+## 才允许纠偏；普通实时信道仍保持同 revision 内容唯一。
+func prepare_persistent_player_modifier_snapshot(
+	snapshot: Dictionary,
+	allow_equal_authority_repair: bool = false
+) -> Dictionary:
+	if (
+		snapshot.size() != 6
+		or typeof(snapshot.get("schema_version")) != TYPE_INT
+		or int(snapshot["schema_version"])
+		!= PERSISTENT_PLAYER_MODIFIER_SCHEMA_VERSION
+		or typeof(snapshot.get("revision")) != TYPE_INT
+		or typeof(snapshot.get("active_permanent_buff_ids"))
+		not in [TYPE_ARRAY, TYPE_PACKED_STRING_ARRAY]
+		or typeof(snapshot.get("player_dash_cooldown_reduction"))
+		not in [TYPE_INT, TYPE_FLOAT]
+		or typeof(snapshot.get("player_max_health_multiplier"))
+		not in [TYPE_INT, TYPE_FLOAT]
+		or typeof(snapshot.get("player_move_speed_multiplier"))
+		not in [TYPE_INT, TYPE_FLOAT]
+	):
+		return {}
+	var incoming_revision := int(snapshot["revision"])
+	var dash_reduction := float(snapshot["player_dash_cooldown_reduction"])
+	var max_health_multiplier := float(snapshot["player_max_health_multiplier"])
+	var move_speed_multiplier := float(snapshot["player_move_speed_multiplier"])
+	if (
+		incoming_revision < 0
+		or not is_finite(dash_reduction)
+		or dash_reduction < 0.0
+		or not is_finite(max_health_multiplier)
+		or max_health_multiplier < 0.01
+		or not is_finite(move_speed_multiplier)
+		or move_speed_multiplier < 0.0
+	):
+		return {}
+	var normalized_buffs: Array[StringName] = []
+	for raw_buff_id in snapshot["active_permanent_buff_ids"]:
+		if typeof(raw_buff_id) not in [TYPE_STRING, TYPE_STRING_NAME]:
+			return {}
+		var config := (
+			TowerDefenseFateRegistry.get_permanent_buff_config_by_wire_id(
+				str(raw_buff_id)
+			)
+		)
+		if config == null or normalized_buffs.has(config.buff_id):
+			return {}
+		normalized_buffs.append(config.buff_id)
+	normalized_buffs.sort_custom(
+		func(left: StringName, right: StringName) -> bool:
+			var left_config := TowerDefenseFateRegistry.get_permanent_buff_config(left)
+			var right_config := TowerDefenseFateRegistry.get_permanent_buff_config(right)
+			return left_config.menu_order < right_config.menu_order
+	)
+	var values_changed := (
+		normalized_buffs != active_permanent_buff_ids
+		or not is_equal_approx(
+			dash_reduction,
+			player_dash_cooldown_reduction
+		)
+		or not is_equal_approx(
+			max_health_multiplier,
+			player_max_health_multiplier
+		)
+		or not is_equal_approx(
+			move_speed_multiplier,
+			player_move_speed_multiplier
+		)
+	)
+	if (
+		has_remote_persistent_player_modifier_snapshot
+		and incoming_revision == persistent_player_modifier_revision
+		and values_changed
+		and not allow_equal_authority_repair
+	):
+		return {}
+	return {
+		"expected_has_remote_snapshot": (
+			has_remote_persistent_player_modifier_snapshot
+		),
+		"expected_revision": persistent_player_modifier_revision,
+		"incoming_revision": incoming_revision,
+		"active_permanent_buff_ids": normalized_buffs,
+		"player_dash_cooldown_reduction": dash_reduction,
+		"player_max_health_multiplier": max_health_multiplier,
+		"player_move_speed_multiplier": move_speed_multiplier,
+		"stale": (
+			has_remote_persistent_player_modifier_snapshot
+			and incoming_revision < persistent_player_modifier_revision
+		),
+		"changed": (
+			values_changed
+			or incoming_revision != persistent_player_modifier_revision
+			or not has_remote_persistent_player_modifier_snapshot
+		),
+	}
+
+
+func commit_prepared_persistent_player_modifier_snapshot(
+	prepared: Dictionary
+) -> bool:
+	if not can_commit_prepared_persistent_player_modifier_snapshot(prepared):
+		return false
+	commit_validated_persistent_player_modifier_snapshot(prepared, true)
+	return true
+
+
+## Tower 外层全快照的组合 CAS 已通过后只写永久命运账本；世界与注册
+## Player 的重投影延迟到路线/Research/成长都提交后统一发布。
+func commit_validated_persistent_player_modifier_snapshot(
+	prepared: Dictionary,
+	publish_changes: bool = true
+) -> void:
+	var incoming_revision := int(prepared["incoming_revision"])
+	if bool(prepared["stale"]):
+		return
+	if not bool(prepared["changed"]):
+		return
+	active_permanent_buff_ids.clear()
+	for raw_buff_id in prepared["active_permanent_buff_ids"]:
+		active_permanent_buff_ids.append(StringName(raw_buff_id))
+	player_dash_cooldown_reduction = float(
+		prepared["player_dash_cooldown_reduction"]
+	)
+	player_max_health_multiplier = float(
+		prepared["player_max_health_multiplier"]
+	)
+	player_move_speed_multiplier = float(
+		prepared["player_move_speed_multiplier"]
+	)
+	persistent_player_modifier_revision = incoming_revision
+	has_remote_persistent_player_modifier_snapshot = true
+	if publish_changes:
+		publish_prepared_persistent_player_modifier_snapshot(prepared)
+
+
+func publish_prepared_persistent_player_modifier_snapshot(
+	prepared: Dictionary
+) -> void:
+	if bool(prepared["stale"]) or not bool(prepared["changed"]):
+		return
+	_apply_runtime_state_to_world()
+
+
+func can_commit_prepared_persistent_player_modifier_snapshot(
+	prepared: Dictionary
+) -> bool:
+	if (
+		prepared.size() != 9
+		or typeof(prepared.get("expected_has_remote_snapshot")) != TYPE_BOOL
+		or typeof(prepared.get("expected_revision")) != TYPE_INT
+		or typeof(prepared.get("incoming_revision")) != TYPE_INT
+		or typeof(prepared.get("active_permanent_buff_ids")) != TYPE_ARRAY
+		or typeof(prepared.get("player_dash_cooldown_reduction")) != TYPE_FLOAT
+		or typeof(prepared.get("player_max_health_multiplier")) != TYPE_FLOAT
+		or typeof(prepared.get("player_move_speed_multiplier")) != TYPE_FLOAT
+		or typeof(prepared.get("stale")) != TYPE_BOOL
+		or typeof(prepared.get("changed")) != TYPE_BOOL
+		or bool(prepared["expected_has_remote_snapshot"])
+		!= has_remote_persistent_player_modifier_snapshot
+		or int(prepared["expected_revision"])
+		!= persistent_player_modifier_revision
+	):
+		return false
+	var incoming_revision := int(prepared["incoming_revision"])
+	if bool(prepared["stale"]):
+		return (
+			has_remote_persistent_player_modifier_snapshot
+			and incoming_revision < persistent_player_modifier_revision
+		)
+	return incoming_revision >= persistent_player_modifier_revision
+
+
+func apply_remote_runtime_state(state: Dictionary) -> bool:
+	var persistent_snapshot := {
+		"schema_version": PERSISTENT_PLAYER_MODIFIER_SCHEMA_VERSION,
+		"revision": state.get("revision"),
+		"active_permanent_buff_ids": state.get("active_permanent_buff_ids"),
+		"player_dash_cooldown_reduction": state.get(
+			"player_dash_cooldown_reduction"
+		),
+		"player_max_health_multiplier": state.get(
+			"player_max_health_multiplier"
+		),
+		"player_move_speed_multiplier": state.get(
+			"player_move_speed_multiplier"
+		),
+	}
+	var prepared_persistent := prepare_persistent_player_modifier_snapshot(
+		persistent_snapshot
+	)
+	if prepared_persistent.is_empty():
+		return false
+	# 外层 CH0 全快照可能比 CH5 先到。旧 Fate 状态只能作为已消费重放，
+	# 不能再次覆盖已经用于 Route/Combat 场景入口的永久面板。
+	if bool(prepared_persistent["stale"]):
+		return commit_prepared_persistent_player_modifier_snapshot(
+			prepared_persistent
+		)
+	if not commit_prepared_persistent_player_modifier_snapshot(
+		prepared_persistent
+	):
+		return false
 	var incoming_buffs: Array[StringName] = []
 	var raw_buffs: Variant = state.get("active_permanent_buff_ids", [])
 	if raw_buffs is Array or raw_buffs is PackedStringArray:
@@ -295,6 +516,7 @@ func apply_remote_runtime_state(state: Dictionary) -> void:
 		state.get("pending_stone_peer_ids", [])
 	)
 	_apply_runtime_state_to_world()
+	return true
 
 
 func resolve_enemy_config(enemy_config: EnemyConfig) -> EnemyConfig:
@@ -433,6 +655,62 @@ func apply_player_modifiers_to_all() -> void:
 				else 0.0
 			)
 		)
+
+
+## 跨 Tower/Route/Combat 的只是命运永久层。“危险速度”的永久移速
+## 保留，但受击减速触发器与倒计时属于 Tower 场景内瞬态，不带入地下。
+func apply_persistent_player_modifiers(
+	player: Player,
+	ledger_peer_id: int
+) -> bool:
+	var expected_peer_id := player.peer_id if player != null and player.peer_id > 0 else 0
+	if (
+		player == null
+		or not is_instance_valid(player)
+		or ledger_peer_id != expected_peer_id
+	):
+		return false
+	var low_health_config := _get_buff_config(
+		TowerDefenseFateRegistry.BUFF_LOW_HEALTH_REDUCTION
+	)
+	var low_health_ratio := (
+		low_health_config.secondary_magnitude if low_health_config != null else 0.0
+	)
+	var low_health_reduction := (
+		low_health_config.magnitude if low_health_config != null else 0.0
+	)
+	player.configure_tower_defense_fate_modifiers(
+		player_max_health_multiplier,
+		player_move_speed_multiplier,
+		player_dash_cooldown_reduction,
+		low_health_ratio,
+		low_health_reduction,
+		1.0,
+		0.0
+	)
+	return (
+		is_equal_approx(
+			player.tower_defense_fate_max_health_multiplier,
+			player_max_health_multiplier
+		)
+		and is_equal_approx(
+			player.tower_defense_fate_move_speed_multiplier,
+			player_move_speed_multiplier
+		)
+		and is_equal_approx(
+			player.tower_defense_fate_dash_cooldown_reduction,
+			player_dash_cooldown_reduction
+		)
+		and is_equal_approx(
+			player.tower_defense_fate_low_health_ratio,
+			low_health_ratio
+		)
+		and is_equal_approx(
+			player.tower_defense_fate_low_health_damage_reduction,
+			low_health_reduction
+		)
+		and player.tower_defense_fate_hurt_speed_time_left <= 0.0
+	)
 
 
 func apply_enemy_modifiers_to_existing() -> void:

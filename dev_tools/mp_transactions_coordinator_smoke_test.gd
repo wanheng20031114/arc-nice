@@ -123,7 +123,7 @@ func _test_static_mp_game_boundary(coordinator: MpTransactionsCoordinator) -> vo
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
 		rpc_pattern.search_all(source).size() == 144,
-		"Transactions 提取必须保留 protocol-v77 的 144 个 MpGame RPC 门面。"
+		"Transactions 提取必须保留 protocol-v78 的 144 个 MpGame RPC 门面。"
 	)
 	for function_name in [
 		"net_upgrade_selected",
@@ -505,6 +505,7 @@ func _test_upgrade_confirmation_is_monotonic(
 	root.add_child(net_manager)
 	root.add_child(player)
 	player.set_physics_process(false)
+	player.configure_multiplayer_control(PEER_ID, false, "Peer 7")
 	runtime.players[PEER_ID] = player
 	net_manager.net_role = NetManagerStore.NetRole.CLIENT
 	coordinator.bind_session(
@@ -530,16 +531,62 @@ func _test_upgrade_confirmation_is_monotonic(
 		20,
 		true
 	)
+	var equal_replay_applied := coordinator.receive_upgrade_confirmation(
+		PEER_ID,
+		RunStateStore.StatType.ATTACK,
+		2,
+		99,
+		true
+	)
 	_expect(
 		high_applied
-		and not late_low_applied
+		and late_low_applied
+		and equal_replay_applied
 		and run_state.get_upgrade_level_for_peer(
 			PEER_ID,
 			RunStateStore.StatType.ATTACK
 		) == 2
 		and is_equal_approx(player.attack_damage, attack_after_high)
 		and player.current_xirang == 10,
-		"高等级升级确认提交后，迟到低等级必须拒绝且不得回滚 Player 或息壤表现。"
+		"高等级确认后，迟到低级/同级不同余额必须领域幂等成功且绝不回滚 Player 或息壤。"
+	)
+	var skill_high_applied := coordinator.receive_skill1_purchase_confirmation(
+		PEER_ID,
+		7,
+		true,
+		MerchantPurchaseResult.SkillUpgrade.UPGRADE_SUCCESS,
+		2,
+		14.0
+	)
+	var skill_duration_after_high := player.skill1_charge_duration
+	var skill_low_applied := coordinator.receive_skill1_purchase_confirmation(
+		PEER_ID,
+		70,
+		true,
+		MerchantPurchaseResult.SkillUpgrade.SUCCESS,
+		1,
+		16.0
+	)
+	var skill_equal_applied := coordinator.receive_skill1_purchase_confirmation(
+		PEER_ID,
+		90,
+		true,
+		MerchantPurchaseResult.SkillUpgrade.SUCCESS,
+		2,
+		14.0
+	)
+	_expect(
+		skill_high_applied
+		and skill_low_applied
+		and skill_equal_applied
+		and run_state.get_skill1_upgrade_level_for_peer(PEER_ID) == 2
+		and player.skill1_upgrade_level == 2
+		and is_equal_approx(
+			player.skill1_charge_duration,
+			skill_duration_after_high
+		)
+		and player.current_xirang == 7,
+		"技能高水位之后，迟到低级/同级 repair 的不同余额也必须零写且不弹伪购买状态。"
 	)
 	coordinator.unbind_session(session)
 	_stop_audio_players(player)

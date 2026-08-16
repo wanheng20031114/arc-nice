@@ -4,7 +4,7 @@ class_name TowerDefenseRogueExplorationCoordinator
 const MultiplayerReconnectTypesScript := preload(
 	"res://scene/multiplayer/reconnect/multiplayer_reconnect_types.gd"
 )
-const SNAPSHOT_SCHEMA_VERSION := 1
+const SNAPSHOT_SCHEMA_VERSION := 2
 const INVALID_DAY := 0
 const DEFAULT_ROGUE_CORE_HEALTH := 100
 const COMBAT_ACTION_LOCK_OWNER := &"tower_rogue_exploration"
@@ -44,10 +44,13 @@ var _multiplayer_adapter: TowerDefenseMultiplayerModeAdapter = null
 var _terrain_decay_timer: Timer = null
 var _production: ProductionCoordinator = null
 var _research: ResearchCoordinator = null
+var _fate: FateCoordinator = null
 var _net_manager: NetManagerStore = null
 var _run_state: RunStateStore = null
+var _persistent_modifier_projector: TowerRoguePlayerPersistentModifierProjector = null
 
 var _active := false
+var _multiplayer_snapshot_apply_in_progress := false
 var _active_day := INVALID_DAY
 var _next_step_id: StringName = &""
 var _map_generation_epoch := 0
@@ -95,6 +98,7 @@ func setup(
 	terrain_decay_timer: Timer,
 	production: ProductionCoordinator,
 	research: ResearchCoordinator,
+	fate: FateCoordinator,
 	run_state: RunStateStore
 ) -> bool:
 	_runtime = runtime
@@ -108,8 +112,20 @@ func setup(
 	_terrain_decay_timer = terrain_decay_timer
 	_production = production
 	_research = research
+	_fate = fate
 	_run_state = run_state
 	_net_manager = NetManagerStore.get_autoload_instance()
+	_persistent_modifier_projector = TowerRoguePlayerPersistentModifierProjector.new()
+	if (
+		not _persistent_modifier_projector.setup(_research, _fate)
+		or not _route.configure_player_persistent_modifier_projector(
+			_persistent_modifier_projector
+		)
+	):
+		return false
+	_multiplayer_combat_coordinator.configure_player_persistent_modifier_projector(
+		_persistent_modifier_projector
+	)
 	if not is_bound():
 		return false
 	# 多人身份在 Tower 场景 Ready 时可能尚未完成会话认证；setup 只绑定
@@ -138,6 +154,8 @@ func is_bound() -> bool:
 		and _terrain_decay_timer != null
 		and _production != null
 		and _research != null
+		and _fate != null
+		and _persistent_modifier_projector != null
 		and _run_state != null
 		and _route != null
 		and _multiplayer_combat_coordinator != null
@@ -149,29 +167,80 @@ func _configure_route_runtime_identity() -> bool:
 	if _runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
 		_route.set_authority_enabled(true)
 		return _route.configure_embedded_singleplayer_player()
-	if _net_manager == null:
+	var prepared := _prepare_route_runtime_identity()
+	if not _can_commit_prepared_route_runtime_identity(prepared):
+		_discard_prepared_route_runtime_identity(prepared)
 		return false
+	_commit_validated_route_runtime_identity(prepared, true)
+	return _multiplayer_combat_coordinator.is_enabled()
+
+
+## fresh CLIENT_VIEW 先在树外准备完整 Route roster；不会提前修改 Shop
+## identity、创建公开 Player 或 reveal 默认 Research/Fate 面板。
+func _prepare_route_runtime_identity() -> Dictionary:
+	if _route_identity_configured:
+		return {"already_configured": true}
+	if (
+		_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+		or _net_manager == null
+	):
+		return {}
 	var player_names := _net_manager.connected_players.duplicate()
 	var character_ids := _net_manager.get_player_character_map().duplicate()
 	var local_peer_id := _net_manager.get_local_peer_id()
 	if local_peer_id <= 0 or not player_names.has(local_peer_id):
-		return false
+		return {}
 	var stable_keys: Dictionary = {}
 	for peer_id_variant in player_names.keys():
 		var peer_id := int(peer_id_variant)
 		var stable_key := _net_manager.get_stable_participant_key(peer_id)
 		if _net_manager.is_host() and stable_key.is_empty():
 			push_error("塔防地下探索玩家 %d 缺少稳定参与者身份。" % peer_id)
-			return false
+			return {}
 		if not stable_key.is_empty():
 			stable_keys[peer_id] = stable_key
-	if not _route.configure_multiplayer_players(
+	var prepared_roster := _route.prepare_multiplayer_players(
 		local_peer_id,
 		player_names,
 		character_ids,
 		stable_keys
-	):
-		return false
+	)
+	if prepared_roster.is_empty():
+		return {}
+	return {
+		"already_configured": false,
+		"local_peer_id": local_peer_id,
+		"roster": prepared_roster,
+	}
+
+
+func _can_commit_prepared_route_runtime_identity(
+	prepared: Dictionary
+) -> bool:
+	if prepared.size() == 1 and bool(prepared.get("already_configured", false)):
+		return _route_identity_configured
+	return (
+		prepared.size() == 3
+		and not bool(prepared.get("already_configured", true))
+		and not _route_identity_configured
+		and typeof(prepared.get("local_peer_id")) == TYPE_INT
+		and typeof(prepared.get("roster")) == TYPE_DICTIONARY
+		and _route.can_commit_prepared_multiplayer_players(
+			prepared["roster"] as Dictionary
+		)
+	)
+
+
+func _commit_validated_route_runtime_identity(
+	prepared: Dictionary,
+	restore_scene_entry: bool
+) -> void:
+	if bool(prepared["already_configured"]):
+		return
+	_route.commit_validated_multiplayer_players_with_scene_policy(
+		prepared["roster"] as Dictionary,
+		restore_scene_entry
+	)
 	_route.set_authority_enabled(_net_manager.is_host())
 	_multiplayer_combat_coordinator.bind_network_dependencies(
 		_route,
@@ -179,7 +248,19 @@ func _configure_route_runtime_identity() -> bool:
 		_run_state,
 		RogueCombatMultiplayerCoordinator.SessionProjectionOwner.ENCLOSING_RUNTIME
 	)
-	return _multiplayer_combat_coordinator.is_enabled()
+	_route_identity_configured = true
+
+
+func _discard_prepared_route_runtime_identity(prepared: Dictionary) -> void:
+	if (
+		prepared.is_empty()
+		or bool(prepared.get("already_configured", false))
+	):
+		return
+	_route.discard_prepared_multiplayer_players(
+		prepared.get("roster", {}) as Dictionary
+	)
+	prepared.clear()
 
 
 func _ensure_route_runtime_identity() -> bool:
@@ -250,7 +331,7 @@ func enter_exploration(day_number: int, next_step: FlowStepConfig) -> bool:
 		_next_step_id = &""
 		_campaign.enter_defeat()
 		return false
-	if not _route.restore_embedded_players_to_full_health():
+	if not _route.restore_players_for_route_scene_entry():
 		_cache_rogue_core_from_run_state()
 		_restore_tower_core()
 		_restore_tower_runtime()
@@ -737,6 +818,9 @@ func complete_pending_presentation_exit() -> bool:
 	_restore_tower_core()
 	_route.set_embedded_presentation_active(false)
 	_restore_tower_runtime()
+	# Tower 的场景 owner 在 Player 清空瞬态之后立即重投影完整命运层；
+	# 建筑光环继续由各建筑 owner 重算，不会被带入地下作战。
+	_fate.apply_player_modifiers_to_all()
 	_player_roster.restore_all_players_to_full_health(
 		_runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	)
@@ -759,9 +843,32 @@ func export_multiplayer_snapshot_for_peer(peer_id: int = -1) -> Dictionary:
 	if _active or _finishing or _presentation_exit_pending:
 		tower_core_current = _saved_tower_core_current
 		tower_core_maximum = _saved_tower_core_maximum
+	var player_upgrade_ledger := _run_state.export_player_upgrade_ledger()
+	var party_economy := _run_state.export_party_economy_snapshot()
+	var party_xirang_ledger := _run_state.export_party_xirang_ledger()
+	var party_status_ledger := _run_state.export_party_status_ledger()
+	var research_runtime_state := _research.export_runtime_state()
+	var fate_persistent_modifiers := (
+		_fate.export_persistent_player_modifier_snapshot()
+	)
+	if (
+		player_upgrade_ledger.is_empty()
+		or party_economy.is_empty()
+		or party_xirang_ledger.is_empty()
+		or party_status_ledger.is_empty()
+		or research_runtime_state.is_empty()
+		or fate_persistent_modifiers.is_empty()
+	):
+		return {}
 	var snapshot := {
 		"schema_version": SNAPSHOT_SCHEMA_VERSION,
 		"progression_contract_hash": _progression.compute_runtime_contract_hash(),
+		"player_upgrade_ledger": player_upgrade_ledger,
+		"party_economy": party_economy,
+		"party_xirang_ledger": party_xirang_ledger,
+		"party_status_ledger": party_status_ledger,
+		"research_runtime_state": research_runtime_state,
+		"fate_persistent_player_modifiers": fate_persistent_modifiers,
 		"active": _active,
 		"day": _active_day,
 		"map_generation_epoch": _map_generation_epoch,
@@ -787,10 +894,78 @@ func _export_daily_grant_ledger() -> Dictionary:
 
 
 func apply_multiplayer_snapshot(snapshot: Dictionary) -> bool:
+	if (
+		_multiplayer_snapshot_apply_in_progress
+		or _route == null
+		or not _route.try_begin_full_snapshot_transaction()
+	):
+		return false
+	_multiplayer_snapshot_apply_in_progress = true
+	var applied := _apply_multiplayer_snapshot_guarded(snapshot)
+	_multiplayer_snapshot_apply_in_progress = false
+	_route.end_full_snapshot_transaction()
+	return applied
+
+
+## public wrapper 持有同步重入门；内部可以在任一 prepare/CAS 分支直接
+## 返回，wrapper 仍会可靠释放门，不把 signal 回调排队到下一代快照。
+func _apply_multiplayer_snapshot_guarded(snapshot: Dictionary) -> bool:
 	var prepared := _preflight_multiplayer_snapshot(snapshot)
 	if prepared.is_empty():
 		return false
 	var incoming_active := bool(prepared["active"])
+	var prepared_progression := (
+		prepared["prepared_player_upgrade_ledger"] as Dictionary
+	)
+	var prepared_party_economy := (
+		prepared["prepared_party_economy"] as Dictionary
+	)
+	var prepared_research := (
+		prepared["prepared_research_runtime_state"] as Dictionary
+	)
+	var prepared_fate := (
+		prepared["prepared_fate_persistent_modifiers"] as Dictionary
+	)
+	var prepared_identity := (
+		prepared.get("prepared_route_runtime_identity", {}) as Dictionary
+	)
+	var prepared_route := (
+		prepared.get("prepared_route_full_snapshot", {}) as Dictionary
+	)
+	var prepared_player_progression := (
+		prepared.get("prepared_route_player_progression", {}) as Dictionary
+	)
+	var prepared_persistent_modifiers := (
+		prepared.get("prepared_route_persistent_modifiers", {}) as Dictionary
+	)
+	if (
+		not _run_state.can_commit_prepared_player_upgrade_ledger(
+			prepared_progression
+		)
+		or not _run_state.can_commit_prepared_party_economy_snapshot(
+			prepared_party_economy
+		)
+		or not _research.can_commit_prepared_multiplayer_runtime_state(
+			prepared_research
+		)
+		or not _fate.can_commit_prepared_persistent_player_modifier_snapshot(
+			prepared_fate
+		)
+	):
+		_discard_prepared_multiplayer_snapshot(prepared)
+		return false
+	if incoming_active and (
+		not _can_commit_prepared_route_runtime_identity(prepared_identity)
+		or not _route.can_commit_prepared_full_snapshot(prepared_route)
+		or not _route.can_commit_prepared_authoritative_player_progression(
+			prepared_player_progression
+		)
+		or not _persistent_modifier_projector.can_commit_prepared_for_players(
+			prepared_persistent_modifiers
+		)
+	):
+		_discard_prepared_multiplayer_snapshot(prepared)
+		return false
 	var was_active := _active
 	var entering_exploration_boundary := (
 		incoming_active
@@ -800,22 +975,41 @@ func apply_multiplayer_snapshot(snapshot: Dictionary) -> bool:
 			or int(prepared["map_generation_epoch"]) != _map_generation_epoch
 		)
 	)
+	# 从这里开始只有经 prepare/CAS 证明的无失败写入口；所有信号、UI 与
+	# reveal 均延迟到 Route/party/成长/Research/Fate/identity/Player 齐备。
 	if incoming_active:
-		if not _ensure_route_runtime_identity():
-			return false
-		if not _route.apply_full_snapshot(
-			prepared["route_layout"] as Dictionary,
-			prepared["route_state"] as Dictionary,
-			prepared["encounter"] as Dictionary,
-			prepared["economy"] as Dictionary,
-			prepared["shop"] as Dictionary
-		):
-			return false
-		if (
-			entering_exploration_boundary
-			and not _route.restore_embedded_players_to_full_health()
-		):
-			return false
+		_route.begin_validated_authoritative_player_projection(
+			prepared_player_progression
+		)
+		_route.commit_validated_full_snapshot(prepared_route, false)
+	else:
+		_run_state.commit_validated_party_economy_snapshot(
+			prepared_party_economy,
+			false
+		)
+	_run_state.commit_validated_player_upgrade_ledger(
+		prepared_progression,
+		false
+	)
+	_research.commit_validated_multiplayer_runtime_state(
+		prepared_research,
+		false
+	)
+	_fate.commit_validated_persistent_player_modifier_snapshot(
+		prepared_fate,
+		false
+	)
+	if incoming_active:
+		_commit_validated_route_runtime_identity(prepared_identity, false)
+		_route.commit_validated_authoritative_player_progression(
+			prepared_player_progression
+		)
+		_route.commit_validated_authoritative_player_xirang(
+			prepared_player_progression
+		)
+		_persistent_modifier_projector.commit_validated_for_players(
+			prepared_persistent_modifiers
+		)
 		# active 全量快照已原子应用其 party economy；在任何跨信道的
 		# Tower 基地恢复到达前，锁存本次 Rogue 核心恢复账本。
 		_cache_rogue_core_from_run_state()
@@ -837,7 +1031,6 @@ func apply_multiplayer_snapshot(snapshot: Dictionary) -> bool:
 		# 覆盖恢复账本，退出时才不会把真实基地血量回滚成默认值。
 		_saved_tower_core_current = int(prepared["tower_core_current"])
 		_saved_tower_core_maximum = int(prepared["tower_core_maximum"])
-		_route.set_embedded_presentation_active(true)
 		set_process(false)
 	elif not incoming_active and was_active:
 		_saved_tower_core_current = int(prepared["tower_core_current"])
@@ -853,7 +1046,46 @@ func apply_multiplayer_snapshot(snapshot: Dictionary) -> bool:
 		# Tower 恢复边界，覆盖客户端较晚到达的本地默认/旧塔防状态。
 		_saved_tower_core_current = int(prepared["tower_core_current"])
 		_saved_tower_core_maximum = int(prepared["tower_core_maximum"])
+	if incoming_active:
+		_route.stage_validated_authoritative_player_projection_publish(
+			prepared_player_progression,
+			entering_exploration_boundary
+		)
+	# 所有 owner 与 Player 都已提交，先发布账本，再允许 Route UI/reveal。
+	if incoming_active:
+		_route.publish_prepared_full_snapshot_changes(prepared_route)
+	else:
+		_run_state.publish_prepared_party_economy_snapshot(
+			prepared_party_economy
+		)
+	_run_state.publish_prepared_player_upgrade_ledger(prepared_progression)
+	_research.publish_prepared_multiplayer_runtime_state(prepared_research)
+	_fate.publish_prepared_persistent_player_modifier_snapshot(prepared_fate)
+	if incoming_active:
+		_route.publish_validated_authoritative_player_projection(
+			prepared_player_progression
+		)
+		if not was_active:
+			_route.set_embedded_presentation_active(true)
+		_route.complete_prepared_full_snapshot_presentation()
 	return true
+
+
+func _discard_prepared_multiplayer_snapshot(prepared: Dictionary) -> void:
+	if prepared.is_empty():
+		return
+	var prepared_route := prepared.get(
+		"prepared_route_full_snapshot",
+		{}
+	) as Dictionary
+	if not prepared_route.is_empty():
+		_route.discard_prepared_full_snapshot(prepared_route)
+	var prepared_identity := prepared.get(
+		"prepared_route_runtime_identity",
+		{}
+	) as Dictionary
+	if not prepared_identity.is_empty():
+		_discard_prepared_route_runtime_identity(prepared_identity)
 
 
 func _preflight_multiplayer_snapshot(snapshot: Dictionary) -> Dictionary:
@@ -863,6 +1095,13 @@ func _preflight_multiplayer_snapshot(snapshot: Dictionary) -> Dictionary:
 		or typeof(snapshot.get("progression_contract_hash")) != TYPE_STRING
 		or str(snapshot["progression_contract_hash"])
 		!= _progression.compute_runtime_contract_hash()
+		or typeof(snapshot.get("player_upgrade_ledger")) != TYPE_DICTIONARY
+		or typeof(snapshot.get("party_economy")) != TYPE_DICTIONARY
+		or typeof(snapshot.get("party_xirang_ledger")) != TYPE_DICTIONARY
+		or typeof(snapshot.get("party_status_ledger")) != TYPE_DICTIONARY
+		or typeof(snapshot.get("research_runtime_state")) != TYPE_DICTIONARY
+		or typeof(snapshot.get("fate_persistent_player_modifiers"))
+		!= TYPE_DICTIONARY
 		or typeof(snapshot.get("active")) != TYPE_BOOL
 		or typeof(snapshot.get("day")) != TYPE_INT
 		or typeof(snapshot.get("map_generation_epoch")) != TYPE_INT
@@ -873,6 +1112,54 @@ func _preflight_multiplayer_snapshot(snapshot: Dictionary) -> Dictionary:
 		or typeof(snapshot.get("tower_core_maximum")) != TYPE_INT
 	):
 		return {}
+	var prepared_player_upgrade_ledger := (
+		_run_state.prepare_player_upgrade_ledger(
+			snapshot["player_upgrade_ledger"] as Dictionary,
+			true
+		)
+	)
+	var incoming_active := bool(snapshot["active"])
+	var party_economy_snapshot := snapshot["party_economy"] as Dictionary
+	if (
+		party_economy_snapshot.get("xirang_ledger", {})
+		!= snapshot["party_xirang_ledger"]
+		or party_economy_snapshot.get("party_status_ledger", {})
+		!= snapshot["party_status_ledger"]
+	):
+		return {}
+	var prepared_party_economy := (
+		_run_state.prepare_party_economy_snapshot(
+			party_economy_snapshot,
+			false
+		)
+		if incoming_active
+		else _run_state.prepare_party_economy_snapshot_or_current_if_fully_stale(
+			party_economy_snapshot
+		)
+	)
+	var prepared_research_runtime_state := (
+		_research.prepare_multiplayer_runtime_state(
+			snapshot["research_runtime_state"] as Dictionary,
+			true
+		)
+	)
+	var prepared_fate_persistent_modifiers := (
+		_fate.prepare_persistent_player_modifier_snapshot(
+			snapshot["fate_persistent_player_modifiers"] as Dictionary,
+			true
+		)
+	)
+	if (
+		prepared_player_upgrade_ledger.is_empty()
+		or prepared_party_economy.is_empty()
+		or prepared_research_runtime_state.is_empty()
+		or prepared_fate_persistent_modifiers.is_empty()
+		or not _research_levels_cover_progression_members(
+			prepared_player_upgrade_ledger,
+			prepared_research_runtime_state
+		)
+	):
+		return {}
 	var tower_core_current := int(snapshot["tower_core_current"])
 	var tower_core_maximum := int(snapshot["tower_core_maximum"])
 	if (
@@ -881,13 +1168,20 @@ func _preflight_multiplayer_snapshot(snapshot: Dictionary) -> Dictionary:
 		or tower_core_current > tower_core_maximum
 	):
 		return {}
-	var incoming_active := bool(snapshot["active"])
 	var incoming_day := int(snapshot["day"])
 	var incoming_epoch := int(snapshot["map_generation_epoch"])
 	if incoming_active and (
 		incoming_day < 1
 		or incoming_day > TowerDefenseProgressionConfig.ROGUE_EXPLORATION_DAY_COUNT
 		or str(snapshot["next_step_id"]).is_empty()
+	):
+		return {}
+	# active outer 是 reveal Route Player 的同代权威屏障。若 Research/Fate
+	# 独立信道已推进到更高 revision，旧 CH0 不能用旧永久层构建 Player；
+	# 等待 Host 的下一份自包含 outer 快照收敛。
+	if incoming_active and (
+		bool(prepared_research_runtime_state["stale"])
+		or bool(prepared_fate_persistent_modifiers["stale"])
 	):
 		return {}
 	if not incoming_active and (
@@ -934,11 +1228,113 @@ func _preflight_multiplayer_snapshot(snapshot: Dictionary) -> Dictionary:
 		return {}
 	var prepared := snapshot.duplicate(true)
 	prepared["daily_grant_ledger"] = ledger
+	prepared["prepared_player_upgrade_ledger"] = (
+		prepared_player_upgrade_ledger
+	)
+	prepared["prepared_party_economy"] = (
+		prepared_party_economy
+	)
+	prepared["prepared_research_runtime_state"] = (
+		prepared_research_runtime_state
+	)
+	prepared["prepared_fate_persistent_modifiers"] = (
+		prepared_fate_persistent_modifiers
+	)
 	if incoming_active:
 		for field_name in ["route_layout", "route_state", "encounter", "economy", "shop"]:
 			if typeof(snapshot.get(field_name)) != TYPE_DICTIONARY:
 				return {}
+		var route_economy := snapshot["economy"] as Dictionary
+		var route_party_economy := route_economy.get(
+			"party_economy",
+			{}
+		) as Dictionary
+		if (
+			route_party_economy.get("xirang_ledger", {})
+			!= snapshot["party_xirang_ledger"]
+			or route_party_economy.get("party_status_ledger", {})
+			!= snapshot["party_status_ledger"]
+		):
+			return {}
+		var prepared_identity := _prepare_route_runtime_identity()
+		if not _can_commit_prepared_route_runtime_identity(prepared_identity):
+			_discard_prepared_route_runtime_identity(prepared_identity)
+			return {}
+		var validation_peer_id := (
+			_route.get_configured_local_peer_id()
+			if bool(prepared_identity["already_configured"])
+			else int(prepared_identity["local_peer_id"])
+		)
+		if validation_peer_id < 0:
+			_discard_prepared_route_runtime_identity(prepared_identity)
+			return {}
+		var prepared_route := _route.prepare_full_snapshot(
+			snapshot["route_layout"] as Dictionary,
+			snapshot["route_state"] as Dictionary,
+			snapshot["encounter"] as Dictionary,
+			snapshot["economy"] as Dictionary,
+			snapshot["shop"] as Dictionary,
+			validation_peer_id,
+			party_economy_snapshot
+		)
+		if prepared_route.is_empty():
+			_discard_prepared_route_runtime_identity(prepared_identity)
+			return {}
+		var prepared_player_progression := (
+			_route.prepare_authoritative_player_progression(
+				prepared_player_upgrade_ledger,
+				prepared_route,
+				(
+					prepared_identity["roster"] as Dictionary
+					if not bool(prepared_identity["already_configured"])
+					else {}
+				)
+			)
+		)
+		var players_for_projection := (
+			(prepared_identity["roster"] as Dictionary)["players"] as Dictionary
+			if not bool(prepared_identity["already_configured"])
+			else _route.get_players_for_persistent_projection()
+		)
+		var prepared_persistent_modifiers := (
+			_persistent_modifier_projector.prepare_for_players(
+				players_for_projection,
+				prepared_research_runtime_state,
+				prepared_fate_persistent_modifiers
+			)
+		)
+		if (
+			prepared_player_progression.is_empty()
+			or prepared_persistent_modifiers.is_empty()
+		):
+			_route.discard_prepared_full_snapshot(prepared_route)
+			_discard_prepared_route_runtime_identity(prepared_identity)
+			return {}
+		prepared["prepared_route_runtime_identity"] = prepared_identity
+		prepared["prepared_route_full_snapshot"] = prepared_route
+		prepared["prepared_route_player_progression"] = (
+			prepared_player_progression
+		)
+		prepared["prepared_route_persistent_modifiers"] = (
+			prepared_persistent_modifiers
+		)
 	return prepared
+
+
+func _research_levels_cover_progression_members(
+	prepared_progression: Dictionary,
+	prepared_research: Dictionary
+) -> bool:
+	var progression_values := prepared_progression.get("values", {}) as Dictionary
+	var research_levels := prepared_research.get("player_levels", {}) as Dictionary
+	if progression_values.is_empty() or research_levels.is_empty():
+		return false
+	if _runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
+		return research_levels.has(0)
+	for peer_id in _run_state.get_registered_multiplayer_peer_ids():
+		if not progression_values.has(peer_id) or not research_levels.has(peer_id):
+			return false
+	return true
 
 
 func _is_active_snapshot_superseded_by_campaign(

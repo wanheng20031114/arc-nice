@@ -300,47 +300,105 @@ func validate_remote_state_structure(snapshot: Dictionary) -> bool:
 
 
 func apply_remote_state(snapshot: Dictionary) -> bool:
-	var decoded := _decode_state(snapshot)
-	if decoded.is_empty() or int(decoded["revision"]) < _revision:
+	var prepared := prepare_remote_state(snapshot)
+	if not can_commit_prepared_remote_state(prepared):
 		return false
-	var target_peer_id := int(decoded["target_peer_id"])
+	commit_validated_remote_state(prepared)
+	return true
+
+
+func prepare_remote_state(
+	snapshot: Dictionary,
+	structure_only: bool = false
+) -> Dictionary:
+	var decoded := _decode_state(snapshot)
+	if (
+		decoded.is_empty()
+		or not (
+			validate_remote_state_structure(snapshot)
+			if structure_only
+			else validate_remote_state(snapshot)
+		)
+	):
+		return {}
+	decoded["expected_snapshot"] = export_state_for_peer(
+		int(decoded["target_peer_id"])
+	)
+	return decoded
+
+
+func can_commit_prepared_remote_state(prepared: Dictionary) -> bool:
+	return (
+		not prepared.is_empty()
+		and typeof(prepared.get("expected_snapshot")) == TYPE_DICTIONARY
+		and prepared["expected_snapshot"] == export_state_for_peer(
+			int(prepared.get("target_peer_id", -1))
+		)
+	)
+
+
+func commit_validated_remote_state(
+	prepared: Dictionary,
+	emit_change_signals: bool = true
+) -> void:
+	var target_peer_id := int(prepared["target_peer_id"])
 	var was_active := is_active()
 	var previous_phase := _phase
-	_revision = int(decoded["revision"])
-	_phase = StringName(decoded["global_phase"])
-	_node_id = int(decoded["node_id"])
-	_node_content_seed = int(decoded["node_content_seed"])
-	_occurrence_key = str(decoded["occurrence_key"])
-	_participant_peer_ids = decoded["participant_peer_ids"] as Array[int]
-	_active_peer_ids = decoded["active_peer_ids"] as Array[int]
-	_spectator_peer_ids = decoded["spectator_peer_ids"] as Array[int]
-	_completed_peer_ids = decoded["completed_peer_ids"] as Dictionary
-	_abandoned_peer_ids = decoded["abandoned_peer_ids"] as Dictionary
-	_resolved_node_ids = decoded["resolved_node_ids"] as Dictionary
+	_revision = int(prepared["revision"])
+	_phase = StringName(prepared["global_phase"])
+	_node_id = int(prepared["node_id"])
+	_node_content_seed = int(prepared["node_content_seed"])
+	_occurrence_key = str(prepared["occurrence_key"])
+	_participant_peer_ids = prepared["participant_peer_ids"] as Array[int]
+	_active_peer_ids = prepared["active_peer_ids"] as Array[int]
+	_spectator_peer_ids = prepared["spectator_peer_ids"] as Array[int]
+	_completed_peer_ids = prepared["completed_peer_ids"] as Dictionary
+	_abandoned_peer_ids = prepared["abandoned_peer_ids"] as Dictionary
+	_resolved_node_ids = prepared["resolved_node_ids"] as Dictionary
 	_offers_by_peer.clear()
 	_offer_revisions_by_peer.clear()
 	_selected_options_by_peer.clear()
 	_result_texts_by_peer.clear()
 	if target_peer_id >= 0:
-		var local_options := decoded["local_option_ids"] as Array[StringName]
+		var local_options := prepared["local_option_ids"] as Array[StringName]
 		if not local_options.is_empty():
 			_offers_by_peer[target_peer_id] = local_options
-		_offer_revisions_by_peer[target_peer_id] = int(
-			decoded["offer_revision"]
-		)
-		var selected := StringName(decoded["local_selected_option_id"])
+			_offer_revisions_by_peer[target_peer_id] = int(
+				prepared["offer_revision"]
+			)
+		var selected := StringName(prepared["local_selected_option_id"])
 		if not selected.is_empty():
 			_selected_options_by_peer[target_peer_id] = selected
-		_result_texts_by_peer[target_peer_id] = str(
-			decoded["local_result_text"]
-		)
+			_result_texts_by_peer[target_peer_id] = str(
+				prepared["local_result_text"]
+			)
+	if not emit_change_signals:
+		return
 	var applied := export_state_for_peer(target_peer_id)
 	state_changed.emit(applied)
 	if not was_active and is_active():
 		rare_chest_started.emit(applied)
 	if previous_phase != PHASE_COMPLETED and _phase == PHASE_COMPLETED:
 		rare_chest_finished.emit(applied)
-	return true
+
+
+func publish_prepared_remote_state(prepared: Dictionary) -> void:
+	var target_peer_id := int(prepared.get("target_peer_id", -1))
+	var expected := prepared.get("expected_snapshot", {}) as Dictionary
+	var applied := export_state_for_peer(target_peer_id)
+	state_changed.emit(applied)
+	if (
+		StringName(expected.get("global_phase", PHASE_IDLE))
+		!= PHASE_CHOOSING
+		and is_active()
+	):
+		rare_chest_started.emit(applied)
+	if (
+		StringName(expected.get("global_phase", PHASE_IDLE))
+		!= PHASE_COMPLETED
+		and _phase == PHASE_COMPLETED
+	):
+		rare_chest_finished.emit(applied)
 
 
 func is_active() -> bool:

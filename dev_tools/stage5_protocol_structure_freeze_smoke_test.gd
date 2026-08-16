@@ -19,7 +19,7 @@ const EXPECTED_MP_GAME_RPC_NAME_HASH := (
 	"38bec6fc80f0571d5c58747ed1a8aa3d7c07c9fe09b0a250c571755cee4b3ac3"
 )
 const EXPECTED_MP_GAME_RPC_SIGNATURE_HASH := (
-	"86d697528a6de6a91bad047f19ec02dfc8c6580e67954b236fd83d37e0327272"
+	"7357da3776164bf391426aeb22864ff00c61f218a80aa98fec6145af116d96e9"
 )
 const EXPECTED_MP_GAME_RPC_ANNOTATION_HASH := (
 	"ce88c99b4dc303ca72838ad54a41e5a7b4a00ff0a1b21651a9106346fbcc5aad"
@@ -36,15 +36,15 @@ const EXPECTED_NET_MANAGER_RPC_ANNOTATION_HASH := (
 	"715c9101c72de2d89f5510de77c618b7c78e11cb45fe575576aa9ed037119c5a"
 )
 
-const EXPECTED_MP_ROGUE_ROUTE_RPC_COUNT := 16
+const EXPECTED_MP_ROGUE_ROUTE_RPC_COUNT := 17
 const EXPECTED_MP_ROGUE_ROUTE_RPC_NAME_HASH := (
-	"4cb5d6bf01d8cf32847856fa9b11bcf7cf2f9fd99643b75b4e4918c85c850136"
+	"dfaec406b3c6dd41f91bac16d5c08470090517ebf671e4e06cbf2b96e0e795d4"
 )
 const EXPECTED_MP_ROGUE_ROUTE_RPC_SIGNATURE_HASH := (
-	"19512528aae0dc803c4836a0569dab8928b9e9fb801c77a934138be3484da815"
+	"5361e3cbad06266cb67c02f58ba7872321f1533257bfd3b540650e6f50823028"
 )
 const EXPECTED_MP_ROGUE_ROUTE_RPC_ANNOTATION_HASH := (
-	"a572289259bd54ed1ffe876c17e70bb05738e5b6bd546f923b8004c16e0208a9"
+	"5c4b62db98690e0b32723b64f5aebb75eb8611a1c31c946e3d36ce5cb090b88e"
 )
 
 const EXPECTED_ROGUE_COMBAT_COORDINATOR_RPC_COUNT := 13
@@ -340,8 +340,8 @@ func _strip_quotes(value: String) -> String:
 
 
 func _test_protocol_and_wire_values() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 77, "多人协议必须保持 v77。")
-	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v77 必须保持 8 个 ENet 信道。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 78, "多人协议必须保持 v78。")
+	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v78 必须保持 8 个 ENet 信道。")
 	_expect(GameModeCatalog.MODE_STANDARD == 0, "standard wire value 必须保持 0。")
 	_expect(GameModeCatalog.MODE_TOWER_DEFENSE == 1, "tower_defense wire value 必须保持 1。")
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P1 == 2, "test_arena_p1 wire value 必须保持 2。")
@@ -384,7 +384,7 @@ func _test_protocol_and_wire_values() -> void:
 		_expect(
 			int(CombatFlowState.State.get(state_name, -1))
 			== int(expected_flow_values[state_name]),
-			"CombatFlowState.%s 的 v77 wire value 改变。" % state_name
+			"CombatFlowState.%s 的 v78 wire value 改变。" % state_name
 		)
 
 

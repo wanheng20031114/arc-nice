@@ -8,13 +8,23 @@ func net_request_route_full_snapshot() -> void:
 	pass
 
 
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_upgrade_requested(
+	stat_type: int,
+	expected_level: int,
+	expected_xirang_revision: int
+) -> void:
+	pass
+
+
 @rpc("authority", "call_remote", "reliable", 0)
 func net_route_full_snapshot(
 	layout: Dictionary,
 	state: Dictionary,
 	encounter_state: Dictionary,
 	economy_state: Dictionary,
-	shop_state: Dictionary
+	shop_state: Dictionary,
+	progression_ledger: Dictionary
 ) -> void:
 	pass
 

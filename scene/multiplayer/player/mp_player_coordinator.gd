@@ -4703,13 +4703,32 @@ func apply_local_state_correction(
 func restore_reconnected_player_snapshot(
 	player_node: Player,
 	player_state: SnapshotManager.PlayerState,
+	progression_snapshot: Dictionary,
 	snapshot_time: float,
 	is_host: bool,
 	local_peer_id: int,
 	local_tango_prediction_active: bool
-) -> void:
+) -> bool:
 	if player_node == null or player_state == null or not is_instance_valid(player_node):
-		return
+		return false
+	# 身份 remap 之后先投影稳定成员账本。断线快照里的 max health、skill
+	# level/duration 都是旧 Player 的派生值，后续只能恢复经清洗的场景瞬态。
+	if not player_node.apply_run_progression_snapshot(progression_snapshot, true):
+		return false
+	var projected_max_health := maxi(player_node.max_health, 1)
+	var reconnected_health := 0
+	if not player_state.is_dead and player_state.current_health > 0:
+		var captured_health_ratio := clampf(
+			float(player_state.current_health)
+			/ float(maxi(player_state.max_health, 1)),
+			0.0,
+			1.0
+		)
+		reconnected_health = clampi(
+			roundi(float(projected_max_health) * captured_health_ratio),
+			1,
+			projected_max_health
+		)
 	# Potion/consumable runtime state intentionally does not survive reconnect.
 	# Clear the captured transient bit before it reaches the replacement Player.
 	player_state.void_battery_charged = false
@@ -4725,7 +4744,16 @@ func restore_reconnected_player_snapshot(
 		player_state.facing,
 		player_state.peer_id == local_peer_id and local_tango_prediction_active
 	)
-	_apply_realtime_snapshot(player_node, player_state)
+	_apply_realtime_snapshot(
+		player_node,
+		player_state,
+		true,
+		reconnected_health
+	)
+	# 实时状态投影完成后再投一次当前账本，锁死断线期间新增的奖励、惩罚与
+	# 技能高水位；普通重连生命按上方比例保留并已钳制到新上限。
+	if not player_node.apply_run_progression_snapshot(progression_snapshot, true):
+		return false
 	if is_host:
 		remember_latest_client_state(
 			true,
@@ -4744,6 +4772,7 @@ func restore_reconnected_player_snapshot(
 			player_state.anim_state,
 			snapshot_time
 		)
+	return true
 
 
 func get_host_snapshot_sequence() -> int:
@@ -4968,7 +4997,9 @@ func _apply_primary_cooldown_ratio(
 
 func _apply_realtime_snapshot(
 	player_node: Player,
-	player_state: SnapshotManager.PlayerState
+	player_state: SnapshotManager.PlayerState,
+	preserve_persistent_progression: bool = false,
+	reconnected_health: int = -1
 ) -> void:
 	if player_node == null or player_state == null or not is_instance_valid(player_node):
 		return
@@ -4976,30 +5007,78 @@ func _apply_realtime_snapshot(
 		player_state.health_revision
 		>= get_applied_health_revision(player_state.peer_id)
 	)
+	var snapshot_current_health := (
+		reconnected_health
+		if preserve_persistent_progression and reconnected_health >= 0
+		else player_state.current_health
+	)
+	var snapshot_max_health := (
+		player_node.max_health
+		if preserve_persistent_progression
+		else player_state.max_health
+	)
+	var snapshot_skill1_unlocked := (
+		player_node.has_skill1()
+		if preserve_persistent_progression
+		else player_state.skill1_unlocked
+	)
+	var snapshot_skill1_level := (
+		player_node.skill1_upgrade_level
+		if preserve_persistent_progression
+		else player_state.skill1_upgrade_level
+	)
+	var snapshot_skill1_duration := (
+		player_node.skill1_charge_duration
+		if preserve_persistent_progression
+		else player_state.skill1_charge_duration
+	)
+	var snapshot_xirang := player_state.current_xirang
+	var ledger_peer_id := player_node.peer_id if player_node.peer_id > 0 else 0
+	if (
+		preserve_persistent_progression
+		and player_node.uses_run_party_xirang_ledger(ledger_peer_id)
+	):
+		# 重连捕获里的余额属于旧 peer/旧时刻；RUN_PARTY 只消费 remap 后
+		# RunState 权威账本。若账本此刻不可读，保留 ownership 绑定时已投影值。
+		snapshot_xirang = player_node.current_xirang
+		var run_state := get_node_or_null("/root/RunState") as RunStateStore
+		if (
+			run_state != null
+			and run_state.run_started
+			and (
+				ledger_peer_id == 0
+				or run_state.has_multiplayer_peer_state(ledger_peer_id)
+			)
+		):
+			snapshot_xirang = run_state.get_party_xirang_balance(ledger_peer_id)
 	player_node.apply_multiplayer_realtime_state(
-		player_state.current_health if apply_snapshot_health else player_node.current_health,
-		player_state.max_health if apply_snapshot_health else player_node.max_health,
-		player_state.current_xirang,
+		snapshot_current_health if apply_snapshot_health else player_node.current_health,
+		snapshot_max_health if apply_snapshot_health else player_node.max_health,
+		snapshot_xirang,
 		player_state.is_dead if apply_snapshot_health else player_node.is_dead,
 		(
 			player_state.invincibility_time_left
 			if apply_snapshot_health
 			else player_node.invincibility_time_left
 		),
-		player_state.skill1_unlocked,
+		snapshot_skill1_unlocked,
 		player_state.skill1_charge,
-		player_state.skill1_charge_duration,
+		snapshot_skill1_duration,
 		player_state.form_mode,
 		player_state.shot_pattern,
-		player_state.skill1_upgrade_level,
+		snapshot_skill1_level,
 		player_state.ammo_capacity,
 		player_state.current_ammo,
 		player_state.is_reloading,
 		player_state.reload_progress
 	)
-	player_node.apply_multiplayer_effective_move_speed_multiplier(
-		player_state.effective_move_speed_multiplier
-	)
+	if preserve_persistent_progression:
+		# 捕获值可能混入已过期减速/药水；新节点按当前永久层自行计算。
+		player_node.apply_multiplayer_effective_move_speed_multiplier(0.0)
+	else:
+		player_node.apply_multiplayer_effective_move_speed_multiplier(
+			player_state.effective_move_speed_multiplier
+		)
 	player_node.apply_authoritative_void_battery_state(
 		player_state.void_battery_charged
 	)

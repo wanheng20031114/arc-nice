@@ -418,57 +418,119 @@ func export_state() -> Dictionary:
 
 
 func apply_remote_state(snapshot: Dictionary) -> bool:
-	var decoded := _decode_state(snapshot)
-	if decoded.is_empty():
+	var prepared := prepare_remote_state(snapshot)
+	if not can_commit_prepared_remote_state(prepared):
 		return false
-	var incoming_revision := int(decoded["revision"])
-	if incoming_revision < _revision:
-		return false
-	var incoming_economy := decoded["economy_snapshot"] as Dictionary
+	var incoming_economy := prepared["economy_snapshot"] as Dictionary
 	if (
 		_economy != null
 		and not incoming_economy.is_empty()
 		and not _economy.apply_remote_snapshot(incoming_economy)
 	):
 		return false
+	commit_validated_remote_state(prepared)
+	return true
+
+
+func prepare_remote_state(
+	snapshot: Dictionary,
+	structure_only: bool = false
+) -> Dictionary:
+	var decoded := _decode_state(snapshot)
+	if (
+		decoded.is_empty()
+		or not (
+			validate_remote_state_structure(snapshot)
+			if structure_only
+			else validate_remote_state(snapshot)
+		)
+	):
+		return {}
+	decoded["expected_snapshot"] = export_state()
+	return decoded
+
+
+func can_commit_prepared_remote_state(prepared: Dictionary) -> bool:
+	return (
+		not prepared.is_empty()
+		and typeof(prepared.get("expected_snapshot")) == TYPE_DICTIONARY
+		and prepared["expected_snapshot"] == export_state()
+	)
+
+
+func commit_validated_remote_state(
+	prepared: Dictionary,
+	emit_change_signals: bool = true
+) -> void:
 	var was_active := is_active()
 	var previous_phase := _phase
-	_revision = incoming_revision
-	_phase = StringName(decoded["phase"])
-	_node_id = int(decoded["node_id"])
-	_node_content_seed = int(decoded["node_content_seed"])
-	_occurrence_key = str(decoded["occurrence_key"])
-	_remaining_seconds = float(decoded["remaining_seconds"])
-	_voting_timer_running = bool(decoded["voting_timer_running"])
+	_revision = int(prepared["revision"])
+	_phase = StringName(prepared["phase"])
+	_node_id = int(prepared["node_id"])
+	_node_content_seed = int(prepared["node_content_seed"])
+	_occurrence_key = str(prepared["occurrence_key"])
+	_remaining_seconds = float(prepared["remaining_seconds"])
+	_voting_timer_running = bool(prepared["voting_timer_running"])
 	_last_broadcast_remaining_second = ceili(_remaining_seconds)
-	_participant_peer_ids = decoded["participant_peer_ids"] as Array[int]
-	_active_peer_ids = decoded["active_peer_ids"] as Array[int]
-	_disconnected_peer_ids = decoded["disconnected_peer_ids"] as Array[int]
-	_spectator_peer_ids = decoded["spectator_peer_ids"] as Array[int]
-	_intro_confirmed = decoded["intro_confirmed"] as Dictionary
-	_option_ids = decoded["option_ids"] as Array[StringName]
-	_option_availability = decoded["option_availability"] as Dictionary
-	_votes = decoded["votes"] as Dictionary
-	_abstained = decoded["abstained"] as Dictionary
-	_winning_option = StringName(decoded["winning_option"])
-	_result = decoded["result"] as Dictionary
-	_collectible_offers = decoded["collectible_offers"] as Dictionary
+	_participant_peer_ids = prepared["participant_peer_ids"] as Array[int]
+	_active_peer_ids = prepared["active_peer_ids"] as Array[int]
+	_disconnected_peer_ids = prepared["disconnected_peer_ids"] as Array[int]
+	_spectator_peer_ids = prepared["spectator_peer_ids"] as Array[int]
+	_intro_confirmed = prepared["intro_confirmed"] as Dictionary
+	_option_ids = prepared["option_ids"] as Array[StringName]
+	_option_availability = prepared["option_availability"] as Dictionary
+	_votes = prepared["votes"] as Dictionary
+	_abstained = prepared["abstained"] as Dictionary
+	_winning_option = StringName(prepared["winning_option"])
+	_result = (prepared["result"] as Dictionary).duplicate(true)
+	_collectible_offers = prepared["collectible_offers"] as Dictionary
 	_collectible_offer_occurrences = (
-		decoded["collectible_offer_occurrences"] as Dictionary
+		prepared["collectible_offer_occurrences"] as Dictionary
 	)
-	_claimed_peer_ids = decoded["claimed_peer_ids"] as Dictionary
-	_personal_messages = decoded["personal_messages"] as Dictionary
-	_result_ack_peer_ids = decoded["result_ack_peer_ids"] as Dictionary
-	_resolved_node_ids = decoded["resolved_node_ids"] as Dictionary
-	_settlement_committed = bool(decoded["settlement_committed"])
-	_economy_snapshot = incoming_economy
+	_claimed_peer_ids = prepared["claimed_peer_ids"] as Dictionary
+	_personal_messages = prepared["personal_messages"] as Dictionary
+	_result_ack_peer_ids = prepared["result_ack_peer_ids"] as Dictionary
+	_resolved_node_ids = prepared["resolved_node_ids"] as Dictionary
+	_settlement_committed = bool(prepared["settlement_committed"])
+	_economy_snapshot = (
+		prepared["economy_snapshot"] as Dictionary
+	).duplicate(true)
+	if not emit_change_signals:
+		return
 	var applied := export_state()
 	state_changed.emit(applied)
 	if not was_active and is_active():
 		supply_started.emit(applied)
 	if previous_phase != PHASE_COMPLETED and _phase == PHASE_COMPLETED:
 		supply_finished.emit(applied)
-	return true
+
+
+func publish_prepared_remote_state(prepared: Dictionary) -> void:
+	var expected := prepared.get("expected_snapshot", {}) as Dictionary
+	var applied := export_state()
+	state_changed.emit(applied)
+	if not _is_snapshot_active(expected) and is_active():
+		supply_started.emit(applied)
+	if (
+		StringName(expected.get("phase", PHASE_IDLE)) != PHASE_COMPLETED
+		and _phase == PHASE_COMPLETED
+	):
+		supply_finished.emit(applied)
+
+
+func publish_prepared_remote_economy(prepared: Dictionary) -> void:
+	economy_changed.emit(
+		(prepared["economy_snapshot"] as Dictionary).duplicate(true)
+	)
+
+
+func _is_snapshot_active(snapshot: Dictionary) -> bool:
+	return StringName(snapshot.get("phase", PHASE_IDLE)) in [
+		PHASE_INTRO,
+		PHASE_VOTING,
+		PHASE_COLLECTIBLE_CHOICE,
+		PHASE_RESULT,
+	]
 
 
 func validate_remote_state(snapshot: Dictionary) -> bool:

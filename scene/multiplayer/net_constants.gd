@@ -145,7 +145,9 @@ extends RefCounted
 ## v77：注册握手新增 schema 1 内容摘要与 Host 明确 accepted/rejected 回执；Client
 ## 只有在本地 ACTIVE roster 和匹配的 accepted 三元组同时到达后才进入大厅。
 ## v76 客户端无法证明敌人、道具、Campaign 及依赖闭包与 Host 相同，不能加入。
-const PROTOCOL_VERSION := 77
+## v78：P3 Route 新增 Host 权威玩家升级请求，并在路线完整快照末尾追加逐玩家
+## progression ledger；v77 客户端既没有该 RPC，也会按旧五参解码完整快照。
+const PROTOCOL_VERSION := 78
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF

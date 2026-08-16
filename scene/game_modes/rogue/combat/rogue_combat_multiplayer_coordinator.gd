@@ -65,6 +65,7 @@ enum SessionProjectionOwner {
 var _route: RogueRouteGame = null
 var _net_manager: NetManagerStore = null
 var _run_state: RunStateStore = null
+var _player_persistent_modifier_projector: PlayerPersistentModifierProjector = null
 var _enabled := false
 var _phase := ProtocolPhase.IDLE
 
@@ -97,6 +98,9 @@ var _pending_reconnected_identity_resolutions: Dictionary[int, Dictionary] = {}
 var _resolved_reconnected_identity_resolutions: Dictionary[int, Dictionary] = {}
 var _pending_terminal_spectator_syncs: Dictionary = {}
 var _route_spectator_occurrence_key := ""
+## 终局重连成员可能在结算到达前先降级为路线观战者；这里冻结其原始参战
+## 集合，不能在协议 reset 后用空字典退回“恢复所有路线 Player”。
+var _route_spectator_participant_peer_ids: Dictionary = {}
 var _session_projection_owner := SessionProjectionOwner.ENCLOSING_RUNTIME
 
 var _expected_prepared_peers: Dictionary = {}
@@ -116,6 +120,7 @@ var _local_outcome_failure_reason := ""
 var _settlement_received := false
 var _pending_settlement: Dictionary = {}
 var _settlement_scheduled := false
+var _abort_settlement_in_progress := false
 var _settled_occurrences: Dictionary = {}
 
 var _emergency_reward_session: RogueEmergencyRewardSelectionSession = null
@@ -134,9 +139,19 @@ var _terminal_barrier_deadline_msec := 0
 var _local_result_visible := false
 var _local_route_returned := false
 var _local_result_occurrence_key := ""
+## 结算面板可能晚于协议 runtime 释放；参战集合随结果生命周期单独持有，
+## 不能在 _reset_protocol_state 后退回“恢复路线所有玩家”。
+var _local_result_participant_peer_ids: Dictionary = {}
 var _local_terminal_finalized := false
 var _consumed_node_ids: Dictionary = {}
 var _terminal_sequence_serial := 0
+
+
+## Tower 嵌入式探索在创建任何 MpGame/Combat Player 前注入持久层投影器。
+func configure_player_persistent_modifier_projector(
+	projector: PlayerPersistentModifierProjector
+) -> void:
+	_player_persistent_modifier_projector = projector
 
 
 func bind_network_dependencies(
@@ -195,6 +210,12 @@ func bind_network_dependencies(
 	):
 		_route.normal_combat_stage_reset.connect(
 			_on_route_normal_combat_stage_reset
+		)
+	if not _route.normal_combat_snapshot_reconciled.is_connected(
+		_on_route_normal_combat_snapshot_reconciled
+	):
+		_route.normal_combat_snapshot_reconciled.connect(
+			_on_route_normal_combat_snapshot_reconciled
 		)
 	_connect_net_manager_signals()
 
@@ -285,7 +306,10 @@ func _poll_terminal_barrier_timeout(now_msec: int = -1) -> void:
 			_interrupt_terminal_presentation()
 			if _local_result_occurrence_key.is_empty():
 				_local_result_occurrence_key = occurrence_key
-			_return_to_route_local()
+				_local_result_participant_peer_ids = _participant_peer_ids.duplicate()
+			if not _return_to_route_local():
+				push_error("Rogue 多人终局超时无法恢复路线 Player，拒绝释放本地战场。")
+				continue
 			if not _show_local_result():
 				_clear_local_result_lifecycle()
 			_terminal_ready_peers[peer_id] = true
@@ -440,6 +464,12 @@ func _disconnect_route_signals() -> void:
 	):
 		_route.normal_combat_stage_reset.disconnect(
 			_on_route_normal_combat_stage_reset
+		)
+	if _route.normal_combat_snapshot_reconciled.is_connected(
+		_on_route_normal_combat_snapshot_reconciled
+	):
+		_route.normal_combat_snapshot_reconciled.disconnect(
+			_on_route_normal_combat_snapshot_reconciled
 		)
 
 
@@ -599,6 +629,7 @@ func _begin_protocol(
 	_settlement_received = false
 	_pending_settlement.clear()
 	_settlement_scheduled = false
+	_abort_settlement_in_progress = false
 	_expected_terminal_peers.clear()
 	_terminal_ready_peers.clear()
 	_terminal_safe_received = false
@@ -696,6 +727,9 @@ func _create_embedded_runtime() -> bool:
 		return false
 	instance.name = COMBAT_RUNTIME_NODE_NAME
 	instance.embedded_runtime = true
+	instance.configure_player_persistent_modifier_projector(
+		_player_persistent_modifier_projector
+	)
 	if not instance.configure_embedded_participant_roster(
 		_pack_peer_ids(_participant_peer_ids)
 	):
@@ -1938,6 +1972,57 @@ func _settle_host_outcome(
 		)
 
 
+## 激活后的协议中止不能回到战前余额。Host 先把每名参与者的 staged
+## 战斗余额与当前背包发布成 consume_node=false 的终局结算，再允许拆战场。
+func _publish_host_abort_settlement(
+	occurrence_key: String,
+	reason: StringName
+) -> bool:
+	if (
+		not _is_host()
+		or occurrence_key.is_empty()
+		or occurrence_key != _active_occurrence_key
+		or _run_state == null
+		or _participant_peer_ids.is_empty()
+	):
+		return false
+	_capture_live_combat_xirang()
+	var final_xirang_by_peer: Dictionary = {}
+	var inventory_snapshots_by_peer: Dictionary = {}
+	var results_by_peer: Dictionary = {}
+	for peer_id_variant in _participant_peer_ids.keys():
+		var peer_id := int(peer_id_variant)
+		var inventory_snapshot := (
+			_run_state.export_inventory_snapshot_for_peer(peer_id)
+		)
+		if inventory_snapshot.is_empty():
+			return false
+		final_xirang_by_peer[peer_id] = int(
+			_last_combat_xirang_by_peer.get(
+				peer_id,
+				_entry_xirang_by_peer.get(peer_id, 0)
+			)
+		)
+		inventory_snapshots_by_peer[peer_id] = inventory_snapshot
+		results_by_peer[peer_id] = {
+			"victory": false,
+			"failure_reason": String(reason),
+			"peer_id": peer_id,
+		}
+	var settlement := {
+		"node_id": _active_node_id,
+		"content_seed": _active_content_seed,
+		"occurrence_key": occurrence_key,
+		"victory": false,
+		"failure_reason": String(reason),
+		"consume_node": false,
+		"final_xirang_by_peer": final_xirang_by_peer,
+		"inventory_snapshots_by_peer": inventory_snapshots_by_peer,
+		"results_by_peer": results_by_peer,
+	}
+	return _publish_host_settlement(occurrence_key, settlement)
+
+
 func _publish_host_settlement(
 	occurrence_key: String,
 	settlement: Dictionary,
@@ -2155,12 +2240,17 @@ func net_combat_settlement(
 		_apply_settlement(settlement)
 		return
 	if occurrence_key == _route_spectator_occurrence_key:
-		_apply_route_spectator_settlement(occurrence_key, settlement)
+		_apply_route_spectator_settlement(
+			occurrence_key,
+			settlement,
+			_route_spectator_participant_peer_ids
+		)
 
 
 func _apply_route_spectator_settlement(
 	occurrence_key: String,
-	settlement: Dictionary
+	settlement: Dictionary,
+	restore_participant_peer_ids: Dictionary
 ) -> bool:
 	if (
 		occurrence_key.is_empty()
@@ -2172,6 +2262,7 @@ func _apply_route_spectator_settlement(
 		or typeof(settlement.get("inventory_snapshots_by_peer"))
 		!= TYPE_DICTIONARY
 		or typeof(settlement.get("results_by_peer")) != TYPE_DICTIONARY
+		or typeof(settlement.get("party_xirang_ledger")) != TYPE_DICTIONARY
 		or (
 			settlement.has("light_stone_ledger")
 			and typeof(settlement.get("light_stone_ledger")) != TYPE_DICTIONARY
@@ -2210,9 +2301,32 @@ func _apply_route_spectator_settlement(
 		var snapshot := inventory_snapshots[peer_id] as Dictionary
 		if int(snapshot.get("peer_id", -1)) != peer_id:
 			return false
+	var resolved_restore_participants := (
+		restore_participant_peer_ids.duplicate()
+	)
+	if resolved_restore_participants.is_empty():
+		# fresh reconnect 进程没有旧 ACTIVE roster；此时只允许从 Host 已完整
+		# 校验且三张 exact-key map 一致的 settlement 冻结参与者集合。
+		for raw_peer_id in final_xirang.keys():
+			resolved_restore_participants[int(raw_peer_id)] = true
+	elif resolved_restore_participants.size() != final_xirang.size():
+		return false
+	for raw_peer_id in resolved_restore_participants.keys():
+		if (
+			typeof(raw_peer_id) != TYPE_INT
+			or typeof(resolved_restore_participants[raw_peer_id]) != TYPE_BOOL
+			or not bool(resolved_restore_participants[raw_peer_id])
+			or not final_xirang.has(int(raw_peer_id))
+		):
+			return false
+	if not resolved_restore_participants.has(local_peer_id):
+		# pure late-join spectator 不在结算 participant maps 中，不能由空集合
+		# 退回“恢复全部 Player”。
+		return false
 	if not _apply_authoritative_settlement_economy(
 		final_xirang,
 		inventory_snapshots,
+		settlement["party_xirang_ledger"] as Dictionary,
 		settlement.get("light_stone_ledger", {}) as Dictionary
 	):
 		return false
@@ -2221,9 +2335,15 @@ func _apply_route_spectator_settlement(
 		var node_id := int(settlement.get("node_id", INVALID_NODE_ID))
 		if node_id >= 0:
 			_consumed_node_ids[node_id] = true
+	if not _route.restore_players_for_route_scene_entry(
+		resolved_restore_participants
+	):
+		push_error("Rogue 路线观战结算无法恢复完整玩家成长边界。")
+		return false
 	_route.complete_normal_combat(occurrence_key)
 	_route.set_route_presentation_enabled(true)
 	_route_spectator_occurrence_key = ""
+	_route_spectator_participant_peer_ids.clear()
 	return true
 
 
@@ -2239,6 +2359,16 @@ func _apply_settlement(settlement: Dictionary) -> bool:
 		or typeof(settlement.get("inventory_snapshots_by_peer"))
 		!= TYPE_DICTIONARY
 		or typeof(settlement.get("results_by_peer")) != TYPE_DICTIONARY
+		or (
+			not _is_host()
+			and typeof(settlement.get("party_xirang_ledger"))
+			!= TYPE_DICTIONARY
+		)
+		or (
+			settlement.has("party_xirang_ledger")
+			and typeof(settlement.get("party_xirang_ledger"))
+			!= TYPE_DICTIONARY
+		)
 		or (
 			settlement.has("light_stone_ledger")
 			and typeof(settlement.get("light_stone_ledger")) != TYPE_DICTIONARY
@@ -2260,9 +2390,16 @@ func _apply_settlement(settlement: Dictionary) -> bool:
 	if not _apply_authoritative_settlement_economy(
 		final_xirang,
 		inventory_snapshots,
+		settlement.get("party_xirang_ledger", {}) as Dictionary,
 		settlement.get("light_stone_ledger", {}) as Dictionary
 	):
 		return false
+	if _is_host():
+		# Host 先提交 staged 余额，再把这一次真实的权威 revision
+		# 写入结算载荷；Client 不再本地猜测 revision。
+		settlement["party_xirang_ledger"] = (
+			_run_state.export_party_xirang_ledger()
+		)
 	_apply_xirang_map_to_game(_combat_game, final_xirang)
 	_apply_xirang_map_to_route(final_xirang)
 	if _emergency_reward_overlay != null:
@@ -2294,9 +2431,18 @@ func _apply_settlement(settlement: Dictionary) -> bool:
 func _apply_authoritative_settlement_economy(
 	final_xirang: Dictionary,
 	inventory_snapshots: Dictionary,
+	party_xirang_ledger: Dictionary,
 	light_stone_ledger: Dictionary = {}
 ) -> bool:
 	if not _is_host():
+		if (
+			party_xirang_ledger.is_empty()
+			or not _does_xirang_ledger_match_settlement(
+				party_xirang_ledger,
+				final_xirang
+			)
+		):
+			return false
 		var peer_ids := PackedInt32Array()
 		for peer_id_variant in inventory_snapshots.keys():
 			peer_ids.append(int(peer_id_variant))
@@ -2313,26 +2459,7 @@ func _apply_authoritative_settlement_economy(
 				(inventory_snapshots[peer_id] as Dictionary).duplicate(true)
 			)
 		party_snapshot["inventories"] = inventories
-		var xirang_ledger := (
-			party_snapshot.get("xirang_ledger", {}) as Dictionary
-		).duplicate(true)
-		var current_xirang := _run_state.export_party_xirang_ledger()
-		var xirang_values := (
-			current_xirang.get("values", {}) as Dictionary
-		).duplicate(true)
-		for peer_id_variant in final_xirang.keys():
-			xirang_values[str(int(peer_id_variant))] = int(
-				final_xirang[peer_id_variant]
-			)
-		xirang_ledger["values"] = xirang_values
-		if (
-			int(xirang_ledger.get("revision", -1))
-			<= int(current_xirang.get("revision", -1))
-			and xirang_values
-			!= (current_xirang.get("values", {}) as Dictionary)
-		):
-			xirang_ledger["revision"] = int(current_xirang.get("revision", 0)) + 1
-		party_snapshot["xirang_ledger"] = xirang_ledger
+		party_snapshot["xirang_ledger"] = party_xirang_ledger.duplicate(true)
 		if not light_stone_ledger.is_empty():
 			party_snapshot["light_stone_ledger"] = (
 				light_stone_ledger.duplicate(true)
@@ -2347,6 +2474,31 @@ func _apply_authoritative_settlement_economy(
 	):
 		return false
 	return _run_state.set_party_xirang_balances(final_xirang)
+
+
+func _does_xirang_ledger_match_settlement(
+	ledger: Dictionary,
+	final_xirang: Dictionary
+) -> bool:
+	if (
+		typeof(ledger.get("schema_version")) != TYPE_INT
+		or typeof(ledger.get("revision")) != TYPE_INT
+		or int(ledger.get("revision", -1)) < 0
+		or typeof(ledger.get("values")) != TYPE_DICTIONARY
+	):
+		return false
+	var values := ledger["values"] as Dictionary
+	for peer_id_variant in final_xirang.keys():
+		var peer_id := int(peer_id_variant)
+		var key := str(peer_id)
+		if (
+			peer_id <= 0
+			or not values.has(key)
+			or typeof(values[key]) != TYPE_INT
+			or int(values[key]) != int(final_xirang[peer_id_variant])
+		):
+			return false
+	return true
 
 
 func _try_finalize_local_terminal() -> void:
@@ -2367,6 +2519,7 @@ func _try_finalize_local_terminal() -> void:
 	_local_terminal_finalized = true
 	_stop_local_combat_processing()
 	_local_result_occurrence_key = _active_occurrence_key
+	_local_result_participant_peer_ids = _participant_peer_ids.duplicate()
 	_local_result_visible = false
 	_local_route_returned = false
 
@@ -2383,10 +2536,12 @@ func _try_finalize_local_terminal() -> void:
 		== RogueCombatEncounterConfig.Decision.YES
 	)
 	if return_before_result or not should_show_result:
-		_return_to_route_local()
+		if not _return_to_route_local():
+			return
 	if should_show_result:
 		if not _show_local_result():
-			_return_to_route_local()
+			if not _return_to_route_local():
+				return
 			_clear_local_result_lifecycle()
 	else:
 		_clear_local_result_lifecycle()
@@ -2421,7 +2576,9 @@ func _play_local_victory_terminal(occurrence_key: String) -> void:
 	if not _is_current_victory_terminal(serial, occurrence_key, game):
 		_abort_interrupted_victory_terminal(occurrence_key)
 		return
-	_return_to_route_local()
+	if not _return_to_route_local():
+		_abort_interrupted_victory_terminal(occurrence_key)
+		return
 	var reveal_completed := await transition.reveal()
 	if not reveal_completed:
 		_abort_interrupted_victory_terminal(occurrence_key)
@@ -2492,6 +2649,31 @@ func _on_route_normal_combat_stage_reset(occurrence_key: String) -> void:
 		if not occurrence_key.is_empty()
 		else _active_occurrence_key
 	)
+
+
+## 权威全快照已经同时携带路线与结算后的持久账本；这里只释放旧本地
+## 战场协议，禁止再调用 Route.abort_briefing_entry 清掉刚提交的新 Briefing。
+func _on_route_normal_combat_snapshot_reconciled(
+	occurrence_key: String
+) -> void:
+	if (
+		not occurrence_key.is_empty()
+		and occurrence_key == _route_spectator_occurrence_key
+	):
+		_route_spectator_occurrence_key = ""
+		return
+	if (
+		_phase == ProtocolPhase.IDLE
+		or occurrence_key.is_empty()
+		or occurrence_key != _active_occurrence_key
+	):
+		return
+	_interrupt_terminal_presentation()
+	if _combat_network != null and is_instance_valid(_combat_network):
+		_combat_network.queue_free()
+	_combat_network = null
+	_combat_game = null
+	_reset_protocol_state()
 
 
 func _mark_local_terminal_ready() -> void:
@@ -2603,17 +2785,30 @@ func _on_combat_result_dismissed() -> void:
 	_local_result_visible = false
 	_route.hide_combat_result()
 	if not _local_route_returned:
-		_return_to_route_local()
+		if not _return_to_route_local():
+			return
 	_clear_local_result_lifecycle()
 
 
-func _return_to_route_local() -> void:
-	if _local_route_returned or _route == null:
-		return
+func _return_to_route_local() -> bool:
+	if _local_route_returned:
+		return true
+	if _route == null or not is_instance_valid(_route):
+		return false
+	# settlement 已先提交 economy；此处再绝对恢复所有现存路线 Player，
+	# 成功后才切相机/显现路线，避免玩家看到一帧旧面板或异常状态。
+	var restore_participants := (
+		_local_result_participant_peer_ids
+		if not _local_result_participant_peer_ids.is_empty()
+		else _participant_peer_ids
+	)
+	if not _route.restore_players_for_route_scene_entry(restore_participants):
+		return false
 	_local_route_returned = true
 	_set_combat_presentation_visible(false)
 	_route.complete_normal_combat(_local_result_occurrence_key)
 	_route.set_route_presentation_enabled(true)
+	return true
 
 
 func _stop_local_combat_processing() -> void:
@@ -2650,7 +2845,8 @@ func _resolve_stale_local_result_before_prepare() -> void:
 		_route.hide_combat_result()
 	_local_result_visible = false
 	if not _local_route_returned:
-		_return_to_route_local()
+		if not _return_to_route_local():
+			return
 	_clear_local_result_lifecycle()
 
 
@@ -2658,6 +2854,7 @@ func _clear_local_result_lifecycle() -> void:
 	_local_result_visible = false
 	_local_route_returned = false
 	_local_result_occurrence_key = ""
+	_local_result_participant_peer_ids.clear()
 
 
 func _reset_protocol_state() -> void:
@@ -2671,6 +2868,7 @@ func _reset_protocol_state() -> void:
 	_active_encounter_config = null
 	_active_config_signature = ""
 	_participant_peer_ids.clear()
+	_route_spectator_participant_peer_ids.clear()
 	_entry_xirang_by_peer.clear()
 	_participant_character_ids.clear()
 	_participant_stable_keys.clear()
@@ -2865,6 +3063,28 @@ func _abort_authoritative_protocol(reason: StringName) -> void:
 	if not _is_host() or _active_occurrence_key.is_empty():
 		return
 	var occurrence_key := _active_occurrence_key
+	var activated_combat := (
+		_local_runtime_activated
+		or _phase in [
+			ProtocolPhase.ACTIVE,
+			ProtocolPhase.REWARD_SELECTING,
+			ProtocolPhase.SETTLED,
+		]
+	)
+	if activated_combat and not _settlement_received:
+		if _abort_settlement_in_progress:
+			return
+		_abort_settlement_in_progress = true
+		var abort_settled := _publish_host_abort_settlement(
+			occurrence_key,
+			reason
+		)
+		_abort_settlement_in_progress = false
+		if not abort_settled:
+			push_error(
+				"RogueCombatMultiplayerCoordinator: 激活战斗中止结算失败，拒绝拆除。"
+			)
+			return
 	_route.abort_briefing_entry(occurrence_key)
 	for peer_id_variant in _participant_peer_ids.keys():
 		var peer_id := int(peer_id_variant)
@@ -2896,6 +3116,27 @@ func _apply_protocol_abort(occurrence_key: String) -> void:
 		)
 	):
 		return
+	var activated_combat := (
+		_local_runtime_activated
+		or _phase in [
+			ProtocolPhase.ACTIVE,
+			ProtocolPhase.REWARD_SELECTING,
+			ProtocolPhase.SETTLED,
+		]
+	)
+	if activated_combat:
+		if not _settlement_received:
+			push_error("Rogue 多人激活战斗缺少终局结算，拒绝执行协议中止拆除。")
+			return
+		if (
+			_route == null
+			or not is_instance_valid(_route)
+			or not _route.restore_players_for_route_scene_entry(
+				_participant_peer_ids
+			)
+		):
+			push_error("Rogue 多人协议中止无法恢复路线 Player，拒绝拆除战场。")
+			return
 	if _combat_network != null and is_instance_valid(_combat_network):
 		_combat_network.queue_free()
 	_combat_network = null
@@ -3008,6 +3249,7 @@ func net_combat_route_spectator(occurrence_key: String) -> void:
 		_release_local_combat_to_route_spectator(occurrence_key)
 		return
 	_route_spectator_occurrence_key = occurrence_key
+	_route_spectator_participant_peer_ids.clear()
 	_route.hide_combat_entry_transition()
 	_route.set_route_presentation_enabled(true)
 
@@ -3025,17 +3267,27 @@ func _release_local_combat_to_route_spectator(occurrence_key: String) -> void:
 		if _settlement_received
 		else {}
 	)
+	# reset 会清除活跃 participant；必须先冻结本场的精确集合并显式传入
+	# 结算恢复，pure late-join spectator 永远不会取得这份治疗租约。
+	var restore_participant_peer_ids := _participant_peer_ids.duplicate()
 	_combat_network = null
 	_combat_game = null
 	_route.hide_combat_entry_transition()
-	_route.set_route_presentation_enabled(true)
 	_reset_protocol_state()
 	_route_spectator_occurrence_key = occurrence_key
+	_route_spectator_participant_peer_ids = (
+		restore_participant_peer_ids.duplicate()
+	)
 	if not received_settlement.is_empty():
-		_apply_route_spectator_settlement(
+		if not _apply_route_spectator_settlement(
 			occurrence_key,
-			received_settlement
-		)
+			received_settlement,
+			restore_participant_peer_ids
+		):
+			push_error("Rogue 终局观战者无法应用结算并恢复路线 Player。")
+		return
+	# 尚在进行中的战斗把该成员降级为旁观者时，不构造虚假的治疗边界。
+	_route.set_route_presentation_enabled(true)
 
 
 ## 只由 MpRogueRoute 在 RunState、路线 Player 与稳定参与者身份全部提交后调用。
@@ -3991,6 +4243,12 @@ func _remap_pending_settlement_peer(
 			value = peer_payload
 		peer_map[new_peer_id] = value
 		_pending_settlement[map_key] = peer_map
+	if _run_state != null:
+		# RunState 先完成稳定身份重映射；已结算载荷随后收敛到同一份
+		# 权威余额账本，避免迟到观战者再看到旧 peer key。
+		_pending_settlement["party_xirang_ledger"] = (
+			_run_state.export_party_xirang_ledger()
+		)
 
 
 func _capture_current_participants() -> PackedInt32Array:

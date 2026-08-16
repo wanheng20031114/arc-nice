@@ -217,9 +217,18 @@ func get_state_snapshot() -> Dictionary:
 	return state
 
 
-func apply_remote_state(state: Dictionary) -> void:
-	fate_coordinator.apply_remote_runtime_state(state)
+func apply_remote_state(state: Dictionary) -> bool:
+	var incoming_revision := int(state.get("revision", -1))
+	if (
+		fate_coordinator.has_remote_persistent_player_modifier_snapshot
+		and incoming_revision
+		< fate_coordinator.persistent_player_modifier_revision
+	):
+		return true
+	if not fate_coordinator.apply_remote_runtime_state(state):
+		return false
 	fate_manager.apply_remote_state(state)
+	return fate_manager.state_revision == incoming_revision
 
 
 func _on_fate_state_changed(_state: Dictionary) -> void:

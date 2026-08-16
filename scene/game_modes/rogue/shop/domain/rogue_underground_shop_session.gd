@@ -87,21 +87,66 @@ func start_authoritative(
 
 
 func apply_snapshot(snapshot: Dictionary) -> bool:
-	if not _is_valid_snapshot(snapshot):
+	var prepared := prepare_snapshot(snapshot)
+	if not can_commit_prepared_snapshot(prepared):
 		return false
+	commit_validated_snapshot(prepared)
+	return true
+
+
+func prepare_snapshot(snapshot: Dictionary) -> Dictionary:
+	if not _is_valid_snapshot(snapshot):
+		return {}
 	var incoming_revision := int(snapshot["session_revision"])
 	if _occurrence_key == str(snapshot["occurrence_key"]):
 		if incoming_revision < _session_revision:
-			return false
-		if incoming_revision == _session_revision:
-			return _get_authoritative_snapshot_core(snapshot) == (
+			return {}
+		if (
+			incoming_revision == _session_revision
+			and _get_authoritative_snapshot_core(snapshot) != (
 				_get_authoritative_snapshot_core(
 					export_snapshot_for_peer(int(snapshot["target_peer_id"]))
 				)
 			)
+		):
+			return {}
+	return {
+		"expected_occurrence_key": _occurrence_key,
+		"expected_session_revision": _session_revision,
+		"expected_snapshot": export_snapshot_for_peer(
+			int(snapshot["target_peer_id"])
+		),
+		"snapshot": snapshot.duplicate(true),
+	}
+
+
+func can_commit_prepared_snapshot(prepared: Dictionary) -> bool:
+	if (
+		prepared.size() != 4
+		or typeof(prepared.get("expected_occurrence_key")) != TYPE_STRING
+		or typeof(prepared.get("expected_session_revision")) != TYPE_INT
+		or typeof(prepared.get("expected_snapshot")) != TYPE_DICTIONARY
+		or typeof(prepared.get("snapshot")) != TYPE_DICTIONARY
+	):
+		return false
+	var snapshot := prepared["snapshot"] as Dictionary
+	return (
+		str(prepared["expected_occurrence_key"]) == _occurrence_key
+		and int(prepared["expected_session_revision"]) == _session_revision
+		and prepared["expected_snapshot"] == export_snapshot_for_peer(
+			int(snapshot.get("target_peer_id", -1))
+		)
+	)
+
+
+func commit_validated_snapshot(
+	prepared: Dictionary,
+	emit_change_signal: bool = true
+) -> void:
+	var snapshot := prepared["snapshot"] as Dictionary
 	_occurrence_key = str(snapshot["occurrence_key"])
 	_route_revision = int(snapshot["route_revision"])
-	_session_revision = incoming_revision
+	_session_revision = int(snapshot["session_revision"])
 	_phase = int(snapshot["phase"])
 	_participant_peer_ids.clear()
 	for peer_id in snapshot["participant_peer_ids"] as Array:
@@ -125,8 +170,12 @@ func apply_snapshot(snapshot: Dictionary) -> bool:
 	elif bool(snapshot["target_exited"]):
 		_exited_spectator_peer_ids[target_peer_id] = true
 	_purchase_reservations.clear()
+	if emit_change_signal:
+		session_changed.emit(_session_revision)
+
+
+func publish_prepared_snapshot(_prepared: Dictionary) -> void:
 	session_changed.emit(_session_revision)
-	return true
 
 
 func export_snapshot_for_peer(target_peer_id: int) -> Dictionary:

@@ -85,6 +85,12 @@ func _cleanup_character_combat_on_death() -> void:
 	_clear_owned_sniper_bullets()
 
 
+func _clear_character_scene_transients() -> void:
+	super._clear_character_scene_transients()
+	_cancel_high_noon(true)
+	_clear_owned_sniper_bullets()
+
+
 func _on_controls_lock_changed(locked: bool) -> void:
 	super._on_controls_lock_changed(locked)
 	if locked:

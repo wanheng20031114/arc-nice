@@ -46,6 +46,7 @@ const FEEDBACK_RPC_METHODS := {
 const AUTH_RPC_METHODS := {
 	&"net_tower_rogue_exploration_snapshot": true,
 	&"net_request_route_full_snapshot": true,
+	&"net_route_upgrade_requested": true,
 	&"net_route_full_snapshot": true,
 	&"net_route_move_delta": true,
 	&"net_route_briefing_state": true,

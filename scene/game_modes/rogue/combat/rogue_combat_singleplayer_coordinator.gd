@@ -34,6 +34,7 @@ const INVALID_REWARD_OFFER_INDEX := -1
 
 var route: RogueRouteGame = null
 var active_battle: RogueCombatGame = null
+var player_persistent_modifier_projector: PlayerPersistentModifierProjector = null
 
 var _enabled := false
 var _settling_outcome := false
@@ -73,6 +74,13 @@ func bind_embedded_route(route_instance: RogueRouteGame) -> bool:
 	return _enabled
 
 
+## Tower 嵌入式探索在创建任何作战 Player 之前注入持久层投影器。
+func configure_player_persistent_modifier_projector(
+	projector: PlayerPersistentModifierProjector
+) -> void:
+	player_persistent_modifier_projector = projector
+
+
 func _bind_route(route_instance: RogueRouteGame) -> void:
 	if _enabled or not _has_enabled_singleplayer_combat_pool(route_instance):
 		return
@@ -81,6 +89,9 @@ func _bind_route(route_instance: RogueRouteGame) -> void:
 	route.combat_result_dismissed.connect(_on_combat_result_dismissed)
 	route.host_layout_committed.connect(_on_host_layout_committed)
 	route.normal_combat_stage_reset.connect(_on_normal_combat_stage_reset)
+	route.normal_combat_snapshot_reconciled.connect(
+		_on_normal_combat_snapshot_reconciled
+	)
 	_enabled = true
 
 
@@ -367,6 +378,9 @@ func _configure_battle_before_tree(
 	# 派生场景本身保持关闭；只有确认过完整策略的协调器才会打开自动流程。
 	battle.auto_start_waves = true
 	battle.defer_runtime_activation()
+	battle.configure_player_persistent_modifier_projector(
+		player_persistent_modifier_projector
+	)
 
 
 func _build_occurrence_campaign(
@@ -934,7 +948,9 @@ func _play_victory_return_sequence() -> void:
 			completed_result
 		)
 		return
-	_copy_battle_xirang_to_route()
+	if not _settle_active_battle_and_restore_route_player():
+		push_error("单人 Rogue 作战无法提交返回边界，保留战场等待修复。")
+		return
 	route.complete_normal_combat(completed_occurrence_key)
 	_dispose_active_battle()
 	route.set_route_presentation_enabled(true)
@@ -986,16 +1002,20 @@ func _recover_interrupted_victory_sequence(
 		or occurrence_key != _active_occurrence_key
 	):
 		return
-	_victory_sequence_serial += 1
 	if route != null and is_instance_valid(route):
 		route.combat_victory_presentation.interrupt_and_reset()
 		route.combat_scene_transition.hide_immediately()
-		_copy_battle_xirang_to_route()
+		if not _settle_active_battle_and_restore_route_player():
+			push_error("单人 Rogue 中断返回无法提交边界，保留战场等待修复。")
+			return
+		_victory_sequence_serial += 1
 		if (
 			route.is_normal_combat_active()
 			and occurrence_key == route.get_normal_combat_occurrence_key()
 		):
 			route.complete_normal_combat(occurrence_key)
+	else:
+		return
 	_dispose_active_battle()
 	if route != null and is_instance_valid(route):
 		route.set_route_presentation_enabled(true)
@@ -1018,6 +1038,27 @@ func _on_normal_combat_stage_reset(occurrence_key: String) -> void:
 	)
 
 
+## 权威全快照已决定最终路线/Briefing/经济。旧战场只做本地释放，不能
+## 再走普通 cancel 的结算与 Route abort 路径覆盖新状态。
+func _on_normal_combat_snapshot_reconciled(occurrence_key: String) -> void:
+	if (
+		occurrence_key.is_empty()
+		or occurrence_key != _active_occurrence_key
+		or (active_battle == null and not _settling_outcome)
+	):
+		return
+	_victory_sequence_serial += 1
+	_dispose_active_battle()
+	_pending_victory = false
+	_pending_result.clear()
+	_settling_outcome = false
+	_waiting_for_result_dismissal = false
+	_active_node_id = INVALID_NODE_ID
+	_active_content_seed = 0
+	_active_occurrence_key = ""
+	_active_encounter_config = null
+
+
 func _cancel_pending_victory_sequence(
 	serial: int,
 	occurrence_key: String
@@ -1026,6 +1067,14 @@ func _cancel_pending_victory_sequence(
 		serial != _victory_sequence_serial
 		or occurrence_key != _active_occurrence_key
 	):
+		return
+	if (
+		active_battle != null
+		and is_instance_valid(active_battle)
+		and active_battle.runtime_activated
+		and not _settle_active_battle_and_restore_route_player()
+	):
+		push_error("单人 Rogue 取消作战时无法提交已激活战场，拒绝释放。")
 		return
 	_victory_sequence_serial += 1
 	_dispose_active_battle()
@@ -1045,7 +1094,9 @@ func _finalize_return_from_battle() -> void:
 	var completed_occurrence_key := _active_occurrence_key
 	var completed_result := _pending_result.duplicate(true)
 	var completed_victory := _pending_victory
-	_copy_battle_xirang_to_route()
+	if not _settle_active_battle_and_restore_route_player():
+		push_error("单人 Rogue 作战结束无法提交返回边界，保留战场等待修复。")
+		return
 	route.complete_normal_combat(completed_occurrence_key)
 	_dispose_active_battle()
 	route.set_route_presentation_enabled(true)
@@ -1076,17 +1127,43 @@ func _complete_return_lifecycle(
 	)
 
 
-func _copy_battle_xirang_to_route() -> void:
+## 已激活战斗的所有离场都先经过这个提交屏障：本地 staged 余额进入 party
+## 账本，再由完整成长快照恢复路线 Player 的面板、满血与无异常状态。
+func _settle_active_battle_and_restore_route_player() -> bool:
+	if not _copy_battle_xirang_to_route():
+		return false
+	if route == null or not is_instance_valid(route):
+		return false
+	return route.restore_players_for_route_scene_entry()
+
+
+func _copy_battle_xirang_to_route() -> bool:
 	if (
 		active_battle == null
 		or active_battle.player == null
 		or not is_instance_valid(active_battle.player)
-		or route == null
+	):
+		return false
+	var final_xirang := active_battle.player.current_xirang
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if (
+		run_state == null
+		or not run_state.set_party_xirang_balance(
+			SINGLEPLAYER_PEER_ID,
+			final_xirang
+		)
+	):
+		push_error("单人 Rogue 作战返回时无法提交最终息壤账本。")
+		return false
+	if (
+		route == null
+		or not is_instance_valid(route)
 		or route.player == null
 		or not is_instance_valid(route.player)
 	):
-		return
-	_set_player_xirang(route.player, active_battle.player.current_xirang)
+		return false
+	_set_player_xirang(route.player, final_xirang)
+	return route.player.current_xirang == final_xirang
 
 
 func _set_player_xirang(target: Player, amount: int) -> void:
@@ -1171,3 +1248,13 @@ func _disconnect_route_signals() -> void:
 	var reset_callable := Callable(self, "_on_normal_combat_stage_reset")
 	if route.normal_combat_stage_reset.is_connected(reset_callable):
 		route.normal_combat_stage_reset.disconnect(reset_callable)
+	var snapshot_reset_callable := Callable(
+		self,
+		"_on_normal_combat_snapshot_reconciled"
+	)
+	if route.normal_combat_snapshot_reconciled.is_connected(
+		snapshot_reset_callable
+	):
+		route.normal_combat_snapshot_reconciled.disconnect(
+			snapshot_reset_callable
+		)
