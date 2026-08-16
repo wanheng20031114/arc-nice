@@ -814,8 +814,16 @@ func _test_material_inventory_detail() -> void:
 	await process_frame
 	profile.slots[0].emit_signal("pressed")
 	await process_frame
-	_expect(profile.slots[0].stack_count_label.visible and profile.slots[0].stack_count_label.text == "7", "A material slot must include the five starting wood in its stack count.")
-	_expect(profile.item_detail_title.text == "木头 ×7", "Material detail must include the selected stack count.")
+	var expected_wood_stack := RunStateStore.STARTING_WOOD_COUNT + 2
+	_expect(
+		profile.slots[0].stack_count_label.visible
+		and profile.slots[0].stack_count_label.text == str(expected_wood_stack),
+		"A material slot must include the starting wood in its stack count."
+	)
+	_expect(
+		profile.item_detail_title.text == "木头 ×%d" % expected_wood_stack,
+		"Material detail must include the selected stack count."
+	)
 	_expect(profile.item_detail_category_label.text == "物资", "Material detail must show the new material category.")
 	_expect(profile.item_detail_description.text.contains(WOOD.description), "Material detail must show its description.")
 	_expect(profile.slots[0].item_icon.modulate == Color.WHITE, "Inventory material icons must preserve their original color instead of inheriting the world tint.")
@@ -824,7 +832,10 @@ func _test_material_inventory_detail() -> void:
 	_expect(profile.item_detail_discard_button.visible and profile.item_detail_discard_button.text == "删除", "Materials must show only a delete action.")
 	_simulate_double_click(profile.slots[0])
 	await process_frame
-	_expect(run_state.get_item_count(0) == 7, "Double-clicking a material must not consume it.")
+	_expect(
+		run_state.get_item_count(0) == expected_wood_stack,
+		"Double-clicking a material must not consume it."
+	)
 	profile.item_detail_discard_button.emit_signal("pressed")
 	await process_frame
 	_expect(run_state.get_item(0) == null, "The material delete button must remove the whole selected stack.")

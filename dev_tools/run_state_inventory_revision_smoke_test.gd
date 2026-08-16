@@ -73,8 +73,9 @@ func _test_inventory_owner_read_api(run_state: RunStateStore) -> void:
 func _test_local_revision_and_snapshot(run_state: RunStateStore) -> void:
 	_expect(run_state.get_inventory_revision() == 0, "新局本地背包revision必须从0开始。")
 	_expect(
-		run_state.get_item(0) == WOOD and run_state.get_item_count(0) == 5,
-		"新局本地背包必须自带5份木头。"
+		run_state.get_item(0) == WOOD
+		and run_state.get_item_count(0) == RunStateStore.STARTING_WOOD_COUNT,
+		"新局本地背包必须自带20份木头。"
 	)
 	_expect(run_state.try_add_item_count(WOOD, 3), "本地背包必须能加入3份木材。")
 	_expect(run_state.get_inventory_revision() == 1, "一次本地加入必须只递增一次revision。")
@@ -88,7 +89,7 @@ func _test_local_revision_and_snapshot(run_state: RunStateStore) -> void:
 	_expect(
 		not run_state.apply_inventory_snapshot(outside_snapshot)
 		and run_state.get_inventory_revision() == 1
-		and run_state.get_item_count(0) == 8,
+		and run_state.get_item_count(0) == RunStateStore.STARTING_WOOD_COUNT + 3,
 		"目录外合法 PickupConfig 必须在背包首写前拒绝，不能推进 revision。"
 	)
 	_expect(run_state.discard_item(0), "本地测试堆叠必须能整槽丢弃。")
@@ -99,7 +100,8 @@ func _test_local_revision_and_snapshot(run_state: RunStateStore) -> void:
 	repaired_snapshot["revision"] = 3
 	_expect(run_state.apply_inventory_snapshot(repaired_snapshot), "更新revision的权威快照必须可以恢复本地背包。")
 	_expect(
-		run_state.get_item_count(0) == 8 and run_state.get_inventory_revision() == 3,
+		run_state.get_item_count(0) == RunStateStore.STARTING_WOOD_COUNT + 3
+		and run_state.get_inventory_revision() == 3,
 		"完整快照恢复后物品数量与revision必须精确一致。"
 	)
 
@@ -109,20 +111,23 @@ func _test_peer_slot_state_and_snapshot(run_state: RunStateStore) -> void:
 	_expect(run_state.register_multiplayer_peer_state(PEER_ID), "Peer账本必须显式注册。")
 	_expect(
 		run_state.get_item_for_peer(PEER_ID, 0) == WOOD
-		and run_state.get_item_count_for_peer(PEER_ID, 0) == 5
+		and run_state.get_item_count_for_peer(PEER_ID, 0)
+		== RunStateStore.STARTING_WOOD_COUNT
 		and run_state.get_inventory_revision_for_peer(PEER_ID) == 0,
-		"每个新建Peer背包必须自带5份木头且revision保持为0。"
+		"每个新建Peer背包必须自带20份木头且revision保持为0。"
 	)
 	_expect(run_state.register_multiplayer_peer_state(PEER_ID), "重复注册必须幂等成功。")
 	_expect(
-		run_state.get_item_count_for_peer(PEER_ID, 0) == 5,
+		run_state.get_item_count_for_peer(PEER_ID, 0)
+		== RunStateStore.STARTING_WOOD_COUNT,
 		"重复确保同一Peer状态时不得再次发放初始木头。"
 	)
 	_expect(run_state.try_add_item_count_for_peer(PEER_ID, WOOD, 5), "Peer背包必须能加入堆叠物资。")
 	var initial_state := run_state.get_inventory_slot_state_for_peer(PEER_ID, 0)
 	_expect(
 		initial_state.get("config_path", "") == WOOD.resource_path
-		and int(initial_state.get("stack_count", 0)) == 10
+		and int(initial_state.get("stack_count", 0))
+		== RunStateStore.STARTING_WOOD_COUNT + 5
 		and int(initial_state.get("revision", 0)) == 1,
 		"精确槽状态必须包含路径、数量和peer revision。"
 	)

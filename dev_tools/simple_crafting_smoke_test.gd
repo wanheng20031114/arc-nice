@@ -446,7 +446,12 @@ func _test_building_recipe_transactions(run_state: RunStateStore) -> void:
 	run_state.begin_new_run(&"weishidaier")
 	_expect(
 		run_state.get_inventory_item_total(WOOD) == RunStateStore.STARTING_WOOD_COUNT,
-		"木头加工站事务测试必须使用新局自带的5份木头。"
+		"每名玩家的新局背包必须自带20份木头。"
+	)
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.try_add_item_count(WOOD, 5),
+		"木头加工站事务测试必须显式准备5份木头。"
 	)
 	var wood_revision := run_state.get_inventory_revision()
 	_expect(
@@ -459,11 +464,10 @@ func _test_building_recipe_transactions(run_state: RunStateStore) -> void:
 		"木头加工站必须在一次原子事务中扣除5木头并进入背包。"
 	)
 
-	run_state.begin_new_run(&"weishidaier")
+	run_state.begin_new_run(&"weishidaier", false)
 	_expect(
-		run_state.get_inventory_item_total(WOOD) == RunStateStore.STARTING_WOOD_COUNT
-		and run_state.try_add_item_count(WOOD, 5),
-		"橡木仓库事务测试必须在初始5木头外再准备5木头。"
+		run_state.try_add_item_count(WOOD, 10),
+		"橡木仓库事务测试必须显式准备10份木头。"
 	)
 	var warehouse_revision := run_state.get_inventory_revision()
 	_expect(
@@ -476,7 +480,7 @@ func _test_building_recipe_transactions(run_state: RunStateStore) -> void:
 		"橡木仓库必须在一次原子事务中扣除10木头并进入背包。"
 	)
 
-	run_state.begin_new_run(&"weishidaier")
+	run_state.begin_new_run(&"weishidaier", false)
 	_expect(
 		run_state.try_add_item_count(PLANK, 10)
 		and run_state.try_add_item_count(SAPLING, 1),
@@ -494,11 +498,11 @@ func _test_building_recipe_transactions(run_state: RunStateStore) -> void:
 		"植被桩必须在一次原子事务中扣除10木板和1树苗并进入背包。"
 	)
 
-	run_state.begin_new_run(&"weishidaier")
+	run_state.begin_new_run(&"weishidaier", false)
 	_expect(
-		run_state.try_add_item_count(WOOD, 5)
+		run_state.try_add_item_count(WOOD, 10)
 		and run_state.try_add_item_count(WATER_BOTTLE, 10),
-		"石磨台成功事务必须在初始5木头外补齐5木头，并准备10个水瓶。"
+		"石磨台成功事务必须显式准备10份木头和10个水瓶。"
 	)
 	var stone_mill_revision := run_state.get_inventory_revision()
 	inventory_change_count = 0
@@ -516,9 +520,9 @@ func _test_building_recipe_transactions(run_state: RunStateStore) -> void:
 		"石磨台必须忽略0.1秒占位时长，在一次同步原子事务中扣除10木头和10水瓶并进入背包。"
 	)
 
-	run_state.begin_new_run(&"weishidaier")
+	run_state.begin_new_run(&"weishidaier", false)
 	_expect(
-		run_state.try_add_item_count(WOOD, 5),
+		run_state.try_add_item_count(WOOD, 10),
 		"石磨台缺水瓶用例必须先准备完整的10木头。"
 	)
 	var missing_water_revision := run_state.get_inventory_revision()
@@ -535,7 +539,7 @@ func _test_building_recipe_transactions(run_state: RunStateStore) -> void:
 		"石磨台缺少水瓶时不得部分扣除已有木头或推进背包revision。"
 	)
 
-	run_state.begin_new_run(&"weishidaier")
+	run_state.begin_new_run(&"weishidaier", false)
 	_expect(
 		run_state.try_add_item_count(WATER_BOTTLE, 10),
 		"石磨台缺木头用例必须先准备完整的10个水瓶。"
@@ -905,7 +909,18 @@ func _test_peer_atomic_success(run_state: RunStateStore) -> void:
 		return
 	run_state.begin_new_run(&"weishidaier")
 	_expect(
-		run_state.try_add_item_count_for_peer(
+		run_state.register_multiplayer_peer_states(
+			PackedInt32Array([CRAFTING_PEER_ID, OTHER_PEER_ID])
+		)
+		and run_state.get_inventory_item_total_for_peer(
+			CRAFTING_PEER_ID,
+			WOOD
+		) == RunStateStore.STARTING_WOOD_COUNT
+		and run_state.get_inventory_item_total_for_peer(
+			OTHER_PEER_ID,
+			WOOD
+		) == RunStateStore.STARTING_WOOD_COUNT
+		and run_state.try_add_item_count_for_peer(
 			CRAFTING_PEER_ID,
 			SAPLING,
 			1
@@ -920,7 +935,7 @@ func _test_peer_atomic_success(run_state: RunStateStore) -> void:
 			APPLE,
 			1
 		),
-		"Peer成功用例必须能准备目标玩家材料与另一玩家哨兵物品。"
+		"Peer成功用例必须为每名注册玩家发放20木头，并准备目标材料与哨兵物品。"
 	)
 	var local_before := _local_inventory_signature(run_state)
 	var other_peer_before := _peer_inventory_signature(

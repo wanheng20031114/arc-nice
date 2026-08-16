@@ -55,7 +55,7 @@ const PLAYER_STAT_BONUS_HARD_CAPS := {
 	&"dodge_percent_points": 100,
 	&"dash_cooldown_reduction": 2147483647,
 }
-const STARTING_WOOD_COUNT := 5
+const STARTING_WOOD_COUNT := 20
 const STARTING_WOOD: PickupConfig = preload(
 	"res://resources/config/materials/material_wood.tres"
 )

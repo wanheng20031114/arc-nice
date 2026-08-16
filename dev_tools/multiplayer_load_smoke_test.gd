@@ -2093,7 +2093,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 				and typed_run_state.get_item_count_for_peer(starting_peer_id, 0)
 				== RunStateStore.STARTING_WOOD_COUNT
 				and typed_run_state.get_inventory_revision_for_peer(starting_peer_id) == 0,
-				"Every multiplayer peer must start with five wood at revision zero."
+				"Every multiplayer peer must start with 20 wood at revision zero."
 			)
 		var starting_snapshot := typed_run_state.export_inventory_snapshot_for_peer(2)
 		var snapshot_client := RunStateStore.new()

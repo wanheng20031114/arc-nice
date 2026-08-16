@@ -447,7 +447,7 @@ func _expect_exact_starting_inventory(
 		and sapling_total == 3
 		and occupied_slot_count == 2
 		and not has_unexpected_item,
-		"%s must start with only five wood and three saplings." % context
+		"%s must start with only 20 wood and three saplings." % context
 	)
 
 
