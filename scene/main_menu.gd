@@ -70,6 +70,12 @@ var _collectible_next_request_index := 0
 var _collectible_loading_paths: Dictionary = {}
 
 
+func _enter_tree() -> void:
+	# 游戏场景可能在退出清理的最后阶段重新写回 Camera2D 的 Canvas 变换。
+	# 主菜单不使用世界相机，因此必须在任何 Control 开始布局前接管为 UI Canvas。
+	get_viewport().canvas_transform = Transform2D.IDENTITY
+
+
 func _ready() -> void:
 	set_process(false)
 	_configure_main_menu_visibility()
