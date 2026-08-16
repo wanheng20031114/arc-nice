@@ -15,7 +15,10 @@ from relay_servers.lobby_api.main import (
     QuickMatchRequest,
 )
 from relay_servers.lobby_api.models import GameMode, RoomStatus
-from relay_servers.lobby_api.relay_launcher import RelayLauncher
+from relay_servers.lobby_api.relay_launcher import (
+    RelayLauncher,
+    RelayProcessLease,
+)
 from relay_servers.lobby_api.room_manager import RoomManager
 
 
@@ -46,7 +49,8 @@ class RelayCapacityTests(unittest.TestCase):
         manager = RoomManager()
         room = self._create_room(manager, max_players=6)
         launcher = MagicMock()
-        launcher.start_new_relay.return_value = (40031, 12031, [])
+        lease = RelayProcessLease(40031, 12031, 31)
+        launcher.start_new_relay.return_value = (40031, lease, [])
         launcher.is_relay_running.return_value = True
 
         with (
@@ -54,9 +58,17 @@ class RelayCapacityTests(unittest.TestCase):
             patch.object(lobby_main, "relay_launcher", launcher),
             patch.object(lobby_main.asyncio, "sleep", new=AsyncMock()),
         ):
-            result = asyncio.run(lobby_main._ensure_room_relay(room))
+            result = asyncio.run(
+                lobby_main._ensure_room_relay(
+                    room.id,
+                    room.host_token,
+                    room.host_name,
+                )
+            )
 
-        launcher.start_new_relay.assert_called_once_with(6)
+        start_args = launcher.start_new_relay.call_args.args
+        self.assertEqual(start_args[0], 6)
+        self.assertGreater(start_args[1], 0.0)
         self.assertEqual(result["max_players"], 6)
         self.assertEqual(result["relay_port"], 40031)
         self.assertEqual(
@@ -68,7 +80,8 @@ class RelayCapacityTests(unittest.TestCase):
         manager = RoomManager()
         room = self._create_room(manager, max_players=3)
         launcher = MagicMock()
-        launcher.start_new_relay.return_value = (40032, 12032, [])
+        lease = RelayProcessLease(40032, 12032, 32)
+        launcher.start_new_relay.return_value = (40032, lease, [])
         launcher.is_relay_running.return_value = True
 
         with (
@@ -83,7 +96,9 @@ class RelayCapacityTests(unittest.TestCase):
                 )
             )
 
-        launcher.start_new_relay.assert_called_once_with(3)
+        start_args = launcher.start_new_relay.call_args.args
+        self.assertEqual(start_args[0], 3)
+        self.assertGreater(start_args[1], 0.0)
         self.assertEqual(result["relay_port"], 40032)
 
     def test_new_allocation_closes_room_owned_by_reaped_relay(self) -> None:
@@ -91,9 +106,13 @@ class RelayCapacityTests(unittest.TestCase):
         old_room = self._create_room(manager, max_players=4)
         old_room.relay_port = 40001
         old_room.relay_pid = 10001
+        old_room.relay_instance_id = 1
         new_room = self._create_room(manager, max_players=4)
         launcher = MagicMock()
-        launcher.start_new_relay.return_value = (40001, 10002, [40001])
+        new_lease = RelayProcessLease(40001, 10002, 2)
+        old_lease = RelayProcessLease(40001, 10001, 1)
+        launcher.reap_exited.return_value = [old_lease]
+        launcher.start_new_relay.return_value = (40001, new_lease, [])
         launcher.is_relay_running.return_value = True
 
         with (
@@ -101,7 +120,13 @@ class RelayCapacityTests(unittest.TestCase):
             patch.object(lobby_main, "relay_launcher", launcher),
             patch.object(lobby_main.asyncio, "sleep", new=AsyncMock()),
         ):
-            result = asyncio.run(lobby_main._ensure_room_relay(new_room))
+            result = asyncio.run(
+                lobby_main._ensure_room_relay(
+                    new_room.id,
+                    new_room.host_token,
+                    new_room.host_name,
+                )
+            )
 
         self.assertIsNone(manager.get_room(old_room.id))
         self.assertEqual(manager.get_room(new_room.id), new_room)
@@ -112,9 +137,13 @@ class RelayCapacityTests(unittest.TestCase):
         room = self._create_room(manager, max_players=4)
         room.relay_port = 40001
         room.relay_pid = 10001
+        room.relay_instance_id = 1
         launcher = MagicMock()
-        launcher.is_relay_running.side_effect = [False, True]
-        launcher.start_new_relay.return_value = (40001, 10002, [40001])
+        launcher.is_relay_running.side_effect = [False, False, True]
+        new_lease = RelayProcessLease(40001, 10002, 2)
+        old_lease = RelayProcessLease(40001, 10001, 1)
+        launcher.reap_exited.side_effect = [[old_lease], []]
+        launcher.start_new_relay.return_value = (40001, new_lease, [])
 
         with (
             patch.object(lobby_main, "room_mgr", manager),
@@ -131,13 +160,15 @@ class RelayCapacityTests(unittest.TestCase):
         self.assertIs(manager.get_room(room.id), room)
         self.assertEqual(room.relay_port, 40001)
         self.assertEqual(room.relay_pid, 10002)
+        self.assertEqual(room.relay_instance_id, 2)
         self.assertEqual(result["relay_port"], 40001)
 
     def test_concurrent_request_relay_starts_only_one_process(self) -> None:
         manager = RoomManager()
         room = self._create_room(manager, max_players=4)
         launcher = MagicMock()
-        launcher.start_new_relay.return_value = (40041, 12041, [])
+        lease = RelayProcessLease(40041, 12041, 41)
+        launcher.start_new_relay.return_value = (40041, lease, [])
         launcher.is_relay_running.return_value = True
         real_sleep = asyncio.sleep
 
@@ -177,14 +208,17 @@ class RelayCapacityTests(unittest.TestCase):
             [result["relay_port"] for result in results],
             [40041, 40041],
         )
-        launcher.start_new_relay.assert_called_once_with(4)
+        start_args = launcher.start_new_relay.call_args.args
+        self.assertEqual(start_args[0], 4)
+        self.assertGreater(start_args[1], 0.0)
         self.assertEqual(room.relay_port, 40041)
 
     def test_concurrent_ensure_room_relay_starts_only_one_process(self) -> None:
         manager = RoomManager()
         room = self._create_room(manager, max_players=5)
         launcher = MagicMock()
-        launcher.start_new_relay.return_value = (40042, 12042, [])
+        lease = RelayProcessLease(40042, 12042, 42)
+        launcher.start_new_relay.return_value = (40042, lease, [])
         launcher.is_relay_running.return_value = True
         real_sleep = asyncio.sleep
 
@@ -197,9 +231,21 @@ class RelayCapacityTests(unittest.TestCase):
                 await release_grace.wait()
 
             with patch.object(lobby_main.asyncio, "sleep", new=gated_grace):
-                first = asyncio.create_task(lobby_main._ensure_room_relay(room))
+                first = asyncio.create_task(
+                    lobby_main._ensure_room_relay(
+                        room.id,
+                        room.host_token,
+                        room.host_name,
+                    )
+                )
                 await grace_entered.wait()
-                second = asyncio.create_task(lobby_main._ensure_room_relay(room))
+                second = asyncio.create_task(
+                    lobby_main._ensure_room_relay(
+                        room.id,
+                        room.host_token,
+                        room.host_name,
+                    )
+                )
                 await real_sleep(0)
                 release_grace.set()
                 return await asyncio.gather(first, second)
@@ -214,7 +260,9 @@ class RelayCapacityTests(unittest.TestCase):
             [result["relay_port"] for result in results],
             [40042, 40042],
         )
-        launcher.start_new_relay.assert_called_once_with(5)
+        start_args = launcher.start_new_relay.call_args.args
+        self.assertEqual(start_args[0], 5)
+        self.assertGreater(start_args[1], 0.0)
 
     def test_launcher_includes_max_clients_argument(self) -> None:
         launcher = RelayLauncher()
@@ -242,12 +290,17 @@ class RelayCapacityTests(unittest.TestCase):
                 return_value=process,
             ) as popen,
         ):
-            pid = launcher.start_relay(40033, 5)
+            lease = launcher.start_relay(40033, 5)
 
-        self.assertEqual(pid, 12345)
+        self.assertIsNotNone(lease)
+        assert lease is not None
+        self.assertEqual(lease.pid, 12345)
         command = popen.call_args.args[0]
         self.assertIn("--port=40033", command)
         self.assertIn("--max-clients=5", command)
+        self.assertIn("--startup-idle-timeout=120.0", command)
+        self.assertIn("--empty-idle-timeout=120.0", command)
+        self.assertIn("--max-lifetime=36000.0", command)
 
     def test_launcher_rejects_capacity_outside_two_to_eight(self) -> None:
         launcher = RelayLauncher()
@@ -313,35 +366,46 @@ class RelayCapacityTests(unittest.TestCase):
                     )
                 )
 
-        self.assertCountEqual(results, [14001, None])
+        leases = [result for result in results if result is not None]
+        self.assertEqual(len(leases), 1)
+        self.assertEqual(leases[0].pid, 14001)
+        self.assertEqual(results.count(None), 1)
         popen.assert_called_once()
 
     def test_launcher_reuses_dead_relay_port_and_closes_logs(self) -> None:
         launcher = RelayLauncher()
         dead_process = MagicMock()
+        dead_process.pid = 11001
         dead_process.poll.return_value = 0
         stdout_file = MagicMock()
         stderr_file = MagicMock()
         first_port = lobby_main.config.RELAY_PORT_START
         launcher._processes[first_port] = dead_process
         launcher._log_files[first_port] = (stdout_file, stderr_file)
+        launcher._instance_ids[first_port] = 1
 
-        self.assertEqual(launcher.allocate_port(), first_port)
+        dead_lease = RelayProcessLease(first_port, 11001, 1)
+        self.assertEqual(launcher.reap_exited(), [dead_lease])
+        self.assertIsNone(launcher.allocate_port())
         self.assertNotIn(first_port, launcher._processes)
         self.assertNotIn(first_port, launcher._log_files)
         stdout_file.close.assert_called_once_with()
         stderr_file.close.assert_called_once_with()
+        self.assertTrue(launcher.acknowledge_reaped(dead_lease))
+        self.assertEqual(launcher.allocate_port(), first_port)
         self.assertTrue(launcher.release_port(first_port))
 
     def test_launcher_does_not_reuse_live_relay_port(self) -> None:
         launcher = RelayLauncher()
         live_process = MagicMock()
+        live_process.pid = 11002
         live_process.poll.return_value = None
         stdout_file = MagicMock()
         stderr_file = MagicMock()
         first_port = lobby_main.config.RELAY_PORT_START
         launcher._processes[first_port] = live_process
         launcher._log_files[first_port] = (stdout_file, stderr_file)
+        launcher._instance_ids[first_port] = 2
 
         allocated_port = launcher.allocate_port()
         self.assertEqual(allocated_port, first_port + 1)
@@ -354,14 +418,21 @@ class RelayCapacityTests(unittest.TestCase):
     def test_launcher_reap_is_idempotent(self) -> None:
         launcher = RelayLauncher()
         dead_process = MagicMock()
+        dead_process.pid = 11003
         dead_process.poll.return_value = 7
         stdout_file = MagicMock()
         stderr_file = MagicMock()
         first_port = lobby_main.config.RELAY_PORT_START
         launcher._processes[first_port] = dead_process
         launcher._log_files[first_port] = (stdout_file, stderr_file)
+        launcher._instance_ids[first_port] = 3
 
-        self.assertEqual(launcher.reap_exited(), [first_port])
+        dead_lease = RelayProcessLease(first_port, 11003, 3)
+        self.assertEqual(launcher.reap_exited(), [dead_lease])
+        # 未经 Room 对账确认时重复 reap 必须继续发布同一隔离项。
+        self.assertEqual(launcher.reap_exited(), [dead_lease])
+        self.assertTrue(launcher.acknowledge_reaped(dead_lease))
+        self.assertTrue(launcher.acknowledge_reaped(dead_lease))
         self.assertEqual(launcher.reap_exited(), [])
         stdout_file.close.assert_called_once_with()
         stderr_file.close.assert_called_once_with()
@@ -371,10 +442,12 @@ class RelayCapacityTests(unittest.TestCase):
         room = self._create_room(manager, max_players=4)
         room.relay_port = 40051
         room.relay_pid = 13051
+        room.relay_instance_id = 51
         room.host_peer_id = 1
         room.status = RoomStatus.WAITING
         launcher = MagicMock()
-        launcher.reap_exited.side_effect = [[40051], []]
+        exited_lease = RelayProcessLease(40051, 13051, 51)
+        launcher.reap_exited.side_effect = [[exited_lease], []]
 
         with (
             patch.object(lobby_main, "room_mgr", manager),
@@ -397,6 +470,7 @@ class RelayCapacityTests(unittest.TestCase):
         stale_room = self._create_room(manager, max_players=4)
         stale_room.relay_port = 40052
         stale_room.relay_pid = 13052
+        stale_room.relay_instance_id = 52
         stale_room.host_peer_id = 1
         stale_room.status = RoomStatus.WAITING
         healthy_room = manager.create_room(
@@ -409,10 +483,13 @@ class RelayCapacityTests(unittest.TestCase):
         assert healthy_room is not None
         healthy_room.relay_port = 40053
         healthy_room.relay_pid = 13053
+        healthy_room.relay_instance_id = 53
         healthy_room.host_peer_id = 1
         healthy_room.status = RoomStatus.WAITING
         launcher = MagicMock()
-        launcher.reap_exited.return_value = [40052]
+        launcher.reap_exited.return_value = [
+            RelayProcessLease(40052, 13052, 52)
+        ]
 
         with (
             patch.object(lobby_main, "room_mgr", manager),
@@ -440,8 +517,11 @@ class RelayCapacityTests(unittest.TestCase):
         room = self._create_room(manager, max_players=4)
         room.relay_port = 40054
         room.relay_pid = 13054
+        room.relay_instance_id = 54
         launcher = MagicMock()
-        launcher.reap_exited.return_value = [40054]
+        launcher.reap_exited.return_value = [
+            RelayProcessLease(40054, 13054, 54)
+        ]
 
         with (
             patch.object(lobby_main, "room_mgr", manager),
@@ -455,7 +535,8 @@ class RelayCapacityTests(unittest.TestCase):
         manager = RoomManager()
         room = self._create_room(manager, max_players=4)
         launcher = MagicMock()
-        launcher.start_new_relay.return_value = (40055, 13055, [])
+        lease = RelayProcessLease(40055, 13055, 55)
+        launcher.start_new_relay.return_value = (40055, lease, [])
         launcher.is_relay_running.return_value = False
 
         with (
@@ -464,11 +545,17 @@ class RelayCapacityTests(unittest.TestCase):
             patch.object(lobby_main.asyncio, "sleep", new=AsyncMock()),
         ):
             with self.assertRaises(HTTPException) as raised:
-                asyncio.run(lobby_main._ensure_room_relay(room))
+                asyncio.run(
+                    lobby_main._ensure_room_relay(
+                        room.id,
+                        room.host_token,
+                        room.host_name,
+                    )
+                )
 
         self.assertEqual(raised.exception.status_code, 500)
         self.assertIsNone(manager.get_room(room.id))
-        launcher.stop_relay.assert_called_once_with(40055)
+        launcher.stop_relay.assert_called_once_with(40055, 55)
 
     def test_relay_project_uses_capacity_argument_and_protocol_v76(self) -> None:
         relay_source = (

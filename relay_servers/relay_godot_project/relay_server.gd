@@ -2,11 +2,12 @@ extends Node
 
 ## Godot Headless Relay Server。
 ## 以无头模式运行，仅做 ENet 包转发（利用 Godot 内置 server_relay）。
-## 命令行参数: --port=40001 --max-clients=4
+## 命令行参数包含端口、容量以及三段互不混用的生命周期租约。
 
 const DEFAULT_PORT := 40001
-const DEFAULT_IDLE_TIMEOUT_SEC := 10.0 * 60.0 * 60.0
-const EMPTY_AFTER_CONNECTION_TIMEOUT_SEC := 1.0
+const DEFAULT_STARTUP_IDLE_TIMEOUT_SEC := 120.0
+const DEFAULT_EMPTY_IDLE_TIMEOUT_SEC := 120.0
+const DEFAULT_MAX_LIFETIME_SEC := 10.0 * 60.0 * 60.0
 const MIN_CLIENTS := 2
 const MAX_CLIENTS := 8
 const DEFAULT_MAX_CLIENTS := MAX_CLIENTS
@@ -14,9 +15,12 @@ const CHANNEL_COUNT := 8
 const PROTOCOL_VERSION := 76
 
 var _port: int = DEFAULT_PORT
-var _idle_timeout_sec: float = DEFAULT_IDLE_TIMEOUT_SEC
+var _startup_idle_timeout_sec: float = DEFAULT_STARTUP_IDLE_TIMEOUT_SEC
+var _empty_idle_timeout_sec: float = DEFAULT_EMPTY_IDLE_TIMEOUT_SEC
+var _max_lifetime_sec: float = DEFAULT_MAX_LIFETIME_SEC
 var _max_clients: int = DEFAULT_MAX_CLIENTS
-var _idle_timer: float = 0.0
+var _started_at_msec: int = 0
+var _empty_since_msec: int = 0
 var _has_had_connections: bool = false
 var _host_peer_id: int = 0
 var _has_invalid_argument: bool = false
@@ -38,11 +42,30 @@ func _parse_command_line() -> void:
 			if port_str.is_valid_int():
 				_port = port_str.to_int()
 				print("[Relay] 端口参数: %d" % _port)
-		elif arg.begins_with("--idle-timeout="):
-			var timeout_str := arg.substr(15)
-			if timeout_str.is_valid_float():
-				_idle_timeout_sec = maxf(timeout_str.to_float(), DEFAULT_IDLE_TIMEOUT_SEC)
-				print("[Relay] 空闲超时参数: %d 秒" % int(_idle_timeout_sec))
+		elif arg.begins_with("--startup-idle-timeout="):
+			var parsed_startup_timeout := _parse_positive_timeout(
+				arg,
+				"--startup-idle-timeout=",
+				"首次连接空闲超时"
+			)
+			if parsed_startup_timeout > 0.0:
+				_startup_idle_timeout_sec = parsed_startup_timeout
+		elif arg.begins_with("--empty-idle-timeout="):
+			var parsed_empty_timeout := _parse_positive_timeout(
+				arg,
+				"--empty-idle-timeout=",
+				"断线后空载超时"
+			)
+			if parsed_empty_timeout > 0.0:
+				_empty_idle_timeout_sec = parsed_empty_timeout
+		elif arg.begins_with("--max-lifetime="):
+			var parsed_max_lifetime := _parse_positive_timeout(
+				arg,
+				"--max-lifetime=",
+				"绝对生命周期"
+			)
+			if parsed_max_lifetime > 0.0:
+				_max_lifetime_sec = parsed_max_lifetime
 		elif arg.begins_with("--max-clients="):
 			var max_clients_str := arg.substr(14)
 			if not max_clients_str.is_valid_int():
@@ -61,6 +84,21 @@ func _parse_command_line() -> void:
 			print("[Relay] 最大连接数参数: %d" % _max_clients)
 
 
+func _parse_positive_timeout(arg: String, prefix: String, label: String) -> float:
+	var timeout_str := arg.trim_prefix(prefix)
+	if not timeout_str.is_valid_float():
+		push_error("[Relay] %s参数不是数字: %s" % [label, timeout_str])
+		_has_invalid_argument = true
+		return -1.0
+	var value := timeout_str.to_float()
+	if not is_finite(value) or value <= 0.0:
+		push_error("[Relay] %s必须大于 0: %s" % [label, timeout_str])
+		_has_invalid_argument = true
+		return -1.0
+	print("[Relay] %s参数: %.3f 秒" % [label, value])
+	return value
+
+
 func _start_server() -> void:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(_port, _max_clients, CHANNEL_COUNT)
@@ -75,19 +113,37 @@ func _start_server() -> void:
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.multiplayer_peer = peer
+	_started_at_msec = Time.get_ticks_msec()
+	_empty_since_msec = _started_at_msec
 
 	print(
-		"[Relay] 服务器已启动, port=%d, max_clients=%d, protocol=v%d, server_relay=true"
-		% [_port, _max_clients, PROTOCOL_VERSION]
+		(
+			"[Relay] 服务器已启动, port=%d, max_clients=%d, protocol=v%d, "
+			+ "startup_idle=%.3f, empty_idle=%.3f, max_lifetime=%.3f, server_relay=true"
+		)
+		% [
+			_port,
+			_max_clients,
+			PROTOCOL_VERSION,
+			_startup_idle_timeout_sec,
+			_empty_idle_timeout_sec,
+			_max_lifetime_sec,
+		]
 	)
 
 
-func _process(delta: float) -> void:
-	# 空闲超时检测
+func _process(_delta: float) -> void:
+	# ticks 是不受 wall clock 回拨与游戏 time scale 影响的进程单调时钟。
+	var now_msec := Time.get_ticks_msec()
+	if _elapsed_seconds(_started_at_msec, now_msec) >= _max_lifetime_sec:
+		print("[Relay] 达到绝对生命周期上限，自动退出")
+		get_tree().quit(0)
+		return
+
+	# 首次连接租约独立于游戏绝对时长，遗失创建响应不会长期占住进程。
 	if not _has_had_connections:
-		_idle_timer += delta
-		if _idle_timer >= _idle_timeout_sec:
-			print("[Relay] 空闲超时 (%d 秒), 自动退出" % int(_idle_timeout_sec))
+		if _elapsed_seconds(_empty_since_msec, now_msec) >= _startup_idle_timeout_sec:
+			print("[Relay] 首次连接超时，自动退出")
 			get_tree().quit(0)
 		return
 
@@ -101,17 +157,20 @@ func _process(delta: float) -> void:
 
 	var connected_peers := multiplayer.get_peers()
 	if connected_peers.is_empty():
-		_idle_timer += delta
-		if _idle_timer >= EMPTY_AFTER_CONNECTION_TIMEOUT_SEC:
-			print("[Relay] 所有玩家已离开，自动退出")
+		if _elapsed_seconds(_empty_since_msec, now_msec) >= _empty_idle_timeout_sec:
+			print("[Relay] 所有玩家离开且重连窗口已过，自动退出")
 			get_tree().quit(0)
 	else:
-		_idle_timer = 0.0
+		_empty_since_msec = now_msec
+
+
+static func _elapsed_seconds(started_at_msec: int, now_msec: int) -> float:
+	return float(maxi(now_msec - started_at_msec, 0)) / 1000.0
 
 
 func _on_peer_connected(peer_id: int) -> void:
 	_has_had_connections = true
-	_idle_timer = 0.0
+	_empty_since_msec = Time.get_ticks_msec()
 	if _host_peer_id <= 0:
 		_host_peer_id = peer_id
 		var net_manager_stub := get_node_or_null("/root/NetManager")
@@ -129,6 +188,9 @@ func _on_peer_connected(peer_id: int) -> void:
 
 func _on_peer_disconnected(peer_id: int) -> void:
 	var connected_count := multiplayer.get_peers().size()
+	if connected_count == 0:
+		# 空载宽限从最后一名玩家离开时起算，不吞掉任何重连窗口。
+		_empty_since_msec = Time.get_ticks_msec()
 	print("[Relay] 玩家断开 peer_id=%d (剩余 %d 人)" % [peer_id, connected_count])
 
 

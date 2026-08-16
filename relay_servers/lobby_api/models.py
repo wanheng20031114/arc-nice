@@ -59,8 +59,14 @@ class RoomInfo:
     players: dict[str, PlayerInfo] = field(default_factory=dict)  # name → PlayerInfo
     relay_port: int = 0
     relay_pid: int = 0
-    created_at: float = field(default_factory=time.time)
-    last_activity: float = field(default_factory=time.time)
+    # 端口会复用；实例世代与端口共同标识本房间真正拥有的 Relay。
+    relay_instance_id: int = 0
+    # 非零表示该精确死亡世代已进入受控重启，reap 只能清绑定不能删房。
+    relay_restart_instance_id: int = 0
+    # 两个单调 deadline 分别表达“需要心跳”和“任何心跳都不能越过”的边界。
+    # Lobby 阶段客户端尚不发心跳，因此 idle 只在首次进入 IN_GAME 时建立。
+    idle_deadline: Optional[float] = None
+    absolute_deadline: float = field(default_factory=time.monotonic)
 
     @property
     def player_count(self) -> int:
@@ -118,7 +124,3 @@ class RoomInfo:
             result["relay_ip"] = public_ip
             result["relay_port"] = self.relay_port
         return result
-
-    def touch(self) -> None:
-        """更新最后活跃时间。"""
-        self.last_activity = time.time()

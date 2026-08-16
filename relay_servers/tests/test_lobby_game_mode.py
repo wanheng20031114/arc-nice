@@ -51,6 +51,8 @@ class LobbyGameModeTests(unittest.TestCase):
         self.assertIsNotNone(room)
         assert room is not None
         room.relay_port = 40001
+        room.relay_pid = 10001
+        room.relay_instance_id = 1
         room.host_peer_id = 1
         room.status = RoomStatus.WAITING
         return room
@@ -395,7 +397,10 @@ class LobbyGameModeTests(unittest.TestCase):
 
         self.assertEqual(result, {"status": "ok"})
         self.assertIsNone(manager.get_room(room.id))
-        launcher.stop_relay.assert_called_once_with(room.relay_port)
+        launcher.stop_relay.assert_called_once_with(
+            room.relay_port,
+            room.relay_instance_id,
+        )
 
     def test_member_leave_and_tokenized_host_destroy_remain_available(self) -> None:
         manager = RoomManager()
@@ -449,7 +454,10 @@ class LobbyGameModeTests(unittest.TestCase):
 
         self.assertEqual(destroy_result, {"status": "ok"})
         self.assertIsNone(manager.get_room(room.id))
-        launcher.stop_relay.assert_called_once_with(room.relay_port)
+        launcher.stop_relay.assert_called_once_with(
+            room.relay_port,
+            room.relay_instance_id,
+        )
 
     def test_member_token_authorizes_only_one_concurrent_leave(self) -> None:
         manager = RoomManager()
@@ -491,6 +499,7 @@ class LobbyGameModeTests(unittest.TestCase):
         )
         member_token = room.players["Member"].member_token
         launcher = MagicMock()
+        launcher.stop_all.return_value = []
 
         with (
             patch.object(lobby_main, "room_mgr", manager),

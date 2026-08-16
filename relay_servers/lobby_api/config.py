@@ -2,15 +2,36 @@
 大厅服务器配置。
 """
 
+import math
 import os
+
+
+def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    """读取有界整数；部署错误必须在服务启动前失败。"""
+    raw_value = os.getenv(name, str(default))
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} 必须是整数，当前值: {raw_value}") from exc
+    if value < minimum or value > maximum:
+        raise ValueError(
+            f"{name} 必须在 {minimum}..{maximum} 之间，当前值: {value}"
+        )
+    return value
+
 
 # ─── 网络 ────────────────────────────────────────
 LOBBY_HOST = os.getenv("LOBBY_HOST", "0.0.0.0")
-LOBBY_PORT = int(os.getenv("LOBBY_PORT", "8000"))
+LOBBY_PORT = _bounded_int("LOBBY_PORT", 8000, 1, 65535)
 
 # ─── Relay 端口范围 ──────────────────────────────
-RELAY_PORT_START = int(os.getenv("RELAY_PORT_START", "40001"))
-RELAY_PORT_END = int(os.getenv("RELAY_PORT_END", "40100"))
+RELAY_PORT_START = _bounded_int("RELAY_PORT_START", 40001, 1, 65535)
+RELAY_PORT_END = _bounded_int("RELAY_PORT_END", 40100, 1, 65535)
+if RELAY_PORT_START > RELAY_PORT_END:
+    raise ValueError(
+        "RELAY_PORT_START 不能大于 RELAY_PORT_END，"
+        f"当前为 {RELAY_PORT_START} > {RELAY_PORT_END}"
+    )
 
 # ─── Godot Headless 路径 ─────────────────────────
 # 阿里云 Linux 上的 Godot Server 二进制路径
@@ -25,28 +46,107 @@ RELAY_PROJECT_PATH = os.getenv(
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "relay_godot_project")
 )
 
-# ─── 房间超时 ────────────────────────────────────
-# 一局游戏最长保留 10 小时。旧部署生成的 .env 可能仍是较短超时，
-# 这里把更短的配置抬到 10 小时，避免游戏中途被清理任务回收。
-GAME_MAX_DURATION_SECONDS = 36000
+# ─── 生命周期租约 ──────────────────────────────────
 
 
-def _session_timeout(name: str) -> int:
-    return max(int(os.getenv(name, str(GAME_MAX_DURATION_SECONDS))), GAME_MAX_DURATION_SECONDS)
+def _positive_seconds(name: str, default: float) -> float:
+    """读取严格为正的秒数，拒绝会关闭回收边界的部署配置。"""
+    raw_value = os.getenv(name, str(default))
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} 必须是秒数，当前值: {raw_value}") from exc
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} 必须是有限正数，当前值: {value}")
+    return value
 
 
-# 房间空闲超时（秒），超时后自动销毁
-ROOM_IDLE_TIMEOUT = _session_timeout("ROOM_IDLE_TIMEOUT")
+def _seconds_at_least(name: str, default: float, minimum: float) -> float:
+    value = _positive_seconds(name, default)
+    if value < minimum:
+        raise ValueError(f"{name} 不能低于 {minimum} 秒，当前值: {value}")
+    return value
 
-# Relay 进程无连接超时（秒）
-RELAY_IDLE_TIMEOUT = _session_timeout("RELAY_IDLE_TIMEOUT")
+
+# 客户端在游戏中每 60 秒续租；180 秒允许两个续租周期抖动。该 deadline
+# 只由 IN_GAME 房主心跳推进，等待大厅阶段暂不建立，也不能突破绝对上限。
+ROOM_IDLE_TIMEOUT_SECONDS = _seconds_at_least(
+    "ROOM_IDLE_TIMEOUT_SECONDS",
+    180.0,
+    120.0,
+)
+
+# Relay 从启动到首次 ENet 连接的独立窗口。
+RELAY_STARTUP_IDLE_TIMEOUT_SECONDS = _positive_seconds(
+    "RELAY_STARTUP_IDLE_TIMEOUT_SECONDS",
+    120.0,
+)
+
+# 所有玩家离开后的空载窗口需长于客户端 90 秒重连宽限。
+RELAY_EMPTY_IDLE_TIMEOUT_SECONDS = _seconds_at_least(
+    "RELAY_EMPTY_IDLE_TIMEOUT_SECONDS",
+    120.0,
+    91.0,
+)
+
+# 无论 keepalive 或 ENet 活跃度如何，一局及其 Relay 都不能超过该绝对上限。
+GAME_MAX_DURATION_SECONDS = _positive_seconds("GAME_MAX_DURATION_SECONDS", 36000.0)
+
+# 清理轮询只决定过期后最多再等待多久，不参与续租期限计算。
+CLEANUP_INTERVAL_SECONDS = _positive_seconds("CLEANUP_INTERVAL_SECONDS", 30.0)
 
 # Relay 启动后给 Godot/ENet 完成监听的等待时间（秒）
-RELAY_STARTUP_GRACE_SECONDS = float(os.getenv("RELAY_STARTUP_GRACE_SECONDS", "5.0"))
+RELAY_STARTUP_GRACE_SECONDS = _positive_seconds("RELAY_STARTUP_GRACE_SECONDS", 5.0)
+
+
+def _require_strict_order(
+    lower_name: str,
+    lower_value: float,
+    upper_name: str,
+    upper_value: float,
+) -> None:
+    if lower_value >= upper_value:
+        raise ValueError(
+            f"生命周期配置必须满足 {lower_name} < {upper_name}，"
+            f"当前为 {lower_value} >= {upper_value}"
+        )
+
+
+_require_strict_order(
+    "CLEANUP_INTERVAL_SECONDS",
+    CLEANUP_INTERVAL_SECONDS,
+    "ROOM_IDLE_TIMEOUT_SECONDS",
+    ROOM_IDLE_TIMEOUT_SECONDS,
+)
+_require_strict_order(
+    "ROOM_IDLE_TIMEOUT_SECONDS",
+    ROOM_IDLE_TIMEOUT_SECONDS,
+    "GAME_MAX_DURATION_SECONDS",
+    GAME_MAX_DURATION_SECONDS,
+)
+_require_strict_order(
+    "RELAY_STARTUP_GRACE_SECONDS",
+    RELAY_STARTUP_GRACE_SECONDS,
+    "RELAY_STARTUP_IDLE_TIMEOUT_SECONDS",
+    RELAY_STARTUP_IDLE_TIMEOUT_SECONDS,
+)
+_require_strict_order(
+    "RELAY_STARTUP_IDLE_TIMEOUT_SECONDS",
+    RELAY_STARTUP_IDLE_TIMEOUT_SECONDS,
+    "GAME_MAX_DURATION_SECONDS",
+    GAME_MAX_DURATION_SECONDS,
+)
+_require_strict_order(
+    "RELAY_EMPTY_IDLE_TIMEOUT_SECONDS",
+    RELAY_EMPTY_IDLE_TIMEOUT_SECONDS,
+    "GAME_MAX_DURATION_SECONDS",
+    GAME_MAX_DURATION_SECONDS,
+)
 
 # ─── 限制 ────────────────────────────────────────
-MAX_ROOMS = int(os.getenv("MAX_ROOMS", "100"))
-MAX_PLAYERS_PER_ROOM = int(os.getenv("MAX_PLAYERS_PER_ROOM", "8"))
+_relay_port_capacity = RELAY_PORT_END - RELAY_PORT_START + 1
+MAX_ROOMS = _bounded_int("MAX_ROOMS", 100, 1, _relay_port_capacity)
+MAX_PLAYERS_PER_ROOM = _bounded_int("MAX_PLAYERS_PER_ROOM", 8, 2, 8)
 
 # ─── 公网 IP ─────────────────────────────────────
 # 用于告诉客户端 Relay 地址，需设置为阿里云 ECS 公网 IP

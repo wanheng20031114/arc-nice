@@ -133,9 +133,29 @@ chmod +x scripts/*.sh
 | `RELAY_PORT_END` | `40100` | Relay 端口结束 |
 | `GODOT_SERVER_PATH` | `/opt/godot/Godot_v4.6-stable_linux.x86_64` | Godot 可执行文件路径 |
 | `RELAY_PROJECT_PATH` | `./relay_godot_project` | Relay 项目路径 |
-| `MAX_ROOMS` | `100` | 最大房间数 |
-| `ROOM_IDLE_TIMEOUT` | `36000` | 房间空闲超时(秒)，低于 10 小时会按 10 小时处理 |
-| `RELAY_IDLE_TIMEOUT` | `36000` | Relay 空闲超时(秒)，低于 10 小时会按 10 小时处理 |
+| `MAX_ROOMS` | `100` | 最大房间数，不得超过 Relay 端口数量 |
+| `MAX_PLAYERS_PER_ROOM` | `8` | 单房人数上限，必须在 2..8 |
+| `ROOM_IDLE_TIMEOUT_SECONDS` | `180` | 房主心跳租约；不得低于 120 秒，当前客户端每 60 秒续租 |
+| `RELAY_STARTUP_IDLE_TIMEOUT_SECONDS` | `120` | Relay 启动后从未收到 ENet 连接的回收期限 |
+| `RELAY_EMPTY_IDLE_TIMEOUT_SECONDS` | `120` | 曾连接后全员离线的回收期限；必须长于 90 秒重连宽限 |
+| `GAME_MAX_DURATION_SECONDS` | `36000` | 房间和 Relay 不可被心跳延长的绝对生命周期 |
+| `CLEANUP_INTERVAL_SECONDS` | `30` | 大厅生命周期对账间隔 |
+| `RELAY_STARTUP_GRACE_SECONDS` | `5` | spawn 后确认 Relay 仍存活再挂接房间的宽限 |
+
+旧版 `ROOM_IDLE_TIMEOUT` / `RELAY_IDLE_TIMEOUT` 将 10 小时同时当作心跳租约、
+首次连接等待和游戏上限，现已不再读取。升级部署时应删除这两个旧变量，并配置上表
+六个独立边界。房间只接受房主 `keepalive` 推进心跳 deadline；加入、离开、状态更新
+和 Relay 挂接都不会续租。当前客户端在大厅阶段不发送周期心跳，因此 STARTING/WAITING
+不建立空闲 deadline；首次进入 IN_GAME 时才启用 180 秒房主心跳租约。即使心跳持续
+成功，绝对生命周期到期后仍会回收。
+
+大厅使用可注入的单调时钟计算两个房间 deadline，Relay 使用 Godot 主循环的单调
+`ticks` 同时检查首次连接、全员离线和绝对生命周期。重启 Relay 只获得房间绝对
+deadline 的剩余时长，不会重新领取完整 10 小时。进程回收以“端口 + Relay 实例
+世代”作为条件停止依据；停止失败保留终止账本和端口所有权，已退出实例先进入隔离，
+只有旧房间完成对账后才允许复用，因此延迟到达的清理不会终止新实例。
+大厅关闭时会在 15 秒单调总期限内短间隔重试停止和 reap；期限结束仍存活的精确
+实例会作为关闭错误上报，且其端口与终止账本继续保留，不会伪报“全部终止”。
 
 ## API 端点
 
