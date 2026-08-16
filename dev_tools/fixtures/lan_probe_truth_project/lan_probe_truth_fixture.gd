@@ -16,11 +16,16 @@ func _run() -> void:
 		push_error("Truth fixture requires family:mode.")
 		quit(64)
 		return
-	var marker := _expected_marker(str(parts[0]), role)
+	var family := str(parts[0])
+	var marker := _expected_marker(family, role)
 	if marker.is_empty():
 		push_error("Truth fixture received an unsupported family or role.")
 		quit(64)
 		return
+	if family == "relay" and role == "host":
+		# Relay runner 必须从实时 stdout 精确解析 Host 身份；
+		# fixture 不伪造网络，只提供这个有界 runner 控制面。
+		print("RELAY_PROBE_HOST_READY host_peer_id=123456789")
 
 	match str(parts[1]):
 		"pass":
@@ -43,6 +48,10 @@ func _run() -> void:
 			print("ERROR: Truth fixture emitted a forbidden stdout line.")
 			print(marker)
 			quit()
+		"engine_error":
+			push_error("Truth fixture emitted a forbidden engine-log error.")
+			print(marker)
+			quit()
 		"hang":
 			await create_timer(60.0).timeout
 			print(marker)
@@ -55,6 +64,8 @@ func _run() -> void:
 func _expected_marker(family: String, role: String) -> String:
 	match family:
 		"multiplayer":
+			return "LAN_PROBE_OK"
+		"relay":
 			return "LAN_PROBE_OK"
 		"rogue":
 			if role in ["host", "client"]:

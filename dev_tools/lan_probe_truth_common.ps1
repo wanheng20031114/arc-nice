@@ -119,7 +119,8 @@ function Start-LanProbeManagedProcess {
         [Parameter(Mandatory = $true)]$Context,
         [Parameter(Mandatory = $true)][string]$Executable,
         [Parameter(Mandatory = $true)][string]$WorkingDirectory,
-        [Parameter(Mandatory = $true)][string[]]$Arguments
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [switch]$EnableLiveLineCapture
     )
 
     $quotedArguments = @(
@@ -142,13 +143,76 @@ function Start-LanProbeManagedProcess {
     if (-not $process.Start()) {
         throw "Failed to start probe executable: $Executable"
     }
-    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $stdoutBuffer = $null
+    $stderrBuffer = $null
+    if ($EnableLiveLineCapture) {
+        # Relay 的 ready/host-id 是后续 peer 的必要输入；逐行异步读取既能
+        # 实时取到精确行，也避免 stdout/stderr 管道写满阻塞 Godot。
+        $stdoutBuffer = New-Object Text.StringBuilder
+        $stderrBuffer = New-Object Text.StringBuilder
+        $stdoutTask = $process.StandardOutput.ReadLineAsync()
+        $stderrTask = $process.StandardError.ReadLineAsync()
+    }
+    else {
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+    }
     Register-LanProbeLauncherOwnership $Context $process
     return [pscustomobject]@{
         Process = $process
         StdoutTask = $stdoutTask
         StderrTask = $stderrTask
+        LiveLineCapture = [bool]$EnableLiveLineCapture
+        StdoutBuffer = $stdoutBuffer
+        StderrBuffer = $stderrBuffer
+        StdoutClosed = $false
+        StderrClosed = $false
+    }
+}
+
+
+function Update-LanProbeLiveLineCapture {
+    param([Parameter(Mandatory = $true)]$Entry)
+
+    $hasLiveCaptureProperty = (
+        $Entry.PSObject.Properties.Name -contains "LiveLineCapture"
+    )
+    if (-not $hasLiveCaptureProperty -or -not $Entry.LiveLineCapture) {
+        return
+    }
+
+    foreach ($channelName in @("Stdout", "Stderr")) {
+        $closedPropertyName = "${channelName}Closed"
+        $taskPropertyName = "${channelName}Task"
+        $bufferPropertyName = "${channelName}Buffer"
+        while (-not [bool]$Entry.$closedPropertyName) {
+            $lineTask = $Entry.$taskPropertyName
+            if (-not $lineTask.IsCompleted) {
+                break
+            }
+            if ($lineTask.IsFaulted) {
+                throw (
+                    "$($Entry.Name) $channelName live capture failed: " +
+                    $lineTask.Exception.GetBaseException().Message
+                )
+            }
+            if ($lineTask.IsCanceled) {
+                throw "$($Entry.Name) $channelName live capture was canceled."
+            }
+            if ($null -eq $lineTask.Result) {
+                $Entry.$closedPropertyName = $true
+                break
+            }
+            $null = $Entry.$bufferPropertyName.AppendLine(
+                [string]$lineTask.Result
+            )
+            $Entry.$taskPropertyName = if ($channelName -eq "Stdout") {
+                $Entry.Process.StandardOutput.ReadLineAsync()
+            }
+            else {
+                $Entry.Process.StandardError.ReadLineAsync()
+            }
+        }
     }
 }
 
@@ -163,14 +227,38 @@ function Complete-LanProbePeerLogs {
         throw "$($Entry.Name) logs cannot complete before its launcher exits."
     }
     $Entry.Process.WaitForExit()
-    if (-not $Entry.StdoutTask.Wait(5000)) {
-        throw "$($Entry.Name) stdout did not close within 5 seconds."
+    $hasLiveCapture = (
+        $Entry.PSObject.Properties.Name -contains "LiveLineCapture" -and
+        $Entry.LiveLineCapture
+    )
+    if ($hasLiveCapture) {
+        $captureDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        do {
+            Update-LanProbeLiveLineCapture $Entry
+            if ($Entry.StdoutClosed -and $Entry.StderrClosed) {
+                break
+            }
+            Start-Sleep -Milliseconds 10
+        } while ([DateTime]::UtcNow -lt $captureDeadline)
+        if (-not $Entry.StdoutClosed) {
+            throw "$($Entry.Name) stdout did not close within 5 seconds."
+        }
+        if (-not $Entry.StderrClosed) {
+            throw "$($Entry.Name) stderr did not close within 5 seconds."
+        }
+        $stdout = $Entry.StdoutBuffer.ToString()
+        $stderr = $Entry.StderrBuffer.ToString()
     }
-    if (-not $Entry.StderrTask.Wait(5000)) {
-        throw "$($Entry.Name) stderr did not close within 5 seconds."
+    else {
+        if (-not $Entry.StdoutTask.Wait(5000)) {
+            throw "$($Entry.Name) stdout did not close within 5 seconds."
+        }
+        if (-not $Entry.StderrTask.Wait(5000)) {
+            throw "$($Entry.Name) stderr did not close within 5 seconds."
+        }
+        $stdout = [string]$Entry.StdoutTask.Result
+        $stderr = [string]$Entry.StderrTask.Result
     }
-    $stdout = [string]$Entry.StdoutTask.Result
-    $stderr = [string]$Entry.StderrTask.Result
     $utf8NoBom = New-Object Text.UTF8Encoding($false)
     [IO.File]::WriteAllText($Entry.Stdout, $stdout, $utf8NoBom)
     [IO.File]::WriteAllText($Entry.Stderr, $stderr, $utf8NoBom)
@@ -333,6 +421,7 @@ function Wait-LanProbePeerProcesses {
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     do {
         foreach ($entry in $Entries) {
+            Update-LanProbeLiveLineCapture $entry
             if (-not $entry.Process.HasExited) {
                 $entry.Process.WaitForExit(50) | Out-Null
             }
@@ -387,7 +476,8 @@ function Read-LanProbeLogText {
 function Assert-LanProbePeerTruth {
     param(
         [Parameter(Mandatory = $true)]$Entry,
-        [Parameter(Mandatory = $true)][string]$ExpectedMarker
+        [Parameter(Mandatory = $true)][string]$ExpectedMarker,
+        [string]$AllowedExactStderrAndEngineErrorPattern = ""
     )
 
     if (-not $Entry.Process.HasExited) {
@@ -421,12 +511,50 @@ function Assert-LanProbePeerTruth {
         )
     }
 
+    $auditedStderr = $stderr
+    $auditedEngineLog = $engineLog
+    if (-not [string]::IsNullOrEmpty($AllowedExactStderrAndEngineErrorPattern)) {
+        foreach ($channelName in @("stderr", "engine")) {
+            $channelText = if ($channelName -eq "stderr") {
+                $auditedStderr
+            }
+            else {
+                $auditedEngineLog
+            }
+            $allowedMatchCount = [regex]::Matches(
+                $channelText,
+                $AllowedExactStderrAndEngineErrorPattern
+            ).Count
+            if ($allowedMatchCount -gt 1) {
+                $failures.Add(
+                    "$($Entry.Name) emitted the exact allowed error block " +
+                    "$allowedMatchCount times on $channelName; at most one is allowed."
+                )
+                continue
+            }
+            if ($allowedMatchCount -eq 1) {
+                $channelText = [regex]::Replace(
+                    $channelText,
+                    $AllowedExactStderrAndEngineErrorPattern,
+                    ""
+                )
+            }
+            if ($channelName -eq "stderr") {
+                $auditedStderr = $channelText
+            }
+            else {
+                $auditedEngineLog = $channelText
+            }
+        }
+    }
+
     # --log-file 会镜像 print 输出，因此 marker 的唯一性以 stdout 为准；
-    # 三个通道仍全部参加错误审计，任何一处引擎错误都会让探针失败。
+    # 三个通道仍全部参加错误审计。Relay 仅可显式传入已证明的
+    # 关闭期完整错误块，stdout 从不过滤，同通道重复也仍失败。
     $combinedOutput = (
         "--- stdout ---`n$stdout`n" +
-        "--- stderr ---`n$stderr`n" +
-        "--- engine log ---`n$engineLog"
+        "--- stderr ---`n$auditedStderr`n" +
+        "--- engine log ---`n$auditedEngineLog"
     )
     $forbidden = [regex]::Match(
         $combinedOutput,
@@ -450,6 +578,65 @@ function Assert-LanProbePeerTruth {
         Stdout = $stdout
         Stderr = $stderr
         EngineLog = $engineLog
+    }
+}
+
+
+function Get-LanProbeRelayShutdownNoisePattern {
+    # 只允许 Relay 关闭期已复现的 ENet 两行完整块。不用宽泛
+    # `Unable to send packet` 子串，避免吞掉其他信道、节点或协议错误。
+    return (
+        '(?m)^ERROR: Unable to send packet on channel 0, max channels: 0\r?\n' +
+        '[ ]{3}at: send \(modules/enet/enet_packet_peer\.cpp:62\)\r?(?:\n|$)'
+    )
+}
+
+
+function Assert-LanProbeManagedEntryExitCodes {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)][array]$Entries
+    )
+
+    $failures = [Collections.Generic.List[string]]::new()
+    foreach ($entry in $Entries) {
+        $processId = [int]$entry.Process.Id
+        if (-not $Context.OwnedIdentityByProcessId.ContainsKey($processId)) {
+            $failures.Add(
+                "$($entry.Name) launcher PID=$processId was not registered as owned."
+            )
+            continue
+        }
+        try {
+            if (-not $entry.Process.HasExited) {
+                $failures.Add(
+                    "$($entry.Name) launcher PID=$processId is still running."
+                )
+                continue
+            }
+            $entry.Process.WaitForExit()
+            $exitCode = $entry.Process.ExitCode
+            if ($null -eq $exitCode) {
+                $failures.Add(
+                    "$($entry.Name) launcher PID=$processId has no exit code."
+                )
+            }
+            elseif ([int]$exitCode -ne 0) {
+                $failures.Add(
+                    "$($entry.Name) launcher PID=$processId exited with code " +
+                    "$([int]$exitCode)."
+                )
+            }
+        }
+        catch {
+            $failures.Add(
+                "$($entry.Name) launcher PID=$processId exit-code audit failed: " +
+                $_.Exception.Message
+            )
+        }
+    }
+    if ($failures.Count -ne 0) {
+        throw ($failures -join " ")
     }
 }
 

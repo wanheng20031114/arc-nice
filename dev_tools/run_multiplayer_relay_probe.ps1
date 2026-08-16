@@ -1,3 +1,4 @@
+﻿[CmdletBinding()]
 param(
     [string]$GodotExe = "C:\Program Files\Godot\Godot_console.exe",
     [int]$Port = 40230,
@@ -8,296 +9,411 @@ param(
     [string]$GameMode = "standard",
     [ValidateRange(2, 8)]
     [int]$PlayerCount = 4,
-    [switch]$GodotVerbose
+    [switch]$GodotVerbose,
+    [string]$ProjectPath = "",
+    [string]$PeerScript = "res://dev_tools/multiplayer_lan_probe_peer.gd",
+    [string[]]$PeerExtraArguments = @(),
+    [string]$RelayProjectPath = "",
+    [string[]]$RelayExtraArguments = @(),
+    [ValidateRange(1, 120)]
+    [int]$RelayStartupIdleTimeoutSeconds = 30,
+    [ValidateRange(1, 30)]
+    [int]$RelayEmptyIdleTimeoutSeconds = 1
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "lan_probe_truth_common.ps1")
 
 if ($Scenario -eq "reconnect" -and $PlayerCount -ne 4) {
     throw "The reconnect probe currently requires -PlayerCount 4."
 }
 
 $reconnectToken = "44444444444444444444444444444444"
-
-$projectPath = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$relayProjectPath = Join-Path $projectPath "relay_servers\relay_godot_project"
-$logRoot = Join-Path $env:TEMP ("arc-nice-relay-probe-" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $logRoot | Out-Null
-
+$resolvedProjectPath = if ([string]::IsNullOrWhiteSpace($ProjectPath)) {
+    (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+}
+else {
+    (Resolve-Path -LiteralPath $ProjectPath).Path
+}
+$resolvedRelayProjectPath = if ([string]::IsNullOrWhiteSpace($RelayProjectPath)) {
+    Join-Path $resolvedProjectPath "relay_servers\relay_godot_project"
+}
+else {
+    (Resolve-Path -LiteralPath $RelayProjectPath).Path
+}
+$runId = [Guid]::NewGuid().ToString("N")
+$runMarkerPrefix = "--arc-relay-probe-run-id=$runId"
+$logRoot = Join-Path $env:TEMP "arc-nice-relay-probe-$runId"
+$context = New-LanProbeTruthContext $runId $runMarkerPrefix
 $entries = @()
+$failures = [Collections.Generic.List[string]]::new()
+$hostPeerId = 0
+$script:relayProbeDeadlineUtc = [DateTime]::MinValue
 
-try {
-    $relayStdout = Join-Path $logRoot "relay.out.log"
-    $relayStderr = Join-Path $logRoot "relay.err.log"
-    $relayArgs = @(
-        "--headless",
-        "--path", $relayProjectPath,
-        "--",
-        "--port=$Port"
+
+function Format-RelayProbeSeconds {
+    param([Parameter(Mandatory = $true)][double]$Value)
+
+    return [string]::Format(
+        [Globalization.CultureInfo]::InvariantCulture,
+        "{0:F3}",
+        $Value
     )
-    Set-Content -Path (Join-Path $logRoot "relay.args.txt") -Encoding UTF8 -Value ($relayArgs -join "`n")
-    $relayProcess = Start-Process `
-        -FilePath $GodotExe `
-        -ArgumentList $relayArgs `
-        -WorkingDirectory $relayProjectPath `
-        -RedirectStandardOutput $relayStdout `
-        -RedirectStandardError $relayStderr `
-        -WindowStyle Hidden `
-        -PassThru
-    $entries += [pscustomobject]@{
-        Name = "relay"
-        Process = $relayProcess
-        Stdout = $relayStdout
-        Stderr = $relayStderr
+}
+
+
+function Get-RelayProbeRemainingSeconds {
+    $remaining = [Math]::Ceiling(
+        ($script:relayProbeDeadlineUtc - [DateTime]::UtcNow).TotalSeconds
+    )
+    if ($remaining -le 0) {
+        throw "Relay probe exceeded its $TimeoutSeconds-second global timeout."
     }
+    return [int]$remaining
+}
 
-    Start-Sleep -Seconds 5
 
-    $hostStdout = Join-Path $logRoot "host.out.log"
-    $hostStderr = Join-Path $logRoot "host.err.log"
-    $hostArgs = @()
+function Start-RelayProbeManagedEntry {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Role,
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+
+    $stdout = Join-Path $logRoot "$Name.out.log"
+    $stderr = Join-Path $logRoot "$Name.err.log"
+    $engineLog = Join-Path $logRoot "$Name.godot.log"
+    $managedArguments = @("--log-file", $engineLog) + $Arguments
+    $utf8NoBom = New-Object Text.UTF8Encoding($false)
+    [IO.File]::WriteAllLines(
+        (Join-Path $logRoot "$Name.args.txt"),
+        [string[]]$managedArguments,
+        $utf8NoBom
+    )
+
+    $launched = Start-LanProbeManagedProcess `
+        $context `
+        $GodotExe `
+        $WorkingDirectory `
+        $managedArguments `
+        -EnableLiveLineCapture
+    return [pscustomobject]@{
+        Name = $Name
+        Role = $Role
+        Process = $launched.Process
+        StdoutTask = $launched.StdoutTask
+        StderrTask = $launched.StderrTask
+        LiveLineCapture = $launched.LiveLineCapture
+        StdoutBuffer = $launched.StdoutBuffer
+        StderrBuffer = $launched.StderrBuffer
+        StdoutClosed = $launched.StdoutClosed
+        StderrClosed = $launched.StderrClosed
+        LogsCompleted = $false
+        Stdout = $stdout
+        Stderr = $stderr
+        EngineLog = $engineLog
+    }
+}
+
+
+function Start-RelayProbePeer {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Role,
+        [Parameter(Mandatory = $true)][int]$RelayHostPeerId,
+        [int]$StartDelayMs = 0,
+        [bool]$Events = $false,
+        [string]$ReconnectIdentity = "",
+        [bool]$ReconnectAttempt = $false
+    )
+
+    if ($StartDelayMs -gt 0) {
+        $null = Get-RelayProbeRemainingSeconds
+        Watch-LanProbeProcessOwnership $context $StartDelayMs
+    }
+    $peerRunMarker = "$runMarkerPrefix-$Name"
+    $arguments = @()
     if ($GodotVerbose) {
-        $hostArgs += "--verbose"
+        $arguments += "--verbose"
     }
-    $hostArgs += @(
+    $arguments += @(
         "--headless",
-        "--path", $projectPath,
-        "--script", "res://dev_tools/multiplayer_lan_probe_peer.gd",
+        "--path", $resolvedProjectPath,
+        "--script", $PeerScript,
         "--",
-        "--probe-role=host",
+        $peerRunMarker,
+        "--probe-role=$Role",
         "--probe-mode=relay",
-        "--probe-name=host",
+        "--probe-name=$($Name -replace '_rejoin$', '')",
         "--probe-host=127.0.0.1",
         "--probe-port=$Port",
-        "--probe-relay_host_peer_id=0",
+        "--probe-relay_host_peer_id=$RelayHostPeerId",
         "--probe-expected_players=$PlayerCount",
         "--probe-timeout_seconds=20",
-        "--probe-run_seconds=3",
-        "--probe-linger_seconds=0",
-        "--probe-events=False",
+        "--probe-run_seconds=$(if ($Role -eq 'host') { 3 } else { 2 })",
+        "--probe-linger_seconds=$(if ($Role -eq 'host') { 0 } else { 6 })",
+        "--probe-events=$Events",
         "--probe-scenario=$Scenario",
         "--probe-game_mode=$GameMode"
     )
-    Set-Content -Path (Join-Path $logRoot "host.args.txt") -Encoding UTF8 -Value ($hostArgs -join "`n")
-    $hostProcess = Start-Process `
-        -FilePath $GodotExe `
-        -ArgumentList $hostArgs `
-        -WorkingDirectory $projectPath `
-        -RedirectStandardOutput $hostStdout `
-        -RedirectStandardError $hostStderr `
-        -WindowStyle Hidden `
-        -PassThru
-    $entries += [pscustomobject]@{
-        Name = "host"
-        Process = $hostProcess
-        Stdout = $hostStdout
-        Stderr = $hostStderr
-    }
-
-    Start-Sleep -Seconds 8
-    $hostText = ""
-    if (Test-Path $hostStdout) {
-        $hostText = Get-Content $hostStdout -Raw
-    }
-    if ($hostText -notmatch "RELAY_PROBE_HOST_READY host_peer_id=(\d+)") {
-        throw "Host did not report relay host peer id. logRoot=$logRoot"
-    }
-    $hostPeerId = [int]$Matches[1]
-    if ($hostPeerId -le 1) {
-        throw "Relay host peer id must not be 1; saw $hostPeerId. logRoot=$logRoot"
-    }
-    Write-Host "Relay host peer id: $hostPeerId"
-
-    $clientBaseArgs = @()
-    if ($GodotVerbose) {
-        $clientBaseArgs += "--verbose"
-    }
-    $clientBaseArgs += @(
-        "--headless",
-        "--path", $projectPath,
-        "--script", "res://dev_tools/multiplayer_lan_probe_peer.gd",
-        "--",
-        "--probe-role=client",
-        "--probe-mode=relay",
-        "--probe-host=127.0.0.1",
-        "--probe-port=$Port",
-        "--probe-relay_host_peer_id=$hostPeerId",
-        "--probe-expected_players=$PlayerCount",
-        "--probe-timeout_seconds=20",
-        "--probe-run_seconds=2",
-        "--probe-linger_seconds=6",
-        "--probe-scenario=$Scenario",
-        "--probe-game_mode=$GameMode"
-    )
-
-    $clientSpecs = @()
-    for ($clientIndex = 2; $clientIndex -le $PlayerCount; $clientIndex++) {
-        $clientSpecs += @{
-            Name = "client$clientIndex"
-            DelayMs = if ($clientIndex -eq 2) { 0 } else { 150 }
-            Events = if ($clientIndex -eq 2) { "True" } else { "False" }
-        }
-    }
-    foreach ($clientSpec in $clientSpecs) {
-        if ($clientSpec.DelayMs -gt 0) {
-            Start-Sleep -Milliseconds $clientSpec.DelayMs
-        }
-        $clientName = $clientSpec.Name
-        $clientStdout = Join-Path $logRoot "$clientName.out.log"
-        $clientStderr = Join-Path $logRoot "$clientName.err.log"
-        $clientArgs = $clientBaseArgs + @(
-            "--probe-name=$clientName",
-            "--probe-events=$($clientSpec.Events)"
+    if (-not [string]::IsNullOrEmpty($ReconnectIdentity)) {
+        $arguments += @(
+            "--probe-reconnect_token=$ReconnectIdentity",
+            "--probe-reconnect_attempt=$ReconnectAttempt"
         )
-        if ($Scenario -eq "reconnect" -and $clientName -eq "client4") {
-            $clientArgs += @(
-                "--probe-reconnect_token=$reconnectToken",
-                "--probe-reconnect_attempt=False"
+    }
+    foreach ($extraArgument in $PeerExtraArguments) {
+        $arguments += [string]$extraArgument
+    }
+    return Start-RelayProbeManagedEntry `
+        $Name `
+        $Role `
+        $resolvedProjectPath `
+        $arguments
+}
+
+
+function Wait-RelayProbeStdoutPattern {
+    param(
+        [Parameter(Mandatory = $true)]$Entry,
+        [Parameter(Mandatory = $true)][string]$Pattern,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    do {
+        $null = Update-LanProbeOwnedProcessRegistry $context
+        Update-LanProbeLiveLineCapture $Entry
+        $currentMatches = [regex]::Matches(
+            $Entry.StdoutBuffer.ToString(),
+            $Pattern
+        )
+        if ($currentMatches.Count -gt 0) {
+            return $currentMatches
+        }
+        if ($Entry.Process.HasExited) {
+            Complete-LanProbePeerLogs $Entry
+            # 进程退出与异步逐行读取可能同帧发生；完成 drain 后必须复核最后一行。
+            $finalMatches = [regex]::Matches(
+                $Entry.StdoutBuffer.ToString(),
+                $Pattern
+            )
+            if ($finalMatches.Count -gt 0) {
+                return $finalMatches
+            }
+            throw (
+                "$Description was not observed before $($Entry.Name) exited " +
+                "with code $([int]$Entry.Process.ExitCode)."
             )
         }
-        Set-Content -Path (Join-Path $logRoot "$clientName.args.txt") -Encoding UTF8 -Value ($clientArgs -join "`n")
-        $clientProcess = Start-Process `
-            -FilePath $GodotExe `
-            -ArgumentList $clientArgs `
-            -WorkingDirectory $projectPath `
-            -RedirectStandardOutput $clientStdout `
-            -RedirectStandardError $clientStderr `
-            -WindowStyle Hidden `
-            -PassThru
-        $entries += [pscustomobject]@{
-            Name = $clientName
-            Process = $clientProcess
-            Stdout = $clientStdout
-            Stderr = $clientStderr
+        Start-Sleep -Milliseconds 50
+    } while ([DateTime]::UtcNow -lt $script:relayProbeDeadlineUtc)
+    throw "$Description was not observed before the global timeout."
+}
+
+
+try {
+    if (-not (Test-Path -LiteralPath $GodotExe -PathType Leaf)) {
+        throw "Godot console executable does not exist: $GodotExe"
+    }
+    if ($TimeoutSeconds -le 0) {
+        throw "TimeoutSeconds must be positive."
+    }
+    if (-not (Test-Path -LiteralPath $resolvedRelayProjectPath -PathType Container)) {
+        throw "Relay project directory does not exist: $resolvedRelayProjectPath"
+    }
+    New-Item -ItemType Directory -Path $logRoot -ErrorAction Stop | Out-Null
+    $script:relayProbeDeadlineUtc = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+
+    $relayMaxLifetimeSeconds = [Math]::Max($TimeoutSeconds + 30, 60)
+    $relayRunMarker = "$runMarkerPrefix-relay"
+    $relayArguments = @(
+        "--headless",
+        "--path", $resolvedRelayProjectPath,
+        "--",
+        $relayRunMarker,
+        "--port=$Port",
+        "--max-clients=$PlayerCount",
+        "--startup-idle-timeout=$RelayStartupIdleTimeoutSeconds",
+        "--empty-idle-timeout=$RelayEmptyIdleTimeoutSeconds",
+        "--max-lifetime=$relayMaxLifetimeSeconds"
+    )
+    foreach ($extraArgument in $RelayExtraArguments) {
+        $relayArguments += [string]$extraArgument
+    }
+    $relayEntry = Start-RelayProbeManagedEntry `
+        "relay" `
+        "relay" `
+        $resolvedRelayProjectPath `
+        $relayArguments
+    $entries += $relayEntry
+
+    $relayReadyMarker = (
+        "[Relay] 服务器已启动, port=$Port, max_clients=$PlayerCount, " +
+        "protocol=v77, " +
+        "startup_idle=$(Format-RelayProbeSeconds $RelayStartupIdleTimeoutSeconds), " +
+        "empty_idle=$(Format-RelayProbeSeconds $RelayEmptyIdleTimeoutSeconds), " +
+        "max_lifetime=$(Format-RelayProbeSeconds $relayMaxLifetimeSeconds), " +
+        "server_relay=true"
+    )
+    $relayReadyPattern = "(?m)^$([regex]::Escape($relayReadyMarker))`r?$"
+    $null = Wait-RelayProbeStdoutPattern `
+        $relayEntry `
+        $relayReadyPattern `
+        "Relay exact ready marker"
+    # Windows 上 server-ready 日志可早于 UDP 监听线程完成一次调度；保留
+    # 一次有所有权采样的短稳定窗，仍由同一全局 deadline 约束。
+    Watch-LanProbeProcessOwnership $context 1000
+
+    $hostEntry = Start-RelayProbePeer `
+        -Name "host" `
+        -Role "host" `
+        -RelayHostPeerId 0
+    $entries += $hostEntry
+    $hostReadyPattern = '(?m)^RELAY_PROBE_HOST_READY host_peer_id=(\d+)\r?$'
+    $hostReadyMatches = Wait-RelayProbeStdoutPattern `
+        $hostEntry `
+        $hostReadyPattern `
+        "Host relay peer identity"
+    $hostPeerId = [int]$hostReadyMatches[0].Groups[1].Value
+    if ($hostPeerId -le 1) {
+        throw "Relay host peer id must be greater than 1; saw $hostPeerId."
+    }
+    Write-Output "Relay host peer id: $hostPeerId"
+
+    for ($clientIndex = 2; $clientIndex -le $PlayerCount; $clientIndex++) {
+        $clientName = "client$clientIndex"
+        $delayMs = if ($clientIndex -eq 2) { 0 } else { 150 }
+        $clientReconnectToken = if (
+            $Scenario -eq "reconnect" -and $clientName -eq "client4"
+        ) {
+            $reconnectToken
         }
+        else {
+            ""
+        }
+        $entries += Start-RelayProbePeer `
+            -Name $clientName `
+            -Role "client" `
+            -RelayHostPeerId $hostPeerId `
+            -StartDelayMs $delayMs `
+            -Events ($clientIndex -eq 2) `
+            -ReconnectIdentity $clientReconnectToken `
+            -ReconnectAttempt $false
     }
 
     if ($Scenario -eq "reconnect") {
-        $reconnectReadyDeadline = (Get-Date).AddSeconds(90)
-        $reconnectSlotReady = $false
-        while ((Get-Date) -lt $reconnectReadyDeadline) {
-            $hostText = ""
-            if (Test-Path $hostStdout) {
-                $hostText = Get-Content $hostStdout -Raw
-            }
-            if ($hostText -match "LAN_PROBE_EVENT reconnect_slot_open old_peer=\d+") {
-                $reconnectSlotReady = $true
-                break
-            }
-            if ($hostProcess.HasExited) {
-                break
-            }
-            Start-Sleep -Milliseconds 250
-        }
-        if (-not $reconnectSlotReady) {
-            throw "Host did not open a reconnect slot. logRoot=$logRoot"
-        }
-
-        $rejoinName = "client4_rejoin"
-        $rejoinStdout = Join-Path $logRoot "$rejoinName.out.log"
-        $rejoinStderr = Join-Path $logRoot "$rejoinName.err.log"
-        $rejoinArgs = $clientBaseArgs + @(
-            "--probe-name=client4",
-            "--probe-events=False",
-            "--probe-reconnect_token=$reconnectToken",
-            "--probe-reconnect_attempt=True"
+        $reconnectReadyPattern = (
+            '(?m)^LAN_PROBE_EVENT reconnect_slot_open old_peer=\d+\r?$'
         )
-        Set-Content -Path (Join-Path $logRoot "$rejoinName.args.txt") -Encoding UTF8 -Value ($rejoinArgs -join "`n")
-        $rejoinProcess = Start-Process `
-            -FilePath $GodotExe `
-            -ArgumentList $rejoinArgs `
-            -WorkingDirectory $projectPath `
-            -RedirectStandardOutput $rejoinStdout `
-            -RedirectStandardError $rejoinStderr `
-            -WindowStyle Hidden `
-            -PassThru
-        $entries += [pscustomobject]@{
-            Name = $rejoinName
-            Process = $rejoinProcess
-            Stdout = $rejoinStdout
-            Stderr = $rejoinStderr
-        }
+        $null = Wait-RelayProbeStdoutPattern `
+            $hostEntry `
+            $reconnectReadyPattern `
+            "Host reconnect slot marker"
+        $entries += Start-RelayProbePeer `
+            -Name "client4_rejoin" `
+            -Role "client" `
+            -RelayHostPeerId $hostPeerId `
+            -Events $false `
+            -ReconnectIdentity $reconnectToken `
+            -ReconnectAttempt $true
     }
 
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    while ((Get-Date) -lt $deadline) {
-        $runningPeers = $entries | Where-Object {
-            $_.Name -ne "relay" -and -not $_.Process.HasExited
-        }
-        if ($runningPeers.Count -eq 0) {
-            break
-        }
-        Start-Sleep -Milliseconds 250
-    }
-
-    $timedOut = $false
+    $remainingTimeoutSeconds = Get-RelayProbeRemainingSeconds
+    Wait-LanProbePeerProcesses `
+        $context `
+        $entries `
+        $remainingTimeoutSeconds
+    # Relay 与每个 peer 都由 Diagnostics.Process 直接托管，因此逐 entry
+    # 证明真实退出码；console -> engine 后代只承担 PID 归属与零残留核实。
+    Assert-LanProbeManagedEntryExitCodes $context $entries
     foreach ($entry in $entries) {
-        if ($entry.Name -eq "relay") {
-            continue
-        }
-        if (-not $entry.Process.HasExited) {
-            $timedOut = $true
-            Stop-Process -Id $entry.Process.Id -Force
-        }
-        $entry.Process.WaitForExit()
+        Complete-LanProbePeerLogs $entry
     }
 
-    if (-not $relayProcess.HasExited) {
-        $relayProcess.WaitForExit(5000) | Out-Null
-    }
-    if (-not $relayProcess.HasExited) {
-        Stop-Process -Id $relayProcess.Id -Force
-        $relayProcess.WaitForExit()
-    }
-
-    $failed = $timedOut
+    $relayShutdownNoisePattern = Get-LanProbeRelayShutdownNoisePattern
     foreach ($entry in $entries) {
-        $entry.Process.Refresh()
-        $stdoutText = ""
-        $stderrText = ""
-        if (Test-Path $entry.Stdout) {
-            $stdoutText = Get-Content $entry.Stdout -Raw
+        try {
+            if ($entry.Role -eq "relay") {
+                $null = Assert-LanProbePeerTruth `
+                    $entry `
+                    $relayReadyMarker `
+                    $relayShutdownNoisePattern
+                Write-Output (
+                    "[relay] exact ready marker " +
+                    "(exit=0; owned launcher PID=$([int]$entry.Process.Id))"
+                )
+                continue
+            }
+            $truth = Assert-LanProbePeerTruth $entry "LAN_PROBE_OK"
+            if ($entry.Name -eq "host") {
+                $readyStdoutCount = [regex]::Matches(
+                    $truth.Stdout,
+                    $hostReadyPattern
+                ).Count
+                $readyStderrCount = [regex]::Matches(
+                    $truth.Stderr,
+                    $hostReadyPattern
+                ).Count
+                if ($readyStdoutCount -ne 1 -or $readyStderrCount -ne 0) {
+                    throw (
+                        "host must emit exactly one exact relay peer identity line " +
+                        "on stdout and none on stderr; stdout=$readyStdoutCount, " +
+                        "stderr=$readyStderrCount."
+                    )
+                }
+            }
+            Write-Output (
+                "[$($entry.Name)] LAN_PROBE_OK " +
+                "(exit=0; owned launcher PID=$([int]$entry.Process.Id))"
+            )
         }
-        if (Test-Path $entry.Stderr) {
-            $stderrText = Get-Content $entry.Stderr -Raw
-        }
-        Write-Host "==== $($entry.Name) stdout ===="
-        Write-Host $stdoutText
-        Write-Host "==== $($entry.Name) stderr ===="
-        Write-Host $stderrText
-        if ($entry.Name -ne "relay" -and $stdoutText -notmatch "LAN_PROBE_OK") {
-            $failed = $true
-            Write-Host "ERROR: $($entry.Name) did not report LAN_PROBE_OK."
-        }
-        if ($entry.Name -eq "relay" -and $stdoutText -notmatch "server_relay=true") {
-            $failed = $true
-            Write-Host "ERROR: Relay did not report server_relay=true."
-        }
-        $effectiveStderr = $stderrText
-        if ($entry.Name -eq "relay") {
-            $effectiveStderr = $effectiveStderr -replace "ERROR: Unable to send packet on channel 0, max channels: 0\r?\n\s+at: send \(modules/enet/enet_packet_peer.cpp:62\)\r?\n", ""
-        }
-        if ($effectiveStderr -match "SCRIPT ERROR|Node not found|Invalid packet received|ERR_UNCONFIGURED|Unable to send packet|Trying to cast|ObjectDB instances leaked|resources still in use|RPC '.*' is not allowed|unknown peer ID|checksum failed|Failed to get cached node") {
-            $failed = $true
-            Write-Host "ERROR: $($entry.Name) produced network/runtime errors in stderr."
+        catch {
+            $failures.Add($_.Exception.Message)
+            Write-LanProbePeerLogs $entry
         }
     }
-
-    if ($timedOut) {
-        Write-Host "ERROR: Relay probe timed out after $TimeoutSeconds seconds."
+}
+catch {
+    $failureDetail = $_.Exception.Message
+    if (-not [string]::IsNullOrWhiteSpace($_.ScriptStackTrace)) {
+        $failureDetail += " Stack: $($_.ScriptStackTrace)"
     }
-    if ($failed) {
-        exit 1
-    }
-
-    Write-Host "MULTIPLAYER_RELAY_PROBE_OK scenario=$Scenario gameMode=$GameMode players=$PlayerCount port=$Port hostPeerId=$hostPeerId logRoot=$logRoot"
-    exit 0
+    $failures.Add($failureDetail)
 }
 finally {
+    try {
+        Stop-LanProbeOwnedProcessTree $context
+    }
+    catch {
+        $failures.Add($_.Exception.Message)
+    }
     foreach ($entry in $entries) {
-        if ($entry.Process -ne $null -and -not $entry.Process.HasExited) {
-            Stop-Process -Id $entry.Process.Id -Force
-            $entry.Process.WaitForExit()
+        try {
+            Complete-LanProbePeerLogs $entry
+        }
+        catch {
+            $failures.Add($_.Exception.Message)
         }
     }
+    Close-LanProbeProcessHandles $context
 }
+
+if ($failures.Count -ne 0) {
+    foreach ($entry in $entries) {
+        Write-LanProbePeerLogs $entry
+    }
+    foreach ($failure in $failures) {
+        [Console]::Error.WriteLine("MULTIPLAYER_RELAY_PROBE_FAILED: $failure")
+    }
+    [Console]::Error.WriteLine("Relay probe logs preserved at: $logRoot")
+    exit 1
+}
+
+Write-Output (
+    "MULTIPLAYER_RELAY_PROBE_OK scenario=$Scenario gameMode=$GameMode " +
+    "players=$PlayerCount port=$Port hostPeerId=$hostPeerId logRoot=$logRoot"
+)
+exit 0
