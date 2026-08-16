@@ -1,0 +1,13 @@
+; Engine configuration file.
+; This isolated project keeps runner truth fixtures independent from gameplay.
+
+config_version=5
+
+[application]
+
+config/name="LAN Probe Truth Fixture"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

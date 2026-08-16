@@ -1,3 +1,4 @@
+﻿[CmdletBinding()]
 param(
     [string]$GodotExe = "C:\Program Files\Godot\Godot_console.exe",
     [int]$Port = 29270,
@@ -8,16 +9,30 @@ param(
     [string]$GameMode = "standard",
     [ValidateRange(2, 8)]
     [int]$PlayerCount = 4,
-    [switch]$GodotVerbose
+    [switch]$GodotVerbose,
+    [string]$ProjectPath = "",
+    [string]$PeerScript = "res://dev_tools/multiplayer_lan_probe_peer.gd",
+    [string[]]$PeerExtraArguments = @()
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$projectPath = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$logRoot = Join-Path $env:TEMP ("arc-nice-lan-probe-" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $logRoot | Out-Null
+. (Join-Path $PSScriptRoot "lan_probe_truth_common.ps1")
 
-$processes = @()
+$projectPath = if ([string]::IsNullOrWhiteSpace($ProjectPath)) {
+    (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+}
+else {
+    (Resolve-Path -LiteralPath $ProjectPath).Path
+}
+$runId = [Guid]::NewGuid().ToString("N")
+$runMarkerPrefix = "--arc-lan-probe-run-id=$runId"
+$logRoot = Join-Path $env:TEMP "arc-nice-lan-probe-$runId"
+$context = New-LanProbeTruthContext $runId $runMarkerPrefix
+$entries = @()
+$failures = [Collections.Generic.List[string]]::new()
+
 
 function Start-ProbePeer {
     param(
@@ -30,22 +45,24 @@ function Start-ProbePeer {
     )
 
     if ($StartDelayMs -gt 0) {
-        Start-Sleep -Milliseconds $StartDelayMs
+        Watch-LanProbeProcessOwnership $context $StartDelayMs
     }
 
     $stdout = Join-Path $logRoot "$Name.out.log"
     $stderr = Join-Path $logRoot "$Name.err.log"
     $engineLog = Join-Path $logRoot "$Name.godot.log"
-    $args = @()
+    $peerRunMarker = "$runMarkerPrefix-$Name"
+    $godotArguments = @()
     if ($GodotVerbose) {
-        $args += "--verbose"
+        $godotArguments += "--verbose"
     }
-    $args += @(
+    $godotArguments += @(
         "--headless",
         "--path", $projectPath,
         "--log-file", $engineLog,
-        "--script", "dev_tools/multiplayer_lan_probe_peer.gd",
+        "--script", $PeerScript,
         "--",
+        $peerRunMarker,
         "--probe-role=$Role",
         "--probe-name=$Name",
         "--probe-host=127.0.0.1",
@@ -58,31 +75,44 @@ function Start-ProbePeer {
         "--probe-scenario=$Scenario",
         "--probe-game_mode=$GameMode"
     )
+    foreach ($extraArgument in $PeerExtraArguments) {
+        $godotArguments += [string]$extraArgument
+    }
 
-    $process = Start-Process `
-        -FilePath $GodotExe `
-        -ArgumentList $args `
-        -WorkingDirectory $projectPath `
-        -RedirectStandardOutput $stdout `
-        -RedirectStandardError $stderr `
-        -WindowStyle Hidden `
-        -PassThru
+    $launched = Start-LanProbeManagedProcess `
+        $context `
+        $GodotExe `
+        $projectPath `
+        $godotArguments
 
-    [pscustomobject]@{
+    return [pscustomobject]@{
         Name = $Name
         Role = $Role
-        Process = $process
+        Process = $launched.Process
+        StdoutTask = $launched.StdoutTask
+        StderrTask = $launched.StderrTask
+        LogsCompleted = $false
+        RunMarker = $peerRunMarker
         Stdout = $stdout
         Stderr = $stderr
         EngineLog = $engineLog
     }
 }
 
+
 try {
-    $processes += Start-ProbePeer -Role "host" -Name "host" -RunSeconds 3.0
+    if (-not (Test-Path -LiteralPath $GodotExe -PathType Leaf)) {
+        throw "Godot console executable does not exist: $GodotExe"
+    }
+    if ($TimeoutSeconds -le 0) {
+        throw "TimeoutSeconds must be positive."
+    }
+    New-Item -ItemType Directory -Path $logRoot -ErrorAction Stop | Out-Null
+
+    $entries += Start-ProbePeer -Role "host" -Name "host" -RunSeconds 3.0
     for ($clientIndex = 2; $clientIndex -le $PlayerCount; $clientIndex++) {
         $delayMs = if ($clientIndex -eq 2) { 350 } else { 150 }
-        $processes += Start-ProbePeer `
+        $entries += Start-ProbePeer `
             -Role "client" `
             -Name "client$clientIndex" `
             -StartDelayMs $delayMs `
@@ -91,62 +121,55 @@ try {
             -Events ($Scenario -eq "full" -and $clientIndex -eq 2)
     }
 
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    while ((Get-Date) -lt $deadline) {
-        $running = $processes | Where-Object { -not $_.Process.HasExited }
-        if ($running.Count -eq 0) {
-            break
-        }
-        Start-Sleep -Milliseconds 250
+    Wait-LanProbePeerProcesses $context $entries $TimeoutSeconds
+    foreach ($entry in $entries) {
+        Complete-LanProbePeerLogs $entry
     }
-
-    $timedOut = $false
-    foreach ($entry in $processes) {
-        if (-not $entry.Process.HasExited) {
-            $timedOut = $true
-            Stop-Process -Id $entry.Process.Id -Force
+    foreach ($entry in $entries) {
+        try {
+            $null = Assert-LanProbePeerTruth $entry "LAN_PROBE_OK"
+            Write-Output (
+                "[$($entry.Name)] LAN_PROBE_OK " +
+                "(exit=0; owned launcher PID=$([int]$entry.Process.Id))"
+            )
         }
-        $entry.Process.WaitForExit()
-    }
-
-    $failed = $timedOut
-    foreach ($entry in $processes) {
-        $entry.Process.Refresh()
-        Write-Host "==== $($entry.Name) stdout ===="
-        $stdoutText = ""
-        if (Test-Path $entry.Stdout) {
-            $stdoutText = Get-Content $entry.Stdout -Raw
-            Write-Host $stdoutText
-        }
-        Write-Host "==== $($entry.Name) stderr ===="
-        if (Test-Path $entry.Stderr) {
-            $stderrText = Get-Content $entry.Stderr -Raw
-            Write-Host $stderrText
-            if ($stderrText -match "SCRIPT ERROR|Node not found|Invalid packet received|ERR_UNCONFIGURED|Unable to send packet|Trying to cast|ObjectDB instances leaked|resources still in use") {
-                $failed = $true
-                Write-Host "ERROR: $($entry.Name) produced network/runtime errors in stderr."
-            }
-        }
-        if ($entry.Process.ExitCode -ne 0 -and $stdoutText -notmatch "LAN_PROBE_OK") {
-            $failed = $true
-            Write-Host "ERROR: $($entry.Name) exited with code $($entry.Process.ExitCode)."
+        catch {
+            $failures.Add($_.Exception.Message)
+            Write-LanProbePeerLogs $entry
         }
     }
-
-    if ($timedOut) {
-        Write-Host "ERROR: LAN probe timed out after $TimeoutSeconds seconds."
-    }
-    if ($failed) {
-        exit 1
-    }
-
-    Write-Host "MULTIPLAYER_LAN_PROBE_OK scenario=$Scenario gameMode=$GameMode players=$PlayerCount logRoot=$logRoot"
-    exit 0
+}
+catch {
+    $failures.Add($_.Exception.Message)
 }
 finally {
-    foreach ($entry in $processes) {
-        if ($entry.Process -ne $null -and -not $entry.Process.HasExited) {
-            Stop-Process -Id $entry.Process.Id -Force
+    try {
+        Stop-LanProbeOwnedProcessTree $context
+    }
+    catch {
+        $failures.Add($_.Exception.Message)
+    }
+    foreach ($entry in $entries) {
+        try {
+            Complete-LanProbePeerLogs $entry
+        }
+        catch {
+            $failures.Add($_.Exception.Message)
         }
     }
+    Close-LanProbeProcessHandles $context
 }
+
+if ($failures.Count -ne 0) {
+    foreach ($failure in $failures) {
+        [Console]::Error.WriteLine("MULTIPLAYER_LAN_PROBE_FAILED: $failure")
+    }
+    [Console]::Error.WriteLine("LAN probe logs preserved at: $logRoot")
+    exit 1
+}
+
+Write-Output (
+    "MULTIPLAYER_LAN_PROBE_OK scenario=$Scenario gameMode=$GameMode " +
+    "players=$PlayerCount logRoot=$logRoot"
+)
+exit 0

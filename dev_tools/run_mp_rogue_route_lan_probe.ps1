@@ -1,14 +1,31 @@
+﻿[CmdletBinding()]
 param(
     [string]$GodotExe = "C:\Program Files\Godot\Godot_console.exe",
     [int]$Port = 29386,
-    [int]$TimeoutSeconds = 30
+    [int]$TimeoutSeconds = 30,
+    [string]$ProjectPath = "",
+    [string]$PeerScript = "res://dev_tools/mp_rogue_route_lan_probe_peer.gd",
+    [string[]]$PeerExtraArguments = @()
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-$projectPath = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$logRoot = Join-Path $env:TEMP ("arc-nice-p3-lan-" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $logRoot | Out-Null
+
+. (Join-Path $PSScriptRoot "lan_probe_truth_common.ps1")
+
+$projectPath = if ([string]::IsNullOrWhiteSpace($ProjectPath)) {
+    (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+}
+else {
+    (Resolve-Path -LiteralPath $ProjectPath).Path
+}
+$runId = [Guid]::NewGuid().ToString("N")
+$runMarkerPrefix = "--arc-p3-lan-probe-run-id=$runId"
+$logRoot = Join-Path $env:TEMP "arc-nice-p3-lan-$runId"
+$context = New-LanProbeTruthContext $runId $runMarkerPrefix
 $entries = @()
+$failures = [Collections.Generic.List[string]]::new()
+
 
 function Start-P3Peer {
     param([string]$Role)
@@ -16,93 +33,101 @@ function Start-P3Peer {
     $stdout = Join-Path $logRoot "$Role.out.log"
     $stderr = Join-Path $logRoot "$Role.err.log"
     $engineLog = Join-Path $logRoot "$Role.godot.log"
-    $arguments = @(
+    $peerRunMarker = "$runMarkerPrefix-$Role"
+    $godotArguments = @(
         "--headless",
         "--path", $projectPath,
         "--log-file", $engineLog,
-        "--script", "dev_tools/mp_rogue_route_lan_probe_peer.gd",
+        "--script", $PeerScript,
         "--",
+        $peerRunMarker,
         "--probe-role=$Role",
         "--probe-port=$Port"
     )
-    $process = Start-Process `
-        -FilePath $GodotExe `
-        -ArgumentList $arguments `
-        -WorkingDirectory $projectPath `
-        -RedirectStandardOutput $stdout `
-        -RedirectStandardError $stderr `
-        -WindowStyle Hidden `
-        -PassThru
+    foreach ($extraArgument in $PeerExtraArguments) {
+        $godotArguments += [string]$extraArgument
+    }
+    $launched = Start-LanProbeManagedProcess `
+        $context `
+        $GodotExe `
+        $projectPath `
+        $godotArguments
+
     return [pscustomobject]@{
+        Name = $Role
         Role = $Role
-        Process = $process
+        Process = $launched.Process
+        StdoutTask = $launched.StdoutTask
+        StderrTask = $launched.StderrTask
+        LogsCompleted = $false
+        RunMarker = $peerRunMarker
         Stdout = $stdout
         Stderr = $stderr
+        EngineLog = $engineLog
     }
 }
+
 
 try {
+    if (-not (Test-Path -LiteralPath $GodotExe -PathType Leaf)) {
+        throw "Godot console executable does not exist: $GodotExe"
+    }
+    if ($TimeoutSeconds -le 0) {
+        throw "TimeoutSeconds must be positive."
+    }
+    New-Item -ItemType Directory -Path $logRoot -ErrorAction Stop | Out-Null
+
     $entries += Start-P3Peer -Role "host"
-    Start-Sleep -Milliseconds 350
+    Watch-LanProbeProcessOwnership $context 350
     $entries += Start-P3Peer -Role "client"
 
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    while ((Get-Date) -lt $deadline) {
-        if (($entries | Where-Object { -not $_.Process.HasExited }).Count -eq 0) {
-            break
-        }
-        Start-Sleep -Milliseconds 100
-    }
-
-    $failed = $false
+    Wait-LanProbePeerProcesses $context $entries $TimeoutSeconds
     foreach ($entry in $entries) {
-        if (-not $entry.Process.HasExited) {
-            Stop-Process -Id $entry.Process.Id -Force
-            $failed = $true
-        }
-        $entry.Process.WaitForExit()
-        $entry.Process.Refresh()
-        $stdoutText = ""
-        $stderrText = ""
-        if (Test-Path $entry.Stdout) {
-            $stdoutText = Get-Content $entry.Stdout -Raw
-            Write-Host $stdoutText
-        }
-        if (Test-Path $entry.Stderr) {
-            $stderrText = Get-Content $entry.Stderr -Raw
-            Write-Host $stderrText
-        }
+        Complete-LanProbePeerLogs $entry
+    }
+    foreach ($entry in $entries) {
         $expectedMarker = "MP_ROGUE_ROUTE_LAN_$($entry.Role.ToUpper())_OK"
-        $markerFound = ([string]$stdoutText).Contains($expectedMarker)
-        $stderrString = if ($null -eq $stderrText) { "" } else { [string]$stderrText }
-        $stderrHasRuntimeError = (
-            $stderrString.Contains("SCRIPT ERROR") `
-            -or $stderrString.Contains("Node not found") `
-            -or $stderrString.Contains("Invalid packet received")
-        )
-        Write-Host (
-            "P3 LAN {0}: marker={1} runtime_error={2}" -f `
-            $entry.Role, $markerFound, $stderrHasRuntimeError
-        )
-        if (
-            -not $markerFound `
-            -or $stderrHasRuntimeError
-        ) {
-            $failed = $true
+        try {
+            $null = Assert-LanProbePeerTruth $entry $expectedMarker
+            Write-Output (
+                "[$($entry.Role)] $expectedMarker " +
+                "(exit=0; owned launcher PID=$([int]$entry.Process.Id))"
+            )
+        }
+        catch {
+            $failures.Add($_.Exception.Message)
+            Write-LanProbePeerLogs $entry
         }
     }
-
-    if ($failed) {
-        Write-Error "P3 LAN probe failed. Logs: $logRoot"
-        exit 1
-    }
-    Write-Host "MP_ROGUE_ROUTE_LAN_PROBE_OK logs=$logRoot"
-    exit 0
+}
+catch {
+    $failures.Add($_.Exception.Message)
 }
 finally {
+    try {
+        Stop-LanProbeOwnedProcessTree $context
+    }
+    catch {
+        $failures.Add($_.Exception.Message)
+    }
     foreach ($entry in $entries) {
-        if ($entry.Process -ne $null -and -not $entry.Process.HasExited) {
-            Stop-Process -Id $entry.Process.Id -Force
+        try {
+            Complete-LanProbePeerLogs $entry
+        }
+        catch {
+            $failures.Add($_.Exception.Message)
         }
     }
+    Close-LanProbeProcessHandles $context
 }
+
+if ($failures.Count -ne 0) {
+    foreach ($failure in $failures) {
+        [Console]::Error.WriteLine("MP_ROGUE_ROUTE_LAN_PROBE_FAILED: $failure")
+    }
+    [Console]::Error.WriteLine("P3 LAN probe logs preserved at: $logRoot")
+    exit 1
+}
+
+Write-Output "MP_ROGUE_ROUTE_LAN_PROBE_OK logRoot=$logRoot"
+exit 0
