@@ -61,9 +61,12 @@ func _run() -> void:
 	await _test_delete_plant_shortcut()
 	await _test_manual_day_night()
 
+	current_scene = null
 	arena.queue_free()
 	await process_frame
+	await physics_frame
 	await process_frame
+	arena = null
 	await _test_deferred_entry_announcement()
 	_finish()
 
@@ -87,8 +90,9 @@ func _test_entry_announcement() -> void:
 func _test_deferred_entry_announcement() -> void:
 	var deferred_arena := ARENA_SCENE.instantiate() as TestGrassArena
 	deferred_arena.auto_start_waves = false
-	deferred_arena.defer_runtime_activation()
 	root.add_child(deferred_arena)
+	# 场景完成同步 ready 后立即交还加载协调器，首个运行帧仍保持暂停。
+	deferred_arena.defer_runtime_activation()
 	await process_frame
 	await process_frame
 	_expect(
@@ -106,31 +110,35 @@ func _test_deferred_entry_announcement() -> void:
 	var countdown_audio := deferred_arena.countdown_audio
 	deferred_arena.campaign_coordinator.enter_pre_flow_step(first_step)
 	_expect(
-		deferred_arena.countdown_seconds == 3
+		deferred_arena.campaign_coordinator.countdown_seconds == 3
 		and countdown_audio.playing
 		and deferred_arena.day_phase_announcement.presentation_count == 0,
 		"P1A倒计时必须从3开始播放第一声，且不得提前显示报幕。"
 	)
 	for expected_seconds in [2, 1]:
 		countdown_audio.stop()
-		deferred_arena.call("_on_state_timer_timeout")
+		deferred_arena.campaign_coordinator.on_state_timer_timeout()
 		_expect(
-			deferred_arena.countdown_seconds == expected_seconds
+			deferred_arena.campaign_coordinator.countdown_seconds
+			== expected_seconds
 			and countdown_audio.playing
 			and deferred_arena.day_phase_announcement.presentation_count == 0,
 			"P1A倒计时的3、2、1三声结束前不得显示报幕。"
 		)
 	countdown_audio.stop()
-	deferred_arena.call("_on_state_timer_timeout")
+	deferred_arena.campaign_coordinator.on_state_timer_timeout()
 	_expect(
-		deferred_arena.wave_state == CombatFlowState.State.WAVE_ACTIVE
+		deferred_arena.campaign_coordinator.wave_state
+		== CombatFlowState.State.WAVE_ACTIVE
 		and deferred_arena.day_phase_announcement.presentation_count == 1
 		and deferred_arena.day_phase_announcement.current_text == "测试场景 P1A"
 		and deferred_arena.day_phase_announcement.is_presenting(),
 		"P1A必须在完整三声倒计时后才显示一次入场大字并播放咚声。"
 	)
 	var duplicate_handled := bool(
-		deferred_arena.call("_announce_wave_phase_start", 1)
+		deferred_arena.campaign_coordinator.call(
+			"_announce_wave_phase_start", 1
+		)
 	)
 	_expect(
 		duplicate_handled
@@ -144,8 +152,10 @@ func _test_deferred_entry_announcement() -> void:
 		"重复激活P1A运行时不得重播入场报幕。"
 	)
 	deferred_arena.day_phase_announcement.hide_announcement()
+	_settle_wave_entities(deferred_arena)
 	deferred_arena.queue_free()
 	await process_frame
+	await physics_frame
 	await process_frame
 
 
@@ -492,6 +502,18 @@ func _send_key(physical_keycode: Key) -> void:
 	release.pressed = false
 	Input.parse_input_event(release)
 	await process_frame
+
+
+func _settle_wave_entities(target_arena: TestGrassArena) -> void:
+	var coordinator := target_arena.campaign_coordinator
+	for enemy_id_variant in coordinator.get_attached_wave_enemy_ids():
+		_expect(
+			coordinator.try_resolve_wave_enemy(
+				int(enemy_id_variant),
+				CombatTypes.EnemyTerminalReason.REMOVED
+			),
+			"测试场景退出前必须通过 CampaignCoordinator 结清波次敌人。"
+		)
 
 
 func _finish() -> void:

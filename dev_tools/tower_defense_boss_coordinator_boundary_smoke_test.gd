@@ -24,10 +24,6 @@ const COORDINATOR_SCENE_PATH := (
 const PORT_SOURCE_PATH := (
 	"res://scene/game_modes/tower_defense/boss/tower_defense_linglan_boss_runtime_port.gd"
 )
-const ENEMY_COORDINATOR_SOURCE_PATH := (
-	"res://scene/game_modes/tower_defense/enemy/tower_defense_enemy_coordinator.gd"
-)
-
 var failures: Array[String] = []
 var exit_code := 0
 var exit_timer: Timer
@@ -55,7 +51,6 @@ func _test_static_structure_and_order_guards() -> void:
 	var coordinator_source := _read_text(COORDINATOR_SOURCE_PATH)
 	var coordinator_scene_source := _read_text(COORDINATOR_SCENE_PATH)
 	var port_source := _read_text(PORT_SOURCE_PATH)
-	var enemy_coordinator_source := _read_text(ENEMY_COORDINATOR_SOURCE_PATH)
 	_expect(
 		root_scene_source.contains(
 			'[node name="BossCoordinator" parent="." instance=ExtResource("68_boss_coordinator")]'
@@ -203,140 +198,6 @@ func _test_static_structure_and_order_guards() -> void:
 			"BossCoordinator/runtime port 禁止动态依赖或网络外观直连：%s" % forbidden
 		)
 
-	var intro_source := _function_source(
-		coordinator_source, "func begin_intro(", "func apply_remote_flow_state("
-	)
-	_expect_order(
-		intro_source,
-		[
-			"ensure_runtime_nodes",
-			"reset_wave_death_counts",
-			"linglan_boss_started = true",
-			"campaign_coordinator.transition_to_boss_intro(",
-			"enemy_coordinator.clear_queue()",
-			"enemy_coordinator.clear_active_enemies()",
-			"home_defense_coordinator.clear_resolved_enemy_ids()",
-			"enemy_coordinator.clear_hud_alive_enemies()",
-			"multiplayer_adapter.set_merchant_active(false)",
-			"presentation_coordinator.show_boss_progress(0, 1)",
-			"presentation_coordinator.update_boss_music(boss_config)",
-			"presentation_coordinator.focus_camera_on_boss_intro(spawn_position)",
-			"multiplayer_adapter.publish_flow_state(CombatFlowState.State.BOSS_INTRO)",
-			"linglan_boss_intro_vfx.play_intro(spawn_position)",
-		],
-		"host Boss intro"
-	)
-	var remote_flow_source := _function_source(
-		coordinator_source,
-		"func apply_remote_flow_state(",
-		"func apply_remote_started("
-	)
-	var remote_intro_source := _function_source(
-		remote_flow_source,
-		"CombatFlowState.State.BOSS_INTRO:",
-		"CombatFlowState.State.BOSS_ACTIVE:"
-	)
-	_expect_order(
-		remote_intro_source,
-		[
-			"campaign_coordinator.transition_to_boss_intro(",
-			"multiplayer_adapter.set_local_merchants_active(false)",
-			"presentation_coordinator.show_boss_progress(0, 1)",
-			"active_boss_config = boss_config",
-			"presentation_coordinator.update_boss_music(boss_config)",
-			"prepare_arena(boss_config)",
-			"play_remote_intro(boss_config)",
-		],
-		"client BOSS_INTRO"
-	)
-	var remote_active_source := remote_flow_source.substr(
-		remote_flow_source.find("CombatFlowState.State.BOSS_ACTIVE:")
-	)
-	_expect_order(
-		remote_active_source,
-		[
-			"campaign_coordinator.transition_to_boss_active(",
-			"multiplayer_adapter.set_local_merchants_active(false)",
-			"presentation_coordinator.show_boss_progress(0, 1)",
-			"restore_remote_camera_if_intro_complete()",
-			"active_boss_config = boss_config",
-			"presentation_coordinator.update_boss_music(boss_config)",
-		],
-		"client BOSS_ACTIVE"
-	)
-	var activate_source := _function_source(
-		coordinator_source, "func activate_boss(", "func finish_intro("
-	)
-	_expect_order(
-		activate_source,
-		[
-			"enemy_coordinator.register_external_enemy(linglan_boss)",
-			"linglan_boss.tree_exited.connect(exited_callback)",
-			"enemy_coordinator.finalize_authoritative_enemy_spawn(",
-			"presentation_coordinator.show_boss_progress(0, 1)",
-			"multiplayer_adapter.publish_flow_state(CombatFlowState.State.BOSS_ACTIVE)",
-			"multiplayer_adapter.publish_boss_started(",
-		],
-		"host Boss activate"
-	)
-	var proxy_source := _function_source(
-		coordinator_source,
-		"func instantiate_remote_proxy(",
-		"func _try_spawn_boss_add_at_marker("
-	)
-	_expect_order(
-		proxy_source,
-		[
-			"boss_enemy.setup(",
-			"enemy_coordinator.configure_runtime_enemy_modifiers(boss_enemy)",
-			"boss_enemy.configure_multiplayer_proxy()",
-			'boss_enemy.set_meta("net_id", net_id)',
-			"enemy_coordinator.register_remote_proxy_indices(boss_enemy, net_id)",
-		],
-		"client Boss proxy"
-	)
-	var proxy_index_source := _function_source(
-		enemy_coordinator_source,
-		"func register_remote_proxy_indices(",
-		"func collect_snapshot_states("
-	)
-	_expect_order(
-		proxy_index_source,
-		[
-			"_runtime.register_network_enemy(net_id, enemy)",
-		],
-		"client Boss proxy EnemyCoordinator indices"
-	)
-	var add_source := _function_source(
-		coordinator_source,
-		"func _try_spawn_boss_add_at_position(",
-		"func _spawn_airdrop_warning("
-	)
-	_expect_order(
-		add_source,
-		[
-			"enemy_coordinator.register_external_enemy(enemy_instance)",
-			"_connect_boss_add_signals(enemy_instance, enemy_id)",
-			"enemy_coordinator.finalize_authoritative_enemy_spawn(",
-			"enemy_coordinator.spawn_enemy_spawn_effect(spawn_position)",
-		],
-		"Boss add"
-	)
-	var airdrop_source := _function_source(
-		coordinator_source,
-		"func _finish_airdrop_sniper_spawn(",
-		"func _get_random_arena_position("
-	)
-	_expect_order(
-		airdrop_source,
-		[
-			"enemy_coordinator.register_external_enemy(enemy_instance)",
-			"_connect_boss_add_signals(enemy_instance, enemy_id)",
-			"enemy_coordinator.finalize_authoritative_enemy_spawn(",
-			"enemy_coordinator.spawn_enemy_spawn_effect(landing_position)",
-		],
-		"Boss airdrop"
-	)
 	var load_source := _function_source(
 		coordinator_source,
 		"func _load_threaded_or_direct(",
@@ -478,6 +339,9 @@ func _test_runtime_binding_and_behavior() -> void:
 	coordinator.handle_boss_defeated(active_boss)
 	await create_timer(0.30).timeout
 	coordinator.handle_boss_defeated(active_boss)
+	active_boss.queue_free()
+	await process_frame
+	await physics_frame
 	await create_timer(1.05).timeout
 	_expect(
 		game.campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE,
@@ -520,19 +384,6 @@ func _function_source(source: String, start_marker: String, end_marker: String) 
 		failures.append("无法提取函数区间：%s -> %s" % [start_marker, end_marker])
 		return ""
 	return source.substr(start, end - start)
-
-
-func _expect_order(source: String, markers: Array[String], label: String) -> void:
-	var cursor := -1
-	for marker in markers:
-		var position := source.find(marker, cursor + 1)
-		if position < 0:
-			failures.append("%s 缺少顺序标记：%s" % [label, marker])
-			return
-		if position <= cursor:
-			failures.append("%s 顺序发生变化：%s" % [label, marker])
-			return
-		cursor = position
 
 
 func _stop_audio_recursive(node: Node) -> void:

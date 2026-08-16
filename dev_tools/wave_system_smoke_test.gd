@@ -2,8 +2,13 @@ extends SceneTree
 
 var game_scene: PackedScene = null
 var basic_config: EnemyConfig = null
+var default_campaign: WaveCampaignConfig = null
 var default_waves: Array[WaveConfig] = []
 var merchant_frames: SpriteFrames = null
+
+const DEFAULT_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/standard/singleplayer/campaign.tres"
+)
 
 const STATE_PRE_WAVE := 0
 const STATE_WAVE_ACTIVE := 1
@@ -52,7 +57,10 @@ func _run() -> void:
 		"defeat":
 			await _test_defeat_stops_flow()
 		_:
-			pass
+			if not selected_case.is_empty():
+				failures.append(
+					"Unknown ARC_WAVE_SMOKE_CASE: %s" % selected_case
+				)
 	current_scene = null
 	test_root.queue_free()
 	test_root = null
@@ -76,7 +84,19 @@ func _run() -> void:
 
 func _test_default_wave_resources() -> void:
 	var expected_rests := [20.0, 20.0, 20.0, 20.0, 20.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0]
-	for wave_index in range(default_waves.size()):
+	_expect(default_campaign != null, "Formal Standard Campaign resource is missing.")
+	if default_campaign == null:
+		return
+	_expect(
+		default_campaign.resource_path == DEFAULT_CAMPAIGN_PATH,
+		"Wave resources must come from the formal Standard Campaign."
+	)
+	_expect(
+		default_campaign.validate_campaign().is_empty(),
+		"Formal Standard Campaign content closure is invalid."
+	)
+	_expect(default_waves.size() == expected_rests.size(), "Formal Standard Campaign must contain 12 waves.")
+	for wave_index in range(mini(default_waves.size(), expected_rests.size())):
 		var wave_config := default_waves[wave_index]
 		_expect(wave_config != null, "Wave %d resource is missing." % (wave_index + 1))
 		if wave_config == null:
@@ -107,9 +127,21 @@ func _test_default_wave_resources() -> void:
 
 
 func _test_game_scene_wave_list() -> void:
+	_expect(game_scene != null, "StandardGame scene resource failed to load.")
+	if game_scene == null:
+		return
 	var game := game_scene.instantiate() as Node2D
+	_expect(game != null, "StandardGame scene failed to instantiate.")
+	if game == null:
+		return
 	var campaign_configured := bool(game.call("_configure_active_campaign"))
 	_expect(campaign_configured, "StandardGame scene must configure its singleplayer Campaign.")
+	var configured_campaign := game.get("singleplayer_campaign") as WaveCampaignConfig
+	_expect(
+		configured_campaign != null
+		and configured_campaign.resource_path == DEFAULT_CAMPAIGN_PATH,
+		"StandardGame must bind the formal singleplayer Campaign resource."
+	)
 	var game_waves: Array = game.get("waves")
 	var flow_graph := game.get("flow_graph") as FlowGraphConfig
 	_expect(game_waves.size() == 12, "StandardGame scene must load 12 waves.")
@@ -133,6 +165,9 @@ func _test_game_scene_wave_list() -> void:
 
 
 func _test_merchant_asset() -> void:
+	_expect(merchant_frames != null, "Merchant SpriteFrames resource failed to load.")
+	if merchant_frames == null:
+		return
 	_expect(merchant_frames.has_animation(&"idle"), "Merchant idle animation is missing.")
 	_expect(
 		merchant_frames.get_frame_count(&"idle") == 8,
@@ -167,6 +202,9 @@ func _test_merchant_asset() -> void:
 
 
 func _test_grid_pathfinder_budget() -> void:
+	_expect(game_scene != null, "Pathfinder case requires a loaded StandardGame scene.")
+	if game_scene == null:
+		return
 	var game := _create_test_game()
 	test_root.add_child(game)
 	await process_frame
@@ -209,8 +247,21 @@ func _test_grid_pathfinder_budget() -> void:
 			"Catch-up physics ticks in one render frame must share one path budget."
 		)
 	var budget_frame_after_catch_up := pathfinder.path_query_budget_frame
-	while Engine.get_process_frames() == budget_frame_after_catch_up:
+	var render_frame_wait_count := 0
+	while (
+		Engine.get_process_frames() == budget_frame_after_catch_up
+		and render_frame_wait_count < 120
+	):
 		await process_frame
+		render_frame_wait_count += 1
+	_expect(
+		Engine.get_process_frames() != budget_frame_after_catch_up,
+		"Pathfinder test did not reach a new rendered/process frame within 120 frames."
+	)
+	if Engine.get_process_frames() == budget_frame_after_catch_up:
+		game.queue_free()
+		await process_frame
+		return
 	var next_render_result: Variant = pathfinder.try_get_global_path(
 		from_position,
 		from_position + Vector2(48.0, 0.0)
@@ -233,6 +284,10 @@ func _test_grid_pathfinder_budget() -> void:
 
 
 func _test_wave_state_flow() -> void:
+	_expect(game_scene != null, "Flow case requires a loaded StandardGame scene.")
+	_expect(basic_config != null, "Flow case requires a loaded EnemyConfig.")
+	if game_scene == null or basic_config == null:
+		return
 	var game := _create_test_game()
 	test_root.add_child(game)
 	await process_frame
@@ -326,6 +381,10 @@ func _test_wave_state_flow() -> void:
 
 
 func _test_defeat_stops_flow() -> void:
+	_expect(game_scene != null, "Defeat case requires a loaded StandardGame scene.")
+	_expect(basic_config != null, "Defeat case requires a loaded EnemyConfig.")
+	if game_scene == null or basic_config == null:
+		return
 	var game := _create_test_game()
 	test_root.add_child(game)
 	await process_frame
@@ -346,6 +405,7 @@ func _test_defeat_stops_flow() -> void:
 		"Merchant remained visible after defeat."
 	)
 
+	_settle_remaining_wave_enemies(game)
 	game.queue_free()
 	await process_frame
 	await physics_frame
@@ -414,6 +474,24 @@ func _defeat_only_enemy(game: Node2D) -> void:
 		await physics_frame
 
 
+func _settle_remaining_wave_enemies(game: Node2D) -> void:
+	var enemy_container := game.get_node("EnemyContainer") as Node2D
+	for child in enemy_container.get_children():
+		var enemy := child as Enemy
+		if enemy == null:
+			continue
+		_expect(
+			bool(
+				game.call(
+					"try_resolve_active_wave_enemy",
+					enemy.get_instance_id(),
+					CombatTypes.EnemyTerminalReason.REMOVED
+				)
+			),
+			"Defeat cleanup must resolve every remaining wave enemy through the Campaign owner."
+		)
+
+
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
@@ -429,19 +507,17 @@ func _load_test_resources(selected_case: String) -> void:
 			"res://resources/config/enemies/yuanshi_insect_basic.tres"
 		) as EnemyConfig
 	if selected_case in ["", "resources"]:
+		default_campaign = load(DEFAULT_CAMPAIGN_PATH) as WaveCampaignConfig
 		merchant_frames = load(
 			"res://resources/animation/zhuangfangyi.tres"
 		) as SpriteFrames
-		for wave_index in range(1, 13):
-			default_waves.append(
-				load(
-					"res://resources/config/waves/wave_%02d.tres" % wave_index
-				) as WaveConfig
-			)
+		if default_campaign != null:
+			default_waves.assign(default_campaign.get_waves())
 
 
 func _release_test_resources() -> void:
 	default_waves.clear()
 	game_scene = null
 	basic_config = null
+	default_campaign = null
 	merchant_frames = null

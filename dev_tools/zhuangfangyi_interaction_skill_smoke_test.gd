@@ -7,9 +7,12 @@ const MERCHANT_SCENE := preload("res://scene/merchants/zhuangfangyi/zhuangfangyi
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const EXPLOSION_AUDIO_LIMITER := preload("res://scene/combat/audio/explosion_audio_limiter.gd")
 const EXPLOSION_STREAM := preload("res://resources/audio/cowboy_explosion.wav")
+const PLAYER_TEST_RUNTIME := preload(
+	"res://dev_tools/player_test_combat_runtime.gd"
+)
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: PlayerTestCombatRuntime
 
 
 func _init() -> void:
@@ -17,7 +20,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = PLAYER_TEST_RUNTIME.new() as PlayerTestCombatRuntime
 	test_root.name = "ZhuangfangyiInteractionSkillSmokeTest"
 	root.add_child(test_root)
 	current_scene = test_root
@@ -52,7 +55,7 @@ func _test_merchant_collision_is_solid_on_spawn() -> void:
 	var merchant := MERCHANT_SCENE.instantiate() as ZhuangfangyiMerchant
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(merchant)
-	test_root.add_child(player)
+	_add_player(player)
 	merchant.global_position = Vector2.ZERO
 	player.global_position = Vector2.ZERO
 	await process_frame
@@ -99,7 +102,7 @@ func _test_players_start_with_skill1_and_charge_requirements() -> void:
 	for character_case in character_cases:
 		var packed_scene := character_case["scene"] as PackedScene
 		var player := packed_scene.instantiate() as Player
-		test_root.add_child(player)
+		_add_player(player)
 		await process_frame
 		_expect(
 			player.has_skill1(),
@@ -125,7 +128,7 @@ func _test_dialogue_first_upgrade() -> void:
 	var merchant := MERCHANT_SCENE.instantiate() as ZhuangfangyiMerchant
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(merchant)
-	test_root.add_child(player)
+	_add_player(player)
 	player.current_xirang = 250
 	merchant.set_active(true)
 	await process_frame
@@ -184,7 +187,7 @@ func _test_dialogue_skill1_upgrade() -> void:
 	var merchant := MERCHANT_SCENE.instantiate() as ZhuangfangyiMerchant
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(merchant)
-	test_root.add_child(player)
+	_add_player(player)
 	player.current_xirang = 400
 	var base_charge_duration := player.skill1_charge_duration
 	merchant.set_active(true)
@@ -248,7 +251,7 @@ func _test_dialogue_skill1_upgrade() -> void:
 
 func _test_skill1_upgrade_costs_and_charge_duration() -> void:
 	var player := PLAYER_SCENE.instantiate() as Player
-	test_root.add_child(player)
+	_add_player(player)
 	await process_frame
 	await physics_frame
 
@@ -494,7 +497,7 @@ func _create_short_audio_stream() -> AudioStreamWAV:
 
 func _test_skill_charge_and_bomb_direction() -> void:
 	var player := PLAYER_SCENE.instantiate() as Player
-	test_root.add_child(player)
+	_add_player(player)
 	await process_frame
 	await physics_frame
 
@@ -523,7 +526,7 @@ func _test_skill_charge_and_bomb_direction() -> void:
 
 func _test_skill_charge_bar_hides_on_singleplayer_death() -> void:
 	var player := PLAYER_SCENE.instantiate() as Player
-	test_root.add_child(player)
+	_add_player(player)
 	await process_frame
 	await physics_frame
 
@@ -550,7 +553,7 @@ func _test_skill_charge_bar_hides_on_singleplayer_death() -> void:
 func _test_cheat_xirang_action() -> void:
 	_expect(InputMap.has_action("cheat_xirang"), "Project input map must include the cheat_xirang action.")
 	var player := PLAYER_SCENE.instantiate() as Player
-	test_root.add_child(player)
+	_add_player(player)
 	await process_frame
 	await physics_frame
 
@@ -584,13 +587,13 @@ func _test_bomb_explosion_damage() -> void:
 		explosion_circle != null and is_equal_approx(explosion_circle.radius, 44.0),
 		"Skill1 explosion visual and damage radius must be 44 pixels."
 	)
-	test_root.add_child(player)
-	test_root.add_child(other_player)
+	_add_player(player)
+	_add_player(other_player)
 	test_root.add_child(enemy)
 	player.global_position = Vector2.ZERO
 	other_player.global_position = Vector2(5, 0)
 	enemy.global_position = Vector2(8, 0)
-	enemy.setup(BASIC_CONFIG, player, null)
+	enemy.setup(BASIC_CONFIG, player, null, test_root)
 	await process_frame
 	await physics_frame
 
@@ -598,6 +601,10 @@ func _test_bomb_explosion_damage() -> void:
 	enemy.current_health = 20
 	var other_health := other_player.current_health
 	bomb.setup(player, Vector2.RIGHT, floori(float(player.attack_damage) * 3.3))
+	bomb.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	test_root.add_child(bomb)
 	bomb.global_position = Vector2.ZERO
 	await process_frame
@@ -616,6 +623,11 @@ func _test_bomb_explosion_damage() -> void:
 	enemy.queue_free()
 	await process_frame
 	await physics_frame
+
+
+func _add_player(player: Player) -> void:
+	player.bind_combat_runtime(test_root)
+	test_root.add_child(player)
 
 
 func _expect(condition: bool, message: String) -> void:

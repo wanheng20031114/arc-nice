@@ -14,7 +14,7 @@ const COMPLETION_GUARD_FRAMES := 180
 
 
 class PoolRuntime:
-	extends Node2D
+	extends CombatRuntimeTestFixture
 
 	var session_object_pool: SessionObjectPool = null
 
@@ -60,6 +60,7 @@ func _run() -> void:
 
 	runtime = PoolRuntime.new()
 	runtime.name = "CapooMageImpactPoolSmokeRuntime"
+	runtime.install_base_runtime_nodes()
 	root.add_child(runtime)
 	_expect(
 		SPATIAL_AUDIO_VOICE_LIMITER.register_audio_scope(runtime),
@@ -75,6 +76,10 @@ func _run() -> void:
 	camera.global_position = Vector2.ZERO
 
 	fireball = FIREBALL_SCENE.instantiate() as CapooMageFireball
+	fireball.bind_gameplay_context(
+		runtime,
+		runtime.get_multiplayer_gameplay_gateway()
+	)
 	runtime.add_child(fireball)
 	fireball.global_position = Vector2.ZERO
 	await process_frame
@@ -217,7 +222,10 @@ func _verify_direct_ab_path() -> void:
 	_spawn_impact(Vector2.ZERO)
 	var direct_impact: CapooMageFireballImpact = null
 	for child in runtime.get_children():
-		if child is CapooMageFireballImpact:
+		if (
+			child is CapooMageFireballImpact
+			and not child.has_meta(SessionObjectPool.POOL_OWNER_META)
+		):
 			direct_impact = child as CapooMageFireballImpact
 			break
 	_expect(direct_impact != null, "A/B direct-instantiation path did not spawn an impact.")
@@ -263,7 +271,7 @@ func _impact_metrics() -> Dictionary:
 
 func _count_active_impacts() -> int:
 	var total := 0
-	for child in runtime.session_object_pool.get_children():
+	for child in _get_impact_candidates():
 		if (
 			child is CapooMageFireballImpact
 			and bool(child.get_meta(SessionObjectPool.POOL_ACTIVE_META, false))
@@ -273,13 +281,22 @@ func _count_active_impacts() -> int:
 
 
 func _first_active_impact() -> CapooMageFireballImpact:
-	for child in runtime.session_object_pool.get_children():
+	for child in _get_impact_candidates():
 		if (
 			child is CapooMageFireballImpact
 			and bool(child.get_meta(SessionObjectPool.POOL_ACTIVE_META, false))
 		):
 			return child as CapooMageFireballImpact
 	return null
+
+
+func _get_impact_candidates() -> Array[Node]:
+	var result: Array[Node] = []
+	result.append_array(runtime.session_object_pool.get_children())
+	for child in runtime.get_children():
+		if child is CapooMageFireballImpact:
+			result.append(child)
+	return result
 
 
 func _expect(condition: bool, message: String) -> void:
