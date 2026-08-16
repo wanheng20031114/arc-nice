@@ -4,6 +4,9 @@ class_name EnemyDropTable
 const EnemyDropRuleResource := preload(
 	"res://resources/config/enemies/enemy_drop_rule.gd"
 )
+const ContentValidationContextResource := preload(
+	"res://resources/config/content_validation_context.gd"
+)
 
 
 @export var base_table: EnemyDropTable
@@ -12,28 +15,90 @@ const EnemyDropRuleResource := preload(
 
 func get_eligible_rules(tags: PackedStringArray) -> Array[EnemyDropRuleResource]:
 	var eligible_rules: Array[EnemyDropRuleResource] = []
-	_append_eligible_rules(tags, {}, eligible_rules)
+	if not _append_eligible_rules(tags, {}, PackedStringArray(), eligible_rules):
+		eligible_rules.clear()
 	return eligible_rules
 
 
 func _append_eligible_rules(
 	tags: PackedStringArray,
 	visited_tables: Dictionary,
+	table_chain: PackedStringArray,
 	eligible_rules: Array[EnemyDropRuleResource]
-) -> void:
+) -> bool:
 	var table_id := get_instance_id()
 	if visited_tables.has(table_id):
-		return
-	visited_tables[table_id] = true
+		var cycle_chain := table_chain.duplicate()
+		cycle_chain.append(String(visited_tables[table_id]))
+		push_error(
+			"EnemyDropTable base_table cycle detected: %s."
+			% " -> ".join(cycle_chain)
+		)
+		return false
+	var table_label := (
+		resource_path
+		if not resource_path.is_empty()
+		else "EnemyDropTable[%d]" % table_chain.size()
+	)
+	visited_tables[table_id] = table_label
+	table_chain.append(table_label)
 	if base_table != null:
-		base_table._append_eligible_rules(
+		var base_is_valid := base_table._append_eligible_rules(
 			tags,
 			visited_tables,
+			table_chain,
 			eligible_rules
 		)
+		if not base_is_valid:
+			table_chain.remove_at(table_chain.size() - 1)
+			return false
 	for rule in rules:
 		if rule != null and rule.matches_tags(tags):
 			eligible_rules.append(rule)
+	table_chain.remove_at(table_chain.size() - 1)
+	return true
+
+
+func validate_config() -> PackedStringArray:
+	var context := ContentValidationContextResource.new()
+	append_validation_errors(
+		context,
+		ContentValidationContextResource.describe_resource(self, "EnemyDropTable")
+	)
+	return context.errors
+
+
+## base_table 先于本表规则校验，与真实掉落解析顺序一致。
+func append_validation_errors(
+	context: ContentValidationContextResource,
+	path: String
+) -> void:
+	var visit_state := context.begin_resource(self, path)
+	if visit_state == ContentValidationContextResource.VisitState.ACTIVE:
+		context.add_error(
+			path,
+			"base_table 形成循环，指回 %s。" % context.get_active_path(self)
+		)
+		return
+	if visit_state == ContentValidationContextResource.VisitState.COMPLETED:
+		return
+
+	if base_table != null:
+		base_table.append_validation_errors(
+			context,
+			ContentValidationContextResource.child_path(path, "base_table")
+		)
+	for rule_index in range(rules.size()):
+		var rule := rules[rule_index]
+		var rule_path := ContentValidationContextResource.child_path(
+			path,
+			"rules[%d]" % rule_index
+		)
+		if rule == null:
+			context.add_error(rule_path, "不能为空。")
+			continue
+		rule.append_validation_errors(context, rule_path)
+	context.complete_resource(self)
 
 
 func resolve_drop_configs(

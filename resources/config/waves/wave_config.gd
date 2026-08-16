@@ -2,6 +2,10 @@
 extends FlowStepConfig
 class_name WaveConfig
 
+const ContentValidationContextResource := preload(
+	"res://resources/config/content_validation_context.gd"
+)
+
 enum SpawnOrder {
 	SHUFFLED,
 	ENTRY_ROUND_ROBIN,
@@ -77,3 +81,50 @@ func get_flow_display_name() -> String:
 	if not wave_name.strip_edges().is_empty():
 		return wave_name
 	return super.get_flow_display_name()
+
+
+## 波次只负责自身节奏与入口顺序，深层资源共用同一校验上下文。
+func append_validation_errors(
+	context: ContentValidationContextResource,
+	path: String
+) -> void:
+	var visit_state := context.begin_resource(self, path)
+	if visit_state != ContentValidationContextResource.VisitState.ENTERED:
+		return
+
+	if wave_name.strip_edges().is_empty():
+		context.add_error(path, "缺少 wave_name。")
+	if enemy_entries.is_empty():
+		context.add_error(path, "enemy_entries 不能为空。")
+	if spawn_point_mask == 0:
+		context.add_error(path, "没有启用出生点。")
+	elif spawn_point_mask & ~ALL_SPAWN_POINT_MASK:
+		context.add_error(path, "包含未知出生点位。")
+	if spawn_order < SpawnOrder.SHUFFLED or spawn_order > SpawnOrder.ENTRY_ROUND_ROBIN:
+		context.add_error(path, "spawn_order 超出已定义范围。")
+	if (
+		spawn_point_order < SpawnPointOrder.UNIFORM_RANDOM
+		or spawn_point_order > SpawnPointOrder.BALANCED_SHUFFLE_BAG
+	):
+		context.add_error(path, "spawn_point_order 超出已定义范围。")
+	if not is_finite(spawn_interval) or spawn_interval < 0.025 or spawn_interval > 60.0:
+		context.add_error(path, "spawn_interval 必须是 0.025 到 60 之间的有限数。")
+	if spawn_count_per_tick < 1:
+		context.add_error(path, "spawn_count_per_tick 必须至少为 1。")
+	if max_alive_enemies < 1:
+		context.add_error(path, "max_alive_enemies 必须至少为 1。")
+	if not is_finite(post_clear_rest_duration) or post_clear_rest_duration < 0.0:
+		context.add_error(path, "post_clear_rest_duration 必须是非负有限数。")
+
+	for entry_index in range(enemy_entries.size()):
+		var entry := enemy_entries[entry_index]
+		var entry_path := ContentValidationContextResource.child_path(
+			path,
+			"enemy_entries[%d]" % entry_index
+		)
+		if entry == null:
+			context.add_error(entry_path, "不能为空。")
+			continue
+		entry.append_validation_errors(context, entry_path)
+
+	context.complete_resource(self)

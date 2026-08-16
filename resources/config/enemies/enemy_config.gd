@@ -1,6 +1,10 @@
 extends Resource
 class_name EnemyConfig
 
+const ContentValidationContextResource := preload(
+	"res://resources/config/content_validation_context.gd"
+)
+
 const CATEGORY_YUANSHI_INSECT: StringName = &"yuanshi_insect"
 const CATEGORY_CAPOO: StringName = &"capoo"
 const CATEGORY_SORCERER: StringName = &"sorcerer"
@@ -72,3 +76,80 @@ enum DamageType {
 
 func has_category_tag(category: StringName) -> bool:
 	return String(category) in category_tags
+
+
+## 这里校验所有通用敌人运行时会直接消费的基础契约。
+func append_validation_errors(
+	context: ContentValidationContextResource,
+	path: String
+) -> void:
+	var visit_state := context.begin_resource(self, path)
+	if visit_state != ContentValidationContextResource.VisitState.ENTERED:
+		return
+
+	if display_name.strip_edges().is_empty():
+		context.add_error(path, "缺少 display_name。")
+	if enemy_scene == null:
+		context.add_error(path, "缺少 enemy_scene。")
+	elif not enemy_scene.can_instantiate():
+		context.add_error(path, "enemy_scene 无法实例化。")
+	if max_health < 1:
+		context.add_error(path, "max_health 必须至少为 1。")
+	if attack_damage < 0:
+		context.add_error(path, "attack_damage 不能为负数。")
+	if physical_defense < 0:
+		context.add_error(path, "physical_defense 不能为负数。")
+	if magic_defense < 0 or magic_defense > 100:
+		context.add_error(path, "magic_defense 必须位于 0 到 100 之间。")
+	if not is_finite(move_speed) or move_speed < 0.0:
+		context.add_error(path, "move_speed 必须是非负有限数。")
+	if home_damage < 1:
+		context.add_error(path, "home_damage 必须至少为 1。")
+	var known_traversal_types := (
+		DualGridTilemap.TraversalType.LAND
+		| DualGridTilemap.TraversalType.WATER
+	)
+	if terrain_traversal_types == 0:
+		context.add_error(path, "terrain_traversal_types 不能为空。")
+	elif terrain_traversal_types & ~known_traversal_types:
+		context.add_error(path, "terrain_traversal_types 包含未知地形标志。")
+	if move_animation_name == &"":
+		context.add_error(path, "缺少 move_animation_name。")
+	if death_animation_name == &"":
+		context.add_error(path, "缺少 death_animation_name。")
+	if explosion_damage < 0:
+		context.add_error(path, "explosion_damage 不能为负数。")
+	if not is_finite(explosion_radius) or explosion_radius < 0.0:
+		context.add_error(path, "explosion_radius 必须是非负有限数。")
+	if not is_finite(explosion_animation_scale) or explosion_animation_scale < 0.1:
+		context.add_error(path, "explosion_animation_scale 必须是至少 0.1 的有限数。")
+	if explode_on_death:
+		if explosion_damage <= 0:
+			context.add_error(path, "自爆敌人的 explosion_damage 必须大于 0。")
+		if not is_finite(explosion_radius) or explosion_radius <= 0.0:
+			context.add_error(path, "自爆敌人的 explosion_radius 必须是正有限数。")
+		if explosion_animation_name == &"":
+			context.add_error(path, "自爆敌人缺少 explosion_animation_name。")
+	if xirang_kill_reward < 0:
+		context.add_error(path, "xirang_kill_reward 不能为负数。")
+
+	var seen_tags: Dictionary = {}
+	for tag_index in range(category_tags.size()):
+		var tag := category_tags[tag_index]
+		var tag_path := ContentValidationContextResource.child_path(
+			path,
+			"category_tags[%d]" % tag_index
+		)
+		if tag.strip_edges().is_empty():
+			context.add_error(tag_path, "不能为空。")
+		elif seen_tags.has(tag):
+			context.add_error(tag_path, "不能重复。")
+		else:
+			seen_tags[tag] = true
+
+	var drop_table_path := ContentValidationContextResource.child_path(path, "drop_table")
+	if drop_table == null:
+		context.add_error(drop_table_path, "不能为空。")
+	else:
+		drop_table.append_validation_errors(context, drop_table_path)
+	context.complete_resource(self)

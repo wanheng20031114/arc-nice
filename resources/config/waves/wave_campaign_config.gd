@@ -2,6 +2,10 @@
 extends Resource
 class_name WaveCampaignConfig
 
+const ContentValidationContextResource := preload(
+	"res://resources/config/content_validation_context.gd"
+)
+
 @export var campaign_id: StringName = &""
 @export var flow_graph: FlowGraphConfig
 
@@ -29,26 +33,41 @@ func get_bosses() -> Array[BossConfig]:
 
 
 func validate_campaign() -> PackedStringArray:
-	var errors := PackedStringArray()
+	var context := ContentValidationContextResource.new()
+	var campaign_label := (
+		"Campaign[%s]" % String(campaign_id)
+		if campaign_id != &""
+		else "Campaign"
+	)
+	var campaign_path := ContentValidationContextResource.describe_resource(
+		self,
+		campaign_label
+	)
 	if campaign_id == &"":
-		errors.append("Campaign 缺少 campaign_id。")
+		context.add_error(campaign_path, "缺少 campaign_id。")
 	if flow_graph == null:
-		errors.append("Campaign %s 缺少 FlowGraphConfig。" % String(campaign_id))
-		return errors
+		context.add_error(campaign_path, "缺少 FlowGraphConfig。")
+		return context.errors
 
-	errors.append_array(flow_graph.validate_graph())
+	var graph_path := ContentValidationContextResource.child_path(campaign_path, "flow_graph")
+	for graph_error in flow_graph.validate_graph():
+		context.add_error(graph_path, graph_error)
 	var waves := get_waves()
 	if waves.is_empty():
-		errors.append("Campaign %s 不包含任何 WaveConfig。" % String(campaign_id))
-	for wave_config in waves:
-		if wave_config.spawn_point_mask == 0:
-			errors.append(
-				"Campaign %s 的波次 %s 没有启用出生点。"
-				% [String(campaign_id), wave_config.get_flow_display_name()]
-			)
-		elif wave_config.spawn_point_mask & ~WaveConfig.ALL_SPAWN_POINT_MASK:
-			errors.append(
-				"Campaign %s 的波次 %s 包含未知出生点位。"
-				% [String(campaign_id), wave_config.get_flow_display_name()]
-			)
-	return errors
+		context.add_error(campaign_path, "不包含任何 WaveConfig。")
+
+	# 内容闭包按 steps 的序列化顺序递归，保证错误顺序可重现。
+	for step_index in range(flow_graph.steps.size()):
+		var step := flow_graph.steps[step_index]
+		var step_path := ContentValidationContextResource.child_path(
+			graph_path,
+			"steps[%d]" % step_index
+		)
+		var wave_config := step as WaveConfig
+		if wave_config != null:
+			wave_config.append_validation_errors(context, step_path)
+			continue
+		var boss_config := step as BossConfig
+		if boss_config != null:
+			boss_config.append_validation_errors(context, step_path)
+	return context.errors

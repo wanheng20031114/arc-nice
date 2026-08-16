@@ -351,17 +351,15 @@ func _test_drop_table_inheritance_contract() -> void:
 	)
 
 	base_table.base_table = leaf_table
-	var cyclic_rules := leaf_table.get_eligible_rules(PackedStringArray())
+	var cycle_errors := leaf_table.validate_config()
 	_expect(
-		cyclic_rules.size() == 3
-		and cyclic_rules.count(base_rule) == 1
-		and cyclic_rules.count(middle_rule) == 1
-		and cyclic_rules.count(leaf_rule) == 1
-		and cyclic_rules[0] == base_rule
-		and cyclic_rules[1] == middle_rule
-		and cyclic_rules[2] == leaf_rule,
-		"Cycles must terminate safely and expand each table exactly once per call."
+		cycle_errors.size() == 1
+		and cycle_errors[0].contains("base_table 形成循环")
+		and cycle_errors[0].contains(".base_table.base_table.base_table"),
+		"Cycles must be rejected with one stable structural path before runtime."
 	)
+	# RefCounted 夹具在后续正常掉落断言前拆掉循环。
+	base_table.base_table = null
 
 	var artificial_tags := PackedStringArray(["artificial_creation"])
 	var default_rules := DEFAULT_ENEMY_DROP_TABLE.get_eligible_rules(
