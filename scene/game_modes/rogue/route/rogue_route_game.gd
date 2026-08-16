@@ -267,8 +267,9 @@ var _run_state: RunStateStore = null
 var _run_failure_presented := false
 var _cached_max_health_penalties: Dictionary = {}
 var _max_health_transition_by_peer: Dictionary = {}
-var _previous_physics_interpolation_enabled := false
-var _owns_physics_interpolation_override := false
+var _physics_interpolation_lease_token := (
+	GlobalRuntimePolicyLeaseStore.INVALID_LEASE_TOKEN
+)
 var _floor_definition_applied := false
 var _embedded_environment: Environment = null
 var _embedded_canvas_layer_visibility: Dictionary = {}
@@ -276,9 +277,21 @@ var _embedded_canvas_layer_visibility: Dictionary = {}
 
 func _enter_tree() -> void:
 	_floor_definition_applied = _apply_floor_definition_before_children_ready()
-	_previous_physics_interpolation_enabled = get_tree().physics_interpolation
-	get_tree().physics_interpolation = true
-	_owns_physics_interpolation_override = true
+	# 路线与塔防可同时存活；共享物理插值由租约计数，退出次序不影响基线。
+	var runtime_policy_lease := (
+		GlobalRuntimePolicyLeaseStore.get_autoload_instance()
+	)
+	if runtime_policy_lease == null:
+		push_error("RogueRouteGame: 缺少全局运行策略租约协调器。")
+	else:
+		_physics_interpolation_lease_token = (
+			runtime_policy_lease.acquire_physics_interpolation(self, true)
+		)
+		if (
+			_physics_interpolation_lease_token
+			== GlobalRuntimePolicyLeaseStore.INVALID_LEASE_TOKEN
+		):
+			push_error("RogueRouteGame: 无法获取物理插值租约。")
 	# 嵌入式路线从首帧起就不能与塔防争夺 WorldEnvironment / Camera2D。
 	# 父节点 _enter_tree 先于子节点执行，但完整场景树已可按路径访问。
 	if embedded_session:
@@ -343,9 +356,20 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	if _owns_physics_interpolation_override:
-		get_tree().physics_interpolation = _previous_physics_interpolation_enabled
-		_owns_physics_interpolation_override = false
+	var runtime_policy_lease := (
+		GlobalRuntimePolicyLeaseStore.get_autoload_instance()
+	)
+	if (
+		runtime_policy_lease != null
+		and _physics_interpolation_lease_token
+		!= GlobalRuntimePolicyLeaseStore.INVALID_LEASE_TOKEN
+	):
+		runtime_policy_lease.release_physics_interpolation(
+			_physics_interpolation_lease_token
+		)
+	_physics_interpolation_lease_token = (
+		GlobalRuntimePolicyLeaseStore.INVALID_LEASE_TOKEN
+	)
 
 
 ## 父节点先于子节点进入 SceneTree；在这里统一分发楼层依赖，确保

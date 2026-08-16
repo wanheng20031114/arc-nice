@@ -174,8 +174,9 @@ var navigation_prewarmed: bool:
 var plant_lifecycle_shader_prewarmed: bool:
 	get:
 		return prewarmer_coordinator != null and prewarmer_coordinator.plant_lifecycle_shader_prewarmed
-var _previous_physics_interpolation_enabled := false
-var _owns_physics_interpolation_override := false
+var _physics_interpolation_lease_token := (
+	GlobalRuntimePolicyLeaseStore.INVALID_LEASE_TOKEN
+)
 var player_wave_death_counts: Dictionary = {}
 var _singleplayer_respawn_time_left := -1.0
 var singleplayer_respawn_time_left: float:
@@ -203,17 +204,40 @@ var runtime_prewarm_tearing_down := false
 
 func _enter_tree() -> void:
 	runtime_prewarm_tearing_down = false
-	_previous_physics_interpolation_enabled = get_tree().physics_interpolation
-	get_tree().physics_interpolation = true
-	_owns_physics_interpolation_override = true
+	# 全局物理插值由项目级租约统一拥有，塔防退出顺序不会再覆盖 Rogue 的需求。
+	var runtime_policy_lease := (
+		GlobalRuntimePolicyLeaseStore.get_autoload_instance()
+	)
+	if runtime_policy_lease == null:
+		push_error("TowerDefenseGame: 缺少全局运行策略租约协调器。")
+		return
+	_physics_interpolation_lease_token = (
+		runtime_policy_lease.acquire_physics_interpolation(self, true)
+	)
+	if (
+		_physics_interpolation_lease_token
+		== GlobalRuntimePolicyLeaseStore.INVALID_LEASE_TOKEN
+	):
+		push_error("TowerDefenseGame: 无法获取物理插值租约。")
 
 
 func _exit_tree() -> void:
 	runtime_prewarm_tearing_down = true
 	LuoxiMerchant.reset_runtime_choice_count()
-	if _owns_physics_interpolation_override:
-		get_tree().physics_interpolation = _previous_physics_interpolation_enabled
-		_owns_physics_interpolation_override = false
+	var runtime_policy_lease := (
+		GlobalRuntimePolicyLeaseStore.get_autoload_instance()
+	)
+	if (
+		runtime_policy_lease != null
+		and _physics_interpolation_lease_token
+		!= GlobalRuntimePolicyLeaseStore.INVALID_LEASE_TOKEN
+	):
+		runtime_policy_lease.release_physics_interpolation(
+			_physics_interpolation_lease_token
+		)
+	_physics_interpolation_lease_token = (
+		GlobalRuntimePolicyLeaseStore.INVALID_LEASE_TOKEN
+	)
 
 
 func _ready() -> void:

@@ -33,6 +33,9 @@ func _run() -> void:
 	var original_physics_interpolation := physics_interpolation
 	var original_transform_pixel_snap := render_viewport.snap_2d_transforms_to_pixel
 	var original_vertex_pixel_snap := render_viewport.snap_2d_vertices_to_pixel
+	var runtime_policy_lease := (
+		GlobalRuntimePolicyLeaseStore.get_autoload_instance()
+	)
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
 		run_state.begin_new_run(PlayerCharacterRegistry.TANGO_ID, false)
@@ -84,6 +87,12 @@ func _run() -> void:
 		"路线运行期必须启用原生物理插值，平滑玩家与跟随镜头的渲染位置。"
 	)
 	_expect(
+		runtime_policy_lease != null
+		and runtime_policy_lease.has_physics_interpolation_owner(route)
+		and runtime_policy_lease.get_physics_interpolation_owner_count() == 1,
+		"路线必须通过全局策略租约拥有物理插值。"
+	)
+	_expect(
 		not render_viewport.snap_2d_transforms_to_pixel,
 		"路线运行期不得篡改共享 Viewport 的 2D Transform 像素吸附。"
 	)
@@ -110,6 +119,11 @@ func _run() -> void:
 	_expect(
 		not physics_interpolation,
 		"离开路线场景后必须恢复进入前的 SceneTree 物理插值状态。"
+	)
+	_expect(
+		runtime_policy_lease != null
+		and runtime_policy_lease.get_physics_interpolation_owner_count() == 0,
+		"路线退出后必须释放全局运行策略租约。"
 	)
 	_expect(
 		not render_viewport.snap_2d_transforms_to_pixel,

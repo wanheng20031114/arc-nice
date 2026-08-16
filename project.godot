@@ -23,6 +23,7 @@ driver/output_latency=50
 [autoload]
 
 UserSettings="*res://scene/settings/settings_manager.gd"
+GlobalRuntimePolicyLease="*res://scene/runtime/global_runtime_policy_lease.gd"
 RunState="*res://run_state.gd"
 NetManager="*res://scene/multiplayer/net_manager.gd"
 UIAudio="*res://scene/ui/shared/audio/ui_click_audio.tscn"

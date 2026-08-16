@@ -46,6 +46,9 @@ func _run() -> void:
 	var original_physics_interpolation := physics_interpolation
 	var original_transform_pixel_snap := root.snap_2d_transforms_to_pixel
 	var original_vertex_pixel_snap := root.snap_2d_vertices_to_pixel
+	var runtime_policy_lease := (
+		GlobalRuntimePolicyLeaseStore.get_autoload_instance()
+	)
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Tower-defense scene must instantiate for Home verification.")
 	if game == null:
@@ -63,6 +66,14 @@ func _run() -> void:
 	current_scene = game
 	await process_frame
 	await process_frame
+	var embedded_route := game.rogue_exploration_coordinator.get_route()
+	_expect(
+		runtime_policy_lease != null
+		and runtime_policy_lease.has_physics_interpolation_owner(game)
+		and runtime_policy_lease.has_physics_interpolation_owner(embedded_route)
+		and runtime_policy_lease.get_physics_interpolation_owner_count() == 2,
+		"Tower-defense 与内嵌路线必须共享两个全局物理插值 owner。"
+	)
 	_expect(game.get_node_or_null("HomeBaseHUD") == null, "The separate top-left HomeBaseHUD must be removed.")
 	_expect(
 		game.wave_hud.tower_defense_stats.visible
@@ -93,6 +104,11 @@ func _run() -> void:
 	_expect(
 		not physics_interpolation,
 		"Tower-defense teardown must restore the SceneTree physics-interpolation state."
+	)
+	_expect(
+		runtime_policy_lease != null
+		and runtime_policy_lease.get_physics_interpolation_owner_count() == 0,
+		"Tower-defense teardown must release its global runtime-policy lease."
 	)
 	_expect(
 		not root.snap_2d_transforms_to_pixel,
