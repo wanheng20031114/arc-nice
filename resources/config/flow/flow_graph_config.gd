@@ -26,9 +26,8 @@ func get_step_index(step: FlowStepConfig) -> int:
 func get_exit_target_step(flow_exit: FlowExitConfig) -> FlowStepConfig:
 	if flow_exit == null:
 		return null
-	if flow_exit.target_step != null:
-		return flow_exit.target_step
-	return get_step_by_id(flow_exit.target_step_id)
+	# 运行时与校验都以序列化 step_id 为准；瞬态编辑器引用只负责提供该 ID。
+	return get_step_by_id(flow_exit.get_target_step_id())
 
 
 func get_default_next_step(step: FlowStepConfig) -> FlowStepConfig:
@@ -83,4 +82,55 @@ func validate_graph() -> PackedStringArray:
 				)
 		if not step.exits.is_empty() and not step.has_default_exit():
 			errors.append("非终点节点 %s 缺少 default 出口。" % step.get_flow_display_name())
+
+	# 引用合法并不代表流程可执行；可达性和终点闭包必须从 start_step 统一证明。
+	if start_step != null and get_step_index(start_step) >= 0:
+		_append_topology_errors(errors)
 	return errors
+
+
+func _append_topology_errors(errors: PackedStringArray) -> void:
+	var reachable_step_ids: Dictionary = {}
+	var pending_steps: Array[FlowStepConfig] = [start_step]
+	while not pending_steps.is_empty():
+		var current_step: FlowStepConfig = pending_steps.pop_back()
+		if current_step == null:
+			continue
+		var current_instance_id: int = current_step.get_instance_id()
+		if reachable_step_ids.has(current_instance_id):
+			continue
+		reachable_step_ids[current_instance_id] = true
+		var target_step := get_default_next_step(current_step)
+		if target_step != null and get_step_index(target_step) >= 0:
+			pending_steps.append(target_step)
+
+	for step in steps:
+		if step != null and not reachable_step_ids.has(step.get_instance_id()):
+			errors.append("流程节点 %s 无法从 start_step 到达。" % step.get_flow_display_name())
+
+	var can_reach_terminal: Dictionary = {}
+	for step in steps:
+		if step != null and step.exits.is_empty():
+			can_reach_terminal[step.get_instance_id()] = true
+	if can_reach_terminal.is_empty():
+		errors.append("流程图不存在终点节点。")
+
+	# 当前运行时只消费 default 出口；闭包证明必须与真实推进语义完全一致。
+	var changed := true
+	while changed:
+		changed = false
+		for step in steps:
+			if step == null or can_reach_terminal.has(step.get_instance_id()):
+				continue
+			var target_step := get_default_next_step(step)
+			if target_step != null and can_reach_terminal.has(target_step.get_instance_id()):
+				can_reach_terminal[step.get_instance_id()] = true
+				changed = true
+
+	for step in steps:
+		if (
+			step != null
+			and reachable_step_ids.has(step.get_instance_id())
+			and not can_reach_terminal.has(step.get_instance_id())
+		):
+			errors.append("从流程节点 %s 无法到达终点。" % step.get_flow_display_name())
