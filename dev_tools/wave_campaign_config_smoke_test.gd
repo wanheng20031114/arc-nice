@@ -3,6 +3,9 @@ extends SceneTree
 const WAVE_CAMPAIGN_CONFIG_SCRIPT := preload(
 	"res://resources/config/waves/wave_campaign_config.gd"
 )
+const WAVE_CONTENT_CONTRACT := preload(
+	"res://dev_tools/wave_campaign_content_contract.gd"
+)
 const STANDARD_GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const FORMAL_TOTALS: Array[int] = [
@@ -16,6 +19,10 @@ const FORMAL_SPAWN_POINT_MASKS: Array[int] = [
 ]
 const PERFORMANCE_TOTAL := 1200
 const PERFORMANCE_MAX_ALIVE := 300
+const STANDARD_SOURCE_WAVE_PATTERN := "res://resources/config/waves/wave_%02d.tres"
+const STANDARD_AUDIO_TEST_FIXTURE := (
+	"res://dev_tools/fixtures/waves/standard_wave_01_audio_stress_test.tres"
+)
 
 const CAMPAIGN_DEFINITIONS := [
 	{
@@ -60,6 +67,7 @@ var failures: Array[String] = []
 
 func _init() -> void:
 	_test_campaign_resources()
+	_test_standard_content_closure()
 	_test_campaign_validation()
 	_test_runtime_campaign_selection()
 	_test_boss_mode_separation()
@@ -203,6 +211,72 @@ func _verify_standard_waves(waves: Array[WaveConfig]) -> void:
 		_expect(
 			wave.spawn_point_mask == WaveConfig.STANDARD_SPAWN_POINT_MASK,
 			"Standard campaigns must retain their five-point spawn contract."
+		)
+		_expect(
+			not WAVE_CONTENT_CONTRACT.has_test_label(wave),
+			"Formal Standard waves must not expose test labels: %s" % wave.resource_path
+		)
+
+
+func _test_standard_content_closure() -> void:
+	var singleplayer := load(
+		"res://resources/config/campaigns/standard/singleplayer/campaign.tres"
+	) as WaveCampaignConfig
+	var multiplayer := load(
+		"res://resources/config/campaigns/standard/multiplayer/campaign.tres"
+	) as WaveCampaignConfig
+	_expect(singleplayer != null and multiplayer != null, "Standard campaigns must load.")
+	if singleplayer == null or multiplayer == null:
+		return
+	var singleplayer_waves := singleplayer.get_waves()
+	var multiplayer_waves := multiplayer.get_waves()
+	_expect(
+		singleplayer_waves.size() == 12 and multiplayer_waves.size() == 12,
+		"Standard content closure requires two complete 12-wave snapshots."
+	)
+	if singleplayer_waves.size() != 12 or multiplayer_waves.size() != 12:
+		return
+
+	# 标准单人与多人共享同一套正式源，快照不得各自漂移。
+	for wave_index in range(12):
+		var source_wave := load(
+			STANDARD_SOURCE_WAVE_PATTERN % (wave_index + 1)
+		) as WaveConfig
+		_expect(source_wave != null, "Standard source wave must load.")
+		if source_wave == null:
+			continue
+		var expected_signature := WAVE_CONTENT_CONTRACT.get_wave_signature(source_wave)
+		_expect(
+			WAVE_CONTENT_CONTRACT.get_wave_signature(singleplayer_waves[wave_index])
+			== expected_signature,
+			"Singleplayer wave snapshot drifted from source: %02d" % (wave_index + 1)
+		)
+		_expect(
+			WAVE_CONTENT_CONTRACT.get_wave_signature(multiplayer_waves[wave_index])
+			== expected_signature,
+			"Multiplayer wave snapshot drifted from source: %02d" % (wave_index + 1)
+		)
+
+	var first_wave := singleplayer_waves[0]
+	_expect(
+		first_wave.enemy_entries.size() == 1
+		and first_wave.enemy_entries[0] != null
+		and first_wave.enemy_entries[0].enemy_config != null
+		and first_wave.enemy_entries[0].enemy_config.resource_path
+		== "res://resources/config/enemies/slime.tres"
+		and first_wave.enemy_entries[0].count == 1
+		and first_wave.max_alive_enemies == 1,
+		"The formal Standard opening wave must be the authored one-slime wave."
+	)
+
+	var audio_test_fixture := load(STANDARD_AUDIO_TEST_FIXTURE) as WaveConfig
+	_expect(audio_test_fixture != null, "The retired audio-stress content must remain a fixture.")
+	if audio_test_fixture != null:
+		_expect(
+			audio_test_fixture.wave_name.contains("测试")
+			and audio_test_fixture.step_id == &"wave_01_audio_stress_test"
+			and audio_test_fixture.get_total_enemy_count() == 50,
+			"The audio-stress fixture must remain explicit and isolated."
 		)
 
 
