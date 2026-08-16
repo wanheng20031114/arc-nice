@@ -12,7 +12,7 @@ const FORMAL_TOTALS: Array[int] = [
 	3000, 3850, 3470, 2080, 2100, 2240, 2150, 2240, 3120, 3780, 3000, 4900,
 ]
 const FORMAL_MAX_ALIVE: Array[int] = [
-	300, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300,
+	200, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300,
 ]
 const FORMAL_SPAWN_POINT_MASKS: Array[int] = [
 	15, 15, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63,
@@ -150,6 +150,10 @@ func _test_campaign_resources() -> void:
 
 
 func _verify_formal_waves(waves: Array[WaveConfig]) -> void:
+	_expect(
+		is_equal_approx(waves[0].spawn_interval, 0.25),
+		"Formal first wave must spawn one enemy batch every 0.25 seconds."
+	)
 	for wave_index in waves.size():
 		var wave := waves[wave_index]
 		var expected_path := (
