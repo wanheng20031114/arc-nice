@@ -35,7 +35,6 @@ var _player_profile_panel: TowerDefensePlayerProfilePanel = null
 var _settings_panel: SettingsPanel = null
 var _debug_collectible_window: DebugCollectibleWindow = null
 var _multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter = null
-var _sandbox_free_building_enabled := false
 var _last_day_phase_announcement_key: StringName = &""
 var _client_countdown_sequence_key: StringName = &""
 var _client_last_countdown_tick_seconds := COUNTDOWN_FINAL_SECONDS + 1
@@ -130,15 +129,13 @@ func configure_player_ui(
 	player_profile_panel: TowerDefensePlayerProfilePanel,
 	settings_panel: SettingsPanel,
 	debug_collectible_window: DebugCollectibleWindow,
-	multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter,
-	sandbox_free_building_enabled: bool
+	multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter
 ) -> void:
 	_currency_hud = currency_hud
 	_player_profile_panel = player_profile_panel
 	_settings_panel = settings_panel
 	_debug_collectible_window = debug_collectible_window
 	_multiplayer_mode_adapter = multiplayer_mode_adapter
-	_sandbox_free_building_enabled = sandbox_free_building_enabled
 	_currency_hud.bind_player(player_instance)
 	_player_profile_panel.configure_multiplayer_requests(
 		runtime_mode != CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
@@ -176,8 +173,7 @@ func handle_unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed("cheat_collectibles"):
-		if _sandbox_free_building_enabled:
-			_toggle_debug_collectible_window()
+		_toggle_debug_collectible_window()
 		get_viewport().set_input_as_handled()
 
 

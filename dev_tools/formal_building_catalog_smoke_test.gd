@@ -1,7 +1,6 @@
 extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
-const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const HUD_SCENE := preload("res://scene/game_modes/tower_defense/ui/plant_selection/plant_selection_hud.tscn")
 const DEFAULT_VIEWPORT := Vector2i(1152, 648)
 const SMALL_VIEWPORT := Vector2i(800, 480)
@@ -50,8 +49,11 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 	_expect(
 		not game.sandbox_free_building_enabled
 		and not controller.free_placement_enabled
-		and not game.tower_multiplayer_mode_adapter.allows_debug_collectible_grants(),
-		"Formal tower defense must disable free placement and debug grants."
+		and game.tower_multiplayer_mode_adapter.allows_debug_collectible_grants(),
+		(
+			"Formal tower defense must keep free placement disabled while "
+			+ "debug builds retain F10 collectible grants."
+		)
 	)
 	var t_event := InputEventKey.new()
 	t_event.physical_keycode = KEY_T
@@ -353,72 +355,26 @@ func _test_host_rejects_free_placement() -> void:
 		and plant_container.get_child_count() == plant_count_before,
 		"Formal host must reject the legacy free-placement RPC before placement."
 	)
+	_expect(
+		tower_adapter.allows_debug_collectible_grants(),
+		"Formal host debug builds must retain adapter collectible grants."
+	)
 	var collectible_pool := LuoxiMerchant.get_collectible_pool()
 	if not collectible_pool.is_empty():
-		var collectible_path := (collectible_pool[0] as PickupConfig).resource_path
+		var item := collectible_pool[0] as PickupConfig
+		var total_before := run_state.get_inventory_item_total_for_peer(1, item)
 		_expect(
-			not game.tower_multiplayer_mode_adapter.grant_debug_collectible(
-				collectible_path
-			),
-			"Formal tower defense must reject direct debug collectible grants."
-		)
-		_test_multiplayer_debug_grant_policy(
-			game,
-			run_state,
-			collectible_path
+			tower_adapter.grant_debug_collectible(item.resource_path)
+			and run_state.get_inventory_item_total_for_peer(1, item)
+			== total_before + 1,
+			(
+				"Formal host adapter grants must add exactly one collectible to "
+				+ "the authoritative local-peer inventory."
+			)
 		)
 	current_scene = null
 	game.queue_free()
 	await _wait_until_freed(game)
-
-
-func _test_multiplayer_debug_grant_policy(
-	game: TowerDefenseGame,
-	run_state: RunStateStore,
-	collectible_path: String
-) -> void:
-	var mp_game := MP_GAME_SCENE.instantiate()
-	var net_manager := NetManagerStore.get_autoload_instance()
-	var previous_net_role := net_manager.net_role
-	var previous_connected_players := net_manager.connected_players.duplicate()
-	net_manager.net_role = NetManagerStore.NetRole.HOST
-	net_manager.connected_players = {1: "Host", 2: "Client"}
-	mp_game.set("game", game)
-	mp_game.set("net_manager", net_manager)
-	mp_game.set("run_state", run_state)
-	var merchant_transactions := mp_game.get_node(
-		"MerchantTransactionsCoordinator"
-	) as MpMerchantTransactionsCoordinator
-	var broadcast_count := 0
-	merchant_transactions.rpc_broadcast_requested.connect(
-		func(_method_name: StringName, _args: Array) -> void:
-			broadcast_count += 1
-	)
-	merchant_transactions.bind_runtime(
-		game,
-		game.get_multiplayer_mode_adapter(),
-		run_state,
-		net_manager,
-		0.0
-	)
-	var inventory_before := run_state.export_inventory_snapshot_for_peer(1)
-
-	merchant_transactions.request_debug_collectible(collectible_path)
-	merchant_transactions.apply_debug_collectible_for_peer(1, collectible_path)
-
-	var inventory_after := run_state.export_inventory_snapshot_for_peer(1)
-	_expect(
-		inventory_after == inventory_before
-		and broadcast_count == 0,
-		(
-			"Formal multiplayer debug grants must neither mutate inventory nor "
-			+ "broadcast a reliable result."
-		)
-	)
-	merchant_transactions.unbind_runtime(game)
-	mp_game.free()
-	net_manager.net_role = previous_net_role
-	net_manager.connected_players = previous_connected_players
 
 
 func _find_card(

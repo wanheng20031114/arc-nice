@@ -145,11 +145,12 @@ func _test_f10_collectible_then_place(
 
 	var anchor := controller.valid_anchors[0]
 	controller.call("_set_hovered_anchor", anchor, true)
-	var plant_count_before: int = game.plant_container.get_child_count()
+	var plant_container := game.plant_system.plant_container
+	var plant_count_before: int = plant_container.get_child_count()
 	controller.call("_try_place_hovered")
 	await process_frame
 	_expect(
-		game.plant_container.get_child_count() == plant_count_before + 1,
+		plant_container.get_child_count() == plant_count_before + 1,
 		"A valid world click after F10 must place the selected plant."
 	)
 

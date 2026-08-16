@@ -373,11 +373,7 @@ func accepts_game_mode_id(mode_id: int) -> bool:
 
 
 func allows_debug_collectible_grants() -> bool:
-	var tower_runtime := get_tower_runtime()
-	return (
-		tower_runtime != null
-		and tower_runtime.sandbox_free_building_enabled
-	)
+	return OS.is_debug_build()
 
 
 func is_terminal_combat_state() -> bool:

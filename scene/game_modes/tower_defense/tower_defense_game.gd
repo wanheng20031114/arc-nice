@@ -371,8 +371,7 @@ func _ready() -> void:
 		player_profile_panel,
 		settings_panel,
 		debug_collectible_window,
-		tower_multiplayer_mode_adapter,
-		sandbox_free_building_enabled
+		tower_multiplayer_mode_adapter
 	)
 	luoxi_special_game_coordinator.setup(
 		campaign_coordinator,
