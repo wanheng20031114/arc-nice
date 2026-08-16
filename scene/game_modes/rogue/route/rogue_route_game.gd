@@ -1,4 +1,4 @@
-extends Node2D
+extends RuntimePreparationProvider
 class_name RogueRouteGame
 
 const ROUTE_INPUT_CONTROL_LOCK_OWNER := &"rogue_route_input"
@@ -309,9 +309,21 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
+	var preparation_generation := begin_runtime_preparation(
+		"正在初始化 Rogue 路线…",
+		1
+	)
 	if not _floor_definition_applied:
-		_set_status("路线楼层定义无效，无法初始化路线。", true)
+		var reason := "路线楼层定义无效，无法初始化路线。"
+		_set_status(reason, true)
+		mark_runtime_preparation_failed(preparation_generation, reason)
 		return
+	update_runtime_preparation_progress(
+		preparation_generation,
+		"正在生成 Rogue 路线图…",
+		0,
+		1
+	)
 	_create_normal_combat_briefing_adapters()
 	_create_emergency_combat_briefing_adapters()
 	_create_special_combat_briefing_adapters()
@@ -349,7 +361,7 @@ func _ready() -> void:
 	_update_route_hud()
 	_show_node_content(INVALID_NODE_ID, false)
 	if auto_initialize:
-		call_deferred("_initialize_default_session")
+		call_deferred("_initialize_default_session", preparation_generation)
 	else:
 		_set_status("等待外部会话初始化。", false)
 	call_deferred("_activate_runtime_when_loader_is_idle")
@@ -719,7 +731,11 @@ func _set_embedded_canvas_layers_visible(active: bool) -> void:
 		_embedded_canvas_layer_visibility.clear()
 
 
-func start_client_waiting() -> void:
+func start_client_waiting() -> int:
+	var preparation_generation := begin_runtime_preparation(
+		"正在等待房主同步路线图…",
+		1
+	)
 	_set_route_reveal_input_locked(false)
 	_reset_briefing_runtime(true)
 	_clear_pending_move(true)
@@ -737,6 +753,7 @@ func start_client_waiting() -> void:
 	_update_route_hud()
 	_show_node_content(INVALID_NODE_ID, false)
 	_set_status("正在等待房主同步路线图…", false)
+	return preparation_generation
 
 
 func apply_full_snapshot(
@@ -1966,23 +1983,6 @@ func set_authority_enabled(enabled: bool) -> void:
 	_update_authority_ui()
 
 
-## 与 GameLoadCoordinator 的通用场景准备契约保持一致。
-func is_runtime_preparation_complete() -> bool:
-	return is_route_ready()
-
-
-func get_runtime_preparation_progress() -> Dictionary:
-	return {
-		"completed": 1 if is_route_ready() else 0,
-		"total": 1,
-		"stage": (
-			"路线图已就绪"
-			if is_route_ready()
-			else "正在生成 P3 路线图…"
-		),
-	}
-
-
 func activate_runtime() -> void:
 	_runtime_activated = true
 	_try_play_route_entry_reveal()
@@ -2276,9 +2276,20 @@ func host_add_encounter_spectator(peer_id: int) -> void:
 		rare_chest_session.add_spectator(peer_id)
 
 
-func _initialize_default_session() -> void:
+func _initialize_default_session(preparation_generation: int) -> void:
+	# call_deferred 可能晚于外部切换到客户端等待周期；旧代不得再生成权威路线。
+	if not is_runtime_preparation_generation_preparing(preparation_generation):
+		return
 	if auto_initialize and not is_route_ready():
-		start_authoritative_session(initial_generation_seed)
+		if not start_authoritative_session(
+			initial_generation_seed
+		):
+			mark_runtime_preparation_failed(
+				preparation_generation,
+				"Rogue 路线图初始化失败：%s" % status_message.text
+			)
+			return
+		mark_runtime_preparation_complete(preparation_generation)
 
 
 func _create_underground_shop_runtime() -> void:

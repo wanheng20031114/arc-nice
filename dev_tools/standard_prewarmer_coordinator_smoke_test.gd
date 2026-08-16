@@ -142,20 +142,23 @@ func _test_source_boundaries() -> void:
 		)
 		and coordinator_source.contains("await get_tree().process_frame")
 		and coordinator_source.contains(
-			"if _should_abort_prewarm_after_frame():\n\t\t\t\treturn"
+			"if _should_abort_prewarm_after_frame():\n\t\t\t\treturn false"
 		)
 		and coordinator_source.contains(
 			"func _should_abort_prewarm_after_frame() -> bool:\n\treturn not is_inside_tree()"
 		)
+		and coordinator_source.contains("RUNTIME_RESOURCE_WAIT_TIMEOUT_MSEC")
+		and coordinator_source.contains("var error := ResourceLoader.load_threaded_request(")
+		and coordinator_source.contains("if error != OK:")
 		and coordinator_source.contains(
-			"if status == ResourceLoader.THREAD_LOAD_LOADED"
+			"if status != ResourceLoader.THREAD_LOAD_LOADED:"
 		)
-		and coordinator_source.contains("else load(resource_path)"),
-		"threaded 预热必须保持逐帧等待、离树中止、LOADED/get 与 direct fallback 分支。"
+		and not coordinator_source.contains("else load(resource_path)"),
+		"threaded 预热必须逐帧有界等待、检查请求 Error，并对非 LOADED 状态 fail-close。"
 	)
 	_expect(
 		coordinator_source.contains(
-			"if DisplayServer.get_name() == \"headless\":\n\t\treturn"
+			"if DisplayServer.get_name() == \"headless\":\n\t\treturn true"
 		)
 		and coordinator_source.contains(
 			"await get_tree().process_frame\n\tawait get_tree().process_frame"
@@ -277,7 +280,10 @@ func _test_static_binding_pools_paths_and_cache() -> void:
 
 	game.linglan_boss_enabled = false
 	coordinator.replace_runtime_scene_loads_requested(false)
-	game.call("_initialize_mode_runtime_content")
+	game.call(
+		"_initialize_mode_runtime_content",
+		game.get_runtime_preparation_generation()
+	)
 	await process_frame
 	_expect(
 		not bool(coordinator.get("_boss_flow_enabled"))
@@ -400,6 +406,12 @@ func _test_malformed_scene_initialization_boundary() -> void:
 	_expect(
 		bool(malformed.get("validation_reached")),
 		"缺失 Prewarmer 时初始化必须干净进入场景验证，而不是提前退出或崩溃。"
+	)
+	_expect(
+		malformed.is_runtime_preparation_failed()
+		and malformed.runtime_preparation_failure_reason
+		== "波次模式场景内容校验失败。",
+		"malformed 场景必须立即发布精确 FAILED，不能静默等待全局超时。"
 	)
 	_expect(
 		malformed.music_coordinator.is_bound()

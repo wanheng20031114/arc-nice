@@ -17,6 +17,7 @@ const LINGLAN_SLIME_CONFIG_PATHS: Array[String] = [
 const LINGLAN_ENRAGE_SNIPER_CONFIG_PATH := (
 	"res://resources/config/enemies/capoo_sniper.tres"
 )
+const RUNTIME_RESOURCE_WAIT_TIMEOUT_MSEC := 10_000
 const LINGLAN_SPAWN_LEFT_OFFSET := 96.0
 const LINGLAN_SKILL4_AUTHORED_TARGET_CENTER := Vector2(6.5, 2.0)
 const LINGLAN_SKILL_REFERENCE_ARENA_POSITION := Vector2i(-3, -1)
@@ -51,6 +52,7 @@ var linglan_slime_configs: Array[EnemyConfig] = []
 var linglan_enrage_sniper_config: EnemyConfig
 var runtime_scene_loads_requested := false
 var runtime_resources_by_path: Dictionary[String, Resource] = {}
+var runtime_preparation_failure_reason := ""
 
 
 func setup(
@@ -343,34 +345,69 @@ func remove_remaining_adds() -> void:
 	enemy_coordinator.clear_hud_alive_enemies()
 
 
-func request_runtime_scene_loads() -> void:
+func request_runtime_scene_loads(_preparation_generation: int) -> bool:
 	if runtime_scene_loads_requested or not enabled:
-		return
+		return runtime_preparation_failure_reason.is_empty()
 	runtime_scene_loads_requested = true
 	for resource_path in get_runtime_resource_paths():
-		ResourceLoader.load_threaded_request(resource_path)
+		var status := ResourceLoader.load_threaded_get_status(resource_path)
+		if status in [
+			ResourceLoader.THREAD_LOAD_IN_PROGRESS,
+			ResourceLoader.THREAD_LOAD_LOADED,
+		]:
+			continue
+		var error := ResourceLoader.load_threaded_request(
+			resource_path,
+			"",
+			true,
+			ResourceLoader.CACHE_MODE_REUSE
+		)
+		if error != OK:
+			return _fail_runtime_preparation(
+				"塔防 Boss 无法开始线程加载资源 %s：%s。"
+				% [resource_path, error_string(error)]
+			)
+	return true
 
 
-func prewarm_runtime_resources() -> void:
-	if not enabled or not prewarmer_coordinator.can_continue_runtime_prewarm():
-		return
-	request_runtime_scene_loads()
+func prewarm_runtime_resources(preparation_generation: int) -> bool:
+	if (
+		not enabled
+		or not prewarmer_coordinator.can_continue_runtime_prewarm(
+			preparation_generation
+		)
+	):
+		return not enabled
+	if not request_runtime_scene_loads(preparation_generation):
+		return false
 	for resource_path in get_runtime_resource_paths():
 		if runtime_resources_by_path.has(resource_path):
 			continue
 		var status := ResourceLoader.load_threaded_get_status(resource_path)
+		var deadline_msec := Time.get_ticks_msec() + RUNTIME_RESOURCE_WAIT_TIMEOUT_MSEC
 		while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			await runtime.get_tree().process_frame
-			if not prewarmer_coordinator.can_continue_runtime_prewarm():
-				return
+			if not prewarmer_coordinator.can_continue_runtime_prewarm(
+				preparation_generation
+			):
+				return false
+			if Time.get_ticks_msec() >= deadline_msec:
+				return _fail_runtime_preparation(
+					"塔防 Boss 线程加载资源超时：%s。" % resource_path
+				)
 			status = ResourceLoader.load_threaded_get_status(resource_path)
-		var resource := (
-			ResourceLoader.load_threaded_get(resource_path)
-			if status == ResourceLoader.THREAD_LOAD_LOADED
-			else ResourceLoader.load(resource_path)
-		)
-		if resource != null:
-			runtime_resources_by_path[resource_path] = resource
+		if status != ResourceLoader.THREAD_LOAD_LOADED:
+			return _fail_runtime_preparation(
+				"塔防 Boss 线程加载资源失败：%s（状态 %d）。"
+				% [resource_path, status]
+			)
+		var resource := ResourceLoader.load_threaded_get(resource_path)
+		if resource == null:
+			return _fail_runtime_preparation(
+				"塔防 Boss 线程资源已完成但无法取得实例：%s。" % resource_path
+			)
+		runtime_resources_by_path[resource_path] = resource
+	return true
 
 
 func get_runtime_resource_paths() -> Array[String]:
@@ -1030,11 +1067,21 @@ func _load_threaded_or_direct(path: String) -> Resource:
 		return retained
 	var status := ResourceLoader.load_threaded_get_status(path)
 	if status in [
-		ResourceLoader.THREAD_LOAD_IN_PROGRESS,
 		ResourceLoader.THREAD_LOAD_LOADED,
 	]:
 		return ResourceLoader.load_threaded_get(path)
+	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		# 正式准备屏障负责有界收取；战斗热路径不能再次变成无期限同步等待。
+		return null
 	return ResourceLoader.load(path)
+
+
+func _fail_runtime_preparation(reason: String) -> bool:
+	if runtime_preparation_failure_reason.is_empty():
+		runtime_preparation_failure_reason = reason
+		push_error("TowerDefenseBossCoordinator: %s" % reason)
+	# 协调器只返回精确原因；Tower prewarmer 使用自己捕获的 generation 发布终态。
+	return false
 
 
 static func _append_unique_path(paths: Array[String], path: String) -> void:

@@ -233,7 +233,7 @@ func _initialize_mode_player_ui() -> void:
 	pass
 
 
-func _initialize_mode_runtime_content() -> void:
+func _initialize_mode_runtime_content(_preparation_generation: int) -> void:
 	pass
 
 
@@ -309,25 +309,33 @@ func _apply_remote_mode_flow_state(
 	return false
 
 
-func _prewarm_mode_runtime_data() -> void:
+func _prewarm_mode_runtime_data(_preparation_generation: int) -> void:
 	pass
 
 
 func _ready() -> void:
+	var preparation_generation := begin_runtime_preparation(
+		"正在初始化波次运行时…",
+		1
+	)
 	random_generator.randomize()
 	initialize_world_lighting()
 	_initialize_mode_runtime_before_validation()
 	if not _validate_wave_runtime_scene_content():
-		set_process(false)
-		set_physics_process(false)
+		_fail_wave_runtime_preparation(
+			preparation_generation,
+			"波次模式场景内容校验失败。"
+		)
 		return
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
 		if load_coordinator != null and bool(load_coordinator.call("is_loading")):
 			defer_runtime_activation()
 	if not _configure_active_campaign():
-		set_process(false)
-		set_physics_process(false)
+		_fail_wave_runtime_preparation(
+			preparation_generation,
+			"当前运行模式的战役配置无效。"
+		)
 		return
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		run_state.ensure_run_started()
@@ -377,14 +385,16 @@ func _ready() -> void:
 		_register_static_multiplayer_pickups()
 	if player == null:
 		push_error("%s: 无法创建当前角色，停止初始化。" % get_class())
-		set_process(false)
-		set_physics_process(false)
+		_fail_wave_runtime_preparation(
+			preparation_generation,
+			"波次模式无法创建当前角色。"
+		)
 		return
 	_apply_initial_player_resources()
 	_initialize_mode_player_ui()
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		_connect_mode_singleplayer_player_death_signal()
-	_initialize_mode_runtime_content()
+	_initialize_mode_runtime_content(preparation_generation)
 
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		auto_start_waves = false
@@ -400,11 +410,24 @@ func _ready() -> void:
 		_hide_mode_wave_presentation()
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		if runtime_activation_deferred:
-			call_deferred("prepare_shared_runtime_data_and_complete")
+			call_deferred(
+				"prepare_shared_runtime_data_and_complete",
+				preparation_generation
+			)
 		else:
-			mark_runtime_preparation_complete()
+			mark_runtime_preparation_complete(preparation_generation)
 	elif auto_start_waves or runtime_activation_deferred:
-		_schedule_enemy_navigation_prewarm()
+		_schedule_enemy_navigation_prewarm(preparation_generation)
+
+
+func _fail_wave_runtime_preparation(
+	preparation_generation: int,
+	reason: String
+) -> void:
+	# 初始化失败必须进入加载器可观察的终态，不能只停进程后等待全局 120 秒超时。
+	mark_runtime_preparation_failed(preparation_generation, reason)
+	set_process(false)
+	set_physics_process(false)
 
 
 func _validate_wave_runtime_scene_content() -> bool:
@@ -448,9 +471,11 @@ func _configure_active_campaign() -> bool:
 	return true
 
 
-func prewarm_shared_runtime_data() -> void:
-	await super.prewarm_shared_runtime_data()
-	await _prewarm_mode_runtime_data()
+func prewarm_shared_runtime_data(preparation_generation: int) -> void:
+	await super.prewarm_shared_runtime_data(preparation_generation)
+	if not is_runtime_preparation_generation_preparing(preparation_generation):
+		return
+	await _prewarm_mode_runtime_data(preparation_generation)
 
 
 func _on_runtime_activated() -> void:
@@ -653,37 +678,61 @@ func _prewarm_enemy_navigation_grids() -> void:
 					traversal_types
 				)
 
-func _schedule_enemy_navigation_prewarm() -> void:
+func _schedule_enemy_navigation_prewarm(preparation_generation: int) -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	if not is_runtime_preparation_generation_preparing(preparation_generation):
 		return
 	if navigation_prewarmed or navigation_prewarm_requested:
 		return
 	navigation_prewarm_requested = true
-	call_deferred("_run_scheduled_enemy_navigation_prewarm")
+	call_deferred(
+		"_run_scheduled_enemy_navigation_prewarm",
+		preparation_generation
+	)
 
-func _run_scheduled_enemy_navigation_prewarm() -> void:
+func _run_scheduled_enemy_navigation_prewarm(preparation_generation: int) -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
-	if not is_inside_tree():
+	if (
+		not is_inside_tree()
+		or not is_runtime_preparation_generation_preparing(preparation_generation)
+	):
 		return
 	navigation_prewarm_requested = false
 	if navigation_prewarmed:
-		await prewarm_shared_runtime_data()
-		if not is_inside_tree():
+		await prewarm_shared_runtime_data(preparation_generation)
+		if (
+			not is_inside_tree()
+			or not is_runtime_preparation_generation_preparing(
+				preparation_generation
+			)
+		):
 			return
-		mark_runtime_preparation_complete()
+		mark_runtime_preparation_complete(preparation_generation)
 		return
-	await _prewarm_enemy_navigation_grids_staged()
-	if not is_inside_tree():
+	await _prewarm_enemy_navigation_grids_staged(preparation_generation)
+	if (
+		not is_inside_tree()
+		or not is_runtime_preparation_generation_preparing(preparation_generation)
+	):
 		return
 	navigation_prewarmed = true
-	await prewarm_shared_runtime_data()
-	if not is_inside_tree():
+	await prewarm_shared_runtime_data(preparation_generation)
+	if (
+		not is_inside_tree()
+		or not is_runtime_preparation_generation_preparing(preparation_generation)
+	):
 		return
-	mark_runtime_preparation_complete()
+	mark_runtime_preparation_complete(preparation_generation)
 
-func _prewarm_enemy_navigation_grids_staged() -> void:
-	update_runtime_preparation_progress("分析敌人通行体型…", 0, 1)
+func _prewarm_enemy_navigation_grids_staged(preparation_generation: int) -> void:
+	update_runtime_preparation_progress(
+		preparation_generation,
+		"分析敌人通行体型…",
+		0,
+		1
+	)
 	await get_tree().process_frame
 	if (
 		grid_pathfinder == null
@@ -712,7 +761,14 @@ func _prewarm_enemy_navigation_grids_staged() -> void:
 			seen_scene_keys[scene_key] = true
 			var body_half_extents := _get_enemy_scene_body_half_extents(enemy_config)
 			await get_tree().process_frame
-			if not is_inside_tree() or body_half_extents == Vector2.ZERO:
+			if (
+				not is_inside_tree()
+				or not is_runtime_preparation_generation_preparing(
+					preparation_generation
+				)
+			):
+				return
+			if body_half_extents == Vector2.ZERO:
 				continue
 			var traversal_types := enemy_config.terrain_traversal_types
 			var extent_key := "%d:%d:%d" % [
@@ -731,7 +787,12 @@ func _prewarm_enemy_navigation_grids_staged() -> void:
 	var target_count := 1 if player != null else 0
 	var total_steps := maxi(profiles.size() * (1 + target_count), 1)
 	var completed_steps := 0
-	update_runtime_preparation_progress("预热寻路网格…", completed_steps, total_steps)
+	update_runtime_preparation_progress(
+		preparation_generation,
+		"预热寻路网格…",
+		completed_steps,
+		total_steps
+	)
 	for profile in profiles:
 		var half_extents: Vector2 = profile["half_extents"]
 		var traversal_types: int = int(profile["traversal_types"])
@@ -744,9 +805,19 @@ func _prewarm_enemy_navigation_grids_staged() -> void:
 		else:
 			grid_pathfinder.call("prewarm_agent_grid", half_extents, traversal_types)
 		completed_steps += 1
-		update_runtime_preparation_progress("预热寻路网格…", completed_steps, total_steps)
+		update_runtime_preparation_progress(
+			preparation_generation,
+			"预热寻路网格…",
+			completed_steps,
+			total_steps
+		)
 		await get_tree().process_frame
-		if not is_inside_tree():
+		if (
+			not is_inside_tree()
+			or not is_runtime_preparation_generation_preparing(
+				preparation_generation
+			)
+		):
 			return
 		if player != null and grid_pathfinder.has_method("prewarm_flow_navigation_target"):
 			if grid_pathfinder.has_method("prewarm_flow_navigation_target_staged"):
@@ -764,7 +835,12 @@ func _prewarm_enemy_navigation_grids_staged() -> void:
 					traversal_types
 				)
 			completed_steps += 1
-			update_runtime_preparation_progress("预热首波路线…", completed_steps, total_steps)
+			update_runtime_preparation_progress(
+				preparation_generation,
+				"预热首波路线…",
+				completed_steps,
+				total_steps
+			)
 			await get_tree().process_frame
 
 func _prewarm_enemy_visual_resources() -> void:
@@ -797,7 +873,7 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 	_set_intermission_services_active(false)
 	countdown_seconds = maxi(ceili(pre_wave_duration), 0)
 	_present_flow_countdown(wave_state, countdown_seconds)
-	_schedule_enemy_navigation_prewarm()
+	_schedule_enemy_navigation_prewarm(get_runtime_preparation_generation())
 	_emit_multiplayer_flow_state(CombatFlowState.State.PRE_WAVE)
 	if countdown_seconds <= 0:
 		_begin_flow_step(current_flow_step)

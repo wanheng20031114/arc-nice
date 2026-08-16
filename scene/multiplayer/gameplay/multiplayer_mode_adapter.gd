@@ -69,7 +69,7 @@ func accepts_game_mode_id(_mode_id: int) -> bool:
 	return false
 
 
-func prewarm_mode_runtime_data() -> void:
+func prewarm_mode_runtime_data(_preparation_generation: int) -> void:
 	pass
 
 

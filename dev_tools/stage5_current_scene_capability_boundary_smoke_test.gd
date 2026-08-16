@@ -295,24 +295,13 @@ func _is_narrowly_allowed(
 			and _contains_all(body, [
 				"var current_scene := get_tree().current_scene",
 				"current_scene.scene_file_path != expected_scene_path",
-				"current_scene.has_method(\"is_runtime_preparation_complete\")",
-				"current_scene.call(\"is_runtime_preparation_complete\")",
-				"current_scene.has_method(\"get_runtime_preparation_progress\")",
-				"current_scene.call(\"get_runtime_preparation_progress\")",
-				"current_scene.has_method(\"activate_runtime\")",
-				"current_scene.call(\"activate_runtime\")",
+				"_poll_runtime_preparation_capability(",
+				"(current_scene as RuntimePreparationProvider).activate_runtime()",
 			])
-			and _same_strings(capabilities, [
-				"call:activate_runtime",
-				"call:get_runtime_preparation_progress",
-				"call:is_runtime_preparation_complete",
-				"has_method:activate_runtime",
-				"has_method:get_runtime_preparation_progress",
-				"has_method:is_runtime_preparation_complete",
-			])
+			and capabilities.is_empty()
 			and _same_strings(
 				_extract_alias_method_names(str(analysis["body"]), "current_scene"),
-				["call", "has_method"]
+				[]
 			)
 		)
 	if script_path == LOAD_COORDINATOR_PATH and method_name == "_on_back_pressed":

@@ -89,6 +89,7 @@ func _init() -> void:
 func _run() -> void:
 	_test_loading_scene_contract()
 	_test_load_attempt_lease()
+	await _test_multiplayer_failure_release_generation_fence()
 	await _test_runtime_activation_gate()
 	_test_mode_specific_mp_game_source()
 	_test_host_ready_barrier()
@@ -433,6 +434,126 @@ func _test_load_attempt_lease() -> void:
 		and (shutdown_retry.get("manifest") as Array).is_empty(),
 		"协调器异常退出必须释放失败界面的重试请求。"
 	)
+
+
+func _test_multiplayer_failure_release_generation_fence() -> void:
+	var coordinator := root.get_node_or_null("GameLoadCoordinator")
+	var net_manager := root.get_node_or_null("NetManager") as NetManagerStore
+	_expect(
+		coordinator != null and net_manager != null,
+		"多人失败释放竞态必须取得加载器与 NetManager。"
+	)
+	if coordinator == null or net_manager == null:
+		return
+	var original_lease := coordinator.get("_public_room_lease") as PublicRoomLeaseStore
+	var fixture_lease_scene := load(
+		"res://scene/multiplayer/public_room/public_room_lease.tscn"
+	) as PackedScene
+	var fixture_lease := (
+		fixture_lease_scene.instantiate() as PublicRoomLeaseStore
+		if fixture_lease_scene != null
+		else null
+	)
+	_expect(fixture_lease != null, "多人失败释放竞态必须实例化独立公网租约。")
+	if fixture_lease == null:
+		return
+	fixture_lease.name = &"FailedReleaseGenerationFenceLease"
+	root.add_child(fixture_lease)
+	_expect(
+		fixture_lease.suspend_transport_for_fixture(true)
+		and fixture_lease.adopt_room(
+			"release-race-room",
+			"Release Race Host",
+			"release-race-member",
+			"release-race-host",
+			true
+		),
+		"竞态 fixture 必须持有一个可暂停释放的旧租约。"
+	)
+
+	coordinator.call("_invalidate_and_release_active_attempt", &"race_reset")
+	coordinator.call("_clear_failed_retry_request")
+	coordinator.set("_state", 0)
+	coordinator.set("_is_multiplayer_load", false)
+	coordinator.set("_public_room_lease", fixture_lease)
+	coordinator.set_process(false)
+	net_manager.disconnect_from_game()
+	net_manager.local_player_name = "OldReleaseRaceHost"
+	net_manager.set_local_character_id(&"weishidaier", true)
+	var error := net_manager.host_create_lan_server(TEST_PORT + 20)
+	_expect(error == OK, "竞态 fixture 必须创建旧多人会话。")
+	if error == OK:
+		net_manager.host_start_game()
+	var old_session_incarnation := net_manager.get_game_session_incarnation()
+	var lease_probe_path := "res://scene/loading/game_load_coordinator.gd"
+	coordinator.call(
+		"_begin_load",
+		lease_probe_path,
+		[lease_probe_path] as Array[String],
+		true
+	)
+	coordinator.call("_show_error", "旧多人加载失败释放竞态")
+	for _frame in range(8):
+		if bool(fixture_lease.get("_release_in_flight")):
+			break
+		await process_frame
+	_expect(
+		old_session_incarnation > 0
+		and bool(coordinator.get("_multiplayer_failure_release_in_progress"))
+		and bool(fixture_lease.get("_release_in_flight")),
+		"旧失败清理必须确实跨过有界租约 await。"
+	)
+
+	# 旧清理等待期间开始新的加载 attempt 与新会话；恢复后只能识别旧 fence 已失效。
+	net_manager.disconnect_from_game()
+	net_manager.local_player_name = "NewReleaseRaceHost"
+	net_manager.set_local_character_id(&"weishidaier", true)
+	error = net_manager.host_create_lan_server(TEST_PORT + 21)
+	_expect(error == OK, "竞态 fixture 必须创建新多人会话。")
+	if error == OK:
+		net_manager.host_start_game()
+	var new_session_incarnation := net_manager.get_game_session_incarnation()
+	coordinator.call(
+		"_begin_load",
+		lease_probe_path,
+		[lease_probe_path] as Array[String],
+		true
+	)
+	var new_attempt: RefCounted = coordinator.get("_active_attempt")
+	var new_attempt_generation := (
+		int(new_attempt.get("generation"))
+		if new_attempt != null
+		else 0
+	)
+	_expect(
+		fixture_lease.complete_release_attempt_for_fixture(
+			HTTPRequest.RESULT_SUCCESS,
+			200
+		),
+		"竞态 fixture 必须能恢复旧租约释放 await。"
+	)
+	await process_frame
+	await process_frame
+	_expect(
+		new_session_incarnation > old_session_incarnation
+		and net_manager.is_multiplayer_active()
+		and net_manager.get_game_session_incarnation() == new_session_incarnation
+		and new_attempt != null
+		and coordinator.get("_active_attempt") == new_attempt
+		and int(new_attempt.get("generation")) == new_attempt_generation
+		and not bool(coordinator.get("_multiplayer_failure_release_in_progress")),
+		"旧 release 恢复后不得断开或释放新 generation/新 incarnation。"
+	)
+
+	coordinator.call("_invalidate_and_release_active_attempt", &"race_cleanup")
+	coordinator.call("_clear_failed_retry_request")
+	coordinator.set("_state", 0)
+	coordinator.set("_is_multiplayer_load", false)
+	coordinator.set("_public_room_lease", original_lease)
+	coordinator.set_process(true)
+	fixture_lease.queue_free()
+	net_manager.disconnect_from_game()
+	await process_frame
 
 
 func _test_runtime_activation_gate() -> void:

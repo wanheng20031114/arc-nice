@@ -1,5 +1,5 @@
 @abstract
-extends Node2D
+extends RuntimePreparationProvider
 class_name CombatRuntimeBase
 
 const CombatTargetIndexScript := preload("res://scene/combat/targeting/combat_target_index.gd")
@@ -45,9 +45,6 @@ static var combat_robot_gunner_bullet_pool_prewarm_count := (
 static var combat_robot_gunner_bullet_pool_retained_capacity := (
 	COMBAT_ROBOT_GUNNER_BULLET_RETAINED_CAPACITY
 )
-
-signal runtime_preparation_progress_changed(stage: String, completed: int, total: int)
-signal runtime_preparation_completed
 
 enum RuntimeMode {
 	SINGLEPLAYER,
@@ -136,10 +133,6 @@ var _stale_enemy_snapshot_ids: Array[int] = []
 var _enemy_spawn_effect_budget = EnemySpawnEffectBudgetScript.new()
 var runtime_activation_deferred := false
 var runtime_activated := false
-var runtime_preparation_complete := false
-var runtime_preparation_stage := "等待场景初始化"
-var runtime_preparation_completed_steps := 0
-var runtime_preparation_total_steps := 1
 var _pending_xirang_kill_reward: int = 0
 var _xirang_kill_reward_flush_queued: bool = false
 
@@ -1160,51 +1153,19 @@ func _on_runtime_activated() -> void:
 	pass
 
 
-func update_runtime_preparation_progress(stage: String, completed: int, total: int) -> void:
-	runtime_preparation_stage = stage
-	runtime_preparation_total_steps = maxi(total, 1)
-	runtime_preparation_completed_steps = clampi(
-		completed,
-		0,
-		runtime_preparation_total_steps
-	)
-	runtime_preparation_progress_changed.emit(
-		runtime_preparation_stage,
-		runtime_preparation_completed_steps,
-		runtime_preparation_total_steps
-	)
-
-
-func mark_runtime_preparation_complete() -> void:
-	if runtime_preparation_complete:
-		return
-	runtime_preparation_complete = true
-	update_runtime_preparation_progress("战场准备完成", 1, 1)
-	runtime_preparation_completed.emit()
-
-
-func is_runtime_preparation_complete() -> bool:
-	return runtime_preparation_complete
-
-
-func get_runtime_preparation_progress() -> Dictionary:
-	return {
-		"stage": runtime_preparation_stage,
-		"completed": runtime_preparation_completed_steps,
-		"total": runtime_preparation_total_steps,
-	}
-
-
-func prewarm_shared_runtime_data() -> void:
+func prewarm_shared_runtime_data(preparation_generation: int) -> void:
 	var adapter := get_multiplayer_mode_adapter()
 	if adapter != null:
-		await adapter.prewarm_mode_runtime_data()
+		await adapter.prewarm_mode_runtime_data(preparation_generation)
 
 
-func prepare_shared_runtime_data_and_complete() -> void:
-	await prewarm_shared_runtime_data()
-	if is_inside_tree():
-		mark_runtime_preparation_complete()
+func prepare_shared_runtime_data_and_complete(preparation_generation: int) -> void:
+	await prewarm_shared_runtime_data(preparation_generation)
+	if (
+		is_inside_tree()
+		and is_runtime_preparation_generation_preparing(preparation_generation)
+	):
+		mark_runtime_preparation_complete(preparation_generation)
 
 
 func has_session_object_pool_scene(scene: PackedScene) -> bool:

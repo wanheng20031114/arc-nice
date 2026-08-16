@@ -973,10 +973,13 @@ func request_wave_start() -> bool:
 	return true
 
 
-func prewarm_mode_runtime_data() -> void:
+func prewarm_mode_runtime_data(preparation_generation: int) -> void:
 	var tower_runtime := get_tower_runtime()
 	if tower_runtime != null:
-		await LuoxiMerchant.prewarm_collectible_cache(tower_runtime)
+		await LuoxiMerchant.prewarm_collectible_cache(
+			tower_runtime,
+			preparation_generation
+		)
 
 
 func broadcast_plant_projectile_visual(

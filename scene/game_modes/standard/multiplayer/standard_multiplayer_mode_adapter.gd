@@ -266,9 +266,12 @@ func get_luoxi_merchant() -> LuoxiMerchant:
 	)
 
 
-func prewarm_mode_runtime_data() -> void:
+func prewarm_mode_runtime_data(preparation_generation: int) -> void:
 	if _wave_runtime != null:
-		await LuoxiMerchant.prewarm_collectible_cache(_wave_runtime)
+		await LuoxiMerchant.prewarm_collectible_cache(
+			_wave_runtime,
+			preparation_generation
+		)
 
 
 func runtime_try_refresh_luoxi_collectibles_for_peer(peer_id: int) -> int:

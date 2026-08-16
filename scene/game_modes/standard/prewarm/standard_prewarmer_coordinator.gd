@@ -14,10 +14,12 @@ const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
 const LINGLAN_ENRAGE_SNIPER_CONFIG_PATH := (
 	"res://resources/config/enemies/capoo_sniper.tres"
 )
+const RUNTIME_RESOURCE_WAIT_TIMEOUT_MSEC := 10_000
 
 var runtime_scene_loads_requested: bool = false
 var linglan_enrage_sniper_config: EnemyConfig = null
 var runtime_resources_by_path: Dictionary[String, Resource] = {}
+var runtime_preparation_failure_reason := ""
 
 var _session_object_pool: SessionObjectPool = null
 var _boss_coordinator: StandardBossCoordinator = null
@@ -71,14 +73,31 @@ func schedule_boss_runtime_scene_loads() -> void:
 	call_deferred("request_boss_runtime_scene_loads_deferred")
 
 
-func request_boss_runtime_scene_loads() -> void:
+func request_boss_runtime_scene_loads() -> bool:
 	if runtime_scene_loads_requested:
-		return
+		return runtime_preparation_failure_reason.is_empty()
 	if not _boss_flow_enabled:
-		return
+		return true
 	runtime_scene_loads_requested = true
 	for resource_path in get_boss_runtime_resource_paths():
-		ResourceLoader.load_threaded_request(resource_path)
+		var status := ResourceLoader.load_threaded_get_status(resource_path)
+		if status in [
+			ResourceLoader.THREAD_LOAD_IN_PROGRESS,
+			ResourceLoader.THREAD_LOAD_LOADED,
+		]:
+			continue
+		var error := ResourceLoader.load_threaded_request(
+			resource_path,
+			"",
+			true,
+			ResourceLoader.CACHE_MODE_REUSE
+		)
+		if error != OK:
+			return _fail_runtime_preparation(
+				"普通模式无法开始线程加载资源 %s：%s。"
+				% [resource_path, error_string(error)]
+			)
+	return true
 
 
 func get_boss_runtime_resource_paths() -> Array[String]:
@@ -87,26 +106,37 @@ func get_boss_runtime_resource_paths() -> Array[String]:
 	return paths
 
 
-func prewarm_boss_runtime_resources() -> void:
+func prewarm_boss_runtime_resources() -> bool:
 	if not _boss_flow_enabled:
-		return
-	request_boss_runtime_scene_loads()
+		return true
+	if not request_boss_runtime_scene_loads():
+		return false
 	for resource_path in get_boss_runtime_resource_paths():
 		if runtime_resources_by_path.has(resource_path):
 			continue
 		var status := ResourceLoader.load_threaded_get_status(resource_path)
+		var deadline_msec := Time.get_ticks_msec() + RUNTIME_RESOURCE_WAIT_TIMEOUT_MSEC
 		while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			await get_tree().process_frame
 			if _should_abort_prewarm_after_frame():
-				return
+				return false
+			if Time.get_ticks_msec() >= deadline_msec:
+				return _fail_runtime_preparation(
+					"普通模式线程加载资源超时：%s。" % resource_path
+				)
 			status = ResourceLoader.load_threaded_get_status(resource_path)
-		var runtime_resource := (
-			ResourceLoader.load_threaded_get(resource_path)
-			if status == ResourceLoader.THREAD_LOAD_LOADED
-			else load(resource_path)
-		)
-		if runtime_resource != null:
-			runtime_resources_by_path[resource_path] = runtime_resource
+		if status != ResourceLoader.THREAD_LOAD_LOADED:
+			return _fail_runtime_preparation(
+				"普通模式线程加载资源失败：%s（状态 %d）。"
+				% [resource_path, status]
+			)
+		var runtime_resource := ResourceLoader.load_threaded_get(resource_path)
+		if runtime_resource == null:
+			return _fail_runtime_preparation(
+				"普通模式线程资源已完成但无法取得实例：%s。" % resource_path
+			)
+		runtime_resources_by_path[resource_path] = runtime_resource
+	return true
 
 
 func get_linglan_enrage_sniper_config() -> EnemyConfig:
@@ -127,7 +157,8 @@ func load_threaded_or_direct(path: String) -> Resource:
 	if status == ResourceLoader.THREAD_LOAD_LOADED:
 		return ResourceLoader.load_threaded_get(path)
 	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
-		return ResourceLoader.load_threaded_get(path)
+		# 正式准备屏障会在有界协程中收取结果；游戏热路径不得重新无期限阻塞。
+		return null
 	return load(path)
 
 
@@ -135,11 +166,19 @@ func _should_abort_prewarm_after_frame() -> bool:
 	return not is_inside_tree()
 
 
-func request_boss_runtime_scene_loads_deferred() -> void:
+func request_boss_runtime_scene_loads_deferred() -> bool:
 	if DisplayServer.get_name() == "headless":
-		return
+		return true
 	await get_tree().process_frame
 	await get_tree().process_frame
 	if not is_inside_tree():
-		return
-	request_boss_runtime_scene_loads()
+		return false
+	return request_boss_runtime_scene_loads()
+
+
+func _fail_runtime_preparation(reason: String) -> bool:
+	if runtime_preparation_failure_reason.is_empty():
+		runtime_preparation_failure_reason = reason
+		push_error("StandardPrewarmerCoordinator: %s" % reason)
+	# 协调器只返回精确原因；Provider 的 generation token 由外层模式根独占。
+	return false

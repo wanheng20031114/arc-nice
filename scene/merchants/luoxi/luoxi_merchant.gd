@@ -146,7 +146,10 @@ static func finish_collectible_cache_warmup() -> void:
 	CollectibleRegistry.finish_cache_warmup()
 
 
-static func prewarm_collectible_cache(runtime: CombatRuntimeBase) -> void:
+static func prewarm_collectible_cache(
+	runtime: CombatRuntimeBase,
+	preparation_generation: int
+) -> void:
 	if runtime == null or is_collectible_cache_ready():
 		return
 	var config_paths := get_collectible_config_paths()
@@ -166,12 +169,18 @@ static func prewarm_collectible_cache(runtime: CombatRuntimeBase) -> void:
 			cache_collectible_config(config)
 		completed_batches += 1
 		runtime.update_runtime_preparation_progress(
+			preparation_generation,
 			"缓存收藏品配置…",
 			completed_batches,
 			total_batches
 		)
 		await runtime.get_tree().process_frame
-		if not runtime.is_inside_tree():
+		if (
+			not runtime.is_inside_tree()
+			or not runtime.is_runtime_preparation_generation_preparing(
+				preparation_generation
+			)
+		):
 			return
 	finish_collectible_cache_warmup()
 

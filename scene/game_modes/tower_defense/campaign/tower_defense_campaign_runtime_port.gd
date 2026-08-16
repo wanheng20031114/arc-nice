@@ -16,6 +16,10 @@ func get_runtime_mode() -> int:
 	return int(_runtime.runtime_mode)
 
 
+func get_runtime_preparation_generation() -> int:
+	return _runtime.get_runtime_preparation_generation()
+
+
 func get_local_peer_id() -> int:
 	return _runtime.multiplayer_local_peer_id
 

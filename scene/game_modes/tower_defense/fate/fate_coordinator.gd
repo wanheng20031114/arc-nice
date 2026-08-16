@@ -30,6 +30,7 @@ const YUANSHI_ATTACK_SOURCE_ID := 880001
 const ARTIFICIAL_DEFENSE_SOURCE_ID := 880002
 const SLIME_SPEED_SOURCE_ID := 880003
 const ALL_ENEMY_SPEED_SOURCE_ID := 880004
+const RUNTIME_RESOURCE_WAIT_TIMEOUT_MSEC := 10_000
 
 @onready var manager: TowerDefenseFateManager = $TowerDefenseFateManager
 @onready var runtime_tick_timer: Timer = $RuntimeTickTimer
@@ -54,6 +55,7 @@ var pending_stone_peer_ids: Array[int] = []
 var random_generator := RandomNumberGenerator.new()
 var elite_enemy_config_by_base_path: Dictionary = {}
 var elite_enemy_config_loads_requested := false
+var runtime_preparation_failure_reason := ""
 
 
 func _ready() -> void:
@@ -87,36 +89,74 @@ func setup(
 	_apply_runtime_state_to_world()
 
 
-func request_elite_enemy_config_loads() -> void:
+func request_elite_enemy_config_loads() -> bool:
 	if elite_enemy_config_loads_requested:
-		return
+		return runtime_preparation_failure_reason.is_empty()
 	elite_enemy_config_loads_requested = true
 	for elite_path_value in ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.values():
 		var elite_path := str(elite_path_value)
-		if not elite_path.is_empty():
-			ResourceLoader.load_threaded_request(elite_path)
+		if elite_path.is_empty():
+			continue
+		var status := ResourceLoader.load_threaded_get_status(elite_path)
+		if status in [
+			ResourceLoader.THREAD_LOAD_IN_PROGRESS,
+			ResourceLoader.THREAD_LOAD_LOADED,
+		]:
+			continue
+		var error := ResourceLoader.load_threaded_request(
+			elite_path,
+			"",
+			true,
+			ResourceLoader.CACHE_MODE_REUSE
+		)
+		if error != OK:
+			return _fail_runtime_preparation(
+				"命运系统无法开始线程加载精英配置 %s：%s。"
+				% [elite_path, error_string(error)]
+			)
+	return true
 
 
-func prewarm_elite_enemy_configs() -> void:
-	request_elite_enemy_config_loads()
+func prewarm_elite_enemy_configs() -> bool:
+	if not request_elite_enemy_config_loads():
+		return false
 	for base_path_value in ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH:
 		var base_path := str(base_path_value)
 		if elite_enemy_config_by_base_path.has(base_path):
 			continue
 		var elite_path := str(ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH[base_path_value])
 		var status := ResourceLoader.load_threaded_get_status(elite_path)
+		var deadline_msec := Time.get_ticks_msec() + RUNTIME_RESOURCE_WAIT_TIMEOUT_MSEC
 		while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			await get_tree().process_frame
 			if not is_inside_tree():
-				return
+				return false
+			if Time.get_ticks_msec() >= deadline_msec:
+				return _fail_runtime_preparation(
+					"命运系统线程加载精英配置超时：%s。" % elite_path
+				)
 			status = ResourceLoader.load_threaded_get_status(elite_path)
+		if status != ResourceLoader.THREAD_LOAD_LOADED:
+			return _fail_runtime_preparation(
+				"命运系统线程加载精英配置失败：%s（状态 %d）。"
+				% [elite_path, status]
+			)
 		var elite_config := (
 			ResourceLoader.load_threaded_get(elite_path) as EnemyConfig
-			if status == ResourceLoader.THREAD_LOAD_LOADED
-			else load(elite_path) as EnemyConfig
 		)
-		if elite_config != null:
-			elite_enemy_config_by_base_path[base_path] = elite_config
+		if elite_config == null:
+			return _fail_runtime_preparation(
+				"命运系统线程配置已完成但类型无效：%s。" % elite_path
+			)
+		elite_enemy_config_by_base_path[base_path] = elite_config
+	return true
+
+
+func _fail_runtime_preparation(reason: String) -> bool:
+	if runtime_preparation_failure_reason.is_empty():
+		runtime_preparation_failure_reason = reason
+		push_error("FateCoordinator: %s" % reason)
+	return false
 
 
 func begin_interlude(
@@ -281,6 +321,9 @@ func resolve_enemy_config(enemy_config: EnemyConfig) -> EnemyConfig:
 	if elite_path.is_empty():
 		return enemy_config
 	var status := ResourceLoader.load_threaded_get_status(elite_path)
+	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		# 加载屏障负责有界收取；直达调试场景也只保留基础敌人，不在热路径阻塞。
+		return enemy_config
 	elite_config = (
 		ResourceLoader.load_threaded_get(elite_path) as EnemyConfig
 		if status == ResourceLoader.THREAD_LOAD_LOADED

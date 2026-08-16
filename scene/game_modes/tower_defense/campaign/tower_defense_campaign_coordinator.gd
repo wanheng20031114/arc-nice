@@ -612,7 +612,9 @@ func enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 		countdown_seconds,
 		can_local_player_start_wave_early()
 	)
-	_prewarmer_coordinator.schedule_enemy_navigation_prewarm()
+	_prewarmer_coordinator.schedule_enemy_navigation_prewarm(
+		_runtime_port.get_runtime_preparation_generation()
+	)
 	publish_flow_state(CombatFlowState.State.PRE_WAVE)
 
 	if countdown_seconds <= 0:

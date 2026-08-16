@@ -148,9 +148,21 @@ var _pending_reconnected_player_projections: Dictionary[int, Dictionary] = {}
 var _completed_reconnected_player_projections: Dictionary[int, int] = {}
 var _public_return_in_progress := false
 var _lobby_return_in_progress := false
+var _game_setup_failure_reason := ""
+var _preparation_generation := 0
 
 
 func _ready() -> void:
+	_preparation_generation = begin_runtime_preparation(
+		"正在创建多人战场…",
+		1
+	)
+	update_runtime_preparation_progress(
+		_preparation_generation,
+		"正在创建多人战场…",
+		0,
+		1
+	)
 	if (
 		net_manager == null
 		or (
@@ -160,8 +172,10 @@ func _ready() -> void:
 			)
 		)
 	):
-		push_error("MpGame: 顶层会话无法取得重连首帧准备能力。")
-		call_deferred("_return_to_lobby")
+		var reason := "顶层多人会话无法取得重连首帧准备能力。"
+		push_error("MpGame: %s" % reason)
+		mark_runtime_preparation_failed(_preparation_generation, reason)
+		_defer_lobby_return_without_active_loader()
 		return
 	session_coordinator.bind_transport_dependencies(net_manager)
 	_connect_session_coordinator_signals()
@@ -190,24 +204,34 @@ func _ready() -> void:
 		)
 	if net_manager.is_host():
 		if not _setup_game(GAME_RUNTIME_HOST_AUTHORITY):
-			call_deferred("_return_to_lobby")
+			mark_runtime_preparation_failed(
+				_preparation_generation,
+				_game_setup_failure_reason
+			)
+			_defer_lobby_return_without_active_loader()
 			return
 		_host_startup_snapshot_grace_time_left = HOST_STARTUP_SNAPSHOT_GRACE_SECONDS
 		_client_host_game_ready = true
 	elif net_manager.is_client():
 		if not _setup_game(GAME_RUNTIME_CLIENT_VIEW):
-			call_deferred("_return_to_lobby")
+			mark_runtime_preparation_failed(
+				_preparation_generation,
+				_game_setup_failure_reason
+			)
+			_defer_lobby_return_without_active_loader()
 			return
 		_client_host_game_ready = net_manager.host_game_ready
 	else:
-		push_warning("MpGame 启动时没有有效的多人连接，返回大厅。")
-		call_deferred("_return_to_lobby")
+		var reason := "多人战场启动时没有有效连接。"
+		push_warning("MpGame: %s" % reason)
+		mark_runtime_preparation_failed(_preparation_generation, reason)
+		_defer_lobby_return_without_active_loader()
 		return
 	if embedded_runtime:
 		_client_host_game_ready = false
-		_announce_embedded_runtime_when_prepared()
+		_announce_embedded_runtime_when_prepared(_preparation_generation)
 	else:
-		_report_game_loaded_when_prepared()
+		_report_game_loaded_when_prepared(_preparation_generation)
 
 
 func _connect_session_coordinator_signals() -> void:
@@ -725,21 +749,60 @@ func _physics_process(delta: float) -> void:
 		_client_physics_tick(frame)
 
 
-func _report_game_loaded_when_prepared() -> void:
+func _report_game_loaded_when_prepared(preparation_generation: int) -> void:
 	if game == null:
 		return
-	if not game.is_runtime_preparation_complete():
-		await game.runtime_preparation_completed
-	if not is_inside_tree() or int(net_manager.connection_state) != 4:
+	var expected_game := game
+	var child_generation := expected_game.get_runtime_preparation_generation()
+	var preparation := await _await_game_runtime_preparation(
+		expected_game,
+		child_generation
+	)
+	if (
+		not is_inside_tree()
+		or game != expected_game
+		or not is_runtime_preparation_generation_preparing(
+			preparation_generation
+		)
+	):
+		return
+	if preparation.state == RuntimePreparationProvider.PreparationState.FAILED:
+		mark_runtime_preparation_failed(
+			preparation_generation,
+			preparation.failure_reason
+		)
+		_defer_lobby_return_without_active_loader()
+		return
+	mark_runtime_preparation_complete(preparation_generation)
+	if not is_inside_tree() or int(net_manager.connection_state) != STATE_LOADING_GAME:
 		return
 	net_manager.report_game_loaded()
 
 
-func _announce_embedded_runtime_when_prepared() -> void:
+func _announce_embedded_runtime_when_prepared(preparation_generation: int) -> void:
 	if game == null:
 		return
-	if not game.is_runtime_preparation_complete():
-		await game.runtime_preparation_completed
+	var expected_game := game
+	var child_generation := expected_game.get_runtime_preparation_generation()
+	var preparation := await _await_game_runtime_preparation(
+		expected_game,
+		child_generation
+	)
+	if (
+		not is_inside_tree()
+		or game != expected_game
+		or not is_runtime_preparation_generation_preparing(
+			preparation_generation
+		)
+	):
+		return
+	if preparation.state == RuntimePreparationProvider.PreparationState.FAILED:
+		mark_runtime_preparation_failed(
+			preparation_generation,
+			preparation.failure_reason
+		)
+		return
+	mark_runtime_preparation_complete(preparation_generation)
 	if not is_inside_tree() or not embedded_runtime:
 		return
 	embedded_runtime_prepared.emit()
@@ -831,14 +894,65 @@ func get_game_runtime() -> CombatRuntimeBase:
 	return game
 
 
-func is_runtime_preparation_complete() -> bool:
-	return game != null and game.is_runtime_preparation_complete()
+func get_runtime_preparation_snapshot() -> RuntimePreparationSnapshot:
+	var wrapper_preparation := super.get_runtime_preparation_snapshot()
+	if (
+		wrapper_preparation.state == PreparationState.FAILED
+		or game == null
+	):
+		return wrapper_preparation
+	var child_preparation := game.get_runtime_preparation_snapshot()
+	# wrapper 保留自己的 generation 域，只镜像子运行时的强类型状态与原因。
+	return RuntimePreparationSnapshot.new(
+		wrapper_preparation.generation,
+		child_preparation.state,
+		child_preparation.stage,
+		child_preparation.completed,
+		child_preparation.total,
+		child_preparation.failure_reason
+	)
 
 
-func get_runtime_preparation_progress() -> Dictionary:
-	if game == null:
-		return {"stage": "正在创建多人战场", "completed": 0, "total": 1}
-	return game.get_runtime_preparation_progress()
+func activate_runtime() -> void:
+	if game != null and game.is_runtime_preparation_complete():
+		game.activate_runtime()
+
+
+func _await_game_runtime_preparation(
+	expected_game: CombatRuntimeBase,
+	expected_generation: int
+) -> RuntimePreparationSnapshot:
+	var preparation := expected_game.get_runtime_preparation_snapshot()
+	while preparation.state == PreparationState.PREPARING:
+		await expected_game.runtime_preparation_state_changed
+		if not is_inside_tree() or game != expected_game:
+			return RuntimePreparationSnapshot.new(
+				expected_generation,
+				PreparationState.FAILED,
+				"多人战场已离开场景树",
+				0,
+				1,
+				"多人战场在准备完成前已离开场景树。"
+			)
+		preparation = expected_game.get_runtime_preparation_snapshot()
+		if preparation.generation != expected_generation:
+			return RuntimePreparationSnapshot.new(
+				expected_generation,
+				PreparationState.FAILED,
+				"多人战场准备周期已被替换",
+				0,
+				1,
+				"多人战场准备周期在完成前已被新 generation 替换。"
+			)
+	return preparation
+
+
+func _defer_lobby_return_without_active_loader() -> void:
+	var loader := get_node_or_null("/root/GameLoadCoordinator")
+	# 加载器持有失败界面、房间成员释放与返回动作；直接启动场景才自行回大厅。
+	if loader != null and bool(loader.call("is_loading")):
+		return
+	call_deferred("_return_to_lobby")
 
 
 func _process(delta: float) -> void:
@@ -2021,28 +2135,30 @@ func _fail_session_membership_projection(reason: String) -> void:
 
 
 func _setup_game(mode: int) -> bool:
+	_game_setup_failure_reason = (
+		"多人战场初始化失败（模式 %d）。"
+		% int(net_manager.get_current_game_mode())
+	)
 	if embedded_runtime and _embedded_participant_peer_ids.is_empty():
-		push_error("MpGame: 内嵌战斗缺少冻结的参战玩家名单。")
-		return false
+		return _fail_game_setup("内嵌战斗缺少冻结的参战玩家名单。")
 	var game_mode := int(net_manager.get_current_game_mode())
 	var game_scene_path := _get_game_scene_path_for_mode(game_mode)
 	var game_scene := load(game_scene_path) as PackedScene
 	if game_scene == null:
-		push_error("MpGame: 无法加载所选多人游戏场景：%s" % game_scene_path)
-		return false
+		return _fail_game_setup(
+			"无法加载所选多人游戏场景：%s。" % game_scene_path
+		)
 	game = game_scene.instantiate() as CombatRuntimeBase
 	if game == null:
-		push_error("MpGame: 无法实例化所选多人游戏场景。")
-		return false
+		return _fail_game_setup("无法实例化所选多人游戏场景。")
 	game.defer_runtime_activation()
 
 	var local_peer_id: int = _get_local_peer_id()
 	if local_peer_id <= 0 and net_manager.is_host():
 		local_peer_id = _get_host_peer_id()
 	if embedded_runtime and not _embedded_participant_peer_ids.has(local_peer_id):
-		push_error("MpGame: 路线观战者不得创建内嵌战斗运行时。")
 		_discard_unparented_game_runtime()
-		return false
+		return _fail_game_setup("路线观战者不得创建内嵌战斗运行时。")
 	var runtime_player_names := _filter_embedded_peer_map(
 		net_manager.connected_players
 	)
@@ -2054,16 +2170,16 @@ func _setup_game(mode: int) -> bool:
 	if embedded_runtime:
 		for peer_id_variant in _embedded_participant_peer_ids.keys():
 			if not run_state.has_multiplayer_peer_state(int(peer_id_variant)):
-				push_error("MpGame: 内嵌参战者缺少顶层会话持久账本。")
 				_discard_unparented_game_runtime()
-				return false
+				return _fail_game_setup(
+					"内嵌参战者缺少顶层会话持久账本。"
+				)
 	elif not run_state.reconcile_multiplayer_session_membership(
 		_get_persistent_session_peer_ids(),
 		net_manager.get_session_membership_revision()
 	):
-		push_error("MpGame: 无法收敛权威会话成员与运行时账本。")
 		_discard_unparented_game_runtime()
-		return false
+		return _fail_game_setup("无法收敛权威会话成员与运行时账本。")
 	game.configure_multiplayer(
 		mode,
 		local_peer_id,
@@ -2078,20 +2194,19 @@ func _setup_game(mode: int) -> bool:
 		"LinglanBossRuntimePort"
 	) as LinglanBossRuntimePort
 	if gameplay_gateway == null or mode_adapter == null:
-		push_error("MpGame: 运行时缺少静态 Multiplayer Gateway/ModeAdapter。")
 		_discard_unparented_game_runtime()
-		return false
+		return _fail_game_setup(
+			"运行时缺少静态 Multiplayer Gateway/ModeAdapter。"
+		)
 	if not mode_adapter.accepts_game_mode_id(game_mode):
-		push_error(
-			"MpGame: 游戏模式 %d 与运行时 MultiplayerModeAdapter 不匹配。"
+		_discard_unparented_game_runtime()
+		return _fail_game_setup(
+			"游戏模式 %d 与运行时 MultiplayerModeAdapter 不匹配。"
 			% game_mode
 		)
-		_discard_unparented_game_runtime()
-		return false
 	if net_manager == null:
-		push_error("MpGame: 多人协调器缺少强类型 NetManagerStore。")
 		_discard_unparented_game_runtime()
-		return false
+		return _fail_game_setup("多人协调器缺少强类型 NetManagerStore。")
 	session_coordinator.bind_runtime(game)
 	player_coordinator.bind_runtime(game)
 	player_coordinator.bind_realtime_dependencies(
@@ -2208,8 +2323,7 @@ func _setup_game(mode: int) -> bool:
 		_commit_pending_peer_ledger_envelope
 	)
 	if _peer_ledger_generation <= 0:
-		push_error("MpGame: 无法绑定跨信道玩家账本协调器。")
-		return false
+		return _fail_game_setup("无法绑定跨信道玩家账本协调器。")
 	if _peer_result_repair_needed:
 		_schedule_peer_result_full_repair()
 	session_coordinator.bind_world_manifest_dependencies(
@@ -2289,8 +2403,7 @@ func _setup_game(mode: int) -> bool:
 				_send_tower_rogue_route_rpc
 			)
 		):
-			push_error("MpGame: 无法绑定塔防内嵌地下探索多人桥。")
-			return false
+			return _fail_game_setup("无法绑定塔防内嵌地下探索多人桥。")
 		if not tower_adapter.rogue_exploration_snapshot_changed.is_connected(
 			_on_tower_rogue_exploration_snapshot_changed
 		):
@@ -2307,11 +2420,16 @@ func _setup_game(mode: int) -> bool:
 			tower_adapter.is_rogue_exploration_active()
 		)
 	if not run_state.set_active_multiplayer_peer(local_peer_id):
-		push_error("MpGame: 本机 peer 尚未注册为持久账本成员。")
-		return false
+		return _fail_game_setup("本机 peer 尚未注册为持久账本成员。")
 	if net_manager.is_host() and _has_tower_mode():
 		tower_world_coordinator.broadcast_base_health_snapshot()
 	return true
+
+
+func _fail_game_setup(reason: String) -> bool:
+	_game_setup_failure_reason = reason
+	push_error("MpGame: %s" % reason)
+	return false
 
 
 func _discard_unparented_game_runtime() -> void:

@@ -54,13 +54,13 @@ func _test_static_embedded_runtime_contract() -> void:
 		)
 	)
 	_expect(
-		source.contains(
-			"if embedded_runtime:\n"
-			+ "\t\t_client_host_game_ready = false\n"
-			+ "\t\t_announce_embedded_runtime_when_prepared()\n"
-			+ "\telse:\n"
-			+ "\t\t_report_game_loaded_when_prepared()"
-		),
+			source.contains(
+				"if embedded_runtime:\n"
+				+ "\t\t_client_host_game_ready = false\n"
+				+ "\t\t_announce_embedded_runtime_when_prepared(_preparation_generation)\n"
+				+ "\telse:\n"
+				+ "\t\t_report_game_loaded_when_prepared(_preparation_generation)"
+			),
 		(
 			"Embedded setup must announce local preparation without entering the initial "
 			+ "LOADING_GAME report path."
@@ -286,9 +286,11 @@ func _test_embedded_runtime_lifecycle() -> void:
 		"Preparation completion alone must not activate embedded gameplay."
 	)
 
-	# Exercise the preparation guard against a real configured runtime without
-	# rebuilding or replacing its production preparation pipeline.
-	runtime.runtime_preparation_complete = false
+	# READY 只能通过新 generation 合法重开；测试也不得直接篡改旧 bool 镜像。
+	var activation_guard_generation := runtime.begin_runtime_preparation(
+		"嵌入战场激活守卫",
+		1
+	)
 	_expect(
 		not bool(mp_game.call("activate_embedded_runtime")),
 		"Embedded activation must reject a configured runtime marked incomplete."
@@ -298,7 +300,7 @@ func _test_embedded_runtime_lifecycle() -> void:
 		and not bool(mp_game.call("is_embedded_runtime_active")),
 		"A rejected activation must leave both wrapper and runtime inactive."
 	)
-	runtime.runtime_preparation_complete = true
+	runtime.mark_runtime_preparation_complete(activation_guard_generation)
 
 	var first_activation := bool(mp_game.call("activate_embedded_runtime"))
 	var second_activation := bool(mp_game.call("activate_embedded_runtime"))

@@ -1,4 +1,4 @@
-extends Node2D
+extends RuntimePreparationProvider
 class_name MpRogueRoute
 
 signal embedded_authoritative_snapshot_changed
@@ -85,11 +85,23 @@ var _embedded_campaign_mode := false
 var _embedded_exploration_active := false
 var _embedded_rpc_sender_id := 0
 var _rpc_transport: Callable = Callable()
+var _preparation_generation := 0
+var _route_preparation_generation := 0
 
 
 func _ready() -> void:
+	_preparation_generation = begin_runtime_preparation(
+		"正在创建多人 Rogue 路线框架…",
+		1
+	)
 	if not auto_bind_scene_runtime:
 		return
+	update_runtime_preparation_progress(
+		_preparation_generation,
+		"正在创建多人 Rogue 路线框架…",
+		0,
+		1
+	)
 	_route = get_node_or_null("RogueRoute") as RogueRouteGame
 	_combat_coordinator = get_node_or_null(
 		"RogueCombatCoordinator"
@@ -102,8 +114,10 @@ func _ready() -> void:
 		or _route == null
 		or _combat_coordinator == null
 	):
-		push_error("MpRogueRoute: P3 多人运行时契约不完整。")
-		call_deferred("_return_to_lobby")
+		var reason := "P3 多人运行时契约不完整。"
+		push_error("MpRogueRoute: %s" % reason)
+		mark_runtime_preparation_failed(_preparation_generation, reason)
+		_defer_lobby_return_without_active_loader()
 		return
 	_combat_coordinator.bind_network_dependencies(
 		_route,
@@ -115,31 +129,49 @@ func _ready() -> void:
 	_connect_route_signals()
 	set_multiplayer_authority(_get_host_peer_id())
 	if not _connect_net_manager_signals():
+		mark_runtime_preparation_failed(
+			_preparation_generation,
+			"P3 多人网络信号契约绑定失败。"
+		)
+		_defer_lobby_return_without_active_loader()
 		return
 	if not _configure_route_players():
-		push_error("MpRogueRoute: 无法按房间角色表创建 P3 玩家。")
-		call_deferred("_return_to_lobby")
+		var reason := "无法按房间角色表创建 P3 玩家。"
+		push_error("MpRogueRoute: %s" % reason)
+		mark_runtime_preparation_failed(_preparation_generation, reason)
+		_defer_lobby_return_without_active_loader()
 		return
 	if _is_host():
 		_route.set_authority_enabled(true)
+		_route_preparation_generation = (
+			_route.get_runtime_preparation_generation()
+		)
 		if not _route.start_authoritative_session(
 			_generate_session_seed(),
 			false
 		):
-			push_error("MpRogueRoute: Host 无法生成 P3 路线。")
-			call_deferred("_return_to_lobby")
+			var reason := "Host 无法生成 P3 路线。"
+			push_error("MpRogueRoute: %s" % reason)
+			mark_runtime_preparation_failed(_preparation_generation, reason)
+			_defer_lobby_return_without_active_loader()
 			return
+		_route.mark_runtime_preparation_complete(
+			_route_preparation_generation
+		)
 		_refresh_authoritative_snapshot_cache()
 	elif _is_client():
 		_reset_snapshot_request_state()
 		_route.set_authority_enabled(false)
-		_route.start_client_waiting()
+		_route_preparation_generation = _route.start_client_waiting()
 	else:
-		push_warning("MpRogueRoute: 启动时没有有效多人连接，返回大厅。")
-		call_deferred("_return_to_lobby")
+		var reason := "启动时没有有效多人连接。"
+		push_warning("MpRogueRoute: %s" % reason)
+		mark_runtime_preparation_failed(_preparation_generation, reason)
+		_defer_lobby_return_without_active_loader()
 		return
 
 	_runtime_prepared = true
+	mark_runtime_preparation_complete(_preparation_generation)
 	call_deferred("_report_game_loaded")
 	if _get_connection_state() == STATE_IN_GAME:
 		call_deferred("_synchronize_after_barrier")
@@ -171,7 +203,12 @@ func bind_embedded_campaign_runtime(
 			and _net_manager == net_manager_instance
 			and _run_state == run_state_instance
 		)
+	_preparation_generation = begin_runtime_preparation(
+		"正在绑定塔防内嵌 Rogue 路线框架…",
+		1
+	)
 	_route = route_instance
+	_route_preparation_generation = _route.get_runtime_preparation_generation()
 	_combat_coordinator = combat_coordinator_instance
 	_net_manager = net_manager_instance
 	_run_state = run_state_instance
@@ -187,6 +224,7 @@ func bind_embedded_campaign_runtime(
 	set_multiplayer_authority(_get_host_peer_id())
 	_reset_snapshot_request_state()
 	_runtime_prepared = true
+	mark_runtime_preparation_complete(_preparation_generation)
 	return true
 
 
@@ -203,6 +241,11 @@ func unbind_embedded_campaign_runtime() -> void:
 	_embedded_exploration_active = false
 	_embedded_rpc_sender_id = 0
 	_runtime_prepared = false
+	_preparation_generation = begin_runtime_preparation(
+		"等待重新绑定多人 Rogue 路线框架…",
+		1
+	)
+	_route_preparation_generation = 0
 	_reset_snapshot_request_state()
 	_reset_avatar_sync_state()
 	_reset_briefing_cover_barrier()
@@ -492,20 +535,16 @@ func _exit_tree() -> void:
 	_disconnect_route_signals()
 
 
-func is_runtime_preparation_complete() -> bool:
-	return _runtime_prepared
+func activate_runtime() -> void:
+	if _runtime_prepared and _route != null:
+		_route.activate_runtime()
 
 
-func get_runtime_preparation_progress() -> Dictionary:
-	return {
-		"stage": (
-			"路线框架已准备"
-			if _runtime_prepared
-			else "正在创建多人路线框架"
-		),
-		"completed": 1 if _runtime_prepared else 0,
-		"total": 1,
-	}
+func _defer_lobby_return_without_active_loader() -> void:
+	var loader := get_node_or_null("/root/GameLoadCoordinator")
+	if loader != null and bool(loader.call("is_loading")):
+		return
+	call_deferred("_return_to_lobby")
 
 
 func _connect_route_signals() -> void:
@@ -651,7 +690,7 @@ func _connect_net_manager_signals() -> bool:
 		prepare_reconnected_member_delivery
 	):
 		push_error("MpRogueRoute: 无法取得顶层重连首帧准备能力。")
-		call_deferred("_return_to_lobby")
+		# 启动失败只能由 _ready 发布 generation-scoped FAILED；加载器随后统一收口。
 		return false
 	if not _net_manager.connection_state_changed.is_connected(
 		_on_connection_state_changed
@@ -2540,6 +2579,7 @@ func _apply_full_snapshot_from_peer(
 	):
 		_schedule_full_snapshot_retry()
 		return false
+	_route.mark_runtime_preparation_complete(_route_preparation_generation)
 	if not _route.is_route_ready():
 		_schedule_full_snapshot_retry()
 		return false
@@ -2643,12 +2683,15 @@ func _return_to_lobby() -> void:
 
 
 func _release_before_change_to_lobby() -> void:
-	# P3 的任意启动/运行失败都通过同一个清理门，避免只覆盖返回按钮。
+	# P3 的任意启动/运行失败都通过同一个清理门；standalone 也必须先断 transport。
 	var public_room_lease := PublicRoomLeaseStore.get_autoload_instance()
 	if public_room_lease != null:
 		await public_room_lease.release_current_and_wait(&"rogue_return_to_lobby")
-	if is_inside_tree():
-		_change_to_lobby()
+	if not is_inside_tree():
+		return
+	if _net_manager != null:
+		_net_manager.disconnect_from_game()
+	_change_to_lobby()
 
 
 func _change_to_lobby() -> void:

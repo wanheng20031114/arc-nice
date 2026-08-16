@@ -241,15 +241,17 @@ func _exit_tree() -> void:
 
 
 func _ready() -> void:
+	var preparation_generation := begin_runtime_preparation(
+		"正在初始化塔防运行时…",
+		1
+	)
 	random_generator.randomize()
 	initialize_world_lighting()
 	if not _configure_player_roster_coordinator():
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防玩家名册协调器配置失败。")
 		return
 	if not _configure_pickup_registry():
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防拾取物注册表配置失败。")
 		return
 	if merchant != null:
 		merchant.bind_multiplayer_mode_adapter(multiplayer_mode_adapter)
@@ -261,12 +263,10 @@ func _ready() -> void:
 	LuoxiMerchant.reset_runtime_choice_count()
 	if day_cycle_config == null or not day_cycle_config.is_valid():
 		push_error("TowerDefenseGame: DayCycleConfig 无效，停止初始化。")
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防昼夜周期配置无效。")
 		return
 	if not _configure_presentation_coordinator():
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防表现协调器配置失败。")
 		return
 	bamboo_mortar_combat_system.setup(
 		self,
@@ -280,12 +280,10 @@ func _ready() -> void:
 		if load_coordinator != null and bool(load_coordinator.call("is_loading")):
 			defer_runtime_activation()
 	if not _configure_active_campaign():
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防战役配置无效。")
 		return
 	if not _configure_prewarmer_coordinator():
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防预热协调器配置失败。")
 		return
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		run_state.ensure_run_started()
@@ -312,8 +310,7 @@ func _ready() -> void:
 		_register_static_multiplayer_pickups()
 	if player == null:
 		push_error("TowerDefenseGame: 无法创建当前角色，停止初始化。")
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防无法创建当前角色。")
 		return
 	presentation_coordinator.configure_status_hud(int(runtime_mode))
 	_attach_camera_to_local_player()
@@ -330,12 +327,10 @@ func _ready() -> void:
 		run_state,
 		MULTIPLAYER_SPAWN_OFFSETS
 	):
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防植物运行时配置失败。")
 		return
 	if not _configure_plant_placement_coordinator():
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防植物放置协调器配置失败。")
 		return
 	production_coordinator.set_authoritative_processing_enabled(
 		runtime_mode != RuntimeMode.CLIENT_VIEW
@@ -366,8 +361,7 @@ func _ready() -> void:
 		and not _grant_tower_defense_starting_package()
 	):
 		push_error("TowerDefenseGame: 无法原子发放正式塔防起步包，停止初始化。")
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防起步包原子发放失败。")
 		return
 	presentation_coordinator.configure_player_ui(
 		int(runtime_mode),
@@ -403,26 +397,21 @@ func _ready() -> void:
 		day_cycle_config
 	)
 	if not _configure_xiaocong_fate_flow():
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防小葱命运流程配置失败。")
 		return
 	if not _configure_boss_coordinator():
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防 Boss 协调器配置失败。")
 		return
 	if not _configure_rogue_exploration():
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防地下探索运行时配置失败。")
 		return
 	if not _bind_tower_multiplayer_adapter_dependencies():
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防多人适配器依赖绑定失败。")
 		return
 	if not _configure_campaign_runtime_coordinator():
-		set_process(false)
-		set_physics_process(false)
+		_fail_tower_runtime_preparation(preparation_generation, "塔防战役运行时协调器配置失败。")
 		return
-	prewarmer_coordinator.schedule_boss_runtime_scene_loads()
+	prewarmer_coordinator.schedule_boss_runtime_scene_loads(preparation_generation)
 
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		auto_start_waves = false
@@ -441,11 +430,24 @@ func _ready() -> void:
 		enemy_coordinator.show_wave_progress()
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		if runtime_activation_deferred:
-			call_deferred("prepare_shared_runtime_data_and_complete")
+			call_deferred(
+				"prepare_shared_runtime_data_and_complete",
+				preparation_generation
+			)
 		else:
-			mark_runtime_preparation_complete()
+			mark_runtime_preparation_complete(preparation_generation)
 	elif auto_start_waves or runtime_activation_deferred:
-		_schedule_enemy_navigation_prewarm()
+		_schedule_enemy_navigation_prewarm(preparation_generation)
+
+
+func _fail_tower_runtime_preparation(
+	preparation_generation: int,
+	reason: String
+) -> void:
+	# 静态场景契约失败与线程预热失败共享同一加载终态，不再静默等待超时。
+	mark_runtime_preparation_failed(preparation_generation, reason)
+	set_process(false)
+	set_physics_process(false)
 
 
 func _on_runtime_activated() -> void:
@@ -919,18 +921,26 @@ func _configure_timers() -> void:
 	state_timer.wait_time = 1.0
 
 
-func prepare_shared_runtime_data_and_complete() -> void:
+func prepare_shared_runtime_data_and_complete(preparation_generation: int) -> void:
 	if prewarmer_coordinator != null:
-		await prewarmer_coordinator.prepare_shared_runtime_data_and_complete()
+		await prewarmer_coordinator.prepare_shared_runtime_data_and_complete(
+			preparation_generation
+		)
 
 
-func _can_continue_runtime_prewarm() -> bool:
-	return not runtime_prewarm_tearing_down and is_inside_tree()
+func _can_continue_runtime_prewarm(preparation_generation: int) -> bool:
+	return (
+		not runtime_prewarm_tearing_down
+		and is_inside_tree()
+		and is_runtime_preparation_generation_preparing(preparation_generation)
+	)
 
 
-func _schedule_enemy_navigation_prewarm() -> void:
+func _schedule_enemy_navigation_prewarm(preparation_generation: int) -> void:
 	if prewarmer_coordinator != null:
-		prewarmer_coordinator.schedule_enemy_navigation_prewarm()
+		prewarmer_coordinator.schedule_enemy_navigation_prewarm(
+			preparation_generation
+		)
 
 
 func _configure_xiaocong_fate_flow() -> bool:

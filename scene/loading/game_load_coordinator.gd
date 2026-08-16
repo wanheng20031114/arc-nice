@@ -107,6 +107,7 @@ var _request_generation := 0
 var _net_manager: NetManagerStore = null
 var _public_room_lease: PublicRoomLeaseStore = null
 var _multiplayer_failure_release_in_progress := false
+var _multiplayer_failure_release_token := 0
 var _back_navigation_in_progress := false
 
 
@@ -514,20 +515,10 @@ func _poll_scene_switch() -> void:
 	var current_scene := get_tree().current_scene
 	if current_scene == null or current_scene.scene_file_path != expected_scene_path:
 		return
-	if (
-		current_scene.has_method("is_runtime_preparation_complete")
-		and not bool(current_scene.call("is_runtime_preparation_complete"))
+	if not _poll_runtime_preparation_capability(
+		current_scene,
+		expected_scene_path
 	):
-		if current_scene.has_method("get_runtime_preparation_progress"):
-			var preparation := current_scene.call("get_runtime_preparation_progress") as Dictionary
-			var completed := int(preparation.get("completed", 0))
-			var total := maxi(int(preparation.get("total", 1)), 1)
-			stage_label.text = "正在预热战场"
-			detail_label.text = str(preparation.get("stage", "准备运行时缓存…"))
-			_target_progress = maxf(
-				_target_progress,
-				lerpf(0.88, SCENE_READY_PROGRESS, float(completed) / float(total))
-			)
 		return
 	_target_progress = SCENE_READY_PROGRESS
 	if _is_multiplayer_load:
@@ -544,9 +535,63 @@ func _poll_scene_switch() -> void:
 		):
 			_complete_loading()
 	else:
-		if current_scene.has_method("activate_runtime"):
-			current_scene.call("activate_runtime")
+		(current_scene as RuntimePreparationProvider).activate_runtime()
 		_complete_loading()
+
+
+func _poll_runtime_preparation_capability(
+	current_scene: Node,
+	expected_scene_path: String
+) -> bool:
+	var provider := current_scene as RuntimePreparationProvider
+	if provider == null:
+		_freeze_failed_runtime_scene(current_scene)
+		_show_error(
+			"目标场景缺少强类型运行时准备能力：%s" % expected_scene_path
+		)
+		return false
+	var preparation := provider.get_runtime_preparation_snapshot()
+	if preparation.generation <= 0:
+		_freeze_failed_runtime_scene(current_scene)
+		_show_error(
+			"目标场景返回无效运行时准备 generation：%s" % expected_scene_path
+		)
+		return false
+	match preparation.state:
+		RuntimePreparationProvider.PreparationState.PREPARING:
+			var total := maxi(preparation.total, 1)
+			stage_label.text = "正在预热战场"
+			detail_label.text = preparation.stage
+			_target_progress = maxf(
+				_target_progress,
+				lerpf(
+					0.88,
+					SCENE_READY_PROGRESS,
+					float(preparation.completed) / float(total)
+				)
+			)
+			return false
+		RuntimePreparationProvider.PreparationState.READY:
+			return true
+		RuntimePreparationProvider.PreparationState.FAILED:
+			_freeze_failed_runtime_scene(current_scene)
+			_show_error(preparation.failure_reason)
+			return false
+		_:
+			_freeze_failed_runtime_scene(current_scene)
+			_show_error(
+				"目标场景返回未知运行时准备状态：%s" % expected_scene_path
+			)
+			return false
+
+
+func _freeze_failed_runtime_scene(current_scene: Node) -> void:
+	if current_scene == null or not is_instance_valid(current_scene):
+		return
+	# 未实现 Provider 的未知场景不会自行冻结；错误遮罩出现前同步停掉根节点与物理回调。
+	current_scene.process_mode = Node.PROCESS_MODE_DISABLED
+	current_scene.set_process(false)
+	current_scene.set_physics_process(false)
 
 
 func _update_progress_visual(delta: float) -> void:
@@ -647,11 +692,17 @@ func _finish_after_minimum_duration(generation: int) -> void:
 
 func _show_error(message: String) -> void:
 	var retry_request: LoadRequest = null
+	var failed_attempt_generation := _request_generation
 	if _active_attempt != null:
+		failed_attempt_generation = _active_attempt.generation
 		_is_multiplayer_load = _active_attempt.request.multiplayer_load
 		if not _active_attempt.request.multiplayer_load:
 			retry_request = _active_attempt.request.duplicate_request()
+	var failed_session_incarnation := 0
+	if _is_multiplayer_load and _net_manager != null:
+		failed_session_incarnation = _net_manager.get_game_session_incarnation()
 	_invalidate_and_release_active_attempt(&"failed")
+	var failed_release_fence_generation := _request_generation
 	_clear_failed_retry_request()
 	_failed_retry_request = retry_request
 	_state = LoadState.FAILED
@@ -662,17 +713,71 @@ func _show_error(message: String) -> void:
 	action_row.show()
 	overlay.show()
 	loading_failed.emit(message)
-	if _is_multiplayer_load and not _multiplayer_failure_release_in_progress:
+	if _is_multiplayer_load:
+		_multiplayer_failure_release_token += 1
+		var release_token := _multiplayer_failure_release_token
 		_multiplayer_failure_release_in_progress = true
-		call_deferred("_release_failed_multiplayer_load")
+		call_deferred(
+			"_release_failed_multiplayer_load",
+			release_token,
+			failed_attempt_generation,
+			failed_release_fence_generation,
+			failed_session_incarnation
+		)
 
 
-func _release_failed_multiplayer_load() -> void:
-	# 加载失败已经不能继续占有目录成员；清理有界结束后才清本地会话。
+func _release_failed_multiplayer_load(
+	release_token: int,
+	failed_attempt_generation: int,
+	failed_release_fence_generation: int,
+	failed_session_incarnation: int
+) -> void:
+	# 旧失败清理可能跨越 HTTP await；加载 generation 与会话 incarnation 必须同时匹配。
+	if not _is_current_failed_multiplayer_release(
+		release_token,
+		failed_attempt_generation,
+		failed_release_fence_generation,
+		failed_session_incarnation
+	):
+		_finish_failed_multiplayer_release(release_token)
+		return
 	if _public_room_lease != null:
 		await _public_room_lease.release_current_and_wait(&"multiplayer_load_failed")
+	if not _is_current_failed_multiplayer_release(
+		release_token,
+		failed_attempt_generation,
+		failed_release_fence_generation,
+		failed_session_incarnation
+	):
+		_finish_failed_multiplayer_release(release_token)
+		return
 	if _net_manager != null and _net_manager.is_multiplayer_active():
 		_net_manager.disconnect_from_game()
+	_finish_failed_multiplayer_release(release_token)
+
+
+func _is_current_failed_multiplayer_release(
+	release_token: int,
+	failed_attempt_generation: int,
+	failed_release_fence_generation: int,
+	failed_session_incarnation: int
+) -> bool:
+	return (
+		is_inside_tree()
+		and release_token > 0
+		and release_token == _multiplayer_failure_release_token
+		and _state == LoadState.FAILED
+		and failed_release_fence_generation > failed_attempt_generation
+		and _request_generation == failed_release_fence_generation
+		and _net_manager != null
+		and _net_manager.get_game_session_incarnation()
+		== failed_session_incarnation
+	)
+
+
+func _finish_failed_multiplayer_release(release_token: int) -> void:
+	if release_token != _multiplayer_failure_release_token:
+		return
 	_multiplayer_failure_release_in_progress = false
 
 

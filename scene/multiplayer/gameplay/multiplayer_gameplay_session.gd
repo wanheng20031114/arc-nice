@@ -1,5 +1,5 @@
 @abstract
-extends Node2D
+extends RuntimePreparationProvider
 class_name MultiplayerGameplaySession
 
 const MultiplayerReconnectTypesScript := preload(

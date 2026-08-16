@@ -379,14 +379,26 @@ func _activate_battle_when_prepared(
 	battle: RogueCombatGame,
 	occurrence_key: String
 ) -> void:
-	if not battle.is_runtime_preparation_complete():
-		await battle.runtime_preparation_completed
+	var preparation := battle.get_runtime_preparation_snapshot()
+	var preparation_generation := preparation.generation
+	while preparation.state == RuntimePreparationProvider.PreparationState.PREPARING:
+		await battle.runtime_preparation_state_changed
+		if battle != active_battle or not is_instance_valid(battle):
+			return
+		preparation = battle.get_runtime_preparation_snapshot()
+		# 旧战斗的等待协程不能接管复用节点后开启的新准备周期。
+		if preparation.generation != preparation_generation:
+			return
 	if (
 		battle != active_battle
 		or not is_instance_valid(battle)
 		or occurrence_key != _active_occurrence_key
 		or _settling_outcome
 	):
+		return
+	if preparation.state != RuntimePreparationProvider.PreparationState.READY:
+		_dispose_active_battle()
+		_recover_route_from_start_failure(occurrence_key)
 		return
 	route.complete_briefing_entry(occurrence_key)
 	var entry_revealed := await route.reveal_normal_combat_entry(

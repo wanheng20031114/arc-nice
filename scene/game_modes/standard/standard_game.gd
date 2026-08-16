@@ -519,7 +519,7 @@ func _initialize_mode_player_ui() -> void:
 		)
 
 
-func _initialize_mode_runtime_content() -> void:
+func _initialize_mode_runtime_content(_preparation_generation: int) -> void:
 	_set_merchant_active(false)
 	boss_coordinator.configure_existing_runtime_nodes()
 	prewarmer_coordinator.configure_boss_flow_enabled(_uses_linglan_boss_flow())
@@ -645,9 +645,19 @@ func _on_boss_step_completed() -> void:
 		_complete_current_step()
 
 
-func _prewarm_mode_runtime_data() -> void:
+func _prewarm_mode_runtime_data(preparation_generation: int) -> void:
+	if prewarmer_coordinator == null:
+		mark_runtime_preparation_failed(
+			preparation_generation,
+			"普通模式缺少预热协调器，无法准备运行时资源。"
+		)
+		return
 	prewarmer_coordinator.configure_boss_flow_enabled(_uses_linglan_boss_flow())
-	await prewarmer_coordinator.prewarm_boss_runtime_resources()
+	if not await prewarmer_coordinator.prewarm_boss_runtime_resources():
+		mark_runtime_preparation_failed(
+			preparation_generation,
+			prewarmer_coordinator.runtime_preparation_failure_reason
+		)
 
 
 func _on_multiplayer_peer_restored(old_peer_id: int, new_peer_id: int) -> void:

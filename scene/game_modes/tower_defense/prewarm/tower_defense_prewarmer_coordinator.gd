@@ -148,8 +148,11 @@ func is_bound() -> bool:
 	)
 
 
-func can_continue_runtime_prewarm() -> bool:
-	return is_bound() and runtime._can_continue_runtime_prewarm()
+func can_continue_runtime_prewarm(preparation_generation: int) -> bool:
+	return (
+		is_bound()
+		and runtime._can_continue_runtime_prewarm(preparation_generation)
+	)
 
 
 func prewarm_enemy_visual_resources() -> void:
@@ -237,35 +240,42 @@ func register_runtime_object_pools(expanded_projectile_prewarm: bool) -> void:
 	session_object_pool.register_scene(LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE, 16, 96)
 
 
-func schedule_boss_runtime_scene_loads() -> void:
+func schedule_boss_runtime_scene_loads(preparation_generation: int) -> void:
 	if not is_bound() or DisplayServer.get_name() == "headless":
 		return
 	await get_tree().process_frame
-	if not runtime._can_continue_runtime_prewarm():
+	if not runtime._can_continue_runtime_prewarm(preparation_generation):
 		return
 	await get_tree().process_frame
-	if runtime._can_continue_runtime_prewarm():
-		boss_coordinator.request_runtime_scene_loads()
+	if runtime._can_continue_runtime_prewarm(preparation_generation):
+		boss_coordinator.request_runtime_scene_loads(preparation_generation)
 
 
-func schedule_enemy_navigation_prewarm() -> void:
+func schedule_enemy_navigation_prewarm(preparation_generation: int) -> void:
 	if not is_bound() or runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return
 	if navigation_prewarmed or navigation_prewarm_requested:
 		return
+	if not runtime._can_continue_runtime_prewarm(preparation_generation):
+		return
 	navigation_prewarm_requested = true
-	call_deferred("_run_scheduled_enemy_navigation_prewarm")
+	call_deferred(
+		"_run_scheduled_enemy_navigation_prewarm",
+		preparation_generation
+	)
 
 
-func prepare_shared_runtime_data_and_complete() -> void:
+func prepare_shared_runtime_data_and_complete(preparation_generation: int) -> void:
 	if not is_bound():
 		return
-	await _prewarm_tower_shared_runtime_data()
-	if not runtime._can_continue_runtime_prewarm():
+	await _prewarm_tower_shared_runtime_data(preparation_generation)
+	if not runtime._can_continue_runtime_prewarm(preparation_generation):
 		return
-	await _prewarm_plant_lifecycle_shader()
-	if runtime._can_continue_runtime_prewarm():
-		runtime.mark_runtime_preparation_complete()
+	await _prewarm_plant_lifecycle_shader(preparation_generation)
+	if (
+		runtime._can_continue_runtime_prewarm(preparation_generation)
+	):
+		runtime.mark_runtime_preparation_complete(preparation_generation)
 
 
 func ensure_navigation_prewarmed_sync() -> void:
@@ -281,41 +291,52 @@ func ensure_navigation_prewarmed_sync() -> void:
 	navigation_prewarmed = true
 
 
-func _run_scheduled_enemy_navigation_prewarm() -> void:
+func _run_scheduled_enemy_navigation_prewarm(preparation_generation: int) -> void:
 	await get_tree().process_frame
-	if not runtime._can_continue_runtime_prewarm():
+	if not runtime._can_continue_runtime_prewarm(preparation_generation):
 		return
 	await get_tree().process_frame
-	if not runtime._can_continue_runtime_prewarm():
+	if not runtime._can_continue_runtime_prewarm(preparation_generation):
 		return
 	navigation_prewarm_requested = false
 	if navigation_prewarmed:
-		await _finish_shared_runtime_prewarm()
+		await _finish_shared_runtime_prewarm(preparation_generation)
 		return
-	await _prewarm_enemy_navigation_grids_staged()
-	if not runtime._can_continue_runtime_prewarm():
+	await _prewarm_enemy_navigation_grids_staged(preparation_generation)
+	if not runtime._can_continue_runtime_prewarm(preparation_generation):
 		return
 	navigation_prewarmed = true
-	await _finish_shared_runtime_prewarm()
+	await _finish_shared_runtime_prewarm(preparation_generation)
 
 
-func _finish_shared_runtime_prewarm() -> void:
-	await _prewarm_tower_shared_runtime_data()
-	if not runtime._can_continue_runtime_prewarm():
+func _finish_shared_runtime_prewarm(preparation_generation: int) -> void:
+	await _prewarm_tower_shared_runtime_data(preparation_generation)
+	if not runtime._can_continue_runtime_prewarm(preparation_generation):
 		return
-	await _prewarm_plant_lifecycle_shader()
-	if runtime._can_continue_runtime_prewarm():
-		runtime.mark_runtime_preparation_complete()
+	await _prewarm_plant_lifecycle_shader(preparation_generation)
+	if (
+		runtime._can_continue_runtime_prewarm(preparation_generation)
+	):
+		runtime.mark_runtime_preparation_complete(preparation_generation)
 
 
-func _prewarm_tower_shared_runtime_data() -> void:
-	await runtime.prewarm_shared_runtime_data()
-	if not runtime._can_continue_runtime_prewarm():
+func _prewarm_tower_shared_runtime_data(preparation_generation: int) -> void:
+	await runtime.prewarm_shared_runtime_data(preparation_generation)
+	if not runtime._can_continue_runtime_prewarm(preparation_generation):
 		return
-	await boss_coordinator.prewarm_runtime_resources()
-	if not runtime._can_continue_runtime_prewarm():
+	if not await boss_coordinator.prewarm_runtime_resources(preparation_generation):
+		runtime.mark_runtime_preparation_failed(
+			preparation_generation,
+			boss_coordinator.runtime_preparation_failure_reason
+		)
 		return
-	await fate_coordinator.prewarm_elite_enemy_configs()
+	if not runtime._can_continue_runtime_prewarm(preparation_generation):
+		return
+	if not await fate_coordinator.prewarm_elite_enemy_configs():
+		runtime.mark_runtime_preparation_failed(
+			preparation_generation,
+			fate_coordinator.runtime_preparation_failure_reason
+		)
 
 
 func _prewarm_enemy_navigation_grids() -> void:
@@ -337,19 +358,32 @@ func _prewarm_enemy_navigation_grids() -> void:
 			)
 
 
-func _prewarm_enemy_navigation_grids_staged() -> void:
-	runtime.update_runtime_preparation_progress("分析塔防敌人体型…", 0, 1)
+func _prewarm_enemy_navigation_grids_staged(
+	preparation_generation: int
+) -> void:
+	runtime.update_runtime_preparation_progress(
+		preparation_generation,
+		"分析塔防敌人体型…",
+		0,
+		1
+	)
 	await get_tree().process_frame
-	if not runtime._can_continue_runtime_prewarm() or not tower_grid_pathfinder.is_built:
+	if (
+		not runtime._can_continue_runtime_prewarm(preparation_generation)
+		or not tower_grid_pathfinder.is_built
+	):
 		return
 
-	var profiles := await _collect_unique_enemy_profiles_staged()
-	if not runtime._can_continue_runtime_prewarm():
+	var profiles := await _collect_unique_enemy_profiles_staged(
+		preparation_generation
+	)
+	if not runtime._can_continue_runtime_prewarm(preparation_generation):
 		return
 	var navigation_targets := _collect_navigation_targets()
 	var total_steps := maxi(profiles.size() * (1 + navigation_targets.size()), 1)
 	var completed_steps := 0
 	runtime.update_runtime_preparation_progress(
+		preparation_generation,
 		"预热塔防寻路网格…",
 		completed_steps,
 		total_steps
@@ -361,16 +395,17 @@ func _prewarm_enemy_navigation_grids_staged() -> void:
 			half_extents,
 			traversal_types
 		)
-		if not runtime._can_continue_runtime_prewarm():
+		if not runtime._can_continue_runtime_prewarm(preparation_generation):
 			return
 		completed_steps += 1
 		runtime.update_runtime_preparation_progress(
+			preparation_generation,
 			"预热塔防寻路网格…",
 			completed_steps,
 			total_steps
 		)
 		await get_tree().process_frame
-		if not runtime._can_continue_runtime_prewarm():
+		if not runtime._can_continue_runtime_prewarm(preparation_generation):
 			return
 		for navigation_target in navigation_targets:
 			if navigation_target == null or not is_instance_valid(navigation_target):
@@ -381,16 +416,17 @@ func _prewarm_enemy_navigation_grids_staged() -> void:
 				half_extents,
 				traversal_types
 			)
-			if not runtime._can_continue_runtime_prewarm():
+			if not runtime._can_continue_runtime_prewarm(preparation_generation):
 				return
 			completed_steps += 1
 			runtime.update_runtime_preparation_progress(
+				preparation_generation,
 				"预热 Home 防线…",
 				completed_steps,
 				total_steps
 			)
 			await get_tree().process_frame
-			if not runtime._can_continue_runtime_prewarm():
+			if not runtime._can_continue_runtime_prewarm(preparation_generation):
 				return
 
 
@@ -432,7 +468,9 @@ func _collect_unique_enemy_profiles() -> Array[Dictionary]:
 	return profiles
 
 
-func _collect_unique_enemy_profiles_staged() -> Array[Dictionary]:
+func _collect_unique_enemy_profiles_staged(
+	preparation_generation: int
+) -> Array[Dictionary]:
 	var profiles: Array[Dictionary] = []
 	var seen_scene_keys: Dictionary = {}
 	var seen_extent_keys: Dictionary = {}
@@ -453,7 +491,7 @@ func _collect_unique_enemy_profiles_staged() -> Array[Dictionary]:
 			seen_scene_keys[scene_key] = true
 			var body_half_extents := _get_enemy_scene_body_half_extents(enemy_config)
 			await get_tree().process_frame
-			if not runtime._can_continue_runtime_prewarm():
+			if not runtime._can_continue_runtime_prewarm(preparation_generation):
 				return profiles
 			if body_half_extents == Vector2.ZERO:
 				continue
@@ -495,9 +533,9 @@ func _get_enemy_scene_body_half_extents(enemy_config: EnemyConfig) -> Vector2:
 	return body_half_extents
 
 
-func _prewarm_plant_lifecycle_shader() -> void:
+func _prewarm_plant_lifecycle_shader(preparation_generation: int) -> void:
 	if (
-		not runtime._can_continue_runtime_prewarm()
+		not runtime._can_continue_runtime_prewarm(preparation_generation)
 		or plant_lifecycle_shader_prewarmed
 		or not runtime.runtime_activation_deferred
 		or plant_lifecycle_shader_prewarm == null
@@ -505,7 +543,12 @@ func _prewarm_plant_lifecycle_shader() -> void:
 		or bamboo_mortar_glow_shader_prewarm == null
 	):
 		return
-	runtime.update_runtime_preparation_progress("预热植物生命周期特效…", 0, 1)
+	runtime.update_runtime_preparation_progress(
+		preparation_generation,
+		"预热植物生命周期特效…",
+		0,
+		1
+	)
 	var prewarm_position := map_camera.get_screen_center_position()
 	plant_lifecycle_shader_prewarm.global_position = prewarm_position
 	bamboo_mortar_lifecycle_shader_prewarm.global_position = prewarm_position
@@ -545,7 +588,7 @@ func _prewarm_plant_lifecycle_shader() -> void:
 		await get_tree().process_frame
 	else:
 		await RenderingServer.frame_post_draw
-	if not runtime._can_continue_runtime_prewarm():
+	if not runtime._can_continue_runtime_prewarm(preparation_generation):
 		return
 	plant_lifecycle_shader_prewarm.hide()
 	bamboo_mortar_lifecycle_shader_prewarm.hide()
@@ -560,4 +603,9 @@ func _prewarm_plant_lifecycle_shader() -> void:
 	if not is_inside_tree():
 		return
 	plant_lifecycle_shader_prewarmed = true
-	runtime.update_runtime_preparation_progress("预热植物生命周期特效…", 1, 1)
+	runtime.update_runtime_preparation_progress(
+		preparation_generation,
+		"预热植物生命周期特效…",
+		1,
+		1
+	)
