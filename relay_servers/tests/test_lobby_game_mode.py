@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -19,7 +19,12 @@ from relay_servers.lobby_api.main import (
     QuickMatchRequest,
     UpdateRoomRequest,
 )
-from relay_servers.lobby_api.models import GameMode, RoomInfo, RoomStatus
+from relay_servers.lobby_api.models import (
+    RELEASE_GAME_MODES,
+    GameMode,
+    RoomInfo,
+    RoomStatus,
+)
 from relay_servers.lobby_api.room_manager import RoomManager
 
 
@@ -34,6 +39,11 @@ class LobbyGameModeTests(unittest.TestCase):
         GameMode.TEST_ARENA_P1C,
         GameMode.TEST_ARENA_P1D,
         GameMode.TEST_ARENA_P1E,
+    )
+    HIDDEN_GAME_MODES = tuple(
+        game_mode
+        for game_mode in ALL_GAME_MODES
+        if game_mode not in RELEASE_GAME_MODES
     )
 
     def _create_joinable_room(
@@ -129,177 +139,297 @@ class LobbyGameModeTests(unittest.TestCase):
                     game_mode.value,
                 )
 
-    def test_join_and_quick_match_never_cross_modes(self) -> None:
-        manager = RoomManager()
-        standard_room = self._create_joinable_room(
-            manager,
-            "StandardHost",
-            GameMode.STANDARD,
+    def test_release_admission_single_source_has_exactly_three_modes(self) -> None:
+        self.assertEqual(set(self.ALL_GAME_MODES), set(GameMode))
+        self.assertEqual(
+            RELEASE_GAME_MODES,
+            frozenset(
+                {
+                    GameMode.STANDARD,
+                    GameMode.TOWER_DEFENSE,
+                    GameMode.TEST_ARENA_P3,
+                }
+            ),
         )
-        tower_room = self._create_joinable_room(
+        self.assertEqual(len(self.HIDDEN_GAME_MODES), 6)
+
+    def test_every_release_mode_can_create_and_quick_match(self) -> None:
+        for game_mode in RELEASE_GAME_MODES:
+            with self.subTest(game_mode=game_mode):
+                manager = RoomManager()
+                launcher = MagicMock()
+                launcher.reap_exited.return_value = []
+
+                async def freeze_created_room(
+                    room_id: str,
+                    _host_token: str,
+                    host_name: str,
+                ) -> dict:
+                    room = manager.get_room(room_id)
+                    assert room is not None
+                    return room.to_join_dict(
+                        "127.0.0.1",
+                        include_host_token=True,
+                        member_name=host_name,
+                    )
+
+                ensure_relay = AsyncMock(side_effect=freeze_created_room)
+                with (
+                    patch.object(lobby_main, "room_mgr", manager),
+                    patch.object(lobby_main, "relay_launcher", launcher),
+                    patch.object(
+                        lobby_main,
+                        "_ensure_room_relay",
+                        ensure_relay,
+                    ),
+                ):
+                    created = asyncio.run(
+                        lobby_main.create_room(
+                            CreateRoomRequest(
+                                host_name="ReleaseHost",
+                                game_mode=game_mode,
+                            )
+                        )
+                    )
+                    room = manager.get_room(created["room_id"])
+                    assert room is not None
+                    room.relay_port = 40001
+                    room.relay_pid = 10001
+                    room.relay_instance_id = 1
+                    room.host_peer_id = 1
+                    room.status = RoomStatus.WAITING
+
+                    matched = asyncio.run(
+                        lobby_main.quick_match(
+                            QuickMatchRequest(
+                                player_name="ReleaseClient",
+                                game_mode=game_mode,
+                            )
+                        )
+                    )
+
+                self.assertEqual(created["game_mode"], game_mode.value)
+                self.assertEqual(matched["room_id"], room.id)
+                self.assertEqual(matched["game_mode"], game_mode.value)
+                self.assertIn("ReleaseClient", room.players)
+                ensure_relay.assert_awaited_once()
+
+    def test_hidden_create_and_quick_match_return_403_without_side_effects(self) -> None:
+        manager = RoomManager()
+        launcher = MagicMock()
+        launcher.stop_all.return_value = []
+        ensure_relay = AsyncMock()
+
+        with (
+            patch.object(
+                manager,
+                "create_room",
+                wraps=manager.create_room,
+            ) as create_room_spy,
+            patch.object(
+                manager,
+                "find_match",
+                wraps=manager.find_match,
+            ) as find_match_spy,
+            patch.object(lobby_main, "room_mgr", manager),
+            patch.object(lobby_main, "relay_launcher", launcher),
+            patch.object(lobby_main, "_ensure_room_relay", ensure_relay),
+            TestClient(lobby_main.app) as client,
+        ):
+            for game_mode in self.HIDDEN_GAME_MODES:
+                with self.subTest(game_mode=game_mode):
+                    create_response = client.post(
+                        "/rooms",
+                        json={
+                            "host_name": "HiddenHost",
+                            "game_mode": game_mode.value,
+                        },
+                    )
+                    quick_response = client.post(
+                        "/matchmaking/quick",
+                        json={
+                            "player_name": "HiddenQuick",
+                            "game_mode": game_mode.value,
+                        },
+                    )
+                    self.assertEqual(create_response.status_code, 403)
+                    self.assertEqual(quick_response.status_code, 403)
+                    self.assertIn("未向正式大厅开放", create_response.json()["detail"])
+                    self.assertIn("未向正式大厅开放", quick_response.json()["detail"])
+
+        self.assertEqual(manager._rooms, {})
+        create_room_spy.assert_not_called()
+        find_match_spy.assert_not_called()
+        ensure_relay.assert_not_awaited()
+        launcher.start_new_relay.assert_not_called()
+        launcher.start_relay.assert_not_called()
+
+    def test_join_rejects_mode_mismatch_and_every_hidden_room_path(self) -> None:
+        manager = RoomManager()
+        release_room = self._create_joinable_room(
             manager,
-            "TowerHost",
+            "ReleaseHost",
             GameMode.TOWER_DEFENSE,
         )
-        test_p1_room = self._create_joinable_room(
+        hidden_room = self._create_joinable_room(
             manager,
-            "TestP1Host",
+            "HiddenHost",
             GameMode.TEST_ARENA_P1,
         )
-        test_p2_room = self._create_joinable_room(
-            manager,
-            "TestP2Host",
-            GameMode.TEST_ARENA_P2,
-        )
-        test_p3_room = self._create_joinable_room(
-            manager,
-            "TestP3Host",
-            GameMode.TEST_ARENA_P3,
-        )
-        test_p1b_room = self._create_joinable_room(
-            manager,
-            "TestP1BHost",
-            GameMode.TEST_ARENA_P1B,
-        )
-        test_p1c_room = self._create_joinable_room(
-            manager,
-            "TestP1CHost",
-            GameMode.TEST_ARENA_P1C,
-        )
-        test_p1d_room = self._create_joinable_room(
-            manager,
-            "TestP1DHost",
-            GameMode.TEST_ARENA_P1D,
-        )
-        test_p1e_room = self._create_joinable_room(
-            manager,
-            "TestP1EHost",
-            GameMode.TEST_ARENA_P1E,
-        )
+        launcher = MagicMock()
+        launcher.reap_exited.return_value = []
 
-        expected_rooms = {
-            GameMode.STANDARD: standard_room,
-            GameMode.TOWER_DEFENSE: tower_room,
-            GameMode.TEST_ARENA_P1: test_p1_room,
-            GameMode.TEST_ARENA_P2: test_p2_room,
-            GameMode.TEST_ARENA_P3: test_p3_room,
-            GameMode.TEST_ARENA_P1B: test_p1b_room,
-            GameMode.TEST_ARENA_P1C: test_p1c_room,
-            GameMode.TEST_ARENA_P1D: test_p1d_room,
-            GameMode.TEST_ARENA_P1E: test_p1e_room,
-        }
-        for game_mode, expected_room in expected_rooms.items():
-            with self.subTest(game_mode=game_mode):
-                self.assertIs(
-                    manager.find_match(game_mode),
-                    expected_room,
-                )
-
-        self.assertIsNone(
-            manager.join_room(
-                tower_room.id,
-                "WrongMode",
-                GameMode.STANDARD,
-            )
-        )
-        self.assertNotIn("WrongMode", tower_room.players)
-        self.assertIsNone(
-            manager.join_room(
-                test_p1_room.id,
-                "P1BMismatch",
-                GameMode.TEST_ARENA_P1B,
-            )
-        )
-        self.assertNotIn("P1BMismatch", test_p1_room.players)
-
-        with patch.object(lobby_main, "room_mgr", manager):
-            quick_result = asyncio.run(
-                lobby_main.quick_match(
-                    QuickMatchRequest(
-                        player_name="TowerClient",
-                        game_mode=GameMode.TOWER_DEFENSE,
-                    )
-                )
-            )
-            self.assertEqual(quick_result["room_id"], tower_room.id)
-            self.assertEqual(quick_result["game_mode"], "tower_defense")
-
-            test_p2_result = asyncio.run(
-                lobby_main.quick_match(
-                    QuickMatchRequest(
-                        player_name="TestP2Client",
-                        game_mode=GameMode.TEST_ARENA_P2,
-                    )
-                )
-            )
-            self.assertEqual(test_p2_result["room_id"], test_p2_room.id)
-            self.assertEqual(test_p2_result["game_mode"], "test_arena_p2")
-
-            test_p3_result = asyncio.run(
-                lobby_main.quick_match(
-                    QuickMatchRequest(
-                        player_name="TestP3Client",
-                        game_mode=GameMode.TEST_ARENA_P3,
-                    )
-                )
-            )
-            self.assertEqual(test_p3_result["room_id"], test_p3_room.id)
-            self.assertEqual(test_p3_result["game_mode"], "test_arena_p3")
-
-            test_p1b_result = asyncio.run(
-                lobby_main.quick_match(
-                    QuickMatchRequest(
-                        player_name="TestP1BClient",
-                        game_mode=GameMode.TEST_ARENA_P1B,
-                    )
-                )
-            )
-            self.assertEqual(test_p1b_result["room_id"], test_p1b_room.id)
-            self.assertEqual(test_p1b_result["game_mode"], "test_arena_p1b")
-
-            test_p1c_result = asyncio.run(
-                lobby_main.quick_match(
-                    QuickMatchRequest(
-                        player_name="TestP1CClient",
-                        game_mode=GameMode.TEST_ARENA_P1C,
-                    )
-                )
-            )
-            self.assertEqual(test_p1c_result["room_id"], test_p1c_room.id)
-            self.assertEqual(test_p1c_result["game_mode"], "test_arena_p1c")
-
-            test_p1d_result = asyncio.run(
-                lobby_main.quick_match(
-                    QuickMatchRequest(
-                        player_name="TestP1DClient",
-                        game_mode=GameMode.TEST_ARENA_P1D,
-                    )
-                )
-            )
-            self.assertEqual(test_p1d_result["room_id"], test_p1d_room.id)
-            self.assertEqual(test_p1d_result["game_mode"], "test_arena_p1d")
-
-            test_p1e_result = asyncio.run(
-                lobby_main.quick_match(
-                    QuickMatchRequest(
-                        player_name="TestP1EClient",
-                        game_mode=GameMode.TEST_ARENA_P1E,
-                    )
-                )
-            )
-            self.assertEqual(test_p1e_result["room_id"], test_p1e_room.id)
-            self.assertEqual(test_p1e_result["game_mode"], "test_arena_p1e")
-
-            with self.assertRaises(HTTPException):
+        with (
+            patch.object(lobby_main, "room_mgr", manager),
+            patch.object(lobby_main, "relay_launcher", launcher),
+        ):
+            with self.assertRaises(HTTPException) as mismatch:
                 asyncio.run(
                     lobby_main.join_room(
-                        standard_room.id,
+                        release_room.id,
                         JoinRoomRequest(
-                            player_name="MismatchClient",
-                            game_mode=GameMode.TOWER_DEFENSE,
+                            player_name="Mismatch",
+                            game_mode=GameMode.STANDARD,
                         ),
                     )
                 )
+            with self.assertRaises(HTTPException) as hidden_request:
+                asyncio.run(
+                    lobby_main.join_room(
+                        hidden_room.id,
+                        JoinRoomRequest(
+                            player_name="HiddenWire",
+                            game_mode=GameMode.TEST_ARENA_P1,
+                        ),
+                    )
+                )
+            with self.assertRaises(HTTPException) as disguised_request:
+                asyncio.run(
+                    lobby_main.join_room(
+                        hidden_room.id,
+                        JoinRoomRequest(
+                            player_name="ReleaseWire",
+                            game_mode=GameMode.STANDARD,
+                        ),
+                    )
+                )
+
+        self.assertEqual(mismatch.exception.status_code, 404)
+        self.assertEqual(hidden_request.exception.status_code, 403)
+        self.assertEqual(disguised_request.exception.status_code, 403)
+        self.assertNotIn("Mismatch", release_room.players)
+        self.assertNotIn("HiddenWire", hidden_room.players)
+        self.assertNotIn("ReleaseWire", hidden_room.players)
+
+    def test_raw_rest_cannot_join_hidden_historical_room(self) -> None:
+        manager = RoomManager()
+        hidden_room = self._create_joinable_room(
+            manager,
+            "HiddenHost",
+            GameMode.TEST_ARENA_P1E,
+        )
+        launcher = MagicMock()
+        launcher.stop_all.return_value = []
+
+        with (
+            patch.object(lobby_main, "room_mgr", manager),
+            patch.object(lobby_main, "relay_launcher", launcher),
+            TestClient(lobby_main.app) as client,
+        ):
+            hidden_wire = client.post(
+                f"/rooms/{hidden_room.id}/join",
+                json={
+                    "player_name": "HiddenWire",
+                    "game_mode": GameMode.TEST_ARENA_P1E.value,
+                },
+            )
+            release_wire = client.post(
+                f"/rooms/{hidden_room.id}/join",
+                json={
+                    "player_name": "ReleaseWire",
+                    "game_mode": GameMode.STANDARD.value,
+                },
+            )
+
+        self.assertEqual(hidden_wire.status_code, 403)
+        self.assertEqual(release_wire.status_code, 403)
+        self.assertNotIn("HiddenWire", hidden_room.players)
+        self.assertNotIn("ReleaseWire", hidden_room.players)
+        launcher.start_new_relay.assert_not_called()
+
+    def test_hidden_history_is_not_listed_or_advanced_but_can_be_destroyed(self) -> None:
+        manager = RoomManager()
+        release_room = self._create_joinable_room(
+            manager,
+            "ReleaseHost",
+            GameMode.STANDARD,
+        )
+        hidden_room = self._create_joinable_room(
+            manager,
+            "HiddenHost",
+            GameMode.TEST_ARENA_P2,
+        )
+        launcher = MagicMock()
+        launcher.reap_exited.return_value = []
+
+        with (
+            patch.object(lobby_main, "room_mgr", manager),
+            patch.object(lobby_main, "relay_launcher", launcher),
+        ):
+            listed = asyncio.run(lobby_main.list_rooms())
+            with self.assertRaises(HTTPException) as ready_error:
+                asyncio.run(
+                    lobby_main.host_ready(
+                        hidden_room.id,
+                        HostReadyRequest(
+                            host_token=hidden_room.host_token,
+                            host_peer_id=2,
+                        ),
+                    )
+                )
+            with self.assertRaises(HTTPException) as status_error:
+                asyncio.run(
+                    lobby_main.update_room(
+                        hidden_room.id,
+                        UpdateRoomRequest(
+                            status=RoomStatus.IN_GAME.value,
+                            host_token=hidden_room.host_token,
+                        ),
+                    )
+                )
+            with self.assertRaises(HTTPException) as relay_error:
+                asyncio.run(
+                    lobby_main.request_relay(
+                        hidden_room.id,
+                        HostTokenRequest(host_token=hidden_room.host_token),
+                    )
+                )
+            with self.assertRaises(HTTPException) as keepalive_error:
+                asyncio.run(
+                    lobby_main.keep_room_alive(
+                        hidden_room.id,
+                        HostTokenRequest(host_token=hidden_room.host_token),
+                    )
+                )
+            peer_id_before_destroy = hidden_room.host_peer_id
+            status_before_destroy = hidden_room.status
+            destroyed = asyncio.run(
+                lobby_main.destroy_room(
+                    hidden_room.id,
+                    HostTokenRequest(host_token=hidden_room.host_token),
+                )
+            )
+
+        self.assertEqual([room["room_id"] for room in listed], [release_room.id])
+        self.assertEqual(ready_error.exception.status_code, 403)
+        self.assertEqual(status_error.exception.status_code, 403)
+        self.assertEqual(relay_error.exception.status_code, 403)
+        self.assertEqual(keepalive_error.exception.status_code, 403)
+        self.assertEqual(peer_id_before_destroy, 1)
+        self.assertEqual(status_before_destroy, RoomStatus.WAITING)
+        self.assertEqual(destroyed, {"status": "ok"})
+        self.assertIsNone(manager.get_room(hidden_room.id))
+        launcher.start_new_relay.assert_not_called()
 
     def test_join_response_issues_only_callers_private_member_token(self) -> None:
         manager = RoomManager()

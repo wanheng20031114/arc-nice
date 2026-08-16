@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from . import config
-from .models import GameMode, RoomStatus
+from .models import GameMode, RoomStatus, is_release_game_mode
 from .room_manager import (
     RelayRestartGrant,
     RelayStartGrant,
@@ -156,6 +156,25 @@ class HostReadyRequest(BaseModel):
 class QuickMatchRequest(BaseModel):
     player_name: str = Field(min_length=1, max_length=32)
     game_mode: GameMode = GameMode.STANDARD
+
+
+def _require_release_game_mode(game_mode: GameMode) -> None:
+    """拒绝只为协议兼容保留、尚未向正式大厅开放的模式。"""
+    if not is_release_game_mode(game_mode):
+        raise HTTPException(
+            status_code=403,
+            detail=f"游戏模式未向正式大厅开放: {game_mode.value}",
+        )
+
+
+async def _require_release_room(room_id: str) -> None:
+    """读取历史房间时 fail-close，同时保留各端点原有的缺失/鉴权语义。"""
+    room = room_mgr.get_room(room_id)
+    # get_room 会顺带判定到期并签发终止权，必须在任何返回分支提交账本。
+    await asyncio.to_thread(_flush_room_termination_grants)
+    if room is not None:
+        # 请求参数即使伪装成正式模式，也不能加入或推进隐藏历史房间。
+        _require_release_game_mode(room.game_mode)
 
 
 async def _ensure_room_relay(
@@ -385,7 +404,12 @@ async def health_check() -> dict:
 async def list_rooms() -> list[dict]:
     """获取所有可加入的房间列表。"""
     await asyncio.to_thread(_reconcile_exited_relays)
-    result = room_mgr.list_joinable_rooms()
+    # 历史隐藏模式仍可由数据模型序列化，但生产发现面只发布正式清单。
+    result = [
+        room
+        for room in room_mgr.list_joinable_rooms()
+        if is_release_game_mode(GameMode(room["game_mode"]))
+    ]
     await asyncio.to_thread(_flush_room_termination_grants)
     return result
 
@@ -393,6 +417,8 @@ async def list_rooms() -> list[dict]:
 @app.post("/rooms")
 async def create_room(req: CreateRoomRequest) -> dict:
     """创建新房间。"""
+    # 必须在创建 Room/Relay 之前准入，拒绝请求不能留下任何资源副作用。
+    _require_release_game_mode(req.game_mode)
     room_name = req.name if req.name else f"{req.host_name} 的房间"
 
     room = room_mgr.create_room(
@@ -412,6 +438,9 @@ async def create_room(req: CreateRoomRequest) -> dict:
 @app.post("/rooms/{room_id}/join")
 async def join_room(room_id: str, req: JoinRoomRequest) -> dict:
     """加入指定房间。"""
+    # 同时校验请求值和房间真实值：二者任一隐藏都不能借模式错配绕过。
+    _require_release_game_mode(req.game_mode)
+    await _require_release_room(room_id)
     await asyncio.to_thread(_reconcile_exited_relays)
     room = room_mgr.join_room(room_id, req.player_name, req.game_mode)
     await asyncio.to_thread(_flush_room_termination_grants)
@@ -435,6 +464,7 @@ async def join_room(room_id: str, req: JoinRoomRequest) -> dict:
 @app.post("/rooms/{room_id}/host_ready")
 async def host_ready(room_id: str, req: HostReadyRequest) -> dict:
     """房主已连接 Relay，登记真实 host peer id，并开放房间加入。"""
+    await _require_release_room(room_id)
     await asyncio.to_thread(_reconcile_exited_relays)
     room = room_mgr.mark_host_ready(room_id, req.host_token, req.host_peer_id)
     await asyncio.to_thread(_flush_room_termination_grants)
@@ -456,6 +486,7 @@ async def host_ready(room_id: str, req: HostReadyRequest) -> dict:
 @app.post("/rooms/{room_id}/keepalive")
 async def keep_room_alive(room_id: str, req: HostTokenRequest) -> dict:
     """房主续租房间，防止游戏中被空闲清理任务回收。"""
+    await _require_release_room(room_id)
     await asyncio.to_thread(_reconcile_exited_relays)
     relay_ref = room_mgr.get_authorized_relay_ref(room_id, req.host_token)
     await asyncio.to_thread(_flush_room_termination_grants)
@@ -508,6 +539,7 @@ async def leave_room(room_id: str, req: LeaveRoomRequest) -> dict:
 @app.patch("/rooms/{room_id}")
 async def update_room(room_id: str, req: UpdateRoomRequest) -> dict:
     """更新房间状态。"""
+    await _require_release_room(room_id)
     await asyncio.to_thread(_reconcile_exited_relays)
     try:
         status = RoomStatus(req.status)
@@ -524,6 +556,7 @@ async def update_room(room_id: str, req: UpdateRoomRequest) -> dict:
 @app.post("/rooms/{room_id}/request_relay")
 async def request_relay(room_id: str, req: HostTokenRequest) -> dict:
     """请求为指定房间启动 Relay 中继。"""
+    await _require_release_room(room_id)
     port, _pid = await _get_or_start_room_relay(room_id, req.host_token)
 
     return {
@@ -547,6 +580,8 @@ async def destroy_room(room_id: str, req: HostTokenRequest) -> dict:
 @app.post("/matchmaking/quick")
 async def quick_match(req: QuickMatchRequest) -> dict:
     """快速匹配：找一个最佳房间加入。"""
+    # 必须先于房间扫描和自动创建；隐藏请求不会触发 Room/Relay 生命周期。
+    _require_release_game_mode(req.game_mode)
     await asyncio.to_thread(_reconcile_exited_relays)
     room = room_mgr.find_match(req.game_mode)
     await asyncio.to_thread(_flush_room_termination_grants)

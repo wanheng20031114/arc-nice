@@ -22,6 +22,8 @@ class RoomStatus(str, Enum):
 
 
 class GameMode(str, Enum):
+    # 这是不能随发布入口收缩的 wire/JSON 兼容表：旧客户端、历史房间和诊断工具
+    # 仍需识别全部稳定值。生产大厅是否允许使用某模式由下方正式清单决定。
     STANDARD = "standard"
     TOWER_DEFENSE = "tower_defense"
     TEST_ARENA_P1 = "test_arena_p1"
@@ -31,6 +33,22 @@ class GameMode(str, Enum):
     TEST_ARENA_P1C = "test_arena_p1c"
     TEST_ARENA_P1D = "test_arena_p1d"
     TEST_ARENA_P1E = "test_arena_p1e"
+
+
+# 正式大厅模式准入的唯一真源。TEST_ARENA_P3 是已发布 Rogue 的稳定 wire key，
+# 名称虽保留历史 test 前缀，仍属于正式内容；其余 TEST_ARENA 值只供兼容解码。
+RELEASE_GAME_MODES: frozenset[GameMode] = frozenset(
+    {
+        GameMode.STANDARD,
+        GameMode.TOWER_DEFENSE,
+        GameMode.TEST_ARENA_P3,
+    }
+)
+
+
+def is_release_game_mode(game_mode: GameMode) -> bool:
+    """判断模式是否获准进入正式大厅运行生命周期。"""
+    return game_mode in RELEASE_GAME_MODES
 
 
 @dataclass
