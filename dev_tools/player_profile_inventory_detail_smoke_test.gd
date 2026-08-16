@@ -296,8 +296,8 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 		% [base_detail_height, profile_panel.item_detail_panel.size.y]
 	)
 	_expect(
-		profile_panel.item_detail_panel.size == Vector2(258.0, 174.0),
-		"The redesigned item detail panel must retain its approved compact geometry."
+		profile_panel.item_detail_panel.size == Vector2(266.0, 184.0),
+		"The item detail panel must retain its approved inset-safe geometry."
 	)
 	var action_buttons := [
 		profile_panel.item_detail_use_button,

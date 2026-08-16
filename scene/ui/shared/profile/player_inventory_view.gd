@@ -6,7 +6,7 @@ signal item_discard_requested(slot_index: int)
 signal item_quick_use_toggle_requested(slot_index: int)
 
 const DESIGN_SIZE := Vector2(724.0, 543.0)
-const ITEM_DETAIL_BASE_SIZE := Vector2(258.0, 174.0)
+const ITEM_DETAIL_BASE_SIZE := Vector2(266.0, 184.0)
 const ITEM_DETAIL_MARGIN := 14.0
 const ITEM_DETAIL_REGULAR_ACTION_WIDTH := 105.0
 const ITEM_DETAIL_COMPACT_ACTION_WIDTH := 58.0

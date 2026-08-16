@@ -298,10 +298,10 @@ theme_override_styles/panel = SubResource("StyleBoxTexture_item_detail")
 
 [node name="Margin" type="MarginContainer" parent="ItemDetailPanel"]
 layout_mode = 2
-theme_override_constants/margin_left = 11
-theme_override_constants/margin_top = 10
-theme_override_constants/margin_right = 11
-theme_override_constants/margin_bottom = 10
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 14
 
 [node name="Content" type="VBoxContainer" parent="ItemDetailPanel/Margin"]
 layout_mode = 2

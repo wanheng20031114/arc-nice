@@ -416,6 +416,7 @@ func _run() -> void:
 	profile_panel.bind_player(player)
 	profile_panel.open()
 	profile_panel.call("_on_slot_selected", 0)
+	await process_frame
 	_expect(
 		profile_panel.item_detail_category_label.text == "建筑"
 		and profile_panel.item_detail_use_button.visible
@@ -423,6 +424,28 @@ func _run() -> void:
 		and profile_panel.item_detail_discard_button.text == "销毁"
 		and profile_panel.item_detail_hint.text.contains("建造模式"),
 		"背包详情必须把建筑物品标为“建筑”，并提供“建造”和“销毁”操作。"
+	)
+	var detail_rect := profile_panel.item_detail_panel.get_global_rect()
+	var title_rect := profile_panel.item_detail_title.get_global_rect()
+	var category_rect := (
+		profile_panel.item_detail_category_backing.get_global_rect()
+	)
+	var use_button_rect := profile_panel.item_detail_use_button.get_global_rect()
+	var discard_button_rect := (
+		profile_panel.item_detail_discard_button.get_global_rect()
+	)
+	_expect(
+		title_rect.position.x - detail_rect.position.x >= 17.0
+		and detail_rect.end.x - category_rect.end.x >= 17.0
+		and title_rect.position.y - detail_rect.position.y >= 16.0,
+		"建筑详情标题和类别标记必须避开装饰边框的文字安全区。"
+	)
+	_expect(
+		use_button_rect.position.x - detail_rect.position.x >= 25.0
+		and detail_rect.end.x - discard_button_rect.end.x >= 25.0
+		and detail_rect.end.y - use_button_rect.end.y >= 19.0
+		and detail_rect.end.y - discard_button_rect.end.y >= 19.0,
+		"建筑详情操作按钮必须与面板四周保留稳定安全距离。"
 	)
 	profile_panel.close()
 	profile_panel.queue_free()
