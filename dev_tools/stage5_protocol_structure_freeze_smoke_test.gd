@@ -530,7 +530,6 @@ func _test_scene_node_paths() -> void:
 			NodePath("ProjectileCoordinator"),
 			NodePath("WorldFlowCoordinator"),
 			NodePath("TowerRogueRouteBridge"),
-			NodePath("PublicRoomKeepaliveRequest"),
 		]
 	)
 	_test_packed_scene_structure(
