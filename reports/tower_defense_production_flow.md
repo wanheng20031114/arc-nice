@@ -303,7 +303,7 @@ flowchart LR
     Rogue --> Plank["木板"]
     Rogue --> Stone
     Rogue -->|"隐形海参事件"| Gel
-    Luoxi["洛希玩法"] --> Dirt["土块"]
+    Luoxi["洛茜玩法"] --> Dirt["土块"]
     Luoxi --> Wood
     Luoxi --> Sapling
     Luoxi --> Core["木制核心"]
@@ -312,7 +312,7 @@ flowchart LR
 
     Ticket["共享仓库：赌怪券"] -->|"取回个人背包"| Luoxi
     Stone --> Terminal1["当前无配方消费者"]
-    Ticket --> Terminal2["洛希特殊玩法消耗"]
+    Ticket --> Terminal2["洛茜特殊玩法消耗"]
     Potion["治疗血瓶"] --> Terminal3["玩家使用"]
 ```
 
