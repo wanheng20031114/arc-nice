@@ -319,18 +319,18 @@ func _test_building_item_and_acquisition_closure() -> void:
 	)
 	_expect(
 		BuildingItemRegistry.SPEED_TOWER_ITEM != null
-		and not BuildingItemRegistry.SPEED_TOWER_ITEM.stackable
-		and BuildingItemRegistry.SPEED_TOWER_ITEM.inventory_stack_limit == 1
+		and BuildingItemRegistry.SPEED_TOWER_ITEM.stackable
+		and BuildingItemRegistry.SPEED_TOWER_ITEM.inventory_stack_limit == 999
 		and BuildingItemRegistry.SPEED_TOWER_ITEM.placeable_plant_id == &"speed_tower",
-		"移速强化塔建筑物品必须与生命强化塔一样保持不可堆叠、单格上限1并绑定正确plant_id。"
+		"移速强化塔建筑物品必须可堆叠至999并绑定正确plant_id。"
 	)
 	_expect(
 		BuildingItemRegistry.ATTACK_SPEED_TOWER_ITEM != null
-		and not BuildingItemRegistry.ATTACK_SPEED_TOWER_ITEM.stackable
-		and BuildingItemRegistry.ATTACK_SPEED_TOWER_ITEM.inventory_stack_limit == 1
+		and BuildingItemRegistry.ATTACK_SPEED_TOWER_ITEM.stackable
+		and BuildingItemRegistry.ATTACK_SPEED_TOWER_ITEM.inventory_stack_limit == 999
 		and BuildingItemRegistry.ATTACK_SPEED_TOWER_ITEM.placeable_plant_id
 		== &"attack_speed_tower",
-		"攻速强化塔建筑物品必须与生命强化塔一样保持不可堆叠、单格上限1并绑定正确plant_id。"
+		"攻速强化塔建筑物品必须可堆叠至999并绑定正确plant_id。"
 	)
 	var reachable_recipe_paths := {}
 	for recipe in SimpleCraftingRegistry.get_all_recipes():

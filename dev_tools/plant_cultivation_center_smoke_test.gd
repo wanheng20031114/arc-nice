@@ -227,37 +227,37 @@ func _run() -> void:
 	_expect(
 		AGAVE_BUILDING_ITEM.pickup_type == PickupConfig.PickupType.BUILDING
 		and AGAVE_BUILDING_ITEM.placeable_plant_id == &"agave_cannon"
-		and not AGAVE_BUILDING_ITEM.stackable
-		and AGAVE_BUILDING_ITEM.inventory_stack_limit == 1
+		and AGAVE_BUILDING_ITEM.stackable
+		and AGAVE_BUILDING_ITEM.inventory_stack_limit == 999
 		and CORN_BUILDING_ITEM.pickup_type == PickupConfig.PickupType.BUILDING
 		and CORN_BUILDING_ITEM.placeable_plant_id == &"corn_machine_gun"
-		and not CORN_BUILDING_ITEM.stackable
-		and CORN_BUILDING_ITEM.inventory_stack_limit == 1
+		and CORN_BUILDING_ITEM.stackable
+		and CORN_BUILDING_ITEM.inventory_stack_limit == 999
 		and BAMBOO_MORTAR_BUILDING_ITEM.pickup_type
 		== PickupConfig.PickupType.BUILDING
 		and BAMBOO_MORTAR_BUILDING_ITEM.placeable_plant_id
 		== &"bamboo_mortar"
-		and not BAMBOO_MORTAR_BUILDING_ITEM.stackable
-		and BAMBOO_MORTAR_BUILDING_ITEM.inventory_stack_limit == 1
+		and BAMBOO_MORTAR_BUILDING_ITEM.stackable
+		and BAMBOO_MORTAR_BUILDING_ITEM.inventory_stack_limit == 999
 		and HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.pickup_type
 		== PickupConfig.PickupType.BUILDING
 		and HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.placeable_plant_id
 		== &"hydrangea_rain_tower"
-		and not HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.stackable
-		and HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.inventory_stack_limit == 1
+		and HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.stackable
+		and HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.inventory_stack_limit == 999
 		and GRAPE_ARC_TOWER_BUILDING_ITEM.pickup_type
 		== PickupConfig.PickupType.BUILDING
 		and GRAPE_ARC_TOWER_BUILDING_ITEM.placeable_plant_id
 		== &"grape_arc_tower"
-		and not GRAPE_ARC_TOWER_BUILDING_ITEM.stackable
-		and GRAPE_ARC_TOWER_BUILDING_ITEM.inventory_stack_limit == 1
+		and GRAPE_ARC_TOWER_BUILDING_ITEM.stackable
+		and GRAPE_ARC_TOWER_BUILDING_ITEM.inventory_stack_limit == 999
 		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.pickup_type
 		== PickupConfig.PickupType.BUILDING
 		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.placeable_plant_id
 		== &"orange_charging_tower"
-		and not ORANGE_CHARGING_TOWER_BUILDING_ITEM.stackable
-		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.inventory_stack_limit == 1,
-		"六种产物必须是不可叠加且指向正确建筑配置的建筑物品。"
+		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.stackable
+		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.inventory_stack_limit == 999,
+		"六种产物必须可堆叠至999且指向正确建筑配置。"
 	)
 
 	var border := center.get_node_or_null("ProductionBorder") as MeshInstance2D
@@ -931,10 +931,9 @@ func _test_inventory_placement_request(
 	)
 	_expect(
 		run_state.get_item(0) == AGAVE_BUILDING_ITEM
-		and run_state.get_item_count(0) == 1
-		and run_state.get_item(1) == AGAVE_BUILDING_ITEM
-		and run_state.get_item_count(1) == 1,
-		"不可叠加建筑物品必须各占一个背包槽。"
+		and run_state.get_item_count(0) == 2
+		and run_state.get_item(1) == null,
+		"相同建筑物品必须合并到同一个999上限背包堆栈。"
 	)
 	var initial_revision := run_state.get_inventory_revision()
 	_expect(
@@ -943,15 +942,14 @@ func _test_inventory_placement_request(
 			AGAVE_BUILDING_ITEM,
 			initial_revision
 		)
-		and run_state.get_item(0) == null
-		and run_state.get_item(1) == AGAVE_BUILDING_ITEM
-		and run_state.get_item_count(1) == 1
+		and run_state.get_item(0) == AGAVE_BUILDING_ITEM
+		and run_state.get_item_count(0) == 1
 		and not run_state.try_consume_item_at_slot_if_revision(
-			1,
+			0,
 			AGAVE_BUILDING_ITEM,
 			initial_revision
 		),
-		"建筑物品必须一次清空一个独立槽，并拒绝过期背包revision。"
+		"建造一个建筑必须只把同槽堆栈从2减到1，并拒绝过期背包revision。"
 	)
 	run_state.begin_new_run(&"weishidaier", false)
 	_expect(

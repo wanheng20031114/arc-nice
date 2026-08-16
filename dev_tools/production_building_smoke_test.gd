@@ -22,6 +22,9 @@ const WOODEN_CORE := preload(
 const GAMBLER_TICKET := preload(
 	"res://resources/config/materials/material_gambler_ticket.tres"
 )
+const BASKETBALL := preload(
+	"res://resources/config/collectibles/collectible_basketball.tres"
+)
 const WATER_COLLECTOR_ITEM := preload(
 	"res://resources/config/buildings/building_water_collector.tres"
 )
@@ -757,7 +760,7 @@ func _test_nonstackable_production_input(test_root: Node) -> void:
 	var recipe := ProductionRecipe.new()
 	recipe.recipe_id = &"nonstackable_input_probe"
 	recipe.display_name = "非堆叠投入探针"
-	var input_items: Array[PickupConfig] = [WATER_COLLECTOR_ITEM]
+	var input_items: Array[PickupConfig] = [BASKETBALL]
 	var input_amounts: Array[int] = [2]
 	var output_items: Array[PickupConfig] = [WOOD]
 	var output_amounts: Array[int] = [1]
@@ -770,11 +773,11 @@ func _test_nonstackable_production_input(test_root: Node) -> void:
 
 	_expect(
 		recipe.is_valid()
-		and isolated_warehouse.try_add_storage_item_count(WATER_COLLECTOR_ITEM, 2)
-		and isolated_warehouse.get_storage_item_total(WATER_COLLECTOR_ITEM) == 2
+		and isolated_warehouse.try_add_storage_item_count(BASKETBALL, 2)
+		and isolated_warehouse.get_storage_item_total(BASKETBALL) == 2
 		and isolated_coordinator.try_commit_recipe(recipe)
 		== ProductionCoordinator.RESULT_SUCCESS
-		and isolated_warehouse.get_storage_item_total(WATER_COLLECTOR_ITEM) == 0
+		and isolated_warehouse.get_storage_item_total(BASKETBALL) == 0
 		and isolated_warehouse.get_storage_item_total(WOOD) == 1,
 		"非堆叠物品必须能跨独立槽位统计并作为生产输入消费，但不能合并槽位。"
 	)
@@ -820,8 +823,8 @@ func _is_valid_building_item(
 		and plant_config != null
 		and item.pickup_type == PickupConfig.PickupType.BUILDING
 		and item.can_store_in_inventory
-		and not item.stackable
-		and item.inventory_stack_limit == 1
+		and item.stackable
+		and item.inventory_stack_limit == 999
 		and item.placeable_plant_id == expected_plant_id
 		and item.icon_texture != null
 		and item.icon_texture.resource_path == plant_config.icon.resource_path

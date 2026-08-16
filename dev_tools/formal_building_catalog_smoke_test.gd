@@ -194,13 +194,13 @@ func _place_formal_catalog_building(
 	if item == null:
 		return
 	_expect(
-		run_state.try_add_item(item),
-		"Placement fixture must explicitly add one %s building item." % label
+		run_state.try_add_item_count(item, 2),
+		"Placement fixture must explicitly add two stacked %s building items." % label
 	)
 	await process_frame
 	_expect(
-		run_state.get_inventory_item_total(item) == 1,
-		"%s fixture must expose exactly one owned item in the T catalog." % label
+		run_state.get_inventory_item_total(item) == 2,
+		"%s fixture must expose exactly two owned items in one stack." % label
 	)
 	hud.call("_select_config", config)
 	hud.call("_confirm_selection")
@@ -241,8 +241,8 @@ func _place_formal_catalog_building(
 		and placed_building.config == config
 		and placed_building.footprint_cells == footprint_cells
 		and all_footprint_cells_registered
-		and run_state.get_inventory_item_total(item) == 0,
-		"Formal T placement must register all four %s cells and atomically consume one item."
+		and run_state.get_inventory_item_total(item) == 1,
+		"Formal T placement must register all four %s cells and consume one item from the stack."
 		% label
 	)
 

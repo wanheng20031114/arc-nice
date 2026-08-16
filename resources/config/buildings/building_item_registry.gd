@@ -232,6 +232,8 @@ static func _has_item_contract(
 		item != null
 		and item.pickup_type == PickupConfig.PickupType.BUILDING
 		and item.can_store_in_inventory
+		and item.stackable
+		and item.inventory_stack_limit == 999
 		and item.placeable_plant_id == plant_id
 	)
 

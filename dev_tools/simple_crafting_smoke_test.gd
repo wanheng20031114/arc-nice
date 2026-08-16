@@ -344,27 +344,27 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 		"简易围栏配方必须以0.1秒合法占位时长消耗1木头，并立即产出1个简易围栏。"
 	)
 	_expect(
-		_is_valid_unstackable_building_item(
+		_is_valid_stackable_building_item_with_original_texture(
 			WOOD_PROCESSING_STATION_ITEM,
 			&"wood_processing_station"
 		)
-		and _is_valid_unstackable_building_item(
+		and _is_valid_stackable_building_item_with_original_texture(
 			OAK_WAREHOUSE_ITEM,
 			&"oak_warehouse"
 		)
-		and _is_valid_unstackable_building_item(
+		and _is_valid_stackable_building_item_with_original_texture(
 			VEGETATION_STAKE_ITEM,
 			&"vegetation_stake"
 		)
-		and _is_valid_unstackable_building_item(
+		and _is_valid_stackable_building_item_with_original_texture(
 			STONE_MILL_ITEM,
 			&"stone_mill"
 		)
-		and _is_valid_unstackable_building_item(
+		and _is_valid_stackable_building_item_with_original_texture(
 			BAMBOO_MORTAR_ITEM,
 			&"bamboo_mortar"
 		)
-		and _is_valid_unstackable_building_item(
+		and _is_valid_stackable_building_item_with_original_texture(
 			HYDRANGEA_RAIN_TOWER_ITEM,
 			&"hydrangea_rain_tower"
 		)
@@ -372,7 +372,7 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 			SIMPLE_FENCE_ITEM,
 			&"simple_fence"
 		),
-		"七种简易制造建筑产物必须复用原图、以32×32有效尺寸显示并指向正确建筑；围栏须可堆叠至999。"
+		"七种简易制造建筑产物必须复用原图、以32×32有效尺寸显示、指向正确建筑并可堆叠至999。"
 	)
 
 	var shared_storage_recipe := recipe.duplicate() as ProductionRecipe
@@ -1524,7 +1524,7 @@ func _count_local_item_slots(
 	return count
 
 
-func _is_valid_unstackable_building_item(
+func _is_valid_stackable_building_item_with_original_texture(
 	item: PickupConfig,
 	expected_plant_id: StringName
 ) -> bool:
@@ -1548,8 +1548,8 @@ func _is_valid_unstackable_building_item(
 	return (
 		item.pickup_type == PickupConfig.PickupType.BUILDING
 		and item.can_store_in_inventory
-		and not item.stackable
-		and item.inventory_stack_limit == 1
+		and item.stackable
+		and item.inventory_stack_limit == 999
 		and item.placeable_plant_id == expected_plant_id
 		and uses_original_building_texture
 		and item.icon_texture.get_size() * item.icon_scale
