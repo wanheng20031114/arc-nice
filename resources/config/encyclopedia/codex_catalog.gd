@@ -1,6 +1,9 @@
 extends RefCounted
 class_name CodexCatalog
 
+const ProductionRecipeRegistryScript := preload(
+	"res://resources/config/production/production_recipe_registry.gd"
+)
 const COLLECTIBLE_FILTER_KEYS: Array[StringName] = [
 	&"common",
 	&"rare",
@@ -17,12 +20,36 @@ const BUILDING_FILTER_KEYS: Array[StringName] = [
 	&"terrain_building",
 	&"storage_building",
 ]
+const ITEM_FILTER_KEYS := {
+	&"material": "材料",
+	&"consumable": "消耗品",
+	&"instant": "即时道具",
+	&"fate": "命运物品",
+}
+const CHARACTER_FILTER_KEYS := {
+	&"ranged": "远程",
+	&"melee": "近战",
+}
+const RECIPE_FILTER_KEYS := {
+	&"simple_crafting": "简易制作",
+	&"shared_production": "共享仓库生产",
+	&"local_output_cycle": "本地产物循环",
+}
+const RESEARCH_FILTER_KEYS := {
+	&"attribute": "属性强化",
+	&"recipe_unlock": "配方解锁",
+	&"building_enhancement": "建筑增强",
+}
 ## Authored catalog contract used by navigation before any section is materialized.
 ## The encyclopedia smoke test verifies these counts against the full registries.
 const REGISTERED_ENTRY_COUNTS := {
 	CodexSection.ENEMY: 64,
 	CodexSection.COLLECTIBLE: 125,
 	CodexSection.BUILDING: 19,
+	CodexSection.ITEM: 36,
+	CodexSection.CHARACTER: 4,
+	CodexSection.RECIPE: 32,
+	CodexSection.RESEARCH: 6,
 }
 const COLLECTIBLE_ACCENTS: Array[Color] = [
 	Color("#f0e3c2"),
@@ -35,6 +62,19 @@ const ENEMY_NORMAL_ACCENT := Color("#6fd4bd")
 const ENEMY_ELITE_ACCENT := Color("#c58aff")
 const ENEMY_BOSS_ACCENT := Color("#ffcf67")
 const BUILDING_ACCENT := Color("#7ed9c4")
+const ITEM_ACCENTS := {
+	&"material": Color("#d7b978"),
+	&"consumable": Color("#72d49b"),
+	&"instant": Color("#68bde8"),
+	&"fate": Color("#c58aff"),
+}
+const RECIPE_ACCENT := Color("#68c9d6")
+const AUTHORED_TOWER_DEFENSE_TILE_SIZE := 16.0
+const RESEARCH_ACCENTS := {
+	&"attribute": Color("#e3b96a"),
+	&"recipe_unlock": Color("#8dc9ff"),
+	&"building_enhancement": Color("#8fd89e"),
+}
 const LINGLAN_SKILL_1: LinglanSkillConfig = preload(
 	"res://resources/config/bosses/linglan_skill1.tres"
 )
@@ -135,6 +175,14 @@ func _ensure_section(section: int) -> void:
 			entries = _build_collectible_entries()
 		CodexSection.BUILDING:
 			entries = _build_building_entries()
+		CodexSection.ITEM:
+			entries = _build_item_entries()
+		CodexSection.CHARACTER:
+			entries = _build_character_entries()
+		CodexSection.RECIPE:
+			entries = _build_recipe_entries()
+		CodexSection.RESEARCH:
+			entries = _build_research_entries()
 	entries.sort_custom(_entry_precedes)
 	_entries_by_section[section] = entries
 	_filter_options_by_section[section] = _build_filter_options(entries)
@@ -188,6 +236,12 @@ func _build_collectible_entries() -> Array[CodexEntryViewData]:
 	for config_index in configs.size():
 		var item := configs[config_index]
 		var entry_id := _get_collectible_entry_id(item)
+		if entry_id == &"":
+			push_error(
+				"Collectible is missing a stable RuntimeContentCatalog ID: %s"
+				% item.resource_path
+			)
+			continue
 		var visibility := _get_visibility_state(
 			CodexSection.COLLECTIBLE,
 			entry_id
@@ -222,6 +276,7 @@ func _build_collectible_entries() -> Array[CodexEntryViewData]:
 
 func _build_building_entries() -> Array[CodexEntryViewData]:
 	var result: Array[CodexEntryViewData] = []
+	var recipes := ProductionRecipeRegistryScript.get_all_recipes()
 	for config in PlantDefenseRegistry.get_all_configs():
 		var visibility := _get_visibility_state(
 			CodexSection.BUILDING,
@@ -249,7 +304,160 @@ func _build_building_entries() -> Array[CodexEntryViewData]:
 		entry.sort_group = category
 		entry.sort_order = config.menu_order
 		entry.stats = _build_building_stats(config)
-		entry.notes = _build_building_notes(config.plant_id)
+		entry.notes = _build_building_notes(config.plant_id, recipes)
+		entry.visibility_state = visibility
+		entry.source_resource = config
+		result.append(entry)
+	return result
+
+
+func _build_item_entries() -> Array[CodexEntryViewData]:
+	var manifest_entries := RuntimeContentCatalog.get_pickup_entries()
+	var manifest_ids: Array = manifest_entries.keys()
+	manifest_ids.sort()
+	var result: Array[CodexEntryViewData] = []
+	for manifest_index in manifest_ids.size():
+		var manifest_id := String(manifest_ids[manifest_index])
+		if not _is_general_item_manifest_id(manifest_id):
+			continue
+		var manifest_path := RuntimeContentCatalog.get_pickup_path_for_id(
+			manifest_id
+		)
+		var item := RuntimeContentCatalog.load_pickup_config_from_path(
+			manifest_path
+		)
+		if item == null:
+			continue
+		var entry_id := StringName(manifest_id)
+		var visibility := _get_visibility_state(CodexSection.ITEM, entry_id)
+		if visibility == CodexVisibilityState.HIDDEN:
+			continue
+		var filter_key := _get_item_filter_key(manifest_id)
+		var entry := CodexEntryViewData.new()
+		entry.entry_id = entry_id
+		entry.section = CodexSection.ITEM
+		entry.display_name = item.display_name
+		entry.description = item.description
+		entry.icon = item.icon_texture
+		entry.primary_badge = String(ITEM_FILTER_KEYS[filter_key])
+		entry.secondary_badge = _get_item_storage_badge(item)
+		entry.accent_color = ITEM_ACCENTS[filter_key]
+		entry.filter_key = filter_key
+		entry.filter_label = String(ITEM_FILTER_KEYS[filter_key])
+		entry.sort_group = _get_item_sort_group(filter_key)
+		entry.sort_order = manifest_index
+		entry.stats = _build_item_stats(item, filter_key)
+		entry.notes = _build_item_notes(item, filter_key, manifest_id)
+		entry.visibility_state = visibility
+		entry.source_resource = item
+		result.append(entry)
+	return result
+
+
+func _build_character_entries() -> Array[CodexEntryViewData]:
+	var result: Array[CodexEntryViewData] = []
+	var configs := PlayerCharacterRegistry.get_all_configs()
+	for config_index in configs.size():
+		var config := configs[config_index]
+		if config == null or not config.is_valid():
+			continue
+		var entry_id := StringName("character.%s" % config.character_id)
+		var visibility := _get_visibility_state(
+			CodexSection.CHARACTER,
+			entry_id
+		)
+		if visibility == CodexVisibilityState.HIDDEN:
+			continue
+		var filter_key := _get_character_filter_key(config)
+		var entry := CodexEntryViewData.new()
+		entry.entry_id = entry_id
+		entry.section = CodexSection.CHARACTER
+		entry.display_name = config.display_name
+		entry.description = config.description
+		entry.icon = _load_catalog_texture(config.portrait_texture)
+		entry.primary_badge = String(CHARACTER_FILTER_KEYS[filter_key])
+		entry.secondary_badge = config.title
+		entry.accent_color = config.card_accent_color
+		entry.filter_key = filter_key
+		entry.filter_label = String(CHARACTER_FILTER_KEYS[filter_key])
+		entry.sort_group = 0 if filter_key == &"ranged" else 1
+		entry.sort_order = config_index
+		entry.stats = _build_character_stats(config)
+		entry.notes = _build_character_notes(config)
+		entry.visibility_state = visibility
+		entry.source_resource = config
+		result.append(entry)
+	return result
+
+
+func _build_recipe_entries() -> Array[CodexEntryViewData]:
+	var result: Array[CodexEntryViewData] = []
+	var recipes := ProductionRecipeRegistryScript.get_all_recipes()
+	for recipe_index in recipes.size():
+		var recipe := recipes[recipe_index]
+		if recipe == null or not recipe.is_valid():
+			continue
+		var entry_id := StringName("recipe.%s" % recipe.recipe_id)
+		var visibility := _get_visibility_state(CodexSection.RECIPE, entry_id)
+		if visibility == CodexVisibilityState.HIDDEN:
+			continue
+		var filter_key := _get_recipe_filter_key(recipe)
+		var entry := CodexEntryViewData.new()
+		entry.entry_id = entry_id
+		entry.section = CodexSection.RECIPE
+		entry.display_name = recipe.display_name
+		entry.description = _build_recipe_description(recipe)
+		entry.icon = recipe.output_items[0].icon_texture
+		entry.primary_badge = String(RECIPE_FILTER_KEYS[filter_key])
+		entry.secondary_badge = "%s 秒" % _format_number(
+			recipe.duration_seconds
+		)
+		entry.accent_color = RECIPE_ACCENT
+		entry.filter_key = filter_key
+		entry.filter_label = String(RECIPE_FILTER_KEYS[filter_key])
+		entry.sort_group = _get_recipe_sort_group(filter_key)
+		entry.sort_order = recipe_index
+		entry.stats = _build_recipe_stats(recipe)
+		entry.notes = _build_recipe_notes(recipe)
+		entry.visibility_state = visibility
+		entry.source_resource = recipe
+		result.append(entry)
+	return result
+
+
+func _build_research_entries() -> Array[CodexEntryViewData]:
+	var result: Array[CodexEntryViewData] = []
+	var recipes := ProductionRecipeRegistryScript.get_all_recipes()
+	var configs := GlobalResearchRegistry.get_all_configs()
+	for config_index in configs.size():
+		var config := configs[config_index]
+		if config == null or not config.is_valid():
+			continue
+		var entry_id := StringName("research.%s" % config.research_id)
+		var visibility := _get_visibility_state(
+			CodexSection.RESEARCH,
+			entry_id
+		)
+		if visibility == CodexVisibilityState.HIDDEN:
+			continue
+		var filter_key := _get_research_filter_key(config)
+		var entry := CodexEntryViewData.new()
+		entry.entry_id = entry_id
+		entry.section = CodexSection.RESEARCH
+		entry.display_name = config.display_name
+		entry.description = config.description
+		entry.icon = config.input_items[0].icon_texture
+		entry.primary_badge = String(RESEARCH_FILTER_KEYS[filter_key])
+		entry.secondary_badge = "%s 秒" % _format_number(
+			config.duration_seconds
+		)
+		entry.accent_color = RESEARCH_ACCENTS[filter_key]
+		entry.filter_key = filter_key
+		entry.filter_label = String(RESEARCH_FILTER_KEYS[filter_key])
+		entry.sort_group = _get_research_sort_group(filter_key)
+		entry.sort_order = config_index
+		entry.stats = _build_research_stats(config)
+		entry.notes = _build_research_notes(config, recipes)
 		entry.visibility_state = visibility
 		entry.source_resource = config
 		result.append(entry)
@@ -567,34 +775,485 @@ func _build_building_stats(config: PlantDefenseConfig) -> Array[CodexStatRow]:
 		stats.append(
 			CodexStatRow.new("每轮攻击", "%d 发" % config.attack_burst_count)
 		)
+	if config is LifeTowerConfig:
+		var life_config := config as LifeTowerConfig
+		stats.append(
+			CodexStatRow.new(
+				"最大生命加成",
+				"+%s%%" % _format_number(life_config.max_health_bonus_ratio * 100.0)
+			)
+		)
+	elif config is SpeedTowerConfig:
+		var speed_config := config as SpeedTowerConfig
+		stats.append(
+			CodexStatRow.new(
+				"移动速度加成",
+				"+%s" % _format_number(speed_config.move_speed_bonus)
+			)
+		)
+	elif config is AttackSpeedTowerConfig:
+		var attack_speed_config := config as AttackSpeedTowerConfig
+		stats.append(
+			CodexStatRow.new(
+				"攻击速度加成",
+				"+%s%%" % _format_number(
+					attack_speed_config.attack_speed_bonus_ratio * 100.0
+				)
+			)
+		)
+	elif config is OrangeChargingTowerConfig:
+		var orange_config := config as OrangeChargingTowerConfig
+		stats.append_array([
+			CodexStatRow.new("气场外扩", "%d 格" % orange_config.aura_margin_cells),
+			CodexStatRow.new(
+				"玩家技力回复",
+				"+%s / 秒" % _format_number(
+					orange_config.player_skill_charge_bonus_per_second
+				)
+			),
+			CodexStatRow.new(
+				"防御塔攻击间隔",
+				"×%s" % _format_number(
+					orange_config.defense_attack_interval_multiplier
+				)
+			),
+			CodexStatRow.new(
+				"生产耗时",
+				"×%s" % _format_number(
+					orange_config.production_duration_multiplier
+				)
+			),
+		])
+	elif config is GrapeArcTowerConfig:
+		var grape_config := config as GrapeArcTowerConfig
+		stats.append_array([
+			CodexStatRow.new("最多连锁", "%d 个目标" % grape_config.max_chain_targets),
+			CodexStatRow.new(
+				"连锁距离",
+				_format_world_distance(grape_config.chain_jump_range)
+			),
+			CodexStatRow.new(
+				"蓄力时间",
+				"%s 秒" % _format_number(grape_config.charge_seconds)
+			),
+		])
+	elif config is HydrangeaRainTowerConfig:
+		var hydrangea_config := config as HydrangeaRainTowerConfig
+		stats.append_array([
+			CodexStatRow.new(
+				"施放间隔",
+				"%s 秒" % _format_number(hydrangea_config.rain_interval_seconds)
+			),
+			CodexStatRow.new(
+				"雨幕持续",
+				"%s 秒" % _format_number(hydrangea_config.rain_duration_seconds)
+			),
+			CodexStatRow.new(
+				"效果持续",
+				"%s 秒" % _format_number(hydrangea_config.effect_duration_seconds)
+			),
+			CodexStatRow.new(
+				"生效间隔",
+				"%s 秒" % _format_number(
+					hydrangea_config.rain_tick_interval_seconds
+				)
+			),
+			CodexStatRow.new("每次治疗", str(hydrangea_config.healing_per_tick)),
+			CodexStatRow.new(
+				"每次法伤",
+				str(hydrangea_config.magic_damage_per_tick)
+			),
+			CodexStatRow.new(
+				"敌人攻击倍率",
+				"×%s" % _format_number(
+					hydrangea_config.enemy_attack_damage_multiplier
+				)
+			),
+			CodexStatRow.new(
+				"搜索半径",
+				"%s 格" % _format_number(
+					hydrangea_config.target_search_radius_cells
+				)
+			),
+			CodexStatRow.new(
+				"雨幕半径",
+				_format_world_distance(hydrangea_config.rain_radius)
+			),
+		])
+	if config.plant_id == &"oak_warehouse":
+		stats.append(
+			CodexStatRow.new("仓库槽位", "%d 格" % RunStateStore.INVENTORY_CAPACITY)
+		)
 	return stats
 
 
-func _build_building_notes(plant_id: StringName) -> PackedStringArray:
+func _build_building_notes(
+	plant_id: StringName,
+	all_recipes: Array[ProductionRecipe]
+) -> PackedStringArray:
 	var notes := PackedStringArray()
-	var recipe := BuildingItemRegistry.get_primary_acquisition_recipe(plant_id)
-	if recipe == null:
-		return notes
-	var recipe_summary := "主要配方：%s（%s；耗时 %s 秒）" % [
-		recipe.display_name,
-		recipe.get_input_summary(),
-		_format_number(recipe.duration_seconds),
-	]
-	notes.append(recipe_summary)
-	if recipe.required_global_research_id == &"":
-		notes.append("科研前置：无")
-		return notes
-	var research := GlobalResearchRegistry.get_config(
-		recipe.required_global_research_id
-	)
-	notes.append(
-		"科研前置：%s" % (
+	var item := BuildingItemRegistry.get_item(plant_id)
+	if item != null:
+		notes.append(
+			"背包规则：同格叠加，单格上限 %d"
+			% PickupConfig.get_inventory_stack_limit(item)
+		)
+		for recipe in all_recipes:
+			if not _recipe_outputs_item(recipe, item):
+				continue
+			notes.append(_build_building_acquisition_note(recipe))
+	var produced_recipe_count := 0
+	for recipe in all_recipes:
+		if (
+			ProductionRecipeRegistryScript.get_producer_id(recipe.recipe_id)
+			!= plant_id
+		):
+			continue
+		produced_recipe_count += 1
+		notes.append(
+			"生产配方：%s（%s → %s；%s 秒；产入%s）" % [
+				recipe.display_name,
+				recipe.get_input_summary(),
+				recipe.get_output_summary(),
+				_format_number(recipe.duration_seconds),
+				_get_recipe_output_destination_label(recipe),
+			]
+		)
+	if produced_recipe_count > 0:
+		notes.append("可运行配方总数：%d" % produced_recipe_count)
+	return notes
+
+
+func _recipe_outputs_item(
+	recipe: ProductionRecipe,
+	item: PickupConfig
+) -> bool:
+	for output_item in recipe.output_items:
+		if PickupConfig.inventory_identity_matches(output_item, item):
+			return true
+	return false
+
+
+func _build_building_acquisition_note(recipe: ProductionRecipe) -> String:
+	var research_label := "无科研前置"
+	if recipe.required_global_research_id != &"":
+		var research := GlobalResearchRegistry.get_config(
+			recipe.required_global_research_id
+		)
+		research_label = "需%s" % (
 			research.display_name
 			if research != null
 			else String(recipe.required_global_research_id)
 		)
+	return "获取配方：%s · %s（%s；%s 秒；产入%s；%s）" % [
+		ProductionRecipeRegistryScript.get_producer_label(recipe.recipe_id),
+		recipe.display_name,
+		recipe.get_input_summary(),
+		_format_number(recipe.duration_seconds),
+		_get_recipe_output_destination_label(recipe),
+		research_label,
+	]
+
+
+func _is_general_item_manifest_id(manifest_id: String) -> bool:
+	return (
+		manifest_id.begins_with("item.materials.")
+		or manifest_id.begins_with("item.consumables.")
+		or manifest_id.begins_with("item.pickup_triggered_items.")
+		or manifest_id.begins_with("item.fate.")
 	)
+
+
+func _get_item_filter_key(manifest_id: String) -> StringName:
+	if manifest_id.begins_with("item.consumables."):
+		return &"consumable"
+	if manifest_id.begins_with("item.pickup_triggered_items."):
+		return &"instant"
+	if manifest_id.begins_with("item.fate."):
+		return &"fate"
+	return &"material"
+
+
+func _get_item_sort_group(filter_key: StringName) -> int:
+	match filter_key:
+		&"consumable":
+			return 1
+		&"instant":
+			return 2
+		&"fate":
+			return 3
+		_:
+			return 0
+
+
+func _get_item_storage_badge(item: PickupConfig) -> String:
+	if item.inventory_locked:
+		return "背包锁定"
+	if not item.can_store_in_inventory:
+		return "拾取生效"
+	return "可叠加" if item.stackable else "独立占格"
+
+
+func _build_item_stats(
+	item: PickupConfig,
+	filter_key: StringName
+) -> Array[CodexStatRow]:
+	var stats: Array[CodexStatRow] = [
+		CodexStatRow.new("分类", String(ITEM_FILTER_KEYS[filter_key])),
+	]
+	if not item.can_store_in_inventory:
+		stats.append(CodexStatRow.new("获得方式", "拾取后立即生效"))
+		return stats
+	stats.append(CodexStatRow.new("背包存放", "允许"))
+	stats.append(
+		CodexStatRow.new(
+			"叠加规则",
+			"同格叠加" if item.stackable else "每件独立占格"
+		)
+	)
+	if item.stackable:
+		stats.append(
+			CodexStatRow.new(
+				"单格上限",
+				str(PickupConfig.get_inventory_stack_limit(item))
+			)
+		)
+	return stats
+
+
+func _build_item_notes(
+	item: PickupConfig,
+	filter_key: StringName,
+	manifest_id: String
+) -> PackedStringArray:
+	var notes := PackedStringArray()
+	if item.inventory_locked:
+		notes.append("背包锁定：不可使用、丢弃、转移或作为制作投入")
+	elif filter_key == &"consumable":
+		notes.append("使用规则：主动使用成功后消耗 1 个")
+	elif filter_key == &"instant":
+		notes.append("生效规则：接触拾取后立即触发，不进入背包")
+	elif filter_key == &"material":
+		match manifest_id:
+			"item.materials.material_gambler_ticket":
+				notes.append("用途：从共享仓库取回背包后，用于洛茜特殊玩法")
+			"item.materials.material_small_stone":
+				notes.append("当前用途：暂无配方或科研消费者，作为扩展物料保留")
+			_:
+				notes.append("用途：可作为简易制作、建筑生产或全局科研投入")
 	return notes
+
+
+func _get_character_filter_key(
+	config: PlayerCharacterConfig
+) -> StringName:
+	return &"melee" if config.playstyle.begins_with("近战") else &"ranged"
+
+
+func _build_character_stats(
+	config: PlayerCharacterConfig
+) -> Array[CodexStatRow]:
+	var attack_interval := (
+		config.attack_speed_units_per_attack / config.starting_attack_speed
+	)
+	return [
+		CodexStatRow.new("初始生命", str(config.starting_max_health)),
+		CodexStatRow.new("初始攻击", str(config.starting_attack_damage)),
+		CodexStatRow.new(
+			"基础攻击间隔",
+			"%s 秒" % _format_number(attack_interval)
+		),
+		CodexStatRow.new("初始移速", _format_number(config.starting_move_speed)),
+		CodexStatRow.new(
+			"弹药机制",
+			"使用弹药" if config.supports_ammunition else "无需弹药"
+		),
+	]
+
+
+func _build_character_notes(
+	config: PlayerCharacterConfig
+) -> PackedStringArray:
+	var notes := PackedStringArray()
+	if not config.english_name.is_empty():
+		notes.append("英文名：%s" % config.english_name)
+	if not config.playstyle.is_empty():
+		notes.append("战斗定位：%s" % config.playstyle)
+	if not config.skill_display_name.is_empty():
+		notes.append(
+			"技能「%s」：%s" % [
+				config.skill_display_name,
+				config.skill_description,
+			]
+		)
+	return notes
+
+
+func _get_recipe_filter_key(recipe: ProductionRecipe) -> StringName:
+	var category := ProductionRecipeRegistryScript.get_category_for_recipe(recipe)
+	return ProductionRecipeRegistryScript.get_category_key(category)
+
+
+func _get_recipe_sort_group(filter_key: StringName) -> int:
+	match filter_key:
+		&"shared_production":
+			return 1
+		&"local_output_cycle":
+			return 2
+		_:
+			return 0
+
+
+func _build_recipe_description(recipe: ProductionRecipe) -> String:
+	var input_clause := (
+		"无需材料，自动生产"
+		if recipe.input_items.is_empty()
+		else "投入%s" % recipe.get_input_summary()
+	)
+	return "%s，经过%s秒后产出%s。" % [
+		input_clause,
+		_format_number(recipe.duration_seconds),
+		recipe.get_output_summary(),
+	]
+
+
+func _build_recipe_stats(
+	recipe: ProductionRecipe
+) -> Array[CodexStatRow]:
+	return [
+		CodexStatRow.new("投入", recipe.get_input_summary()),
+		CodexStatRow.new("产出", recipe.get_output_summary()),
+		CodexStatRow.new(
+			"生产时间",
+			"%s 秒" % _format_number(recipe.duration_seconds)
+		),
+		CodexStatRow.new("材料来源", _get_recipe_input_source_label(recipe)),
+		CodexStatRow.new("产物去向", _get_recipe_output_destination_label(recipe)),
+	]
+
+
+func _build_recipe_notes(recipe: ProductionRecipe) -> PackedStringArray:
+	var notes := PackedStringArray()
+	var producer_label := ProductionRecipeRegistryScript.get_producer_label(
+		recipe.recipe_id
+	)
+	if not producer_label.is_empty():
+		notes.append("制作位置：%s" % producer_label)
+	if recipe.required_global_research_id == &"":
+		notes.append("科研前置：无")
+	else:
+		var research := GlobalResearchRegistry.get_config(
+			recipe.required_global_research_id
+		)
+		notes.append(
+			"科研前置：%s" % (
+				research.display_name
+				if research != null
+				else String(recipe.required_global_research_id)
+			)
+		)
+	if recipe.outputs_to_local_slot():
+		notes.append("本地产物格容量：%d" % recipe.get_local_output_capacity())
+	return notes
+
+
+func _get_recipe_input_source_label(recipe: ProductionRecipe) -> String:
+	if recipe.input_items.is_empty():
+		return "无需材料（自动生产）"
+	if recipe.uses_environment_source():
+		return "环境来源"
+	if recipe.inputs_from_player_inventory():
+		return "玩家背包"
+	return "共享仓库"
+
+
+func _get_recipe_output_destination_label(recipe: ProductionRecipe) -> String:
+	match recipe.output_destination:
+		ProductionRecipe.OutputDestination.PLAYER_INVENTORY:
+			return "玩家背包"
+		ProductionRecipe.OutputDestination.LOCAL_OUTPUT_SLOT:
+			return "建筑本地产物格"
+		_:
+			return "共享仓库"
+
+
+func _get_research_filter_key(
+	config: GlobalResearchConfig
+) -> StringName:
+	match config.effect_type:
+		GlobalResearchConfig.EffectType.SIMPLE_CRAFTING_RECIPE_UNLOCK, \
+		GlobalResearchConfig.EffectType.PRODUCTION_RECIPE_UNLOCK:
+			return &"recipe_unlock"
+		GlobalResearchConfig.EffectType.VEGETATION_SPREAD_SPEED_MULTIPLIER:
+			return &"building_enhancement"
+		_:
+			return &"attribute"
+
+
+func _get_research_sort_group(filter_key: StringName) -> int:
+	match filter_key:
+		&"recipe_unlock":
+			return 1
+		&"building_enhancement":
+			return 2
+		_:
+			return 0
+
+
+func _build_research_stats(
+	config: GlobalResearchConfig
+) -> Array[CodexStatRow]:
+	return [
+		CodexStatRow.new("投入", _get_research_input_summary(config)),
+		CodexStatRow.new(
+			"研究时间",
+			"%s 秒" % _format_number(config.duration_seconds)
+		),
+		CodexStatRow.new("研究成果", config.result_summary),
+	]
+
+
+func _get_research_input_summary(config: GlobalResearchConfig) -> String:
+	var parts := PackedStringArray()
+	for input_index in config.input_items.size():
+		parts.append(
+			"%s ×%d" % [
+				config.input_items[input_index].display_name,
+				config.input_amounts[input_index],
+			]
+		)
+	return "、".join(parts)
+
+
+func _build_research_notes(
+	config: GlobalResearchConfig,
+	recipes: Array[ProductionRecipe]
+) -> PackedStringArray:
+	var notes := PackedStringArray()
+	var unlocked_recipe_names := PackedStringArray()
+	for recipe in recipes:
+		if recipe.required_global_research_id == config.research_id:
+			unlocked_recipe_names.append(recipe.display_name)
+	if not unlocked_recipe_names.is_empty():
+		notes.append(
+			"实际解锁配方：%s" % "、".join(unlocked_recipe_names)
+		)
+	else:
+		notes.append("研究效果：%s" % config.result_summary)
+	return notes
+
+
+func _load_catalog_texture(path: String) -> Texture2D:
+	if path.is_empty() or not ResourceLoader.exists(path, "Texture2D"):
+		return null
+	return ResourceLoader.load(path, "Texture2D") as Texture2D
+
+
+func _format_world_distance(value: float) -> String:
+	return "%s 像素（%s 格）" % [
+		_format_number(value),
+		_format_number(value / AUTHORED_TOWER_DEFENSE_TILE_SIZE),
+	]
 
 
 func _get_visibility_state(section: int, entry_id: StringName) -> int:
@@ -633,8 +1292,9 @@ func _build_filter_options(
 
 
 func _get_collectible_entry_id(item: PickupConfig) -> StringName:
-	var file_stem := item.resource_path.get_file().get_basename()
-	return StringName(file_stem.trim_prefix(CollectibleRegistry.CONFIG_PREFIX))
+	return StringName(
+		RuntimeContentCatalog.get_pickup_id_for_path(item.resource_path)
+	)
 
 
 func _get_collectible_stack_badge(item: PickupConfig) -> String:

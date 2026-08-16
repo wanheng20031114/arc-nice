@@ -141,13 +141,23 @@ func _test_registry_pool_split() -> void:
 
 
 func _test_codex_semantics() -> void:
+	var basketball_id := StringName(
+		RuntimeContentCatalog.get_pickup_id_for_path(BASKETBALL_PATH)
+	)
+	var flying_envelope_id := StringName(
+		RuntimeContentCatalog.get_pickup_id_for_path(FLYING_ENVELOPE_PATH)
+	)
 	var basketball_entry: CodexEntryViewData
 	var flying_envelope_entry: CodexEntryViewData
 	for entry in CodexCatalog.new().get_entries(CodexSection.COLLECTIBLE):
-		if entry.entry_id == &"basketball":
+		if entry.entry_id == basketball_id:
 			basketball_entry = entry
-		elif entry.entry_id == &"flying_envelope":
+		elif entry.entry_id == flying_envelope_id:
 			flying_envelope_entry = entry
+	_expect(
+		basketball_id != &"" and flying_envelope_id != &"",
+		"Special collectible codex entries must reuse stable runtime IDs."
+	)
 	_expect(basketball_entry != null, "The codex must include basketball.")
 	if basketball_entry == null:
 		return

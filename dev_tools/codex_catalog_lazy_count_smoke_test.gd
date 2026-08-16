@@ -4,6 +4,10 @@ const EXPECTED_COUNTS := {
 	CodexSection.ENEMY: 64,
 	CodexSection.COLLECTIBLE: 125,
 	CodexSection.BUILDING: 19,
+	CodexSection.ITEM: 36,
+	CodexSection.CHARACTER: 4,
+	CodexSection.RECIPE: 32,
+	CodexSection.RESEARCH: 6,
 }
 
 

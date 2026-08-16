@@ -329,7 +329,8 @@ func _test_resource_contract() -> void:
 	_expect(
 		SEA_CUCUMBER.is_consumable_item()
 		and SEA_CUCUMBER.display_name == "海参"
-		and SEA_CUCUMBER.description == "使用后hide，持续5秒"
+		and SEA_CUCUMBER.description
+		== "使用后隐去玩家显示，持续5秒；碰撞、操作与战斗状态保持不变。"
 		and SEA_CUCUMBER.can_store_in_inventory
 		and SEA_CUCUMBER.stackable
 		and SEA_CUCUMBER.potion_hides_player
@@ -351,6 +352,7 @@ func _test_multiplayer_transactions(fixture: Node2D) -> void:
 	var adapter := MultiplayerModeAdapter.new()
 	var net_manager := NetManagerStore.new()
 	var host_run_state := RunStateStore.new()
+	host_run_state.begin_new_run(&"weishidaier", false)
 	var suspended_peers: Dictionary[int, bool] = {}
 	var host_player := PLAYER_SCENE.instantiate() as Player
 	root.add_child(net_manager)
@@ -386,6 +388,10 @@ func _test_multiplayer_transactions(fixture: Node2D) -> void:
 				"inventory_snapshot": inventory_snapshot.duplicate(true),
 				"force_inventory_repair": force_inventory_repair,
 			})
+	)
+	_expect(
+		host_run_state.register_multiplayer_peer_state(PEER_ID),
+		"Host 海参事务测试必须先注册玩家背包账本。"
 	)
 	_expect(
 		host_run_state.try_add_item_count_for_peer(
@@ -438,6 +444,7 @@ func _test_multiplayer_transactions(fixture: Node2D) -> void:
 	coordinator.unbind_session(session)
 
 	var client_run_state := RunStateStore.new()
+	client_run_state.begin_new_run(&"weishidaier", false)
 	var client_player := PLAYER_SCENE.instantiate() as Player
 	fixture.add_child(client_player)
 	await process_frame
@@ -452,6 +459,10 @@ func _test_multiplayer_transactions(fixture: Node2D) -> void:
 		net_manager,
 		client_run_state,
 		suspended_peers
+	)
+	_expect(
+		client_run_state.register_multiplayer_peer_state(PEER_ID),
+		"客户端海参事务测试必须先注册玩家背包账本。"
 	)
 	coordinator.receive_inventory_item_used(
 		PEER_ID,

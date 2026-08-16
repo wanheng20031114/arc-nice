@@ -93,12 +93,11 @@ static func get_unlock_research_id_for_simple_crafting_recipe(
 		return &""
 	# 使用原始注册项目建立门槛。即使某份科研资源因配置错误而失效，
 	# 对应配方也应保持锁定，而不能因为 get_all_configs() 过滤后意外放行。
+	# 一个科研可同时声明简易制作与建筑生产路线，因此反查只匹配对应字段。
 	for research_id in RESEARCH_ORDER:
 		var config := RESEARCH_PROJECTS.get(research_id) as GlobalResearchConfig
 		if (
 			config != null
-			and config.effect_type
-			== GlobalResearchConfig.EffectType.SIMPLE_CRAFTING_RECIPE_UNLOCK
 			and config.unlocked_simple_crafting_recipe_id == recipe_id
 		):
 			return research_id
@@ -110,12 +109,11 @@ static func get_unlock_research_id_for_production_recipe(
 ) -> StringName:
 	if recipe_id == &"":
 		return &""
+	# 不按 effect_type 排斥复合解锁；生产路线以该字段为唯一反向索引。
 	for research_id in RESEARCH_ORDER:
 		var config := RESEARCH_PROJECTS.get(research_id) as GlobalResearchConfig
 		if (
 			config != null
-			and config.effect_type
-			== GlobalResearchConfig.EffectType.PRODUCTION_RECIPE_UNLOCK
 			and config.unlocked_production_recipe_id == recipe_id
 		):
 			return research_id

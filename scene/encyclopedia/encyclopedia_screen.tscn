@@ -248,7 +248,7 @@ mouse_filter = 2
 color = Color(0.66, 0.56, 0.33, 0.44)
 
 [node name="SectionNav" type="Control" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar"]
-custom_minimum_size = Vector2(176, 148)
+custom_minimum_size = Vector2(176, 332)
 layout_mode = 2
 
 [node name="SelectionIndicator" type="ColorRect" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav"]
@@ -266,7 +266,7 @@ anchor_bottom = 1.0
 offset_left = 12.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 4
 
 [node name="Enemy" type="Button" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons"]
 custom_minimum_size = Vector2(164, 44)
@@ -280,7 +280,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_nav_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_nav_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_nav_hover")
 theme_override_styles/focus = SubResource("StyleBoxFlat_nav_hover")
-text = "敌人  29"
+text = "敌人  64"
 alignment = 0
 
 [node name="Collectible" type="Button" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons"]
@@ -295,7 +295,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_nav_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_nav_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_nav_hover")
 theme_override_styles/focus = SubResource("StyleBoxFlat_nav_hover")
-text = "收藏品  123"
+text = "收藏品  125"
 alignment = 0
 
 [node name="Building" type="Button" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons"]
@@ -311,6 +311,66 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_nav_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_nav_hover")
 theme_override_styles/focus = SubResource("StyleBoxFlat_nav_hover")
 text = "建筑物  19"
+alignment = 0
+
+[node name="Item" type="Button" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons"]
+custom_minimum_size = Vector2(164, 44)
+layout_mode = 2
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.72, 0.73, 0.69, 1)
+theme_override_colors/font_hover_color = Color(0.98, 0.87, 0.58, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_nav_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_nav_hover")
+text = "物品  36"
+alignment = 0
+
+[node name="Character" type="Button" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons"]
+custom_minimum_size = Vector2(164, 44)
+layout_mode = 2
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.72, 0.73, 0.69, 1)
+theme_override_colors/font_hover_color = Color(0.98, 0.87, 0.58, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_nav_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_nav_hover")
+text = "角色  4"
+alignment = 0
+
+[node name="Recipe" type="Button" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons"]
+custom_minimum_size = Vector2(164, 44)
+layout_mode = 2
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.72, 0.73, 0.69, 1)
+theme_override_colors/font_hover_color = Color(0.98, 0.87, 0.58, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_nav_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_nav_hover")
+text = "配方  32"
+alignment = 0
+
+[node name="Research" type="Button" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons"]
+custom_minimum_size = Vector2(164, 44)
+layout_mode = 2
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.72, 0.73, 0.69, 1)
+theme_override_colors/font_hover_color = Color(0.98, 0.87, 0.58, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_nav_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_nav_hover")
+text = "科研  6"
 alignment = 0
 
 [node name="SidebarSpacer" type="Control" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar"]
@@ -385,7 +445,7 @@ text = "敌人档案"
 layout_mode = 2
 theme_override_colors/font_color = Color(0.49, 0.56, 0.53, 1)
 theme_override_font_sizes/font_size = 12
-text = "029 条记录"
+text = "064 条记录"
 vertical_alignment = 1
 
 [node name="SectionDescription" type="Label" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/Header"]
@@ -435,7 +495,7 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.48, 0.72, 0.65, 1)
 theme_override_font_sizes/font_size = 12
 theme_override_styles/normal = SubResource("StyleBoxFlat_count")
-text = "显示 29 / 29"
+text = "显示 64 / 64"
 horizontal_alignment = 1
 vertical_alignment = 1
 

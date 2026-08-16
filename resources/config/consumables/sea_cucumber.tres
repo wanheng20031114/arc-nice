@@ -7,7 +7,7 @@
 script = ExtResource("1_script")
 pickup_type = 4
 display_name = "海参"
-description = "使用后hide，持续5秒"
+description = "使用后隐去玩家显示，持续5秒；碰撞、操作与战斗状态保持不变。"
 can_store_in_inventory = true
 stackable = true
 inventory_stack_limit = 999

@@ -328,7 +328,7 @@ func _test_config_and_scene(
 		and GlobalResearchRegistry.get_unlock_research_id_for_simple_crafting_recipe(
 			SimpleCraftingRegistry.BAMBOO_MORTAR_ID
 		) == BAMBOO_MORTAR_CRAFTING_RESEARCH_ID,
-		"迫击炮简易装配必须是消耗2木制核心和5树苗、持续30秒的合法配方解锁研究。"
+		"竹筒迫击炮装配研究必须是消耗2木制核心和5树苗、持续30秒的合法配方解锁研究。"
 	)
 	_expect(
 		hydrangea_research != null
@@ -344,7 +344,7 @@ func _test_config_and_scene(
 		and GlobalResearchRegistry.get_unlock_research_id_for_simple_crafting_recipe(
 			SimpleCraftingRegistry.HYDRANGEA_RAIN_TOWER_ID
 		) == HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID,
-		"紫阳花简易培育必须是消耗2木制核心和5树苗、持续30秒的合法配方解锁研究。"
+		"紫阳花雨幕塔培育研究必须是消耗2木制核心和5树苗、持续30秒的合法配方解锁研究。"
 	)
 	_expect(
 		orange_research != null

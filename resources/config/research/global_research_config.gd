@@ -25,6 +25,7 @@ enum EffectType {
 @export_range(0.1, 3600.0, 0.1, "or_greater") var duration_seconds: float = 60.0
 @export var effect_type: EffectType = EffectType.BUILDING_PHYSICAL_DEFENSE
 @export var effect_amount: float = 0.0
+# 同一项配方解锁科研可以同时开放一条简易制作路线与一条建筑生产路线。
 @export var unlocked_simple_crafting_recipe_id: StringName = &""
 @export var unlocked_production_recipe_id: StringName = &""
 
@@ -49,14 +50,12 @@ func is_valid() -> bool:
 		EffectType.SIMPLE_CRAFTING_RECIPE_UNLOCK:
 			if (
 				unlocked_simple_crafting_recipe_id == &""
-				or unlocked_production_recipe_id != &""
 				or effect_amount != 0.0
 			):
 				return false
 		EffectType.PRODUCTION_RECIPE_UNLOCK:
 			if (
 				unlocked_production_recipe_id == &""
-				or unlocked_simple_crafting_recipe_id != &""
 				or effect_amount != 0.0
 			):
 				return false

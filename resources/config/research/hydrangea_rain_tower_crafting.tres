@@ -8,11 +8,12 @@
 [resource]
 script = ExtResource("1_script")
 research_id = &"hydrangea_rain_tower_crafting"
-display_name = "紫阳花简易培育"
-description = "提交共享仓库材料，完成后本局所有玩家都可在简易制作中培育紫阳花雨幕塔。"
-result_summary = "解锁紫阳花雨幕塔配方"
+display_name = "紫阳花雨幕塔培育研究"
+description = "提交共享仓库材料，完成后本局所有玩家都可在简易制作中培育紫阳花雨幕塔，也可在植物培育中心培育。"
+result_summary = "解锁紫阳花雨幕塔简易制作与培育配方"
 input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_core"), ExtResource("3_sapling")])
 input_amounts = Array[int]([2, 5])
 duration_seconds = 30.0
 effect_type = 2
 unlocked_simple_crafting_recipe_id = &"hydrangea_rain_tower"
+unlocked_production_recipe_id = &"wooden_core_to_hydrangea_rain_tower"

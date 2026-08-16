@@ -11,6 +11,10 @@ const EXPECTED_SECTION_COUNTS := {
 	CodexSection.ENEMY: 64,
 	CodexSection.COLLECTIBLE: 125,
 	CodexSection.BUILDING: 19,
+	CodexSection.ITEM: 36,
+	CodexSection.CHARACTER: 4,
+	CodexSection.RECIPE: 32,
+	CodexSection.RESEARCH: 6,
 }
 const EXPECTED_COLLECTIBLE_RARITY_COUNTS := {
 	&"common": 41,
@@ -27,6 +31,26 @@ const EXPECTED_BUILDING_CATEGORY_COUNTS := {
 	&"fence": 1,
 	&"terrain_building": 1,
 	&"storage_building": 1,
+}
+const EXPECTED_ITEM_CATEGORY_COUNTS := {
+	&"material": 14,
+	&"consumable": 17,
+	&"instant": 4,
+	&"fate": 1,
+}
+const EXPECTED_CHARACTER_CATEGORY_COUNTS := {
+	&"ranged": 3,
+	&"melee": 1,
+}
+const EXPECTED_RECIPE_CATEGORY_COUNTS := {
+	&"simple_crafting": 9,
+	&"shared_production": 22,
+	&"local_output_cycle": 1,
+}
+const EXPECTED_RESEARCH_CATEGORY_COUNTS := {
+	&"attribute": 2,
+	&"recipe_unlock": 3,
+	&"building_enhancement": 1,
 }
 const EXPECTED_ENEMY_FAMILY_COUNTS := {
 	&"yuanshi_insect": 16,
@@ -94,6 +118,7 @@ func _run() -> void:
 	_test_entry_content(catalog)
 	_test_enemy_stat_contract(catalog)
 	_test_building_stat_contract(catalog)
+	_test_new_section_content_contract(catalog)
 	await _test_visibility_contract(catalog)
 	await _test_scene_contract()
 	catalog.clear_cache()
@@ -165,6 +190,30 @@ func _test_filter_counts(catalog: CodexCatalog) -> void:
 		EXPECTED_ENEMY_FAMILY_COUNTS,
 		"Enemy family"
 	)
+	_expect_filter_counts(
+		catalog,
+		CodexSection.ITEM,
+		EXPECTED_ITEM_CATEGORY_COUNTS,
+		"Item category"
+	)
+	_expect_filter_counts(
+		catalog,
+		CodexSection.CHARACTER,
+		EXPECTED_CHARACTER_CATEGORY_COUNTS,
+		"Character category"
+	)
+	_expect_filter_counts(
+		catalog,
+		CodexSection.RECIPE,
+		EXPECTED_RECIPE_CATEGORY_COUNTS,
+		"Recipe category"
+	)
+	_expect_filter_counts(
+		catalog,
+		CodexSection.RESEARCH,
+		EXPECTED_RESEARCH_CATEGORY_COUNTS,
+		"Research category"
+	)
 
 
 func _expect_filter_counts(
@@ -201,7 +250,7 @@ func _test_enemy_rank_counts(catalog: CodexCatalog) -> void:
 		actual_counts[source.rank] = int(actual_counts.get(source.rank, 0)) + 1
 	_expect(
 		actual_counts == EXPECTED_ENEMY_RANK_COUNTS,
-		"Enemy ranks must contain 50 normal, eleven elite, and one Boss entry."
+		"Enemy ranks must contain 51 normal, 12 elite, and one Boss entry."
 	)
 
 
@@ -777,6 +826,10 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 	var saw_life_tower := false
 	var saw_speed_tower := false
 	var saw_attack_speed_tower := false
+	var saw_orange_tower := false
+	var saw_grape_tower := false
+	var saw_hydrangea_tower := false
+	var saw_wood_station_recipes := false
 	for entry in catalog.get_entries(CodexSection.BUILDING):
 		var config := entry.source_resource as PlantDefenseConfig
 		_expect(config != null, "%s must retain its building config." % entry.entry_id)
@@ -798,11 +851,12 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 			"Building %s must expose category and terrain labels."
 			% entry.entry_id
 		)
+		var acquisition_note := _find_note_with_prefix(entry.notes, "获取配方：")
 		_expect(
 			entry.notes.size() >= 2
-			and entry.notes[0].begins_with("主要配方：")
-			and entry.notes[1].begins_with("科研前置："),
-			"Building %s must expose its primary recipe and research prerequisite."
+			and entry.notes[0] == "背包规则：同格叠加，单格上限 999"
+			and not acquisition_note.is_empty(),
+			"Building %s must expose stack rules and every acquisition route."
 			% entry.entry_id
 		)
 		if entry.entry_id == &"life_tower":
@@ -812,12 +866,14 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 				and String(stats.get("生命", "")) == "2400"
 				and String(stats.get("物理防御", "")) == "5 点"
 				and String(stats.get("法术防御", "")) == "0"
+				and String(stats.get("最大生命加成", "")) == "+10%"
 				and entry.description.contains("生命上限提高10%")
 				and entry.description.contains("线性叠加")
-				and entry.notes[0].contains("生命强化塔组装")
-				and entry.notes[0].contains("木板 ×10")
-				and entry.notes[0].contains("树苗 ×2")
-				and entry.notes[0].contains("30 秒"),
+				and acquisition_note.contains("生命强化塔组装")
+				and acquisition_note.contains("木板 ×10")
+				and acquisition_note.contains("树苗 ×2")
+				and acquisition_note.contains("30 秒")
+				and acquisition_note.contains("共享仓库"),
 				"Life Tower codex entry must expose its stats, team effect, and 10-plank/2-sapling assembly recipe."
 			)
 		if entry.entry_id == &"speed_tower":
@@ -827,12 +883,13 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 				and String(stats.get("生命", "")) == "2400"
 				and String(stats.get("物理防御", "")) == "5 点"
 				and String(stats.get("法术防御", "")) == "0"
+				and String(stats.get("移动速度加成", "")) == "+10"
 				and entry.description.contains("移动速度提高10")
 				and entry.description.contains("线性叠加")
-				and entry.notes[0].contains("移速强化塔组装")
-				and entry.notes[0].contains("木板 ×10")
-				and entry.notes[0].contains("树苗 ×2")
-				and entry.notes[0].contains("30 秒"),
+				and acquisition_note.contains("移速强化塔组装")
+				and acquisition_note.contains("木板 ×10")
+				and acquisition_note.contains("树苗 ×2")
+				and acquisition_note.contains("30 秒"),
 				"Speed Tower codex entry must expose its stats, team effect, and 10-plank/2-sapling assembly recipe."
 			)
 		if entry.entry_id == &"attack_speed_tower":
@@ -842,13 +899,51 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 				and String(stats.get("生命", "")) == "2400"
 				and String(stats.get("物理防御", "")) == "5 点"
 				and String(stats.get("法术防御", "")) == "0"
+				and String(stats.get("攻击速度加成", "")) == "+3%"
 				and entry.description.contains("攻击速度提高3%")
 				and entry.description.contains("线性叠加")
-				and entry.notes[0].contains("攻速强化塔组装")
-				and entry.notes[0].contains("木板 ×10")
-				and entry.notes[0].contains("树苗 ×2")
-				and entry.notes[0].contains("30 秒"),
+				and acquisition_note.contains("攻速强化塔组装")
+				and acquisition_note.contains("木板 ×10")
+				and acquisition_note.contains("树苗 ×2")
+				and acquisition_note.contains("30 秒"),
 				"Attack Speed Tower codex entry must expose its stats, stacking effect, and assembly recipe."
+			)
+		if entry.entry_id == &"orange_charging_tower":
+			saw_orange_tower = true
+			_expect(
+				stats.has("气场外扩")
+				and stats.has("玩家技力回复")
+				and stats.has("防御塔攻击间隔")
+				and stats.has("生产耗时"),
+				"Orange tower must expose every authored aura multiplier."
+			)
+		if entry.entry_id == &"grape_arc_tower":
+			saw_grape_tower = true
+			_expect(
+				stats.has("最多连锁")
+				and stats.has("连锁距离")
+				and stats.has("蓄力时间"),
+				"Grape tower must expose its chain and charge configuration."
+			)
+		if entry.entry_id == &"hydrangea_rain_tower":
+			saw_hydrangea_tower = true
+			_expect(
+				stats.has("施放间隔")
+				and stats.has("雨幕持续")
+				and stats.has("效果持续")
+				and stats.has("生效间隔")
+				and stats.has("每次治疗")
+				and stats.has("每次法伤")
+				and stats.has("敌人攻击倍率")
+				and stats.has("搜索半径")
+				and stats.has("雨幕半径")
+				and _count_notes_with_prefix(entry.notes, "获取配方：") == 2,
+				"Hydrangea tower must expose its full rain contract and both recipes."
+			)
+		if entry.entry_id == &"wood_processing_station":
+			saw_wood_station_recipes = (
+				_count_notes_with_prefix(entry.notes, "生产配方：") == 11
+				and entry.notes.has("可运行配方总数：11")
 			)
 		if config.attack_damage > 0:
 			continue
@@ -868,6 +963,104 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 	_expect(
 		saw_attack_speed_tower,
 		"Building codex must contain the Attack Speed Tower entry."
+	)
+	_expect(
+		saw_orange_tower
+		and saw_grape_tower
+		and saw_hydrangea_tower
+		and saw_wood_station_recipes,
+		"Building codex must expose authored special stats and complete production lists."
+	)
+
+
+func _test_new_section_content_contract(catalog: CodexCatalog) -> void:
+	var item_entries := catalog.get_entries(CodexSection.ITEM)
+	var ticket := _find_entry(
+		item_entries,
+		&"item.materials.material_gambler_ticket"
+	)
+	var small_stone := _find_entry(
+		item_entries,
+		&"item.materials.material_small_stone"
+	)
+	var sea_cucumber := _find_entry(
+		item_entries,
+		&"item.consumables.sea_cucumber"
+	)
+	_expect(
+		ticket != null
+		and ticket.notes.has(
+			"用途：从共享仓库取回背包后，用于洛茜特殊玩法"
+		),
+		"Gambler ticket must describe its actual Luoxi gameplay use."
+	)
+	_expect(
+		small_stone != null
+		and small_stone.notes.has(
+			"当前用途：暂无配方或科研消费者，作为扩展物料保留"
+		),
+		"Small stone must not claim a nonexistent recipe consumer."
+	)
+	_expect(
+		sea_cucumber != null
+		and sea_cucumber.description
+		== "使用后隐去玩家显示，持续5秒；碰撞、操作与战斗状态保持不变。",
+		"Sea cucumber must expose player-facing behavior instead of placeholder text."
+	)
+
+	var hoe_cat := _find_entry(
+		catalog.get_entries(CodexSection.CHARACTER),
+		&"character.hoe_cat"
+	)
+	var hoe_skill_note := (
+		_find_note_with_prefix(hoe_cat.notes, "技能「")
+		if hoe_cat != null
+		else ""
+	)
+	_expect(
+		hoe_cat != null
+		and hoe_cat.primary_badge == "近战"
+		and _stats_to_dictionary(hoe_cat.stats).has("初始生命")
+		and hoe_skill_note.contains("旋风斩"),
+		"Character entries must expose role, authored stats, and skill details."
+	)
+
+	var excavator_recipe := _find_entry(
+		catalog.get_entries(CodexSection.RECIPE),
+		&"recipe.excavator_cycle"
+	)
+	var excavator_stats := (
+		_stats_to_dictionary(excavator_recipe.stats)
+		if excavator_recipe != null
+		else {}
+	)
+	_expect(
+		excavator_recipe != null
+		and excavator_recipe.description.begins_with("无需材料，自动生产")
+		and String(excavator_stats.get("投入", "")) == "无需材料"
+		and String(excavator_stats.get("材料来源", ""))
+		== "无需材料（自动生产）"
+		and String(excavator_stats.get("产物去向", ""))
+		== "建筑本地产物格"
+		and excavator_recipe.notes.has("本地产物格容量：5"),
+		"Excavator recipe must describe its automatic local-output cycle accurately."
+	)
+
+	var bamboo_research := _find_entry(
+		catalog.get_entries(CodexSection.RESEARCH),
+		&"research.bamboo_mortar_crafting"
+	)
+	var bamboo_unlock_note := (
+		_find_note_with_prefix(bamboo_research.notes, "实际解锁配方：")
+		if bamboo_research != null
+		else ""
+	)
+	_expect(
+		bamboo_research != null
+		and bamboo_research.description.contains("简易制作")
+		and bamboo_research.description.contains("植物培育中心")
+		and bamboo_unlock_note.count("竹筒迫击炮") >= 2,
+		"Research entries must expose every runtime-gated recipe route."
 	)
 
 
@@ -960,6 +1153,26 @@ func _test_scene_contract() -> void:
 	_expect(screen != null, "Encyclopedia scene must instantiate as EncyclopediaScreen.")
 	if screen == null:
 		return
+	var authored_buttons := screen.get_node(
+		"Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons"
+	).get_children()
+	var authored_texts := PackedStringArray()
+	for button_variant in authored_buttons:
+		var authored_button := button_variant as Button
+		if authored_button != null:
+			authored_texts.append(authored_button.text)
+	_expect(
+		authored_texts == PackedStringArray([
+			"敌人  64",
+			"收藏品  125",
+			"建筑物  19",
+			"物品  36",
+			"角色  4",
+			"配方  32",
+			"科研  6",
+		]),
+		"Authored scene text must not expose stale pre-ready encyclopedia counts."
+	)
 	root.add_child(screen)
 	current_scene = screen
 	await _wait_frames(3)
@@ -971,8 +1184,37 @@ func _test_scene_contract() -> void:
 	_expect(
 		screen.enemy_button.text == "敌人  %d" % expected_enemy_count
 		and screen.collectible_button.text == "收藏品  125"
-		and screen.building_button.text == "建筑物  19",
-		"Sidebar must display all three section totals."
+		and screen.building_button.text == "建筑物  19"
+		and screen.item_button.text == "物品  36"
+		and screen.character_button.text == "角色  4"
+		and screen.recipe_button.text == "配方  32"
+		and screen.research_button.text == "科研  6",
+		"Sidebar must display all seven authoritative section totals."
+	)
+	var section_buttons: Array[Button] = screen.get("_section_buttons")
+	_expect(
+		section_buttons.size() == CodexSection.ALL.size()
+		and section_buttons[CodexSection.ITEM] == screen.item_button
+		and section_buttons[CodexSection.CHARACTER] == screen.character_button
+		and section_buttons[CodexSection.RECIPE] == screen.recipe_button
+		and section_buttons[CodexSection.RESEARCH] == screen.research_button,
+		"Native sidebar button order must remain identical to CodexSection.ALL."
+	)
+	var archive_surface := screen.get_node(
+		"Page/PageMargin/ArchiveSurface"
+	) as Control
+	var archive_rect := archive_surface.get_global_rect()
+	for button in section_buttons:
+		var button_rect := button.get_global_rect()
+		_expect(
+			archive_rect.encloses(button_rect),
+			"Sidebar button %s must remain inside the archive at 1152×648."
+			% button.name
+		)
+	_expect(
+		screen.research_button.get_global_rect().end.y
+		<= screen.back_button.get_global_rect().position.y,
+		"Seven native section buttons must not overlap the back action."
 	)
 	var nav_style := screen.enemy_button.get_theme_stylebox(&"normal") as StyleBoxFlat
 	_expect(
@@ -1021,6 +1263,7 @@ func _test_scene_contract() -> void:
 	await _test_detail_section_switch_race(screen)
 	await _test_collectible_filter_visuals(screen)
 	await _test_search_filter_and_section_state(screen)
+	await _test_new_section_navigation(screen)
 	current_scene = null
 	screen.queue_free()
 	await _wait_frames(3)
@@ -1610,6 +1853,48 @@ func _test_search_filter_and_section_state(
 	screen.entry_grid.custom_minimum_size = Vector2.ZERO
 
 
+func _test_new_section_navigation(screen: EncyclopediaScreen) -> void:
+	var fixtures := [
+		{
+			"section": CodexSection.ITEM,
+			"button": screen.item_button,
+			"filters": EXPECTED_ITEM_CATEGORY_COUNTS.size(),
+		},
+		{
+			"section": CodexSection.CHARACTER,
+			"button": screen.character_button,
+			"filters": EXPECTED_CHARACTER_CATEGORY_COUNTS.size(),
+		},
+		{
+			"section": CodexSection.RECIPE,
+			"button": screen.recipe_button,
+			"filters": EXPECTED_RECIPE_CATEGORY_COUNTS.size(),
+		},
+		{
+			"section": CodexSection.RESEARCH,
+			"button": screen.research_button,
+			"filters": EXPECTED_RESEARCH_CATEGORY_COUNTS.size(),
+		},
+	]
+	for fixture_variant in fixtures:
+		var fixture := fixture_variant as Dictionary
+		var section := int(fixture["section"])
+		var button := fixture["button"] as Button
+		await _switch_section(screen, button)
+		var cards := screen.get("_cards") as Array
+		var indicator_y := screen.selection_indicator.global_position.y
+		_expect(
+			int(screen.get("_current_section")) == section
+			and screen.section_title.text
+			== "%s档案" % CodexSection.get_label(section)
+			and cards.size() == int(EXPECTED_SECTION_COUNTS[section])
+			and screen.filter_button.item_count == int(fixture["filters"]) + 1
+			and absf(indicator_y - button.global_position.y) <= 1.0,
+			"Section button must open the complete %s catalog with aligned indicator."
+			% CodexSection.get_label(section)
+		)
+
+
 func _set_search_query(screen: EncyclopediaScreen, query: String) -> void:
 	screen.search_edit.text = query
 	screen.search_edit.text_changed.emit(query)
@@ -1697,6 +1982,21 @@ func _first_stat_labels(rows: Array[CodexStatRow], count: int) -> Array[String]:
 	for index in mini(count, rows.size()):
 		labels.append(rows[index].label)
 	return labels
+
+
+func _find_note_with_prefix(notes: PackedStringArray, prefix: String) -> String:
+	for note in notes:
+		if note.begins_with(prefix):
+			return note
+	return ""
+
+
+func _count_notes_with_prefix(notes: PackedStringArray, prefix: String) -> int:
+	var count := 0
+	for note in notes:
+		if note.begins_with(prefix):
+			count += 1
+	return count
 
 
 func _format_number(value: float) -> String:

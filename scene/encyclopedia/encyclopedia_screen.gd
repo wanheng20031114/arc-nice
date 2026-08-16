@@ -30,6 +30,10 @@ const RARITY_COLORS := {
 @onready var enemy_button: Button = $Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons/Enemy
 @onready var collectible_button: Button = $Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons/Collectible
 @onready var building_button: Button = $Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons/Building
+@onready var item_button: Button = $Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons/Item
+@onready var character_button: Button = $Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons/Character
+@onready var recipe_button: Button = $Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons/Recipe
+@onready var research_button: Button = $Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons/Research
 @onready var section_nav: Control = $Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav
 @onready var selection_indicator: ColorRect = $Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/SelectionIndicator
 @onready var back_button: Button = $Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/BackButton
@@ -81,7 +85,16 @@ var _filter_icons: Array[Texture2D] = []
 
 func _ready() -> void:
 	_catalog = CodexCatalog.new()
-	_section_buttons = [enemy_button, collectible_button, building_button]
+	_section_buttons = [
+		enemy_button,
+		collectible_button,
+		building_button,
+		item_button,
+		character_button,
+		recipe_button,
+		research_button,
+	]
+	assert(_section_buttons.size() == CodexSection.ALL.size())
 	_initialize_section_states()
 	_connect_controls()
 	_update_sidebar_counts()
@@ -119,6 +132,10 @@ func _connect_controls() -> void:
 		_request_section.bind(CodexSection.COLLECTIBLE)
 	)
 	building_button.pressed.connect(_request_section.bind(CodexSection.BUILDING))
+	item_button.pressed.connect(_request_section.bind(CodexSection.ITEM))
+	character_button.pressed.connect(_request_section.bind(CodexSection.CHARACTER))
+	recipe_button.pressed.connect(_request_section.bind(CodexSection.RECIPE))
+	research_button.pressed.connect(_request_section.bind(CodexSection.RESEARCH))
 	back_button.pressed.connect(_return_to_main_menu)
 	search_edit.text_changed.connect(_on_search_changed)
 	filter_button.item_selected.connect(_on_filter_selected)
@@ -136,6 +153,14 @@ func _update_sidebar_counts() -> void:
 	)
 	building_button.text = (
 		"建筑物  %d" % _catalog.get_total_count(CodexSection.BUILDING)
+	)
+	item_button.text = "物品  %d" % _catalog.get_total_count(CodexSection.ITEM)
+	character_button.text = (
+		"角色  %d" % _catalog.get_total_count(CodexSection.CHARACTER)
+	)
+	recipe_button.text = "配方  %d" % _catalog.get_total_count(CodexSection.RECIPE)
+	research_button.text = (
+		"科研  %d" % _catalog.get_total_count(CodexSection.RESEARCH)
 	)
 
 
@@ -924,12 +949,22 @@ func _sync_selection_indicator(animate: bool) -> void:
 
 func _button_for_section(section: int) -> Button:
 	match section:
+		CodexSection.ENEMY:
+			return enemy_button
 		CodexSection.COLLECTIBLE:
 			return collectible_button
 		CodexSection.BUILDING:
 			return building_button
+		CodexSection.ITEM:
+			return item_button
+		CodexSection.CHARACTER:
+			return character_button
+		CodexSection.RECIPE:
+			return recipe_button
+		CodexSection.RESEARCH:
+			return research_button
 		_:
-			return enemy_button
+			return null
 
 
 func _prepare_page_entrance() -> void:
@@ -965,19 +1000,39 @@ func _on_page_entrance_finished() -> void:
 
 func _section_kicker_text(section: int) -> String:
 	match section:
+		CodexSection.ENEMY:
+			return "THREAT ARCHIVE  ·  目标情报"
 		CodexSection.COLLECTIBLE:
 			return "RELIC ARCHIVE  ·  收藏记录"
 		CodexSection.BUILDING:
 			return "STRUCTURE ARCHIVE  ·  建造资料"
+		CodexSection.ITEM:
+			return "SUPPLY ARCHIVE  ·  物资记录"
+		CodexSection.CHARACTER:
+			return "CHARACTER ARCHIVE  ·  作战人员"
+		CodexSection.RECIPE:
+			return "RECIPE ARCHIVE  ·  制作工艺"
+		CodexSection.RESEARCH:
+			return "RESEARCH ARCHIVE  ·  科研项目"
 		_:
-			return "THREAT ARCHIVE  ·  目标情报"
+			return "ARCHIVE  ·  未知档案"
 
 
 func _section_description_text(section: int) -> String:
 	match section:
+		CodexSection.ENEMY:
+			return "查阅已归档敌人的数值、特性与行动方式。"
 		CodexSection.COLLECTIBLE:
 			return "查阅收藏品效果、稀有度与叠加规则。"
 		CodexSection.BUILDING:
 			return "查阅建筑属性、放置条件与主要制造方式。"
+		CodexSection.ITEM:
+			return "查阅材料、消耗品、即时拾取物与命运物品。"
+		CodexSection.CHARACTER:
+			return "查阅可用角色的定位、基础属性与作战特点。"
+		CodexSection.RECIPE:
+			return "查阅简易制作与生产建筑配方的投入、产出及去向。"
+		CodexSection.RESEARCH:
+			return "查阅全局科研的材料需求、耗时与本局效果。"
 		_:
-			return "查阅已归档敌人的数值、特性与行动方式。"
+			return "暂无可查阅的档案说明。"

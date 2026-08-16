@@ -404,7 +404,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_entry")
 theme_override_styles/hover = SubResource("StyleBoxFlat_entry_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_entry_active")
 theme_override_styles/focus = SubResource("StyleBoxFlat_entry_active")
-text = "迫击炮简易装配\n待研究 · 30秒"
+text = "竹筒迫击炮装配研究\n待研究 · 30秒"
 alignment = 0
 
 [node name="HydrangeaResearchButton" type="Button" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList"]
@@ -421,7 +421,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_entry")
 theme_override_styles/hover = SubResource("StyleBoxFlat_entry_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_entry_active")
 theme_override_styles/focus = SubResource("StyleBoxFlat_entry_active")
-text = "紫阳花简易培育\n待研究 · 30秒"
+text = "紫阳花雨幕塔培育研究\n待研究 · 30秒"
 alignment = 0
 
 [node name="OrangeChargingTowerResearchButton" type="Button" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList"]
