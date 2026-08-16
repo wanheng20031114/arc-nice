@@ -1301,16 +1301,26 @@ func _test_lobby_contract() -> void:
 	var character_overlay := lobby.get_node(
 		"PlayerCharacterChoiceOverlay"
 	) as PlayerCharacterChoiceOverlay
-	_expect(selector.item_count == 9, "多人大厅必须暴露全部九个目录模式选项。")
+	_expect(selector.item_count == 3, "多人大厅只能暴露三个正式模式选项。")
 	_expect(
-		selector.get_item_id(8) == NetManagerStore.GameMode.TEST_ARENA_P3
-		and selector.get_item_text(8).contains("P3")
-		and selector.get_item_icon(8) != null,
-		"大厅第九项必须是带图标的 P3 肉鸽路线。"
+		selector.get_item_id(2) == NetManagerStore.GameMode.TEST_ARENA_P3
+		and selector.get_item_text(2) == "肉鸽模式"
+		and selector.get_item_icon(2) != null,
+		"大厅第三项必须是带图标的正式肉鸽模式。"
 	)
 	lobby.call("_update_choose_character_button")
 	_expect(choose_button.visible, "P3 房间必须允许玩家选择并确认角色。")
-	net_manager.set_host_game_mode(NetManagerStore.GameMode.TEST_ARENA_P2)
+	_expect(
+		GameModeCatalog.is_development_selectable(
+			GameModeCatalog.MODE_TEST_ARENA_P2
+		),
+		"P2 fixture 必须通过显式开发入口保持可测试。"
+	)
+	# 模拟旧 Host 的冻结 wire 解码；正式 Host setter 必须拒绝该模式。
+	net_manager.call(
+		"_set_current_game_mode",
+		NetManagerStore.GameMode.TEST_ARENA_P2
+	)
 	character_overlay.open(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID)
 	await process_frame
 	lobby.call(

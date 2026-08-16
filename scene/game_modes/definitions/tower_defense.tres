@@ -7,6 +7,7 @@ script = ExtResource("1_definition")
 mode_id = 1
 wire_key = &"tower_defense"
 display_name = "塔防模式"
+visibility = 2
 lobby_label = "塔防模式"
 lobby_icon_path = "res://resources/texture/ui/multiplayer/mode_tower_defense.png"
 lobby_order = 1

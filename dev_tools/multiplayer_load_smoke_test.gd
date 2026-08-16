@@ -461,7 +461,7 @@ func _test_net_manager_game_mode_authority() -> void:
 		[NetManagerStore.GameMode.TOWER_DEFENSE, "tower_defense", "塔防模式"],
 		[NetManagerStore.GameMode.TEST_ARENA_P1, "test_arena_p1", "测试场景 P1A"],
 		[NetManagerStore.GameMode.TEST_ARENA_P2, "test_arena_p2", "测试场景 P2"],
-		[NetManagerStore.GameMode.TEST_ARENA_P3, "test_arena_p3", "测试场景 P3 · 肉鸽路线"],
+		[NetManagerStore.GameMode.TEST_ARENA_P3, "test_arena_p3", "肉鸽模式"],
 		[NetManagerStore.GameMode.TEST_ARENA_P1B, "test_arena_p1b", "测试场景 P1B"],
 		[NetManagerStore.GameMode.TEST_ARENA_P1C, "test_arena_p1c", "测试场景 P1C"],
 		[NetManagerStore.GameMode.TEST_ARENA_P1D, "test_arena_p1d", "测试场景 P1D"],
@@ -476,12 +476,17 @@ func _test_net_manager_game_mode_authority() -> void:
 			"Every multiplayer mode must round-trip through its stable key and display name."
 		)
 	_expect(
-		net_manager.set_pending_game_mode(
+		not net_manager.set_pending_game_mode(
 			NetManagerStore.GameMode.TEST_ARENA_P1E
 		)
 		and net_manager.get_current_game_mode()
-		== NetManagerStore.GameMode.TEST_ARENA_P1E,
-		"NetManager must accept P1E through its stable wire mode."
+		== NetManagerStore.GameMode.TOWER_DEFENSE,
+		"NetManager production admission must reject development-only P1E."
+	)
+	# 模拟可信 Host 的旧协议状态；解码兼容与本机新建准入是两条边界。
+	net_manager.call(
+		"_set_current_game_mode",
+		NetManagerStore.GameMode.TEST_ARENA_P1E
 	)
 	net_manager.set("net_role", NetManagerStore.NetRole.CLIENT)
 	net_manager.set("connection_state", NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY)

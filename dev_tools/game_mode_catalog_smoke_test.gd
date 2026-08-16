@@ -13,7 +13,8 @@ const EXPECTED_WIRE_KEYS := [
 	"test_arena_p1d",
 	"test_arena_p1e",
 ]
-const EXPECTED_LOBBY_ORDER := [0, 1, 2, 5, 6, 7, 8, 3, 4]
+const EXPECTED_RELEASE_ORDER := [0, 1, 4]
+const EXPECTED_DEVELOPMENT_ORDER := [0, 1, 2, 5, 6, 7, 8, 3, 4]
 
 var failures := PackedStringArray()
 
@@ -68,20 +69,43 @@ func _run() -> void:
 		GameModeCatalog.resolve_wire_key_or_default("unknown") == 0,
 		"Unknown wire keys must resolve to standard mode."
 	)
+	var protocol_only_definition := GameModeDefinition.new()
+	protocol_only_definition.mode_id = 42
+	protocol_only_definition.wire_key = &"legacy_decode_only"
 	_expect(
-		GameModeCatalog.is_valid_mode_id(GameModeCatalog.MODE_TEST_ARENA_P1E)
-		and GameModeCatalog.is_mode_selectable(
+		protocol_only_definition.validate_definition().is_empty()
+		and not protocol_only_definition.is_selectable_for(
+			GameModeDefinition.SelectionAudience.RELEASE
+		)
+		and not protocol_only_definition.is_selectable_for(
+			GameModeDefinition.SelectionAudience.DEVELOPMENT
+		),
+		"Protocol-only definitions must decode without becoming an authored entry."
+	)
+	_expect(
+		GameModeCatalog.is_known_mode_id(GameModeCatalog.MODE_TEST_ARENA_P1E)
+		and GameModeCatalog.is_development_selectable(
+			GameModeCatalog.MODE_TEST_ARENA_P1E
+		)
+		and not GameModeCatalog.is_release_selectable(
 			GameModeCatalog.MODE_TEST_ARENA_P1E
 		),
-		"P1E must remain known to v62 and expose its authored test entry."
+		"P1E must remain a known development fixture without entering release admission."
 	)
 
 	var lobby_mode_ids := PackedInt32Array()
-	for definition in GameModeCatalog.get_lobby_definitions():
+	for definition in GameModeCatalog.get_release_lobby_definitions():
 		lobby_mode_ids.append(definition.mode_id)
 	_expect(
-		Array(lobby_mode_ids) == EXPECTED_LOBBY_ORDER,
-		"Lobby order changed: %s" % [lobby_mode_ids]
+		Array(lobby_mode_ids) == EXPECTED_RELEASE_ORDER,
+		"Release lobby order changed: %s" % [lobby_mode_ids]
+	)
+	var development_mode_ids: Array[int] = []
+	for definition in GameModeCatalog.get_development_definitions():
+		development_mode_ids.append(definition.mode_id)
+	_expect(
+		development_mode_ids == EXPECTED_DEVELOPMENT_ORDER,
+		"Development fixture order changed: %s" % [development_mode_ids]
 	)
 	var tower_definition := GameModeCatalog.get_definition(1)
 	var p1_definition := GameModeCatalog.get_definition(2)
@@ -146,9 +170,14 @@ func _run() -> void:
 	var rogue_definition := GameModeCatalog.get_definition(4)
 	_expect(
 		rogue_definition != null
+		and GameModeCatalog.MODE_ROGUE == GameModeCatalog.MODE_TEST_ARENA_P3
+		and GameModeCatalog.is_release_selectable(GameModeCatalog.MODE_ROGUE)
+		and rogue_definition.wire_key == &"test_arena_p3"
+		and rogue_definition.display_name == "肉鸽模式"
+		and rogue_definition.lobby_label == "肉鸽模式"
 		and not rogue_definition.include_starting_inventory
 		and not rogue_definition.uses_wave_campaign,
-		"P3 must retain its no-starting-inventory/no-wave-campaign policy."
+		"Rogue must publish under its player-facing name while freezing the P3 wire contract."
 	)
 	_test_moved_uid_contracts()
 	_finish()

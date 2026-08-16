@@ -40,13 +40,16 @@ enum EncyclopediaLoadState {
 enum SingleplayerDestination {
 	STANDARD,
 	TOWER_DEFENSE,
+	ROGUE,
 	TEST_ARENA,
 }
 
 @onready var settings_panel: Control = $SettingsPanel
 @onready var singleplayer_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer
 @onready var tower_defense_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/TowerDefense
+@onready var rogue_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/Rogue
 @onready var test_arena_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/TestArena
+@onready var multiplayer_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/Multiplayer
 @onready var encyclopedia_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/Encyclopedia
 @onready var test_arena_choice_overlay: TestArenaChoiceOverlay = $TestArenaChoiceOverlay
 @onready var character_choice_overlay: PlayerCharacterChoiceOverlay = $PlayerCharacterChoiceOverlay
@@ -69,12 +72,29 @@ var _collectible_loading_paths: Dictionary = {}
 
 func _ready() -> void:
 	set_process(false)
+	_configure_main_menu_visibility()
 	test_arena_choice_overlay.arena_selected.connect(_on_test_arena_selected)
 	test_arena_choice_overlay.selection_closed.connect(_on_test_arena_selection_closed)
 	character_choice_overlay.character_confirmed.connect(_on_character_confirmed)
 	character_choice_overlay.selection_closed.connect(_on_character_selection_closed)
 	call_deferred("_apply_requested_focus")
 	call_deferred("_preload_encyclopedia_after_first_frame")
+
+
+func _configure_main_menu_visibility() -> void:
+	# 测试场只属于调试构建；正式菜单始终形成 Standard/Tower/Rogue 三入口。
+	var show_development_entries := OS.is_debug_build()
+	test_arena_button.visible = show_development_entries
+	rogue_button.focus_neighbor_bottom = (
+		rogue_button.get_path_to(test_arena_button)
+		if show_development_entries
+		else rogue_button.get_path_to(multiplayer_button)
+	)
+	multiplayer_button.focus_neighbor_top = (
+		multiplayer_button.get_path_to(test_arena_button)
+		if show_development_entries
+		else multiplayer_button.get_path_to(rogue_button)
+	)
 
 
 func _exit_tree() -> void:
@@ -137,6 +157,11 @@ func _on_tower_defense_pressed() -> void:
 	_open_singleplayer_character_selection(SingleplayerDestination.TOWER_DEFENSE)
 
 
+func _on_rogue_pressed() -> void:
+	_cancel_pending_encyclopedia_open()
+	_open_singleplayer_character_selection(SingleplayerDestination.ROGUE)
+
+
 func _on_test_arena_pressed() -> void:
 	_cancel_pending_encyclopedia_open()
 	test_arena_choice_overlay.open(pending_test_arena_id)
@@ -147,7 +172,7 @@ func _on_test_arena_selected(arena_id: StringName) -> void:
 		push_error("Main menu received an invalid test arena: %s" % arena_id)
 		return
 	var mode_id := int(TEST_ARENA_MODE_IDS[arena_id])
-	if not GameModeCatalog.is_mode_selectable(mode_id):
+	if not GameModeCatalog.is_development_selectable(mode_id):
 		push_warning("Main menu rejected an unpublished test arena: %s" % arena_id)
 		return
 	pending_test_arena_id = arena_id
@@ -170,29 +195,42 @@ func _on_character_confirmed(character_id: StringName) -> void:
 		push_error("Main menu received an invalid character selection: %s" % character_id)
 		return
 	var definition := _get_pending_singleplayer_definition()
+	var selection_audience := (
+		GameModeDefinition.SelectionAudience.DEVELOPMENT
+		if pending_singleplayer_destination == SingleplayerDestination.TEST_ARENA
+		else GameModeDefinition.SelectionAudience.RELEASE
+	)
 	if (
 		definition == null
-		or not GameModeCatalog.is_mode_selectable(definition.mode_id)
+		or not definition.is_selectable_for(selection_audience)
 	):
 		push_error("Main menu could not resolve the selected game mode.")
 		return
 	run_state.begin_new_run(character_id, definition.include_starting_inventory)
-	_begin_singleplayer_load(definition.singleplayer_entry_scene_path)
+	_begin_singleplayer_load(
+		definition.singleplayer_entry_scene_path,
+		selection_audience
+	)
 
 
-func _begin_singleplayer_load(scene_path: String) -> void:
+func _begin_singleplayer_load(
+	scene_path: String,
+	selection_audience: GameModeDefinition.SelectionAudience = (
+		GameModeDefinition.SelectionAudience.RELEASE
+	)
+) -> void:
 	var definition := GameModeCatalog.get_definition_by_singleplayer_entry(
 		scene_path
 	)
 	if (
 		definition == null
-		or not GameModeCatalog.is_mode_selectable(definition.mode_id)
+		or not definition.is_selectable_for(selection_audience)
 	):
 		push_warning("Main menu rejected an unpublished singleplayer scene: %s" % scene_path)
 		return
 	var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
 	if load_coordinator != null and load_coordinator.has_method("begin_singleplayer"):
-		load_coordinator.call("begin_singleplayer", scene_path)
+		load_coordinator.call("begin_singleplayer", scene_path, selection_audience)
 		return
 	get_tree().change_scene_to_file(scene_path)
 
@@ -210,6 +248,8 @@ func _get_pending_singleplayer_mode_id() -> int:
 	match pending_singleplayer_destination:
 		SingleplayerDestination.TOWER_DEFENSE:
 			return GameModeCatalog.MODE_TOWER_DEFENSE
+		SingleplayerDestination.ROGUE:
+			return GameModeCatalog.MODE_ROGUE
 		SingleplayerDestination.TEST_ARENA:
 			return int(
 				TEST_ARENA_MODE_IDS.get(
@@ -225,6 +265,8 @@ func _on_character_selection_closed() -> void:
 	match pending_singleplayer_destination:
 		SingleplayerDestination.TOWER_DEFENSE:
 			tower_defense_button.grab_focus()
+		SingleplayerDestination.ROGUE:
+			rogue_button.grab_focus()
 		SingleplayerDestination.TEST_ARENA:
 			test_arena_choice_overlay.open(pending_test_arena_id)
 		_:

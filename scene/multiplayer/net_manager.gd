@@ -103,6 +103,10 @@ var public_room_id: String = ""
 var public_host_token: String = ""
 var public_is_host: bool = false
 var current_game_mode: GameMode = GameMode.STANDARD
+## 开发 Host 权限只能由显式 fixture API 获取，并在断线时恢复为 RELEASE。
+var _host_mode_selection_audience := GameModeDefinition.SelectionAudience.RELEASE
+## roster 可保存 known wire，但运行加载只消费此受众；默认永远是 RELEASE。
+var _runtime_mode_selection_audience := GameModeDefinition.SelectionAudience.RELEASE
 ## 房间允许的总人数，包含房主。
 var room_max_players: int = NetConstants.MAX_PLAYERS
 ## 当前 Host 权威游戏会话世代。断线时可清零当前值，但分配水位不得回退，
@@ -378,10 +382,50 @@ func clear_public_room_context() -> void:
 
 
 func set_host_game_mode(game_mode: GameMode) -> bool:
-	if not _is_valid_game_mode(int(game_mode)):
+	return _set_host_game_mode_for_audience(
+		game_mode,
+		GameModeDefinition.SelectionAudience.RELEASE
+	)
+
+
+## 仅供调试构建中的联机 fixture；生产 UI 和正式导出不能取得该准入。
+func set_development_host_game_mode_for_fixture(game_mode: GameMode) -> bool:
+	if not OS.is_debug_build():
+		return false
+	return _set_host_game_mode_for_audience(
+		game_mode,
+		GameModeDefinition.SelectionAudience.DEVELOPMENT
+	)
+
+
+## 调试 Client 必须在收到隐藏模式 start 前显式获取运行许可。
+func enable_development_runtime_modes_for_fixture() -> bool:
+	if not OS.is_debug_build():
+		return false
+	_runtime_mode_selection_audience = (
+		GameModeDefinition.SelectionAudience.DEVELOPMENT
+	)
+	return true
+
+
+func is_runtime_game_mode_admitted(game_mode: int) -> bool:
+	return GameModeCatalog.is_selectable_for_audience(
+		game_mode,
+		_runtime_mode_selection_audience
+	)
+
+
+func _set_host_game_mode_for_audience(
+	game_mode: GameMode,
+	audience: GameModeDefinition.SelectionAudience
+) -> bool:
+	var definition := GameModeCatalog.get_definition(int(game_mode))
+	if definition == null or not definition.is_selectable_for(audience):
 		return false
 	if is_client() or connection_state >= ConnectionState.LOADING_GAME:
 		return false
+	_host_mode_selection_audience = audience
+	_runtime_mode_selection_audience = audience
 	_set_current_game_mode(game_mode)
 	if is_host():
 		_broadcast_player_list_to_clients()
@@ -389,10 +433,12 @@ func set_host_game_mode(game_mode: GameMode) -> bool:
 
 
 func set_pending_game_mode(game_mode: GameMode) -> bool:
-	if not _is_valid_game_mode(int(game_mode)):
+	if not _is_release_game_mode(int(game_mode)):
 		return false
 	if is_multiplayer_active() or net_role != NetRole.NONE:
 		return false
+	_host_mode_selection_audience = GameModeDefinition.SelectionAudience.RELEASE
+	_runtime_mode_selection_audience = GameModeDefinition.SelectionAudience.RELEASE
 	_set_current_game_mode(game_mode)
 	return true
 
@@ -469,6 +515,8 @@ func host_create_lan_server(
 	port: int = NetConstants.ENET_PORT_DEFAULT,
 	max_players: int = NetConstants.MAX_PLAYERS
 ) -> Error:
+	if not _validate_host_game_mode_admission():
+		return ERR_UNAVAILABLE
 	_ensure_local_reconnect_token()
 	if not _is_valid_room_max_players(max_players):
 		connection_failed.emit(
@@ -477,9 +525,12 @@ func host_create_lan_server(
 		)
 		return ERR_INVALID_PARAMETER
 	var configured_game_mode := current_game_mode
+	var configured_mode_audience := _host_mode_selection_audience
 	if _enet_peer != null:
 		disconnect_from_game()
 	_set_current_game_mode(configured_game_mode)
+	_host_mode_selection_audience = configured_mode_audience
+	_runtime_mode_selection_audience = configured_mode_audience
 	room_max_players = max_players
 
 	lan_port = port
@@ -590,6 +641,8 @@ func host_create_relay_room(
 	target_relay_port: int,
 	max_players: int = NetConstants.MAX_PLAYERS
 ) -> Error:
+	if not _validate_host_game_mode_admission():
+		return ERR_UNAVAILABLE
 	_ensure_local_reconnect_token()
 	if not _is_valid_room_max_players(max_players):
 		connection_failed.emit(
@@ -598,9 +651,12 @@ func host_create_relay_room(
 		)
 		return ERR_INVALID_PARAMETER
 	var configured_game_mode := current_game_mode
+	var configured_mode_audience := _host_mode_selection_audience
 	if _enet_peer != null:
 		disconnect_from_game()
 	_set_current_game_mode(configured_game_mode)
+	_host_mode_selection_audience = configured_mode_audience
+	_runtime_mode_selection_audience = configured_mode_audience
 	room_max_players = max_players
 
 	var trimmed_ip := target_relay_ip.strip_edges()
@@ -719,6 +775,8 @@ func disconnect_from_game() -> void:
 	_reported_game_load_total_count = 0
 	clear_public_room_context()
 	_set_current_game_mode(GameMode.STANDARD)
+	_host_mode_selection_audience = GameModeDefinition.SelectionAudience.RELEASE
+	_runtime_mode_selection_audience = GameModeDefinition.SelectionAudience.RELEASE
 	room_max_players = NetConstants.MAX_PLAYERS
 	_relay_register_pending = false
 	_clear_connection_attempt()
@@ -810,6 +868,8 @@ func host_start_game() -> void:
 	if not is_host():
 		return
 	if connection_state >= ConnectionState.LOADING_GAME:
+		return
+	if not _validate_host_game_mode_admission():
 		return
 	if not are_all_player_characters_confirmed():
 		connection_failed.emit("仍有玩家尚未确认角色")
@@ -1846,7 +1906,7 @@ func _rpc_sync_player_list(
 		!= int(SessionMemberState.ACTIVE)
 	):
 		return
-	if not _is_valid_game_mode(game_mode):
+	if not _is_known_game_mode(game_mode):
 		return
 	if not _is_valid_room_max_players(max_players):
 		return
@@ -1966,16 +2026,24 @@ func _rpc_sync_player_list(
 func _rpc_start_game(game_mode: int = 0, session_id: int = 0) -> void:
 	if multiplayer.get_remote_sender_id() != get_host_peer_id():
 		return
-	if (
-		not _is_valid_game_mode(game_mode)
-		or session_id <= 0
-		or session_id > NetConstants.MAX_GAME_SESSION_INCARNATION
-	):
-		return
+	_apply_authoritative_start_game(game_mode, session_id)
+
+
+## wire 解码与运行准入在这里汇合：roster 可记录隐藏模式，但 start 必须
+## 匹配本机显式受众。拒绝时立即断开，避免 Client 永久停在大厅等待加载。
+func _apply_authoritative_start_game(game_mode: int, session_id: int) -> bool:
+	if session_id <= 0 or session_id > NetConstants.MAX_GAME_SESSION_INCARNATION:
+		return false
+	if not _is_known_game_mode(game_mode):
+		_reject_authoritative_runtime_mode(game_mode, false)
+		return false
+	if not is_runtime_game_mode_admitted(game_mode):
+		_reject_authoritative_runtime_mode(game_mode, true)
+		return false
 	if connection_state >= ConnectionState.LOADING_GAME:
 		# Reliable delivery should only apply this transition once. Ignore a stale or
 		# duplicated start packet instead of resetting already reported readiness.
-		return
+		return false
 	_set_current_game_mode(game_mode as GameMode)
 	host_game_ready = false
 	loading_session_id = session_id
@@ -1989,6 +2057,25 @@ func _rpc_start_game(game_mode: int = 0, session_id: int = 0) -> void:
 		_expected_game_load_peers[int(peer_id_variant)] = true
 	_set_connection_state(ConnectionState.LOADING_GAME)
 	_emit_game_load_progress()
+	return true
+
+
+func _reject_authoritative_runtime_mode(game_mode: int, is_known: bool) -> void:
+	var reason := "Host 请求启动未知游戏模式 %d，连接已关闭。" % game_mode
+	if is_known:
+		var definition := GameModeCatalog.get_definition(game_mode)
+		var wire_key := (
+			String(definition.wire_key)
+			if definition != null
+			else "unknown"
+		)
+		reason = (
+			"Host 请求启动当前构建未获准运行的模式 %s（%d），连接已关闭。"
+			% [wire_key, game_mode]
+		)
+	push_warning("NetManager: %s" % reason)
+	connection_failed.emit(reason)
+	disconnect_from_game()
 
 
 @rpc("authority", "call_remote", "reliable", 0)
@@ -2682,8 +2769,26 @@ func _set_current_game_mode(game_mode: GameMode) -> void:
 	game_mode_changed.emit(current_game_mode)
 
 
-func _is_valid_game_mode(game_mode: int) -> bool:
-	return GameModeCatalog.is_mode_selectable(game_mode)
+func _is_known_game_mode(game_mode: int) -> bool:
+	# 可靠 RPC 仍须理解冻结的旧 wire；这不是新房间的发布许可。
+	return GameModeCatalog.is_known_mode_id(game_mode)
+
+
+func _is_release_game_mode(game_mode: int) -> bool:
+	return GameModeCatalog.is_release_selectable(game_mode)
+
+
+func _validate_host_game_mode_admission() -> bool:
+	var definition := GameModeCatalog.get_definition(int(current_game_mode))
+	if (
+		definition != null
+		and definition.is_selectable_for(_host_mode_selection_audience)
+	):
+		return true
+	connection_failed.emit(
+		"当前游戏模式仅用于协议兼容或开发测试，不能创建正式房间。"
+	)
+	return false
 
 
 func _is_valid_room_max_players(max_players: int) -> bool:

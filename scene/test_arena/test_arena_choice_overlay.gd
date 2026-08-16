@@ -55,7 +55,9 @@ var open_tween: Tween
 func _ready() -> void:
 	tabs.set_tab_hidden(
 		P1E_TAB_INDEX,
-		not GameModeCatalog.is_mode_selectable(GameModeCatalog.MODE_TEST_ARENA_P1E)
+		not GameModeCatalog.is_development_selectable(
+			GameModeCatalog.MODE_TEST_ARENA_P1E
+		)
 	)
 	visible = false
 	root_control.hide()
@@ -132,7 +134,7 @@ func _choose_arena(arena_id: StringName) -> void:
 		return
 	if (
 		arena_id == ARENA_P1E_ID
-		and not GameModeCatalog.is_mode_selectable(
+		and not GameModeCatalog.is_development_selectable(
 			GameModeCatalog.MODE_TEST_ARENA_P1E
 		)
 	):
@@ -165,7 +167,7 @@ func _select_tab(arena_id: StringName) -> void:
 		ARENA_P1E_ID:
 			tabs.current_tab = (
 				P1E_TAB_INDEX
-				if GameModeCatalog.is_mode_selectable(
+				if GameModeCatalog.is_development_selectable(
 					GameModeCatalog.MODE_TEST_ARENA_P1E
 				)
 				else P1A_TAB_INDEX

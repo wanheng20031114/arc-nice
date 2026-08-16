@@ -190,7 +190,9 @@ func _test_loading_scene_contract() -> void:
 		test_p1e_scene_path
 	)
 	_expect(
-		GameModeCatalog.is_mode_selectable(GameModeCatalog.MODE_TEST_ARENA_P1E)
+		GameModeCatalog.is_development_selectable(
+			GameModeCatalog.MODE_TEST_ARENA_P1E
+		)
 		and p1e_singleplayer_manifest.has(test_p1e_scene_path)
 		and p1e_singleplayer_manifest.has(
 			"res://resources/config/campaigns/test_arena/p1e/singleplayer/campaign.tres"
@@ -715,7 +717,10 @@ func _test_singleplayer_coordinator_flow() -> void:
 
 	load_errors.clear()
 	coordinator.loading_failed.connect(failure_callback)
-	coordinator.begin_singleplayer("res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn")
+	coordinator.begin_singleplayer(
+		"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn",
+		GameModeDefinition.SelectionAudience.DEVELOPMENT
+	)
 	deadline_msec = Time.get_ticks_msec() + 30000
 	while Time.get_ticks_msec() < deadline_msec:
 		if not coordinator.is_loading():
@@ -808,8 +813,8 @@ func _test_mp_game_preparation_barrier() -> void:
 		var expected_scene_path := str(contract[1])
 		var expected_campaign_path := str(contract[2])
 		_expect(
-			net_manager.set_host_game_mode(game_mode),
-			"Test-arena MpGame preparation smoke must select mode %d." % game_mode
+			net_manager.set_development_host_game_mode_for_fixture(game_mode),
+			"Test-arena fixture must explicitly select development mode %d." % game_mode
 		)
 		error = net_manager.host_create_lan_server(TEST_PORT + 2 + contract_index, 2)
 		_expect(

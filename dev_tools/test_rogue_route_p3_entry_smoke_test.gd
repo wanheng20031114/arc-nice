@@ -31,10 +31,17 @@ class SingleplayerLoadProbe:
 	extends Node
 
 	var requested_scene_path := ""
+	var requested_audience := GameModeDefinition.SelectionAudience.RELEASE
 
 
-	func begin_singleplayer(scene_path: String) -> void:
+	func begin_singleplayer(
+		scene_path: String,
+		audience: GameModeDefinition.SelectionAudience = (
+			GameModeDefinition.SelectionAudience.RELEASE
+		)
+	) -> void:
 		requested_scene_path = scene_path
+		requested_audience = audience
 
 
 var failures: Array[String] = []
@@ -200,6 +207,8 @@ func _test_main_menu_selector(coordinator: Node) -> void:
 	)
 	_expect(
 		load_probe.requested_scene_path == P3_SCENE_PATH
+		and load_probe.requested_audience
+		== GameModeDefinition.SelectionAudience.DEVELOPMENT
 		and (
 			run_state == null
 			or (

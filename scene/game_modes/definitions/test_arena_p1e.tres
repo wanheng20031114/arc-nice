@@ -7,6 +7,7 @@ script = ExtResource("1_definition")
 mode_id = 8
 wire_key = &"test_arena_p1e"
 display_name = "测试场景 P1E"
+visibility = 1
 lobby_label = "测试场 P1E"
 lobby_icon_path = "res://resources/texture/ui/multiplayer/mode_test_p1.png"
 lobby_order = 6

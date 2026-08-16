@@ -184,7 +184,7 @@ text = "单人模式"
 custom_minimum_size = Vector2(260, 42)
 layout_mode = 2
 focus_neighbor_top = NodePath("../SinglePlayer")
-focus_neighbor_bottom = NodePath("../TestArena")
+focus_neighbor_bottom = NodePath("../Rogue")
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
 theme_override_colors/font_disabled_color = Color(0.42, 0.42, 0.42, 1)
 theme_override_fonts/font = ExtResource("3_sepwh")
@@ -196,10 +196,27 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "塔防模式"
 
-[node name="TestArena" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack" unique_id=1865723560]
+[node name="Rogue" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack"]
 custom_minimum_size = Vector2(260, 42)
 layout_mode = 2
 focus_neighbor_top = NodePath("../TowerDefense")
+focus_neighbor_bottom = NodePath("../Multiplayer")
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_colors/font_disabled_color = Color(0.42, 0.42, 0.42, 1)
+theme_override_fonts/font = ExtResource("3_sepwh")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
+text = "肉鸽模式"
+
+[node name="TestArena" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack" unique_id=1865723560]
+visible = false
+custom_minimum_size = Vector2(260, 42)
+layout_mode = 2
+focus_neighbor_top = NodePath("../Rogue")
 focus_neighbor_bottom = NodePath("../Multiplayer")
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
 theme_override_colors/font_disabled_color = Color(0.42, 0.42, 0.42, 1)
@@ -322,6 +339,7 @@ visible = false
 
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer" to="." method="_on_singleplayer_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/TowerDefense" to="." method="_on_tower_defense_pressed"]
+[connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/Rogue" to="." method="_on_rogue_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/TestArena" to="." method="_on_test_arena_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/Multiplayer" to="." method="_on_multiplayer_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/Encyclopedia" to="." method="_on_encyclopedia_pressed"]

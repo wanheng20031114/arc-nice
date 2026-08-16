@@ -198,7 +198,8 @@ func _disconnect_net_manager_signals() -> void:
 
 func _configure_game_mode_selector() -> void:
 	game_mode_selector.clear()
-	for definition in GameModeCatalog.get_lobby_definitions():
+	# 大厅只消费正式发布视图；开发 fixture 不因存在目录定义而自动曝光。
+	for definition in GameModeCatalog.get_release_lobby_definitions():
 		game_mode_selector.add_icon_item(
 			_load_game_mode_icon(definition),
 			definition.lobby_label,
@@ -225,7 +226,7 @@ func _get_selected_game_mode() -> NetManagerStore.GameMode:
 	if item_index < 0 or item_index >= game_mode_selector.item_count:
 		return NetManagerStore.GameMode.STANDARD
 	var item_id := game_mode_selector.get_item_id(item_index)
-	if GameModeCatalog.is_mode_selectable(item_id):
+	if GameModeCatalog.is_release_selectable(item_id):
 		return item_id as NetManagerStore.GameMode
 	return NetManagerStore.GameMode.STANDARD
 
@@ -266,7 +267,7 @@ func _get_room_game_mode_key(room_data: Dictionary) -> String:
 		String(definition.wire_key)
 		if (
 			definition != null
-			and GameModeCatalog.is_mode_selectable(definition.mode_id)
+			and GameModeCatalog.is_release_selectable(definition.mode_id)
 		)
 		else ""
 	)
@@ -578,7 +579,7 @@ func _on_public_room_selected(room_id: String, game_mode_key: String) -> void:
 	var definition := GameModeCatalog.get_definition_by_wire_key(game_mode_key)
 	if (
 		definition == null
-		or not GameModeCatalog.is_mode_selectable(definition.mode_id)
+		or not GameModeCatalog.is_release_selectable(definition.mode_id)
 	):
 		_show_public_error("房间返回了无效的游戏模式。")
 		return
@@ -1081,7 +1082,7 @@ func _change_to_multiplayer_game() -> void:
 		is_starting_game = false
 		push_error("MultiplayerLobby: 当前联机模式没有目录定义。")
 		return
-	if not GameModeCatalog.is_mode_selectable(game_mode_definition.mode_id):
+	if not GameModeCatalog.is_release_selectable(game_mode_definition.mode_id):
 		is_starting_game = false
 		push_error("MultiplayerLobby: 当前联机模式尚未发布。")
 		return

@@ -42,6 +42,9 @@ const ELIGIBILITY_REPORT_PATH := (
 const EXPECTED_DIRECT_CONFIG_REFERENCES := [
 	"res://resources/config/campaigns/test_arena/p1e/multiplayer/wave_01.tres",
 	"res://resources/config/campaigns/test_arena/p1e/singleplayer/wave_01.tres",
+	"res://resources/config/campaigns/tower_defense/formal/wave_08.tres",
+	"res://resources/config/campaigns/tower_defense/formal/wave_11.tres",
+	"res://resources/config/campaigns/tower_defense/formal/wave_12.tres",
 	"res://resources/config/encyclopedia/enemies/combat_robot_main_battle_elite.tres",
 ]
 const AUDIO_STREAM_FIELDS := {
@@ -85,7 +88,7 @@ func _run() -> void:
 	_test_selectable_p1e_entry_contract()
 	_test_protocol_boundaries()
 	_test_live_registry_and_texture_counts()
-	_test_zero_direct_references()
+	_test_approved_direct_references()
 	_finish()
 
 
@@ -238,31 +241,32 @@ func _test_selectable_p1e_entry_contract() -> void:
 	)
 	_expect(
 		GameModeCatalog.MODE_TEST_ARENA_P1E == 8
-		and GameModeCatalog.is_valid_mode_id(8)
+		and GameModeCatalog.is_known_mode_id(8)
 		and GameModeCatalog.resolve_wire_key_or_default(&"test_arena_p1e") == 8
 		and definition != null
 		and definition.wire_key == &"test_arena_p1e"
-		and GameModeCatalog.is_mode_selectable(8),
-		"P1E必须保留v62 mode=8/wire键，并开放已搭建的测试入口。"
+		and GameModeCatalog.is_development_selectable(8)
+		and not GameModeCatalog.is_release_selectable(8),
+		"P1E必须保留v62 mode=8/wire键和显式开发入口，但不得进入正式准入。"
 	)
 	var lobby_ids: Array[int] = []
-	for lobby_definition in GameModeCatalog.get_lobby_definitions():
+	for lobby_definition in GameModeCatalog.get_release_lobby_definitions():
 		lobby_ids.append(lobby_definition.mode_id)
 	_expect(
-		lobby_ids == [0, 1, 2, 5, 6, 7, 8, 3, 4]
-		and lobby_ids.has(GameModeCatalog.MODE_TEST_ARENA_P1E),
-		"P1E必须出现在多人大厅选项中。"
+		lobby_ids == [0, 1, 4]
+		and not lobby_ids.has(GameModeCatalog.MODE_TEST_ARENA_P1E),
+		"正式多人大厅必须排除P1E开发场。"
 	)
 	var net_manager := root.get_node_or_null("NetManager") as NetManagerStore
 	if net_manager != null:
 		net_manager.disconnect_from_game()
 		_expect(
-			net_manager.set_pending_game_mode(
+			not net_manager.set_pending_game_mode(
 				NetManagerStore.GameMode.TEST_ARENA_P1E
 			)
 			and net_manager.get_current_game_mode()
-			== NetManagerStore.GameMode.TEST_ARENA_P1E,
-			"NetManager必须允许通过稳定wire值选择P1E。"
+			== NetManagerStore.GameMode.STANDARD,
+			"NetManager正式待加入准入必须拒绝P1E，但不改变现有模式。"
 		)
 
 
@@ -318,14 +322,14 @@ func _test_live_registry_and_texture_counts() -> void:
 	)
 
 
-func _test_zero_direct_references() -> void:
+func _test_approved_direct_references() -> void:
 	var references := _find_text_references("res://resources/config", MAIN_CONFIG_PATH)
 	references.sort()
 	_expect(
 		references == EXPECTED_DIRECT_CONFIG_REFERENCES,
 		(
-			"主战机器人仅可由P1E单/多人波次与正式图鉴直引；"
-			+ "正式敌人池必须保持零直引：%s。"
+			"主战机器人只可由P1E、正式塔防获批波次与图鉴直引；"
+			+ "其他配置不得复制引用清单：%s。"
 		)
 		% [references]
 	)

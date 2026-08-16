@@ -128,7 +128,12 @@ func _exit_tree() -> void:
 	_clear_failed_retry_request()
 
 
-func begin_singleplayer(scene_path: String) -> void:
+func begin_singleplayer(
+	scene_path: String,
+	audience: GameModeDefinition.SelectionAudience = (
+		GameModeDefinition.SelectionAudience.RELEASE
+	)
+) -> void:
 	if _state != LoadState.IDLE and _state != LoadState.FAILED:
 		return
 	_clear_failed_retry_request()
@@ -137,14 +142,25 @@ func begin_singleplayer(scene_path: String) -> void:
 		_is_multiplayer_load = false
 		_show_error("无法识别单人游戏模式：%s" % scene_path)
 		return
-	if not GameModeCatalog.is_mode_selectable(definition.mode_id):
+	if (
+		not _is_singleplayer_audience_enabled(audience)
+		or not GameModeCatalog.is_selectable_for_audience(
+			definition.mode_id,
+			audience
+		)
+	):
 		_is_multiplayer_load = false
-		_show_error("该游戏模式的运行素材尚未发布：%s" % scene_path)
+		_show_error("当前构建未获准运行该单人模式：%s" % scene_path)
 		return
 	_begin_load(scene_path, _build_singleplayer_manifest(scene_path), false)
 
 
-func begin_singleplayer_mode(mode_id: int) -> void:
+func begin_singleplayer_mode(
+	mode_id: int,
+	audience: GameModeDefinition.SelectionAudience = (
+		GameModeDefinition.SelectionAudience.RELEASE
+	)
+) -> void:
 	if _state != LoadState.IDLE and _state != LoadState.FAILED:
 		return
 	_clear_failed_retry_request()
@@ -154,12 +170,27 @@ func begin_singleplayer_mode(mode_id: int) -> void:
 			_is_multiplayer_load = false
 			_show_error("无法识别单人游戏模式：%d" % mode_id)
 		return
-	if not GameModeCatalog.is_mode_selectable(mode_id):
+	if (
+		not _is_singleplayer_audience_enabled(audience)
+		or not GameModeCatalog.is_selectable_for_audience(mode_id, audience)
+	):
 		if _state == LoadState.IDLE or _state == LoadState.FAILED:
 			_is_multiplayer_load = false
-			_show_error("该游戏模式的运行素材尚未发布：%d" % mode_id)
+			_show_error("当前构建未获准运行该单人模式：%d" % mode_id)
 		return
-	begin_singleplayer(definition.singleplayer_entry_scene_path)
+	begin_singleplayer(definition.singleplayer_entry_scene_path, audience)
+
+
+func _is_singleplayer_audience_enabled(
+	audience: GameModeDefinition.SelectionAudience
+) -> bool:
+	match audience:
+		GameModeDefinition.SelectionAudience.RELEASE:
+			return true
+		GameModeDefinition.SelectionAudience.DEVELOPMENT:
+			return OS.is_debug_build()
+		_:
+			return false
 
 
 func _build_singleplayer_manifest(scene_path: String) -> Array[String]:
@@ -216,9 +247,9 @@ func begin_multiplayer() -> void:
 		_is_multiplayer_load = true
 		_show_error("无法识别多人游戏模式：%d" % game_mode)
 		return
-	if not GameModeCatalog.is_mode_selectable(game_mode):
+	if not _net_manager.is_runtime_game_mode_admitted(game_mode):
 		_is_multiplayer_load = true
-		_show_error("该多人游戏模式的运行素材尚未发布：%d" % game_mode)
+		_show_error("当前构建未获准运行该多人模式：%d" % game_mode)
 		return
 	var entry_path := definition.multiplayer_entry_scene_path
 	var manifest := _build_multiplayer_manifest(game_mode, _net_manager)

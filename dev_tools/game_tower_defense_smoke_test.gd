@@ -82,6 +82,17 @@ func _test_main_menu_entry() -> void:
 		),
 		"Tower-defense button must be connected to its menu handler."
 	)
+	var rogue_button := main_menu.get_node_or_null(
+		"MenuCenter/MenuPanel/MarginContainer/MenuStack/Rogue"
+	) as Button
+	_expect(
+		rogue_button != null
+		and rogue_button.text == "肉鸽模式"
+		and rogue_button.pressed.is_connected(
+			Callable(main_menu, "_on_rogue_pressed")
+		),
+		"Main menu must expose Rogue through a formal native button."
+	)
 	var test_arena_button := main_menu.get_node_or_null(
 		"MenuCenter/MenuPanel/MarginContainer/MenuStack/TestArena"
 	) as Button
@@ -89,6 +100,10 @@ func _test_main_menu_entry() -> void:
 	if test_arena_button == null:
 		return
 	_expect(test_arena_button.text == "测试场景", "Test-arena button text is incorrect.")
+	_expect(
+		test_arena_button.visible == OS.is_debug_build(),
+		"Test-arena UI visibility must follow the native debug/release export boundary."
+	)
 	_expect(
 		test_arena_button.pressed.is_connected(
 			Callable(main_menu, "_on_test_arena_pressed")
@@ -155,6 +170,19 @@ func _test_main_menu_entry() -> void:
 	)
 	if test_choice_overlay == null or character_overlay == null:
 		return
+	if rogue_button != null:
+		rogue_button.pressed.emit()
+		await process_frame
+		_expect(
+			character_overlay.is_open()
+			and main_menu.pending_singleplayer_destination
+			== MainMenu.SingleplayerDestination.ROGUE
+			and str(main_menu.call("_get_pending_singleplayer_scene_path"))
+			== "res://scene/game_modes/rogue/route/rogue_route_game.tscn",
+			"Formal Rogue entry must resolve legacy mode=4 without using the test selector."
+		)
+		character_overlay.close()
+		await process_frame
 	test_arena_button.pressed.emit()
 	await process_frame
 	_expect(

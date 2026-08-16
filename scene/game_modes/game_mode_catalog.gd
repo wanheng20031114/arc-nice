@@ -14,8 +14,22 @@ const MODE_TEST_ARENA_P1B := 5
 const MODE_TEST_ARENA_P1C := 6
 const MODE_TEST_ARENA_P1D := 7
 const MODE_TEST_ARENA_P1E := 8
+# 肉鸽正式名称与旧 wire ID 解耦；数值 4 和 test_arena_p3 永久兼容。
+const MODE_ROGUE := MODE_TEST_ARENA_P3
 const DEFAULT_MODE_ID := MODE_STANDARD
 const TOWER_DEFENSE_PRELOAD_PROFILE := &"tower_defense"
+const FROZEN_MODE_IDS := [
+	MODE_STANDARD,
+	MODE_TOWER_DEFENSE,
+	MODE_TEST_ARENA_P1,
+	MODE_TEST_ARENA_P2,
+	MODE_TEST_ARENA_P3,
+	MODE_TEST_ARENA_P1B,
+	MODE_TEST_ARENA_P1C,
+	MODE_TEST_ARENA_P1D,
+	MODE_TEST_ARENA_P1E,
+]
+const RELEASE_MODE_IDS := [MODE_STANDARD, MODE_TOWER_DEFENSE, MODE_ROGUE]
 
 const TOWER_DEFENSE_PRELOAD_RESOURCE_PATHS := [
 	"res://scene/plant_defense/agave_cannon.tscn",
@@ -117,18 +131,58 @@ static func get_definition_by_singleplayer_entry(
 	)
 
 
-static func get_lobby_definitions() -> Array[GameModeDefinition]:
+static func get_release_lobby_definitions() -> Array[GameModeDefinition]:
 	var catalog := get_shared()
-	return catalog.list_lobby_definitions() if catalog != null else []
+	return (
+		catalog.list_selectable_definitions(
+			GameModeDefinition.SelectionAudience.RELEASE
+		)
+		if catalog != null
+		else []
+	)
 
 
-static func is_valid_mode_id(mode_id: int) -> bool:
+static func get_development_definitions() -> Array[GameModeDefinition]:
+	var catalog := get_shared()
+	return (
+		catalog.list_selectable_definitions(
+			GameModeDefinition.SelectionAudience.DEVELOPMENT
+		)
+		if catalog != null
+		else []
+	)
+
+
+static func is_known_mode_id(mode_id: int) -> bool:
 	return get_definition(mode_id) != null
 
 
-## Returns whether a known wire mode is currently exposed and enterable.
-static func is_mode_selectable(mode_id: int) -> bool:
-	return is_valid_mode_id(mode_id)
+## 正式准入必须调用此接口，不能用“协议认识”代替“允许新建”。
+static func is_release_selectable(mode_id: int) -> bool:
+	return is_selectable_for_audience(
+		mode_id,
+		GameModeDefinition.SelectionAudience.RELEASE
+	)
+
+
+## 调试场景和 fixture 必须显式声明开发受众，避免意外接入生产 UI。
+static func is_development_selectable(mode_id: int) -> bool:
+	return is_selectable_for_audience(
+		mode_id,
+		GameModeDefinition.SelectionAudience.DEVELOPMENT
+	)
+
+
+## 纯策略查询：调用方必须提供受众，便于在 debug 进程中模拟 release gate。
+static func is_selectable_for_audience(
+	mode_id: int,
+	audience: GameModeDefinition.SelectionAudience
+) -> bool:
+	var definition := get_definition(mode_id)
+	return (
+		definition != null
+		and definition.is_selectable_for(audience)
+	)
 
 
 static func resolve_wire_key_or_default(wire_key: String) -> int:
@@ -194,10 +248,12 @@ func find_definition_by_singleplayer_entry(
 	)
 
 
-func list_lobby_definitions() -> Array[GameModeDefinition]:
+func list_selectable_definitions(
+	audience: GameModeDefinition.SelectionAudience
+) -> Array[GameModeDefinition]:
 	var result: Array[GameModeDefinition] = []
 	for definition in definitions:
-		if definition != null and is_mode_selectable(definition.mode_id):
+		if definition != null and definition.is_selectable_for(audience):
 			result.append(definition)
 	result.sort_custom(func(a: GameModeDefinition, b: GameModeDefinition) -> bool:
 		return a.lobby_order < b.lobby_order
@@ -210,7 +266,9 @@ func validate_definitions() -> PackedStringArray:
 	var seen_ids := {}
 	var seen_keys := {}
 	var seen_orders := {}
-	if definitions.size() != 9:
+	var release_mode_ids: Array[int] = []
+	var development_mode_ids: Array[int] = []
+	if definitions.size() != FROZEN_MODE_IDS.size():
 		errors.append("catalog must contain exactly 9 frozen v62 modes")
 	for definition in definitions:
 		if definition == null:
@@ -227,40 +285,55 @@ func validate_definitions() -> PackedStringArray:
 		seen_ids[definition.mode_id] = true
 		seen_keys[normalized_key] = true
 		seen_orders[definition.lobby_order] = true
-		for path in [
-			definition.singleplayer_entry_scene_path,
-			definition.multiplayer_entry_scene_path,
-			definition.multiplayer_runtime_scene_path,
-			definition.lobby_icon_path,
-		]:
-			if not path.is_empty() and not ResourceLoader.exists(path):
-				errors.append("mode %d path does not exist: %s" % [
-					definition.mode_id,
-					path,
-				])
-		if definition.uses_wave_campaign:
-			for campaign_path in [
-				definition.singleplayer_campaign_path,
-				definition.multiplayer_campaign_path,
+		if definition.is_selectable_for(
+			GameModeDefinition.SelectionAudience.RELEASE
+		):
+			release_mode_ids.append(definition.mode_id)
+		if definition.is_selectable_for(
+			GameModeDefinition.SelectionAudience.DEVELOPMENT
+		):
+			development_mode_ids.append(definition.mode_id)
+		if definition.visibility != GameModeDefinition.Visibility.PROTOCOL_ONLY:
+			for path in [
+				definition.singleplayer_entry_scene_path,
+				definition.multiplayer_entry_scene_path,
+				definition.multiplayer_runtime_scene_path,
+				definition.lobby_icon_path,
 			]:
-				if not ResourceLoader.exists(campaign_path):
-					errors.append("mode %d campaign does not exist: %s" % [
+				if not path.is_empty() and not ResourceLoader.exists(path):
+					errors.append("mode %d path does not exist: %s" % [
 						definition.mode_id,
-						campaign_path,
+						path,
 					])
-	for expected_mode_id in [
-		MODE_STANDARD,
-		MODE_TOWER_DEFENSE,
-		MODE_TEST_ARENA_P1,
-		MODE_TEST_ARENA_P2,
-		MODE_TEST_ARENA_P3,
-		MODE_TEST_ARENA_P1B,
-		MODE_TEST_ARENA_P1C,
-		MODE_TEST_ARENA_P1D,
-		MODE_TEST_ARENA_P1E,
-	]:
+			if definition.uses_wave_campaign:
+				for campaign_path in [
+					definition.singleplayer_campaign_path,
+					definition.multiplayer_campaign_path,
+				]:
+					if not ResourceLoader.exists(campaign_path):
+						errors.append("mode %d campaign does not exist: %s" % [
+							definition.mode_id,
+							campaign_path,
+						])
+	for expected_mode_id in FROZEN_MODE_IDS:
 		if not seen_ids.has(expected_mode_id):
 			errors.append("missing frozen mode id: %d" % expected_mode_id)
+	release_mode_ids.sort()
+	development_mode_ids.sort()
+	if release_mode_ids != RELEASE_MODE_IDS:
+		errors.append(
+			"release modes must remain Standard/Tower/Rogue: %s"
+			% [release_mode_ids]
+		)
+	var expected_development_ids: Array[int] = []
+	for expected_mode_id in FROZEN_MODE_IDS:
+		expected_development_ids.append(int(expected_mode_id))
+	expected_development_ids.sort()
+	if development_mode_ids != expected_development_ids:
+		errors.append(
+			"all authored frozen modes must remain development-selectable: %s"
+			% [development_mode_ids]
+		)
 	for preload_path in TOWER_DEFENSE_PRELOAD_RESOURCE_PATHS:
 		if not ResourceLoader.exists(preload_path):
 			errors.append("tower-defense preload path does not exist: %s" % preload_path)
