@@ -2,6 +2,9 @@ extends Node
 class_name MpWorldFlowCoordinator
 
 const PICKUP_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
+const RuntimeContentCatalogScript := preload(
+	"res://resources/config/runtime_content_catalog.gd"
+)
 const WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS := 0.1
 
 signal rpc_to_peer_requested(
@@ -243,11 +246,15 @@ func receive_boss_started(
 	if (
 		not is_client_view()
 		or net_id <= 0
-		or boss_config_path.is_empty()
+		or not RuntimeContentCatalogScript.is_safe_resource_path_text(
+			boss_config_path
+		)
 	):
 		return
-	var boss_config := load(boss_config_path) as BossConfig
-	if boss_config == null:
+	# Boss 不使用全局白名单：可靠流状态须先把本地活动 step 收敛到
+	# 当前 Campaign 内的同一个 BossConfig，随后才接受实例事件。
+	var boss_config := _get_active_flow_boss_config()
+	if boss_config == null or boss_config.resource_path != boss_config_path:
 		return
 	_mode_adapter.apply_remote_boss_started(
 		net_id,
@@ -268,7 +275,11 @@ func receive_linglan_airdrop_started(
 ) -> void:
 	if not is_client_view() or enemy_config_path.is_empty():
 		return
-	var enemy_config := load(enemy_config_path) as EnemyConfig
+	var enemy_config := (
+		RuntimeContentCatalogScript.load_enemy_config_from_path(
+			enemy_config_path
+		)
+	)
 	if enemy_config == null:
 		return
 	if (
@@ -330,7 +341,9 @@ func build_live_pickup_records() -> Array[Dictionary]:
 		if (
 			pickup == null
 			or pickup.config == null
-			or pickup.config.resource_path.is_empty()
+			or not RuntimeContentCatalogScript.is_registered_pickup_config(
+				pickup.config
+			)
 		):
 			continue
 		records.append({
@@ -384,7 +397,9 @@ func receive_pickup_spawned(
 		or _runtime.enemy_container == null
 	):
 		return
-	var pickup_config := load(config_path) as PickupConfig
+	var pickup_config := (
+		RuntimeContentCatalogScript.load_pickup_config_from_path(config_path)
+	)
 	if pickup_config == null:
 		return
 	var pickup := PICKUP_SCENE.instantiate() as Pickup
@@ -410,7 +425,9 @@ func receive_pickup_collected(
 		return false
 	if config_path.is_empty():
 		return false
-	var pickup_config := load(config_path) as PickupConfig
+	var pickup_config := (
+		RuntimeContentCatalogScript.load_pickup_config_from_path(config_path)
+	)
 	if pickup_config == null:
 		return false
 	# CH5 spawn 与 CH6 collect 可跨信道乱序，且 applied LRU 只提供有界去重。
@@ -556,8 +573,9 @@ func _on_host_pickup_spawned(
 ) -> void:
 	if (
 		not is_host_authority()
-		or pickup_config == null
-		or pickup_config.resource_path.is_empty()
+		or not RuntimeContentCatalogScript.is_registered_pickup_config(
+			pickup_config
+		)
 	):
 		return
 	rpc_broadcast_requested.emit(
@@ -583,9 +601,14 @@ func _on_host_pickup_collected(
 	pickup_config: PickupConfig,
 	applied_immediately: bool
 ) -> void:
-	if not is_host_authority():
+	if (
+		not is_host_authority()
+		or not RuntimeContentCatalogScript.is_registered_pickup_config(
+			pickup_config
+		)
+	):
 		return
-	var config_path := pickup_config.resource_path if pickup_config != null else ""
+	var config_path := pickup_config.resource_path
 	var inventory_snapshot := {}
 	if (
 		not applied_immediately
@@ -658,7 +681,13 @@ func _on_host_boss_started(
 	boss_config: BossConfig,
 	spawn_position: Vector2
 ) -> void:
-	if not is_host_authority() or boss_config == null:
+	var active_boss_config := _get_active_flow_boss_config()
+	if (
+		not is_host_authority()
+		or boss_config == null
+		or active_boss_config == null
+		or active_boss_config != boss_config
+	):
 		return
 	boss_started_broadcast_requested.emit(
 		net_id,
@@ -691,3 +720,27 @@ static func _connect_signal(source: Signal, target: Callable) -> void:
 static func _disconnect_signal(source: Signal, target: Callable) -> void:
 	if source.is_connected(target):
 		source.disconnect(target)
+
+
+func _get_active_flow_boss_config() -> BossConfig:
+	var active_step: FlowStepConfig = null
+	var active_graph: FlowGraphConfig = null
+	if _runtime is WaveCombatRuntimeBase:
+		var wave_runtime := _runtime as WaveCombatRuntimeBase
+		active_step = wave_runtime.current_flow_step
+		active_graph = wave_runtime.flow_graph
+	elif _runtime is TowerDefenseGame:
+		var tower_runtime := _runtime as TowerDefenseGame
+		if tower_runtime.campaign_coordinator == null:
+			return null
+		active_step = tower_runtime.campaign_coordinator.current_flow_step
+		active_graph = tower_runtime.campaign_coordinator.flow_graph
+	var boss_config := active_step as BossConfig
+	if (
+		boss_config == null
+		or active_graph == null
+		or active_graph.get_step_index(boss_config) < 0
+		or boss_config.resource_path.is_empty()
+	):
+		return null
+	return boss_config

@@ -3,6 +3,9 @@ class_name MpEnemyCoordinator
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const _CombatTargetIndex := preload("res://scene/combat/targeting/combat_target_index.gd")
+const RuntimeContentCatalogScript := preload(
+	"res://resources/config/runtime_content_catalog.gd"
+)
 
 const GAME_RUNTIME_CLIENT_VIEW := 2
 # v26 起使用上一发送状态作为 delta 基线；缺席后回归的 peer 会促使共享 cohort 发 full。
@@ -97,6 +100,31 @@ class SpawnBatch:
 
 	func is_empty() -> bool:
 		return net_ids.is_empty()
+
+
+class PreparedClientSpawn:
+	extends RefCounted
+
+	var net_id := 0
+	var config_path := ""
+	var spawn_position := Vector2.ZERO
+	var mapped_spawn_time := 0.0
+	var current_time := 0.0
+	var enemy_config: EnemyConfig = null
+	var enemy: Enemy = null
+	var previous_enemy: Enemy = null
+	var committed_enemy: Enemy = null
+	var reuses_existing := false
+	var publishes_spawn := false
+
+	func release() -> void:
+		if enemy == null or not is_instance_valid(enemy):
+			enemy = null
+			return
+		# 准备态候选尚未对外公开；立即释放可确保失败事务不会把暂存子节点
+		# 留到下一帧。
+		enemy.free()
+		enemy = null
 
 
 class DamageFeedbackBatch:
@@ -660,7 +688,9 @@ func build_live_spawn_batches(host_timestamp: float) -> Array[SpawnBatch]:
 				or enemy.is_dead
 				or enemy is LinglanBoss
 				or enemy.config == null
-				or enemy.config.resource_path.is_empty()
+				or not RuntimeContentCatalogScript.is_registered_enemy_config(
+					enemy.config
+				)
 				or not enemy.global_position.is_finite()
 			):
 				continue
@@ -734,23 +764,40 @@ func receive_enemy_spawn_batch(
 	has_host_time_offset: bool,
 	host_to_client_time_offset: float
 ) -> void:
-	if not _is_valid_spawn_batch_payload(
+	if (
+		not is_client_view()
+		or not is_finite(local_net_time)
+		or not _is_valid_spawn_batch_payload(
 		net_ids,
 		config_paths,
 		positions,
 		spawn_times
+		)
 	):
 		return
+	var prepared_spawns: Array[PreparedClientSpawn] = []
 	for record_index in range(net_ids.size()):
-		receive_enemy_spawn_packet(
-			net_ids[record_index],
-			config_paths[record_index],
-			positions[record_index],
+		var mapped_spawn_time := _map_remote_timestamp(
 			spawn_times[record_index],
 			local_net_time,
 			has_host_time_offset,
 			host_to_client_time_offset
 		)
+		if not is_finite(mapped_spawn_time):
+			_release_prepared_client_spawns(prepared_spawns)
+			return
+		var prepared := _prepare_client_spawn(
+			net_ids[record_index],
+			config_paths[record_index],
+			positions[record_index],
+			mapped_spawn_time,
+			local_net_time
+		)
+		if prepared == null:
+			_release_prepared_client_spawns(prepared_spawns)
+			return
+		prepared_spawns.append(prepared)
+	_commit_prepared_client_spawns(prepared_spawns)
 
 
 func receive_enemy_spawn(
@@ -760,6 +807,25 @@ func receive_enemy_spawn(
 	mapped_spawn_time: float,
 	current_time: float
 ) -> void:
+	var prepared := _prepare_client_spawn(
+		net_id,
+		config_path,
+		spawn_position,
+		mapped_spawn_time,
+		current_time
+	)
+	if prepared == null:
+		return
+	_commit_prepared_client_spawns([prepared])
+
+
+func _prepare_client_spawn(
+	net_id: int,
+	config_path: String,
+	spawn_position: Vector2,
+	mapped_spawn_time: float,
+	current_time: float
+) -> PreparedClientSpawn:
 	if (
 		not is_client_view()
 		or not _is_valid_spawn_record(
@@ -769,56 +835,367 @@ func receive_enemy_spawn(
 			mapped_spawn_time
 		)
 		or not is_finite(current_time)
+		or _runtime.enemy_container == null
+		or not is_instance_valid(_runtime.enemy_container)
+		or _runtime.enemy_container.is_queued_for_deletion()
 	):
-		return
-	var existing_enemy := get_valid_client_enemy(net_id)
-	if (
-		existing_enemy != null
-		and not existing_enemy.is_dead
-		and existing_enemy.config != null
-		and existing_enemy.config.resource_path == config_path
+		return null
+	# 调用方路径只用于精确查表；资源加载器永远不接收网络字符串。
+	var runtime: CombatRuntimeBase = _runtime
+	var enemy_container: Node = runtime.enemy_container
+	var enemy_config := (
+		RuntimeContentCatalogScript.load_enemy_config_from_path(config_path)
+	)
+	if enemy_config == null:
+		return null
+	var prepared := PreparedClientSpawn.new()
+	prepared.net_id = net_id
+	prepared.config_path = config_path
+	prepared.spawn_position = spawn_position
+	prepared.mapped_spawn_time = mapped_spawn_time
+	prepared.current_time = current_time
+	prepared.enemy_config = enemy_config
+	prepared.previous_enemy = runtime.get_network_enemy(net_id)
+	if _can_reuse_existing_client_enemy(
+		prepared.previous_enemy,
+		config_path,
+		enemy_container
 	):
-		clear_client_terminal_marker(net_id)
-		consume_pending_enemy_action(net_id, current_time)
-		return
-	remove_client_enemy(net_id, false, true, true)
-	var enemy_config := load(config_path) as EnemyConfig
-	if enemy_config == null or enemy_config.enemy_scene == null:
-		return
-	var enemy := enemy_config.enemy_scene.instantiate() as Enemy
+		# 幂等记录在这里短路，不实例化场景、不触发入树回调，也不分配导航相位。
+		prepared.reuses_existing = true
+		prepared.committed_enemy = prepared.previous_enemy
+		return prepared
+	if enemy_config.enemy_scene == null:
+		return null
+	var instance := enemy_config.enemy_scene.instantiate()
+	var enemy := instance as Enemy
 	if enemy == null:
+		if instance != null and is_instance_valid(instance):
+			instance.free()
+		return null
+	prepared.enemy = enemy
+	return prepared
+
+
+func _can_reuse_existing_client_enemy(
+	enemy: Enemy,
+	config_path: String,
+	enemy_container: Node
+) -> bool:
+	return (
+		enemy != null
+		and is_instance_valid(enemy)
+		and not enemy.is_queued_for_deletion()
+		and enemy.get_parent() == enemy_container
+		and not enemy.is_dead
+		and enemy.config != null
+		and enemy.config.resource_path == config_path
+	)
+
+
+func _commit_prepared_client_spawns(
+	prepared_spawns: Array[PreparedClientSpawn]
+) -> void:
+	if prepared_spawns.is_empty() or not is_client_view():
+		_release_prepared_client_spawns(prepared_spawns)
 		return
-	_runtime.enemy_container.add_child(enemy)
-	enemy_spawn_snapshot_times[net_id] = mapped_spawn_time
+	var runtime: CombatRuntimeBase = _runtime
+	var enemy_container: Node = runtime.enemy_container
+	if (
+		enemy_container == null
+		or not is_instance_valid(enemy_container)
+		or enemy_container.is_queued_for_deletion()
+	):
+		_release_prepared_client_spawns(prepared_spawns)
+		return
+
+	# 第一阶段：所有可信候选完成入树与配置，但尚不发布生成信号，也不改注册表。
+	for prepared in prepared_spawns:
+		if not _stage_prepared_client_spawn(
+			prepared,
+			runtime,
+			enemy_container
+		):
+			_release_prepared_client_spawns(prepared_spawns)
+			return
+
+	# 第二阶段：在首个公开回调前完成整批注册表替换；强类型注册失败时恢复全部旧映射。
+	if not _swap_prepared_client_spawn_registry(
+		prepared_spawns,
+		runtime,
+		enemy_container
+	):
+		_release_prepared_client_spawns(prepared_spawns)
+		return
+	for prepared in prepared_spawns:
+		clear_client_terminal_marker(prepared.net_id)
+
+	# 第三阶段：全部记录均可查询后才发布回调与表现；冻结的运行时保证回调解绑安全。
+	_publish_prepared_client_spawns(
+		prepared_spawns,
+		runtime,
+		enemy_container
+	)
+
+
+func _stage_prepared_client_spawn(
+	prepared: PreparedClientSpawn,
+	runtime: CombatRuntimeBase,
+	enemy_container: Node
+) -> bool:
+	if (
+		prepared == null
+		or prepared.enemy_config == null
+		or runtime == null
+		or not is_instance_valid(runtime)
+		or enemy_container == null
+		or not is_instance_valid(enemy_container)
+		or enemy_container.is_queued_for_deletion()
+	):
+		return false
+	if prepared.reuses_existing:
+		var existing_enemy := prepared.committed_enemy
+		return (
+			existing_enemy != null
+			and is_instance_valid(existing_enemy)
+			and not existing_enemy.is_queued_for_deletion()
+			and existing_enemy.get_parent() == enemy_container
+			and runtime.get_network_enemy(prepared.net_id) == existing_enemy
+			and _runtime == runtime
+		)
+	if (
+		prepared.enemy == null
+		or not is_instance_valid(prepared.enemy)
+		or prepared.enemy.is_queued_for_deletion()
+	):
+		return false
+	var enemy := prepared.enemy
+	enemy_container.add_child(enemy)
+	if (
+		not is_instance_valid(enemy)
+		or enemy.is_queued_for_deletion()
+		or enemy.get_parent() != enemy_container
+	):
+		return false
 	enemy.global_position = get_buffered_enemy_position(
-		net_id,
-		spawn_position,
-		current_time
+		prepared.net_id,
+		prepared.spawn_position,
+		prepared.current_time
 	)
 	enemy.setup(
-		enemy_config,
-		_runtime.player,
-		_runtime.grid_pathfinder,
-		_runtime
+		prepared.enemy_config,
+		runtime.player,
+		runtime.grid_pathfinder,
+		runtime
 	)
-	remote_enemy_spawned.emit(enemy)
+	if not is_instance_valid(enemy) or enemy.is_queued_for_deletion():
+		return false
 	enemy.configure_multiplayer_proxy()
-	_register_client_enemy(net_id, enemy)
-	clear_client_terminal_marker(net_id)
-	consume_pending_enemy_action(net_id, current_time)
-	_runtime.play_remote_enemy_spawn_effect(spawn_position)
+	return (
+		is_instance_valid(enemy)
+		and not enemy.is_queued_for_deletion()
+		and enemy.get_parent() == enemy_container
+		and _runtime == runtime
+	)
+
+
+func _swap_prepared_client_spawn_registry(
+	prepared_spawns: Array[PreparedClientSpawn],
+	runtime: CombatRuntimeBase,
+	enemy_container: Node
+) -> bool:
+	var swapped_spawns: Array[PreparedClientSpawn] = []
+	for prepared in prepared_spawns:
+		if prepared.reuses_existing:
+			continue
+		if not _register_client_enemy_on_runtime(
+			runtime,
+			prepared.net_id,
+			prepared.enemy,
+			enemy_container
+		):
+			_rollback_prepared_client_spawn_registry(swapped_spawns, runtime)
+			return false
+		prepared.committed_enemy = prepared.enemy
+		prepared.publishes_spawn = true
+		swapped_spawns.append(prepared)
+
+	# 移交候选所有权前必须验证整批结构视图完整。
+	if not _is_prepared_client_spawn_registry_intact(
+		runtime,
+		enemy_container,
+		prepared_spawns
+	):
+		_rollback_prepared_client_spawn_registry(swapped_spawns, runtime)
+		return false
+	for prepared in prepared_spawns:
+		if prepared.publishes_spawn:
+			prepared.enemy = null
+			enemy_spawn_snapshot_times[prepared.net_id] = (
+				prepared.mapped_spawn_time
+			)
+			_offscreen_interpolation_slots.erase(prepared.net_id)
+			var previous_enemy := prepared.previous_enemy
+			if previous_enemy != null and is_instance_valid(previous_enemy):
+				previous_enemy.queue_free()
+		else:
+			prepared.release()
+	return true
+
+
+func _rollback_prepared_client_spawn_registry(
+	swapped_spawns: Array[PreparedClientSpawn],
+	runtime: CombatRuntimeBase
+) -> void:
+	for spawn_index in range(swapped_spawns.size() - 1, -1, -1):
+		var prepared := swapped_spawns[spawn_index]
+		var candidate := prepared.enemy
+		if (
+			candidate != null
+			and is_instance_valid(candidate)
+			and runtime.get_network_enemy(prepared.net_id) == candidate
+		):
+			runtime.unregister_network_enemy(prepared.net_id, candidate)
+		var previous_enemy := prepared.previous_enemy
+		if previous_enemy != null and is_instance_valid(previous_enemy):
+			var restored: bool = runtime.register_network_enemy(
+				prepared.net_id,
+				previous_enemy
+			)
+			assert(
+				restored
+				and runtime.get_network_enemy(prepared.net_id) == previous_enemy,
+				"MpEnemyCoordinator 无法恢复敌人生成事务的旧注册。"
+			)
+		prepared.committed_enemy = null
+		prepared.publishes_spawn = false
+
+
+func _take_live_pending_enemy_action(
+	net_id: int,
+	current_time: float
+) -> Dictionary:
+	var pending := take_pending_enemy_action(net_id)
+	if pending.is_empty() or _is_pending_enemy_action_expired(pending, current_time):
+		return {}
+	return pending
+
+
+func _publish_prepared_client_spawns(
+	prepared_spawns: Array[PreparedClientSpawn],
+	runtime: CombatRuntimeBase,
+	enemy_container: Node
+) -> void:
+	for prepared in prepared_spawns:
+		if not _is_prepared_client_spawn_registry_intact(
+			runtime,
+			enemy_container,
+			prepared_spawns
+		):
+			_clear_committed_client_spawn_batch(runtime, prepared_spawns)
+			return
+		var enemy := prepared.committed_enemy
+		if prepared.publishes_spawn:
+			remote_enemy_spawned.emit(enemy)
+			if not _is_prepared_client_spawn_registry_intact(
+				runtime,
+				enemy_container,
+				prepared_spawns
+			):
+				_clear_committed_client_spawn_batch(runtime, prepared_spawns)
+				return
+		# 等到本条即将交付时才从 FIFO 取动作；较早回调若中止，后续记录保持原样。
+		var pending_action := _take_live_pending_enemy_action(
+			prepared.net_id,
+			prepared.current_time
+		)
+		if not pending_action.is_empty():
+			_deliver_action_record(
+				pending_action,
+				enemy,
+				prepared.current_time,
+				runtime
+			)
+			if not _is_prepared_client_spawn_registry_intact(
+				runtime,
+				enemy_container,
+				prepared_spawns
+			):
+				_clear_committed_client_spawn_batch(runtime, prepared_spawns)
+				return
+		if prepared.publishes_spawn:
+			runtime.play_remote_enemy_spawn_effect(prepared.spawn_position)
+
+
+func _is_prepared_client_spawn_registry_intact(
+	runtime: CombatRuntimeBase,
+	enemy_container: Node,
+	prepared_spawns: Array[PreparedClientSpawn]
+) -> bool:
+	if (
+		runtime == null
+		or not is_instance_valid(runtime)
+		or enemy_container == null
+		or not is_instance_valid(enemy_container)
+		or enemy_container.is_queued_for_deletion()
+	):
+		return false
+	for prepared in prepared_spawns:
+		var enemy := prepared.committed_enemy
+		if (
+			enemy == null
+			or not is_instance_valid(enemy)
+			or enemy.is_queued_for_deletion()
+			or enemy.get_parent() != enemy_container
+			or runtime.get_network_enemy(prepared.net_id) != enemy
+		):
+			return false
+	return true
+
+
+func _clear_committed_client_spawn_batch(
+	runtime: CombatRuntimeBase,
+	prepared_spawns: Array[PreparedClientSpawn]
+) -> void:
+	if runtime == null or not is_instance_valid(runtime):
+		return
+	for prepared in prepared_spawns:
+		if not prepared.publishes_spawn:
+			continue
+		var enemy := prepared.committed_enemy
+		if (
+			enemy != null
+			and is_instance_valid(enemy)
+			and runtime.get_network_enemy(prepared.net_id) == enemy
+		):
+			runtime.unregister_network_enemy(prepared.net_id, enemy)
+		if enemy != null and is_instance_valid(enemy):
+			enemy.queue_free()
+		enemy_spawn_snapshot_times.erase(prepared.net_id)
+		enemy_interpolators.erase(prepared.net_id)
+		_offscreen_interpolation_slots.erase(prepared.net_id)
+
+
+static func _release_prepared_client_spawns(
+	prepared_spawns: Array[PreparedClientSpawn]
+) -> void:
+	for prepared in prepared_spawns:
+		if prepared != null:
+			prepared.release()
 
 
 func register_client_enemy(
 	net_id: int,
 	enemy: Enemy,
 	current_time: float
-) -> void:
+) -> bool:
 	if net_id <= 0 or enemy == null or not is_instance_valid(enemy):
-		return
-	_register_client_enemy(net_id, enemy)
+		return false
+	if not _register_client_enemy(net_id, enemy):
+		return false
 	clear_client_terminal_marker(net_id)
 	consume_pending_enemy_action(net_id, current_time)
+	return true
 
 
 func queue_host_spawn(
@@ -1251,9 +1628,10 @@ func _is_valid_spawn_record(
 	return (
 		net_id > 0
 		and _NetConstants.is_valid_network_combat_value(net_id)
-		and not config_path.is_empty()
 		and config_path.length() <= ENEMY_CONFIG_PATH_WIRE_MAX_LENGTH
-		and config_path.begins_with("res://")
+		and not RuntimeContentCatalogScript.get_enemy_id_for_path(
+			config_path
+		).is_empty()
 		and spawn_position.is_finite()
 		and is_finite(host_spawn_timestamp)
 		and host_spawn_timestamp >= 0.0
@@ -1275,9 +1653,14 @@ func _is_valid_spawn_batch_payload(
 		or spawn_times.size() != record_count
 	):
 		return false
+	var seen_net_ids: Dictionary[int, bool] = {}
 	for record_index in range(record_count):
+		var net_id := net_ids[record_index]
+		if seen_net_ids.has(net_id):
+			return false
+		seen_net_ids[net_id] = true
 		if not _is_valid_spawn_record(
-			net_ids[record_index],
+			net_id,
 			config_paths[record_index],
 			positions[record_index],
 			spawn_times[record_index]
@@ -2180,7 +2563,7 @@ func consume_pending_enemy_action(net_id: int, current_time: float) -> bool:
 	var enemy := get_valid_client_enemy(net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return false
-	_deliver_action_record(pending, enemy, current_time)
+	_deliver_action_record(pending, enemy, current_time, _runtime)
 	return true
 
 
@@ -2434,12 +2817,58 @@ func _should_interpolate_proxy(
 	return true
 
 
-func _register_client_enemy(net_id: int, enemy: Enemy) -> void:
-	if not is_bound() or not _runtime.register_network_enemy(net_id, enemy):
-		return
+func _register_client_enemy(net_id: int, enemy: Enemy) -> bool:
+	if not is_bound():
+		return false
+	return _register_client_enemy_on_runtime(_runtime, net_id, enemy, null)
+
+
+func _register_client_enemy_on_runtime(
+	runtime: CombatRuntimeBase,
+	net_id: int,
+	enemy: Enemy,
+	expected_parent: Node
+) -> bool:
+	if (
+		runtime == null
+		or not is_instance_valid(runtime)
+		or net_id <= 0
+		or enemy == null
+		or not is_instance_valid(enemy)
+		or enemy.is_queued_for_deletion()
+		or (
+			expected_parent != null
+			and (
+				not is_instance_valid(expected_parent)
+				or expected_parent.is_queued_for_deletion()
+				or enemy.get_parent() != expected_parent
+			)
+		)
+	):
+		return false
+	var registered: bool = runtime.register_network_enemy(net_id, enemy)
+	var indexed_enemy: Enemy = runtime.get_network_enemy(net_id)
+	if (
+		not registered
+		or indexed_enemy != enemy
+		or not is_instance_valid(indexed_enemy)
+		or indexed_enemy.is_queued_for_deletion()
+		or (
+			expected_parent != null
+			and (
+				not is_instance_valid(expected_parent)
+				or expected_parent.is_queued_for_deletion()
+				or indexed_enemy.get_parent() != expected_parent
+			)
+		)
+	):
+		if indexed_enemy == enemy:
+			runtime.unregister_network_enemy(net_id, enemy)
+		return false
 	var callback := _on_client_enemy_tree_exited.bind(net_id, enemy)
 	if not enemy.tree_exited.is_connected(callback):
 		enemy.tree_exited.connect(callback)
+	return true
 
 
 func _on_client_enemy_tree_exited(net_id: int, exiting_enemy: Enemy) -> void:
@@ -2467,7 +2896,7 @@ func _receive_action_record(record: Dictionary, current_time: float) -> void:
 		if not client_terminal_enemy_ids.has(net_id):
 			_cache_pending_enemy_action(record)
 		return
-	_deliver_action_record(record, enemy, current_time)
+	_deliver_action_record(record, enemy, current_time, _runtime)
 
 
 func _is_valid_action_record(record: Dictionary) -> bool:
@@ -2510,9 +2939,15 @@ func _is_valid_action_record(record: Dictionary) -> bool:
 func _deliver_action_record(
 	record: Dictionary,
 	enemy: Enemy,
-	current_time: float
+	current_time: float,
+	runtime: CombatRuntimeBase
 ) -> void:
-	if enemy == null or not is_instance_valid(enemy):
+	if (
+		enemy == null
+		or not is_instance_valid(enemy)
+		or runtime == null
+		or not is_instance_valid(runtime)
+	):
 		return
 	var net_id := int(record.get("net_id", 0))
 	var action_position := record.get("action_position", Vector2.ZERO) as Vector2
@@ -2550,7 +2985,7 @@ func _deliver_action_record(
 					action_id
 				)
 		CLIENT_ENEMY_ACTION_KIND_TARGET:
-			var target := _runtime.get_player_for_peer(
+			var target := runtime.get_player_for_peer(
 				int(record.get("target_peer_id", 0))
 			)
 			if enemy.has_method("play_multiplayer_enemy_target_action_with_context"):

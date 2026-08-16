@@ -1,6 +1,10 @@
 extends Node
 class_name MpMerchantTransactionsCoordinator
 
+const RuntimeContentCatalogScript := preload(
+	"res://resources/config/runtime_content_catalog.gd"
+)
+
 const CHEAT_XIRANG_AMOUNT := 1000
 const LUOXI_TRANSACTION_RATE_PER_SECOND := 4.0
 const LUOXI_TRANSACTION_RATE_BURST := 6.0
@@ -375,20 +379,21 @@ func receive_luoxi_collectible_confirmation(
 	_offer_revision: int = 0,
 	inventory_snapshot: Dictionary = {}
 ) -> bool:
+	var confirmed_item: PickupConfig = null
 	if (
 		not is_bound()
 		or peer_id <= 0
 		or result_code < MerchantPurchaseResult.CollectibleClaim.SUCCESS
 		or result_code > MerchantPurchaseResult.CollectibleClaim.STALE_OFFER
-		or (
-			result_code == MerchantPurchaseResult.CollectibleClaim.SUCCESS
-			and (
-				config_path.is_empty()
-				or LuoxiMerchant.get_collectible_for_path(config_path) == null
-			)
-		)
 	):
 		return false
+	if result_code == MerchantPurchaseResult.CollectibleClaim.SUCCESS:
+		if config_path.is_empty():
+			return false
+		# 注册表返回的是作者预载资源；后续不得再把 caller path 交给 load。
+		confirmed_item = _resolve_trusted_collectible_path(config_path)
+		if confirmed_item == null:
+			return false
 	if not inventory_snapshot.is_empty():
 		if not _run_state.apply_inventory_snapshot_for_peer(
 			peer_id,
@@ -405,8 +410,7 @@ func receive_luoxi_collectible_confirmation(
 		)
 		if not already_applied_on_host:
 			if inventory_snapshot.is_empty():
-				var item := load(config_path) as PickupConfig
-				if item == null or not _run_state.try_add_item_for_peer(peer_id, item):
+				if not _run_state.try_add_item_for_peer(peer_id, confirmed_item):
 					return false
 			_mode_adapter.runtime_record_luoxi_collectible_claim(peer_id)
 	elif result_code == MerchantPurchaseResult.CollectibleClaim.ALREADY_CLAIMED:
@@ -557,18 +561,16 @@ func receive_debug_collectible_granted(
 	success: bool,
 	inventory_snapshot: Dictionary = {}
 ) -> bool:
+	var confirmed_item: PickupConfig = null
 	if (
 		not is_bound()
 		or peer_id <= 0
-		or (
-			success
-			and (
-				config_path.is_empty()
-				or LuoxiMerchant.get_collectible_for_path(config_path) == null
-			)
-		)
 	):
 		return false
+	if success:
+		confirmed_item = _resolve_trusted_collectible_path(config_path)
+		if confirmed_item == null:
+			return false
 	# 调试授予也属于权威库存事务；Player 缺席只能省略表现，不能丢账本。
 	if not inventory_snapshot.is_empty():
 		if not _run_state.apply_inventory_snapshot_for_peer(
@@ -582,8 +584,7 @@ func receive_debug_collectible_granted(
 			and peer_id == _net_manager.get_local_peer_id()
 		)
 		if not already_applied_on_host:
-			var item := LuoxiMerchant.get_collectible_for_path(config_path)
-			if item == null or not _run_state.try_add_item_for_peer(peer_id, item):
+			if not _run_state.try_add_item_for_peer(peer_id, confirmed_item):
 				return false
 	if peer_id == _net_manager.get_local_peer_id():
 		_mode_adapter.show_debug_collectible_grant_result(config_path, success)
@@ -609,7 +610,7 @@ func _is_valid_luoxi_offer_paths(config_paths: Array[String]) -> bool:
 		if (
 			config_path.is_empty()
 			or unique_paths.has(config_path)
-			or LuoxiMerchant.get_collectible_for_path(config_path) == null
+			or _resolve_trusted_collectible_path(config_path) == null
 		):
 			return false
 		unique_paths[config_path] = true
@@ -828,7 +829,7 @@ func apply_debug_collectible_for_peer(
 		or not _mode_adapter.allows_debug_collectible_grants()
 	):
 		return
-	var item := LuoxiMerchant.get_collectible_for_path(config_path)
+	var item := _resolve_trusted_collectible_path(config_path)
 	var success := item != null and _run_state.try_add_item_for_peer(peer_id, item)
 	var inventory_snapshot := _run_state.export_inventory_snapshot_for_peer(peer_id)
 	rpc_broadcast_requested.emit(
@@ -842,6 +843,14 @@ func apply_debug_collectible_for_peer(
 			success,
 			inventory_snapshot
 		)
+
+
+static func _resolve_trusted_collectible_path(
+	config_path: String
+) -> PickupConfig:
+	if RuntimeContentCatalogScript.get_pickup_id_for_path(config_path).is_empty():
+		return null
+	return LuoxiMerchant.get_collectible_for_path(config_path)
 
 
 func _admit_remote_luoxi_request(peer_id: int) -> bool:

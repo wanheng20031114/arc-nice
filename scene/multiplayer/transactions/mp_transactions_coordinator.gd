@@ -4,6 +4,9 @@ class_name MpTransactionsCoordinator
 const PeerReplayResultCacheScript := preload(
 	"res://scene/multiplayer/peer_replay_result_cache.gd"
 )
+const RuntimeContentCatalogScript := preload(
+	"res://resources/config/runtime_content_catalog.gd"
+)
 
 const SIMPLE_CRAFTING_RATE_PER_SECOND := 8.0
 const SIMPLE_CRAFTING_RATE_BURST := 12.0
@@ -405,8 +408,13 @@ func apply_authoritative_inventory_item_use(
 	)
 	var item := _run_state.get_item_for_peer(peer_id, slot_index)
 	var config_path := item.resource_path if item != null else ""
+	var item_is_registered := (
+		item == null
+		or RuntimeContentCatalogScript.is_registered_pickup_config(item)
+	)
 	var success := (
 		not revision_mismatch
+		and item_is_registered
 		and _run_state.try_use_item_for_peer(peer_id, slot_index, player_node)
 	)
 	if not success:
@@ -636,6 +644,15 @@ func receive_inventory_item_used(
 ) -> bool:
 	if not is_bound() or peer_id <= 0 or inventory_snapshot.is_empty():
 		return false
+	# 成功包的表现资源也是事务输入，必须先完成可信目录解析；否则背包
+	# revision 不得先推进，再把未知路径悄悄降级成“无表现”。
+	var replay_item: PickupConfig = null
+	if success:
+		replay_item = (
+			RuntimeContentCatalogScript.load_pickup_config_from_path(config_path)
+		)
+		if replay_item == null:
+			return false
 	var revision_before := _commit_received_inventory_snapshot(
 		peer_id,
 		inventory_snapshot,
@@ -652,11 +669,9 @@ func receive_inventory_item_used(
 		return true
 	if (
 		int(inventory_snapshot.get("revision", -1)) > revision_before
-		and not config_path.is_empty()
+		and replay_item != null
 	):
-		var item := load(config_path) as PickupConfig
-		if item != null:
-			player_node.apply_inventory_item_use_replay(item)
+		player_node.apply_inventory_item_use_replay(replay_item)
 	return true
 
 

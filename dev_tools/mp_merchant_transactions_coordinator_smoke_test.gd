@@ -10,6 +10,9 @@ const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
 const OFFER_SEED := 0x4D45524348414E54
+const OUTSIDE_PICKUP_PATH := (
+	"res://dev_tools/fixtures/runtime_content_catalog_outside_pickup.tres"
+)
 
 
 class TestRuntime:
@@ -274,7 +277,8 @@ func _test_static_boundary(
 	_expect(
 		not coordinator_source.contains("current_scene")
 		and not coordinator_source.contains("has_method")
-		and not coordinator_source.contains(".call("),
+		and not coordinator_source.contains(".call(")
+		and not coordinator_source.contains("load(config_path)"),
 		"Merchant coordinator must only use typed runtime dependencies."
 	)
 
@@ -306,6 +310,26 @@ func _test_offer_refresh_choice_and_special_game(
 	var net_manager := HostNetManager.new()
 	net_manager.net_role = NetManagerStore.NetRole.HOST
 	coordinator.bind_runtime(runtime, adapter, run_state, net_manager, 0.0)
+	var outside_snapshot := (
+		run_state.export_inventory_snapshot_for_peer(1)
+	).duplicate(true)
+	_expect(
+		RunStateStore.advance_inventory_snapshot_revision(outside_snapshot, 0),
+		"目录外商人确认测试必须构造可推进的权威背包快照。"
+	)
+	_expect(
+		not coordinator.receive_luoxi_collectible_confirmation(
+			1,
+			0,
+			OUTSIDE_PICKUP_PATH,
+			MerchantPurchaseResult.CollectibleClaim.SUCCESS,
+			0,
+			outside_snapshot
+		)
+		and run_state.get_inventory_revision_for_peer(1) == 0
+		and not adapter.claimed,
+		"目录外合法 PickupConfig 必须在商人确认的背包与领取状态首写前拒绝。"
+	)
 	var offer_rng := coordinator.get(
 		"_luoxi_offer_random_generator"
 	) as RandomNumberGenerator
@@ -409,6 +433,31 @@ func _test_offer_refresh_choice_and_special_game(
 		== int(granted_snapshot.get("revision", -1))
 		and run_state.get_inventory_item_total_for_peer(1, granted_item) == 1,
 		"Player 节点缺席时，调试收藏品结果仍必须收敛权威背包账本。"
+	)
+	var outside_item := ResourceLoader.load(OUTSIDE_PICKUP_PATH) as PickupConfig
+	LuoxiMerchant.cache_collectible_config(outside_item)
+	var revision_before_outside := run_state.get_inventory_revision_for_peer(1)
+	var outside_confirmation_snapshot := (
+		run_state.export_inventory_snapshot_for_peer(1)
+	).duplicate(true)
+	_expect(
+		RunStateStore.advance_inventory_snapshot_revision(
+			outside_confirmation_snapshot,
+			revision_before_outside
+		)
+		and LuoxiMerchant.get_collectible_for_path(OUTSIDE_PICKUP_PATH)
+		== outside_item
+		and not coordinator.receive_luoxi_collectible_confirmation(
+			1,
+			0,
+			OUTSIDE_PICKUP_PATH,
+			MerchantPurchaseResult.CollectibleClaim.SUCCESS,
+			0,
+			outside_confirmation_snapshot
+		)
+		and run_state.get_inventory_revision_for_peer(1)
+		== revision_before_outside,
+		"即使旧商店缓存收录目录外合法物品，显式信任根也必须在首写前拒绝。"
 	)
 	authoritative_state.free()
 

@@ -11,6 +11,9 @@ const PLAYER_SCENE := preload(
 const ROCK_POTION: PickupConfig = preload(
 	"res://resources/config/consumables/rock_potion.tres"
 )
+const OUTSIDE_PICKUP_PATH := (
+	"res://dev_tools/fixtures/runtime_content_catalog_outside_pickup.tres"
+)
 
 
 class TestRuntime:
@@ -431,6 +434,22 @@ func _test_consumable_single_settlement(
 		suspended_peers
 	)
 	var client_base_physical_defense := client_player.physical_defense
+	var client_revision_before_unknown := (
+		client_run_state.get_inventory_revision_for_peer(PEER_ID)
+	)
+	_expect(
+		not coordinator.receive_inventory_item_used(
+			PEER_ID,
+			potion_slot,
+			OUTSIDE_PICKUP_PATH,
+			true,
+			successful_snapshot
+		)
+		and client_run_state.get_inventory_revision_for_peer(PEER_ID)
+		== client_revision_before_unknown
+		and client_player.physical_defense == client_base_physical_defense,
+		"目录外合法消耗品路径必须在背包 revision 与玩家表现首写前拒绝。"
+	)
 	coordinator.receive_inventory_item_used(
 		PEER_ID,
 		potion_slot,

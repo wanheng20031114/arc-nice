@@ -7,12 +7,24 @@ const PROJECTILE_COORDINATOR_SCENE := preload(
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.tscn"
 )
 const TEST_ENEMY_CONFIG_PATH := "res://resources/config/enemies/capoo_ak47.tres"
+const SECOND_ENEMY_CONFIG_PATH := "res://resources/config/enemies/slime.tres"
+const BATCH_REPLACEMENT_ENEMY_CONFIG_PATH := (
+	"res://resources/config/enemies/slime_green.tres"
+)
+const OUTSIDE_ENEMY_PATH := (
+	"res://dev_tools/fixtures/runtime_content_catalog_outside_enemy.tres"
+)
+const WRONG_ENEMY_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
+const ATOMIC_SPAWN_CALLBACK_NONE := 0
+const ATOMIC_SPAWN_CALLBACK_QUEUE_FREE := 1
+const ATOMIC_SPAWN_CALLBACK_UNBIND := 2
 
 
 class ProbeRuntime:
 	extends CombatRuntimeBase
 	var lightning_chain_replay_count := 0
 	var enemy_snapshot_states: Array[SnapshotManager.EnemyState] = []
+	var enemy_spawn_effect_positions: Array[Vector2] = []
 
 	func configure_multiplayer(
 		_mode: int,
@@ -40,8 +52,8 @@ class ProbeRuntime:
 	func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
 		return enemy_snapshot_states
 
-	func play_remote_enemy_spawn_effect(_spawn_global_position: Vector2) -> void:
-		pass
+	func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
+		enemy_spawn_effect_positions.append(spawn_global_position)
 
 	func play_lightning_sorcerer_chain_vfx(_world_path: PackedVector2Array) -> bool:
 		lightning_chain_replay_count += 1
@@ -81,6 +93,12 @@ var _lifecycle_broadcasts: Array[Dictionary] = []
 var _lifecycle_peer_sends: Array[Dictionary] = []
 var _damage_broadcasts: Array[Dictionary] = []
 var _enemy_snapshot_sends: Array[Dictionary] = []
+var _atomic_spawn_runtime: ProbeRuntime = null
+var _atomic_spawn_coordinator: MpEnemyCoordinator = null
+var _atomic_spawn_expected_ids := PackedInt32Array()
+var _atomic_spawn_callback_count := 0
+var _atomic_spawn_first_callback_saw_full_registry := false
+var _atomic_spawn_callback_action := ATOMIC_SPAWN_CALLBACK_NONE
 
 
 func _init() -> void:
@@ -355,6 +373,320 @@ func _run() -> void:
 	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	net_manager.host_mode = false
 	net_manager.client_mode = true
+	var client_enemy_container := Node2D.new()
+	get_root().add_child(client_enemy_container)
+	runtime.enemy_container = client_enemy_container
+	var second_enemy_config := ResourceLoader.load(
+		SECOND_ENEMY_CONFIG_PATH
+	) as EnemyConfig
+	var preserved_enemy := Enemy.new()
+	preserved_enemy.config = second_enemy_config
+	runtime.register_network_enemy(970, preserved_enemy)
+	var original_enemy_scene := enemy_config.enemy_scene
+	enemy_config.enemy_scene = null
+	coordinator.receive_enemy_spawn(
+		970,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(12, 16),
+		1.0,
+		1.0
+	)
+	_expect(
+		runtime.get_network_enemy(970) == preserved_enemy,
+		"目录内配置临时缺少 enemy_scene 时必须保留旧 net-id 实体。"
+	)
+	enemy_config.enemy_scene = WRONG_ENEMY_SCENE
+	coordinator.receive_enemy_spawn(
+		970,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(12, 16),
+		1.0,
+		1.0
+	)
+	_expect(
+		runtime.get_network_enemy(970) == preserved_enemy,
+		"enemy_scene 根节点类型错误时必须释放候选并保留旧 net-id 实体。"
+	)
+	enemy_config.enemy_scene = original_enemy_scene
+	var outside_enemy_config := ResourceLoader.load(
+		OUTSIDE_ENEMY_PATH
+	) as EnemyConfig
+	var outside_enemy_instance: Node = null
+	if outside_enemy_config != null and outside_enemy_config.enemy_scene != null:
+		outside_enemy_instance = outside_enemy_config.enemy_scene.instantiate()
+	_expect(
+		outside_enemy_instance is Enemy,
+		"目录外敌人夹具本身必须是可实例化的正确 EnemyConfig。"
+	)
+	if outside_enemy_instance != null and is_instance_valid(outside_enemy_instance):
+		outside_enemy_instance.free()
+	coordinator.receive_enemy_spawn(
+		970,
+		OUTSIDE_ENEMY_PATH,
+		Vector2(12, 16),
+		1.0,
+		1.0
+	)
+	_expect(
+		runtime.get_network_enemy(970) == preserved_enemy,
+		"可实例化但目录外的 EnemyConfig 仍必须在替换旧实体前拒绝。"
+	)
+	var original_second_enemy_scene := (
+		second_enemy_config.enemy_scene if second_enemy_config != null else null
+	)
+	if second_enemy_config != null:
+		second_enemy_config.enemy_scene = null
+	var children_before_failed_batch := client_enemy_container.get_child_count()
+	coordinator.receive_enemy_spawn_batch(
+		PackedInt32Array([970, 971, 972]),
+		PackedStringArray([
+			BATCH_REPLACEMENT_ENEMY_CONFIG_PATH,
+			TEST_ENEMY_CONFIG_PATH,
+			SECOND_ENEMY_CONFIG_PATH,
+		]),
+		PackedVector2Array([Vector2.ZERO, Vector2.ONE, Vector2(2, 2)]),
+		PackedFloat64Array([1.0, 1.0, 1.0]),
+		1.0,
+		false,
+		0.0
+	)
+	if second_enemy_config != null:
+		second_enemy_config.enemy_scene = original_second_enemy_scene
+	_expect(
+		not runtime.has_network_enemy(971)
+		and not runtime.has_network_enemy(972)
+		and runtime.get_network_enemy(970) == preserved_enemy
+		and client_enemy_container.get_child_count()
+		== children_before_failed_batch,
+		"批次后项准备失败时必须释放全部候选、保留旧实体并保持注册表零写。"
+	)
+	coordinator.receive_enemy_spawn_batch(
+		PackedInt32Array([973, 973]),
+		PackedStringArray([TEST_ENEMY_CONFIG_PATH, TEST_ENEMY_CONFIG_PATH]),
+		PackedVector2Array([Vector2.ZERO, Vector2.ONE]),
+		PackedFloat64Array([1.0, 1.0]),
+		1.0,
+		false,
+		0.0
+	)
+	_expect(
+		not runtime.has_network_enemy(973),
+		"同一生成批次内重复 net-id 必须在实例化前整批拒绝。"
+	)
+	coordinator.receive_enemy_spawn_packet(
+		952,
+		OUTSIDE_ENEMY_PATH,
+		Vector2.ZERO,
+		1.0,
+		1.0,
+		false,
+		0.0
+	)
+	_expect(
+		not runtime.has_network_enemy(952),
+		"目录外资源路径必须在敌人实例化和注册前 fail-close。"
+	)
+	coordinator.receive_enemy_spawn_batch(
+		PackedInt32Array([953, 954]),
+		PackedStringArray([TEST_ENEMY_CONFIG_PATH, OUTSIDE_ENEMY_PATH]),
+		PackedVector2Array([Vector2.ZERO, Vector2.ONE]),
+		PackedFloat64Array([1.0, 1.0]),
+		1.0,
+		false,
+		0.0
+	)
+	_expect(
+		not runtime.has_network_enemy(953)
+		and not runtime.has_network_enemy(954),
+		"敌人批次含一个目录外路径时必须整批预检失败，不能部分生成。"
+	)
+	runtime.unregister_network_enemy(970, preserved_enemy)
+	preserved_enemy.free()
+	_atomic_spawn_runtime = runtime
+	_atomic_spawn_coordinator = coordinator
+	_atomic_spawn_expected_ids = PackedInt32Array([974, 975])
+	_atomic_spawn_callback_count = 0
+	_atomic_spawn_first_callback_saw_full_registry = false
+	_atomic_spawn_callback_action = ATOMIC_SPAWN_CALLBACK_NONE
+	var spawn_effect_count_before_atomic_batch := (
+		runtime.enemy_spawn_effect_positions.size()
+	)
+	coordinator.remote_enemy_spawned.connect(_on_atomic_spawn_probe)
+	coordinator.receive_enemy_spawn_batch(
+		_atomic_spawn_expected_ids,
+		PackedStringArray([TEST_ENEMY_CONFIG_PATH, SECOND_ENEMY_CONFIG_PATH]),
+		PackedVector2Array([Vector2(3, 4), Vector2(5, 6)]),
+		PackedFloat64Array([1.0, 1.0]),
+		1.0,
+		false,
+		0.0
+	)
+	coordinator.remote_enemy_spawned.disconnect(_on_atomic_spawn_probe)
+	_expect(
+		_atomic_spawn_callback_count == 2
+		and _atomic_spawn_first_callback_saw_full_registry
+		and runtime.get_network_enemy(974) != null
+		and runtime.get_network_enemy(975) != null
+		and runtime.enemy_spawn_effect_positions.size()
+		== spawn_effect_count_before_atomic_batch + 2,
+		"首个公开生成回调前，完整 batch 必须已配置、注册并可统一发布。"
+	)
+	_atomic_spawn_expected_ids = PackedInt32Array([976, 977])
+	_atomic_spawn_callback_count = 0
+	_atomic_spawn_first_callback_saw_full_registry = false
+	_atomic_spawn_callback_action = ATOMIC_SPAWN_CALLBACK_QUEUE_FREE
+	var spawn_effect_count_before_destructive_callback := (
+		runtime.enemy_spawn_effect_positions.size()
+	)
+	var child_count_before_queue_free_batch := (
+		client_enemy_container.get_child_count()
+	)
+	coordinator.remote_enemy_spawned.connect(_on_atomic_spawn_probe)
+	coordinator.receive_enemy_spawn_batch(
+		_atomic_spawn_expected_ids,
+		PackedStringArray([TEST_ENEMY_CONFIG_PATH, SECOND_ENEMY_CONFIG_PATH]),
+		PackedVector2Array([Vector2(7, 8), Vector2(9, 10)]),
+		PackedFloat64Array([1.0, 1.0]),
+		1.0,
+		false,
+		0.0
+	)
+	coordinator.remote_enemy_spawned.disconnect(_on_atomic_spawn_probe)
+	_expect(
+		_atomic_spawn_callback_count == 1
+		and _atomic_spawn_first_callback_saw_full_registry
+		and not runtime.has_network_enemy(976)
+		and not runtime.has_network_enemy(977)
+		and coordinator.is_bound()
+		and runtime.enemy_spawn_effect_positions.size()
+		== spawn_effect_count_before_destructive_callback,
+		"首个回调 queue_free 实体时必须清除同批其余注册，不得留下半批或后置表现。"
+	)
+	await process_frame
+	_expect(
+		client_enemy_container.get_child_count()
+		== child_count_before_queue_free_batch,
+		"queue_free 中止后必须在下一帧释放整批暂存实体。"
+	)
+
+	var pending_idempotent_action := {
+		"kind": MpEnemyCoordinator.CLIENT_ENEMY_ACTION_KIND_GENERIC,
+		"net_id": 975,
+		"action_name": &"catalog_atomic_retry",
+		"direction": Vector2.RIGHT,
+		"action_position": Vector2(5, 6),
+		"action_id": 81,
+		"action_time": 1.0,
+		"received_at": 1.0,
+		"host_action_timestamp": 1.0,
+	}
+	_expect(
+		bool(coordinator.call(
+			"_cache_pending_enemy_action",
+			pending_idempotent_action
+		)),
+		"混合 batch 测试必须先把后项动作放入 FIFO。"
+	)
+	var retained_idempotent_enemy := runtime.get_network_enemy(975)
+	_atomic_spawn_expected_ids = PackedInt32Array([980, 975])
+	_atomic_spawn_callback_count = 0
+	_atomic_spawn_first_callback_saw_full_registry = false
+	_atomic_spawn_callback_action = ATOMIC_SPAWN_CALLBACK_QUEUE_FREE
+	var spawn_effect_count_before_mixed_callback := (
+		runtime.enemy_spawn_effect_positions.size()
+	)
+	coordinator.remote_enemy_spawned.connect(_on_atomic_spawn_probe)
+	coordinator.receive_enemy_spawn_batch(
+		_atomic_spawn_expected_ids,
+		PackedStringArray([TEST_ENEMY_CONFIG_PATH, SECOND_ENEMY_CONFIG_PATH]),
+		PackedVector2Array([Vector2(15, 16), Vector2(5, 6)]),
+		PackedFloat64Array([1.0, 1.0]),
+		1.0,
+		false,
+		0.0
+	)
+	coordinator.remote_enemy_spawned.disconnect(_on_atomic_spawn_probe)
+	_expect(
+		_atomic_spawn_callback_count == 1
+		and _atomic_spawn_first_callback_saw_full_registry
+		and not runtime.has_network_enemy(980)
+		and runtime.get_network_enemy(975) == retained_idempotent_enemy
+		and coordinator.pending_enemy_actions.get(975, {})
+		== pending_idempotent_action
+		and runtime.enemy_spawn_effect_positions.size()
+		== spawn_effect_count_before_mixed_callback,
+		"首项回调中止混合 batch 时，后项既有实体的 FIFO 动作不得被提前取走。"
+	)
+	await process_frame
+
+	var idempotent_child_entries: Array[Node] = []
+	var idempotent_child_callback := func(child: Node) -> void:
+		idempotent_child_entries.append(child)
+	client_enemy_container.child_entered_tree.connect(idempotent_child_callback)
+	var idempotent_child_count_before := client_enemy_container.get_child_count()
+	var navigation_phase_before_idempotent := Enemy._next_navigation_phase_offset
+	coordinator.receive_enemy_spawn(
+		975,
+		SECOND_ENEMY_CONFIG_PATH,
+		Vector2(5, 6),
+		1.0,
+		1.0
+	)
+	client_enemy_container.child_entered_tree.disconnect(idempotent_child_callback)
+	_expect(
+		runtime.get_network_enemy(975) == retained_idempotent_enemy
+		and not coordinator.pending_enemy_actions.has(975)
+		and idempotent_child_entries.is_empty()
+		and client_enemy_container.get_child_count()
+		== idempotent_child_count_before
+		and Enemy._next_navigation_phase_offset
+		== navigation_phase_before_idempotent,
+		"同配置同 net-id 必须在实例化前幂等短路，并可随后交付 FIFO 动作且无入树或导航调度副作用。"
+	)
+	coordinator.remove_client_enemy(974, false)
+	coordinator.remove_client_enemy(975, false)
+	await process_frame
+
+	_atomic_spawn_expected_ids = PackedInt32Array([978, 979])
+	_atomic_spawn_callback_count = 0
+	_atomic_spawn_first_callback_saw_full_registry = false
+	_atomic_spawn_callback_action = ATOMIC_SPAWN_CALLBACK_UNBIND
+	var spawn_effect_count_before_unbind_callback := (
+		runtime.enemy_spawn_effect_positions.size()
+	)
+	coordinator.remote_enemy_spawned.connect(_on_atomic_spawn_probe)
+	coordinator.receive_enemy_spawn_batch(
+		_atomic_spawn_expected_ids,
+		PackedStringArray([TEST_ENEMY_CONFIG_PATH, SECOND_ENEMY_CONFIG_PATH]),
+		PackedVector2Array([Vector2(11, 12), Vector2(13, 14)]),
+		PackedFloat64Array([1.0, 1.0]),
+		1.0,
+		false,
+		0.0
+	)
+	coordinator.remote_enemy_spawned.disconnect(_on_atomic_spawn_probe)
+	_expect(
+		_atomic_spawn_callback_count == 1
+		and _atomic_spawn_first_callback_saw_full_registry
+		and not runtime.has_network_enemy(978)
+		and not runtime.has_network_enemy(979)
+		and not coordinator.is_bound()
+		and runtime.enemy_spawn_effect_positions.size()
+		== spawn_effect_count_before_unbind_callback,
+		"首个回调解绑时必须从完整 batch 原子归零，不得继续发布或遗留半批。"
+	)
+	await process_frame
+	coordinator.bind_runtime(runtime)
+	coordinator.bind_damage_dependencies(projectile_coordinator, presentation_parent)
+	coordinator.bind_lifecycle_dependencies(
+		net_manager,
+		gameplay_gateway,
+		_probe_get_net_time
+	)
+	_atomic_spawn_runtime = null
+	_atomic_spawn_coordinator = null
+	_atomic_spawn_expected_ids = PackedInt32Array()
+	_atomic_spawn_callback_action = ATOMIC_SPAWN_CALLBACK_NONE
 	var feedback_probe := FeedbackProbeEnemy.new()
 	coordinator.register_client_enemy(951, feedback_probe, 0.0)
 	coordinator.apply_damage_feedback_batch(
@@ -478,6 +810,7 @@ func _run() -> void:
 	net_manager.free()
 	presentation_parent.free()
 	projectile_coordinator.free()
+	client_enemy_container.free()
 	runtime.free()
 	coordinator.free()
 
@@ -493,6 +826,46 @@ func _run() -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _on_atomic_spawn_probe(enemy: Enemy) -> void:
+	_atomic_spawn_callback_count += 1
+	if _atomic_spawn_callback_count != 1:
+		return
+	var saw_full_registry := (
+		_atomic_spawn_runtime != null
+		and is_instance_valid(_atomic_spawn_runtime)
+	)
+	if saw_full_registry:
+		for net_id in _atomic_spawn_expected_ids:
+			var registered_enemy: Enemy = (
+				_atomic_spawn_runtime.get_network_enemy(net_id)
+			)
+			if (
+				registered_enemy == null
+				or not is_instance_valid(registered_enemy)
+				or registered_enemy.config == null
+				or not registered_enemy.is_multiplayer_proxy
+			):
+				saw_full_registry = false
+				break
+	_atomic_spawn_first_callback_saw_full_registry = saw_full_registry
+	if _atomic_spawn_callback_action == ATOMIC_SPAWN_CALLBACK_NONE:
+		return
+	if (
+		(_atomic_spawn_callback_action & ATOMIC_SPAWN_CALLBACK_QUEUE_FREE) != 0
+		and enemy != null
+		and is_instance_valid(enemy)
+	):
+		enemy.queue_free()
+	if (
+		(_atomic_spawn_callback_action & ATOMIC_SPAWN_CALLBACK_UNBIND) != 0
+		and _atomic_spawn_coordinator != null
+		and is_instance_valid(_atomic_spawn_coordinator)
+		and _atomic_spawn_runtime != null
+		and is_instance_valid(_atomic_spawn_runtime)
+	):
+		_atomic_spawn_coordinator.unbind_runtime(_atomic_spawn_runtime)
 
 
 func _probe_get_net_time() -> float:

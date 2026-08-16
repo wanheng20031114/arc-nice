@@ -1,6 +1,10 @@
 extends Node
 class_name RunStateStore
 
+const RuntimeContentCatalogScript := preload(
+	"res://resources/config/runtime_content_catalog.gd"
+)
+
 ## 跨场景局内账本的唯一真源。多人身份必须先由会话生命周期显式注册，
 ## Inventory、升级与队伍经济只接受已注册成员的原子事务；所有查询保持纯读，
 ## 不得因为 UI 或网络校验而暗中创建玩家、初始物品或 revision。
@@ -2931,7 +2935,9 @@ func _decode_inventory_item(config_path: String, stack_count: int) -> Dictionary
 		}
 	if stack_count <= 0:
 		return {"valid": false}
-	var item := load(config_path) as PickupConfig
+	var item := (
+		RuntimeContentCatalogScript.load_pickup_config_from_path(config_path)
+	)
 	if (
 		item == null
 		or not item.can_store_in_inventory

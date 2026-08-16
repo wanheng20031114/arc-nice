@@ -7,6 +7,9 @@ const APPLE := preload("res://resources/config/collectibles/collectible_apple.tr
 const XIAOCONG_FATE_STONE := preload(
 	"res://resources/config/fate/xiaocong_fate_stone.tres"
 )
+const OUTSIDE_PICKUP_PATH := (
+	"res://dev_tools/fixtures/runtime_content_catalog_outside_pickup.tres"
+)
 
 var failures: Array[String] = []
 
@@ -76,6 +79,18 @@ func _test_local_revision_and_snapshot(run_state: RunStateStore) -> void:
 	_expect(run_state.try_add_item_count(WOOD, 3), "本地背包必须能加入3份木材。")
 	_expect(run_state.get_inventory_revision() == 1, "一次本地加入必须只递增一次revision。")
 	var snapshot := run_state.export_inventory_snapshot()
+	var outside_snapshot := snapshot.duplicate(true)
+	outside_snapshot["revision"] = 2
+	for raw_slot in outside_snapshot["slots"] as Array:
+		raw_slot["revision"] = 2
+		if int(raw_slot.get("slot_index", -1)) == 0:
+			raw_slot["config_path"] = OUTSIDE_PICKUP_PATH
+	_expect(
+		not run_state.apply_inventory_snapshot(outside_snapshot)
+		and run_state.get_inventory_revision() == 1
+		and run_state.get_item_count(0) == 8,
+		"目录外合法 PickupConfig 必须在背包首写前拒绝，不能推进 revision。"
+	)
 	_expect(run_state.discard_item(0), "本地测试堆叠必须能整槽丢弃。")
 	_expect(run_state.get_inventory_revision() == 2, "整槽丢弃必须递增一次revision。")
 	_expect(not run_state.apply_inventory_snapshot(snapshot), "旧revision完整快照不得覆盖新状态。")

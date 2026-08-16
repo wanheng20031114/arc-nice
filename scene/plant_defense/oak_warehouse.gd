@@ -1,6 +1,10 @@
 extends PlantDefense
 class_name OakWarehouse
 
+const RuntimeContentCatalogScript := preload(
+	"res://resources/config/runtime_content_catalog.gd"
+)
+
 signal storage_changed
 signal storage_command_requested(command: Dictionary)
 signal storage_snapshot_requested(warehouse_net_id: int)
@@ -1249,7 +1253,9 @@ static func _decode_storage_snapshot_payload(
 			if count != 0:
 				return {}
 			continue
-		var item := load(path) as PickupConfig
+		var item := (
+			RuntimeContentCatalogScript.load_pickup_config_from_path(path)
+		)
 		if (
 			item == null
 			or not item.can_store_in_inventory

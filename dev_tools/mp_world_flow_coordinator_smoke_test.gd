@@ -11,10 +11,31 @@ const PICKUP_CONFIG_PATH := "res://resources/config/materials/material_wood.tres
 const IMMEDIATE_PICKUP_CONFIG_PATH := (
 	"res://resources/config/pickup_triggered_items/speed_boots.tres"
 )
+const OUTSIDE_PICKUP_PATH := (
+	"res://dev_tools/fixtures/runtime_content_catalog_outside_pickup.tres"
+)
 
 
 class ProbeRuntime:
-	extends CombatRuntimeBase
+	extends WaveCombatRuntimeBase
+
+	func _connect_mode_dynamic_pickup_containers() -> void:
+		pass
+
+	func _register_static_multiplayer_pickups() -> void:
+		pass
+
+	func _configure_singleplayer_player() -> void:
+		pass
+
+	func _configure_multiplayer_players() -> void:
+		pass
+
+	func _connect_mode_singleplayer_player_death_signal() -> void:
+		pass
+
+	func _update_multiplayer_remote_player_passive_state(_delta: float) -> void:
+		pass
 
 	func configure_multiplayer(
 		_mode: int,
@@ -306,6 +327,12 @@ func _run() -> void:
 	var pickup_config := load(PICKUP_CONFIG_PATH) as PickupConfig
 	var boss_config := load(BOSS_CONFIG_PATH) as BossConfig
 	_expect(pickup_config != null and boss_config != null, "smoke 配置必须可加载。")
+	if boss_config != null:
+		var boss_flow_graph := FlowGraphConfig.new()
+		boss_flow_graph.start_step = boss_config
+		boss_flow_graph.steps = [boss_config]
+		runtime.flow_graph = boss_flow_graph
+		runtime.current_flow_step = boss_config
 	var authoritative_inventory_snapshot: Dictionary = {}
 	var live_pickup: Pickup = null
 	if pickup_config != null:
@@ -393,6 +420,11 @@ func _run() -> void:
 		IMMEDIATE_PICKUP_CONFIG_PATH
 	) as PickupConfig
 	_expect(immediate_pickup_config != null, "即时拾取配置必须可加载。")
+	coordinator.receive_pickup_spawned(140, OUTSIDE_PICKUP_PATH, Vector2.ZERO)
+	_expect(
+		not runtime.has_network_pickup(140),
+		"目录外合法 PickupConfig 路径不得创建任何客户端世界实体。"
+	)
 	if pickup_config != null and immediate_pickup_config != null:
 		coordinator.receive_pickup_spawned(
 			46,
@@ -582,6 +614,20 @@ func _run() -> void:
 	coordinator.receive_flow_state(&"wave_active", 2, 2)
 	var invalidated_enemy_apply: bool = coordinator.update_client_enemy_count()
 	coordinator.receive_wave_progress(4, 6, 1, 7, 10)
+	var active_boss_step := runtime.current_flow_step as BossConfig
+	runtime.flow_graph.steps.clear()
+	coordinator.receive_boss_started(97, BOSS_CONFIG_PATH, Vector2.ZERO, 4.0)
+	_expect(
+		mode_adapter.boss_net_id == 0,
+		"即使路径指向全局合法 BossConfig，不属于当前活动 flow 也必须拒绝。"
+	)
+	if active_boss_step != null:
+		runtime.flow_graph.steps = [active_boss_step]
+	coordinator.receive_boss_started(98, OUTSIDE_PICKUP_PATH, Vector2.ZERO, 4.0)
+	_expect(
+		mode_adapter.boss_net_id == 0,
+		"Boss 实例事件只能引用当前活动 flow 中的精确 BossConfig。"
+	)
 	coordinator.receive_boss_started(99, BOSS_CONFIG_PATH, Vector2.ZERO, 4.0)
 	coordinator.receive_defeat("timeout")
 	coordinator.receive_victory()

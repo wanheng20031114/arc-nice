@@ -6,6 +6,9 @@ const WAREHOUSE_SCRIPT := preload(
 const WHITE_CRYSTAL := preload(
 	"res://resources/config/materials/material_white_crystal.tres"
 )
+const OUTSIDE_PICKUP_PATH := (
+	"res://dev_tools/fixtures/runtime_content_catalog_outside_pickup.tres"
+)
 const WHITE_CRYSTAL_POWDER := preload(
 	"res://resources/config/materials/material_white_crystal_powder.tres"
 )
@@ -183,6 +186,26 @@ func _test_invalid_snapshot_aborts_whole_batch(
 		and int(notifications["second"]) == 0
 		and observed_global_totals.is_empty(),
 		"失败批次必须零通知，任何storage_changed监听器都不得被触发。"
+	)
+	var outside_second_snapshot := second_before.duplicate(true)
+	outside_second_snapshot["revision"] = (
+		second_warehouse.get_storage_revision() + 1
+	)
+	var outside_slot := (
+		(outside_second_snapshot["slots"] as Array)[0] as Dictionary
+	)
+	outside_slot["config_path"] = OUTSIDE_PICKUP_PATH
+	outside_slot["stack_count"] = 1
+	_expect(
+		not OakWarehouse.apply_storage_snapshot_batch(
+			warehouses,
+			[valid_first_snapshot, outside_second_snapshot]
+		)
+		and first_warehouse.export_storage_snapshot() == first_before
+		and second_warehouse.export_storage_snapshot() == second_before
+		and int(notifications["first"]) == 0
+		and int(notifications["second"]) == 0,
+		"目录外合法 PickupConfig 必须让整个仓库批次在首写前失败。"
 	)
 
 	first_warehouse.storage_changed.disconnect(first_listener)

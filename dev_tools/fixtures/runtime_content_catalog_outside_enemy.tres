@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="EnemyConfig" format=3]
+
+[ext_resource type="Script" uid="uid://c78u5cgfpcfcy" path="res://resources/config/enemies/enemy_config.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_script")
+display_name = "目录外测试敌人"
+enemy_scene = ExtResource("2_scene")
+metadata/_custom_type_script = "uid://c78u5cgfpcfcy"
