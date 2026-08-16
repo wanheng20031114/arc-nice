@@ -9,6 +9,11 @@ const FLOAT_EPSILON := 0.0001
 var failures: Array[String] = []
 var mp_game: Node = null
 var net_manager: NetManagerStore = null
+var static_contract_completed := false
+var roster_contract_completed := false
+var lifecycle_contract_completed := false
+var reconnect_contract_completed := false
+var inactive_process_contract_completed := false
 
 
 func _init() -> void:
@@ -17,8 +22,20 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_static_embedded_runtime_contract()
+	_expect(
+		static_contract_completed,
+		"静态内嵌运行时契约必须完整执行到阶段终点。"
+	)
 	_test_embedded_participant_roster_contract()
+	_expect(
+		roster_contract_completed,
+		"参战者 roster 契约必须完整执行到阶段终点。"
+	)
 	await _test_embedded_runtime_lifecycle()
+	_expect(
+		lifecycle_contract_completed,
+		"内嵌运行时生命周期契约必须完整执行到阶段终点。"
+	)
 	await _cleanup()
 	_finish()
 
@@ -36,11 +53,15 @@ func _test_static_embedded_runtime_contract() -> void:
 	_expect(
 		source.contains(
 			"func _process(delta: float) -> void:\n"
+			+ "\t_update_pending_reconnected_player_projections(delta)\n"
 			+ "\tif embedded_runtime and not _embedded_runtime_active:\n"
 			+ "\t\treturn\n"
-			+ "\t_update_public_room_keepalive(delta)"
+			+ "\tsession_coordinator.update_transport(delta)"
 		),
-		"Embedded MpGame must gate _process before keepalive and interpolation work."
+		(
+			"Inactive embedded MpGame must continue bounded reconnect projection retries, "
+			+ "then gate session transport and interpolation work."
+		)
 	)
 	_expect(
 		source.contains(
@@ -81,12 +102,26 @@ func _test_static_embedded_runtime_contract() -> void:
 		"An explicit embedded runtime scene path must take priority over game mode."
 	)
 	_expect(
-		source.contains("_mode_adapter.get_multiplayer_defeat_reason()")
-		and source.contains("func net_game_defeated(failure_reason: String = \"\")")
-		and source.contains(
+		source.contains(
+			"func net_game_defeated(failure_reason: String = \"\") -> void:\n"
+			+ "\tworld_flow_coordinator.receive_defeat(failure_reason)"
+		),
+		"The terminal defeat RPC must delegate its authoritative reason to world flow."
+	)
+	var world_flow_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/world_flow/mp_world_flow_coordinator.gd"
+	)
+	_expect(
+		world_flow_source.contains(
+			"_mode_adapter.get_multiplayer_defeat_reason()"
+		)
+		and world_flow_source.contains(
 			"_mode_adapter.apply_remote_defeat_with_reason(failure_reason)"
 		),
-		"The terminal defeat RPC must preserve the Host's authoritative failure reason."
+		(
+			"World flow must preserve the Host's defeat reason across broadcast and "
+			+ "ClientView application."
+		)
 	)
 	var game_source := FileAccess.get_file_as_string(
 		"res://scene/combat/runtime/wave_combat_runtime_base.gd"
@@ -101,6 +136,7 @@ func _test_static_embedded_runtime_contract() -> void:
 			+ "occurrence campaign is installed and the Host synchronizes activation."
 		)
 	)
+	static_contract_completed = true
 
 
 func _test_embedded_participant_roster_contract() -> void:
@@ -130,57 +166,10 @@ func _test_embedded_participant_roster_contract() -> void:
 			== {1: true, 2: true},
 		"An invalid replacement roster must be rejected without corrupting the frozen roster."
 	)
-	_expect(
-		bool(contract.call(
-			"suspend_embedded_participant_for_current_combat",
-			2
-		))
-		and (contract.get("_embedded_participant_peer_ids") as Dictionary)
-			== {1: true, 2: true}
-		and (contract.get(
-			"_suspended_embedded_participant_peer_ids"
-		) as Dictionary) == {2: true}
-		and not (
-			contract.get_node("TransactionsCoordinator")
-			as MpTransactionsCoordinator
-		).consume_remote_transaction_admission(2),
-		(
-			"A combat-only spectator downgrade must preserve the frozen identity "
-			+ "while rejecting subsequent transaction ingress."
-		)
-	)
-	contract.call(
-		"_on_net_player_reconnected",
-		2,
-		4,
-		"ParticipantReconnectedAgain",
-		&"weishidaier"
-	)
-	_expect(
-		(contract.get("_embedded_participant_peer_ids") as Dictionary)
-			== {1: true, 4: true}
-		and (contract.get(
-			"_suspended_embedded_participant_peer_ids"
-		) as Dictionary) == {4: true},
-		"A suspended participant's canonical identity must follow another reconnect."
-	)
-	_expect(
-		bool(contract.call(
-			"suspend_embedded_participant_for_current_combat",
-			4,
-			2
-		))
-		and (contract.get("_embedded_participant_peer_ids") as Dictionary)
-			== {1: true, 4: true}
-		and (contract.get(
-			"_suspended_embedded_participant_peer_ids"
-		) as Dictionary) == {4: true},
-		(
-			"Spectator downgrade must also succeed when MpGame has already "
-			+ "remapped the old identity before the coordinator callback runs."
-		)
-	)
+	# 挂起与重连会清理真实协调器状态，只能在节点完成 `_ready` 且持久账本
+	# 已建立后验证；这里仅覆盖进入树前唯一合法的 roster 冻结边界。
 	contract.free()
+	roster_contract_completed = true
 
 
 func _test_embedded_runtime_lifecycle() -> void:
@@ -211,6 +200,28 @@ func _test_embedded_runtime_lifecycle() -> void:
 		"Embedded runtime setup must begin from an already active multiplayer session."
 	)
 	if net_manager.connection_state != NetManagerStore.ConnectionState.IN_GAME:
+		return
+	var run_state := root.get_node_or_null("RunState") as RunStateStore
+	_expect(run_state != null, "Embedded runtime fixture must have the RunState autoload.")
+	if run_state == null:
+		return
+	# 内嵌战斗只能消费顶层会话已经提交的持久账本；测试夹具不得再依赖
+	# MpGame 为缺失身份补建状态。
+	run_state.begin_new_run(PlayerCharacterRegistry.WEISHIDAIER_ID, false)
+	var session_member_peer_ids := net_manager.get_session_member_peer_ids()
+	var session_membership_revision := net_manager.get_session_membership_revision()
+	var persistent_ledger_ready := (
+		session_membership_revision > 0
+		and run_state.reconcile_multiplayer_session_membership(
+			session_member_peer_ids,
+			session_membership_revision
+		)
+	)
+	_expect(
+		persistent_ledger_ready,
+		"The fixture must project the authoritative session roster into RunState first."
+	)
+	if not persistent_ledger_ready:
 		return
 
 	var load_progress_before := net_manager.get_game_load_progress().duplicate(true)
@@ -262,6 +273,10 @@ func _test_embedded_runtime_lifecycle() -> void:
 	)
 
 	_test_inactive_process_gates()
+	_expect(
+		inactive_process_contract_completed,
+		"未激活处理门禁契约必须完整执行到阶段终点。"
+	)
 
 	var deadline_msec := Time.get_ticks_msec() + PREPARATION_TIMEOUT_MSEC
 	while Time.get_ticks_msec() < deadline_msec:
@@ -326,30 +341,110 @@ func _test_embedded_runtime_lifecycle() -> void:
 		)
 	)
 
+	_test_suspended_participant_reconnect_contract(
+		run_state,
+		net_manager.get_local_peer_id()
+	)
+	_expect(
+		reconnect_contract_completed,
+		"挂起参战者重连契约必须完整执行到阶段终点。"
+	)
+	lifecycle_contract_completed = true
+
+
+func _test_suspended_participant_reconnect_contract(
+	run_state: RunStateStore,
+	old_peer_id: int
+) -> void:
+	const RECONNECTED_PEER_ID := 4
+	var ledger_revision_before := (
+		run_state.get_multiplayer_session_membership_revision()
+	)
+	var inventory_revision_before := run_state.get_inventory_revision_for_peer(
+		old_peer_id
+	)
+	var suspended := bool(mp_game.call(
+		"suspend_embedded_participant_for_current_combat",
+		old_peer_id
+	))
+	_expect(
+		suspended
+		and (mp_game.get("_embedded_participant_peer_ids") as Dictionary)
+			== {old_peer_id: true}
+		and (mp_game.get(
+			"_suspended_embedded_participant_peer_ids"
+		) as Dictionary) == {old_peer_id: true}
+		and (
+			mp_game.get_node("TransactionsCoordinator")
+			as MpTransactionsCoordinator
+		).get("_suspended_peer_ids") == {old_peer_id: true},
+		(
+			"A combat-only spectator downgrade must preserve the canonical identity and "
+			+ "publish the same suspension lease to transaction ingress."
+		)
+	)
+	if not suspended or ledger_revision_before < 0:
+		reconnect_contract_completed = true
+		return
+
+	# v77 的重连通知携带显式 membership revision。这里模拟认证层已经签发
+	# 下一 revision，验证 suspended 终态与全部 RunState 分账本原子迁移。
+	mp_game.call(
+		"_on_net_player_reconnected",
+		old_peer_id,
+		RECONNECTED_PEER_ID,
+		"ParticipantReconnectedAgain",
+		PlayerCharacterRegistry.WEISHIDAIER_ID,
+		ledger_revision_before + 1
+	)
+	_expect(
+		(mp_game.get("_embedded_participant_peer_ids") as Dictionary)
+			== {RECONNECTED_PEER_ID: true}
+		and (mp_game.get(
+			"_suspended_embedded_participant_peer_ids"
+		) as Dictionary) == {RECONNECTED_PEER_ID: true}
+		and not run_state.has_multiplayer_peer_state(old_peer_id)
+		and run_state.has_multiplayer_peer_state(RECONNECTED_PEER_ID)
+		and run_state.get_inventory_revision_for_peer(RECONNECTED_PEER_ID)
+			== inventory_revision_before
+		and run_state.get_multiplayer_session_membership_revision()
+			== ledger_revision_before + 1,
+		(
+			"A suspended reconnect must move the frozen roster and persistent ledger "
+			+ "under the same explicit membership revision."
+		)
+	)
+	reconnect_contract_completed = true
+
 
 func _test_inactive_process_gates() -> void:
 	const SENTINEL := 7.5
 	const DELTA := 1.25
-	mp_game.set("_public_room_keepalive_time_left", SENTINEL)
+	var session := mp_game.get_node("SessionCoordinator") as MpSessionCoordinator
+	var diagnostics := mp_game.get_node(
+		"NetworkDiagnosticsCoordinator"
+	) as MpNetworkDiagnosticsCoordinator
+	session.set("_client_runtime_repair_cooldown_time_left", SENTINEL)
 	mp_game.call("_process", DELTA)
 	_expect(
 		is_equal_approx(
-			float(mp_game.get("_public_room_keepalive_time_left")),
+			float(session.get("_client_runtime_repair_cooldown_time_left")),
 			SENTINEL
 		),
-		"Inactive embedded _process must not enter the network keepalive path."
+		"Inactive embedded _process must not advance session transport leases."
 	)
 
 	mp_game.set("_recent_event_prune_time_left", SENTINEL)
-	mp_game.set("_snapshot_packet_warn_time_left", SENTINEL)
+	diagnostics.set("_snapshot_packet_warn_time_left", SENTINEL)
 	mp_game.call("_physics_process", DELTA)
 	_expect(
 		absf(float(mp_game.get("_recent_event_prune_time_left")) - SENTINEL)
 		<= FLOAT_EPSILON
-		and absf(float(mp_game.get("_snapshot_packet_warn_time_left")) - SENTINEL)
+		and absf(float(diagnostics.get("_snapshot_packet_warn_time_left")) - SENTINEL)
 		<= FLOAT_EPSILON,
 		"Inactive embedded _physics_process must not enter either network timer path."
 	)
+	inactive_process_contract_completed = true
 
 
 func _cleanup() -> void:
