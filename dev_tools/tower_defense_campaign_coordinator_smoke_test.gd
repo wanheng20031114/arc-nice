@@ -40,6 +40,20 @@ func _run() -> void:
 	_expect(campaign.flow_graph != null, "Campaign 唯一 owner 未加载流程图。")
 	_expect(campaign.get_start_flow_step() != null, "Campaign 流程缺少起点。")
 	_expect(
+		campaign.get_initial_preparation_seconds() == 300
+		and campaign.get_wave_intermission_seconds() == 300
+		and campaign.get_new_day_preparation_seconds() == 300,
+		"首波前、普通波间和跨日首领准备必须统一读取正式5分钟配置。"
+	)
+	campaign.enter_pre_flow_step(campaign.get_start_flow_step())
+	_expect(
+		campaign.wave_state == CombatFlowState.State.PRE_WAVE
+		and campaign.countdown_seconds == 300
+		and game.wave_hud.stage_label.text.contains("05:00"),
+		"首波前必须实际进入5分钟准备倒计时并显示05:00。"
+	)
+	game.state_timer.stop()
+	_expect(
 		campaign.is_formal_four_day_campaign()
 		and campaign.should_enter_daily_rogue_exploration(4)
 		and campaign.should_enter_daily_rogue_exploration(8)
@@ -229,7 +243,7 @@ func _run() -> void:
 	campaign.start_client_flow_countdown(
 		CombatFlowState.State.INTERMISSION,
 		&"boss_01_linglan",
-		60
+		300
 	)
 	campaign.update_client_flow_countdown()
 	campaign.update_client_flow_countdown()
@@ -246,11 +260,11 @@ func _run() -> void:
 		campaign.wave_state == CombatFlowState.State.INTERMISSION
 		and campaign.current_flow_step == boss_step
 		and campaign.next_flow_step_after_rest == boss_step
-		and campaign.countdown_seconds == 60
+		and campaign.countdown_seconds == 300
 		and not game.state_timer.is_stopped()
 		and game.wave_hud.wave_title_label.text == "首领战准备",
 		(
-			"第三次 Fate 完成后必须进入 60 秒第4日首领准备，"
+			"第三次 Fate 完成后必须进入 5 分钟第4日首领准备，"
 			+ "不能回落到普通波间休整。"
 		)
 	)

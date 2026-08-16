@@ -690,12 +690,12 @@ func _run() -> void:
 	game.state_timer.stop()
 	_expect(
 		game.campaign_coordinator.wave_state == CombatFlowState.State.INTERMISSION
-		and game.campaign_coordinator.countdown_seconds == 60
+		and game.campaign_coordinator.countdown_seconds == 300
 		and game.wave_hud.day_label.text == "第 4 日"
 		and game.wave_hud.phase_label.text == "白昼"
 		and game.wave_hud.wave_title_label.text == "首领战准备"
 		and not game.wave_hud.global_wave_notice.visible,
-		"第三次命运间奏后必须进入60秒第4日白昼首领准备，不显示普通波号。"
+		"第三次命运间奏后必须进入5分钟第4日白昼首领准备，不显示普通波号。"
 	)
 
 	current_scene = null

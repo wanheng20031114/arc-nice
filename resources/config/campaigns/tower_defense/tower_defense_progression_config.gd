@@ -6,11 +6,11 @@ const ROGUE_EXPLORATION_DAY_COUNT := 3
 
 @export_group("阶段计时")
 @export_range(0.0, 3600.0, 1.0, "or_greater")
-var initial_preparation_seconds: float = 90.0
+var initial_preparation_seconds: float = 300.0
 @export_range(0.0, 3600.0, 1.0, "or_greater")
-var wave_intermission_seconds: float = 30.0
+var wave_intermission_seconds: float = 300.0
 @export_range(0.0, 3600.0, 1.0, "or_greater")
-var new_day_preparation_seconds: float = 60.0
+var new_day_preparation_seconds: float = 300.0
 
 @export_group("日终地下探索")
 ## 顺序固定对应第1、2、3日；数组顺序属于运行契约语义。

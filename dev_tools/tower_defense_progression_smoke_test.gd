@@ -186,17 +186,16 @@ func _test_progression_resource() -> void:
 		"Formal tower defense must add only three saplings per player and no team package."
 	)
 	_expect(
-		PROGRESSION.initial_preparation_seconds == 90.0
-		and PROGRESSION.wave_intermission_seconds == 30.0
-		and PROGRESSION.new_day_preparation_seconds == 60.0,
-		"Initial, ordinary and new-day preparations must be explicit 90/30/60 values."
+		PROGRESSION.initial_preparation_seconds == 300.0
+		and PROGRESSION.wave_intermission_seconds == 300.0
+		and PROGRESSION.new_day_preparation_seconds == 300.0,
+		"Every formal preparation and intermission must last five minutes."
 	)
+	var changed_timer := PROGRESSION.duplicate(true) as TowerDefenseProgressionConfig
+	changed_timer.wave_intermission_seconds = 299.0
 	_expect(
-		PROGRESSION.initial_preparation_seconds
-		!= PROGRESSION.wave_intermission_seconds
-		and PROGRESSION.wave_intermission_seconds
-		!= PROGRESSION.new_day_preparation_seconds,
-		"The three preparation phases must remain independently configured."
+		changed_timer.compute_runtime_contract_hash() != baseline_contract_hash,
+		"Each preparation timer must remain independently contract-significant."
 	)
 	var minimum_water_chain_seconds := (
 		ceili(
@@ -337,9 +336,9 @@ func _test_singleplayer_starting_package() -> void:
 	)
 	_expect_exact_starting_inventory(run_state, 0, "Repeated singleplayer grant")
 	_expect(
-		game.campaign_coordinator.get_initial_preparation_seconds() == 90
-		and game.campaign_coordinator.get_wave_intermission_seconds() == 30
-		and game.campaign_coordinator.get_new_day_preparation_seconds() == 60,
+		game.campaign_coordinator.get_initial_preparation_seconds() == 300
+		and game.campaign_coordinator.get_wave_intermission_seconds() == 300
+		and game.campaign_coordinator.get_new_day_preparation_seconds() == 300,
 		"Runtime must source all three countdowns from progression config."
 	)
 	var metrics := game.get_progression_metrics_snapshot()

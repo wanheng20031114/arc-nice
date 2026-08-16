@@ -203,10 +203,10 @@ func _test_singleplayer_flow_and_respawn() -> void:
 
 	_expect(game.tower_defense_status_hud.visible, "Tower-defense runtime must explicitly enable its status HUD.")
 	_expect(
-		is_equal_approx(game.progression_config.initial_preparation_seconds, 90.0)
-		and is_equal_approx(game.progression_config.wave_intermission_seconds, 30.0)
-		and is_equal_approx(game.progression_config.new_day_preparation_seconds, 60.0),
-		"Tower-defense flow must use separate 90/30/60 preparation durations."
+		is_equal_approx(game.progression_config.initial_preparation_seconds, 300.0)
+		and is_equal_approx(game.progression_config.wave_intermission_seconds, 300.0)
+		and is_equal_approx(game.progression_config.new_day_preparation_seconds, 300.0),
+		"Tower-defense flow must use five-minute preparation and intermission durations."
 	)
 	_expect(game.player.current_xirang == 1000, "The player must enter tower defense with 1000 Xirang.")
 	var first_step: FlowStepConfig = game.campaign_coordinator.current_flow_step
@@ -215,13 +215,13 @@ func _test_singleplayer_flow_and_respawn() -> void:
 		"The first wave must wait in PRE_WAVE instead of starting immediately."
 	)
 	_expect(
-		game.campaign_coordinator.countdown_seconds == 90,
-		"The first preparation period must start at 90 seconds."
+		game.campaign_coordinator.countdown_seconds == 300,
+		"The first preparation period must start at five minutes."
 	)
 	_expect(game.wave_hud.start_wave_button.visible and not game.wave_hud.start_wave_button.disabled, "The rest HUD must expose an enabled early-start button.")
 	_expect(
 		game.wave_hud.stage_banner.visible
-		and game.wave_hud.stage_label.text.contains("01:30"),
+		and game.wave_hud.stage_label.text.contains("05:00"),
 		"The tower-defense rest banner must use MM:SS formatting."
 	)
 	_expect(
@@ -318,8 +318,8 @@ func _test_singleplayer_flow_and_respawn() -> void:
 		"Every cleared wave must enter a rest state."
 	)
 	_expect(
-		game.campaign_coordinator.countdown_seconds == 30,
-		"Every ordinary between-wave rest must start at 30 seconds."
+		game.campaign_coordinator.countdown_seconds == 300,
+		"Every ordinary between-wave rest must start at five minutes."
 	)
 	_expect(
 		game.music_player.stream.resource_path
