@@ -13,7 +13,6 @@ const MINIMUM_VISIBLE_SECONDS := 0.35
 const LOAD_TIMEOUT_SECONDS := 120.0
 const MULTIPLAYER_STATE_DISCONNECTED := 0
 const MULTIPLAYER_STATE_IN_GAME := 5
-const CAMPAIGN_RUNTIME_RESOURCES_META := &"_game_load_runtime_resources"
 
 enum LoadState {
 	IDLE,
@@ -23,6 +22,67 @@ enum LoadState {
 	COMPLETING,
 	FAILED,
 }
+
+
+class LoadRequest extends RefCounted:
+	## 重试只复制本次尝试的输入，不再读取协调器上的历史目标。
+	var target_scene_path: String
+	var manifest: Array[String]
+	var multiplayer_load: bool
+	var released := false
+
+	func _init(
+		p_target_scene_path: String,
+		p_manifest: Array[String],
+		p_multiplayer_load: bool
+	) -> void:
+		target_scene_path = p_target_scene_path
+		manifest = p_manifest.duplicate()
+		multiplayer_load = p_multiplayer_load
+
+	func duplicate_request() -> LoadRequest:
+		return LoadRequest.new(target_scene_path, manifest, multiplayer_load)
+
+	func release() -> void:
+		if released:
+			return
+		target_scene_path = ""
+		manifest.clear()
+		released = true
+
+
+class LoadAttempt extends RefCounted:
+	var generation: int
+	var request: LoadRequest
+	var requested_paths: Array[String] = []
+	var resource_weights: Dictionary = {}
+	var loaded_resources: Dictionary = {}
+	var started_paths: Dictionary = {}
+	var expanded_campaign_paths: Dictionary = {}
+	var load_started_msec: int
+	var scene_switch_frame := 0
+	var released := false
+	var release_reason: StringName = &""
+
+	func _init(p_generation: int, p_request: LoadRequest) -> void:
+		generation = p_generation
+		request = p_request
+		load_started_msec = Time.get_ticks_msec()
+
+	## 一个尝试独占全部加载期强引用；释放后，迟到线程结果没有可回写的 owner。
+	func release(p_reason: StringName) -> void:
+		if released:
+			return
+		released = true
+		release_reason = p_reason
+		requested_paths.clear()
+		resource_weights.clear()
+		loaded_resources.clear()
+		started_paths.clear()
+		expanded_campaign_paths.clear()
+		if request != null:
+			request.release()
+			request = null
 
 @onready var overlay: Control = $Overlay
 @onready var garden_background: TextureRect = $Overlay/GardenBackground
@@ -38,17 +98,11 @@ enum LoadState {
 
 var _state := LoadState.IDLE
 var _is_multiplayer_load := false
-var _target_scene_path := ""
-var _requested_paths: Array[String] = []
-var _resource_weights: Dictionary = {}
-var _loaded_resources: Dictionary = {}
-var _started_paths: Dictionary = {}
-var _expanded_campaign_paths: Dictionary = {}
-var _runtime_resource_campaign_owners: Dictionary = {}
+## 资源、清单、线程状态只能属于当前尝试；失败界面只保存一份不可变重试请求。
+var _active_attempt: LoadAttempt = null
+var _failed_retry_request: LoadRequest = null
 var _displayed_progress := 0.0
 var _target_progress := 0.0
-var _load_started_msec := 0
-var _scene_switch_frame := 0
 var _request_generation := 0
 var _net_manager: NetManagerStore = null
 
@@ -68,9 +122,16 @@ func _ready() -> void:
 		)
 
 
+func _exit_tree() -> void:
+	# 自动加载退出同样终结租约，避免测试退出或项目关闭时留下加载期引用。
+	_invalidate_and_release_active_attempt(&"shutdown")
+	_clear_failed_retry_request()
+
+
 func begin_singleplayer(scene_path: String) -> void:
 	if _state != LoadState.IDLE and _state != LoadState.FAILED:
 		return
+	_clear_failed_retry_request()
 	var definition := GameModeCatalog.get_definition_by_singleplayer_entry(scene_path)
 	if definition == null:
 		_is_multiplayer_load = false
@@ -84,6 +145,9 @@ func begin_singleplayer(scene_path: String) -> void:
 
 
 func begin_singleplayer_mode(mode_id: int) -> void:
+	if _state != LoadState.IDLE and _state != LoadState.FAILED:
+		return
+	_clear_failed_retry_request()
 	var definition := GameModeCatalog.get_definition(mode_id)
 	if definition == null:
 		if _state == LoadState.IDLE or _state == LoadState.FAILED:
@@ -141,6 +205,7 @@ func _get_definition_for_runtime_or_entry(scene_path: String) -> GameModeDefinit
 func begin_multiplayer() -> void:
 	if _state != LoadState.IDLE and _state != LoadState.FAILED:
 		return
+	_clear_failed_retry_request()
 	if _net_manager == null:
 		_is_multiplayer_load = true
 		_show_error("无法读取多人会话。")
@@ -205,19 +270,15 @@ func is_loading() -> bool:
 
 
 func _begin_load(target_scene_path: String, manifest: Array[String], multiplayer_load: bool) -> void:
+	_release_active_attempt(&"replaced")
+	_clear_failed_retry_request()
 	_request_generation += 1
+	var request := LoadRequest.new(target_scene_path, manifest, multiplayer_load)
+	var attempt := LoadAttempt.new(_request_generation, request)
+	_active_attempt = attempt
 	_is_multiplayer_load = multiplayer_load
-	_target_scene_path = target_scene_path
-	_requested_paths.clear()
-	_resource_weights.clear()
-	_loaded_resources.clear()
-	_started_paths.clear()
-	_expanded_campaign_paths.clear()
-	_runtime_resource_campaign_owners.clear()
 	_displayed_progress = 0.0
 	_target_progress = 0.0
-	_load_started_msec = Time.get_ticks_msec()
-	_scene_switch_frame = 0
 	_state = LoadState.REQUESTING
 	action_row.hide()
 	retry_button.visible = not multiplayer_load
@@ -230,15 +291,41 @@ func _begin_load(target_scene_path: String, manifest: Array[String], multiplayer
 	overlay.show()
 	loading_started.emit(multiplayer_load)
 
-	for path in manifest:
-		if path.is_empty() or _requested_paths.has(path):
+	for path in request.manifest:
+		if path.is_empty() or attempt.requested_paths.has(path):
 			continue
 		if not ResourceLoader.exists(path):
 			_show_error("加载清单中的资源不存在：%s" % path)
 			return
-		_requested_paths.append(path)
-		_resource_weights[path] = _get_resource_weight(path)
+		attempt.requested_paths.append(path)
+		attempt.resource_weights[path] = _get_resource_weight(path)
 	_start_next_resource_request()
+
+
+func _release_active_attempt(reason: StringName) -> void:
+	if _active_attempt == null:
+		return
+	_active_attempt.release(reason)
+	_active_attempt = null
+
+
+func _clear_failed_retry_request() -> void:
+	if _failed_retry_request != null:
+		_failed_retry_request.release()
+	_failed_retry_request = null
+
+
+func _invalidate_and_release_active_attempt(reason: StringName) -> void:
+	_request_generation += 1
+	_release_active_attempt(reason)
+
+
+func _is_active_generation(generation: int) -> bool:
+	return (
+		_active_attempt != null
+		and not _active_attempt.released
+		and _active_attempt.generation == generation
+	)
 
 
 func _process(delta: float) -> void:
@@ -247,7 +334,9 @@ func _process(delta: float) -> void:
 	if (
 		_state != LoadState.COMPLETING
 		and _state != LoadState.FAILED
-		and Time.get_ticks_msec() - _load_started_msec > int(LOAD_TIMEOUT_SECONDS * 1000.0)
+		and _active_attempt != null
+		and Time.get_ticks_msec() - _active_attempt.load_started_msec
+		> int(LOAD_TIMEOUT_SECONDS * 1000.0)
 	):
 		_show_error("战场准备超时，请重试或返回。")
 		return
@@ -263,17 +352,21 @@ func _process(delta: float) -> void:
 
 
 func _poll_resource_requests() -> void:
+	var attempt := _active_attempt
+	if attempt == null or attempt.released:
+		return
 	var weighted_progress := 0.0
 	var total_weight := 0.0
 	var all_loaded := true
 	var loaded_campaigns_to_expand: Array[Dictionary] = []
-	for path in _requested_paths:
-		var weight := float(_resource_weights.get(path, 1.0))
+	# 失败会立即清空租约；遍历快照可避免在错误分支中修改正在迭代的集合。
+	for path in attempt.requested_paths.duplicate():
+		var weight := float(attempt.resource_weights.get(path, 1.0))
 		total_weight += weight
-		if _loaded_resources.has(path):
+		if attempt.loaded_resources.has(path):
 			weighted_progress += weight
 			continue
-		if not _started_paths.has(path):
+		if not attempt.started_paths.has(path):
 			all_loaded = false
 			continue
 		var progress: Array = []
@@ -284,8 +377,7 @@ func _poll_resource_requests() -> void:
 				if resource == null:
 					_show_error("资源加载完成但无法取得实例：%s" % path)
 					return
-				_loaded_resources[path] = resource
-				_retain_campaign_runtime_resource(path, resource)
+				attempt.loaded_resources[path] = resource
 				weighted_progress += weight
 				if path.ends_with("campaign.tres"):
 					loaded_campaigns_to_expand.append({
@@ -323,30 +415,28 @@ func _poll_resource_requests() -> void:
 	detail_label.text = "初始化瓦片、寻路缓存与战斗界面…"
 	_target_progress = SCENE_READY_PROGRESS - 0.02
 	_state = LoadState.SWITCHING_SCENE
-	_scene_switch_frame = Engine.get_process_frames()
-	call_deferred("_commit_scene_change", _request_generation)
+	attempt.scene_switch_frame = Engine.get_process_frames()
+	call_deferred("_commit_scene_change", attempt.generation)
 
 
 func _start_next_resource_request() -> void:
-	if _state != LoadState.REQUESTING:
+	var attempt := _active_attempt
+	if _state != LoadState.REQUESTING or attempt == null or attempt.released:
 		return
-	# Keep only one threaded request active at a time. Scenes and campaign
-	# resources can share dependency trees; serial requests avoid asking the
-	# loader to resolve the same dependency concurrently while still keeping the
-	# main thread responsive.
-	for started_path_variant in _started_paths:
+	# 场景与战役可能共享依赖树；单路线程请求避免并发解析同一依赖，同时不阻塞主线程。
+	for started_path_variant in attempt.started_paths.duplicate():
 		var started_path := str(started_path_variant)
-		if not _loaded_resources.has(started_path):
+		if not attempt.loaded_resources.has(started_path):
 			return
-	for path in _requested_paths:
-		if _loaded_resources.has(path) or _started_paths.has(path):
+	for path in attempt.requested_paths.duplicate():
+		if attempt.loaded_resources.has(path) or attempt.started_paths.has(path):
 			continue
 		var existing_status := ResourceLoader.load_threaded_get_status(path)
 		if (
 			existing_status == ResourceLoader.THREAD_LOAD_IN_PROGRESS
 			or existing_status == ResourceLoader.THREAD_LOAD_LOADED
 		):
-			_started_paths[path] = true
+			attempt.started_paths[path] = true
 			return
 		var error := ResourceLoader.load_threaded_request(
 			path,
@@ -357,16 +447,18 @@ func _start_next_resource_request() -> void:
 		if error != OK:
 			_show_error("无法开始加载资源：%s（%s）" % [path, error_string(error)])
 			return
-		_started_paths[path] = true
+		attempt.started_paths[path] = true
 		return
 
 
 func _commit_scene_change(generation: int) -> void:
-	if generation != _request_generation or _state != LoadState.SWITCHING_SCENE:
+	if not _is_active_generation(generation) or _state != LoadState.SWITCHING_SCENE:
 		return
-	var target_scene := _loaded_resources.get(_target_scene_path) as PackedScene
+	var attempt := _active_attempt
+	var target_scene_path := attempt.request.target_scene_path
+	var target_scene := attempt.loaded_resources.get(target_scene_path) as PackedScene
 	if target_scene == null:
-		_show_error("目标场景没有作为 PackedScene 加载：%s" % _target_scene_path)
+		_show_error("目标场景没有作为 PackedScene 加载：%s" % target_scene_path)
 		return
 	var error := get_tree().change_scene_to_packed(target_scene)
 	if error != OK:
@@ -374,10 +466,14 @@ func _commit_scene_change(generation: int) -> void:
 
 
 func _poll_scene_switch() -> void:
-	if Engine.get_process_frames() <= _scene_switch_frame:
+	var attempt := _active_attempt
+	if attempt == null or attempt.released:
 		return
+	if Engine.get_process_frames() <= attempt.scene_switch_frame:
+		return
+	var expected_scene_path := attempt.request.target_scene_path
 	var current_scene := get_tree().current_scene
-	if current_scene == null or current_scene.scene_file_path != _target_scene_path:
+	if current_scene == null or current_scene.scene_file_path != expected_scene_path:
 		return
 	if (
 		current_scene.has_method("is_runtime_preparation_complete")
@@ -424,7 +520,7 @@ func _update_progress_visual(delta: float) -> void:
 
 
 func _update_background_motion() -> void:
-	# Integer-only drift keeps the background calm without introducing fractional text transforms.
+	# 只做整数像素漂移，避免文字层受到亚像素变换影响。
 	var drift := int(Time.get_ticks_msec() / 90) % 24
 	garden_background.offset_left = -drift
 	garden_background.offset_top = 0
@@ -471,60 +567,79 @@ func _on_connection_state_changed(new_state: int) -> void:
 
 
 func _complete_loading() -> void:
-	if _state == LoadState.COMPLETING or _state == LoadState.IDLE:
+	if (
+		_state == LoadState.COMPLETING
+		or _state == LoadState.IDLE
+		or _active_attempt == null
+	):
 		return
 	_state = LoadState.COMPLETING
 	action_row.hide()
 	stage_label.text = "部署完成"
 	detail_label.text = "作战路线已确认。"
 	_target_progress = 1.0
-	call_deferred("_finish_after_minimum_duration", _request_generation)
+	call_deferred(
+		"_finish_after_minimum_duration",
+		_active_attempt.generation
+	)
 
 
 func _finish_after_minimum_duration(generation: int) -> void:
-	var elapsed := (Time.get_ticks_msec() - _load_started_msec) / 1000.0
+	if not _is_active_generation(generation):
+		return
+	var elapsed := (
+		Time.get_ticks_msec() - _active_attempt.load_started_msec
+	) / 1000.0
 	var wait_seconds := maxf(MINIMUM_VISIBLE_SECONDS - elapsed, 0.16)
 	await get_tree().create_timer(wait_seconds, true, false, true).timeout
-	if generation != _request_generation or _state != LoadState.COMPLETING:
+	if not _is_active_generation(generation) or _state != LoadState.COMPLETING:
 		return
+	var completed_multiplayer_load := _active_attempt.request.multiplayer_load
 	_displayed_progress = 1.0
 	_target_progress = 1.0
 	progress_bar.value = 100.0
 	percentage_label.text = "100%"
 	overlay.hide()
-	_loaded_resources.clear()
-	_requested_paths.clear()
-	_started_paths.clear()
-	_expanded_campaign_paths.clear()
-	_runtime_resource_campaign_owners.clear()
+	_invalidate_and_release_active_attempt(&"completed")
+	_clear_failed_retry_request()
 	_state = LoadState.IDLE
-	loading_finished.emit(_is_multiplayer_load)
+	loading_finished.emit(completed_multiplayer_load)
 
 
 func _show_error(message: String) -> void:
+	var retry_request: LoadRequest = null
+	if _active_attempt != null:
+		_is_multiplayer_load = _active_attempt.request.multiplayer_load
+		if not _active_attempt.request.multiplayer_load:
+			retry_request = _active_attempt.request.duplicate_request()
+	_invalidate_and_release_active_attempt(&"failed")
+	_clear_failed_retry_request()
+	_failed_retry_request = retry_request
 	_state = LoadState.FAILED
 	stage_label.text = "部署未完成"
 	detail_label.text = message
 	readiness_label.text = ""
+	retry_button.visible = _failed_retry_request != null
 	action_row.show()
 	overlay.show()
 	loading_failed.emit(message)
 
 
 func _on_retry_pressed() -> void:
-	if _is_multiplayer_load:
-		begin_multiplayer()
-	else:
-		begin_singleplayer(_target_scene_path)
+	if _state != LoadState.FAILED or _failed_retry_request == null:
+		return
+	var retry_request := _failed_retry_request.duplicate_request()
+	_clear_failed_retry_request()
+	_begin_load(
+		retry_request.target_scene_path,
+		retry_request.manifest,
+		retry_request.multiplayer_load
+	)
 
 
 func _on_back_pressed() -> void:
-	_request_generation += 1
-	_loaded_resources.clear()
-	_requested_paths.clear()
-	_started_paths.clear()
-	_expanded_campaign_paths.clear()
-	_runtime_resource_campaign_owners.clear()
+	_invalidate_and_release_active_attempt(&"returned")
+	_clear_failed_retry_request()
 	_state = LoadState.IDLE
 	overlay.hide()
 	if _is_multiplayer_load:
@@ -589,9 +704,12 @@ func _expand_campaign_runtime_manifest(
 	campaign_path: String,
 	campaign: WaveCampaignConfig
 ) -> float:
-	if campaign_path.is_empty() or _expanded_campaign_paths.has(campaign_path):
+	var attempt := _active_attempt
+	if attempt == null or attempt.released:
 		return 0.0
-	_expanded_campaign_paths[campaign_path] = true
+	if campaign_path.is_empty() or attempt.expanded_campaign_paths.has(campaign_path):
+		return 0.0
+	attempt.expanded_campaign_paths[campaign_path] = true
 	if campaign == null or campaign.flow_graph == null:
 		return 0.0
 
@@ -608,10 +726,7 @@ func _expand_campaign_runtime_manifest(
 					if entry.enemy_config.enemy_scene != null
 					else "",
 				]:
-					added_weight += _append_campaign_runtime_resource(
-						campaign,
-						str(runtime_path)
-					)
+					added_weight += _append_campaign_runtime_resource(str(runtime_path))
 		var boss_config := flow_step as BossConfig
 		if boss_config == null:
 			continue
@@ -620,38 +735,25 @@ func _expand_campaign_runtime_manifest(
 			boss_config.intro_vfx_scene_path,
 			boss_config.boss_hud_scene_path,
 		]:
-			added_weight += _append_campaign_runtime_resource(campaign, str(runtime_path))
+			added_weight += _append_campaign_runtime_resource(str(runtime_path))
 	return added_weight
 
 
-func _append_campaign_runtime_resource(
-	campaign: WaveCampaignConfig,
-	path: String
-) -> float:
-	if path.is_empty() or _requested_paths.has(path):
+func _append_campaign_runtime_resource(path: String) -> float:
+	var attempt := _active_attempt
+	if attempt == null or attempt.released:
+		return 0.0
+	if path.is_empty() or attempt.requested_paths.has(path):
 		return 0.0
 	if not ResourceLoader.exists(path):
 		_show_error("战役加载清单中的资源不存在：%s" % path)
 		return 0.0
-	_requested_paths.append(path)
-	_runtime_resource_campaign_owners[path] = campaign
+	attempt.requested_paths.append(path)
 	var weight := _get_resource_weight(path)
-	_resource_weights[path] = weight
+	attempt.resource_weights[path] = weight
 	return weight
 
 
-func _retain_campaign_runtime_resource(path: String, resource: Resource) -> void:
-	var campaign := _runtime_resource_campaign_owners.get(path) as WaveCampaignConfig
-	if campaign == null or resource == null:
-		return
-	var retained := campaign.get_meta(CAMPAIGN_RUNTIME_RESOURCES_META, {}) as Dictionary
-	retained[path] = resource
-	campaign.set_meta(CAMPAIGN_RUNTIME_RESOURCES_META, retained)
-
-
 func _get_resource_weight(path: String) -> float:
-	# Calibrated against cold threaded-load timings. Runtime scenes and the
-	# multiplayer wrapper own most script/texture dependencies; Campaign and
-	# selected-character resources become comparatively cheap after that shared
-	# closure is cached.
+	# 权重按冷启动线程加载耗时校准；共享依赖缓存后，战役与角色资源相对更轻。
 	return GameModeCatalog.get_scene_load_weight(path)

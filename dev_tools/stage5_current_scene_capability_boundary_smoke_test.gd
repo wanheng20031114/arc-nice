@@ -294,7 +294,7 @@ func _is_narrowly_allowed(
 			and source_expressions[0] == "get_tree().current_scene"
 			and _contains_all(body, [
 				"var current_scene := get_tree().current_scene",
-				"current_scene.scene_file_path != _target_scene_path",
+				"current_scene.scene_file_path != expected_scene_path",
 				"current_scene.has_method(\"is_runtime_preparation_complete\")",
 				"current_scene.call(\"is_runtime_preparation_complete\")",
 				"current_scene.has_method(\"get_runtime_preparation_progress\")",

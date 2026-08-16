@@ -88,6 +88,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_loading_scene_contract()
+	_test_load_attempt_lease()
 	await _test_runtime_activation_gate()
 	_test_mode_specific_mp_game_source()
 	_test_host_ready_barrier()
@@ -290,6 +291,146 @@ func _test_loading_scene_contract() -> void:
 			and ResourceLoader.exists(campaign_path),
 			"Multiplayer mode %d loading manifest resources must exist." % game_mode
 		)
+
+
+func _test_load_attempt_lease() -> void:
+	var coordinator := root.get_node_or_null("GameLoadCoordinator")
+	if coordinator == null:
+		return
+	var source := FileAccess.get_file_as_string(
+		"res://scene/loading/game_load_coordinator.gd"
+	)
+	_expect(
+		source.contains("class LoadAttempt extends RefCounted:")
+		and not source.contains("CAMPAIGN_RUNTIME_RESOURCES_META")
+		and not source.contains("campaign.set_meta("),
+		"加载期资源必须由显式尝试租约持有，不能写入共享 Campaign meta。"
+	)
+	_expect(
+		source.contains('_invalidate_and_release_active_attempt(&"completed")')
+		and source.contains('_invalidate_and_release_active_attempt(&"failed")')
+		and source.contains('_invalidate_and_release_active_attempt(&"returned")'),
+		"成功、失败与返回路径必须统一释放当前加载尝试。"
+	)
+
+	var lease_probe_path := "res://scene/loading/game_load_coordinator.gd"
+	var manifest: Array[String] = [lease_probe_path]
+	coordinator.call("_begin_load", lease_probe_path, manifest, false)
+	manifest.append("res://this_mutation_must_not_enter_the_attempt.tres")
+	var failed_attempt: RefCounted = coordinator.get("_active_attempt")
+	_expect(failed_attempt != null, "测试加载必须创建显式尝试租约。")
+	if failed_attempt == null:
+		return
+	var failed_generation := int(failed_attempt.get("generation"))
+	var request: RefCounted = failed_attempt.get("request")
+	var request_manifest: Array = request.get("manifest")
+	_expect(
+		request_manifest == [lease_probe_path],
+		"加载尝试必须复制请求清单，外部修改不能改变当前 owner。"
+	)
+	coordinator.call("_show_error", "加载尝试租约测试错误")
+	_expect(
+		coordinator.get("_active_attempt") == null
+		and bool(failed_attempt.get("released"))
+		and failed_attempt.get("release_reason") == &"failed"
+		and failed_attempt.get("request") == null
+		and bool(request.get("released"))
+		and (request.get("manifest") as Array).is_empty()
+		and (failed_attempt.get("requested_paths") as Array).is_empty()
+		and (failed_attempt.get("loaded_resources") as Dictionary).is_empty(),
+		"失败必须原子释放请求清单、线程状态与资源强引用。"
+	)
+	var retry_request: RefCounted = coordinator.get("_failed_retry_request")
+	_expect(
+		retry_request != null
+		and str(retry_request.get("target_scene_path")) == lease_probe_path,
+		"失败界面只能保留当前失败尝试的不可变重试请求。"
+	)
+	coordinator.call("_on_retry_pressed")
+	var retried_attempt: RefCounted = coordinator.get("_active_attempt")
+	_expect(
+		retried_attempt != null
+		and int(retried_attempt.get("generation")) > failed_generation
+		and str(
+			(retried_attempt.get("request") as RefCounted).get(
+				"target_scene_path"
+			)
+		) == lease_probe_path
+		and bool(retry_request.get("released")),
+		"重试必须创建新 generation，并消费当前失败尝试的请求快照。"
+	)
+	coordinator.call("_show_error", "重试后的加载尝试租约测试错误")
+	var superseded_retry: RefCounted = coordinator.get("_failed_retry_request")
+
+	# 新请求即使在参数校验阶段失败，也必须先废弃旧失败尝试的重试目标。
+	coordinator.begin_singleplayer("res://not_a_registered_game_mode.tscn")
+	_expect(
+		coordinator.get("_active_attempt") == null
+		and coordinator.get("_failed_retry_request") == null
+		and superseded_retry != null
+		and bool(superseded_retry.get("released"))
+		and (superseded_retry.get("manifest") as Array).is_empty()
+		and not coordinator.get_node(
+			"Overlay/Layout/Stack/Content/ActionRow/Retry"
+		).visible,
+		"新模式请求不能复用上一失败尝试的目标。"
+	)
+	var scene_before_late_commit := current_scene
+	coordinator.call("_commit_scene_change", failed_generation)
+	_expect(
+		current_scene == scene_before_late_commit
+		and coordinator.get("_active_attempt") == null,
+		"已释放 generation 的迟到提交不能复活旧加载尝试。"
+	)
+	coordinator.call("_clear_failed_retry_request")
+	coordinator.set("_state", 0)
+	coordinator.get_node("Overlay").hide()
+
+	var coordinator_scene := load(
+		"res://scene/loading/game_load_coordinator.tscn"
+	) as PackedScene
+	_expect(coordinator_scene != null, "退出清理测试必须能实例化加载协调器。")
+	if coordinator_scene == null:
+		return
+	var active_shutdown_probe := coordinator_scene.instantiate()
+	active_shutdown_probe.name = &"ActiveLoadAttemptShutdownProbe"
+	root.add_child(active_shutdown_probe)
+	active_shutdown_probe.call(
+		"_begin_load",
+		lease_probe_path,
+		[lease_probe_path] as Array[String],
+		false
+	)
+	var shutdown_attempt: RefCounted = active_shutdown_probe.get("_active_attempt")
+	active_shutdown_probe.free()
+	_expect(
+		shutdown_attempt != null
+		and bool(shutdown_attempt.get("released"))
+		and shutdown_attempt.get("release_reason") == &"shutdown"
+		and shutdown_attempt.get("request") == null,
+		"协调器异常退出必须终结活动尝试及其请求快照。"
+	)
+
+	var retry_shutdown_probe := coordinator_scene.instantiate()
+	retry_shutdown_probe.name = &"RetryLoadAttemptShutdownProbe"
+	root.add_child(retry_shutdown_probe)
+	retry_shutdown_probe.call(
+		"_begin_load",
+		lease_probe_path,
+		[lease_probe_path] as Array[String],
+		false
+	)
+	retry_shutdown_probe.call("_show_error", "退出清理重试请求测试错误")
+	var shutdown_retry: RefCounted = retry_shutdown_probe.get(
+		"_failed_retry_request"
+	)
+	retry_shutdown_probe.free()
+	_expect(
+		shutdown_retry != null
+		and bool(shutdown_retry.get("released"))
+		and (shutdown_retry.get("manifest") as Array).is_empty(),
+		"协调器异常退出必须释放失败界面的重试请求。"
+	)
 
 
 func _test_runtime_activation_gate() -> void:
@@ -495,6 +636,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 		load_errors.append(message)
 	coordinator.loading_failed.connect(failure_callback)
 	coordinator.begin_singleplayer("res://scene/game_modes/standard/standard_game.tscn")
+	var standard_attempt: RefCounted = coordinator.get("_active_attempt")
 	var deadline_msec := Time.get_ticks_msec() + 15000
 	while Time.get_ticks_msec() < deadline_msec:
 		if not coordinator.is_loading():
@@ -502,6 +644,14 @@ func _test_singleplayer_coordinator_flow() -> void:
 		await process_frame
 	coordinator.loading_failed.disconnect(failure_callback)
 	_expect(load_errors.is_empty(), "Single-player coordinator flow must not report a load error.")
+	_expect(
+		standard_attempt != null
+		and bool(standard_attempt.get("released"))
+		and standard_attempt.get("release_reason") == &"completed"
+		and coordinator.get("_active_attempt") == null
+		and coordinator.get("_failed_retry_request") == null,
+		"成功完成后必须释放加载尝试，且不能遗留可重试的旧请求。"
+	)
 	var runtime := current_scene as CombatRuntimeBase
 	_expect(
 		runtime != null
