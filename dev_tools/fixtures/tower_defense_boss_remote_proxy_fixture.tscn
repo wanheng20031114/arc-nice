@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://dev_tools/fixtures/tower_defense_boss_remote_proxy_fixture.gd" id="1_fixture"]
+
+[node name="TowerDefenseBossRemoteProxyFixture" type="CharacterBody2D"]
+script = ExtResource("1_fixture")

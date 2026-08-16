@@ -15,13 +15,14 @@ const CARDBOARD_CONFIG := preload(
 const LARGE_CARDBOARD_CONFIG := preload(
 	"res://resources/config/enemies/cardboard_monster_large.tres"
 )
-const LARGE_CARDBOARD_CONFIG_PATH := (
-	"res://resources/config/enemies/cardboard_monster_large.tres"
+const LARGE_REFERENCE_CONTRACT := preload(
+	"res://dev_tools/cardboard_monster_large_reference_contract.gd"
 )
+# 正式塔防另有精确集合审计；这里守住其他测试/模式资源不得被
+# P1C 的专用接入工作意外污染。
 const ZERO_DIRECT_REFERENCE_ROOTS := {
 	"正式标准单人": "res://resources/config/campaigns/standard/singleplayer",
 	"正式标准多人": "res://resources/config/campaigns/standard/multiplayer",
-	"正式塔防": "res://resources/config/campaigns/tower_defense/formal",
 	"塔防性能": "res://resources/config/campaigns/tower_defense/performance",
 	"旧正式波次": "res://resources/config/waves",
 	"肉鸽战斗": "res://resources/config/campaigns/rogue_combat",
@@ -61,6 +62,7 @@ func _run() -> void:
 	_test_campaign_contract(SINGLEPLAYER_CAMPAIGN, "单人")
 	_test_campaign_contract(MULTIPLAYER_CAMPAIGN, "多人")
 	_test_multiplayer_probe_entry_contract()
+	_test_formal_direct_reference_contract()
 	_test_zero_direct_references()
 
 	current_scene = null
@@ -142,12 +144,18 @@ func _test_zero_direct_references() -> void:
 	for label: String in ZERO_DIRECT_REFERENCE_ROOTS:
 		var references := _find_text_references(
 			ZERO_DIRECT_REFERENCE_ROOTS[label],
-			LARGE_CARDBOARD_CONFIG_PATH
+			LARGE_REFERENCE_CONTRACT.LARGE_CONFIG_PATH
 		)
 		_expect(
 			references.is_empty(),
 			"%s不得直接引用大纸箱怪：%s。" % [label, references]
 		)
+
+
+func _test_formal_direct_reference_contract() -> void:
+	failures.append_array(
+		LARGE_REFERENCE_CONTRACT.validate_formal_wave_12_contract()
+	)
 
 
 func _test_multiplayer_probe_entry_contract() -> void:

@@ -24,6 +24,9 @@ const P1C_WAVES: Array[WaveConfig] = [
 	),
 ]
 const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
+const LARGE_REFERENCE_CONTRACT := preload(
+	"res://dev_tools/cardboard_monster_large_reference_contract.gd"
+)
 const NORMAL_CONFIG_PATH := (
 	"res://resources/config/enemies/cardboard_monster.tres"
 )
@@ -36,7 +39,9 @@ const LARGE_TEXTURE_PATH := (
 const EXPECTED_LARGE_CONFIG_REFERENCES := [
 	"res://resources/config/campaigns/test_arena/p1c/multiplayer/wave_01.tres",
 	"res://resources/config/campaigns/test_arena/p1c/singleplayer/wave_01.tres",
+	LARGE_REFERENCE_CONTRACT.FORMAL_WAVE_12_PATH,
 	"res://resources/config/encyclopedia/enemies/cardboard_monster_large.tres",
+	"res://resources/config/runtime_content_catalog.gd",
 ]
 
 var failures: Array[String] = []
@@ -51,7 +56,8 @@ func _run() -> void:
 	_test_texture_counts()
 	_test_fate_and_protocol_boundaries()
 	_test_p1c_round_robin_contract()
-	_test_zero_direct_references_outside_p1c_and_codex()
+	_test_formal_direct_reference_contract()
+	_test_exact_direct_references()
 	_finish()
 
 
@@ -166,7 +172,13 @@ func _test_p1c_round_robin_contract() -> void:
 		)
 
 
-func _test_zero_direct_references_outside_p1c_and_codex() -> void:
+func _test_formal_direct_reference_contract() -> void:
+	failures.append_array(
+		LARGE_REFERENCE_CONTRACT.validate_formal_wave_12_contract()
+	)
+
+
+func _test_exact_direct_references() -> void:
 	var references := _find_text_references(
 		"res://resources/config", LARGE_CONFIG_PATH
 	)
@@ -174,8 +186,9 @@ func _test_zero_direct_references_outside_p1c_and_codex() -> void:
 	_expect(
 		references == EXPECTED_LARGE_CONFIG_REFERENCES,
 		(
-			"大纸箱怪仅可由P1C单/多人和图鉴直接引用；正式、塔防正式/性能、"
-			+ "肉鸽、P1A/P1B/P1D/P2/P3必须保持零直引：%s。"
+			"大纸箱怪仅可由P1C单/多人、正式塔防第12波、图鉴与运行时"
+			+ "内容信任目录直接引用；"
+			+ "其他正式/测试/性能/肉鸽资源必须保持零直引：%s。"
 		)
 		% [references]
 	)

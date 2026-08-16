@@ -17,8 +17,10 @@ $script:OwnedIdentityByPid = @{}
 $script:OwnedCreationUtcByPid = @{}
 $script:ProcessHandleByPid = @{}
 
-# 完整塔防场景目前会在 Godot 退出时报告资源/RID 错误。
-# 这些错误必须保持可见；本门禁只纳入输出完全干净的用例。
+# 完整塔防场景会静态带入 RogueRouteGame 与其双向强类型协调器；Godot
+# 4.6.3 在场景释放后仍把这组 global-class 脚本保留到退出清理，届时会
+# 报告资源/RID 错误。完整场景用例继续作为显式诊断保留，不能在这里
+# 白名单其错误；本门禁只纳入可独立释放、输出完全干净的窄资源契约。
 $Cases = @()
 $Cases += [pscustomobject]@{
     Name = "wave-system"
@@ -37,6 +39,26 @@ $Cases += [pscustomobject]@{
     Script = "res://dev_tools/zhuangfangyi_interaction_skill_smoke_test.gd"
     Marker = "ZHUANGFANGYI_INTERACTION_SKILL_SMOKE_TEST_OK"
     TimeoutSeconds = 45
+}
+$Cases += [pscustomobject]@{
+    Name = "tower-boss-resource-contract"
+    Script = (
+        "res://dev_tools/" +
+        "tower_defense_boss_coordinator_resource_contract_smoke_test.gd"
+    )
+    Marker = (
+        "TOWER_DEFENSE_BOSS_COORDINATOR_RESOURCE_CONTRACT_SMOKE_TEST_OK"
+    )
+    TimeoutSeconds = 30
+}
+$Cases += [pscustomobject]@{
+    Name = "grass-arena-resource-contract"
+    Script = (
+        "res://dev_tools/" +
+        "test_grass_arena_resource_contract_smoke_test.gd"
+    )
+    Marker = "TEST_GRASS_ARENA_RESOURCE_CONTRACT_SMOKE_TEST_OK"
+    TimeoutSeconds = 30
 }
 
 
