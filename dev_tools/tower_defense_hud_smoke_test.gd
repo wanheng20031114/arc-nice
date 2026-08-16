@@ -94,9 +94,10 @@ func _verify_tower_defense_layout_and_updates() -> void:
 		and hud.core_title_label.label_settings.font_size == 10
 		and hud.core_value_label.label_settings.font_size == 17
 		and hud.enemy_value_label.label_settings.font_size == 18
-		and hud.stage_label.label_settings.font_size == 11
+		and hud.stage_label.label_settings.font_size == 13
+		and hud.stage_label.label_settings.outline_size == 1
 		and hud.start_wave_button.get_theme_font_size("font_size") == 11,
-		"Day-cycle, combat stats, and rest controls must retain a compact font hierarchy."
+		"Rest countdown text must remain legible while the surrounding HUD stays compact."
 	)
 	_expect(
 		hud.day_dial.custom_minimum_size == Vector2(38.0, 38.0)
@@ -267,6 +268,15 @@ func _verify_tower_defense_layout_and_updates() -> void:
 		and is_zero_approx(hud.day_dial.target_wave_progress)
 		and is_zero_approx(hud.day_dial.wave_progress),
 		"A zero-total wave must retain its phase while displaying safe zero circular progress."
+	)
+
+	hud.show_countdown(300, false)
+	await process_frame
+	_expect(
+		hud.stage_label.text == "休整  ·  05:00"
+		and hud.stage_label.get_combined_minimum_size().y
+			<= hud.stage_banner.size.y - 4.0,
+		"Five-minute rest text must format exactly and fit the native-height banner."
 	)
 
 	hud.show_countdown(3, true)

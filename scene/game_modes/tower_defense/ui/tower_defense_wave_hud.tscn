@@ -164,9 +164,9 @@ outline_color = Color(0.025, 0.03, 0.012, 0.95)
 
 [sub_resource type="LabelSettings" id="LabelSettings_stage"]
 font = ExtResource("2_font")
-font_size = 11
+font_size = 13
 font_color = Color(1, 1, 1, 1)
-outline_size = 2
+outline_size = 1
 outline_color = Color(0.01, 0.03, 0.02, 0.92)
 
 [sub_resource type="LabelSettings" id="LabelSettings_day"]
