@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "91bb64fe5803539686069066d7633faaedd4349aa2764ae0aa9fac673ccfc7c2",
+	"content_sha256": "b6fb3cf4a5e851463aba9089daab8404685d8c6815ec5b407a5ad72b2f4f8434",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -3322,7 +3322,7 @@
 		},
 		{
 			"path": "res://resources/config/enemies/slime_green.tres",
-			"sha256": "ff6111aa0ffbeeb1cd9e78eb0fc81d515e45bc88240e91d3fa796971b8ba03b5"
+			"sha256": "d39461b7c2a8a03b2a248aa93ce1c347be3cf536e4e1622517c08567789e3e36"
 		},
 		{
 			"path": "res://resources/config/enemies/stone_eroded_capoo_ak47.tres",
@@ -3374,7 +3374,7 @@
 		},
 		{
 			"path": "res://resources/config/enemies/stone_eroded_slime_green.tres",
-			"sha256": "0830ab55491f7a0813fa98d9c18abdd66949b3b50a1cfeb46a4a9d2134a417f4"
+			"sha256": "40ddc108808e2e03eabe0bf5adc0148854a048388818778a54408e3c58a68f57"
 		},
 		{
 			"path": "res://resources/config/enemies/stone_eroded_yuanshi_insect_basic.tres",
@@ -6258,11 +6258,11 @@
 		},
 		{
 			"path": "res://scene/enemy/slime/slime_green.gd",
-			"sha256": "be8abc4a2af8b53fb2bb18cb14c493c2eecde2155a5d41fa23b320d427815d16"
+			"sha256": "83341c558d4d26d47044813223db0fbe1decec97a696ea70fbc26e6a97521728"
 		},
 		{
 			"path": "res://scene/enemy/slime/slime_green.tscn",
-			"sha256": "a5da9d3f2cf176e7ed5b41dacf3235e85fc6cb5d4d1ad0f30e88e052fcfb3c2c"
+			"sha256": "a362cbdf96b7d3636bcd301d0ad30cb6d4e0f654bc771bdf68654cb174dac0d1"
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/fire_sorcerer.gd",

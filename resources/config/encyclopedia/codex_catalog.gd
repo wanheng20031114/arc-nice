@@ -656,17 +656,7 @@ func _build_enemy_specific_stats(enemy: EnemyConfig) -> Array[CodexStatRow]:
 		stats.append(CodexStatRow.new("物防增益", "+%d 点" % config.aura_physical_defense_bonus))
 	elif enemy is SlimeConfig:
 		var config := enemy as SlimeConfig
-		if config.variant == SlimeConfig.Variant.GREEN:
-			stats.append(CodexStatRow.new("每次回复", str(GreenSlime.REGENERATION_AMOUNT)))
-			stats.append(
-				CodexStatRow.new(
-					"回复间隔",
-					"%s 秒" % _format_number(
-						GreenSlime.REGENERATION_INTERVAL_SECONDS
-					)
-				)
-			)
-		elif config.variant == SlimeConfig.Variant.FIRE:
+		if config.variant == SlimeConfig.Variant.FIRE:
 			var duration := CombatAttackRegistry.get_burn_duration(CombatAttackRegistry.FIRE_SLIME_TOUCH)
 			var damage := CombatAttackRegistry.get_burn_tick_damage(CombatAttackRegistry.FIRE_SLIME_TOUCH)
 			stats.append(CodexStatRow.new("接触灼烧", "%d 伤害 / %s 秒" % [damage, _format_number(duration)]))

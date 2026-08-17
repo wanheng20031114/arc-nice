@@ -13,6 +13,9 @@ const FROST_CONFIG: SlimeConfig = preload(
 const GREEN_CONFIG: SlimeConfig = preload(
 	"res://resources/config/enemies/slime_green.tres"
 )
+const STONE_ERODED_GREEN_CONFIG: SlimeConfig = preload(
+	"res://resources/config/enemies/stone_eroded_slime_green.tres"
+)
 const BASE_FRAMES: SpriteFrames = preload("res://resources/animation/slime.tres")
 const GOLDEN_FRAMES: SpriteFrames = preload(
 	"res://resources/animation/slime_golden.tres"
@@ -79,7 +82,7 @@ func _run() -> void:
 	_test_sprite_and_scene_contracts()
 	_test_multiplayer_status_mapping()
 	await _test_elemental_touch_contracts()
-	await _test_green_regeneration_contract()
+	await _test_green_no_regeneration_contract()
 
 	fixture.queue_free()
 	await process_frame
@@ -136,8 +139,8 @@ func _test_config_contracts() -> void:
 			"variant": SlimeConfig.Variant.GREEN,
 			"health": 300,
 			"damage": 10,
-			"physical_defense": 50,
-			"magic_defense": 50,
+			"physical_defense": 30,
+			"magic_defense": 30,
 		},
 	]
 	for contract in contracts:
@@ -437,7 +440,7 @@ func _test_elemental_touch_contracts() -> void:
 	await process_frame
 
 
-func _test_green_regeneration_contract() -> void:
+func _test_green_no_regeneration_contract() -> void:
 	var green_slime := GREEN_CONFIG.enemy_scene.instantiate() as GreenSlime
 	_expect(green_slime != null, "绿色史莱姆场景必须实例化 GreenSlime。")
 	if green_slime == null:
@@ -448,111 +451,33 @@ func _test_green_regeneration_contract() -> void:
 	green_slime.set_physics_process(false)
 	await process_frame
 
-	var regeneration_timer := green_slime.get_node_or_null(
-		"RegenerationTimer"
-	) as Timer
-	_expect(regeneration_timer != null, "绿色史莱姆必须使用场景内原生 Timer 回血。")
-	if regeneration_timer == null:
-		green_slime.queue_free()
-		await process_frame
-		return
 	_expect(
-		is_equal_approx(
-			regeneration_timer.wait_time,
-			GreenSlime.REGENERATION_INTERVAL_SECONDS
-		)
-		and regeneration_timer.process_callback == Timer.TIMER_PROCESS_PHYSICS
-		and not regeneration_timer.one_shot
-		and not regeneration_timer.is_stopped(),
-		"绿色史莱姆回血 Timer 必须每0.5秒按物理帧循环并自动启动。"
+		green_slime.get_node_or_null("RegenerationTimer") == null,
+		"绿色史莱姆场景不得继续保留恢复生命的 Timer。"
 	)
-	_expect(
-		regeneration_timer.timeout.is_connected(
-			green_slime._on_regeneration_timer_timeout
-		),
-		"绿色史莱姆回血 Timer 必须连接到专用超时处理。"
-	)
-	regeneration_timer.stop()
-
 	green_slime.current_health = 200
-	var revision_before_heal := green_slime.health_revision
-	green_slime._on_regeneration_timer_timeout()
+	var revision_before_wait := green_slime.health_revision
+	await create_timer(0.62, true).timeout
 	_expect(
-		green_slime.current_health == 215
-		and green_slime.health_revision == revision_before_heal + 1,
-		"绿色史莱姆每次必须恢复15生命并推进生命修订号。"
+		green_slime.current_health == 200
+		and green_slime.health_revision == revision_before_wait,
+		"绿色史莱姆受伤后等待也不得自动恢复生命或推进生命修订号。"
 	)
-	green_slime.current_health = 295
-	green_slime._on_regeneration_timer_timeout()
-	var capped_revision := green_slime.health_revision
-	green_slime._on_regeneration_timer_timeout()
-	_expect(
-		green_slime.current_health == GREEN_CONFIG.max_health
-		and green_slime.health_revision == capped_revision,
-		"绿色史莱姆回血不得超过300，满血空转不得推进修订号。"
-	)
-
-	green_slime.current_health = 200
-	regeneration_timer.start()
-	green_slime.configure_multiplayer_proxy()
-	_expect(
-		regeneration_timer.is_stopped(),
-		"绿色史莱姆多人代理必须停止子 Timer，不能每0.5秒空回调。"
-	)
-	green_slime._on_regeneration_timer_timeout()
-	_expect(
-		green_slime.current_health == 200,
-		"多人代理不得在客户端自行回血。"
-	)
-	var legacy_proxy_timeout_count := [0]
-	regeneration_timer.timeout.connect(
-		func() -> void:
-			legacy_proxy_timeout_count[0] = int(legacy_proxy_timeout_count[0]) + 1
-	)
-	# A emulates the former proxy behavior by restarting the otherwise identical
-	# Timer; B keeps the optimized stopped state from configure_multiplayer_proxy.
-	regeneration_timer.start()
-	await create_timer(
-		GreenSlime.REGENERATION_INTERVAL_SECONDS + 0.12,
-		true
-	).timeout
-	var legacy_timeout_count := int(legacy_proxy_timeout_count[0])
-	regeneration_timer.stop()
-	legacy_proxy_timeout_count[0] = 0
-	await create_timer(
-		GreenSlime.REGENERATION_INTERVAL_SECONDS + 0.12,
-		true
-	).timeout
-	_expect(
-		legacy_timeout_count >= 1
-		and int(legacy_proxy_timeout_count[0]) == 0,
-		"代理 Timer A/B 必须从每周期至少一次空回调降为零。"
-	)
-	green_slime.is_multiplayer_proxy = false
-	green_slime.is_dead = true
-	green_slime._on_regeneration_timer_timeout()
-	_expect(green_slime.current_health == 200, "死亡绿色史莱姆不得回血。")
-	green_slime.is_dead = false
-	regeneration_timer.start()
-	green_slime._die()
-	_expect(regeneration_timer.is_stopped(), "绿色史莱姆死亡时必须停止回血 Timer。")
-
 	green_slime.queue_free()
 	await process_frame
 
-	var escaping_slime := GREEN_CONFIG.enemy_scene.instantiate() as GreenSlime
-	fixture.add_child(escaping_slime)
-	escaping_slime.setup(GREEN_CONFIG, null, null)
-	await process_frame
-	var escaping_timer := escaping_slime.regeneration_timer
-	_expect(
-		not escaping_timer.is_stopped()
-		and escaping_slime.remove_for_home_escape()
-		and escaping_timer.is_stopped(),
-		"绿色史莱姆逃离基地时必须停止回血 Timer。"
+	var stone_green := (
+		STONE_ERODED_GREEN_CONFIG.enemy_scene.instantiate() as GreenSlime
 	)
-	escaping_slime.queue_free()
-	await process_frame
+	_expect(
+		stone_green != null
+		and STONE_ERODED_GREEN_CONFIG.physical_defense == 150
+		and STONE_ERODED_GREEN_CONFIG.magic_defense == 30
+		and stone_green.get_node_or_null("RegenerationTimer") == null,
+		"石蚀绿色史莱姆必须继承无恢复能力，并保持150/30防御。"
+	)
+	if stone_green != null:
+		stone_green.free()
 
 
 func _get_sheet_image(frames: SpriteFrames) -> Image:

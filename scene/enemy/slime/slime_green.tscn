@@ -9,10 +9,3 @@ script = ExtResource("3_script")
 
 [node name="AnimatedSprite2D" parent="." index="0"]
 sprite_frames = ExtResource("2_frames")
-
-[node name="RegenerationTimer" type="Timer" parent="."]
-process_callback = 0
-wait_time = 0.5
-autostart = true
-
-[connection signal="timeout" from="RegenerationTimer" to="." method="_on_regeneration_timer_timeout"]

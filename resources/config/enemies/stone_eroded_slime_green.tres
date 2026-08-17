@@ -12,5 +12,5 @@ enemy_scene = ExtResource("2_scene")
 max_health = 600
 attack_damage = 10
 physical_defense = 150
-magic_defense = 50
+magic_defense = 30
 move_speed = 20.0

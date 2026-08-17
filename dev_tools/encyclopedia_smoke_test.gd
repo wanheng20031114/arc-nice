@@ -304,6 +304,7 @@ func _test_entry_content(catalog: CodexCatalog) -> void:
 
 func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 	var saw_green_slime := false
+	var saw_stone_eroded_green_slime := false
 	var saw_guardian := false
 	var saw_combat_robot := false
 	var saw_combat_robot_elite := false
@@ -378,16 +379,27 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 		if scene_enemy != null:
 			scene_enemy.free()
 		if config is SlimeConfig and config.variant == SlimeConfig.Variant.GREEN:
-			saw_green_slime = true
 			_expect(
-				String(stats.get("每次回复", ""))
-				== str(GreenSlime.REGENERATION_AMOUNT)
-				and String(stats.get("回复间隔", ""))
-				== "%s 秒" % _format_number(
-					GreenSlime.REGENERATION_INTERVAL_SECONDS
-				),
-				"Green slime codex stats must use its typed regeneration constants."
+				not stats.has("每次回复")
+				and not stats.has("回复间隔")
+				and not entry.notes.has("再生")
+				and entry.description.contains("没有额外恢复能力"),
+				"Green slime codex must not expose the removed regeneration ability."
 			)
+			if entry.entry_id == &"slime_green":
+				saw_green_slime = true
+				_expect(
+					config.physical_defense == 30
+					and config.magic_defense == 30,
+					"Base green slime codex must expose 30/30 defenses."
+				)
+			elif entry.entry_id == &"stone_eroded_slime_green":
+				saw_stone_eroded_green_slime = true
+				_expect(
+					config.physical_defense == 150
+					and config.magic_defense == 30,
+					"Stone-eroded green slime codex must expose 150/30 defenses."
+				)
 		if config is YuanshiInsectGuardianConfig:
 			saw_guardian = true
 			var guardian := config as YuanshiInsectGuardianConfig
@@ -804,6 +816,7 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 			)
 	_expect(
 		saw_green_slime
+		and saw_stone_eroded_green_slime
 		and saw_guardian
 		and saw_combat_robot
 		and saw_combat_robot_elite
@@ -817,7 +830,7 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 		and saw_combat_robot_ninja_elite
 		and saw_combat_robot_main_battle_elite
 		and saw_linglan,
-		"Enemy stat contract must cover regeneration, aura, all released mechanical enemies including the main battle robot, and Boss adapters."
+		"Enemy stat contract must cover green slime no-regeneration, aura, all released mechanical enemies including the main battle robot, and Boss adapters."
 	)
 
 
