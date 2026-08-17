@@ -11,6 +11,13 @@ const FLUORESCENT_PIT := &"fluorescent_pit"
 const SUITCASE_FRENZY := &"suitcase_frenzy"
 const INVISIBLE_SEA_CUCUMBER := &"invisible_sea_cucumber"
 
+## 预留事件保留完整内容、结算和表现实现，但不属于任何可抽取事件池。
+## 恢复事件时必须显式从这里移除并重新加入目标池，避免只改一处留下暗门。
+const _RESERVED_ENCOUNTERS := {
+	CHICKEN_BRO: true,
+	GHOST_SHADOW: true,
+}
+
 const OPTION_PURCHASE_BASKETBALL := &"purchase_basketball"
 const OPTION_ASK_FOR_FREE := &"ask_for_free"
 const OPTION_HELP_SLIMES := &"help_slimes"
@@ -261,9 +268,7 @@ const _CONTENT_CONFIGS := {
 
 const _POOLS := {
 	MAGICAL_ENCOUNTER_POOL: [
-		CHICKEN_BRO,
 		SLIME_TALKERS,
-		GHOST_SHADOW,
 		FLUORESCENT_PIT,
 		SUITCASE_FRENZY,
 		INVISIBLE_SEA_CUCUMBER,
@@ -275,10 +280,7 @@ static func select_encounter(
 	content_pool_id: StringName,
 	node_content_seed: int
 ) -> StringName:
-	var raw_entries: Variant = _POOLS.get(content_pool_id)
-	if typeof(raw_entries) != TYPE_ARRAY:
-		return &""
-	var entries := raw_entries as Array
+	var entries := get_pool_entries(content_pool_id)
 	if entries.is_empty():
 		return &""
 	var index := RogueEncounterRandom.choose_index(
@@ -290,7 +292,8 @@ static func select_encounter(
 
 
 ## 房主基于本局权威历史抽取尚未遭遇过的内容。候选始终沿注册表稳定顺序
-## 过滤，因而相同 seed 与相同历史跨平台可复算；全部耗尽后固定回退鬼影。
+## 过滤，因而相同 seed 与相同历史跨平台可复算；全部耗尽后从当前启用池
+## 确定性重选，预留事件不会成为耗尽回退。
 static func select_encounter_for_run(
 	content_pool_id: StringName,
 	node_content_seed: int,
@@ -301,11 +304,7 @@ static func select_encounter_for_run(
 		if not encountered_ids.has(encounter_id):
 			available.append(encounter_id)
 	if available.is_empty():
-		return (
-			GHOST_SHADOW
-			if content_pool_id == MAGICAL_ENCOUNTER_POOL
-			else &""
-		)
+		return select_encounter(content_pool_id, node_content_seed)
 	var index := RogueEncounterRandom.choose_index(
 		node_content_seed,
 		&"content_selection",
@@ -383,12 +382,28 @@ static func get_pool_entries(content_pool_id: StringName) -> Array[StringName]:
 	if typeof(raw_entries) != TYPE_ARRAY:
 		return result
 	for entry in raw_entries as Array:
-		result.append(StringName(entry))
+		var encounter_id := StringName(entry)
+		if not is_reserved_encounter(encounter_id):
+			result.append(encounter_id)
 	return result
 
 
 static func has_encounter(encounter_id: StringName) -> bool:
 	return _CONTENT_CONFIGS.has(encounter_id)
+
+
+static func is_reserved_encounter(encounter_id: StringName) -> bool:
+	return _RESERVED_ENCOUNTERS.has(encounter_id)
+
+
+static func get_reserved_encounter_ids() -> Array[StringName]:
+	var result: Array[StringName] = []
+	for raw_encounter_id in _RESERVED_ENCOUNTERS.keys():
+		result.append(StringName(raw_encounter_id))
+	result.sort_custom(func(first: StringName, second: StringName) -> bool:
+		return String(first) < String(second)
+	)
+	return result
 
 
 static func get_encounter_config(encounter_id: StringName) -> Dictionary:

@@ -150,7 +150,10 @@ extends RefCounted
 ## v79：正式塔防的通用 T 目录放置请求改为 canonical 建筑物品的 Host 权威付费；
 ## Host 按请求者本人背包优先、共享仓库补足的顺序扣除物品。v78 Host 只把同形状
 ## 请求理解为沙盒免费放置，无法识别该正式付费语义，不能与 v79 客户端混联。
-const PROTOCOL_VERSION := 79
+## v80：P3 神奇遭遇将“鸡哥”与“鬼影”保留为预留内容，但从正式随机池
+## 移除；地图固定为四个不重复神奇遭遇节点，池耗尽也不再回退鬼影。v79 客户端
+## 会按旧池容量与顺序复算地图内容，不能与 v80 主机混联。
+const PROTOCOL_VERSION := 80
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF

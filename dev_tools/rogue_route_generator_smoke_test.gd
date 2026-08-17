@@ -55,7 +55,7 @@ func _test_default_config_contract() -> void:
 	)
 	_expect_type_range(RogueRouteGraph.NodeType.NORMAL_COMBAT, 4, 4)
 	_expect_type_range(RogueRouteGraph.NodeType.EMERGENCY_COMBAT, 3, 3)
-	_expect_type_range(RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER, 4, 5)
+	_expect_type_range(RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER, 4, 4)
 	_expect_type_range(RogueRouteGraph.NodeType.UNDERGROUND_SHOP, 2, 3)
 	_expect_type_range(RogueRouteGraph.NodeType.PREPARE_AHEAD, 2, 3)
 	_expect_type_range(RogueRouteGraph.NodeType.WILDERNESS_RESOURCE, 2, 3)
@@ -89,7 +89,7 @@ func _test_runtime_contract_hash() -> void:
 	)
 	changed_count_config.get_type_config(
 		RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
-	).maximum_count = 4
+	).minimum_count = 3
 	_expect(
 		changed_config.compute_runtime_contract_hash(WORLD_METRICS) != baseline_hash
 		and changed_count_config.compute_runtime_contract_hash(WORLD_METRICS)
@@ -284,11 +284,11 @@ func _test_seed_sweep_invariants() -> void:
 		] = true
 	_expect(seen_templates.size() == 20, "连续 1024 个 seed 必须覆盖全部 20 个等权模板。")
 	_expect(
-		seen_magical_counts.has(4) and seen_magical_counts.has(5)
+		seen_magical_counts.size() == 1 and seen_magical_counts.has(4)
 		and seen_shop_counts.has(2) and seen_shop_counts.has(3)
 		and seen_chest_counts.has(2) and seen_chest_counts.has(3)
 		and seen_resource_counts.has(2) and seen_resource_counts.has(3),
-		"所有 4–5 / 2–3 独立均匀数量都必须出现两个端点：遭遇%s 商店%s 宝箱%s 物资%s。"
+		"神奇遭遇必须固定4个，其余2–3独立均匀数量必须覆盖两端：遭遇%s 商店%s 宝箱%s 物资%s。"
 		% [
 			seen_magical_counts.keys(),
 			seen_shop_counts.keys(),
@@ -379,6 +379,11 @@ func _validate_graph_invariants(graph: RogueRouteGraph, generation_seed: int) ->
 			graph.generation_seed,
 			encounter_node_ids,
 			int(node_id)
+		)
+		_expect(
+			encounter_id != RogueEncounterRegistry.CHICKEN_BRO
+			and encounter_id != RogueEncounterRegistry.GHOST_SHADOW,
+			"%s：地图分配不得返回预留的鸡哥或鬼影事件。" % label
 		)
 		encounter_ids[encounter_id] = true
 	_expect(

@@ -681,15 +681,20 @@ func _find_adjacent_suitcase_fixture() -> Dictionary:
 		var graph := RogueRouteGenerator.generate(GENERATION_CONFIG, seed)
 		if graph == null:
 			continue
+		var magical_node_ids := graph.get_node_ids_by_type(
+			RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
+		)
 		for neighbor_id in graph.get_neighbors(graph.start_node_id):
 			if (
 				graph.get_node_type(neighbor_id)
 				!= RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
 			):
 				continue
-			if RogueEncounterRegistry.select_encounter(
+			if RogueEncounterRegistry.select_encounter_for_map(
 				RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
-				graph.get_node_content_seed(neighbor_id)
+				graph.generation_seed,
+				magical_node_ids,
+				neighbor_id
 			) == RogueEncounterRegistry.SUITCASE_FRENZY:
 				return {
 					"seed": seed,

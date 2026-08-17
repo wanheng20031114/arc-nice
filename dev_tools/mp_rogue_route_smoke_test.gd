@@ -1124,9 +1124,9 @@ func _dispatch_tower_client_transaction_requests(
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 79,
+		NetConstants.PROTOCOL_VERSION == 80,
 		(
-			"协议 v79 必须保留 v78 Route 升级事务与完整进度账本，同时保留v77内容摘要、v74旧局CH6结果、v73会话成员、v71地下水道、v69植被科研、v68六格扩散、v67攻速强化塔、v66移速强化塔、P1E入口、神奇遭遇本局历史、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
+			"协议 v80 必须保留 v79 T 目录付费、v78 Route 升级事务与完整进度账本，同时保留v77内容摘要、v74旧局CH6结果、v73会话成员、v71地下水道、v69植被科研、v68六格扩散、v67攻速强化塔、v66移速强化塔、P1E入口、神奇遭遇本局历史、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
 			+ "狭路相逢波次资源合同，并隔离 P1C 与纸箱怪资源、"
 			+ "精英战斗机器人、精英持枪机器人弹丸与消耗品资源合同，且保留"
 			+ "精英操作员无人机、精英盾兵、物资节点共享光石/行动力状态、"
@@ -1391,7 +1391,7 @@ func _test_snapshot_and_delta_contract() -> void:
 	var rpc_config: Dictionary = wrapper_script.get_rpc_config()
 	_expect(
 		rpc_config.size() == 17,
-		"MpRogueRoute v79 必须严格保留 17 个 RPC 入口。"
+		"MpRogueRoute v80 必须严格保留 17 个 RPC 入口。"
 	)
 	for rpc_name in [
 		&"net_request_route_full_snapshot",
@@ -2661,6 +2661,9 @@ func _test_encounter_network_contract(
 	)
 	var magical_node_id := -1
 	var map_encounter_ids: Array[StringName] = []
+	var active_encounter_ids := RogueEncounterRegistry.get_pool_entries(
+		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
+	)
 	for node_id in magical_node_ids:
 		var selected_encounter := RogueEncounterRegistry.select_encounter_for_map(
 			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
@@ -2683,11 +2686,30 @@ func _test_encounter_network_contract(
 	for index in range(unique_map_encounter_ids.size() - 1, 0, -1):
 		if unique_map_encounter_ids[index] == unique_map_encounter_ids[index - 1]:
 			unique_map_encounter_ids.remove_at(index)
-	_expect(
+	var map_assignment_complete := (
 		encounter_graph != null
+		and not magical_node_ids.is_empty()
 		and map_encounter_ids.size() == magical_node_ids.size()
+		and not map_encounter_ids.has(&"")
+	)
+	var map_assignment_uses_only_active_pool := true
+	for encounter_id in map_encounter_ids:
+		if not active_encounter_ids.has(encounter_id):
+			map_assignment_uses_only_active_pool = false
+			break
+	_expect(
+		map_assignment_complete
 		and unique_map_encounter_ids.size() == magical_node_ids.size(),
-		"同一张路线图的神奇遭遇必须按地图 seed 一一分配且互不重复。"
+		"同一张路线图的神奇遭遇必须完整地按地图 seed 一一分配且互不重复。"
+	)
+	_expect(
+		map_assignment_uses_only_active_pool,
+		"正式路线图的神奇遭遇分配必须全部属于当前活跃事件池。"
+	)
+	_expect(
+		not map_encounter_ids.has(RogueEncounterRegistry.CHICKEN_BRO)
+		and not map_encounter_ids.has(RogueEncounterRegistry.GHOST_SHADOW),
+		"正式路线图不得分配处于预留状态的鸡哥或鬼影事件。"
 	)
 	_expect(
 		magical_node_id >= 0,

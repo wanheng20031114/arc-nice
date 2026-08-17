@@ -5,7 +5,7 @@ var failures: Array[String] = []
 
 func _init() -> void:
 	_test_pool_and_deterministic_selection()
-	_test_run_unique_selection_and_ghost_fallback()
+	_test_run_unique_selection_and_enabled_fallback()
 	_test_content_configs()
 	if failures.is_empty():
 		print("ROGUE_ENCOUNTER_REGISTRY_SMOKE_TEST_OK")
@@ -22,14 +22,25 @@ func _test_pool_and_deterministic_selection() -> void:
 	)
 	_expect(
 		entries == [
-			RogueEncounterRegistry.CHICKEN_BRO,
 			RogueEncounterRegistry.SLIME_TALKERS,
-			RogueEncounterRegistry.GHOST_SHADOW,
 			RogueEncounterRegistry.FLUORESCENT_PIT,
 			RogueEncounterRegistry.SUITCASE_FRENZY,
 			RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER,
 		],
-		"六种神奇遭遇必须等权注册且保持稳定顺序。"
+		"正式神奇遭遇池必须只保留四种启用事件并保持稳定顺序。"
+	)
+	_expect(
+		RogueEncounterRegistry.get_reserved_encounter_ids() == [
+			RogueEncounterRegistry.CHICKEN_BRO,
+			RogueEncounterRegistry.GHOST_SHADOW,
+		]
+		and RogueEncounterRegistry.is_reserved_encounter(
+			RogueEncounterRegistry.CHICKEN_BRO
+		)
+		and RogueEncounterRegistry.is_reserved_encounter(
+			RogueEncounterRegistry.GHOST_SHADOW
+		),
+		"鸡哥与鬼影必须以稳定ID保留，但明确标记为预留事件。"
 	)
 	var selected: Dictionary = {}
 	for seed_value in range(128):
@@ -42,19 +53,23 @@ func _test_pool_and_deterministic_selection() -> void:
 			seed_value
 		)
 		_expect(first == replay, "相同节点seed必须稳定选择同一遭遇内容。")
+		_expect(
+			entries.has(first)
+			and first != RogueEncounterRegistry.CHICKEN_BRO
+			and first != RogueEncounterRegistry.GHOST_SHADOW,
+			"正式随机选择不得返回鸡哥或鬼影。"
+		)
 		selected[first] = true
 	_expect(
-		selected.has(RogueEncounterRegistry.CHICKEN_BRO)
-		and selected.has(RogueEncounterRegistry.SLIME_TALKERS)
-		and selected.has(RogueEncounterRegistry.GHOST_SHADOW)
+		selected.has(RogueEncounterRegistry.SLIME_TALKERS)
 		and selected.has(RogueEncounterRegistry.FLUORESCENT_PIT)
 		and selected.has(RogueEncounterRegistry.SUITCASE_FRENZY)
 		and selected.has(RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER),
-		"固定seed样本必须能够覆盖池中的六种遭遇。"
+		"固定seed样本必须能够覆盖池中的四种启用遭遇。"
 	)
 
 
-func _test_run_unique_selection_and_ghost_fallback() -> void:
+func _test_run_unique_selection_and_enabled_fallback() -> void:
 	var pool := RogueEncounterRegistry.get_pool_entries(
 		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
 	)
@@ -72,13 +87,21 @@ func _test_run_unique_selection_and_ghost_fallback() -> void:
 		history.append(selected)
 	_expect(history.size() == pool.size(), "一次 run 应能无重复耗尽全部事件。")
 	for seed_value in [1, 2, 999_999]:
+		var fallback := RogueEncounterRegistry.select_encounter_for_run(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			seed_value,
+			history
+		)
 		_expect(
-			RogueEncounterRegistry.select_encounter_for_run(
+			pool.has(fallback)
+			and fallback == RogueEncounterRegistry.select_encounter_for_run(
 				RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
 				seed_value,
 				history
-			) == RogueEncounterRegistry.GHOST_SHADOW,
-			"全部事件遭遇过后必须忽略 seed 并固定触发鬼影。"
+			)
+			and fallback != RogueEncounterRegistry.CHICKEN_BRO
+			and fallback != RogueEncounterRegistry.GHOST_SHADOW,
+			"启用事件耗尽后必须确定性重选启用事件，不能回退鸡哥或鬼影。"
 		)
 	var same_seed := 424_242
 	var first := RogueEncounterRegistry.select_encounter_for_run(
@@ -115,6 +138,28 @@ func _test_content_configs() -> void:
 	)
 	var sea_cucumber := RogueEncounterRegistry.get_encounter_config(
 		RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER
+	)
+	_expect(
+		RogueEncounterRegistry.has_encounter(RogueEncounterRegistry.CHICKEN_BRO)
+		and RogueEncounterRegistry.has_encounter(
+			RogueEncounterRegistry.GHOST_SHADOW
+		)
+		and not RogueEncounterRegistry.get_pool_entries(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
+		).has(RogueEncounterRegistry.CHICKEN_BRO)
+		and not RogueEncounterRegistry.get_pool_entries(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
+		).has(RogueEncounterRegistry.GHOST_SHADOW),
+		"鸡哥和鬼影内容必须继续注册，但不得留在正式随机池。"
+	)
+	var chicken_portrait_path := str(chicken.get("portrait_texture_path", ""))
+	var ghost_portrait_path := str(ghost.get("portrait_texture_path", ""))
+	_expect(
+		ResourceLoader.exists(chicken_portrait_path, "Texture2D")
+		and ResourceLoader.load(chicken_portrait_path, "Texture2D") is Texture2D
+		and ResourceLoader.exists(ghost_portrait_path, "Texture2D")
+		and ResourceLoader.load(ghost_portrait_path, "Texture2D") is Texture2D,
+		"两个预留事件的立绘资源必须继续存在且可加载。"
 	)
 	_expect(
 		str(chicken.get("intro_text", ""))

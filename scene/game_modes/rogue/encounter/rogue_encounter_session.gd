@@ -933,6 +933,7 @@ func _decode_state(snapshot: Dictionary) -> Dictionary:
 		or typeof(snapshot.get("phase")) != TYPE_STRING
 		or StringName(snapshot["phase"]) not in _VALID_PHASES
 		or typeof(snapshot.get("node_id")) != TYPE_INT
+		or typeof(snapshot.get("content_pool_id")) != TYPE_STRING
 		or typeof(snapshot.get("node_content_seed")) != TYPE_INT
 		or typeof(snapshot.get("remaining_seconds")) not in [TYPE_FLOAT, TYPE_INT]
 		or float(snapshot["remaining_seconds"]) < 0.0
@@ -946,12 +947,16 @@ func _decode_state(snapshot: Dictionary) -> Dictionary:
 	):
 		return {}
 	var decoded_phase := StringName(snapshot["phase"])
+	var decoded_content_pool_id := StringName(snapshot["content_pool_id"])
 	var decoded_encounter_id := StringName(snapshot.get("encounter_id", ""))
 	if (
 		decoded_phase != PHASE_IDLE
 		and (
 			decoded_encounter_id.is_empty()
 			or RogueEncounterRegistry.get_definition(decoded_encounter_id).is_empty()
+			or not RogueEncounterRegistry.get_pool_entries(
+				decoded_content_pool_id
+			).has(decoded_encounter_id)
 		)
 	):
 		return {}
@@ -1044,6 +1049,11 @@ func _decode_state(snapshot: Dictionary) -> Dictionary:
 	var typed_encountered_ids: Array[StringName] = []
 	typed_encountered_ids.assign(encountered_encounter_ids)
 	if (
+		decoded_phase != PHASE_IDLE
+		and not typed_encountered_ids.has(decoded_encounter_id)
+	):
+		return {}
+	if (
 		_run_state != null
 		and not _encounter_history_matches_economy_snapshot(
 			typed_encountered_ids,
@@ -1055,7 +1065,7 @@ func _decode_state(snapshot: Dictionary) -> Dictionary:
 		"revision": int(snapshot["revision"]),
 		"phase": String(decoded_phase),
 		"node_id": int(snapshot["node_id"]),
-		"content_pool_id": str(snapshot.get("content_pool_id", "")),
+		"content_pool_id": String(decoded_content_pool_id),
 		"node_content_seed": int(snapshot["node_content_seed"]),
 		"occurrence_key": str(snapshot.get("occurrence_key", "")),
 		"encounter_id": String(decoded_encounter_id),
