@@ -54,6 +54,15 @@ func _run() -> void:
 	await process_frame
 
 	var drag_icon := drag_preview.get_node("Icon") as Sprite2D
+	var drag_count := drag_preview.get_node("StackCount") as Label
+	var drag_outline_size: int = drag_count.get_theme_constant(&"outline_size")
+	var drag_right_inset: float = (
+		drag_preview.size.x - drag_count.get_rect().end.x
+	)
+	_expect(
+		drag_right_inset >= float(drag_outline_size + 2),
+		"拖拽预览数量必须为描边保留右侧安全区。"
+	)
 	for test_case in CASES:
 		var item := test_case["item"] as PickupConfig
 		var expected_source_size := test_case["source_size"] as Vector2

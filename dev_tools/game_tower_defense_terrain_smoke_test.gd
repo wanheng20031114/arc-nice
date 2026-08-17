@@ -584,8 +584,8 @@ func _verify_reachable_grass_placement(game: TowerDefenseGame) -> void:
 		"Plant placement bounds must follow the authored terrain, not the legacy boss arena."
 	)
 	_expect(
-		game.plant_system.max_placement_manhattan_distance == 4,
-		"Tower-defense plant placement must use the intended local four-cell radius."
+		game.plant_system.max_placement_manhattan_distance == 6,
+		"Tower-defense plant placement must use the intended local six-cell radius."
 	)
 	var last_anchor_exclusive := placement_area.end - config.footprint_size + Vector2i.ONE
 	for y in range(placement_area.position.y, last_anchor_exclusive.y):

@@ -333,6 +333,7 @@ func _test_quick_use_presentation(
 	var player_badge := panel.player_slots[0].quick_use_marker
 	var storage_badge := panel.storage_slots[0].quick_use_marker
 	var player_count := panel.player_slots[0].stack_count_label
+	var storage_count := panel.storage_slots[0].stack_count_label
 	_expect(
 		player_badge.size == Vector2(10, 10)
 		and player_badge.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
@@ -345,6 +346,24 @@ func _test_quick_use_presentation(
 		and is_equal_approx(player_count.offset_top, 3.0),
 		"仓库堆叠数量必须移到右上，为右下快捷徽记让位。"
 	)
+	for count_label_variant in [player_count, storage_count]:
+		var count_label := count_label_variant as Label
+		var slot := count_label.get_parent() as InventorySlot
+		var outline_size: int = count_label.get_theme_constant(&"outline_size")
+		var right_inset: float = slot.size.x - count_label.get_rect().end.x
+		var font: Font = count_label.get_theme_font(&"font")
+		var font_size: int = count_label.get_theme_font_size(&"font_size")
+		var three_digit_width: float = font.get_string_size(
+			"999",
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0,
+			font_size
+		).x + float(outline_size * 2)
+		_expect(
+			right_inset >= float(outline_size + 2)
+			and count_label.size.x >= three_digit_width,
+			"仓库堆叠数量必须为描边保留右侧安全区，并完整容纳三位数。"
+		)
 	_expect(
 		run_state.try_add_item(APPLE),
 		"仓库普通物品布局测试必须准备苹果收藏品。"

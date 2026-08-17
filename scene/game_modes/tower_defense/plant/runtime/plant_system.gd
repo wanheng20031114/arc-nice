@@ -10,7 +10,7 @@ signal plant_removed(plant: PlantDefense)
 signal occupancy_changed
 
 const DEFAULT_PLACEMENT_AREA: Rect2i = Rect2i(-3, -1, 22, 18)
-const MAX_PLACEMENT_MANHATTAN_DISTANCE: int = 4
+const MAX_PLACEMENT_MANHATTAN_DISTANCE: int = 6
 # Building placement is authoritative on terrain, reserved/occupied cells and
 # persistent world/player bodies. Enemies, bosses and loose pickups are transient
 # and can crowd every cell around the player, so treating them as placement

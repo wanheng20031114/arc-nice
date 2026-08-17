@@ -1192,7 +1192,7 @@ func _assert_anchor_enumeration_case(
 	)
 	_expect(
 		counting_system.validation_calls <= 128,
-		"2×2植物、距离4的放置枚举必须保持为常量级候选集。"
+		"2×2植物、距离6的放置枚举必须保持为常量级候选集。"
 	)
 
 
@@ -1230,13 +1230,13 @@ func _test_grid_and_occupancy_rules() -> void:
 	if anchor == Vector2i(9999, 9999):
 		return
 
-	_set_player_cell(anchor + Vector2i(-4, 0))
+	_set_player_cell(anchor + Vector2i(-6, 0))
 	await physics_frame
-	_expect(plant_system.is_placement_valid(anchor, agave_config), "距footprint最近格曼哈顿4应允许放置。")
-	_set_player_cell(anchor + Vector2i(-5, 0))
-	_expect(not plant_system.is_placement_valid(anchor, agave_config), "曼哈顿距离5必须拒绝。")
+	_expect(plant_system.is_placement_valid(anchor, agave_config), "距footprint最近格曼哈顿6应允许放置。")
+	_set_player_cell(anchor + Vector2i(-7, 0))
+	_expect(not plant_system.is_placement_valid(anchor, agave_config), "曼哈顿距离7必须拒绝。")
 
-	_set_player_cell(anchor + Vector2i(-4, 0))
+	_set_player_cell(anchor + Vector2i(-6, 0))
 	plant_system.reserve_cell(anchor + Vector2i.ONE)
 	_expect(not plant_system.is_placement_valid(anchor, agave_config), "footprint含保留格时必须拒绝。")
 	plant_system.clear_reserved_cells()
@@ -1715,8 +1715,8 @@ func _test_multiplayer_authority_contracts() -> void:
 	test_root.add_child(requesting_player)
 	requesting_player.set_controls_locked(true)
 	requesting_player.set_physics_process(false)
-	_set_specific_player_cell(player, anchor + Vector2i(-6, 0))
-	_set_specific_player_cell(requesting_player, anchor + Vector2i(-4, 0))
+	_set_specific_player_cell(player, anchor + Vector2i(-7, 0))
+	_set_specific_player_cell(requesting_player, anchor + Vector2i(-6, 0))
 	await physics_frame
 	_expect(
 		not plant_system.is_placement_valid(anchor, agave_config),
@@ -2331,7 +2331,7 @@ func _test_cannonball_aoe_deduplication() -> void:
 func _find_open_anchor_with_left_margin() -> Vector2i:
 	var area := PlantSystem.DEFAULT_PLACEMENT_AREA
 	for y in range(area.position.y, area.end.y - 1):
-		for x in range(area.position.x + 5, area.end.x - 1):
+		for x in range(area.position.x + 7, area.end.x - 1):
 			var anchor := Vector2i(x, y)
 			var all_floor := true
 			for cell in plant_system.get_footprint_cells(anchor, agave_config):
