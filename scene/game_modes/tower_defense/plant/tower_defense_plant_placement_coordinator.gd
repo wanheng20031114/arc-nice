@@ -376,6 +376,12 @@ func _connect_controller_signals() -> void:
 
 
 func _connect_plant_runtime_signals() -> void:
+	if not _plant_runtime_coordinator.placement_request_succeeded.is_connected(
+		_on_placement_request_succeeded
+	):
+		_plant_runtime_coordinator.placement_request_succeeded.connect(
+			_on_placement_request_succeeded
+		)
 	if not _plant_runtime_coordinator.placement_presentation_requested.is_connected(
 		present_plant_placement
 	):
@@ -394,6 +400,15 @@ func _connect_plant_runtime_signals() -> void:
 		_plant_runtime_coordinator.modal_ui_visibility_changed.connect(
 			notify_plant_modal_ui_visibility_changed
 		)
+
+
+func _on_placement_request_succeeded(
+	request_id: int,
+	placement_player: Player
+) -> void:
+	if placement_player != _local_player:
+		return
+	_placement_controller.notify_placement_succeeded(request_id)
 
 
 func _connect_modal_signals() -> void:

@@ -40,6 +40,7 @@ class PlacementControllerProbe:
 	var configured_production_coordinator: ProductionCoordinator = null
 	var configured_inventory_peer_id := -1
 	var configured_free_placement := false
+	var succeeded_request_ids: Array[int] = []
 
 	func _ready() -> void:
 		pass
@@ -78,6 +79,9 @@ class PlacementControllerProbe:
 		player_lock_requested.emit(false)
 		placement_cancelled.emit()
 
+	func notify_placement_succeeded(request_id: int) -> void:
+		succeeded_request_ids.append(request_id)
+
 
 class PlayerProbe:
 	extends Player
@@ -93,6 +97,47 @@ class PlayerProbe:
 			_control_lock_owners[owner] = true
 		else:
 			_control_lock_owners.erase(owner)
+
+
+class ReplicaReceiptPlantSystem:
+	extends PlantSystem
+
+	var allow_replica := true
+	var last_replica: PlantDefense = null
+	var last_authoritative_plant: PlantDefense = null
+
+	func get_config(plant_id: StringName) -> PlantDefenseConfig:
+		return PlantDefenseRegistry.get_config(plant_id)
+
+	func try_place_for_player(
+		config: PlantDefenseConfig,
+		_top_left_cell: Vector2i,
+		placement_player: Player,
+		_net_id: int = 0
+	) -> PlantDefense:
+		last_authoritative_plant = PlantDefense.new()
+		last_authoritative_plant.setup(config, placement_player, [])
+		return last_authoritative_plant
+
+	func spawn_multiplayer_replica(
+		_plant_id: StringName,
+		_top_left_cell: Vector2i,
+		_placement_player: Player,
+		_net_id: int,
+		current_health: int,
+		maximum_health: int,
+		health_revision: int,
+		_play_placement_effect: bool = false
+	) -> PlantDefense:
+		if not allow_replica:
+			return null
+		last_replica = PlantDefense.new()
+		last_replica.configure_multiplayer_proxy(
+			current_health,
+			maximum_health,
+			maxi(health_revision - 1, 0)
+		)
+		return last_replica
 
 
 class SettingsPanelProbe:
@@ -213,7 +258,10 @@ func _run() -> void:
 	)
 	_expect(configured and coordinator.is_bound(), "强类型 setup 必须完整绑定依赖。")
 	_expect(
-		plant_runtime.placement_presentation_requested.is_connected(
+		plant_runtime.placement_request_succeeded.is_connected(
+			coordinator._on_placement_request_succeeded
+		)
+		and plant_runtime.placement_presentation_requested.is_connected(
 			coordinator.present_plant_placement
 		)
 		and plant_runtime.removal_presentation_requested.is_connected(
@@ -222,7 +270,74 @@ func _run() -> void:
 		and plant_runtime.modal_ui_visibility_changed.is_connected(
 			coordinator.notify_plant_modal_ui_visibility_changed
 		),
-		"PlantRuntime 的表现与 modal 信号必须在协调器内部强类型绑定。"
+		"PlantRuntime 的放置回执、表现与 modal 信号必须在协调器内部强类型绑定。"
+	)
+	var other_player := PlayerProbe.new()
+	plant_runtime.placement_request_succeeded.emit(42, other_player)
+	plant_runtime.placement_request_succeeded.emit(42, local_player)
+	_expect(
+		controller.succeeded_request_ids == [42],
+		"其他玩家即使使用相同request_id，也不能误确认本地连续放置。"
+	)
+	other_player.free()
+	var replica_receipt_system := ReplicaReceiptPlantSystem.new()
+	plant_runtime.setup(
+		CombatRuntimeBase.RuntimeMode.CLIENT_VIEW,
+		null,
+		null,
+		replica_receipt_system,
+		null
+	)
+	plant_runtime.apply_remote_plant_spawn(
+		73,
+		local_player,
+		901,
+		&"agave_cannon",
+		Vector2i(2, 3),
+		500,
+		500,
+		1
+	)
+	_expect(
+		controller.succeeded_request_ids == [42, 73]
+		and replica_receipt_system.last_replica != null,
+		"CLIENT_VIEW必须在本地植物副本创建成功后，沿真实运行时链路确认request_id。"
+	)
+	replica_receipt_system.allow_replica = false
+	plant_runtime.apply_remote_plant_spawn(
+		74,
+		local_player,
+		902,
+		&"agave_cannon",
+		Vector2i(3, 3),
+		500,
+		500,
+		1
+	)
+	_expect(
+		controller.succeeded_request_ids == [42, 73],
+		"客户端副本创建失败时不得伪造连续放置成功回执。"
+	)
+	plant_runtime.setup(
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		null,
+		null,
+		replica_receipt_system,
+		null
+	)
+	plant_runtime.request_multiplayer_free_placement(
+		17,
+		75,
+		&"agave_cannon",
+		Vector2i(4, 3),
+		local_player,
+		false,
+		true
+	)
+	_expect(
+		controller.succeeded_request_ids == [42, 73, 75]
+		and replica_receipt_system.last_authoritative_plant != null,
+		"HOST权威生成成功也必须沿运行时信号链确认本地连续放置。"
 	)
 	_expect(
 		controller.multiplayer_requests_enabled
@@ -369,6 +484,11 @@ func _run() -> void:
 	controller.free()
 	plant_system.free()
 	plant_runtime.free()
+	if replica_receipt_system.last_replica != null:
+		replica_receipt_system.last_replica.free()
+	if replica_receipt_system.last_authoritative_plant != null:
+		replica_receipt_system.last_authoritative_plant.free()
+	replica_receipt_system.free()
 	run_state.free()
 	production_coordinator.free()
 	local_player.free()

@@ -323,7 +323,8 @@ func _test_shared_warehouse_catalog_placement(
 	_expect(
 		game.get_node("PlantContainer").get_child_count() == first_plant_count + 1
 		and run_state.get_inventory_item_total(item) == 0
-		and warehouse.get_storage_item_total(item) == 2,
+		and warehouse.get_storage_item_total(item) == 2
+		and not controller.is_active(),
 		"Catalog placement must consume the local backpack before shared storage."
 	)
 
@@ -345,14 +346,30 @@ func _test_shared_warehouse_catalog_placement(
 	hud.call("_confirm_selection")
 	await process_frame
 	var second_plant_count := game.get_node("PlantContainer").get_child_count()
-	if not _place_current_catalog_selection(controller):
+	if not _place_current_catalog_selection(controller, true):
 		return
 	await process_frame
 	_expect(
 		game.get_node("PlantContainer").get_child_count() == second_plant_count + 1
 		and run_state.get_inventory_item_total(item) == 0
-		and warehouse.get_storage_item_total(item) == 1,
-		"With an empty backpack, T placement must consume one item remotely from storage."
+		and warehouse.get_storage_item_total(item) == 1
+		and controller.is_placing()
+		and not controller.has_pending_placement_request()
+		and controller.selected_config == config
+		and game.player.controls_locked,
+		"Shift catalog placement must consume one shared item and keep the same building active."
+	)
+	if not _place_current_catalog_selection(controller, true):
+		return
+	await process_frame
+	_expect(
+		game.get_node("PlantContainer").get_child_count() == second_plant_count + 2
+		and run_state.get_inventory_item_total(item) == 0
+		and warehouse.get_storage_item_total(item) == 0
+		and not controller.is_active()
+		and not controller.has_pending_placement_request()
+		and not game.player.controls_locked,
+		"Continuous catalog placement must consume exactly one item per success and exit on depletion."
 	)
 
 
@@ -384,7 +401,10 @@ func _create_operational_warehouse(game: TowerDefenseGame) -> OakWarehouse:
 	return warehouse
 
 
-func _place_current_catalog_selection(controller: PlantPlacementController) -> bool:
+func _place_current_catalog_selection(
+	controller: PlantPlacementController,
+	continuous_requested: bool = false
+) -> bool:
 	_expect(
 		controller.is_placing()
 		and controller.placement_source
@@ -396,7 +416,11 @@ func _place_current_catalog_selection(controller: PlantPlacementController) -> b
 		controller.cancel_placement()
 		return false
 	controller.call("_set_hovered_anchor", controller.valid_anchors[0], true)
-	controller.call("_try_place_hovered")
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.shift_pressed = continuous_requested
+	controller.call("_unhandled_input", click)
 	return true
 
 

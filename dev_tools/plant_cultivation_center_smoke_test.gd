@@ -953,19 +953,32 @@ func _test_inventory_placement_request(
 	)
 	run_state.begin_new_run(&"weishidaier", false)
 	_expect(
-		run_state.try_add_item(AGAVE_BUILDING_ITEM),
-		"放置请求测试必须重新准备一个加农炮建筑物品。"
+		run_state.try_add_item_count(AGAVE_BUILDING_ITEM, 3),
+		"连续放置请求测试必须准备3个加农炮建筑物品。"
 	)
 
 	var controller := (
 		PLACEMENT_CONTROLLER_SCENE.instantiate() as PlantPlacementController
 	)
 	var plant_system := PlantSystem.new()
+	var placement_owner := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(plant_system)
+	test_root.add_child(placement_owner)
 	test_root.add_child(controller)
 	await process_frame
-	controller.setup(plant_system, null)
+	placement_owner.set_process(false)
+	placement_owner.set_physics_process(false)
+	controller.setup(plant_system, placement_owner)
+	controller.configure_inventory_catalog(run_state, null, 0, false)
 	var requests: Array[Dictionary] = []
+	var lock_events: Array[bool] = []
+	var unavailable_events: Array[bool] = []
+	controller.player_lock_requested.connect(
+		func(locked: bool) -> void: lock_events.append(locked)
+	)
+	controller.selection_unavailable.connect(
+		func() -> void: unavailable_events.append(true)
+	)
 	controller.inventory_placement_requested.connect(
 		func(
 			request_id: int,
@@ -986,6 +999,26 @@ func _test_inventory_placement_request(
 	)
 	var agave_config := PlantDefenseRegistry.get_config(&"agave_cannon")
 	var current_revision := run_state.get_inventory_revision()
+	var shift_click := InputEventMouseButton.new()
+	shift_click.button_index = MOUSE_BUTTON_LEFT
+	shift_click.pressed = true
+	shift_click.shift_pressed = true
+	var normal_click := InputEventMouseButton.new()
+	normal_click.button_index = MOUSE_BUTTON_LEFT
+	normal_click.pressed = true
+	var bare_shift := InputEventKey.new()
+	bare_shift.keycode = KEY_SHIFT
+	bare_shift.pressed = true
+	var plant_key := InputEventKey.new()
+	plant_key.physical_keycode = KEY_T
+	plant_key.pressed = true
+	_expect(
+		PlantPlacementController._is_shift_modifier_event(bare_shift)
+		and not PlantPlacementController._is_shift_modifier_event(
+			plant_key
+		),
+		"放置态只能保留裸Shift修饰键，普通T仍必须保持植物键取消语义。"
+	)
 	_expect(
 		controller.begin_inventory_placement(
 			agave_config,
@@ -995,9 +1028,19 @@ func _test_inventory_placement_request(
 		),
 		"背包建筑物品必须能绕过T键选择页直接进入指定建筑放置模式。"
 	)
+	var added_shift_binding := not InputMap.action_has_event(&"plant", bare_shift)
+	if added_shift_binding:
+		InputMap.action_add_event(&"plant", bare_shift)
+	controller.call("_unhandled_input", bare_shift)
+	if added_shift_binding:
+		InputMap.action_erase_event(&"plant", bare_shift)
+	_expect(
+		controller.is_placing() and requests.is_empty(),
+		"即使裸Shift被绑定为植物键，放置态也只能把它当作连续放置修饰键。"
+	)
 	controller.has_hovered_anchor = true
 	controller.hovered_anchor = Vector2i(3, 4)
-	controller.call("_try_place_hovered")
+	controller.call("_unhandled_input", shift_click)
 	_expect(
 		requests.size() == 1
 		and requests[0]["plant_id"] == &"agave_cannon"
@@ -1006,10 +1049,216 @@ func _test_inventory_placement_request(
 		and int(requests[0]["expected_revision"]) == current_revision
 		and requests[0]["item_config_path"]
 		== AGAVE_BUILDING_ITEM.resource_path
-		and not controller.is_active()
-		and run_state.get_item_count(0) == 1,
-		"放置控制器必须携带槽位、revision和物品路径请求权威落地，且不能自行提前扣除物品。"
+		and controller.is_placing()
+		and controller.has_pending_placement_request()
+		and controller.get_pending_placement_request_id()
+		== int(requests[0]["request_id"])
+		and controller.placement_hint_label.text.contains("等待放置确认")
+		and run_state.get_item_count(0) == 3,
+		"Shift左键必须只发送一个权威请求，保留放置态且不得预扣物品。"
 	)
+	controller.call("_unhandled_input", shift_click)
+	_expect(requests.size() == 1, "权威回执前的重复点击不得产生第二个放置请求。")
+	if requests.size() != 1:
+		controller.cancel_placement()
+		return
+
+	var first_request_id := int(requests[0]["request_id"])
+	controller.notify_placement_succeeded(first_request_id + 1)
+	_expect(
+		controller.get_pending_placement_request_id() == first_request_id
+		and controller.placement_hint_label.text.contains("等待放置确认"),
+		"本地玩家的错误request_id也不得误确认当前连续放置。"
+	)
+	controller.notify_placement_succeeded(first_request_id)
+	_expect(
+		controller.has_pending_placement_request()
+		and controller.placement_hint_label.text.contains("等待物品同步"),
+		"生成回执早于背包同步时必须继续等待，不得复用旧revision。"
+	)
+	_expect(
+		run_state.try_consume_item_at_slot_if_revision(
+			0,
+			AGAVE_BUILDING_ITEM,
+			current_revision
+		),
+		"首次连续放置必须能模拟权威扣除一个物品。"
+	)
+	current_revision = run_state.get_inventory_revision()
+	_expect(
+		controller.is_placing()
+		and not controller.has_pending_placement_request()
+		and controller.inventory_expected_revision == current_revision
+		and run_state.get_item_count(0) == 2,
+		"背包同步到达后必须更新revision并恢复同建筑连续放置。"
+	)
+
+	controller.has_hovered_anchor = true
+	controller.hovered_anchor = Vector2i(4, 4)
+	controller.call("_unhandled_input", shift_click)
+	_expect(
+		requests.size() == 2
+		and int(requests[1]["expected_revision"]) == current_revision,
+		"第二次连续放置必须携带首次扣除后的新revision。"
+	)
+	if requests.size() != 2:
+		controller.cancel_placement()
+		return
+	var second_request_id := int(requests[1]["request_id"])
+	_expect(
+		run_state.try_consume_item_at_slot_if_revision(
+			0,
+			AGAVE_BUILDING_ITEM,
+			current_revision
+		),
+		"第二次连续放置必须能先到达背包同步。"
+	)
+	_expect(
+		controller.has_pending_placement_request(),
+		"背包同步早于生成回执时不得提前解锁下一次点击。"
+	)
+	controller.notify_placement_succeeded(second_request_id)
+	current_revision = run_state.get_inventory_revision()
+	_expect(
+		controller.is_placing()
+		and not controller.has_pending_placement_request()
+		and controller.inventory_expected_revision == current_revision
+		and run_state.get_item_count(0) == 1,
+		"生成回执到达后必须与先到的背包同步汇合，且只解锁一次。"
+	)
+
+	controller.has_hovered_anchor = true
+	controller.hovered_anchor = Vector2i(5, 4)
+	controller.call("_unhandled_input", shift_click)
+	_expect(requests.size() == 3, "第三次连续放置必须且只能发送第三个权威请求。")
+	if requests.size() != 3:
+		controller.cancel_placement()
+		return
+	var third_request_id := int(requests[2]["request_id"])
+	_expect(
+		run_state.try_consume_item_at_slot_if_revision(
+			0,
+			AGAVE_BUILDING_ITEM,
+			current_revision
+		),
+		"第三次连续放置必须耗尽最后一个物品。"
+	)
+	controller.notify_placement_succeeded(third_request_id)
+	_expect(
+		requests.size() == 3
+		and not controller.is_active()
+		and not controller.has_pending_placement_request()
+		and run_state.get_item_count(0) == 0
+		and not lock_events.is_empty()
+		and not lock_events.back(),
+		"第三次成功后资源耗尽必须自动退出并解除玩家控制锁。"
+	)
+	_expect(
+		controller.pending_placement_timeout.one_shot
+		and is_equal_approx(controller.pending_placement_timeout.wait_time, 5.0),
+		"连续放置必须使用场景内一次性5秒超时Timer。"
+	)
+
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(run_state.try_add_item(AGAVE_BUILDING_ITEM), "普通放置回归测试必须准备1个建筑物品。")
+	current_revision = run_state.get_inventory_revision()
+	_expect(
+		controller.begin_inventory_placement(
+			agave_config,
+			0,
+			current_revision,
+			AGAVE_BUILDING_ITEM.resource_path
+		),
+		"普通放置回归测试必须进入放置态。"
+	)
+	controller.has_hovered_anchor = true
+	controller.hovered_anchor = Vector2i(6, 4)
+	controller.call("_unhandled_input", normal_click)
+	_expect(
+		requests.size() == 4
+		and not controller.is_active()
+		and not controller.has_pending_placement_request()
+		and run_state.get_item_count(0) == 1,
+		"普通左键必须继续在提交前退出，且不得自行预扣物品。"
+	)
+
+	var right_click := InputEventMouseButton.new()
+	right_click.button_index = MOUSE_BUTTON_RIGHT
+	right_click.pressed = true
+	var escape_key := InputEventKey.new()
+	escape_key.keycode = KEY_ESCAPE
+	escape_key.pressed = true
+	for resolution in [
+		&"cancel",
+		&"reject",
+		&"timeout",
+		&"right_click",
+		&"escape",
+		&"plant_key",
+		&"owner_unavailable",
+		&"input_disabled",
+	]:
+		var began_pending_case := controller.begin_inventory_placement(
+				agave_config,
+				0,
+				current_revision,
+				AGAVE_BUILDING_ITEM.resource_path
+			)
+		_expect(
+			began_pending_case,
+			"迟到回执测试必须重新进入放置态。"
+		)
+		if not began_pending_case:
+			return
+		controller.has_hovered_anchor = true
+		controller.hovered_anchor = Vector2i(7 + requests.size(), 4)
+		var request_count_before := requests.size()
+		controller.call("_unhandled_input", shift_click)
+		var pending_id := controller.get_pending_placement_request_id()
+		var pending_started := (
+			requests.size() == request_count_before + 1
+			and pending_id > 0
+			and int(requests.back()["request_id"]) == pending_id
+			and not controller.pending_placement_timeout.is_stopped()
+		)
+		_expect(
+			pending_started,
+			"每个中断场景都必须先真实发送一次Shift请求并启动pending超时：%s" % resolution
+		)
+		if not pending_started:
+			controller.cancel_placement()
+			break
+		match resolution:
+			&"cancel":
+				controller.cancel_placement()
+			&"reject":
+				controller.notify_multiplayer_placement_rejected(pending_id)
+				controller.notify_multiplayer_placement_rejected(pending_id)
+			&"timeout":
+				controller.pending_placement_timeout.timeout.emit()
+			&"right_click":
+				controller.call("_unhandled_input", right_click)
+			&"escape":
+				controller.call("_unhandled_input", escape_key)
+			&"plant_key":
+				controller.call("_unhandled_input", plant_key)
+			&"owner_unavailable":
+				placement_owner.died.emit()
+			&"input_disabled":
+				controller.set_placement_input_enabled(false)
+				controller.set_placement_input_enabled(true)
+		controller.notify_placement_succeeded(pending_id)
+		_expect(
+			not controller.is_active()
+			and not controller.has_pending_placement_request()
+			and controller.pending_placement_timeout.is_stopped()
+			and not lock_events.is_empty()
+			and not lock_events.back(),
+			"取消、拒绝、超时或流程中断后的迟到回执不得恢复放置或残留控制锁：%s" % resolution
+		)
+		if controller.is_active():
+			controller.cancel_placement()
+	_expect(unavailable_events.size() == 2, "拒绝与超时必须各提示一次放置不可用。")
 	_expect(
 		controller.open_selection()
 		and controller.selection_hud.available_configs.size() == 19
@@ -1061,12 +1310,17 @@ func _test_authoritative_placement_rollback_sync(
 	plant_runtime.setup(host_game.runtime_mode, null, null, plant_system, null)
 	var rejected_requests: Array[int] = []
 	var changed_inventory_peers: Array[int] = []
+	var succeeded_requests: Array[int] = []
 	plant_runtime.plant_placement_rejected.connect(
 		func(request_id: int, _peer_id: int, _reason: StringName) -> void:
 			rejected_requests.append(request_id)
 	)
 	plant_runtime.inventory_changed.connect(
 		func(peer_id: int) -> void: changed_inventory_peers.append(peer_id)
+	)
+	plant_runtime.placement_request_succeeded.connect(
+		func(request_id: int, _placement_player: Player) -> void:
+			succeeded_requests.append(request_id)
 	)
 	plant_runtime.request_multiplayer_inventory_placement(
 		2,
@@ -1085,7 +1339,8 @@ func _test_authoritative_placement_rollback_sync(
 		and run_state.get_item_for_peer(2, 0) == AGAVE_BUILDING_ITEM
 		and run_state.get_item_count_for_peer(2, 0) == 1
 		and run_state.get_inventory_revision_for_peer(2) == initial_revision + 2
-		and changed_inventory_peers == [2],
+		and changed_inventory_peers == [2]
+		and succeeded_requests.is_empty(),
 		"多人落地竞争失败后必须恢复物品，并广播回滚后的背包revision。"
 	)
 	host_game.free()

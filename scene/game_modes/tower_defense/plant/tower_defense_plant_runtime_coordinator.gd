@@ -24,6 +24,7 @@ signal plant_spawned(
 	health_revision: int
 )
 signal plant_placement_rejected(request_id: int, requester_peer_id: int, reason: StringName)
+signal placement_request_succeeded(request_id: int, placement_player: Player)
 signal inventory_changed(peer_id: int)
 signal enemy_retarget_requested
 signal placement_presentation_requested(plant: PlantDefense)
@@ -432,6 +433,7 @@ func apply_remote_plant_spawn(
 	)
 	if replica != null:
 		replica.apply_remote_health(current_health, maximum_health, health_revision)
+		placement_request_succeeded.emit(request_id, owner)
 
 
 func apply_remote_plant_removed(net_id: int, was_destroyed: bool, silent: bool) -> void:
@@ -487,6 +489,8 @@ func request_singleplayer_catalog_placement(
 			placement_player
 		) == null:
 			_notify_local_placement_rejected(request_id)
+		else:
+			placement_request_succeeded.emit(request_id, placement_player)
 		return
 	if run_state == null:
 		_notify_local_placement_rejected(request_id)
@@ -530,6 +534,8 @@ func request_singleplayer_catalog_placement(
 		run_state.notify_inventory_transaction_completed()
 		if placed_plant == null:
 			_notify_local_placement_rejected(request_id)
+		else:
+			placement_request_succeeded.emit(request_id, placement_player)
 		return
 	if _production_coordinator == null:
 		_notify_local_placement_rejected(request_id)
@@ -545,6 +551,8 @@ func request_singleplayer_catalog_placement(
 	)
 	if result != ProductionCoordinator.RESULT_SUCCESS:
 		_notify_local_placement_rejected(request_id)
+	else:
+		placement_request_succeeded.emit(request_id, placement_player)
 
 
 func request_singleplayer_inventory_placement(
@@ -595,6 +603,7 @@ func request_singleplayer_inventory_placement(
 		_notify_local_placement_rejected(request_id)
 		return
 	run_state.notify_inventory_transaction_completed()
+	placement_request_succeeded.emit(request_id, placement_player)
 
 
 func request_multiplayer_free_placement(
@@ -1473,6 +1482,7 @@ func _spawn_authoritative_plant(
 		plant.max_health,
 		plant.health_revision
 	)
+	placement_request_succeeded.emit(request_id, placement_player)
 	return plant
 
 

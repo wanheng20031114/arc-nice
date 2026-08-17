@@ -1656,13 +1656,57 @@ func _test_realtime_selection_and_cancel() -> void:
 	Input.flush_buffered_events()
 	plant_press = null
 	plant_release = null
+	var placed_by_controller: Array[PlantDefense] = []
+	controller.plant_placed.connect(
+		func(plant: PlantDefense, _config: PlantDefenseConfig) -> void:
+			placed_by_controller.append(plant)
+	)
 	controller.selection_hud.selection_confirmed.emit(agave_config)
 	await process_frame
 	_expect(controller.is_placing(), "确认卡片后必须进入PLACING。")
 	_expect(not controller.valid_anchors.is_empty(), "放置阶段必须生成合法绿色位置标记。")
-	controller.cancel_placement()
-	_expect(not controller.is_active(), "取消后必须回到IDLE。")
-	_expect(not lock_events.is_empty() and not lock_events.back(), "取消后必须请求解锁玩家。")
+	if controller.valid_anchors.is_empty():
+		controller.cancel_placement()
+		controller.queue_free()
+		await process_frame
+		return
+	var first_anchor := controller.valid_anchors[0]
+	controller.call("_set_hovered_anchor", first_anchor, true)
+	var shift_click := InputEventMouseButton.new()
+	shift_click.button_index = MOUSE_BUTTON_LEFT
+	shift_click.pressed = true
+	shift_click.shift_pressed = true
+	controller.call("_unhandled_input", shift_click)
+	_expect(
+		placed_by_controller.size() == 1
+		and controller.is_placing()
+		and controller.selected_config == agave_config
+		and controller.placement_hint_label.text.contains("按住 Shift 连续放置")
+		and not lock_events.is_empty()
+		and lock_events.back(),
+		"沙盒Shift左键必须放置一座建筑并保留同一建筑预览与玩家锁。"
+	)
+	_expect(
+		not plant_system.is_placement_valid(first_anchor, agave_config),
+		"首次连续放置后已占用anchor必须立即失效。"
+	)
+	_expect(not controller.valid_anchors.is_empty(), "沙盒连续放置需要第二个合法anchor。")
+	if not controller.valid_anchors.is_empty():
+		controller.call("_set_hovered_anchor", controller.valid_anchors[0], true)
+		var normal_click := InputEventMouseButton.new()
+		normal_click.button_index = MOUSE_BUTTON_LEFT
+		normal_click.pressed = true
+		controller.call("_unhandled_input", normal_click)
+	_expect(
+		placed_by_controller.size() == 2
+		and not controller.is_active()
+		and not lock_events.is_empty()
+		and not lock_events.back(),
+		"松开Shift后的下一次普通左键必须再放置一座并退回IDLE。"
+	)
+	for placed_plant in placed_by_controller:
+		if placed_plant != null and is_instance_valid(placed_plant):
+			placed_plant.begin_removal(PlantDefense.RemovalMode.SILENT)
 	controller.queue_free()
 	await process_frame
 
