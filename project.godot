@@ -39,8 +39,6 @@ EnemyHitFlashScheduler="*res://scene/combat/feedback/enemy_hit_flash_scheduler.g
 
 [display]
 
-window/size/viewport_width=1152
-window/size/viewport_height=648
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
@@ -55,13 +53,6 @@ enabled=PackedStringArray("res://addons/flow_graph_editor/plugin.cfg")
 [gui]
 
 theme/custom_font="res://resources/font/ResourceHanRoundedCN-Medium.ttf"
-
-[internationalization]
-
-; Export the ICU line/word break data used by the editor so CJK layout is
-; identical in F5 runs and standalone builds.
-locale/include_text_server_data=true
-rendering/text_driver="ICU / HarfBuzz / Graphite"
 
 [input]
 
@@ -181,6 +172,11 @@ use_item={
 , Object(InputEventJoypadButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"button_index":9,"pressure":0.0,"pressed":true,"script":null)
 ]
 }
+
+[internationalization]
+
+locale/include_text_server_data=true
+rendering/text_driver="ICU / HarfBuzz / Graphite"
 
 [layer_names]
 
