@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "ad6f311a70c9dc37ecc7f77ee3911dcd0a6f1a54ee20624430ab592d324e571d",
+	"content_sha256": "188970d93e7f5e3c0b0addfc657749c6cd4d133b7511671a50bffd32b0eb0240",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -2382,7 +2382,7 @@
 		},
 		{
 			"path": "res://resources/config/campaigns/tower_defense/formal/wave_01.tres",
-			"sha256": "f5a8f9ccf6badc3803beed68ce0692361b5ff3b67497abb85b76426d671d0e7a"
+			"sha256": "4a42d81930174a64c792bea8a6f7bc592b5ef2307083e11be05d84910c6d2a91"
 		},
 		{
 			"path": "res://resources/config/campaigns/tower_defense/formal/wave_02.tres",

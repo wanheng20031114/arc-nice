@@ -8,8 +8,26 @@ const WAVE_CONTENT_CONTRACT := preload(
 )
 const STANDARD_GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
+const FORMAL_PROGRESSION: TowerDefenseProgressionConfig = preload(
+	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
+)
 const FORMAL_TOTALS: Array[int] = [
-	3000, 3850, 3470, 2080, 2100, 2240, 2150, 2240, 3120, 3780, 3000, 4900,
+	2600, 3850, 3470, 2080, 2100, 2240, 2150, 2240, 3120, 3780, 3000, 4900,
+]
+const FORMAL_FIRST_WAVE_SCALED_TOTALS := {
+	1: 2600,
+	2: 3250,
+	4: 4550,
+	8: 7150,
+}
+const FORMAL_DAY_ONE_XIRANG := 16330
+const FORMAL_FIRST_WAVE_ENTRY_TRACE: Array[String] = [
+	"res://resources/config/enemies/slime.tres:100",
+	"res://resources/config/enemies/slime_fire.tres:100",
+	"res://resources/config/enemies/yuanshi_insect_basic.tres:1200",
+	"res://resources/config/enemies/yuanshi_insect_fast.tres:300",
+	"res://resources/config/enemies/yuanshi_insect_fire_ranged.tres:500",
+	"res://resources/config/enemies/yuanshi_insect_bomber.tres:400",
 ]
 const FORMAL_MAX_ALIVE: Array[int] = [
 	200, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300,
@@ -151,9 +169,10 @@ func _test_campaign_resources() -> void:
 
 func _verify_formal_waves(waves: Array[WaveConfig]) -> void:
 	_expect(
-		is_equal_approx(waves[0].spawn_interval, 0.25),
-		"Formal first wave must spawn one enemy batch every 0.25 seconds."
+		is_equal_approx(waves[0].spawn_interval, 0.2),
+		"Formal first wave must spawn one enemy batch every 0.2 seconds."
 	)
+	_verify_formal_first_wave(waves[0])
 	for wave_index in waves.size():
 		var wave := waves[wave_index]
 		var expected_path := (
@@ -183,6 +202,54 @@ func _verify_formal_waves(waves: Array[WaveConfig]) -> void:
 			"Formal campaign must not expose pressure-test labels."
 		)
 		_verify_linear_exit(wave, wave_index, &"boss_01_linglan")
+	_verify_formal_day_one_economy(waves)
+
+
+func _verify_formal_first_wave(wave: WaveConfig) -> void:
+	var entry_trace: Array[String] = []
+	for entry in wave.enemy_entries:
+		var enemy_path := ""
+		if entry != null and entry.enemy_config != null:
+			enemy_path = entry.enemy_config.resource_path
+		entry_trace.append("%s:%d" % [enemy_path, entry.count if entry != null else -1])
+	_expect(
+		entry_trace == FORMAL_FIRST_WAVE_ENTRY_TRACE,
+		"Formal first wave must preserve the six authored enemy entries and their order: %s"
+		% [entry_trace]
+	)
+	_expect(
+		wave.get_enabled_spawn_point_names()
+		== [&"Spawn1", &"Spawn2", &"Spawn3", &"Spawn4"],
+		"Formal first wave must enable only spawn points 1 through 4."
+	)
+	_expect(
+		wave.spawn_count_per_tick == 1 and wave.max_alive_enemies == 200,
+		"Formal first wave must spawn one enemy per tick with a 200-enemy ceiling."
+	)
+	for player_count_variant in FORMAL_FIRST_WAVE_SCALED_TOTALS:
+		var player_count := int(player_count_variant)
+		var scaled_total := 0
+		for entry in wave.enemy_entries:
+			scaled_total += FORMAL_PROGRESSION.get_scaled_enemy_count(
+				entry.count,
+				player_count
+			)
+		_expect(
+			scaled_total == int(FORMAL_FIRST_WAVE_SCALED_TOTALS[player_count]),
+			"Formal first wave %d-player scaling mismatch: %d"
+			% [player_count, scaled_total]
+		)
+
+
+func _verify_formal_day_one_economy(waves: Array[WaveConfig]) -> void:
+	var day_one_xirang := 0
+	for wave_index in range(4):
+		for entry in waves[wave_index].enemy_entries:
+			day_one_xirang += entry.count * entry.enemy_config.xirang_kill_reward
+	_expect(
+		day_one_xirang == FORMAL_DAY_ONE_XIRANG,
+		"Formal day-one Xirang baseline mismatch: %d" % day_one_xirang
+	)
 
 
 func _verify_performance_waves(waves: Array[WaveConfig]) -> void:
