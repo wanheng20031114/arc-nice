@@ -227,6 +227,7 @@ class ProbeTangoPlayer:
 	var charge_active := false
 	var barrage_active := false
 	var electric_surge_active := false
+	var force_full_charge := false
 	var charge_started_count := 0
 	var charge_released_count := 0
 	var charge_cancelled_count := 0
@@ -241,6 +242,52 @@ class ProbeTangoPlayer:
 	var remote_electric_surge_cancel_count := 0
 	var last_charge_ratio := 0.0
 	var last_remote_surge_remaining := 0.0
+	var last_reconnect_form_mode := -1
+	var last_reconnect_shot_pattern := -1
+
+	func apply_run_progression_snapshot(
+		_snapshot: Dictionary,
+		_refresh_stats: bool = true
+	) -> bool:
+		return true
+
+	func apply_multiplayer_snapshot_motion(
+		remote_position: Vector2,
+		remote_velocity: Vector2,
+		_facing_id: int,
+		_anim_state: int
+	) -> void:
+		global_position = remote_position
+		velocity = remote_velocity
+
+	func apply_multiplayer_realtime_state(
+		new_current_health: int,
+		new_max_health: int,
+		_new_current_xirang: int,
+		new_is_dead: bool,
+		new_invincibility_time_left: float,
+		_new_skill1_unlocked: bool,
+		_new_skill1_charge: float,
+		_new_skill1_charge_duration: float,
+		new_form_mode: int,
+		new_shot_pattern: int,
+		_new_skill1_upgrade_level: int = -1,
+		_new_ammo_capacity: int = -1,
+		_new_current_ammo: int = -1,
+		_new_is_reloading: bool = false,
+		_new_reload_progress: float = 0.0
+	) -> void:
+		current_health = new_current_health
+		max_health = new_max_health
+		is_dead = new_is_dead
+		invincibility_time_left = new_invincibility_time_left
+		last_reconnect_form_mode = new_form_mode
+		last_reconnect_shot_pattern = new_shot_pattern
+
+	func apply_multiplayer_effective_move_speed_multiplier(
+		_multiplier: float
+	) -> void:
+		pass
 
 	func try_start_authoritative_electric_surge(
 		_activation_id: int,
@@ -278,6 +325,26 @@ class ProbeTangoPlayer:
 		barrage_active = false
 		charge_started_count += 1
 		return true
+
+	func resolve_authoritative_tango_charge_progress_ratio(
+		elapsed_seconds: float
+	) -> float:
+		if not charge_active or not is_finite(elapsed_seconds):
+			return 0.0
+		if force_full_charge:
+			return 1.0
+		return clampf(maxf(elapsed_seconds, 0.0) / 2.4, 0.0, 1.0)
+
+	func resolve_authoritative_tango_charge_release_ratio(
+		elapsed_seconds: float
+	) -> float:
+		if not charge_active or not is_finite(elapsed_seconds):
+			return -1.0
+		if force_full_charge:
+			return 1.0
+		if elapsed_seconds + 0.0001 < 0.2:
+			return -1.0
+		return clampf((elapsed_seconds - 0.2) / (2.4 - 0.2), 0.0, 1.0)
 
 	func try_authoritative_tango_charge_released(
 		direction: Vector2,
@@ -445,6 +512,7 @@ var _probe_revive_action_cancel_count := 0
 var _probe_tiyi_clear_count := 0
 var _probe_committed_revive_position := Vector2.ZERO
 var _probe_action_broadcast_methods: Array[StringName] = []
+var _probe_action_broadcast_packets: Array[Dictionary] = []
 var _probe_action_to_host_methods: Array[StringName] = []
 var _probe_action_to_peer_methods: Array[StringName] = []
 var _probe_state_correction_count := 0
@@ -1195,6 +1263,65 @@ func _run() -> void:
 		and _probe_action_to_peer_methods.back() == &"net_tango_charge_rejected",
 		"无匹配蓄力的释放必须仅向请求端拒绝。"
 	)
+	tango_host_player.force_full_charge = true
+	_probe_net_time = 62.5
+	_expect(
+		coordinator.apply_authoritative_tango_charge_started(
+			6,
+			Vector2.LEFT,
+			3
+		),
+		"雪狼破军生效时，Host 必须仍通过标准 Tango 蓄力事务接纳攻击。"
+	)
+	coordinator.apply_authoritative_tango_charge_snapshot_ratios(
+		tango_states,
+		_probe_net_time
+	)
+	_expect(
+		is_equal_approx(tango_snapshot.primary_cooldown_ratio, 1.0),
+		"雪狼破军生效时，Host 快照必须立即发布 100% 蓄力比例。"
+	)
+	var full_charge_released := coordinator.apply_authoritative_tango_charge_released(
+		6,
+		Vector2.LEFT,
+		3
+	)
+	var full_charge_release_arguments := (
+		_probe_action_broadcast_packets.back()["arguments"] as Array
+	)
+	_expect(
+		full_charge_released
+		and tango_host_player.charge_released_count == 2
+		and is_equal_approx(tango_host_player.last_charge_ratio, 1.0)
+		and _probe_action_broadcast_methods.back() == &"net_tango_charge_released"
+		and full_charge_release_arguments.size() == 5
+		and is_equal_approx(float(full_charge_release_arguments[2]), 1.0),
+		"雪狼破军必须允许零等待释放，并由 Host 广播 100% 满充终端。"
+	)
+	var tango_reconnect_state := SnapshotManager.PlayerState.new()
+	tango_reconnect_state.peer_id = 6
+	tango_reconnect_state.character_id = &"tango"
+	tango_reconnect_state.current_health = 50
+	tango_reconnect_state.max_health = 50
+	tango_reconnect_state.form_mode = PickupConfig.PlayerFormMode.ARMED
+	tango_reconnect_state.shot_pattern = PickupConfig.ShotPattern.SPIRAL
+	_expect(
+		coordinator.restore_reconnected_player_snapshot(
+			tango_host_player,
+			tango_reconnect_state,
+			{},
+			_probe_net_time,
+			true,
+			1,
+			false
+		)
+		and tango_host_player.last_reconnect_form_mode
+			== PickupConfig.PlayerFormMode.NORMAL
+		and tango_host_player.last_reconnect_shot_pattern
+			== PickupConfig.ShotPattern.NORMAL,
+		"重连必须清除雪狼的场景瞬态，不能把旧 ARMED+SPIRAL 刷新成新的 20 秒。"
+	)
+	tango_host_player.force_full_charge = false
 	_probe_net_time = 63.0
 	coordinator.handle_tango_electric_surge_request(6, 1)
 	var active_surge_record := coordinator.get_active_tango_electric_surge_record(6)
@@ -1202,7 +1329,7 @@ func _run() -> void:
 		coordinator.has_active_tango_electric_surge(6)
 		and tango_host_player.electric_surge_started_count == 1
 		and int(active_surge_record.get("activation_id", 0)) == 1
-		and int(active_surge_record.get("charge_sequence", 0)) == 3
+		and int(active_surge_record.get("charge_sequence", 0)) == 4
 		and is_equal_approx(
 			coordinator.get_tango_laser_barrage_maximum_seconds(6, 1.0),
 			MpPlayerCoordinator.TANGO_ELECTRIC_SURGE_DURATION_SECONDS
@@ -1885,9 +2012,13 @@ func _probe_on_action_rpc_to_peer(
 
 func _probe_on_action_rpc_broadcast(
 	method_name: StringName,
-	_arguments: Array
+	arguments: Array
 ) -> void:
 	_probe_action_broadcast_methods.append(method_name)
+	_probe_action_broadcast_packets.append({
+		"method_name": method_name,
+		"arguments": arguments.duplicate(true),
+	})
 
 
 func _probe_on_player_state_correction(

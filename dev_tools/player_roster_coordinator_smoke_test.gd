@@ -309,6 +309,12 @@ func _test_mode_source_boundaries() -> void:
 		and not rogue_source.contains("func configure_multiplayer_players()"),
 		"玩家出生、快照与生命周期编排不得在普通/肉鸽模式重复实现。"
 	)
+	_expect(
+		shared_source.contains(
+			"resolve_authoritative_tango_charge_release_ratio"
+		),
+		"普通与肉鸽模式必须通过 Tango 的角色策略结算普通蓄力与雪狼满充。"
+	)
 	_expect(not standard_source.contains("RoguePlayerRosterCoordinator"), "普通玩家编排不得引用肉鸽实现。")
 	_expect(not rogue_source.contains("StandardPlayerRosterCoordinator"), "肉鸽玩家编排不得引用普通实现。")
 	_expect(not wave_source.contains("PlayerCharacterRegistry"), "中性 Wave 运行时不得拥有角色实例化规则。")

@@ -91,6 +91,13 @@ func _test_config_contract() -> void:
 			item.is_pickup_triggered_item() and not item.is_consumable_item(),
 			"%s 必须属于即时拾取触发分类。" % item.display_name
 		)
+	_expect(
+		is_equal_approx(SNOW_WOLF_POJUN.duration, 5.0)
+		and is_equal_approx(SNOW_WOLF_POJUN.tango_full_charge_duration, 20.0)
+		and SNOW_WOLF_POJUN.description.contains("探戈")
+		and SNOW_WOLF_POJUN.description.contains("20秒"),
+		"雪狼破军必须保留通用角色5秒效果，并单独声明 Tango 的20秒满充。"
+	)
 
 	var consumables: Array[PickupConfig] = [
 		HEALING_POTION,

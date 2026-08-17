@@ -36,9 +36,6 @@ var _spawn_offsets: Array[Vector2] = []
 var _respawn_delays: Array[int] = []
 var _respawn_invincibility_seconds := 0.0
 var _singleplayer_tango_charge_started_at := -1.0
-var _tango_minimum_charge_seconds := 0.0
-var _tango_maximum_charge_seconds := 0.0
-var _tango_threshold_epsilon := 0.0
 var _snapshot_encoder := PlayerSnapshotEncoder.new()
 var _applying_party_xirang_ledger := false
 
@@ -59,10 +56,7 @@ func setup(
 	default_character_id: StringName,
 	spawn_offsets: Array[Vector2],
 	respawn_delays: Array[int],
-	respawn_invincibility_seconds: float,
-	tango_minimum_charge_seconds: float,
-	tango_maximum_charge_seconds: float,
-	tango_threshold_epsilon: float
+	respawn_invincibility_seconds: float
 ) -> void:
 	runtime_mode = mode
 	local_peer_id = peer_id
@@ -80,9 +74,6 @@ func setup(
 	_spawn_offsets = spawn_offsets.duplicate()
 	_respawn_delays = respawn_delays.duplicate()
 	_respawn_invincibility_seconds = respawn_invincibility_seconds
-	_tango_minimum_charge_seconds = tango_minimum_charge_seconds
-	_tango_maximum_charge_seconds = tango_maximum_charge_seconds
-	_tango_threshold_epsilon = tango_threshold_epsilon
 
 
 func set_runtime_identity(mode: int, peer_id: int) -> void:
@@ -577,15 +568,10 @@ func request_tango_charge_released(direction: Vector2) -> bool:
 	if not _is_valid_tango(tango):
 		return false
 	var elapsed := maxf(Time.get_ticks_usec() / 1000000.0 - started_at, 0.0)
-	if elapsed + _tango_threshold_epsilon < _tango_minimum_charge_seconds:
+	var ratio := tango.resolve_authoritative_tango_charge_release_ratio(elapsed)
+	if ratio < 0.0:
 		tango.cancel_authoritative_tango_charge()
 		return true
-	var ratio := clampf(
-		(elapsed - _tango_minimum_charge_seconds)
-		/ (_tango_maximum_charge_seconds - _tango_minimum_charge_seconds),
-		0.0,
-		1.0
-	)
 	var result := tango.try_authoritative_tango_charge_released(
 		_sanitize_tango_direction(tango, direction), ratio
 	)

@@ -143,6 +143,11 @@ process_callback = 0
 wait_time = 8.0
 one_shot = true
 
+[node name="SnowWolfFullChargeTimer" type="Timer" parent="." unique_id=1958370461]
+process_callback = 0
+wait_time = 20.0
+one_shot = true
+
 [node name="AttackIntervalBar" parent="." unique_id=1362637025 instance=ExtResource("15_attack_bar")]
 z_index = 8
 offset_top = 11.0
@@ -245,3 +250,4 @@ bus = &"SFX"
 
 [connection signal="timeout" from="DashCooldownTimer" to="." method="_on_dash_cooldown_timer_timeout"]
 [connection signal="timeout" from="ElectricSurgeDurationTimer" to="." method="_on_electric_surge_duration_timer_timeout"]
+[connection signal="timeout" from="SnowWolfFullChargeTimer" to="." method="_on_snow_wolf_full_charge_timer_timeout"]

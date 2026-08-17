@@ -8,9 +8,6 @@ signal peer_restored(old_peer_id: int, new_peer_id: int)
 
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const MULTIPLAYER_DEFEAT_GRACE_SECONDS := 0.25
-const TANGO_MINIMUM_CHARGE_SECONDS := 0.2
-const TANGO_MAXIMUM_CHARGE_SECONDS := 2.4
-const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
 const INITIAL_PLAYER_XIRANG := 1000
 const SPAWN_OFFSETS := [
 	Vector2.ZERO,
@@ -341,15 +338,12 @@ func request_tango_charge_released(direction: Vector2) -> bool:
 	if tango == null or not is_instance_valid(tango):
 		return false
 	var elapsed := maxf(Time.get_ticks_usec() / 1000000.0 - started_at, 0.0)
-	if elapsed + TANGO_CHARGE_THRESHOLD_EPSILON < TANGO_MINIMUM_CHARGE_SECONDS:
+	var charge_ratio := tango.resolve_authoritative_tango_charge_release_ratio(
+		elapsed
+	)
+	if charge_ratio < 0.0:
 		tango.cancel_authoritative_tango_charge()
 		return true
-	var charge_ratio := clampf(
-		(elapsed - TANGO_MINIMUM_CHARGE_SECONDS)
-		/ (TANGO_MAXIMUM_CHARGE_SECONDS - TANGO_MINIMUM_CHARGE_SECONDS),
-		0.0,
-		1.0
-	)
 	var result := tango.try_authoritative_tango_charge_released(
 		_sanitize_tango_charge_direction(tango, direction),
 		charge_ratio

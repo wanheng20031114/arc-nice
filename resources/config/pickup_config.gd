@@ -240,6 +240,8 @@ func get_inventory_icon_scale() -> Vector2:
 @export var player_form_mode: PlayerFormMode = PlayerFormMode.NORMAL
 # 玩家拾取后使用的弹幕模式。
 @export var shot_pattern: ShotPattern = ShotPattern.NORMAL
+# Tango 对该形态道具的专属满充持续时间；0 表示 Tango 不接受此专属解释。
+@export_range(0.0, 120.0, 0.1, "or_greater") var tango_full_charge_duration: float = 0.0
 
 @export_group("收藏品效果")
 # 同名唯一生效的收藏品使用该 ID 去重；宝石和戒指可打开 stacks_by_copy 让每件都生效。

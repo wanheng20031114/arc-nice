@@ -8,9 +8,6 @@ const PLANT_REMOVAL_SMOKE_SCENE := preload(
 	"res://scene/game_modes/tower_defense/plant/presentation/plant_removal_smoke.tscn"
 )
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/enemy/yuanshi_insect/guardian_point_light.png")
-const TANGO_MINIMUM_CHARGE_SECONDS := 0.2
-const TANGO_MAXIMUM_CHARGE_SECONDS := 2.4
-const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
 const PLAYER_RESPAWN_DELAYS: Array[int] = [5, 10, 15, 20]
 const PLAYER_RESPAWN_INVINCIBILITY_SECONDS := 3.0
 const DEFAULT_BASE_HEALTH := 100
@@ -526,10 +523,7 @@ func _configure_player_roster_coordinator() -> bool:
 		TowerDefensePlayerRosterCoordinator.DEFAULT_PLAYER_CHARACTER_ID,
 		MULTIPLAYER_SPAWN_OFFSETS,
 		PLAYER_RESPAWN_DELAYS,
-		PLAYER_RESPAWN_INVINCIBILITY_SECONDS,
-		TANGO_MINIMUM_CHARGE_SECONDS,
-		TANGO_MAXIMUM_CHARGE_SECONDS,
-		TANGO_CHARGE_THRESHOLD_EPSILON
+		PLAYER_RESPAWN_INVINCIBILITY_SECONDS
 	)
 	player_roster_coordinator.singleplayer_respawn_time_left = (
 		_singleplayer_respawn_time_left

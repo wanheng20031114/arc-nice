@@ -3,6 +3,9 @@ extends SceneTree
 const TOWER_SCENE := preload(
 	"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
 )
+const SNOW_WOLF_POJUN := preload(
+	"res://resources/config/pickup_triggered_items/snow_wolf_pojun.tres"
+)
 
 var failures: Array[String] = []
 
@@ -242,10 +245,21 @@ func _test_singleplayer_death_and_tango_paths() -> void:
 		roster.local_player = tango
 		roster.set_runtime_identity(game.runtime_mode, game.multiplayer_local_peer_id)
 		_expect(
-			roster.request_tango_charge_started(Vector2.RIGHT)
-			and roster.request_tango_charge_released(Vector2.RIGHT),
-			"Tango 的 started/released 必须走强类型权威路径。"
+			tango.apply_pickup(SNOW_WOLF_POJUN)
+			and tango.get_snow_wolf_full_charge_remaining_seconds() > 19.9,
+			"塔防中的 Tango 必须消费雪狼破军并启动独立 20 秒满充状态。"
 		)
+		_expect(
+			roster.request_tango_charge_started(Vector2.RIGHT)
+			and roster.request_tango_charge_released(Vector2.RIGHT)
+			and tango.get_tango_casting_state()
+				== PlayerTango.CastingState.CONVERGING
+			and is_equal_approx(tango.get_tango_release_ratio(), 1.0)
+			and is_equal_approx(tango.get_tango_barrage_duration(), 5.0),
+			"塔防权威路径必须允许雪狼 Tango 零等待释放完整满充弹幕。"
+		)
+		tango.snow_wolf_full_charge_timer.stop()
+		tango.call("_reset_tango_combat_state", true)
 		_expect(
 			roster.request_tango_charge_started(Vector2.UP),
 			"Tango 必须能再次开始权威蓄力。"

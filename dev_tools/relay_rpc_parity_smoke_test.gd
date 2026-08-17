@@ -597,12 +597,12 @@ func _test_tango_charge_authority_source() -> void:
 			"varelapsed:=maxf(_get_action_net_time()-float(charge.get(\"started_at\",0.0)),0.0)"
 		)
 		and compact_player_source.contains(
-			"ifelapsed+TANGO_CHARGE_THRESHOLD_EPSILON<TANGO_CHARGE_MINIMUM_SECONDS:"
+			"tango_player.resolve_authoritative_tango_charge_release_ratio(elapsed)"
 		)
 		and compact_player_source.contains(
-			"(elapsed-TANGO_CHARGE_MINIMUM_SECONDS)/(TANGO_CHARGE_MAXIMUM_SECONDS-TANGO_CHARGE_MINIMUM_SECONDS)"
+			"ifcharge_ratio<0.0:"
 		),
-		"PlayerCoordinator must derive Tango charge duration and ratio from its Host clock."
+		"PlayerCoordinator must pass its Host elapsed time through Tango's authoritative charge policy."
 	)
 	_expect(
 		compact_player_source.contains(
@@ -669,9 +669,9 @@ func _test_tango_charge_authority_source() -> void:
 			"funcapply_authoritative_tango_charge_snapshot_ratios("
 		)
 		and compact_player_source.contains(
-			"state.primary_cooldown_ratio=clampf(maxf(sample_time-started_at,0.0)/TANGO_CHARGE_MAXIMUM_SECONDS,0.0,1.0)"
+			"tango_player.resolve_authoritative_tango_charge_progress_ratio(maxf(sample_time-started_at,0.0))"
 		),
-		"Host snapshots must derive Tango's charging bar from the authoritative start time."
+		"Host snapshots must resolve Tango's charging bar through the same character policy."
 	)
 	_expect(
 		compact_player_source.contains("has_local_tango_prediction()")

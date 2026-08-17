@@ -71,8 +71,6 @@ const PLAYER_ACTION_INGRESS_RATE_PER_SECOND := 24.0
 const PLAYER_ACTION_INGRESS_RATE_BURST := 32.0
 const HOE_ACTION_PRIMARY := &"primary"
 const HOE_ACTION_WHIRLWIND := &"whirlwind"
-const TANGO_CHARGE_MINIMUM_SECONDS := 0.2
-const TANGO_CHARGE_MAXIMUM_SECONDS := 2.4
 const TANGO_BARRAGE_MAXIMUM_SECONDS := 5.0
 const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
 const TANGO_CHARGE_PHASE_START := "start"
@@ -1020,11 +1018,14 @@ func apply_authoritative_tango_charge_snapshot_ratios(
 		) as Dictionary
 		if charge.is_empty():
 			continue
+		var tango_player := _get_tango_player(state.peer_id)
+		if tango_player == null:
+			continue
 		var started_at := float(charge.get("started_at", sample_time))
-		state.primary_cooldown_ratio = clampf(
-			maxf(sample_time - started_at, 0.0) / TANGO_CHARGE_MAXIMUM_SECONDS,
-			0.0,
-			1.0
+		state.primary_cooldown_ratio = (
+			tango_player.resolve_authoritative_tango_charge_progress_ratio(
+				maxf(sample_time - started_at, 0.0)
+			)
 		)
 
 
@@ -1248,15 +1249,12 @@ func apply_authoritative_tango_charge_released(
 		_get_action_net_time() - float(charge.get("started_at", 0.0)),
 		0.0
 	)
-	if elapsed + TANGO_CHARGE_THRESHOLD_EPSILON < TANGO_CHARGE_MINIMUM_SECONDS:
+	var charge_ratio := (
+		tango_player.resolve_authoritative_tango_charge_release_ratio(elapsed)
+	)
+	if charge_ratio < 0.0:
 		cancel_authoritative_tango_charge(peer_id, true, request_id)
 		return true
-	var charge_ratio := clampf(
-		(elapsed - TANGO_CHARGE_MINIMUM_SECONDS)
-		/ (TANGO_CHARGE_MAXIMUM_SECONDS - TANGO_CHARGE_MINIMUM_SECONDS),
-		0.0,
-		1.0
-	)
 	var safe_direction := _sanitize_tango_charge_direction(tango_player, direction)
 	var result := tango_player.try_authoritative_tango_charge_released(
 		safe_direction,
@@ -5032,6 +5030,15 @@ func _apply_realtime_snapshot(
 		if preserve_persistent_progression
 		else player_state.skill1_charge_duration
 	)
+	var snapshot_form_mode := player_state.form_mode
+	var snapshot_shot_pattern := player_state.shot_pattern
+	if preserve_persistent_progression and player_node is PlayerTango:
+		# Snow Wolf is a scene-local timed pickup. Reconnect snapshots do not carry
+		# its remaining duration, so restoring ARMED+SPIRAL would mint a fresh
+		# 20-second lease. Clear only this Tango transient on reconnect; ordinary
+		# realtime/late-join snapshots still reproduce the active presentation.
+		snapshot_form_mode = PickupConfig.PlayerFormMode.NORMAL
+		snapshot_shot_pattern = PickupConfig.ShotPattern.NORMAL
 	var snapshot_xirang := player_state.current_xirang
 	var ledger_peer_id := player_node.peer_id if player_node.peer_id > 0 else 0
 	if (
@@ -5064,8 +5071,8 @@ func _apply_realtime_snapshot(
 		snapshot_skill1_unlocked,
 		player_state.skill1_charge,
 		snapshot_skill1_duration,
-		player_state.form_mode,
-		player_state.shot_pattern,
+		snapshot_form_mode,
+		snapshot_shot_pattern,
 		snapshot_skill1_level,
 		player_state.ammo_capacity,
 		player_state.current_ammo,

@@ -25,6 +25,7 @@ const FULL_CHARGE_DAMAGE_MULTIPLIER := 1.5
 const MIN_BARRAGE_DURATION := 2.0
 const MAX_BARRAGE_DURATION := 5.0
 const CHARGE_THRESHOLD_EPSILON := 0.0001
+const INVALID_CHARGE_RATIO := -1.0
 const UNIT_ORBIT_RADIUS := Vector2(14.0, 8.0)
 const UNIT_ORBIT_PERIOD := 6.0
 const UNIT_CONVERGE_DURATION := 0.14
@@ -48,6 +49,7 @@ const ELECTRIC_SURGE_REMOTE_CAST_AUDIO_WINDOW := 1.0
 @onready var unit_b: AnimatedSprite2D = $CastingUnits/UnitB
 @onready var unit_c: AnimatedSprite2D = $CastingUnits/UnitC
 @onready var electric_surge_duration_timer: Timer = $ElectricSurgeDurationTimer
+@onready var snow_wolf_full_charge_timer: Timer = $SnowWolfFullChargeTimer
 @onready var primary_attack_audio: AudioStreamPlayer2D = get_node_or_null(
 	"PrimaryAttackAudio"
 ) as AudioStreamPlayer2D
@@ -125,6 +127,74 @@ func supports_projectile_attack_patterns() -> bool:
 
 func supports_research_technology() -> bool:
 	return true
+
+
+func _apply_character_pickup(config: PickupConfig, _buff_duration: float) -> bool:
+	if (
+		config == null
+		or config.pickup_type != PickupConfig.PickupType.SPIRAL
+		or config.player_form_mode != PickupConfig.PlayerFormMode.ARMED
+		or config.shot_pattern != PickupConfig.ShotPattern.SPIRAL
+		or config.tango_full_charge_duration <= 0.0
+		or snow_wolf_full_charge_timer == null
+	):
+		return false
+	_activate_snow_wolf_full_charge(config.tango_full_charge_duration, true)
+	return true
+
+
+func _activate_snow_wolf_full_charge(
+	duration_seconds: float,
+	refresh_duration: bool
+) -> void:
+	if snow_wolf_full_charge_timer == null:
+		return
+	if refresh_duration or snow_wolf_full_charge_timer.is_stopped():
+		snow_wolf_full_charge_timer.start(maxf(duration_seconds, 0.001))
+	if _casting_state == CastingState.CHARGING:
+		_charge_elapsed = MAX_CHARGE_DURATION
+		_update_charge_animation_speed()
+		_stop_charge_audio()
+	_update_attack_interval_bar()
+
+
+func is_snow_wolf_full_charge_active() -> bool:
+	return (
+		snow_wolf_full_charge_timer != null
+		and not snow_wolf_full_charge_timer.is_stopped()
+	)
+
+
+func get_snow_wolf_full_charge_remaining_seconds() -> float:
+	if not is_snow_wolf_full_charge_active():
+		return 0.0
+	return snow_wolf_full_charge_timer.time_left
+
+
+func resolve_authoritative_tango_charge_progress_ratio(
+	elapsed_seconds: float
+) -> float:
+	if _casting_state != CastingState.CHARGING or not is_finite(elapsed_seconds):
+		return 0.0
+	if is_snow_wolf_full_charge_active():
+		return 1.0
+	if _charge_elapsed >= MAX_CHARGE_DURATION - CHARGE_THRESHOLD_EPSILON:
+		return 1.0
+	return clampf(maxf(elapsed_seconds, 0.0) / MAX_CHARGE_DURATION, 0.0, 1.0)
+
+
+func resolve_authoritative_tango_charge_release_ratio(
+	elapsed_seconds: float
+) -> float:
+	if _casting_state != CastingState.CHARGING or not is_finite(elapsed_seconds):
+		return INVALID_CHARGE_RATIO
+	if is_snow_wolf_full_charge_active():
+		return 1.0
+	if _charge_elapsed >= MAX_CHARGE_DURATION - CHARGE_THRESHOLD_EPSILON:
+		return 1.0
+	if elapsed_seconds + CHARGE_THRESHOLD_EPSILON < MIN_CHARGE_DURATION:
+		return INVALID_CHARGE_RATIO
+	return _charge_elapsed_to_release_ratio(elapsed_seconds)
 
 
 func set_research_technology_level(level: int) -> void:
@@ -447,6 +517,10 @@ func _on_electric_surge_duration_timer_timeout() -> void:
 	_finish_electric_surge_state()
 
 
+func _on_snow_wolf_full_charge_timer_timeout() -> void:
+	_update_attack_interval_bar()
+
+
 func _finish_electric_surge_state() -> void:
 	if not _electric_surge_active:
 		return
@@ -532,6 +606,8 @@ func get_tango_max_charge_duration() -> float:
 
 
 func get_tango_charge_ratio() -> float:
+	if is_snow_wolf_full_charge_active():
+		return 1.0
 	if _casting_state != CastingState.CHARGING:
 		return 0.0
 	return clampf(_charge_elapsed / MAX_CHARGE_DURATION, 0.0, 1.0)
@@ -582,7 +658,52 @@ func get_primary_attack_cooldown_ratio() -> float:
 
 
 func get_primary_cooldown_ratio() -> float:
-	return get_primary_attack_cooldown_ratio()
+	# Snapshot cooldown represents an actual charge transaction. Snow Wolf keeps
+	# the local HUD ready while idle, but publishing 1.0 here would make remote
+	# replicas reconstruct a CHARGING state that never started.
+	if _casting_state != CastingState.CHARGING:
+		return 0.0
+	return get_tango_charge_ratio()
+
+
+func has_active_multiplayer_character_state() -> bool:
+	return is_snow_wolf_full_charge_active()
+
+
+func get_multiplayer_form_mode() -> int:
+	if is_snow_wolf_full_charge_active():
+		return PickupConfig.PlayerFormMode.ARMED
+	return PickupConfig.PlayerFormMode.NORMAL
+
+
+func get_multiplayer_shot_pattern() -> int:
+	if is_snow_wolf_full_charge_active():
+		return PickupConfig.ShotPattern.SPIRAL
+	return PickupConfig.ShotPattern.NORMAL
+
+
+func _apply_multiplayer_character_realtime_state(
+	form_mode: int,
+	shot_pattern: int,
+	_ammo_capacity: int,
+	_current_ammo: int,
+	_is_reloading: bool,
+	_reload_progress: float
+) -> void:
+	if snow_wolf_full_charge_timer == null:
+		return
+	var should_apply_full_charge := (
+		form_mode == PickupConfig.PlayerFormMode.ARMED
+		and shot_pattern == PickupConfig.ShotPattern.SPIRAL
+	)
+	if should_apply_full_charge:
+		_activate_snow_wolf_full_charge(
+			snow_wolf_full_charge_timer.wait_time,
+			false
+		)
+	elif not snow_wolf_full_charge_timer.is_stopped():
+		snow_wolf_full_charge_timer.stop()
+		_update_attack_interval_bar()
 
 
 func apply_multiplayer_tango_charge_snapshot(ratio: float, facing_id: int) -> void:
@@ -657,9 +778,13 @@ func _update_character_resources(delta: float) -> void:
 				cancel_authoritative_tango_charge()
 		return
 	if _casting_state == CastingState.CHARGING:
-		_charge_elapsed = minf(
-			_charge_elapsed + maxf(delta, 0.0),
+		_charge_elapsed = (
 			MAX_CHARGE_DURATION
+			if is_snow_wolf_full_charge_active()
+			else minf(
+				_charge_elapsed + maxf(delta, 0.0),
+				MAX_CHARGE_DURATION
+			)
 		)
 		_update_charge_animation_speed()
 
@@ -948,14 +1073,21 @@ func _accept_remote_tango_charge_terminal(sequence: int) -> bool:
 
 func _begin_charge_visual(direction: Vector2) -> void:
 	_casting_state_to(CastingState.CHARGING)
-	_charge_elapsed = 0.0
+	_charge_elapsed = (
+		MAX_CHARGE_DURATION
+		if is_snow_wolf_full_charge_active()
+		else 0.0
+	)
 	_charge_direction = direction
 	_attack_aim_uses_mouse = uses_local_input and mouse_fire_held
 	last_attack_direction = direction
 	_update_facing(Vector2.ZERO, direction)
 	_set_casting_unit_animation(&"charge")
 	_update_charge_animation_speed()
-	_play_charge_audio()
+	if is_snow_wolf_full_charge_active():
+		_stop_charge_audio()
+	else:
+		_play_charge_audio()
 
 
 func _cancel_charge_visual() -> void:
@@ -1522,6 +1654,8 @@ func _cleanup_character_combat_on_death() -> void:
 
 func _clear_character_scene_transients() -> void:
 	super._clear_character_scene_transients()
+	if snow_wolf_full_charge_timer != null:
+		snow_wolf_full_charge_timer.stop()
 	_finish_electric_surge_state()
 	_reset_tango_combat_state(true)
 	if casting_units != null:

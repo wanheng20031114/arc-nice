@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "f6c2595d639ed42d2f63c1d503510fa2f234d553a881b3a95be0ad4815186150",
+	"content_sha256": "ad6f311a70c9dc37ecc7f77ee3911dcd0a6f1a54ee20624430ab592d324e571d",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -3550,7 +3550,7 @@
 		},
 		{
 			"path": "res://resources/config/pickup_config.gd",
-			"sha256": "5d7e0b73a6da00e19232284af126579fb01bdcfbcefd8f1167422f780c84bc67"
+			"sha256": "3b14e04ea4e100d3850f1d14bb29d72cb6f4fe09b4d551ff247842b1f044def8"
 		},
 		{
 			"path": "res://resources/config/pickup_triggered_items/rapid_magazine.tres",
@@ -3558,7 +3558,7 @@
 		},
 		{
 			"path": "res://resources/config/pickup_triggered_items/snow_wolf_pojun.tres",
-			"sha256": "b218b5f463907316d8de43c5e210db2059b19b48a0a08ee726cc46cb659e801d"
+			"sha256": "7874facc79ed5bea9a2683bef5e6b2e9de3cc0730a5f1c91fceed8cda798348c"
 		},
 		{
 			"path": "res://resources/config/pickup_triggered_items/speed_boots.tres",
