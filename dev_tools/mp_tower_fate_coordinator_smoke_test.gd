@@ -112,8 +112,9 @@ class TestTowerAdapter:
 	func get_xiaocong_fate_state_snapshot() -> Dictionary:
 		return fate_snapshot.duplicate(true)
 
-	func apply_remote_xiaocong_fate_state(state: Dictionary) -> void:
+	func apply_remote_xiaocong_fate_state(state: Dictionary) -> bool:
 		applied_states.append(state.duplicate(true))
+		return true
 
 
 var failures: Array[String] = []
