@@ -96,6 +96,42 @@ func _run() -> void:
 		"暂停采集必须清空本轮进度与瓶身进度环，且不能额外产出。"
 	)
 	collector.set_production_enabled(true)
+	var modifier_system := PlantSystem.new()
+	test_root.add_child(modifier_system)
+	modifier_system.plant_footprints[collector] = (
+		collector.footprint_cells.duplicate()
+	)
+	modifier_system.set_global_water_collector_duration_multiplier(0.5)
+	_expect(
+		is_equal_approx(
+			modifier_system.get_global_water_collector_duration_multiplier(),
+			0.5
+		)
+		and is_equal_approx(
+			collector.get_production_duration_multiplier(),
+			0.5
+		)
+		and is_equal_approx(
+			collector.get_effective_production_duration_seconds(
+				collector.get_active_recipe()
+			),
+			10.0
+		),
+		"采水速率科研必须把现有水收集器的20秒单轮耗时缩短为10秒。"
+	)
+	collector.advance_shared_production_tick(1.0)
+	_test_collection_progress_ring(collector, 0.1)
+	_expect(
+		coordinator.get_total_item_count(WATER_BOTTLE) == 1
+		and is_equal_approx(collector.progress_elapsed_seconds, 2.0),
+		"0.5耗时倍率下每个真实秒必须推进2秒配方进度，且第1秒不能提前产出。"
+	)
+	collector.advance_shared_production_tick(9.0)
+	_expect(
+		coordinator.get_total_item_count(WATER_BOTTLE) == 2
+		and is_zero_approx(collector.progress_elapsed_seconds),
+		"采水速率科研生效后第10个真实秒必须完成一轮并产出1个水瓶。"
+	)
 
 	panel.open_for(collector, player)
 	await process_frame
@@ -235,9 +271,17 @@ func _test_collection_progress_ring(
 	progress_tween.custom_step(
 		collector.get_visual_projection_duration_seconds() * 0.5
 	)
+	var recipe := collector.get_active_recipe()
+	var expected_target := minf(
+		expected_authoritative_ratio
+		+ ProductionBuilding.VISUAL_PROJECTION_WINDOW_SECONDS
+		/ collector.get_production_duration_multiplier()
+		/ recipe.duration_seconds,
+		1.0
+	)
 	var expected_half_step := lerpf(
 		expected_authoritative_ratio,
-		1.0,
+		expected_target,
 		0.5
 	)
 	_expect(
@@ -358,6 +402,24 @@ func _test_four_water_cell_support(test_root: Node) -> void:
 	_expect(anchor != Vector2i(9999, 9999), "实际地图必须存在完整2×2水面测试区域。")
 	if anchor == Vector2i(9999, 9999):
 		return
+	plant_system.set_global_water_collector_duration_multiplier(0.5)
+	var replica := plant_system.spawn_multiplayer_replica(
+		WATER_COLLECTOR_CONFIG.plant_id,
+		anchor,
+		game.player,
+		99001,
+		WATER_COLLECTOR_CONFIG.max_health,
+		WATER_COLLECTOR_CONFIG.max_health,
+		1
+	) as WaterCollector
+	_expect(
+		replica != null
+		and is_equal_approx(replica.get_production_duration_multiplier(), 0.5),
+		"科研完成后新建的水收集器副本必须在setup之后立即继承0.5耗时倍率。"
+	)
+	if replica != null:
+		replica.begin_removal(PlantDefense.RemovalMode.SILENT)
+		await process_frame
 	var cells := plant_system.get_footprint_cells(anchor, WATER_COLLECTOR_CONFIG)
 	var all_supported := true
 	for cell in cells:

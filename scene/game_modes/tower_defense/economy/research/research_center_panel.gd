@@ -29,6 +29,9 @@ const VEGETATION_STAKE_SPREAD_ENHANCEMENT_RESEARCH_ID := (
 const VEGETATION_ENHANCEMENT_RESEARCH_ID := (
 	GlobalResearchRegistry.VEGETATION_ENHANCEMENT_ID
 )
+const WATER_COLLECTION_RATE_ENHANCEMENT_RESEARCH_ID := (
+	GlobalResearchRegistry.WATER_COLLECTION_RATE_ENHANCEMENT_ID
+)
 const GLOBAL_RESEARCH_IDS: Array[StringName] = [
 	BUILDING_DEFENSE_RESEARCH_ID,
 	PLAYER_MOVE_SPEED_RESEARCH_ID,
@@ -37,6 +40,7 @@ const GLOBAL_RESEARCH_IDS: Array[StringName] = [
 	ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID,
 	VEGETATION_STAKE_SPREAD_ENHANCEMENT_RESEARCH_ID,
 	VEGETATION_ENHANCEMENT_RESEARCH_ID,
+	WATER_COLLECTION_RATE_ENHANCEMENT_RESEARCH_ID,
 ]
 const DEFAULT_RESEARCH_ID := BUILDING_DEFENSE_RESEARCH_ID
 const MATERIAL_SLOT_POSITIONS: Array[Vector2] = [
@@ -89,6 +93,9 @@ const LINE_ON_COLOR := Color(0.18, 0.88, 1.35, 1.0)
 @onready var vegetation_enhancement_research_button: Button = (
 	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/VegetationEnhancementResearchButton
 )
+@onready var water_collection_rate_research_button: Button = (
+	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/WaterCollectionRateResearchButton
+)
 @onready var global_research_buttons: Array[Button] = [
 	defense_research_button,
 	move_speed_research_button,
@@ -97,6 +104,7 @@ const LINE_ON_COLOR := Color(0.18, 0.88, 1.35, 1.0)
 	orange_charging_tower_research_button,
 	vegetation_stake_spread_research_button,
 	vegetation_enhancement_research_button,
+	water_collection_rate_research_button,
 ]
 @onready var global_research_name: Label = (
 	$Overlay/PanelRoot/GlobalPage/ResearchName

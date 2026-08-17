@@ -49,7 +49,7 @@ const REGISTERED_ENTRY_COUNTS := {
 	CodexSection.ITEM: 36,
 	CodexSection.CHARACTER: 4,
 	CodexSection.RECIPE: 32,
-	CodexSection.RESEARCH: 7,
+	CodexSection.RESEARCH: 8,
 }
 const COLLECTIBLE_ACCENTS: Array[Color] = [
 	Color("#f0e3c2"),
@@ -1184,7 +1184,8 @@ func _get_research_filter_key(
 		GlobalResearchConfig.EffectType.SIMPLE_CRAFTING_RECIPE_UNLOCK, \
 		GlobalResearchConfig.EffectType.PRODUCTION_RECIPE_UNLOCK:
 			return &"recipe_unlock"
-		GlobalResearchConfig.EffectType.VEGETATION_SPREAD_SPEED_MULTIPLIER:
+		GlobalResearchConfig.EffectType.VEGETATION_SPREAD_SPEED_MULTIPLIER, \
+		GlobalResearchConfig.EffectType.WATER_COLLECTOR_DURATION_MULTIPLIER:
 			return &"building_enhancement"
 		_:
 			return &"attribute"

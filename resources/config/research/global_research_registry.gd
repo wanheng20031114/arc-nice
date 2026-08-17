@@ -14,6 +14,9 @@ const VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID: StringName = (
 	&"vegetation_stake_spread_enhancement"
 )
 const VEGETATION_ENHANCEMENT_ID: StringName = &"vegetation_enhancement"
+const WATER_COLLECTION_RATE_ENHANCEMENT_ID: StringName = (
+	&"water_collection_rate_enhancement"
+)
 const RESEARCH_ORDER: Array[StringName] = [
 	BUILDING_DEFENSE_ID,
 	PLAYER_MOVE_SPEED_ID,
@@ -22,6 +25,7 @@ const RESEARCH_ORDER: Array[StringName] = [
 	ORANGE_CHARGING_TOWER_CRAFTING_ID,
 	VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID,
 	VEGETATION_ENHANCEMENT_ID,
+	WATER_COLLECTION_RATE_ENHANCEMENT_ID,
 ]
 const MAX_WIRE_RESEARCH_ID_LENGTH := 64
 
@@ -46,6 +50,9 @@ const VEGETATION_STAKE_SPREAD_ENHANCEMENT: GlobalResearchConfig = preload(
 const VEGETATION_ENHANCEMENT: GlobalResearchConfig = preload(
 	"res://resources/config/research/vegetation_enhancement.tres"
 )
+const WATER_COLLECTION_RATE_ENHANCEMENT: GlobalResearchConfig = preload(
+	"res://resources/config/research/water_collection_rate_enhancement.tres"
+)
 
 const RESEARCH_PROJECTS := {
 	BUILDING_DEFENSE_ID: BUILDING_DEFENSE,
@@ -57,6 +64,7 @@ const RESEARCH_PROJECTS := {
 		VEGETATION_STAKE_SPREAD_ENHANCEMENT
 	),
 	VEGETATION_ENHANCEMENT_ID: VEGETATION_ENHANCEMENT,
+	WATER_COLLECTION_RATE_ENHANCEMENT_ID: WATER_COLLECTION_RATE_ENHANCEMENT,
 }
 
 

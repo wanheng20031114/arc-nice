@@ -32,6 +32,9 @@ const VEGETATION_STAKE_SPREAD_ENHANCEMENT_RESEARCH_ID := (
 const VEGETATION_ENHANCEMENT_RESEARCH_ID := (
 	GlobalResearchRegistry.VEGETATION_ENHANCEMENT_ID
 )
+const WATER_COLLECTION_RATE_ENHANCEMENT_RESEARCH_ID := (
+	GlobalResearchRegistry.WATER_COLLECTION_RATE_ENHANCEMENT_ID
+)
 const GLOBAL_RESEARCH_DURATION_SECONDS := 60.0
 const GLOBAL_PHYSICAL_DEFENSE_BONUS := 10
 const GLOBAL_PLAYER_MOVE_SPEED_BONUS := 15.0
@@ -257,6 +260,19 @@ func get_grass_heal_ratio_bonus() -> float:
 	return _get_completed_global_effect_total(
 		GlobalResearchConfig.EffectType.GRASS_HEAL_RATIO_BONUS
 	)
+
+
+func get_water_collector_duration_multiplier() -> float:
+	var multiplier := 1.0
+	for config in GlobalResearchRegistry.get_all_configs():
+		if (
+			config.effect_type
+			== GlobalResearchConfig.EffectType.WATER_COLLECTOR_DURATION_MULTIPLIER
+			and get_global_research_state(config.research_id)
+			== GlobalResearchState.COMPLETED
+		):
+			multiplier = minf(multiplier, config.effect_amount)
+	return multiplier
 
 
 func get_global_material_total(item: PickupConfig) -> int:
@@ -614,6 +630,9 @@ func _apply_global_bonuses() -> void:
 			roundi(_get_completed_global_effect_total(
 				GlobalResearchConfig.EffectType.BUILDING_PHYSICAL_DEFENSE
 			))
+		)
+		plant_system.set_global_water_collector_duration_multiplier(
+			get_water_collector_duration_multiplier()
 		)
 	_apply_global_player_bonus_to_registered_players()
 

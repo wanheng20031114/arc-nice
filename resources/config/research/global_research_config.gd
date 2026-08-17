@@ -10,6 +10,7 @@ enum EffectType {
 	PRODUCTION_RECIPE_UNLOCK,
 	VEGETATION_SPREAD_SPEED_MULTIPLIER,
 	GRASS_HEAL_RATIO_BONUS,
+	WATER_COLLECTOR_DURATION_MULTIPLIER,
 }
 
 @export_group("基础信息")
@@ -44,7 +45,7 @@ func is_valid() -> bool:
 		or duration_seconds <= 0.0
 		or not is_finite(effect_amount)
 		or effect_type < EffectType.BUILDING_PHYSICAL_DEFENSE
-		or effect_type > EffectType.GRASS_HEAL_RATIO_BONUS
+		or effect_type > EffectType.WATER_COLLECTOR_DURATION_MULTIPLIER
 	):
 		return false
 	match effect_type:
@@ -58,6 +59,14 @@ func is_valid() -> bool:
 			if (
 				unlocked_production_recipe_id == &""
 				or effect_amount != 0.0
+			):
+				return false
+		EffectType.WATER_COLLECTOR_DURATION_MULTIPLIER:
+			if (
+				effect_amount <= 0.0
+				or effect_amount > 1.0
+				or unlocked_simple_crafting_recipe_id != &""
+				or unlocked_production_recipe_id != &""
 			):
 				return false
 		_:

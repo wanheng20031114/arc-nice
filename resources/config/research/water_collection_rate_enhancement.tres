@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GlobalResearchConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/research/global_research_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_white_crystal_powder.tres" id="2_white_powder"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="3_water"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="4_plank"]
+[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="5_pickup_script"]
+
+[resource]
+script = ExtResource("1_script")
+research_id = &"water_collection_rate_enhancement"
+display_name = "采水速率提升"
+description = "水收集器单轮耗时缩短50%。"
+result_summary = "水收集器单轮耗时 -50%"
+input_items = Array[ExtResource("5_pickup_script")]([ExtResource("2_white_powder"), ExtResource("3_water"), ExtResource("4_plank")])
+input_amounts = Array[int]([3, 10, 20])
+duration_seconds = 30.0
+effect_type = 6
+effect_amount = 0.5

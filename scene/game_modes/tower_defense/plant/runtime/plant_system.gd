@@ -41,6 +41,7 @@ const CARDINAL_NEIGHBOR_OFFSETS := [
 ]
 # Cardinal topology bits: up=1, right=2, down=4, left=8.
 const CARDINAL_NEIGHBOR_BITS := [1, 2, 4, 8]
+const WATER_COLLECTOR_RESEARCH_MODIFIER_SOURCE_ID := -10001
 
 @export_range(0, 64, 1) var max_placement_manhattan_distance: int = (
 	MAX_PLACEMENT_MANHATTAN_DISTANCE
@@ -53,6 +54,7 @@ var plant_container: Node2D = null
 var combat_runtime: CombatRuntimeBase = null
 var tower_multiplayer_mode_adapter: TowerPlantGameplayPort = null
 var global_physical_defense_bonus := 0
+var global_water_collector_duration_multiplier := 1.0
 var placement_area: Rect2i = DEFAULT_PLACEMENT_AREA
 
 var occupied_cells: Dictionary = {}
@@ -384,6 +386,7 @@ func _instantiate_registered_plant(
 	)
 	_register_plant_terrain_support(plant)
 	plant.set_global_physical_defense_bonus(global_physical_defense_bonus)
+	_apply_water_collector_duration_multiplier(plant)
 	if plant.is_dead:
 		return null
 	plant_placed.emit(plant)
@@ -400,6 +403,37 @@ func set_global_physical_defense_bonus(bonus: int) -> void:
 
 func get_global_physical_defense_bonus() -> int:
 	return global_physical_defense_bonus
+
+
+func set_global_water_collector_duration_multiplier(multiplier: float) -> void:
+	global_water_collector_duration_multiplier = (
+		clampf(multiplier, ProductionBuilding.MIN_PRODUCTION_DURATION_MULTIPLIER, 1.0)
+		if is_finite(multiplier) and multiplier > 0.0
+		else 1.0
+	)
+	for plant_variant in plant_footprints.keys():
+		var plant := plant_variant as PlantDefense
+		if plant != null and is_instance_valid(plant):
+			_apply_water_collector_duration_multiplier(plant)
+
+
+func get_global_water_collector_duration_multiplier() -> float:
+	return global_water_collector_duration_multiplier
+
+
+func _apply_water_collector_duration_multiplier(plant: PlantDefense) -> void:
+	var collector := plant as WaterCollector
+	if collector == null:
+		return
+	if is_equal_approx(global_water_collector_duration_multiplier, 1.0):
+		collector.remove_production_duration_multiplier_modifier(
+			WATER_COLLECTOR_RESEARCH_MODIFIER_SOURCE_ID
+		)
+		return
+	collector.add_production_duration_multiplier_modifier(
+		WATER_COLLECTOR_RESEARCH_MODIFIER_SOURCE_ID,
+		global_water_collector_duration_multiplier
+	)
 
 
 func try_place_by_id(plant_id: StringName, top_left_cell: Vector2i) -> PlantDefense:

@@ -113,7 +113,7 @@ func _test_codex_and_fate() -> void:
 
 
 func _test_protocol_and_no_new_attack_resources() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 81, "协议v81必须保留内容摘要、同局成员身份和精英忍者资源语义。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 82, "协议v82必须保留内容摘要、同局成员身份和精英忍者资源语义。")
 	_expect(
 		CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET == 18
 		and CombatAttackRegistry.encode_player_hit_source(

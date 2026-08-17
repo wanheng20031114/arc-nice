@@ -65,7 +65,9 @@ func _sync_collection_progress(_replicate: bool = false) -> void:
 		return
 	var progress_target := minf(
 		progress_start
-		+ VISUAL_PROJECTION_WINDOW_SECONDS / recipe.duration_seconds,
+		+ VISUAL_PROJECTION_WINDOW_SECONDS
+		/ get_production_duration_multiplier()
+		/ recipe.duration_seconds,
 		1.0
 	)
 	if progress_target <= progress_start + PROGRESS_EPSILON:
