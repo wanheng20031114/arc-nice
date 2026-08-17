@@ -313,7 +313,9 @@ static func load_enemy_config_from_path(raw_path: String) -> EnemyConfig:
 	if enemy_id.is_empty():
 		return null
 	var trusted_path := str(ENEMY_ID_TO_PATH.get(enemy_id, ""))
-	return ResourceLoader.load(trusted_path, "EnemyConfig") as EnemyConfig
+	# Exported script resources are binary Resource instances at loader-selection time.
+	# Keep the allowlist as the trust boundary, then validate the script class by cast.
+	return ResourceLoader.load(trusted_path) as EnemyConfig
 
 
 static func load_pickup_config_from_path(raw_path: String) -> PickupConfig:
@@ -321,7 +323,8 @@ static func load_pickup_config_from_path(raw_path: String) -> PickupConfig:
 	if pickup_id.is_empty():
 		return null
 	var trusted_path := str(PICKUP_ID_TO_PATH.get(pickup_id, ""))
-	return ResourceLoader.load(trusted_path, "PickupConfig") as PickupConfig
+	# A custom script-class type hint rejects cold binary .res loads in exported builds.
+	return ResourceLoader.load(trusted_path) as PickupConfig
 
 
 static func is_registered_enemy_config(config: EnemyConfig) -> bool:

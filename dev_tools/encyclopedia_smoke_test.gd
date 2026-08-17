@@ -1348,6 +1348,19 @@ func _test_detail_layout_regression(
 		% detail_rect.size.x
 	)
 	_expect(
+		absf(detail_rect.size.y - workspace_rect.size.y) <= 2.0
+		and screen.detail_panel.get_scroll_control().size.y >= 120.0,
+		(
+			"Detail inspector must fill the workspace vertically and keep a visible "
+			+ "text viewport; detail=%.2f workspace=%.2f scroll=%.2f."
+		)
+		% [
+			detail_rect.size.y,
+			workspace_rect.size.y,
+			screen.detail_panel.get_scroll_control().size.y,
+		]
+	)
+	_expect(
 		absf(selected_card.global_position.y - closed_anchor_y) <= 3.0,
 		"Grid reflow must preserve the selected card's screen-space Y anchor."
 	)

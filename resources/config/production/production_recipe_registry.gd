@@ -216,7 +216,9 @@ static func get_recipe(recipe_id: StringName) -> ProductionRecipe:
 	var path := str(RECIPE_ID_TO_PATH.get(recipe_id, ""))
 	if path.is_empty():
 		return null
-	var recipe := ResourceLoader.load(path, "ProductionRecipe") as ProductionRecipe
+	# Validate the exported binary resource after loading; custom script-class loader
+	# hints are only reliable for the source .tres representation.
+	var recipe := ResourceLoader.load(path) as ProductionRecipe
 	return (
 		recipe
 		if (

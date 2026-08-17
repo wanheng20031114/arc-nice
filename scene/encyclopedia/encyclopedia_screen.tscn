@@ -552,7 +552,8 @@ text = "没有符合条件的档案"
 
 [node name="DetailPanel" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace" instance=ExtResource("4_detail")]
 visible = false
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 11
 anchor_left = 1.0
 anchor_top = 0.0
 anchor_right = 1.0

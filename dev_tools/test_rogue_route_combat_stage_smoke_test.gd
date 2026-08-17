@@ -6,6 +6,9 @@ const ROUTE_SCENE := preload(
 const GENERATION_CONFIG := preload(
 	"res://resources/config/rogue_route/p3_generation_config.tres"
 )
+const NON_COLLECTIBLE_PICKUP_PATH := (
+	"res://resources/config/materials/material_wood.tres"
+)
 const MAX_SEED_SEARCH := 2048
 
 var _failures: Array[String] = []
@@ -449,6 +452,18 @@ func _test_result_overlay(route: RogueRouteGame) -> void:
 	)
 	route.combat_result_overlay.close_button.pressed.emit()
 	_expect(dismissed_events.size() == 1, "关闭结果面板必须向路线协调器转发 dismissed。")
+	_expect(
+		not route.show_combat_result({
+			"victory": true,
+			"extra_xirang": 500,
+			"loot": {
+				"config_path": NON_COLLECTIBLE_PICKUP_PATH,
+				"granted": false,
+				"failure_reason": &"inventory_full",
+			},
+		}),
+		"路线结算必须拒绝存在但不属于收藏品信任池的资源路径。"
+	)
 	_expect(
 		route.show_combat_result({
 			"victory": false,

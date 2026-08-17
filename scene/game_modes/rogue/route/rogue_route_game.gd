@@ -2700,9 +2700,7 @@ func show_combat_result(result: Dictionary) -> bool:
 	var config_path := str(loot["config_path"])
 	var loot_config: PickupConfig = null
 	if not config_path.is_empty():
-		if not ResourceLoader.exists(config_path, "PickupConfig"):
-			return false
-		loot_config = load(config_path) as PickupConfig
+		loot_config = CollectibleRegistry.get_for_path(config_path)
 		if loot_config == null:
 			return false
 	var inventory_full := (
