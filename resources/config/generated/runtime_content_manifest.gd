@@ -4,7 +4,7 @@ class_name RuntimeContentManifest
 ## 此文件由 dev_tools/generate_runtime_content_manifest.gd 生成，禁止手改。
 ## 运行时只信任这组编译期常量；JSON 清单用于代码审查与 --check 重现。
 const SCHEMA_VERSION := 1
-const CONTENT_SHA256 := "95a8ef590111fd5703d3b445c8bac98562b866d4b982d27f71d21f6a3652b7c6"
+const CONTENT_SHA256 := "8515b06d06c4e6007db8efc62faa41bb9176010a180570a8a08f111daecfdae8"
 const ENEMY_ROOT_COUNT := 64
 const PICKUP_ROOT_COUNT := 181
 const CAMPAIGN_ROOT_COUNT := 26

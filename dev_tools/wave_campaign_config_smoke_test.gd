@@ -12,7 +12,7 @@ const FORMAL_PROGRESSION: TowerDefenseProgressionConfig = preload(
 	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
 )
 const FORMAL_TOTALS: Array[int] = [
-	2600, 3850, 3470, 2080, 2100, 2240, 2150, 2240, 3120, 3780, 3000, 4900,
+	2600, 3850, 3380, 2080, 2100, 2240, 2150, 2240, 3120, 3780, 3000, 4900,
 ]
 const FORMAL_FIRST_WAVE_SCALED_TOTALS := {
 	1: 2600,
@@ -20,7 +20,10 @@ const FORMAL_FIRST_WAVE_SCALED_TOTALS := {
 	4: 4550,
 	8: 7150,
 }
-const FORMAL_DAY_ONE_XIRANG := 16330
+const FORMAL_DAY_ONE_XIRANG := 16240
+const FORMAL_THIRD_WAVE_GREEN_SLIME_PATH := (
+	"res://resources/config/enemies/slime_green.tres"
+)
 const FORMAL_FIRST_WAVE_ENTRY_TRACE: Array[String] = [
 	"res://resources/config/enemies/slime.tres:100",
 	"res://resources/config/enemies/slime_fire.tres:100",
@@ -173,6 +176,7 @@ func _verify_formal_waves(waves: Array[WaveConfig]) -> void:
 		"Formal first wave must spawn one enemy batch every 0.2 seconds."
 	)
 	_verify_formal_first_wave(waves[0])
+	_verify_formal_third_wave(waves[2])
 	for wave_index in waves.size():
 		var wave := waves[wave_index]
 		var expected_path := (
@@ -239,6 +243,24 @@ func _verify_formal_first_wave(wave: WaveConfig) -> void:
 			"Formal first wave %d-player scaling mismatch: %d"
 			% [player_count, scaled_total]
 		)
+
+
+func _verify_formal_third_wave(wave: WaveConfig) -> void:
+	var green_slime_entries := 0
+	var green_slime_count := 0
+	for entry in wave.enemy_entries:
+		if (
+			entry != null
+			and entry.enemy_config != null
+			and entry.enemy_config.resource_path
+				== FORMAL_THIRD_WAVE_GREEN_SLIME_PATH
+		):
+			green_slime_entries += 1
+			green_slime_count = entry.count
+	_expect(
+		green_slime_entries == 1 and green_slime_count == 10,
+		"Formal third wave must contain exactly 10 green slimes."
+	)
 
 
 func _verify_formal_day_one_economy(waves: Array[WaveConfig]) -> void:

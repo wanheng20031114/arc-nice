@@ -38,7 +38,7 @@ count = 400
 [sub_resource type="Resource" id="Resource_rnl7b"]
 script = ExtResource("1_brp5b")
 enemy_config = ExtResource("6_gl4kc")
-count = 100
+count = 10
 
 [sub_resource type="Resource" id="Resource_07xjh"]
 script = ExtResource("1_brp5b")
