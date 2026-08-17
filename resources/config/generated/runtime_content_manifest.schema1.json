@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "f6bf5841d4a963d949db86e3a84fb7b4fd52552359c3e24b00a68e8e6dc9916b",
+	"content_sha256": "95a8ef590111fd5703d3b445c8bac98562b866d4b982d27f71d21f6a3652b7c6",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -6130,7 +6130,7 @@
 		},
 		{
 			"path": "res://scene/enemy/enemy.gd",
-			"sha256": "9d8d9a63afdbd63b4d872d867659b4217abf1b07d0c15ba80b854f34f64a6f2c"
+			"sha256": "d06c69982edffe1ad6ba924885a35d972f2e5415a2a7c920b9768176a31ce18a"
 		},
 		{
 			"path": "res://scene/enemy/enemy.tscn",

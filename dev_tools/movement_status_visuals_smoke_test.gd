@@ -31,6 +31,7 @@ func _run() -> void:
 	test_root.add_child(session_object_pool)
 	session_object_pool.register_scene(SPEED_TRAIL_SCENE, 0, 4)
 
+	_test_burn_overlay_strength_contract()
 	_test_motion_status_shader_preserves_default_texture_color()
 	await _test_player_movement_status_visuals()
 	await _test_enemy_movement_status_visuals()
@@ -49,6 +50,21 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_burn_overlay_strength_contract() -> void:
+	_expect(
+		is_equal_approx(Enemy.BURN_OVERLAY_ACTIVE_STRENGTH, 0.72)
+		and is_equal_approx(
+			Player.BURN_OVERLAY_ACTIVE_STRENGTH,
+			Enemy.BURN_OVERLAY_ACTIVE_STRENGTH
+		)
+		and is_equal_approx(
+			PlantDefense.BURN_OVERLAY_ACTIVE_STRENGTH,
+			Enemy.BURN_OVERLAY_ACTIVE_STRENGTH
+		),
+		"Enemy, Player, and PlantDefense must share the stronger 0.72 burn tint."
+	)
 
 
 func _test_motion_status_shader_preserves_default_texture_color() -> void:
@@ -398,7 +414,10 @@ func _benchmark_unchanged_network_status_mask(
 	enemy.configure_multiplayer_proxy()
 	enemy.apply_multiplayer_visual_status_mask(0b0001)
 	_expect(
-		_get_instance_shader_float(sprite, BURN_OVERLAY_PARAMETER) > 0.0,
+		is_equal_approx(
+			_get_instance_shader_float(sprite, BURN_OVERLAY_PARAMETER),
+			Enemy.BURN_OVERLAY_ACTIVE_STRENGTH
+		),
 		"The network-status benchmark must start with an active burn overlay."
 	)
 

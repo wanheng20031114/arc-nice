@@ -37,6 +37,7 @@ func _run() -> void:
 	enemy_status_scheduler = root.get_node("EnemyCollectibleStatusScheduler")
 	_reset_schedulers()
 
+	_test_burn_overlay_strength_contract()
 	await _test_player_damage_type_and_independent_visual_lifecycle()
 	await _test_plant_bleed_contract_and_movement_status_rejection()
 	await _test_enemy_shared_timeline_and_scoped_clear()
@@ -54,6 +55,21 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_burn_overlay_strength_contract() -> void:
+	_expect(
+		is_equal_approx(Enemy.BURN_OVERLAY_ACTIVE_STRENGTH, 0.72)
+		and is_equal_approx(
+			Player.BURN_OVERLAY_ACTIVE_STRENGTH,
+			Enemy.BURN_OVERLAY_ACTIVE_STRENGTH
+		)
+		and is_equal_approx(
+			PlantDefense.BURN_OVERLAY_ACTIVE_STRENGTH,
+			Enemy.BURN_OVERLAY_ACTIVE_STRENGTH
+		),
+		"Enemy, Player, and PlantDefense burn overlays must share the stronger 0.72 tint."
+	)
 
 
 func _test_player_damage_type_and_independent_visual_lifecycle() -> void:
@@ -83,7 +99,7 @@ func _test_player_damage_type_and_independent_visual_lifecycle() -> void:
 		and _get_shader_strength(
 			body_sprite,
 			Player.BURN_OVERLAY_STRENGTH_SHADER_PARAMETER
-		) > 0.0
+		) == Player.BURN_OVERLAY_ACTIVE_STRENGTH
 		and _get_shader_strength(
 			body_sprite,
 			Player.BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER
@@ -223,7 +239,7 @@ func _test_plant_bleed_contract_and_movement_status_rejection() -> void:
 		and _get_shader_strength(
 			proxy_body,
 			PlantDefense.BURN_OVERLAY_PARAMETER
-		) > 0.0
+		) == PlantDefense.BURN_OVERLAY_ACTIVE_STRENGTH
 		and _get_shader_strength(
 			proxy_body,
 			PlantDefense.BLEED_OVERLAY_PARAMETER
@@ -309,6 +325,10 @@ func _test_enemy_shared_timeline_and_scoped_clear() -> void:
 		)
 		and enemy.has_collectible_status(&"chill")
 		and enemy.has_collectible_status(&"mark")
+		and is_equal_approx(
+			enemy.burn_overlay_strength,
+			Enemy.BURN_OVERLAY_ACTIVE_STRENGTH
+		)
 		and not bool(bleed_scheduler.call("has_status", enemy)),
 		"Enemy external DOTs must live on its existing collectible timeline, not the Player/Plant bleed lane."
 	)
