@@ -318,7 +318,7 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"res://resources/config/pickup_triggered_items/snow_wolf_pojun.tres",
 	]
 	var expected_chances: Array[float] = [
-		0.02,
+		0.04,
 		0.002,
 		0.01,
 		0.01,

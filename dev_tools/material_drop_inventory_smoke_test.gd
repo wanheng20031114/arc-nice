@@ -234,6 +234,13 @@ func _test_deterministic_independent_drop_resolution() -> void:
 	var global_rules := DEFAULT_ENEMY_DROP_TABLE.get_eligible_rules(
 		PackedStringArray()
 	)
+	var wood_rule: EnemyDropRule = _find_drop_rule(WOOD)
+	_expect(
+		wood_rule != null
+		and is_equal_approx(wood_rule.chance, 0.04)
+		and wood_rule.required_tags.is_empty(),
+		"Wood must remain one global independent drop rule with a 4% chance."
+	)
 	_expect(
 		global_rules.size() == 7,
 		"An untagged enemy must independently evaluate three common materials and four pickup-triggered items, with no consumables."
@@ -266,6 +273,26 @@ func _test_deterministic_independent_drop_resolution() -> void:
 			boundary_rolls
 		).is_empty(),
 		"A roll equal to its configured chance must fail the strict probability boundary."
+	)
+	var wood_success_rolls: Array[float] = []
+	var wood_boundary_rolls: Array[float] = []
+	for rule in global_rules:
+		var is_wood_rule := rule.pickup_config == WOOD
+		wood_success_rolls.append(0.039999 if is_wood_rule else 1.0)
+		wood_boundary_rolls.append(0.04 if is_wood_rule else 1.0)
+	_expect(
+		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
+			PackedStringArray(),
+			wood_success_rolls
+		) == [WOOD],
+		"A wood roll immediately below 4% must succeed independently."
+	)
+	_expect(
+		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
+			PackedStringArray(),
+			wood_boundary_rolls
+		).is_empty(),
+		"A wood roll equal to 4% must fail the strict probability boundary."
 	)
 	var production_rng := RandomNumberGenerator.new()
 	var reference_rng := RandomNumberGenerator.new()

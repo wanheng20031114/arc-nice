@@ -16,7 +16,7 @@
 [sub_resource type="Resource" id="EnemyDropRule_wood"]
 script = ExtResource("2_rule")
 pickup_config = ExtResource("3_wood")
-chance = 0.02
+chance = 0.04
 required_tags = null
 
 [sub_resource type="Resource" id="EnemyDropRule_white"]

@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "8515b06d06c4e6007db8efc62faa41bb9176010a180570a8a08f111daecfdae8",
+	"content_sha256": "91bb64fe5803539686069066d7633faaedd4349aa2764ae0aa9fac673ccfc7c2",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -3234,7 +3234,7 @@
 		},
 		{
 			"path": "res://resources/config/enemies/default_enemy_drop_table.tres",
-			"sha256": "2fbd4d2b579309c927cd71d026eab6d433db753e1df939999bccc0973c7b2791"
+			"sha256": "c28894c8e61e5849d1e1d4be2377f3538903248e56c4722339935ae40a55ecf4"
 		},
 		{
 			"path": "res://resources/config/enemies/enemy_config.gd",
