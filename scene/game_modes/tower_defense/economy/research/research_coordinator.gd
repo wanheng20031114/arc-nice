@@ -35,6 +35,9 @@ const VEGETATION_ENHANCEMENT_RESEARCH_ID := (
 const WATER_COLLECTION_RATE_ENHANCEMENT_RESEARCH_ID := (
 	GlobalResearchRegistry.WATER_COLLECTION_RATE_ENHANCEMENT_ID
 )
+const FENCE_REINFORCEMENT_RESEARCH_ID := (
+	GlobalResearchRegistry.FENCE_REINFORCEMENT_ID
+)
 const GLOBAL_RESEARCH_DURATION_SECONDS := 60.0
 const GLOBAL_PHYSICAL_DEFENSE_BONUS := 10
 const GLOBAL_PLAYER_MOVE_SPEED_BONUS := 15.0
@@ -273,6 +276,18 @@ func get_water_collector_duration_multiplier() -> float:
 		):
 			multiplier = minf(multiplier, config.effect_amount)
 	return multiplier
+
+
+func get_fence_max_health_bonus() -> int:
+	return roundi(_get_completed_global_effect_total(
+		GlobalResearchConfig.EffectType.FENCE_REINFORCEMENT
+	))
+
+
+func get_fence_physical_defense_bonus() -> int:
+	return roundi(_get_completed_global_secondary_effect_total(
+		GlobalResearchConfig.EffectType.FENCE_REINFORCEMENT
+	))
 
 
 func get_global_material_total(item: PickupConfig) -> int:
@@ -634,6 +649,12 @@ func _apply_global_bonuses() -> void:
 		plant_system.set_global_water_collector_duration_multiplier(
 			get_water_collector_duration_multiplier()
 		)
+		plant_system.set_global_fence_max_health_bonus(
+			get_fence_max_health_bonus()
+		)
+		plant_system.set_global_fence_physical_defense_bonus(
+			get_fence_physical_defense_bonus()
+		)
 	_apply_global_player_bonus_to_registered_players()
 
 
@@ -671,6 +692,20 @@ func _get_completed_global_effect_total(
 			== GlobalResearchState.COMPLETED
 		):
 			total += config.effect_amount
+	return total
+
+
+func _get_completed_global_secondary_effect_total(
+	effect_type: GlobalResearchConfig.EffectType
+) -> float:
+	var total := 0.0
+	for config in GlobalResearchRegistry.get_all_configs():
+		if (
+			config.effect_type == effect_type
+			and get_global_research_state(config.research_id)
+			== GlobalResearchState.COMPLETED
+		):
+			total += config.secondary_effect_amount
 	return total
 
 

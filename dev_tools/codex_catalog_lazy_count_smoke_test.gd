@@ -7,7 +7,7 @@ const EXPECTED_COUNTS := {
 	CodexSection.ITEM: 36,
 	CodexSection.CHARACTER: 4,
 	CodexSection.RECIPE: 32,
-	CodexSection.RESEARCH: 8,
+	CodexSection.RESEARCH: 9,
 }
 
 

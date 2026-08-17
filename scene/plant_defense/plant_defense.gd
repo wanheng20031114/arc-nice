@@ -62,6 +62,7 @@ var last_damage_result: DamageResult = null
 var physical_defense: int = 0
 var magic_defense: int = 0
 var global_physical_defense_bonus: int = 0
+var research_max_health_bonus: int = 0
 var is_dead: bool = false
 var is_multiplayer_proxy: bool = false
 var health_revision: int = 0
@@ -130,6 +131,7 @@ func setup(
 	current_health = clampi(initial_health, 0, max_health) if initial_health >= 0 else max_health
 	physical_defense = maxi(config.physical_defense, 0)
 	magic_defense = clampi(config.magic_defense, 0, 100)
+	research_max_health_bonus = 0
 	# Keep the node alive through subclass setup so a zero-health replica can
 	# complete its visual initialization and then follow the normal death path.
 	is_dead = false
@@ -528,6 +530,47 @@ func set_global_physical_defense_bonus(bonus: int) -> void:
 	global_physical_defense_bonus = maxi(bonus, 0)
 
 
+func set_research_max_health_bonus(bonus: int) -> void:
+	var safe_bonus := maxi(bonus, 0)
+	if safe_bonus == research_max_health_bonus:
+		return
+	var bonus_delta := safe_bonus - research_max_health_bonus
+	research_max_health_bonus = safe_bonus
+	if config == null or is_dead or is_removing:
+		return
+	var previous_health := current_health
+	var previous_max_health := max_health
+	if is_multiplayer_proxy:
+		_apply_research_max_health_floor()
+	else:
+		max_health = maxi(max_health + bonus_delta, 1)
+		current_health = (
+			mini(current_health + bonus_delta, max_health)
+			if bonus_delta > 0
+			else mini(current_health, max_health)
+		)
+	if current_health == previous_health and max_health == previous_max_health:
+		return
+	health_changed.emit(current_health, max_health)
+	if not is_multiplayer_proxy:
+		_bump_health_revision()
+
+
+func _apply_research_max_health_floor() -> void:
+	if config == null or research_max_health_bonus <= 0:
+		return
+	var required_max_health := maxi(
+		config.max_health + research_max_health_bonus,
+		1
+	)
+	if max_health >= required_max_health:
+		return
+	var missing_bonus := required_max_health - max_health
+	max_health = required_max_health
+	if current_health > 0:
+		current_health = mini(current_health + missing_bonus, max_health)
+
+
 func get_effective_magic_defense() -> int:
 	return clampi(magic_defense, 0, 100)
 
@@ -733,6 +776,9 @@ func apply_remote_health(
 	health_revision = new_revision
 	max_health = maxi(new_maximum_health, 1)
 	current_health = clampi(new_current_health, 0, max_health)
+	# 科研快照走可靠通道而生命广播允许丢包；对延迟到达的科研前生命包
+	# 重新投影已知围栏生命加成，避免客户端永久回退到基础上限。
+	_apply_research_max_health_floor()
 	health_changed.emit(current_health, max_health)
 	if current_health <= 0:
 		_begin_death()
@@ -748,6 +794,7 @@ func configure_multiplayer_proxy(
 	max_health = maxi(initial_maximum_health, 1)
 	current_health = clampi(initial_health, 0, max_health)
 	health_revision = maxi(initial_revision, 0)
+	_apply_research_max_health_floor()
 	health_changed.emit(current_health, max_health)
 	_on_multiplayer_proxy_configured()
 	if current_health <= 0:

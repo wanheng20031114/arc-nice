@@ -37,7 +37,7 @@ func _test_static_boundary(diagnostics: MpNetworkDiagnosticsCoordinator) -> void
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
 		rpc_pattern.search_all(source).size() == 144,
-		"Diagnostics extraction must preserve all 144 protocol-v82 MpGame RPC facades."
+		"Diagnostics extraction must preserve all 144 protocol-v83 MpGame RPC facades."
 	)
 	var send_body := _function_body(source, "_rpc_to_connected_clients")
 	_expect(

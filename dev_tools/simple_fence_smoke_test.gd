@@ -37,6 +37,24 @@ class ProbePlantSystem:
 		_register_plant_footprint(plant, [cell], config)
 
 
+	func spawn_authoritative_probe(
+		config: PlantDefenseConfig,
+		cell: Vector2i,
+		net_id: int
+	) -> PlantDefense:
+		return _instantiate_registered_plant(
+			config,
+			cell,
+			null,
+			net_id,
+			false,
+			-1,
+			0,
+			-1,
+			false
+		)
+
+
 func _init() -> void:
 	call_deferred(&"_run")
 
@@ -492,16 +510,133 @@ func _test_connection_groups_and_late_join() -> void:
 
 
 func _test_defense_upgrade_order_independence() -> void:
+	var authoritative_fixture := _build_plant_system_fixture(
+		"SimpleFenceAuthoritativeResearch"
+	)
+	var authoritative_system := (
+		authoritative_fixture["system"] as ProbePlantSystem
+	)
+	var authoritative_container := (
+		authoritative_fixture["container"] as Node2D
+	)
+	var authoritative_fence := (
+		simple_fence_config.plant_scene.instantiate() as CardinalConnectedPlant
+	)
+	authoritative_container.add_child(authoritative_fence)
+	authoritative_fence.setup(
+		simple_fence_config,
+		null,
+		[Vector2i.ZERO],
+		false,
+		400,
+		7,
+		500,
+		false
+	)
+	authoritative_system.register_configured_probe(
+		authoritative_fence,
+		Vector2i.ZERO,
+		simple_fence_config
+	)
+	var revision_before_research := authoritative_fence.health_revision
+	var replicated_health := {}
+	authoritative_fence.authoritative_health_changed.connect(
+		func(current: int, maximum: int, revision: int) -> void:
+			replicated_health["current"] = current
+			replicated_health["maximum"] = maximum
+			replicated_health["revision"] = revision
+	)
+	authoritative_system.set_global_physical_defense_bonus(10)
+	authoritative_system.set_global_fence_physical_defense_bonus(5)
+	authoritative_system.set_global_fence_max_health_bonus(1000)
+	_expect(
+		authoritative_fence.current_health == 1400
+		and authoritative_fence.max_health == 1500
+		and authoritative_fence.health_revision
+		== revision_before_research + 1
+		and int(replicated_health.get("current", -1)) == 1400
+		and int(replicated_health.get("maximum", -1)) == 1500
+		and int(replicated_health.get("revision", -1))
+		== revision_before_research + 1
+		and authoritative_fence.get_effective_physical_defense() == 15,
+		"Host已有受损围栏完成科研后必须同步增加当前/最大生命、推进revision并叠加物防。"
+	)
+	authoritative_system.set_global_fence_max_health_bonus(1000)
+	_expect(
+		authoritative_fence.current_health == 1400
+		and authoritative_fence.max_health == 1500
+		and authoritative_fence.health_revision
+		== revision_before_research + 1,
+		"重复投影围栏强化不得再次增加Host生命或推进revision。"
+	)
+	var health_before_damage := authoritative_fence.current_health
+	var physical_accepted := authoritative_fence.receive_damage(
+		20,
+		null,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.PHYSICAL
+	)
+	var physical_applied := authoritative_fence.last_damage_result.applied_damage
+	var magic_accepted := authoritative_fence.receive_damage(
+		20,
+		null,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.MAGIC
+	)
+	var magic_applied := authoritative_fence.last_damage_result.applied_damage
+	var bypass_accepted := authoritative_fence.receive_unmitigated_damage(20)
+	var bypass_applied := authoritative_fence.last_damage_result.applied_damage
+	_expect(
+		physical_accepted
+		and magic_accepted
+		and bypass_accepted
+		and physical_applied == 5
+		and magic_applied == 20
+		and bypass_applied == 20
+		and authoritative_fence.current_health
+		== health_before_damage - 45,
+		"围栏总物防15必须把20物理伤害降为5，且不影响魔法或无视防御伤害。"
+	)
+	_cleanup_fixture(authoritative_fixture)
+	await process_frame
+
 	var before := _build_plant_system_fixture("SimpleFenceDefenseBefore")
 	var before_system := before["system"] as PlantSystem
 	var before_fence := _spawn_fence(before_system, Vector2i.ZERO, 4001)
 	before_system.set_global_physical_defense_bonus(10)
+	before_system.set_global_fence_max_health_bonus(1000)
+	before_system.set_global_fence_physical_defense_bonus(5)
 	_expect(
 		before_fence != null
 		and before_fence.physical_defense == 0
-		and before_fence.get_effective_physical_defense() == 10
+		and before_fence.get_effective_physical_defense() == 15
 		and before_fence.get_effective_magic_defense() == 0,
-		"围栏先放置、科技后完成时必须保留0基础物防并得到+10有效物防。"
+		"围栏先放置、科技后完成时必须叠加全建筑+10与围栏+5物防。"
+	)
+	_expect(
+		before_fence.current_health == 1500
+		and before_fence.max_health == 1500
+		and before_fence.research_max_health_bonus == 1000,
+		"可靠科研效果到达后，已有多人围栏代理必须本地补足1000当前与最大生命。"
+	)
+	_expect(
+		before_fence.apply_remote_health(400, 500, 1)
+		and before_fence.current_health == 1400
+		and before_fence.max_health == 1500,
+		"科研前的延迟生命包到达后，代理必须重新投影可靠科研生命加成。"
+	)
+	_expect(
+		before_fence.apply_remote_health(1350, 1500, 2)
+		and before_fence.current_health == 1350
+		and before_fence.max_health == 1500,
+		"已包含围栏强化的权威生命包不得被客户端重复增加1000生命。"
+	)
+	_expect(
+		before_fence.apply_remote_health(0, 500, 3)
+		and before_fence.current_health == 0
+		and before_fence.max_health == 1500
+		and before_fence.is_dead,
+		"科研前上限的高revision死亡包必须保留0生命，不能被围栏强化复活。"
 	)
 	_cleanup_fixture(before)
 	await process_frame
@@ -509,13 +644,61 @@ func _test_defense_upgrade_order_independence() -> void:
 	var after := _build_plant_system_fixture("SimpleFenceDefenseAfter")
 	var after_system := after["system"] as PlantSystem
 	after_system.set_global_physical_defense_bonus(10)
-	var after_fence := _spawn_fence(after_system, Vector2i.ZERO, 5001)
+	after_system.set_global_fence_max_health_bonus(1000)
+	after_system.set_global_fence_physical_defense_bonus(5)
+	var after_fence := _spawn_fence(
+		after_system,
+		Vector2i.ZERO,
+		5001,
+		1500,
+		1500,
+		2
+	)
+	var new_authoritative_fence := (
+		(after_system as ProbePlantSystem).spawn_authoritative_probe(
+			simple_fence_config,
+			Vector2i(5, 0),
+			5003
+		) as CardinalConnectedPlant
+	)
+	var non_fence_config := PlantDefenseRegistry.get_config(&"research_center")
+	var non_fence := after_system.spawn_multiplayer_replica(
+		&"research_center",
+		Vector2i(10, 0),
+		null,
+		5002,
+		non_fence_config.max_health,
+		non_fence_config.max_health,
+		1,
+		false
+	) if non_fence_config != null else null
 	_expect(
 		after_fence != null
 		and after_fence.physical_defense == 0
-		and after_fence.get_effective_physical_defense() == 10
+		and after_fence.get_effective_physical_defense() == 15
 		and after_fence.get_effective_magic_defense() == 0,
-		"科技先完成、围栏后放置时也必须得到相同+10有效物防。"
+		"科技先完成、围栏后放置时也必须得到相同+15有效物防。"
+	)
+	_expect(
+		after_fence.current_health == 1500
+		and after_fence.max_health == 1500,
+		"科研后生成且权威快照已含1500生命的围栏不得重复增加生命。"
+	)
+	_expect(
+		new_authoritative_fence != null
+		and not new_authoritative_fence.is_multiplayer_proxy
+		and new_authoritative_fence.current_health == 1500
+		and new_authoritative_fence.max_health == 1500
+		and new_authoritative_fence.health_revision == 2
+		and new_authoritative_fence.get_effective_physical_defense() == 15,
+		"科研后新建Host围栏必须在plant_placed前携带1500满生命、revision2与15有效物防。"
+	)
+	_expect(
+		non_fence != null
+		and non_fence.max_health == non_fence_config.max_health
+		and non_fence.get_effective_physical_defense()
+		== non_fence_config.physical_defense + 10,
+		"围栏专属生命与物防加成不得影响其他建筑。"
 	)
 	_cleanup_fixture(after)
 	await process_frame
@@ -552,16 +735,19 @@ func _build_plant_system_fixture(fixture_name: String) -> Dictionary:
 func _spawn_fence(
 	system: PlantSystem,
 	cell: Vector2i,
-	net_id: int
+	net_id: int,
+	current_health: int = 500,
+	maximum_health: int = 500,
+	health_revision: int = 0
 ) -> CardinalConnectedPlant:
 	return system.spawn_multiplayer_replica(
 		&"simple_fence",
 		cell,
 		null,
 		net_id,
-		500,
-		500,
-		0,
+		current_health,
+		maximum_health,
+		health_revision,
 		false
 	) as CardinalConnectedPlant
 

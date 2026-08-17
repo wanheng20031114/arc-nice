@@ -11,6 +11,7 @@ enum EffectType {
 	VEGETATION_SPREAD_SPEED_MULTIPLIER,
 	GRASS_HEAL_RATIO_BONUS,
 	WATER_COLLECTOR_DURATION_MULTIPLIER,
+	FENCE_REINFORCEMENT,
 }
 
 @export_group("基础信息")
@@ -27,6 +28,8 @@ enum EffectType {
 @export_range(0.1, 3600.0, 0.1, "or_greater") var duration_seconds: float = 60.0
 @export var effect_type: EffectType = EffectType.BUILDING_PHYSICAL_DEFENSE
 @export var effect_amount: float = 0.0
+# 围栏强化使用主效果表示生命值加成，次效果表示物理防御加成。
+@export var secondary_effect_amount: float = 0.0
 # 同一项配方解锁科研可以同时开放一条简易制作路线与一条建筑生产路线。
 @export var unlocked_simple_crafting_recipe_id: StringName = &""
 @export var unlocked_production_recipe_id: StringName = &""
@@ -44,8 +47,9 @@ func is_valid() -> bool:
 		or not is_finite(duration_seconds)
 		or duration_seconds <= 0.0
 		or not is_finite(effect_amount)
+		or not is_finite(secondary_effect_amount)
 		or effect_type < EffectType.BUILDING_PHYSICAL_DEFENSE
-		or effect_type > EffectType.WATER_COLLECTOR_DURATION_MULTIPLIER
+		or effect_type > EffectType.FENCE_REINFORCEMENT
 	):
 		return false
 	match effect_type:
@@ -53,18 +57,37 @@ func is_valid() -> bool:
 			if (
 				unlocked_simple_crafting_recipe_id == &""
 				or effect_amount != 0.0
+				or secondary_effect_amount != 0.0
 			):
 				return false
 		EffectType.PRODUCTION_RECIPE_UNLOCK:
 			if (
 				unlocked_production_recipe_id == &""
 				or effect_amount != 0.0
+				or secondary_effect_amount != 0.0
 			):
 				return false
 		EffectType.WATER_COLLECTOR_DURATION_MULTIPLIER:
 			if (
 				effect_amount <= 0.0
 				or effect_amount > 1.0
+				or secondary_effect_amount != 0.0
+				or unlocked_simple_crafting_recipe_id != &""
+				or unlocked_production_recipe_id != &""
+			):
+				return false
+		EffectType.FENCE_REINFORCEMENT:
+			if (
+				effect_amount <= 0.0
+				or secondary_effect_amount <= 0.0
+				or not is_equal_approx(
+					effect_amount,
+					float(roundi(effect_amount))
+				)
+				or not is_equal_approx(
+					secondary_effect_amount,
+					float(roundi(secondary_effect_amount))
+				)
 				or unlocked_simple_crafting_recipe_id != &""
 				or unlocked_production_recipe_id != &""
 			):
@@ -72,6 +95,7 @@ func is_valid() -> bool:
 		_:
 			if (
 				effect_amount <= 0.0
+				or secondary_effect_amount != 0.0
 				or unlocked_simple_crafting_recipe_id != &""
 				or unlocked_production_recipe_id != &""
 			):

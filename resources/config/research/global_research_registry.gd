@@ -17,6 +17,7 @@ const VEGETATION_ENHANCEMENT_ID: StringName = &"vegetation_enhancement"
 const WATER_COLLECTION_RATE_ENHANCEMENT_ID: StringName = (
 	&"water_collection_rate_enhancement"
 )
+const FENCE_REINFORCEMENT_ID: StringName = &"fence_reinforcement"
 const RESEARCH_ORDER: Array[StringName] = [
 	BUILDING_DEFENSE_ID,
 	PLAYER_MOVE_SPEED_ID,
@@ -26,6 +27,7 @@ const RESEARCH_ORDER: Array[StringName] = [
 	VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID,
 	VEGETATION_ENHANCEMENT_ID,
 	WATER_COLLECTION_RATE_ENHANCEMENT_ID,
+	FENCE_REINFORCEMENT_ID,
 ]
 const MAX_WIRE_RESEARCH_ID_LENGTH := 64
 
@@ -53,6 +55,9 @@ const VEGETATION_ENHANCEMENT: GlobalResearchConfig = preload(
 const WATER_COLLECTION_RATE_ENHANCEMENT: GlobalResearchConfig = preload(
 	"res://resources/config/research/water_collection_rate_enhancement.tres"
 )
+const FENCE_REINFORCEMENT: GlobalResearchConfig = preload(
+	"res://resources/config/research/fence_reinforcement.tres"
+)
 
 const RESEARCH_PROJECTS := {
 	BUILDING_DEFENSE_ID: BUILDING_DEFENSE,
@@ -65,6 +70,7 @@ const RESEARCH_PROJECTS := {
 	),
 	VEGETATION_ENHANCEMENT_ID: VEGETATION_ENHANCEMENT,
 	WATER_COLLECTION_RATE_ENHANCEMENT_ID: WATER_COLLECTION_RATE_ENHANCEMENT,
+	FENCE_REINFORCEMENT_ID: FENCE_REINFORCEMENT,
 }
 
 

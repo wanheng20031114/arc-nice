@@ -54,6 +54,8 @@ var plant_container: Node2D = null
 var combat_runtime: CombatRuntimeBase = null
 var tower_multiplayer_mode_adapter: TowerPlantGameplayPort = null
 var global_physical_defense_bonus := 0
+var global_fence_max_health_bonus := 0
+var global_fence_physical_defense_bonus := 0
 var global_water_collector_duration_multiplier := 1.0
 var placement_area: Rect2i = DEFAULT_PLACEMENT_AREA
 
@@ -385,7 +387,7 @@ func _instantiate_registered_plant(
 		play_placement_effect
 	)
 	_register_plant_terrain_support(plant)
-	plant.set_global_physical_defense_bonus(global_physical_defense_bonus)
+	_apply_research_stat_bonuses(plant)
 	_apply_water_collector_duration_multiplier(plant)
 	if plant.is_dead:
 		return null
@@ -398,11 +400,50 @@ func set_global_physical_defense_bonus(bonus: int) -> void:
 	for plant_variant in plant_footprints.keys():
 		var plant := plant_variant as PlantDefense
 		if plant != null and is_instance_valid(plant):
-			plant.set_global_physical_defense_bonus(global_physical_defense_bonus)
+			_apply_research_stat_bonuses(plant)
 
 
 func get_global_physical_defense_bonus() -> int:
 	return global_physical_defense_bonus
+
+
+func set_global_fence_max_health_bonus(bonus: int) -> void:
+	global_fence_max_health_bonus = maxi(bonus, 0)
+	for plant_variant in plant_footprints.keys():
+		var plant := plant_variant as PlantDefense
+		if plant != null and is_instance_valid(plant):
+			_apply_research_stat_bonuses(plant)
+
+
+func get_global_fence_max_health_bonus() -> int:
+	return global_fence_max_health_bonus
+
+
+func set_global_fence_physical_defense_bonus(bonus: int) -> void:
+	global_fence_physical_defense_bonus = maxi(bonus, 0)
+	for plant_variant in plant_footprints.keys():
+		var plant := plant_variant as PlantDefense
+		if plant != null and is_instance_valid(plant):
+			_apply_research_stat_bonuses(plant)
+
+
+func get_global_fence_physical_defense_bonus() -> int:
+	return global_fence_physical_defense_bonus
+
+
+func _apply_research_stat_bonuses(plant: PlantDefense) -> void:
+	var is_fence := (
+		plant.config != null
+		and plant.config.building_category
+		== PlantDefenseConfig.BuildingCategory.FENCE
+	)
+	plant.set_global_physical_defense_bonus(
+		global_physical_defense_bonus
+		+ (global_fence_physical_defense_bonus if is_fence else 0)
+	)
+	plant.set_research_max_health_bonus(
+		global_fence_max_health_bonus if is_fence else 0
+	)
 
 
 func set_global_water_collector_duration_multiplier(multiplier: float) -> void:

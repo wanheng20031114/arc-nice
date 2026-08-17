@@ -194,8 +194,8 @@ func _test_research_closure(catalog: CodexCatalog) -> void:
 			"科研百科必须使用带命名空间的稳定ID：%s。" % config.research_id
 		)
 	_expect(
-		expected_ids.size() == 8 and expected_ids == actual_ids,
-		"8项全局科研必须全部进入科研百科。"
+		expected_ids.size() == 9 and expected_ids == actual_ids,
+		"9项全局科研必须全部进入科研百科。"
 	)
 
 

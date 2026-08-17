@@ -52,6 +52,9 @@ const VEGETATION_ENHANCEMENT_RESEARCH_ID := (
 const WATER_COLLECTION_RATE_ENHANCEMENT_RESEARCH_ID := (
 	GlobalResearchRegistry.WATER_COLLECTION_RATE_ENHANCEMENT_ID
 )
+const FENCE_REINFORCEMENT_RESEARCH_ID := (
+	GlobalResearchRegistry.FENCE_REINFORCEMENT_ID
+)
 
 var failures: PackedStringArray = []
 
@@ -294,6 +297,9 @@ func _test_config_and_scene(
 	var water_collection_rate_research := GlobalResearchRegistry.get_config(
 		WATER_COLLECTION_RATE_ENHANCEMENT_RESEARCH_ID
 	)
+	var fence_reinforcement_research := GlobalResearchRegistry.get_config(
+		FENCE_REINFORCEMENT_RESEARCH_ID
+	)
 	var registered_research_projects := GlobalResearchRegistry.get_all_configs()
 	_expect(
 		registered_research_projects == [
@@ -305,9 +311,10 @@ func _test_config_and_scene(
 			vegetation_spread_research,
 			vegetation_enhancement_research,
 			water_collection_rate_research,
+			fence_reinforcement_research,
 		]
 		and ResearchCoordinator.RUNTIME_STATE_SCHEMA == 3,
-		"全局科研注册表必须按固定顺序公开八个合法项目，并使用runtime schema3。"
+		"全局科研注册表必须按固定顺序公开九个合法项目，并使用runtime schema3。"
 	)
 	_expect(
 		defense_research != null
@@ -426,6 +433,27 @@ func _test_config_and_scene(
 		== GlobalResearchConfig.EffectType.WATER_COLLECTOR_DURATION_MULTIPLIER
 		and is_equal_approx(water_collection_rate_research.effect_amount, 0.5),
 		"采水速率提升必须消耗3白色水晶粉末、10水瓶和20木板，持续30秒并把单轮耗时缩短50%。"
+	)
+	_expect(
+		fence_reinforcement_research != null
+		and fence_reinforcement_research.is_valid()
+		and fence_reinforcement_research.input_items == [PLANK, SAPLING]
+		and fence_reinforcement_research.input_amounts == [100, 100]
+		and is_equal_approx(
+			fence_reinforcement_research.duration_seconds,
+			30.0
+		)
+		and fence_reinforcement_research.effect_type
+		== GlobalResearchConfig.EffectType.FENCE_REINFORCEMENT
+		and is_equal_approx(
+			fence_reinforcement_research.effect_amount,
+			1000.0
+		)
+		and is_equal_approx(
+			fence_reinforcement_research.secondary_effect_amount,
+			5.0
+		),
+		"围栏强化必须消耗100木板和100树苗，持续30秒并提供1000生命与5物防。"
 	)
 	_expect(
 		config != null
@@ -664,7 +692,10 @@ func _test_config_and_scene(
 		and panel.has_node(
 			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/WaterCollectionRateResearchButton"
 		)
-		and panel.global_research_buttons.size() == 8
+		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/FenceReinforcementResearchButton"
+		)
+		and panel.global_research_buttons.size() == 9
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/PlankSlot")
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/SaplingSlot")
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/WaterBottleSlot")
@@ -672,7 +703,7 @@ func _test_config_and_scene(
 		and panel.has_node("Overlay/PanelRoot/PlayerPage/TechNode2")
 		and panel.has_node("Overlay/PanelRoot/PlayerPage/TechNode3")
 		and not panel.has_node("Overlay/PanelRoot/ToggleButton"),
-		"科研UI必须原生包含八项全局研究、双页与三处技术节点，并且不能有开关。"
+		"科研UI必须原生包含九项全局研究、双页与三处技术节点，并且不能有开关。"
 	)
 	_expect(
 		is_equal_approx(
@@ -937,6 +968,25 @@ func _test_panel_mouse_navigation(
 		and panel.material_slots[1].item == WATER_BOTTLE
 		and panel.material_slots[2].item == PLANK,
 		"滚动后点击采水速率提升必须按顺序展示白色水晶粉末、水瓶和木板。"
+	)
+	panel.global_research_scroll.ensure_control_visible(
+		panel.fence_reinforcement_research_button
+	)
+	await process_frame
+	await _click_panel_control(panel.fence_reinforcement_research_button)
+	_expect(
+		root.gui_get_hovered_control()
+		== panel.fence_reinforcement_research_button
+		and panel.selected_global_research_id
+		== FENCE_REINFORCEMENT_RESEARCH_ID
+		and panel.fence_reinforcement_research_button.button_pressed
+		and panel.material_slots[0].visible
+		and panel.material_slots[1].visible
+		and not panel.material_slots[2].visible
+		and panel.material_slots[0].item == PLANK
+		and panel.material_slots[1].item == SAPLING
+		and panel.global_result_badge.text == "围栏生命+1000\n物理防御+5",
+		"滚动后点击围栏强化必须展示100木板、100树苗与两项强化结果。"
 	)
 
 	await _click_panel_control(panel.close_button)
@@ -1502,6 +1552,47 @@ func _test_recipe_unlock_research(
 		== 9,
 		"采水速率提升满30秒后必须把水收集器单轮耗时倍率设为0.5，且不得污染配方解锁。"
 	)
+	_expect(
+		warehouse.try_add_storage_item_count(PLANK, 99)
+		and warehouse.try_add_storage_item_count(SAPLING, 100)
+		and center.try_start_global_research(FENCE_REINFORCEMENT_RESEARCH_ID)
+		== ResearchCoordinator.RESULT_MISSING_INPUT
+		and production.get_total_item_count(PLANK) == 99
+		and production.get_total_item_count(SAPLING) == 100,
+		"围栏强化缺少第100块木板时必须原子失败且不能预扣树苗。"
+	)
+	_expect(
+		warehouse.try_add_storage_item_count(PLANK, 1)
+		and center.try_start_global_research(FENCE_REINFORCEMENT_RESEARCH_ID)
+		== ResearchCoordinator.RESULT_SUCCESS
+		and production.get_total_item_count(PLANK) == 0
+		and production.get_total_item_count(SAPLING) == 0,
+		"围栏强化开始时必须原子扣除100木板和100树苗。"
+	)
+	research.advance_global_research(29.9)
+	_expect(
+		research.get_global_research_state(FENCE_REINFORCEMENT_RESEARCH_ID)
+		== ResearchCoordinator.GlobalResearchState.RESEARCHING
+		and research.get_fence_max_health_bonus() == 0
+		and research.get_fence_physical_defense_bonus() == 0
+		and plant_system.get_global_fence_max_health_bonus() == 0
+		and plant_system.get_global_fence_physical_defense_bonus() == 0,
+		"围栏强化未满30秒时不得提前增加围栏生命或物防。"
+	)
+	research.advance_global_research(0.1)
+	expected_completed_ids.append(FENCE_REINFORCEMENT_RESEARCH_ID)
+	completed_ids = research.get_completed_global_research_ids()
+	_expect(
+		completed_ids == expected_completed_ids
+		and research.get_active_global_research_id().is_empty()
+		and research.get_fence_max_health_bonus() == 1000
+		and research.get_fence_physical_defense_bonus() == 5
+		and plant_system.get_global_fence_max_health_bonus() == 1000
+		and plant_system.get_global_fence_physical_defense_bonus() == 5
+		and SimpleCraftingRegistry.get_available_recipes(completed_ids).size()
+		== 9,
+		"围栏强化满30秒后必须提供1000生命与5物防，且不得污染配方解锁。"
+	)
 
 	var remote_research := (
 		RESEARCH_COORDINATOR_SCENE.instantiate() as ResearchCoordinator
@@ -1524,8 +1615,8 @@ func _test_recipe_unlock_research(
 	var snapshot_elapsed := snapshot.get("global_elapsed", {}) as Dictionary
 	_expect(
 		int(snapshot.get("schema", 0)) == 3
-		and snapshot_states.size() == 8
-		and snapshot_elapsed.size() == 8
+		and snapshot_states.size() == 9
+		and snapshot_elapsed.size() == 9
 		and remote_research.get_completed_global_research_ids()
 		== expected_completed_ids
 		and is_equal_approx(
@@ -1545,11 +1636,15 @@ func _test_recipe_unlock_research(
 			0.5
 		)
 		and remote_plant_system.get_global_physical_defense_bonus() == 10
+		and remote_research.get_fence_max_health_bonus() == 1000
+		and remote_research.get_fence_physical_defense_bonus() == 5
+		and remote_plant_system.get_global_fence_max_health_bonus() == 1000
+		and remote_plant_system.get_global_fence_physical_defense_bonus() == 5
 		and is_equal_approx(
 			remote_player.move_speed,
 			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
 		),
-		"schema3多人科研快照必须完整同步八个项目、数值效果与三项配方解锁。"
+		"schema3多人科研快照必须完整同步九个项目、数值效果与三项配方解锁。"
 	)
 	var replayed_snapshot := snapshot.duplicate(true)
 	replayed_snapshot["revision"] = int(snapshot["revision"]) + 1
@@ -1573,11 +1668,15 @@ func _test_recipe_unlock_research(
 			remote_plant_system.get_global_water_collector_duration_multiplier(),
 			0.5
 		)
+		and remote_research.get_fence_max_health_bonus() == 1000
+		and remote_research.get_fence_physical_defense_bonus() == 5
+		and remote_plant_system.get_global_fence_max_health_bonus() == 1000
+		and remote_plant_system.get_global_fence_physical_defense_bonus() == 5
 		and is_equal_approx(
 			remote_player.move_speed,
 			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
 		),
-		"重复应用更高revision的八项目完成态快照不得重复叠加数值效果。"
+		"重复应用更高revision的九项目完成态快照不得重复叠加数值效果。"
 	)
 
 	var accepted_revision := remote_research.research_revision
@@ -1593,7 +1692,7 @@ func _test_recipe_unlock_research(
 	var missing_project_state := replayed_snapshot.duplicate(true)
 	missing_project_state["revision"] = accepted_revision + 1
 	var missing_states := missing_project_state["global_states"] as Dictionary
-	missing_states.erase(String(WATER_COLLECTION_RATE_ENHANCEMENT_RESEARCH_ID))
+	missing_states.erase(String(FENCE_REINFORCEMENT_RESEARCH_ID))
 	invalid_snapshots.append(missing_project_state)
 	var wrong_elapsed_type := replayed_snapshot.duplicate(true)
 	wrong_elapsed_type["revision"] = accepted_revision + 1
@@ -1626,6 +1725,10 @@ func _test_recipe_unlock_research(
 			0.5
 		)
 		and remote_plant_system.get_global_physical_defense_bonus() == 10
+		and remote_research.get_fence_max_health_bonus() == 1000
+		and remote_research.get_fence_physical_defense_bonus() == 5
+		and remote_plant_system.get_global_fence_max_health_bonus() == 1000
+		and remote_plant_system.get_global_fence_physical_defense_bonus() == 5
 		and is_equal_approx(
 			remote_player.move_speed,
 			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
