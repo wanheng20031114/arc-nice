@@ -8,6 +8,9 @@ const APPLE := preload("res://resources/config/collectibles/collectible_apple.tr
 const HEALING_POTION := preload(
 	"res://resources/config/consumables/healing_potion.tres"
 )
+const WATER_COLLECTOR := preload(
+	"res://resources/config/buildings/building_water_collector.tres"
+)
 const PLANT_HEALTH_BAR_SCRIPT := preload("res://scene/plant_defense/ui/plant_health_bar.gd")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 
@@ -92,6 +95,7 @@ func _run() -> void:
 	await process_frame
 
 	if quick_use_only:
+		_test_detail_layout(warehouse.storage_panel)
 		_test_quick_use_presentation(run_state, warehouse)
 	else:
 		if not inventory_only:
@@ -342,6 +346,21 @@ func _test_quick_use_presentation(
 		"仓库堆叠数量必须移到右上，为右下快捷徽记让位。"
 	)
 	_expect(
+		run_state.try_add_item(APPLE),
+		"仓库普通物品布局测试必须准备苹果收藏品。"
+	)
+	panel.call("_refresh_all")
+	panel.call("_on_slot_selected", 0, OakWarehousePanel.ItemSource.PLAYER)
+	_expect(
+		not panel.quick_use_button.visible
+		and panel.use_button.text == "使用"
+		and panel.move_button.text == "移入仓库"
+		and panel.discard_button.text == "丢弃",
+		"普通背包物品必须使用双木框操作布局，且不得显示快捷按钮。"
+	)
+	_assert_action_button_layout(panel, "PLAYER收藏品")
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
 		run_state.try_add_item_count(HEALING_POTION, 2),
 		"仓库快捷绑定测试必须准备治疗血瓶。"
 	)
@@ -349,25 +368,32 @@ func _test_quick_use_presentation(
 	panel.call("_on_slot_selected", 0, OakWarehousePanel.ItemSource.PLAYER)
 	_expect(
 		panel.quick_use_button.visible
-		and panel.quick_use_button.text == "设置快捷使用"
+		and panel.quick_use_button.text == "设为快捷"
+		and panel.quick_use_button.tooltip_text == "设置快捷使用"
 		and not player_badge.visible,
 		"PLAYER侧选中未绑定消耗品时必须显示设置快捷按钮。"
 	)
+	_assert_action_button_layout(panel, "PLAYER未绑定消耗品")
 	panel.quick_use_button.pressed.emit()
 	_expect(
 		run_state.is_quick_use_slot(0)
 		and player_badge.visible
-		and panel.quick_use_button.text == "取消快捷使用",
+		and panel.quick_use_button.text == "取消快捷"
+		and panel.quick_use_button.tooltip_text == "取消快捷使用",
 		"仓库设置快捷后必须立即刷新PLAYER槽徽记与取消按钮。"
 	)
+	_assert_action_button_layout(panel, "PLAYER已绑定消耗品")
 	warehouse.storage_items[0] = HEALING_POTION
 	warehouse.storage_stack_counts[0] = 1
 	panel.call("_refresh_all")
 	panel.call("_on_slot_selected", 0, OakWarehousePanel.ItemSource.STORAGE)
 	_expect(
-		not storage_badge.visible and not panel.quick_use_button.visible,
+		not storage_badge.visible
+		and not panel.quick_use_button.visible
+		and panel.move_button.text == "移入背包",
 		"STORAGE侧即使包含同类型消耗品也不得显示徽记或快捷绑定按钮。"
 	)
+	_assert_action_button_layout(panel, "STORAGE消耗品")
 	panel.call("_on_slot_selected", 0, OakWarehousePanel.ItemSource.PLAYER)
 	panel.quick_use_button.pressed.emit()
 	_expect(
@@ -377,7 +403,71 @@ func _test_quick_use_presentation(
 	)
 	warehouse.storage_items[0] = null
 	warehouse.storage_stack_counts[0] = 0
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(run_state.try_add_item(WOOD), "仓库物资布局测试必须准备木材。")
+	panel.call("_refresh_all")
+	panel.call("_on_slot_selected", 0, OakWarehousePanel.ItemSource.PLAYER)
+	_expect(
+		panel.discard_button.text == "删除"
+		and panel.move_button.text == "移入仓库"
+		and not panel.quick_use_button.visible,
+		"物资必须保持删除/移入仓库双按钮文案。"
+	)
+	_assert_action_button_layout(panel, "PLAYER物资")
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.try_add_item(WATER_COLLECTOR),
+		"仓库建筑布局测试必须准备集水器。"
+	)
+	panel.call("_refresh_all")
+	panel.call("_on_slot_selected", 0, OakWarehousePanel.ItemSource.PLAYER)
+	_expect(
+		panel.use_button.text == "建造"
+		and panel.discard_button.text == "销毁"
+		and panel.move_button.text == "移入仓库"
+		and not panel.quick_use_button.visible,
+		"建筑必须保持建造/移入仓库/销毁文案。"
+	)
+	_assert_action_button_layout(panel, "PLAYER建筑")
 	panel.close()
+
+
+func _assert_action_button_layout(
+	panel: OakWarehousePanel,
+	context: String
+) -> void:
+	var visible_buttons: Array[Button] = [
+		panel.use_button,
+		panel.move_button,
+		panel.discard_button,
+		panel.close_button,
+	]
+	if panel.quick_use_button.visible:
+		visible_buttons.append(panel.quick_use_button)
+	for button in visible_buttons:
+		var minimum_size := button.get_combined_minimum_size()
+		_expect(
+			minimum_size.x <= button.size.x + 0.01
+			and minimum_size.y <= button.size.y + 0.01,
+			"%s：按钮%s的动态文案不得撑大或溢出点击区。" % [
+				context,
+				button.name,
+			]
+		)
+	for first_index in visible_buttons.size():
+		var first_button := visible_buttons[first_index]
+		var first_rect := Rect2(first_button.position, first_button.size)
+		for second_index in range(first_index + 1, visible_buttons.size()):
+			var second_button := visible_buttons[second_index]
+			var second_rect := Rect2(second_button.position, second_button.size)
+			_expect(
+				not first_rect.intersects(second_rect),
+				"%s：可见按钮%s与%s不得重叠。" % [
+					context,
+					first_button.name,
+					second_button.name,
+				]
+			)
 
 
 func _test_interaction_lock(player: Player, warehouse: OakWarehouse) -> void:
@@ -654,15 +744,11 @@ func _test_detail_layout(panel: OakWarehousePanel) -> void:
 	var button_specs := [
 		{
 			"path": "Overlay/PanelRoot/UseButton",
-			"rect": Rect2(24.0, 421.0, 61.0, 59.0),
+			"rect": Rect2(50.0, 421.0, 61.0, 59.0),
 		},
 		{
 			"path": "Overlay/PanelRoot/MoveButton",
-			"rect": Rect2(91.0, 421.0, 61.0, 59.0),
-		},
-		{
-			"path": "Overlay/PanelRoot/QuickUseButton",
-			"rect": Rect2(158.0, 421.0, 61.0, 59.0),
+			"rect": Rect2(117.0, 421.0, 61.0, 59.0),
 		},
 		{
 			"path": "Overlay/PanelRoot/DiscardButton",
@@ -692,6 +778,21 @@ func _test_detail_layout(panel: OakWarehousePanel) -> void:
 					style_name,
 				]
 			)
+	var quick_use_button := panel.get_node(
+		"Overlay/PanelRoot/QuickUseButton"
+	) as Button
+	_expect(
+		Rect2(quick_use_button.position, quick_use_button.size)
+		== Rect2(331.0, 366.0, 62.0, 26.0)
+		and quick_use_button.clip_text,
+		"快捷使用必须位于双栏之间的独立小按钮位，并限制文字溢出。"
+	)
+	for style_name in [&"normal", &"hover", &"pressed", &"focus", &"disabled"]:
+		_expect(
+			quick_use_button.get_theme_stylebox(style_name) is StyleBoxFlat,
+			"快捷使用按钮必须自带可见边框，不能漂浮在无按钮底图上：%s。"
+			% style_name
+		)
 	var half_button := panel.get_node("Overlay/PanelRoot/HalfButton") as Button
 	var quantity_button := panel.get_node("Overlay/PanelRoot/QuantityButton") as Button
 	_expect(

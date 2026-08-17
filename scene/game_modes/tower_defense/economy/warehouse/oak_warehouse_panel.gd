@@ -1070,7 +1070,8 @@ func _refresh_detail() -> void:
 		use_button.text = "使用"
 		quick_use_button.hide()
 		quick_use_button.disabled = true
-		quick_use_button.text = "设置快捷使用"
+		quick_use_button.text = "设为快捷"
+		quick_use_button.tooltip_text = "设置快捷使用"
 		move_button.disabled = true
 		half_button.disabled = true
 		quantity_button.disabled = true
@@ -1099,6 +1100,11 @@ func _refresh_detail() -> void:
 	quick_use_button.visible = can_bind_quick_use
 	quick_use_button.disabled = not can_bind_quick_use
 	quick_use_button.text = (
+		"取消快捷"
+		if can_bind_quick_use and run_state.is_quick_use_slot(selected_slot_index)
+		else "设为快捷"
+	)
+	quick_use_button.tooltip_text = (
 		"取消快捷使用"
 		if can_bind_quick_use and run_state.is_quick_use_slot(selected_slot_index)
 		else "设置快捷使用"

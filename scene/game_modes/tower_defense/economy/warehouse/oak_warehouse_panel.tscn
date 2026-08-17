@@ -380,9 +380,9 @@ horizontal_alignment = 1
 
 [node name="UseButton" type="Button" parent="Overlay/PanelRoot"]
 layout_mode = 0
-offset_left = 24.0
+offset_left = 50.0
 offset_top = 421.0
-offset_right = 85.0
+offset_right = 111.0
 offset_bottom = 480.0
 mouse_default_cursor_shape = 2
 text = "使用"
@@ -401,12 +401,13 @@ theme_override_styles/disabled = SubResource("StyleBoxEmpty_button")
 
 [node name="MoveButton" type="Button" parent="Overlay/PanelRoot"]
 layout_mode = 0
-offset_left = 91.0
+offset_left = 117.0
 offset_top = 421.0
-offset_right = 152.0
+offset_right = 178.0
 offset_bottom = 480.0
 mouse_default_cursor_shape = 2
 text = "移动"
+clip_text = true
 theme_override_colors/font_color = Color(1, 0.88, 0.57, 1)
 theme_override_colors/font_hover_color = Color(1, 0.95, 0.74, 1)
 theme_override_colors/font_pressed_color = Color(0.91, 0.66, 0.25, 1)
@@ -423,24 +424,25 @@ theme_override_styles/disabled = SubResource("StyleBoxEmpty_button")
 [node name="QuickUseButton" type="Button" parent="Overlay/PanelRoot"]
 visible = false
 layout_mode = 0
-offset_left = 158.0
-offset_top = 421.0
-offset_right = 219.0
-offset_bottom = 480.0
+offset_left = 331.0
+offset_top = 366.0
+offset_right = 393.0
+offset_bottom = 392.0
 mouse_default_cursor_shape = 2
-text = "设置快捷使用"
+text = "设为快捷"
+clip_text = true
 theme_override_colors/font_color = Color(0.95, 0.78, 0.34, 1)
 theme_override_colors/font_hover_color = Color(1, 0.93, 0.65, 1)
 theme_override_colors/font_pressed_color = Color(0.91, 0.66, 0.25, 1)
 theme_override_colors/font_focus_color = Color(1, 0.93, 0.65, 1)
 theme_override_colors/font_disabled_color = Color(0.48, 0.43, 0.36, 1)
 theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 10
-theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_button")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_button")
-theme_override_styles/disabled = SubResource("StyleBoxEmpty_button")
+theme_override_font_sizes/font_size = 9
+theme_override_styles/normal = SubResource("StyleBoxFlat_quantity_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_quantity_action_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_quantity_action_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_quantity_action_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_quantity_action_disabled")
 
 [node name="HalfButton" type="Button" parent="Overlay/PanelRoot"]
 layout_mode = 0
