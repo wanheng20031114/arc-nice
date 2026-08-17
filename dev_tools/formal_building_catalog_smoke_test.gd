@@ -407,7 +407,11 @@ func _test_catalog_layout(viewport_size: Vector2i) -> void:
 	var hud := HUD_SCENE.instantiate() as PlantSelectionHUD
 	viewport.add_child(hud)
 	var configs := PlantDefenseRegistry.get_all_configs()
-	_expect(hud.open(configs), "Catalog layout fixture must open.")
+	var agave := PlantDefenseRegistry.get_config(PlantDefenseRegistry.AGAVE_CANNON_ID)
+	_expect(
+		hud.open(configs, {PlantDefenseRegistry.AGAVE_CANNON_ID: 1}),
+		"Catalog layout fixture must open."
+	)
 	await _wait_layout_frames(4)
 	var footer := hud.get_node(
 		"Root/ScreenMargin/Content/Margin/Layout/Footer"
@@ -444,10 +448,39 @@ func _test_catalog_layout(viewport_size: Vector2i) -> void:
 				var card := card_variant as PlantSelectionCard
 				var card_rect := card.get_global_rect()
 				_expect(
-					card_rect.end.x <= flow_rect.end.x + 0.5,
+					card.get_node_or_null("Margin/Content/Stats") == null
+					and card.custom_minimum_size.y <= 110.0
+					and card_rect.end.x <= flow_rect.end.x + 0.5,
 					"Wrapped cards must not overflow horizontally at %s."
 					% viewport_size
 				)
+	if viewport_size == DEFAULT_VIEWPORT:
+		for category in [
+			PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER,
+			PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER,
+			PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING,
+		]:
+			_expect(
+				hud.get_category_row_count(category) == 1,
+				"Core catalog categories must fit one row at the design viewport."
+			)
+	var confirmed_configs: Array[PlantDefenseConfig] = []
+	hud.selection_confirmed.connect(
+		func(config: PlantDefenseConfig) -> void: confirmed_configs.append(config)
+	)
+	var agave_card := _find_card(hud, agave)
+	_expect(
+		agave_card != null
+		and not agave_card.select_button.disabled
+		and agave_card.select_button.text == "部署",
+		"An owned compact card must expose a direct deploy button."
+	)
+	if agave_card != null:
+		agave_card.select_button.pressed.emit()
+	_expect(
+		confirmed_configs == [agave],
+		"Pressing a card deploy button must confirm that building immediately."
+	)
 	for label_variant in hud.find_children("*", "Label", true, false):
 		var label := label_variant as Label
 		_expect(

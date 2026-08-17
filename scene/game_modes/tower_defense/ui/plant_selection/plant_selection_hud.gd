@@ -22,9 +22,6 @@ const CATEGORY_ORDER: Array[int] = [
 @onready var outer_scroll: ScrollContainer = (
 	$Root/ScreenMargin/Content/Margin/Layout/CatalogScroll
 )
-@onready var selected_summary: Label = (
-	$Root/ScreenMargin/Content/Margin/Layout/Header/SelectedSummary
-)
 @onready var confirm_button: Button = (
 	$Root/ScreenMargin/Content/Margin/Layout/Footer/ConfirmButton
 )
@@ -144,6 +141,7 @@ func refresh_item_counts(item_counts: Dictionary) -> void:
 			_get_owned_count(card.plant_config),
 			free_placement_mode
 		)
+	_refresh_category_headers()
 	_refresh_selection(false)
 
 
@@ -256,22 +254,47 @@ func _build_cards() -> void:
 		var typed_cards := category_cards[config.building_category] as Array
 		typed_cards.append(card)
 		category_cards[config.building_category] = typed_cards
+	_refresh_category_headers()
+
+
+func _refresh_category_headers() -> void:
 	for category in CATEGORY_ORDER:
+		var typed_cards := category_cards.get(category, []) as Array
+		var deployable_count := 0
+		for card_variant in typed_cards:
+			var card := card_variant as PlantSelectionCard
+			if card != null and card.can_confirm():
+				deployable_count += 1
 		var header := category_headers[category] as Label
-		header.text = "%s  ·  %d" % [
+		header.text = "%s  ·  可部署 %d/%d" % [
 			PlantDefenseConfig.get_building_category_label(category),
-			get_category_card_count(category),
+			deployable_count,
+			typed_cards.size(),
 		]
 
 
 func _restore_selected_config() -> void:
-	selected_config = _find_config(last_selected_plant_id)
+	var previous_selection := _find_config(last_selected_plant_id)
+	selected_config = previous_selection if _can_deploy_config(previous_selection) else null
+	var remembered_fallback: PlantDefenseConfig = null
 	if selected_config == null:
 		for category in CATEGORY_ORDER:
 			var category_id := category_last_selected_ids.get(category, &"") as StringName
-			selected_config = _find_config(category_id)
-			if selected_config != null:
+			var remembered_config := _find_config(category_id)
+			if remembered_fallback == null and remembered_config != null:
+				remembered_fallback = remembered_config
+			if _can_deploy_config(remembered_config):
+				selected_config = remembered_config
 				break
+	if selected_config == null:
+		for config in available_configs:
+			if _can_deploy_config(config):
+				selected_config = config
+				break
+	if selected_config == null:
+		selected_config = previous_selection
+	if selected_config == null:
+		selected_config = remembered_fallback
 	if selected_config == null and not available_configs.is_empty():
 		selected_config = available_configs[0]
 	if selected_config != null:
@@ -333,6 +356,14 @@ func _select_category_relative(offset: int) -> void:
 		return
 	var remembered_id := category_last_selected_ids.get(category, &"") as StringName
 	var remembered_config := _find_config(remembered_id)
+	if _can_deploy_config(remembered_config):
+		_select_config(remembered_config)
+		return
+	for card_variant in typed_cards:
+		var card := card_variant as PlantSelectionCard
+		if card != null and card.can_confirm():
+			_select_config(card.plant_config)
+			return
 	_select_config(
 		remembered_config
 		if remembered_config != null
@@ -346,35 +377,24 @@ func _refresh_selection(ensure_visible: bool) -> void:
 	var can_confirm := _can_confirm_selected()
 	confirm_button.disabled = not can_confirm
 	if selected_config == null:
-		confirm_button.text = "选择建筑"
-		selected_summary.text = "请选择建筑"
+		confirm_button.text = "部署建筑"
 		return
 	var owned_count := _get_owned_count(selected_config)
 	confirm_button.text = (
-		"免费放置 %s" % selected_config.display_name
+		"免费部署 %s" % selected_config.display_name
 		if free_placement_mode
-		else "放置 %s（可用 %d）" % [selected_config.display_name, owned_count]
+		else "部署 %s（可用 %d）" % [selected_config.display_name, owned_count]
 	)
-	selected_summary.text = "%s  ·  %s  ·  %s" % [
-		selected_config.display_name,
-		(
-			"沙盒免费"
-			if free_placement_mode
-			else "可用 %d（背包 + 共享仓库）" % owned_count
-		),
-		PlantDefenseConfig.get_placement_surface_label(
-			selected_config.placement_surface
-		),
-	]
 	if ensure_visible:
 		_focus_selected_card(true)
 
 
 func _can_confirm_selected() -> bool:
-	return (
-		selected_config != null
-		and (free_placement_mode or _get_owned_count(selected_config) > 0)
-	)
+	return _can_deploy_config(selected_config)
+
+
+func _can_deploy_config(config: PlantDefenseConfig) -> bool:
+	return config != null and (free_placement_mode or _get_owned_count(config) > 0)
 
 
 func _get_owned_count(config: PlantDefenseConfig) -> int:

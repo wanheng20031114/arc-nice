@@ -8,9 +8,8 @@ const SELECTION_FEEDBACK_SECONDS := 0.12
 
 @onready var icon_rect: TextureRect = $Margin/Content/Top/IconFrame/Icon
 @onready var name_label: Label = $Margin/Content/Top/Summary/Name
-@onready var owned_label: Label = $Margin/Content/Top/Summary/Owned
-@onready var surface_label: Label = $Margin/Content/Top/Summary/Surface
-@onready var stats_label: Label = $Margin/Content/Stats
+@onready var owned_label: Label = $Margin/Content/Top/Summary/Meta/Owned
+@onready var surface_label: Label = $Margin/Content/Top/Summary/Meta/Surface
 @onready var select_button: Button = $Margin/Content/SelectButton
 
 var plant_config: PlantDefenseConfig = null
@@ -27,7 +26,7 @@ func _ready() -> void:
 	mouse_exited.connect(_on_mouse_exited)
 	focus_entered.connect(_emit_selected)
 	gui_input.connect(_on_gui_input)
-	select_button.gui_input.connect(_on_gui_input)
+	select_button.pressed.connect(_on_select_button_pressed)
 	_refresh_style()
 
 
@@ -43,7 +42,6 @@ func setup(
 	icon_rect.texture = plant_config.icon
 	name_label.text = plant_config.display_name
 	tooltip_text = plant_config.description
-	stats_label.text = _build_stats_text()
 	surface_label.text = PlantDefenseConfig.get_placement_surface_label(
 		plant_config.placement_surface
 	)
@@ -63,11 +61,7 @@ func update_availability(
 		else "可用 ×%d" % owned_count
 	)
 	select_button.disabled = not can_confirm()
-	select_button.text = (
-		"选择（免费）"
-		if free_placement_mode
-		else "选择（%d）" % owned_count
-	)
+	select_button.text = "部署"
 	_refresh_style()
 
 
@@ -83,39 +77,6 @@ func set_selected(value: bool) -> void:
 		_play_selection_feedback()
 
 
-func _build_stats_text() -> String:
-	var parts: PackedStringArray = ["生命 %d" % plant_config.max_health]
-	if plant_config.attack_damage > 0:
-		if plant_config.attack_burst_count > 1:
-			parts.append(
-				"伤害 %s×%d"
-				% [
-					_format_number(plant_config.attack_damage),
-					plant_config.attack_burst_count,
-				]
-			)
-		else:
-			parts.append("伤害 %s" % _format_number(plant_config.attack_damage))
-		var attack_interval := plant_config.get_attack_interval()
-		if attack_interval > 0.0:
-			parts.append(
-				"%s %s 秒"
-				% [
-					"轮间隔" if plant_config.attack_burst_count > 1 else "间隔",
-					_format_number(attack_interval),
-				]
-			)
-	if plant_config.attack_range > 0.0:
-		parts.append("半径 %s" % _format_number(plant_config.attack_range))
-	return "  ·  ".join(parts)
-
-
-func _format_number(value: float) -> String:
-	if is_equal_approx(value, roundf(value)):
-		return str(roundi(value))
-	return ("%.2f" % value).trim_suffix("0")
-
-
 func _refresh_style() -> void:
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = (
@@ -124,7 +85,11 @@ func _refresh_style() -> void:
 		else Color(0.025, 0.036, 0.03, 0.96)
 	)
 	panel_style.border_color = (
-		Color(0.68, 1.0, 0.58, 1.0)
+		(
+			Color(0.68, 1.0, 0.58, 1.0)
+			if can_confirm()
+			else Color(0.5, 0.6, 0.5, 1.0)
+		)
 		if selected
 		else Color(0.42, 0.72, 0.42, 0.95)
 		if hovered
@@ -143,7 +108,11 @@ func _refresh_style() -> void:
 	panel_style.shadow_size = 7 if hovered else 4
 	panel_style.shadow_offset = Vector2(0.0, 2.0)
 	add_theme_stylebox_override(&"panel", panel_style)
-	modulate = Color.WHITE if can_confirm() or selected else Color(0.68, 0.72, 0.68, 1.0)
+	modulate = _target_modulate()
+
+
+func _target_modulate() -> Color:
+	return Color.WHITE if can_confirm() else Color(0.68, 0.72, 0.68, 1.0)
 
 
 func _play_selection_feedback() -> void:
@@ -154,7 +123,7 @@ func _play_selection_feedback() -> void:
 	_selection_tween.tween_property(
 		self,
 		"modulate",
-		Color.WHITE if can_confirm() else Color(0.78, 0.84, 0.78, 1.0),
+		_target_modulate(),
 		SELECTION_FEEDBACK_SECONDS
 	)
 
@@ -180,6 +149,12 @@ func _on_gui_input(event: InputEvent) -> void:
 	accept_event()
 	_emit_selected()
 	if mouse_event.double_click and can_confirm():
+		plant_confirmed.emit(plant_config)
+
+
+func _on_select_button_pressed() -> void:
+	_emit_selected()
+	if can_confirm():
 		plant_confirmed.emit(plant_config)
 
 

@@ -1637,19 +1637,15 @@ func _test_realtime_selection_and_cancel() -> void:
 			corn_card = card
 	_expect(
 		agave_card != null
-		and agave_card.stats_label.text == "生命 2000  ·  伤害 25  ·  间隔 2 秒  ·  半径 130",
-		"龙舌兰属性文案必须显示下调后的索敌半径。"
-	)
-	_expect(
-		bamboo_mortar_card != null
-		and bamboo_mortar_card.stats_label.text
-		== "生命 2000  ·  伤害 140  ·  半径 224",
-		"竹筒迫击炮卡片不得继续显示已经取消的额外攻击间隔。"
-	)
-	_expect(
-		corn_card != null
-		and corn_card.stats_label.text == "生命 2500  ·  伤害 30×6  ·  轮间隔 0.9 秒  ·  半径 160",
-		"玉米机枪塔卡片必须显示整轮伤害与轮间隔。"
+		and bamboo_mortar_card != null
+		and corn_card != null
+		and agave_card.get_node_or_null("Margin/Content/Stats") == null
+		and bamboo_mortar_card.get_node_or_null("Margin/Content/Stats") == null
+		and corn_card.get_node_or_null("Margin/Content/Stats") == null
+		and agave_card.custom_minimum_size.y <= 110.0
+		and bamboo_mortar_card.custom_minimum_size.y <= 110.0
+		and corn_card.custom_minimum_size.y <= 110.0,
+		"T键建筑卡片必须移除具体战斗属性，并保持紧凑高度。"
 	)
 	_expect(paused == was_paused and not paused, "选择植物不得暂停SceneTree。")
 	_expect(not lock_events.is_empty() and lock_events.back(), "选择期间必须请求锁定玩家。")

@@ -57,7 +57,7 @@ corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
 
 [node name="PlantSelectionCard" type="PanelContainer"]
-custom_minimum_size = Vector2(190, 180)
+custom_minimum_size = Vector2(172, 100)
 layout_mode = 2
 focus_mode = 2
 mouse_filter = 0
@@ -66,21 +66,21 @@ script = ExtResource("1_script")
 
 [node name="Margin" type="MarginContainer" parent="."]
 layout_mode = 2
-theme_override_constants/margin_left = 9
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 9
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 7
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 7
+theme_override_constants/margin_bottom = 6
 
 [node name="Content" type="VBoxContainer" parent="Margin"]
 layout_mode = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 3
 
 [node name="Top" type="HBoxContainer" parent="Margin/Content"]
 layout_mode = 2
-theme_override_constants/separation = 7
+theme_override_constants/separation = 6
 
 [node name="IconFrame" type="PanelContainer" parent="Margin/Content/Top"]
-custom_minimum_size = Vector2(58, 58)
+custom_minimum_size = Vector2(50, 50)
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_icon")
@@ -95,50 +95,43 @@ stretch_mode = 5
 [node name="Summary" type="VBoxContainer" parent="Margin/Content/Top"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 0
+theme_override_constants/separation = 1
 
 [node name="Name" type="Label" parent="Margin/Content/Top/Summary"]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_colors/font_color = Color(0.86, 1, 0.78, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "建筑名称"
 vertical_alignment = 1
-autowrap_mode = 3
+text_overrun_behavior = 3
 
-[node name="Owned" type="Label" parent="Margin/Content/Top/Summary"]
+[node name="Meta" type="HBoxContainer" parent="Margin/Content/Top/Summary"]
 layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Owned" type="Label" parent="Margin/Content/Top/Summary/Meta"]
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.72, 0.92, 0.65, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 12
 theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "可用 ×0"
 
-[node name="Surface" type="Label" parent="Margin/Content/Top/Summary"]
+[node name="Surface" type="Label" parent="Margin/Content/Top/Summary/Meta"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.54, 0.72, 0.54, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 10
 theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
 text = "仅草地"
-
-[node name="Stats" type="Label" parent="Margin/Content"]
-custom_minimum_size = Vector2(0, 48)
-layout_mode = 2
-size_flags_vertical = 3
-mouse_filter = 2
-theme_override_colors/font_color = Color(0.62, 0.82, 0.58, 1)
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 11
-theme_override_styles/normal = SubResource("StyleBoxEmpty_text")
-text = "生命 2000  ·  伤害 25"
-vertical_alignment = 1
-autowrap_mode = 3
+horizontal_alignment = 2
 
 [node name="SelectButton" type="Button" parent="Margin/Content"]
-custom_minimum_size = Vector2(0, 27)
+custom_minimum_size = Vector2(0, 25)
 layout_mode = 2
 focus_mode = 0
 theme_override_colors/font_color = Color(0.9, 1, 0.86, 1)
@@ -150,4 +143,4 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
-text = "选择（0）"
+text = "部署"
