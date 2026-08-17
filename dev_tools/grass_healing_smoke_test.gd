@@ -76,26 +76,45 @@ func _test_all_player_particle_contracts() -> void:
 			if particles != null
 			else null
 		)
+		var glow_material := (
+			particles.material as CanvasItemMaterial
+			if particles != null
+			else null
+		)
 		_expect(
 			particles != null
 			and particles.get_parent() == player.body_sprite
 			and not particles.visible
 			and not particles.emitting
-			and particles.amount == 16
-			and is_equal_approx(particles.lifetime, 0.8)
-			and is_equal_approx(particles.speed_scale, 0.5)
+			and particles.amount == 24
+			and is_equal_approx(particles.lifetime, 1.25)
+			and is_equal_approx(particles.speed_scale, 0.75)
+			and particles.local_coords
 			and particles.visibility_rect
-			== Rect2(-5.5, -2.5, 11.0, 3.5)
+			== Rect2(-22.0, -24.0, 44.0, 44.0)
 			and material != null
 			and material.emission_shape
-			== ParticleProcessMaterial.EMISSION_SHAPE_BOX
-			and material.emission_box_extents
-			== Vector3(4.75, 0.5, 1.0)
+			== ParticleProcessMaterial.EMISSION_SHAPE_RING
+			and material.emission_ring_axis == Vector3(0.0, 0.0, 1.0)
+			and is_equal_approx(material.emission_ring_radius, 11.0)
+			and is_equal_approx(material.emission_ring_inner_radius, 7.5)
+			and material.emission_shape_scale
+			== Vector3(1.0, 1.15, 1.0)
 			and material.direction == Vector3(0.0, -1.0, 0.0)
+			and is_equal_approx(material.initial_velocity_min, 4.0)
+			and is_equal_approx(material.initial_velocity_max, 7.0)
+			and material.radial_velocity_min < 0.0
+			and material.radial_velocity_max > 0.0
+			and material.tangential_accel_min < 0.0
+			and material.tangential_accel_max > 0.0
+			and is_equal_approx(material.scale_min, 0.45)
+			and is_equal_approx(material.scale_max, 0.65)
 			and material.color.is_equal_approx(
 				Color(0.741, 1.0, 0.278, 0.9)
-			),
-			"四个角色都必须在BodySprite下静态复用植被桩同款绿色上浮粒子。"
+			)
+			and glow_material != null
+			and int(glow_material.light_mode) == 1,
+			"四个角色都必须静态使用植被桩同系绿光粒子，并以玩家为中心环形曲线上浮。"
 		)
 		_stop_audio_players(player)
 		player.queue_free()
