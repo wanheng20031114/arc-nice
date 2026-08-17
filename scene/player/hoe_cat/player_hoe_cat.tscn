@@ -25,6 +25,7 @@
 [ext_resource type="Texture2D" path="res://resources/texture/player/hoe_cat/snow_wolf_pojun_sword.png" id="23_sword_texture"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="24_night_light"]
 [ext_resource type="Texture2D" path="res://resources/lighting/soft_player_point_light.tres" id="25_player_light_texture"]
+[ext_resource type="PackedScene" path="res://scene/player/effects/grass_healing_particles.tscn" id="26_grass_healing_particles"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_basic_attack"]
 radius = 48.0
@@ -111,6 +112,8 @@ material = SubResource("ShaderMaterial_hoe_cat")
 sprite_frames = ExtResource("3_frames")
 animation = &"idle_down"
 autoplay = "idle_down"
+
+[node name="GrassHealingParticles" parent="BodySprite" instance=ExtResource("26_grass_healing_particles")]
 
 [node name="NightLight" parent="." instance=ExtResource("24_night_light")]
 texture = ExtResource("25_player_light_texture")

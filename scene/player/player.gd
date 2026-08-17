@@ -84,6 +84,9 @@ var _world_movement_saved_visibility: Dictionary[StringName, bool] = {}
 @export var skill1_charge_duration: float = 18.0
 
 @onready var body_sprite: AnimatedSprite2D = $BodySprite
+@onready var grass_healing_particles: GPUParticles2D = (
+	$BodySprite/GrassHealingParticles
+)
 @onready var night_light: NightPointLight2D = $NightLight
 @onready var speed_trail_effect: Node2D = $MoveSpeedTrailEffect
 @onready var dash_ready_indicator: Control = $DashReadyIndicator
@@ -486,6 +489,7 @@ func _ready() -> void:
 	_set_revive_glow_strength(0.0)
 	_set_burn_overlay_strength(0.0)
 	_set_bleed_overlay_strength(0.0)
+	set_grass_healing_effect_active(false)
 	_update_movement_status_visuals(Vector2.ZERO)
 	_cache_multiplayer_visual_base_positions()
 	_refresh_dash_ready_visual()
@@ -504,6 +508,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	set_grass_healing_effect_active(false)
 	_set_consumable_hide_enabled(false)
 	potion_hide_time_left = 0.0
 	clear_damage_over_time_statuses()
@@ -3316,6 +3321,17 @@ func heal(amount: int, report_multiplayer: bool = true) -> int:
 	if not _try_heal(amount, report_multiplayer):
 		return 0
 	return last_healing_received
+
+
+func set_grass_healing_effect_active(active: bool) -> void:
+	var should_emit := active and not is_dead
+	if grass_healing_particles.emitting == should_emit:
+		grass_healing_particles.visible = should_emit
+		return
+	grass_healing_particles.visible = should_emit
+	grass_healing_particles.emitting = should_emit
+	if should_emit:
+		grass_healing_particles.restart()
 
 
 func try_consume_authoritative_player_bullet_ammo() -> bool:
@@ -6348,6 +6364,7 @@ func _die() -> void:
 ## 必须在这里原子进入死亡态，避免两条路径随角色机制扩展而漂移。
 func _enter_death_state() -> void:
 	is_dead = true
+	set_grass_healing_effect_active(false)
 	set_control_lock(DEATH_CONTROL_LOCK_OWNER, true)
 	night_light.set_emission_allowed(false)
 	clear_damage_over_time_statuses()

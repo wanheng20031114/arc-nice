@@ -20,6 +20,7 @@
 [ext_resource type="PackedScene" path="res://scene/player/effects/dash_ready_indicator.tscn" id="17_dash_ready"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="18_night_light"]
 [ext_resource type="Texture2D" path="res://resources/lighting/soft_player_point_light.tres" id="19_player_light_texture"]
+[ext_resource type="PackedScene" path="res://scene/player/effects/grass_healing_particles.tscn" id="20_grass_healing_particles"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_s4jxa"]
 resource_local_to_scene = true
@@ -135,6 +136,8 @@ material = SubResource("ShaderMaterial_s4jxa")
 sprite_frames = ExtResource("11_player_frames")
 animation = &"armed_left"
 autoplay = "normal_right"
+
+[node name="GrassHealingParticles" parent="BodySprite" instance=ExtResource("20_grass_healing_particles")]
 
 [node name="NightLight" parent="." instance=ExtResource("18_night_light")]
 texture = ExtResource("19_player_light_texture")

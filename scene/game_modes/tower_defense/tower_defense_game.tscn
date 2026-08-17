@@ -51,6 +51,7 @@
 [ext_resource type="Script" path="res://scene/game_modes/tower_defense/plant/support/life_tower_health_coordinator.gd" id="55_life_tower_health"]
 [ext_resource type="Script" uid="uid://dul6ing06ojrh" path="res://scene/game_modes/tower_defense/plant/support/speed_tower_move_speed_coordinator.gd" id="55_speed_tower_move_speed"]
 [ext_resource type="Script" path="res://scene/game_modes/tower_defense/plant/support/attack_speed_tower_coordinator.gd" id="55_attack_speed_tower"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/player/grass_healing_coordinator.gd" id="55_grass_healing"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/ui/day_phase_announcement.tscn" id="56_day_announcement"]
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="57_combat_robot_drone_motion"]
 [ext_resource type="Resource" path="res://scene/game_modes/definitions/tower_defense.tres" id="58_mode_definition"]
@@ -208,6 +209,11 @@ authored_bamboo_mortar_combat_system = NodePath("../BambooMortarCombatSystem")
 [node name="PickupRegistry" parent="." instance=ExtResource("74_pickup_registry")]
 
 [node name="PlayerRosterCoordinator" parent="." instance=ExtResource("67_player_roster")]
+
+[node name="GrassHealingCoordinator" type="Node" parent="." node_paths=PackedStringArray("terrain_map", "player_roster_coordinator")]
+script = ExtResource("55_grass_healing")
+terrain_map = NodePath("../DualGridTerrain")
+player_roster_coordinator = NodePath("../PlayerRosterCoordinator")
 
 [node name="LifeTowerHealthCoordinator" type="Node" parent="." node_paths=PackedStringArray("plant_system", "player_roster_coordinator")]
 script = ExtResource("55_life_tower_health")

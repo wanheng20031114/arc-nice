@@ -1,0 +1,32 @@
+[gd_scene format=3]
+
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_mote_glow"]
+light_mode = 1
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_motes"]
+particle_flag_disable_z = true
+emission_shape = 3
+emission_box_extents = Vector3(4.75, 0.5, 1)
+direction = Vector3(0, -1, 0)
+spread = 14.0
+initial_velocity_min = 1.2
+initial_velocity_max = 2.4
+gravity = Vector3(0, 1, 0)
+scale_min = 0.5
+scale_max = 0.5
+color = Color(0.741, 1, 0.278, 0.9)
+
+[node name="GrassHealingParticles" type="GPUParticles2D"]
+visible = false
+z_index = 2
+texture_filter = 1
+material = SubResource("CanvasItemMaterial_mote_glow")
+position = Vector2(0, -3.25)
+emitting = false
+amount = 16
+lifetime = 0.8
+preprocess = 0.8
+speed_scale = 0.5
+randomness = 0.55
+visibility_rect = Rect2(-5.5, -2.5, 11, 3.5)
+process_material = SubResource("ParticleProcessMaterial_motes")

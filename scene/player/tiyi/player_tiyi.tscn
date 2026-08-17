@@ -22,6 +22,7 @@
 [ext_resource type="SpriteFrames" path="res://resources/animation/player_tiyi_high_noon_cast.tres" id="20_high_noon_cast"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="21_night_light"]
 [ext_resource type="Texture2D" path="res://resources/lighting/soft_player_point_light.tres" id="22_player_light_texture"]
+[ext_resource type="PackedScene" path="res://scene/player/effects/grass_healing_particles.tscn" id="23_grass_healing_particles"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_status"]
 resource_local_to_scene = true
@@ -142,6 +143,8 @@ material = SubResource("ShaderMaterial_status")
 sprite_frames = ExtResource("12_player_frames")
 animation = &"normal_down"
 autoplay = "normal_down"
+
+[node name="GrassHealingParticles" parent="BodySprite" instance=ExtResource("23_grass_healing_particles")]
 
 [node name="NightLight" parent="." instance=ExtResource("21_night_light")]
 texture = ExtResource("22_player_light_texture")

@@ -24,6 +24,7 @@
 [ext_resource type="AudioStream" uid="uid://da7rccly7tpev" path="res://resources/audio/tango_unit_converge.wav" id="22_converge_audio"]
 [ext_resource type="AudioStream" uid="uid://b2sfjhc0wel7y" path="res://resources/audio/tango_unit_return.wav" id="23_return_audio"]
 [ext_resource type="AudioStream" uid="uid://cb83g10246056" path="res://resources/audio/tango_electric_surge_cast.wav" id="24_surge_audio"]
+[ext_resource type="PackedScene" path="res://scene/player/effects/grass_healing_particles.tscn" id="25_grass_healing_particles"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_status"]
 resource_local_to_scene = true
@@ -86,6 +87,8 @@ sprite_frames = ExtResource("3_player_frames")
 animation = &"idle_down"
 autoplay = "idle_down"
 frame_progress = 0.010444532
+
+[node name="GrassHealingParticles" parent="BodySprite" instance=ExtResource("25_grass_healing_particles")]
 
 [node name="NightLight" parent="." unique_id=678869982 instance=ExtResource("17_night_light")]
 texture = ExtResource("18_light_texture")
