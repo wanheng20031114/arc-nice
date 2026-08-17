@@ -1132,7 +1132,8 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 	health_revision += 1
 	var impact_direction := request.get_safe_impact_direction()
 	var damage_type := request.damage_type as EnemyConfig.DamageType
-	show_damage_number(result.applied_damage, impact_direction, damage_type)
+	# 浮字表达本次完整结算伤害；生命扣除仍由 applied_damage 按剩余生命封顶。
+	show_damage_number(result.resolved_damage, impact_direction, damage_type)
 	play_multiplayer_damage_feedback(
 		impact_direction,
 		_build_damage_feedback_flags(request, result)

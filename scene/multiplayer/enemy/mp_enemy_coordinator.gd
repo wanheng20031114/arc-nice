@@ -1995,16 +1995,19 @@ func apply_confirmed_enemy_damage(
 	if result.lethal:
 		# 同步 defeated 信号已经把最终一击纳入可靠 terminal 事件。
 		return true
+	var network_damage := _clamp_damage_feedback_for_network(
+		result.resolved_damage
+	)
 	var presentation_flags := _get_damage_presentation_flags(
 		request,
 		impact_direction,
-		result.applied_damage
+		network_damage
 	)
 	_queue_host_damage_feedback(
 		enemy_net_id,
 		result.health_after,
 		enemy.health_revision,
-		result.applied_damage,
+		network_damage,
 		impact_direction,
 		damage_type,
 		presentation_flags
@@ -2206,10 +2209,10 @@ func queue_damage_feedback(
 		}
 	feedback["current_health"] = current_health
 	feedback["health_revision"] = health_revision
-	var combined_damage := int(feedback.get("damage", 0)) + confirmed_damage
-	if not _NetConstants.is_valid_network_combat_value(combined_damage):
-		push_error("MpEnemyCoordinator: 敌人战斗反馈聚合值超过 signed int32。")
-		return
+	var combined_damage := _merge_network_damage_feedback_amounts(
+		int(feedback.get("damage", 0)),
+		confirmed_damage
+	)
 	feedback["damage"] = combined_damage
 	var previous_flags := int(feedback.get("presentation_flags", 0))
 	feedback["impact_direction"] = _merge_damage_feedback_direction(
@@ -2272,7 +2275,9 @@ func collect_terminal_feedback(enemy_net_id: int) -> Dictionary:
 		enemy = _runtime.get_network_enemy(enemy_net_id)
 	var current_health := int(pending_feedback.get("current_health", 0))
 	var health_revision := int(pending_feedback.get("health_revision", 0))
-	var confirmed_damage := maxi(int(pending_feedback.get("damage", 0)), 0)
+	var confirmed_damage := _clamp_damage_feedback_for_network(
+		int(pending_feedback.get("damage", 0))
+	)
 	var impact_direction := pending_feedback.get("impact_direction", Vector2.ZERO) as Vector2
 	var damage_type := int(
 		pending_feedback.get("damage_type", EnemyConfig.DamageType.PHYSICAL)
@@ -2283,7 +2288,10 @@ func collect_terminal_feedback(enemy_net_id: int) -> Dictionary:
 		health_revision = enemy.health_revision
 		var lethal_result := enemy.last_damage_result
 		if lethal_result != null and lethal_result.accepted and lethal_result.lethal:
-			confirmed_damage += lethal_result.applied_damage
+			confirmed_damage = _merge_network_damage_feedback_amounts(
+				confirmed_damage,
+				lethal_result.resolved_damage
+			)
 			if lethal_result.request != null:
 				var lethal_impact_direction := (
 					lethal_result.request.get_safe_impact_direction()
@@ -2292,7 +2300,7 @@ func collect_terminal_feedback(enemy_net_id: int) -> Dictionary:
 				var lethal_presentation_flags := _get_damage_presentation_flags(
 					lethal_result.request,
 					lethal_impact_direction,
-					lethal_result.applied_damage
+					lethal_result.resolved_damage
 				)
 				impact_direction = _merge_damage_feedback_direction(
 					impact_direction,
@@ -2324,9 +2332,9 @@ func collect_terminal_feedback(enemy_net_id: int) -> Dictionary:
 func _get_damage_presentation_flags(
 	request: DamageRequest,
 	impact_direction: Vector2,
-	applied_damage: int
+	display_damage: int
 ) -> int:
-	if request == null or applied_damage <= 0:
+	if request == null or display_damage <= 0:
 		return 0
 	var presentation_flags := 0
 	if (
@@ -2340,6 +2348,27 @@ func _get_damage_presentation_flags(
 	):
 		presentation_flags |= CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
 	return presentation_flags
+
+
+func _clamp_damage_feedback_for_network(damage: int) -> int:
+	return clampi(
+		damage,
+		_NetConstants.NETWORK_COMBAT_VALUE_MIN,
+		_NetConstants.NETWORK_COMBAT_VALUE_MAX
+	)
+
+
+func _merge_network_damage_feedback_amounts(
+	current_damage: int,
+	incoming_damage: int
+) -> int:
+	# 展示值可以超过目标生命，但 wire 仍必须保持无符号语义的 signed-int32 范围。
+	var safe_current := _clamp_damage_feedback_for_network(current_damage)
+	var safe_incoming := _clamp_damage_feedback_for_network(incoming_damage)
+	return mini(
+		safe_current + safe_incoming,
+		_NetConstants.NETWORK_COMBAT_VALUE_MAX
+	)
 
 
 func _is_valid_damage_presentation_flags(presentation_flags: int) -> bool:

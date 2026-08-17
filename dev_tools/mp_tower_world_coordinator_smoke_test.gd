@@ -246,6 +246,7 @@ class TestEnemy:
 
 	var received_requests: Array[DamageRequest] = []
 	var fixture_health := 100
+	var last_fixture_result: DamageResult = null
 
 	func apply_combat_damage(request: DamageRequest) -> DamageResult:
 		received_requests.append(request)
@@ -259,6 +260,7 @@ class TestEnemy:
 		fixture_health -= result.applied_damage
 		result.health_after = fixture_health
 		result.lethal = false
+		last_fixture_result = result
 		health_revision += 1
 		return result
 
@@ -1060,6 +1062,29 @@ func _test_plant_combat_network(session: MultiplayerGameplaySession) -> void:
 		and int(pending_feedback.get("damage", 0)) == 20
 		and not host_enemy_coordinator.active_enemy_damage_feedback_context.has(901),
 		"植物单次与批次伤害必须通过 EnemyCoordinator 聚合确认反馈并清理上下文。"
+	)
+	host_enemy_coordinator.pending_enemy_damage_feedback.clear()
+	target.fixture_health = 1
+	var overkill_damage_applied := (
+		host_coordinator.apply_authoritative_plant_enemy_damage(
+			201,
+			target,
+			10000,
+			Vector2.RIGHT,
+			EnemyConfig.DamageType.PHYSICAL
+		)
+	)
+	var overkill_feedback := (
+		host_enemy_coordinator.pending_enemy_damage_feedback.get(901, {})
+		as Dictionary
+	)
+	_expect(
+		overkill_damage_applied
+		and target.last_fixture_result != null
+		and target.last_fixture_result.resolved_damage == 10000
+		and target.last_fixture_result.applied_damage == 1
+		and int(overkill_feedback.get("damage", 0)) == 10000,
+		"塔造成过量伤害时，联机反馈必须保留完整结算伤害而不是剩余生命值。"
 	)
 
 	host_coordinator.queue_bamboo_mortar_visual(

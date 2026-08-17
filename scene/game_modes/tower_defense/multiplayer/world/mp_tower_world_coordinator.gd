@@ -2113,7 +2113,11 @@ func _apply_authoritative_plant_damage_request(
 			enemy_net_id,
 			result.health_after,
 			enemy.health_revision,
-			result.applied_damage,
+			clampi(
+				result.resolved_damage,
+				_NetConstants.NETWORK_COMBAT_VALUE_MIN,
+				_NetConstants.NETWORK_COMBAT_VALUE_MAX
+			),
 			impact_direction,
 			damage_type,
 			presentation_flags

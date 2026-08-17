@@ -101,6 +101,7 @@ func _run() -> void:
 	_test_tower_defense_enemy_escape_marker()
 	_test_pickup_tree_exit_markers(GAME_SCRIPT.new(), "StandardGame")
 	_test_pickup_tree_exit_markers(TOWER_DEFENSE_GAME_SCRIPT.new(), "TowerDefenseGame")
+	_test_local_overkill_damage_feedback_value()
 	_test_host_terminal_pairing_cache()
 	_test_reliable_terminal_feedback_payload()
 	_test_real_batch_damage_terminal_chain()
@@ -549,6 +550,42 @@ func _test_client_escape_compatibility_has_no_tombstone_cache() -> void:
 	net_manager_stub.free()
 
 
+func _test_local_overkill_damage_feedback_value() -> void:
+	var runtime := TerminalTowerRuntime.new()
+	_prepare_runtime_boundaries(runtime)
+	var enemy := ENEMY_SCENE.instantiate() as Enemy
+	if enemy == null:
+		_expect(false, "本地过量伤害反馈必须能实例化敌人。")
+		runtime.free()
+		return
+	root.add_child(enemy)
+	var overkill_config := ENEMY_CONFIG.duplicate(true) as EnemyConfig
+	overkill_config.max_health = 1
+	overkill_config.physical_defense = 1000
+	overkill_config.xirang_kill_reward = 0
+	overkill_config.drop_table = null
+	enemy.setup(overkill_config, null, null, runtime)
+	enemy.add_damage_taken_multiplier_modifier(88001, 0.5)
+	enemy.set_process(false)
+	enemy.set_physics_process(false)
+	var result := enemy.apply_combat_damage(DamageRequest.new(
+		10000,
+		CombatTypes.DamageType.PHYSICAL
+	))
+	_expect(
+		result.requested_amount == 10000
+		and result.mitigated_damage == 9000
+		and result.resolved_damage == 4500
+		and result.applied_damage == 1
+		and enemy.last_damage_taken == 1
+		and runtime.amount == 4500,
+		"伤害浮字必须显示防御与承伤倍率后的完整4500点结算伤害，不能显示原始10000或实际扣除的1点生命。"
+	)
+	root.remove_child(enemy)
+	enemy.free()
+	runtime.free()
+
+
 func _test_reliable_terminal_feedback_payload() -> void:
 	var enemy_coordinator := MpEnemyCoordinator.new()
 	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new() as TowerDefenseGame
@@ -616,7 +653,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	var enemy_coordinator := MpEnemyCoordinator.new()
 	root.add_child(enemy_coordinator)
 	var net_manager_stub := HostNetManagerStub.new()
-	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new()
+	var runtime := TerminalTowerRuntime.new()
 	var gateway := _prepare_runtime_boundaries(runtime)
 	runtime.runtime_mode = HOST_AUTHORITY
 	enemy_coordinator.bind_runtime(runtime)
@@ -641,7 +678,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 		return
 	root.add_child(enemy)
 	var lethal_config := ENEMY_CONFIG.duplicate(true) as EnemyConfig
-	lethal_config.max_health = 40
+	lethal_config.max_health = 1
 	lethal_config.physical_defense = 0
 	lethal_config.xirang_kill_reward = 0
 	lethal_config.drop_table = null
@@ -664,7 +701,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 		)
 	)
 	var lethal_batch := DamageBatchRequest.new(
-		PackedInt64Array([40]),
+		PackedInt64Array([10000]),
 		PackedInt32Array([1]),
 		CombatTypes.DamageType.PHYSICAL
 	)
@@ -674,17 +711,20 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	var args := terminal_capture.get("args", []) as Array
 	_expect(
 		result.accepted
+		and result.resolved_damage == 10000
+		and result.applied_damage == 1
 		and enemy.is_dead
+		and runtime.amount == 10000
 		and args.size() == 9
 		and int(args[0]) == net_id
 		and int(args[1]) == ENEMY_TERMINAL_DEFEATED
 		and int(args[3]) == 0
 		and int(args[4]) == enemy.health_revision
-		and int(args[5]) == 40
+		and int(args[5]) == 10000
 		and args[6] == Vector2.RIGHT
 		and int(args[7]) == int(EnemyConfig.DamageType.PHYSICAL)
 		and int(args[8]) == 3,
-		"真实apply_damage_batch→defeated信号→可靠terminal链必须携带最后40点致死反馈。"
+		"1生命敌人受到10000点伤害时，本地浮字和可靠terminal都必须携带完整结算伤害，生命扣除仍只能为1。"
 	)
 	_expect(
 		not enemy_coordinator.pending_enemy_damage_feedback.has(net_id)
@@ -726,11 +766,11 @@ func _test_real_batch_damage_terminal_chain() -> void:
 		and client_enemy.current_health == 0
 		and client_enemy_coordinator.get_client_enemy(net_id) == null
 		and not client_runtime.has_network_enemy(net_id)
-		and client_runtime.amount == 40
+		and client_runtime.amount == 10000
 		and client_runtime.impact_direction == Vector2.RIGHT
 		and client_runtime.damage_type
 		== int(EnemyConfig.DamageType.PHYSICAL),
-		"客户端消费九参数可靠terminal时必须先显示最后40点伤害、应用0生命，再执行死亡移除。"
+		"客户端消费九参数可靠terminal时必须先显示完整10000点伤害、应用0生命，再执行死亡移除。"
 	)
 	runtime.clear_network_enemy_registry()
 	root.remove_child(enemy)

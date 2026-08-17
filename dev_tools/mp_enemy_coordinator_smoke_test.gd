@@ -3,6 +3,7 @@ extends SceneTree
 const ENEMY_COORDINATOR_SCENE := preload(
 	"res://scene/multiplayer/enemy/mp_enemy_coordinator.tscn"
 )
+const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 const PROJECTILE_COORDINATOR_SCENE := preload(
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.tscn"
 )
@@ -303,6 +304,31 @@ func _run() -> void:
 		])
 		and feedback_batches[0].presentation_flags == PackedByteArray([3]),
 		"同一敌人的不可靠伤害反馈必须合并最终生命、revision、总伤害与表现位集。"
+	)
+	coordinator.queue_damage_feedback(
+		8,
+		1,
+		1,
+		NET_CONSTANTS.NETWORK_COMBAT_VALUE_MAX,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.PHYSICAL,
+		0
+	)
+	coordinator.queue_damage_feedback(
+		8,
+		0,
+		2,
+		1,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.PHYSICAL,
+		0
+	)
+	var saturated_feedback_batches := coordinator.drain_damage_feedback_batches()
+	_expect(
+		saturated_feedback_batches.size() == 1
+		and saturated_feedback_batches[0].damage_values
+		== PackedInt32Array([NET_CONSTANTS.NETWORK_COMBAT_VALUE_MAX]),
+		"极端伤害聚合必须饱和到网络int32上限，不能丢失整条反馈。"
 	)
 	coordinator.pending_enemy_damage_feedback[808] = {
 		"current_health": 10,
