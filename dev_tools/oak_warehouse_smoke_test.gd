@@ -138,14 +138,14 @@ func _run() -> void:
 func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse) -> void:
 	_expect(config != null and config.is_valid(), "橡木仓库配置必须有效。")
 	_expect(config.footprint_size == Vector2i(2, 2), "橡木仓库必须占用四格地砖。")
-	_expect(config.max_health == 2000, "橡木仓库生命值必须为2000。")
+	_expect(config.max_health == 3000, "橡木仓库生命值必须为3000。")
 	_expect(
 		config.physical_defense == 0 and config.magic_defense == 0,
 		"橡木仓库的物理防御与法术防御必须都为0。"
 	)
 	_expect(
-		warehouse.max_health == 2000 and warehouse.current_health == 2000,
-		"橡木仓库实例必须以2000点满生命生成。"
+		warehouse.max_health == 3000 and warehouse.current_health == 3000,
+		"橡木仓库实例必须以3000点满生命生成。"
 	)
 	_expect(
 		config.plant_scene.resource_path.begins_with("res://scene/plant_defense/"),

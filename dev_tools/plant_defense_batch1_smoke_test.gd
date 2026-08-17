@@ -432,11 +432,11 @@ func _test_config_and_scene_contracts() -> void:
 		"玉米机枪塔必须拥有160范围、占2×2格并支持多人。"
 	)
 	_expect(
-		oak_config.max_health == 2000
+		oak_config.max_health == 3000
 		and oak_config.physical_defense == 0
 		and oak_config.magic_defense == 0
 		and oak_config.footprint_size == Vector2i(2, 2),
-		"橡木仓库必须为2000生命、0物防、0法防并继续占2×2格。"
+		"橡木仓库必须为3000生命、0物防、0法防并继续占2×2格。"
 	)
 	_expect(
 		vegetation_stake_config.max_health == 4000
