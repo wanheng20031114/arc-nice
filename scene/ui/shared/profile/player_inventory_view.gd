@@ -6,6 +6,7 @@ signal item_discard_requested(slot_index: int)
 signal item_quick_use_toggle_requested(slot_index: int)
 
 const DESIGN_SIZE := Vector2(724.0, 543.0)
+const INVENTORY_ICON_SCALE_MULTIPLIER := Vector2(1.5, 1.5)
 const ITEM_DETAIL_BASE_SIZE := Vector2(266.0, 184.0)
 const ITEM_DETAIL_MARGIN := 14.0
 const ITEM_DETAIL_REGULAR_ACTION_WIDTH := 105.0
@@ -116,7 +117,8 @@ func refresh() -> void:
 	for slot_index in range(slots.size()):
 		slots[slot_index].set_item(
 			run_state.get_item(slot_index),
-			run_state.get_item_count(slot_index)
+			run_state.get_item_count(slot_index),
+			INVENTORY_ICON_SCALE_MULTIPLIER
 		)
 		slots[slot_index].set_quick_use_marked(
 			run_state.is_quick_use_slot(slot_index)
