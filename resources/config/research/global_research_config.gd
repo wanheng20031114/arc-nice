@@ -9,6 +9,7 @@ enum EffectType {
 	SIMPLE_CRAFTING_RECIPE_UNLOCK,
 	PRODUCTION_RECIPE_UNLOCK,
 	VEGETATION_SPREAD_SPEED_MULTIPLIER,
+	GRASS_HEAL_RATIO_BONUS,
 }
 
 @export_group("基础信息")
@@ -43,7 +44,7 @@ func is_valid() -> bool:
 		or duration_seconds <= 0.0
 		or not is_finite(effect_amount)
 		or effect_type < EffectType.BUILDING_PHYSICAL_DEFENSE
-		or effect_type > EffectType.VEGETATION_SPREAD_SPEED_MULTIPLIER
+		or effect_type > EffectType.GRASS_HEAL_RATIO_BONUS
 	):
 		return false
 	match effect_type:

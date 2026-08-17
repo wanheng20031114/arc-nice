@@ -6,6 +6,9 @@ const PLAYER_SCENES: Array[PackedScene] = [
 	preload("res://scene/player/hoe_cat/player_hoe_cat.tscn"),
 	preload("res://scene/player/tango/player_tango.tscn"),
 ]
+const RESEARCH_COORDINATOR_SCENE := preload(
+	"res://scene/game_modes/tower_defense/economy/research/research_coordinator.tscn"
+)
 const TOWER_SCENE_PATH := (
 	"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
 )
@@ -48,6 +51,9 @@ func _test_authored_tower_scene_contract() -> void:
 		and source.contains(
 			"player_roster_coordinator = NodePath("
 			+ "\"../PlayerRosterCoordinator\")"
+		)
+		and source.contains(
+			"research_coordinator = NodePath(\"../ResearchCoordinator\")"
 		),
 		"塔防场景必须静态预置并完整绑定草地回血协调器。"
 	)
@@ -100,25 +106,32 @@ func _test_grass_healing_contracts() -> void:
 	var player := PLAYER_SCENES[0].instantiate() as Player
 	var terrain := TestGrassTerrain.new()
 	var roster := TowerDefensePlayerRosterCoordinator.new()
+	var research := (
+		RESEARCH_COORDINATOR_SCENE.instantiate() as ResearchCoordinator
+	)
 	var coordinator := GrassHealingCoordinator.new()
-	_expect(player != null, "测试角色必须能够实例化。")
-	if player == null:
+	_expect(player != null and research != null, "测试角色与科研协调器必须能够实例化。")
+	if player == null or research == null:
 		return
 	player.name = "GrassHealingPlayer"
 	roster.local_player = player
 	coordinator.terrain_map = terrain
 	coordinator.player_roster_coordinator = roster
+	coordinator.research_coordinator = research
 	root.add_child(terrain)
 	root.add_child(roster)
+	root.add_child(research)
 	root.add_child(player)
 	root.add_child(coordinator)
 	await process_frame
+	research.research_tick_timer.stop()
 	coordinator.set_physics_process(false)
 
 	player.global_position = Vector2(-10.0, 0.0)
-	player.max_health = 101
+	var base_heal_per_tick := ceili(float(player.max_health) * 0.2)
+	var enhanced_heal_per_tick := ceili(float(player.max_health) * 0.4)
 	player.current_health = 1
-	player.health_bar.set_health(1, 101)
+	player.health_bar.set_health(1, player.max_health)
 	coordinator.advance_grass_healing(0.5)
 	_expect(
 		player.current_health == 1
@@ -128,21 +141,41 @@ func _test_grass_healing_contracts() -> void:
 	)
 	coordinator.advance_grass_healing(0.5)
 	_expect(
-		player.current_health == 22,
-		"101点生命上限在草块站满一秒必须向上取整恢复21点（20%）。"
+		player.current_health == 1 + base_heal_per_tick,
+		"玩家在草块站满一秒必须按最大生命值向上取整恢复20%。"
 	)
+	var base_healed_health := player.current_health
 
 	player.global_position = Vector2(10.0, 0.0)
 	coordinator.advance_grass_healing(0.75)
 	_expect(
-		player.current_health == 22
+		player.current_health == base_healed_health
 		and not player.grass_healing_particles.visible
 		and not player.grass_healing_particles.emitting,
 		"离开草块必须立即停用粒子、停止回血并清空本轮站立计时。"
 	)
 	player.global_position = Vector2(-10.0, 0.0)
 	coordinator.advance_grass_healing(0.25)
-	_expect(player.current_health == 22, "重新踏上草块必须重新累计完整一秒。")
+	_expect(
+		player.current_health == base_healed_health,
+		"重新踏上草块必须重新累计完整一秒。"
+	)
+	player.global_position = Vector2(10.0, 0.0)
+	coordinator.advance_grass_healing(0.1)
+	research.global_research_states[
+		GlobalResearchRegistry.VEGETATION_ENHANCEMENT_ID
+	] = ResearchCoordinator.GlobalResearchState.COMPLETED
+	player.current_health = 1
+	player.global_position = Vector2(-10.0, 0.0)
+	coordinator.advance_grass_healing(1.0)
+	_expect(
+		player.current_health == 1 + enhanced_heal_per_tick
+		and is_equal_approx(coordinator.get_effective_heal_ratio(), 0.4),
+		"植被强化完成后，草块每秒必须在基础20%%上额外恢复20%%最大生命值（实测%d生命、%.3f倍率）。" % [
+			player.current_health,
+			coordinator.get_effective_heal_ratio(),
+		]
+	)
 
 	roster.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	player.current_health = 1
@@ -165,6 +198,7 @@ func _test_grass_healing_contracts() -> void:
 	_stop_audio_players(player)
 	coordinator.queue_free()
 	player.queue_free()
+	research.queue_free()
 	roster.queue_free()
 	terrain.queue_free()
 	await process_frame

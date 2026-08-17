@@ -104,7 +104,7 @@ func _test_static_boundary(coordinator: MpTowerEconomyCoordinator) -> void:
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
 		rpc_pattern.search_all(source).size() == 144,
-		"Tower economy extraction must preserve all 144 protocol-v80 MpGame RPC facades."
+		"Tower economy extraction must preserve all 144 protocol-v81 MpGame RPC facades."
 	)
 	for function_name in [
 		"net_warehouse_command_requested",

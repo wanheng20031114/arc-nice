@@ -13,6 +13,7 @@ const ORANGE_CHARGING_TOWER_CRAFTING_ID: StringName = (
 const VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID: StringName = (
 	&"vegetation_stake_spread_enhancement"
 )
+const VEGETATION_ENHANCEMENT_ID: StringName = &"vegetation_enhancement"
 const RESEARCH_ORDER: Array[StringName] = [
 	BUILDING_DEFENSE_ID,
 	PLAYER_MOVE_SPEED_ID,
@@ -20,6 +21,7 @@ const RESEARCH_ORDER: Array[StringName] = [
 	HYDRANGEA_RAIN_TOWER_CRAFTING_ID,
 	ORANGE_CHARGING_TOWER_CRAFTING_ID,
 	VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID,
+	VEGETATION_ENHANCEMENT_ID,
 ]
 const MAX_WIRE_RESEARCH_ID_LENGTH := 64
 
@@ -41,6 +43,9 @@ const ORANGE_CHARGING_TOWER_CRAFTING: GlobalResearchConfig = preload(
 const VEGETATION_STAKE_SPREAD_ENHANCEMENT: GlobalResearchConfig = preload(
 	"res://resources/config/research/vegetation_stake_spread_enhancement.tres"
 )
+const VEGETATION_ENHANCEMENT: GlobalResearchConfig = preload(
+	"res://resources/config/research/vegetation_enhancement.tres"
+)
 
 const RESEARCH_PROJECTS := {
 	BUILDING_DEFENSE_ID: BUILDING_DEFENSE,
@@ -51,6 +56,7 @@ const RESEARCH_PROJECTS := {
 	VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID: (
 		VEGETATION_STAKE_SPREAD_ENHANCEMENT
 	),
+	VEGETATION_ENHANCEMENT_ID: VEGETATION_ENHANCEMENT,
 }
 
 

@@ -6,6 +6,7 @@ const HEAL_INTERVAL_SECONDS := 1.0
 
 @export var terrain_map: DualGridTilemap
 @export var player_roster_coordinator: TowerDefensePlayerRosterCoordinator
+@export var research_coordinator: ResearchCoordinator
 
 var _grass_elapsed_by_player_id: Dictionary[int, float] = {}
 
@@ -14,9 +15,10 @@ func _ready() -> void:
 	if (
 		terrain_map == null
 		or player_roster_coordinator == null
+		or research_coordinator == null
 	):
 		push_error(
-			"GrassHealingCoordinator requires terrain and player roster."
+			"GrassHealingCoordinator requires terrain, player roster and research."
 		)
 		set_physics_process(false)
 
@@ -62,8 +64,19 @@ func advance_grass_healing(delta: float) -> void:
 		)
 		if completed_ticks <= 0:
 			continue
-		var heal_per_tick := ceili(float(player.max_health) * BASE_HEAL_RATIO)
+		var heal_per_tick := ceili(
+			float(player.max_health) * get_effective_heal_ratio()
+		)
 		player.heal(heal_per_tick * completed_ticks)
 	for tracked_player_id in _grass_elapsed_by_player_id.keys():
 		if not active_player_ids.has(int(tracked_player_id)):
 			_grass_elapsed_by_player_id.erase(tracked_player_id)
+
+
+func get_effective_heal_ratio() -> float:
+	var research_bonus := (
+		research_coordinator.get_grass_heal_ratio_bonus()
+		if research_coordinator != null
+		else 0.0
+	)
+	return BASE_HEAL_RATIO + research_bonus

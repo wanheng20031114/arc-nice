@@ -210,10 +210,11 @@ authored_bamboo_mortar_combat_system = NodePath("../BambooMortarCombatSystem")
 
 [node name="PlayerRosterCoordinator" parent="." instance=ExtResource("67_player_roster")]
 
-[node name="GrassHealingCoordinator" type="Node" parent="." node_paths=PackedStringArray("terrain_map", "player_roster_coordinator")]
+[node name="GrassHealingCoordinator" type="Node" parent="." node_paths=PackedStringArray("terrain_map", "player_roster_coordinator", "research_coordinator")]
 script = ExtResource("55_grass_healing")
 terrain_map = NodePath("../DualGridTerrain")
 player_roster_coordinator = NodePath("../PlayerRosterCoordinator")
+research_coordinator = NodePath("../ResearchCoordinator")
 
 [node name="LifeTowerHealthCoordinator" type="Node" parent="." node_paths=PackedStringArray("plant_system", "player_roster_coordinator")]
 script = ExtResource("55_life_tower_health")

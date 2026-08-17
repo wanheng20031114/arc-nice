@@ -14,7 +14,7 @@ const EXPECTED_SECTION_COUNTS := {
 	CodexSection.ITEM: 36,
 	CodexSection.CHARACTER: 4,
 	CodexSection.RECIPE: 32,
-	CodexSection.RESEARCH: 6,
+	CodexSection.RESEARCH: 7,
 }
 const EXPECTED_COLLECTIBLE_RARITY_COUNTS := {
 	&"common": 41,
@@ -48,7 +48,7 @@ const EXPECTED_RECIPE_CATEGORY_COUNTS := {
 	&"local_output_cycle": 1,
 }
 const EXPECTED_RESEARCH_CATEGORY_COUNTS := {
-	&"attribute": 2,
+	&"attribute": 3,
 	&"recipe_unlock": 3,
 	&"building_enhancement": 1,
 }
@@ -1169,7 +1169,7 @@ func _test_scene_contract() -> void:
 			"物品  36",
 			"角色  4",
 			"配方  32",
-			"科研  6",
+			"科研  7",
 		]),
 		"Authored scene text must not expose stale pre-ready encyclopedia counts."
 	)
@@ -1188,7 +1188,7 @@ func _test_scene_contract() -> void:
 		and screen.item_button.text == "物品  36"
 		and screen.character_button.text == "角色  4"
 		and screen.recipe_button.text == "配方  32"
-		and screen.research_button.text == "科研  6",
+		and screen.research_button.text == "科研  7",
 		"Sidebar must display all seven authoritative section totals."
 	)
 	var section_buttons: Array[Button] = screen.get("_section_buttons")

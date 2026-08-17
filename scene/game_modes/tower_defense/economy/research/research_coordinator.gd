@@ -29,6 +29,9 @@ const HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID := (
 const VEGETATION_STAKE_SPREAD_ENHANCEMENT_RESEARCH_ID := (
 	GlobalResearchRegistry.VEGETATION_STAKE_SPREAD_ENHANCEMENT_ID
 )
+const VEGETATION_ENHANCEMENT_RESEARCH_ID := (
+	GlobalResearchRegistry.VEGETATION_ENHANCEMENT_ID
+)
 const GLOBAL_RESEARCH_DURATION_SECONDS := 60.0
 const GLOBAL_PHYSICAL_DEFENSE_BONUS := 10
 const GLOBAL_PLAYER_MOVE_SPEED_BONUS := 15.0
@@ -248,6 +251,12 @@ func get_vegetation_spread_speed_multiplier() -> float:
 		):
 			multiplier *= config.effect_amount
 	return multiplier
+
+
+func get_grass_heal_ratio_bonus() -> float:
+	return _get_completed_global_effect_total(
+		GlobalResearchConfig.EffectType.GRASS_HEAL_RATIO_BONUS
+	)
 
 
 func get_global_material_total(item: PickupConfig) -> int:

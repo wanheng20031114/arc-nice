@@ -153,7 +153,9 @@ extends RefCounted
 ## v80：P3 神奇遭遇将“鸡哥”与“鬼影”保留为预留内容，但从正式随机池
 ## 移除；地图固定为四个不重复神奇遭遇节点，池耗尽也不再回退鬼影。v79 客户端
 ## 会按旧池容量与顺序复算地图内容，不能与 v80 主机混联。
-const PROTOCOL_VERSION := 80
+## v81：新增植被强化科研 wire ID，完成后玩家站在草块上的每秒最大生命回复
+## 由20%提升至40%。v80 客户端缺少该科研注册项，不能安全解析完整科研账本。
+const PROTOCOL_VERSION := 81
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF
