@@ -315,7 +315,7 @@ theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
 text = "沿用原有随机史莱姆队列，保留完整刷怪压力、自由建造与昼夜调试。"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1A/PageMargin/Content"]
 layout_mode = 2
@@ -382,7 +382,7 @@ theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
 text = "持剑、持枪、爆炸无人机操作员、举盾和忍者机器人按五型轮转出现，沿用 P1A 的刷怪压力、自由建造与昼夜调试。"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1B/PageMargin/Content"]
 layout_mode = 2
@@ -449,7 +449,7 @@ theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
 text = "一波连续生成1000只纸箱怪，每3秒1只，沿用 P1A 地图、自由建造与昼夜调试。"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1C/PageMargin/Content"]
 layout_mode = 2
@@ -514,7 +514,7 @@ theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
 text = "在新的地下教会地图中连续生成纸箱怪，每3秒1只，用于验证完整背景、墙体与出生点。"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1D/PageMargin/Content"]
 layout_mode = 2
@@ -579,7 +579,7 @@ theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
 text = "在 P1A 草地地图中仅放置1台主战机器人，整场不循环生成。"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1E/PageMargin/Content"]
 layout_mode = 2
@@ -644,7 +644,7 @@ theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
 text = "仅有一只普通史莱姆。击败后按完成一整天结算，并进入小葱黑暗区域。"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content"]
 layout_mode = 2
@@ -711,7 +711,7 @@ theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
 text = "选择角色后从地图正中心进入大尺度世界，可自由移动并由镜头跟随，亦可拖动查看密集分布的随机路线节点；信息集中显示于 HUD，仅房主可消耗行动力推动队伍位置。"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P3/PageMargin/Content"]
 layout_mode = 2

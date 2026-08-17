@@ -283,7 +283,7 @@ text = "所有敌人已被击败，作战区域已经安全。"
 label_settings = SubResource("LabelSettings_subtitle")
 horizontal_alignment = 1
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Divider" type="ColorRect" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
 custom_minimum_size = Vector2(0, 1)
@@ -393,14 +393,14 @@ size_flags_vertical = 3
 text = "蜡烛头"
 label_settings = SubResource("LabelSettings_loot_name")
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="LootStatus" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard/LootCardMargin/LootRow/LootText"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "已放入背包"
 label_settings = SubResource("LabelSettings_loot_status")
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="LootCard2" type="PanelContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
 unique_name_in_owner = true
@@ -469,14 +469,14 @@ size_flags_vertical = 3
 text = "收藏品"
 label_settings = SubResource("LabelSettings_loot_name")
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="LootStatus2" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard2/LootCardMargin2/LootRow/LootText"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "已放入背包"
 label_settings = SubResource("LabelSettings_loot_status")
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="LootCard3" type="PanelContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
 unique_name_in_owner = true
@@ -545,14 +545,14 @@ size_flags_vertical = 3
 text = "木板 ×6"
 label_settings = SubResource("LabelSettings_loot_name")
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="LootStatus3" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard3/LootCardMargin3/LootRow/LootText"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "已放入背包"
 label_settings = SubResource("LabelSettings_loot_status")
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="CloseButton" type="Button" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
 unique_name_in_owner = true

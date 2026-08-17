@@ -512,7 +512,7 @@ theme_override_colors/font_color = Color(0.86, 0.87, 0.84, 1)
 theme_override_fonts/font = ExtResource("11_font")
 theme_override_font_sizes/font_size = 15
 text = "商品说明"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="DetailQuantity" type="Label" parent="Root/DetailOverlay/DetailFrame"]
 unique_name_in_owner = true

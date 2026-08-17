@@ -264,7 +264,7 @@ size_flags_horizontal = 3
 text = "物资已完成分配"
 label_settings = SubResource("LabelSettings_result")
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="CompleteButton" type="Button" parent="Root/ScreenMargin/MainRow/DecisionColumn/ResultFooter"]
 visible = false

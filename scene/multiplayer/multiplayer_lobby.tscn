@@ -538,7 +538,7 @@ theme_override_colors/font_color = Color(0.7, 0.7, 0.65, 1)
 theme_override_fonts/font = ExtResource("3_font")
 theme_override_font_sizes/font_size = 13
 horizontal_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="BackToMenuButton" type="Button" parent="LobbyCenter/ModeSelectPanel/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(0, 40)
@@ -660,7 +660,7 @@ theme_override_colors/font_color = Color(0.58, 0.66, 0.58, 1)
 theme_override_font_sizes/font_size = 12
 text = "以下选项用于创建房间。"
 horizontal_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="TabContainer" type="TabContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox"]
 custom_minimum_size = Vector2(0, 240)
@@ -741,14 +741,14 @@ theme_override_colors/font_color = Color(0.66, 0.7, 0.63, 1)
 theme_override_font_sizes/font_size = 13
 text = "房主先创建房间；其他玩家输入房主 IP 与相同端口加入。"
 horizontal_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="HostIpLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.58, 0.78, 0.66, 1)
 theme_override_font_sizes/font_size = 13
 horizontal_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="PortRow" type="HBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel"]
 layout_mode = 2
@@ -797,7 +797,7 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.58, 0.72, 0.6, 1)
 theme_override_font_sizes/font_size = 13
 horizontal_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="LanBackButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
 visible = false
@@ -811,7 +811,7 @@ theme_override_colors/font_color = Color(0.7, 0.7, 0.65, 1)
 theme_override_fonts/font = ExtResource("3_font")
 theme_override_font_sizes/font_size = 13
 horizontal_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="BackButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(0, 40)

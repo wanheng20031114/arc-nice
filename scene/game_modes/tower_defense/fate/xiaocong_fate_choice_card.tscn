@@ -215,7 +215,7 @@ size_flags_horizontal = 3
 text = "命运选项"
 label_settings = SubResource("LabelSettings_title")
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Icon" type="TextureRect" parent="Content/Margin/Rows/Header"]
 visible = false
@@ -233,7 +233,7 @@ size_flags_vertical = 3
 text = "选项说明"
 label_settings = SubResource("LabelSettings_description")
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="VoteRow" type="HBoxContainer" parent="Content/Margin/Rows"]
 custom_minimum_size = Vector2(0, 28)

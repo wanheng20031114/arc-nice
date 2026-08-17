@@ -150,7 +150,7 @@ mouse_filter = 2
 bbcode_enabled = true
 fit_content = false
 scroll_active = false
-autowrap_mode = 2
+autowrap_mode = 3
 theme_override_fonts/normal_font = ExtResource("2_font")
 theme_override_font_sizes/normal_font_size = 12
 theme_override_colors/default_color = Color(0.72, 0.8, 0.74, 1)
@@ -242,7 +242,7 @@ theme_override_colors/font_color = Color(0.69, 0.82, 0.72, 1)
 text = "材料充足，可立即制造"
 horizontal_alignment = 1
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="RecipeArea" type="PanelContainer" parent="Background"]
 layout_mode = 0
@@ -282,7 +282,7 @@ theme_override_colors/font_color = Color(0.55, 0.65, 0.59, 1)
 text = "选择后在左侧制造"
 horizontal_alignment = 1
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="RecipeScroll" type="ScrollContainer" parent="Background/RecipeArea/Margin/Content"]
 layout_mode = 2

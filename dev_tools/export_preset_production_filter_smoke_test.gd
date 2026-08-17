@@ -1,6 +1,7 @@
 extends SceneTree
 
 const EXPORT_PRESETS_PATH := "res://export_presets.cfg"
+const PROJECT_SETTINGS_PATH := "res://project.godot"
 const REQUIRED_PRODUCTION_INCLUDE_FILTERS := [
 	"resources/font/*.txt",
 ]
@@ -22,11 +23,32 @@ const REQUIRED_PRODUCTION_FILTERS := [
 	"resources/animation/zhuangfangyi_hd_v2.tres",
 	"resources/terrain/dual_grid/gray_metal_floor_reference_tile_32.png",
 ]
+const TEXT_DRIVER_SETTING := "internationalization/rendering/text_driver"
+const ADVANCED_TEXT_DRIVER := "ICU / HarfBuzz / Graphite"
 
 var failures: Array[String] = []
 
 
 func _init() -> void:
+	_expect(
+		String(ProjectSettings.get_setting(TEXT_DRIVER_SETTING, ""))
+		== ADVANCED_TEXT_DRIVER,
+		"F5 and production exports must select the same advanced text driver."
+	)
+	var project_config := ConfigFile.new()
+	var project_load_error := project_config.load(PROJECT_SETTINGS_PATH)
+	_expect(project_load_error == OK, "project.godot must be readable.")
+	if project_load_error == OK:
+		_expect(
+			bool(
+				project_config.get_value(
+					"internationalization",
+					"locale/include_text_server_data",
+					false
+				)
+			),
+			"Production exports must include ICU line-breaking data for CJK text parity."
+		)
 	var config := ConfigFile.new()
 	var load_error := config.load(EXPORT_PRESETS_PATH)
 	_expect(load_error == OK, "export_presets.cfg must be readable.")

@@ -228,7 +228,7 @@ theme_override_colors/font_color = Color(0.72, 0.72, 0.66, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 12
 text = "配置文件：settings.cfg。删除该文件会恢复默认设置。"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="AudioSection" type="VBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content"]
 layout_mode = 2
@@ -361,7 +361,7 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.72, 0.72, 0.66, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 13
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Rows" type="VBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection"]
 layout_mode = 2

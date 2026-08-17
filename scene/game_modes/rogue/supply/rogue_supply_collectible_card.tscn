@@ -153,7 +153,7 @@ layout_mode = 2
 text = "收藏品"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Rarity" type="Label" parent="Content/Margin/Rows"]
 texture_filter = 2
@@ -173,4 +173,4 @@ text = "收藏品说明"
 label_settings = SubResource("LabelSettings_body")
 horizontal_alignment = 1
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3

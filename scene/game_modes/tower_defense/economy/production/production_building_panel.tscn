@@ -575,7 +575,7 @@ offset_right = 453.0
 offset_bottom = 468.0
 text = "原料和产物只在一轮完成瞬间于全场仓库中结算。"
 label_settings = SubResource("LabelSettings_small")
-autowrap_mode = 2
+autowrap_mode = 3
 vertical_alignment = 1
 
 [node name="CloseButton" type="Button" parent="Overlay/PanelRoot"]

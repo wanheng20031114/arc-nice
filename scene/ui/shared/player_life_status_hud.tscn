@@ -142,7 +142,7 @@ label_settings = SubResource("LabelSettings_dead_title")
 layout_mode = 2
 text = "玩家：5秒后复活"
 label_settings = SubResource("LabelSettings_dead_players")
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="LocalDeathCenter" type="Control" parent="."]
 layout_mode = 1

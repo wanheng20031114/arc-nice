@@ -7,6 +7,8 @@ const EXPECTED_ENEMY_COUNT := 64
 const EXPECTED_PICKUP_COUNT := 181
 const EXPECTED_RECIPE_COUNT := 32
 const INTERNAL_WATER_SOURCE_ID := "item.production.water_source"
+const TEXT_DRIVER_SETTING := "internationalization/rendering/text_driver"
+const ADVANCED_TEXT_DRIVER := "ICU / HarfBuzz / Graphite"
 
 var failures: Array[String] = []
 
@@ -23,6 +25,11 @@ func _run() -> void:
 		)
 		quit(1)
 		return
+	_expect(
+		String(ProjectSettings.get_setting(TEXT_DRIVER_SETTING, ""))
+		== ADVANCED_TEXT_DRIVER,
+		"Release PCK must retain the advanced text-driver selection."
+	)
 	_test_enemy_catalog()
 	_test_pickup_catalog()
 	_test_recipe_registry()

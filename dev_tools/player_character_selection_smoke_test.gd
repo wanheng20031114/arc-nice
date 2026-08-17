@@ -351,6 +351,16 @@ func _test_choice_overlay() -> void:
 				"Reusable character-card text must remain linear-filtered."
 			)
 			_expect(
+				description_label.autowrap_mode == TextServer.AUTOWRAP_WORD_SMART,
+				"Character descriptions must force-break CJK text without spaces."
+			)
+			_expect(
+				description_label.get_line_count() >= 2
+				and description_label.get_visible_line_count()
+				== description_label.get_line_count(),
+				"Every character description must wrap and remain fully visible."
+			)
+			_expect(
 				portrait.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
 				and portrait.stretch_mode == TextureRect.STRETCH_KEEP_CENTERED,
 				"Pixel-art portraits must remain nearest-filtered at their native scale."

@@ -211,7 +211,7 @@ size_flags_horizontal = 3
 text = "生命值永久+10"
 label_settings = SubResource("LabelSettings_effect")
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Detail" type="Label" parent="Content/Margin/Rows"]
 texture_filter = 2
@@ -221,7 +221,7 @@ size_flags_vertical = 3
 text = "同时回复10点生命值"
 label_settings = SubResource("LabelSettings_detail")
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="State" type="Label" parent="Content/Margin/Rows"]
 visible = false
@@ -231,4 +231,4 @@ layout_mode = 2
 text = "当前条件不可用"
 label_settings = SubResource("LabelSettings_state")
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3

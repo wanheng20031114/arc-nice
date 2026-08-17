@@ -501,7 +501,7 @@ offset_bottom = 222.0
 text = "提交研究材料，完成后本局所有建筑永久获得物理防御 +10。"
 label_settings = SubResource("LabelSettings_body")
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="MaterialHeader" type="Label" parent="Overlay/PanelRoot/GlobalPage"]
 offset_left = 252.0
@@ -605,7 +605,7 @@ offset_top = 174.0
 offset_right = 520.0
 offset_bottom = 218.0
 label_settings = SubResource("LabelSettings_body")
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="XirangLabel" type="Label" parent="Overlay/PanelRoot/PlayerPage"]
 offset_left = 500.0
@@ -750,7 +750,7 @@ offset_bottom = 506.0
 text = "科研中心就绪。"
 label_settings = SubResource("LabelSettings_small")
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="ActionButton" type="Button" parent="Overlay/PanelRoot"]
 offset_left = 469.0

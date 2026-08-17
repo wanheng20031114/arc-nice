@@ -225,7 +225,7 @@ text = "最大生命值已永久提高10点"
 label_settings = SubResource("LabelSettings_result")
 horizontal_alignment = 1
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="WaitingList" type="Label" parent="Root/ScreenMargin/MainRow/DecisionColumn/Footer"]
 texture_filter = 2
@@ -235,4 +235,4 @@ text = "等待：队友"
 label_settings = SubResource("LabelSettings_waiting")
 horizontal_alignment = 1
 vertical_alignment = 1
-autowrap_mode = 2
+autowrap_mode = 3

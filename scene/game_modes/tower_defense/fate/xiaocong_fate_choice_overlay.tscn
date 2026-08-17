@@ -292,7 +292,7 @@ theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 text = "永久增益一"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Buff1" type="Button" parent="Root/BuffModal/Panel/Margin/Content"]
 texture_filter = 2
@@ -304,7 +304,7 @@ theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 text = "永久增益二"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Buff2" type="Button" parent="Root/BuffModal/Panel/Margin/Content"]
 texture_filter = 2
@@ -316,7 +316,7 @@ theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 text = "永久增益三"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Cancel" type="Button" parent="Root/BuffModal/Panel/Margin/Content"]
 texture_filter = 2
@@ -389,7 +389,7 @@ theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 text = "收藏品一"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Choice1" type="Button" parent="Root/CollectibleCenter/Panel/Margin/Content/Choices"]
 texture_filter = 2
@@ -402,7 +402,7 @@ theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 text = "收藏品二"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Choice2" type="Button" parent="Root/CollectibleCenter/Panel/Margin/Content/Choices"]
 texture_filter = 2
@@ -415,7 +415,7 @@ theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 text = "收藏品三"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="Choice3" type="Button" parent="Root/CollectibleCenter/Panel/Margin/Content/Choices"]
 texture_filter = 2
@@ -428,7 +428,7 @@ theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 text = "收藏品四"
-autowrap_mode = 2
+autowrap_mode = 3
 
 [node name="EntranceRevealCover" type="ColorRect" parent="Root"]
 visible = false
