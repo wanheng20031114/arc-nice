@@ -9,6 +9,9 @@ const COORDINATOR_SCENE := preload(
 const APPLE_COLLECTIBLE := preload(
 	"res://resources/config/collectibles/collectible_apple.tres"
 )
+const WATER_BOTTLE_MATERIAL := preload(
+	"res://resources/config/materials/material_water_bottle.tres"
+)
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -220,6 +223,19 @@ func _test_tree_less_rules_and_root_facade() -> void:
 		_expect(
 			game.grant_debug_collectible(APPLE_COLLECTIBLE.resource_path),
 			"Debug collectible grant 必须经协调器 catalog/RunState 规则成功。"
+		)
+		var water_before := run_state.get_inventory_item_total_for_peer(
+			4,
+			WATER_BOTTLE_MATERIAL
+		)
+		_expect(
+			game.grant_debug_collectible(WATER_BOTTLE_MATERIAL.resource_path)
+			and run_state.get_inventory_item_total_for_peer(
+				4,
+				WATER_BOTTLE_MATERIAL
+			)
+			== water_before + 1,
+			"Debug inventory grant 必须允许受信资源材料且每次只加入一个。"
 		)
 		_expect(
 			not game.has_luoxi_collectible_claimed(0),

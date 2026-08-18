@@ -54,7 +54,7 @@ theme_override_constants/separation = 10
 [node name="Title" type="Label" parent="Center/Panel/Margin/Layout/Header"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "调试收藏品"
+text = "调试物品目录"
 horizontal_alignment = 1
 
 [node name="CloseButton" type="Button" parent="Center/Panel/Margin/Layout/Header"]
@@ -64,7 +64,7 @@ text = "关闭"
 
 [node name="HintLabel" type="Label" parent="Center/Panel/Margin/Layout"]
 layout_mode = 2
-text = "点击任意收藏品后会直接加入当前玩家背包"
+text = "点击任意收藏品或资源后会直接加入当前玩家背包"
 horizontal_alignment = 1
 
 [node name="CollectibleList" type="ItemList" parent="Center/Panel/Margin/Layout"]
@@ -76,5 +76,5 @@ fixed_icon_size = Vector2i(32, 32)
 
 [node name="StatusLabel" type="Label" parent="Center/Panel/Margin/Layout"]
 layout_mode = 2
-text = "点击一个收藏品后直接加入背包"
+text = "点击一个物品后直接加入背包"
 horizontal_alignment = 1

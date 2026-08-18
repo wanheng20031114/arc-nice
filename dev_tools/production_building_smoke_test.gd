@@ -228,6 +228,11 @@ func _run() -> void:
 	var loop_button := panel.get_node("Overlay/PanelRoot/LoopButton") as Button
 	var toggle_button := panel.get_node("Overlay/PanelRoot/ToggleButton") as Button
 	var loop_off_style := loop_button.get_theme_stylebox("normal") as StyleBoxFlat
+	var loop_off_hover_style := loop_button.get_theme_stylebox("hover") as StyleBoxFlat
+	var loop_on_style := loop_button.get_theme_stylebox("pressed") as StyleBoxFlat
+	var loop_on_hover_style := loop_button.get_theme_stylebox(
+		"hover_pressed"
+	) as StyleBoxFlat
 	_expect(
 		loop_button != null
 		and toggle_button != null
@@ -239,6 +244,8 @@ func _run() -> void:
 		and loop_button.texture_filter
 		== CanvasItem.TEXTURE_FILTER_LINEAR
 		and loop_button.get_theme_constant("icon_max_width") == 28
+		and loop_button.icon_alignment == HORIZONTAL_ALIGNMENT_CENTER
+		and loop_button.vertical_icon_alignment == VERTICAL_ALIGNMENT_CENTER
 		and loop_button.toggle_mode
 		and not loop_button.button_pressed
 		and loop_button.get_rect()
@@ -248,11 +255,20 @@ func _run() -> void:
 		and loop_button.get_rect().end.x < panel.recipe_title.position.x
 		and loop_off_style != null
 		and loop_off_style.bg_color.r > loop_off_style.bg_color.g
+		and loop_off_hover_style != null
+		and loop_off_hover_style.bg_color.r > loop_off_style.bg_color.r
+		and loop_off_hover_style.border_color.r
+		> loop_off_style.border_color.r
+		and loop_on_style != null
+		and loop_on_style.bg_color.g > loop_on_style.bg_color.r
+		and loop_on_hover_style != null
+		and loop_on_hover_style.bg_color.g > loop_on_style.bg_color.g
+		and loop_on_hover_style.border_color.g
+		> loop_on_style.border_color.g
 		and not station.production_loop_enabled,
-		"循环按钮必须使用完整SVG图标，以红色关闭态位于材料—产物大框右上角，且建筑默认采用单次生产。"
+		"循环按钮必须使用居中的完整SVG图标，以红/绿原生悬停反馈位于材料—产物大框右上角，且建筑默认采用单次生产。"
 	)
 	panel.call("_on_loop_pressed")
-	var loop_on_style := loop_button.get_theme_stylebox("normal") as StyleBoxFlat
 	_expect(
 		station.production_loop_enabled
 		and loop_button.button_pressed

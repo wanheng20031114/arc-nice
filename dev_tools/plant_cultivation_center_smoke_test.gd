@@ -541,7 +541,7 @@ func _run() -> void:
 		"培育中心UI必须使用植物面板与嫩绿进度条，同时∞关闭态仍保持红色语义。"
 	)
 	panel.call("_on_loop_pressed")
-	var loop_on_style := panel.loop_button.get_theme_stylebox("normal") as StyleBoxFlat
+	var loop_on_style := panel.loop_button.get_theme_stylebox("pressed") as StyleBoxFlat
 	_expect(
 		center.production_loop_enabled
 		and panel.loop_button.button_pressed

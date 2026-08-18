@@ -4,6 +4,11 @@ class_name DebugCollectibleWindow
 signal collectible_requested(config_path: String)
 signal closed
 
+const MATERIAL_SECTION_TITLE := "── 资源类物品 ──"
+const DebugInventoryGrantCatalogScript := preload(
+	"res://resources/config/debug_inventory_grant_catalog.gd"
+)
+
 @onready var close_button: Button = $Center/Panel/Margin/Layout/Header/CloseButton
 @onready var collectible_list: ItemList = $Center/Panel/Margin/Layout/CollectibleList
 @onready var status_label: Label = $Center/Panel/Margin/Layout/StatusLabel
@@ -18,10 +23,10 @@ func _ready() -> void:
 
 
 func open() -> void:
-	_populate_collectibles()
+	_populate_items()
 	visible = true
 	set_process_unhandled_input(true)
-	status_label.text = "点击一个收藏品后直接加入背包"
+	status_label.text = "点击一个物品后直接加入背包"
 	move_to_front()
 	collectible_list.deselect_all()
 	collectible_list.grab_focus()
@@ -53,8 +58,8 @@ func is_open() -> bool:
 
 
 func show_grant_result(config_path: String, success: bool) -> void:
-	var item := LuoxiMerchant.get_collectible_for_path(config_path)
-	var item_name := item.display_name if item != null else "收藏品"
+	var item := DebugInventoryGrantCatalogScript.get_for_path(config_path)
+	var item_name := item.display_name if item != null else "物品"
 	status_label.text = "已获得：%s" % item_name if success else "无法获得：%s（背包可能已满）" % item_name
 
 
@@ -66,18 +71,42 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-func _populate_collectibles() -> void:
+func _populate_items() -> void:
 	collectible_list.clear()
 	# The debug catalog intentionally includes event-only special collectibles;
 	# production reward rolls use CollectibleRegistry.get_standard_random_pool().
-	for item_variant in CollectibleRegistry.get_all():
+	for item_variant in DebugInventoryGrantCatalogScript.get_collectibles():
 		var item := item_variant as PickupConfig
 		if item == null:
 			continue
-		var item_index := collectible_list.add_item(item.display_name, item.icon_texture, true)
-		collectible_list.set_item_metadata(item_index, item.resource_path)
-		if not item.description.is_empty():
-			collectible_list.set_item_tooltip(item_index, item.description)
+		_add_grantable_item(item)
+
+	var materials := DebugInventoryGrantCatalogScript.get_materials()
+	if materials.is_empty():
+		return
+	var section_index := collectible_list.add_item(
+		MATERIAL_SECTION_TITLE,
+		null,
+		false
+	)
+	collectible_list.set_item_disabled(section_index, true)
+	collectible_list.set_item_tooltip(
+		section_index,
+		"以下资源每次点击获得 1 个"
+	)
+	for item in materials:
+		_add_grantable_item(item)
+
+
+func _add_grantable_item(item: PickupConfig) -> void:
+	var item_index := collectible_list.add_item(
+		item.display_name,
+		item.icon_texture,
+		true
+	)
+	collectible_list.set_item_metadata(item_index, item.resource_path)
+	if not item.description.is_empty():
+		collectible_list.set_item_tooltip(item_index, item.description)
 
 
 func _on_collectible_clicked(index: int, _at_position: Vector2, mouse_button_index: int) -> void:
@@ -96,4 +125,5 @@ func _request_collectible(index: int) -> void:
 	var config_path := str(collectible_list.get_item_metadata(index))
 	if config_path.is_empty():
 		return
+	# 保留既有 signal 名称以维持调试多人 façade；payload 现可为收藏品或资源材料。
 	collectible_requested.emit(config_path)

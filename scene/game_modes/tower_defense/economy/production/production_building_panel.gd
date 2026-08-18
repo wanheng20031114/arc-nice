@@ -65,7 +65,9 @@ var _last_visual_remaining_seconds := -1
 var _default_styles: Dictionary = {}
 var _plant_styles: Dictionary = {}
 var _loop_off_style: StyleBox = null
+var _loop_off_hover_style: StyleBox = null
 var _loop_on_style: StyleBox = null
+var _loop_on_hover_style: StyleBox = null
 
 
 func _ready() -> void:
@@ -210,13 +212,17 @@ func _refresh_all(_replicate: bool = false) -> void:
 	loop_button.button_pressed = building.production_loop_enabled
 	loop_button.tooltip_text = _get_loop_button_tooltip()
 	loop_button.disabled = controls_locked
-	var loop_style := (
+	var loop_base_style := (
 		_loop_on_style if building.production_loop_enabled else _loop_off_style
 	)
-	for state_name in [
-		"normal", "hover", "pressed", "hover_pressed", "focus", "disabled"
-	]:
-		loop_button.add_theme_stylebox_override(state_name, loop_style)
+	var loop_focus_style := (
+		_loop_on_hover_style
+		if building.production_loop_enabled
+		else _loop_off_hover_style
+	)
+	# normal/hover/pressed/hover_pressed 由 Button 原生状态选择，保留轻微交互反馈。
+	loop_button.add_theme_stylebox_override("focus", loop_focus_style)
+	loop_button.add_theme_stylebox_override("disabled", loop_base_style)
 	toggle_button.text = "Ⅱ" if building.production_enabled else "▶"
 	toggle_button.tooltip_text = _get_toggle_button_tooltip()
 	toggle_button.button_pressed = building.production_enabled
@@ -1021,7 +1027,9 @@ func _set_control_rect(control: Control, rect: Rect2) -> void:
 func _prepare_panel_themes() -> void:
 	# 循环开关的红/绿表示行为模式，刻意不加入植物主题映射。
 	_loop_off_style = loop_button.get_theme_stylebox("normal")
+	_loop_off_hover_style = loop_button.get_theme_stylebox("hover")
 	_loop_on_style = loop_button.get_theme_stylebox("pressed")
+	_loop_on_hover_style = loop_button.get_theme_stylebox("hover_pressed")
 	_default_styles = {
 		"toggle_normal": toggle_button.get_theme_stylebox("normal"),
 		"toggle_active": toggle_button.get_theme_stylebox("hover"),

@@ -3,6 +3,9 @@ extends SceneTree
 const GAME_SCENE := preload(
 	"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
 )
+const WATER_BOTTLE_MATERIAL := preload(
+	"res://resources/config/materials/material_water_bottle.tres"
+)
 
 var failures: Array[String] = []
 
@@ -91,6 +94,22 @@ func _test_physical_f10_flow(
 		run_state.get_inventory_item_total(item) == total_before + 1,
 		"Activating an F10 catalog item must grant exactly one copy."
 	)
+	var material_index := _find_item_index_by_path(
+		window.collectible_list,
+		WATER_BOTTLE_MATERIAL.resource_path
+	)
+	var material_total_before := run_state.get_inventory_item_total(
+		WATER_BOTTLE_MATERIAL
+	)
+	if material_index >= 0:
+		window.collectible_list.item_activated.emit(material_index)
+		await process_frame
+	_expect(
+		material_index > CollectibleRegistry.get_all().size()
+		and run_state.get_inventory_item_total(WATER_BOTTLE_MATERIAL)
+		== material_total_before + 1,
+		"Formal tower-defense F10 must grant one trusted resource from the bottom section."
+	)
 
 	await _send_key(KEY_F10)
 	_expect(
@@ -116,6 +135,13 @@ func _send_key(physical_keycode: Key) -> void:
 	release.pressed = false
 	Input.parse_input_event(release)
 	await process_frame
+
+
+func _find_item_index_by_path(item_list: ItemList, config_path: String) -> int:
+	for item_index in item_list.get_item_count():
+		if str(item_list.get_item_metadata(item_index)) == config_path:
+			return item_index
+	return -1
 
 
 func _wait_frames(frame_count: int) -> void:

@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/tower_defense/economy/production/production_building_panel.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/production/production_panel_background.png" id="2_background"]
@@ -63,6 +63,18 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_loop_off_hover"]
+bg_color = Color(0.4, 0.095, 0.07, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.38, 0.24, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_loop_on"]
 bg_color = Color(0.08, 0.34, 0.13, 0.97)
 border_width_left = 2
@@ -70,6 +82,18 @@ border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
 border_color = Color(0.35, 0.95, 0.38, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_loop_on_hover"]
+bg_color = Color(0.105, 0.4, 0.155, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.46, 1, 0.48, 1)
 corner_radius_top_left = 4
 corner_radius_top_right = 4
 corner_radius_bottom_right = 4
@@ -219,12 +243,14 @@ texture_filter = 2
 toggle_mode = true
 tooltip_text = "单次生产：完成一轮后停止"
 theme_override_styles/normal = SubResource("StyleBoxFlat_loop_off")
-theme_override_styles/hover = SubResource("StyleBoxFlat_loop_off")
+theme_override_styles/hover = SubResource("StyleBoxFlat_loop_off_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_loop_on")
-theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_loop_on")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_loop_on_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_loop_off")
 icon = ExtResource("5_loop_icon")
 expand_icon = true
+icon_alignment = 1
+vertical_icon_alignment = 1
 theme_override_constants/icon_max_width = 28
 
 [node name="ToggleButton" type="Button" parent="Overlay/PanelRoot"]

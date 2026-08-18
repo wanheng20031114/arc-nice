@@ -173,7 +173,9 @@ extends RefCounted
 ## 该 RPC 表面，不能与 v86 房间混联。
 ## v87：WaterCollector 固定使用连续循环采集，产线面板不再暴露单次/无限循环
 ## mode 切换。v86 及更旧客户端缺少该统一运行时契约，不能与 v87 房间混联。
-const PROTOCOL_VERSION := 87
+## v88：F10 调试作弊目录的物品授予范围扩展到受信资源材料；v87 及更旧客户端
+## 缺少该统一调试授权契约，不能与 v88 房间混联。RPC 签名与数量保持不变。
+const PROTOCOL_VERSION := 88
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF

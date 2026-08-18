@@ -1,6 +1,10 @@
 extends Node
 class_name StandardMerchantCoordinator
 
+const DebugInventoryGrantCatalogScript := preload(
+	"res://resources/config/debug_inventory_grant_catalog.gd"
+)
+
 signal merchant_active_changed(active: bool)
 
 var runtime_mode := CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
@@ -112,7 +116,7 @@ func allows_debug_collectible_grants() -> bool:
 func grant_debug_collectible(config_path: String) -> bool:
 	if not allows_debug_collectible_grants():
 		return false
-	var item := LuoxiMerchant.get_collectible_for_path(config_path)
+	var item := DebugInventoryGrantCatalogScript.get_for_path(config_path)
 	if item == null:
 		return false
 	if (

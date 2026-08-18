@@ -5,6 +5,9 @@ const MAIN_MENU_SCENE_PATH := "res://scene/main_menu.tscn"
 const MultiplayerReconnectTypesScript := preload(
 	"res://scene/multiplayer/reconnect/multiplayer_reconnect_types.gd"
 )
+const DebugInventoryGrantCatalogScript := preload(
+	"res://resources/config/debug_inventory_grant_catalog.gd"
+)
 
 signal test_arena_manual_night_changed(enabled: bool)
 signal base_health_changed(
@@ -907,7 +910,7 @@ func handle_debug_collectible_requested(config_path: String) -> void:
 func grant_debug_collectible(config_path: String) -> bool:
 	if not allows_debug_collectible_grants() or _run_state == null:
 		return false
-	var item := LuoxiMerchant.get_collectible_for_path(config_path)
+	var item := DebugInventoryGrantCatalogScript.get_for_path(config_path)
 	if item == null:
 		return false
 	var tower_runtime := get_tower_runtime()

@@ -178,8 +178,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 87,
-		"多人协议v87必须保留内容摘要、同局成员身份、P1D/P1E 与既有 wire 合同。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 88,
+		"多人协议v88必须保留内容摘要、同局成员身份、P1D/P1E 与既有 wire 合同。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()

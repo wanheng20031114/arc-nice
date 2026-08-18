@@ -118,9 +118,9 @@ func _test_static_contract() -> void:
 		"TowerDefenseGame 必须显式注入并核验塔防 MultiplayerAdapter。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 87
+		NET_CONSTANTS.PROTOCOL_VERSION == 88
 		and GameModeCatalog.MODE_TOWER_DEFENSE == 1,
-		"塔防 wire=1 与协议 v87 必须保持冻结。"
+		"塔防 wire=1 与协议 v88 必须保持冻结。"
 	)
 	var mp_game_script := load(MP_GAME_SOURCE_PATH) as Script
 	_expect(mp_game_script != null, "MpGame 脚本必须可加载。")

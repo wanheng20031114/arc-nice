@@ -1,5 +1,9 @@
 extends SceneTree
 
+const WATER_BOTTLE_MATERIAL := preload(
+	"res://resources/config/materials/material_water_bottle.tres"
+)
+
 const COORDINATOR_SCENE := preload(
 	"res://scene/multiplayer/merchant_transactions/mp_merchant_transactions_coordinator.tscn"
 )
@@ -96,6 +100,9 @@ class MerchantAdapter:
 	var local_collectible_results: Array[int] = []
 	var special_calls: Array[Dictionary] = []
 	var local_special_methods: Array[StringName] = []
+
+	func allows_debug_collectible_grants() -> bool:
+		return true
 
 	func get_luoxi_merchant() -> LuoxiMerchant:
 		return merchant
@@ -243,7 +250,7 @@ func _test_static_boundary(
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
 		rpc_pattern.search_all(source).size() == 145,
-		"Merchant extraction must preserve all 145 protocol-v87 MpGame RPC facades."
+		"Merchant extraction must preserve all 145 protocol-v88 MpGame RPC facades."
 	)
 	for function_name in [
 		"net_luoxi_collectible_offer_requested",
@@ -352,6 +359,21 @@ func _test_offer_refresh_choice_and_special_game(
 		func(method_name: StringName, _args: Array) -> void:
 			broadcast_methods.append(method_name)
 	)
+	run_state.register_multiplayer_peer_state(2)
+	var host_material_before := run_state.get_inventory_item_total_for_peer(
+		2,
+		WATER_BOTTLE_MATERIAL
+	)
+	coordinator.apply_debug_collectible_for_peer(
+		2,
+		WATER_BOTTLE_MATERIAL.resource_path
+	)
+	_expect(
+		run_state.get_inventory_item_total_for_peer(2, WATER_BOTTLE_MATERIAL)
+		== host_material_before + 1
+		and broadcast_methods.has(&"net_debug_collectible_granted"),
+		"Host F10 material grant must add one trusted resource to the requested peer and broadcast its snapshot."
+	)
 	coordinator.request_luoxi_collectible_offer()
 	var first_state := _get_offer_state(coordinator, 1)
 	var first_paths := _get_offer_paths(first_state)
@@ -433,6 +455,28 @@ func _test_offer_refresh_choice_and_special_game(
 		== int(granted_snapshot.get("revision", -1))
 		and run_state.get_inventory_item_total_for_peer(1, granted_item) == 1,
 		"Player 节点缺席时，调试收藏品结果仍必须收敛权威背包账本。"
+	)
+	_expect(
+		authoritative_state.try_add_item_for_peer(1, WATER_BOTTLE_MATERIAL),
+		"Debug material lifecycle fixture must append one trusted material."
+	)
+	var material_snapshot := (
+		authoritative_state.export_inventory_snapshot_for_peer(1)
+	)
+	_expect(
+		coordinator.receive_debug_collectible_granted(
+			1,
+			WATER_BOTTLE_MATERIAL.resource_path,
+			true,
+			material_snapshot
+		)
+		and run_state.get_inventory_revision_for_peer(1)
+		== int(material_snapshot.get("revision", -1))
+		and run_state.get_inventory_item_total_for_peer(
+			1,
+			WATER_BOTTLE_MATERIAL
+		) == 1,
+		"Player 节点缺席时，多人调试资源授予也必须收敛权威背包快照。"
 	)
 	var outside_item := ResourceLoader.load(OUTSIDE_PICKUP_PATH) as PickupConfig
 	LuoxiMerchant.cache_collectible_config(outside_item)

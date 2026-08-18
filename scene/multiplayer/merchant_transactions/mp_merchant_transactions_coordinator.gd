@@ -4,6 +4,9 @@ class_name MpMerchantTransactionsCoordinator
 const RuntimeContentCatalogScript := preload(
 	"res://resources/config/runtime_content_catalog.gd"
 )
+const DebugInventoryGrantCatalogScript := preload(
+	"res://resources/config/debug_inventory_grant_catalog.gd"
+)
 
 const CHEAT_XIRANG_AMOUNT := 1000
 const LUOXI_TRANSACTION_RATE_PER_SECOND := 4.0
@@ -568,7 +571,7 @@ func receive_debug_collectible_granted(
 	):
 		return false
 	if success:
-		confirmed_item = _resolve_trusted_collectible_path(config_path)
+		confirmed_item = _resolve_trusted_debug_inventory_item_path(config_path)
 		if confirmed_item == null:
 			return false
 	# 调试授予也属于权威库存事务；Player 缺席只能省略表现，不能丢账本。
@@ -829,7 +832,7 @@ func apply_debug_collectible_for_peer(
 		or not _mode_adapter.allows_debug_collectible_grants()
 	):
 		return
-	var item := _resolve_trusted_collectible_path(config_path)
+	var item := _resolve_trusted_debug_inventory_item_path(config_path)
 	var success := item != null and _run_state.try_add_item_for_peer(peer_id, item)
 	var inventory_snapshot := _run_state.export_inventory_snapshot_for_peer(peer_id)
 	rpc_broadcast_requested.emit(
@@ -851,6 +854,12 @@ static func _resolve_trusted_collectible_path(
 	if RuntimeContentCatalogScript.get_pickup_id_for_path(config_path).is_empty():
 		return null
 	return LuoxiMerchant.get_collectible_for_path(config_path)
+
+
+static func _resolve_trusted_debug_inventory_item_path(
+	config_path: String
+) -> PickupConfig:
+	return DebugInventoryGrantCatalogScript.get_for_path(config_path)
 
 
 func _admit_remote_luoxi_request(peer_id: int) -> bool:

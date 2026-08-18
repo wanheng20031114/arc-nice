@@ -3,6 +3,21 @@ extends SceneTree
 const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
+const WATER_BOTTLE_MATERIAL := preload(
+	"res://resources/config/materials/material_water_bottle.tres"
+)
+const AGAVE_CANNON_BUILDING := preload(
+	"res://resources/config/buildings/building_agave_cannon.tres"
+)
+const WINDWALK_POTION := preload(
+	"res://resources/config/consumables/windwalk_potion.tres"
+)
+const WATER_SOURCE := preload(
+	"res://resources/config/production/water_source.tres"
+)
+const DebugInventoryGrantCatalogScript := preload(
+	"res://resources/config/debug_inventory_grant_catalog.gd"
+)
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -81,9 +96,45 @@ func _test_debug_collectible_window() -> void:
 	_expect(window.is_open(), "cheat_collectibles must open the debug collectible window.")
 	_expect(game.player.controls_locked, "Opening the debug collectible window must lock player controls.")
 	_expect(
-		window.collectible_list.get_item_count() == CollectibleRegistry.get_all().size(),
-		"Debug window must list standard and event-only special collectibles."
+		window.collectible_list.get_item_count()
+		== (
+			DebugInventoryGrantCatalogScript.get_collectibles().size()
+			+ DebugInventoryGrantCatalogScript.get_materials().size()
+			+ 1
+		),
+		"Debug window must list all collectibles, a resource header, and all inventory materials."
 	)
+	var material_section_index := (
+		DebugInventoryGrantCatalogScript.get_collectibles().size()
+	)
+	_expect(
+		window.collectible_list.is_item_disabled(material_section_index)
+		and window.collectible_list.get_item_metadata(material_section_index) == null
+		and window.collectible_list.get_item_text(material_section_index)
+		== DebugCollectibleWindow.MATERIAL_SECTION_TITLE,
+		"Resource items must start in a disabled section at the bottom of the F10 catalog."
+	)
+	var materials := DebugInventoryGrantCatalogScript.get_materials()
+	_expect(
+		materials.size() == 14
+		and DebugInventoryGrantCatalogScript.get_for_path(
+			AGAVE_CANNON_BUILDING.resource_path
+		) == null
+		and DebugInventoryGrantCatalogScript.get_for_path(
+			WINDWALK_POTION.resource_path
+		) == null
+		and DebugInventoryGrantCatalogScript.get_for_path(WATER_SOURCE.resource_path)
+		== null,
+		"F10 grants must expose all 14 materials while rejecting buildings, consumables, and non-inventory water tiles."
+	)
+	for material_offset in materials.size():
+		var material := materials[material_offset]
+		var item_index := material_section_index + 1 + material_offset
+		_expect(
+			str(window.collectible_list.get_item_metadata(item_index))
+			== material.resource_path,
+			"Every trusted material must appear after the F10 resource header in stable order."
+		)
 
 	window.collectible_requested.emit(APPLE_COLLECTIBLE.resource_path)
 	await process_frame
@@ -94,6 +145,20 @@ func _test_debug_collectible_window() -> void:
 		"Debug collectible request must preserve starting wood and add the selected collectible."
 	)
 	_expect(not game.has_luoxi_collectible_claimed(0), "Debug collectible grant must not spend Luoxi's round claim.")
+	var water_index := _find_item_index_by_path(
+		window.collectible_list,
+		WATER_BOTTLE_MATERIAL.resource_path
+	)
+	var water_before := run_state.get_inventory_item_total(WATER_BOTTLE_MATERIAL)
+	window.collectible_list.item_activated.emit(water_index)
+	await process_frame
+	_expect(
+		water_index > material_section_index
+		and run_state.get_inventory_item_total(WATER_BOTTLE_MATERIAL)
+		== water_before + 1
+		and window.status_label.text.contains(WATER_BOTTLE_MATERIAL.display_name),
+		"Activating a resource entry must grant exactly one item and report its real name."
+	)
 
 	window.close()
 	await process_frame
@@ -110,6 +175,13 @@ func _make_action(action_name: String) -> InputEventAction:
 	event.action = action_name
 	event.pressed = true
 	return event
+
+
+func _find_item_index_by_path(item_list: ItemList, config_path: String) -> int:
+	for item_index in item_list.get_item_count():
+		if str(item_list.get_item_metadata(item_index)) == config_path:
+			return item_index
+	return -1
 
 
 func _stop_audio_players(root_node: Node) -> void:

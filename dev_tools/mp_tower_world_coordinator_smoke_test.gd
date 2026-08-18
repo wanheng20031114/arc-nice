@@ -553,7 +553,7 @@ func _test_static_boundary(mp_game: MultiplayerGameplaySession) -> void:
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
 		rpc_pattern.search_all(source).size() == 145,
-		"TowerWorld 提取必须保留 protocol-v87 的 145 个 MpGame RPC 门面。"
+		"TowerWorld 提取必须保留 protocol-v88 的 145 个 MpGame RPC 门面。"
 	)
 	for function_name in [
 		"net_plant_placement_requested",
