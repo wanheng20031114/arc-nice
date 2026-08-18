@@ -1096,7 +1096,7 @@ func _get_recipe_sort_group(filter_key: StringName) -> int:
 
 func _build_recipe_description(recipe: ProductionRecipe) -> String:
 	var input_clause := (
-		"无需材料，自动生产"
+		"无需材料，启动后生产"
 		if recipe.input_items.is_empty()
 		else "投入%s" % recipe.get_input_summary()
 	)
@@ -1144,12 +1144,13 @@ func _build_recipe_notes(recipe: ProductionRecipe) -> PackedStringArray:
 		)
 	if recipe.outputs_to_local_slot():
 		notes.append("本地产物格容量：%d" % recipe.get_local_output_capacity())
+	notes.append("生产模式：默认单次，可在建筑面板开启∞循环")
 	return notes
 
 
 func _get_recipe_input_source_label(recipe: ProductionRecipe) -> String:
 	if recipe.input_items.is_empty():
-		return "无需材料（自动生产）"
+		return "无需材料（启动后生产）"
 	if recipe.uses_environment_source():
 		return "环境来源"
 	if recipe.inputs_from_player_inventory():

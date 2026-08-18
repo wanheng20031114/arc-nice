@@ -783,6 +783,7 @@ func _make_state(revision: int) -> Dictionary:
 	return {
 		"schema": ProductionBuilding.RUNTIME_STATE_SCHEMA,
 		"enabled": true,
+		"loop_enabled": false,
 		"active_recipe_id": "",
 		"progress_elapsed_seconds": 0.0,
 		"wait_reason": "",

@@ -208,11 +208,12 @@ func _run() -> void:
 		and panel.has_node("Overlay/PanelRoot/OutputSlot3")
 		and panel.has_node("Overlay/PanelRoot/MaterialList")
 		and panel.has_node("Overlay/PanelRoot/ToggleButton")
+		and panel.has_node("Overlay/PanelRoot/LoopButton")
 		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow8")
 		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow9")
 		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow10")
 		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow11"),
-		"生产面板必须原生搭建左右各3个候选槽位、物资列表与右上角开关。"
+		"生产面板必须原生搭建左右各3个候选槽位、物资列表及右上角启停/循环按钮。"
 	)
 	_expect(
 		panel.status_label.position == Vector2(61.0, 420.0)
@@ -224,6 +225,40 @@ func _run() -> void:
 	panel.open_for(station, player)
 	await process_frame
 	_expect(panel.is_open() and panel.visible and player.controls_locked, "靠近交互打开生产面板后必须锁定玩家控制。")
+	var loop_button := panel.get_node("Overlay/PanelRoot/LoopButton") as Button
+	var toggle_button := panel.get_node("Overlay/PanelRoot/ToggleButton") as Button
+	var loop_off_style := loop_button.get_theme_stylebox("normal") as StyleBoxFlat
+	_expect(
+		loop_button != null
+		and toggle_button != null
+		and loop_button.text == "∞"
+		and loop_button.toggle_mode
+		and not loop_button.button_pressed
+		and panel.building_title.position.x + panel.building_title.size.x
+		<= loop_button.position.x
+		and loop_button.position.x + loop_button.size.x <= toggle_button.position.x
+		and loop_off_style != null
+		and loop_off_style.bg_color.r > loop_off_style.bg_color.g
+		and not station.production_loop_enabled,
+		"∞按钮必须以原生红色关闭态位于启停按钮左侧，且建筑默认采用单次生产。"
+	)
+	panel.call("_on_loop_pressed")
+	var loop_on_style := loop_button.get_theme_stylebox("normal") as StyleBoxFlat
+	_expect(
+		station.production_loop_enabled
+		and loop_button.button_pressed
+		and loop_on_style != null
+		and loop_on_style.bg_color.g > loop_on_style.bg_color.r
+		and loop_button.tooltip_text.contains("循环生产"),
+		"点击∞必须只开启循环并将按钮切换为绿色语义态。"
+	)
+	panel.call("_on_loop_pressed")
+	_expect(
+		not station.production_loop_enabled
+		and not loop_button.button_pressed
+		and station.production_enabled,
+		"再次点击∞必须恢复红色单次模式，且不得改变建筑启停状态。"
+	)
 	_expect(
 		panel.recipe_rows[0].icon == PLANK.icon_texture
 		and panel.recipe_rows[0].icon != WOOD.icon_texture
@@ -597,34 +632,96 @@ func _run() -> void:
 	_expect(
 		coordinator.get_total_item_count(WOOD) == 0
 		and coordinator.get_total_item_count(PLANK) == 2
-		and is_zero_approx(station.progress_elapsed_seconds),
-		"第10秒必须在同一事务中扣1木头并向仓库加入2木板。"
+		and is_zero_approx(station.progress_elapsed_seconds)
+		and not station.production_enabled
+		and not station.production_loop_enabled,
+		"默认单次模式第10秒必须原子结算一轮、进度归零并自动停止。"
 	)
 	if production_border != null:
 		_expect(
 			is_zero_approx(
 				float(production_border.get_instance_shader_parameter(&"progress_value"))
 			),
-			"一轮完成后环形进度必须从零开始平滑显示下一轮，不能改变权威生产事务。"
+			"单次一轮完成后环形进度必须归零，不能保留已完成进度。"
 		)
 
 	station.advance_shared_production_tick(10.0)
 	_expect(
-		is_equal_approx(station.get_progress_ratio(), 1.0)
+		is_zero_approx(station.get_progress_ratio())
+		and station.completion_wait_reason == &""
+		and coordinator.get_total_item_count(PLANK) == 2,
+		"单次完成停机后即使继续推进时间也不得暗中开始第二轮。"
+	)
+	_expect(
+		station.set_production_enabled(true)
+		and not station.production_loop_enabled,
+		"默认单次模式必须能由▶重新启动一轮。"
+	)
+	station.advance_shared_production_tick(10.0)
+	_expect(
+		station.production_enabled
+		and not station.production_loop_enabled
+		and is_equal_approx(station.get_progress_ratio(), 1.0)
 		and station.completion_wait_reason == ProductionCoordinator.RESULT_MISSING_INPUT
 		and coordinator.get_total_item_count(PLANK) == 2,
-		"缺料时生产仍须到剩余0秒并停在那里，且不得凭空产出。"
+		"单次模式缺料到100%时必须继续等待，不能把阻塞当作成功而提前停机。"
+	)
+	_expect(warehouse.try_add_storage_item_count(WOOD, 1), "单次缺料等待必须能补入测试木头。")
+	_expect(
+		coordinator.get_total_item_count(WOOD) == 0
+		and coordinator.get_total_item_count(PLANK) == 4
+		and not station.production_enabled
+		and not station.production_loop_enabled
+		and is_zero_approx(station.progress_elapsed_seconds),
+		"单次阻塞解除后必须只原子结算一次并立即停机。"
+	)
+	_expect(
+		station.set_production_loop_enabled(true)
+		and not station.production_enabled
+		and station.set_production_enabled(true),
+		"点亮∞只能设定后续循环，停机建筑仍必须由▶显式启动。"
+	)
+	station.advance_shared_production_tick(10.0)
+	_expect(
+		is_equal_approx(station.get_progress_ratio(), 1.0)
+		and station.completion_wait_reason == ProductionCoordinator.RESULT_MISSING_INPUT
+		and station.production_enabled
+		and station.production_loop_enabled
+		and coordinator.get_total_item_count(PLANK) == 4,
+		"循环模式缺料时必须停在完成态等待，不能把阻塞误判为本轮成功。"
 	)
 	_expect(warehouse.try_add_storage_item_count(WOOD, 1), "仓库必须能补入等待中的原料。")
 	_expect(
 		coordinator.get_total_item_count(WOOD) == 0
-		and coordinator.get_total_item_count(PLANK) == 4
+		and coordinator.get_total_item_count(PLANK) == 6
 		and is_zero_approx(station.progress_elapsed_seconds),
 		"等待中的原料一进入任意仓库，必须在同帧完成一轮生产。"
 	)
 
-	_expect(warehouse.try_add_storage_item_count(WOOD, 1), "仓库必须能加入暂停测试原料。")
+	_expect(warehouse.try_add_storage_item_count(WOOD, 1), "仓库必须能加入中途关闭循环的测试原料。")
 	_expect(warehouse.try_add_storage_item_count(SAPLING, 1), "仓库必须能加入无效树苗。")
+	station.advance_shared_production_tick(5.0)
+	station.set_production_loop_enabled(false)
+	_expect(
+		station.production_enabled
+		and not station.production_loop_enabled
+		and is_equal_approx(station.progress_elapsed_seconds, 5.0),
+		"运行中关闭∞不得停止建筑或清空已经推进的半轮进度。"
+	)
+	station.advance_shared_production_tick(5.0)
+	_expect(
+		not station.production_enabled
+		and is_zero_approx(station.progress_elapsed_seconds)
+		and coordinator.get_total_item_count(WOOD) == 0
+		and coordinator.get_total_item_count(PLANK) == 8,
+		"运行中关闭∞必须在当前轮成功结算后才停止。"
+	)
+	_expect(
+		warehouse.try_add_storage_item_count(WOOD, 1)
+		and station.set_production_loop_enabled(true)
+		and station.set_production_enabled(true),
+		"暂停回归夹具必须重新显式开启循环与生产。"
+	)
 	station.advance_shared_production_tick(5.0)
 	station.set_production_enabled(false)
 	_expect(
@@ -653,11 +750,10 @@ func _run() -> void:
 	station.advance_shared_production_tick(10.0)
 	_expect(
 		coordinator.get_total_item_count(WOOD) == 0
-		and coordinator.get_total_item_count(PLANK) == 6
+		and coordinator.get_total_item_count(PLANK) == 10
 		and coordinator.get_total_item_count(SAPLING) == 1,
 		"加工站必须能跨仓扣料并把产物自动写入全场仓库网络，且不影响树苗。"
 	)
-	_expect(second_warehouse.try_add_storage_item_count(PLANK, 4), "核心配方必须能准备余下4份木板。")
 	_expect(warehouse.try_add_storage_item_count(WATER_BOTTLE, 4), "核心配方缺料测试必须先准备4瓶水。")
 	_expect(station.select_recipe(&"wooden_core_assembly"), "玩家必须能选择木制核心组装配方。")
 	station.advance_shared_production_tick(10.0)
@@ -738,7 +834,13 @@ func _run() -> void:
 		game_instance.free()
 
 	await _test_nonstackable_production_input(test_root)
-	await _test_multiplayer_production_contract(test_root, config, coordinator)
+	await _test_multiplayer_production_contract(
+		test_root,
+		config,
+		coordinator,
+		panel,
+		player
+	)
 
 	_finish(test_root)
 
@@ -966,7 +1068,9 @@ func _make_personal_output_recipe_fixture() -> ProductionRecipe:
 func _test_multiplayer_production_contract(
 	test_root: Node,
 	config: PlantDefenseConfig,
-	coordinator: ProductionCoordinator
+	coordinator: ProductionCoordinator,
+	panel: ProductionBuildingPanel,
+	player: Player
 ) -> void:
 	_expect(
 		not ProductionBuildingProtocol.is_valid_command({
@@ -978,6 +1082,17 @@ func _test_multiplayer_production_contract(
 			"enabled": true,
 		}),
 		"生产协议必须拒绝伪装成字符串的请求ID。"
+	)
+	_expect(
+		not ProductionBuildingProtocol.is_valid_command({
+			"operation": ProductionBuildingProtocol.OPERATION_SET_LOOP_ENABLED,
+			"request_id": 2,
+			"building_net_id": 7,
+			"peer_id": 2,
+			"expected_production_revision": 0,
+			"loop_enabled": 1,
+		}),
+		"循环生产命令必须严格拒绝用整数伪装的布尔值。"
 	)
 	_expect(
 		not ProductionBuildingProtocol.is_valid_command({
@@ -1084,37 +1199,50 @@ func _test_multiplayer_production_contract(
 		0,
 		false
 	)
+	var loop_command := ProductionBuildingProtocol.make_set_loop_enabled_command(
+		3,
+		8,
+		2,
+		1,
+		true
+	)
 	_expect(
 		authority.apply_authoritative_multiplayer_production_command(first_command)
+		== ProductionBuildingProtocol.RESULT_SUCCESS
+		and ProductionBuildingProtocol.is_valid_command(loop_command)
+		and ProductionBuildingProtocol.canonicalize_command(loop_command, 2)
+		== loop_command
+		and authority.apply_authoritative_multiplayer_production_command(loop_command)
 		== ProductionBuildingProtocol.RESULT_SUCCESS
 		and authority.apply_authoritative_multiplayer_production_command(
 			competing_command
 		) == ProductionBuildingProtocol.RESULT_STALE_STATE
 		and authority.production_enabled
+		and authority.production_loop_enabled
 		and authority.active_recipe_id == &"water_collector_assembly"
 		and authority.personal_output_peer_id == 0
-		and authority.production_revision == 1,
-		"多人仓库产物配方不得绑定个人Peer，且相同revision的后到命令必须零写入。"
+		and authority.production_revision == 2,
+		"Host必须权威应用严格布尔循环命令；相同revision的后到命令必须零写入。"
 	)
 	var invalid_recipe_command := ProductionBuildingProtocol.make_select_recipe_command(
 		3,
 		8,
 		2,
-		1,
+		2,
 		&"missing_recipe"
 	)
 	_expect(
 		authority.apply_authoritative_multiplayer_production_command(
 			invalid_recipe_command
 		) == ProductionBuildingProtocol.RESULT_INVALID_RECIPE
-		and authority.production_revision == 1,
+		and authority.production_revision == 2,
 		"非法配方必须返回invalid_recipe且不得写入生产状态。"
 	)
 	var personal_command := ProductionBuildingProtocol.make_select_recipe_command(
 		4,
 		8,
 		2,
-		1,
+		2,
 		personal_recipe.recipe_id
 	)
 	_expect(
@@ -1123,7 +1251,7 @@ func _test_multiplayer_production_contract(
 		) == ProductionBuildingProtocol.RESULT_SUCCESS
 		and authority.active_recipe_id == personal_recipe.recipe_id
 		and authority.personal_output_peer_id == 2
-		and authority.production_revision == 2,
+		and authority.production_revision == 3,
 		"合成的个人产物夹具必须继续覆盖选择者Peer绑定契约。"
 	)
 	var run_state := root.get_node("RunState") as RunStateStore
@@ -1133,8 +1261,8 @@ func _test_multiplayer_production_contract(
 		and authority.personal_output_peer_id == 0
 		and authority.completion_wait_reason
 		== ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE
-		and authority.production_revision == 3
-		and replication_flags == [true, true, false]
+		and authority.production_revision == 4
+		and replication_flags == [true, true, true, false]
 		and not run_state.has_multiplayer_peer_state(2)
 		and coordinator.try_commit_recipe(personal_recipe, 2)
 		== ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE
@@ -1203,9 +1331,11 @@ func _test_multiplayer_production_contract(
 	_expect(
 		not proxy.select_recipe(&"wood_to_plank")
 		and not proxy.set_production_enabled(false)
+		and not proxy.set_production_loop_enabled(true)
 		and proxy.active_recipe_id == &""
-		and proxy.production_enabled,
-		"客户端生产副本不得通过单人接口直接改配方或开关。"
+		and proxy.production_enabled
+		and not proxy.production_loop_enabled,
+		"客户端生产副本不得通过单人接口直接改配方、启停或循环状态。"
 	)
 	proxy.advance_shared_production_tick(10.0)
 	_expect(
@@ -1222,6 +1352,7 @@ func _test_multiplayer_production_contract(
 	var authoritative_state := {
 		"schema": ProductionBuilding.RUNTIME_STATE_SCHEMA,
 		"enabled": true,
+		"loop_enabled": true,
 		"active_recipe_id": "wood_to_plank",
 		"progress_elapsed_seconds": 4.0,
 		"wait_reason": "",
@@ -1247,6 +1378,7 @@ func _test_multiplayer_production_contract(
 		proxy.complete_multiplayer_production_request(result)
 		and not proxy.multiplayer_production_request_pending
 		and proxy.active_recipe_id == &"wood_to_plank"
+		and proxy.production_loop_enabled
 		and proxy.production_revision == 1
 		and is_equal_approx(proxy.progress_elapsed_seconds, 4.0),
 		"成功或失败结果都必须以完整权威状态结束请求。"
@@ -1254,17 +1386,49 @@ func _test_multiplayer_production_contract(
 	var stale_state := authoritative_state.duplicate(true)
 	stale_state["revision"] = 0
 	stale_state["enabled"] = false
+	stale_state["loop_enabled"] = false
 	proxy.apply_multiplayer_runtime_state(
 		stale_state,
 		Time.get_ticks_msec() / 1000.0
 	)
 	_expect(
-		proxy.production_enabled and proxy.production_revision == 1,
+		proxy.production_enabled
+		and proxy.production_loop_enabled
+		and proxy.production_revision == 1,
 		"过期状态包不得覆盖客户端已应用的较新权威状态。"
 	)
+	var missing_loop_state := authoritative_state.duplicate(true)
+	missing_loop_state.erase("loop_enabled")
+	missing_loop_state["revision"] = 2
+	proxy.apply_multiplayer_runtime_state(
+		missing_loop_state,
+		Time.get_ticks_msec() / 1000.0 + 0.001
+	)
+	var invalid_loop_state := authoritative_state.duplicate(true)
+	invalid_loop_state["loop_enabled"] = 1
+	invalid_loop_state["revision"] = 2
+	proxy.apply_multiplayer_runtime_state(
+		invalid_loop_state,
+		Time.get_ticks_msec() / 1000.0 + 0.002
+	)
 	_expect(
-		proxy.request_multiplayer_enabled_change(false),
-		"同步完成后客户端必须能提交下一条开关命令。"
+		proxy.production_loop_enabled and proxy.production_revision == 1,
+		"schema 5状态缺少循环字段或循环字段不是严格布尔值时必须整包拒绝。"
+	)
+	panel.bind_building(proxy, player)
+	_expect(
+		not panel.loop_button.disabled and not panel.toggle_button.disabled,
+		"多人状态就绪且无请求在途时，启停与∞按钮都必须可用。"
+	)
+	_expect(
+		proxy.request_multiplayer_loop_change(false)
+		and requested_commands.size() == 2
+		and requested_commands[1]["operation"]
+		== ProductionBuildingProtocol.OPERATION_SET_LOOP_ENABLED
+		and requested_commands[1]["loop_enabled"] == false
+		and panel.loop_button.disabled
+		and panel.toggle_button.disabled,
+		"客户端提交循环命令后必须锁定启停与∞按钮，直至Host确认或超时补快照。"
 	)
 	proxy.call("_on_multiplayer_production_request_timeout")
 	_expect(

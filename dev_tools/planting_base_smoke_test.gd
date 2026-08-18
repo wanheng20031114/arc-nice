@@ -558,6 +558,11 @@ func _test_completion_transactions(
 	warehouse: OakWarehouse,
 	coordinator: ProductionCoordinator
 ) -> void:
+	_expect(
+		not planting_base.production_loop_enabled
+		and planting_base.set_production_loop_enabled(true),
+		"多配方事务回归必须显式开启循环，不能依赖旧版默认无限生产。"
+	)
 	var storage_events: Array[int] = []
 	warehouse.storage_changed.connect(
 		func() -> void: storage_events.append(warehouse.get_storage_revision())

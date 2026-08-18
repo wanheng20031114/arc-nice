@@ -10,7 +10,7 @@ signal production_duration_multiplier_changed(
 	current_multiplier: float
 )
 
-const RUNTIME_STATE_SCHEMA := 4
+const RUNTIME_STATE_SCHEMA := 5
 const INTERACTION_GROUP := PlantDefense.BUILDING_INTERACTION_GROUP
 const INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
 const VISUAL_PROJECTION_WINDOW_SECONDS := 1.0
@@ -41,6 +41,7 @@ var recipe_unlock_checker := Callable()
 var nearby_player: Player = null
 var is_interaction_target := false
 var production_enabled := true
+var production_loop_enabled := false
 var active_recipe_id: StringName = &""
 var progress_elapsed_seconds := 0.0
 var completion_wait_reason: StringName = &""
@@ -117,6 +118,7 @@ func _on_setup_completed() -> void:
 	buffered_output_item = null
 	buffered_output_count = 0
 	production_enabled = true
+	production_loop_enabled = false
 	active_recipe_id = &""
 	personal_output_peer_id = 0
 	if auto_select_first_recipe:
@@ -324,6 +326,19 @@ func request_multiplayer_enabled_change(enabled: bool) -> bool:
 	return _submit_multiplayer_production_command(command)
 
 
+func request_multiplayer_loop_change(enabled: bool) -> bool:
+	if not is_multiplayer_production_ready():
+		return false
+	var command := ProductionBuildingProtocol.make_set_loop_enabled_command(
+		next_multiplayer_production_request_id,
+		building_net_id,
+		multiplayer_production_peer_id,
+		production_revision,
+		enabled
+	)
+	return _submit_multiplayer_production_command(command)
+
+
 func request_multiplayer_output_collection() -> bool:
 	if not is_multiplayer_production_ready() or not has_buffered_output():
 		return false
@@ -444,6 +459,16 @@ func set_production_enabled(enabled: bool) -> bool:
 	return true
 
 
+func set_production_loop_enabled(loop_enabled: bool) -> bool:
+	if is_multiplayer_proxy:
+		return false
+	if production_loop_enabled == loop_enabled:
+		return true
+	production_loop_enabled = loop_enabled
+	_bump_production_state()
+	return true
+
+
 func apply_authoritative_multiplayer_production_command(
 	command: Dictionary
 ) -> StringName:
@@ -477,6 +502,12 @@ func apply_authoritative_multiplayer_production_command(
 			return (
 				ProductionBuildingProtocol.RESULT_SUCCESS
 				if set_production_enabled(bool(command["enabled"]))
+				else ProductionBuildingProtocol.RESULT_UNAVAILABLE
+			)
+		ProductionBuildingProtocol.OPERATION_SET_LOOP_ENABLED:
+			return (
+				ProductionBuildingProtocol.RESULT_SUCCESS
+				if set_production_loop_enabled(bool(command["loop_enabled"]))
 				else ProductionBuildingProtocol.RESULT_UNAVAILABLE
 			)
 		ProductionBuildingProtocol.OPERATION_COLLECT_OUTPUT:
@@ -554,6 +585,8 @@ func try_complete_ready_production() -> bool:
 	if result == ProductionCoordinator.RESULT_SUCCESS:
 		progress_elapsed_seconds = 0.0
 		completion_wait_reason = &""
+		if not production_loop_enabled:
+			production_enabled = false
 		_clear_ready_production_wait_registration()
 		_bump_production_state()
 		return true
@@ -652,6 +685,8 @@ func _complete_local_output_cycle(recipe: ProductionRecipe) -> bool:
 		buffered_output_item = item
 		buffered_output_count = count
 	progress_elapsed_seconds = 0.0
+	if not production_loop_enabled:
+		production_enabled = false
 	completion_wait_reason = (
 		ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
 		if buffered_output_count >= capacity
@@ -831,6 +866,7 @@ func export_multiplayer_runtime_state() -> Dictionary:
 	return {
 		"schema": RUNTIME_STATE_SCHEMA,
 		"enabled": production_enabled,
+		"loop_enabled": production_loop_enabled,
 		"active_recipe_id": String(active_recipe_id),
 		"progress_elapsed_seconds": progress_elapsed_seconds,
 		"wait_reason": String(completion_wait_reason),
@@ -876,6 +912,7 @@ func _apply_multiplayer_runtime_state_sample(
 		or int(state["schema"]) != RUNTIME_STATE_SCHEMA
 		or typeof(state.get("revision")) != TYPE_INT
 		or typeof(state.get("enabled")) != TYPE_BOOL
+		or typeof(state.get("loop_enabled")) != TYPE_BOOL
 		or typeof(state.get("active_recipe_id")) not in [TYPE_STRING, TYPE_STRING_NAME]
 		or typeof(state.get("progress_elapsed_seconds")) not in [TYPE_INT, TYPE_FLOAT]
 		or typeof(state.get("wait_reason")) not in [TYPE_STRING, TYPE_STRING_NAME]
@@ -970,6 +1007,7 @@ func _apply_multiplayer_runtime_state_sample(
 	_last_multiplayer_runtime_host_sample_time = received_host_sample_time
 	production_revision = received_revision
 	production_enabled = bool(state["enabled"])
+	production_loop_enabled = bool(state["loop_enabled"])
 	active_recipe_id = received_recipe_id
 	personal_output_peer_id = received_output_peer_id
 	buffered_output_item = received_buffered_output_item

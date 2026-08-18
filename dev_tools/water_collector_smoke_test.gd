@@ -69,8 +69,10 @@ func _run() -> void:
 	_expect(
 		collector.active_recipe_id == &"water_to_bottle"
 		and collector.get_active_recipe() != null
-		and collector.get_active_recipe().uses_environment_source(),
-		"水源采集器必须在完成搭建时自动选择唯一的环境采集配方。"
+		and collector.get_active_recipe().uses_environment_source()
+		and collector.production_enabled
+		and not collector.production_loop_enabled,
+		"水源采集器必须自动选择唯一环境采集配方，并默认只生产一轮。"
 	)
 	collector.advance_shared_production_tick(19.0)
 	_test_collection_progress_ring(collector, 0.95)
@@ -83,9 +85,18 @@ func _run() -> void:
 	_expect(
 		coordinator.get_total_item_count(WATER_BOTTLE) == 1
 		and is_zero_approx(collector.progress_elapsed_seconds)
-		and is_zero_approx(collector.collection_progress_ring.value),
-		"第20秒必须无原料消耗地向仓库存入1个水瓶。"
+		and is_zero_approx(collector.collection_progress_ring.value)
+		and not collector.production_enabled
+		and not collector.production_loop_enabled,
+		"默认单次采集必须在第20秒存入1个水瓶并立即停止。"
 	)
+	collector.advance_shared_production_tick(7.0)
+	_expect(
+		coordinator.get_total_item_count(WATER_BOTTLE) == 1
+		and is_zero_approx(collector.progress_elapsed_seconds),
+		"默认单次采集停止后不得自动开始下一轮。"
+	)
+	collector.set_production_enabled(true)
 	collector.advance_shared_production_tick(7.0)
 	collector.set_production_enabled(false)
 	_expect(
@@ -129,14 +140,28 @@ func _run() -> void:
 	collector.advance_shared_production_tick(9.0)
 	_expect(
 		coordinator.get_total_item_count(WATER_BOTTLE) == 2
-		and is_zero_approx(collector.progress_elapsed_seconds),
-		"采水速率科研生效后第10个真实秒必须完成一轮并产出1个水瓶。"
+		and is_zero_approx(collector.progress_elapsed_seconds)
+		and not collector.production_enabled
+		and not collector.production_loop_enabled,
+		"采水速率科研生效后第10个真实秒必须完成单轮并再次停止。"
+	)
+	collector.set_production_loop_enabled(true)
+	collector.set_production_enabled(true)
+	collector.advance_shared_production_tick(10.0)
+	collector.advance_shared_production_tick(10.0)
+	_expect(
+		coordinator.get_total_item_count(WATER_BOTTLE) == 4
+		and is_zero_approx(collector.progress_elapsed_seconds)
+		and collector.production_enabled
+		and collector.production_loop_enabled,
+		"显式开启循环后，科研加速的采集器必须连续完成多轮且保持运行。"
 	)
 
 	panel.open_for(collector, player)
 	await process_frame
 	_expect(
 		panel.is_open()
+		and panel.loop_button.button_pressed
 		and not panel.recipe_title.visible
 		and not panel.recipe_scroll.visible
 		and panel.input_title.text == "水源"
@@ -331,6 +356,7 @@ func _test_multiplayer_water_collector_contract(test_root: Node) -> void:
 	var authoritative_state := {
 		"schema": ProductionBuilding.RUNTIME_STATE_SCHEMA,
 		"enabled": false,
+		"loop_enabled": false,
 		"active_recipe_id": "water_to_bottle",
 		"progress_elapsed_seconds": 0.0,
 		"wait_reason": "",
@@ -356,6 +382,7 @@ func _test_multiplayer_water_collector_contract(test_root: Node) -> void:
 		proxy.complete_multiplayer_production_request(result)
 		and not proxy.multiplayer_production_request_pending
 		and not proxy.production_enabled
+		and not proxy.production_loop_enabled
 		and proxy.production_revision == 1,
 		"Host确认后水源采集器副本必须以完整权威状态解除请求锁。"
 	)

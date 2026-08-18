@@ -221,8 +221,10 @@ func _test_local_output_slot_and_runtime_state(
 	_expect(
 		excavator.active_recipe_id == &"excavator_cycle"
 		and excavator.get_active_recipe() == EXCAVATOR_CYCLE
-		and coordinator.warehouses.is_empty(),
-		"挖土装置必须自动启动唯一配方，且运行不要求连接仓库。"
+		and coordinator.warehouses.is_empty()
+		and excavator.production_enabled
+		and not excavator.production_loop_enabled,
+		"挖土装置必须自动选择唯一配方、无需仓库，并默认只挖掘一轮。"
 	)
 
 	excavator.advance_shared_production_tick(19.0)
@@ -240,24 +242,73 @@ func _test_local_output_slot_and_runtime_state(
 		and output_item == DIRT_BLOCK
 		and is_zero_approx(excavator.progress_elapsed_seconds)
 		and excavator.completion_wait_reason == &""
-		and not excavator.is_local_output_slot_full(),
-		"第20秒必须固定暂存1个土块，并在未达到5个时继续生产。"
+		and not excavator.is_local_output_slot_full()
+		and not excavator.production_enabled
+		and not excavator.production_loop_enabled,
+		"默认单次挖掘必须在第20秒暂存1个土块并立即停止。"
 	)
 	if output_item == null:
 		return
 
-	for expected_count in range(2, 6):
+	var stopped_revision := excavator.production_revision
+	excavator.advance_shared_production_tick(120.0)
+	_expect(
+		excavator.get_buffered_output_item() == output_item
+		and excavator.get_buffered_output_count() == 1
+		and is_zero_approx(excavator.progress_elapsed_seconds)
+		and excavator.production_revision == stopped_revision,
+		"默认单次挖掘停止后即使再过120秒也不得自动生成第二个土块。"
+	)
+
+	var single_inventory_before := run_state.get_inventory_item_total(output_item)
+	var single_panel_player := Player.new()
+	panel.bind_building(excavator, single_panel_player)
+	panel.output_slots[0].pressed.emit()
+	_expect(
+		not excavator.has_buffered_output()
+		and not excavator.production_enabled
+		and run_state.get_inventory_item_total(output_item)
+		== single_inventory_before + 1
+		and panel.transient_status
+		== "已领取产物；挖土装置已停止，点击 ▶ 再生产一轮。",
+		"面板领取默认单次产物必须清槽且明确提示停机，不能声称已开始下一轮。"
+	)
+	panel.close()
+	single_panel_player.free()
+	excavator.advance_shared_production_tick(20.0)
+	_expect(
+		is_zero_approx(excavator.progress_elapsed_seconds)
+		and not excavator.has_buffered_output()
+		and not excavator.production_enabled,
+		"单次产物领取后继续推进时间也不得重新开始生产。"
+	)
+	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+		if run_state.get_item(slot_index) == output_item:
+			_expect(
+				run_state.discard_item(slot_index),
+				"单次领取验证后必须能清理土块夹具。"
+			)
+
+	excavator.set_production_loop_enabled(true)
+	excavator.set_production_enabled(true)
+	_expect(
+		excavator.production_enabled and excavator.production_loop_enabled,
+		"挖土装置必须允许显式开启循环并重新启动。"
+	)
+	for expected_count in range(1, 6):
 		excavator.advance_shared_production_tick(20.0)
 		_expect(
 			excavator.get_buffered_output_item() == DIRT_BLOCK
 			and excavator.get_buffered_output_count() == expected_count
+			and excavator.production_enabled
+			and excavator.production_loop_enabled
 			and excavator.is_local_output_slot_full() == (expected_count == 5)
 			and excavator.completion_wait_reason == (
 				ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
 				if expected_count == 5
 				else &""
 			),
-			"挖土装置必须逐轮叠加土块，并且只在5/5时进入堵塞状态。"
+			"显式循环挖掘必须逐轮叠加土块，并且只在5/5时进入堵塞状态。"
 		)
 	var blocked_revision := excavator.production_revision
 	excavator.advance_shared_production_tick(120.0)
@@ -268,6 +319,27 @@ func _test_local_output_slot_and_runtime_state(
 		and excavator.production_revision == blocked_revision,
 		"产物格达到5个后即使再过120秒也必须保持堵塞，不得继续计时或覆盖产物。"
 	)
+	var full_slot_loop_revision := excavator.production_revision
+	var full_slot_panel_player := Player.new()
+	panel.bind_building(excavator, full_slot_panel_player)
+	excavator.set_production_loop_enabled(false)
+	_expect(
+		not excavator.production_loop_enabled
+		and excavator.production_enabled
+		and excavator.completion_wait_reason
+		== ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
+		and is_zero_approx(excavator.progress_elapsed_seconds)
+		and excavator.production_revision == full_slot_loop_revision + 1
+		and panel.status_label.text.contains("领取后开始最后一轮，完成后停止"),
+		"满格时关闭∞不得改写启停状态；面板必须说明领取后只完成已排定的最后一轮。"
+	)
+	panel.close()
+	full_slot_panel_player.free()
+	_expect(
+		excavator.set_production_loop_enabled(true)
+		and excavator.production_enabled,
+		"满格边界回归后重新开启∞也只能改变循环模式，不能串改启停状态。"
+	)
 
 	var authoritative_state := excavator.export_multiplayer_runtime_state()
 	await _test_runtime_state_and_collect_protocol(
@@ -277,17 +349,17 @@ func _test_local_output_slot_and_runtime_state(
 		panel
 	)
 
-	var inventory_filled := true
-	for _slot_index in range(RunStateStore.INVENTORY_CAPACITY):
-		inventory_filled = (
-			run_state.try_add_item(EXCAVATOR_ITEM)
-			and inventory_filled
-		)
+	var inventory_filled := run_state.try_add_item_count(
+		EXCAVATOR_ITEM,
+		RunStateStore.INVENTORY_CAPACITY
+		* EXCAVATOR_ITEM.inventory_stack_limit
+	)
 	var full_inventory_revision := run_state.get_inventory_revision()
 	var full_output_revision := excavator.production_revision
+	var full_inventory_collect_result := excavator.try_collect_buffered_output(0)
 	_expect(
 		inventory_filled
-		and excavator.try_collect_buffered_output(0)
+		and full_inventory_collect_result
 		== ProductionBuildingProtocol.RESULT_INVENTORY_FULL
 		and excavator.get_buffered_output_item() == output_item
 		and excavator.get_buffered_output_count() == 5
@@ -309,15 +381,17 @@ func _test_local_output_slot_and_runtime_state(
 		== ProductionBuildingProtocol.RESULT_SUCCESS
 		and not excavator.has_buffered_output()
 		and excavator.completion_wait_reason == &""
+		and excavator.production_enabled
+		and excavator.production_loop_enabled
 		and run_state.get_inventory_item_total(output_item) == inventory_before + 5
 		and run_state.get_inventory_revision() == inventory_revision_before + 1,
-		"玩家领取后必须原子清空产物格、解除堵塞并把整叠5个土块加入背包。"
+		"循环模式领取后必须原子清槽、解除堵塞、保持运行并把整叠5个土块加入背包。"
 	)
 	excavator.advance_shared_production_tick(1.0)
 	_expect(
 		is_equal_approx(excavator.progress_elapsed_seconds, 1.0)
 		and not excavator.has_buffered_output(),
-		"领取产物后挖土装置必须从下一轮第1秒恢复生产。"
+		"显式循环模式领取产物后必须从下一轮第1秒恢复生产。"
 	)
 
 	excavator.advance_shared_production_tick(19.0)
@@ -371,6 +445,7 @@ func _test_runtime_state_and_collect_protocol(
 	var required_fields := [
 		"schema",
 		"enabled",
+		"loop_enabled",
 		"active_recipe_id",
 		"progress_elapsed_seconds",
 		"wait_reason",
@@ -387,6 +462,8 @@ func _test_runtime_state_and_collect_protocol(
 		has_all_fields
 		and int(authoritative_state.get("schema", -1))
 		== ProductionBuilding.RUNTIME_STATE_SCHEMA
+		and bool(authoritative_state.get("enabled", false))
+		and bool(authoritative_state.get("loop_enabled", false))
 		and String(authoritative_state.get("active_recipe_id", ""))
 		== "excavator_cycle"
 		and String(authoritative_state.get("buffered_output_config_path", ""))
@@ -426,6 +503,8 @@ func _test_runtime_state_and_collect_protocol(
 	_expect(
 		proxy.production_revision
 		== int(authoritative_state.get("revision", -1))
+		and proxy.production_enabled
+		and proxy.production_loop_enabled
 		and proxy.active_recipe_id == &"excavator_cycle"
 		and proxy.get_buffered_output_item() == output_item
 		and proxy.get_buffered_output_count() == 5
@@ -443,12 +522,78 @@ func _test_runtime_state_and_collect_protocol(
 	mismatched_state["buffered_output_count"] = 1
 	mismatched_state["revision"] = accepted_revision + 1
 	proxy.apply_multiplayer_runtime_state(mismatched_state, sample_time + 0.002)
+	var missing_loop_state := authoritative_state.duplicate(true)
+	missing_loop_state.erase("loop_enabled")
+	missing_loop_state["revision"] = accepted_revision + 1
+	proxy.apply_multiplayer_runtime_state(missing_loop_state, sample_time + 0.003)
+	var mistyped_loop_state := authoritative_state.duplicate(true)
+	mistyped_loop_state["loop_enabled"] = 1
+	mistyped_loop_state["revision"] = accepted_revision + 1
+	proxy.apply_multiplayer_runtime_state(mistyped_loop_state, sample_time + 0.004)
 	_expect(
 		proxy.production_revision == accepted_revision
+		and proxy.production_loop_enabled
 		and proxy.get_buffered_output_item() == DIRT_BLOCK
 		and proxy.get_buffered_output_count() == 5,
-		"客户端必须拒绝超过配方容量或与固定配方产物不一致的本地产物状态。"
+		"客户端必须拒绝非法本地产物，以及缺少或错型loop_enabled的schema 5状态。"
 	)
+
+	_expect(
+		proxy.request_multiplayer_loop_change(false)
+		and proxy.multiplayer_production_request_pending
+		and requested_commands.size() == 1,
+		"客户端必须通过独立多人命令请求关闭循环，且不能直接改写副本状态。"
+	)
+	if requested_commands.is_empty():
+		proxy.multiplayer_production_request_timer.stop()
+		proxy.free()
+		return
+	var loop_command := requested_commands[0]
+	var loop_command_with_extra := loop_command.duplicate(true)
+	loop_command_with_extra["enabled"] = false
+	var mistyped_loop_command := loop_command.duplicate(true)
+	mistyped_loop_command["loop_enabled"] = 0
+	_expect(
+		ProductionBuildingProtocol.is_valid_command(loop_command)
+		and ProductionBuildingProtocol.get_operation(loop_command)
+		== ProductionBuildingProtocol.OPERATION_SET_LOOP_ENABLED
+		and int(loop_command.get("building_net_id", 0)) == 77
+		and int(loop_command.get("peer_id", 0)) == 2
+		and int(loop_command.get("expected_production_revision", -1))
+		== accepted_revision
+		and loop_command.get("loop_enabled") == false
+		and not loop_command.has("enabled")
+		and ProductionBuildingProtocol.canonicalize_command(
+			loop_command_with_extra,
+			2
+		) == loop_command
+		and not ProductionBuildingProtocol.is_valid_command(mistyped_loop_command)
+		and ProductionBuildingProtocol.canonicalize_command(
+			mistyped_loop_command,
+			2
+		).is_empty(),
+		"set_loop_enabled必须使用布尔专属字段，并由Host白名单剥离无关字段、拒绝错型值。"
+	)
+	var loop_disabled_state := authoritative_state.duplicate(true)
+	loop_disabled_state["loop_enabled"] = false
+	loop_disabled_state["revision"] = accepted_revision + 1
+	var loop_result := ProductionBuildingProtocol.make_result(
+		loop_command,
+		true,
+		ProductionBuildingProtocol.RESULT_SUCCESS,
+		int(loop_disabled_state["revision"]),
+		loop_disabled_state,
+		sample_time
+	)
+	proxy.apply_multiplayer_runtime_state(loop_disabled_state, sample_time + 0.005)
+	_expect(
+		proxy.complete_multiplayer_production_request(loop_result)
+		and not proxy.multiplayer_production_request_pending
+		and not proxy.production_loop_enabled
+		and proxy.production_revision == int(loop_disabled_state["revision"]),
+		"Host确认后客户端副本必须同步loop_enabled并解除循环请求锁。"
+	)
+	requested_commands.clear()
 
 	var panel_player := Player.new()
 	panel_player.peer_id = 2
@@ -489,12 +634,13 @@ func _test_runtime_state_and_collect_protocol(
 		== proxy.production_revision
 		and not command.has("recipe_id")
 		and not command.has("enabled")
+		and not command.has("loop_enabled")
 		and ProductionBuildingProtocol.canonicalize_command(command, 2)
 		== command,
 		"collect_output协议必须绑定建筑、玩家和期望revision，并通过Host严格白名单。"
 	)
 
-	var collected_state := authoritative_state.duplicate(true)
+	var collected_state := loop_disabled_state.duplicate(true)
 	collected_state["buffered_output_config_path"] = ""
 	collected_state["buffered_output_count"] = 0
 	collected_state["wait_reason"] = ""

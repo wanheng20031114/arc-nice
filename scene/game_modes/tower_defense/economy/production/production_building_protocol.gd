@@ -3,6 +3,7 @@ class_name ProductionBuildingProtocol
 
 const OPERATION_SELECT_RECIPE := &"select_recipe"
 const OPERATION_SET_ENABLED := &"set_enabled"
+const OPERATION_SET_LOOP_ENABLED := &"set_loop_enabled"
 const OPERATION_COLLECT_OUTPUT := &"collect_output"
 
 const RESULT_SUCCESS := &"success"
@@ -54,6 +55,23 @@ static func make_set_enabled_command(
 	}
 
 
+static func make_set_loop_enabled_command(
+	request_id: int,
+	building_net_id: int,
+	peer_id: int,
+	expected_production_revision: int,
+	loop_enabled: bool
+) -> Dictionary:
+	return {
+		"operation": OPERATION_SET_LOOP_ENABLED,
+		"request_id": request_id,
+		"building_net_id": building_net_id,
+		"peer_id": peer_id,
+		"expected_production_revision": expected_production_revision,
+		"loop_enabled": loop_enabled,
+	}
+
+
 static func make_collect_output_command(
 	request_id: int,
 	building_net_id: int,
@@ -88,6 +106,8 @@ static func is_valid_command(command: Dictionary) -> bool:
 			)
 		OPERATION_SET_ENABLED:
 			return typeof(command.get("enabled")) == TYPE_BOOL
+		OPERATION_SET_LOOP_ENABLED:
+			return typeof(command.get("loop_enabled")) == TYPE_BOOL
 		OPERATION_COLLECT_OUTPUT:
 			return true
 		_:
@@ -141,6 +161,11 @@ static func canonicalize_command(
 			return {}
 		command["operation"] = OPERATION_SET_ENABLED
 		command["enabled"] = bool(raw_command["enabled"])
+	elif operation_wire == String(OPERATION_SET_LOOP_ENABLED):
+		if typeof(raw_command.get("loop_enabled")) != TYPE_BOOL:
+			return {}
+		command["operation"] = OPERATION_SET_LOOP_ENABLED
+		command["loop_enabled"] = bool(raw_command["loop_enabled"])
 	elif operation_wire == String(OPERATION_COLLECT_OUTPUT):
 		command["operation"] = OPERATION_COLLECT_OUTPUT
 	else:

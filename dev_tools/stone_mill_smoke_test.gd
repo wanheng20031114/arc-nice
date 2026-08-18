@@ -109,6 +109,11 @@ func _run() -> void:
 	_test_recipe_contract(mill)
 	await _test_panel_and_interaction(mill, panel, player)
 	_test_pixel_assets(mill)
+	_expect(
+		not mill.production_loop_enabled
+		and mill.set_production_loop_enabled(true),
+		"连续研磨回归必须显式开启循环，不能依赖旧版默认无限生产。"
+	)
 
 	_test_shared_storage_transaction(
 		mill,

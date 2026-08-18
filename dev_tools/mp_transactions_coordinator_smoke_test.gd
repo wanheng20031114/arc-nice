@@ -123,7 +123,7 @@ func _test_static_mp_game_boundary(coordinator: MpTransactionsCoordinator) -> vo
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
 		rpc_pattern.search_all(source).size() == 144,
-		"Transactions 提取必须保留 protocol-v83 的 144 个 MpGame RPC 门面。"
+		"Transactions 提取必须保留 protocol-v84 的 144 个 MpGame RPC 门面。"
 	)
 	for function_name in [
 		"net_upgrade_selected",

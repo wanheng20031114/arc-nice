@@ -75,8 +75,10 @@ func _run() -> void:
 		_finish(test_root)
 		return
 	station.setup(station_config, null, [Vector2i.ZERO])
+	station.set_production_loop_enabled(true)
 	coordinator.register_plant(station)
 	second_station.setup(station_config, null, [Vector2i(0, 1)])
+	second_station.set_production_loop_enabled(true)
 	coordinator.register_plant(second_station)
 	for index in warehouses.size():
 		warehouses[index].setup(

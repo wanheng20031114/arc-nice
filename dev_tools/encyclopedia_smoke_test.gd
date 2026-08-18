@@ -1072,14 +1072,15 @@ func _test_new_section_content_contract(catalog: CodexCatalog) -> void:
 	)
 	_expect(
 		excavator_recipe != null
-		and excavator_recipe.description.begins_with("无需材料，自动生产")
+		and excavator_recipe.description.begins_with("无需材料，启动后生产")
 		and String(excavator_stats.get("投入", "")) == "无需材料"
 		and String(excavator_stats.get("材料来源", ""))
-		== "无需材料（自动生产）"
+		== "无需材料（启动后生产）"
 		and String(excavator_stats.get("产物去向", ""))
 		== "建筑本地产物格"
-		and excavator_recipe.notes.has("本地产物格容量：5"),
-		"Excavator recipe must describe its automatic local-output cycle accurately."
+		and excavator_recipe.notes.has("本地产物格容量：5")
+		and excavator_recipe.notes.has("生产模式：默认单次，可在建筑面板开启∞循环"),
+		"Excavator recipe must describe one-shot default and optional loop mode accurately."
 	)
 
 	var bamboo_research := _find_entry(

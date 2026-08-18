@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/tower_defense/economy/production/production_building_panel.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/production/production_panel_background.png" id="2_background"]
@@ -45,6 +45,30 @@ border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
 border_color = Color(0.55, 0.9, 0.42, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_loop_off"]
+bg_color = Color(0.34, 0.075, 0.055, 0.97)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.92, 0.28, 0.18, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_loop_on"]
+bg_color = Color(0.08, 0.34, 0.13, 0.97)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.35, 0.95, 0.38, 1)
 corner_radius_top_left = 4
 corner_radius_top_right = 4
 corner_radius_bottom_right = 4
@@ -177,12 +201,33 @@ texture = ExtResource("2_background")
 layout_mode = 0
 offset_left = 96.0
 offset_top = 23.0
-offset_right = 632.0
+offset_right = 596.0
 offset_bottom = 62.0
 text = "生产建筑"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="LoopButton" type="Button" parent="Overlay/PanelRoot"]
+layout_mode = 0
+offset_left = 604.0
+offset_top = 20.0
+offset_right = 650.0
+offset_bottom = 66.0
+toggle_mode = true
+tooltip_text = "单次生产：完成一轮后停止"
+theme_override_colors/font_color = Color(1, 0.94, 0.82, 1)
+theme_override_colors/font_hover_color = Color(1, 0.94, 0.82, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.94, 0.82, 1)
+theme_override_colors/font_hover_pressed_color = Color(1, 0.94, 0.82, 1)
+theme_override_colors/font_disabled_color = Color(1, 0.94, 0.82, 1)
+theme_override_font_sizes/font_size = 25
+theme_override_styles/normal = SubResource("StyleBoxFlat_loop_off")
+theme_override_styles/hover = SubResource("StyleBoxFlat_loop_off")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_loop_on")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_loop_on")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_loop_off")
+text = "∞"
 
 [node name="ToggleButton" type="Button" parent="Overlay/PanelRoot"]
 layout_mode = 0

@@ -286,6 +286,11 @@ func _run() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier", false)
 	_expect(
+		not center.production_loop_enabled
+		and center.set_production_loop_enabled(true),
+		"多轮培育事务回归必须显式开启循环，不能依赖旧版默认无限生产。"
+	)
+	_expect(
 		warehouse.try_add_storage_item_count(WOODEN_CORE, 1)
 		and center.select_recipe(&"wooden_core_to_agave_cannon"),
 		"培育测试必须能准备木制核心并选择加农炮配方。"
@@ -488,6 +493,10 @@ func _run() -> void:
 		"共享仓库产物的权威状态不得携带个人产物接收者。"
 	)
 	coordinator.configure_local_output_peer()
+	_expect(
+		center.set_production_loop_enabled(false),
+		"植物主题循环按钮测试前必须恢复默认单次模式。"
+	)
 
 	panel.open_for(center, player)
 	await process_frame
@@ -495,6 +504,7 @@ func _run() -> void:
 		"fill"
 	) as StyleBoxFlat
 	var recipe_rows_container := panel.recipe_rows[0].get_parent() as VBoxContainer
+	var loop_off_style := panel.loop_button.get_theme_stylebox("normal") as StyleBoxFlat
 	_expect(
 		panel.background.texture != null
 		and panel.background.texture.resource_path
@@ -524,15 +534,28 @@ func _run() -> void:
 		and not panel.recipe_rows[8].visible
 		and not panel.recipe_rows[9].visible
 		and progress_fill != null
-		and progress_fill.bg_color.g > 0.75,
-		"培育中心UI必须使用植物面板、嫩绿进度条，并只显示六条耗时正确的培育配方。"
+		and progress_fill.bg_color.g > 0.75
+		and not panel.loop_button.button_pressed
+		and loop_off_style != null
+		and loop_off_style.bg_color.r > loop_off_style.bg_color.g,
+		"培育中心UI必须使用植物面板与嫩绿进度条，同时∞关闭态仍保持红色语义。"
 	)
+	panel.call("_on_loop_pressed")
+	var loop_on_style := panel.loop_button.get_theme_stylebox("normal") as StyleBoxFlat
+	_expect(
+		center.production_loop_enabled
+		and panel.loop_button.button_pressed
+		and loop_on_style != null
+		and loop_on_style.bg_color.g > loop_on_style.bg_color.r,
+		"植物主题下开启∞后必须切换为绿色，且只改变建筑循环模式。"
+	)
+	panel.call("_on_loop_pressed")
 	_expect(
 		panel.building_title.position == Vector2(96.0, 23.0)
-		and panel.building_title.size == Vector2(536.0, 39.0)
+		and panel.building_title.size == Vector2(500.0, 39.0)
 		and is_equal_approx(
-			panel.building_title.position.x + panel.building_title.size.x * 0.5,
-			364.0
+			panel.building_title.position.x + panel.building_title.size.x,
+			604.0 - 8.0
 		)
 		and panel.recipe_title.position == Vector2(504.0, 112.0)
 		and panel.recipe_title.size == Vector2(180.0, 31.0)
@@ -540,7 +563,7 @@ func _run() -> void:
 			panel.recipe_title.position.x + panel.recipe_title.size.x * 0.5,
 			594.0
 		),
-		"培育中心主标题和配方标题必须分别对齐背景徽章与右栏中心。"
+		"培育中心主标题必须给∞按钮留出8像素安全间距，配方标题仍对齐右栏中心。"
 	)
 	_expect(
 		panel.recipe_scroll.position == Vector2(504.0, 151.0)

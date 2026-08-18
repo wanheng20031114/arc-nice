@@ -15,6 +15,7 @@ const LOCAL_OUTPUT_ICON_SCALE := Vector2(2.0, 2.0)
 @onready var panel_root: Control = $Overlay/PanelRoot
 @onready var background: TextureRect = $Overlay/PanelRoot/Background
 @onready var building_title: Label = $Overlay/PanelRoot/BuildingTitle
+@onready var loop_button: Button = $Overlay/PanelRoot/LoopButton
 @onready var toggle_button: Button = $Overlay/PanelRoot/ToggleButton
 @onready var input_title: Label = $Overlay/PanelRoot/InputTitle
 @onready var output_title: Label = $Overlay/PanelRoot/OutputTitle
@@ -62,6 +63,8 @@ var transient_status := ""
 var _last_visual_remaining_seconds := -1
 var _default_styles: Dictionary = {}
 var _plant_styles: Dictionary = {}
+var _loop_off_style: StyleBox = null
+var _loop_on_style: StyleBox = null
 
 
 func _ready() -> void:
@@ -77,6 +80,7 @@ func _ready() -> void:
 		output_slots[output_index].pressed.connect(
 			_on_output_slot_pressed.bind(output_index)
 		)
+	loop_button.pressed.connect(_on_loop_pressed)
 	toggle_button.pressed.connect(_on_toggle_pressed)
 	close_button.pressed.connect(close)
 	for material_index in material_buttons.size():
@@ -201,10 +205,19 @@ func _refresh_all(_replicate: bool = false) -> void:
 	if building == null or not is_instance_valid(building):
 		return
 	building_title.text = building.config.display_name if building.config != null else "生产建筑"
+	var controls_locked := _is_multiplayer_control_locked()
+	loop_button.button_pressed = building.production_loop_enabled
+	loop_button.tooltip_text = _get_loop_button_tooltip()
+	loop_button.disabled = controls_locked
+	var loop_style := (
+		_loop_on_style if building.production_loop_enabled else _loop_off_style
+	)
+	for state_name in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+		loop_button.add_theme_stylebox_override(state_name, loop_style)
 	toggle_button.text = "Ⅱ" if building.production_enabled else "▶"
-	toggle_button.tooltip_text = "暂停生产并清空本轮进度" if building.production_enabled else "启动生产"
+	toggle_button.tooltip_text = _get_toggle_button_tooltip()
 	toggle_button.button_pressed = building.production_enabled
-	toggle_button.disabled = _is_multiplayer_control_locked()
+	toggle_button.disabled = controls_locked
 
 	var display_recipe := building.get_display_recipe()
 	_apply_panel_layout(display_recipe)
@@ -267,7 +280,7 @@ func _refresh_progress_text() -> void:
 		progress_label.text = "请选择右侧配方"
 		return
 	if not building.production_enabled:
-		progress_label.text = "已暂停 · 本轮进度已清空"
+		progress_label.text = _get_stopped_progress_text(recipe)
 		return
 	if recipe.outputs_to_local_slot() and building.is_local_output_slot_full():
 		progress_label.text = "产物格已存满 · 领取后继续"
@@ -291,6 +304,58 @@ func _refresh_progress_text() -> void:
 			if recipe.uses_environment_source()
 			else "剩余 %d 秒" % remaining
 		)
+
+
+func _get_loop_button_tooltip() -> String:
+	var context := "加工站将按所选模式生产。"
+	var recipe := building.get_display_recipe()
+	if recipe != null and recipe.outputs_to_local_slot():
+		context = "挖土装置将按所选模式挖掘。"
+	elif building.uses_environment_source():
+		context = "水源采集器将按所选模式采水。"
+	return "%s\n%s" % [
+		(
+			"循环生产：完成后自动开始下一轮"
+			if building.production_loop_enabled
+			else "单次生产：完成一轮后停止"
+		),
+		context,
+	]
+
+
+func _get_toggle_button_tooltip() -> String:
+	var operation := "生产"
+	var recipe := building.get_display_recipe()
+	if recipe != null and recipe.outputs_to_local_slot():
+		operation = "挖掘"
+	elif building.uses_environment_source():
+		operation = "采集"
+	if building.production_enabled:
+		return (
+			"暂停循环%s并清空本轮进度" % operation
+			if building.production_loop_enabled
+			else "停止本次%s并清空本轮进度" % operation
+		)
+	return (
+		"启动循环%s" % operation
+		if building.production_loop_enabled
+		else "开始一次%s（完成一轮后停止）" % operation
+	)
+
+
+func _get_stopped_progress_text(recipe: ProductionRecipe) -> String:
+	if not building.production_loop_enabled:
+		var one_shot_text := "已停止，点击 ▶ 再生产一轮"
+		if recipe.outputs_to_local_slot():
+			return one_shot_text + "（挖掘）"
+		if recipe.uses_environment_source():
+			return one_shot_text + "（采水）"
+		return one_shot_text
+	if recipe.outputs_to_local_slot():
+		return "循环挖掘已暂停 · 本轮进度已清空"
+	if recipe.uses_environment_source():
+		return "循环采集已暂停 · 本轮进度已清空"
+	return "循环生产已暂停 · 本轮进度已清空"
 
 
 func _refresh_visual_progress() -> void:
@@ -429,31 +494,61 @@ func _refresh_status() -> void:
 		var output_item := active_recipe.output_items[0]
 		var output_capacity := active_recipe.get_local_output_capacity()
 		if not building.production_enabled:
-			status_label.text = "挖土装置已暂停；已有产物仍可领取。"
+			status_label.text = (
+				"挖土装置循环挖掘已暂停；已有产物仍可领取。"
+				if building.production_loop_enabled
+				else "挖土装置单次挖掘已停止；点击 ▶ 再生产一轮，已有产物仍可领取。"
+			)
 		elif building.is_local_output_slot_full():
-			status_label.text = "产物格已存满%d个%s；点击领取后自动开始下一轮。" % [
-				output_capacity,
-				output_item.display_name,
-			]
+			status_label.text = (
+				"产物格已存满%d个%s；点击领取后自动开始下一轮。" % [
+					output_capacity,
+					output_item.display_name,
+				]
+				if building.production_loop_enabled
+				else "产物格已存满%d个%s；领取后开始最后一轮，完成后停止。" % [
+					output_capacity,
+					output_item.display_name,
+				]
+			)
 		elif building.has_buffered_output():
-			status_label.text = "产物格暂存%d/%d个%s，装置仍在继续生产。" % [
-				building.get_buffered_output_count(),
-				output_capacity,
-				output_item.display_name,
-			]
+			status_label.text = (
+				"产物格暂存%d/%d个%s，装置仍在循环挖掘。" % [
+					building.get_buffered_output_count(),
+					output_capacity,
+					output_item.display_name,
+				]
+				if building.production_loop_enabled
+				else "产物格暂存%d/%d个%s；单次挖掘完成后装置将停止。" % [
+					building.get_buffered_output_count(),
+					output_capacity,
+					output_item.display_name,
+				]
+			)
 		else:
-			status_label.text = "无需材料；每%.0f秒固定产出1个%s，最多暂存%d个。" % [
-				active_recipe.duration_seconds,
-				output_item.display_name,
-				output_capacity,
-			]
+			status_label.text = (
+				"无需材料；循环挖掘每%.0f秒产出1个%s，最多暂存%d个。" % [
+					active_recipe.duration_seconds,
+					output_item.display_name,
+					output_capacity,
+				]
+				if building.production_loop_enabled
+				else "无需材料；单次挖掘将在%.0f秒后产出1个%s并停止。" % [
+					active_recipe.duration_seconds,
+					output_item.display_name,
+				]
+			)
 		return
 	if building.uses_environment_source():
 		if building.get_active_recipe() == null:
 			status_label.text = "采集配方未启用。"
 			return
 		if not building.production_enabled:
-			status_label.text = "水源采集器已暂停；重新启动后从 0 秒开始。"
+			status_label.text = (
+				"水源采集器循环采集已暂停；重新启动后从 0 秒开始。"
+				if building.production_loop_enabled
+				else "水源采集器单次采集已停止；点击 ▶ 再生产一轮。"
+			)
 			return
 		match building.completion_wait_reason:
 			ProductionCoordinator.RESULT_MISSING_INPUT:
@@ -463,7 +558,11 @@ func _refresh_status() -> void:
 			ProductionCoordinator.RESULT_UNAVAILABLE:
 				status_label.text = "仓库网络刚刚变化，将在下个同步周期重试。"
 			_:
-				status_label.text = "水面持续供水；每轮完成后自动向全场仓库存入 1 个水瓶。"
+				status_label.text = (
+					"水面持续供水；每轮完成后自动向全场仓库存入 1 个水瓶。"
+					if building.production_loop_enabled
+					else "单次采水；本轮完成后向全场仓库存入 1 个水瓶并停止。"
+				)
 		return
 	if building.get_active_recipe() == null:
 		var display_recipe := building.get_display_recipe()
@@ -480,7 +579,11 @@ func _refresh_status() -> void:
 		status_label.text = "点击右侧配方后开始生产；高亮项为当前方案。"
 		return
 	if not building.production_enabled:
-		status_label.text = "生产建筑已关闭。重新启动后从 0 秒开始。"
+		status_label.text = (
+			"循环生产已暂停；重新启动后从 0 秒开始。"
+			if building.production_loop_enabled
+			else "单次生产已停止；点击 ▶ 再生产一轮。"
+		)
 		return
 	match building.completion_wait_reason:
 		ProductionCoordinator.RESULT_MISSING_INPUT:
@@ -494,11 +597,40 @@ func _refresh_status() -> void:
 		ProductionCoordinator.RESULT_UNAVAILABLE:
 			status_label.text = "仓库网络刚刚发生变化，将在下个同步周期重试。"
 		_:
-			status_label.text = (
+			var settlement_text := (
 				"完成时从共享仓库扣除原料，并将建筑物品存入配方选择者背包。"
 				if building.get_active_recipe().outputs_to_player_inventory()
 				else "原料和产物只在一轮完成瞬间于全场仓库中结算。"
 			)
+			status_label.text = settlement_text + (
+				" 循环生产：完成后自动开始下一轮。"
+				if building.production_loop_enabled
+				else " 单次生产：完成一轮后停止。"
+			)
+
+
+func _on_loop_pressed() -> void:
+	if building == null:
+		return
+	var loop_enabled := not building.production_loop_enabled
+	if building.multiplayer_production_enabled:
+		if building.request_multiplayer_loop_change(loop_enabled):
+			return
+		var display_recipe := building.get_display_recipe()
+		_show_transient_status(
+			"水源采集器循环模式尚未同步，请稍后重试。"
+			if building.uses_environment_source()
+			else (
+				"挖土装置循环模式尚未同步，请稍后重试。"
+				if (
+					display_recipe != null
+					and display_recipe.outputs_to_local_slot()
+				)
+				else "加工站循环模式尚未同步，请稍后重试。"
+			)
+		)
+		return
+	building.set_production_loop_enabled(loop_enabled)
 
 
 func _on_toggle_pressed() -> void:
@@ -555,7 +687,19 @@ func _on_output_slot_pressed(output_index: int) -> void:
 	var result := building.try_collect_buffered_output(tracked_player.peer_id)
 	match result:
 		ProductionBuildingProtocol.RESULT_SUCCESS:
-			_show_transient_status("已领取产物；挖土装置开始下一轮生产。")
+			_show_transient_status(
+				(
+					"已领取产物；挖土装置开始下一轮生产。"
+					if building.production_loop_enabled
+					else "已领取产物；挖土装置开始最后一轮，完成后停止。"
+				)
+				if building.production_enabled
+				else (
+					"已领取产物；循环挖掘仍暂停，点击 ▶ 恢复。"
+					if building.production_loop_enabled
+					else "已领取产物；挖土装置已停止，点击 ▶ 再生产一轮。"
+				)
+			)
 		ProductionBuildingProtocol.RESULT_INVENTORY_FULL:
 			_show_transient_status("背包空间不足，产物仍保留在格子内。")
 		_:
@@ -776,7 +920,7 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 			else "仓库产物"
 		)
 	)
-	_set_control_rect(building_title, Rect2(96, 23, 536, 39))
+	_set_control_rect(building_title, Rect2(96, 23, 500, 39))
 	_set_control_rect(input_title, Rect2(42, 196, 164, 28))
 	_set_control_rect(output_title, Rect2(304, 196, 164, 28))
 	_layout_slot_group(
@@ -865,6 +1009,9 @@ func _set_control_rect(control: Control, rect: Rect2) -> void:
 
 
 func _prepare_panel_themes() -> void:
+	# 循环开关的红/绿表示行为模式，刻意不加入植物主题映射。
+	_loop_off_style = loop_button.get_theme_stylebox("normal")
+	_loop_on_style = loop_button.get_theme_stylebox("pressed")
 	_default_styles = {
 		"toggle_normal": toggle_button.get_theme_stylebox("normal"),
 		"toggle_active": toggle_button.get_theme_stylebox("hover"),
