@@ -348,7 +348,7 @@ func _test_config_and_scene_contracts() -> void:
 	)
 	_expect(
 		bamboo_mortar_config.max_health == 2000
-		and bamboo_mortar_config.physical_defense == 20
+		and bamboo_mortar_config.physical_defense == 10
 		and bamboo_mortar_config.magic_defense == 20
 		and bamboo_mortar_config.attack_damage == 140
 		and is_zero_approx(
@@ -362,7 +362,7 @@ func _test_config_and_scene_contracts() -> void:
 		and bamboo_mortar_config.placement_surface
 		== PlantDefenseConfig.PlacementSurface.GRASS_ONLY
 		and bamboo_mortar_config.supports_multiplayer,
-		"竹筒迫击炮必须拥有2000生命、20物防、20法防、140中心伤害、无额外攻击间隔、224范围并占草地2×2格。"
+		"竹筒迫击炮必须拥有2000生命、10物防、20法防、140中心伤害、无额外攻击间隔、224范围并占草地2×2格。"
 	)
 	_expect(
 		cultivation_center_config.max_health == 1500
@@ -395,12 +395,12 @@ func _test_config_and_scene_contracts() -> void:
 		and wood_station_config.supports_multiplayer,
 		"木头加工站必须拥有2000生命、10物防、0法防、占1格且支持多人放置。"
 	)
-	_expect(agave_config.max_health == 2000, "龙舌兰生命值必须为2000。")
+	_expect(agave_config.max_health == 2500, "龙舌兰生命值必须为2500。")
 	_expect(
 		agave_config.physical_defense == 10 and agave_config.magic_defense == 20,
 		"龙舌兰必须拥有10物理防御与20法术防御。"
 	)
-	_expect(agave_config.attack_damage == 25, "龙舌兰炮弹伤害必须为25。")
+	_expect(agave_config.attack_damage == 20, "龙舌兰炮弹伤害必须为20。")
 	_expect(is_equal_approx(agave_config.attack_speed, 50.0), "龙舌兰攻速必须为50。")
 	_expect(agave_config.supports_multiplayer, "龙舌兰必须继续支持多人权威放置。")
 	_expect(is_equal_approx(agave_config.get_attack_interval(), 2.0), "龙舌兰攻击间隔必须为2秒。")
@@ -867,7 +867,7 @@ func _test_config_and_scene_contracts() -> void:
 		var blast_circle := blast_shape.shape as CircleShape2D
 		_expect(blast_circle != null and is_equal_approx(blast_circle.radius, 18.0), "黑球爆炸半径必须为18。")
 		_expect(is_equal_approx(cannonball.speed, 180.0), "黑球飞行速度必须为180。")
-		_expect(cannonball.damage == 25, "黑球炮弹默认伤害必须为25。")
+		_expect(cannonball.damage == 20, "黑球炮弹默认伤害必须为20。")
 		cannonball.free()
 
 
@@ -2330,9 +2330,19 @@ func _test_cannonball_aoe_deduplication() -> void:
 	var retained_explosion_query := cannonball.explosion_query
 	var retained_explosion_targets := cannonball.explosion_targets
 	cannonball._apply_explosion_damage(enemy_a)
-	_expect(enemy_a.current_health == health_a - 25, "直接命中目标在AOE查询中只能承受25点伤害。")
-	_expect(enemy_b.current_health == health_b - 25, "爆炸半径内第二目标必须承受25点伤害。")
-	_expect(enemy_a.last_damage_taken == 25 and enemy_b.last_damage_taken == 25, "AOE伤害必须为25。")
+	_expect(
+		enemy_a.current_health == health_a - agave_config.attack_damage,
+		"直接命中目标在AOE查询中只能承受20点伤害。"
+	)
+	_expect(
+		enemy_b.current_health == health_b - agave_config.attack_damage,
+		"爆炸半径内第二目标必须承受20点伤害。"
+	)
+	_expect(
+		enemy_a.last_damage_taken == agave_config.attack_damage
+		and enemy_b.last_damage_taken == agave_config.attack_damage,
+		"AOE伤害必须为20。"
+	)
 	_expect(
 		is_same(retained_explosion_query, cannonball.explosion_query)
 		and is_same(retained_explosion_targets, cannonball.explosion_targets)

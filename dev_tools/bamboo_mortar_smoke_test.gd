@@ -382,12 +382,12 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		MORTAR_CONFIG.plant_id == &"bamboo_mortar"
 		and MORTAR_CONFIG.display_name == "竹筒迫击炮"
 		and MORTAR_CONFIG.max_health == 2000
-		and MORTAR_CONFIG.physical_defense == 20
+		and MORTAR_CONFIG.physical_defense == 10
 		and MORTAR_CONFIG.magic_defense == 20
 		and MORTAR_CONFIG.attack_damage == 140
 		and is_zero_approx(MORTAR_CONFIG.get_attack_interval())
 		and is_equal_approx(MORTAR_CONFIG.attack_range, 224.0)
-		and MORTAR_CONFIG.description.contains("4至14格")
+		and MORTAR_CONFIG.description.contains("2至14格")
 		and MORTAR_CONFIG.description.contains("140点")
 		and MORTAR_CONFIG.description.contains("70点")
 		and mortar.configured_attack_damage == 140
@@ -395,13 +395,14 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		and BambooMortar.DEFAULT_ATTACK_DAMAGE == 140
 		and BambooMortar.OUTER_ATTACK_DAMAGE == 70
 		and is_equal_approx(BambooMortar.DEFAULT_ATTACK_RANGE, 224.0)
+		and is_equal_approx(BambooMortar.MINIMUM_ATTACK_RANGE, 32.0)
 		and BambooMortarShell.DEFAULT_INNER_DAMAGE == 140
 		and BambooMortarShell.DEFAULT_OUTER_DAMAGE == 70
 		and MORTAR_CONFIG.footprint_size == Vector2i(2, 2)
 		and MORTAR_CONFIG.placement_surface
 		== PlantDefenseConfig.PlacementSurface.GRASS_ONLY
 		and MORTAR_CONFIG.supports_multiplayer,
-		"迫击炮数值必须为2000生命、20物防、20法防、140/70伤害、无额外攻击间隔、224范围、草地2×2且支持多人。"
+		"迫击炮数值必须为2000生命、10物防、20法防、140/70伤害、无额外攻击间隔、224范围、草地2×2且支持多人。"
 	)
 	_expect(
 		PlantDefenseRegistry.get_config(&"bamboo_mortar")
@@ -1273,8 +1274,8 @@ func _test_split_lifecycle_transition_contract() -> void:
 
 func _test_target_ring_and_tracking(mortar: BambooMortar) -> void:
 	await _clear_enemies()
-	var too_close := _spawn_enemy(Vector2(64.0, 0.0))
-	var nearest_valid := _spawn_enemy(Vector2(64.25, 0.0))
+	var too_close := _spawn_enemy(Vector2(32.0, 0.0))
+	var nearest_valid := _spawn_enemy(Vector2(32.25, 0.0))
 	var farther_valid := _spawn_enemy(Vector2(120.0, 0.0))
 	var outer_edge := _spawn_enemy(Vector2(224.0, 0.0))
 	var outside := _spawn_enemy(Vector2(224.25, 0.0))
@@ -1284,7 +1285,7 @@ func _test_target_ring_and_tracking(mortar: BambooMortar) -> void:
 	) as Enemy
 	_expect(
 		selected == nearest_valid,
-		"索敌必须排除64像素边界并选择(64,224]内最近敌人。"
+		"索敌必须排除32像素边界并选择(32,224]内最近敌人。"
 	)
 	nearest_valid.is_dead = true
 	selected = mortar.call("_select_nearest_target_in_ring") as Enemy

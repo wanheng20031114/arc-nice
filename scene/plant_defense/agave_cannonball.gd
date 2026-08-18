@@ -23,7 +23,7 @@ const COLLISION_EPSILON := 0.01
 @onready var impact_audio: AudioStreamPlayer2D = $ImpactAudio
 
 var direction := Vector2.RIGHT
-var damage := 25
+var damage := 20
 var remaining_lifetime := 0.0
 var has_exploded := false
 var authoritative_damage := true
@@ -64,7 +64,7 @@ func on_pool_acquired(_generation: int) -> void:
 	explosion_targets.clear()
 	has_exploded = false
 	direction = Vector2.RIGHT
-	damage = 25
+	damage = 20
 	remaining_lifetime = maxf(max_lifetime, 0.01)
 	authoritative_damage = true
 	damage_source_id = 0
@@ -94,7 +94,7 @@ func on_pool_released(_generation: int) -> void:
 
 func setup(
 	initial_direction: Vector2,
-	initial_damage: int = 25,
+	initial_damage: int = 20,
 	initial_speed: float = 180.0,
 	initial_explosion_radius: float = 18.0,
 	initial_lifetime: float = 1.25,

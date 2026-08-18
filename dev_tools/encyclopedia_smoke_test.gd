@@ -839,6 +839,8 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 	var saw_life_tower := false
 	var saw_speed_tower := false
 	var saw_attack_speed_tower := false
+	var saw_agave_cannon := false
+	var saw_bamboo_mortar := false
 	var saw_orange_tower := false
 	var saw_grape_tower := false
 	var saw_hydrangea_tower := false
@@ -921,6 +923,24 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 				and acquisition_note.contains("30 秒"),
 				"Attack Speed Tower codex entry must expose its stats, stacking effect, and assembly recipe."
 			)
+		if entry.entry_id == &"agave_cannon":
+			saw_agave_cannon = true
+			_expect(
+				String(stats.get("生命", "")) == "2500"
+				and String(stats.get("攻击伤害", "")) == "20"
+				and String(stats.get("攻击间隔", "")) == "2 秒"
+				and entry.description.contains("造成20点物理伤害"),
+				"Agave Cannon codex entry must expose its 2500 health, 20 damage, unchanged 2-second interval, and updated description."
+			)
+		if entry.entry_id == &"bamboo_mortar":
+			saw_bamboo_mortar = true
+			_expect(
+				String(stats.get("物理防御", "")) == "10 点"
+				and String(stats.get("攻击伤害", "")) == "140"
+				and String(stats.get("攻击范围", "")) == "224"
+				and entry.description.contains("2至14格"),
+				"Bamboo Mortar codex entry must expose its 10 physical defense and 2-to-14-cell targeting range."
+			)
 		if entry.entry_id == &"orange_charging_tower":
 			saw_orange_tower = true
 			_expect(
@@ -933,7 +953,8 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 		if entry.entry_id == &"grape_arc_tower":
 			saw_grape_tower = true
 			_expect(
-				stats.has("最多连锁")
+				String(stats.get("生命", "")) == "4000"
+				and stats.has("最多连锁")
 				and stats.has("连锁距离")
 				and stats.has("蓄力时间"),
 				"Grape tower must expose its chain and charge configuration."
@@ -978,7 +999,9 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 		"Building codex must contain the Attack Speed Tower entry."
 	)
 	_expect(
-		saw_orange_tower
+		saw_agave_cannon
+		and saw_bamboo_mortar
+		and saw_orange_tower
 		and saw_grape_tower
 		and saw_hydrangea_tower
 		and saw_wood_station_recipes,

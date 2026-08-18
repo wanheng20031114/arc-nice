@@ -87,7 +87,7 @@ const EXPECTED_MENU_ORDER_BY_ID := {
 const EXPECTED_TOWER_PHYSICAL_DEFENSE_BY_ID := {
 	&"agave_cannon": 10,
 	&"corn_machine_gun": 10,
-	&"bamboo_mortar": 20,
+	&"bamboo_mortar": 10,
 	&"grape_arc_tower": 10,
 	&"hydrangea_rain_tower": 10,
 	&"orange_charging_tower": 10,
