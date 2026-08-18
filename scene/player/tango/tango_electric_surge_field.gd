@@ -188,7 +188,7 @@ func _on_body_entered(body: Node2D) -> void:
 	if overlapping_enemies.has(enemy_id):
 		return
 	overlapping_enemies[enemy_id] = enemy
-	enemy.apply_electric_element_attachment()
+	enemy.apply_permanent_electromagnetic_attachment()
 	enemy.add_electric_surge_slow_source(_slow_source_id)
 
 

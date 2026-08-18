@@ -4,7 +4,9 @@ const BASIC_ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
 )
 const MOTION_STATUS_SHADER_PATH := "res://scene/combat/feedback/shaders/entity_motion_status.gdshader"
-const ELECTRIC_OVERLAY_PARAMETER := &"electric_attachment_overlay_strength"
+const ELECTROMAGNETIC_OVERLAY_PARAMETER := (
+	&"electromagnetic_attachment_overlay_strength"
+)
 const ZONE_A_ID := 91_001
 const ZONE_B_ID := 91_002
 const OTHER_SLOW_SOURCE_ID := 91_003
@@ -20,7 +22,7 @@ func _init() -> void:
 
 func _run() -> void:
 	fixture = Node2D.new()
-	fixture.name = "EnemyElectricStatusSmokeTest"
+	fixture.name = "EnemyElectromagneticStatusSmokeTest"
 	root.add_child(fixture)
 	current_scene = fixture
 
@@ -34,7 +36,7 @@ func _run() -> void:
 	await process_frame
 
 	if failures.is_empty():
-		print("ENEMY_ELECTRIC_STATUS_SMOKE_TEST_OK")
+		print("ENEMY_ELECTROMAGNETIC_STATUS_SMOKE_TEST_OK")
 		quit(0)
 		return
 	for failure in failures:
@@ -44,32 +46,36 @@ func _run() -> void:
 
 func _test_shader_contract() -> void:
 	var shader_file := FileAccess.open(MOTION_STATUS_SHADER_PATH, FileAccess.READ)
-	_expect(shader_file != null, "Electric status shader must be readable.")
+	_expect(shader_file != null, "Electromagnetic status shader must be readable.")
 	if shader_file == null:
 		return
 	var shader_source := shader_file.get_as_text()
 	_expect(
 		shader_source.contains(
-			"instance uniform float electric_attachment_overlay_strength"
+			"instance uniform float electromagnetic_attachment_overlay_strength"
 		),
-		"Electric attachment strength must be a per-enemy instance uniform."
+		"Electromagnetic attachment strength must be a per-enemy instance uniform."
 	)
-	var electric_block_start := shader_source.find(
-		"if (electric_attachment_overlay_strength"
+	var electromagnetic_block_start := shader_source.find(
+		"if (electromagnetic_attachment_overlay_strength"
 	)
 	var burn_block_start := shader_source.find("if (burn_overlay_strength")
 	_expect(
-		electric_block_start >= 0 and burn_block_start > electric_block_start,
-		"Electric attachment must have a dedicated cyan overlay block."
+		electromagnetic_block_start >= 0
+		and burn_block_start > electromagnetic_block_start,
+		"Electromagnetic attachment must have a dedicated cyan overlay block."
 	)
-	if electric_block_start >= 0 and burn_block_start > electric_block_start:
-		var electric_block := shader_source.substr(
-			electric_block_start,
-			burn_block_start - electric_block_start
+	if (
+		electromagnetic_block_start >= 0
+		and burn_block_start > electromagnetic_block_start
+	):
+		var electromagnetic_block := shader_source.substr(
+			electromagnetic_block_start,
+			burn_block_start - electromagnetic_block_start
 		)
 		_expect(
-			electric_block.contains("TIME")
-			and electric_block.contains("texture_color.a > 0.0"),
+			electromagnetic_block.contains("TIME")
+			and electromagnetic_block.contains("texture_color.a > 0.0"),
 			"Electric animation must stay GPU-driven and inside existing sprite pixels."
 		)
 
@@ -78,53 +84,84 @@ func _test_attachment_and_visual_mask() -> void:
 	var enemy := _spawn_enemy()
 	var sprite := enemy.animated_sprite
 	_expect(
-		not enemy.has_electric_element_attachment(),
-		"A fresh enemy must not inherit an electric attachment."
+		not enemy.has_electromagnetic_attachment(),
+		"A fresh enemy must not inherit an electromagnetic attachment."
 	)
 	_expect(
-		enemy.apply_electric_element_attachment(),
-		"The first electric attachment must be accepted."
+		enemy.apply_temporary_electromagnetic_attachment(3.0)
+		and enemy.has_temporary_electromagnetic_attachment()
+		and not enemy.has_permanent_electromagnetic_attachment(),
+		"A temporary electromagnetic attachment must be tracked separately."
+	)
+	var first_clock := enemy.collectible_status_clock
+	enemy.call("_advance_collectible_status_effects_to", first_clock + 2.0)
+	_expect(
+		enemy.apply_temporary_electromagnetic_attachment(3.0),
+		"A repeated temporary attachment must refresh its deadline."
+	)
+	var refreshed_clock := enemy.collectible_status_clock
+	enemy.call(
+		"_advance_collectible_status_effects_to",
+		refreshed_clock + 2.9
 	)
 	_expect(
-		enemy.has_electric_element_attachment(),
-		"The accepted electric attachment must be queryable in O(1)."
+		enemy.has_temporary_electromagnetic_attachment(),
+		"A refreshed temporary attachment must survive beyond the original deadline."
+	)
+	_expect(
+		enemy.apply_permanent_electromagnetic_attachment(),
+		"A temporary electromagnetic attachment must support permanent promotion."
+	)
+	enemy.call(
+		"_advance_collectible_status_effects_to",
+		refreshed_clock + 3.1
+	)
+	_expect(
+		enemy.has_electromagnetic_attachment()
+		and enemy.has_permanent_electromagnetic_attachment()
+		and not enemy.has_temporary_electromagnetic_attachment(),
+		"Temporary expiry must preserve an independently promoted permanent attachment."
 	)
 	_expect(
 		(
 			enemy.get_collectible_visual_status_mask()
-			& Enemy.ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK
+			& Enemy.ELECTROMAGNETIC_ATTACHMENT_VISUAL_STATUS_MASK
 		) != 0,
-		"Electric attachment must occupy enemy visual status bit 16."
+		"Electromagnetic attachment must occupy enemy visual status bit 16."
 	)
 	_expect(
 		sprite.material != null
 		and _is_close(
-			_get_instance_shader_float(sprite, ELECTRIC_OVERLAY_PARAMETER),
-			Enemy.ELECTRIC_ATTACHMENT_OVERLAY_ACTIVE_STRENGTH
+			_get_instance_shader_float(
+				sprite,
+				ELECTROMAGNETIC_OVERLAY_PARAMETER
+			),
+			Enemy.ELECTROMAGNETIC_ATTACHMENT_OVERLAY_ACTIVE_STRENGTH
 		),
 		"An attached authoritative enemy must enable its cyan overlay once."
 	)
 	_expect(
-		not enemy.apply_electric_element_attachment()
-		and enemy.elemental_attachment_mask == Enemy.ELEMENTAL_ATTACHMENT_ELECTRIC,
+		not enemy.apply_permanent_electromagnetic_attachment(),
 		"Repeated attachment must be idempotent without accumulating state."
 	)
 
-	var unrelated_element_mask := 1 << 1
-	enemy.elemental_attachment_mask |= unrelated_element_mask
-	enemy.clear_electric_surge_state()
+	enemy.clear_electromagnetic_attachment_state()
 	_expect(
-		not enemy.has_electric_element_attachment()
-		and enemy.elemental_attachment_mask == unrelated_element_mask
+		not enemy.has_electromagnetic_attachment()
+		and not enemy.has_temporary_electromagnetic_attachment()
+		and not enemy.has_permanent_electromagnetic_attachment()
 		and (
 			enemy.get_collectible_visual_status_mask()
-			& Enemy.ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK
+			& Enemy.ELECTROMAGNETIC_ATTACHMENT_VISUAL_STATUS_MASK
 		) == 0,
-		"Electric cleanup must clear only its permanent elemental attachment bit."
+		"Electromagnetic cleanup must clear both permanent and timed sources."
 	)
 	_expect(
 		_is_close(
-			_get_instance_shader_float(sprite, ELECTRIC_OVERLAY_PARAMETER),
+			_get_instance_shader_float(
+				sprite,
+				ELECTROMAGNETIC_OVERLAY_PARAMETER
+			),
 			0.0
 		),
 		"Clearing the attachment must disable its shader instance parameter."
@@ -137,7 +174,7 @@ func _test_non_stacking_zone_slow_sources() -> void:
 	enemy.add_move_speed_modifier(OTHER_SLOW_SOURCE_ID, 0.8)
 	_expect(
 		not enemy.add_electric_surge_slow_source(0),
-		"Zone id zero must not create an unremovable electric slow source."
+		"Zone id zero must not create an unremovable surge slow source."
 	)
 	_expect(
 		enemy.add_electric_surge_slow_source(ZONE_A_ID)
@@ -163,7 +200,7 @@ func _test_non_stacking_zone_slow_sources() -> void:
 		and enemy.move_speed_modifiers.has(
 			Enemy.ELECTRIC_SURGE_MOVE_SPEED_SOURCE_ID
 		),
-		"Overlapping Tango zones must retain one non-stacking electric slow."
+		"Overlapping Tango zones must retain one non-stacking surge slow."
 	)
 	_expect(
 		enemy.remove_electric_surge_slow_source(ZONE_A_ID)
@@ -181,7 +218,7 @@ func _test_non_stacking_zone_slow_sources() -> void:
 		and not enemy.move_speed_modifiers.has(
 			Enemy.ELECTRIC_SURGE_MOVE_SPEED_SOURCE_ID
 		),
-		"Leaving the final zone must remove only the electric slow."
+		"Leaving the final zone must remove only the surge slow."
 	)
 	_expect(
 		not enemy.remove_electric_surge_slow_source(ZONE_B_ID),
@@ -193,11 +230,12 @@ func _test_non_stacking_zone_slow_sources() -> void:
 
 func _test_lifecycle_and_proxy_visual_cleanup() -> void:
 	var enemy := _spawn_enemy()
-	enemy.apply_electric_element_attachment()
+	enemy.apply_permanent_electromagnetic_attachment()
+	enemy.apply_temporary_electromagnetic_attachment(10.0)
 	enemy.add_electric_surge_slow_source(ZONE_A_ID)
 	enemy.setup(BASIC_ENEMY_CONFIG, null, null)
 	_expect(
-		not enemy.has_electric_element_attachment()
+		not enemy.has_electromagnetic_attachment()
 		and enemy.get_electric_surge_slow_source_count() == 0
 		and _is_close(enemy.get_effective_move_speed_multiplier(), 1.0),
 		"Enemy setup must clear attachment and zone sources from a prior lifecycle."
@@ -207,22 +245,23 @@ func _test_lifecycle_and_proxy_visual_cleanup() -> void:
 	var proxy := _spawn_enemy()
 	proxy.configure_multiplayer_proxy()
 	proxy.apply_multiplayer_visual_status_mask(
-		Enemy.ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK
+		Enemy.ELECTROMAGNETIC_ATTACHMENT_VISUAL_STATUS_MASK
 	)
 	_expect(
 		proxy.network_visual_status_mask
-		== Enemy.ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK
+		== Enemy.ELECTROMAGNETIC_ATTACHMENT_VISUAL_STATUS_MASK
 		and _is_close(
 			_get_instance_shader_float(
 				proxy.animated_sprite,
-				ELECTRIC_OVERLAY_PARAMETER
+				ELECTROMAGNETIC_OVERLAY_PARAMETER
 			),
-			Enemy.ELECTRIC_ATTACHMENT_OVERLAY_ACTIVE_STRENGTH
+			Enemy.ELECTROMAGNETIC_ATTACHMENT_OVERLAY_ACTIVE_STRENGTH
 		),
-		"A proxy must reconstruct bit-16 electric visuals without gameplay state."
+		"A proxy must reconstruct bit-16 electromagnetic visuals without gameplay state."
 	)
 	_expect(
-		not proxy.apply_electric_element_attachment()
+		not proxy.apply_permanent_electromagnetic_attachment()
+		and not proxy.apply_temporary_electromagnetic_attachment(10.0)
 		and not proxy.add_electric_surge_slow_source(ZONE_A_ID),
 		"A multiplayer proxy must reject authoritative attachment and slow state."
 	)
@@ -232,7 +271,7 @@ func _test_lifecycle_and_proxy_visual_cleanup() -> void:
 		and _is_close(
 			_get_instance_shader_float(
 				proxy.animated_sprite,
-				ELECTRIC_OVERLAY_PARAMETER
+				ELECTROMAGNETIC_OVERLAY_PARAMETER
 			),
 			0.0
 		),

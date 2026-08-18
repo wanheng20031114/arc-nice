@@ -589,7 +589,7 @@ func resolve_attack_damage_against_enemy(base_damage: int, enemy: Enemy) -> int:
 		or not _electric_surge_active
 		or enemy == null
 		or not is_instance_valid(enemy)
-		or not enemy.has_electric_element_attachment()
+		or not enemy.has_electromagnetic_attachment()
 	):
 		return resolved_damage
 	return maxi(

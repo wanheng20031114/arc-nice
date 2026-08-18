@@ -6,8 +6,8 @@ signal defeated(enemy: Enemy)
 const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
 const BURN_OVERLAY_STRENGTH_SHADER_PARAMETER := &"burn_overlay_strength"
 const BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER := &"bleed_overlay_strength"
-const ELECTRIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER := (
-	&"electric_attachment_overlay_strength"
+const ELECTROMAGNETIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER := (
+	&"electromagnetic_attachment_overlay_strength"
 )
 const DIRECT_HIT_FLASH_STRENGTH_SHADER_PARAMETER := &"direct_hit_flash_strength"
 const HIT_FLASH_SCHEDULER_NAME := &"EnemyHitFlashScheduler"
@@ -46,7 +46,7 @@ const ENEMY_DROP_OUTER_RING_RADIUS := 20.0
 const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.36
 const BURN_OVERLAY_ACTIVE_STRENGTH := 0.72
 const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
-const ELECTRIC_ATTACHMENT_OVERLAY_ACTIVE_STRENGTH := 0.38
+const ELECTROMAGNETIC_ATTACHMENT_OVERLAY_ACTIVE_STRENGTH := 0.38
 const BURN_STATUS_TICK_INTERVAL := 1.0
 const DEFAULT_BLEED_TICK_INTERVAL_SECONDS := 0.5
 const BURN_STATUS_ID := &"burn"
@@ -60,8 +60,11 @@ const COLLECTIBLE_STATUS_DEADLINE_EPSILON := 0.000001
 const COLD_MOVE_SPEED_SOURCE_ID := -2_147_400_001
 const ELECTRIC_SURGE_MOVE_SPEED_SOURCE_ID := -2_147_400_002
 const ELECTRIC_SURGE_MOVE_SPEED_MULTIPLIER := 0.65
-const ELEMENTAL_ATTACHMENT_ELECTRIC := 1 << 0
-const ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK := 1 << 4
+const ELECTROMAGNETIC_ATTACHMENT_STATUS_ID := &"electromagnetic_attachment"
+const ELECTROMAGNETIC_ATTACHMENT_STATUS_SOURCE_ID := -2_147_400_003
+const BAMBOO_MORTAR_CONCUSSION_STATUS_ID := &"bamboo_mortar_concussion"
+const BAMBOO_MORTAR_CONCUSSION_STATUS_SOURCE_ID := -2_147_400_004
+const ELECTROMAGNETIC_ATTACHMENT_VISUAL_STATUS_MASK := 1 << 4
 # Bits 0..4 remain the common collectible/element overlays. Bits 5..6 are
 # scene-specific visual state: shield bearers use both bits for their monotonic
 # stage, while protocol v45 ninja robots use bit 5 for the short boost state.
@@ -191,7 +194,7 @@ var physical_defense_modifiers: Dictionary = {}
 var physical_defense_modifier_total := 0
 var move_speed_modifiers: Dictionary = {}
 var cold_stack_count := 0
-var elemental_attachment_mask := 0
+var permanent_electromagnetic_attachment := false
 var electric_surge_slow_sources: Dictionary[int, bool] = {}
 var damage_taken_multiplier_modifiers: Dictionary = {}
 var outgoing_attack_damage_multiplier_modifiers: Dictionary = {}
@@ -271,7 +274,7 @@ var status_visual_material: ShaderMaterial = null
 var slow_overlay_strength := 0.0
 var burn_overlay_strength := 0.0
 var bleed_overlay_strength := 0.0
-var electric_attachment_overlay_strength := 0.0
+var electromagnetic_attachment_overlay_strength := 0.0
 var direct_hit_flash_strength := 0.0
 var speed_trail_effect: Node2D = null
 var speed_trail_owner_pool: SessionObjectPool = null
@@ -1467,24 +1470,81 @@ func _apply_cold_runtime_state(stack_count: int, multiplier: float) -> void:
 	add_move_speed_modifier(COLD_MOVE_SPEED_SOURCE_ID, safe_multiplier)
 
 
-## Permanently marks this enemy as electrically attached for its current life.
-## Repeated surges are idempotent, so an infinite attachment stays O(1) instead
-## of accumulating one scheduler entry per Tango or per zone activation.
-func apply_electric_element_attachment() -> bool:
+## Permanently marks this enemy as electromagnetically attached for its current
+## life. A temporary Grape attachment can be promoted without losing either
+## source; aggregate queries remain true until both sources are absent.
+func apply_permanent_electromagnetic_attachment() -> bool:
 	if is_dead or is_multiplayer_proxy or is_queued_for_deletion():
 		return false
-	if has_electric_element_attachment():
+	if permanent_electromagnetic_attachment:
 		return false
-	elemental_attachment_mask |= ELEMENTAL_ATTACHMENT_ELECTRIC
+	permanent_electromagnetic_attachment = true
 	_update_movement_status_visuals()
-	_play_collectible_status_feedback(&"electric_attachment")
+	_play_collectible_status_feedback(ELECTROMAGNETIC_ATTACHMENT_STATUS_ID)
 	return true
 
 
-func has_electric_element_attachment() -> bool:
+func apply_temporary_electromagnetic_attachment(
+	duration_seconds: float
+) -> bool:
+	if (
+		is_dead
+		or is_multiplayer_proxy
+		or is_queued_for_deletion()
+		or not is_finite(duration_seconds)
+		or duration_seconds <= 0.0
+	):
+		return false
+	apply_collectible_status(
+		ELECTROMAGNETIC_ATTACHMENT_STATUS_ID,
+		ELECTROMAGNETIC_ATTACHMENT_STATUS_SOURCE_ID,
+		duration_seconds
+	)
+	return has_temporary_electromagnetic_attachment()
+
+
+func has_permanent_electromagnetic_attachment() -> bool:
+	return permanent_electromagnetic_attachment
+
+
+func has_temporary_electromagnetic_attachment() -> bool:
+	return _has_collectible_status(ELECTROMAGNETIC_ATTACHMENT_STATUS_ID)
+
+
+func has_electromagnetic_attachment() -> bool:
 	return (
-		elemental_attachment_mask & ELEMENTAL_ATTACHMENT_ELECTRIC
-	) != 0
+		permanent_electromagnetic_attachment
+		or has_temporary_electromagnetic_attachment()
+	)
+
+
+## The mortar research uses one stable source and status key, so repeated shells
+## refresh the three-second deadline without multiplying the same 25% slow.
+func apply_bamboo_mortar_concussion(
+	duration_seconds: float,
+	move_speed_multiplier: float
+) -> bool:
+	if (
+		is_dead
+		or is_multiplayer_proxy
+		or is_queued_for_deletion()
+		or not is_finite(duration_seconds)
+		or not is_finite(move_speed_multiplier)
+		or duration_seconds <= 0.0
+		or move_speed_multiplier < 0.0
+		or move_speed_multiplier >= 1.0
+	):
+		return false
+	apply_collectible_status(
+		BAMBOO_MORTAR_CONCUSSION_STATUS_ID,
+		BAMBOO_MORTAR_CONCUSSION_STATUS_SOURCE_ID,
+		duration_seconds,
+		0,
+		0.5,
+		EnemyConfig.DamageType.PHYSICAL,
+		move_speed_multiplier
+	)
+	return _has_collectible_status(BAMBOO_MORTAR_CONCUSSION_STATUS_ID)
 
 
 ## Tracks every overlapping surge zone while exposing one non-stacking 35% slow
@@ -1524,9 +1584,14 @@ func get_electric_surge_slow_source_count() -> int:
 func clear_electric_surge_state() -> void:
 	electric_surge_slow_sources.clear()
 	remove_move_speed_modifier(ELECTRIC_SURGE_MOVE_SPEED_SOURCE_ID)
-	elemental_attachment_mask &= ~ELEMENTAL_ATTACHMENT_ELECTRIC
-	network_visual_status_mask &= ~ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK
-	_set_electric_attachment_overlay_strength(0.0)
+	clear_electromagnetic_attachment_state()
+
+
+func clear_electromagnetic_attachment_state() -> void:
+	permanent_electromagnetic_attachment = false
+	_clear_collectible_status_id(ELECTROMAGNETIC_ATTACHMENT_STATUS_ID)
+	network_visual_status_mask &= ~ELECTROMAGNETIC_ATTACHMENT_VISUAL_STATUS_MASK
+	_set_electromagnetic_attachment_overlay_strength(0.0)
 
 
 func add_move_speed_modifier(source_id: int, multiplier: float) -> void:
@@ -1574,7 +1639,7 @@ func _update_movement_status_visuals() -> void:
 		_set_slow_overlay_strength(0.0)
 		_set_burn_overlay_strength(0.0)
 		_set_bleed_overlay_strength(0.0)
-		_set_electric_attachment_overlay_strength(0.0)
+		_set_electromagnetic_attachment_overlay_strength(0.0)
 		_release_speed_trail_effect()
 		return
 
@@ -1582,9 +1647,9 @@ func _update_movement_status_visuals() -> void:
 	_set_slow_overlay_strength(SLOW_OVERLAY_ACTIVE_STRENGTH if is_slowed else 0.0)
 	_set_burn_overlay_strength(BURN_OVERLAY_ACTIVE_STRENGTH if _has_collectible_status(&"burn") else 0.0)
 	_set_bleed_overlay_strength(BLEED_OVERLAY_ACTIVE_STRENGTH if _has_collectible_status(&"bleed") else 0.0)
-	_set_electric_attachment_overlay_strength(
-		ELECTRIC_ATTACHMENT_OVERLAY_ACTIVE_STRENGTH
-		if has_electric_element_attachment()
+	_set_electromagnetic_attachment_overlay_strength(
+		ELECTROMAGNETIC_ATTACHMENT_OVERLAY_ACTIVE_STRENGTH
+		if has_electromagnetic_attachment()
 		else 0.0
 	)
 
@@ -1694,9 +1759,9 @@ func _set_bleed_overlay_strength(strength: float) -> void:
 	)
 
 
-func _set_electric_attachment_overlay_strength(strength: float) -> void:
+func _set_electromagnetic_attachment_overlay_strength(strength: float) -> void:
 	_set_visual_shader_parameter(
-		ELECTRIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		ELECTROMAGNETIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER,
 		clampf(strength, 0.0, 1.0)
 	)
 
@@ -1855,12 +1920,12 @@ func get_collectible_visual_status_mask() -> int:
 		result |= 1
 	if _has_collectible_status(&"bleed"):
 		result |= 2
-	if cold_stack_count > 0 or _has_collectible_status(&"chill"):
+	if _has_move_speed_modifier_below_default():
 		result |= 4
 	if _has_collectible_status(&"mark"):
 		result |= 8
-	if has_electric_element_attachment():
-		result |= ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK
+	if has_electromagnetic_attachment():
+		result |= ELECTROMAGNETIC_ATTACHMENT_VISUAL_STATUS_MASK
 	return result
 
 
@@ -1885,17 +1950,17 @@ func apply_multiplayer_visual_status_mask(status_mask: int) -> void:
 		BLEED_OVERLAY_ACTIVE_STRENGTH if (safe_mask & 2) != 0 else 0.0
 	)
 	_set_visual_shader_parameter(
-		ELECTRIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		ELECTROMAGNETIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER,
 		(
-			ELECTRIC_ATTACHMENT_OVERLAY_ACTIVE_STRENGTH
-			if (safe_mask & ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK) != 0
+			ELECTROMAGNETIC_ATTACHMENT_OVERLAY_ACTIVE_STRENGTH
+			if (safe_mask & ELECTROMAGNETIC_ATTACHMENT_VISUAL_STATUS_MASK) != 0
 			else 0.0
 		)
 	)
 	if (added_mask & 8) != 0:
 		_play_collectible_status_feedback(&"mark")
-	if (added_mask & ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK) != 0:
-		_play_collectible_status_feedback(&"electric_attachment")
+	if (added_mask & ELECTROMAGNETIC_ATTACHMENT_VISUAL_STATUS_MASK) != 0:
+		_play_collectible_status_feedback(ELECTROMAGNETIC_ATTACHMENT_STATUS_ID)
 
 
 func set_multiplayer_proxy_visual_active(active: bool) -> void:
@@ -1921,7 +1986,7 @@ func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) ->
 		parameter_name != SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER
 		and parameter_name != BURN_OVERLAY_STRENGTH_SHADER_PARAMETER
 		and parameter_name != BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER
-		and parameter_name != ELECTRIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER
+		and parameter_name != ELECTROMAGNETIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER
 		and parameter_name != DIRECT_HIT_FLASH_STRENGTH_SHADER_PARAMETER
 	):
 		if animated_sprite.material == null:
@@ -1943,10 +2008,10 @@ func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) ->
 			if is_equal_approx(bleed_overlay_strength, strength):
 				return
 			bleed_overlay_strength = strength
-		ELECTRIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER:
-			if is_equal_approx(electric_attachment_overlay_strength, strength):
+		ELECTROMAGNETIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER:
+			if is_equal_approx(electromagnetic_attachment_overlay_strength, strength):
 				return
-			electric_attachment_overlay_strength = strength
+			electromagnetic_attachment_overlay_strength = strength
 		DIRECT_HIT_FLASH_STRENGTH_SHADER_PARAMETER:
 			if is_equal_approx(direct_hit_flash_strength, strength):
 				return
@@ -1976,7 +2041,7 @@ func _has_active_visual_shader_effect() -> bool:
 		slow_overlay_strength > 0.0
 		or burn_overlay_strength > 0.0
 		or bleed_overlay_strength > 0.0
-		or electric_attachment_overlay_strength > 0.0
+		or electromagnetic_attachment_overlay_strength > 0.0
 		or direct_hit_flash_strength > 0.0
 		or _has_variant_visual_shader_effect()
 	)
@@ -2428,7 +2493,7 @@ func _play_collectible_status_feedback(status_id: StringName) -> void:
 			flash_color = Color(1.2, 0.8, 1.6, 1.0)
 		&"crack":
 			flash_color = Color(1.35, 1.22, 0.72, 1.0)
-		&"electric_attachment":
+		ELECTROMAGNETIC_ATTACHMENT_STATUS_ID:
 			flash_color = Color(0.42, 1.35, 1.45, 1.0)
 	if collectible_status_tween != null:
 		collectible_status_tween.kill()

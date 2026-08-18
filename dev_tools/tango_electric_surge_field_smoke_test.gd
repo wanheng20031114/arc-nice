@@ -173,7 +173,7 @@ func _test_visual_only_contract() -> void:
 		and field.get_tracked_enemy_count() == 0
 		and field.field_visual.frame == 7
 		and is_zero_approx(field.field_visual.frame_progress)
-		and not enemy.has_electric_element_attachment()
+		and not enemy.has_electromagnetic_attachment()
 		and enemy.get_electric_surge_slow_source_count() == 0
 		and field.lifetime_timer.time_left > 3.0
 		and field.lifetime_timer.time_left <= 3.5,
@@ -195,7 +195,7 @@ func _test_initial_overlap_signal_contract() -> void:
 		await physics_frame
 	_expect(
 		field.get_tracked_enemy_count() == 1
-		and enemy.has_electric_element_attachment()
+		and enemy.has_electromagnetic_attachment()
 		and enemy.get_electric_surge_slow_source_count() == 1,
 		"生成时已在圆内的敌人必须由Area2D首轮重叠事件立即纳入状态集合。"
 	)
@@ -231,7 +231,7 @@ func _test_eight_authoritative_ticks_and_status_cleanup() -> void:
 	field.call("_on_body_entered", enemy)
 	overlapping_field.call("_on_body_entered", enemy)
 	_expect(
-		enemy.has_electric_element_attachment()
+		enemy.has_electromagnetic_attachment()
 		and enemy.get_electric_surge_slow_source_count() == 2
 		and field.get_tracked_enemy_count() == 1,
 		"同一activation ID的两个场域必须各自持有减速来源，且永久电附着保持幂等。"
@@ -279,9 +279,9 @@ func _test_eight_authoritative_ticks_and_status_cleanup() -> void:
 		"权威场域必须在t=1..8准确结算8次固定20点法术伤害，并由第8跳结束。"
 	)
 	_expect(
-		enemy.has_electric_element_attachment()
+		enemy.has_electromagnetic_attachment()
 		and enemy.get_electric_surge_slow_source_count() == 0,
-		"场域结束只清理自己的减速来源，永久电元素附着必须保留。"
+		"场域结束只清理自己的减速来源，永久电磁附着必须保留。"
 	)
 	enemy.queue_free()
 	damage_gateway.queue_free()

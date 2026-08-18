@@ -24,8 +24,8 @@ uniform float burn_edge_width : hint_range(1.0, 5.0) = 2.0;
 instance uniform float bleed_overlay_strength : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 bleed_overlay_color : source_color = vec4(0.95, 0.02, 0.08, 0.58);
 uniform float bleed_outline_width : hint_range(1.0, 5.0) = 2.0;
-instance uniform float electric_attachment_overlay_strength : hint_range(0.0, 1.0) = 0.0;
-uniform vec4 electric_attachment_overlay_color : source_color = vec4(0.2, 1.18, 1.32, 0.72);
+instance uniform float electromagnetic_attachment_overlay_strength : hint_range(0.0, 1.0) = 0.0;
+uniform vec4 electromagnetic_attachment_overlay_color : source_color = vec4(0.2, 1.18, 1.32, 0.72);
 instance uniform float direct_hit_flash_strength : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 direct_hit_flash_color : source_color = vec4(1.0, 0.24, 0.26, 1.0);
 uniform float revive_glow_strength : hint_range(0.0, 1.0) = 0.0;
@@ -161,7 +161,7 @@ void fragment() {
 		color.a = max(color.a, COLOR.a);
 	}
 
-	if (electric_attachment_overlay_strength > 0.0 && texture_color.a > 0.0) {
+	if (electromagnetic_attachment_overlay_strength > 0.0 && texture_color.a > 0.0) {
 		// TIME animates entirely on the GPU. The enemy keeps a static instance
 		// parameter, so a permanent attachment adds no per-enemy process callback.
 		float diagonal_a = sin((UV.x + UV.y) * 52.0 - TIME * 9.0);
@@ -169,15 +169,15 @@ void fragment() {
 		float electric_arc = smoothstep(0.68, 0.98, max(diagonal_a, diagonal_b));
 		float pulse = 0.78 + 0.22 * sin(TIME * 7.0 + UV.y * 11.0);
 		float mask = clamp(
-			electric_attachment_overlay_strength
+			electromagnetic_attachment_overlay_strength
 			* texture_color.a
 			* (0.28 + electric_arc * 0.35)
 			* pulse,
 			0.0,
 			1.0
 		);
-		color.rgb = mix(color.rgb, electric_attachment_overlay_color.rgb, mask * 0.55);
-		color.rgb += electric_attachment_overlay_color.rgb * mask * 0.1;
+		color.rgb = mix(color.rgb, electromagnetic_attachment_overlay_color.rgb, mask * 0.55);
+		color.rgb += electromagnetic_attachment_overlay_color.rgb * mask * 0.1;
 		color.a = max(color.a, COLOR.a);
 	}
 

@@ -369,7 +369,7 @@ func _test_electric_surge_character_contract() -> void:
 	var attack_bar := player.attack_interval_bar as PlayerAttackIntervalBar
 	var unattached_enemy := TangoBulletEnemy.new()
 	var attached_enemy := TangoBulletEnemy.new()
-	attached_enemy.elemental_attachment_mask = Enemy.ELEMENTAL_ATTACHMENT_ELECTRIC
+	attached_enemy.permanent_electromagnetic_attachment = true
 	player.set_research_technology_level(1)
 	player.skill1_charge = player.skill1_charge_duration
 	var activation_origin := Vector2(64, 48)
