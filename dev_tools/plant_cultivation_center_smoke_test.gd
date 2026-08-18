@@ -552,18 +552,18 @@ func _run() -> void:
 	panel.call("_on_loop_pressed")
 	_expect(
 		panel.building_title.position == Vector2(96.0, 23.0)
-		and panel.building_title.size == Vector2(500.0, 39.0)
-		and is_equal_approx(
-			panel.building_title.position.x + panel.building_title.size.x,
-			604.0 - 8.0
-		)
+		and panel.building_title.size == Vector2(536.0, 39.0)
+		and panel.loop_button.get_rect()
+		== ProductionBuildingPanel.STANDARD_LOOP_BUTTON_RECT
+		and panel.loop_button.get_rect().end.y <= panel.input_title.position.y
+		and panel.loop_button.get_rect().end.x < panel.recipe_title.position.x
 		and panel.recipe_title.position == Vector2(504.0, 112.0)
 		and panel.recipe_title.size == Vector2(180.0, 31.0)
 		and is_equal_approx(
 			panel.recipe_title.position.x + panel.recipe_title.size.x * 0.5,
 			594.0
 		),
-		"培育中心主标题必须给∞按钮留出8像素安全间距，配方标题仍对齐右栏中心。"
+		"培育中心循环按钮必须落在材料—产物大框右上安全区，顶部主标题与配方标题保持居中。"
 	)
 	_expect(
 		panel.recipe_scroll.position == Vector2(504.0, 151.0)

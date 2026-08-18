@@ -213,7 +213,7 @@ func _run() -> void:
 		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow9")
 		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow10")
 		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow11"),
-		"生产面板必须原生搭建左右各3个候选槽位、物资列表及右上角启停/循环按钮。"
+		"生产面板必须原生搭建左右各3个候选槽位、物资列表、顶部启停按钮及生产框循环按钮。"
 	)
 	_expect(
 		panel.status_label.position == Vector2(61.0, 420.0)
@@ -231,16 +231,24 @@ func _run() -> void:
 	_expect(
 		loop_button != null
 		and toggle_button != null
-		and loop_button.text == "∞"
+		and loop_button.text.is_empty()
+		and loop_button.icon != null
+		and loop_button.icon.resource_path
+		== "res://resources/texture/production/production_loop_icon.svg"
+		and loop_button.texture_filter
+		== CanvasItem.TEXTURE_FILTER_LINEAR
+		and loop_button.get_theme_constant("icon_max_width") == 28
 		and loop_button.toggle_mode
 		and not loop_button.button_pressed
-		and panel.building_title.position.x + panel.building_title.size.x
-		<= loop_button.position.x
-		and loop_button.position.x + loop_button.size.x <= toggle_button.position.x
+		and loop_button.get_rect()
+		== ProductionBuildingPanel.STANDARD_LOOP_BUTTON_RECT
+		and loop_button.position.y > panel.building_title.get_rect().end.y
+		and loop_button.get_rect().end.y <= panel.input_title.position.y
+		and loop_button.get_rect().end.x < panel.recipe_title.position.x
 		and loop_off_style != null
 		and loop_off_style.bg_color.r > loop_off_style.bg_color.g
 		and not station.production_loop_enabled,
-		"∞按钮必须以原生红色关闭态位于启停按钮左侧，且建筑默认采用单次生产。"
+		"循环按钮必须使用完整SVG图标，以红色关闭态位于材料—产物大框右上角，且建筑默认采用单次生产。"
 	)
 	panel.call("_on_loop_pressed")
 	var loop_on_style := loop_button.get_theme_stylebox("normal") as StyleBoxFlat

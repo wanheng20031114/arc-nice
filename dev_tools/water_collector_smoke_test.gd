@@ -162,11 +162,19 @@ func _run() -> void:
 	_expect(
 		panel.is_open()
 		and panel.loop_button.button_pressed
+		and panel.loop_button.get_rect()
+		== ProductionBuildingPanel.ENVIRONMENT_LOOP_BUTTON_RECT
+		and not panel.loop_button.get_rect().intersects(
+			panel.building_title.get_rect()
+		)
+		and not panel.loop_button.get_rect().intersects(
+			panel.output_title.get_rect()
+		)
 		and not panel.recipe_title.visible
 		and not panel.recipe_scroll.visible
 		and panel.input_title.text == "水源"
 		and panel.output_title.text == "采集产物",
-		"采集器面板必须隐藏配方栏并呈现水源—进度—产物的单行布局。"
+		"采集器面板必须隐藏配方栏、把循环按钮放进单大框右上角，并呈现水源—进度—产物布局。"
 	)
 	_expect(
 		panel.input_slots[0].item == WATER_SOURCE

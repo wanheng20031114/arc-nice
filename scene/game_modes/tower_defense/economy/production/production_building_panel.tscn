@@ -1,9 +1,10 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/tower_defense/economy/production/production_building_panel.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/production/production_panel_background.png" id="2_background"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/economy/shared/tower_economy_inventory_slot.tscn" id="3_slot"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+[ext_resource type="Texture2D" uid="uid://c32k5x30jvpn6" path="res://resources/texture/production/production_loop_icon.svg" id="5_loop_icon"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
 font = ExtResource("4_font")
@@ -201,7 +202,7 @@ texture = ExtResource("2_background")
 layout_mode = 0
 offset_left = 96.0
 offset_top = 23.0
-offset_right = 596.0
+offset_right = 632.0
 offset_bottom = 62.0
 text = "生产建筑"
 label_settings = SubResource("LabelSettings_title")
@@ -210,24 +211,21 @@ vertical_alignment = 1
 
 [node name="LoopButton" type="Button" parent="Overlay/PanelRoot"]
 layout_mode = 0
-offset_left = 604.0
-offset_top = 20.0
-offset_right = 650.0
-offset_bottom = 66.0
+offset_left = 400.0
+offset_top = 132.0
+offset_right = 446.0
+offset_bottom = 178.0
+texture_filter = 2
 toggle_mode = true
 tooltip_text = "单次生产：完成一轮后停止"
-theme_override_colors/font_color = Color(1, 0.94, 0.82, 1)
-theme_override_colors/font_hover_color = Color(1, 0.94, 0.82, 1)
-theme_override_colors/font_pressed_color = Color(1, 0.94, 0.82, 1)
-theme_override_colors/font_hover_pressed_color = Color(1, 0.94, 0.82, 1)
-theme_override_colors/font_disabled_color = Color(1, 0.94, 0.82, 1)
-theme_override_font_sizes/font_size = 25
 theme_override_styles/normal = SubResource("StyleBoxFlat_loop_off")
 theme_override_styles/hover = SubResource("StyleBoxFlat_loop_off")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_loop_on")
 theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_loop_on")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_loop_off")
-text = "∞"
+icon = ExtResource("5_loop_icon")
+expand_icon = true
+theme_override_constants/icon_max_width = 28
 
 [node name="ToggleButton" type="Button" parent="Overlay/PanelRoot"]
 layout_mode = 0

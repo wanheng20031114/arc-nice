@@ -10,6 +10,8 @@ const DEFAULT_PANEL_BACKGROUND := preload(
 	"res://resources/texture/production/production_panel_background.png"
 )
 const LOCAL_OUTPUT_ICON_SCALE := Vector2(2.0, 2.0)
+const STANDARD_LOOP_BUTTON_RECT := Rect2(400, 132, 46, 46)
+const ENVIRONMENT_LOOP_BUTTON_RECT := Rect2(626, 150, 46, 46)
 
 @onready var overlay: Control = $Overlay
 @onready var panel_root: Control = $Overlay/PanelRoot
@@ -212,7 +214,9 @@ func _refresh_all(_replicate: bool = false) -> void:
 	var loop_style := (
 		_loop_on_style if building.production_loop_enabled else _loop_off_style
 	)
-	for state_name in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+	for state_name in [
+		"normal", "hover", "pressed", "hover_pressed", "focus", "disabled"
+	]:
 		loop_button.add_theme_stylebox_override(state_name, loop_style)
 	toggle_button.text = "Ⅱ" if building.production_enabled else "▶"
 	toggle_button.tooltip_text = _get_toggle_button_tooltip()
@@ -859,6 +863,14 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 		if building != null and building.production_panel_background_override != null
 		else DEFAULT_PANEL_BACKGROUND
 	)
+	_set_control_rect(
+		loop_button,
+		(
+			ENVIRONMENT_LOOP_BUTTON_RECT
+			if recipe != null and recipe.uses_environment_source()
+			else STANDARD_LOOP_BUTTON_RECT
+		)
+	)
 	_apply_panel_theme()
 	if automatic_layout:
 		material_list.hide()
@@ -882,7 +894,7 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 		)
 		if recipe.outputs_to_local_slot():
 			# 默认背景是左右分栏：所有生产状态留在左框，产物格独占右框。
-			_set_control_rect(building_title, Rect2(59, 106, 412, 50))
+			_set_control_rect(building_title, Rect2(85, 106, 311, 50))
 			_set_control_rect(input_title, Rect2(105, 184, 290, 40))
 			_set_control_rect(output_title, Rect2(500, 184, 186, 40))
 			_set_control_rect(input_slots[0], Rect2(218, 246, 64, 70))
@@ -920,7 +932,7 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 			else "仓库产物"
 		)
 	)
-	_set_control_rect(building_title, Rect2(96, 23, 500, 39))
+	_set_control_rect(building_title, Rect2(96, 23, 536, 39))
 	_set_control_rect(input_title, Rect2(42, 196, 164, 28))
 	_set_control_rect(output_title, Rect2(304, 196, 164, 28))
 	_layout_slot_group(
