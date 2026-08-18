@@ -171,7 +171,9 @@ extends RefCounted
 ## v86：正式塔防新增 Client 到 Host 的“销毁最近建筑”可靠请求；
 ## Host 使用请求者的权威玩家位置重新校验目标。v85 及更旧客户端缺少
 ## 该 RPC 表面，不能与 v86 房间混联。
-const PROTOCOL_VERSION := 86
+## v87：WaterCollector 固定使用连续循环采集，产线面板不再暴露单次/无限循环
+## mode 切换。v86 及更旧客户端缺少该统一运行时契约，不能与 v87 房间混联。
+const PROTOCOL_VERSION := 87
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF

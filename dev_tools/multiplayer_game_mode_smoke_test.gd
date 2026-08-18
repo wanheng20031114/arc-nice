@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 86,
-		"协议v86必须保留内容摘要、同局成员身份和既有模式接线。"
+		NetConstants.PROTOCOL_VERSION == 87,
+		"协议v87必须保留内容摘要、同局成员身份和既有模式接线。"
 	)
 	_expect(
 		not GameModeCatalog.is_selectable_for_audience(

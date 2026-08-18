@@ -428,10 +428,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 86,
-		"协议v86必须保留正式塔防最近建筑销毁请求与既有内容、身份合同。"
+		NetConstants.PROTOCOL_VERSION == 87,
+		"协议v87必须保留水源采集器固定连续采集与既有内容、身份合同。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v86 must retain eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v87 must retain eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -470,7 +470,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v86 hosts must accept exactly v86 and reject v85."
+		"Protocol v87 hosts must accept exactly v87 and reject v86."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -546,11 +546,11 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 86")
+		and relay_source.contains("const PROTOCOL_VERSION := 87")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
 		(
-			"Relay server must declare v86, accept the room capacity, and provision "
+			"Relay server must declare v87, accept the room capacity, and provision "
 			+ "the same eight ENet channels as clients."
 		)
 	)
@@ -1157,7 +1157,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		)
 	_expect(
 		channel_counts.get(NetConstants.CH_WORLD_EVENT, 0) == 60,
-		"Protocol v86 must expose exactly 60 MpGame RPCs on reliable world-event CH5."
+		"Protocol v87 must expose exactly 60 MpGame RPCs on reliable world-event CH5."
 	)
 
 	_expect_rpc_channel(rpcs, "net_runtime_state_requested", NetConstants.CH_AUTH)

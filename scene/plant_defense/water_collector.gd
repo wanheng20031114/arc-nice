@@ -22,6 +22,10 @@ func _on_setup_completed() -> void:
 	_sync_collection_progress()
 
 
+func uses_fixed_continuous_production() -> bool:
+	return true
+
+
 func _on_construction_started() -> void:
 	_stop_collection_progress_tween()
 	collection_progress_ring.hide()

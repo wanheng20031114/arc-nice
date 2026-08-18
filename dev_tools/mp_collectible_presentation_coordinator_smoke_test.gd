@@ -102,7 +102,7 @@ func _test_static_boundary(
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
 		rpc_pattern.search_all(source).size() == 145,
-		"Collectible presentation extraction must preserve all 145 protocol-v86 MpGame RPC facades."
+		"Collectible presentation extraction must preserve all 145 protocol-v87 MpGame RPC facades."
 	)
 	_expect(
 		source.contains(

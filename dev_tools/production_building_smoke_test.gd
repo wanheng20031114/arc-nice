@@ -231,6 +231,7 @@ func _run() -> void:
 	_expect(
 		loop_button != null
 		and toggle_button != null
+		and loop_button.visible
 		and loop_button.text.is_empty()
 		and loop_button.icon != null
 		and loop_button.icon.resource_path

@@ -272,7 +272,7 @@ func _test_selectable_p1e_entry_contract() -> void:
 
 func _test_protocol_boundaries() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 86
+		NET_CONSTANTS.PROTOCOL_VERSION == 87
 		and NET_CONSTANTS.CHANNEL_COUNT == 8
 		and CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET
 		== 18
@@ -280,7 +280,7 @@ func _test_protocol_boundaries() -> void:
 			&"combat_robot_main_battle_elite"
 		) == CombatAttackRegistry.PlayerHitWireId.INVALID
 		and CombatAttackRegistry.decode_player_hit_source(19) == &"",
-		"协议v86必须保留内容摘要、同局成员身份、P1E 和攻击来源合同。"
+		"协议v87必须保留内容摘要、同局成员身份、P1E 和攻击来源合同。"
 	)
 
 

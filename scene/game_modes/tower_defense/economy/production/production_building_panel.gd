@@ -11,7 +11,6 @@ const DEFAULT_PANEL_BACKGROUND := preload(
 )
 const LOCAL_OUTPUT_ICON_SCALE := Vector2(2.0, 2.0)
 const STANDARD_LOOP_BUTTON_RECT := Rect2(400, 132, 46, 46)
-const ENVIRONMENT_LOOP_BUTTON_RECT := Rect2(626, 150, 46, 46)
 
 @onready var overlay: Control = $Overlay
 @onready var panel_root: Control = $Overlay/PanelRoot
@@ -614,7 +613,7 @@ func _refresh_status() -> void:
 
 
 func _on_loop_pressed() -> void:
-	if building == null:
+	if building == null or building.uses_fixed_continuous_production():
 		return
 	var loop_enabled := not building.production_loop_enabled
 	if building.multiplayer_production_enabled:
@@ -865,11 +864,10 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 	)
 	_set_control_rect(
 		loop_button,
-		(
-			ENVIRONMENT_LOOP_BUTTON_RECT
-			if recipe != null and recipe.uses_environment_source()
-			else STANDARD_LOOP_BUTTON_RECT
-		)
+		STANDARD_LOOP_BUTTON_RECT
+	)
+	loop_button.visible = (
+		building != null and not building.uses_fixed_continuous_production()
 	)
 	_apply_panel_theme()
 	if automatic_layout:

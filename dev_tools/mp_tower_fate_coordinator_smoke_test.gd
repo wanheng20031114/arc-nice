@@ -154,7 +154,7 @@ func _test_static_boundary(coordinator: MpTowerFateCoordinator) -> void:
 	_expect(
 		rpc_pattern.search_all(source).size() == 145,
 		(
-			"Tower fate extraction must preserve all 145 protocol-v86 MpGame "
+			"Tower fate extraction must preserve all 145 protocol-v87 MpGame "
 			+ "RPC facades, including the embedded Rogue transport."
 		)
 	)

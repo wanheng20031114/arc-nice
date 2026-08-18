@@ -118,7 +118,7 @@ func _on_setup_completed() -> void:
 	buffered_output_item = null
 	buffered_output_count = 0
 	production_enabled = true
-	production_loop_enabled = false
+	production_loop_enabled = uses_fixed_continuous_production()
 	active_recipe_id = &""
 	personal_output_peer_id = 0
 	if auto_select_first_recipe:
@@ -239,6 +239,12 @@ func uses_environment_source() -> bool:
 	return recipe != null and recipe.uses_environment_source()
 
 
+## Subclasses with an intrinsic continuous cycle can hide and lock the shared
+## single/loop mode selector while retaining the normal pause/resume control.
+func uses_fixed_continuous_production() -> bool:
+	return false
+
+
 func is_player_within_multiplayer_interaction_distance(
 	player: Player,
 	maximum_distance: float
@@ -327,7 +333,7 @@ func request_multiplayer_enabled_change(enabled: bool) -> bool:
 
 
 func request_multiplayer_loop_change(enabled: bool) -> bool:
-	if not is_multiplayer_production_ready():
+	if uses_fixed_continuous_production() or not is_multiplayer_production_ready():
 		return false
 	var command := ProductionBuildingProtocol.make_set_loop_enabled_command(
 		next_multiplayer_production_request_id,
@@ -461,6 +467,8 @@ func set_production_enabled(enabled: bool) -> bool:
 
 func set_production_loop_enabled(loop_enabled: bool) -> bool:
 	if is_multiplayer_proxy:
+		return false
+	if uses_fixed_continuous_production() and not loop_enabled:
 		return false
 	if production_loop_enabled == loop_enabled:
 		return true
@@ -959,6 +967,9 @@ func _apply_multiplayer_runtime_state_sample(
 	var received_recipe := get_recipe(received_recipe_id)
 	if received_recipe_id != &"" and received_recipe == null:
 		return
+	var received_loop_enabled := bool(state["loop_enabled"])
+	if uses_fixed_continuous_production() and not received_loop_enabled:
+		return
 	var received_buffered_output_item: PickupConfig = null
 	if received_buffered_output_path.is_empty():
 		if received_buffered_output_count != 0:
@@ -1007,7 +1018,7 @@ func _apply_multiplayer_runtime_state_sample(
 	_last_multiplayer_runtime_host_sample_time = received_host_sample_time
 	production_revision = received_revision
 	production_enabled = bool(state["enabled"])
-	production_loop_enabled = bool(state["loop_enabled"])
+	production_loop_enabled = received_loop_enabled
 	active_recipe_id = received_recipe_id
 	personal_output_peer_id = received_output_peer_id
 	buffered_output_item = received_buffered_output_item
