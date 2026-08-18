@@ -526,6 +526,10 @@ func net_plant_placement_requested(
 	pass
 
 @rpc("any_peer", "call_remote", "reliable", 5)
+func net_nearest_plant_destruction_requested(request_id: int, target_net_id: int) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 5)
 func net_inventory_plant_placement_requested(
 	request_id: int,
 	plant_id: String,

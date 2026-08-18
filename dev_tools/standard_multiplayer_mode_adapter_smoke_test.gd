@@ -19,7 +19,7 @@ const MP_GAME_SOURCE_PATH := "res://scene/multiplayer/mp_game.gd"
 const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 const EXPECTED_STANDARD_SCENE_UID := "uid://dcqarxlpbdh8y"
 const EXPECTED_ADAPTER_SCENE_UID := "uid://dgn1s7k5oav2c"
-const EXPECTED_MP_GAME_RPC_COUNT := 144
+const EXPECTED_MP_GAME_RPC_COUNT := 145
 
 var failures: Array[String] = []
 var test_root: Node2D = null
@@ -115,16 +115,16 @@ func _test_static_boundaries() -> void:
 		"Profile 五个请求必须静态直连既有 Standard adapter。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 85
+		NET_CONSTANTS.PROTOCOL_VERSION == 86
 		and GameModeCatalog.MODE_STANDARD == 0,
-		"Standard wire=0 与协议 v85 必须保持冻结。"
+		"Standard wire=0 与协议 v86 必须保持冻结。"
 	)
 	var mp_game_script := load(MP_GAME_SOURCE_PATH) as Script
 	_expect(mp_game_script != null, "MpGame 脚本必须可加载。")
 	if mp_game_script != null:
 		_expect(
 			mp_game_script.get_rpc_config().size() == EXPECTED_MP_GAME_RPC_COUNT,
-			"MpGame 有效 RPC 数量必须保持 144。"
+			"MpGame 有效 RPC 数量必须保持 145。"
 		)
 
 

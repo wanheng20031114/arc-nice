@@ -168,7 +168,10 @@ extends RefCounted
 ## `grape_arc_tower_surge_modification` 六个稳定 ID；玉米机枪塔 burst batch
 ## 同时新增逐动作 `shot_counts` 列，确保可靠科研快照跨信道乱序时仍按该轮
 ## 冻结的 6/8 发播放。v84 及更旧客户端既缺少完整科研项，也按旧四列 RPC 解码。
-const PROTOCOL_VERSION := 85
+## v86：正式塔防新增 Client 到 Host 的“销毁最近建筑”可靠请求；
+## Host 使用请求者的权威玩家位置重新校验目标。v85 及更旧客户端缺少
+## 该 RPC 表面，不能与 v86 房间混联。
+const PROTOCOL_VERSION := 86
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF

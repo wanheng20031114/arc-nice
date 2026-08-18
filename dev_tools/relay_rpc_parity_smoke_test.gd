@@ -71,6 +71,7 @@ func _run() -> void:
 		"net_player_healed",
 		"net_player_full_health_restored",
 		"net_plant_placement_requested",
+		"net_nearest_plant_destruction_requested",
 		"net_inventory_plant_placement_requested",
 		"net_plant_spawned",
 		"net_plant_placement_rejected",
@@ -222,6 +223,16 @@ func _run() -> void:
 		main_rpcs,
 		"net_tango_electric_surge_requested",
 		"request_id:int"
+	)
+	_expect_rpc_signature_contains(
+		main_rpcs,
+		"net_nearest_plant_destruction_requested",
+		"request_id:int"
+	)
+	_expect_rpc_signature_contains(
+		main_rpcs,
+		"net_nearest_plant_destruction_requested",
+		"target_net_id:int"
 	)
 	_expect(
 		not String(main_rpcs.get("net_tango_electric_surge_requested", "")).contains(
@@ -417,10 +428,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 85,
-		"协议v85必须保留 v79 T 目录付费、v78 Route 升级事务及 v77 内容摘要和身份合同。"
+		NetConstants.PROTOCOL_VERSION == 86,
+		"协议v86必须保留正式塔防最近建筑销毁请求与既有内容、身份合同。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v85 must retain eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v86 must retain eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -459,7 +470,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v85 hosts must accept exactly v85 and reject v84."
+		"Protocol v86 hosts must accept exactly v86 and reject v85."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -535,11 +546,11 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 85")
+		and relay_source.contains("const PROTOCOL_VERSION := 86")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
 		(
-			"Relay server must declare v85, accept the room capacity, and provision "
+			"Relay server must declare v86, accept the room capacity, and provision "
 			+ "the same eight ENet channels as clients."
 		)
 	)
@@ -1130,6 +1141,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 	if channel_regex.compile("@rpc\\([^)]*,([0-9]+)\\)func") != OK:
 		failures.append("Unable to compile gameplay RPC channel parser regex.")
 		return
+	var channel_counts: Dictionary[int, int] = {}
 	for method_name_variant in rpcs:
 		var method_name := String(method_name_variant)
 		var rpc_surface := String(rpcs[method_name])
@@ -1138,10 +1150,15 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		if channel_match == null:
 			continue
 		var channel := int(channel_match.get_string(1))
+		channel_counts[channel] = channel_counts.get(channel, 0) + 1
 		_expect(
 			channel >= 0 and channel < NetConstants.CHANNEL_COUNT,
 			"Gameplay RPC %s uses out-of-range channel %d." % [method_name, channel]
 		)
+	_expect(
+		channel_counts.get(NetConstants.CH_WORLD_EVENT, 0) == 60,
+		"Protocol v86 must expose exactly 60 MpGame RPCs on reliable world-event CH5."
+	)
 
 	_expect_rpc_channel(rpcs, "net_runtime_state_requested", NetConstants.CH_AUTH)
 	_expect_rpc_channel(rpcs, "net_terrain_snapshot_requested", NetConstants.CH_AUTH)
@@ -1182,6 +1199,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_enemy_spawned_batch",
 		"net_enemy_terminal",
 		"net_plant_spawned",
+		"net_nearest_plant_destruction_requested",
 		"net_plant_damage_status_changed",
 		"net_plant_removed",
 		"net_base_health_changed",

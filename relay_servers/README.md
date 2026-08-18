@@ -26,7 +26,10 @@ relay_servers/
 └── README.md
 ```
 
-当前网络基线为协议 v85、8 个 ENet 通道。v85 在科研账本新增
+当前网络基线为协议 v86、8 个 ENet 通道。v86 在正式塔防中新增
+Client 到 Host 的“销毁最近建筑”可靠请求；Host 必须根据请求者的
+权威玩家位置重新校验目标。v85 及更旧客户端缺少该 RPC 表面，
+不能与 v86 房间安全混联。v85 在科研账本新增
 `building_defense_ii`、`building_defense_iii`、
 `agave_cannon_muzzle_improvement`、`corn_machine_gun_cooling_system_improvement`、
 `bamboo_mortar_concussive_modification` 与 `grape_arc_tower_surge_modification`
@@ -123,7 +126,7 @@ v35 的战斗机器人枪手弹丸及玩家受击来源 wire ID 17 保持兼容�
 P3 路线世界继续使用约 12Hz 的轻量角色姿态同步：
 Client 在输入信道上报，Host 校验后在玩家状态信道广播，非法位置通过可靠信道纠正。
 v34 的 P3 路线全量快照携带 `runtime_contract_hash`，Host 与 Client 必须使用相同的世界几何契约；
-v84 及更旧客户端不能加入 v85 房间。
+v85 及更旧客户端不能加入 v86 房间。
 Relay 只转发 RPC，不重复实现游戏状态逻辑；逻辑 Host 对不兼容、重连加载或
 运行时投影超时成员的断开请求会可靠发送至 Relay 服务端（peer 1）。Relay 只
 接受已登记 Host 的请求，并由服务端断开同房目标；普通客户端不能踢出其他成员。

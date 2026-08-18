@@ -95,6 +95,7 @@ auto_bind_scene_runtime = false
 [connection signal="rpc_broadcast_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_rpc_broadcast_requested"]
 [connection signal="plant_placement_request_to_host" from="TowerWorldCoordinator" to="." method="_on_tower_world_plant_placement_request_to_host"]
 [connection signal="inventory_plant_placement_request_to_host" from="TowerWorldCoordinator" to="." method="_on_tower_world_inventory_plant_placement_request_to_host"]
+[connection signal="nearest_plant_destruction_request_to_host" from="TowerWorldCoordinator" to="." method="_on_tower_world_nearest_plant_destruction_request_to_host"]
 [connection signal="plant_health_batch_broadcast_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_plant_health_batch_broadcast_requested"]
 [connection signal="plant_damage_status_broadcast_requested" from="TowerWorldCoordinator" to="." method="_on_host_plant_damage_status_changed"]
 [connection signal="terrain_snapshot_request_to_host" from="TowerWorldCoordinator" to="." method="_on_tower_world_terrain_snapshot_request_to_host"]

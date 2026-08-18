@@ -43,6 +43,7 @@ const PLACEMENT_REJECT_FREE_DISABLED := &"free_placement_disabled"
 const PLACEMENT_REJECT_FLOW_LOCKED := &"flow_locked"
 const TERRAIN_NETWORK_BATCH_MAX_CELLS := 96
 const UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS := 1.0
+const PLAYER_PLANT_DESTRUCTION_RADIUS_CELLS := 3.0
 
 @export_group("场景依赖")
 @export var authored_ground_tile_map_layer: TileMapLayer
@@ -349,6 +350,41 @@ func find_nearest_operational_interaction_building(
 		world_position,
 		maximum_distance
 	)
+
+
+func find_nearest_player_destroyable_plant(player: Player) -> PlantDefense:
+	if (
+		_plant_system == null
+		or player == null
+		or not is_instance_valid(player)
+		or player.is_dead
+	):
+		return null
+	return _plant_system.find_nearest_living_plant_in_logical_radius(
+		player.global_position,
+		PLAYER_PLANT_DESTRUCTION_RADIUS_CELLS
+	)
+
+
+## Authoritative one-shot destruction. Multiplayer callers pass the target seen
+## by the client; the Host recomputes the nearest target and rejects any stale,
+## spoofed or out-of-range id instead of deleting a different building.
+func destroy_nearest_plant_for_player(
+	player: Player,
+	expected_net_id: int = 0
+) -> bool:
+	if _runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+		return false
+	var nearest := find_nearest_player_destroyable_plant(player)
+	if nearest == null:
+		return false
+	if expected_net_id > 0:
+		var authoritative_net_id := int(nearest.get_meta(&"net_id", 0))
+		if authoritative_net_id != expected_net_id:
+			return false
+	if nearest.current_health <= 0:
+		return false
+	return nearest.receive_unmitigated_damage(nearest.current_health, player)
 
 
 func find_nearest_enemy_attack_target_world(

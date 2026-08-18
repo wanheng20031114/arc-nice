@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RogueCombatEncounterConfig" format=3]
+[gd_resource type="Resource" script_class="RogueCombatEncounterConfig" format=3 uid="uid://b3xn7x8radly8"]
 
 [ext_resource type="Script" uid="uid://cvx2f5hh6lh4n" path="res://resources/config/rogue_combat/rogue_combat_encounter_config.gd" id="1_config_script"]
 [ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/underground_sewer_01/campaign.tres" id="2_campaign"]

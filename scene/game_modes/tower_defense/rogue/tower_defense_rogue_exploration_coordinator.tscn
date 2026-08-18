@@ -14,6 +14,9 @@ auto_initialize = false
 manage_return_locally = false
 embedded_session = true
 
+[node name="HUD" parent="RogueRoute" index="14"]
+visible = false
+
 [node name="RogueCombatCoordinator" type="Node" parent="."]
 script = ExtResource("3_multiplayer_combat")
 

@@ -1,11 +1,11 @@
-[gd_resource type="Resource" script_class="GlobalResearchConfig" format=3]
+[gd_resource type="Resource" script_class="GlobalResearchConfig" format=3 uid="uid://dnuecxf7qpd8a"]
 
-[ext_resource type="Script" path="res://resources/config/research/global_research_config.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://620a3n6cpasf" path="res://resources/config/research/global_research_config.gd" id="1_script"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_wooden_core.tres" id="2_core"]
-[ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="3_sapling"]
-[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="4_pickup_script"]
-[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="5_effect_base"]
-[ext_resource type="Script" path="res://resources/config/research/global_research_recipe_unlock_effect.gd" id="6_effect_script"]
+[ext_resource type="Resource" uid="uid://dtf2p26npy2pd" path="res://resources/config/materials/material_sapling.tres" id="3_sapling"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickup_config.gd" id="4_pickup_script"]
+[ext_resource type="Script" uid="uid://fngg08xu1h52" path="res://resources/config/research/global_research_effect.gd" id="5_effect_base"]
+[ext_resource type="Script" uid="uid://cnwyollgs4d6a" path="res://resources/config/research/global_research_recipe_unlock_effect.gd" id="6_effect_script"]
 
 [sub_resource type="Resource" id="Effect_production_unlock"]
 script = ExtResource("6_effect_script")

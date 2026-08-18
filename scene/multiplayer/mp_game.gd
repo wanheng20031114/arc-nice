@@ -1649,6 +1649,23 @@ func _on_tower_world_inventory_plant_placement_request_to_host(
 	)
 
 
+func _on_tower_world_nearest_plant_destruction_request_to_host(
+	request_id: int,
+	target_net_id: int
+) -> void:
+	if (
+		_is_tower_management_suspended()
+		or not _has_tower_mode()
+		or not net_manager.is_client()
+	):
+		return
+	_rpc_to_peer(
+		_get_host_peer_id(),
+		&"net_nearest_plant_destruction_requested",
+		[request_id, target_net_id]
+	)
+
+
 func _on_tower_world_terrain_snapshot_request_to_host(known_revision: int) -> void:
 	if not _has_tower_mode() or not net_manager.is_client():
 		return
@@ -5412,6 +5429,26 @@ func net_inventory_plant_placement_requested(
 		slot_index,
 		expected_inventory_revision,
 		item_config_path
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 5)
+func net_nearest_plant_destruction_requested(
+	request_id: int,
+	target_net_id: int
+) -> void:
+	var sender_id := _get_rpc_sender_id()
+	if (
+		_is_tower_management_suspended()
+		or not _has_tower_mode()
+		or not net_manager.is_host()
+		or game == null
+	):
+		return
+	tower_world_coordinator.handle_remote_nearest_plant_destruction_request(
+		sender_id,
+		request_id,
+		target_net_id
 	)
 
 

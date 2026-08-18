@@ -69,6 +69,7 @@ signal inventory_plant_placement_requested(
 	expected_inventory_revision: int,
 	item_config_path: String
 )
+signal nearest_plant_destruction_requested(target_net_id: int)
 signal inventory_changed(peer_id: int)
 signal xiaocong_interaction_requested
 signal xiaocong_vote_requested(
@@ -986,6 +987,56 @@ func request_wave_start() -> bool:
 		return false
 	multiplayer_session.request_multiplayer_start_wave()
 	return true
+
+
+func request_nearest_plant_destruction() -> bool:
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime == null
+		or _plant_runtime_coordinator == null
+		or _is_plant_destruction_flow_locked()
+	):
+		return false
+	var local_player := tower_runtime.player
+	var target := _plant_runtime_coordinator.find_nearest_player_destroyable_plant(
+		local_player
+	)
+	if target == null:
+		return false
+	if tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
+		_plant_runtime_coordinator.set_runtime_mode(tower_runtime.runtime_mode)
+		return _plant_runtime_coordinator.destroy_nearest_plant_for_player(
+			local_player
+		)
+	if not has_multiplayer_session():
+		return false
+	var target_net_id := int(target.get_meta(&"net_id", 0))
+	if target_net_id <= 0:
+		return false
+	nearest_plant_destruction_requested.emit(target_net_id)
+	return true
+
+
+func request_authoritative_nearest_plant_destruction(
+	requester_peer_id: int,
+	target_net_id: int
+) -> bool:
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime == null
+		or tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		or _plant_runtime_coordinator == null
+		or requester_peer_id <= 0
+		or target_net_id <= 0
+		or _is_plant_destruction_flow_locked()
+	):
+		return false
+	_plant_runtime_coordinator.set_runtime_mode(tower_runtime.runtime_mode)
+	return _plant_runtime_coordinator.destroy_nearest_plant_for_player(
+		_get_player(requester_peer_id),
+		target_net_id
+	)
 
 
 func prewarm_mode_runtime_data(preparation_generation: int) -> void:
@@ -2193,6 +2244,21 @@ func _get_player(peer_id: int) -> Player:
 		_player_roster_coordinator.get_player(peer_id)
 		if _player_roster_coordinator != null
 		else tower_runtime.get_player_for_peer(peer_id)
+	)
+
+
+func _is_plant_destruction_flow_locked() -> bool:
+	if (
+		_rogue_exploration_coordinator != null
+		and _rogue_exploration_coordinator.is_tower_runtime_suspended()
+	):
+		return true
+	return (
+		_campaign_coordinator != null
+		and _campaign_coordinator.wave_state in [
+			CombatFlowState.State.FATE_INTERLUDE,
+			CombatFlowState.State.ROGUE_EXPLORATION,
+		]
 	)
 
 

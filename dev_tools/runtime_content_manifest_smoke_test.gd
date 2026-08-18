@@ -35,7 +35,7 @@ const ENHANCEMENT_TOWER_RECIPE_PATHS := [
 	"res://resources/config/production/attack_speed_tower_assembly.tres",
 ]
 const GOLDEN_CONTENT_SHA256 := (
-	"fec71be1bfd1f4893c2862062a9f816aa8792ff974d4b2fcc8165798c951fb27"
+	"6142a38793d4a4bd8e6aa8ab9f2ee7abd4b191b9fd06b038ebdd04253e46452f"
 )
 
 var failures: Array[String] = []

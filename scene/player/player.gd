@@ -3325,10 +3325,12 @@ func heal(amount: int, report_multiplayer: bool = true) -> int:
 
 func set_grass_healing_effect_active(active: bool) -> void:
 	var should_emit := active and not is_dead
+	if should_emit:
+		# Keep the particle canvas visible after emission stops so particles that
+		# are already alive can finish their authored lifetime and alpha fade.
+		grass_healing_particles.visible = true
 	if grass_healing_particles.emitting == should_emit:
-		grass_healing_particles.visible = should_emit
 		return
-	grass_healing_particles.visible = should_emit
 	grass_healing_particles.emitting = should_emit
 	if should_emit:
 		grass_healing_particles.restart()

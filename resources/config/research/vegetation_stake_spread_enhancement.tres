@@ -1,11 +1,11 @@
-[gd_resource type="Resource" script_class="GlobalResearchConfig" format=3]
+[gd_resource type="Resource" script_class="GlobalResearchConfig" format=3 uid="uid://bif63m2hwl6mw"]
 
-[ext_resource type="Script" path="res://resources/config/research/global_research_config.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://620a3n6cpasf" path="res://resources/config/research/global_research_config.gd" id="1_script"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="2_plank"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="3_water"]
-[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="4_pickup_script"]
-[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="5_effect_base"]
-[ext_resource type="Script" path="res://resources/config/research/global_research_multiplier_modifier_effect.gd" id="6_effect_script"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickup_config.gd" id="4_pickup_script"]
+[ext_resource type="Script" uid="uid://fngg08xu1h52" path="res://resources/config/research/global_research_effect.gd" id="5_effect_base"]
+[ext_resource type="Script" uid="uid://c2sr8nyfrtfoi" path="res://resources/config/research/global_research_multiplier_modifier_effect.gd" id="6_effect_script"]
 
 [sub_resource type="Resource" id="Effect_spread_speed"]
 script = ExtResource("6_effect_script")
@@ -20,5 +20,4 @@ description = "提交共享仓库材料，完成后本局所有植被桩的剩�
 category_id = &"building_enhancement"
 input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_plank"), ExtResource("3_water")])
 input_amounts = Array[int]([20, 5])
-duration_seconds = 60.0
 effects = Array[ExtResource("5_effect_base")]([SubResource("Effect_spread_speed")])

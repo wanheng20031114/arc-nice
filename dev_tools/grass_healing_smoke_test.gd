@@ -86,6 +86,7 @@ func _test_all_player_particle_contracts() -> void:
 			and particles.get_parent() == player.body_sprite
 			and not particles.visible
 			and not particles.emitting
+			and not particles.one_shot
 			and particles.amount == 24
 			and is_equal_approx(particles.lifetime, 1.25)
 			and is_equal_approx(particles.speed_scale, 0.75)
@@ -169,9 +170,15 @@ func _test_grass_healing_contracts() -> void:
 	coordinator.advance_grass_healing(0.75)
 	_expect(
 		player.current_health == base_healed_health
-		and not player.grass_healing_particles.visible
+		and player.grass_healing_particles.visible
 		and not player.grass_healing_particles.emitting,
-		"离开草块必须立即停用粒子、停止回血并清空本轮站立计时。"
+		"离开草块必须停止新粒子与回血，但保留可见尾粒子自然消散。"
+	)
+	coordinator.advance_grass_healing(0.1)
+	_expect(
+		player.grass_healing_particles.visible
+		and not player.grass_healing_particles.emitting,
+		"重复离草更新不得把仍在生命周期内的尾粒子突然隐藏。"
 	)
 	player.global_position = Vector2(-10.0, 0.0)
 	coordinator.advance_grass_healing(0.25)
@@ -197,13 +204,16 @@ func _test_grass_healing_contracts() -> void:
 	)
 
 	roster.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	roster.peer_players[1] = player
 	player.current_health = 1
+	player.set_grass_healing_effect_active(false)
 	coordinator.advance_grass_healing(1.0)
 	_expect(
 		player.current_health == 1
 		and player.grass_healing_particles.emitting,
 		"客户端视图只可显示草地粒子，不得自行修改玩家生命。"
 	)
+	roster.peer_players.clear()
 	roster.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 
 	player.is_dead = true

@@ -20,7 +20,7 @@
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/merchants/luoxi/tower_defense_luoxi_merchant.tscn" id="20_luoxi"]
 [ext_resource type="PackedScene" path="res://scene/ui/shared/debug/debug_collectible_window.tscn" id="21_debug_collectibles"]
 [ext_resource type="Script" uid="uid://jvlyxxwk5co0" path="res://scene/game_modes/tower_defense/plant/runtime/plant_system.gd" id="22_plant_system"]
-[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/plant/placement/plant_placement_controller.tscn" id="23_plant_placement"]
+[ext_resource type="PackedScene" uid="uid://b43m8ktg7sfho" path="res://scene/game_modes/tower_defense/plant/placement/plant_placement_controller.tscn" id="23_plant_placement"]
 [ext_resource type="Texture2D" uid="uid://b1vmulk2tbn72" path="res://resources/terrain/dual_grid/tilled_soil_full_tile_16.png" id="24_base_dirt_texture"]
 [ext_resource type="TileSet" uid="uid://baax8oj0cmaw1" path="res://resources/terrain/dual_grid/terrain_dual_grid_tileset_16.tres" id="24_dual_grid_tileset"]
 [ext_resource type="Script" uid="uid://10rnkne5bliy" path="res://scene/terrain/dual_grid_tilemap.gd" id="25_dual_grid_script"]
@@ -45,20 +45,19 @@
 [ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash_pool.tscn" id="50_night_vfx_flash_pool"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/fate/fate_coordinator.tscn" id="51_fate_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/fate/xiaocong_fate_interlude.tscn" id="52_xiaocong_interlude"]
-[ext_resource type="Resource" path="res://resources/config/day_cycle/tower_defense_day_cycle.tres" id="53_day_cycle"]
-[ext_resource type="Script" path="res://scene/game_modes/tower_defense/merchants/luoxi/luoxi_special_game_coordinator.gd" id="54_luoxi_special_game"]
-[ext_resource type="Script" path="res://scene/game_modes/tower_defense/plant/combat/orange_charging_aura_coordinator.gd" id="55_orange_aura"]
-[ext_resource type="Script" path="res://scene/game_modes/tower_defense/plant/support/life_tower_health_coordinator.gd" id="55_life_tower_health"]
+[ext_resource type="Script" uid="uid://cy2odwy61ryan" path="res://scene/game_modes/tower_defense/merchants/luoxi/luoxi_special_game_coordinator.gd" id="54_luoxi_special_game"]
+[ext_resource type="Script" uid="uid://b3j5go3ig4rap" path="res://scene/game_modes/tower_defense/plant/support/attack_speed_tower_coordinator.gd" id="55_attack_speed_tower"]
+[ext_resource type="Script" uid="uid://dkvwta3oh0j0c" path="res://scene/game_modes/tower_defense/player/grass_healing_coordinator.gd" id="55_grass_healing"]
+[ext_resource type="Script" uid="uid://dxrjstk17bifh" path="res://scene/game_modes/tower_defense/plant/support/life_tower_health_coordinator.gd" id="55_life_tower_health"]
+[ext_resource type="Script" uid="uid://b4tva80qk3hqo" path="res://scene/game_modes/tower_defense/plant/combat/orange_charging_aura_coordinator.gd" id="55_orange_aura"]
 [ext_resource type="Script" uid="uid://dul6ing06ojrh" path="res://scene/game_modes/tower_defense/plant/support/speed_tower_move_speed_coordinator.gd" id="55_speed_tower_move_speed"]
-[ext_resource type="Script" path="res://scene/game_modes/tower_defense/plant/support/attack_speed_tower_coordinator.gd" id="55_attack_speed_tower"]
-[ext_resource type="Script" path="res://scene/game_modes/tower_defense/player/grass_healing_coordinator.gd" id="55_grass_healing"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/ui/day_phase_announcement.tscn" id="56_day_announcement"]
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="57_combat_robot_drone_motion"]
 [ext_resource type="Resource" path="res://scene/game_modes/definitions/tower_defense.tres" id="58_mode_definition"]
-[ext_resource type="PackedScene" path="res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn" id="59_gameplay_gateway"]
-[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.tscn" id="60_mode_adapter"]
-[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/boss/tower_defense_linglan_boss_runtime_port.tscn" id="61_linglan_port"]
-[ext_resource type="Script" path="res://scene/game_modes/tower_defense/multiplayer/tower_plant_gameplay_bridge.gd" id="62_plant_gameplay_bridge"]
+[ext_resource type="PackedScene" uid="uid://b2h7qgwej5n3a" path="res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn" id="59_gameplay_gateway"]
+[ext_resource type="PackedScene" uid="uid://crap4mx7t2k6r" path="res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.tscn" id="60_mode_adapter"]
+[ext_resource type="PackedScene" uid="uid://cjr7m4k1wat6b" path="res://scene/game_modes/tower_defense/boss/tower_defense_linglan_boss_runtime_port.tscn" id="61_linglan_port"]
+[ext_resource type="Script" uid="uid://ck5ola4hyqxr" path="res://scene/game_modes/tower_defense/multiplayer/tower_plant_gameplay_bridge.gd" id="62_plant_gameplay_bridge"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_coordinator.tscn" id="63_campaign_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/enemy/tower_defense_enemy_coordinator.tscn" id="64_enemy_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/home/tower_defense_home_defense_coordinator.tscn" id="65_home_coordinator"]
@@ -66,11 +65,11 @@
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/player/tower_defense_player_roster_coordinator.tscn" id="67_player_roster"]
 [ext_resource type="PackedScene" uid="uid://b84n1wng7l2np" path="res://scene/game_modes/tower_defense/boss/tower_defense_boss_coordinator.tscn" id="68_boss_coordinator"]
 [ext_resource type="PackedScene" uid="uid://d0brkwgd71xus" path="res://scene/game_modes/tower_defense/fate/tower_defense_fate_flow_coordinator.tscn" id="69_fate_flow"]
-[ext_resource type="PackedScene" uid="uid://cs7mb1v2q9p4x" path="res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.tscn" id="70_presentation"]
+[ext_resource type="PackedScene" uid="uid://cs7mb1v2rap4x" path="res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.tscn" id="70_presentation"]
 [ext_resource type="PackedScene" uid="uid://dubxeu88obeuv" path="res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.tscn" id="71_prewarmer"]
-[ext_resource type="PackedScene" uid="uid://d7n2r5w8y3k6p" path="res://scene/game_modes/tower_defense/plant/tower_defense_plant_placement_coordinator.tscn" id="72_plant_placement_coordinator"]
+[ext_resource type="PackedScene" uid="uid://c866300fvpfx" path="res://scene/game_modes/tower_defense/plant/tower_defense_plant_placement_coordinator.tscn" id="72_plant_placement_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_runtime_port.tscn" id="73_campaign_runtime_port"]
-[ext_resource type="PackedScene" uid="uid://c5w9k3x7d2j8s" path="res://scene/game_modes/tower_defense/pickup/tower_defense_pickup_registry.tscn" id="74_pickup_registry"]
+[ext_resource type="PackedScene" uid="uid://c5xak3x7d2j8s" path="res://scene/game_modes/tower_defense/pickup/tower_defense_pickup_registry.tscn" id="74_pickup_registry"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/rogue/tower_defense_rogue_exploration_coordinator.tscn" id="75_rogue_exploration"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
@@ -167,22 +166,21 @@ physics_interpolation_mode = 2
 position = Vector2(2, 0)
 script = ExtResource("1_17rxn")
 mode_definition = ExtResource("58_mode_definition")
-day_cycle_config = ExtResource("53_day_cycle")
 linglan_boss_enabled = true
 
-[node name="MultiplayerGameplayGateway" parent="." instance=ExtResource("59_gameplay_gateway")]
+[node name="MultiplayerGameplayGateway" parent="." unique_id=206876079 instance=ExtResource("59_gameplay_gateway")]
 
-[node name="MultiplayerModeAdapter" parent="." instance=ExtResource("60_mode_adapter")]
+[node name="MultiplayerModeAdapter" parent="." unique_id=949977321 instance=ExtResource("60_mode_adapter")]
 
-[node name="CampaignCoordinator" parent="." instance=ExtResource("63_campaign_coordinator")]
+[node name="CampaignCoordinator" parent="." unique_id=522130661 instance=ExtResource("63_campaign_coordinator")]
 
-[node name="CampaignRuntimePort" parent="." instance=ExtResource("73_campaign_runtime_port")]
+[node name="CampaignRuntimePort" parent="." unique_id=1914314849 instance=ExtResource("73_campaign_runtime_port")]
 
-[node name="EnemyCoordinator" parent="." instance=ExtResource("64_enemy_coordinator")]
+[node name="EnemyCoordinator" parent="." unique_id=1935940679 instance=ExtResource("64_enemy_coordinator")]
 
-[node name="HomeDefenseCoordinator" parent="." instance=ExtResource("65_home_coordinator")]
+[node name="HomeDefenseCoordinator" parent="." unique_id=708896257 instance=ExtResource("65_home_coordinator")]
 
-[node name="PlantRuntimeCoordinator" parent="." node_paths=PackedStringArray("authored_ground_tile_map_layer", "authored_dual_grid_terrain", "authored_vegetation_spread_system", "authored_plant_system", "authored_plant_placement_controller", "authored_plant_container", "authored_gameplay_port", "authored_orange_aura_coordinator", "authored_player_spawn", "authored_home_gate_controller", "authored_enemy_spawn_points_root", "authored_merchant", "authored_luoxi_merchant", "authored_terrain_decay_timer", "authored_production_coordinator", "authored_research_coordinator", "authored_oak_warehouse_panel", "authored_production_building_panel", "authored_research_center_panel", "authored_bamboo_mortar_combat_system") instance=ExtResource("66_plant_coordinator")]
+[node name="PlantRuntimeCoordinator" parent="." unique_id=14977577 node_paths=PackedStringArray("authored_ground_tile_map_layer", "authored_dual_grid_terrain", "authored_vegetation_spread_system", "authored_plant_system", "authored_plant_placement_controller", "authored_plant_container", "authored_gameplay_port", "authored_orange_aura_coordinator", "authored_player_spawn", "authored_home_gate_controller", "authored_enemy_spawn_points_root", "authored_merchant", "authored_luoxi_merchant", "authored_terrain_decay_timer", "authored_production_coordinator", "authored_research_coordinator", "authored_oak_warehouse_panel", "authored_production_building_panel", "authored_research_center_panel", "authored_bamboo_mortar_combat_system") instance=ExtResource("66_plant_coordinator")]
 authored_ground_tile_map_layer = NodePath("../GroundTileMapLayer")
 authored_dual_grid_terrain = NodePath("../DualGridTerrain")
 authored_vegetation_spread_system = NodePath("../VegetationSpreadSystem")
@@ -204,50 +202,50 @@ authored_production_building_panel = NodePath("../ProductionBuildingPanel")
 authored_research_center_panel = NodePath("../ResearchCenterPanel")
 authored_bamboo_mortar_combat_system = NodePath("../BambooMortarCombatSystem")
 
-[node name="PlantPlacementCoordinator" parent="." instance=ExtResource("72_plant_placement_coordinator")]
+[node name="PlantPlacementCoordinator" parent="." unique_id=906910219 instance=ExtResource("72_plant_placement_coordinator")]
 
-[node name="PickupRegistry" parent="." instance=ExtResource("74_pickup_registry")]
+[node name="PickupRegistry" parent="." unique_id=477182286 instance=ExtResource("74_pickup_registry")]
 
-[node name="PlayerRosterCoordinator" parent="." instance=ExtResource("67_player_roster")]
+[node name="PlayerRosterCoordinator" parent="." unique_id=1553275225 instance=ExtResource("67_player_roster")]
 
-[node name="GrassHealingCoordinator" type="Node" parent="." node_paths=PackedStringArray("terrain_map", "player_roster_coordinator", "research_coordinator")]
+[node name="GrassHealingCoordinator" type="Node" parent="." unique_id=1806151244 node_paths=PackedStringArray("terrain_map", "player_roster_coordinator", "research_coordinator")]
 script = ExtResource("55_grass_healing")
 terrain_map = NodePath("../DualGridTerrain")
 player_roster_coordinator = NodePath("../PlayerRosterCoordinator")
 research_coordinator = NodePath("../ResearchCoordinator")
 
-[node name="LifeTowerHealthCoordinator" type="Node" parent="." node_paths=PackedStringArray("plant_system", "player_roster_coordinator")]
+[node name="LifeTowerHealthCoordinator" type="Node" parent="." unique_id=1210526537 node_paths=PackedStringArray("plant_system", "player_roster_coordinator")]
 script = ExtResource("55_life_tower_health")
 plant_system = NodePath("../PlantSystem")
 player_roster_coordinator = NodePath("../PlayerRosterCoordinator")
 
-[node name="SpeedTowerMoveSpeedCoordinator" type="Node" parent="." node_paths=PackedStringArray("plant_system", "player_roster_coordinator")]
+[node name="SpeedTowerMoveSpeedCoordinator" type="Node" parent="." unique_id=2040776537 node_paths=PackedStringArray("plant_system", "player_roster_coordinator")]
 script = ExtResource("55_speed_tower_move_speed")
 plant_system = NodePath("../PlantSystem")
 player_roster_coordinator = NodePath("../PlayerRosterCoordinator")
 
-[node name="AttackSpeedTowerCoordinator" type="Node" parent="." node_paths=PackedStringArray("plant_system", "player_roster_coordinator")]
+[node name="AttackSpeedTowerCoordinator" type="Node" parent="." unique_id=2037773501 node_paths=PackedStringArray("plant_system", "player_roster_coordinator")]
 script = ExtResource("55_attack_speed_tower")
 plant_system = NodePath("../PlantSystem")
 player_roster_coordinator = NodePath("../PlayerRosterCoordinator")
 
-[node name="BossCoordinator" parent="." instance=ExtResource("68_boss_coordinator")]
+[node name="BossCoordinator" parent="." unique_id=287503885 instance=ExtResource("68_boss_coordinator")]
 
-[node name="PresentationCoordinator" parent="." instance=ExtResource("70_presentation")]
+[node name="PresentationCoordinator" parent="." unique_id=1479261752 instance=ExtResource("70_presentation")]
 
-[node name="PrewarmerCoordinator" parent="." instance=ExtResource("71_prewarmer")]
+[node name="PrewarmerCoordinator" parent="." unique_id=940516261 instance=ExtResource("71_prewarmer")]
 
-[node name="TowerPlantGameplayPort" type="Node" parent="."]
+[node name="TowerPlantGameplayPort" type="Node" parent="." unique_id=1031739763]
 script = ExtResource("62_plant_gameplay_bridge")
 
-[node name="LinglanBossRuntimePort" parent="." instance=ExtResource("61_linglan_port")]
+[node name="LinglanBossRuntimePort" parent="." unique_id=1348361094 instance=ExtResource("61_linglan_port")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
 environment = SubResource("Environment_revive_glow")
 
-[node name="DayNightController" parent="." instance=ExtResource("48_day_night")]
+[node name="DayNightController" parent="." unique_id=1930819979 instance=ExtResource("48_day_night")]
 
-[node name="NightVfxFlashPool" parent="." instance=ExtResource("50_night_vfx_flash_pool")]
+[node name="NightVfxFlashPool" parent="." unique_id=1432545246 instance=ExtResource("50_night_vfx_flash_pool")]
 
 [node name="TowerDefenseAmbientVfx" parent="." unique_id=2116045322 instance=ExtResource("34_ambient_vfx")]
 
@@ -377,13 +375,13 @@ terrain_map_path = NodePath("../DualGridTerrain")
 
 [node name="ProductionCoordinator" parent="." unique_id=1845180523 instance=ExtResource("39_production_coordinator")]
 
-[node name="OrangeChargingAuraCoordinator" type="Node" parent="."]
+[node name="OrangeChargingAuraCoordinator" type="Node" parent="." unique_id=316952000]
 script = ExtResource("55_orange_aura")
 
-[node name="ReconcileTimer" type="Timer" parent="OrangeChargingAuraCoordinator"]
+[node name="ReconcileTimer" type="Timer" parent="OrangeChargingAuraCoordinator" unique_id=140512793]
 wait_time = 2.0
 
-[node name="ResearchCoordinator" parent="." instance=ExtResource("43_research_coordinator")]
+[node name="ResearchCoordinator" parent="." unique_id=1695557887 instance=ExtResource("43_research_coordinator")]
 
 [node name="OverlayTileMapLayer" type="TileMapLayer" parent="." unique_id=852138298]
 z_index = 1
@@ -393,7 +391,7 @@ tile_set = SubResource("TileSet_7jktm")
 [node name="HomeGateController" type="Node2D" parent="." unique_id=2028487867]
 script = ExtResource("27_home_gate_controller")
 
-[node name="BlueGateNightLight" parent="HomeGateController" instance=ExtResource("49_night_light")]
+[node name="BlueGateNightLight" parent="HomeGateController" unique_id=500079862 instance=ExtResource("49_night_light")]
 position = Vector2(48, 368)
 texture_scale = 0.3375
 night_energy = 0.34
@@ -409,7 +407,7 @@ position = Vector2(117, 367)
 
 [node name="WaveHUD" parent="." unique_id=1126268867 instance=ExtResource("14_wave_hud")]
 
-[node name="DayPhaseAnnouncement" parent="." instance=ExtResource("56_day_announcement")]
+[node name="DayPhaseAnnouncement" parent="." unique_id=1413104370 instance=ExtResource("56_day_announcement")]
 
 [node name="TowerDefenseStatusHUD" parent="." unique_id=1073363921 instance=ExtResource("31_status_hud")]
 visible = false
@@ -421,7 +419,7 @@ visible = false
 
 [node name="ProductionBuildingPanel" parent="." unique_id=1542121819 instance=ExtResource("40_production_panel")]
 
-[node name="ResearchCenterPanel" parent="." instance=ExtResource("44_research_panel")]
+[node name="ResearchCenterPanel" parent="." unique_id=623043955 instance=ExtResource("44_research_panel")]
 
 [node name="PlayerProfilePanel" parent="." unique_id=1216528429 instance=ExtResource("13_profile_panel")]
 
@@ -444,9 +442,9 @@ script = ExtResource("29_session_pool")
 
 [node name="CapooProjectileMotionSystem" parent="." unique_id=1401613609 instance=ExtResource("42_capoo_projectile_motion")]
 
-[node name="CombatRobotDroneMotionSystem" parent="." instance=ExtResource("57_combat_robot_drone_motion")]
+[node name="CombatRobotDroneMotionSystem" parent="." unique_id=1620010670 instance=ExtResource("57_combat_robot_drone_motion")]
 
-[node name="BambooMortarCombatSystem" parent="." instance=ExtResource("45_bamboo_mortar_combat")]
+[node name="BambooMortarCombatSystem" parent="." unique_id=1797124255 instance=ExtResource("45_bamboo_mortar_combat")]
 
 [node name="ZhuangfangyiMerchant" parent="." unique_id=112812860 instance=ExtResource("15_merchant")]
 position = Vector2(96, 81)
@@ -454,16 +452,16 @@ position = Vector2(96, 81)
 [node name="LuoxiMerchant" parent="." unique_id=146965342 instance=ExtResource("20_luoxi")]
 position = Vector2(154, 82)
 
-[node name="LuoxiSpecialGameCoordinator" type="Node" parent="."]
+[node name="LuoxiSpecialGameCoordinator" type="Node" parent="." unique_id=1448867375]
 script = ExtResource("54_luoxi_special_game")
 
-[node name="FateCoordinator" parent="." instance=ExtResource("51_fate_coordinator")]
+[node name="FateCoordinator" parent="." unique_id=1608970438 instance=ExtResource("51_fate_coordinator")]
 
-[node name="XiaocongFateInterlude" parent="." instance=ExtResource("52_xiaocong_interlude")]
+[node name="XiaocongFateInterlude" parent="." unique_id=1863527739 instance=ExtResource("52_xiaocong_interlude")]
 
-[node name="FateFlowCoordinator" parent="." instance=ExtResource("69_fate_flow")]
+[node name="FateFlowCoordinator" parent="." unique_id=1026155624 instance=ExtResource("69_fate_flow")]
 
-[node name="RogueExplorationCoordinator" parent="." instance=ExtResource("75_rogue_exploration")]
+[node name="RogueExplorationCoordinator" parent="." unique_id=1293398259 instance=ExtResource("75_rogue_exploration")]
 
 [node name="BossContainer" type="Node2D" parent="." unique_id=1704115178]
 
@@ -493,42 +491,42 @@ config = ExtResource("8_rrr3j")
 [node name="Spawn1" type="Marker2D" parent="EnemySpawnPoints" unique_id=1332941577]
 position = Vector2(496, 48)
 
-[node name="NightLight" parent="EnemySpawnPoints/Spawn1" instance=ExtResource("49_night_light")]
+[node name="NightLight" parent="EnemySpawnPoints/Spawn1" unique_id=644848047 instance=ExtResource("49_night_light")]
 texture_scale = 0.3375
 night_energy = 0.3
 
 [node name="Spawn2" type="Marker2D" parent="EnemySpawnPoints" unique_id=2023864982]
 position = Vector2(496, 689)
 
-[node name="NightLight" parent="EnemySpawnPoints/Spawn2" instance=ExtResource("49_night_light")]
+[node name="NightLight" parent="EnemySpawnPoints/Spawn2" unique_id=88629800 instance=ExtResource("49_night_light")]
 texture_scale = 0.3375
 night_energy = 0.3
 
 [node name="Spawn3" type="Marker2D" parent="EnemySpawnPoints" unique_id=2118085749]
 position = Vector2(944, 47)
 
-[node name="NightLight" parent="EnemySpawnPoints/Spawn3" instance=ExtResource("49_night_light")]
+[node name="NightLight" parent="EnemySpawnPoints/Spawn3" unique_id=2075666272 instance=ExtResource("49_night_light")]
 texture_scale = 0.3375
 night_energy = 0.3
 
 [node name="Spawn4" type="Marker2D" parent="EnemySpawnPoints" unique_id=1503864728]
 position = Vector2(944, 689)
 
-[node name="NightLight" parent="EnemySpawnPoints/Spawn4" instance=ExtResource("49_night_light")]
+[node name="NightLight" parent="EnemySpawnPoints/Spawn4" unique_id=793517981 instance=ExtResource("49_night_light")]
 texture_scale = 0.3375
 night_energy = 0.3
 
 [node name="Spawn5" type="Marker2D" parent="EnemySpawnPoints" unique_id=1595012356]
 position = Vector2(1137, 224)
 
-[node name="NightLight" parent="EnemySpawnPoints/Spawn5" instance=ExtResource("49_night_light")]
+[node name="NightLight" parent="EnemySpawnPoints/Spawn5" unique_id=127777487 instance=ExtResource("49_night_light")]
 texture_scale = 0.3375
 night_energy = 0.3
 
 [node name="Spawn6" type="Marker2D" parent="EnemySpawnPoints" unique_id=1043502730]
 position = Vector2(1137, 513)
 
-[node name="NightLight" parent="EnemySpawnPoints/Spawn6" instance=ExtResource("49_night_light")]
+[node name="NightLight" parent="EnemySpawnPoints/Spawn6" unique_id=1288696541 instance=ExtResource("49_night_light")]
 texture_scale = 0.3375
 night_energy = 0.3
 
@@ -539,31 +537,31 @@ night_energy = 0.3
 [node name="PlantTerrainDecayTimer" type="Timer" parent="." unique_id=1432322583]
 process_callback = 0
 
-[connection signal="timeout" from="OrangeChargingAuraCoordinator/ReconcileTimer" to="OrangeChargingAuraCoordinator" method="_on_reconcile_timer_timeout"]
 [connection signal="wave_completed" from="EnemyCoordinator" to="CampaignCoordinator" method="complete_current_step"]
-[connection signal="timeout" from="EnemySpawnTimer" to="EnemyCoordinator" method="on_spawn_timer_timeout"]
+[connection signal="base_defeated" from="HomeDefenseCoordinator" to="CampaignCoordinator" method="enter_defeat"]
+[connection signal="boss_escaped" from="HomeDefenseCoordinator" to="BossCoordinator" method="complete_escaped_step_if_ready" flags=3]
+[connection signal="wave_escape_finished" from="HomeDefenseCoordinator" to="EnemyCoordinator" method="finish_home_wave_escape"]
 [connection signal="enemy_retarget_requested" from="PlantRuntimeCoordinator" to="EnemyCoordinator" method="request_retarget"]
-[connection signal="player_runtime_binding_requested" from="PlayerRosterCoordinator" to="." method="bind_player_runtime_context"]
-[connection signal="enemy_retarget_requested" from="PlayerRosterCoordinator" to="EnemyCoordinator" method="request_retarget"]
-[connection signal="personal_inventory_output_committed" from="ProductionCoordinator" to="MultiplayerModeAdapter" method="publish_inventory_changed"]
-[connection signal="research_state_changed" from="ResearchCoordinator" to="PlantRuntimeCoordinator" method="notify_recipe_unlocks_changed"]
 [connection signal="plant_removed_for_target_cleanup" from="PlantRuntimeCoordinator" to="EnemyCoordinator" method="clear_removed_plant_objective"]
 [connection signal="progression_plant_placed" from="PlantRuntimeCoordinator" to="CampaignCoordinator" method="track_progression_plant_placement"]
+[connection signal="enemy_retarget_requested" from="PlayerRosterCoordinator" to="EnemyCoordinator" method="request_retarget"]
+[connection signal="player_runtime_binding_requested" from="PlayerRosterCoordinator" to="." method="bind_player_runtime_context"]
+[connection signal="personal_inventory_output_committed" from="ProductionCoordinator" to="MultiplayerModeAdapter" method="publish_inventory_changed"]
+[connection signal="timeout" from="OrangeChargingAuraCoordinator/ReconcileTimer" to="OrangeChargingAuraCoordinator" method="_on_reconcile_timer_timeout"]
+[connection signal="research_state_changed" from="ResearchCoordinator" to="PlantRuntimeCoordinator" method="notify_recipe_unlocks_changed"]
 [connection signal="enemy_reached_home" from="HomeGateController" to="HomeDefenseCoordinator" method="on_enemy_reached_home"]
-[connection signal="base_defeated" from="HomeDefenseCoordinator" to="CampaignCoordinator" method="enter_defeat"]
-[connection signal="boss_escaped" from="HomeDefenseCoordinator" to="BossCoordinator" method="complete_escaped_step_if_ready" flags=1]
-[connection signal="wave_escape_finished" from="HomeDefenseCoordinator" to="EnemyCoordinator" method="finish_home_wave_escape"]
-[connection signal="plant_placed" from="PlantSystem" to="PlantRuntimeCoordinator" method="handle_plant_placed"]
-[connection signal="plant_removed" from="PlantSystem" to="PlantRuntimeCoordinator" method="handle_plant_removed"]
-[connection signal="timeout" from="PlantTerrainDecayTimer" to="PlantRuntimeCoordinator" method="apply_unsupported_terrain_damage_tick"]
-[connection signal="timeout" from="StateTimer" to="CampaignCoordinator" method="on_state_timer_timeout"]
 [connection signal="profile_requested" from="CurrencyHUD" to="PresentationCoordinator" method="open_player_profile"]
 [connection signal="settings_requested" from="CurrencyHUD" to="PresentationCoordinator" method="open_settings"]
 [connection signal="return_to_lobby_requested" from="WaveHUD" to="PresentationCoordinator" method="_on_wave_hud_return_to_lobby_requested"]
 [connection signal="start_wave_requested" from="WaveHUD" to="PresentationCoordinator" method="_on_wave_hud_start_wave_requested"]
-[connection signal="multiplayer_upgrade_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_upgrade_requested"]
-[connection signal="multiplayer_inventory_item_use_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_use_requested"]
-[connection signal="multiplayer_inventory_item_discard_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_discard_requested"]
-[connection signal="multiplayer_simple_crafting_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_simple_crafting_requested"]
-[connection signal="multiplayer_simple_crafting_cancel_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_simple_crafting_cancel_requested"]
 [connection signal="building_placement_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_building_placement_requested"]
+[connection signal="multiplayer_inventory_item_discard_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_discard_requested"]
+[connection signal="multiplayer_inventory_item_use_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_use_requested"]
+[connection signal="multiplayer_simple_crafting_cancel_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_simple_crafting_cancel_requested"]
+[connection signal="multiplayer_simple_crafting_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_simple_crafting_requested"]
+[connection signal="multiplayer_upgrade_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_upgrade_requested"]
+[connection signal="plant_placed" from="PlantSystem" to="PlantRuntimeCoordinator" method="handle_plant_placed"]
+[connection signal="plant_removed" from="PlantSystem" to="PlantRuntimeCoordinator" method="handle_plant_removed"]
+[connection signal="timeout" from="EnemySpawnTimer" to="EnemyCoordinator" method="on_spawn_timer_timeout"]
+[connection signal="timeout" from="StateTimer" to="CampaignCoordinator" method="on_state_timer_timeout"]
+[connection signal="timeout" from="PlantTerrainDecayTimer" to="PlantRuntimeCoordinator" method="apply_unsupported_terrain_damage_tick"]

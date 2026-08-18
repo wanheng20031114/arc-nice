@@ -22,7 +22,7 @@ const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 const EXPECTED_TOWER_SCENE_UID := "uid://dy51i4e27gaoi"
 const EXPECTED_ADAPTER_SCENE_UID := "uid://crap4mx7t2k6r"
-const EXPECTED_MP_GAME_RPC_COUNT := 144
+const EXPECTED_MP_GAME_RPC_COUNT := 145
 
 var failures: Array[String] = []
 var test_root: Node2D = null
@@ -98,9 +98,9 @@ func _test_static_contract() -> void:
 	)
 	_expect(
 		tower_scene.count(
-			"[node name=\"MultiplayerModeAdapter\" parent=\".\" instance="
+			"[node name=\"MultiplayerModeAdapter\" parent=\".\""
 		) == 1,
-		"塔防根场景必须且只能静态实例化一个 MultiplayerModeAdapter。"
+		"塔防根场景必须且只能静态声明一个 MultiplayerModeAdapter。"
 	)
 	_expect(
 		tower_scene.count(
@@ -118,16 +118,16 @@ func _test_static_contract() -> void:
 		"TowerDefenseGame 必须显式注入并核验塔防 MultiplayerAdapter。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 85
+		NET_CONSTANTS.PROTOCOL_VERSION == 86
 		and GameModeCatalog.MODE_TOWER_DEFENSE == 1,
-		"塔防 wire=1 与协议 v85 必须保持冻结。"
+		"塔防 wire=1 与协议 v86 必须保持冻结。"
 	)
 	var mp_game_script := load(MP_GAME_SOURCE_PATH) as Script
 	_expect(mp_game_script != null, "MpGame 脚本必须可加载。")
 	if mp_game_script != null:
 		_expect(
 			mp_game_script.get_rpc_config().size() == EXPECTED_MP_GAME_RPC_COUNT,
-			"MpGame 有效 RPC 数量必须保持 144。"
+			"MpGame 有效 RPC 数量必须保持 145。"
 		)
 	var mp_game_source := FileAccess.get_file_as_string(MP_GAME_SOURCE_PATH)
 	_expect(

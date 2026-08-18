@@ -101,8 +101,8 @@ func _test_static_boundary(
 	var rpc_pattern := RegEx.new()
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
-		rpc_pattern.search_all(source).size() == 144,
-		"Collectible presentation extraction must preserve all 144 protocol-v85 MpGame RPC facades."
+		rpc_pattern.search_all(source).size() == 145,
+		"Collectible presentation extraction must preserve all 145 protocol-v86 MpGame RPC facades."
 	)
 	_expect(
 		source.contains(

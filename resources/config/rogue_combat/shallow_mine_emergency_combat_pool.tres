@@ -5,7 +5,7 @@
 [ext_resource type="Resource" path="res://resources/config/rogue_combat/emergency_narrow_road_01.tres" id="3_narrow_road"]
 [ext_resource type="Resource" uid="uid://cc4eoqtty1wo2" path="res://resources/config/rogue_combat/emergency_underground_church_01.tres" id="4_underground_church"]
 [ext_resource type="Resource" uid="uid://db6ur8xjynyi3" path="res://resources/config/rogue_combat/emergency_abandoned_mine_01.tres" id="5_abandoned_mine"]
-[ext_resource type="Resource" path="res://resources/config/rogue_combat/emergency_underground_sewer_01.tres" id="6_underground_sewer"]
+[ext_resource type="Resource" uid="uid://4pyiwoaoj4g4" path="res://resources/config/rogue_combat/emergency_underground_sewer_01.tres" id="6_underground_sewer"]
 
 [sub_resource type="Resource" id="EmergencyNarrowRoadEntry"]
 script = ExtResource("2_entry_script")

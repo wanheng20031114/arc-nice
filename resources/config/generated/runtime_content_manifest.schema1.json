@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "fec71be1bfd1f4893c2862062a9f816aa8792ff974d4b2fcc8165798c951fb27",
+	"content_sha256": "6142a38793d4a4bd8e6aa8ab9f2ee7abd4b191b9fd06b038ebdd04253e46452f",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -3622,35 +3622,35 @@
 		},
 		{
 			"path": "res://resources/config/research/agave_cannon_muzzle_improvement.tres",
-			"sha256": "6bace922b44b77c8fb1f8d3100f7b27ef1f37e6529b178f5b4bcc64e09cfdaa1"
+			"sha256": "36906b02e2bc4a98e111ceed7b8e974beb8a1a8d42e9671c2a14554086206941"
 		},
 		{
 			"path": "res://resources/config/research/bamboo_mortar_concussive_modification.tres",
-			"sha256": "e45343312eaf9c5356211f05bce477edaca8e8cfcc5aeeda3763f0edc1ef283a"
+			"sha256": "83d370e1df6a8d5219d3571431b21c56c149f260d8b7e3096d479f008db40548"
 		},
 		{
 			"path": "res://resources/config/research/bamboo_mortar_crafting.tres",
-			"sha256": "343ccf7bdaf33daa2b2f47ce362833694ec6fdf78c6e8988fb6ec4213667ec63"
+			"sha256": "a9c5da2b2893f489499d76e2c31158d1e09380d50c2748aea90a31890c5891be"
 		},
 		{
 			"path": "res://resources/config/research/building_defense.tres",
-			"sha256": "d40d160dfd4f4ac61b9d6f7f6c3cd25d6ce60dd65ca3f1039ee065a6e1d57af1"
+			"sha256": "e64ecdad53766715038b34fc45b01ee23f1df8e3ea0e893d84acebb80b6ad1e7"
 		},
 		{
 			"path": "res://resources/config/research/building_defense_ii.tres",
-			"sha256": "6c7819f4db7a8579ecdb782a71bc4fac56a3630b2c2a1cebdcec0f6b7417aecf"
+			"sha256": "135a812bd21bc62d47b6d6c0de7f9b984279d7eddac4dcf1e522280feb078f02"
 		},
 		{
 			"path": "res://resources/config/research/building_defense_iii.tres",
-			"sha256": "bb67f277b705db8cdcec404021bffe1c5b1904141b2a6f8e32a66db30f07d806"
+			"sha256": "3855dd43a675b843d1386e59dd323ee302842624c05bb6e480c07e8d8b9a6c54"
 		},
 		{
 			"path": "res://resources/config/research/corn_machine_gun_cooling_system_improvement.tres",
-			"sha256": "9f40faf71f1477631d6c1090ce212fe62090e7914a0dad492effce0cdd11134e"
+			"sha256": "7f74d6e5b749e2c747174749800aca2e953c939dd62d670dfe70ad36d26c6710"
 		},
 		{
 			"path": "res://resources/config/research/fence_reinforcement.tres",
-			"sha256": "f2f3457967106cafde8cf25b4026d7d16232296fb43dcb1352e58bd7fe457bd9"
+			"sha256": "5cece57f642c90b0ef5c3d9a8010950d453e77ce54fae6c03fa1ca588c0a5e6d"
 		},
 		{
 			"path": "res://resources/config/research/global_research_additive_modifier_effect.gd",
@@ -3690,31 +3690,31 @@
 		},
 		{
 			"path": "res://resources/config/research/grape_arc_tower_surge_modification.tres",
-			"sha256": "cdf11731d9c81abc7b4165042660c30ce2e0c755285e9e9360e9c3978e09e52d"
+			"sha256": "a9ef77b15009ffeea92f89c9c3b4d58118fa50d92e23c685d5ec4f77c9253e55"
 		},
 		{
 			"path": "res://resources/config/research/hydrangea_rain_tower_crafting.tres",
-			"sha256": "2f723b82fc5b75ec58cf19478c36a29752eb2bce23af1986c57d982ec96302ff"
+			"sha256": "569a07d9a8716ca20a503f5a93c12a9697fd58a3e2e561e7f70e9eee8b150e9e"
 		},
 		{
 			"path": "res://resources/config/research/orange_charging_tower_crafting.tres",
-			"sha256": "0a17a2746a9e8c2f6fefbacc692496f079e5925067e65161b8fed3a8cf636c32"
+			"sha256": "b19f894196471136f3fcbc8da7c039d8b8b3e642105a1c8ef2abeec5f75e462a"
 		},
 		{
 			"path": "res://resources/config/research/player_move_speed.tres",
-			"sha256": "ed29218d5a898751e28a28c348146f8a14fe5e3d1c53acbbbfdd03d6d5d93ab3"
+			"sha256": "afd7e8bae65621b3a581a5e7247ee576f250addb7a1a6b338e18c9a613d8db20"
 		},
 		{
 			"path": "res://resources/config/research/vegetation_enhancement.tres",
-			"sha256": "a7c2b96bc781f067519fdc9b7bc8fe4b782ff0fa5e8d16e8696f7972860d8a9a"
+			"sha256": "d80fc44645e4e8acec740f64ed8569d0482f6cbbff8121a5099e26e36ddfc571"
 		},
 		{
 			"path": "res://resources/config/research/vegetation_stake_spread_enhancement.tres",
-			"sha256": "8db8969ab656a47a350711e1c4c61fa6bc5d02a0c2b753794aa69730deea3592"
+			"sha256": "c46a665c4634eed319ce52301928ef10c7a4634a4855e58b96972ee0b7f6c7a8"
 		},
 		{
 			"path": "res://resources/config/research/water_collection_rate_enhancement.tres",
-			"sha256": "9841ee2f1f3ad21d221b41f3f5e567adb4acecff2c6e61d048b9d30ba1e41d7b"
+			"sha256": "8468ad11a887971051a70d3b59b2d157edc0d5987a0b45c936edfe7e9865776c"
 		},
 		{
 			"path": "res://resources/config/waves/wave_campaign_config.gd",

@@ -737,6 +737,58 @@ func query_living_plants_in_logical_radius_into(
 			result.append(plant)
 
 
+## Returns the single nearest living building inside an exact logical-cell
+## circle. This uses the complete plant index (not the enemy-objective subset),
+## so warehouses, research centers, support towers and fences are all eligible.
+## Equal-distance candidates use the stable multiplayer net-id/position order.
+func find_nearest_living_plant_in_logical_radius(
+	from_global_position: Vector2,
+	max_radius_cells: float
+) -> PlantDefense:
+	if (
+		ground_tile_map == null
+		or ground_tile_map.tile_set == null
+		or plant_footprints.is_empty()
+		or not from_global_position.is_finite()
+		or max_radius_cells < 0.0
+		or not is_finite(max_radius_cells)
+	):
+		return null
+	var tile_size := Vector2(ground_tile_map.tile_set.tile_size).abs()
+	if tile_size.x <= 0.0 or tile_size.y <= 0.0:
+		return null
+	var from_local := ground_tile_map.to_local(from_global_position)
+	var maximum_distance_squared := max_radius_cells * max_radius_cells
+	var nearest: PlantDefense = null
+	var nearest_distance_squared := INF
+	var candidates := _query_plant_targets_for_logical_radius(
+		from_global_position,
+		tile_size,
+		max_radius_cells
+	)
+	for candidate_variant in candidates:
+		var candidate := candidate_variant as PlantDefense
+		if not _is_living_plant_target(candidate):
+			continue
+		var candidate_local := ground_tile_map.to_local(candidate.global_position)
+		var offset_in_cells := Vector2(
+			(candidate_local.x - from_local.x) / tile_size.x,
+			(candidate_local.y - from_local.y) / tile_size.y
+		)
+		var distance_squared := offset_in_cells.length_squared()
+		if distance_squared > maximum_distance_squared:
+			continue
+		if PlantDefense.is_interaction_candidate_preferred(
+			candidate,
+			distance_squared,
+			nearest,
+			nearest_distance_squared
+		):
+			nearest = candidate
+			nearest_distance_squared = distance_squared
+	return nearest
+
+
 ## Fills caller-owned storage with living buildings whose authoritative anchors
 ## are inside the exact closed world AABB. This is the allocation-free viewport
 ## query for systems such as the minimap: distant stationary populations remain

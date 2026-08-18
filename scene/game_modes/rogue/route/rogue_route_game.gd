@@ -308,6 +308,13 @@ func _enter_tree() -> void:
 	# 嵌入式路线从首帧起就不能与塔防争夺 WorldEnvironment / Camera2D。
 	# 父节点 _enter_tree 先于子节点执行，但完整场景树已可按路径访问。
 	if embedded_session:
+		# Tower 场景把该 CanvasLayer 的 authored visibility 设为 false，
+		# 只为避免 Rogue HUD 在编辑器里遮住塔防地图。运行时先恢复其
+		# 正常可见基线，再交给 embedded presentation lease 保存/隐藏；
+		# 首次正式进入探索时才能正确恢复 HUD，且不会影响独立 Rogue 场景。
+		var embedded_route_hud := get_node_or_null("HUD") as CanvasLayer
+		if embedded_route_hud != null:
+			embedded_route_hud.visible = true
 		visible = false
 		_set_embedded_canvas_layers_visible(false)
 		var route_environment := get_node_or_null(

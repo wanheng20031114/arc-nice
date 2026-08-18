@@ -475,7 +475,28 @@ func _physics_process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _is_tower_runtime_suspended_for_rogue():
 		return
+	if event.is_action_pressed(&"delete"):
+		var key_event := event as InputEventKey
+		if key_event != null and key_event.echo:
+			return
+		if _can_request_nearest_plant_destruction():
+			tower_multiplayer_mode_adapter.request_nearest_plant_destruction()
+		get_viewport().set_input_as_handled()
+		return
 	presentation_coordinator.handle_unhandled_input(event)
+
+
+func _can_request_nearest_plant_destruction() -> bool:
+	return (
+		player != null
+		and is_instance_valid(player)
+		and not player.is_dead
+		and tower_multiplayer_mode_adapter != null
+		and plant_placement_coordinator != null
+		and not plant_placement_coordinator.has_exclusive_modal_open()
+		and plant_placement_controller != null
+		and not plant_placement_controller.is_active()
+	)
 
 
 func _is_tower_runtime_suspended_for_rogue() -> bool:

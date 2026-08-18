@@ -12,6 +12,8 @@ const CLIENT_PENDING_PLANT_HEALTH_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT
 const CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT * 2
 const PLANT_PLACEMENT_RATE_PER_SECOND := 4.0
 const PLANT_PLACEMENT_RATE_BURST := 8.0
+const PLANT_DESTRUCTION_RATE_PER_SECOND := 4.0
+const PLANT_DESTRUCTION_RATE_BURST := 6.0
 const PLANT_ID_WIRE_MAX_LENGTH := 128
 const INVENTORY_ITEM_CONFIG_PATH_WIRE_MAX_LENGTH := 256
 const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96
@@ -43,6 +45,10 @@ signal inventory_plant_placement_request_to_host(
 	slot_index: int,
 	expected_inventory_revision: int,
 	item_config_path: String
+)
+signal nearest_plant_destruction_request_to_host(
+	request_id: int,
+	target_net_id: int
 )
 signal rpc_to_peer_requested(
 	peer_id: int,
@@ -132,6 +138,9 @@ var _tower_economy: MpTowerEconomyCoordinator = null
 
 var _last_plant_placement_request_ids: Dictionary = {}
 var _plant_placement_rate_buckets: Dictionary = {}
+var _next_local_plant_destruction_request_id := 1
+var _last_plant_destruction_request_ids: Dictionary = {}
+var _plant_destruction_rate_buckets: Dictionary = {}
 var _pending_plant_health_updates: Dictionary = {}
 var _plant_health_flush_time_left := PLANT_HEALTH_FLUSH_INTERVAL_SECONDS
 
@@ -260,6 +269,9 @@ func is_bound() -> bool:
 func reset_session_state() -> void:
 	_last_plant_placement_request_ids.clear()
 	_plant_placement_rate_buckets.clear()
+	_next_local_plant_destruction_request_id = 1
+	_last_plant_destruction_request_ids.clear()
+	_plant_destruction_rate_buckets.clear()
 	_pending_plant_health_updates.clear()
 	_plant_health_flush_time_left = PLANT_HEALTH_FLUSH_INTERVAL_SECONDS
 	_clear_remote_plant_health_state()
@@ -272,6 +284,8 @@ func clear_peer(peer_id: int) -> void:
 		return
 	_last_plant_placement_request_ids.erase(peer_id)
 	_plant_placement_rate_buckets.erase(peer_id)
+	_last_plant_destruction_request_ids.erase(peer_id)
+	_plant_destruction_rate_buckets.erase(peer_id)
 	_terrain_snapshot_request_rate_buckets.erase(peer_id)
 
 
@@ -1567,6 +1581,61 @@ func _on_local_inventory_plant_placement_requested(
 		)
 
 
+func _on_local_nearest_plant_destruction_requested(target_net_id: int) -> void:
+	if not is_bound() or target_net_id <= 0:
+		return
+	var request_id := _next_local_plant_destruction_request_id
+	_next_local_plant_destruction_request_id += 1
+	if _net_manager.is_host():
+		_handle_authoritative_nearest_plant_destruction_request(
+			_net_manager.get_local_peer_id(),
+			request_id,
+			target_net_id
+		)
+	elif _net_manager.is_client():
+		nearest_plant_destruction_request_to_host.emit(
+			request_id,
+			target_net_id
+		)
+
+
+func handle_remote_nearest_plant_destruction_request(
+	requester_peer_id: int,
+	request_id: int,
+	target_net_id: int
+) -> void:
+	_handle_authoritative_nearest_plant_destruction_request(
+		requester_peer_id,
+		request_id,
+		target_net_id
+	)
+
+
+func _handle_authoritative_nearest_plant_destruction_request(
+	requester_peer_id: int,
+	request_id: int,
+	target_net_id: int
+) -> void:
+	if not _is_host_bound():
+		return
+	if not _transactions.consume_remote_transaction_admission(requester_peer_id):
+		return
+	if request_id <= 0 or target_net_id <= 0:
+		return
+	if not _consume_plant_destruction_rate_token(requester_peer_id):
+		return
+	var last_request_id := int(
+		_last_plant_destruction_request_ids.get(requester_peer_id, 0)
+	)
+	if request_id <= last_request_id:
+		return
+	_last_plant_destruction_request_ids[requester_peer_id] = request_id
+	_mode_adapter.request_authoritative_nearest_plant_destruction(
+		requester_peer_id,
+		target_net_id
+	)
+
+
 func _handle_authoritative_plant_placement_request(
 	requester_peer_id: int,
 	request_id: int,
@@ -1705,6 +1774,37 @@ func _consume_peer_rate_token(peer_id: int, now_seconds: float = -1.0) -> bool:
 	tokens = minf(
 		PLANT_PLACEMENT_RATE_BURST,
 		tokens + maxf(now - last_time, 0.0) * PLANT_PLACEMENT_RATE_PER_SECOND
+	)
+	var accepted := tokens >= 1.0
+	if accepted:
+		tokens -= 1.0
+	bucket["tokens"] = tokens
+	bucket["last_time"] = now
+	return accepted
+
+
+func _consume_plant_destruction_rate_token(
+	peer_id: int,
+	now_seconds: float = -1.0
+) -> bool:
+	if peer_id <= 0:
+		return false
+	var now := Time.get_ticks_msec() / 1000.0 if now_seconds < 0.0 else now_seconds
+	var bucket: Dictionary
+	if _plant_destruction_rate_buckets.has(peer_id):
+		bucket = _plant_destruction_rate_buckets[peer_id] as Dictionary
+	else:
+		bucket = {
+			"tokens": PLANT_DESTRUCTION_RATE_BURST,
+			"last_time": now,
+		}
+		_plant_destruction_rate_buckets[peer_id] = bucket
+	var tokens := float(bucket.get("tokens", PLANT_DESTRUCTION_RATE_BURST))
+	var last_time := float(bucket.get("last_time", now))
+	tokens = minf(
+		PLANT_DESTRUCTION_RATE_BURST,
+		tokens
+		+ maxf(now - last_time, 0.0) * PLANT_DESTRUCTION_RATE_PER_SECOND
 	)
 	var accepted := tokens >= 1.0
 	if accepted:
@@ -2487,6 +2587,10 @@ func _connect_mode_adapter() -> void:
 			_mode_adapter.inventory_plant_placement_requested,
 			_on_local_inventory_plant_placement_requested,
 		],
+		[
+			_mode_adapter.nearest_plant_destruction_requested,
+			_on_local_nearest_plant_destruction_requested,
+		],
 		[_mode_adapter.plant_spawned, _on_host_plant_spawned],
 		[_mode_adapter.plant_placement_rejected, _on_host_plant_placement_rejected],
 		[_mode_adapter.plant_health_changed, _on_host_plant_health_changed],
@@ -2519,6 +2623,10 @@ func _disconnect_mode_adapter() -> void:
 		[
 			_mode_adapter.inventory_plant_placement_requested,
 			_on_local_inventory_plant_placement_requested,
+		],
+		[
+			_mode_adapter.nearest_plant_destruction_requested,
+			_on_local_nearest_plant_destruction_requested,
 		],
 		[_mode_adapter.plant_spawned, _on_host_plant_spawned],
 		[_mode_adapter.plant_placement_rejected, _on_host_plant_placement_rejected],
