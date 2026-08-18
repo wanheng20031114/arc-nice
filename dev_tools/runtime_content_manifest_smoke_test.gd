@@ -17,13 +17,25 @@ const LINGLAN_BOSS_DYNAMIC_SCENE_PATHS := [
 const WOOD_PROCESSING_STATION_PATH := (
 	"res://scene/plant_defense/wood_processing_station.tscn"
 )
+const GLOBAL_RESEARCH_REGISTRY_PATH := (
+	"res://resources/config/research/global_research_registry.gd"
+)
+const RESEARCH_EFFECT_SCRIPT_PATHS := [
+	"res://resources/config/research/global_research_effect.gd",
+	"res://resources/config/research/global_research_additive_modifier_effect.gd",
+	"res://resources/config/research/global_research_multiplier_modifier_effect.gd",
+	"res://resources/config/research/global_research_recipe_unlock_effect.gd",
+	"res://resources/config/research/global_research_tower_on_hit_slow_effect.gd",
+	"res://resources/config/research/global_research_tower_on_hit_timed_status_effect.gd",
+	"res://resources/config/research/global_research_tower_conditional_damage_bonus_effect.gd",
+]
 const ENHANCEMENT_TOWER_RECIPE_PATHS := [
 	"res://resources/config/production/life_tower_assembly.tres",
 	"res://resources/config/production/speed_tower_assembly.tres",
 	"res://resources/config/production/attack_speed_tower_assembly.tres",
 ]
 const GOLDEN_CONTENT_SHA256 := (
-	"b6fb3cf4a5e851463aba9089daab8404685d8c6815ec5b407a5ad72b2f4f8434"
+	"fec71be1bfd1f4893c2862062a9f816aa8792ff974d4b2fcc8165798c951fb27"
 )
 
 var failures: Array[String] = []
@@ -118,6 +130,7 @@ func _validate_manifest(manifest: Dictionary) -> void:
 		canonical_lines,
 		dependency_hashes
 	)
+	_validate_research_dependency_closure(canonical_lines, dependency_hashes)
 
 
 func _validate_production_recipe_dependency_closure(
@@ -145,6 +158,46 @@ func _validate_production_recipe_dependency_closure(
 			recipe_path,
 			mutated_recipe_source.sha256_text(),
 			recipe_path
+		)
+
+
+func _validate_research_dependency_closure(
+	canonical_lines: PackedStringArray,
+	dependency_hashes: Dictionary[String, String]
+) -> void:
+	_expect(
+		dependency_hashes.has(GLOBAL_RESEARCH_REGISTRY_PATH),
+		"全局科研注册表必须作为多人科研内容摘要的显式玩法依赖根。"
+	)
+	var configs := GlobalResearchRegistry.get_all_configs()
+	_expect(
+		GlobalResearchRegistry.is_registry_valid() and configs.size() == 15,
+		"内容摘要验证必须覆盖完整15项类型化科研注册表。"
+	)
+	for config in configs:
+		var research_path := config.resource_path
+		_expect(
+			dependency_hashes.has(research_path),
+			"每项科研资源都必须进入多人内容摘要：%s。" % research_path
+		)
+		if not dependency_hashes.has(research_path):
+			continue
+		var mutated_source := (
+			_get_canonical_text(research_path)
+			+ "\n# research manifest mutation fixture"
+		)
+		_expect_dependency_mutation_changes_digest(
+			canonical_lines,
+			research_path,
+			mutated_source.sha256_text(),
+			research_path
+		)
+	for effect_script_path_variant in RESEARCH_EFFECT_SCRIPT_PATHS:
+		var effect_script_path := str(effect_script_path_variant)
+		_expect(
+			dependency_hashes.has(effect_script_path),
+			"类型化科研效果脚本必须进入多人内容摘要：%s。"
+			% effect_script_path
 		)
 
 

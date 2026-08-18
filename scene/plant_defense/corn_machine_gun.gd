@@ -19,7 +19,13 @@ const AIM_RETURN_DELAY_SECONDS := 1.0
 const AIM_RETURN_DURATION_SECONDS := 0.25
 const TRACER_MAX_LENGTH := 20.0
 const BURST_TIME_EPSILON := 0.00001
-const PROXY_BURST_EXPIRY_SECONDS := 0.32
+const PROXY_BURST_EXPIRY_MARGIN_SECONDS := 0.02
+# Public compatibility value for the authored six-shot burst. Runtime expiry is
+# derived from each action's frozen shot count by _get_burst_expiry_seconds().
+const PROXY_BURST_EXPIRY_SECONDS := (
+	float(DEFAULT_BURST_COUNT - 1) * DEFAULT_BURST_SHOT_INTERVAL
+	+ PROXY_BURST_EXPIRY_MARGIN_SECONDS
+)
 const LINEAR_BLOCKED_TARGET_ATTEMPTS := 3
 const INITIAL_ATTACK_DELAY_MIN_SECONDS := 0.05
 const ATTACK_PHASE_GOLDEN_RATIO := 0.61803398875
@@ -48,12 +54,14 @@ var configured_attack_damage := DEFAULT_ATTACK_DAMAGE
 var configured_attack_range := DEFAULT_ATTACK_RANGE
 var configured_burst_count := DEFAULT_BURST_COUNT
 var configured_burst_shot_interval := DEFAULT_BURST_SHOT_INTERVAL
+var research_burst_shot_count_bonus := 0
 
 var burst_active := false
 var burst_authoritative := false
 var burst_direction := Vector2.RIGHT
 var burst_elapsed_seconds := 0.0
 var burst_next_shot_index := 0
+var active_burst_shot_count := DEFAULT_BURST_COUNT
 var burst_action_id := 0
 var burst_muzzle_position := Vector2.ZERO
 var next_authoritative_action_id := 0
@@ -101,7 +109,7 @@ func _on_setup_completed() -> void:
 	_set_ray_query_segment(Vector2.ZERO, Vector2.ZERO)
 	configured_attack_damage = maxi(config.attack_damage, 0)
 	configured_attack_range = maxf(config.attack_range, 0.0)
-	configured_burst_count = maxi(config.attack_burst_count, 1)
+	_refresh_configured_burst_count()
 	configured_burst_shot_interval = maxf(config.attack_burst_shot_interval, 0.0)
 
 	health_bar.call("setup", max_health, current_health)
@@ -210,6 +218,22 @@ func _on_health_changed(new_health: int, new_max_health: int) -> void:
 	health_bar.call("set_health", new_health, new_max_health)
 
 
+func set_research_burst_shot_count_bonus(bonus: int) -> void:
+	research_burst_shot_count_bonus = maxi(bonus, 0)
+	_refresh_configured_burst_count()
+
+
+func get_research_burst_shot_count_bonus() -> int:
+	return research_burst_shot_count_bonus
+
+
+func _refresh_configured_burst_count() -> void:
+	var base_burst_count := (
+		config.attack_burst_count if config != null else DEFAULT_BURST_COUNT
+	)
+	configured_burst_count = maxi(base_burst_count, 1) + research_burst_shot_count_bonus
+
+
 func _get_authored_attack_interval() -> float:
 	var authored_interval := config.get_attack_interval() if config != null else 0.0
 	return authored_interval if authored_interval > 0.0 else DEFAULT_ATTACK_INTERVAL
@@ -257,6 +281,9 @@ func _start_authoritative_burst(direction: Vector2) -> void:
 	next_authoritative_action_id += 1
 	var action_id := next_authoritative_action_id
 	var safe_direction := direction.normalized()
+	# Research can complete while an already-started burst is still firing. Freeze
+	# the authored shot count once per action so that one burst cannot grow midway.
+	var shot_count := configured_burst_count
 	if (
 		tower_multiplayer_mode_adapter != null
 		and is_instance_valid(tower_multiplayer_mode_adapter)
@@ -264,37 +291,47 @@ func _start_authoritative_burst(direction: Vector2) -> void:
 		tower_multiplayer_mode_adapter.queue_corn_machine_gun_burst_visual(
 			int(get_meta(&"net_id", 0)),
 			action_id,
-			safe_direction
+			safe_direction,
+			shot_count
 		)
-	_begin_burst(safe_direction, action_id, 0.0, true)
+	_begin_burst(safe_direction, action_id, 0.0, true, shot_count)
 
 
 func play_multiplayer_burst(
 	direction: Vector2,
 	action_id: int,
-	elapsed_seconds: float
+	elapsed_seconds: float,
+	shot_count: int
 ) -> void:
 	if (
 		not is_multiplayer_proxy
 		or is_dead
 		or action_id <= latest_proxy_action_id
 		or direction == Vector2.ZERO
+		or shot_count <= 0
 	):
 		return
 	latest_proxy_action_id = action_id
 	var safe_elapsed := maxf(elapsed_seconds, 0.0)
-	if safe_elapsed >= PROXY_BURST_EXPIRY_SECONDS:
+	if safe_elapsed >= _get_burst_expiry_seconds(shot_count):
 		if burst_active:
 			_cancel_burst(true)
 		return
-	_begin_burst(direction.normalized(), action_id, safe_elapsed, false)
+	_begin_burst(
+		direction.normalized(),
+		action_id,
+		safe_elapsed,
+		false,
+		shot_count
+	)
 
 
 func _begin_burst(
 	direction: Vector2,
 	action_id: int,
 	elapsed_seconds: float,
-	authoritative: bool
+	authoritative: bool,
+	shot_count: int
 ) -> void:
 	_cancel_aim_return()
 	_stop_idle_aim()
@@ -304,6 +341,7 @@ func _begin_burst(
 	burst_direction = direction.normalized() if direction != Vector2.ZERO else Vector2.RIGHT
 	burst_elapsed_seconds = maxf(elapsed_seconds, 0.0)
 	burst_action_id = action_id
+	active_burst_shot_count = shot_count
 	burst_next_shot_index = (
 		0 if authoritative else _get_first_future_proxy_shot_index(burst_elapsed_seconds)
 	)
@@ -331,16 +369,16 @@ func _get_first_future_proxy_shot_index(elapsed_seconds: float) -> int:
 	if elapsed_seconds <= BURST_TIME_EPSILON:
 		return 0
 	if configured_burst_shot_interval <= 0.0:
-		return configured_burst_count
+		return active_burst_shot_count
 	return clampi(
 		floori(elapsed_seconds / configured_burst_shot_interval) + 1,
 		0,
-		configured_burst_count
+		active_burst_shot_count
 	)
 
 
 func _emit_due_burst_shots() -> void:
-	while burst_active and burst_next_shot_index < configured_burst_count:
+	while burst_active and burst_next_shot_index < active_burst_shot_count:
 		var scheduled_time := (
 			float(burst_next_shot_index) * configured_burst_shot_interval
 		)
@@ -350,8 +388,15 @@ func _emit_due_burst_shots() -> void:
 		burst_next_shot_index += 1
 		_fire_locked_hitscan(shot_index, burst_authoritative)
 
-	if burst_active and burst_next_shot_index >= configured_burst_count:
+	if burst_active and burst_next_shot_index >= active_burst_shot_count:
 		_finish_burst()
+
+
+func _get_burst_expiry_seconds(shot_count: int) -> float:
+	return (
+		float(maxi(shot_count - 1, 0)) * configured_burst_shot_interval
+		+ PROXY_BURST_EXPIRY_MARGIN_SECONDS
+	)
 
 
 func _fire_locked_hitscan(shot_index: int, authoritative: bool) -> void:
@@ -532,6 +577,7 @@ func _cancel_burst(restart_idle: bool) -> void:
 	burst_authoritative = false
 	burst_elapsed_seconds = 0.0
 	burst_next_shot_index = 0
+	active_burst_shot_count = configured_burst_count
 	burst_action_id = 0
 	set_physics_process(false)
 	if turret_sprite != null:

@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="GlobalResearchConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/research/global_research_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="2_plank"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="3_sapling"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="4_water"]
+[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="5_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="6_effect_base"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_additive_modifier_effect.gd" id="7_effect_script"]
+
+[sub_resource type="Resource" id="Effect_building_physical_defense"]
+script = ExtResource("7_effect_script")
+attribute_id = &"building.all.physical_defense"
+bonus = 5.0
+
+[resource]
+script = ExtResource("1_script")
+research_id = &"building_defense_ii"
+display_name = "建筑结构强化II"
+description = "完成建筑结构强化I后可研究；提交共享仓库材料，完成后本局所有建筑再获得5点物理防御。"
+category_id = &"attribute"
+prerequisite_research_id = &"building_defense"
+input_items = Array[ExtResource("5_pickup_script")]([ExtResource("2_plank"), ExtResource("3_sapling"), ExtResource("4_water")])
+input_amounts = Array[int]([50, 30, 50])
+duration_seconds = 50.0
+effects = Array[ExtResource("6_effect_base")]([SubResource("Effect_building_physical_defense")])

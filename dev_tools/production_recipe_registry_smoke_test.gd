@@ -228,52 +228,69 @@ func _test_research_gate_closure() -> void:
 		)
 	for research in GlobalResearchRegistry.get_all_configs():
 		_expect(research.is_valid(), "登记科研必须保持有效：%s。" % research.research_id)
-		if research.unlocked_simple_crafting_recipe_id != &"":
-			var simple_recipe := RecipeRegistry.get_recipe(
-				research.unlocked_simple_crafting_recipe_id
+		for effect in research.effects:
+			var unlock := effect as GlobalResearchRecipeUnlockEffect
+			if unlock == null:
+				continue
+			var recipe := RecipeRegistry.get_recipe(unlock.recipe_id)
+			var is_simple := (
+				unlock.catalog
+				== GlobalResearchRecipeUnlockEffect.CATALOG_SIMPLE_CRAFTING
+			)
+			var reverse_research_id := (
+				GlobalResearchRegistry.get_unlock_research_id_for_simple_crafting_recipe(
+					unlock.recipe_id
+				)
+				if is_simple
+				else GlobalResearchRegistry.get_unlock_research_id_for_production_recipe(
+					unlock.recipe_id
+				)
 			)
 			_expect(
-				simple_recipe != null
-				and RecipeRegistry.get_category_for_recipe(simple_recipe)
-				== RecipeRegistry.Category.SIMPLE_CRAFTING
-				and simple_recipe.required_global_research_id
-				== research.research_id
-				and GlobalResearchRegistry.get_unlock_research_id_for_simple_crafting_recipe(
-					simple_recipe.recipe_id
-				) == research.research_id,
-				"科研声明的简易配方必须存在并反向指回同一科研：%s。"
-				% research.research_id
-			)
-		if research.unlocked_production_recipe_id != &"":
-			var production_recipe := RecipeRegistry.get_recipe(
-				research.unlocked_production_recipe_id
-			)
-			_expect(
-				production_recipe != null
-				and RecipeRegistry.get_category_for_recipe(production_recipe)
-				!= RecipeRegistry.Category.SIMPLE_CRAFTING
-				and production_recipe.required_global_research_id
-				== research.research_id
-				and GlobalResearchRegistry.get_unlock_research_id_for_production_recipe(
-					production_recipe.recipe_id
-				) == research.research_id,
-				"科研声明的生产配方必须存在并反向指回同一科研：%s。"
-				% research.research_id
+				recipe != null
+				and (
+					RecipeRegistry.get_category_for_recipe(recipe)
+					== RecipeRegistry.Category.SIMPLE_CRAFTING
+				) == is_simple
+				and recipe.required_global_research_id == research.research_id
+				and reverse_research_id == research.research_id,
+				"科研声明的类型化配方解锁必须存在并反向指回同一科研：%s/%s。"
+				% [research.research_id, unlock.recipe_id]
 			)
 	_expect(gated_recipe_count == 5, "当前科研门禁必须完整覆盖5条配方。")
 	var bamboo := GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING
 	var hydrangea := GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING
+	var bamboo_simple_unlocks := GlobalResearchEffectResolver.get_recipe_unlock_effects(
+		bamboo.effects,
+		GlobalResearchRecipeUnlockEffect.CATALOG_SIMPLE_CRAFTING
+	)
+	var bamboo_production_unlocks := GlobalResearchEffectResolver.get_recipe_unlock_effects(
+		bamboo.effects,
+		GlobalResearchRecipeUnlockEffect.CATALOG_PRODUCTION
+	)
+	var hydrangea_simple_unlocks := GlobalResearchEffectResolver.get_recipe_unlock_effects(
+		hydrangea.effects,
+		GlobalResearchRecipeUnlockEffect.CATALOG_SIMPLE_CRAFTING
+	)
+	var hydrangea_production_unlocks := GlobalResearchEffectResolver.get_recipe_unlock_effects(
+		hydrangea.effects,
+		GlobalResearchRecipeUnlockEffect.CATALOG_PRODUCTION
+	)
 	_expect(
-		bamboo.unlocked_simple_crafting_recipe_id == &"bamboo_mortar"
-		and bamboo.unlocked_production_recipe_id
+		bamboo_simple_unlocks.size() == 1
+		and bamboo_simple_unlocks[0].recipe_id == &"bamboo_mortar"
+		and bamboo_production_unlocks.size() == 1
+		and bamboo_production_unlocks[0].recipe_id
 		== &"wooden_core_to_bamboo_mortar"
 		and bamboo.description.contains("简易制作")
 		and bamboo.description.contains("植物培育中心"),
 		"竹筒迫击炮科研必须同时说明并索引简易制作与植物培育配方。"
 	)
 	_expect(
-		hydrangea.unlocked_simple_crafting_recipe_id == &"hydrangea_rain_tower"
-		and hydrangea.unlocked_production_recipe_id
+		hydrangea_simple_unlocks.size() == 1
+		and hydrangea_simple_unlocks[0].recipe_id == &"hydrangea_rain_tower"
+		and hydrangea_production_unlocks.size() == 1
+		and hydrangea_production_unlocks[0].recipe_id
 		== &"wooden_core_to_hydrangea_rain_tower"
 		and hydrangea.description.contains("简易制作")
 		and hydrangea.description.contains("植物培育中心"),

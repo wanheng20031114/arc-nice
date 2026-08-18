@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="GlobalResearchConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/research/global_research_config.gd" id="1_config_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="2_plank"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="3_water"]
+[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="4_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="5_effect_base"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_tower_on_hit_slow_effect.gd" id="6_effect_script"]
+
+[sub_resource type="Resource" id="Effect_concussion_slow"]
+script = ExtResource("6_effect_script")
+source_tower_id = &"bamboo_mortar"
+slow_ratio = 0.25
+duration_seconds = 3.0
+
+[resource]
+script = ExtResource("1_config_script")
+research_id = &"bamboo_mortar_concussive_modification"
+display_name = "迫击炮弹震爆改造"
+description = "完成后，竹筒迫击炮对造成伤害的单位额外施加25%减速，持续3秒；重复命中刷新持续时间。"
+category_id = &"building_enhancement"
+input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_plank"), ExtResource("3_water")])
+input_amounts = Array[int]([80, 50])
+duration_seconds = 40.0
+effects = Array[ExtResource("5_effect_base")]([SubResource("Effect_concussion_slow")])

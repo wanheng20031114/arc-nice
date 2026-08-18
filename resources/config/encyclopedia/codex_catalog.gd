@@ -49,7 +49,7 @@ const REGISTERED_ENTRY_COUNTS := {
 	CodexSection.ITEM: 36,
 	CodexSection.CHARACTER: 4,
 	CodexSection.RECIPE: 32,
-	CodexSection.RESEARCH: 9,
+	CodexSection.RESEARCH: 15,
 }
 const COLLECTIBLE_ACCENTS: Array[Color] = [
 	Color("#f0e3c2"),
@@ -1171,16 +1171,7 @@ func _get_recipe_output_destination_label(recipe: ProductionRecipe) -> String:
 func _get_research_filter_key(
 	config: GlobalResearchConfig
 ) -> StringName:
-	match config.effect_type:
-		GlobalResearchConfig.EffectType.SIMPLE_CRAFTING_RECIPE_UNLOCK, \
-		GlobalResearchConfig.EffectType.PRODUCTION_RECIPE_UNLOCK:
-			return &"recipe_unlock"
-		GlobalResearchConfig.EffectType.VEGETATION_SPREAD_SPEED_MULTIPLIER, \
-		GlobalResearchConfig.EffectType.WATER_COLLECTOR_DURATION_MULTIPLIER, \
-		GlobalResearchConfig.EffectType.FENCE_REINFORCEMENT:
-			return &"building_enhancement"
-		_:
-			return &"attribute"
+	return config.category_id
 
 
 func _get_research_sort_group(filter_key: StringName) -> int:
@@ -1202,7 +1193,12 @@ func _build_research_stats(
 			"研究时间",
 			"%s 秒" % _format_number(config.duration_seconds)
 		),
-		CodexStatRow.new("研究成果", config.result_summary),
+		CodexStatRow.new(
+			"研究成果",
+			GlobalResearchEffectFormatter.format_compact(
+				config.effects
+			).replace("\n", " ")
+		),
 	]
 
 
@@ -1223,6 +1219,21 @@ func _build_research_notes(
 	recipes: Array[ProductionRecipe]
 ) -> PackedStringArray:
 	var notes := PackedStringArray()
+	if config.prerequisite_research_id != &"":
+		var prerequisite := GlobalResearchRegistry.get_config(
+			config.prerequisite_research_id
+		)
+		notes.append(
+			"前置科研：%s" % (
+				prerequisite.display_name
+				if prerequisite != null
+				else String(config.prerequisite_research_id)
+			)
+		)
+	for effect_line in GlobalResearchEffectFormatter.format_detail_lines(
+		config.effects
+	):
+		notes.append("研究效果：%s" % effect_line)
 	var unlocked_recipe_names := PackedStringArray()
 	for recipe in recipes:
 		if recipe.required_global_research_id == config.research_id:
@@ -1231,8 +1242,6 @@ func _build_research_notes(
 		notes.append(
 			"实际解锁配方：%s" % "、".join(unlocked_recipe_names)
 		)
-	else:
-		notes.append("研究效果：%s" % config.result_summary)
 	return notes
 
 

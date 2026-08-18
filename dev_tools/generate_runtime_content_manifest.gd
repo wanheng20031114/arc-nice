@@ -19,9 +19,13 @@ const SCHEMA_VERSION := 1
 const EXPECTED_ENEMY_COUNT := 64
 const EXPECTED_PICKUP_COUNT := 181
 const EXPECTED_CAMPAIGN_COUNT := 26
+const GLOBAL_RESEARCH_REGISTRY_PATH := (
+	"res://resources/config/research/global_research_registry.gd"
+)
 ## 这些玩法资源不是敌人、道具或 Campaign 根，但其中的稳定 ID 会直接进入
 ## 多人命令与运行时快照，必须参与同构建内容摘要。
 const EXPLICIT_GAMEPLAY_DEPENDENCY_ROOTS := [
+	GLOBAL_RESEARCH_REGISTRY_PATH,
 	"res://scene/plant_defense/wood_processing_station.tscn",
 ]
 const TEXT_EXTENSIONS := {
@@ -240,10 +244,12 @@ func _build_dependency_entries(
 			failures.append("显式玩法依赖根不存在或路径非法：%s。" % gameplay_root)
 			continue
 		all_root_paths.append(gameplay_root)
+	_append_global_research_config_roots(all_root_paths)
 	var visited := _collect_dependency_closure(all_root_paths, false)
 
-	# ResourceLoader 只能发现 ext_resource/preload，不会把 @export_file
-	# String 视为依赖。只在 Campaign 可达闭包内识别已加载的
+	# ResourceLoader 能发现资源文件的 ext_resource，但不会展开 GDScript
+	# preload，也不会把 @export_file String 视为依赖。科研注册表的配置资源
+	# 已在上方显式展开；Campaign 则只在其可达闭包内识别已加载的
 	# BossConfig 强类型对象，显式追踪其三个公开资源字段。
 	var campaign_root_paths := PackedStringArray()
 	for entry in campaign_roots:
@@ -270,6 +276,23 @@ func _build_dependency_entries(
 			continue
 		result.append({"path": dependency_path, "sha256": sha256})
 	return result
+
+
+func _append_global_research_config_roots(
+	root_paths: PackedStringArray
+) -> void:
+	if not GlobalResearchRegistry.is_registry_valid():
+		failures.append("全局科研注册表无效，无法生成完整内容摘要。")
+		return
+	for config in GlobalResearchRegistry.get_all_configs():
+		var config_path := config.resource_path
+		if (
+			not _is_safe_resource_path(config_path)
+			or not FileAccess.file_exists(config_path)
+		):
+			failures.append("全局科研配置不存在或路径非法：%s。" % config_path)
+			continue
+		root_paths.append(config_path)
 
 
 func _collect_dependency_closure(

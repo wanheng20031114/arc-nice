@@ -1059,14 +1059,16 @@ func queue_hydrangea_rain_visual(
 func queue_corn_machine_gun_burst_visual(
 	plant_net_id: int,
 	action_id: int,
-	direction: Vector2
+	direction: Vector2,
+	shot_count: int
 ) -> bool:
 	if not has_multiplayer_session():
 		return false
 	multiplayer_session.queue_corn_machine_gun_burst_visual(
 		plant_net_id,
 		action_id,
-		direction
+		direction,
+		shot_count
 	)
 	return true
 

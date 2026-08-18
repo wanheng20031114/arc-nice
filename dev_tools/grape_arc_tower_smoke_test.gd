@@ -359,6 +359,7 @@ func _run() -> void:
 			damage_type == EnemyConfig.DamageType.MAGIC,
 			"葡萄电弧必须结算法术伤害。"
 		)
+	_test_electromagnetic_research_damage(tower, runtime, positions)
 	_expect(tower.arc_layer.visible, "释放时必须显示电弧折线。")
 	_expect(
 		(tower._arc_cores[0] as Line2D).points.size() == 7,
@@ -438,6 +439,73 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_electromagnetic_research_damage(
+	tower: GrapeArcTower,
+	runtime: ChainRuntime,
+	target_positions: Array
+) -> void:
+	var packed_positions := PackedVector2Array(target_positions)
+	var recorded_damage_count := runtime.damage_targets.size()
+	for enemy in runtime.targets:
+		enemy.clear_electromagnetic_attachment_state()
+
+	# The two typed effects are independently composable. Attachment-only and
+	# conditional-damage-only projections must not disable one another.
+	tower.set_research_electromagnetic_upgrade(10.0, 1.0)
+	_expect(
+		is_equal_approx(
+			tower.get_research_electromagnetic_attachment_duration_seconds(),
+			10.0
+		)
+		and is_equal_approx(
+			tower.get_research_electromagnetic_damage_multiplier(),
+			1.0
+		),
+		"葡萄塔的电磁附着效果必须能脱离条件增伤独立投射。"
+	)
+	runtime.damage_amounts.clear()
+	tower.call("_apply_authoritative_chain", packed_positions)
+	_expect(
+		runtime.damage_amounts == PackedInt32Array([96, 96, 96, 96])
+		and runtime.targets.all(func(enemy: Enemy) -> bool: return enemy.has_temporary_electromagnetic_attachment()),
+		"电涌科研首次命中必须保持96基础伤害，并为每个成功命中的目标附着10秒电磁。"
+	)
+
+	tower.set_research_electromagnetic_upgrade(10.0, 1.5)
+	runtime.damage_amounts.clear()
+	tower.call("_apply_authoritative_chain", packed_positions)
+	_expect(
+		runtime.damage_amounts == PackedInt32Array([144, 144, 144, 144]),
+		"已有电磁附着的目标必须让葡萄电弧伤害从96提升至144。"
+	)
+
+	for enemy in runtime.targets:
+		enemy.clear_electromagnetic_attachment_state()
+	var permanent_target := runtime.targets[0]
+	permanent_target.apply_permanent_electromagnetic_attachment()
+	runtime.damage_amounts.clear()
+	tower.call("_apply_authoritative_chain", packed_positions)
+	_expect(
+		runtime.damage_amounts == PackedInt32Array([144, 96, 96, 96]),
+		"Tango提供的永久电磁附着必须让葡萄塔首次命中直接获得50%增伤，普通目标仍先受96伤害。"
+	)
+
+	for enemy in runtime.targets:
+		enemy.clear_electromagnetic_attachment_state()
+	tower.set_research_electromagnetic_upgrade(0.0, 1.5)
+	permanent_target.apply_permanent_electromagnetic_attachment()
+	runtime.damage_amounts.clear()
+	tower.call("_apply_authoritative_chain", packed_positions)
+	_expect(
+		runtime.damage_amounts == PackedInt32Array([144, 96, 96, 96])
+		and not runtime.targets[1].has_electromagnetic_attachment(),
+		"葡萄塔的条件增伤效果必须能脱离临时附着效果独立投射。"
+	)
+	tower.set_research_electromagnetic_upgrade(10.0, 1.5)
+	runtime.damage_targets.resize(recorded_damage_count)
+	runtime.damage_amounts.resize(recorded_damage_count)
 
 
 func _expect(condition: bool, message: String) -> void:

@@ -3,15 +3,21 @@
 [ext_resource type="Script" path="res://resources/config/research/global_research_config.gd" id="1_script"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="2_water"]
 [ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="3_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="4_effect_base"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_additive_modifier_effect.gd" id="5_effect_script"]
+
+[sub_resource type="Resource" id="Effect_player_move_speed"]
+script = ExtResource("5_effect_script")
+attribute_id = &"player.all.move_speed"
+bonus = 15.0
 
 [resource]
 script = ExtResource("1_script")
 research_id = &"player_move_speed"
 display_name = "全员移动训练"
 description = "消耗共享仓库中的50个水瓶；完成后本局全体玩家移动速度永久增加15。"
-result_summary = "全体玩家移速 +15"
+category_id = &"attribute"
 input_items = Array[ExtResource("3_pickup_script")]([ExtResource("2_water")])
 input_amounts = Array[int]([50])
 duration_seconds = 60.0
-effect_type = 1
-effect_amount = 15.0
+effects = Array[ExtResource("4_effect_base")]([SubResource("Effect_player_move_speed")])

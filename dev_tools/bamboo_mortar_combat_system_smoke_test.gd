@@ -98,7 +98,7 @@ class CombatSystemPlantPort:
 
 
 class HostFlagNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	var host := true
 
@@ -132,13 +132,17 @@ func _run() -> void:
 		runtime.add_child(combat_system)
 		combat_system.setup(runtime, plant_gameplay_port)
 		combat_system.set_authoritative_processing_enabled(true)
-		_test_budgeted_cached_targeting()
-		await _test_dense_explosion_batch()
-		await _test_sparse_explosion_boundaries()
-		await _test_dense_explosion_boundaries()
-		await _test_shared_enemy_position_geometry()
-		await _test_batch_damage_semantics()
-		await _test_multiplayer_batch_bridge()
+		if OS.get_cmdline_user_args().has("--concussion-only"):
+			await _test_research_concussion_semantics()
+		else:
+			_test_budgeted_cached_targeting()
+			await _test_dense_explosion_batch()
+			await _test_sparse_explosion_boundaries()
+			await _test_dense_explosion_boundaries()
+			await _test_shared_enemy_position_geometry()
+			await _test_batch_damage_semantics()
+			await _test_research_concussion_semantics()
+			await _test_multiplayer_batch_bridge()
 
 	await _cleanup()
 	if failures.is_empty():
@@ -659,6 +663,86 @@ func _test_batch_damage_semantics() -> void:
 	)
 
 
+func _test_research_concussion_semantics() -> void:
+	await _clear_enemies()
+	var durable_config := ARMORED_ENEMY_CONFIG.duplicate(true) as EnemyConfig
+	durable_config.max_health = 1000
+	durable_config.physical_defense = 0
+	var durable := _spawn_configured_enemy(Vector2.ZERO, durable_config)
+	if durable == null:
+		return
+	combat_system.set_research_concussion_effect(0.75, 3.0)
+	var accepted := bool(combat_system.call(
+		"_apply_enemy_damage_batch",
+		durable,
+		PackedInt64Array([20]),
+		PackedInt32Array([1]),
+		Vector2.UP
+	))
+	_expect(
+		accepted
+		and durable.current_health == 980
+		and durable.has_collectible_status(&"bamboo_mortar_concussion")
+		and is_equal_approx(
+			durable.get_effective_move_speed_multiplier(),
+			0.75
+		),
+		"震爆科研必须在迫击炮批伤成功且目标存活后施加25%减速。"
+	)
+	var first_deadline_clock := durable.collectible_status_clock
+	durable.call(
+		"_advance_collectible_status_effects_to",
+		first_deadline_clock + 2.0
+	)
+	durable.apply_bamboo_mortar_concussion(3.0, 0.75)
+	var refreshed_clock := durable.collectible_status_clock
+	durable.call(
+		"_advance_collectible_status_effects_to",
+		refreshed_clock + 2.9
+	)
+	_expect(
+		durable.has_collectible_status(&"bamboo_mortar_concussion")
+		and is_equal_approx(
+			durable.get_effective_move_speed_multiplier(),
+			0.75
+		),
+		"同一震爆科研来源重复命中必须刷新3秒期限，不能重复叠乘减速。"
+	)
+	durable.call(
+		"_advance_collectible_status_effects_to",
+		refreshed_clock + 3.1
+	)
+	_expect(
+		not durable.has_collectible_status(&"bamboo_mortar_concussion")
+		and is_equal_approx(
+			durable.get_effective_move_speed_multiplier(),
+			1.0
+		),
+		"震爆减速必须在刷新后的3秒期限结束时恢复。"
+	)
+
+	var lethal_config := durable_config.duplicate(true) as EnemyConfig
+	lethal_config.max_health = 1
+	var lethal := _spawn_configured_enemy(Vector2(40.0, 0.0), lethal_config)
+	if lethal != null:
+		var lethal_accepted := bool(combat_system.call(
+			"_apply_enemy_damage_batch",
+			lethal,
+			PackedInt64Array([20]),
+			PackedInt32Array([1]),
+			Vector2.UP
+		))
+		_expect(
+			lethal_accepted
+			and lethal.is_dead
+			and not lethal.has_collectible_status(
+				&"bamboo_mortar_concussion"
+			),
+			"致死迫击炮批伤不得给已死亡目标残留震爆减速状态。"
+		)
+	combat_system.set_research_concussion_effect(1.0, 0.0)
+
+
 func _test_multiplayer_batch_bridge() -> void:
 	await _clear_enemies()
 	var test_config := ARMORED_ENEMY_CONFIG.duplicate(true) as EnemyConfig
@@ -676,9 +760,25 @@ func _test_multiplayer_batch_bridge() -> void:
 	var mp_game := MP_GAME_SCRIPT.new()
 	var net_manager_stub := HostFlagNetManagerStub.new()
 	var tower_mode_adapter := TowerDefenseMultiplayerModeAdapter.new()
+	var session_coordinator := MpSessionCoordinator.new()
+	var transactions_coordinator := MpTransactionsCoordinator.new()
+	var enemy_coordinator := MpEnemyCoordinator.new()
+	var tower_economy_coordinator := MpTowerEconomyCoordinator.new()
+	var tower_world_coordinator := MpTowerWorldCoordinator.new()
 	mp_game.set("net_manager", net_manager_stub)
 	mp_game.game = bridge_game
 	mp_game.tower_mode_adapter = tower_mode_adapter
+	mp_game.tower_world_coordinator = tower_world_coordinator
+	tower_world_coordinator.bind_session(
+		mp_game,
+		session_coordinator,
+		bridge_game,
+		tower_mode_adapter,
+		net_manager_stub,
+		transactions_coordinator,
+		enemy_coordinator,
+		tower_economy_coordinator
+	)
 	var enemy_net_id := 808
 	bridge_game.register_network_enemy(enemy_net_id, enemy)
 	var health_before := enemy.current_health
@@ -738,8 +838,14 @@ func _test_multiplayer_batch_bridge() -> void:
 		),
 		"MpGame Host找不到敌人net-id映射时必须拒绝批伤，不能生成无主反馈。"
 	)
+	tower_world_coordinator.unbind_session(mp_game)
 	mp_game.free()
 	bridge_game.free()
+	tower_world_coordinator.free()
+	tower_economy_coordinator.free()
+	enemy_coordinator.free()
+	transactions_coordinator.free()
+	session_coordinator.free()
 	tower_mode_adapter.free()
 	net_manager_stub.free()
 

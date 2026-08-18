@@ -57,6 +57,10 @@ var global_physical_defense_bonus := 0
 var global_fence_max_health_bonus := 0
 var global_fence_physical_defense_bonus := 0
 var global_water_collector_duration_multiplier := 1.0
+var global_agave_cannon_attack_damage_bonus := 0
+var global_corn_machine_gun_burst_shot_count_bonus := 0
+var global_grape_electromagnetic_attachment_duration_seconds := 0.0
+var global_grape_electromagnetic_damage_multiplier := 1.0
 var placement_area: Rect2i = DEFAULT_PLACEMENT_AREA
 
 var occupied_cells: Dictionary = {}
@@ -444,6 +448,75 @@ func _apply_research_stat_bonuses(plant: PlantDefense) -> void:
 	plant.set_research_max_health_bonus(
 		global_fence_max_health_bonus if is_fence else 0
 	)
+	var agave_cannon := plant as AgaveCannon
+	if agave_cannon != null:
+		agave_cannon.set_research_attack_damage_bonus(
+			global_agave_cannon_attack_damage_bonus
+		)
+	var corn_machine_gun := plant as CornMachineGun
+	if corn_machine_gun != null:
+		corn_machine_gun.set_research_burst_shot_count_bonus(
+			global_corn_machine_gun_burst_shot_count_bonus
+		)
+	var grape_arc_tower := plant as GrapeArcTower
+	if grape_arc_tower != null:
+		grape_arc_tower.set_research_electromagnetic_upgrade(
+			global_grape_electromagnetic_attachment_duration_seconds,
+			global_grape_electromagnetic_damage_multiplier
+		)
+
+
+func set_global_agave_cannon_attack_damage_bonus(bonus: int) -> void:
+	global_agave_cannon_attack_damage_bonus = maxi(bonus, 0)
+	_reapply_research_stat_bonuses_to_all_plants()
+
+
+func get_global_agave_cannon_attack_damage_bonus() -> int:
+	return global_agave_cannon_attack_damage_bonus
+
+
+func set_global_corn_machine_gun_burst_shot_count_bonus(bonus: int) -> void:
+	global_corn_machine_gun_burst_shot_count_bonus = maxi(bonus, 0)
+	_reapply_research_stat_bonuses_to_all_plants()
+
+
+func get_global_corn_machine_gun_burst_shot_count_bonus() -> int:
+	return global_corn_machine_gun_burst_shot_count_bonus
+
+
+func set_global_grape_electromagnetic_upgrade(
+	attachment_duration_seconds: float,
+	damage_multiplier: float
+) -> void:
+	# 两条 typed effect 独立投射：临时附着与条件增伤可以各自启停，
+	# 不因另一条缺失而被意外清空。
+	global_grape_electromagnetic_attachment_duration_seconds = (
+		attachment_duration_seconds
+		if is_finite(attachment_duration_seconds)
+		and attachment_duration_seconds > 0.0
+		else 0.0
+	)
+	global_grape_electromagnetic_damage_multiplier = (
+		damage_multiplier
+		if is_finite(damage_multiplier) and damage_multiplier > 1.0
+		else 1.0
+	)
+	_reapply_research_stat_bonuses_to_all_plants()
+
+
+func get_global_grape_electromagnetic_attachment_duration_seconds() -> float:
+	return global_grape_electromagnetic_attachment_duration_seconds
+
+
+func get_global_grape_electromagnetic_damage_multiplier() -> float:
+	return global_grape_electromagnetic_damage_multiplier
+
+
+func _reapply_research_stat_bonuses_to_all_plants() -> void:
+	for plant_variant in plant_footprints.keys():
+		var plant := plant_variant as PlantDefense
+		if plant != null and is_instance_valid(plant):
+			_apply_research_stat_bonuses(plant)
 
 
 func set_global_water_collector_duration_multiplier(multiplier: float) -> void:

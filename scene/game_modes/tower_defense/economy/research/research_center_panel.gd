@@ -13,6 +13,12 @@ enum Page {
 
 const DESIGN_SIZE := Vector2(728.0, 544.0)
 const BUILDING_DEFENSE_RESEARCH_ID := GlobalResearchRegistry.BUILDING_DEFENSE_ID
+const BUILDING_DEFENSE_II_RESEARCH_ID := (
+	GlobalResearchRegistry.BUILDING_DEFENSE_II_ID
+)
+const BUILDING_DEFENSE_III_RESEARCH_ID := (
+	GlobalResearchRegistry.BUILDING_DEFENSE_III_ID
+)
 const PLAYER_MOVE_SPEED_RESEARCH_ID := GlobalResearchRegistry.PLAYER_MOVE_SPEED_ID
 const BAMBOO_MORTAR_CRAFTING_RESEARCH_ID := (
 	GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID
@@ -35,8 +41,22 @@ const WATER_COLLECTION_RATE_ENHANCEMENT_RESEARCH_ID := (
 const FENCE_REINFORCEMENT_RESEARCH_ID := (
 	GlobalResearchRegistry.FENCE_REINFORCEMENT_ID
 )
+const AGAVE_CANNON_MUZZLE_IMPROVEMENT_RESEARCH_ID := (
+	GlobalResearchRegistry.AGAVE_CANNON_MUZZLE_IMPROVEMENT_ID
+)
+const CORN_MACHINE_GUN_COOLING_SYSTEM_IMPROVEMENT_RESEARCH_ID := (
+	GlobalResearchRegistry.CORN_MACHINE_GUN_COOLING_SYSTEM_IMPROVEMENT_ID
+)
+const BAMBOO_MORTAR_CONCUSSIVE_MODIFICATION_RESEARCH_ID := (
+	GlobalResearchRegistry.BAMBOO_MORTAR_CONCUSSIVE_MODIFICATION_ID
+)
+const GRAPE_ARC_TOWER_SURGE_MODIFICATION_RESEARCH_ID := (
+	GlobalResearchRegistry.GRAPE_ARC_TOWER_SURGE_MODIFICATION_ID
+)
 const GLOBAL_RESEARCH_IDS: Array[StringName] = [
 	BUILDING_DEFENSE_RESEARCH_ID,
+	BUILDING_DEFENSE_II_RESEARCH_ID,
+	BUILDING_DEFENSE_III_RESEARCH_ID,
 	PLAYER_MOVE_SPEED_RESEARCH_ID,
 	BAMBOO_MORTAR_CRAFTING_RESEARCH_ID,
 	HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID,
@@ -45,6 +65,10 @@ const GLOBAL_RESEARCH_IDS: Array[StringName] = [
 	VEGETATION_ENHANCEMENT_RESEARCH_ID,
 	WATER_COLLECTION_RATE_ENHANCEMENT_RESEARCH_ID,
 	FENCE_REINFORCEMENT_RESEARCH_ID,
+	AGAVE_CANNON_MUZZLE_IMPROVEMENT_RESEARCH_ID,
+	CORN_MACHINE_GUN_COOLING_SYSTEM_IMPROVEMENT_RESEARCH_ID,
+	BAMBOO_MORTAR_CONCUSSIVE_MODIFICATION_RESEARCH_ID,
+	GRAPE_ARC_TOWER_SURGE_MODIFICATION_RESEARCH_ID,
 ]
 const DEFAULT_RESEARCH_ID := BUILDING_DEFENSE_RESEARCH_ID
 const MATERIAL_SLOT_POSITIONS: Array[Vector2] = [
@@ -52,11 +76,20 @@ const MATERIAL_SLOT_POSITIONS: Array[Vector2] = [
 	Vector2(374.0, 259.0),
 	Vector2(490.0, 259.0),
 ]
+const FOUR_MATERIAL_SLOT_POSITIONS: Array[Vector2] = [
+	Vector2(252.0, 259.0),
+	Vector2(328.0, 259.0),
+	Vector2(404.0, 259.0),
+	Vector2(480.0, 259.0),
+]
 const SINGLE_MATERIAL_SLOT_POSITION := Vector2(374.0, 259.0)
 const DOUBLE_MATERIAL_SLOT_POSITIONS: Array[Vector2] = [
 	Vector2(316.0, 259.0),
 	Vector2(432.0, 259.0),
 ]
+const MATERIAL_LABEL_Y := 327.0
+const MATERIAL_LABEL_SIZE := Vector2(86.0, 24.0)
+const FOUR_MATERIAL_LABEL_SIZE := Vector2(82.0, 40.0)
 const NODE_OFF_COLOR := Color(0.32, 0.43, 0.56, 0.82)
 const NODE_ON_COLORS := [
 	Color(0.25, 0.8, 1.35, 1.0),
@@ -78,6 +111,12 @@ const LINE_ON_COLOR := Color(0.18, 0.88, 1.35, 1.0)
 )
 @onready var defense_research_button: Button = (
 	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/DefenseResearchButton
+)
+@onready var defense_ii_research_button: Button = (
+	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/DefenseIIResearchButton
+)
+@onready var defense_iii_research_button: Button = (
+	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/DefenseIIIResearchButton
 )
 @onready var move_speed_research_button: Button = (
 	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/MoveSpeedResearchButton
@@ -103,8 +142,22 @@ const LINE_ON_COLOR := Color(0.18, 0.88, 1.35, 1.0)
 @onready var fence_reinforcement_research_button: Button = (
 	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/FenceReinforcementResearchButton
 )
+@onready var agave_cannon_muzzle_research_button: Button = (
+	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/AgaveCannonMuzzleResearchButton
+)
+@onready var corn_machine_gun_cooling_research_button: Button = (
+	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/CornMachineGunCoolingResearchButton
+)
+@onready var bamboo_mortar_concussion_research_button: Button = (
+	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/BambooMortarConcussionResearchButton
+)
+@onready var grape_arc_tower_surge_research_button: Button = (
+	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/GrapeArcTowerSurgeResearchButton
+)
 @onready var global_research_buttons: Array[Button] = [
 	defense_research_button,
+	defense_ii_research_button,
+	defense_iii_research_button,
 	move_speed_research_button,
 	bamboo_mortar_research_button,
 	hydrangea_research_button,
@@ -113,6 +166,10 @@ const LINE_ON_COLOR := Color(0.18, 0.88, 1.35, 1.0)
 	vegetation_enhancement_research_button,
 	water_collection_rate_research_button,
 	fence_reinforcement_research_button,
+	agave_cannon_muzzle_research_button,
+	corn_machine_gun_cooling_research_button,
+	bamboo_mortar_concussion_research_button,
+	grape_arc_tower_surge_research_button,
 ]
 @onready var global_research_name: Label = (
 	$Overlay/PanelRoot/GlobalPage/ResearchName
@@ -128,11 +185,13 @@ const LINE_ON_COLOR := Color(0.18, 0.88, 1.35, 1.0)
 	$Overlay/PanelRoot/GlobalPage/PlankSlot,
 	$Overlay/PanelRoot/GlobalPage/SaplingSlot,
 	$Overlay/PanelRoot/GlobalPage/WaterBottleSlot,
+	$Overlay/PanelRoot/GlobalPage/MaterialSlot4,
 ]
 @onready var material_labels: Array[Label] = [
 	$Overlay/PanelRoot/GlobalPage/PlankCount,
 	$Overlay/PanelRoot/GlobalPage/SaplingCount,
 	$Overlay/PanelRoot/GlobalPage/WaterBottleCount,
+	$Overlay/PanelRoot/GlobalPage/MaterialCount4,
 ]
 @onready var global_progress: ProgressBar = $Overlay/PanelRoot/GlobalPage/ProgressBar
 @onready var global_progress_label: Label = $Overlay/PanelRoot/GlobalPage/ProgressLabel
@@ -244,6 +303,7 @@ func _select_global_research(research_id: StringName) -> void:
 	if (
 		research_id == selected_global_research_id
 		or GlobalResearchRegistry.get_config(research_id) == null
+		or not _is_global_research_unlocked(research_id)
 	):
 		_refresh_global_research_buttons()
 		return
@@ -287,7 +347,9 @@ func _apply_global_research_presentation() -> void:
 		return
 	global_research_name.text = config.display_name
 	global_description.text = config.description
-	global_result_badge.text = config.result_summary.replace(" +", "\n+")
+	global_result_badge.text = GlobalResearchEffectFormatter.format_badge(
+		config.effects
+	)
 	global_duration_badge.text = "耗时 %d 秒" % int(
 		roundf(config.duration_seconds)
 	)
@@ -302,15 +364,26 @@ func _apply_global_research_presentation() -> void:
 		var item := config.input_items[index]
 		var required := config.input_amounts[index]
 		material_slots[index].set_item(item, required)
-		var slot_position := MATERIAL_SLOT_POSITIONS[index]
-		if config.input_items.size() == 1:
+		var material_count := config.input_items.size()
+		var slot_position := (
+			FOUR_MATERIAL_SLOT_POSITIONS[index]
+			if material_count == 4
+			else MATERIAL_SLOT_POSITIONS[index]
+		)
+		if material_count == 1:
 			slot_position = SINGLE_MATERIAL_SLOT_POSITION
-		elif config.input_items.size() == 2:
+		elif material_count == 2:
 			slot_position = DOUBLE_MATERIAL_SLOT_POSITIONS[index]
 		material_slots[index].position = slot_position
+		var label_size := (
+			FOUR_MATERIAL_LABEL_SIZE
+			if material_count == 4
+			else MATERIAL_LABEL_SIZE
+		)
+		material_labels[index].size = label_size
 		material_labels[index].position = Vector2(
-			slot_position.x - 14.0,
-			327.0
+			slot_position.x - (label_size.x - material_slots[index].size.x) * 0.5,
+			MATERIAL_LABEL_Y
 		)
 	_refresh_global_research_buttons()
 
@@ -326,6 +399,12 @@ func _get_selected_research_config() -> GlobalResearchConfig:
 	return GlobalResearchRegistry.get_config(selected_global_research_id)
 
 
+func _is_global_research_unlocked(research_id: StringName) -> bool:
+	if building == null or building.research_coordinator == null:
+		return research_id == DEFAULT_RESEARCH_ID
+	return building.research_coordinator.is_global_research_unlocked(research_id)
+
+
 func _refresh_global_page(coordinator: ResearchCoordinator) -> void:
 	var config := _get_selected_research_config()
 	if config == null:
@@ -337,11 +416,11 @@ func _refresh_global_page(coordinator: ResearchCoordinator) -> void:
 		var item := config.input_items[index]
 		var total := coordinator.get_global_material_total(item)
 		var required := config.input_amounts[index]
-		material_labels[index].text = "%s  %d / %d" % [
-			item.display_name,
-			total,
-			required,
-		]
+		material_labels[index].text = (
+			"%s\n%d / %d" % [item.display_name, total, required]
+			if config.input_items.size() == 4
+			else "%s  %d / %d" % [item.display_name, total, required]
+		)
 		material_labels[index].modulate = (
 			Color(0.55, 1.0, 0.78, 1.0)
 			if total >= required
@@ -351,6 +430,9 @@ func _refresh_global_page(coordinator: ResearchCoordinator) -> void:
 	var research_supported := coordinator.get_global_research_config(
 		selected_global_research_id
 	) != null
+	var research_unlocked := coordinator.is_global_research_unlocked(
+		selected_global_research_id
+	)
 	var research_state := coordinator.get_global_research_state(
 		selected_global_research_id
 	)
@@ -374,18 +456,18 @@ func _refresh_global_page(coordinator: ResearchCoordinator) -> void:
 			action_button.disabled = (
 				not all_materials_ready
 				or not research_supported
+				or not research_unlocked
 				or another_research_is_active
 				or building.multiplayer_research_request_pending
 			)
-			_set_status(
-				"另一项全局研究正在进行，请等待其完成。"
-				if another_research_is_active
-				else (
-					"材料将在点击后立即从共享仓库扣除。"
-					if research_supported
-					else "该研究方案尚未接入科研网络。"
-				)
-			)
+			if another_research_is_active:
+				_set_status("另一项全局研究正在进行，请等待其完成。")
+			elif not research_unlocked:
+				_set_status("请先完成前置研究。")
+			elif research_supported:
+				_set_status("材料将在点击后立即从共享仓库扣除。")
+			else:
+				_set_status("该研究方案尚未接入科研网络。")
 		ResearchCoordinator.GlobalResearchState.RESEARCHING:
 			var remaining := ceili(
 				duration_seconds
@@ -398,9 +480,7 @@ func _refresh_global_page(coordinator: ResearchCoordinator) -> void:
 			action_button.disabled = true
 			_set_status("全局科技正在推演，已提交材料不会退还。")
 		ResearchCoordinator.GlobalResearchState.COMPLETED:
-			global_progress_label.text = "研究完成 · %s" % str(
-				config.result_summary
-			)
+			global_progress_label.text = "研究完成"
 			action_button.text = "已完成"
 			action_button.disabled = true
 			_set_status("该项全局科技已永久生效，不能重复研究。")
@@ -413,7 +493,10 @@ func _refresh_global_research_entry_statuses(
 		var research_id := GLOBAL_RESEARCH_IDS[index]
 		var config := coordinator.get_global_research_config(research_id)
 		var button := global_research_buttons[index]
-		if config == null:
+		if (
+			config == null
+			or not coordinator.is_global_research_unlocked(research_id)
+		):
 			button.visible = false
 			continue
 		button.visible = true
@@ -685,6 +768,7 @@ func _on_multiplayer_research_result(
 	if (
 		was_global_action
 		and GlobalResearchRegistry.get_config(research_id) != null
+		and _is_global_research_unlocked(research_id)
 	):
 		selected_global_research_id = research_id
 		_apply_global_research_presentation()

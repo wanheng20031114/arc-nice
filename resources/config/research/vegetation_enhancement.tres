@@ -5,15 +5,21 @@
 [ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="3_water"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="4_sapling"]
 [ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="5_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="6_effect_base"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_additive_modifier_effect.gd" id="7_effect_script"]
+
+[sub_resource type="Resource" id="Effect_grass_heal_ratio"]
+script = ExtResource("7_effect_script")
+attribute_id = &"terrain.grass.heal_max_health_ratio_per_second"
+bonus = 0.2
 
 [resource]
 script = ExtResource("1_script")
 research_id = &"vegetation_enhancement"
 display_name = "植被强化"
 description = "玩家在草块上每秒额外回复20%生命值。"
-result_summary = "草块每秒回血 +20% 最大生命值"
+category_id = &"attribute"
 input_items = Array[ExtResource("5_pickup_script")]([ExtResource("2_white_powder"), ExtResource("3_water"), ExtResource("4_sapling")])
 input_amounts = Array[int]([5, 30, 10])
 duration_seconds = 30.0
-effect_type = 5
-effect_amount = 0.2
+effects = Array[ExtResource("6_effect_base")]([SubResource("Effect_grass_heal_ratio")])

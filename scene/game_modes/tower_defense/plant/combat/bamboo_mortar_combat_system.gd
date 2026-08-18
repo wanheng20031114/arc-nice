@@ -20,6 +20,8 @@ const EXPLOSION_EXACT_CLUSTER_CELL_SIZE := 2.0
 var _combat_runtime: CombatRuntimeBase = null
 var _tower_multiplayer_mode_adapter: TowerPlantGameplayPort = null
 var _authoritative_processing_enabled := false
+var research_concussion_move_speed_multiplier := 1.0
+var research_concussion_duration_seconds := 0.0
 
 var _pending_target_owner_ids: Array[int] = []
 var _pending_target_requests: Dictionary[int, Dictionary] = {}
@@ -55,6 +57,34 @@ func setup(
 ) -> void:
 	_combat_runtime = combat_runtime
 	_tower_multiplayer_mode_adapter = mode_adapter
+
+
+## Receives the Coordinator's absolute research projection. Values that do not
+## describe an actual slow disable the upgrade instead of leaving partial state.
+func set_research_concussion_effect(
+	move_speed_multiplier: float,
+	duration_seconds: float
+) -> void:
+	if (
+		not is_finite(move_speed_multiplier)
+		or not is_finite(duration_seconds)
+		or move_speed_multiplier < 0.0
+		or move_speed_multiplier >= 1.0
+		or duration_seconds <= 0.0
+	):
+		research_concussion_move_speed_multiplier = 1.0
+		research_concussion_duration_seconds = 0.0
+		return
+	research_concussion_move_speed_multiplier = move_speed_multiplier
+	research_concussion_duration_seconds = duration_seconds
+
+
+func get_research_concussion_move_speed_multiplier() -> float:
+	return research_concussion_move_speed_multiplier
+
+
+func get_research_concussion_duration_seconds() -> float:
+	return research_concussion_duration_seconds
 
 
 func set_authoritative_processing_enabled(enabled: bool) -> void:
@@ -1603,7 +1633,7 @@ func _apply_enemy_damage_batch(
 		or not is_instance_valid(_tower_multiplayer_mode_adapter)
 	):
 		return false
-	return _tower_multiplayer_mode_adapter.apply_authoritative_plant_enemy_damage_batch(
+	var accepted := _tower_multiplayer_mode_adapter.apply_authoritative_plant_enemy_damage_batch(
 		0,
 		enemy,
 		damage_amounts,
@@ -1611,6 +1641,19 @@ func _apply_enemy_damage_batch(
 		impact_direction,
 		EnemyConfig.DamageType.PHYSICAL
 	)
+	if (
+		accepted
+		and enemy != null
+		and is_instance_valid(enemy)
+		and not enemy.is_dead
+		and research_concussion_duration_seconds > 0.0
+		and research_concussion_move_speed_multiplier < 1.0
+	):
+		enemy.apply_bamboo_mortar_concussion(
+			research_concussion_duration_seconds,
+			research_concussion_move_speed_multiplier
+		)
+	return accepted
 
 
 func _has_query_runtime() -> bool:

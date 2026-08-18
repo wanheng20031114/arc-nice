@@ -4,16 +4,26 @@
 [ext_resource type="Resource" path="res://resources/config/materials/material_wooden_core.tres" id="2_core"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="3_sapling"]
 [ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="4_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="5_effect_base"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_recipe_unlock_effect.gd" id="6_effect_script"]
+
+[sub_resource type="Resource" id="Effect_simple_crafting_unlock"]
+script = ExtResource("6_effect_script")
+catalog = &"simple_crafting"
+recipe_id = &"hydrangea_rain_tower"
+
+[sub_resource type="Resource" id="Effect_production_unlock"]
+script = ExtResource("6_effect_script")
+catalog = &"production"
+recipe_id = &"wooden_core_to_hydrangea_rain_tower"
 
 [resource]
 script = ExtResource("1_script")
 research_id = &"hydrangea_rain_tower_crafting"
 display_name = "紫阳花雨幕塔培育研究"
 description = "提交共享仓库材料，完成后本局所有玩家都可在简易制作中培育紫阳花雨幕塔，也可在植物培育中心培育。"
-result_summary = "解锁紫阳花雨幕塔简易制作与培育配方"
+category_id = &"recipe_unlock"
 input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_core"), ExtResource("3_sapling")])
 input_amounts = Array[int]([2, 5])
 duration_seconds = 30.0
-effect_type = 2
-unlocked_simple_crafting_recipe_id = &"hydrangea_rain_tower"
-unlocked_production_recipe_id = &"wooden_core_to_hydrangea_rain_tower"
+effects = Array[ExtResource("5_effect_base")]([SubResource("Effect_simple_crafting_unlock"), SubResource("Effect_production_unlock")])

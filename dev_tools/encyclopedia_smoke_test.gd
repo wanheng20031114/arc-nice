@@ -14,7 +14,7 @@ const EXPECTED_SECTION_COUNTS := {
 	CodexSection.ITEM: 36,
 	CodexSection.CHARACTER: 4,
 	CodexSection.RECIPE: 32,
-	CodexSection.RESEARCH: 9,
+	CodexSection.RESEARCH: 15,
 }
 const EXPECTED_COLLECTIBLE_RARITY_COUNTS := {
 	&"common": 41,
@@ -48,9 +48,9 @@ const EXPECTED_RECIPE_CATEGORY_COUNTS := {
 	&"local_output_cycle": 1,
 }
 const EXPECTED_RESEARCH_CATEGORY_COUNTS := {
-	&"attribute": 3,
+	&"attribute": 5,
 	&"recipe_unlock": 3,
-	&"building_enhancement": 3,
+	&"building_enhancement": 7,
 }
 const EXPECTED_ENEMY_FAMILY_COUNTS := {
 	&"yuanshi_insect": 16,
@@ -1100,6 +1100,112 @@ func _test_new_section_content_contract(catalog: CodexCatalog) -> void:
 		"Research entries must expose every runtime-gated recipe route."
 	)
 
+	var defense_i := _find_entry(
+		catalog.get_entries(CodexSection.RESEARCH),
+		&"research.building_defense"
+	)
+	var defense_ii := _find_entry(
+		catalog.get_entries(CodexSection.RESEARCH),
+		&"research.building_defense_ii"
+	)
+	var defense_iii := _find_entry(
+		catalog.get_entries(CodexSection.RESEARCH),
+		&"research.building_defense_iii"
+	)
+	var defense_iii_stats := (
+		_stats_to_dictionary(defense_iii.stats)
+		if defense_iii != null
+		else {}
+	)
+	_expect(
+		defense_i != null
+		and defense_i.display_name == "建筑结构强化I"
+		and defense_ii != null
+		and defense_ii.notes.has("前置科研：建筑结构强化I")
+		and defense_iii != null
+		and defense_iii.notes.has("前置科研：建筑结构强化II")
+		and String(defense_iii_stats.get("投入", ""))
+		== "木板 ×100、水瓶 ×100、土块 ×100、白色水晶粉 ×10"
+		and String(defense_iii_stats.get("研究时间", "")) == "70 秒"
+		and String(defense_iii_stats.get("研究成果", "")) == "全建筑物防 +5",
+		"Building defense research I/II/III must remain fully visible in the codex with prerequisites and authored costs."
+	)
+
+	var agave_research := _find_entry(
+		catalog.get_entries(CodexSection.RESEARCH),
+		&"research.agave_cannon_muzzle_improvement"
+	)
+	var corn_research := _find_entry(
+		catalog.get_entries(CodexSection.RESEARCH),
+		&"research.corn_machine_gun_cooling_system_improvement"
+	)
+	var bamboo_concussion_research := _find_entry(
+		catalog.get_entries(CodexSection.RESEARCH),
+		&"research.bamboo_mortar_concussive_modification"
+	)
+	var grape_surge_research := _find_entry(
+		catalog.get_entries(CodexSection.RESEARCH),
+		&"research.grape_arc_tower_surge_modification"
+	)
+	var agave_research_stats := (
+		_stats_to_dictionary(agave_research.stats)
+		if agave_research != null
+		else {}
+	)
+	var corn_research_stats := (
+		_stats_to_dictionary(corn_research.stats)
+		if corn_research != null
+		else {}
+	)
+	var bamboo_concussion_stats := (
+		_stats_to_dictionary(bamboo_concussion_research.stats)
+		if bamboo_concussion_research != null
+		else {}
+	)
+	var grape_surge_stats := (
+		_stats_to_dictionary(grape_surge_research.stats)
+		if grape_surge_research != null
+		else {}
+	)
+	var bamboo_concussion_notes := (
+		"\n".join(bamboo_concussion_research.notes)
+		if bamboo_concussion_research != null
+		else ""
+	)
+	var grape_surge_notes := (
+		"\n".join(grape_surge_research.notes)
+		if grape_surge_research != null
+		else ""
+	)
+	_expect(
+		agave_research != null
+		and agave_research.display_name == "加农炮炮口改进"
+		and agave_research.filter_key == &"building_enhancement"
+		and String(agave_research_stats.get("投入", ""))
+		== "木板 ×50、水瓶 ×50"
+		and String(agave_research_stats.get("研究时间", "")) == "40 秒"
+		and String(agave_research_stats.get("研究成果", "")).contains("+10")
+		and corn_research != null
+		and corn_research.display_name == "机枪塔冷却系统改进"
+		and String(corn_research_stats.get("投入", ""))
+		== "木板 ×50、水瓶 ×50"
+		and String(corn_research_stats.get("研究时间", "")) == "40 秒"
+		and String(corn_research_stats.get("研究成果", "")).contains("+2")
+		and bamboo_concussion_research != null
+		and String(bamboo_concussion_stats.get("投入", ""))
+		== "木板 ×80、水瓶 ×50"
+		and String(bamboo_concussion_stats.get("研究时间", "")) == "40 秒"
+		and bamboo_concussion_notes.contains("25%")
+		and bamboo_concussion_notes.contains("3 秒")
+		and grape_surge_research != null
+		and String(grape_surge_stats.get("投入", ""))
+		== "木板 ×50、水瓶 ×100、土块 ×100"
+		and String(grape_surge_stats.get("研究时间", "")) == "60 秒"
+		and grape_surge_notes.contains("电磁附着")
+		and grape_surge_notes.contains("50%"),
+		"Four tower researches must expose typed effects, exact costs, durations, and explicit building-enhancement categories in the codex."
+	)
+
 
 func _test_visibility_contract(default_catalog: CodexCatalog) -> void:
 	var default_enemies := default_catalog.get_entries(CodexSection.ENEMY)
@@ -1206,7 +1312,7 @@ func _test_scene_contract() -> void:
 			"物品  36",
 			"角色  4",
 			"配方  32",
-			"科研  9",
+			"科研  15",
 		]),
 		"Authored scene text must not expose stale pre-ready encyclopedia counts."
 	)
@@ -1225,7 +1331,7 @@ func _test_scene_contract() -> void:
 		and screen.item_button.text == "物品  36"
 		and screen.character_button.text == "角色  4"
 		and screen.recipe_button.text == "配方  32"
-		and screen.research_button.text == "科研  9",
+		and screen.research_button.text == "科研  15",
 		"Sidebar must display all seven authoritative section totals."
 	)
 	var section_buttons: Array[Button] = screen.get("_section_buttons")

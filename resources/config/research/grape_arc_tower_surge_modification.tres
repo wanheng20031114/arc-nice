@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="GlobalResearchConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/research/global_research_config.gd" id="1_config_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="2_plank"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="3_water"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_dirt_block.tres" id="4_dirt"]
+[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="5_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="6_effect_base"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_tower_on_hit_timed_status_effect.gd" id="7_status_effect_script"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_tower_conditional_damage_bonus_effect.gd" id="8_damage_effect_script"]
+
+[sub_resource type="Resource" id="Effect_electromagnetic_attachment"]
+script = ExtResource("7_status_effect_script")
+source_tower_id = &"grape_arc_tower"
+status_id = &"electromagnetic"
+duration_seconds = 10.0
+
+[sub_resource type="Resource" id="Effect_electromagnetic_damage_bonus"]
+script = ExtResource("8_damage_effect_script")
+source_tower_id = &"grape_arc_tower"
+required_status_id = &"electromagnetic"
+bonus_damage_ratio = 0.5
+
+[resource]
+script = ExtResource("1_config_script")
+research_id = &"grape_arc_tower_surge_modification"
+display_name = "电弧塔电涌改造"
+description = "完成后，葡萄电弧塔对造成伤害的单位附加持续10秒的电磁附着，并对处于电磁附着下的单位额外造成50%伤害。"
+category_id = &"building_enhancement"
+input_items = Array[ExtResource("5_pickup_script")]([ExtResource("2_plank"), ExtResource("3_water"), ExtResource("4_dirt")])
+input_amounts = Array[int]([50, 100, 100])
+duration_seconds = 60.0
+effects = Array[ExtResource("6_effect_base")]([SubResource("Effect_electromagnetic_attachment"), SubResource("Effect_electromagnetic_damage_bonus")])

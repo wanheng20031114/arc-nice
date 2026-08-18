@@ -65,7 +65,8 @@ class CornRuntimeStub:
 	func queue_corn_machine_gun_burst_visual(
 		_plant_net_id: int,
 		_action_id: int,
-		_direction: Vector2
+		_direction: Vector2,
+		_shot_count: int
 	) -> void:
 		queued_burst_count += 1
 
@@ -270,7 +271,7 @@ func _measure_proxy_bursts() -> float:
 	var started_usec := Time.get_ticks_usec()
 	for tower in proxies:
 		var queries_before := tower.get_hitscan_query_count()
-		tower.play_multiplayer_burst(Vector2.RIGHT, 1, 0.0)
+		tower.play_multiplayer_burst(Vector2.RIGHT, 1, 0.0, 6)
 		tower.call("_physics_process", BURST_CATCHUP_SECONDS)
 		_expect(
 			tower.get_hitscan_query_count() == queries_before,

@@ -370,7 +370,43 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_entry")
 theme_override_styles/hover = SubResource("StyleBoxFlat_entry_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_entry_active")
 theme_override_styles/focus = SubResource("StyleBoxFlat_entry_active")
-text = "建筑结构强化\n待研究 · 60秒"
+text = "建筑结构强化I\n待研究 · 40秒"
+alignment = 0
+
+[node name="DefenseIIResearchButton" type="Button" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList"]
+visible = false
+custom_minimum_size = Vector2(150, 72)
+layout_mode = 2
+toggle_mode = true
+action_mode = 0
+theme_override_colors/font_color = Color(0.66, 0.82, 0.91, 1)
+theme_override_colors/font_hover_color = Color(0.82, 0.96, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.88, 1, 1, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_entry")
+theme_override_styles/hover = SubResource("StyleBoxFlat_entry_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_entry_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_entry_active")
+text = "建筑结构强化II\n待研究 · 50秒"
+alignment = 0
+
+[node name="DefenseIIIResearchButton" type="Button" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList"]
+visible = false
+custom_minimum_size = Vector2(150, 72)
+layout_mode = 2
+toggle_mode = true
+action_mode = 0
+theme_override_colors/font_color = Color(0.66, 0.82, 0.91, 1)
+theme_override_colors/font_hover_color = Color(0.82, 0.96, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.88, 1, 1, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_entry")
+theme_override_styles/hover = SubResource("StyleBoxFlat_entry_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_entry_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_entry_active")
+text = "建筑结构强化III\n待研究 · 70秒"
 alignment = 0
 
 [node name="MoveSpeedResearchButton" type="Button" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList"]
@@ -509,6 +545,74 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_entry_active")
 text = "围栏强化\n待研究 · 30秒"
 alignment = 0
 
+[node name="AgaveCannonMuzzleResearchButton" type="Button" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList"]
+custom_minimum_size = Vector2(150, 72)
+layout_mode = 2
+toggle_mode = true
+action_mode = 0
+theme_override_colors/font_color = Color(0.66, 0.82, 0.91, 1)
+theme_override_colors/font_hover_color = Color(0.82, 0.96, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.88, 1, 1, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_entry")
+theme_override_styles/hover = SubResource("StyleBoxFlat_entry_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_entry_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_entry_active")
+text = "加农炮炮口改进\n待研究 · 40秒"
+alignment = 0
+
+[node name="CornMachineGunCoolingResearchButton" type="Button" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList"]
+custom_minimum_size = Vector2(150, 72)
+layout_mode = 2
+toggle_mode = true
+action_mode = 0
+theme_override_colors/font_color = Color(0.66, 0.82, 0.91, 1)
+theme_override_colors/font_hover_color = Color(0.82, 0.96, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.88, 1, 1, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_entry")
+theme_override_styles/hover = SubResource("StyleBoxFlat_entry_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_entry_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_entry_active")
+text = "机枪塔冷却系统改进\n待研究 · 40秒"
+alignment = 0
+
+[node name="BambooMortarConcussionResearchButton" type="Button" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList"]
+custom_minimum_size = Vector2(150, 72)
+layout_mode = 2
+toggle_mode = true
+action_mode = 0
+theme_override_colors/font_color = Color(0.66, 0.82, 0.91, 1)
+theme_override_colors/font_hover_color = Color(0.82, 0.96, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.88, 1, 1, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_entry")
+theme_override_styles/hover = SubResource("StyleBoxFlat_entry_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_entry_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_entry_active")
+text = "迫击炮弹震爆改造\n待研究 · 40秒"
+alignment = 0
+
+[node name="GrapeArcTowerSurgeResearchButton" type="Button" parent="Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList"]
+custom_minimum_size = Vector2(150, 72)
+layout_mode = 2
+toggle_mode = true
+action_mode = 0
+theme_override_colors/font_color = Color(0.66, 0.82, 0.91, 1)
+theme_override_colors/font_hover_color = Color(0.82, 0.96, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.88, 1, 1, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_entry")
+theme_override_styles/hover = SubResource("StyleBoxFlat_entry_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_entry_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_entry_active")
+text = "电弧塔电涌改造\n待研究 · 60秒"
+alignment = 0
+
 [node name="ResearchDetailFrame" type="Panel" parent="Overlay/PanelRoot/GlobalPage"]
 offset_left = 234.0
 offset_top = 129.0
@@ -522,7 +626,7 @@ offset_left = 252.0
 offset_top = 140.0
 offset_right = 530.0
 offset_bottom = 171.0
-text = "建筑结构强化"
+text = "建筑结构强化I"
 label_settings = SubResource("LabelSettings_section")
 
 [node name="DurationBadgeFrame" type="Panel" parent="Overlay/PanelRoot/GlobalPage"]
@@ -539,7 +643,7 @@ offset_top = 139.0
 offset_right = 666.0
 offset_bottom = 168.0
 mouse_filter = 2
-text = "耗时 60 秒"
+text = "耗时 40 秒"
 label_settings = SubResource("LabelSettings_small")
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -549,7 +653,7 @@ offset_left = 252.0
 offset_top = 177.0
 offset_right = 668.0
 offset_bottom = 222.0
-text = "提交研究材料，完成后本局所有建筑永久获得物理防御 +10。"
+text = "提交共享仓库材料，完成后本局所有建筑永久获得5点物理防御。"
 label_settings = SubResource("LabelSettings_body")
 vertical_alignment = 1
 autowrap_mode = 3
@@ -583,6 +687,14 @@ offset_right = 548.0
 offset_bottom = 323.0
 mouse_filter = 2
 
+[node name="MaterialSlot4" parent="Overlay/PanelRoot/GlobalPage" instance=ExtResource("4_slot")]
+visible = false
+offset_left = 480.0
+offset_top = 259.0
+offset_right = 538.0
+offset_bottom = 323.0
+mouse_filter = 2
+
 [node name="PlankCount" type="Label" parent="Overlay/PanelRoot/GlobalPage"]
 offset_left = 244.0
 offset_top = 327.0
@@ -607,12 +719,21 @@ offset_bottom = 351.0
 label_settings = SubResource("LabelSettings_small")
 horizontal_alignment = 1
 
+[node name="MaterialCount4" type="Label" parent="Overlay/PanelRoot/GlobalPage"]
+visible = false
+offset_left = 468.0
+offset_top = 327.0
+offset_right = 550.0
+offset_bottom = 367.0
+label_settings = SubResource("LabelSettings_small")
+horizontal_alignment = 1
+
 [node name="ResultBadge" type="Label" parent="Overlay/PanelRoot/GlobalPage"]
 offset_left = 568.0
 offset_top = 255.0
 offset_right = 674.0
 offset_bottom = 348.0
-text = "全建筑\n物理防御 +10"
+text = "全建筑物防\n+5"
 label_settings = SubResource("LabelSettings_small")
 horizontal_alignment = 1
 vertical_alignment = 1

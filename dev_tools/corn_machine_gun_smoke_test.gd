@@ -66,12 +66,20 @@ class TargetRuntimeStub:
 
 class CornPlantPort:
 	extends TowerPlantGameplayTestPort
+	var queued_bursts: Array[Dictionary] = []
 
 	func queue_corn_machine_gun_burst_visual(
-		_plant_net_id: int,
-		_action_id: int,
-		_direction: Vector2
+		plant_net_id: int,
+		action_id: int,
+		direction: Vector2,
+		shot_count: int
 	) -> bool:
+		queued_bursts.append({
+			"plant_net_id": plant_net_id,
+			"action_id": action_id,
+			"direction": direction,
+			"shot_count": shot_count,
+		})
 		return true
 
 	func apply_authoritative_plant_enemy_damage(
@@ -116,6 +124,7 @@ func _run() -> void:
 		_test_attack_timer_phase_stagger(authority, proxy)
 		_test_physical_defense_round_totals()
 		_test_six_shot_frame_catchup(authority)
+		_test_research_burst_count_freeze_and_proxy_replay(authority, proxy)
 		await _test_delayed_aim_return(authority)
 		_test_proxy_elapsed_and_monotonic_actions(proxy)
 		_test_idle_aim_alternation(authority)
@@ -316,7 +325,7 @@ func _test_six_shot_frame_catchup(tower: CornMachineGun) -> void:
 	var tower_children_before := tower.get_child_count()
 	var hitscan_queries_before := tower.get_hitscan_query_count()
 	var authored_idle_center := tower.idle_aim_center_rotation
-	tower.call("_begin_burst", Vector2.RIGHT, 1, 0.0, true)
+	tower.call("_begin_burst", Vector2.RIGHT, 1, 0.0, true, 6)
 	var locked_burst_rotation := tower.aim_pivot.rotation
 	_expect(emitted_indices == [0], "权威 Burst 必须在 t=0 立即发射第一发。")
 	_expect(
@@ -367,6 +376,63 @@ func _test_six_shot_frame_catchup(tower: CornMachineGun) -> void:
 	tower.call("_start_idle_aim")
 
 
+func _test_research_burst_count_freeze_and_proxy_replay(
+	authority: CornMachineGun,
+	proxy: CornMachineGun
+) -> void:
+	authority.fire_audio.stream = null
+	proxy.fire_audio.stream = null
+	plant_gameplay_port.queued_bursts.clear()
+	authority.set_research_burst_shot_count_bonus(0)
+	authority.call("_start_authoritative_burst", Vector2.RIGHT)
+	_expect(
+		authority.active_burst_shot_count == 6
+		and plant_gameplay_port.queued_bursts.size() == 1
+		and int(plant_gameplay_port.queued_bursts[0].get("shot_count", 0)) == 6,
+		"Host 必须在每轮开始时把基础6发冻结进网络视觉记录。"
+	)
+	authority.set_research_burst_shot_count_bonus(2)
+	_expect(
+		authority.configured_burst_count == 8
+		and authority.active_burst_shot_count == 6,
+		"科研在本轮中途完成时，只能更新下一轮，当前轮必须保持冻结6发。"
+	)
+	authority.call("_physics_process", 0.30)
+	authority.call("_start_authoritative_burst", Vector2.UP)
+	_expect(
+		authority.active_burst_shot_count == 8
+		and plant_gameplay_port.queued_bursts.size() == 2
+		and int(plant_gameplay_port.queued_bursts[1].get("shot_count", 0)) == 8,
+		"科研后的下一轮必须冻结8发，并把8作为该动作自己的 wire 值。"
+	)
+	authority.call("_physics_process", 0.42)
+	_expect(not authority.burst_active, "科研后的8发轮必须在第8发后完整结束。")
+
+	var replayed_indices: Array[int] = []
+	proxy.burst_shot_emitted.connect(
+		func(shot_index: int, authoritative: bool) -> void:
+			if not authoritative:
+				replayed_indices.append(shot_index)
+	)
+	proxy.play_multiplayer_burst(Vector2.LEFT, 1, 0.31, 8)
+	_expect(
+		proxy.burst_active
+		and proxy.active_burst_shot_count == 8
+		and proxy.burst_next_shot_index == 6,
+		"8发代理动作在0.31秒仍未过期，必须从第7发继续播放。"
+	)
+	proxy.call("_physics_process", 0.12)
+	_expect(
+		replayed_indices == [6, 7] and not proxy.burst_active,
+		"代理必须严格按该动作携带的8发快照补播剩余两发。"
+	)
+	authority.set_research_burst_shot_count_bonus(0)
+	authority.call("_cancel_aim_return")
+	authority.call("_start_idle_aim")
+	proxy.call("_cancel_aim_return")
+	proxy.call("_start_idle_aim")
+
+
 func _test_delayed_aim_return(tower: CornMachineGun) -> void:
 	tower.call("_stop_idle_aim")
 	tower.call("_cancel_aim_return")
@@ -384,7 +450,7 @@ func _test_delayed_aim_return(tower: CornMachineGun) -> void:
 		"回正延迟期间必须保持攻击方向，且不得启动待机摆动或物理帧处理。"
 	)
 
-	tower.call("_begin_burst", Vector2.LEFT, 9001, 0.0, false)
+	tower.call("_begin_burst", Vector2.LEFT, 9001, 0.0, false, 6)
 	_expect(
 		tower.burst_active
 		and tower.aim_return_timer.is_stopped()
@@ -463,7 +529,7 @@ func _test_proxy_elapsed_and_monotonic_actions(proxy: CornMachineGun) -> void:
 			proxy_authority.append(authoritative)
 	)
 
-	proxy.play_multiplayer_burst(Vector2.RIGHT, 10, 0.13)
+	proxy.play_multiplayer_burst(Vector2.RIGHT, 10, 0.13, 6)
 	_expect(proxy.latest_proxy_action_id == 10, "代理必须接受更新的 action_id。")
 	_expect(
 		proxy.burst_next_shot_index == 3 and proxy_indices.is_empty(),
@@ -475,8 +541,8 @@ func _test_proxy_elapsed_and_monotonic_actions(proxy: CornMachineGun) -> void:
 		"代理必须按 elapsed 恢复 spin 的整数帧与小数进度。"
 	)
 	var elapsed_before_duplicate := proxy.burst_elapsed_seconds
-	proxy.play_multiplayer_burst(Vector2.UP, 10, 0.0)
-	proxy.play_multiplayer_burst(Vector2.UP, 9, 0.0)
+	proxy.play_multiplayer_burst(Vector2.UP, 10, 0.0, 6)
+	proxy.play_multiplayer_burst(Vector2.UP, 9, 0.0, 6)
 	_expect(
 		is_equal_approx(proxy.burst_elapsed_seconds, elapsed_before_duplicate)
 		and proxy.burst_direction == Vector2.RIGHT,
@@ -513,7 +579,8 @@ func _test_proxy_elapsed_and_monotonic_actions(proxy: CornMachineGun) -> void:
 	proxy.play_multiplayer_burst(
 		Vector2.UP,
 		11,
-		CornMachineGun.PROXY_BURST_EXPIRY_SECONDS
+		CornMachineGun.PROXY_BURST_EXPIRY_SECONDS,
+		6
 	)
 	_expect(
 		proxy.latest_proxy_action_id == 11
@@ -522,7 +589,7 @@ func _test_proxy_elapsed_and_monotonic_actions(proxy: CornMachineGun) -> void:
 		and proxy.turret_sprite.animation == &"idle",
 		"elapsed>=0.32 的动作必须只推进去重序号，不启动spin或物理处理。"
 	)
-	proxy.play_multiplayer_burst(Vector2.DOWN, 12, 0.0)
+	proxy.play_multiplayer_burst(Vector2.DOWN, 12, 0.0, 6)
 	_expect(
 		proxy.latest_proxy_action_id == 12
 		and proxy_indices.back() == 0
@@ -532,7 +599,8 @@ func _test_proxy_elapsed_and_monotonic_actions(proxy: CornMachineGun) -> void:
 	proxy.play_multiplayer_burst(
 		Vector2.LEFT,
 		13,
-		CornMachineGun.PROXY_BURST_EXPIRY_SECONDS
+		CornMachineGun.PROXY_BURST_EXPIRY_SECONDS,
+		6
 	)
 	_expect(
 		proxy.latest_proxy_action_id == 13
@@ -815,7 +883,7 @@ func _test_proxy_shots_do_not_query_or_consume(tower: CornMachineGun) -> void:
 	if bearer != null:
 		var queries_before := tower.get_hitscan_query_count()
 		var durability_before := _get_bearer_durability(bearer)
-		tower.call("_begin_burst", Vector2.RIGHT, 9000, 0.0, false)
+		tower.call("_begin_burst", Vector2.RIGHT, 9000, 0.0, false, 6)
 		tower.call("_physics_process", 0.30)
 		_expect(
 			tower.get_hitscan_query_count() == queries_before

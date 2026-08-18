@@ -1794,6 +1794,7 @@ func _on_tower_world_hydrangea_rain_visual_broadcast_requested(
 func _on_tower_world_corn_machine_gun_burst_batch_broadcast_requested(
 	plant_net_ids: PackedInt32Array,
 	action_ids: PackedInt32Array,
+	shot_counts: PackedByteArray,
 	directions: PackedVector2Array,
 	host_action_times: PackedFloat64Array
 ) -> void:
@@ -1801,7 +1802,7 @@ func _on_tower_world_corn_machine_gun_burst_batch_broadcast_requested(
 		return
 	_rpc_to_connected_clients(
 		&"net_corn_machine_gun_burst_batch",
-		[plant_net_ids, action_ids, directions, host_action_times]
+		[plant_net_ids, action_ids, shot_counts, directions, host_action_times]
 	)
 
 
@@ -1929,12 +1930,14 @@ func queue_hydrangea_rain_visual(
 func queue_corn_machine_gun_burst_visual(
 	plant_net_id: int,
 	action_id: int,
-	direction: Vector2
+	direction: Vector2,
+	shot_count: int
 ) -> void:
 	tower_world_coordinator.queue_corn_machine_gun_burst_visual(
 		plant_net_id,
 		action_id,
 		direction,
+		shot_count,
 		_get_net_time()
 	)
 
@@ -6005,12 +6008,14 @@ func net_hydrangea_rain_visual(
 func net_corn_machine_gun_burst_batch(
 	plant_net_ids: PackedInt32Array,
 	action_ids: PackedInt32Array,
+	shot_counts: PackedByteArray,
 	directions: PackedVector2Array,
 	host_action_times: PackedFloat64Array
 ) -> void:
 	tower_world_coordinator.receive_corn_machine_gun_burst_batch(
 		plant_net_ids,
 		action_ids,
+		shot_counts,
 		directions,
 		host_action_times,
 		_get_net_time(),

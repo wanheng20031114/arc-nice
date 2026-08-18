@@ -783,6 +783,7 @@ func net_hydrangea_rain_visual(
 func net_corn_machine_gun_burst_batch(
 	plant_net_ids: PackedInt32Array,
 	action_ids: PackedInt32Array,
+	shot_counts: PackedByteArray,
 	directions: PackedVector2Array,
 	host_action_times: PackedFloat64Array
 ) -> void:

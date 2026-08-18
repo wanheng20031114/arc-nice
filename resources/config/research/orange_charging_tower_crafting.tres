@@ -4,15 +4,21 @@
 [ext_resource type="Resource" path="res://resources/config/materials/material_wooden_core.tres" id="2_core"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="3_sapling"]
 [ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="4_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="5_effect_base"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_recipe_unlock_effect.gd" id="6_effect_script"]
+
+[sub_resource type="Resource" id="Effect_production_unlock"]
+script = ExtResource("6_effect_script")
+catalog = &"production"
+recipe_id = &"wooden_core_to_orange_charging_tower"
 
 [resource]
 script = ExtResource("1_script")
 research_id = &"orange_charging_tower_crafting"
 display_name = "橘充能塔培育"
 description = "提交共享仓库材料，完成后本局所有玩家都可在植物培育中心培育橘充能塔。"
-result_summary = "解锁橘充能塔培育配方"
+category_id = &"recipe_unlock"
 input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_core"), ExtResource("3_sapling")])
 input_amounts = Array[int]([2, 5])
 duration_seconds = 30.0
-effect_type = 3
-unlocked_production_recipe_id = &"wooden_core_to_orange_charging_tower"
+effects = Array[ExtResource("5_effect_base")]([SubResource("Effect_production_unlock")])

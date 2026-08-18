@@ -4,15 +4,21 @@
 [ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="2_plank"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="3_water"]
 [ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="4_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="5_effect_base"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_multiplier_modifier_effect.gd" id="6_effect_script"]
+
+[sub_resource type="Resource" id="Effect_spread_speed"]
+script = ExtResource("6_effect_script")
+metric_id = &"plant.vegetation_stake.spread_speed"
+multiplier = 2.0
 
 [resource]
 script = ExtResource("1_script")
 research_id = &"vegetation_stake_spread_enhancement"
 display_name = "植被桩蔓延增强"
 description = "提交共享仓库材料，完成后本局所有植被桩的剩余草地蔓延进度以2倍速推进：基础每圈10秒，强化后每圈5秒；已经过去的时间不会追溯加速。"
-result_summary = "植被桩蔓延速率 ×2"
+category_id = &"building_enhancement"
 input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_plank"), ExtResource("3_water")])
 input_amounts = Array[int]([20, 5])
 duration_seconds = 60.0
-effect_type = 4
-effect_amount = 2.0
+effects = Array[ExtResource("5_effect_base")]([SubResource("Effect_spread_speed")])

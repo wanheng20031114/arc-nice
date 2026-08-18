@@ -26,7 +26,13 @@ relay_servers/
 └── README.md
 ```
 
-当前网络基线为协议 v84、8 个 ENet 通道。v84 新增生产循环开关 command，并将
+当前网络基线为协议 v85、8 个 ENet 通道。v85 在科研账本新增
+`building_defense_ii`、`building_defense_iii`、
+`agave_cannon_muzzle_improvement`、`corn_machine_gun_cooling_system_improvement`、
+`bamboo_mortar_concussive_modification` 与 `grape_arc_tower_surge_modification`
+六个稳定 ID，并在玉米机枪塔 burst batch 增加逐动作 `shot_counts` packed 列；
+v84 及更旧客户端既缺少完整科研项，也会按旧四列 RPC 解码，不能安全混联。
+v84 新增生产循环开关 command，并将
 ProductionBuilding runtime 升级至 schema5；v83 客户端缺少该 command，且不能安全解析
 ProductionBuilding runtime schema5。v83 新增围栏强化科研 wire ID，
 完成后所有围栏生命值 +1000、物理防御 +5；v82 客户端缺少该科研注册项，
@@ -117,7 +123,7 @@ v35 的战斗机器人枪手弹丸及玩家受击来源 wire ID 17 保持兼容�
 P3 路线世界继续使用约 12Hz 的轻量角色姿态同步：
 Client 在输入信道上报，Host 校验后在玩家状态信道广播，非法位置通过可靠信道纠正。
 v34 的 P3 路线全量快照携带 `runtime_contract_hash`，Host 与 Client 必须使用相同的世界几何契约；
-v83 及更旧客户端不能加入 v84 房间。
+v84 及更旧客户端不能加入 v85 房间。
 Relay 只转发 RPC，不重复实现游戏状态逻辑；逻辑 Host 对不兼容、重连加载或
 运行时投影超时成员的断开请求会可靠发送至 Relay 服务端（peer 1）。Relay 只
 接受已登记 Host 的请求，并由服务端断开同房目标；普通客户端不能踢出其他成员。

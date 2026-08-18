@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="GlobalResearchConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/research/global_research_config.gd" id="1_config_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="2_plank"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="3_water"]
+[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="4_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="5_effect_base"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_additive_modifier_effect.gd" id="6_effect_script"]
+
+[sub_resource type="Resource" id="Effect_attack_damage"]
+script = ExtResource("6_effect_script")
+attribute_id = &"plant.agave_cannon.attack_damage"
+bonus = 10.0
+
+[resource]
+script = ExtResource("1_config_script")
+research_id = &"agave_cannon_muzzle_improvement"
+display_name = "加农炮炮口改进"
+description = "完成后，本局所有龙舌兰加农炮的单次攻击伤害永久增加10。"
+category_id = &"building_enhancement"
+input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_plank"), ExtResource("3_water")])
+input_amounts = Array[int]([50, 50])
+duration_seconds = 40.0
+effects = Array[ExtResource("5_effect_base")]([SubResource("Effect_attack_damage")])

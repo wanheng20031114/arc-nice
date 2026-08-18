@@ -232,12 +232,14 @@ class TestCornMachineGun:
 	func play_multiplayer_burst(
 		direction: Vector2,
 		action_id: int,
-		elapsed_seconds: float
+		elapsed_seconds: float,
+		shot_count: int = 0
 	) -> void:
 		playback_records.append({
 			"direction": direction,
 			"action_id": action_id,
 			"elapsed_seconds": elapsed_seconds,
+			"shot_count": shot_count,
 		})
 
 
@@ -551,7 +553,7 @@ func _test_static_boundary(mp_game: MultiplayerGameplaySession) -> void:
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
 		rpc_pattern.search_all(source).size() == 144,
-		"TowerWorld 提取必须保留 protocol-v84 的 144 个 MpGame RPC 门面。"
+		"TowerWorld 提取必须保留 protocol-v85 的 144 个 MpGame RPC 门面。"
 	)
 	for function_name in [
 		"net_plant_placement_requested",
@@ -905,6 +907,7 @@ func _test_plant_combat_network(session: MultiplayerGameplaySession) -> void:
 			203,
 			record_index + 1,
 			Vector2(2.0, 0.0),
+			6 + (record_index % 2) * 2,
 			6.0 + record_index
 		)
 	host_coordinator.update_host(0.05)
@@ -963,7 +966,15 @@ func _test_plant_combat_network(session: MultiplayerGameplaySession) -> void:
 		and (
 			_corn_visual_batches[1].get("plant_net_ids", PackedInt32Array())
 			as PackedInt32Array
-		).size() == 1,
+		).size() == 1
+		and (
+			_corn_visual_batches[0].get("shot_counts", PackedByteArray())
+			as PackedByteArray
+		).size() == 32
+		and (
+			_corn_visual_batches[1].get("shot_counts", PackedByteArray())
+			as PackedByteArray
+		) == PackedByteArray([6]),
 		"33 条玉米 burst 必须按 32 条上限稳定拆为两个批次。"
 	)
 	for batch in _bamboo_visual_batches:
@@ -983,8 +994,10 @@ func _test_plant_combat_network(session: MultiplayerGameplaySession) -> void:
 	_expect(
 		client_bamboo.playback_records.size() == 25
 		and client_hydrangea.playback_records.size() == 1
-		and client_corn.playback_records.size() == 33,
-		"客户端必须通过强类型植物索引播放竹迫击炮、绣球雨和玉米 burst。"
+		and client_corn.playback_records.size() == 33
+		and int(client_corn.playback_records[0].get("shot_count", 0)) == 6
+		and int(client_corn.playback_records[1].get("shot_count", 0)) == 8,
+		"客户端必须通过强类型植物索引播放视觉，并保留每轮玉米 burst 的6/8发快照。"
 	)
 
 	var owner := Node2D.new()
@@ -1310,12 +1323,14 @@ func _capture_hydrangea_visual(
 func _capture_corn_visual_batch(
 	plant_net_ids: PackedInt32Array,
 	action_ids: PackedInt32Array,
+	shot_counts: PackedByteArray,
 	directions: PackedVector2Array,
 	host_action_times: PackedFloat64Array
 ) -> void:
 	_corn_visual_batches.append({
 		"plant_net_ids": plant_net_ids.duplicate(),
 		"action_ids": action_ids.duplicate(),
+		"shot_counts": shot_counts.duplicate(),
 		"directions": directions.duplicate(),
 		"host_action_times": host_action_times.duplicate(),
 	})
@@ -1346,6 +1361,7 @@ func _deliver_corn_visual_batch(
 	coordinator.receive_corn_machine_gun_burst_batch(
 		record.get("plant_net_ids", PackedInt32Array()) as PackedInt32Array,
 		record.get("action_ids", PackedInt32Array()) as PackedInt32Array,
+		record.get("shot_counts", PackedByteArray()) as PackedByteArray,
 		record.get("directions", PackedVector2Array()) as PackedVector2Array,
 		record.get("host_action_times", PackedFloat64Array()) as PackedFloat64Array,
 		50.0,

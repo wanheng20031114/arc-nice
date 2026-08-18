@@ -116,6 +116,7 @@ signal hydrangea_rain_visual_broadcast_requested(
 signal corn_machine_gun_burst_batch_broadcast_requested(
 	plant_net_ids: PackedInt32Array,
 	action_ids: PackedInt32Array,
+	shot_counts: PackedByteArray,
 	directions: PackedVector2Array,
 	host_action_times: PackedFloat64Array
 )
@@ -165,6 +166,7 @@ var _bamboo_mortar_visual_flush_time_left := (
 )
 var _pending_corn_machine_gun_burst_visuals := PackedInt32Array()
 var _pending_corn_machine_gun_burst_action_ids := PackedInt32Array()
+var _pending_corn_machine_gun_burst_shot_counts := PackedByteArray()
 var _pending_corn_machine_gun_burst_directions := PackedVector2Array()
 var _pending_corn_machine_gun_burst_host_times := PackedFloat64Array()
 var _corn_machine_gun_burst_flush_time_left := (
@@ -399,6 +401,7 @@ func queue_corn_machine_gun_burst_visual(
 	plant_net_id: int,
 	action_id: int,
 	direction: Vector2,
+	shot_count: int,
 	host_action_time: float
 ) -> void:
 	if (
@@ -408,6 +411,8 @@ func queue_corn_machine_gun_burst_visual(
 		or action_id <= 0
 		or not direction.is_finite()
 		or direction.length_squared() <= 0.001
+		or shot_count <= 0
+		or shot_count > _NetConstants.CORN_MACHINE_GUN_BURST_SHOT_COUNT_MAX
 		or not is_finite(host_action_time)
 		or host_action_time < 0.0
 	):
@@ -417,6 +422,7 @@ func queue_corn_machine_gun_burst_visual(
 		return
 	_pending_corn_machine_gun_burst_visuals.append(plant_net_id)
 	_pending_corn_machine_gun_burst_action_ids.append(action_id)
+	_pending_corn_machine_gun_burst_shot_counts.append(shot_count)
 	_pending_corn_machine_gun_burst_directions.append(direction.normalized())
 	_pending_corn_machine_gun_burst_host_times.append(host_action_time)
 
@@ -662,6 +668,7 @@ func receive_hydrangea_rain_visual(
 func receive_corn_machine_gun_burst_batch(
 	plant_net_ids: PackedInt32Array,
 	action_ids: PackedInt32Array,
+	shot_counts: PackedByteArray,
 	directions: PackedVector2Array,
 	host_action_times: PackedFloat64Array,
 	local_net_time: float,
@@ -673,6 +680,7 @@ func receive_corn_machine_gun_burst_batch(
 		or not _is_valid_corn_machine_gun_burst_payload(
 			plant_net_ids,
 			action_ids,
+			shot_counts,
 			directions,
 			host_action_times
 		)
@@ -693,7 +701,8 @@ func receive_corn_machine_gun_burst_batch(
 		corn.play_multiplayer_burst(
 			directions[record_index].normalized(),
 			action_ids[record_index],
-			elapsed
+			elapsed,
+			shot_counts[record_index]
 		)
 
 
@@ -2178,6 +2187,8 @@ func _flush_corn_machine_gun_burst_visuals() -> void:
 	assert(
 		_pending_corn_machine_gun_burst_action_ids.size()
 		== _pending_corn_machine_gun_burst_visuals.size()
+		and _pending_corn_machine_gun_burst_shot_counts.size()
+		== _pending_corn_machine_gun_burst_visuals.size()
 		and _pending_corn_machine_gun_burst_directions.size()
 		== _pending_corn_machine_gun_burst_visuals.size()
 		and _pending_corn_machine_gun_burst_host_times.size()
@@ -2198,6 +2209,10 @@ func _flush_corn_machine_gun_burst_visuals() -> void:
 				chunk_end
 			),
 			_pending_corn_machine_gun_burst_action_ids.slice(
+				chunk_start,
+				chunk_end
+			),
+			_pending_corn_machine_gun_burst_shot_counts.slice(
 				chunk_start,
 				chunk_end
 			),
@@ -2226,6 +2241,7 @@ func _clear_bamboo_mortar_visuals() -> void:
 func _clear_corn_machine_gun_burst_visuals() -> void:
 	_pending_corn_machine_gun_burst_visuals.clear()
 	_pending_corn_machine_gun_burst_action_ids.clear()
+	_pending_corn_machine_gun_burst_shot_counts.clear()
 	_pending_corn_machine_gun_burst_directions.clear()
 	_pending_corn_machine_gun_burst_host_times.clear()
 
@@ -2284,6 +2300,7 @@ func _is_valid_bamboo_mortar_visual_payload(
 func _is_valid_corn_machine_gun_burst_payload(
 	plant_net_ids: PackedInt32Array,
 	action_ids: PackedInt32Array,
+	shot_counts: PackedByteArray,
 	directions: PackedVector2Array,
 	host_action_times: PackedFloat64Array
 ) -> bool:
@@ -2292,6 +2309,7 @@ func _is_valid_corn_machine_gun_burst_payload(
 		record_count <= 0
 		or record_count > CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET
 		or action_ids.size() != record_count
+		or shot_counts.size() != record_count
 		or directions.size() != record_count
 		or host_action_times.size() != record_count
 	):
@@ -2302,6 +2320,9 @@ func _is_valid_corn_machine_gun_burst_payload(
 		if (
 			plant_net_ids[record_index] <= 0
 			or action_ids[record_index] <= 0
+			or shot_counts[record_index] <= 0
+			or shot_counts[record_index]
+				> _NetConstants.CORN_MACHINE_GUN_BURST_SHOT_COUNT_MAX
 			or not direction.is_finite()
 			or direction.length_squared() <= 0.001
 			or not is_finite(host_action_time)

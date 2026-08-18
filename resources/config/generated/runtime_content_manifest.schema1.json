@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "b6fb3cf4a5e851463aba9089daab8404685d8c6815ec5b407a5ad72b2f4f8434",
+	"content_sha256": "fec71be1bfd1f4893c2862062a9f816aa8792ff974d4b2fcc8165798c951fb27",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -3621,6 +3621,102 @@
 			"sha256": "7091fc0b2bf5ad673aa6bdc5dabb66de33ecd4d09bb3358f2151ee4005ee64b7"
 		},
 		{
+			"path": "res://resources/config/research/agave_cannon_muzzle_improvement.tres",
+			"sha256": "6bace922b44b77c8fb1f8d3100f7b27ef1f37e6529b178f5b4bcc64e09cfdaa1"
+		},
+		{
+			"path": "res://resources/config/research/bamboo_mortar_concussive_modification.tres",
+			"sha256": "e45343312eaf9c5356211f05bce477edaca8e8cfcc5aeeda3763f0edc1ef283a"
+		},
+		{
+			"path": "res://resources/config/research/bamboo_mortar_crafting.tres",
+			"sha256": "343ccf7bdaf33daa2b2f47ce362833694ec6fdf78c6e8988fb6ec4213667ec63"
+		},
+		{
+			"path": "res://resources/config/research/building_defense.tres",
+			"sha256": "d40d160dfd4f4ac61b9d6f7f6c3cd25d6ce60dd65ca3f1039ee065a6e1d57af1"
+		},
+		{
+			"path": "res://resources/config/research/building_defense_ii.tres",
+			"sha256": "6c7819f4db7a8579ecdb782a71bc4fac56a3630b2c2a1cebdcec0f6b7417aecf"
+		},
+		{
+			"path": "res://resources/config/research/building_defense_iii.tres",
+			"sha256": "bb67f277b705db8cdcec404021bffe1c5b1904141b2a6f8e32a66db30f07d806"
+		},
+		{
+			"path": "res://resources/config/research/corn_machine_gun_cooling_system_improvement.tres",
+			"sha256": "9f40faf71f1477631d6c1090ce212fe62090e7914a0dad492effce0cdd11134e"
+		},
+		{
+			"path": "res://resources/config/research/fence_reinforcement.tres",
+			"sha256": "f2f3457967106cafde8cf25b4026d7d16232296fb43dcb1352e58bd7fe457bd9"
+		},
+		{
+			"path": "res://resources/config/research/global_research_additive_modifier_effect.gd",
+			"sha256": "931f01a3701a01e31913f7a33551258878beccf141998534b62d0a6bd728ae9b"
+		},
+		{
+			"path": "res://resources/config/research/global_research_config.gd",
+			"sha256": "6c4c4f2efec6c3eea07454b0bd041ebd9acd2d759017e643ce9aa7e3ea5bc974"
+		},
+		{
+			"path": "res://resources/config/research/global_research_effect.gd",
+			"sha256": "dee7ac6bf9b3013339f319a6f0539f0e91dc531d509019c8642c4e30e64db3c6"
+		},
+		{
+			"path": "res://resources/config/research/global_research_multiplier_modifier_effect.gd",
+			"sha256": "d24f4cb4dd1966eae02a3d7e40ef4c35e0e83d4b95cc1f48ebc93facfb47ec04"
+		},
+		{
+			"path": "res://resources/config/research/global_research_recipe_unlock_effect.gd",
+			"sha256": "13dea9cddcac17c65c3e012ab13f6f026ca355ac04c67d93db0863345f41e7fc"
+		},
+		{
+			"path": "res://resources/config/research/global_research_registry.gd",
+			"sha256": "69b1cb0708dd903318be45388df25df05e36d220c97d0504a755f8990df415c6"
+		},
+		{
+			"path": "res://resources/config/research/global_research_tower_conditional_damage_bonus_effect.gd",
+			"sha256": "a413672f55a02a302a155135bc3ec0aefa13b3ebd953c07b7b02e89f4fa713c7"
+		},
+		{
+			"path": "res://resources/config/research/global_research_tower_on_hit_slow_effect.gd",
+			"sha256": "99a374624476730ec8fab376981a8120c7c1e5635ec548b40963db92500833c5"
+		},
+		{
+			"path": "res://resources/config/research/global_research_tower_on_hit_timed_status_effect.gd",
+			"sha256": "a1ea8e5a7830197588684cbbdc5e3a8a5598b63468367398a8b0258621afbcfa"
+		},
+		{
+			"path": "res://resources/config/research/grape_arc_tower_surge_modification.tres",
+			"sha256": "cdf11731d9c81abc7b4165042660c30ce2e0c755285e9e9360e9c3978e09e52d"
+		},
+		{
+			"path": "res://resources/config/research/hydrangea_rain_tower_crafting.tres",
+			"sha256": "2f723b82fc5b75ec58cf19478c36a29752eb2bce23af1986c57d982ec96302ff"
+		},
+		{
+			"path": "res://resources/config/research/orange_charging_tower_crafting.tres",
+			"sha256": "0a17a2746a9e8c2f6fefbacc692496f079e5925067e65161b8fed3a8cf636c32"
+		},
+		{
+			"path": "res://resources/config/research/player_move_speed.tres",
+			"sha256": "ed29218d5a898751e28a28c348146f8a14fe5e3d1c53acbbbfdd03d6d5d93ab3"
+		},
+		{
+			"path": "res://resources/config/research/vegetation_enhancement.tres",
+			"sha256": "a7c2b96bc781f067519fdc9b7bc8fe4b782ff0fa5e8d16e8696f7972860d8a9a"
+		},
+		{
+			"path": "res://resources/config/research/vegetation_stake_spread_enhancement.tres",
+			"sha256": "8db8969ab656a47a350711e1c4c61fa6bc5d02a0c2b753794aa69730deea3592"
+		},
+		{
+			"path": "res://resources/config/research/water_collection_rate_enhancement.tres",
+			"sha256": "9841ee2f1f3ad21d221b41f3f5e567adb4acecff2c6e61d048b9d30ba1e41d7b"
+		},
+		{
 			"path": "res://resources/config/waves/wave_campaign_config.gd",
 			"sha256": "f333ff078668a68ac0428a3232e3fcbae27354e76dc3a6a7554f972ea77c61f8"
 		},
@@ -5986,7 +6082,7 @@
 		},
 		{
 			"path": "res://scene/combat/feedback/shaders/entity_motion_status.gdshader",
-			"sha256": "0f4f490940d70498b13cc0bf0ebf1b9c4c0624d1d63de0c91cc8f9c6f99c50aa"
+			"sha256": "a9724e312c3c80836bb8bf77c4a7bcec47cf308754a648a752eba368a8e2e1b4"
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/cardboard_monster.gd",
@@ -6130,7 +6226,7 @@
 		},
 		{
 			"path": "res://scene/enemy/enemy.gd",
-			"sha256": "d06c69982edffe1ad6ba924885a35d972f2e5415a2a7c920b9768176a31ce18a"
+			"sha256": "366686a9031cc7aaf1f1b4ea4117d93f78bb145bdd65c7332be162da969e3de2"
 		},
 		{
 			"path": "res://scene/enemy/enemy.tscn",
@@ -6150,7 +6246,7 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_drone_operator.tscn",
-			"sha256": "dbb5ec6ef096e53216e6c55825cbf8a744169762ad2ff5437434570ee6eae552"
+			"sha256": "c8dc0ce5dd37f1cfce0edad8c18513578e807da484a5d34e73a234a27b86af9f"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_drone_operator_elite.tscn",
@@ -6166,7 +6262,7 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_gunner.tscn",
-			"sha256": "7a1ee14622e147a81f0bd32e6e4163cd6873702bdf4389608e210bbe6fcef77b"
+			"sha256": "564ad84811f78d0cbef50bda67b70e58a4382ca256ee7724205a30067ba2f6f5"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.gd",

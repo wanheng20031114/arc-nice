@@ -207,7 +207,8 @@ class MortarPlantPort:
 	func queue_corn_machine_gun_burst_visual(
 		_plant_net_id: int,
 		_action_id: int,
-		_direction: Vector2
+		_direction: Vector2,
+		_shot_count: int
 	) -> bool:
 		return false
 

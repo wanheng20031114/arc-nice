@@ -4,16 +4,26 @@
 [ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="2_plank"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="3_sapling"]
 [ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="4_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="5_effect_base"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_additive_modifier_effect.gd" id="6_effect_script"]
+
+[sub_resource type="Resource" id="Effect_fence_max_health"]
+script = ExtResource("6_effect_script")
+attribute_id = &"building.fence.max_health"
+bonus = 1000.0
+
+[sub_resource type="Resource" id="Effect_fence_physical_defense"]
+script = ExtResource("6_effect_script")
+attribute_id = &"building.fence.physical_defense"
+bonus = 5.0
 
 [resource]
 script = ExtResource("1_script")
 research_id = &"fence_reinforcement"
 display_name = "围栏强化"
 description = "所有围栏生命值 +1000，物理防御 +5。"
-result_summary = "围栏生命+1000\n物理防御+5"
+category_id = &"building_enhancement"
 input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_plank"), ExtResource("3_sapling")])
 input_amounts = Array[int]([100, 100])
 duration_seconds = 30.0
-effect_type = 7
-effect_amount = 1000.0
-secondary_effect_amount = 5.0
+effects = Array[ExtResource("5_effect_base")]([SubResource("Effect_fence_max_health"), SubResource("Effect_fence_physical_defense")])

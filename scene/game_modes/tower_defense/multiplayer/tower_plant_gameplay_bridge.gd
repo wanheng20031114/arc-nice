@@ -68,14 +68,16 @@ func queue_hydrangea_rain_visual(
 func queue_corn_machine_gun_burst_visual(
 	plant_net_id: int,
 	action_id: int,
-	direction: Vector2
+	direction: Vector2,
+	shot_count: int
 ) -> bool:
 	return (
 		mode_adapter != null
 		and mode_adapter.queue_corn_machine_gun_burst_visual(
 			plant_net_id,
 			action_id,
-			direction
+			direction,
+			shot_count
 		)
 	)
 

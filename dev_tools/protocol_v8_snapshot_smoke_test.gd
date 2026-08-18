@@ -229,7 +229,7 @@ func _run() -> void:
 		_test_v25_high_value_player_snapshot_contract()
 		_test_player_codec_and_reuse()
 		if failures.is_empty():
-			print("PROTOCOL_V84_PLAYER_SNAPSHOT_SMOKE_TEST_OK")
+			print("PROTOCOL_V85_PLAYER_SNAPSHOT_SMOKE_TEST_OK")
 			quit()
 			return
 		for failure in failures:
@@ -253,7 +253,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V84_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V85_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -262,10 +262,10 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 84, "Protocol must be v84.")
+	_expect(NetConstants.PROTOCOL_VERSION == 85, "Protocol must be v85.")
 	_expect(
 		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
-		"Protocol v84 must retain scene-specific bits 5..6 for shield stages, ninja boost, and main-battle airborne visuals."
+		"Protocol v85 must retain scene-specific bits 5..6 for shield stages, ninja boost, and main-battle airborne visuals."
 	)
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
@@ -283,7 +283,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v84 channel assignments must remain stable."
+		"Protocol v85 channel assignments must remain stable."
 	)
 
 
@@ -1094,6 +1094,7 @@ func _test_corn_burst_payload_contract() -> void:
 			"_is_valid_corn_machine_gun_burst_payload",
 			PackedInt32Array([11, 12]),
 			PackedInt32Array([21, 22]),
+			PackedByteArray([6, 8]),
 			PackedVector2Array([Vector2.RIGHT, Vector2.UP]),
 			PackedFloat64Array([0.0, 1.25])
 		)),
@@ -1104,6 +1105,7 @@ func _test_corn_burst_payload_contract() -> void:
 			"_is_valid_corn_machine_gun_burst_payload",
 			PackedInt32Array([11, 12]),
 			PackedInt32Array([21]),
+			PackedByteArray([6, 8]),
 			PackedVector2Array([Vector2.RIGHT, Vector2.UP]),
 			PackedFloat64Array([0.0, 1.25])
 		)),
@@ -1114,6 +1116,28 @@ func _test_corn_burst_payload_contract() -> void:
 			"_is_valid_corn_machine_gun_burst_payload",
 			PackedInt32Array([11]),
 			PackedInt32Array([21]),
+			PackedByteArray([0]),
+			PackedVector2Array([Vector2.RIGHT]),
+			PackedFloat64Array([0.0])
+		))
+		and not bool(world.call(
+			"_is_valid_corn_machine_gun_burst_payload",
+			PackedInt32Array([11]),
+			PackedInt32Array([21]),
+			PackedByteArray([
+				NetConstants.CORN_MACHINE_GUN_BURST_SHOT_COUNT_MAX + 1
+			]),
+			PackedVector2Array([Vector2.RIGHT]),
+			PackedFloat64Array([0.0])
+		)),
+		"Corn burst payloads must reject shot counts outside the frozen 1..32 wire range."
+	)
+	_expect(
+		not bool(world.call(
+			"_is_valid_corn_machine_gun_burst_payload",
+			PackedInt32Array([11]),
+			PackedInt32Array([21]),
+			PackedByteArray([6]),
 			PackedVector2Array([Vector2(NAN, 0.0)]),
 			PackedFloat64Array([0.0])
 		))
@@ -1121,6 +1145,7 @@ func _test_corn_burst_payload_contract() -> void:
 			"_is_valid_corn_machine_gun_burst_payload",
 			PackedInt32Array([11]),
 			PackedInt32Array([21]),
+			PackedByteArray([6]),
 			PackedVector2Array([Vector2.RIGHT]),
 			PackedFloat64Array([NAN])
 		)),
@@ -1128,11 +1153,13 @@ func _test_corn_burst_payload_contract() -> void:
 	)
 	var oversized_ids := PackedInt32Array()
 	var oversized_actions := PackedInt32Array()
+	var oversized_shot_counts := PackedByteArray()
 	var oversized_directions := PackedVector2Array()
 	var oversized_times := PackedFloat64Array()
 	for record_index in range(33):
 		oversized_ids.append(record_index + 1)
 		oversized_actions.append(record_index + 1)
+		oversized_shot_counts.append(8)
 		oversized_directions.append(Vector2.RIGHT)
 		oversized_times.append(float(record_index))
 	_expect(
@@ -1140,6 +1167,7 @@ func _test_corn_burst_payload_contract() -> void:
 			"_is_valid_corn_machine_gun_burst_payload",
 			oversized_ids,
 			oversized_actions,
+			oversized_shot_counts,
 			oversized_directions,
 			oversized_times
 		)),
@@ -1152,6 +1180,10 @@ func _test_corn_burst_payload_contract() -> void:
 	world.set(
 		"_pending_corn_machine_gun_burst_action_ids",
 		PackedInt32Array([21])
+	)
+	world.set(
+		"_pending_corn_machine_gun_burst_shot_counts",
+		PackedByteArray([8])
 	)
 	world.set(
 		"_pending_corn_machine_gun_burst_directions",
@@ -1167,6 +1199,10 @@ func _test_corn_burst_payload_contract() -> void:
 		and (
 			world.get("_pending_corn_machine_gun_burst_action_ids")
 			as PackedInt32Array
+		).is_empty()
+		and (
+			world.get("_pending_corn_machine_gun_burst_shot_counts")
+			as PackedByteArray
 		).is_empty()
 		and (
 			world.get("_pending_corn_machine_gun_burst_directions")

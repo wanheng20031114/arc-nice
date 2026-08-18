@@ -5,15 +5,21 @@
 [ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="3_water"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="4_plank"]
 [ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="5_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="6_effect_base"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_multiplier_modifier_effect.gd" id="7_effect_script"]
+
+[sub_resource type="Resource" id="Effect_cycle_duration"]
+script = ExtResource("7_effect_script")
+metric_id = &"plant.water_collector.cycle_duration"
+multiplier = 0.5
 
 [resource]
 script = ExtResource("1_script")
 research_id = &"water_collection_rate_enhancement"
 display_name = "采水速率提升"
 description = "水收集器单轮耗时缩短50%。"
-result_summary = "水收集器单轮耗时 -50%"
+category_id = &"building_enhancement"
 input_items = Array[ExtResource("5_pickup_script")]([ExtResource("2_white_powder"), ExtResource("3_water"), ExtResource("4_plank")])
 input_amounts = Array[int]([3, 10, 20])
 duration_seconds = 30.0
-effect_type = 6
-effect_amount = 0.5
+effects = Array[ExtResource("6_effect_base")]([SubResource("Effect_cycle_duration")])

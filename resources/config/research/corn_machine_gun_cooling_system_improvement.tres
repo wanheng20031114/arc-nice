@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="GlobalResearchConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/research/global_research_config.gd" id="1_config_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="2_plank"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_water_bottle.tres" id="3_water"]
+[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="4_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_effect.gd" id="5_effect_base"]
+[ext_resource type="Script" path="res://resources/config/research/global_research_additive_modifier_effect.gd" id="6_effect_script"]
+
+[sub_resource type="Resource" id="Effect_burst_count"]
+script = ExtResource("6_effect_script")
+attribute_id = &"plant.corn_machine_gun.attack_burst_count"
+bonus = 2.0
+
+[resource]
+script = ExtResource("1_config_script")
+research_id = &"corn_machine_gun_cooling_system_improvement"
+display_name = "机枪塔冷却系统改进"
+description = "完成后，本局所有玉米机枪塔每轮射击次数由6次提升至8次，轮间隔与发内间隔不变。"
+category_id = &"building_enhancement"
+input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_plank"), ExtResource("3_water")])
+input_amounts = Array[int]([50, 50])
+duration_seconds = 40.0
+effects = Array[ExtResource("5_effect_base")]([SubResource("Effect_burst_count")])

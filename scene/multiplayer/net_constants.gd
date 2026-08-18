@@ -13,7 +13,7 @@ extends RefCounted
 ## v29：Tango 废除持续光束，改为 Host 权威的三炮原子齐射批包，并在既有
 ## 输入流中同步松键后的持续瞄准。
 ## v30：Tango 新增 Host 权威的“电能涌动”固定区域、8 秒强化状态与中途加入
-## 重放；敌人状态快照 bit16 表示永久电元素附着。
+## 重放；敌人状态快照 bit16 表示永久或临时来源聚合后的电磁附着视觉。
 ## v31：电能涌动可靠事件绑定自动弹幕序列，技能结束后不会被跨信道迟到齐射
 ## 重新拉起；无按键的鼠标被动瞄准改为变化即时发送与6帧保活。
 ## v32：新增 P3 肉鸽路线多人模式与 Host 权威的完整路线/移动增量协议。
@@ -161,7 +161,14 @@ extends RefCounted
 ## v82 客户端缺少该科研注册项，不能安全解析完整科研账本。
 ## v84：新增生产循环开关 command，并将 ProductionBuilding runtime 升级至 schema5。
 ## v83 客户端缺少该 command，且不能安全解析 ProductionBuilding runtime schema5。
-const PROTOCOL_VERSION := 84
+## v85：科研账本新增 `building_defense_ii`、`building_defense_iii`、
+## `agave_cannon_muzzle_improvement`、
+## `corn_machine_gun_cooling_system_improvement`、
+## `bamboo_mortar_concussive_modification` 与
+## `grape_arc_tower_surge_modification` 六个稳定 ID；玉米机枪塔 burst batch
+## 同时新增逐动作 `shot_counts` 列，确保可靠科研快照跨信道乱序时仍按该轮
+## 冻结的 6/8 发播放。v84 及更旧客户端既缺少完整科研项，也按旧四列 RPC 解码。
+const PROTOCOL_VERSION := 85
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF
@@ -172,6 +179,9 @@ const MAX_PARTICIPANT_INCARNATION := 0x7FFFFFFF
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。
 const NETWORK_COMBAT_VALUE_MIN := 0
 const NETWORK_COMBAT_VALUE_MAX := 0x7FFFFFFF
+## 玉米机枪塔每轮发数使用 PackedByteArray 传输；限制为 1..32，既覆盖当前
+## 6/8 发配置，也为后续科研保留空间，并拒绝异常长视觉回放。
+const CORN_MACHINE_GUN_BURST_SHOT_COUNT_MAX := 32
 
 
 static func is_valid_network_combat_value(value: int) -> bool:

@@ -20,6 +20,9 @@ const GAMEPLAY_GATEWAY_SCENE := preload(
 const TOWER_MODE_ADAPTER_SCENE := preload(
 	"res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.tscn"
 )
+const TOWER_WORLD_SCRIPT := preload(
+	"res://scene/game_modes/tower_defense/multiplayer/world/mp_tower_world_coordinator.gd"
+)
 
 const SEND_RECORD_COUNT := 513
 const SEND_PACKET_CAPACITY := 32
@@ -50,6 +53,43 @@ class ClientNetManagerStub:
 
 	func is_client() -> bool:
 		return true
+
+
+class HostNetManagerStub:
+	extends NetManagerStore
+
+	func is_host() -> bool:
+		return true
+
+	func is_client() -> bool:
+		return false
+
+
+class FixedSessionCoordinator:
+	extends MpSessionCoordinator
+
+	var fixture_now := CLIENT_TIME_BASE
+
+	func get_net_time() -> float:
+		return fixture_now
+
+	func has_host_time_offset() -> bool:
+		return true
+
+	func get_host_to_client_time_offset() -> float:
+		return HOST_TO_CLIENT_OFFSET
+
+
+class ClientTowerWorldStub:
+	extends MpTowerWorldCoordinator
+
+	var proxy_plants: Dictionary[int, PlantDefense] = {}
+
+	func _is_client_bound() -> bool:
+		return true
+
+	func get_plant(net_id: int) -> PlantDefense:
+		return proxy_plants.get(net_id) as PlantDefense
 
 
 class TestRuntime:
@@ -180,6 +220,7 @@ class TestRuntime:
 var failures: Array[String] = []
 var played_action_ids: Array[int] = []
 var played_directions: Array[Vector2] = []
+var played_shot_counts: Array[int] = []
 
 
 func _init() -> void:
@@ -194,16 +235,34 @@ func _run() -> void:
 
 func _test_production_send_flush_boundary() -> void:
 	var host_mp := RecordingMpGame.new()
+	var host_net_manager := HostNetManagerStub.new()
+	var tower_mode_adapter := (
+		TOWER_MODE_ADAPTER_SCENE.instantiate()
+		as TowerDefenseMultiplayerModeAdapter
+	)
+	host_mp.net_manager = host_net_manager
+	host_mp.tower_mode_adapter = tower_mode_adapter
+	var world := TOWER_WORLD_SCRIPT.new() as MpTowerWorldCoordinator
+	world.corn_machine_gun_burst_batch_broadcast_requested.connect(
+		host_mp._on_tower_world_corn_machine_gun_burst_batch_broadcast_requested
+	)
+	var queued_plant_net_ids := PackedInt32Array()
+	var queued_action_ids := PackedInt32Array()
+	var queued_shot_counts := PackedByteArray()
+	var queued_directions := PackedVector2Array()
+	var queued_host_action_times := PackedFloat64Array()
 	for record_index in range(SEND_RECORD_COUNT):
-		host_mp.call(
-			"_append_corn_machine_gun_burst_visual",
-			10000 + record_index,
-			20000 + record_index,
-			_make_send_direction(record_index),
-			1000.0 + float(record_index) * 0.125
-		)
-
-	host_mp.call("_flush_corn_machine_gun_burst_visuals")
+		queued_plant_net_ids.append(10000 + record_index)
+		queued_action_ids.append(20000 + record_index)
+		queued_shot_counts.append(6 + (record_index % 2) * 2)
+		queued_directions.append(_make_send_direction(record_index))
+		queued_host_action_times.append(1000.0 + float(record_index) * 0.125)
+	world.set("_pending_corn_machine_gun_burst_visuals", queued_plant_net_ids)
+	world.set("_pending_corn_machine_gun_burst_action_ids", queued_action_ids)
+	world.set("_pending_corn_machine_gun_burst_shot_counts", queued_shot_counts)
+	world.set("_pending_corn_machine_gun_burst_directions", queued_directions)
+	world.set("_pending_corn_machine_gun_burst_host_times", queued_host_action_times)
+	world.call("_flush_corn_machine_gun_burst_visuals")
 	var expected_packet_count := ceili(
 		float(SEND_RECORD_COUNT) / float(SEND_PACKET_CAPACITY)
 	)
@@ -221,13 +280,14 @@ func _test_production_send_flush_boundary() -> void:
 			"Every Corn flush packet must use the production burst-batch RPC."
 		)
 		var payload := host_mp.sent_arguments[packet_index]
-		if payload.size() != 4:
-			_expect(false, "Every Corn burst packet must contain four packed columns.")
+		if payload.size() != 5:
+			_expect(false, "Every Corn burst packet must contain five packed columns.")
 			continue
 		var plant_net_ids := payload[0] as PackedInt32Array
 		var action_ids := payload[1] as PackedInt32Array
-		var directions := payload[2] as PackedVector2Array
-		var host_action_times := payload[3] as PackedFloat64Array
+		var packet_shot_counts := payload[2] as PackedByteArray
+		var directions := payload[3] as PackedVector2Array
+		var packet_host_action_times := payload[4] as PackedFloat64Array
 		var expected_chunk_size := mini(
 			SEND_PACKET_CAPACITY,
 			SEND_RECORD_COUNT - packet_index * SEND_PACKET_CAPACITY
@@ -235,8 +295,9 @@ func _test_production_send_flush_boundary() -> void:
 		_expect(
 			plant_net_ids.size() == expected_chunk_size
 			and action_ids.size() == expected_chunk_size
+			and packet_shot_counts.size() == expected_chunk_size
 			and directions.size() == expected_chunk_size
-			and host_action_times.size() == expected_chunk_size,
+			and packet_host_action_times.size() == expected_chunk_size,
 			"Corn packet %d must retain aligned packed columns and its exact chunk size."
 			% packet_index
 		)
@@ -244,7 +305,10 @@ func _test_production_send_flush_boundary() -> void:
 			plant_net_ids.size(),
 			mini(
 				action_ids.size(),
-				mini(directions.size(), host_action_times.size())
+				mini(
+					packet_shot_counts.size(),
+					mini(directions.size(), packet_host_action_times.size())
+				)
 			)
 		)
 		for chunk_record_index in range(safe_record_count):
@@ -252,11 +316,13 @@ func _test_production_send_flush_boundary() -> void:
 			_expect(
 				plant_net_ids[chunk_record_index] == 10000 + source_index
 				and action_ids[chunk_record_index] == 20000 + source_index
+				and packet_shot_counts[chunk_record_index]
+					== 6 + (source_index % 2) * 2
 				and directions[chunk_record_index].is_equal_approx(
 					_make_send_direction(source_index)
 				)
 				and is_equal_approx(
-					host_action_times[chunk_record_index],
+					packet_host_action_times[chunk_record_index],
 					1000.0 + float(source_index) * 0.125
 				),
 				"Corn packet %d record %d must preserve cross-column ordering."
@@ -274,36 +340,43 @@ func _test_production_send_flush_boundary() -> void:
 			(tail_payload[0] as PackedInt32Array).size() == 1
 			and (tail_payload[0] as PackedInt32Array)[0] == 10512
 			and (tail_payload[1] as PackedInt32Array)[0] == 20512
-			and (tail_payload[2] as PackedVector2Array)[0].is_equal_approx(
+			and (tail_payload[2] as PackedByteArray)[0] == 6
+			and (tail_payload[3] as PackedVector2Array)[0].is_equal_approx(
 				_make_send_direction(512)
 			)
 			and is_equal_approx(
-				(tail_payload[3] as PackedFloat64Array)[0],
+				(tail_payload[4] as PackedFloat64Array)[0],
 				1064.0
 			),
 			"The seventeenth Corn packet must contain the exact one-record tail."
 		)
 	_expect(
-		(host_mp.get(
+		(world.get(
 			"_pending_corn_machine_gun_burst_visuals"
 		) as PackedInt32Array).is_empty()
-		and (host_mp.get(
+		and (world.get(
 			"_pending_corn_machine_gun_burst_action_ids"
 		) as PackedInt32Array).is_empty()
-		and (host_mp.get(
+		and (world.get(
+			"_pending_corn_machine_gun_burst_shot_counts"
+		) as PackedByteArray).is_empty()
+		and (world.get(
 			"_pending_corn_machine_gun_burst_directions"
 		) as PackedVector2Array).is_empty()
-		and (host_mp.get(
+		and (world.get(
 			"_pending_corn_machine_gun_burst_host_times"
 		) as PackedFloat64Array).is_empty(),
-		"A completed production Corn flush must clear all four pending columns together."
+		"A completed production Corn flush must clear all five pending columns together."
 	)
 	var packet_count_before_empty_flush := host_mp.sent_methods.size()
-	host_mp.call("_flush_corn_machine_gun_burst_visuals")
+	world.call("_flush_corn_machine_gun_burst_visuals")
 	_expect(
 		host_mp.sent_methods.size() == packet_count_before_empty_flush,
 		"Flushing an empty Corn queue must not emit a second copy of any packet."
 	)
+	world.free()
+	tower_mode_adapter.free()
+	host_net_manager.free()
 	host_mp.free()
 
 
@@ -354,20 +427,18 @@ func _test_production_receive_boundary() -> void:
 
 	var client_mp := MP_GAME_SCRIPT.new()
 	var client_net_manager := ClientNetManagerStub.new()
+	var fixed_session_coordinator := FixedSessionCoordinator.new()
+	var client_tower_world := ClientTowerWorldStub.new()
+	client_tower_world.proxy_plants[PROXY_PLANT_NET_ID] = corn
 	client_mp.game = runtime
 	client_mp.net_manager = client_net_manager
+	client_mp.session_coordinator = fixed_session_coordinator
+	client_mp.tower_world_coordinator = client_tower_world
 	client_mp._gameplay_gateway = gameplay_gateway
 	client_mp._mode_adapter = tower_mode_adapter
 	client_mp.tower_mode_adapter = tower_mode_adapter
 	gameplay_gateway.attach_multiplayer_session(client_mp)
 	tower_mode_adapter.attach_multiplayer_session(client_mp)
-	client_mp.set(
-		"_net_time_origin",
-		Time.get_ticks_msec() / 1000.0 - CLIENT_TIME_BASE
-	)
-	client_mp.set("_has_host_time_offset", true)
-	client_mp.set("_host_to_client_time_offset", HOST_TO_CLIENT_OFFSET)
-
 	var client_now := float(client_mp.call("_get_net_time"))
 	var future_host_time := client_now - HOST_TO_CLIENT_OFFSET + 1.0
 	var initial_directions := PackedVector2Array([
@@ -385,6 +456,7 @@ func _test_production_receive_boundary() -> void:
 			PROXY_PLANT_NET_ID,
 		]),
 		PackedInt32Array([1, 2, 3, 4]),
+		PackedByteArray([6, 8, 6, 8]),
 		initial_directions,
 		PackedFloat64Array([
 			future_host_time,
@@ -401,8 +473,9 @@ func _test_production_receive_boundary() -> void:
 			Vector2.LEFT,
 			Vector2.UP,
 		]
+		and played_shot_counts == [6, 8, 6, 8]
 		and corn.latest_proxy_action_id == 4,
-		"The production receive path must play every valid ordered action exactly once."
+		"The production receive path must play every valid action with its frozen shot count."
 	)
 
 	var played_count_before_duplicates := played_action_ids.size()
@@ -414,6 +487,7 @@ func _test_production_receive_boundary() -> void:
 			PROXY_PLANT_NET_ID,
 		]),
 		PackedInt32Array([4, 2, 3]),
+		PackedByteArray([8, 8, 8]),
 		PackedVector2Array([Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT]),
 		PackedFloat64Array([future_host_time, future_host_time, future_host_time])
 	)
@@ -431,6 +505,7 @@ func _test_production_receive_boundary() -> void:
 			PROXY_PLANT_NET_ID,
 		]),
 		PackedInt32Array([5, 7, 6]),
+		PackedByteArray([8, 8, 8]),
 		PackedVector2Array([Vector2.RIGHT, Vector2.UP, Vector2.LEFT]),
 		PackedFloat64Array([future_host_time, future_host_time, future_host_time])
 	)
@@ -445,6 +520,7 @@ func _test_production_receive_boundary() -> void:
 		"net_corn_machine_gun_burst_batch",
 		PackedInt32Array([PROXY_PLANT_NET_ID, PROXY_PLANT_NET_ID]),
 		PackedInt32Array([8, 0]),
+		PackedByteArray([8, 8]),
 		PackedVector2Array([Vector2.RIGHT, Vector2.DOWN]),
 		PackedFloat64Array([future_host_time, future_host_time])
 	)
@@ -457,6 +533,7 @@ func _test_production_receive_boundary() -> void:
 		"net_corn_machine_gun_burst_batch",
 		PackedInt32Array([PROXY_PLANT_NET_ID, PROXY_PLANT_NET_ID]),
 		PackedInt32Array([8, 9]),
+		PackedByteArray([8, 8]),
 		PackedVector2Array([Vector2.RIGHT]),
 		PackedFloat64Array([future_host_time, future_host_time])
 	)
@@ -464,6 +541,27 @@ func _test_production_receive_boundary() -> void:
 		played_action_ids.size() == played_count_before_malformed
 		and corn.latest_proxy_action_id == 7,
 		"Misaligned Corn packed columns must be rejected atomically without partial playback."
+	)
+	client_mp.call(
+		"net_corn_machine_gun_burst_batch",
+		PackedInt32Array([PROXY_PLANT_NET_ID, PROXY_PLANT_NET_ID]),
+		PackedInt32Array([8, 9]),
+		PackedByteArray([8, 0]),
+		PackedVector2Array([Vector2.RIGHT, Vector2.UP]),
+		PackedFloat64Array([future_host_time, future_host_time])
+	)
+	client_mp.call(
+		"net_corn_machine_gun_burst_batch",
+		PackedInt32Array([PROXY_PLANT_NET_ID]),
+		PackedInt32Array([8]),
+		PackedByteArray([33]),
+		PackedVector2Array([Vector2.RIGHT]),
+		PackedFloat64Array([future_host_time])
+	)
+	_expect(
+		played_action_ids.size() == played_count_before_malformed
+		and corn.latest_proxy_action_id == 7,
+		"Corn shot counts outside 1..32 must reject the complete packet before playback."
 	)
 
 	var mapping_sample_time := float(client_mp.call("_get_net_time"))
@@ -477,6 +575,7 @@ func _test_production_receive_boundary() -> void:
 		"net_corn_machine_gun_burst_batch",
 		PackedInt32Array([PROXY_PLANT_NET_ID]),
 		PackedInt32Array([8]),
+		PackedByteArray([8]),
 		PackedVector2Array([Vector2(3.0, 4.0)]),
 		PackedFloat64Array([past_host_time])
 	)
@@ -494,6 +593,7 @@ func _test_production_receive_boundary() -> void:
 		"net_corn_machine_gun_burst_batch",
 		PackedInt32Array([PROXY_PLANT_NET_ID]),
 		PackedInt32Array([8]),
+		PackedByteArray([8]),
 		PackedVector2Array([Vector2.LEFT]),
 		PackedFloat64Array([future_host_time])
 	)
@@ -507,6 +607,8 @@ func _test_production_receive_boundary() -> void:
 	gameplay_gateway.detach_multiplayer_session(client_mp)
 	tower_mode_adapter.detach_multiplayer_session(client_mp)
 	client_mp.free()
+	client_tower_world.free()
+	fixed_session_coordinator.free()
 	client_net_manager.free()
 	runtime.proxy_plants.clear()
 	runtime.free()
@@ -524,6 +626,7 @@ func _on_proxy_shot_emitted(
 	_expect(not authoritative, "A received Corn burst must remain visual-only on clients.")
 	played_action_ids.append(corn.burst_action_id)
 	played_directions.append(corn.burst_direction)
+	played_shot_counts.append(corn.active_burst_shot_count)
 
 
 func _make_send_direction(record_index: int) -> Vector2:
@@ -538,7 +641,7 @@ func _finish() -> void:
 		print(
 			"CORN_MACHINE_GUN_NETWORK_BATCH_BOUNDARY_SMOKE_TEST_OK ",
 			"records=513 packets=17 packet_capacity=32 tail=1 ",
-			"accepted_actions=7 malformed_atomic_rejections=2"
+			"accepted_actions=7 malformed_atomic_rejections=4"
 		)
 		quit(0)
 		return

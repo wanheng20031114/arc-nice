@@ -19,6 +19,12 @@ const RESULT_UNAVAILABLE := &"unavailable"
 const RESULT_MAX_LEVEL := &"max_level"
 
 const BUILDING_DEFENSE_RESEARCH_ID := GlobalResearchRegistry.BUILDING_DEFENSE_ID
+const BUILDING_DEFENSE_II_RESEARCH_ID := (
+	GlobalResearchRegistry.BUILDING_DEFENSE_II_ID
+)
+const BUILDING_DEFENSE_III_RESEARCH_ID := (
+	GlobalResearchRegistry.BUILDING_DEFENSE_III_ID
+)
 const PLAYER_MOVE_SPEED_RESEARCH_ID := GlobalResearchRegistry.PLAYER_MOVE_SPEED_ID
 const BAMBOO_MORTAR_CRAFTING_RESEARCH_ID := (
 	GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID
@@ -38,28 +44,14 @@ const WATER_COLLECTION_RATE_ENHANCEMENT_RESEARCH_ID := (
 const FENCE_REINFORCEMENT_RESEARCH_ID := (
 	GlobalResearchRegistry.FENCE_REINFORCEMENT_ID
 )
-const GLOBAL_RESEARCH_DURATION_SECONDS := 60.0
-const GLOBAL_PHYSICAL_DEFENSE_BONUS := 10
-const GLOBAL_PLAYER_MOVE_SPEED_BONUS := 15.0
 const RUNTIME_STATE_SCHEMA := 3
 const MAX_MULTIPLAYER_PLAYER_LEVEL_ENTRIES := 64
-
-const PLANK := preload("res://resources/config/materials/material_plank.tres")
-const SAPLING := preload("res://resources/config/materials/material_sapling.tres")
-const WATER_BOTTLE := preload(
-	"res://resources/config/materials/material_water_bottle.tres"
-)
-# 保留旧接口所公开的建筑防御研究投入；实际研究从配置资源读取。
-const GLOBAL_REQUIREMENTS: Array[Dictionary] = [
-	{"item": PLANK, "count": 50},
-	{"item": SAPLING, "count": 20},
-	{"item": WATER_BOTTLE, "count": 20},
-]
 
 @onready var research_tick_timer: Timer = $ResearchTickTimer
 
 var production_coordinator: ProductionCoordinator = null
 var plant_system: PlantSystem = null
+var bamboo_mortar_combat_system: BambooMortarCombatSystem = null
 var player_roster_coordinator: TowerDefensePlayerRosterCoordinator = null
 var authoritative_processing_enabled := true
 var global_research_states: Dictionary = {}
@@ -70,7 +62,7 @@ var registered_players: Dictionary = {}
 var research_revision := 0
 var has_remote_snapshot := false
 
-# 兼容原有公开字段：它们现在代表建筑结构强化项目。
+# 兼容原有公开字段：它们现在代表建筑结构强化I。
 var global_state: GlobalResearchState:
 	get:
 		return get_global_research_state(BUILDING_DEFENSE_RESEARCH_ID)
@@ -98,11 +90,13 @@ func _ready() -> void:
 func setup(
 	new_production_coordinator: ProductionCoordinator,
 	new_plant_system: PlantSystem,
-	new_player_roster_coordinator: TowerDefensePlayerRosterCoordinator
+	new_player_roster_coordinator: TowerDefensePlayerRosterCoordinator,
+	new_bamboo_mortar_combat_system: BambooMortarCombatSystem = null
 ) -> void:
 	production_coordinator = new_production_coordinator
 	plant_system = new_plant_system
 	player_roster_coordinator = new_player_roster_coordinator
+	bamboo_mortar_combat_system = new_bamboo_mortar_combat_system
 	_apply_global_bonuses()
 
 
@@ -142,9 +136,7 @@ func apply_persistent_player_modifiers(
 	var technology_level := int(player_technology_levels[ledger_peer_id])
 	if technology_level < 0 or technology_level > Player.RESEARCH_TECHNOLOGY_MAX_LEVEL:
 		return false
-	var move_speed_bonus := _get_completed_global_effect_total(
-		GlobalResearchConfig.EffectType.PLAYER_MOVE_SPEED
-	)
+	var move_speed_bonus := _resolve_completed_effects().player_move_speed_bonus
 	player.set_research_technology_level(technology_level)
 	player.set_research_global_move_speed_bonus(move_speed_bonus)
 	return (
@@ -246,48 +238,58 @@ func is_global_research_completed(research_id: StringName) -> bool:
 	)
 
 
-func get_vegetation_spread_speed_multiplier() -> float:
-	var multiplier := 1.0
-	for config in GlobalResearchRegistry.get_all_configs():
-		if (
-			config.effect_type
-			== GlobalResearchConfig.EffectType.VEGETATION_SPREAD_SPEED_MULTIPLIER
-			and get_global_research_state(config.research_id)
-			== GlobalResearchState.COMPLETED
-		):
-			multiplier *= config.effect_amount
-	return multiplier
-
-
-func get_grass_heal_ratio_bonus() -> float:
-	return _get_completed_global_effect_total(
-		GlobalResearchConfig.EffectType.GRASS_HEAL_RATIO_BONUS
+func is_global_research_unlocked(research_id: StringName) -> bool:
+	var config := GlobalResearchRegistry.get_config(research_id)
+	if config == null:
+		return false
+	return (
+		config.prerequisite_research_id == &""
+		or is_global_research_completed(config.prerequisite_research_id)
 	)
 
 
+func get_vegetation_spread_speed_multiplier() -> float:
+	return _resolve_completed_effects().vegetation_stake_spread_speed_multiplier
+
+
+func get_grass_heal_ratio_bonus() -> float:
+	return _resolve_completed_effects().grass_heal_max_health_ratio_bonus
+
+
 func get_water_collector_duration_multiplier() -> float:
-	var multiplier := 1.0
-	for config in GlobalResearchRegistry.get_all_configs():
-		if (
-			config.effect_type
-			== GlobalResearchConfig.EffectType.WATER_COLLECTOR_DURATION_MULTIPLIER
-			and get_global_research_state(config.research_id)
-			== GlobalResearchState.COMPLETED
-		):
-			multiplier = minf(multiplier, config.effect_amount)
-	return multiplier
+	return _resolve_completed_effects().water_collector_cycle_duration_multiplier
 
 
 func get_fence_max_health_bonus() -> int:
-	return roundi(_get_completed_global_effect_total(
-		GlobalResearchConfig.EffectType.FENCE_REINFORCEMENT
-	))
+	return _resolve_completed_effects().fence_max_health_bonus
 
 
 func get_fence_physical_defense_bonus() -> int:
-	return roundi(_get_completed_global_secondary_effect_total(
-		GlobalResearchConfig.EffectType.FENCE_REINFORCEMENT
-	))
+	return _resolve_completed_effects().fence_physical_defense_bonus
+
+
+func get_agave_cannon_attack_damage_bonus() -> int:
+	return _resolve_completed_effects().agave_cannon_attack_damage_bonus
+
+
+func get_corn_machine_gun_burst_count_bonus() -> int:
+	return _resolve_completed_effects().corn_machine_gun_burst_count_bonus
+
+
+func get_bamboo_mortar_slow_ratio() -> float:
+	return _resolve_completed_effects().bamboo_mortar_slow_ratio
+
+
+func get_bamboo_mortar_slow_duration_seconds() -> float:
+	return _resolve_completed_effects().bamboo_mortar_slow_duration_seconds
+
+
+func get_grape_electromagnetic_duration_seconds() -> float:
+	return _resolve_completed_effects().grape_electromagnetic_duration_seconds
+
+
+func get_grape_electromagnetic_damage_multiplier() -> float:
+	return 1.0 + _resolve_completed_effects().grape_electromagnetic_bonus_damage_ratio
 
 
 func get_global_material_total(item: PickupConfig) -> int:
@@ -317,7 +319,7 @@ func try_start_global_research(
 	if not authoritative_processing_enabled or production_coordinator == null:
 		return RESULT_UNAVAILABLE
 	var config := GlobalResearchRegistry.get_config(research_id)
-	if config == null:
+	if config == null or not is_global_research_unlocked(research_id):
 		return RESULT_UNAVAILABLE
 	match get_global_research_state(research_id):
 		GlobalResearchState.RESEARCHING:
@@ -506,6 +508,18 @@ func prepare_multiplayer_runtime_state(
 		)
 	if researching_count != (1 if active_config != null else 0):
 		return {}
+	for config in GlobalResearchRegistry.get_all_configs():
+		if config.prerequisite_research_id == &"":
+			continue
+		var research_state := int(normalized_states[config.research_id])
+		if (
+			research_state != GlobalResearchState.AVAILABLE
+			and int(normalized_states.get(
+				config.prerequisite_research_id,
+				GlobalResearchState.AVAILABLE
+			)) != GlobalResearchState.COMPLETED
+		):
+			return {}
 
 	var incoming_levels := state["player_levels"] as Dictionary
 	if incoming_levels.size() > MAX_MULTIPLAYER_PLAYER_LEVEL_ENTRIES:
@@ -640,28 +654,43 @@ func _get_player_key(player: Player) -> int:
 
 
 func _apply_global_bonuses() -> void:
+	var effects := _resolve_completed_effects()
 	if plant_system != null:
 		plant_system.set_global_physical_defense_bonus(
-			roundi(_get_completed_global_effect_total(
-				GlobalResearchConfig.EffectType.BUILDING_PHYSICAL_DEFENSE
-			))
+			effects.building_physical_defense_bonus
 		)
 		plant_system.set_global_water_collector_duration_multiplier(
-			get_water_collector_duration_multiplier()
+			effects.water_collector_cycle_duration_multiplier
 		)
 		plant_system.set_global_fence_max_health_bonus(
-			get_fence_max_health_bonus()
+			effects.fence_max_health_bonus
 		)
 		plant_system.set_global_fence_physical_defense_bonus(
-			get_fence_physical_defense_bonus()
+			effects.fence_physical_defense_bonus
 		)
-	_apply_global_player_bonus_to_registered_players()
-
-
-func _apply_global_player_bonus_to_registered_players() -> void:
-	var move_speed_bonus := _get_completed_global_effect_total(
-		GlobalResearchConfig.EffectType.PLAYER_MOVE_SPEED
+		plant_system.set_global_agave_cannon_attack_damage_bonus(
+			effects.agave_cannon_attack_damage_bonus
+		)
+		plant_system.set_global_corn_machine_gun_burst_shot_count_bonus(
+			effects.corn_machine_gun_burst_count_bonus
+		)
+		plant_system.set_global_grape_electromagnetic_upgrade(
+			effects.grape_electromagnetic_duration_seconds,
+			1.0 + effects.grape_electromagnetic_bonus_damage_ratio
+		)
+	if bamboo_mortar_combat_system != null:
+		bamboo_mortar_combat_system.set_research_concussion_effect(
+			1.0 - effects.bamboo_mortar_slow_ratio,
+			effects.bamboo_mortar_slow_duration_seconds
+		)
+	_apply_global_player_bonus_to_registered_players(
+		effects.player_move_speed_bonus
 	)
+
+
+func _apply_global_player_bonus_to_registered_players(
+	move_speed_bonus: float
+) -> void:
 	for key_variant in registered_players.keys():
 		var key := int(key_variant)
 		var player_ref := registered_players.get(key) as WeakRef
@@ -675,38 +704,16 @@ func _apply_global_player_bonus_to_registered_players() -> void:
 func _apply_research_state_to_player(player: Player, technology_level: int) -> void:
 	player.set_research_technology_level(technology_level)
 	player.set_research_global_move_speed_bonus(
-		_get_completed_global_effect_total(
-			GlobalResearchConfig.EffectType.PLAYER_MOVE_SPEED
-		)
+		_resolve_completed_effects().player_move_speed_bonus
 	)
 
 
-func _get_completed_global_effect_total(
-	effect_type: GlobalResearchConfig.EffectType
-) -> float:
-	var total := 0.0
-	for config in GlobalResearchRegistry.get_all_configs():
-		if (
-			config.effect_type == effect_type
-			and get_global_research_state(config.research_id)
-			== GlobalResearchState.COMPLETED
-		):
-			total += config.effect_amount
-	return total
-
-
-func _get_completed_global_secondary_effect_total(
-	effect_type: GlobalResearchConfig.EffectType
-) -> float:
-	var total := 0.0
-	for config in GlobalResearchRegistry.get_all_configs():
-		if (
-			config.effect_type == effect_type
-			and get_global_research_state(config.research_id)
-			== GlobalResearchState.COMPLETED
-		):
-			total += config.secondary_effect_amount
-	return total
+func _resolve_completed_effects() -> CompletedResearchEffects:
+	return GlobalResearchEffectResolver.from_states(
+		GlobalResearchRegistry.get_all_configs(),
+		global_research_states,
+		GlobalResearchState.COMPLETED
+	)
 
 
 func _apply_player_levels_to_runtime() -> void:

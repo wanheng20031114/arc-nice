@@ -50,15 +50,11 @@ func prepare_for_players(
 		return {}
 	var research_levels := prepared_research["player_levels"] as Dictionary
 	var global_states := prepared_research["global_states"] as Dictionary
-	var research_move_speed_bonus := 0.0
-	for config in GlobalResearchRegistry.get_all_configs():
-		if (
-			config.effect_type
-			== GlobalResearchConfig.EffectType.PLAYER_MOVE_SPEED
-			and int(global_states.get(config.research_id, -1))
-			== ResearchCoordinator.GlobalResearchState.COMPLETED
-		):
-			research_move_speed_bonus += config.effect_amount
+	var research_move_speed_bonus := GlobalResearchEffectResolver.from_states(
+		GlobalResearchRegistry.get_all_configs(),
+		global_states,
+		ResearchCoordinator.GlobalResearchState.COMPLETED
+	).player_move_speed_bonus
 	var active_buff_ids := prepared_fate[
 		"active_permanent_buff_ids"
 	] as Array

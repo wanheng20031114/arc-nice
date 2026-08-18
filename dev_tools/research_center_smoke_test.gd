@@ -25,11 +25,20 @@ const WATER_BOTTLE := preload(
 const WHITE_CRYSTAL_POWDER := preload(
 	"res://resources/config/materials/material_white_crystal_powder.tres"
 )
+const DIRT_BLOCK := preload(
+	"res://resources/config/materials/material_dirt_block.tres"
+)
 const WOODEN_CORE := preload(
 	"res://resources/config/materials/material_wooden_core.tres"
 )
 const BUILDING_DEFENSE_RESEARCH_ID := (
 	GlobalResearchRegistry.BUILDING_DEFENSE_ID
+)
+const BUILDING_DEFENSE_II_RESEARCH_ID := (
+	GlobalResearchRegistry.BUILDING_DEFENSE_II_ID
+)
+const BUILDING_DEFENSE_III_RESEARCH_ID := (
+	GlobalResearchRegistry.BUILDING_DEFENSE_III_ID
 )
 const PLAYER_MOVE_SPEED_RESEARCH_ID := (
 	GlobalResearchRegistry.PLAYER_MOVE_SPEED_ID
@@ -54,6 +63,18 @@ const WATER_COLLECTION_RATE_ENHANCEMENT_RESEARCH_ID := (
 )
 const FENCE_REINFORCEMENT_RESEARCH_ID := (
 	GlobalResearchRegistry.FENCE_REINFORCEMENT_ID
+)
+const AGAVE_CANNON_MUZZLE_IMPROVEMENT_RESEARCH_ID := (
+	GlobalResearchRegistry.AGAVE_CANNON_MUZZLE_IMPROVEMENT_ID
+)
+const CORN_MACHINE_GUN_COOLING_SYSTEM_IMPROVEMENT_RESEARCH_ID := (
+	GlobalResearchRegistry.CORN_MACHINE_GUN_COOLING_SYSTEM_IMPROVEMENT_ID
+)
+const BAMBOO_MORTAR_CONCUSSIVE_MODIFICATION_RESEARCH_ID := (
+	GlobalResearchRegistry.BAMBOO_MORTAR_CONCUSSIVE_MODIFICATION_ID
+)
+const GRAPE_ARC_TOWER_SURGE_MODIFICATION_RESEARCH_ID := (
+	GlobalResearchRegistry.GRAPE_ARC_TOWER_SURGE_MODIFICATION_ID
 )
 
 var failures: PackedStringArray = []
@@ -148,6 +169,8 @@ func _run() -> void:
 	research.register_player(tango)
 	center.set_research_services(research, panel)
 	await _test_panel_mouse_navigation(panel, center, weishidaier)
+	await _test_building_defense_research_chain(test_root, config)
+	await _test_tower_specific_research_projection(test_root)
 	plant_system.plant_footprints[center] = center.footprint_cells.duplicate()
 	center.call("_sync_research_border")
 	_expect_research_border_state(
@@ -159,16 +182,16 @@ func _run() -> void:
 
 	_expect(warehouse.try_add_storage_item_count(PLANK, 30), "第一测试仓库必须能加入30木板。")
 	_expect(warehouse.try_add_storage_item_count(SAPLING, 10), "第一测试仓库必须能加入10树苗。")
-	_expect(warehouse.try_add_storage_item_count(WATER_BOTTLE, 5), "第一测试仓库必须能加入5水瓶。")
-	_expect(second_warehouse.try_add_storage_item_count(PLANK, 40), "第二测试仓库必须能加入40木板。")
+	_expect(warehouse.try_add_storage_item_count(WATER_BOTTLE, 25), "第一测试仓库必须能加入25水瓶。")
+	_expect(second_warehouse.try_add_storage_item_count(PLANK, 20), "第二测试仓库必须能加入20木板。")
 	_expect(second_warehouse.try_add_storage_item_count(SAPLING, 9), "第二测试仓库必须能加入9树苗。")
-	_expect(second_warehouse.try_add_storage_item_count(WATER_BOTTLE, 20), "第二测试仓库必须能加入20水瓶。")
+	_expect(second_warehouse.try_add_storage_item_count(WATER_BOTTLE, 30), "第二测试仓库必须能加入30水瓶。")
 	var missing_result := center.try_start_global_research()
 	_expect(
 		missing_result == ResearchCoordinator.RESULT_MISSING_INPUT
-		and production.get_total_item_count(PLANK) == 70
+		and production.get_total_item_count(PLANK) == 50
 		and production.get_total_item_count(SAPLING) == 19
-		and production.get_total_item_count(WATER_BOTTLE) == 25,
+		and production.get_total_item_count(WATER_BOTTLE) == 55,
 		"任一研究材料不足时，多仓库事务必须整体失败且不能预扣其他材料。"
 	)
 	_expect(second_warehouse.try_add_storage_item_count(SAPLING, 11), "第二测试仓库必须能补入11树苗。")
@@ -186,7 +209,7 @@ func _run() -> void:
 		production.get_total_item_count(PLANK) == 20
 		and production.get_total_item_count(SAPLING) == 10
 		and production.get_total_item_count(WATER_BOTTLE) == 5,
-		"开始研究的同一帧必须原子扣除50木板、20树苗与20水瓶。"
+		"开始研究的同一帧必须原子扣除30木板、20树苗与50水瓶。"
 	)
 	var water_before_conflicting_request := production.get_total_item_count(
 		WATER_BOTTLE
@@ -198,12 +221,12 @@ func _run() -> void:
 		== water_before_conflicting_request,
 		"同一时刻只能进行一项全局研究，冲突请求不得预扣材料。"
 	)
-	research.advance_global_research(59.0)
+	research.advance_global_research(39.0)
 	center.call("_sync_research_border")
 	_expect_research_border_state(
 		center,
 		true,
-		59.0 / 60.0,
+		39.0 / 40.0,
 		"研究未完成时科研中心外框必须准确采用最新权威进度。"
 	)
 	_expect(
@@ -211,10 +234,10 @@ func _run() -> void:
 		== ResearchCoordinator.GlobalResearchState.RESEARCHING
 		and is_equal_approx(
 			research.get_global_elapsed_seconds(BUILDING_DEFENSE_RESEARCH_ID),
-			59.0
+			39.0
 		)
 		and center.get_effective_physical_defense() == 5,
-		"研究未满60秒时不得提前提供建筑物防。"
+		"建筑结构强化I未满40秒时不得提前提供建筑物防。"
 	)
 	research.advance_global_research(1.0)
 	center.call("_sync_research_border")
@@ -227,9 +250,9 @@ func _run() -> void:
 	_expect(
 		research.get_global_research_state(BUILDING_DEFENSE_RESEARCH_ID)
 		== ResearchCoordinator.GlobalResearchState.COMPLETED
-		and plant_system.get_global_physical_defense_bonus() == 10
-		and center.get_effective_physical_defense() == 15,
-		"研究完成后必须永久给现有建筑增加10点物防。"
+		and plant_system.get_global_physical_defense_bonus() == 5
+		and center.get_effective_physical_defense() == 10,
+		"建筑结构强化I完成后必须永久给现有建筑增加5点物防。"
 	)
 	_expect(
 		center.try_start_global_research() == ResearchCoordinator.RESULT_COMPLETED,
@@ -276,6 +299,12 @@ func _test_config_and_scene(
 	var defense_research := GlobalResearchRegistry.get_config(
 		BUILDING_DEFENSE_RESEARCH_ID
 	)
+	var defense_ii_research := GlobalResearchRegistry.get_config(
+		BUILDING_DEFENSE_II_RESEARCH_ID
+	)
+	var defense_iii_research := GlobalResearchRegistry.get_config(
+		BUILDING_DEFENSE_III_RESEARCH_ID
+	)
 	var move_speed_research := GlobalResearchRegistry.get_config(
 		PLAYER_MOVE_SPEED_RESEARCH_ID
 	)
@@ -300,10 +329,24 @@ func _test_config_and_scene(
 	var fence_reinforcement_research := GlobalResearchRegistry.get_config(
 		FENCE_REINFORCEMENT_RESEARCH_ID
 	)
+	var agave_cannon_research := GlobalResearchRegistry.get_config(
+		AGAVE_CANNON_MUZZLE_IMPROVEMENT_RESEARCH_ID
+	)
+	var corn_machine_gun_research := GlobalResearchRegistry.get_config(
+		CORN_MACHINE_GUN_COOLING_SYSTEM_IMPROVEMENT_RESEARCH_ID
+	)
+	var bamboo_concussive_research := GlobalResearchRegistry.get_config(
+		BAMBOO_MORTAR_CONCUSSIVE_MODIFICATION_RESEARCH_ID
+	)
+	var grape_surge_research := GlobalResearchRegistry.get_config(
+		GRAPE_ARC_TOWER_SURGE_MODIFICATION_RESEARCH_ID
+	)
 	var registered_research_projects := GlobalResearchRegistry.get_all_configs()
 	_expect(
 		registered_research_projects == [
 			defense_research,
+			defense_ii_research,
+			defense_iii_research,
 			move_speed_research,
 			bamboo_mortar_research,
 			hydrangea_research,
@@ -312,28 +355,87 @@ func _test_config_and_scene(
 			vegetation_enhancement_research,
 			water_collection_rate_research,
 			fence_reinforcement_research,
+			agave_cannon_research,
+			corn_machine_gun_research,
+			bamboo_concussive_research,
+			grape_surge_research,
 		]
+		and registered_research_projects.size() == 15
+		and GlobalResearchRegistry.is_registry_valid()
+		and GlobalResearchConfig.MAX_INPUT_ITEMS == 4
 		and ResearchCoordinator.RUNTIME_STATE_SCHEMA == 3,
-		"全局科研注册表必须按固定顺序公开九个合法项目，并使用runtime schema3。"
+		"全局科研注册表必须按固定顺序公开十五个合法项目、允许四种材料并继续使用runtime schema3。"
 	)
 	_expect(
 		defense_research != null
 		and defense_research.is_valid()
-		and is_equal_approx(defense_research.duration_seconds, 60.0)
-		and defense_research.effect_type
-		== GlobalResearchConfig.EffectType.BUILDING_PHYSICAL_DEFENSE
-		and is_equal_approx(defense_research.effect_amount, 10.0)
+		and defense_research.display_name == "建筑结构强化I"
+		and defense_research.prerequisite_research_id == &""
+		and is_equal_approx(defense_research.duration_seconds, 40.0)
+		and defense_research.effects.size() == 1
+		and is_equal_approx(
+			GlobalResearchEffectResolver.get_additive_bonus(
+				defense_research.effects,
+				GlobalResearchAdditiveModifierEffect.ATTRIBUTE_BUILDING_PHYSICAL_DEFENSE
+			),
+			5.0
+		)
 		and defense_research.input_items.size() == 3
-		and defense_research.input_amounts == [50, 20, 20],
-		"建筑结构强化必须是60秒、三种材料与全建筑物防+10的数据配置。"
+		and defense_research.input_items == [PLANK, SAPLING, WATER_BOTTLE]
+		and defense_research.input_amounts == [30, 20, 50],
+		"建筑结构强化I必须只以类型化效果表达40秒、30木板/20树苗/50水瓶与全建筑物防+5。"
+	)
+	_expect(
+		defense_ii_research != null
+		and defense_ii_research.is_valid()
+		and defense_ii_research.display_name == "建筑结构强化II"
+		and defense_ii_research.prerequisite_research_id
+		== BUILDING_DEFENSE_RESEARCH_ID
+		and is_equal_approx(defense_ii_research.duration_seconds, 50.0)
+		and defense_ii_research.effects.size() == 1
+		and is_equal_approx(
+			GlobalResearchEffectResolver.get_additive_bonus(
+				defense_ii_research.effects,
+				GlobalResearchAdditiveModifierEffect.ATTRIBUTE_BUILDING_PHYSICAL_DEFENSE
+			),
+			5.0
+		)
+		and defense_ii_research.input_items == [PLANK, SAPLING, WATER_BOTTLE]
+		and defense_ii_research.input_amounts == [50, 30, 50],
+		"建筑结构强化II必须以前级为前置，耗时50秒、投入50木板/30树苗/50水瓶并再提供物防+5。"
+	)
+	_expect(
+		defense_iii_research != null
+		and defense_iii_research.is_valid()
+		and defense_iii_research.display_name == "建筑结构强化III"
+		and defense_iii_research.prerequisite_research_id
+		== BUILDING_DEFENSE_II_RESEARCH_ID
+		and is_equal_approx(defense_iii_research.duration_seconds, 70.0)
+		and defense_iii_research.effects.size() == 1
+		and is_equal_approx(
+			GlobalResearchEffectResolver.get_additive_bonus(
+				defense_iii_research.effects,
+				GlobalResearchAdditiveModifierEffect.ATTRIBUTE_BUILDING_PHYSICAL_DEFENSE
+			),
+			5.0
+		)
+		and defense_iii_research.input_items
+		== [PLANK, WATER_BOTTLE, DIRT_BLOCK, WHITE_CRYSTAL_POWDER]
+		and defense_iii_research.input_amounts == [100, 100, 100, 10],
+		"建筑结构强化III必须以前级为前置，耗时70秒、投入四种指定材料并再提供物防+5。"
 	)
 	_expect(
 		move_speed_research != null
 		and move_speed_research.is_valid()
 		and is_equal_approx(move_speed_research.duration_seconds, 60.0)
-		and move_speed_research.effect_type
-		== GlobalResearchConfig.EffectType.PLAYER_MOVE_SPEED
-		and is_equal_approx(move_speed_research.effect_amount, 15.0)
+		and move_speed_research.effects.size() == 1
+		and is_equal_approx(
+			GlobalResearchEffectResolver.get_additive_bonus(
+				move_speed_research.effects,
+				GlobalResearchAdditiveModifierEffect.ATTRIBUTE_PLAYER_MOVE_SPEED
+			),
+			15.0
+		)
 		and move_speed_research.input_items == [WATER_BOTTLE]
 		and move_speed_research.input_amounts == [50],
 		"全员移动训练必须消耗50水瓶、持续60秒并提供全员移速+15。"
@@ -344,11 +446,19 @@ func _test_config_and_scene(
 		and bamboo_mortar_research.input_items == [WOODEN_CORE, SAPLING]
 		and bamboo_mortar_research.input_amounts == [2, 5]
 		and is_equal_approx(bamboo_mortar_research.duration_seconds, 30.0)
-		and bamboo_mortar_research.effect_type
-		== GlobalResearchConfig.EffectType.SIMPLE_CRAFTING_RECIPE_UNLOCK
-		and is_zero_approx(bamboo_mortar_research.effect_amount)
-		and bamboo_mortar_research.unlocked_simple_crafting_recipe_id
-		== SimpleCraftingRegistry.BAMBOO_MORTAR_ID
+		and bamboo_mortar_research.effects.size() == 2
+		and GlobalResearchEffectResolver.get_recipe_unlock_effects(
+			bamboo_mortar_research.effects,
+			GlobalResearchRecipeUnlockEffect.CATALOG_SIMPLE_CRAFTING
+		).size() == 1
+		and GlobalResearchEffectResolver.get_recipe_unlock_effects(
+			bamboo_mortar_research.effects,
+			GlobalResearchRecipeUnlockEffect.CATALOG_SIMPLE_CRAFTING
+		)[0].recipe_id == SimpleCraftingRegistry.BAMBOO_MORTAR_ID
+		and GlobalResearchEffectResolver.get_recipe_unlock_effects(
+			bamboo_mortar_research.effects,
+			GlobalResearchRecipeUnlockEffect.CATALOG_PRODUCTION
+		).size() == 1
 		and GlobalResearchRegistry.get_unlock_research_id_for_simple_crafting_recipe(
 			SimpleCraftingRegistry.BAMBOO_MORTAR_ID
 		) == BAMBOO_MORTAR_CRAFTING_RESEARCH_ID,
@@ -360,11 +470,19 @@ func _test_config_and_scene(
 		and hydrangea_research.input_items == [WOODEN_CORE, SAPLING]
 		and hydrangea_research.input_amounts == [2, 5]
 		and is_equal_approx(hydrangea_research.duration_seconds, 30.0)
-		and hydrangea_research.effect_type
-		== GlobalResearchConfig.EffectType.SIMPLE_CRAFTING_RECIPE_UNLOCK
-		and is_zero_approx(hydrangea_research.effect_amount)
-		and hydrangea_research.unlocked_simple_crafting_recipe_id
-		== SimpleCraftingRegistry.HYDRANGEA_RAIN_TOWER_ID
+		and hydrangea_research.effects.size() == 2
+		and GlobalResearchEffectResolver.get_recipe_unlock_effects(
+			hydrangea_research.effects,
+			GlobalResearchRecipeUnlockEffect.CATALOG_SIMPLE_CRAFTING
+		).size() == 1
+		and GlobalResearchEffectResolver.get_recipe_unlock_effects(
+			hydrangea_research.effects,
+			GlobalResearchRecipeUnlockEffect.CATALOG_SIMPLE_CRAFTING
+		)[0].recipe_id == SimpleCraftingRegistry.HYDRANGEA_RAIN_TOWER_ID
+		and GlobalResearchEffectResolver.get_recipe_unlock_effects(
+			hydrangea_research.effects,
+			GlobalResearchRecipeUnlockEffect.CATALOG_PRODUCTION
+		).size() == 1
 		and GlobalResearchRegistry.get_unlock_research_id_for_simple_crafting_recipe(
 			SimpleCraftingRegistry.HYDRANGEA_RAIN_TOWER_ID
 		) == HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID,
@@ -376,12 +494,19 @@ func _test_config_and_scene(
 		and orange_research.input_items == [WOODEN_CORE, SAPLING]
 		and orange_research.input_amounts == [2, 5]
 		and is_equal_approx(orange_research.duration_seconds, 30.0)
-		and orange_research.effect_type
-		== GlobalResearchConfig.EffectType.PRODUCTION_RECIPE_UNLOCK
-		and is_zero_approx(orange_research.effect_amount)
-		and orange_research.unlocked_simple_crafting_recipe_id == &""
-		and orange_research.unlocked_production_recipe_id
-		== &"wooden_core_to_orange_charging_tower"
+		and orange_research.effects.size() == 1
+		and GlobalResearchEffectResolver.get_recipe_unlock_effects(
+			orange_research.effects,
+			GlobalResearchRecipeUnlockEffect.CATALOG_SIMPLE_CRAFTING
+		).is_empty()
+		and GlobalResearchEffectResolver.get_recipe_unlock_effects(
+			orange_research.effects,
+			GlobalResearchRecipeUnlockEffect.CATALOG_PRODUCTION
+		).size() == 1
+		and GlobalResearchEffectResolver.get_recipe_unlock_effects(
+			orange_research.effects,
+			GlobalResearchRecipeUnlockEffect.CATALOG_PRODUCTION
+		)[0].recipe_id == &"wooden_core_to_orange_charging_tower"
 		and GlobalResearchRegistry.get_unlock_research_id_for_production_recipe(
 			&"wooden_core_to_orange_charging_tower"
 		) == ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID,
@@ -396,9 +521,14 @@ func _test_config_and_scene(
 			vegetation_spread_research.duration_seconds,
 			60.0
 		)
-		and vegetation_spread_research.effect_type
-		== GlobalResearchConfig.EffectType.VEGETATION_SPREAD_SPEED_MULTIPLIER
-		and is_equal_approx(vegetation_spread_research.effect_amount, 2.0),
+		and vegetation_spread_research.effects.size() == 1
+		and is_equal_approx(
+			GlobalResearchEffectResolver.get_multiplier(
+				vegetation_spread_research.effects,
+				GlobalResearchMultiplierModifierEffect.METRIC_VEGETATION_STAKE_SPREAD_SPEED
+			),
+			2.0
+		),
 		"植被桩蔓延增强必须消耗20木板和5水瓶、持续60秒，并将蔓延速率设为2倍。"
 	)
 	_expect(
@@ -411,10 +541,12 @@ func _test_config_and_scene(
 			vegetation_enhancement_research.duration_seconds,
 			30.0
 		)
-		and vegetation_enhancement_research.effect_type
-		== GlobalResearchConfig.EffectType.GRASS_HEAL_RATIO_BONUS
+		and vegetation_enhancement_research.effects.size() == 1
 		and is_equal_approx(
-			vegetation_enhancement_research.effect_amount,
+			GlobalResearchEffectResolver.get_additive_bonus(
+				vegetation_enhancement_research.effects,
+				GlobalResearchAdditiveModifierEffect.ATTRIBUTE_GRASS_HEAL_MAX_HEALTH_RATIO
+			),
 			0.2
 		),
 		"植被强化必须消耗5白色水晶粉末、30水瓶和10树苗，持续30秒并额外提供20%草地回血。"
@@ -429,9 +561,14 @@ func _test_config_and_scene(
 			water_collection_rate_research.duration_seconds,
 			30.0
 		)
-		and water_collection_rate_research.effect_type
-		== GlobalResearchConfig.EffectType.WATER_COLLECTOR_DURATION_MULTIPLIER
-		and is_equal_approx(water_collection_rate_research.effect_amount, 0.5),
+		and water_collection_rate_research.effects.size() == 1
+		and is_equal_approx(
+			GlobalResearchEffectResolver.get_multiplier(
+				water_collection_rate_research.effects,
+				GlobalResearchMultiplierModifierEffect.METRIC_WATER_COLLECTOR_CYCLE_DURATION
+			),
+			0.5
+		),
 		"采水速率提升必须消耗3白色水晶粉末、10水瓶和20木板，持续30秒并把单轮耗时缩短50%。"
 	)
 	_expect(
@@ -443,17 +580,115 @@ func _test_config_and_scene(
 			fence_reinforcement_research.duration_seconds,
 			30.0
 		)
-		and fence_reinforcement_research.effect_type
-		== GlobalResearchConfig.EffectType.FENCE_REINFORCEMENT
+		and fence_reinforcement_research.effects.size() == 2
 		and is_equal_approx(
-			fence_reinforcement_research.effect_amount,
+			GlobalResearchEffectResolver.get_additive_bonus(
+				fence_reinforcement_research.effects,
+				GlobalResearchAdditiveModifierEffect.ATTRIBUTE_FENCE_MAX_HEALTH
+			),
 			1000.0
 		)
 		and is_equal_approx(
-			fence_reinforcement_research.secondary_effect_amount,
+			GlobalResearchEffectResolver.get_additive_bonus(
+				fence_reinforcement_research.effects,
+				GlobalResearchAdditiveModifierEffect.ATTRIBUTE_FENCE_PHYSICAL_DEFENSE
+			),
 			5.0
 		),
 		"围栏强化必须消耗100木板和100树苗，持续30秒并提供1000生命与5物防。"
+	)
+	var bamboo_slow_effects := (
+		GlobalResearchEffectResolver.get_tower_on_hit_slow_effects(
+			bamboo_concussive_research.effects,
+			PlantDefenseRegistry.BAMBOO_MORTAR_ID
+		)
+	)
+	var grape_status_effects := (
+		GlobalResearchEffectResolver.get_tower_on_hit_timed_status_effects(
+			grape_surge_research.effects,
+			PlantDefenseRegistry.GRAPE_ARC_TOWER_ID,
+			GlobalResearchTowerOnHitTimedStatusEffect.STATUS_ELECTROMAGNETIC
+		)
+	)
+	_expect(
+		agave_cannon_research != null
+		and agave_cannon_research.research_id
+		== &"agave_cannon_muzzle_improvement"
+		and agave_cannon_research.display_name == "加农炮炮口改进"
+		and agave_cannon_research.category_id
+		== GlobalResearchConfig.CATEGORY_BUILDING_ENHANCEMENT
+		and agave_cannon_research.prerequisite_research_id == &""
+		and is_equal_approx(agave_cannon_research.duration_seconds, 40.0)
+		and agave_cannon_research.input_items == [PLANK, WATER_BOTTLE]
+		and agave_cannon_research.input_amounts == [50, 50]
+		and agave_cannon_research.effects.size() == 1
+		and GlobalResearchEffectResolver.get_additive_int_bonus(
+			agave_cannon_research.effects,
+			GlobalResearchAdditiveModifierEffect.ATTRIBUTE_AGAVE_CANNON_ATTACK_DAMAGE
+		) == 10,
+		"加农炮炮口改进必须以稳定ID、40秒、50木板/50水瓶和龙舌兰伤害+10的类型化效果登记。"
+	)
+	_expect(
+		corn_machine_gun_research != null
+		and corn_machine_gun_research.research_id
+		== &"corn_machine_gun_cooling_system_improvement"
+		and corn_machine_gun_research.display_name == "机枪塔冷却系统改进"
+		and corn_machine_gun_research.category_id
+		== GlobalResearchConfig.CATEGORY_BUILDING_ENHANCEMENT
+		and corn_machine_gun_research.prerequisite_research_id == &""
+		and is_equal_approx(corn_machine_gun_research.duration_seconds, 40.0)
+		and corn_machine_gun_research.input_items == [PLANK, WATER_BOTTLE]
+		and corn_machine_gun_research.input_amounts == [50, 50]
+		and corn_machine_gun_research.effects.size() == 1
+		and GlobalResearchEffectResolver.get_additive_int_bonus(
+			corn_machine_gun_research.effects,
+			GlobalResearchAdditiveModifierEffect.ATTRIBUTE_CORN_MACHINE_GUN_BURST_COUNT
+		) == 2,
+		"机枪塔冷却系统改进必须以完整稳定ID、40秒、50木板/50水瓶和每轮+2发登记。"
+	)
+	_expect(
+		bamboo_concussive_research != null
+		and bamboo_concussive_research.research_id
+		== &"bamboo_mortar_concussive_modification"
+		and bamboo_concussive_research.display_name == "迫击炮弹震爆改造"
+		and bamboo_concussive_research.category_id
+		== GlobalResearchConfig.CATEGORY_BUILDING_ENHANCEMENT
+		and bamboo_concussive_research.prerequisite_research_id == &""
+		and is_equal_approx(bamboo_concussive_research.duration_seconds, 40.0)
+		and bamboo_concussive_research.input_items == [PLANK, WATER_BOTTLE]
+		and bamboo_concussive_research.input_amounts == [80, 50]
+		and bamboo_concussive_research.effects.size() == 1
+		and bamboo_slow_effects.size() == 1
+		and is_equal_approx(bamboo_slow_effects[0].slow_ratio, 0.25)
+		and is_equal_approx(bamboo_slow_effects[0].duration_seconds, 3.0),
+		"迫击炮弹震爆改造必须保存25%减速与3秒时长的具名字段，而非匿名倍率槽。"
+	)
+	_expect(
+		grape_surge_research != null
+		and grape_surge_research.research_id
+		== &"grape_arc_tower_surge_modification"
+		and grape_surge_research.display_name == "电弧塔电涌改造"
+		and grape_surge_research.category_id
+		== GlobalResearchConfig.CATEGORY_BUILDING_ENHANCEMENT
+		and grape_surge_research.prerequisite_research_id == &""
+		and is_equal_approx(grape_surge_research.duration_seconds, 60.0)
+		and grape_surge_research.input_items == [PLANK, WATER_BOTTLE, DIRT_BLOCK]
+		and grape_surge_research.input_amounts == [50, 100, 100]
+		and grape_surge_research.effects.size() == 2
+		and grape_status_effects.size() == 1
+		and is_equal_approx(grape_status_effects[0].duration_seconds, 10.0)
+		and is_equal_approx(
+			GlobalResearchEffectResolver.get_conditional_damage_bonus_ratio(
+				grape_surge_research.effects,
+				PlantDefenseRegistry.GRAPE_ARC_TOWER_ID,
+				GlobalResearchTowerConditionalDamageBonusEffect.STATUS_ELECTROMAGNETIC
+			),
+			0.5
+		)
+		and GlobalResearchEffectFormatter.format_badge(
+			grape_surge_research.effects
+		) == "电磁附着\n10秒 / +50%",
+		"电弧塔电涌改造必须组合10秒电磁附着与对电磁目标+50%两项独立类型化效果。"
 	)
 	_expect(
 		config != null
@@ -672,6 +907,12 @@ func _test_config_and_scene(
 			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/DefenseResearchButton"
 		)
 		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/DefenseIIResearchButton"
+		)
+		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/DefenseIIIResearchButton"
+		)
+		and panel.has_node(
 			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/MoveSpeedResearchButton"
 		)
 		and panel.has_node(
@@ -695,15 +936,36 @@ func _test_config_and_scene(
 		and panel.has_node(
 			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/FenceReinforcementResearchButton"
 		)
-		and panel.global_research_buttons.size() == 9
+		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/AgaveCannonMuzzleResearchButton"
+		)
+		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/CornMachineGunCoolingResearchButton"
+		)
+		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/BambooMortarConcussionResearchButton"
+		)
+		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/GrapeArcTowerSurgeResearchButton"
+		)
+		and panel.global_research_buttons.size() == 15
+		and not panel.defense_ii_research_button.visible
+		and not panel.defense_iii_research_button.visible
+		and panel.agave_cannon_muzzle_research_button.visible
+		and panel.corn_machine_gun_cooling_research_button.visible
+		and panel.bamboo_mortar_concussion_research_button.visible
+		and panel.grape_arc_tower_surge_research_button.visible
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/PlankSlot")
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/SaplingSlot")
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/WaterBottleSlot")
+		and panel.has_node("Overlay/PanelRoot/GlobalPage/MaterialSlot4")
+		and panel.material_slots.size() == 4
+		and panel.material_labels.size() == 4
 		and panel.has_node("Overlay/PanelRoot/PlayerPage/TechNode1")
 		and panel.has_node("Overlay/PanelRoot/PlayerPage/TechNode2")
 		and panel.has_node("Overlay/PanelRoot/PlayerPage/TechNode3")
 		and not panel.has_node("Overlay/PanelRoot/ToggleButton"),
-		"科研UI必须原生包含九项全局研究、双页与三处技术节点，并且不能有开关。"
+		"科研UI必须原生包含十五项全局研究、四个材料槽、双页与三处技术节点，并且不能有开关。"
 	)
 	_expect(
 		is_equal_approx(
@@ -846,8 +1108,13 @@ func _test_panel_mouse_navigation(
 		and player.controls_locked
 		and panel.active_page == ResearchCenterPanel.Page.GLOBAL_TECH
 		and panel.global_page.visible
-		and not panel.player_page.visible,
-		"科研面板打开时必须默认显示全局科技页并锁定玩家控制。"
+		and not panel.player_page.visible
+		and panel.selected_global_research_id == BUILDING_DEFENSE_RESEARCH_ID
+		and panel.defense_research_button.visible
+		and not panel.defense_ii_research_button.visible
+		and not panel.defense_iii_research_button.visible
+		and not panel.material_slots[3].visible,
+		"科研面板打开时必须默认选择建筑结构强化I、隐藏未解锁的II/III并锁定玩家控制。"
 	)
 
 	await _click_panel_control(panel.player_tab)
@@ -879,6 +1146,7 @@ func _test_panel_mouse_navigation(
 		and panel.material_slots[0].visible
 		and panel.material_slots[1].visible
 		and not panel.material_slots[2].visible
+		and not panel.material_slots[3].visible
 		and panel.material_slots[0].position
 		== ResearchCenterPanel.DOUBLE_MATERIAL_SLOT_POSITIONS[0]
 		and panel.material_slots[1].position
@@ -909,6 +1177,7 @@ func _test_panel_mouse_navigation(
 		and panel.material_slots[0].visible
 		and panel.material_slots[1].visible
 		and not panel.material_slots[2].visible
+		and not panel.material_slots[3].visible
 		and panel.material_slots[0].item == WOODEN_CORE
 		and panel.material_slots[1].item == SAPLING,
 		"滚动后点击橘充能塔研究必须选中独立项目，并展示与紫阳花相同的双材料需求。"
@@ -927,6 +1196,7 @@ func _test_panel_mouse_navigation(
 		and panel.material_slots[0].visible
 		and panel.material_slots[1].visible
 		and not panel.material_slots[2].visible
+		and not panel.material_slots[3].visible
 		and panel.material_slots[0].item == PLANK
 		and panel.material_slots[1].item == WATER_BOTTLE,
 		"滚动后点击植被桩蔓延增强必须选中独立项目，并展示20木板与5水瓶的双材料布局。"
@@ -945,6 +1215,7 @@ func _test_panel_mouse_navigation(
 		and panel.material_slots[0].visible
 		and panel.material_slots[1].visible
 		and panel.material_slots[2].visible
+		and not panel.material_slots[3].visible
 		and panel.material_slots[0].item == WHITE_CRYSTAL_POWDER
 		and panel.material_slots[1].item == WATER_BOTTLE
 		and panel.material_slots[2].item == SAPLING,
@@ -964,6 +1235,7 @@ func _test_panel_mouse_navigation(
 		and panel.material_slots[0].visible
 		and panel.material_slots[1].visible
 		and panel.material_slots[2].visible
+		and not panel.material_slots[3].visible
 		and panel.material_slots[0].item == WHITE_CRYSTAL_POWDER
 		and panel.material_slots[1].item == WATER_BOTTLE
 		and panel.material_slots[2].item == PLANK,
@@ -983,9 +1255,10 @@ func _test_panel_mouse_navigation(
 		and panel.material_slots[0].visible
 		and panel.material_slots[1].visible
 		and not panel.material_slots[2].visible
+		and not panel.material_slots[3].visible
 		and panel.material_slots[0].item == PLANK
 		and panel.material_slots[1].item == SAPLING
-		and panel.global_result_badge.text == "围栏生命+1000\n物理防御+5",
+		and panel.global_result_badge.text == "生命 +1000\n物防 +5",
 		"滚动后点击围栏强化必须展示100木板、100树苗与两项强化结果。"
 	)
 
@@ -1003,6 +1276,660 @@ func _test_panel_mouse_navigation(
 		and not player.has_control_lock(ResearchCenterPanel.CONTROL_LOCK_OWNER),
 		"玩家死亡时科研面板必须关闭并只释放自己的控制锁 owner。"
 	)
+
+
+func _test_tower_specific_research_projection(test_root: Node) -> void:
+	var production := (
+		PRODUCTION_COORDINATOR_SCENE.instantiate() as ProductionCoordinator
+	)
+	var research := RESEARCH_COORDINATOR_SCENE.instantiate() as ResearchCoordinator
+	var plant_system := PlantSystem.new()
+	var bamboo_combat := BambooMortarCombatSystem.new()
+	var warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
+	var owner := WEISHIDAIER_SCENE.instantiate() as Player
+	for node in [
+		production,
+		research,
+		plant_system,
+		bamboo_combat,
+		warehouse,
+		owner,
+	]:
+		test_root.add_child(node)
+	await process_frame
+	production.production_tick_timer.stop()
+	owner.peer_id = 61
+	warehouse.setup(
+		PlantDefenseRegistry.get_config(PlantDefenseRegistry.OAK_WAREHOUSE_ID),
+		owner,
+		[Vector2i.ZERO]
+	)
+	production.register_plant(warehouse)
+
+	var agave := _create_research_projection_tower(
+		PlantDefenseRegistry.AGAVE_CANNON_ID,
+		owner,
+		Vector2i(2, 0),
+		test_root
+	) as AgaveCannon
+	var corn := _create_research_projection_tower(
+		PlantDefenseRegistry.CORN_MACHINE_GUN_ID,
+		owner,
+		Vector2i(4, 0),
+		test_root
+	) as CornMachineGun
+	var grape := _create_research_projection_tower(
+		PlantDefenseRegistry.GRAPE_ARC_TOWER_ID,
+		owner,
+		Vector2i(6, 0),
+		test_root
+	) as GrapeArcTower
+	for tower in [agave, corn, grape]:
+		plant_system.plant_footprints[tower] = tower.footprint_cells.duplicate()
+	research.setup(production, plant_system, null, bamboo_combat)
+	research.research_tick_timer.stop()
+
+	_expect(
+		research.is_global_research_unlocked(
+			AGAVE_CANNON_MUZZLE_IMPROVEMENT_RESEARCH_ID
+		)
+		and research.is_global_research_unlocked(
+			CORN_MACHINE_GUN_COOLING_SYSTEM_IMPROVEMENT_RESEARCH_ID
+		)
+		and research.is_global_research_unlocked(
+			BAMBOO_MORTAR_CONCUSSIVE_MODIFICATION_RESEARCH_ID
+		)
+		and research.is_global_research_unlocked(
+			GRAPE_ARC_TOWER_SURGE_MODIFICATION_RESEARCH_ID
+		),
+		"四项塔专属科研必须无前置并在新局初始可用。"
+	)
+
+	_expect(
+		warehouse.try_add_storage_item_count(PLANK, 50)
+		and warehouse.try_add_storage_item_count(WATER_BOTTLE, 50)
+		and research.try_start_global_research(
+			AGAVE_CANNON_MUZZLE_IMPROVEMENT_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_SUCCESS
+		and production.get_total_item_count(PLANK) == 0
+		and production.get_total_item_count(WATER_BOTTLE) == 0,
+		"加农炮科研必须原子扣除50木板与50水瓶。"
+	)
+	research.advance_global_research(40.0)
+	_expect(
+		research.get_agave_cannon_attack_damage_bonus() == 10
+		and plant_system.get_global_agave_cannon_attack_damage_bonus() == 10
+		and agave.get_research_attack_damage_bonus() == 10
+		and agave.configured_attack_damage == 30,
+		"加农炮科研完成后必须把既有龙舌兰伤害从20绝对投影为30。"
+	)
+
+	_expect(
+		warehouse.try_add_storage_item_count(PLANK, 50)
+		and warehouse.try_add_storage_item_count(WATER_BOTTLE, 50)
+		and research.try_start_global_research(
+			CORN_MACHINE_GUN_COOLING_SYSTEM_IMPROVEMENT_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_SUCCESS,
+		"机枪塔科研必须能用50木板与50水瓶启动。"
+	)
+	research.advance_global_research(40.0)
+	_expect(
+		research.get_corn_machine_gun_burst_count_bonus() == 2
+		and plant_system.get_global_corn_machine_gun_burst_shot_count_bonus() == 2
+		and corn.get_research_burst_shot_count_bonus() == 2
+		and corn.configured_burst_count == 8,
+		"机枪塔科研完成后必须把既有玉米塔下一轮射击数绝对投影为8。"
+	)
+
+	_expect(
+		warehouse.try_add_storage_item_count(PLANK, 80)
+		and warehouse.try_add_storage_item_count(WATER_BOTTLE, 50)
+		and research.try_start_global_research(
+			BAMBOO_MORTAR_CONCUSSIVE_MODIFICATION_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_SUCCESS,
+		"迫击炮震爆科研必须能用80木板与50水瓶启动。"
+	)
+	research.advance_global_research(40.0)
+	_expect(
+		is_equal_approx(research.get_bamboo_mortar_slow_ratio(), 0.25)
+		and is_equal_approx(
+			research.get_bamboo_mortar_slow_duration_seconds(),
+			3.0
+		)
+		and is_equal_approx(
+			bamboo_combat.get_research_concussion_move_speed_multiplier(),
+			0.75
+		)
+		and is_equal_approx(
+			bamboo_combat.get_research_concussion_duration_seconds(),
+			3.0
+		),
+		"震爆科研必须把25%减速、3秒时长投射为迫击炮中央结算参数。"
+	)
+
+	_expect(
+		warehouse.try_add_storage_item_count(PLANK, 50)
+		and warehouse.try_add_storage_item_count(WATER_BOTTLE, 100)
+		and warehouse.try_add_storage_item_count(DIRT_BLOCK, 99),
+		"电弧科研原子事务夹具必须能准备仅缺1土块的材料。"
+	)
+	var before_missing_grape := {
+		"plank": production.get_total_item_count(PLANK),
+		"water": production.get_total_item_count(WATER_BOTTLE),
+		"dirt": production.get_total_item_count(DIRT_BLOCK),
+	}
+	_expect(
+		research.try_start_global_research(
+			GRAPE_ARC_TOWER_SURGE_MODIFICATION_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_MISSING_INPUT
+		and production.get_total_item_count(PLANK)
+		== int(before_missing_grape["plank"])
+		and production.get_total_item_count(WATER_BOTTLE)
+		== int(before_missing_grape["water"])
+		and production.get_total_item_count(DIRT_BLOCK)
+		== int(before_missing_grape["dirt"]),
+		"电弧科研任一材料不足时不得预扣其余三项投入。"
+	)
+	_expect(
+		warehouse.try_add_storage_item_count(DIRT_BLOCK, 1)
+		and research.try_start_global_research(
+			GRAPE_ARC_TOWER_SURGE_MODIFICATION_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_SUCCESS
+		and production.get_total_item_count(PLANK) == 0
+		and production.get_total_item_count(WATER_BOTTLE) == 0
+		and production.get_total_item_count(DIRT_BLOCK) == 0,
+		"电弧科研材料齐备时必须一次性扣除50木板、100水瓶与100土块。"
+	)
+	research.advance_global_research(60.0)
+	_expect(
+		is_equal_approx(
+			research.get_grape_electromagnetic_duration_seconds(),
+			10.0
+		)
+		and is_equal_approx(
+			research.get_grape_electromagnetic_damage_multiplier(),
+			1.5
+		)
+		and is_equal_approx(
+			plant_system.get_global_grape_electromagnetic_attachment_duration_seconds(),
+			10.0
+		)
+		and is_equal_approx(
+			plant_system.get_global_grape_electromagnetic_damage_multiplier(),
+			1.5
+		)
+		and is_equal_approx(
+			grape.get_research_electromagnetic_attachment_duration_seconds(),
+			10.0
+		)
+		and is_equal_approx(
+			grape.get_research_electromagnetic_damage_multiplier(),
+			1.5
+		),
+		"电弧科研必须向既有葡萄塔投射10秒电磁附着与1.5倍条件伤害。"
+	)
+
+	var late_agave := _create_research_projection_tower(
+		PlantDefenseRegistry.AGAVE_CANNON_ID,
+		owner,
+		Vector2i(8, 0),
+		test_root
+	) as AgaveCannon
+	var late_corn := _create_research_projection_tower(
+		PlantDefenseRegistry.CORN_MACHINE_GUN_ID,
+		owner,
+		Vector2i(10, 0),
+		test_root
+	) as CornMachineGun
+	var late_grape := _create_research_projection_tower(
+		PlantDefenseRegistry.GRAPE_ARC_TOWER_ID,
+		owner,
+		Vector2i(12, 0),
+		test_root
+	) as GrapeArcTower
+	for tower in [late_agave, late_corn, late_grape]:
+		plant_system.call("_apply_research_stat_bonuses", tower)
+	_expect(
+		late_agave.configured_attack_damage == 30
+		and late_corn.configured_burst_count == 8
+		and is_equal_approx(
+			late_grape.get_research_electromagnetic_attachment_duration_seconds(),
+			10.0
+		)
+		and is_equal_approx(
+			late_grape.get_research_electromagnetic_damage_multiplier(),
+			1.5
+		),
+		"完成科研后新建的三类塔必须从基础配置得到同一绝对效果投影。"
+	)
+
+	var remote_research := RESEARCH_COORDINATOR_SCENE.instantiate() as ResearchCoordinator
+	var remote_plant_system := PlantSystem.new()
+	var remote_bamboo_combat := BambooMortarCombatSystem.new()
+	for node in [remote_research, remote_plant_system, remote_bamboo_combat]:
+		test_root.add_child(node)
+	await process_frame
+	remote_research.research_tick_timer.stop()
+	remote_research.setup(null, remote_plant_system, null, remote_bamboo_combat)
+	remote_research.set_authoritative_processing_enabled(false)
+	var snapshot := research.export_runtime_state()
+	_expect(
+		remote_research.apply_multiplayer_runtime_state(snapshot)
+		and remote_plant_system.get_global_agave_cannon_attack_damage_bonus() == 10
+		and remote_plant_system.get_global_corn_machine_gun_burst_shot_count_bonus() == 2
+		and is_equal_approx(
+			remote_bamboo_combat.get_research_concussion_move_speed_multiplier(),
+			0.75
+		)
+		and is_equal_approx(
+			remote_plant_system.get_global_grape_electromagnetic_damage_multiplier(),
+			1.5
+		),
+		"15项schema3快照必须在远端幂等恢复四项塔专属科研投影。"
+	)
+	var replay := snapshot.duplicate(true)
+	replay["revision"] = int(snapshot["revision"]) + 1
+	_expect(
+		remote_research.apply_multiplayer_runtime_state(replay)
+		and remote_plant_system.get_global_agave_cannon_attack_damage_bonus() == 10
+		and remote_plant_system.get_global_corn_machine_gun_burst_shot_count_bonus() == 2
+		and is_equal_approx(
+			remote_plant_system.get_global_grape_electromagnetic_damage_multiplier(),
+			1.5
+		),
+		"重复发布同一完成态的更高revision快照不得重复叠加塔科研。"
+	)
+
+
+func _create_research_projection_tower(
+	tower_id: StringName,
+	owner: Player,
+	anchor: Vector2i,
+	test_root: Node
+) -> PlantDefense:
+	var config := PlantDefenseRegistry.get_config(tower_id)
+	var tower := config.plant_scene.instantiate() as PlantDefense
+	test_root.add_child(tower)
+	tower.setup(config, owner, [anchor])
+	tower.set_process(false)
+	tower.set_physics_process(false)
+	return tower
+
+
+func _test_building_defense_research_chain(
+	test_root: Node,
+	center_config: PlantDefenseConfig
+) -> void:
+	var chain_production := (
+		PRODUCTION_COORDINATOR_SCENE.instantiate() as ProductionCoordinator
+	)
+	var chain_research := (
+		RESEARCH_COORDINATOR_SCENE.instantiate() as ResearchCoordinator
+	)
+	var chain_warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
+	var chain_plant_system := PlantSystem.new()
+	var chain_panel := PANEL_SCENE.instantiate() as ResearchCenterPanel
+	var chain_player := WEISHIDAIER_SCENE.instantiate() as Player
+	var chain_center := (
+		center_config.plant_scene.instantiate() as ResearchCenter
+		if center_config != null
+		else null
+	)
+	for node in [
+		chain_production,
+		chain_research,
+		chain_warehouse,
+		chain_plant_system,
+		chain_panel,
+		chain_player,
+		chain_center,
+	]:
+		if node != null:
+			test_root.add_child(node)
+	await process_frame
+	if chain_center == null:
+		_expect(false, "三级建筑结构强化隔离测试必须能实例化科研中心。")
+		return
+	chain_production.production_tick_timer.stop()
+	chain_research.research_tick_timer.stop()
+	chain_player.peer_id = 21
+	var warehouse_config := PlantDefenseRegistry.get_config(&"oak_warehouse")
+	chain_warehouse.setup(warehouse_config, chain_player, [Vector2i(20, 20)])
+	chain_center.setup(
+		center_config,
+		chain_player,
+		[
+			Vector2i(22, 20),
+			Vector2i(23, 20),
+			Vector2i(22, 21),
+			Vector2i(23, 21),
+		]
+	)
+	chain_production.register_plant(chain_warehouse)
+	chain_research.setup(chain_production, chain_plant_system, null)
+	chain_center.set_research_services(chain_research, chain_panel)
+	chain_plant_system.plant_footprints[chain_center] = (
+		chain_center.footprint_cells.duplicate()
+	)
+
+	_expect(
+		chain_warehouse.try_add_storage_item_count(PLANK, 180)
+		and chain_warehouse.try_add_storage_item_count(SAPLING, 50)
+		and chain_warehouse.try_add_storage_item_count(WATER_BOTTLE, 200)
+		and chain_warehouse.try_add_storage_item_count(DIRT_BLOCK, 100)
+		and chain_warehouse.try_add_storage_item_count(
+			WHITE_CRYSTAL_POWDER,
+			9
+		),
+		"三级建筑结构强化隔离测试必须能准备除最后1份白色水晶粉外的全部材料。"
+	)
+	chain_panel.open_for(chain_center, chain_player)
+	await process_frame
+	_expect(
+		chain_panel.selected_global_research_id
+		== BUILDING_DEFENSE_RESEARCH_ID
+		and chain_panel.defense_research_button.visible
+		and not chain_panel.defense_ii_research_button.visible
+		and not chain_panel.defense_iii_research_button.visible,
+		"初始打开科研面板必须默认选中I，并实时隐藏前置未完成的II与III。"
+	)
+
+	var totals_before_skip := {
+		PLANK: chain_production.get_total_item_count(PLANK),
+		SAPLING: chain_production.get_total_item_count(SAPLING),
+		WATER_BOTTLE: chain_production.get_total_item_count(WATER_BOTTLE),
+		DIRT_BLOCK: chain_production.get_total_item_count(DIRT_BLOCK),
+		WHITE_CRYSTAL_POWDER: chain_production.get_total_item_count(
+			WHITE_CRYSTAL_POWDER
+		),
+	}
+	_expect(
+		chain_center.try_start_global_research(
+			BUILDING_DEFENSE_II_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_UNAVAILABLE
+		and chain_center.try_start_global_research(
+			BUILDING_DEFENSE_III_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_UNAVAILABLE
+		and _research_material_totals_match(
+			chain_production,
+			totals_before_skip
+		),
+		"完成I之前直接或伪造请求II/III必须在扣料前拒绝，且共享仓库完全不变。"
+	)
+
+	_expect(
+		chain_center.try_start_global_research(BUILDING_DEFENSE_RESEARCH_ID)
+		== ResearchCoordinator.RESULT_SUCCESS
+		and chain_production.get_total_item_count(PLANK) == 150
+		and chain_production.get_total_item_count(SAPLING) == 30
+		and chain_production.get_total_item_count(WATER_BOTTLE) == 150,
+		"建筑结构强化I必须原子扣除30木板、20树苗和50水瓶。"
+	)
+	chain_research.advance_global_research(40.0)
+	_expect(
+		chain_plant_system.get_global_physical_defense_bonus() == 5
+		and chain_center.get_effective_physical_defense() == 10
+		and chain_research.is_global_research_unlocked(
+			BUILDING_DEFENSE_II_RESEARCH_ID
+		)
+		and not chain_research.is_global_research_unlocked(
+			BUILDING_DEFENSE_III_RESEARCH_ID
+		)
+		and chain_panel.selected_global_research_id
+		== BUILDING_DEFENSE_RESEARCH_ID
+		and chain_panel.defense_ii_research_button.visible
+		and not chain_panel.defense_iii_research_button.visible
+		and chain_panel.defense_research_button.text.contains("已完成"),
+		"I完成后必须累计物防+5、仅显示II，并保持当前选择在I。"
+	)
+
+	totals_before_skip = {
+		PLANK: chain_production.get_total_item_count(PLANK),
+		SAPLING: chain_production.get_total_item_count(SAPLING),
+		WATER_BOTTLE: chain_production.get_total_item_count(WATER_BOTTLE),
+		DIRT_BLOCK: chain_production.get_total_item_count(DIRT_BLOCK),
+		WHITE_CRYSTAL_POWDER: chain_production.get_total_item_count(
+			WHITE_CRYSTAL_POWDER
+		),
+	}
+	_expect(
+		chain_center.try_start_global_research(
+			BUILDING_DEFENSE_III_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_UNAVAILABLE
+		and _research_material_totals_match(
+			chain_production,
+			totals_before_skip
+		),
+		"I完成但II未完成时越级请求III仍必须在扣料前拒绝。"
+	)
+	_expect(
+		chain_center.try_start_global_research(
+			BUILDING_DEFENSE_II_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_SUCCESS
+		and chain_production.get_total_item_count(PLANK) == 100
+		and chain_production.get_total_item_count(SAPLING) == 0
+		and chain_production.get_total_item_count(WATER_BOTTLE) == 100,
+		"建筑结构强化II必须原子扣除50木板、30树苗和50水瓶。"
+	)
+	chain_research.advance_global_research(50.0)
+	_expect(
+		chain_plant_system.get_global_physical_defense_bonus() == 10
+		and chain_center.get_effective_physical_defense() == 15
+		and chain_research.is_global_research_unlocked(
+			BUILDING_DEFENSE_III_RESEARCH_ID
+		)
+		and chain_panel.selected_global_research_id
+		== BUILDING_DEFENSE_RESEARCH_ID
+		and chain_panel.defense_ii_research_button.visible
+		and chain_panel.defense_iii_research_button.visible
+		and chain_panel.defense_ii_research_button.text.contains("已完成"),
+		"II完成后必须累计物防+10、显示III，并且新等级出现时不能自动切换选择。"
+	)
+
+	chain_panel.call(
+		"_select_global_research",
+		BUILDING_DEFENSE_III_RESEARCH_ID
+	)
+	await process_frame
+	var result_badge_rect := chain_panel.global_result_badge.get_rect()
+	var four_material_layout_valid := true
+	for index in chain_panel.material_slots.size():
+		var material_label := chain_panel.material_labels[index]
+		four_material_layout_valid = (
+			four_material_layout_valid
+			and chain_panel.material_slots[index].visible
+			and material_label.visible
+			and chain_panel.material_slots[index].position
+			== ResearchCenterPanel.FOUR_MATERIAL_SLOT_POSITIONS[index]
+			and is_equal_approx(
+				material_label.size.x,
+				ResearchCenterPanel.FOUR_MATERIAL_LABEL_SIZE.x
+			)
+			and material_label.size.y
+			>= ResearchCenterPanel.FOUR_MATERIAL_LABEL_SIZE.y
+			and not material_label.get_rect().intersects(result_badge_rect)
+		)
+	_expect(
+		chain_panel.selected_global_research_id
+		== BUILDING_DEFENSE_III_RESEARCH_ID
+		and four_material_layout_valid
+		and chain_panel.material_slots[0].item == PLANK
+		and chain_panel.material_slots[1].item == WATER_BOTTLE
+		and chain_panel.material_slots[2].item == DIRT_BLOCK
+		and chain_panel.material_slots[3].item == WHITE_CRYSTAL_POWDER
+		and chain_panel.material_labels[3].text == "白色水晶粉\n9 / 10"
+		and chain_panel.material_labels[3].get_line_count() == 2
+		and chain_panel.material_labels[3].get_minimum_size().x
+		<= chain_panel.material_labels[3].size.x
+		and chain_panel.material_labels[3].get_minimum_size().y
+		<= chain_panel.material_labels[3].size.y
+		and chain_panel.global_result_badge.text == "全建筑物防\n+5",
+		(
+			"III详情必须原生展示四个紧凑单行材料槽，白色水晶粉以两行完整显示且不得侵入成果徽章。"
+			+ "（layout=%s，text=%s，lines=%d，min=%s，size=%s，badge=%s）"
+		) % [
+			str(four_material_layout_valid),
+			chain_panel.material_labels[3].text,
+			chain_panel.material_labels[3].get_line_count(),
+			str(chain_panel.material_labels[3].get_minimum_size()),
+			str(chain_panel.material_labels[3].size),
+			chain_panel.global_result_badge.text,
+		]
+	)
+
+	var iii_materials_before_missing := {
+		PLANK: 100,
+		WATER_BOTTLE: 100,
+		DIRT_BLOCK: 100,
+		WHITE_CRYSTAL_POWDER: 9,
+	}
+	_expect(
+		chain_center.try_start_global_research(
+			BUILDING_DEFENSE_III_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_MISSING_INPUT
+		and _research_material_totals_match(
+			chain_production,
+			iii_materials_before_missing
+		),
+		"III缺少任一份白色水晶粉时四种材料必须全部保持不变。"
+	)
+	_expect(
+		chain_warehouse.try_add_storage_item_count(WHITE_CRYSTAL_POWDER, 1)
+		and chain_center.try_start_global_research(
+			BUILDING_DEFENSE_III_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_SUCCESS
+		and chain_production.get_total_item_count(PLANK) == 0
+		and chain_production.get_total_item_count(WATER_BOTTLE) == 0
+		and chain_production.get_total_item_count(DIRT_BLOCK) == 0
+		and chain_production.get_total_item_count(WHITE_CRYSTAL_POWDER) == 0,
+		"III材料齐全时必须一次原子扣除100木板、100水瓶、100土块和10白色水晶粉。"
+	)
+	chain_research.advance_global_research(70.0)
+	_expect(
+		chain_research.get_completed_global_research_ids() == [
+			BUILDING_DEFENSE_RESEARCH_ID,
+			BUILDING_DEFENSE_II_RESEARCH_ID,
+			BUILDING_DEFENSE_III_RESEARCH_ID,
+		]
+		and chain_plant_system.get_global_physical_defense_bonus() == 15
+		and chain_center.get_effective_physical_defense() == 20
+		and chain_panel.defense_research_button.visible
+		and chain_panel.defense_ii_research_button.visible
+		and chain_panel.defense_iii_research_button.visible
+		and chain_panel.defense_iii_research_button.text.contains("已完成"),
+		"I/II/III完成后必须按注册顺序保留全部完成项并累计全建筑物防+15。"
+	)
+
+	var remote_research := (
+		RESEARCH_COORDINATOR_SCENE.instantiate() as ResearchCoordinator
+	)
+	var remote_plant_system := PlantSystem.new()
+	test_root.add_child(remote_research)
+	test_root.add_child(remote_plant_system)
+	await process_frame
+	remote_research.research_tick_timer.stop()
+	remote_research.setup(null, remote_plant_system, null)
+	remote_research.set_authoritative_processing_enabled(false)
+	var chain_snapshot := chain_research.export_runtime_state()
+	remote_research.apply_multiplayer_runtime_state(chain_snapshot)
+	_expect(
+		int(chain_snapshot.get("schema", 0)) == 3
+		and (chain_snapshot["global_states"] as Dictionary).size() == 15
+		and (chain_snapshot["global_elapsed"] as Dictionary).size() == 15
+		and remote_research.get_completed_global_research_ids() == [
+			BUILDING_DEFENSE_RESEARCH_ID,
+			BUILDING_DEFENSE_II_RESEARCH_ID,
+			BUILDING_DEFENSE_III_RESEARCH_ID,
+		]
+		and remote_plant_system.get_global_physical_defense_bonus() == 15,
+		"schema3远端快照必须完整携带15项科研，并把三级累计物防+15投射到客户端。"
+	)
+	var accepted_remote_revision := remote_research.research_revision
+	var invalid_chain_snapshot := chain_snapshot.duplicate(true)
+	invalid_chain_snapshot["revision"] = accepted_remote_revision + 1
+	var invalid_chain_states := (
+		invalid_chain_snapshot["global_states"] as Dictionary
+	)
+	var invalid_chain_elapsed := (
+		invalid_chain_snapshot["global_elapsed"] as Dictionary
+	)
+	invalid_chain_states[String(BUILDING_DEFENSE_II_RESEARCH_ID)] = (
+		ResearchCoordinator.GlobalResearchState.AVAILABLE
+	)
+	invalid_chain_elapsed[String(BUILDING_DEFENSE_II_RESEARCH_ID)] = 0.0
+	remote_research.apply_multiplayer_runtime_state(invalid_chain_snapshot)
+	_expect(
+		remote_research.research_revision == accepted_remote_revision
+		and remote_research.get_completed_global_research_ids() == [
+			BUILDING_DEFENSE_RESEARCH_ID,
+			BUILDING_DEFENSE_II_RESEARCH_ID,
+			BUILDING_DEFENSE_III_RESEARCH_ID,
+		]
+		and remote_plant_system.get_global_physical_defense_bonus() == 15,
+		"远端必须拒绝II未完成但III已完成的非法前置链快照，且不能污染已接受状态。"
+	)
+	var late_center := center_config.plant_scene.instantiate() as ResearchCenter
+	var fence_config := PlantDefenseRegistry.get_config(&"simple_fence")
+	var late_fence := (
+		fence_config.plant_scene.instantiate() as PlantDefense
+		if fence_config != null
+		else null
+	)
+	if late_center != null:
+		test_root.add_child(late_center)
+	if late_fence != null:
+		test_root.add_child(late_fence)
+	await process_frame
+	if late_center != null:
+		late_center.setup(
+			center_config,
+			chain_player,
+			[
+				Vector2i(30, 20),
+				Vector2i(31, 20),
+				Vector2i(30, 21),
+				Vector2i(31, 21),
+			]
+		)
+		chain_plant_system.plant_footprints[late_center] = (
+			late_center.footprint_cells.duplicate()
+		)
+		chain_plant_system.call("_apply_research_stat_bonuses", late_center)
+	if late_fence != null:
+		late_fence.setup(fence_config, chain_player, [Vector2i(32, 20)])
+		chain_plant_system.plant_footprints[late_fence] = (
+			late_fence.footprint_cells.duplicate()
+		)
+		chain_plant_system.call("_apply_research_stat_bonuses", late_fence)
+	chain_plant_system.set_global_fence_physical_defense_bonus(5)
+	_expect(
+		late_center != null
+		and late_fence != null
+		and late_center.get_effective_physical_defense()
+		== center_config.physical_defense + 15
+		and late_fence.get_effective_physical_defense()
+		== fence_config.physical_defense + 20
+		and chain_center.get_effective_physical_defense()
+		== center_config.physical_defense + 15,
+		"三级+15必须覆盖现有与后建建筑，围栏专属+5还要在全局加成基础上继续叠加。"
+	)
+	chain_panel.close()
+	_expect(not chain_player.controls_locked, "三级科研链测试关闭面板后必须释放玩家控制。")
+
+
+func _research_material_totals_match(
+	production: ProductionCoordinator,
+	expected_totals: Dictionary
+) -> bool:
+	for item_variant in expected_totals:
+		var item := item_variant as PickupConfig
+		if (
+			item == null
+			or production.get_total_item_count(item)
+			!= int(expected_totals[item_variant])
+		):
+			return false
+	return true
 
 
 func _click_panel_control(control: Control) -> void:
@@ -1190,14 +2117,14 @@ func _test_global_move_speed_research(
 		research.get_global_research_state(PLAYER_MOVE_SPEED_RESEARCH_ID)
 		== ResearchCoordinator.GlobalResearchState.COMPLETED
 		and research.get_active_global_research_id().is_empty()
-		and plant_system.get_global_physical_defense_bonus() == 10,
+		and plant_system.get_global_physical_defense_bonus() == 5,
 		"移动研究完成后必须保留已完成的建筑防御研究，并清空研究队列。"
 	)
 	for player_variant in players:
 		var player := player_variant as Player
 		var expected_speed := (
 			float(speeds_before[player.get_instance_id()])
-			+ ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
+			+ _get_expected_global_move_speed_bonus()
 		)
 		_expect(
 			is_equal_approx(player.move_speed, expected_speed),
@@ -1223,7 +2150,7 @@ func _test_global_move_speed_research(
 	_expect(
 		is_equal_approx(
 			late_player.move_speed,
-			late_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
+			late_base_speed + _get_expected_global_move_speed_bonus()
 		),
 		"移动研究完成后注册的新玩家必须立即获得15点移速。"
 	)
@@ -1615,8 +2542,8 @@ func _test_recipe_unlock_research(
 	var snapshot_elapsed := snapshot.get("global_elapsed", {}) as Dictionary
 	_expect(
 		int(snapshot.get("schema", 0)) == 3
-		and snapshot_states.size() == 9
-		and snapshot_elapsed.size() == 9
+		and snapshot_states.size() == 15
+		and snapshot_elapsed.size() == 15
 		and remote_research.get_completed_global_research_ids()
 		== expected_completed_ids
 		and is_equal_approx(
@@ -1635,16 +2562,16 @@ func _test_recipe_unlock_research(
 			remote_plant_system.get_global_water_collector_duration_multiplier(),
 			0.5
 		)
-		and remote_plant_system.get_global_physical_defense_bonus() == 10
+		and remote_plant_system.get_global_physical_defense_bonus() == 5
 		and remote_research.get_fence_max_health_bonus() == 1000
 		and remote_research.get_fence_physical_defense_bonus() == 5
 		and remote_plant_system.get_global_fence_max_health_bonus() == 1000
 		and remote_plant_system.get_global_fence_physical_defense_bonus() == 5
 		and is_equal_approx(
 			remote_player.move_speed,
-			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
+			remote_base_speed + _get_expected_global_move_speed_bonus()
 		),
-		"schema3多人科研快照必须完整同步九个项目、数值效果与三项配方解锁。"
+		"schema3多人科研快照必须完整同步十五个项目、数值效果与三项配方解锁。"
 	)
 	var replayed_snapshot := snapshot.duplicate(true)
 	replayed_snapshot["revision"] = int(snapshot["revision"]) + 1
@@ -1674,9 +2601,9 @@ func _test_recipe_unlock_research(
 		and remote_plant_system.get_global_fence_physical_defense_bonus() == 5
 		and is_equal_approx(
 			remote_player.move_speed,
-			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
+			remote_base_speed + _get_expected_global_move_speed_bonus()
 		),
-		"重复应用更高revision的九项目完成态快照不得重复叠加数值效果。"
+		"重复应用更高revision的十五项目完成态快照不得重复叠加数值效果。"
 	)
 
 	var accepted_revision := remote_research.research_revision
@@ -1694,6 +2621,19 @@ func _test_recipe_unlock_research(
 	var missing_states := missing_project_state["global_states"] as Dictionary
 	missing_states.erase(String(FENCE_REINFORCEMENT_RESEARCH_ID))
 	invalid_snapshots.append(missing_project_state)
+	var legacy_v84_snapshot := replayed_snapshot.duplicate(true)
+	legacy_v84_snapshot["revision"] = accepted_revision + 1
+	var legacy_states := legacy_v84_snapshot["global_states"] as Dictionary
+	var legacy_elapsed := legacy_v84_snapshot["global_elapsed"] as Dictionary
+	for research_id in [
+		AGAVE_CANNON_MUZZLE_IMPROVEMENT_RESEARCH_ID,
+		CORN_MACHINE_GUN_COOLING_SYSTEM_IMPROVEMENT_RESEARCH_ID,
+		BAMBOO_MORTAR_CONCUSSIVE_MODIFICATION_RESEARCH_ID,
+		GRAPE_ARC_TOWER_SURGE_MODIFICATION_RESEARCH_ID,
+	]:
+		legacy_states.erase(String(research_id))
+		legacy_elapsed.erase(String(research_id))
+	invalid_snapshots.append(legacy_v84_snapshot)
 	var wrong_elapsed_type := replayed_snapshot.duplicate(true)
 	wrong_elapsed_type["revision"] = accepted_revision + 1
 	var typed_elapsed := wrong_elapsed_type["global_elapsed"] as Dictionary
@@ -1724,16 +2664,16 @@ func _test_recipe_unlock_research(
 			remote_plant_system.get_global_water_collector_duration_multiplier(),
 			0.5
 		)
-		and remote_plant_system.get_global_physical_defense_bonus() == 10
+		and remote_plant_system.get_global_physical_defense_bonus() == 5
 		and remote_research.get_fence_max_health_bonus() == 1000
 		and remote_research.get_fence_physical_defense_bonus() == 5
 		and remote_plant_system.get_global_fence_max_health_bonus() == 1000
 		and remote_plant_system.get_global_fence_physical_defense_bonus() == 5
 		and is_equal_approx(
 			remote_player.move_speed,
-			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
+			remote_base_speed + _get_expected_global_move_speed_bonus()
 		),
-		"客户端必须拒绝错误schema、未知ID、缺失项目、错误类型与矛盾进度字段。"
+		"客户端必须拒绝错误schema、未知ID、缺失项目、v84十一项目快照、错误类型与矛盾进度字段。"
 	)
 
 
@@ -2005,6 +2945,13 @@ func _test_multiplayer_request_contract(
 		== PLAYER_MOVE_SPEED_RESEARCH_ID,
 		"多人回包必须携带原全局研究ID，面板重开后也能显示正确项目。"
 	)
+
+
+func _get_expected_global_move_speed_bonus() -> float:
+	return GlobalResearchEffectResolver.from_completed_ids(
+		GlobalResearchRegistry.get_all_configs(),
+		[PLAYER_MOVE_SPEED_RESEARCH_ID]
+	).player_move_speed_bonus
 
 
 func _finish(test_root: Node) -> void:

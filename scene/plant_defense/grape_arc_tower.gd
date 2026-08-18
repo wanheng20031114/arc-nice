@@ -61,6 +61,8 @@ var configured_attack_damage := 0
 var configured_attack_range := 0.0
 var configured_chain_jump_range := 0.0
 var configured_max_chain_targets := 1
+var research_electromagnetic_attachment_duration_seconds := 0.0
+var research_electromagnetic_damage_multiplier := 1.0
 var attack_locked := false
 var attack_timer_mode := AttackTimerMode.NONE
 var attack_action_id := 0
@@ -239,6 +241,31 @@ func _get_initial_idle_scan_delay_seconds() -> float:
 
 func _on_health_changed(new_health: int, new_max_health: int) -> void:
 	health_bar.set_health(new_health, new_max_health)
+
+
+func set_research_electromagnetic_upgrade(
+	attachment_duration_seconds: float,
+	damage_multiplier: float
+) -> void:
+	research_electromagnetic_attachment_duration_seconds = (
+		attachment_duration_seconds
+		if is_finite(attachment_duration_seconds)
+		and attachment_duration_seconds > 0.0
+		else 0.0
+	)
+	research_electromagnetic_damage_multiplier = (
+		damage_multiplier
+		if is_finite(damage_multiplier) and damage_multiplier > 1.0
+		else 1.0
+	)
+
+
+func get_research_electromagnetic_attachment_duration_seconds() -> float:
+	return research_electromagnetic_attachment_duration_seconds
+
+
+func get_research_electromagnetic_damage_multiplier() -> float:
+	return research_electromagnetic_damage_multiplier
 
 
 func _get_authored_attack_interval() -> float:
@@ -436,13 +463,37 @@ func _apply_authoritative_chain(target_positions: PackedVector2Array) -> void:
 			and tower_multiplayer_mode_adapter != null
 			and is_instance_valid(tower_multiplayer_mode_adapter)
 		):
-			tower_multiplayer_mode_adapter.apply_authoritative_plant_enemy_damage(
+			# Evaluate the attachment before this hit. A clean target receives base
+			# damage and is attached only after settlement; later Grape or Tango hits
+			# can then consume the shared electromagnetic state.
+			var attack_damage := configured_attack_damage
+			if (
+				research_electromagnetic_damage_multiplier > 1.0
+				and target.has_electromagnetic_attachment()
+			):
+				attack_damage = maxi(
+					roundi(
+						float(configured_attack_damage)
+						* research_electromagnetic_damage_multiplier
+					),
+					0
+				)
+			var accepted := tower_multiplayer_mode_adapter.apply_authoritative_plant_enemy_damage(
 				source_id,
 				target,
-				configured_attack_damage,
+				attack_damage,
 				impact_direction,
 				EnemyConfig.DamageType.MAGIC
 			)
+			if (
+				accepted
+				and is_instance_valid(target)
+				and not target.is_dead
+				and research_electromagnetic_attachment_duration_seconds > 0.0
+			):
+				target.apply_temporary_electromagnetic_attachment(
+					research_electromagnetic_attachment_duration_seconds
+				)
 		previous_position = target_positions[index]
 
 

@@ -335,7 +335,8 @@ func _ready() -> void:
 	research_coordinator.setup(
 		production_coordinator,
 		plant_system,
-		player_roster_coordinator
+		player_roster_coordinator,
+		bamboo_mortar_combat_system
 	)
 	research_coordinator.set_authoritative_processing_enabled(
 		runtime_mode != RuntimeMode.CLIENT_VIEW

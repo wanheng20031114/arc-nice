@@ -33,6 +33,7 @@ var pending_target: Enemy = null
 var projectile_spawned_for_current_attack := false
 var configured_attack_damage := DEFAULT_ATTACK_DAMAGE
 var configured_attack_range := DEFAULT_ATTACK_RANGE
+var research_attack_damage_bonus := 0
 var idle_aim_random := RandomNumberGenerator.new()
 var idle_aim_center_rotation := 0.0
 var idle_aim_last_direction := 0
@@ -57,7 +58,7 @@ func _on_setup_completed() -> void:
 	world_los_query.exclude = world_los_exclude
 	world_los_query.collide_with_bodies = true
 	world_los_query.collide_with_areas = false
-	configured_attack_damage = maxi(config.attack_damage, 0)
+	_refresh_configured_attack_damage()
 	configured_attack_range = maxf(config.attack_range, 0.0)
 
 	var range_circle := targeting_shape.shape as CircleShape2D
@@ -125,6 +126,20 @@ func _on_removal_started(_mode: RemovalMode) -> void:
 
 func _on_health_changed(new_health: int, new_max_health: int) -> void:
 	health_bar.call("set_health", new_health, new_max_health)
+
+
+func set_research_attack_damage_bonus(bonus: int) -> void:
+	research_attack_damage_bonus = maxi(bonus, 0)
+	_refresh_configured_attack_damage()
+
+
+func get_research_attack_damage_bonus() -> int:
+	return research_attack_damage_bonus
+
+
+func _refresh_configured_attack_damage() -> void:
+	var base_damage := config.attack_damage if config != null else DEFAULT_ATTACK_DAMAGE
+	configured_attack_damage = maxi(base_damage, 0) + research_attack_damage_bonus
 
 
 func _get_authored_attack_interval() -> float:
