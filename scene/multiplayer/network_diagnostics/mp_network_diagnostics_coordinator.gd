@@ -8,59 +8,6 @@ const MultiplayerRuntimeMetricsScript := preload(
 const SNAPSHOT_PACKET_WARN_BYTES := 1200
 const SNAPSHOT_PACKET_WARN_INTERVAL_SECONDS := 5.0
 const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
-const TRANSACTION_RPC_METHODS := {
-	&"net_inventory_snapshot": true,
-	&"net_inventory_item_used": true,
-	&"net_inventory_item_discarded": true,
-	&"net_simple_crafting_result": true,
-	&"net_pickup_collected": true,
-	&"net_upgrade_confirmed": true,
-	&"net_skill1_purchase_confirmed": true,
-	&"net_luoxi_collectible_confirmed": true,
-	&"net_luoxi_collectible_offer_state": true,
-	&"net_luoxi_collectible_refresh_confirmed": true,
-	&"net_luoxi_special_game_started": true,
-	&"net_luoxi_special_game_card_revealed": true,
-	&"net_luoxi_special_game_finished": true,
-	&"net_warehouse_command_result": true,
-	&"net_warehouse_storage_snapshot_batch": true,
-	&"net_production_command_result": true,
-	&"net_production_state_batch": true,
-	&"net_research_command_result": true,
-	&"net_research_state_updated": true,
-	&"net_cheat_xirang_confirmed": true,
-	&"net_debug_collectible_granted": true,
-}
-const FEEDBACK_RPC_METHODS := {
-	&"net_collectible_visual_effect": true,
-	&"net_collectible_follow_visual_effect": true,
-	&"net_enemy_damage_feedback_batch": true,
-	&"net_enemy_damage_applied": true,
-	&"net_tiyi_high_noon_targets": true,
-	&"net_enemy_action": true,
-	&"net_enemy_target_action": true,
-	&"net_enemy_lightning_chain": true,
-	&"net_plant_health_batch": true,
-	&"net_tower_defense_wave_progress_changed": true,
-}
-const AUTH_RPC_METHODS := {
-	&"net_tower_rogue_exploration_snapshot": true,
-	&"net_request_route_full_snapshot": true,
-	&"net_route_upgrade_requested": true,
-	&"net_route_full_snapshot": true,
-	&"net_route_move_delta": true,
-	&"net_route_briefing_state": true,
-	&"net_route_briefing_cover_ready": true,
-	&"net_route_encounter_intro_ack": true,
-	&"net_route_encounter_vote": true,
-	&"net_route_encounter_result_ack": true,
-	&"net_route_encounter_snapshot": true,
-	&"net_shop_purchase_request": true,
-	&"net_shop_sell_request": true,
-	&"net_shop_exit_ack": true,
-	&"net_shop_snapshot": true,
-	&"net_route_avatar_corrected": true,
-}
 
 var _snapshot_packet_warn_time_left := 0.0
 var _max_player_snapshot_packet_bytes := 0
@@ -73,11 +20,54 @@ var _rpc_payload_diagnostics_enabled := false
 var _rpc_payload_call_counts: Dictionary[StringName, int] = {}
 var _rpc_payload_sample_bytes: Dictionary[StringName, int] = {}
 var _rpc_payload_sample_count := 0
+var _rpc_channel_by_method: Dictionary[StringName, int] = {}
+var _unclassified_rpc_method_counts: Dictionary[StringName, int] = {}
+var _unclassified_rpc_total := 0
 var _player_input_rejection_counts: Dictionary[StringName, int] = {}
 var _player_input_rejection_total := 0
 var _runtime_network_metrics = MultiplayerRuntimeMetricsScript.new(
 	_NetConstants.CHANNEL_COUNT
 )
+
+
+## Godot already owns the authoritative @rpc metadata. Diagnostics copies the
+## script configuration once so channel accounting cannot drift from annotations.
+func bind_rpc_source(rpc_source: Node) -> bool:
+	if rpc_source == null or not is_instance_valid(rpc_source):
+		return false
+	var script_variant: Variant = rpc_source.get_script()
+	if not (script_variant is Script):
+		return false
+	var resolved_channels: Dictionary[StringName, int] = {}
+	var current_script := script_variant as Script
+	while current_script != null:
+		var rpc_config_variant: Variant = current_script.get_rpc_config()
+		if typeof(rpc_config_variant) == TYPE_DICTIONARY:
+			for method_variant in (rpc_config_variant as Dictionary).keys():
+				var method_name := StringName(method_variant)
+				var method_config_variant: Variant = (
+					(rpc_config_variant as Dictionary)[method_variant]
+				)
+				if typeof(method_config_variant) != TYPE_DICTIONARY:
+					return false
+				var channel := int(
+					(method_config_variant as Dictionary).get("channel", -1)
+				)
+				if channel < 0 or channel >= _NetConstants.CHANNEL_COUNT:
+					return false
+				# Walk from the most-derived script toward its bases. If a derived
+				# script overrides an RPC, its annotation is the effective contract.
+				if not resolved_channels.has(method_name):
+					resolved_channels[method_name] = channel
+		current_script = current_script.get_base_script()
+	if resolved_channels.is_empty():
+		return false
+	_rpc_channel_by_method = resolved_channels
+	return true
+
+
+func is_rpc_source_bound() -> bool:
+	return not _rpc_channel_by_method.is_empty()
 
 
 func record_outbound_rpc(
@@ -88,6 +78,17 @@ func record_outbound_rpc(
 	if packet_count <= 0:
 		return
 	var channel := get_rpc_traffic_channel(method_name)
+	if channel < 0:
+		_unclassified_rpc_method_counts[method_name] = int(
+			_unclassified_rpc_method_counts.get(method_name, 0)
+		) + packet_count
+		_unclassified_rpc_total += packet_count
+		if int(_unclassified_rpc_method_counts[method_name]) == packet_count:
+			push_error(
+				"MpNetworkDiagnosticsCoordinator: RPC %s 缺少权威信道元数据。"
+				% method_name
+			)
+		return
 	# Packet counts remain exact in production. Payload byte diagnostics are opt-in
 	# because serializing live RPC arguments here would duplicate Godot's real RPC
 	# serialization work. When enabled, one sample per method is refreshed every
@@ -120,27 +121,8 @@ func set_rpc_payload_diagnostics_enabled(enabled: bool) -> void:
 	_rpc_payload_sample_count = 0
 
 
-static func get_rpc_traffic_channel(method_name: StringName) -> int:
-	if method_name == &"net_route_avatar_input":
-		return _NetConstants.CH_INPUT
-	if method_name == &"net_route_avatar_snapshot":
-		return _NetConstants.CH_PLAYER_STATE
-	if AUTH_RPC_METHODS.has(method_name):
-		return _NetConstants.CH_AUTH
-	if (
-		method_name == &"net_projectile_fired"
-		or method_name == &"net_tango_laser_volley"
-		or method_name == &"net_linglan_skill1_ring_batch"
-		or method_name == &"net_plant_projectile_visual"
-		or method_name == &"net_corn_machine_gun_burst_batch"
-		or method_name == &"net_tiyi_sniper_hit_confirmed"
-	):
-		return _NetConstants.CH_PROJECTILE
-	if TRANSACTION_RPC_METHODS.has(method_name):
-		return _NetConstants.CH_TRANSACTION
-	if FEEDBACK_RPC_METHODS.has(method_name):
-		return _NetConstants.CH_FEEDBACK
-	return _NetConstants.CH_WORLD_EVENT
+func get_rpc_traffic_channel(method_name: StringName) -> int:
+	return int(_rpc_channel_by_method.get(method_name, -1))
 
 
 func update_snapshot_packet_warning_timer(delta: float) -> void:
@@ -251,6 +233,10 @@ func get_snapshot_packet_metrics(
 		"rpc_payload_diagnostics_enabled": _rpc_payload_diagnostics_enabled,
 		"rpc_payload_diagnostic_sample_interval": RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL,
 		"rpc_payload_diagnostic_sample_count": _rpc_payload_sample_count,
+		"unclassified_rpc_total": _unclassified_rpc_total,
+		"unclassified_rpc_method_counts": (
+			_unclassified_rpc_method_counts.duplicate()
+		),
 		"channel_metrics": runtime_metrics.get("channels", []),
 		"state_repair_count": runtime_metrics.get("state_repair_count", 0),
 		"transaction_latency_sample_count": runtime_metrics.get(
@@ -288,6 +274,8 @@ func reset_session_state() -> void:
 	_rpc_payload_call_counts.clear()
 	_rpc_payload_sample_bytes.clear()
 	_rpc_payload_sample_count = 0
+	_unclassified_rpc_method_counts.clear()
+	_unclassified_rpc_total = 0
 	_player_input_rejection_counts.clear()
 	_player_input_rejection_total = 0
 	_runtime_network_metrics.reset(_NetConstants.CHANNEL_COUNT)

@@ -1,9 +1,61 @@
-# 多人模式稳定化审查记录（历史）
+# 多人模式稳定化全量审计记录
 
-> 本文件保留历次稳定化工作的背景与验证记录，不再作为实时债务清单。
-> 当前协议基线为 v9；2026-07-15 的债务收口状态见文末“当前债务状态”。
+> 2026-08-20 当前网络基线为协议 v90、应用层 CH0..CH8 九条逻辑信道；Godot ENet 的最大应用信道参数保持为 8。本文开头是本次全量审计摘要；分隔线以下的 v9 / 2026-07-15 内容仅作为历史快照保留，不能据此判断当前协议或债务状态。
 
-## 目标边界
+## 2026-08-20 当前 v90 全量审计摘要
+
+结论：多人模式已经形成可辨认的 Host 权威骨架、静态协调器分层和明确的九信道协议，基础结构总体健壮；但它还不是“无债务”状态。公网 Relay 当前因 stock Godot 4.6 的三 transport 认证/发现缺陷而 fail-closed 为 2 人，LAN 仍保留 8 人能力。公网 admission、投射物权威边界和诊断清单是本轮主要收口点，跨信道 repair、可靠信道队头阻塞、迁移/重连以及场景资源泄漏仍须后续专项处理。
+
+### Host 权威骨架
+
+- `NetManager` 与大厅层只负责连接、Relay admission、玩家名册和进入加载流程；`MpGame` 是游戏内门面，具体同步职责下沉到固定场景树中的 coordinator，避免在运行时临时拼装整套网络节点。
+- Host 接收 Client 输入或业务请求后，按 sender、会话 incarnation、revision / sequence、对象所有权和业务状态做校验；敌人、经济、世界持久状态、玩家生命与关键动作结果由 Host 计算并广播确认或快照。
+- Client 只提交输入、方向或事务意图；展示层消费 Host 快照、确认事件和可丢弃反馈。投射物请求也不能把 Client 上报的伤害、出生点或特权类型直接当成权威事实。
+- 进入游戏前由协议版本、内容摘要、玩家登记和加载 barrier 共同设门；`PeerLedger` 保留 peer 生命周期与会话代次，降低迟到 RPC 污染新会话的风险。
+- 公网 Relay admission 位于业务 RPC 之前：只有认证完成的 peer 才应进入玩家登记和游戏信道。Host 断线视为房间终止，目前不支持 Host migration。
+
+### 当前九条逻辑信道地图
+
+| 信道 | 常量 | 传输语义 | 当前职责 |
+| --- | --- | --- | --- |
+| 0 | `CH_AUTH` | reliable | 加载、repair 控制与 manifest；原生 auth / ADD_PEER 系统包也使用底层 CH0，各业务域 repair 正文仍落在 CH5 / CH6。 |
+| 1 | `CH_INPUT` | unreliable_ordered | Client -> Host 的玩家输入流。 |
+| 2 | `CH_PLAYER_STATE` | unreliable_ordered | Host -> Client 的玩家实时状态与插值快照。 |
+| 3 | `CH_ENEMY_STATE` | unreliable | Host -> Client 的敌人分块状态；允许后续快照覆盖旧包。 |
+| 4 | `CH_PROJECTILE` | reliable / unreliable_ordered 混合 | 投射物生成请求、权威确认与高频表现；可靠性由具体 RPC 语义决定。 |
+| 5 | `CH_WORLD_EVENT` | reliable | 玩家可靠动作，以及敌人、植物、地形、基地等持久世界事件。 |
+| 6 | `CH_TRANSACTION` | reliable | 库存、经济、洛茜和仓库事务。 |
+| 7 | `CH_FEEDBACK` | unreliable | 允许丢弃的伤害、血量和其他即时战斗反馈。 |
+| 8 | `CH_MEMBERSHIP` | reliable | Relay 注册转发/完成、身份查询/结果、踢人、注册接纳/拒绝与权威大厅名单；与 CH0 系统包隔离。 |
+
+信道定义以 `NetConstants` 和脚本实际 `@rpc` 配置为唯一事实源。诊断层不再维护另一份易漂移的手写方法表，也不会把未知 RPC 静默归入 CH5。
+
+### 本轮已修复或收口
+
+- 客户端 `collectible_arrow` 注入：移除 Client 选择 Host 周期性特权箭的入口，普通 Client 请求不能再借类型参数触发 Host 专属投射物。
+- 投射物权威出生点：Host 依据权威玩家位置、方向和 muzzle 距离重建出生点；Client 上报位置只参与有限合法性检查，不能决定最终生成坐标。
+- Relay admission / replay / name binding：引入短期 HMAC admission ticket、角色与房间声明、一次性 nonce 和有界 replay ledger；v90 把完整注册元组并入原生认证数据，Relay 认证后只在 CH8 向 Host 有界重放这份原始元组，Host 再查询 peer 1 的票据身份，Client 仅在 accepted 与自身 ACTIVE roster 都提交后回报注册完成。公网动态结论以真实 2 人端到端探针为准；3 人及以上在引擎转发层修复前必须拒绝创建，不能宣称已支持。
+- 公网大厅 HTTPS fail-closed：Release 缺失公网服务配置或使用非 HTTPS 地址时拒绝继续；URL authority 校验拒绝 userinfo、控制字符、反斜杠、空主机和非法端口，Debug 仅保留明确的本地 HTTP 测试例外。
+- 网络诊断映射：从脚本的实际 RPC 配置提取 method / channel；未知方法明确记为未分类和错误，不再用默认 CH5 掩盖漂移。
+- 过时测试与假绿：多人 ledger、replay cache、高压、传送、围栏、石磨、虚空电池、稀有宝箱和地下商店等 smoke 已按当前 coordinator / RunState 契约更新；删除若干无消费者信号、空方法和重复清理代码。
+
+### 尚未闭合的结构债务
+
+- 公网 Relay 暂限 2 人：stock Godot 4.6 的 `auth_callback + server_relay` 在第 3 个 transport 上可复现成员发现/CH0 停滞；当前通过大厅与 Relay 双层容量门 fail-close，LAN 的 8 人上限不变。恢复公网 3..8 人需要引擎修复或经过独立证明的转发层方案。
+- 跨 CH0 / CH5 / CH6 repair fence：控制/manifest 与多个业务域正文分布在三条可靠信道，目前没有“所有域均已应用”的跨信道统一完成栅栏；短 lease 到期可能触发重复 repair 请求。
+- CH5 队头阻塞（HOL）：玩家可靠动作与体积较大的地形/世界 repair 共用 CH5，大包或突发修复会拖延同信道小型关键动作。拆分需要协议升级并同步 Relay stub。
+- 无 Host migration：Host 一旦离线，当前房间应结束；不能把 90 秒席位保留误解为主机迁移能力。
+- 公网 Client 自动重连尚未接通：Host 侧只有约 90 秒的成员席位/状态重投影基础，公网 Client 仍缺从掉线、刷新短票据、重新 admission 到安全重载当前多人场景的完整状态机。
+- provisional confirm 尚未贯通 Relay/Host 撤销：已持有效 member ticket 的成员若完成 ENet/Host 注册后故意不调用 `/acquisitions/confirm`，目录中的 60 秒 provisional 占位会过期，但当前没有服务端撤销消息把该 transport 从 Relay 与 Host 名册同步踢出；因此不能宣称 provisional 到 ACTIVE 的端到端成员生命周期已闭合，正式容量统计仍需后续统一 proof/revocation 协议。
+- ENet payload 未加密：HTTPS 只保护大厅控制面，ticket 只提供 admission 能力；Relay 上的 ENet 游戏流量仍没有端到端机密性。
+- Legacy RPC 与协议升级债务：无生产发送者的兼容 RPC、默认参数和 Relay stub 仍应在一次协调的破坏性版本升级中统一删除，不能在 v90 内做半套 wire 变更。
+- Tower / Rogue 资源泄漏：若干完整场景和 smoke 退出时仍报告大量 resource / RID / ObjectDB 残留；直接启动产品场景也可复现，不能只靠放宽测试或堆兜底清理隐藏。
+
+---
+
+## 历史记录：早期稳定化目标边界
+
+> 以下内容描述早期 v9 阶段的当时状态；其中“当前”“本轮”“剩余”等措辞均应按历史时间点理解。
 
 本轮目标是在不重写当前可玩多人模式的前提下，做协议梳理、低/中风险加固和回归测试。现有设计继续保留：Host 权威、客户端输入上报、Host 快照同步、可靠事件确认。
 
@@ -15,7 +67,7 @@
 - clumsy network simulator: https://jagt.github.io/clumsy/
 - clumsy command line arguments: https://github.com/jagt/clumsy/wiki/Command-Line-Arguments
 
-## 当前 v9 协议地图
+## 历史记录：v9 协议地图
 
 - `CH_AUTH`：认证、加载和完整状态恢复。
 - `CH_INPUT`：Client -> Host 的玩家输入上报。
@@ -26,13 +78,13 @@
 - `CH_TRANSACTION`：库存、经济、洛茜和仓库事务。
 - `CH_FEEDBACK`：允许丢弃的伤害与血量视觉反馈。
 
-## 权威边界
+## 历史记录：v9 权威边界
 
 - Host 权威：波次生命周期、敌人 AI、敌人生成/移除、敌人受击确认、玩家死亡/复活、普通掉落、击杀息壤奖金、升级和技能购买。
 - Client 上报：本地输入、玩家移动状态、射击方向、客户端投射物生成和命中报告。
 - Client 展示：玩家/敌人插值、伤害数字、死亡/复活倒计时、HUD。
 
-## 本轮已加固
+## 历史记录：早期已加固
 
 - 快照解码边界：`SnapshotManager` 在解析玩家/敌人快照前先计算单条快照长度，截断包会停止解码，不再读取部分状态。
 - 插值缓存遍历：`MpGame._client_interpolate_entities()` 改为遍历 `Dictionary.keys()` 快照，避免插值过程中清理敌人缓存导致遍历状态被修改。
@@ -46,7 +98,7 @@
 - Snapshot 监控：`MpGame` 记录玩家/敌人快照最大包大小和超阈值次数；应用层 payload 超过 `1200 bytes` 时低频 warning，给 4 人 LAN 与高延迟/丢包手测提供带宽压力信号，不改变同步协议。
 - 测试覆盖：`multiplayer_load_smoke_test.gd` 增加玩家/敌人截断快照、只有 count 无 payload、snapshot int16 饱和、断线 peer 清理、Host projectile 参数重建、owner/namespace 校验、spawn 位置/方向校验、skill1 充能消耗、敌人 despawn、拾取确认和命中去重断言。
 
-## 剩余高优先级风险
+## 历史记录：当时剩余高优先级风险
 
 - 客户端玩家实时状态已改为 Host 保有权威值；`100ms-2`、`200ms-2`、`200ms-5` 的 4 进程 clumsy 自动矩阵已覆盖 cheat、升级、技能购买、死亡/复活和远端死亡视图。剩余风险是实际真人键鼠操作下 skill1 充能、释放反馈与客户端预测的一致性还需要手动确认。
 - 玩家 projectile 参数已改为 Host 重建，无 record 的命中报告会被拒绝，projectile id namespace、spawn 位置和方向已校验；`100ms-2`、`200ms-2`、`200ms-5` 自动矩阵已覆盖客户端移动上报和基础敌人/掉落事件。剩余风险是高延迟真人连续射击时的位置容忍窗口是否需要调参。
@@ -55,13 +107,13 @@
 - 升级、技能购买和 cheat 的 Host 入口会拒绝无效 sender；内部 `_apply_upgrade_for_peer()` / `_apply_skill1_purchase_for_peer()` 也会拒绝 `peer_id <= 0` 或已离开的 peer，避免迟到事件污染 run state。
 - 玩家和敌人快照现已使用按 peer 的 delta baseline、周期 keyframe 与敌人分块；旧的“仍是全量快照”债务已经关闭。
 
-## 保守后续顺序
+## 历史记录：当时建议的后续顺序
 
 1. 做 1 host + 3 client 的 LAN 断线/重连手动验证，记录 skill1 充能、释放和 projectile 位置窗口是否误拒。
 2. 持续观察既有 delta/keyframe、分块和包大小 telemetry，再按真实数据调参。
 3. 根据高延迟手测结果调整 projectile spawn 位置容忍窗口。
 
-## 本轮追加加固
+## 历史记录：早期追加加固
 
 - 客户端玩家名册收敛：`MpGame._rpc_receive_player_snapshot()` 现在会在玩家快照完整解码时记录 Host 快照里存在的 peer，并在 `CLIENT_VIEW` 中清理不再出现的远端玩家。该逻辑跳过本地玩家，只处理完整批次，避免截断包导致误删。
 - 断线兜底范围：如果 `NetManager.player_left` 事件迟到或丢失，客户端仍可通过后续 Host 玩家快照释放旧玩家节点、插值器、血量 revision、复活状态和该 peer 的 projectile 索引。
@@ -89,7 +141,7 @@
 - 网络条件矩阵：新增 `dev_tools/run_multiplayer_clumsy_matrix.ps1`，用于批量执行 clumsy profile 与 probe scenario 组合。本轮从官方 release 临时下载 `clumsy-0.3-win64-a.zip` 到 `%TEMP%`，未写入仓库；`100ms-2` 端口 `29520` / `29521` / `29522`、`200ms-2` 端口 `29530` / `29531` / `29532`、`200ms-5` 端口 `29540` / `29541` / `29542` 均通过 `full` / `wave` / `leave`，四端 stderr 为空。
 - Smoke 稳定性：`multiplayer_load_smoke_test.gd` 的 proxy action animation restore 断言从固定 24 帧等待改为 1 秒内等待目标动画恢复，避免 headless 下帧时间波动导致 windup tween 尚未走完的假阴性；真正卡住仍会超时失败。
 
-## 当前债务状态（2026-07-15）
+## 历史记录：2026-07-15 债务状态
 
 - 已关闭：terrain repair 等待状态具备无进展 watchdog；合法分块会续期，完整快照会停表。
 - 已关闭：植物 CH5 出生与 CH7 血量极端乱序由有界最高-revision 欠账和删除 tombstone 收敛。

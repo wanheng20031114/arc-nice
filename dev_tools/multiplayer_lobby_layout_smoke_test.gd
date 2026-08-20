@@ -4,7 +4,6 @@ const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const PUBLIC_BROWSER_VIEW := 2
 const LAN_DIRECT_VIEW := 3
 const ROOM_WAIT_VIEW := 4
-const DESIGN_VIEWPORT_SIZE := Vector2(1152.0, 648.0)
 const BROWSER_ROOT := "LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"
 const BROWSER_BODY := BROWSER_ROOT + "/BrowserBodyScroll/BrowserBodyVBox"
 
@@ -26,8 +25,8 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	_expect(
-		lobby.size == DESIGN_VIEWPORT_SIZE,
-		"Lobby layout test must run at the 1152x648 logical design viewport."
+		lobby.size == lobby.get_viewport_rect().size,
+		"Lobby must fill the current expanded logical viewport."
 	)
 
 	var browser_panel := lobby.get_node_or_null(

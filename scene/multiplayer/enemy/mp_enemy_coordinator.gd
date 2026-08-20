@@ -2523,12 +2523,6 @@ func remove_enemies_missing_from_manifest(live_enemy_ids: Dictionary) -> void:
 			remove_client_enemy(net_id, false)
 
 
-func invalidate_remote_enemy_count() -> void:
-	# Count presentation caching belongs to the root adapter. This hook exists so
-	# flow changes can explicitly retain the same coordinator boundary.
-	pass
-
-
 func apply_network_health(
 	enemy_node: Enemy,
 	current_health: int,

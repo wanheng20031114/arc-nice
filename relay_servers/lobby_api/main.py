@@ -32,6 +32,7 @@ from .room_manager import (
     AcquisitionClaim,
     AcquisitionClaimState,
     AcquisitionConflictError,
+    RelayAdmissionRefreshRateLimitError,
     RelayRestartGrant,
     RelayStartGrant,
     RoomManager,
@@ -181,7 +182,11 @@ class _StrictPayload(BaseModel):
 class CreateAcquisitionPayload(_StrictPayload):
     name: str = Field(default="", max_length=64)
     host_name: str = Field(min_length=1, max_length=32)
-    max_players: int = Field(default=4, ge=2, le=8)
+    max_players: int = Field(
+        default=config.PUBLIC_RELAY_MAX_PLAYERS,
+        ge=2,
+        le=config.PUBLIC_RELAY_MAX_PLAYERS,
+    )
     game_mode: GameMode = GameMode.STANDARD
 
 
@@ -228,6 +233,11 @@ class HostTokenRequest(BaseModel):
 class HostReadyRequest(BaseModel):
     host_token: str = Field(min_length=1, max_length=128, repr=False)
     host_peer_id: int = Field(ge=1)
+
+
+class RelayAdmissionTicketRequest(_StrictPayload):
+    player_name: str = Field(min_length=1, max_length=32)
+    member_token: str = Field(min_length=1, max_length=128, repr=False)
 
 
 class QuickMatchAcquisitionPayload(_StrictPayload):
@@ -600,6 +610,8 @@ async def _start_room_relay(
                 relay_launcher.start_new_relay,
                 start_grant.max_clients,
                 remaining_seconds,
+                start_grant.room_id,
+                start_grant.admission_secret,
             )
             if reaped_leases:
                 await asyncio.to_thread(
@@ -887,6 +899,39 @@ async def host_ready(room_id: str, req: HostReadyRequest) -> dict:
     return response
 
 
+@app.post("/rooms/{room_id}/admission_ticket")
+async def issue_relay_admission_ticket(
+    room_id: str,
+    req: RelayAdmissionTicketRequest,
+) -> dict:
+    """Exchange one durable non-Host member credential for a one-use ticket."""
+    await _require_release_room(room_id)
+    await asyncio.to_thread(_reconcile_exited_relays)
+    try:
+        response = room_mgr.issue_member_relay_admission_ticket(
+            room_id,
+            req.player_name,
+            req.member_token,
+            config.PUBLIC_IP,
+        )
+    except RelayAdmissionRefreshRateLimitError as exc:
+        await asyncio.to_thread(_flush_room_termination_grants)
+        raise HTTPException(
+            status_code=429,
+            detail="Relay admission ticket 刷新过于频繁",
+            headers={
+                "Retry-After": str(max(1, math.ceil(exc.retry_after_seconds)))
+            },
+        ) from exc
+    await asyncio.to_thread(_flush_room_termination_grants)
+    if response is None:
+        raise HTTPException(
+            status_code=403,
+            detail="成员身份无效、Host 尚未就绪或 Relay 不可用",
+        )
+    return response
+
+
 @app.post("/rooms/{room_id}/keepalive")
 async def keep_room_alive(room_id: str, req: HostTokenRequest) -> dict:
     """房主续租房间，防止游戏中被空闲清理任务回收。"""
@@ -1002,12 +1047,20 @@ async def update_room(room_id: str, req: UpdateRoomRequest) -> dict:
 async def request_relay(room_id: str, req: HostTokenRequest) -> dict:
     """请求为指定房间启动 Relay 中继。"""
     await _require_release_room(room_id)
-    port, _pid = await _get_or_start_room_relay(room_id, req.host_token)
+    await _get_or_start_room_relay(room_id, req.host_token)
 
-    return {
-        "relay_ip": config.PUBLIC_IP,
-        "relay_port": port,
-    }
+    response = room_mgr.issue_host_relay_admission_ticket(
+        room_id,
+        req.host_token,
+        config.PUBLIC_IP,
+    )
+    await asyncio.to_thread(_flush_room_termination_grants)
+    if response is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Relay 启动后房间世代已变化",
+        )
+    return response
 
 
 @app.delete("/rooms/{room_id}")
@@ -1075,7 +1128,7 @@ async def quick_match(
             name=f"{req.player_name} 的房间",
             host_name=req.player_name,
             host_ip="",
-            max_players=4,
+            max_players=config.PUBLIC_RELAY_MAX_PLAYERS,
             game_mode=req.game_mode,
         )
         if room is None:

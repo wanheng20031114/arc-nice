@@ -14,6 +14,16 @@ from enum import Enum
 from typing import Callable, Optional
 
 from .models import GameMode, RoomInfo, RoomStatus, PlayerInfo
+from .relay_admission import (
+    MAX_TICKET_REFRESH_BURST,
+    MAX_TICKET_REFRESH_WINDOW_SECONDS,
+    MAX_TICKET_TTL_SECONDS,
+    MIN_TICKET_REFRESH_BURST,
+    MIN_TICKET_REFRESH_WINDOW_SECONDS,
+    ROLE_HOST,
+    ROLE_MEMBER,
+    RelayAdmissionTicketSigner,
+)
 from . import config
 
 
@@ -52,6 +62,14 @@ class AcquisitionCancelledError(RuntimeError):
 
 class AcquisitionCapacityError(RuntimeError):
     """安全索引没有空间时 fail-close。"""
+
+
+class RelayAdmissionRefreshRateLimitError(RuntimeError):
+    """一个已验证成员在短窗口内换取了过多 Relay admission ticket。"""
+
+    def __init__(self, retry_after_seconds: float) -> None:
+        self.retry_after_seconds = max(float(retry_after_seconds), 0.001)
+        super().__init__("Relay admission ticket 刷新过于频繁")
 
 
 @dataclass
@@ -131,6 +149,7 @@ class RelayStartGrant:
     attempt_id: int
     max_clients: int
     max_lifetime_seconds: float
+    admission_secret: str = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -141,6 +160,7 @@ class RelayRestartGrant:
     relay_ref: AuthorizedRelayRef
     previous_status: RoomStatus
     previous_host_peer_id: int
+    previous_admission_secret: str = field(repr=False)
 
 
 class RoomManager:
@@ -149,9 +169,19 @@ class RoomManager:
     def __init__(
         self,
         clock: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], float] = time.time,
         capability_clock: Callable[[], float] = time.time,
         room_idle_timeout_seconds: float = config.ROOM_IDLE_TIMEOUT_SECONDS,
         game_max_duration_seconds: float = config.GAME_MAX_DURATION_SECONDS,
+        relay_admission_ticket_ttl_seconds: float = (
+            config.RELAY_ADMISSION_TICKET_TTL_SECONDS
+        ),
+        relay_admission_refresh_burst: int = (
+            config.RELAY_ADMISSION_REFRESH_BURST
+        ),
+        relay_admission_refresh_window_seconds: float = (
+            config.RELAY_ADMISSION_REFRESH_WINDOW_SECONDS
+        ),
         acquisition_provisional_timeout_seconds: float = (
             config.ACQUISITION_PROVISIONAL_TIMEOUT_SECONDS
         ),
@@ -164,6 +194,31 @@ class RoomManager:
             raise ValueError("room_idle_timeout_seconds 必须大于 0")
         if game_max_duration_seconds <= 0:
             raise ValueError("game_max_duration_seconds 必须大于 0")
+        if (
+            not math.isfinite(relay_admission_ticket_ttl_seconds)
+            or relay_admission_ticket_ttl_seconds <= 0
+            or relay_admission_ticket_ttl_seconds > MAX_TICKET_TTL_SECONDS
+        ):
+            raise ValueError("relay admission ticket TTL 必须在 0..120 秒内")
+        if (
+            isinstance(relay_admission_refresh_burst, bool)
+            or not isinstance(relay_admission_refresh_burst, int)
+            or relay_admission_refresh_burst < MIN_TICKET_REFRESH_BURST
+            or relay_admission_refresh_burst > MAX_TICKET_REFRESH_BURST
+        ):
+            raise ValueError("relay admission refresh burst 必须是 2..3 的整数")
+        if (
+            not math.isfinite(relay_admission_refresh_window_seconds)
+            or (
+                relay_admission_refresh_window_seconds
+                < MIN_TICKET_REFRESH_WINDOW_SECONDS
+            )
+            or (
+                relay_admission_refresh_window_seconds
+                > MAX_TICKET_REFRESH_WINDOW_SECONDS
+            )
+        ):
+            raise ValueError("relay admission refresh window 必须在 5..60 秒内")
         if acquisition_provisional_timeout_seconds <= 0:
             raise ValueError("acquisition_provisional_timeout_seconds 必须大于 0")
         if (
@@ -176,9 +231,20 @@ class RoomManager:
         self._rooms: dict[str, RoomInfo] = {}
         self._lock = threading.Lock()
         self._clock = clock
+        self._admission_ticket_signer = RelayAdmissionTicketSigner(wall_clock)
         self._capability_clock = capability_clock
         self._room_idle_timeout_seconds = room_idle_timeout_seconds
         self._game_max_duration_seconds = game_max_duration_seconds
+        self._relay_admission_ticket_ttl_seconds = (
+            relay_admission_ticket_ttl_seconds
+        )
+        self._relay_admission_refresh_burst = relay_admission_refresh_burst
+        self._relay_admission_refresh_window_seconds = (
+            relay_admission_refresh_window_seconds
+        )
+        self._relay_admission_refresh_attempts: dict[
+            tuple[str, str], list[float]
+        ] = {}
         self._acquisition_provisional_timeout_seconds = (
             acquisition_provisional_timeout_seconds
         )
@@ -519,7 +585,7 @@ class RoomManager:
         name: str,
         host_name: str,
         host_ip: str,
-        max_players: int = 4,
+        max_players: int = 2,
         port: int = config.RELAY_PORT_START,
         game_mode: GameMode = GameMode.STANDARD,
     ) -> Optional[RoomInfo]:
@@ -760,10 +826,12 @@ class RoomManager:
             ):
                 self._retire_acquisition_locked(token, now)
                 raise AcquisitionCancelledError("acquisition 已失去成员占位")
-            response = room.to_join_dict(
+            response = self._build_private_join_dict_locked(
+                room,
                 public_ip,
                 include_host_token=record.is_host,
                 member_name=record.player_name,
+                now=now,
             )
             response["acquisition_token"] = token
             record.frozen_response = deepcopy(response)
@@ -892,18 +960,192 @@ class RoomManager:
     ) -> Optional[dict]:
         """在同一生命周期锁内校验并冻结对外房间快照。"""
         with self._lock:
-            room = self._get_live_room_locked(room_id, self._clock())
+            now = self._clock()
+            room = self._get_live_room_locked(room_id, now)
             if room is None:
                 return None
             if expected_host_token is not None and (
                 not expected_host_token or expected_host_token != room.host_token
             ):
                 return None
-            return room.to_join_dict(
+            return self._build_private_join_dict_locked(
+                room,
                 public_ip,
                 include_host_token=include_host_token,
                 member_name=member_name,
+                now=now,
             )
+
+    def _build_private_join_dict_locked(
+        self,
+        room: RoomInfo,
+        public_ip: str,
+        *,
+        include_host_token: bool,
+        member_name: Optional[str],
+        now: float,
+    ) -> dict:
+        """Build one caller-private response and attach its role-bound ticket.
+
+        This helper is only called while ``_lock`` is held, after the caller's
+        host/member capability and the room lifetime have already been checked.
+        """
+        response = room.to_join_dict(
+            public_ip,
+            include_host_token=include_host_token,
+            member_name=member_name,
+        )
+        if member_name is None:
+            return response
+        member = room.players.get(member_name)
+        if member is None:
+            return response
+        role = ROLE_HOST if member_name == room.host_name else ROLE_MEMBER
+        ticket = self._issue_relay_admission_ticket_locked(
+            room,
+            member.name,
+            role,
+            now,
+        )
+        if ticket is not None:
+            response["relay_admission_ticket"] = ticket
+        return response
+
+    def _issue_relay_admission_ticket_locked(
+        self,
+        room: RoomInfo,
+        player_name: str,
+        role: str,
+        now: float,
+    ) -> Optional[str]:
+        remaining_seconds = room.absolute_deadline - now
+        if remaining_seconds <= 0:
+            return None
+        ticket_ttl_seconds = min(
+            remaining_seconds,
+            self._relay_admission_ticket_ttl_seconds,
+        )
+        return self._admission_ticket_signer.issue(
+            room.admission_secret,
+            room.id,
+            role,
+            player_name,
+            ticket_ttl_seconds,
+        )
+
+    def issue_member_relay_admission_ticket(
+        self,
+        room_id: str,
+        player_name: str,
+        member_token: str,
+        public_ip: str,
+    ) -> Optional[dict]:
+        """Use a durable member credential to mint one short, one-use ticket."""
+        with self._lock:
+            now = self._clock()
+            room = self._get_live_room_locked(room_id, now)
+            if (
+                room is None
+                or player_name == room.host_name
+                or room.host_peer_id <= 0
+                or room.relay_port <= 0
+                or room.relay_instance_id <= 0
+            ):
+                return None
+            member = room.players.get(player_name)
+            if (
+                member is None
+                or not member_token
+                or not secrets.compare_digest(
+                    member_token.encode("utf-8"),
+                    member.member_token.encode("ascii"),
+                )
+            ):
+                return None
+            refresh_key = (room.id, member.name)
+            cutoff = now - self._relay_admission_refresh_window_seconds
+            for key, attempts in list(
+                self._relay_admission_refresh_attempts.items()
+            ):
+                fresh_attempts = [
+                    attempt for attempt in attempts if attempt > cutoff
+                ]
+                if fresh_attempts:
+                    self._relay_admission_refresh_attempts[key] = fresh_attempts
+                else:
+                    self._relay_admission_refresh_attempts.pop(key, None)
+            member_attempts = self._relay_admission_refresh_attempts.get(
+                refresh_key,
+                [],
+            )
+            if len(member_attempts) >= self._relay_admission_refresh_burst:
+                retry_after = (
+                    member_attempts[0]
+                    + self._relay_admission_refresh_window_seconds
+                    - now
+                )
+                raise RelayAdmissionRefreshRateLimitError(retry_after)
+            ticket = self._issue_relay_admission_ticket_locked(
+                room,
+                member.name,
+                ROLE_MEMBER,
+                now,
+            )
+            if ticket is None:
+                return None
+            member_attempts.append(now)
+            self._relay_admission_refresh_attempts[refresh_key] = member_attempts
+            return {
+                "room_id": room.id,
+                "player_name": member.name,
+                "role": ROLE_MEMBER,
+                "relay_ip": public_ip,
+                "relay_port": room.relay_port,
+                "host_peer_id": room.host_peer_id,
+                "relay_admission_ticket": ticket,
+            }
+
+    def issue_host_relay_admission_ticket(
+        self,
+        room_id: str,
+        host_token: str,
+        public_ip: str,
+    ) -> Optional[dict]:
+        """Mint the current Relay generation's Host ticket after authorization."""
+        with self._lock:
+            now = self._clock()
+            room = self._get_live_room_locked(room_id, now)
+            if (
+                room is None
+                or not host_token
+                or room.relay_port <= 0
+                or room.relay_instance_id <= 0
+                or not secrets.compare_digest(
+                    host_token.encode("utf-8"),
+                    room.host_token.encode("ascii"),
+                )
+            ):
+                return None
+            host = room.players.get(room.host_name)
+            if host is None:
+                return None
+            ticket = self._issue_relay_admission_ticket_locked(
+                room,
+                host.name,
+                ROLE_HOST,
+                now,
+            )
+            if ticket is None:
+                return None
+            return {
+                "room_id": room.id,
+                "player_name": host.name,
+                "role": ROLE_HOST,
+                "relay_ip": public_ip,
+                "relay_port": room.relay_port,
+                "host_peer_id": room.host_peer_id,
+                "relay_admission_ticket": ticket,
+            }
 
     # ─── 加入 / 离开 ─────────────────────────────
 
@@ -1032,7 +1274,9 @@ class RoomManager:
             if not host_token or host_token != room.host_token:
                 return None
             if (
-                room.status != RoomStatus.STARTING
+                room.max_players > config.PUBLIC_RELAY_MAX_PLAYERS
+                or room.max_players < 2
+                or room.status != RoomStatus.STARTING
                 or room.relay_port > 0
                 or room.relay_instance_id > 0
                 or room_id in self._relay_start_attempts
@@ -1046,6 +1290,7 @@ class RoomManager:
                 attempt_id=attempt_id,
                 max_clients=room.max_players,
                 max_lifetime_seconds=room.absolute_deadline - now,
+                admission_secret=room.admission_secret,
             )
 
     def attach_relay(
@@ -1132,7 +1377,9 @@ class RoomManager:
                 relay_ref=expected_ref,
                 previous_status=room.status,
                 previous_host_peer_id=room.host_peer_id,
+                previous_admission_secret=room.admission_secret,
             )
+            room.admission_secret = secrets.token_urlsafe(32)
             room.relay_restart_instance_id = expected_ref.instance_id
             room.status = RoomStatus.STARTING
             room.host_peer_id = 0
@@ -1155,6 +1402,7 @@ class RoomManager:
             room.relay_restart_instance_id = 0
             room.status = grant.previous_status
             room.host_peer_id = grant.previous_host_peer_id
+            room.admission_secret = grant.previous_admission_secret
             if room.host_name in room.players:
                 room.players[room.host_name].peer_id = grant.previous_host_peer_id
             return True

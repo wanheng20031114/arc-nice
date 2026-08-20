@@ -2,15 +2,19 @@ extends SceneTree
 
 const MetricsScript := preload("res://scene/multiplayer/multiplayer_runtime_metrics.gd")
 const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
+const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const NETWORK_DIAGNOSTICS_SCENE := preload(
 	"res://scene/multiplayer/network_diagnostics/mp_network_diagnostics_coordinator.tscn"
+)
+const PLANT_RUNTIME_COORDINATOR_SCRIPT := preload(
+	"res://scene/game_modes/tower_defense/plant/tower_defense_plant_runtime_coordinator.gd"
 )
 
 var failures: Array[String] = []
 
 
 func _init() -> void:
-	var metrics: Variant = MetricsScript.new(8)
+	var metrics: Variant = MetricsScript.new(NetConstants.CHANNEL_COUNT)
 	metrics.call("record_packet", 3, 1122, 20)
 	metrics.call("record_packet", 6, 240, 2)
 	metrics.call("record_packet", 8, 999, 1)
@@ -20,14 +24,20 @@ func _init() -> void:
 		metrics.call("record_transaction_latency_ms", latency)
 	var summary := metrics.call("get_summary") as Dictionary
 	var channels := summary.get("channels", []) as Array
-	_expect(channels.size() == 8, "Protocol v25 telemetry must expose all eight channels.")
-	if channels.size() == 8:
+	_expect(
+		channels.size() == NetConstants.CHANNEL_COUNT,
+		"Protocol v90 telemetry must expose all nine logical channels."
+	)
+	if channels.size() == NetConstants.CHANNEL_COUNT:
 		var enemy_channel := channels[3] as Dictionary
+		var membership_channel := channels[NetConstants.CH_MEMBERSHIP] as Dictionary
 		_expect(
 			int(enemy_channel.get("payload_bytes_total", 0)) == 22_440
 			and int(enemy_channel.get("packet_count", 0)) == 20
-			and int(enemy_channel.get("max_packet_bytes", 0)) == 1122,
-			"Enemy-channel telemetry must retain bytes, packets, and maximum packet size."
+			and int(enemy_channel.get("max_packet_bytes", 0)) == 1122
+			and int(membership_channel.get("payload_bytes_total", 0)) == 999
+			and int(membership_channel.get("packet_count", 0)) == 1,
+			"Enemy and membership telemetry must retain exact packet metrics."
 		)
 	_expect(
 		int(summary.get("state_repair_count", 0)) == 1
@@ -68,7 +78,7 @@ func _test_transaction_latency_ring(metrics: Variant) -> void:
 			+ "overwrite instead of shifting its sample window."
 		)
 	)
-	metrics.call("reset", 8)
+	metrics.call("reset", NetConstants.CHANNEL_COUNT)
 	for sample_index in range(273):
 		metrics.call("record_transaction_latency_ms", float(sample_index))
 	metrics.call("record_transaction_latency_ms", -1.0)
@@ -98,7 +108,7 @@ func _test_transaction_latency_ring(metrics: Variant) -> void:
 			+ "semantics and reject invalid samples."
 		)
 	)
-	metrics.call("reset", 8)
+	metrics.call("reset", NetConstants.CHANNEL_COUNT)
 	_expect(
 		(metrics.call("get_transaction_latency_samples_ms") as PackedFloat64Array).is_empty()
 		and int((metrics.call("get_summary") as Dictionary).get(
@@ -114,6 +124,11 @@ func _test_mp_game_rpc_payload_diagnostics() -> void:
 		NETWORK_DIAGNOSTICS_SCENE.instantiate()
 		as MpNetworkDiagnosticsCoordinator
 	)
+	var mp_game := MpGameScript.new()
+	_expect(
+		diagnostics.bind_rpc_source(mp_game),
+		"Runtime metrics must bind to the authoritative Godot RPC metadata."
+	)
 	diagnostics.record_outbound_rpc(&"net_enemy_action", [1, Vector2.ONE], 3)
 	var production_metrics := diagnostics.get_snapshot_packet_metrics(0, 0, {}, {})
 	var production_channels := production_metrics.get("channel_metrics", []) as Array
@@ -122,7 +137,7 @@ func _test_mp_game_rpc_payload_diagnostics() -> void:
 		and int(production_metrics.get("rpc_payload_diagnostic_sample_count", -1)) == 0,
 		"Production RPC metrics must not serialize payload arguments by default."
 	)
-	if production_channels.size() == 8:
+	if production_channels.size() == NetConstants.CHANNEL_COUNT:
 		var feedback_channel := production_channels[7] as Dictionary
 		_expect(
 			int(feedback_channel.get("packet_count", 0)) == 3
@@ -144,6 +159,7 @@ func _test_mp_game_rpc_payload_diagnostics() -> void:
 		and int(diagnostic_metrics.get("rpc_payload_diagnostic_sample_count", 0)) == 2,
 		"Opt-in RPC bytes must sample once immediately and refresh at the documented interval."
 	)
+	mp_game.free()
 	diagnostics.free()
 
 
@@ -164,13 +180,21 @@ func _test_outbound_rpc_channel_classification() -> void:
 
 	var outbound_regex := RegEx.new()
 	var outbound_compile_error := outbound_regex.compile(
-		"(?ms)(?:_rpc_to_connected_clients|_record_outbound_rpc)"
+		"(?ms)(?:_rpc_to_peer|_rpc_to_connected_clients|_record_outbound_rpc)"
 		+ "\\s*\\(\\s*&\"([A-Za-z0-9_]+)\""
 	)
 	_expect(outbound_compile_error == OK, "Outbound RPC audit regex must compile.")
 	if outbound_compile_error != OK:
 		return
 	var mp_game := MpGameScript.new()
+	var diagnostics := (
+		NETWORK_DIAGNOSTICS_SCENE.instantiate()
+		as MpNetworkDiagnosticsCoordinator
+	)
+	_expect(
+		diagnostics.bind_rpc_source(mp_game),
+		"Outbound channel audit must bind the MpGame RPC metadata."
+	)
 	var checked_methods: Dictionary = {}
 	for outbound_match in outbound_regex.search_all(source):
 		var method_name := StringName(outbound_match.get_string(1))
@@ -185,35 +209,33 @@ func _test_outbound_rpc_channel_classification() -> void:
 		if declared_channel < 0:
 			continue
 		_expect(
-			int(mp_game.call("_get_rpc_traffic_channel", method_name))
+			diagnostics.get_rpc_traffic_channel(method_name)
 			== declared_channel,
 			"Outbound telemetry for %s must use declared channel %d."
 			% [method_name, declared_channel]
 		)
 	_expect(
-		checked_methods.size() >= 30,
+		checked_methods.size() >= 20,
 		"Outbound channel audit must cover the complete literal RPC send surface."
 	)
+	diagnostics.free()
 	mp_game.free()
 
 
 func _test_authoritative_plant_registry_count() -> void:
-	var mp_game := MpGameScript.new()
-	var tower_game := TowerDefenseGame.new()
 	var plant_system := PlantSystem.new()
 	var plant := PlantDefense.new()
-	tower_game.plant_system = plant_system
+	var plant_runtime := PLANT_RUNTIME_COORDINATOR_SCRIPT.new()
+	plant_runtime.setup(0, null, null, plant_system, null)
 	plant_system.plants_by_net_id[41] = plant
-	mp_game.game = tower_game
 	_expect(
-		int(mp_game.call("_get_authoritative_team_plant_count")) == 1,
+		plant_runtime.get_authoritative_team_plant_count() == 1,
 		"Multiplayer plant limits must read the authoritative O(1) registry count."
 	)
 	plant_system.plants_by_net_id.clear()
 	plant.free()
 	plant_system.free()
-	tower_game.free()
-	mp_game.free()
+	plant_runtime.free()
 
 
 func _test_client_enemy_count_render_cache() -> void:

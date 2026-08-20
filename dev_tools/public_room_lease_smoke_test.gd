@@ -1,5 +1,7 @@
 extends SceneTree
 
+const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
+
 var failures: Array[String] = []
 var lease: PublicRoomLeaseStore = null
 
@@ -24,7 +26,9 @@ func _run() -> void:
 		not auto_accept_quit,
 		"窗口关闭必须先由跨场景租约节点接管有界清理。"
 	)
+	_test_public_lobby_api_security_policy()
 	_expect(lease.suspend_transport_for_fixture(true), "调试构建必须允许截断测试传输边界。")
+	await _test_invalid_public_lobby_api_stops_callers_locally()
 	await _test_acquisition_before_response_and_late_success_cas()
 	await _test_preflight_binds_capability_before_actual_command()
 	await _test_host_lease_retry_and_phase_lifecycle()
@@ -35,6 +39,145 @@ func _run() -> void:
 	_test_unique_source_contract()
 	lease.suspend_transport_for_fixture(false)
 	_finish()
+
+
+func _test_public_lobby_api_security_policy() -> void:
+	var original_environment_value := OS.get_environment(
+		_NetConstants.PUBLIC_LOBBY_API_BASE_URL_ENV
+	)
+	OS.set_environment(_NetConstants.PUBLIC_LOBBY_API_BASE_URL_ENV, "")
+	var runtime_debug_default := (
+		_NetConstants.get_public_lobby_api_configuration()
+	)
+	OS.set_environment(
+		_NetConstants.PUBLIC_LOBBY_API_BASE_URL_ENV,
+		original_environment_value
+	)
+	_expect(
+		OS.is_debug_build()
+		and str(runtime_debug_default.get("base_url", ""))
+		== _NetConstants.TEST_SERVER_PUBLIC_LOBBY_API_BASE_URL
+		and bool(runtime_debug_default.get("using_debug_default", false)),
+		"运行时读取口必须把当前 debug 构建映射到显式测试服默认策略。"
+	)
+	var debug_default := _NetConstants.resolve_public_lobby_api_configuration(
+		"",
+		true
+	)
+	_expect(
+		str(debug_default.get("base_url", ""))
+		== _NetConstants.TEST_SERVER_PUBLIC_LOBBY_API_BASE_URL
+		and str(debug_default.get("error", "")).is_empty()
+		and bool(debug_default.get("using_debug_default", false)),
+		"debug 构建缺少环境变量时必须显式使用唯一测试服默认地址。"
+	)
+	var release_missing := _NetConstants.resolve_public_lobby_api_configuration(
+		"",
+		false
+	)
+	_expect(
+		str(release_missing.get("base_url", "")).is_empty()
+		and str(release_missing.get("error", "")).contains(
+			_NetConstants.PUBLIC_LOBBY_API_BASE_URL_ENV
+		),
+		"release 构建缺少公网 API 环境变量时必须 fail-closed 并指出配置项。"
+	)
+	var release_http := _NetConstants.resolve_public_lobby_api_configuration(
+		"http://lobby.example.test:8000/",
+		false
+	)
+	_expect(
+		str(release_http.get("base_url", "")).is_empty()
+		and str(release_http.get("error", "")).contains("https://"),
+		"release 构建必须拒绝显式配置的明文 HTTP 地址。"
+	)
+	var release_https := _NetConstants.resolve_public_lobby_api_configuration(
+		"  https://lobby.example.test/api/  ",
+		false
+	)
+	_expect(
+		str(release_https.get("base_url", ""))
+		== "https://lobby.example.test/api"
+		and str(release_https.get("error", "")).is_empty()
+		and not bool(release_https.get("using_debug_default", true)),
+		"release 构建必须接受并规范化显式 HTTPS 根地址。"
+	)
+	var invalid_debug_endpoint := (
+		_NetConstants.resolve_public_lobby_api_configuration(
+			"ftp://lobby.example.test",
+			true
+		)
+	)
+	_expect(
+		str(invalid_debug_endpoint.get("base_url", "")).is_empty()
+		and not str(invalid_debug_endpoint.get("error", "")).is_empty(),
+		"debug 构建也不能把非 HTTP(S) 配置送入 HTTPRequest。"
+	)
+	for malformed_authority in [
+		"https://:443/api",
+		"https://user@example.test/api",
+		"https://lobby.example.test\n.evil/api",
+		"https://lobby.example.test:/api",
+	]:
+		var malformed_result := (
+			_NetConstants.resolve_public_lobby_api_configuration(
+				malformed_authority,
+				false
+			)
+		)
+		_expect(
+			str(malformed_result.get("base_url", "")).is_empty(),
+			"公网 API authority 必须拒绝空 Host、userinfo、控制字符和空端口。"
+		)
+	var ipv6_https := _NetConstants.resolve_public_lobby_api_configuration(
+		"https://[::1]:8443/api/",
+		false
+	)
+	_expect(
+		str(ipv6_https.get("base_url", "")) == "https://[::1]:8443/api",
+		"合法的方括号 IPv6 HTTPS authority 必须可用。"
+	)
+
+
+func _test_invalid_public_lobby_api_stops_callers_locally() -> void:
+	var original_base_url := lease.get_public_lobby_api_base_url()
+	var original_error := lease.get_public_lobby_api_configuration_error()
+	var configuration_error := (
+		_NetConstants.PUBLIC_LOBBY_API_MISSING_CONFIGURATION_ERROR
+	)
+	lease.set("_public_lobby_api_base_url", "")
+	lease.set("_public_lobby_api_configuration_error", configuration_error)
+	var lobby_scene := load(
+		"res://scene/multiplayer/multiplayer_lobby.tscn"
+	) as PackedScene
+	var lobby := lobby_scene.instantiate()
+	root.add_child(lobby)
+	await process_frame
+	lobby.set("current_view", 2)
+	lobby.call(
+		"_send_public_request",
+		1,
+		"/health",
+		HTTPClient.METHOD_GET
+	)
+	_expect(
+		int(lobby.get("pending_public_request")) == 0
+		and not bool(lobby.get("_public_request_in_flight"))
+		and str(lobby.get("browser_status_label").text) == configuration_error
+		and (
+			lobby.get_node("PublicLobbyRequest") as HTTPRequest
+		).get_http_client_status() == HTTPClient.STATUS_DISCONNECTED,
+		"无安全 API 地址时 Lobby 必须在本地拒绝并显示精确配置错误，不能启动 HTTP。"
+	)
+	_expect(
+		not bool(lobby.call("_can_begin_public_membership"))
+		and not lease.has_active_lease(),
+		"无安全 API 地址时创建、匹配、加入必须在 acquisition 之前被拒绝。"
+	)
+	lobby.queue_free()
+	await process_frame
+	lease.set("_public_lobby_api_base_url", original_base_url)
+	lease.set("_public_lobby_api_configuration_error", original_error)
 
 
 func _test_acquisition_before_response_and_late_success_cas() -> void:
@@ -439,12 +582,15 @@ func _test_unique_source_contract() -> void:
 	_expect(
 		constants_source.contains("TEST_SERVER_PUBLIC_LOBBY_API_BASE_URL")
 		and constants_source.contains("ARC_PUBLIC_LOBBY_API_BASE_URL")
+		and constants_source.contains("resolve_public_lobby_api_configuration")
+		and constants_source.contains("OS.is_debug_build()")
 		and constants_source.contains("func get_public_lobby_api_base_url")
-		and lease_source.contains("_NetConstants.get_public_lobby_api_base_url()")
+		and lease_source.contains("_NetConstants.get_public_lobby_api_configuration()")
+		and lease_source.contains("is_public_lobby_api_configured")
 		and lobby_source.contains(
-			"public_room_lease.get_public_lobby_api_base_url()"
+			"_ensure_public_lobby_api_available"
 		),
-		"测试服 HTTP 地址必须只有一个可覆盖配置读取口，lease 与大厅不得各自硬编码。"
+		"公网 API 安全策略必须只有一个可覆盖读取口，lease 与大厅不得各自重建规则。"
 	)
 	_expect(
 		not session_source.contains("/keepalive")

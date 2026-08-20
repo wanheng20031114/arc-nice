@@ -3,6 +3,7 @@ extends SceneTree
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const SnapshotManager := preload("res://scene/multiplayer/snapshot_manager.gd")
 const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
+const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const MpProjectileCoordinator := preload(
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
 )
@@ -229,7 +230,7 @@ func _run() -> void:
 		_test_v25_high_value_player_snapshot_contract()
 		_test_player_codec_and_reuse()
 		if failures.is_empty():
-			print("PROTOCOL_V88_PLAYER_SNAPSHOT_SMOKE_TEST_OK")
+			print("PROTOCOL_V90_PLAYER_SNAPSHOT_SMOKE_TEST_OK")
 			quit()
 			return
 		for failure in failures:
@@ -253,7 +254,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V88_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V90_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -262,17 +263,21 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 88, "Protocol must be v88.")
+	_expect(NetConstants.PROTOCOL_VERSION == 90, "Protocol must be v90.")
 	_expect(
 		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
-		"Protocol v88 must retain scene-specific bits 5..6 for shield stages, ninja boost, and main-battle airborne visuals."
+		"Protocol v90 must retain scene-specific bits 5..6 for shield stages, ninja boost, and main-battle airborne visuals."
 	)
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
 		and NetConstants.NETWORK_COMBAT_VALUE_MAX == 0x7FFFFFFF,
 		"Fixed-width network combat values must use the signed-int32 nonnegative range."
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "ENet must provision eight channels.")
+	_expect(
+		NetConstants.ENET_MAX_CHANNEL == 8
+		and NetConstants.CHANNEL_COUNT == 9,
+		"ENet max channel 8 must provision logical channels CH0..CH8."
+	)
 	_expect(NetConstants.MAX_PLAYERS == 8, "Protocol capacity must accept an eight-player roster.")
 	_expect(
 		NetConstants.CH_AUTH == 0
@@ -282,8 +287,9 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_PROJECTILE == 4
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
-		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v88 channel assignments must remain stable."
+		and NetConstants.CH_FEEDBACK == 7
+		and NetConstants.CH_MEMBERSHIP == 8,
+		"Protocol v90 channel assignments must remain stable."
 	)
 
 
@@ -867,7 +873,7 @@ func _test_terrain_payload_contract() -> void:
 
 
 func _test_bamboo_mortar_payload_contract() -> void:
-	var mp_game := MpGameScript.new()
+	var mp_game := MP_GAME_SCENE.instantiate()
 	var world := MpTowerWorldCoordinatorScript.new()
 	_expect(
 		int(mp_game.call(
@@ -1061,7 +1067,7 @@ func _test_bamboo_mortar_payload_contract() -> void:
 
 
 func _test_corn_burst_payload_contract() -> void:
-	var mp_game := MpGameScript.new()
+	var mp_game := MP_GAME_SCENE.instantiate()
 	var world := MpTowerWorldCoordinatorScript.new()
 	_expect(
 		int(mp_game.call(
@@ -1219,7 +1225,7 @@ func _test_corn_burst_payload_contract() -> void:
 
 
 func _test_linglan_skill1_ring_payload_contract() -> void:
-	var mp_game := MpGameScript.new()
+	var mp_game := MP_GAME_SCENE.instantiate()
 	var first_projectile_id := MpProjectileCoordinator.encode_projectile_id(
 		1,
 		PROJECTILE_HOST_ORIGIN_BIT | 1000000

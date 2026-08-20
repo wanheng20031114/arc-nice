@@ -72,6 +72,8 @@ func _run() -> void:
 	var adapter := MultiplayerModeAdapter.new()
 	var net_manager := NetManagerStore.new()
 	var host_run_state := RunStateStore.new()
+	host_run_state.begin_new_run(&"weishidaier", false)
+	host_run_state.register_multiplayer_peer_state(TEST_PEER_ID)
 	var suspended_peers: Dictionary[int, bool] = {}
 	var host_player := PLAYER_SCENE.instantiate() as Player
 	root.add_child(net_manager)
@@ -262,6 +264,8 @@ func _run() -> void:
 	coordinator.unbind_session(session)
 
 	var client_run_state := RunStateStore.new()
+	client_run_state.begin_new_run(&"weishidaier", false)
+	client_run_state.register_multiplayer_peer_state(TEST_PEER_ID)
 	var client_player := PLAYER_SCENE.instantiate() as Player
 	root.add_child(client_player)
 	await process_frame

@@ -115,13 +115,14 @@ function ConvertTo-LanProbeCommandLineArgument {
 
 
 function Start-LanProbeManagedProcess {
-    param(
-        [Parameter(Mandatory = $true)]$Context,
-        [Parameter(Mandatory = $true)][string]$Executable,
-        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
-        [Parameter(Mandatory = $true)][string[]]$Arguments,
-        [switch]$EnableLiveLineCapture
-    )
+	param(
+		[Parameter(Mandatory = $true)]$Context,
+		[Parameter(Mandatory = $true)][string]$Executable,
+		[Parameter(Mandatory = $true)][string]$WorkingDirectory,
+		[Parameter(Mandatory = $true)][string[]]$Arguments,
+		[hashtable]$EnvironmentVariables = @{},
+		[switch]$EnableLiveLineCapture
+	)
 
     $quotedArguments = @(
         $Arguments | ForEach-Object {
@@ -134,9 +135,14 @@ function Start-LanProbeManagedProcess {
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    $startInfo.Arguments = $quotedArguments -join ' '
+	$startInfo.RedirectStandardOutput = $true
+	$startInfo.RedirectStandardError = $true
+	$startInfo.Arguments = $quotedArguments -join ' '
+	foreach ($environmentName in $EnvironmentVariables.Keys) {
+		$startInfo.EnvironmentVariables[[string]$environmentName] = [string](
+			$EnvironmentVariables[$environmentName]
+		)
+	}
 
     $process = New-Object Diagnostics.Process
     $process.StartInfo = $startInfo

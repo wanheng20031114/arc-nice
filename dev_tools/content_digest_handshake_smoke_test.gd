@@ -5,6 +5,9 @@ const RuntimeContentManifestScript := preload(
 	"res://resources/config/generated/runtime_content_manifest.gd"
 )
 const LOBBY_SOURCE_PATH := "res://scene/multiplayer/multiplayer_lobby.gd"
+const RELAY_SERVER_SOURCE_PATH := (
+	"res://relay_servers/relay_godot_project/relay_server.gd"
+)
 
 const HOST_PEER_ID := 1
 const CLIENT_PEER_ID := 42
@@ -19,7 +22,9 @@ class HostProbe:
 	var accepted_tuples: Array[Dictionary] = []
 	var content_rejections: Array[Dictionary] = []
 	var deferred_disconnects := PackedInt32Array()
+	var rejected_registration_replay_peers := PackedInt32Array()
 	var roster_broadcast_count := 0
+	var targeted_roster_peers := PackedInt32Array()
 
 	func is_host() -> bool:
 		return true
@@ -44,8 +49,18 @@ class HostProbe:
 	func _disconnect_incompatible_peer(peer_id: int) -> void:
 		deferred_disconnects.append(peer_id)
 
+	func _reject_changed_relay_registration(peer_id: int) -> void:
+		rejected_registration_replay_peers.append(peer_id)
+
 	func _broadcast_player_list_to_clients() -> void:
 		roster_broadcast_count += 1
+
+	func _send_player_list_to_peer(peer_id: int) -> bool:
+		targeted_roster_peers.append(peer_id)
+		return true
+
+	func is_peer_control_send_ready(_peer_id: int) -> bool:
+		return true
 
 	func seed_host_member() -> void:
 		net_role = NetRole.HOST
@@ -115,11 +130,14 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_matching_registration_publishes_acceptance()
+	_test_relay_exact_registration_replay_is_targeted()
 	await _test_digest_rejection_is_zero_write_for_reconnect()
 	await _test_malformed_digest_fields_are_rejected_and_disconnected()
 	_test_client_requires_acceptance_and_active_roster()
 	_test_wrong_sender_and_fields_fail_closed()
 	_test_local_invalid_manifest_blocks_every_transport_entry()
+	_test_relay_admission_client_contract()
+	await _test_relay_business_state_waits_for_two_sided_authentication()
 	_test_public_confirmation_waits_for_final_registration()
 	_finish()
 
@@ -149,6 +167,121 @@ func _test_matching_registration_publishes_acceptance() -> void:
 		}]
 		and host.roster_broadcast_count == 1,
 		"匹配摘要的注册必须先形成 ACTIVE 成员并发送绑定 peer/schema/digest 的 accepted。"
+	)
+	host.free()
+
+
+func _test_relay_exact_registration_replay_is_targeted() -> void:
+	var host := HostProbe.new()
+	root.add_child(host)
+	host.seed_host_member()
+	host.connection_state = NetManagerStore.ConnectionState.HOSTING_LAN
+	host.conn_mode = NetManagerStore.ConnMode.RELAY
+	host.set("_relay_transport_admitted", true)
+	var reconnect_token := "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+	var registered := host._handle_player_registration(
+		CLIENT_PEER_ID,
+		"Client",
+		"weishidaier",
+		true,
+		NetConstantsScript.PROTOCOL_VERSION,
+		reconnect_token,
+		RuntimeContentManifestScript.SCHEMA_VERSION,
+		RuntimeContentManifestScript.CONTENT_SHA256
+	)
+	var revision_after_first_commit := host.get_session_membership_revision()
+	var replayed := host._try_replay_relay_registration_response(
+		CLIENT_PEER_ID,
+		"Client",
+		"weishidaier",
+		true,
+		NetConstantsScript.PROTOCOL_VERSION,
+		reconnect_token,
+		RuntimeContentManifestScript.SCHEMA_VERSION,
+		RuntimeContentManifestScript.CONTENT_SHA256
+	)
+	var exact_fields := {
+		"player_name": "Client",
+		"character_id": "weishidaier",
+		"character_confirmed": true,
+		"protocol_version": NetConstantsScript.PROTOCOL_VERSION,
+		"reconnect_token": reconnect_token,
+		"content_manifest_schema": RuntimeContentManifestScript.SCHEMA_VERSION,
+		"content_digest": RuntimeContentManifestScript.CONTENT_SHA256,
+	}
+	var field_mutations := {
+		"player_name": "AnotherClient",
+		"character_id": "tiyi",
+		"character_confirmed": false,
+		"protocol_version": NetConstantsScript.PROTOCOL_VERSION + 1,
+		"reconnect_token": reconnect_token.to_upper(),
+		"content_manifest_schema": RuntimeContentManifestScript.SCHEMA_VERSION + 1,
+		"content_digest": "0".repeat(64),
+	}
+	var mismatch_results: Array[bool] = []
+	for field_name_variant: Variant in field_mutations:
+		host._remember_accepted_peer_registration_tuple(
+			CLIENT_PEER_ID,
+			str(exact_fields["player_name"]),
+			str(exact_fields["character_id"]),
+			bool(exact_fields["character_confirmed"]),
+			int(exact_fields["protocol_version"]),
+			str(exact_fields["reconnect_token"]),
+			int(exact_fields["content_manifest_schema"]),
+			str(exact_fields["content_digest"])
+		)
+		var mutated_fields := exact_fields.duplicate(true)
+		var field_name := str(field_name_variant)
+		mutated_fields[field_name] = field_mutations[field_name]
+		mismatch_results.append(
+			host._try_replay_relay_registration_response(
+				CLIENT_PEER_ID,
+				str(mutated_fields["player_name"]),
+				str(mutated_fields["character_id"]),
+				bool(mutated_fields["character_confirmed"]),
+				int(mutated_fields["protocol_version"]),
+				str(mutated_fields["reconnect_token"]),
+				int(mutated_fields["content_manifest_schema"]),
+				str(mutated_fields["content_digest"])
+			)
+		)
+	host._remember_accepted_peer_registration_tuple(
+		CLIENT_PEER_ID,
+		str(exact_fields["player_name"]),
+		str(exact_fields["character_id"]),
+		bool(exact_fields["character_confirmed"]),
+		int(exact_fields["protocol_version"]),
+		str(exact_fields["reconnect_token"]),
+		int(exact_fields["content_manifest_schema"]),
+		str(exact_fields["content_digest"])
+	)
+	(host.get("_accepted_peer_registration_replay_deadlines") as Dictionary)[
+		CLIENT_PEER_ID
+	] = Time.get_ticks_msec() - 1
+	var expired_replay := host._try_replay_relay_registration_response(
+		CLIENT_PEER_ID,
+		str(exact_fields["player_name"]),
+		str(exact_fields["character_id"]),
+		bool(exact_fields["character_confirmed"]),
+		int(exact_fields["protocol_version"]),
+		str(exact_fields["reconnect_token"]),
+		int(exact_fields["content_manifest_schema"]),
+		str(exact_fields["content_digest"])
+	)
+	_expect(
+		registered
+		and replayed
+		and not expired_replay
+		and mismatch_results == [false, false, false, false, false, false, false]
+		and host.rejected_registration_replay_peers.size() == 7
+		and host.get_session_membership_revision() == revision_after_first_commit
+		and host.accepted_tuples.size() == 2
+		and host.targeted_roster_peers == PackedInt32Array([CLIENT_PEER_ID])
+		and host.roster_broadcast_count == 1,
+		(
+			"Relay 重放只有完整注册元组一致时才能定向补发 accepted/roster，"
+			+ "不得重复成员提交或放大全房广播。"
+		)
 	)
 	host.free()
 
@@ -231,6 +364,7 @@ func _test_malformed_digest_fields_are_rejected_and_disconnected() -> void:
 
 func _test_client_requires_acceptance_and_active_roster() -> void:
 	var client := _make_registering_client(CLIENT_PEER_ID)
+	client.conn_mode = NetManagerStore.ConnMode.RELAY
 	var accepted := client._handle_registration_accepted(
 		HOST_PEER_ID,
 		CLIENT_PEER_ID,
@@ -239,8 +373,12 @@ func _test_client_requires_acceptance_and_active_roster() -> void:
 	)
 	_expect(
 		accepted
-		and client.connection_state == NetManagerStore.ConnectionState.REGISTERING,
-		"accepted 先到但本地尚无 ACTIVE roster 时不得进入大厅。"
+		and client.connection_state == NetManagerStore.ConnectionState.REGISTERING
+		and int(client.get("_registration_started_msec")) > 0,
+		(
+			"accepted 先到但本地尚无 ACTIVE roster 时不得进入大厅，"
+			+ "Relay 必须继续转发已认证元组以补回可能丢失的 roster。"
+		)
 	)
 	_expect(
 		not client._apply_authoritative_start_game(NetManagerStore.GameMode.STANDARD, 7),
@@ -250,7 +388,8 @@ func _test_client_requires_acceptance_and_active_roster() -> void:
 	_expect(
 		client.connection_state == NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY
 		and client.is_session_member_active(CLIENT_PEER_ID)
-		and client.connected_players.has(CLIENT_PEER_ID),
+		and client.connected_players.has(CLIENT_PEER_ID)
+		and int(client.get("_registration_started_msec")) == 0,
 		"只有 accepted 三元组与本地 ACTIVE roster 同时成立后才能进入大厅。"
 	)
 	client.free()
@@ -329,8 +468,8 @@ func _test_local_invalid_manifest_blocks_every_transport_entry() -> void:
 	var results := [
 		probe.host_create_lan_server(29170, 2),
 		probe.client_connect_lan("127.0.0.1", 29170),
-		probe.host_create_relay_room("127.0.0.1", 40001, 2),
-		probe.client_join_relay_room("127.0.0.1", 40001, 2),
+		probe.host_create_relay_room("127.0.0.1", 40001, 2, "fixture", "fixture"),
+		probe.client_join_relay_room("127.0.0.1", 40001, 2, "fixture", "fixture"),
 	]
 	_expect(
 		results.all(func(result: Error) -> bool: return result == ERR_FILE_CORRUPT)
@@ -341,6 +480,178 @@ func _test_local_invalid_manifest_blocks_every_transport_entry() -> void:
 		"本地生成清单无效时，LAN/Relay 的创建与加入都必须在分配 transport 前 fail-close。"
 	)
 	probe.free()
+
+
+func _test_relay_admission_client_contract() -> void:
+	var ticket := "ra1.e30.%s" % "a".repeat(64)
+	_expect(
+		NetManagerStore._is_valid_relay_admission_configuration(
+			"room_01",
+			ticket
+		)
+		and not NetManagerStore._is_valid_relay_admission_configuration(
+			" room_01",
+			ticket
+		)
+		and not NetManagerStore._is_valid_relay_admission_configuration(
+			"room_01",
+			"ra1.e30.invalid"
+		)
+		and not NetManagerStore._is_valid_relay_admission_configuration(
+			"room_01",
+			ticket + "."
+		)
+		and not NetManagerStore._is_valid_relay_admission_configuration(
+			"room_01",
+			"ra1.e30..%s" % "a".repeat(64)
+		),
+		(
+			"Relay transport must reject malformed room ids, signatures, trailing "
+			+ "segments, and empty envelope segments locally."
+		)
+	)
+	var ack := {
+		"v": NetManagerStore.RELAY_AUTH_SCHEMA_VERSION,
+		"ok": true,
+		"room_id": "room_01",
+		"role": "member",
+		"player_name": "Client",
+		"peer_id": CLIENT_PEER_ID,
+	}
+	var ack_with_extra_field := ack.duplicate()
+	ack_with_extra_field["unexpected"] = true
+	var fractional_version_ack := ack.duplicate()
+	fractional_version_ack["v"] = 1.9
+	var fractional_peer_ack := ack.duplicate()
+	fractional_peer_ack["peer_id"] = float(CLIENT_PEER_ID) + 0.9
+	_expect(
+		NetManagerStore._is_valid_relay_authentication_ack(
+			ack,
+			"room_01",
+			&"member",
+			"Client",
+			CLIENT_PEER_ID
+		)
+		and not NetManagerStore._is_valid_relay_authentication_ack(
+			ack,
+			"another_room",
+			&"member",
+			"Client",
+			CLIENT_PEER_ID
+		)
+		and not NetManagerStore._is_valid_relay_authentication_ack(
+			ack,
+			"room_01",
+			&"host",
+			"Client",
+			CLIENT_PEER_ID
+		)
+		and not NetManagerStore._is_valid_relay_authentication_ack(
+			ack_with_extra_field,
+			"room_01",
+			&"member",
+			"Client",
+			CLIENT_PEER_ID
+		)
+		and not NetManagerStore._is_valid_relay_authentication_ack(
+			fractional_version_ack,
+			"room_01",
+			&"member",
+			"Client",
+			CLIENT_PEER_ID
+		)
+		and not NetManagerStore._is_valid_relay_authentication_ack(
+			fractional_peer_ack,
+			"room_01",
+			&"member",
+			"Client",
+			CLIENT_PEER_ID
+		),
+		(
+			"Relay auth acknowledgement must use an exact schema and bind room, "
+			+ "role, player, and an integral actual peer id."
+		)
+	)
+	var manager_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/net_manager.gd"
+	)
+	var lobby_source := FileAccess.get_file_as_string(LOBBY_SOURCE_PATH)
+	var relay_server_source := FileAccess.get_file_as_string(
+		RELAY_SERVER_SOURCE_PATH
+	)
+	_expect(
+		manager_source.contains("auth_callback")
+		and manager_source.contains("peer_authenticating")
+		and manager_source.contains("send_auth")
+		and manager_source.contains("complete_auth")
+		and manager_source.contains('"content_manifest_schema"')
+		and manager_source.contains('"content_digest"')
+		and manager_source.contains("_rpc_relay_player_registration_forward")
+		and relay_server_source.contains("_rpc_relay_player_registration_forward")
+		and manager_source.contains("_rpc_relay_registration_completed.rpc_id(")
+		and relay_server_source.contains("func confirm_authenticated_player_registration(")
+		and manager_source.contains("conn_mode == ConnMode.DIRECT")
+		and manager_source.contains("_relay_transport_admitted = true")
+		and lobby_source.contains("relay_admission_ticket"),
+		(
+			"Public Relay identity must use SceneMultiplayer authentication before "
+			+ "the lobby transport can enter the game RPC surface; the authenticated "
+			+ "registration tuple must be relayed until the accepted/ACTIVE client "
+			+ "explicitly completes registration."
+		)
+	)
+
+
+func _test_relay_business_state_waits_for_two_sided_authentication() -> void:
+	var early_client := ClientProbe.new()
+	root.add_child(early_client)
+	early_client.conn_mode = NetManagerStore.ConnMode.RELAY
+	early_client.net_role = NetManagerStore.NetRole.CLIENT
+	early_client.connection_state = NetManagerStore.ConnectionState.CONNECTING_LAN
+	early_client._begin_connection_attempt(1000, "fixture relay")
+	var early_failures: Array[String] = []
+	early_client.connection_failed.connect(
+		func(reason: String) -> void: early_failures.append(reason)
+	)
+	early_client._on_connected_to_server()
+	_expect(
+		early_client.connection_state
+		== NetManagerStore.ConnectionState.CONNECTING_LAN
+		and not bool(early_client.get("_relay_transport_admitted"))
+		and bool(early_client.get("_relay_auth_failure_queued"))
+		and early_failures.size() == 1,
+		(
+			"A raw or premature connected signal must not advance Relay business "
+			+ "state before local complete_auth."
+		)
+	)
+	await process_frame
+	_expect(
+		early_client.connection_state
+		== NetManagerStore.ConnectionState.DISCONNECTED,
+		"Premature Relay admission must fail closed on the same attempt generation."
+	)
+	early_client.free()
+
+	var admitted_client := ClientProbe.new()
+	root.add_child(admitted_client)
+	admitted_client.conn_mode = NetManagerStore.ConnMode.RELAY
+	admitted_client.net_role = NetManagerStore.NetRole.CLIENT
+	admitted_client.host_peer_id = HOST_PEER_ID
+	admitted_client.connection_state = NetManagerStore.ConnectionState.CONNECTING_LAN
+	admitted_client._begin_connection_attempt(1000, "fixture relay")
+	admitted_client.set("_relay_auth_locally_completed", true)
+	admitted_client._on_connected_to_server()
+	_expect(
+		bool(admitted_client.get("_relay_transport_admitted"))
+		and admitted_client.connection_state
+		== NetManagerStore.ConnectionState.REGISTERING,
+		(
+			"Only connected_to_server after local complete_auth may advance Relay "
+			+ "into the registration gate."
+		)
+	)
+	admitted_client.free()
 
 
 func _test_public_confirmation_waits_for_final_registration() -> void:
@@ -374,7 +685,7 @@ func _make_registering_client(peer_id: int) -> ClientProbe:
 	root.add_child(client)
 	client.net_role = NetManagerStore.NetRole.CLIENT
 	client.host_peer_id = HOST_PEER_ID
-	client.connection_state = NetManagerStore.ConnectionState.REGISTERING
+	client._begin_registration_handshake()
 	return client
 
 

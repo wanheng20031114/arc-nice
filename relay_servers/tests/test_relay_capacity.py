@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 from fastapi import HTTPException, Request
+from pydantic import ValidationError
 
 os.environ.setdefault(
     "ACQUISITION_CAPABILITY_HMAC_SECRET",
@@ -20,12 +21,18 @@ from relay_servers.lobby_api.main import (
     JoinRoomRequest,
     QuickMatchRequest,
 )
-from relay_servers.lobby_api.models import GameMode, RoomStatus
+from relay_servers.lobby_api.models import GameMode, RoomInfo, RoomStatus
 from relay_servers.lobby_api.relay_launcher import (
+    MAX_RELAY_CLIENTS,
+    MIN_RELAY_CLIENTS,
     RelayLauncher,
     RelayProcessLease,
 )
 from relay_servers.lobby_api.room_manager import RoomManager
+
+
+TEST_ROOM_ID = "room-under-test"
+TEST_ADMISSION_SECRET = "s" * 43
 
 
 def direct_request() -> Request:
@@ -82,9 +89,31 @@ class RelayCapacityTests(unittest.TestCase):
         assert room is not None
         return room
 
-    def test_ensure_room_relay_passes_room_capacity(self) -> None:
+    def test_public_request_model_fail_closes_to_two_players(self) -> None:
+        self.assertEqual(lobby_main.config.PUBLIC_RELAY_MAX_PLAYERS, 2)
+        self.assertEqual(RoomInfo().max_players, 2)
+        default_room = RoomManager().create_room("Default", "Host", "")
+        self.assertIsNotNone(default_room)
+        assert default_room is not None
+        self.assertEqual(default_room.max_players, 2)
+        self.assertEqual(
+            lobby_main.CreateRoomRequest(host_name="Host").max_players,
+            2,
+        )
+        with self.assertRaises(ValidationError):
+            lobby_main.CreateRoomRequest(host_name="Host", max_players=3)
+
+    def test_larger_domain_room_cannot_start_a_public_relay(self) -> None:
         manager = RoomManager()
-        room = self._create_room(manager, max_players=6)
+        room = self._create_room(manager, max_players=3)
+
+        self.assertIsNone(manager.begin_relay_start(room.id, room.host_token))
+        self.assertEqual(room.max_players, 3)
+        self.assertEqual(room.status, RoomStatus.STARTING)
+
+    def test_ensure_room_relay_passes_public_two_player_capacity(self) -> None:
+        manager = RoomManager()
+        room = self._create_room(manager, max_players=2)
         launcher = MagicMock()
         lease = RelayProcessLease(40031, 12031, 31)
         launcher.start_new_relay.return_value = (40031, lease, [])
@@ -104,18 +133,20 @@ class RelayCapacityTests(unittest.TestCase):
             )
 
         start_args = launcher.start_new_relay.call_args.args
-        self.assertEqual(start_args[0], 6)
+        self.assertEqual(start_args[0], 2)
         self.assertGreater(start_args[1], 0.0)
-        self.assertEqual(result["max_players"], 6)
+        self.assertEqual(start_args[2], room.id)
+        self.assertEqual(start_args[3], room.admission_secret)
+        self.assertEqual(result["max_players"], 2)
         self.assertEqual(result["relay_port"], 40031)
         self.assertEqual(
             result["member_token"],
             room.players[room.host_name].member_token,
         )
 
-    def test_request_relay_passes_room_capacity(self) -> None:
+    def test_request_relay_passes_public_two_player_capacity(self) -> None:
         manager = RoomManager()
-        room = self._create_room(manager, max_players=3)
+        room = self._create_room(manager, max_players=2)
         launcher = MagicMock()
         lease = RelayProcessLease(40032, 12032, 32)
         launcher.start_new_relay.return_value = (40032, lease, [])
@@ -134,17 +165,36 @@ class RelayCapacityTests(unittest.TestCase):
             )
 
         start_args = launcher.start_new_relay.call_args.args
-        self.assertEqual(start_args[0], 3)
+        self.assertEqual(start_args[0], 2)
         self.assertGreater(start_args[1], 0.0)
+        self.assertEqual(start_args[2], room.id)
+        self.assertEqual(start_args[3], room.admission_secret)
+        self.assertEqual(
+            set(result),
+            {
+                "room_id",
+                "player_name",
+                "role",
+                "relay_ip",
+                "relay_port",
+                "host_peer_id",
+                "relay_admission_ticket",
+            },
+        )
         self.assertEqual(result["relay_port"], 40032)
+        self.assertEqual(result["room_id"], room.id)
+        self.assertEqual(result["player_name"], room.host_name)
+        self.assertEqual(result["role"], "host")
+        self.assertEqual(result["host_peer_id"], 0)
+        self.assertIn("relay_admission_ticket", result)
 
     def test_new_allocation_closes_room_owned_by_reaped_relay(self) -> None:
         manager = RoomManager()
-        old_room = self._create_room(manager, max_players=4)
+        old_room = self._create_room(manager, max_players=2)
         old_room.relay_port = 40001
         old_room.relay_pid = 10001
         old_room.relay_instance_id = 1
-        new_room = self._create_room(manager, max_players=4)
+        new_room = self._create_room(manager, max_players=2)
         launcher = MagicMock()
         new_lease = RelayProcessLease(40001, 10002, 2)
         old_lease = RelayProcessLease(40001, 10001, 1)
@@ -171,7 +221,7 @@ class RelayCapacityTests(unittest.TestCase):
 
     def test_relay_restart_keeps_current_room_when_reaping_its_port(self) -> None:
         manager = RoomManager()
-        room = self._create_room(manager, max_players=4)
+        room = self._create_room(manager, max_players=2)
         room.relay_port = 40001
         room.relay_pid = 10001
         room.relay_instance_id = 1
@@ -199,10 +249,13 @@ class RelayCapacityTests(unittest.TestCase):
         self.assertEqual(room.relay_pid, 10002)
         self.assertEqual(room.relay_instance_id, 2)
         self.assertEqual(result["relay_port"], 40001)
+        self.assertEqual(result["role"], "host")
+        self.assertEqual(result["host_peer_id"], 0)
+        self.assertIn("relay_admission_ticket", result)
 
     def test_concurrent_request_relay_starts_only_one_process(self) -> None:
         manager = RoomManager()
-        room = self._create_room(manager, max_players=4)
+        room = self._create_room(manager, max_players=2)
         launcher = MagicMock()
         lease = RelayProcessLease(40041, 12041, 41)
         launcher.start_new_relay.return_value = (40041, lease, [])
@@ -246,13 +299,13 @@ class RelayCapacityTests(unittest.TestCase):
             [40041, 40041],
         )
         start_args = launcher.start_new_relay.call_args.args
-        self.assertEqual(start_args[0], 4)
+        self.assertEqual(start_args[0], 2)
         self.assertGreater(start_args[1], 0.0)
         self.assertEqual(room.relay_port, 40041)
 
     def test_concurrent_ensure_room_relay_starts_only_one_process(self) -> None:
         manager = RoomManager()
-        room = self._create_room(manager, max_players=5)
+        room = self._create_room(manager, max_players=2)
         launcher = MagicMock()
         lease = RelayProcessLease(40042, 12042, 42)
         launcher.start_new_relay.return_value = (40042, lease, [])
@@ -298,7 +351,7 @@ class RelayCapacityTests(unittest.TestCase):
             [40042, 40042],
         )
         start_args = launcher.start_new_relay.call_args.args
-        self.assertEqual(start_args[0], 5)
+        self.assertEqual(start_args[0], 2)
         self.assertGreater(start_args[1], 0.0)
 
     def test_launcher_includes_max_clients_argument(self) -> None:
@@ -326,26 +379,79 @@ class RelayCapacityTests(unittest.TestCase):
                 "relay_servers.lobby_api.relay_launcher.subprocess.Popen",
                 return_value=process,
             ) as popen,
+            patch.dict(
+                os.environ,
+                {
+                    "PATH": "relay-runtime-path",
+                    "APPDATA": "relay-roaming-data",
+                    "LOCALAPPDATA": "relay-local-data",
+                    "LC_TEST": "relay-locale",
+                    "ACQUISITION_CAPABILITY_HMAC_SECRET": "must-not-leak",
+                    "DATABASE_URL": "must-not-leak-either",
+                },
+                clear=False,
+            ),
         ):
-            lease = launcher.start_relay(40033, 5)
+            lease = launcher.start_relay(
+                40033,
+                2,
+                room_id=TEST_ROOM_ID,
+                admission_secret=TEST_ADMISSION_SECRET,
+            )
 
         self.assertIsNotNone(lease)
         assert lease is not None
         self.assertEqual(lease.pid, 12345)
         command = popen.call_args.args[0]
         self.assertIn("--port=40033", command)
-        self.assertIn("--max-clients=5", command)
+        self.assertIn("--max-clients=2", command)
         self.assertIn("--startup-idle-timeout=120.0", command)
         self.assertIn("--empty-idle-timeout=120.0", command)
         self.assertIn("--max-lifetime=36000.0", command)
+        self.assertNotIn(TEST_ROOM_ID, command)
+        self.assertNotIn(TEST_ADMISSION_SECRET, command)
+        environment = popen.call_args.kwargs["env"]
+        self.assertEqual(
+            environment["ARC_NICE_RELAY_ROOM_ID"],
+            TEST_ROOM_ID,
+        )
+        self.assertEqual(
+            environment["ARC_NICE_RELAY_ADMISSION_SECRET"],
+            TEST_ADMISSION_SECRET,
+        )
+        self.assertEqual(environment["PATH"], "relay-runtime-path")
+        self.assertEqual(environment["APPDATA"], "relay-roaming-data")
+        self.assertEqual(environment["LOCALAPPDATA"], "relay-local-data")
+        self.assertEqual(environment["LC_TEST"], "relay-locale")
+        self.assertNotIn("ACQUISITION_CAPABILITY_HMAC_SECRET", environment)
+        self.assertNotIn("DATABASE_URL", environment)
 
-    def test_launcher_rejects_capacity_outside_two_to_eight(self) -> None:
+    def test_launcher_accepts_only_public_two_player_capacity(self) -> None:
         launcher = RelayLauncher()
+        self.assertEqual(MIN_RELAY_CLIENTS, 2)
+        self.assertEqual(MAX_RELAY_CLIENTS, 2)
         with patch(
             "relay_servers.lobby_api.relay_launcher.subprocess.Popen"
         ) as popen:
             self.assertIsNone(launcher.start_relay(40034, 1))
+            self.assertIsNone(launcher.start_relay(40034, 3))
             self.assertIsNone(launcher.start_relay(40034, 9))
+        popen.assert_not_called()
+
+    def test_launcher_fails_closed_without_room_admission_context(self) -> None:
+        launcher = RelayLauncher()
+        with patch(
+            "relay_servers.lobby_api.relay_launcher.subprocess.Popen"
+        ) as popen:
+            self.assertIsNone(launcher.start_relay(40035, 2))
+            self.assertIsNone(
+                launcher.start_relay(
+                    40035,
+                    2,
+                    room_id=TEST_ROOM_ID,
+                    admission_secret="short",
+                )
+            )
         popen.assert_not_called()
 
     def test_launcher_port_reservations_are_unique_across_threads(self) -> None:
@@ -398,7 +504,12 @@ class RelayCapacityTests(unittest.TestCase):
             with ThreadPoolExecutor(max_workers=2) as executor:
                 results = list(
                     executor.map(
-                        lambda _index: launcher.start_relay(port, 4),
+                        lambda _index: launcher.start_relay(
+                            port,
+                            2,
+                            room_id=TEST_ROOM_ID,
+                            admission_secret=TEST_ADMISSION_SECRET,
+                        ),
                         range(2),
                     )
                 )
@@ -476,7 +587,7 @@ class RelayCapacityTests(unittest.TestCase):
 
     def test_list_and_join_reject_room_whose_relay_exited(self) -> None:
         manager = RoomManager()
-        room = self._create_room(manager, max_players=4)
+        room = self._create_room(manager, max_players=2)
         room.relay_port = 40051
         room.relay_pid = 13051
         room.relay_instance_id = 51
@@ -505,7 +616,7 @@ class RelayCapacityTests(unittest.TestCase):
 
     def test_quick_match_skips_room_whose_relay_exited(self) -> None:
         manager = RoomManager()
-        stale_room = self._create_room(manager, max_players=4)
+        stale_room = self._create_room(manager, max_players=2)
         stale_room.relay_port = 40052
         stale_room.relay_pid = 13052
         stale_room.relay_instance_id = 52
@@ -515,7 +626,7 @@ class RelayCapacityTests(unittest.TestCase):
             name="Healthy room",
             host_name="HealthyHost",
             host_ip="",
-            max_players=4,
+            max_players=2,
         )
         self.assertIsNotNone(healthy_room)
         assert healthy_room is not None
@@ -553,7 +664,7 @@ class RelayCapacityTests(unittest.TestCase):
 
     def test_periodic_cleanup_reconciles_exited_relay_rooms(self) -> None:
         manager = RoomManager()
-        room = self._create_room(manager, max_players=4)
+        room = self._create_room(manager, max_players=2)
         room.relay_port = 40054
         room.relay_pid = 13054
         room.relay_instance_id = 54
@@ -572,7 +683,7 @@ class RelayCapacityTests(unittest.TestCase):
 
     def test_failed_startup_closes_room_and_stops_spawned_process(self) -> None:
         manager = RoomManager()
-        room = self._create_room(manager, max_players=4)
+        room = self._create_room(manager, max_players=2)
         launcher = MagicMock()
         lease = RelayProcessLease(40055, 13055, 55)
         launcher.start_new_relay.return_value = (40055, lease, [])
@@ -596,14 +707,23 @@ class RelayCapacityTests(unittest.TestCase):
         self.assertIsNone(manager.get_room(room.id))
         launcher.stop_relay.assert_called_once_with(40055, 55)
 
-    def test_relay_project_uses_capacity_argument_and_protocol_v88(self) -> None:
-        relay_source = (
-            Path(__file__).resolve().parents[1]
-            / "relay_godot_project"
-            / "relay_server.gd"
+    def test_relay_project_freezes_public_capacity_channels_and_protocol_v90(self) -> None:
+        relay_root = Path(__file__).resolve().parents[1]
+        relay_source = (relay_root / "relay_godot_project" / "relay_server.gd").read_text(
+            encoding="utf-8"
+        )
+        relay_stub_source = (
+            relay_root / "relay_godot_project" / "relay_net_manager_stub.gd"
         ).read_text(encoding="utf-8")
+        readme = (relay_root / "README.md").read_text(encoding="utf-8")
 
-        self.assertIn("const PROTOCOL_VERSION := 88", relay_source)
+        self.assertIn("const PROTOCOL_VERSION := 90", relay_source)
+        self.assertIn("const MAX_CLIENTS := 2", relay_source)
+        self.assertIn("const CH_MEMBERSHIP := 8", relay_source)
+        self.assertIn("const ENET_MAX_CHANNEL := CH_MEMBERSHIP", relay_source)
+        self.assertIn("const CHANNEL_COUNT := CH_MEMBERSHIP + 1", relay_source)
+        self.assertNotIn("const PROTOCOL_VERSION := 89", relay_source)
+        self.assertNotIn("const PROTOCOL_VERSION := 88", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 87", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 86", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 85", relay_source)
@@ -645,13 +765,41 @@ class RelayCapacityTests(unittest.TestCase):
         self.assertNotIn("const PROTOCOL_VERSION := 46", relay_source)
         self.assertIn('arg.begins_with("--max-clients=")', relay_source)
         self.assertIn(
-            "peer.create_server(_port, _max_clients, CHANNEL_COUNT)",
+            "peer.create_server(_port, transport_capacity, ENET_MAX_CHANNEL)",
             relay_source,
         )
+        self.assertIn("const AUTH_PENDING_RESERVE := 4", relay_source)
+        self.assertIn(
+            "multiplayer.peer_authenticating.connect(_on_peer_authenticating)",
+            relay_source,
+        )
+        self.assertIn("has_authenticated_room_capacity(", relay_source)
         self.assertIn(
             "parsed_max_clients < MIN_CLIENTS or parsed_max_clients > MAX_CLIENTS",
             relay_source,
         )
+        for membership_rpc in (
+            "_rpc_relay_player_registration_forward",
+            "_rpc_relay_registration_completed",
+            "_rpc_registration_accepted",
+            "_rpc_content_rejected",
+            "_rpc_protocol_rejected",
+            "_rpc_join_rejected",
+            "_rpc_relay_kick_peer",
+            "_rpc_relay_identity_lookup",
+            "_rpc_relay_identity_result",
+            "_rpc_sync_player_list",
+        ):
+            with self.subTest(membership_rpc=membership_rpc):
+                self.assertRegex(
+                    relay_stub_source,
+                    rf'@rpc\([^\n]*"reliable", 8\)\s+func {membership_rpc}\(',
+                )
+        self.assertIn("Host + 1 member", readme)
+        self.assertIn("`CH_MEMBERSHIP=8`", readme)
+        self.assertIn("`ENET_MAX_CHANNEL=8`", readme)
+        self.assertIn("`CHANNEL_COUNT=9`", readme)
+        self.assertIn("Host + 3 members", readme)
 
 
 if __name__ == "__main__":

@@ -3,8 +3,6 @@ extends SceneTree
 const CACHE_SCRIPT := preload(
 	"res://scene/multiplayer/peer_replay_result_cache.gd"
 )
-const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
-
 const PRESSURE_CAPACITY := 256
 const PRESSURE_INSERT_COUNT := 20_000
 const BENCHMARK_ROUNDS := 5
@@ -19,7 +17,7 @@ func _init() -> void:
 func _run() -> void:
 	_test_result_copy_and_peer_isolation()
 	_test_stable_fifo_replacement_and_cleanup()
-	_test_mp_game_cache_capacities_and_lifecycle()
+	_test_owned_cache_capacities_and_lifecycle()
 	_test_pressure_ab_and_source_contract()
 	if failures.is_empty():
 		print("MULTIPLAYER_REPLAY_RESULT_CACHE_SMOKE_TEST: PASS")
@@ -88,33 +86,18 @@ func _test_stable_fifo_replacement_and_cleanup() -> void:
 	)
 
 
-func _test_mp_game_cache_capacities_and_lifecycle() -> void:
-	var mp_game := MP_GAME_SCRIPT.new()
+func _test_owned_cache_capacities_and_lifecycle() -> void:
 	var transactions := MpTransactionsCoordinator.new()
-	transactions.name = "TransactionsCoordinator"
-	mp_game.add_child(transactions)
-	mp_game.transactions_coordinator = transactions
-	var session := MpSessionCoordinator.new()
-	mp_game.add_child(session)
-	mp_game.session_coordinator = session
-	var players := MpPlayerCoordinator.new()
-	mp_game.add_child(players)
-	mp_game.player_coordinator = players
-	var enemies := MpEnemyCoordinator.new()
-	mp_game.add_child(enemies)
-	mp_game.enemy_coordinator = enemies
-	var projectiles := MpProjectileCoordinator.new()
-	mp_game.add_child(projectiles)
-	mp_game.projectile_coordinator = projectiles
+	var tower_economy := MpTowerEconomyCoordinator.new()
 	for request_id in range(1, 258):
-		mp_game.call(
+		tower_economy.call(
 			"_cache_warehouse_transaction_result",
 			2,
 			7001,
 			request_id,
 			{"request_id": request_id, "kind": "warehouse"}
 		)
-		mp_game.call(
+		tower_economy.call(
 			"_cache_production_command_result",
 			2,
 			7002,
@@ -127,12 +110,14 @@ func _test_mp_game_cache_capacities_and_lifecycle() -> void:
 			request_id,
 			{"request_id": request_id, "kind": "crafting"}
 		)
-	var warehouse_results := mp_game.get(
-		"_warehouse_transaction_results_by_peer"
-	) as Dictionary
-	var production_results := mp_game.get(
-		"_production_command_results_by_peer"
-	) as Dictionary
+	var warehouse_cache := tower_economy.get(
+		"_warehouse_transaction_result_cache"
+	) as PeerReplayResultCache
+	var production_cache := tower_economy.get(
+		"_production_command_result_cache"
+	) as PeerReplayResultCache
+	var warehouse_results := warehouse_cache.results_by_peer
+	var production_results := production_cache.results_by_peer
 	var crafting_results := transactions.get(
 		"_simple_crafting_results_by_peer"
 	) as Dictionary
@@ -140,19 +125,19 @@ func _test_mp_game_cache_capacities_and_lifecycle() -> void:
 		(warehouse_results.get(2, {}) as Dictionary).size() == 256
 		and (production_results.get(2, {}) as Dictionary).size() == 256
 		and (crafting_results.get(2, {}) as Dictionary).size() == 32,
-		"三类 MpGame 重放缓存必须分别保持 256/256/32 的按 peer 硬上限。"
+		"塔防经济与制作重放缓存必须分别保持 256/256/32 的按 peer 硬上限。"
 	)
 	_expect(
-		(mp_game.call(
+		(tower_economy.call(
 			"_get_cached_warehouse_transaction_result", 2, 7001, 1
 		) as Dictionary).is_empty()
-		and not (mp_game.call(
+		and not (tower_economy.call(
 			"_get_cached_warehouse_transaction_result", 2, 7001, 257
 		) as Dictionary).is_empty()
-		and (mp_game.call(
+		and (tower_economy.call(
 			"_get_cached_production_command_result", 2, 7002, 1
 		) as Dictionary).is_empty()
-		and not (mp_game.call(
+		and not (tower_economy.call(
 			"_get_cached_production_command_result", 2, 7002, 257
 		) as Dictionary).is_empty()
 		and transactions.get_cached_simple_crafting_result(2, 1).is_empty()
@@ -160,14 +145,14 @@ func _test_mp_game_cache_capacities_and_lifecycle() -> void:
 		"容量环绕后必须只淘汰每类缓存最老结果并保留最新结果。"
 	)
 	for peer_id in [2, 3]:
-		mp_game.call(
+		tower_economy.call(
 			"_cache_warehouse_transaction_result",
 			peer_id,
 			8001,
 			900,
 			{"peer_id": peer_id}
 		)
-		mp_game.call(
+		tower_economy.call(
 			"_cache_production_command_result",
 			peer_id,
 			8002,
@@ -179,7 +164,8 @@ func _test_mp_game_cache_capacities_and_lifecycle() -> void:
 			900,
 			{"peer_id": peer_id}
 		)
-	mp_game.call("_clear_peer_network_state", 2)
+	tower_economy.clear_peer(2)
+	transactions.clear_peer(2)
 	_expect(
 		not warehouse_results.has(2)
 		and not production_results.has(2)
@@ -187,16 +173,18 @@ func _test_mp_game_cache_capacities_and_lifecycle() -> void:
 		and warehouse_results.has(3)
 		and production_results.has(3)
 		and crafting_results.has(3),
-		"MpGame 断线生命周期必须同步清理三类目标 peer 缓存且不影响其他 peer。"
+		"缓存所有者的断线生命周期必须清理目标 peer 且不影响其他 peer。"
 	)
-	mp_game.call("_exit_tree")
+	tower_economy.reset_session_state()
+	transactions.reset_session_state()
 	_expect(
 		warehouse_results.is_empty()
 		and production_results.is_empty()
 		and crafting_results.is_empty(),
-		"MpGame 场景退出必须同步清空三类载荷和环形顺序元数据。"
+		"会话重置必须同步清空三类载荷和环形顺序元数据。"
 	)
-	mp_game.free()
+	tower_economy.free()
+	transactions.free()
 
 
 func _test_pressure_ab_and_source_contract() -> void:
@@ -248,14 +236,17 @@ func _test_pressure_ab_and_source_contract() -> void:
 	var cache_source := FileAccess.get_file_as_string(
 		"res://scene/multiplayer/peer_replay_result_cache.gd"
 	)
-	var mp_source := FileAccess.get_file_as_string(
-		"res://scene/multiplayer/mp_game.gd"
+	var tower_economy_source := FileAccess.get_file_as_string(
+		(
+			"res://scene/game_modes/tower_defense/multiplayer/economy/"
+			+ "mp_tower_economy_coordinator.gd"
+		)
 	)
 	_expect(
 		not cache_source.contains(".keys()")
 		and not cache_source.contains("pop_front")
 		and not cache_source.contains("remove_at")
-		and not mp_source.contains("peer_cache.keys()[0]"),
+		and not tower_economy_source.contains("peer_cache.keys()[0]"),
 		"生产重放缓存不得退化为 keys 数组、头删或线性位移淘汰。"
 	)
 

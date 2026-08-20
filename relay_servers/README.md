@@ -11,6 +11,7 @@ relay_servers/
 │   ├── models.py           # 数据模型
 │   ├── room_manager.py     # 房间生命周期管理
 │   ├── acquisition_security.py # HMAC capability 与单进程准入限流
+│   ├── relay_admission.py  # 每房间、角色绑定的 Relay admission ticket
 │   ├── relay_launcher.py   # Godot Headless Relay 启动器
 │   └── config.py           # 配置
 ├── relay_godot_project/    # Godot Headless Relay 项目
@@ -26,8 +27,13 @@ relay_servers/
 └── README.md
 ```
 
-当前网络基线为协议 v88、8 个 ENet 通道。v88 将 F10 调试作弊目录的
-物品授予范围扩展到受信资源材料；RPC 签名与数量保持不变。v87 及更旧
+当前网络基线为协议 v90、9 条逻辑信道（CH0..CH8，ENet 最大应用信道索引为 8）。
+v90 把公网成员的完整注册元组并入原生认证 envelope，并由 Relay 在认证后有界转发给
+逻辑 Host；成员发现、身份查询、注册回执/拒绝和大厅名单统一使用 reliable CH8，
+不与 Godot 引擎硬编码在 CH0 的 auth/peer-discovery 系统包共用应用队列。v89 及更旧客户端缺少该
+认证 schema 与转发 RPC，不能与 v90 房间安全混联。v89 加入了公网 Relay admission
+和 Host 身份查询/结果 RPC。v88 将 F10 调试作弊目录的
+物品授予范围扩展到受信资源材料；其 RPC 签名与数量当时保持不变。v87 及更旧
 客户端缺少该统一调试授权契约，不能与 v88 房间安全混联。v87 将
 WaterCollector 固定为连续循环采集，并从产线面板隐藏单次/无限循环
 mode；v86 及更旧客户端缺少该统一运行时契约，不能与 v87 房间安全混联。
@@ -130,7 +136,7 @@ v35 的战斗机器人枪手弹丸及玩家受击来源 wire ID 17 保持兼容�
 P3 路线世界继续使用约 12Hz 的轻量角色姿态同步：
 Client 在输入信道上报，Host 校验后在玩家状态信道广播，非法位置通过可靠信道纠正。
 v34 的 P3 路线全量快照携带 `runtime_contract_hash`，Host 与 Client 必须使用相同的世界几何契约；
-v87 及更旧客户端不能加入 v88 房间。
+v89 及更旧客户端不能加入 v90 房间。
 Relay 只转发 RPC，不重复实现游戏状态逻辑；逻辑 Host 对不兼容、重连加载或
 运行时投影超时成员的断开请求会可靠发送至 Relay 服务端（peer 1）。Relay 只
 接受已登记 Host 的请求，并由服务端断开同房目标；普通客户端不能踢出其他成员。
@@ -139,6 +145,35 @@ Relay 只转发 RPC，不重复实现游戏状态逻辑；逻辑 Host 对不兼�
 ```bash
 godot --headless --path . --script res://dev_tools/relay_rpc_parity_smoke_test.gd
 ```
+
+### 公网 Relay 容量与真实验证边界
+
+公网 Relay 当前 **fail-closed 为 2 人（Host + 1 member）**。HTTP 创建模型的
+默认值与上限、Launcher 的 `MIN_RELAY_CLIENTS/MAX_RELAY_CLIENTS`、以及 Godot Relay
+的 `MIN_CLIENTS/MAX_CLIENTS` 都固定为 2；任何大于 2 的公网创建请求或
+`--max-clients` 启动参数都必须在产生房间/Relay 副作用前拒绝。
+`MAX_PLAYERS_PER_ROOM=8` 仅保留 RoomManager 领域模型、历史数据和未来定制
+Relay 的上界，不会放大当前公网入口。DIRECT/LAN 不经这组服务，仍保留 8 人上限。
+
+当前真实 Relay E2E 门禁在 stock Godot 4.6.3 上已验证 2 人完成认证、成员
+注册和大厅名单收敛。3 人及以上在 `SceneMultiplayer.auth_callback + server_relay`
+组合下可复现 peer-discovery/CH0 停滞，因此不是已支持但未压测的容量，而是
+显式禁用的引擎限制。本项目不使用硬编码原生 `SYS_COMMAND_ADD_PEER`
+或“未认证 transport 先入 mesh”的方式绕过该限制：前者存在迟到原生 ADD 导致
+重复 `_admit_peer()` 的状态破坏风险，后者会在验票前把公网 transport 暴露给全房 mesh。
+
+只有同时满足以下条件才能解除 2 人上限：
+
+1. 升级到已修复该时序的 stock Godot，或使用会在 `SceneMultiplayer` 前按已认证 peer
+   过滤与转发的定制 Relay/MultiplayerPeer。
+2. 在目标发行二进制上跑通至少 Host + 3 members 的真实 E2E，再通过断线、
+   重连、丢包和长时 soak 门禁。
+3. 在同一协议发布中一起调整 HTTP 模型、Launcher、Relay 硬上限、客户端公网
+   上限、Python/真实探针门禁与本文档，不得只改其中一层。
+
+`CH_MEMBERSHIP=8`、`ENET_MAX_CHANNEL=8`、`CHANNEL_COUNT=9` 分别表示成员控制
+信道、传给 ENet create API 的最大应用信道索引，以及 CH0..CH8 的逻辑信道数。
+Relay 的 `create_server` 继续传 `ENET_MAX_CHANNEL`（8），不得误传逻辑计数 9。
 
 ## 快速部署
 
@@ -167,7 +202,7 @@ chmod +x scripts/*.sh
 | `GODOT_SERVER_PATH` | `/opt/godot/Godot_v4.6-stable_linux.x86_64` | Godot 可执行文件路径 |
 | `RELAY_PROJECT_PATH` | `./relay_godot_project` | Relay 项目路径 |
 | `MAX_ROOMS` | `100` | 最大房间数，不得超过 Relay 端口数量 |
-| `MAX_PLAYERS_PER_ROOM` | `8` | 单房人数上限，必须在 2..8 |
+| `MAX_PLAYERS_PER_ROOM` | `8` | RoomManager/历史数据的领域上限，必须在 2..8；当前公网 HTTP、Launcher 和 Relay 另行硬限 2 人 |
 | `ACQUISITION_PROVISIONAL_TIMEOUT_SECONDS` | `60` | 创建/加入响应确认前的短租约，必须在 30..60 秒 |
 | `ACQUISITION_TOMBSTONE_TTL_SECONDS` | `120` | 取消墓碑与饱和隔离期限，必须在 120..600 秒且长于短租约 |
 | `ACQUISITION_TOKEN_CAPACITY` | `4096` | 活动 acquisition 与墓碑共享容量；必须至少为 `MAX_ROOMS * MAX_PLAYERS_PER_ROOM + 1`，至多 100000 |
@@ -186,6 +221,9 @@ chmod +x scripts/*.sh
 | `GAME_MAX_DURATION_SECONDS` | `36000` | 房间和 Relay 不可被心跳延长的绝对生命周期 |
 | `CLEANUP_INTERVAL_SECONDS` | `30` | 大厅生命周期对账间隔 |
 | `RELAY_STARTUP_GRACE_SECONDS` | `5` | spawn 后确认 Relay 仍存活再挂接房间的宽限 |
+| `RELAY_ADMISSION_TICKET_TTL_SECONDS` | `60` | 单次 Relay admission ticket 的短连接窗口，必须在 15..120 秒且长于启动宽限 |
+| `RELAY_ADMISSION_REFRESH_BURST` | `3` | 同一已验证成员在滚动窗口内可即时换票的次数；只能为 2..3，以覆盖 ack 丢失重试且维持 replay 账本上界 |
+| `RELAY_ADMISSION_REFRESH_WINDOW_SECONDS` | `5` | 成员换票滚动限流窗口，必须在 5..60 秒 |
 
 旧版 `ROOM_IDLE_TIMEOUT` / `RELAY_IDLE_TIMEOUT` 将 10 小时同时当作心跳租约、
 首次连接等待和游戏上限，现已不再读取。升级部署时应删除这两个旧变量，并配置上表
@@ -203,9 +241,14 @@ payload 的 SHA-256 指纹、短期 expiry 与 128-bit 随机 nonce。实际 CRE
 RoomManager expiry CAS，因此初验后等待到期的请求不会提交。
 
 提交后先授予 60 秒 provisional 短租约。响应中的 `member_token` 是与短期 capability
-不同的独立成员秘密：普通成员先连上 Relay，再用 `(room_id, player_name, member_token)`
+不同的独立成员秘密：普通成员先用响应中的 `relay_admission_ticket` 完成 Relay 原生认证，
+再用 `(room_id, player_name, member_token)`
 调用 `/acquisitions/confirm`；即使此时 capability 已过期仍可确认。房主由
 `/rooms/{id}/host_ready` 确认。未确认身份即使客户端崩溃且取消从未送达也会自动回收。
+目前该回收只作用于大厅目录：若恶意成员已经完成 Relay/Host 注册却故意不 confirm，
+provisional 目录项到期后还没有服务端撤销消息同步踢出其 transport/Host 名册。因此这里
+只是 acquisition 占位回收，不代表 provisional → ACTIVE 的端到端生命周期已经闭合；
+正式容量对账仍需后续统一 directory-confirmed proof 或 revocation 协议。
 响应到达后退出统一使用 `/rooms/{id}/leave` 与成员秘密；只有响应前不知道 room id 时，
 才用 `/acquisitions/release` 携 capability 取消迟到提交。
 
@@ -253,6 +296,7 @@ HTTP 403 拒绝。隐藏历史房间不会出现在公开房间列表中，也�
 | `POST` | `/rooms` | 创建新房间 |
 | `POST` | `/rooms/{id}/join` | 加入房间 |
 | `POST` | `/rooms/{id}/host_ready` | 房主登记 Relay peer id 并开放加入 |
+| `POST` | `/rooms/{id}/admission_ticket` | 普通成员用 `member_token` 换取新的单次短票（用于重连） |
 | `POST` | `/rooms/{id}/keepalive` | 房主续租房间，避免游戏中被空闲清理 |
 | `POST` | `/rooms/{id}/leave` | 使用成员令牌离开房间；房主离开会关闭房间 |
 | `POST` | `/acquisitions/confirm` | Relay 连通后确认 provisional 成员身份 |
@@ -265,6 +309,92 @@ HTTP 403 拒绝。隐藏历史房间不会出现在公开房间列表中，也�
 创建房间或快速匹配自动创建房间时，响应会返回 `host_token`。只有房主需要保存它；普通
 `join` 响应不会包含该字段。受保护请求的响应还会原样返回短期 `acquisition_token`，并
 返回独立随机 `member_token`；二者不得相等，且都不会出现在房间列表或其他玩家资料中。
+所有带调用者私有成员身份的 create/join/quick/host_ready 响应还会返回
+`relay_admission_ticket`。房间列表、匿名房间快照和其他玩家资料绝不包含该票据。
+
+### Relay 原生认证契约
+
+每个 `RoomInfo` 在创建时生成独立随机 admission secret。Lobby 只通过子进程环境变量
+`ARC_NICE_RELAY_ROOM_ID` 与 `ARC_NICE_RELAY_ADMISSION_SECRET` 传给对应 Godot Relay；
+两者都不进入 Relay 命令行，其中 secret 也绝不进入 HTTP 响应或日志（room id 本身是
+公开房间标识）。缺少任一值时 Relay/Launcher 均 fail-close，旧的
+“第一个 ENet 连接自动成为 Host”行为已删除。
+
+`relay_admission_ticket` 是以下 wire 格式：
+
+```
+ra1.<base64url-without-padding(canonical-json)>.<lowercase-hex-hmac-sha256>
+```
+
+HMAC 输入是 ASCII `ra1.<payload>`；JSON claims 精确包含 `v=1`、`room_id`、
+`role`（`host` 或 `member`）、`player_name`、`iat`、`exp` 和随机 `nonce`。票据按房间
+剩余绝对生命周期与 60 秒短连接窗的较小值过期，并由每房间 secret 隔离。Relay 在成功
+准入前原子消费 nonce；同票重放（包括原连接断开后）、跨房间重放、篡改、未知字段和过期
+均拒绝。消费账本先清过期项；容量按房间人数推导为
+`1 + (max_clients - 1) * 73 + 64`。当前公网 `max_clients=2`，因此账本硬上界为
+138：覆盖唯一 member 在 120 秒 TTL、每 5 秒 3 次刷新下的合法最坏窗口，
+再加 Host/控制重试余量；满载时拒绝新认证而不继续增长。RoomManager 保留的
+8 人领域上界不会放大当前 Relay 的 nonce 账本。受控
+Relay 重启还会轮换房间 secret，旧进程签发的短票不能跨世代重放。
+
+双方必须在设置 `multiplayer_peer` 时配置非空 `SceneMultiplayer.auth_callback`。客户端在
+`peer_authenticating` 中向 server peer 1 发送 UTF-8 JSON：
+
+```json
+{"v":1,"ticket":"ra1....","player_name":"...","character_id":"weishidaier","character_confirmed":true,"protocol_version":90,"reconnect_token":"<32 lowercase hex>","content_manifest_schema":1,"content_digest":"<64 lowercase hex>"}
+```
+
+Relay 验票成功后先用 `send_auth` 返回 ack，再调用 `complete_auth(peer_id)`：
+
+```json
+{"v":1,"ok":true,"room_id":"...","role":"host","player_name":"...","peer_id":2}
+```
+
+客户端核对 `ok/room_id/role` 后调用 `complete_auth(1)`。只有双方完成后才会产生
+`connected_to_server/peer_connected`，认证中的 peer 不进入 `get_peers()`、RPC 或
+`server_relay`。失败响应为 `{"v":1,"ok":false,"code":"..."}`，随后断连；客户端不得
+依赖失败 ack 一定送达。只有 host ticket 能建立逻辑 Host 和三个 stub authority；member
+ticket 在 Host 尚未认证时必定拒绝，同一 `player_name` 也不能同时占用多个连接。
+请求必须精确包含上述 9 个字段；未知字段、类型/长度错误、非规范 token/digest，或
+`player_name` 与票据 claims 不一致都会在认证阶段拒绝。Relay 为每个已认证 peer 保存票据
+身份和这份原始注册元组；成员双方完成认证后，Relay 在 reliable CH8 每 250ms 向逻辑 Host
+有界重发同一元组，最多 30 秒。Host 只接受 peer 1 的转发 envelope，并向 peer 1 二次查询该 transport
+的认证身份。只有 Relay 返回同一 peer、请求号、房间、`member` 角色与完全一致的玩家名，
+Host 才把注册交给成员账本；查询无响应、迟到、缺失或不一致都在统一 10 秒 registration
+deadline 内断开，未绑定 peer 不进入 gameplay。Client 仅在收到 accepted 且自身进入 ACTIVE
+roster 后，经 peer 1 回报 registration completed；Relay 核验绑定身份后才停止该 transport 的
+有界重发。身份查询/结果 RPC 属于 v89；认证注册转发/完成 RPC 与成员控制切换到 CH8 属于
+v90 wire 表面。
+只有认证双方都调用 `complete_auth` 并进入 `peer_connected` 后才开放成员准入；Host
+success ack 若在此之前丢失，可用新 nonce 重试。同一 Relay 世代真正连入过 Host 后便
+永久封闭 Host 槽，Host 断线后不接受替代 Host，符合当前无 Host 迁移约束。普通成员
+transport 重连不能复用已消费票据，必须先向
+`POST /rooms/{id}/admission_ticket` 提交 `{"player_name":"...","member_token":"..."}`，
+换取当前 `relay_ip`、`relay_port`、非零 `host_peer_id` 与新的
+`relay_admission_ticket`；该端点不为 Host 签票。
+成功响应精确包含 7 个字段：`room_id`、`player_name`、`role`、`relay_ip`、
+`relay_port`、`host_peer_id`、`relay_admission_ticket`，其中 `role` 固定为 `member`；
+该正式端点也经过 release room 门禁，调试/隐藏模式不能绕过它换票。
+该端点仅提供重新认证/重连的基础能力；当前游戏客户端尚未接通“掉线 → HTTP 刷新短票
+→ 重建 ENet → 安全重载当前多人场景”的公网自动重连状态机，不能把此接口视为生产自动
+重连已经完成。
+同一已验证成员默认可在 5 秒内突发换票 3 次以覆盖响应/认证 ack 丢失，第 4 次返回
+HTTP 429 和 `Retry-After`。Host 启动或受控重启 Relay 时，受 `host_token` 保护的
+`POST /rooms/{id}/request_relay` 会返回新世代的 Host ticket；Host 不能使用成员换票端点。
+该 Host 响应使用同一 7 字段 schema，`role` 固定为 `host`，并带当前 `host_peer_id`：
+新 Relay 世代在 Host 尚未完成认证时为 `0`，完成
+`host_ready` 后为实际 peer id。
+底层 ENet transport 容量与业务房间容量分离：当前公网业务容量为 2，Relay 额外
+预留 4 个认证中 socket，因此 ENet transport 硬容量为 6；认证中 peer 同时最多 4 个，
+认证成功前再次按 `max_clients=2` 检查业务人数。这样短期无效连接
+不能直接占满所有合法席位，但公网部署仍应在防火墙/边缘层增加 UDP 来源限速，抵御分布式
+来源持续占满这 4 个短暂 reserve。
+
+生产 Launcher 只把运行 Godot 所需的 PATH/HOME/TMP/locale/动态库等 allowlist 环境和
+`ARC_NICE_RELAY_ROOM_ID`、`ARC_NICE_RELAY_ADMISSION_SECRET` 交给单房 Relay；大厅的
+acquisition HMAC、数据库或其他全局服务秘密不会继承。Launcher 和 Relay 日志只记录房间
+端口、进程世代、peer id 与角色，不记录 secret 或 ticket；Relay secret 只走子进程环境，
+ticket 只走 `send_auth` 的认证数据帧。
 
 新装部署默认 `ALLOW_LEGACY_ACQUISITION_REQUESTS=false`，缺 capability 的
 CREATE/JOIN/QUICK 以 HTTP 428 fail-close。若确有在线旧客户端需要滚动迁移，顺序必须是：

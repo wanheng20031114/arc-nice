@@ -8,7 +8,7 @@ param(
     [ValidateSet("standard", "tower_defense")]
     [string]$GameMode = "standard",
     [ValidateRange(2, 8)]
-    [int]$PlayerCount = 4,
+    [int]$PlayerCount = 2,
     [switch]$GodotVerbose,
     [string]$ProjectPath = "",
     [string]$PeerScript = "res://dev_tools/multiplayer_lan_probe_peer.gd",
@@ -16,7 +16,7 @@ param(
     [string]$RelayProjectPath = "",
     [string[]]$RelayExtraArguments = @(),
     [ValidateRange(1, 120)]
-    [int]$RelayStartupIdleTimeoutSeconds = 30,
+    [int]$RelayStartupIdleTimeoutSeconds = 120,
     [ValidateRange(1, 30)]
     [int]$RelayEmptyIdleTimeoutSeconds = 1
 )
@@ -26,8 +26,17 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "lan_probe_truth_common.ps1")
 
+if ($PlayerCount -gt 2) {
+    throw "Stock Godot 4.6 public Relay is fail-closed to PlayerCount 2."
+}
 if ($Scenario -eq "reconnect" -and $PlayerCount -ne 4) {
     throw "The reconnect probe currently requires -PlayerCount 4."
+}
+if (
+    $Scenario -in @("tower_defense", "reconnect") -and
+    $GameMode -ne "tower_defense"
+) {
+    throw "The $Scenario probe requires -GameMode tower_defense."
 }
 
 $reconnectToken = "44444444444444444444444444444444"
@@ -51,6 +60,78 @@ $entries = @()
 $failures = [Collections.Generic.List[string]]::new()
 $hostPeerId = 0
 $script:relayProbeDeadlineUtc = [DateTime]::MinValue
+$script:relayProcessDeadlineUtc = [DateTime]::MinValue
+$peerTimeoutSeconds = [Math]::Min(
+    [Math]::Max($TimeoutSeconds - 10, 20),
+    90
+)
+$relayRoomId = "probe-$runId"
+$relaySecretBytes = New-Object byte[] 32
+$relayRandom = [Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $relayRandom.GetBytes($relaySecretBytes)
+}
+finally {
+    $relayRandom.Dispose()
+}
+$relayAdmissionSecret = [Convert]::ToBase64String($relaySecretBytes).TrimEnd('=')
+$relayAdmissionSecret = $relayAdmissionSecret.Replace('+', '-').Replace('/', '_')
+
+
+function ConvertTo-RelayProbeBase64Url {
+    param([Parameter(Mandatory = $true)][byte[]]$Bytes)
+
+    return [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+
+function New-RelayProbeAdmissionTicket {
+    param(
+        [Parameter(Mandatory = $true)][string]$Role,
+        [Parameter(Mandatory = $true)][string]$PlayerName
+    )
+
+    $issuedAt = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $remainingGlobalSeconds = [long][Math]::Floor(
+        ($script:relayProbeDeadlineUtc - [DateTime]::UtcNow).TotalSeconds
+    )
+    $remainingRelaySeconds = [long][Math]::Floor(
+        ($script:relayProcessDeadlineUtc - [DateTime]::UtcNow).TotalSeconds
+    )
+    $ticketLifetimeSeconds = [long][Math]::Min(
+        120,
+        [Math]::Max(
+            1,
+            [Math]::Min($remainingGlobalSeconds, $remainingRelaySeconds)
+        )
+    )
+    $claims = [ordered]@{
+        exp = [long]($issuedAt + $ticketLifetimeSeconds)
+        iat = [long]$issuedAt
+        nonce = [Guid]::NewGuid().ToString("N")
+        player_name = $PlayerName
+        role = $Role
+        room_id = $relayRoomId
+        v = 1
+    }
+    $payloadJson = ConvertTo-Json $claims -Compress
+    $payload = ConvertTo-RelayProbeBase64Url (
+        [Text.Encoding]::UTF8.GetBytes($payloadJson)
+    )
+    $signedMessage = "ra1.$payload"
+    $hmac = New-Object Security.Cryptography.HMACSHA256
+    $hmac.Key = [Text.Encoding]::ASCII.GetBytes($relayAdmissionSecret)
+    try {
+        $signatureBytes = $hmac.ComputeHash(
+            [Text.Encoding]::ASCII.GetBytes($signedMessage)
+        )
+    }
+    finally {
+        $hmac.Dispose()
+    }
+    $signature = ([BitConverter]::ToString($signatureBytes)).Replace('-', '').ToLowerInvariant()
+    return "$signedMessage.$signature"
+}
 
 
 function Format-RelayProbeSeconds {
@@ -80,7 +161,8 @@ function Start-RelayProbeManagedEntry {
         [Parameter(Mandatory = $true)][string]$Name,
         [Parameter(Mandatory = $true)][string]$Role,
         [Parameter(Mandatory = $true)][string]$WorkingDirectory,
-        [Parameter(Mandatory = $true)][string[]]$Arguments
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [hashtable]$EnvironmentVariables = @{}
     )
 
     $stdout = Join-Path $logRoot "$Name.out.log"
@@ -99,6 +181,7 @@ function Start-RelayProbeManagedEntry {
         $GodotExe `
         $WorkingDirectory `
         $managedArguments `
+        $EnvironmentVariables `
         -EnableLiveLineCapture
     return [pscustomobject]@{
         Name = $Name
@@ -152,7 +235,7 @@ function Start-RelayProbePeer {
         "--probe-port=$Port",
         "--probe-relay_host_peer_id=$RelayHostPeerId",
         "--probe-expected_players=$PlayerCount",
-        "--probe-timeout_seconds=20",
+        "--probe-timeout_seconds=$peerTimeoutSeconds",
         "--probe-run_seconds=$(if ($Role -eq 'host') { 3 } else { 2 })",
         "--probe-linger_seconds=$(if ($Role -eq 'host') { 0 } else { 6 })",
         "--probe-events=$Events",
@@ -168,11 +251,21 @@ function Start-RelayProbePeer {
     foreach ($extraArgument in $PeerExtraArguments) {
         $arguments += [string]$extraArgument
     }
+    $ticketPlayerName = $Name -replace '_rejoin$', ''
+    $ticketRole = if ($Role -eq "host") { "host" } else { "member" }
+    $admissionTicket = New-RelayProbeAdmissionTicket `
+        $ticketRole `
+        $ticketPlayerName
+    $peerEnvironment = @{
+        ARC_NICE_RELAY_ROOM_ID = $relayRoomId
+        ARC_NICE_RELAY_ADMISSION_TICKET = $admissionTicket
+    }
     return Start-RelayProbeManagedEntry `
         $Name `
         $Role `
         $resolvedProjectPath `
-        $arguments
+        $arguments `
+        $peerEnvironment
 }
 
 
@@ -228,6 +321,9 @@ try {
     $script:relayProbeDeadlineUtc = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
 
     $relayMaxLifetimeSeconds = [Math]::Max($TimeoutSeconds + 30, 60)
+    $script:relayProcessDeadlineUtc = (
+        [DateTime]::UtcNow.AddSeconds($relayMaxLifetimeSeconds)
+    )
     $relayRunMarker = "$runMarkerPrefix-relay"
     $relayArguments = @(
         "--headless",
@@ -243,20 +339,26 @@ try {
     foreach ($extraArgument in $RelayExtraArguments) {
         $relayArguments += [string]$extraArgument
     }
+    $relayEnvironment = @{
+        ARC_NICE_RELAY_ROOM_ID = $relayRoomId
+        ARC_NICE_RELAY_ADMISSION_SECRET = $relayAdmissionSecret
+    }
     $relayEntry = Start-RelayProbeManagedEntry `
         "relay" `
         "relay" `
         $resolvedRelayProjectPath `
-        $relayArguments
+        $relayArguments `
+        $relayEnvironment
     $entries += $relayEntry
 
     $relayReadyMarker = (
         "[Relay] 服务器已启动, port=$Port, max_clients=$PlayerCount, " +
-	        "protocol=v85, " +
+        "transport_clients=$([Math]::Min($PlayerCount + 4, 12)), " +
+	        "protocol=v90, " +
         "startup_idle=$(Format-RelayProbeSeconds $RelayStartupIdleTimeoutSeconds), " +
         "empty_idle=$(Format-RelayProbeSeconds $RelayEmptyIdleTimeoutSeconds), " +
         "max_lifetime=$(Format-RelayProbeSeconds $relayMaxLifetimeSeconds), " +
-        "server_relay=true"
+        "server_relay=true, authentication=required"
     )
     $relayReadyPattern = "(?m)^$([regex]::Escape($relayReadyMarker))`r?$"
     $null = Wait-RelayProbeStdoutPattern `
@@ -285,7 +387,7 @@ try {
 
     for ($clientIndex = 2; $clientIndex -le $PlayerCount; $clientIndex++) {
         $clientName = "client$clientIndex"
-        $delayMs = if ($clientIndex -eq 2) { 0 } else { 150 }
+        $delayMs = 0
         $clientReconnectToken = if (
             $Scenario -eq "reconnect" -and $clientName -eq "client4"
         ) {
@@ -294,7 +396,7 @@ try {
         else {
             ""
         }
-        $entries += Start-RelayProbePeer `
+        $clientEntry = Start-RelayProbePeer `
             -Name $clientName `
             -Role "client" `
             -RelayHostPeerId $hostPeerId `
@@ -302,6 +404,14 @@ try {
             -Events ($clientIndex -eq 2) `
             -ReconnectIdentity $clientReconnectToken `
             -ReconnectAttempt $false
+        $entries += $clientEntry
+        # 大型塔防脚本在多个冷进程中同时解析会形成磁盘/内存争用。每个
+        # Client 至少完成脚本加载并开始拨号后再启动下一个，但不等待认证或
+        # roster，因此仍会真实覆盖并发联机。
+        $null = Wait-RelayProbeStdoutPattern `
+            $clientEntry `
+            '(?m)^RELAY_PROBE_CLIENT_DIAL_STARTED\r?$' `
+            "$clientName relay dial start"
     }
 
     if ($Scenario -eq "reconnect") {

@@ -237,7 +237,7 @@ class AcquisitionSecurityApiTests(unittest.TestCase):
         create_payload = {
             "name": "Bound",
             "host_name": "Host",
-            "max_players": 4,
+            "max_players": 2,
             "game_mode": GameMode.STANDARD.value,
         }
         with (

@@ -304,6 +304,14 @@ func _test_reconnect_snapshot_recovery(
 		and (spectator_snapshot.get("offers", []) as Array).is_empty(),
 		"断线→重连过程中每个实际发布的目标快照都必须可解码，且 new peer 不重开商店。"
 	)
+	_expect(
+		client_run_state.remap_multiplayer_peer_state(
+			1,
+			70,
+			client_run_state.get_multiplayer_session_membership_revision() + 1
+		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED,
+		"Client 必须先由认证身份事务迁移个人账本，再接收 new peer 商店快照。"
+	)
 	client_controller.set_identity_context(
 		false,
 		70,
@@ -319,7 +327,7 @@ func _test_reconnect_snapshot_recovery(
 		)
 		and bool(spectator_snapshot.get("target_exited", false))
 		and client_run_state.has_multiplayer_peer_state(70),
-		"Client Session 仍缓存 old target 时，必须仅靠 new spectator 全量快照恢复到路线地图。"
+		"Client Session 仍缓存 old target 时，认证迁移后的 new spectator 全量快照必须恢复到路线地图。"
 	)
 
 

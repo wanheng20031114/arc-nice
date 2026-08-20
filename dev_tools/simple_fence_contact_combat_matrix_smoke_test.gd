@@ -17,6 +17,9 @@ const SIMPLE_FENCE_CONFIG := preload(
 const PROACTIVE_OBJECTIVE_CONFIG := preload(
 	"res://resources/config/plant_defense/agave_cannon.tres"
 )
+const COMBAT_RUNTIME_FIXTURE_SCENE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
 
 const BASIC_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
@@ -300,7 +303,10 @@ func _verify_attack_family_case(case_data: Dictionary, case_index: int) -> void:
 	if enemy_config == null:
 		return
 
-	var fixture := Node2D.new()
+	var fixture := (
+		COMBAT_RUNTIME_FIXTURE_SCENE.instantiate()
+		as EnemyGameplayGatewayTestRuntime
+	)
 	fixture.name = "Family_%02d_%s" % [case_index, label]
 	test_root.add_child(fixture)
 	var origin := Vector2(0.0, float(case_index) * 256.0)
@@ -801,6 +807,9 @@ func _spawn_enemy(
 	parent.add_child(enemy)
 	enemy.global_position = position
 	enemy.setup(enemy_config, player, pathfinder)
+	var combat_runtime := parent as CombatRuntimeBase
+	if combat_runtime != null:
+		combat_runtime.bind_enemy_runtime_context(enemy)
 	enemy.set_objective_target(objective)
 	enemy.touch_damage_interval = 0.05
 	enemy.navigation_update_interval_frames = 1
@@ -901,17 +910,8 @@ func _dispose_fixture(fixture: Node) -> void:
 	if fixture == null or not is_instance_valid(fixture):
 		return
 	_disable_fixture_enemy_processing(fixture)
-	# Authored projectiles are added to current_scene, not the fixture.  Retire
-	# them before freeing their typed target reference so teardown cannot create
-	# a false dangling-target error between physics ticks.
-	for world_child in test_root.get_children():
-		if world_child == fixture:
-			continue
-		world_child.set_physics_process(false)
-		world_child.set_process(false)
-		world_child.queue_free()
-	await process_frame
-	await physics_frame
+	# Projectile ownership now lives under the explicit CombatRuntime fixture,
+	# so freeing the fixture retires its projectiles before typed targets.
 	fixture.queue_free()
 	await physics_frame
 	await process_frame

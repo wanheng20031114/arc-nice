@@ -25,15 +25,15 @@ const EXPECTED_MP_GAME_RPC_ANNOTATION_HASH := (
 	"04b2b355044d63a143b114fa508dd1ca55166e606d89a1815bff7a508418704a"
 )
 
-const EXPECTED_NET_MANAGER_RPC_COUNT := 13
+const EXPECTED_NET_MANAGER_RPC_COUNT := 17
 const EXPECTED_NET_MANAGER_RPC_NAME_HASH := (
-	"42b15dba294d6f62cded5389aad633bd588d81626d9c1923903c430a78f938a1"
+	"e21b140ea3a7a94d6c1879a7650ca0b1b9d90ab6b4ee6b64cec08c3eeaa25919"
 )
 const EXPECTED_NET_MANAGER_RPC_SIGNATURE_HASH := (
-	"0af029af83472d1cdbc52b94350a0d1155f1d2d2b7c6b4499d516431a3b154cf"
+	"e98fb19a3a7cbf8953bc3a629a494084f1f33bc1eee53a1ff81b43cf1403a0dd"
 )
 const EXPECTED_NET_MANAGER_RPC_ANNOTATION_HASH := (
-	"715c9101c72de2d89f5510de77c618b7c78e11cb45fe575576aa9ed037119c5a"
+	"ed1c77b5392c171753dbd1d76faa25063423337343b3b610274c60993dc672a4"
 )
 
 const EXPECTED_MP_ROGUE_ROUTE_RPC_COUNT := 17
@@ -340,8 +340,13 @@ func _strip_quotes(value: String) -> String:
 
 
 func _test_protocol_and_wire_values() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 88, "多人协议必须保持 v88。")
-	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v88 必须保持 8 个 ENet 信道。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 90, "多人协议必须保持 v90。")
+	_expect(
+		NET_CONSTANTS.CH_MEMBERSHIP == 8
+		and NET_CONSTANTS.ENET_MAX_CHANNEL == 8
+		and NET_CONSTANTS.CHANNEL_COUNT == 9,
+		"v90 必须保持 ENet 最大应用信道 8 与 CH0..CH8 九条逻辑信道。"
+	)
 	_expect(GameModeCatalog.MODE_STANDARD == 0, "standard wire value 必须保持 0。")
 	_expect(GameModeCatalog.MODE_TOWER_DEFENSE == 1, "tower_defense wire value 必须保持 1。")
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P1 == 2, "test_arena_p1 wire value 必须保持 2。")
@@ -384,7 +389,7 @@ func _test_protocol_and_wire_values() -> void:
 		_expect(
 			int(CombatFlowState.State.get(state_name, -1))
 			== int(expected_flow_values[state_name]),
-			"CombatFlowState.%s 的 v88 wire value 改变。" % state_name
+			"CombatFlowState.%s 的 v90 wire value 改变。" % state_name
 		)
 
 

@@ -5,6 +5,7 @@ const DIAGNOSTICS_SCENE := preload(
 )
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const MP_GAME_SOURCE_PATH := "res://scene/multiplayer/mp_game.gd"
+const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 
 var failures: Array[String] = []
 
@@ -31,13 +32,17 @@ func _test_static_boundary(diagnostics: MpNetworkDiagnosticsCoordinator) -> void
 		"MpGame must statically contain NetworkDiagnosticsCoordinator."
 	)
 	if mp_game != null:
+		_expect(
+			diagnostics.bind_rpc_source(mp_game),
+			"Diagnostics must bind the Godot RPC metadata from the MpGame facade."
+		)
 		mp_game.free()
 	var source := FileAccess.get_file_as_string(MP_GAME_SOURCE_PATH)
 	var rpc_pattern := RegEx.new()
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
 		rpc_pattern.search_all(source).size() == 145,
-		"Diagnostics extraction must preserve all 145 protocol-v88 MpGame RPC facades."
+		"Diagnostics extraction must preserve all 145 protocol-v90 MpGame RPC facades."
 	)
 	var send_body := _function_body(source, "_rpc_to_connected_clients")
 	_expect(
@@ -63,19 +68,26 @@ func _test_static_boundary(diagnostics: MpNetworkDiagnosticsCoordinator) -> void
 		"Network diagnostics must not guess runtime capabilities."
 	)
 	_expect(
-		MpNetworkDiagnosticsCoordinator.get_rpc_traffic_channel(
+		diagnostics.get_rpc_traffic_channel(
 			&"net_projectile_fired"
 		) == 4
-		and MpNetworkDiagnosticsCoordinator.get_rpc_traffic_channel(
+		and diagnostics.get_rpc_traffic_channel(
 			&"net_inventory_snapshot"
 		) == 6
-		and MpNetworkDiagnosticsCoordinator.get_rpc_traffic_channel(
+		and diagnostics.get_rpc_traffic_channel(
 			&"net_enemy_action"
 		) == 7
-		and MpNetworkDiagnosticsCoordinator.get_rpc_traffic_channel(
+		and diagnostics.get_rpc_traffic_channel(
 			&"net_enemy_spawned"
-		) == 5,
-		"Stable RPC channel classification must remain 4/6/7/5."
+		) == 5
+		and diagnostics.get_rpc_traffic_channel(
+			&"net_upgrade_selected"
+		) == 6
+		and diagnostics.get_rpc_traffic_channel(
+			&"net_runtime_state_requested"
+		) == 0
+		and diagnostics.get_rpc_traffic_channel(&"unknown_rpc") == -1,
+		"RPC channels must come from annotations, including CH6/CH0 and unknown rejection."
 	)
 
 
@@ -84,9 +96,15 @@ func _test_metrics_contract(diagnostics: MpNetworkDiagnosticsCoordinator) -> voi
 	var initial := diagnostics.get_snapshot_packet_metrics(0, 0, {}, {})
 	var initial_channels := initial.get("channel_metrics", []) as Array
 	_expect(
-		initial_channels.size() == 8
+		initial_channels.size() == NetConstants.CHANNEL_COUNT
 		and int((initial_channels[7] as Dictionary).get("packet_count", 0)) == 3
-		and int((initial_channels[7] as Dictionary).get("payload_bytes_total", -1)) == 0,
+		and int((initial_channels[7] as Dictionary).get("payload_bytes_total", -1)) == 0
+		and int(
+			(initial_channels[NetConstants.CH_MEMBERSHIP] as Dictionary).get(
+				"packet_count",
+				-1
+			)
+		) == 0,
 		"Production diagnostics must count packets without serializing payloads."
 	)
 
@@ -163,7 +181,7 @@ func _test_metrics_contract(diagnostics: MpNetworkDiagnosticsCoordinator) -> voi
 		"External snapshot and pool metrics must pass through unchanged."
 	)
 	_expect(
-		channels.size() == 8
+		channels.size() == NetConstants.CHANNEL_COUNT
 		and int((channels[2] as Dictionary).get("payload_bytes_total", 0)) == 144
 		and int((channels[3] as Dictionary).get("payload_bytes_total", 0)) == 2948
 		and int((channels[6] as Dictionary).get("packet_count", 0)) == 64,
@@ -189,11 +207,18 @@ func _test_metrics_contract(diagnostics: MpNetworkDiagnosticsCoordinator) -> voi
 		and int(reset_metrics.get("enemy_snapshot_packet_count", -1)) == 0
 		and int(reset_metrics.get("state_repair_count", -1)) == 0
 		and int(reset_metrics.get("player_input_rejection_total", -1)) == 0
+		and int(reset_metrics.get("unclassified_rpc_total", -1)) == 0
 		and (
 			reset_metrics.get("player_input_rejection_counts", {}) as Dictionary
 		).is_empty()
-		and reset_channels.size() == 8
-		and int((reset_channels[7] as Dictionary).get("packet_count", -1)) == 0,
+		and reset_channels.size() == NetConstants.CHANNEL_COUNT
+		and int((reset_channels[7] as Dictionary).get("packet_count", -1)) == 0
+		and int(
+			(reset_channels[NetConstants.CH_MEMBERSHIP] as Dictionary).get(
+				"packet_count",
+				-1
+			)
+		) == 0,
 		"Session reset must clear every diagnostic counter and restore production mode."
 	)
 

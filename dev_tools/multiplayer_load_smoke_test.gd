@@ -290,94 +290,33 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 88, "The multiplayer protocol version must be 88.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v88 must retain eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 90, "The multiplayer protocol version must be 90.")
+	_expect(
+		NetConstants.CH_MEMBERSHIP == 8
+		and NetConstants.ENET_MAX_CHANNEL == 8
+		and NetConstants.CHANNEL_COUNT == 9,
+		"Protocol v90 must expose logical CH0..CH8 with ENet max channel 8."
+	)
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
-	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 85))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 84))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 83))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 82))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 81))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 80))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 79))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 78))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 77))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 76))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 75))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 71))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 70))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 69))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 68))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 67))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 66))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 65))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 64))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 63))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 62))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 61))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 60))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 59))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 58))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 57))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 56))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 55))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 54))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 53))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 52))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 51))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 50))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 49))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 48))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 47))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 46))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 45))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 44))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 43))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 42))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 41))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 40))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 39))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 38))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 37))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 36))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 35))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 34))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 33))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 32))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 31))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 30))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 29))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 28))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 27))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 26))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 25))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 24))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 23))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 22))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 21))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 20))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 16))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 15))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 14))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 13))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 12))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 11))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 10))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 9))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 8))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 7))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 6))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 5))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 4))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
-		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
-		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"Protocol v88 must reject v87 and all older or unversioned clients."
-	)
+	for incompatible_version: int in [
+		NetConstants.PROTOCOL_VERSION - 1,
+		NetConstants.PROTOCOL_VERSION + 1,
+		0,
+		-1,
+	]:
+		_expect(
+			not bool(
+				net_manager.call(
+					"_is_protocol_version_compatible",
+					incompatible_version
+				)
+			),
+			"Protocol v90 must reject incompatible version %d."
+			% incompatible_version
+		)
 
 	var rejection_reasons: Array[String] = []
 	var rejection_callback := func(reason: String) -> void:
@@ -984,18 +923,11 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 		2
 	)
 	_expect(
-		not accepted_arrow_parameters.is_empty(),
-		"Host must accept client archer collectible arrow projectiles."
-	)
-	var expected_arrow_damage := remote_player.attack_damage * 2 if remote_player != null else 0
-	_expect(
-		int(accepted_arrow_parameters.get("damage", 0)) == expected_arrow_damage,
-		"Host must rebuild archer arrow damage from the authoritative player and collectible."
-	)
-	_expect(
-		float(accepted_arrow_parameters.get("speed", 0.0)) > 0.0
-		and float(accepted_arrow_parameters.get("lifetime", 0.0)) > 0.0,
-		"Host must rebuild archer arrow motion parameters from the scene default."
+		accepted_arrow_parameters.is_empty(),
+		(
+			"Host must reject client-requested archer arrows even when the collectible "
+			+ "is owned; the authoritative periodic effect is the only spawn source."
+		)
 	)
 	var rejected_parameters := parameter_projectile_coordinator.get_authoritative_client_projectile_parameters(
 		&"capoo_ak47_bullet",
@@ -1057,6 +989,22 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 			MpGameScript.CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE
 		),
 		"Host must reject client projectile spawns far from the authoritative player."
+	)
+	var forged_near_spawn := near_spawn + Vector2(128.0, 0.0)
+	var authoritative_bullet_spawn := (
+		parameter_projectile_coordinator.get_authoritative_client_projectile_spawn_position(
+			&"player_bullet",
+			2,
+			forged_near_spawn,
+			Vector2.RIGHT
+		)
+	)
+	_expect(
+		authoritative_bullet_spawn.is_equal_approx(near_spawn),
+		(
+			"Host must ignore every accepted client projectile spawn point and rebuild "
+			+ "the muzzle from the authoritative player pose."
+		)
 	)
 	_expect(
 		parameter_projectile_coordinator.get_authoritative_projectile_damage(

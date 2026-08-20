@@ -2,7 +2,6 @@ extends RuntimePreparationProvider
 class_name MpRogueRoute
 
 signal embedded_authoritative_snapshot_changed
-signal embedded_return_requested
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const MultiplayerReconnectTypesScript := preload(
@@ -2902,7 +2901,6 @@ func net_route_briefing_cover_ready(
 
 func _on_return_requested() -> void:
 	if _embedded_campaign_mode:
-		embedded_return_requested.emit()
 		return
 	if _public_return_in_progress:
 		return

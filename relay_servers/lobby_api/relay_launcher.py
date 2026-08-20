@@ -17,10 +17,45 @@ from . import config
 
 
 MIN_RELAY_CLIENTS = 2
-MAX_RELAY_CLIENTS = 8
+MAX_RELAY_CLIENTS = config.PUBLIC_RELAY_MAX_PLAYERS
 DEFAULT_SHUTDOWN_TIMEOUT_SECONDS = 15.0
 DEFAULT_SHUTDOWN_RETRY_BACKOFF_SECONDS = 0.1
 MAX_SHUTDOWN_PHASE_WAIT_SECONDS = 1.0
+RELAY_ROOM_ID_ENV = "ARC_NICE_RELAY_ROOM_ID"
+RELAY_ADMISSION_SECRET_ENV = "ARC_NICE_RELAY_ADMISSION_SECRET"
+MIN_ADMISSION_SECRET_LENGTH = 32
+MAX_ADMISSION_SECRET_LENGTH = 256
+# Relay 只需操作系统运行时上下文；Lobby 的 HMAC、数据库或第三方凭据绝不能
+# 因 `os.environ.copy()` 被复制到每房间子进程。
+RELAY_ENVIRONMENT_ALLOWLIST = frozenset(
+    {
+        "PATH",
+        "SYSTEMROOT",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+        "HOME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "TMP",
+        "TEMP",
+        "TMPDIR",
+        "LANG",
+        "LANGUAGE",
+        "TZ",
+        "LD_LIBRARY_PATH",
+        "DYLD_LIBRARY_PATH",
+        "XDG_RUNTIME_DIR",
+        "XDG_DATA_HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_CACHE_HOME",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -108,6 +143,8 @@ class RelayLauncher:
         self,
         max_clients: int,
         max_lifetime_seconds: float,
+        room_id: str,
+        admission_secret: str,
     ) -> tuple[
         Optional[int],
         Optional[RelayProcessLease],
@@ -121,7 +158,13 @@ class RelayLauncher:
         port, reaped_leases = self.allocate_port_with_reaped()
         if port is None:
             return None, None, reaped_leases
-        lease = self.start_relay(port, max_clients, max_lifetime_seconds)
+        lease = self.start_relay(
+            port,
+            max_clients,
+            max_lifetime_seconds,
+            room_id,
+            admission_secret,
+        )
         return port, lease, reaped_leases
 
     def reap_exited(self) -> list[RelayProcessLease]:
@@ -202,6 +245,8 @@ class RelayLauncher:
         port: int,
         max_clients: int,
         max_lifetime_seconds: float = config.GAME_MAX_DURATION_SECONDS,
+        room_id: str = "",
+        admission_secret: str = "",
     ) -> Optional[RelayProcessLease]:
         """
         启动一个 Relay 实例，返回不可复用的进程租约。
@@ -240,6 +285,31 @@ class RelayLauncher:
                 f"(max_clients={max_clients}, "
                 f"allowed={MIN_RELAY_CLIENTS}..{MAX_RELAY_CLIENTS})"
             )
+            self._release_failed_start(port)
+            return None
+
+        if (
+            not room_id
+            or len(room_id) > 64
+            or not room_id.isascii()
+            or any(
+                not (character.isalnum() or character in "-_")
+                for character in room_id
+            )
+        ):
+            print("[RelayLauncher] Relay room_id 无效，拒绝启动")
+            self._release_failed_start(port)
+            return None
+        try:
+            encoded_secret = admission_secret.encode("ascii")
+        except UnicodeEncodeError:
+            encoded_secret = b""
+        if not (
+            MIN_ADMISSION_SECRET_LENGTH
+            <= len(encoded_secret)
+            <= MAX_ADMISSION_SECRET_LENGTH
+        ):
+            print("[RelayLauncher] Relay admission secret 无效，拒绝启动")
             self._release_failed_start(port)
             return None
 
@@ -301,10 +371,15 @@ class RelayLauncher:
             return None
 
         try:
+            relay_environment = self._build_relay_environment(
+                room_id,
+                admission_secret,
+            )
             proc = subprocess.Popen(
                 cmd,
                 stdout=stdout_file,
                 stderr=stderr_file,
+                env=relay_environment,
             )
         except Exception as e:
             stdout_file.close()
@@ -342,6 +417,23 @@ class RelayLauncher:
             )
             return None
         return lease
+
+    @staticmethod
+    def _build_relay_environment(
+        room_id: str,
+        admission_secret: str,
+    ) -> dict[str, str]:
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if (
+                key.upper() in RELAY_ENVIRONMENT_ALLOWLIST
+                or key.upper().startswith("LC_")
+            )
+        }
+        environment[RELAY_ROOM_ID_ENV] = room_id
+        environment[RELAY_ADMISSION_SECRET_ENV] = admission_secret
+        return environment
 
     def _release_failed_start(self, port: int) -> None:
         """启动失败后归还端口；必须覆盖所有失败分支。"""

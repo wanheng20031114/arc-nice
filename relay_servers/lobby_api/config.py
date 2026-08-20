@@ -5,6 +5,13 @@
 import math
 import os
 
+from .relay_admission import (
+    MAX_TICKET_REFRESH_BURST,
+    MAX_TICKET_REFRESH_WINDOW_SECONDS,
+    MIN_TICKET_REFRESH_BURST,
+    MIN_TICKET_REFRESH_WINDOW_SECONDS,
+)
+
 
 def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
     """读取有界整数；部署错误必须在服务启动前失败。"""
@@ -151,6 +158,28 @@ CLEANUP_INTERVAL_SECONDS = _positive_seconds("CLEANUP_INTERVAL_SECONDS", 30.0)
 # Relay 启动后给 Godot/ENet 完成监听的等待时间（秒）
 RELAY_STARTUP_GRACE_SECONDS = _positive_seconds("RELAY_STARTUP_GRACE_SECONDS", 5.0)
 
+# admission ticket 是单次使用的短连接能力；重连必须用 member_token 换新票。
+RELAY_ADMISSION_TICKET_TTL_SECONDS = _seconds_between(
+    "RELAY_ADMISSION_TICKET_TTL_SECONDS",
+    60.0,
+    15.0,
+    120.0,
+)
+# 每个已验证成员允许短突发，覆盖 HTTP/认证 ack 丢失后的即时重试；随后按滚动
+# 窗口收紧，避免合法 member_token 被用来持续制造新 nonce。
+RELAY_ADMISSION_REFRESH_BURST = _bounded_int(
+    "RELAY_ADMISSION_REFRESH_BURST",
+    3,
+    MIN_TICKET_REFRESH_BURST,
+    MAX_TICKET_REFRESH_BURST,
+)
+RELAY_ADMISSION_REFRESH_WINDOW_SECONDS = _seconds_between(
+    "RELAY_ADMISSION_REFRESH_WINDOW_SECONDS",
+    5.0,
+    MIN_TICKET_REFRESH_WINDOW_SECONDS,
+    MAX_TICKET_REFRESH_WINDOW_SECONDS,
+)
+
 
 def _require_strict_order(
     lower_name: str,
@@ -180,6 +209,12 @@ _require_strict_order(
 _require_strict_order(
     "RELAY_STARTUP_GRACE_SECONDS",
     RELAY_STARTUP_GRACE_SECONDS,
+    "RELAY_ADMISSION_TICKET_TTL_SECONDS",
+    RELAY_ADMISSION_TICKET_TTL_SECONDS,
+)
+_require_strict_order(
+    "RELAY_STARTUP_GRACE_SECONDS",
+    RELAY_STARTUP_GRACE_SECONDS,
     "RELAY_STARTUP_IDLE_TIMEOUT_SECONDS",
     RELAY_STARTUP_IDLE_TIMEOUT_SECONDS,
 )
@@ -200,6 +235,10 @@ _require_strict_order(
 _relay_port_capacity = RELAY_PORT_END - RELAY_PORT_START + 1
 MAX_ROOMS = _bounded_int("MAX_ROOMS", 100, 1, _relay_port_capacity)
 MAX_PLAYERS_PER_ROOM = _bounded_int("MAX_PLAYERS_PER_ROOM", 8, 2, 8)
+# Stock Godot 4.6 的 SceneMultiplayer auth + server_relay 在第三个 transport
+# 会稳定出现 peer-discovery/CH0 停滞。公网 API 只能发布已通过真实握手门的
+# 2 人房；RoomManager 的 8 人上界仍保留给纯领域测试与未来定制 Relay。
+PUBLIC_RELAY_MAX_PLAYERS = 2
 
 # 创建/加入响应尚未被客户端确认前只授予短租约；这条服务端兜底不依赖
 # 客户端取消请求一定能送达。

@@ -22,6 +22,12 @@ class HostNetManagerStub:
 	func get_local_peer_id() -> int:
 		return 1
 
+	func is_gameplay_ingress_admitted(peer_id: int) -> bool:
+		return peer_id > 0
+
+	func is_peer_send_ready(peer_id: int) -> bool:
+		return peer_id > 0
+
 
 class CapturingMpGame:
 	extends "res://scene/multiplayer/mp_game.gd"
@@ -35,18 +41,34 @@ class CapturingMpGame:
 	func _exit_tree() -> void:
 		pass
 
-	func _send_simple_crafting_result(result: Dictionary) -> void:
-		simple_crafting_results.append(result.duplicate(true))
-
-	func _send_plant_placement_rejected(
-		requester_peer_id: int,
+	func capture_simple_crafting_result(
+		peer_id: int,
 		request_id: int,
-		reason: StringName
+		recipe_id: String,
+		result: String,
+		inventory_snapshot: Dictionary,
+		force_inventory_repair: bool
 	) -> void:
-		placement_rejections.append({
-			"peer_id": requester_peer_id,
+		simple_crafting_results.append({
+			"peer_id": peer_id,
 			"request_id": request_id,
-			"reason": reason,
+			"recipe_id": recipe_id,
+			"result": result,
+			"inventory_snapshot": inventory_snapshot.duplicate(true),
+			"force_inventory_repair": force_inventory_repair,
+		})
+
+	func capture_tower_world_rpc(
+		peer_id: int,
+		method_name: StringName,
+		args: Array
+	) -> void:
+		if method_name != &"net_plant_placement_rejected" or args.size() != 2:
+			return
+		placement_rejections.append({
+			"peer_id": peer_id,
+			"request_id": int(args[0]),
+			"reason": StringName(args[1]),
 		})
 
 
@@ -145,8 +167,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 88,
-		"协议v88必须保留内容摘要、同局成员身份、P1D/P1E 与既有 wire 合同。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 90,
+		"协议v90必须保留内容摘要、同局成员身份、P1D/P1E 与既有 wire 合同。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)
@@ -180,12 +202,19 @@ func _test_host_authoritative_fence_crafting() -> Dictionary:
 	mp_game._mode_adapter = tower_adapter
 	mp_game.tower_mode_adapter = tower_adapter
 	tower_adapter.attach_multiplayer_session(mp_game)
+	var coordinators := _bind_network_coordinators(
+		mp_game,
+		runtime,
+		tower_adapter,
+		run_state,
+		net_manager
+	)
+	var transactions := coordinators["transactions"] as MpTransactionsCoordinator
 
 	var first_revision := run_state.get_inventory_revision_for_peer(
 		REMOTE_PEER_ID
 	)
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
+	transactions.apply_authoritative_simple_crafting_request(
 		REMOTE_PEER_ID,
 		41,
 		String(SimpleCraftingRegistry.SIMPLE_FENCE_ID),
@@ -211,8 +240,7 @@ func _test_host_authoritative_fence_crafting() -> Dictionary:
 		"Host必须原子扣除1木头、立即制造1围栏并只推进一次远端背包revision。"
 	)
 
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
+	transactions.apply_authoritative_simple_crafting_request(
 		REMOTE_PEER_ID,
 		41,
 		String(SimpleCraftingRegistry.SIMPLE_FENCE_ID),
@@ -235,8 +263,7 @@ func _test_host_authoritative_fence_crafting() -> Dictionary:
 		"重复围栏制造request_id必须仅重放Host结果，不能重复扣木头、产出或推进revision。"
 	)
 
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
+	transactions.apply_authoritative_simple_crafting_request(
 		REMOTE_PEER_ID,
 		42,
 		String(SimpleCraftingRegistry.SIMPLE_FENCE_ID),
@@ -267,8 +294,7 @@ func _test_host_authoritative_fence_crafting() -> Dictionary:
 		"第二次Host制造必须把围栏合并到同一规范资源路径的数量2堆栈。"
 	)
 
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
+	transactions.apply_authoritative_simple_crafting_request(
 		REMOTE_PEER_ID,
 		43,
 		String(SimpleCraftingRegistry.SIMPLE_FENCE_ID),
@@ -288,8 +314,7 @@ func _test_host_authoritative_fence_crafting() -> Dictionary:
 		"新的围栏制造请求携带旧revision时必须原子拒绝并要求权威快照修复。"
 	)
 
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
+	transactions.apply_authoritative_simple_crafting_request(
 		REMOTE_PEER_ID,
 		44,
 		"res://resources/config/production/simple_simple_fence.tres",
@@ -307,6 +332,7 @@ func _test_host_authoritative_fence_crafting() -> Dictionary:
 
 	var round_trip := RunStateStore.new()
 	round_trip.begin_new_run(&"weishidaier", false)
+	round_trip.register_multiplayer_peer_state(REMOTE_PEER_ID)
 	_expect(
 		round_trip.apply_inventory_snapshot_for_peer(
 			REMOTE_PEER_ID,
@@ -333,6 +359,7 @@ func _test_inventory_placement_replay_admission(
 ) -> void:
 	var run_state := RunStateStore.new()
 	run_state.begin_new_run(&"weishidaier", false)
+	run_state.register_multiplayer_peer_state(REMOTE_PEER_ID)
 	_expect(
 		run_state.apply_inventory_snapshot_for_peer(
 			REMOTE_PEER_ID,
@@ -356,9 +383,16 @@ func _test_inventory_placement_replay_admission(
 	mp_game._mode_adapter = tower_adapter
 	mp_game.tower_mode_adapter = tower_adapter
 	tower_adapter.attach_multiplayer_session(mp_game)
+	var coordinators := _bind_network_coordinators(
+		mp_game,
+		runtime,
+		tower_adapter,
+		run_state,
+		net_manager
+	)
+	var tower_world := coordinators["tower_world"] as MpTowerWorldCoordinator
 
-	mp_game.call(
-		"_handle_authoritative_inventory_plant_placement_request",
+	tower_world.handle_remote_inventory_plant_placement_request(
 		REMOTE_PEER_ID,
 		100,
 		"simple_fence",
@@ -367,8 +401,7 @@ func _test_inventory_placement_replay_admission(
 		revision,
 		SIMPLE_FENCE_ITEM.resource_path
 	)
-	mp_game.call(
-		"_handle_authoritative_inventory_plant_placement_request",
+	tower_world.handle_remote_inventory_plant_placement_request(
 		REMOTE_PEER_ID,
 		100,
 		"simple_fence",
@@ -377,8 +410,7 @@ func _test_inventory_placement_replay_admission(
 		revision,
 		SIMPLE_FENCE_ITEM.resource_path
 	)
-	mp_game.call(
-		"_handle_authoritative_inventory_plant_placement_request",
+	tower_world.handle_remote_inventory_plant_placement_request(
 		REMOTE_PEER_ID,
 		99,
 		"simple_fence",
@@ -422,6 +454,57 @@ func _bind_tower_multiplayer_mode_adapter(
 	adapter.bind_runtime(runtime)
 	runtime.multiplayer_mode_adapter = adapter
 	return adapter
+
+
+func _bind_network_coordinators(
+	mp_game: CapturingMpGame,
+	runtime: PlacementCaptureRuntime,
+	tower_adapter: PlacementCaptureTowerModeAdapter,
+	run_state: RunStateStore,
+	net_manager: HostNetManagerStub
+) -> Dictionary:
+	var session := MpSessionCoordinator.new()
+	var transactions := MpTransactionsCoordinator.new()
+	var enemy := MpEnemyCoordinator.new()
+	var tower_economy := MpTowerEconomyCoordinator.new()
+	var tower_world := MpTowerWorldCoordinator.new()
+	for coordinator in [session, transactions, enemy, tower_economy, tower_world]:
+		mp_game.add_child(coordinator)
+	session.bind_runtime(runtime)
+	transactions.bind_session(
+		mp_game,
+		runtime,
+		tower_adapter,
+		net_manager,
+		run_state,
+		{}
+	)
+	enemy.bind_runtime(runtime)
+	tower_economy.bind_runtime(
+		runtime,
+		tower_adapter,
+		run_state,
+		net_manager,
+		0.0
+	)
+	tower_world.bind_session(
+		mp_game,
+		session,
+		runtime,
+		tower_adapter,
+		net_manager,
+		transactions,
+		enemy,
+		tower_economy
+	)
+	transactions.simple_crafting_result_broadcast_requested.connect(
+		mp_game.capture_simple_crafting_result
+	)
+	tower_world.rpc_to_peer_requested.connect(mp_game.capture_tower_world_rpc)
+	return {
+		"transactions": transactions,
+		"tower_world": tower_world,
+	}
 
 
 func _find_peer_item_slot(

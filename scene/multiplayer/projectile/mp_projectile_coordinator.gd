@@ -2067,22 +2067,6 @@ func get_authoritative_client_projectile_parameters(
 			}
 			bomb.free()
 			return result
-		&"collectible_arrow":
-			var arrow_damage := _get_authoritative_collectible_arrow_damage(
-				owner_player
-			)
-			if arrow_damage <= 0:
-				return {}
-			var arrow := COLLECTIBLE_ARROW_PROJECTILE_SCENE.instantiate()
-			if arrow == null:
-				return {}
-			var result := {
-				"damage": arrow_damage,
-				"speed": float(arrow.get("speed")),
-				"lifetime": float(arrow.get("max_lifetime")),
-			}
-			arrow.free()
-			return result
 		_:
 			return {}
 
@@ -2117,13 +2101,19 @@ func is_client_projectile_spawn_position_allowed(
 func get_authoritative_client_projectile_spawn_position(
 	projectile_type: StringName,
 	owner_peer_id: int,
-	reported_spawn_position: Vector2,
+	_reported_spawn_position: Vector2,
 	accepted_direction: Vector2
 ) -> Vector2:
-	if projectile_type != TIYI_SNIPER_PROJECTILE_TYPE:
-		return reported_spawn_position
 	var owner_player := _get_player(owner_peer_id)
-	if not _is_valid_tiyi_player(owner_player) or accepted_direction == Vector2.ZERO:
+	if (
+		owner_player == null
+		or not is_instance_valid(owner_player)
+		or accepted_direction == Vector2.ZERO
+		or (
+			projectile_type == TIYI_SNIPER_PROJECTILE_TYPE
+			and not _is_valid_tiyi_player(owner_player)
+		)
+	):
 		return Vector2(INF, INF)
 	var muzzle_distance := owner_player.get_multiplayer_projectile_spawn_distance(
 		projectile_type
@@ -2298,39 +2288,6 @@ func _ensure_linglan_projectile_resources(projectile_type: StringName) -> void:
 				_linglan_skill4_orb_scene = load(
 					LINGLAN_SKILL4_ORB_SCENE_PATH
 				) as PackedScene
-
-
-func _get_authoritative_collectible_arrow_damage(owner_player: Player) -> int:
-	if owner_player == null or not is_instance_valid(owner_player):
-		return -1
-	var active_items_variant: Variant = owner_player.call(
-		"_get_active_collectible_items"
-	)
-	if not (active_items_variant is Array):
-		return -1
-	var best_damage := -1
-	for item_variant in active_items_variant:
-		var item := item_variant as PickupConfig
-		if (
-			item == null
-			or item.periodic_effect_id != PickupConfig.PERIODIC_EFFECT_ARCHER
-		):
-			continue
-		var damage_multiplier := maxf(
-			item.periodic_attack_damage_multiplier,
-			0.0
-		)
-		if damage_multiplier <= 0.0:
-			damage_multiplier = 1.0
-		var arrow_damage := owner_player.get_collectible_outgoing_damage(
-			maxi(
-				roundi(float(owner_player.attack_damage) * damage_multiplier),
-				1
-			),
-			EnemyConfig.DamageType.PHYSICAL
-		)
-		best_damage = maxi(best_damage, arrow_damage)
-	return best_damage
 
 
 func _resolve_mode_world_target(net_id: int) -> Node2D:

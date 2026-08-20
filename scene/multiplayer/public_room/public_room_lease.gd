@@ -8,8 +8,6 @@ signal release_finished(
 	reason: StringName,
 	detail: String
 )
-signal keepalive_failed(detail: String)
-
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const RELEASE_MAX_ATTEMPTS := 2
 const RELEASE_RETRY_DELAY_SECONDS := 0.25
@@ -56,6 +54,7 @@ var _completed_release_order: Array[int] = []
 var _net_manager: NetManagerStore = null
 var _shutdown_in_progress := false
 var _public_lobby_api_base_url := ""
+var _public_lobby_api_configuration_error := ""
 ## 显式 fixture 模式只截断传输边界，状态机仍走生产路径。
 var _transport_suspended_for_fixture := false
 
@@ -73,11 +72,13 @@ func _enter_tree() -> void:
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	get_tree().auto_accept_quit = false
-	_public_lobby_api_base_url = _NetConstants.get_public_lobby_api_base_url()
-	assert(
-		not _public_lobby_api_base_url.is_empty(),
-		"PublicRoomLease 缺少公网大厅 API 地址。"
+	var api_configuration := _NetConstants.get_public_lobby_api_configuration()
+	_public_lobby_api_base_url = str(api_configuration.get("base_url", ""))
+	_public_lobby_api_configuration_error = str(
+		api_configuration.get("error", "")
 	)
+	if not is_public_lobby_api_configured():
+		push_error("PublicRoomLease: %s" % _public_lobby_api_configuration_error)
 	_keepalive_request.request_completed.connect(_on_keepalive_request_completed)
 	_release_request.request_completed.connect(_on_release_request_completed)
 	_release_retry_timer.timeout.connect(_dispatch_next_release)
@@ -269,6 +270,17 @@ func get_public_lobby_api_base_url() -> String:
 	return _public_lobby_api_base_url
 
 
+func is_public_lobby_api_configured() -> bool:
+	return (
+		not _public_lobby_api_base_url.is_empty()
+		and _public_lobby_api_configuration_error.is_empty()
+	)
+
+
+func get_public_lobby_api_configuration_error() -> String:
+	return _public_lobby_api_configuration_error
+
+
 func is_public_host() -> bool:
 	return bool(_active_lease.get("is_host", false))
 
@@ -386,6 +398,12 @@ func _dispatch_keepalive() -> void:
 		or _keepalive_channel_quarantined
 	):
 		return
+	if not is_public_lobby_api_configured():
+		_keepalive_time_left = KEEPALIVE_RETRY_INTERVAL_SECONDS
+		var detail := get_public_lobby_api_configuration_error()
+		_report_keepalive_failure(detail)
+		_begin_terminal_lease_loss(&"public_lobby_api_unavailable", detail)
+		return
 	_keepalive_in_flight = true
 	_keepalive_request_lease_generation = int(
 		_active_lease.get("lease_generation", 0)
@@ -460,7 +478,6 @@ func _on_keepalive_request_completed(
 
 func _report_keepalive_failure(detail: String) -> void:
 	push_warning("PublicRoomLease: %s" % detail)
-	keepalive_failed.emit(detail)
 
 
 func _begin_terminal_lease_loss(reason: StringName, detail: String) -> void:
@@ -490,6 +507,12 @@ func _dispatch_next_release() -> void:
 	snapshot["attempts"] = int(snapshot.get("attempts", 0)) + 1
 	_release_in_flight = true
 	_release_request_generation = int(snapshot.get("release_generation", 0))
+	if not is_public_lobby_api_configured():
+		_finish_current_release(
+			false,
+			get_public_lobby_api_configuration_error()
+		)
+		return
 	if _transport_suspended_for_fixture:
 		return
 	var acquisition_token := str(snapshot.get("acquisition_token", ""))

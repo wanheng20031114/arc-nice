@@ -5,6 +5,30 @@ const DEFAULT_PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
 
+
+class FixtureNetManager:
+	extends NetManagerStore
+
+	var host_mode := false
+	var client_mode := false
+	var local_peer_id := 1
+
+	func is_host() -> bool:
+		return host_mode
+
+	func is_client() -> bool:
+		return client_mode
+
+	func get_local_peer_id() -> int:
+		return local_peer_id
+
+	func get_host_peer_id() -> int:
+		return 1
+
+	func is_gameplay_ingress_admitted(peer_id: int) -> bool:
+		return peer_id > 0
+
+
 var failures: Array[String] = []
 
 
@@ -29,7 +53,8 @@ func _test_host_teleport_resets_client_admission_baseline() -> void:
 	var multiplayer_game := MP_GAME_SCRIPT.new()
 	var tower_defense_game := TowerDefenseGame.new()
 	var host_player := Player.new()
-	var remote_player := Player.new()
+	var remote_player := DEFAULT_PLAYER_SCENE.instantiate() as Player
+	root.add_child(remote_player)
 	tower_defense_game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	tower_defense_game.multiplayer_local_peer_id = 1
 	tower_defense_game.peer_players = {1: host_player, 2: remote_player}
@@ -43,8 +68,9 @@ func _test_host_teleport_resets_client_admission_baseline() -> void:
 	var restored_position := Vector2(16.0, 16.0)
 	remote_player.move_speed = 120.0
 	remote_player.global_position = restored_position
-	multiplayer_game._accepted_player_state_positions[2] = old_admitted_position
-	multiplayer_game._accepted_player_state_times[2] = (
+	player_coordinator.remember_accepted_player_pose(
+		2,
+		old_admitted_position,
 		multiplayer_game._get_net_time() - 10.0
 	)
 	player_coordinator.remember_latest_client_state(
@@ -66,11 +92,11 @@ func _test_host_teleport_resets_client_admission_baseline() -> void:
 		"The pre-fix stale admission baseline fixture must reject the restored position."
 	)
 	_expect(
-		multiplayer_game._commit_authoritative_player_teleport(2, restored_position),
+		player_coordinator.commit_authoritative_player_teleport(2, restored_position),
 		"The Host must commit an authoritative teleport for an existing remote peer."
 	)
 	_expect(
-		multiplayer_game._accepted_player_state_positions.get(2) == restored_position,
+		player_coordinator.get_accepted_player_position(2) == restored_position,
 		"Authoritative teleport must reset the anti-teleport admission position."
 	)
 	var latest_state := (
@@ -92,7 +118,7 @@ func _test_host_teleport_resets_client_admission_baseline() -> void:
 
 	var host_target := Vector2(32.0, 32.0)
 	_expect(
-		multiplayer_game._commit_authoritative_player_teleport(1, host_target),
+		player_coordinator.commit_authoritative_player_teleport(1, host_target),
 		"The Host's local player must use the same node teleport path."
 	)
 	_expect(
@@ -260,12 +286,43 @@ func _attach_player_coordinator(
 	multiplayer_game: Node,
 	runtime: CombatRuntimeBase
 ) -> MpPlayerCoordinator:
+	var fixture_net_manager := FixtureNetManager.new()
+	fixture_net_manager.name = "FixtureNetManager"
+	fixture_net_manager.host_mode = (
+		int(runtime.runtime_mode) == int(CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY)
+	)
+	fixture_net_manager.client_mode = (
+		int(runtime.runtime_mode) == int(CombatRuntimeBase.RuntimeMode.CLIENT_VIEW)
+	)
+	fixture_net_manager.local_peer_id = runtime.multiplayer_local_peer_id
+	multiplayer_game.add_child(fixture_net_manager)
+
+	var session_coordinator := MpSessionCoordinator.new()
+	session_coordinator.name = "SessionCoordinator"
+	multiplayer_game.add_child(session_coordinator)
+	multiplayer_game.set("session_coordinator", session_coordinator)
+	session_coordinator.bind_transport_dependencies(fixture_net_manager)
+	session_coordinator.bind_runtime(runtime)
+
 	var coordinator := MpPlayerCoordinator.new()
 	coordinator.name = "PlayerCoordinator"
 	multiplayer_game.add_child(coordinator)
 	multiplayer_game.set("player_coordinator", coordinator)
 	coordinator.bind_runtime(runtime)
+	coordinator.bind_realtime_dependencies(
+		fixture_net_manager,
+		session_coordinator
+	)
+	coordinator.bind_player_action_dependencies(
+		fixture_net_manager,
+		session_coordinator.get_net_time,
+		_is_fixture_embedded_participant_suspended
+	)
 	return coordinator
+
+
+func _is_fixture_embedded_participant_suspended(_peer_id: int) -> bool:
+	return false
 
 
 func _expect(condition: bool, message: String) -> void:

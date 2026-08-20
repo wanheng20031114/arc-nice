@@ -234,8 +234,6 @@ func _test_static_mp_game_node() -> void:
 		"_is_peer_result_envelope_ready"
 	)
 	var player_projection_result_constants := PackedStringArray([
-		"PEER_RESULT_UPGRADE_CONFIRMED",
-		"PEER_RESULT_SKILL1_PURCHASE",
 		"PEER_RESULT_RESEARCH_STATE",
 		"PEER_RESULT_LUOXI_OFFER_STATE",
 		"PEER_RESULT_LUOXI_REFRESH",
@@ -275,8 +273,6 @@ func _test_mp_game_projection_readiness() -> void:
 	var runtime := ProjectionRuntimeProbe.new()
 	mp_game.game = runtime
 	var player_required_cases: Array[Dictionary] = [
-		{"type": &"upgrade_confirmed", "payload": {}},
-		{"type": &"skill1_purchase", "payload": {}},
 		{"type": &"research_state", "payload": {}},
 		{"type": &"luoxi_offer_state", "payload": {"current_xirang": 10}},
 		{"type": &"luoxi_refresh", "payload": {}},
@@ -302,10 +298,20 @@ func _test_mp_game_projection_readiness() -> void:
 		)
 	_expect(
 		all_deferred_without_player,
-		"升级、科研、洛曦与即时拾取结果在 Player 投影缺席时必须全部延后。"
+		"科研、洛曦与即时拾取等瞬时 Player 结果在投影缺席时必须延后。"
 	)
 	_expect(
 		mp_game._is_peer_result_envelope_ready(
+			PEER_ID,
+			&"upgrade_confirmed",
+			{}
+		)
+		and mp_game._is_peer_result_envelope_ready(
+			PEER_ID,
+			&"skill1_purchase",
+			{}
+		)
+		and mp_game._is_peer_result_envelope_ready(
 			PEER_ID,
 			&"inventory_snapshot",
 			{}
@@ -320,7 +326,10 @@ func _test_mp_game_projection_readiness() -> void:
 			&"luoxi_special_finished",
 			{"result": {"score": 2}}
 		),
-		"仅持久身份账本或不含息壤的结果必须在 Player 缺席时仍可提交。"
+		(
+			"成长、库存等持久账本或不含瞬时息壤的结果必须在 Player 缺席时"
+			+ "仍可提交。"
+		)
 	)
 	var player := Player.new()
 	player.peer_id = PEER_ID
@@ -429,10 +438,6 @@ func _test_outbound_session_envelope() -> void:
 		and int(pickup_args[-2]) == 202
 		and int(global_research_args[-2]) == 0
 		and int(global_research_args[-1]) == SESSION_INCARNATION
-		and mp_game._build_outbound_rpc_arguments(
-			&"net_inventory_snapshot",
-			[0, {}]
-		).is_empty()
 		and ordinary_args == [2, 5],
 		"统一发送边界必须按正确 subject 追加 participant/session，且全局科研使用0。"
 	)

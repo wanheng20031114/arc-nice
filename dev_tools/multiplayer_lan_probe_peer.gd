@@ -115,6 +115,12 @@ func _run() -> void:
 	var mode := str(options.get("mode", PROBE_MODE_LAN)).strip_edges().to_lower()
 	probe_transport_mode = mode
 	var relay_host_peer_id := int(options.get("relay_host_peer_id", "0"))
+	var relay_room_id := str(
+		options.get(
+			"relay_room_id",
+			OS.get_environment("ARC_NICE_RELAY_ROOM_ID")
+		)
+	)
 	var player_name := str(options.get("name", "Probe%s" % role.capitalize()))
 	var reconnect_token := str(options.get("reconnect_token", ""))
 	probe_reconnect_attempt = _parse_bool(
@@ -172,6 +178,8 @@ func _run() -> void:
 				mode,
 				host_ip,
 				port,
+				relay_room_id,
+				_consume_relay_admission_ticket(),
 				expected_players,
 				timeout_seconds,
 				run_seconds,
@@ -184,6 +192,8 @@ func _run() -> void:
 				host_ip,
 				port,
 				relay_host_peer_id,
+				relay_room_id,
+				_consume_relay_admission_ticket(),
 				expected_players,
 				timeout_seconds,
 				run_seconds,
@@ -205,6 +215,8 @@ func _run_host(
 	mode: String,
 	host_ip: String,
 	port: int,
+	relay_room_id: String,
+	relay_admission_ticket: String,
 	expected_players: int,
 	timeout_seconds: float,
 	run_seconds: float,
@@ -220,7 +232,14 @@ func _run_host(
 		return
 	var err: Error = OK
 	if mode == PROBE_MODE_RELAY:
-		err = net_manager.host_create_relay_room(host_ip, port, expected_players)
+		err = net_manager.host_create_relay_room(
+			host_ip,
+			port,
+			expected_players,
+			relay_room_id,
+			relay_admission_ticket
+		)
+		relay_admission_ticket = ""
 	else:
 		err = net_manager.host_create_lan_server(port, expected_players)
 	if err != OK:
@@ -266,6 +285,8 @@ func _run_client(
 	host_ip: String,
 	port: int,
 	relay_host_peer_id: int,
+	relay_room_id: String,
+	relay_admission_ticket: String,
 	expected_players: int,
 	timeout_seconds: float,
 	run_seconds: float,
@@ -277,12 +298,21 @@ func _run_client(
 		if relay_host_peer_id <= 1:
 			_fail("Relay client missing valid host peer id.")
 			return
-		err = net_manager.client_join_relay_room(host_ip, port, relay_host_peer_id)
+		err = net_manager.client_join_relay_room(
+			host_ip,
+			port,
+			relay_host_peer_id,
+			relay_room_id,
+			relay_admission_ticket
+		)
+		relay_admission_ticket = ""
 	else:
 		err = net_manager.client_connect_lan(host_ip, port)
 	if err != OK:
 		_fail("Client failed to connect to %s host: %s" % [mode, error_string(err)])
 		return
+	if mode == PROBE_MODE_RELAY:
+		print("RELAY_PROBE_CLIENT_DIAL_STARTED")
 	if not await _wait_for_player_count(net_manager, expected_players, timeout_seconds):
 		_fail(
 			"Client timed out waiting for %d players; saw %d."
@@ -4067,6 +4097,14 @@ func _get_active_wave_enemy_count(game: Variant) -> int:
 		if tower_game != null
 		else game.active_wave_enemy_ids.size()
 	)
+
+
+func _consume_relay_admission_ticket() -> String:
+	# Bearer 只允许由受控 runner 的子进程环境注入，绝不接受命令行参数。
+	# 读取后立刻清空进程环境；NetManager 接管后调用方参数也会立即释放。
+	var ticket := OS.get_environment("ARC_NICE_RELAY_ADMISSION_TICKET")
+	OS.set_environment("ARC_NICE_RELAY_ADMISSION_TICKET", "")
+	return ticket
 
 
 func _parse_probe_options() -> Dictionary:

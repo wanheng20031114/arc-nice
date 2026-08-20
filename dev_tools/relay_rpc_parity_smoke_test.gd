@@ -34,7 +34,7 @@ const TOWER_ECONOMY_COORDINATOR_PATH := (
 	"res://scene/game_modes/tower_defense/multiplayer/economy/mp_tower_economy_coordinator.gd"
 )
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
-const NetManagerScript := preload("res://scene/multiplayer/net_manager.gd")
+var NetManagerScript: GDScript = null
 
 var failures: Array[String] = []
 
@@ -44,6 +44,12 @@ func _init() -> void:
 
 
 func _run() -> void:
+	var loaded_net_manager_script: Resource = load(MAIN_NET_MANAGER_PATH)
+	if not (loaded_net_manager_script is GDScript):
+		push_error("Main NetManager failed to load; RPC parity cannot be trusted.")
+		quit(1)
+		return
+	NetManagerScript = loaded_net_manager_script as GDScript
 	var main_rpcs := _extract_rpc_surface(MAIN_MP_GAME_PATH)
 	var relay_rpcs := _extract_rpc_surface(RELAY_MP_GAME_PATH)
 	_compare_rpc_surfaces("MpGame", main_rpcs, relay_rpcs)
@@ -376,12 +382,16 @@ func _run() -> void:
 	var relay_net_manager_rpcs := _extract_rpc_surface(RELAY_NET_MANAGER_PATH)
 	_compare_rpc_surfaces("NetManager", main_net_manager_rpcs, relay_net_manager_rpcs)
 	for required_method in [
+		"_rpc_relay_player_registration_forward",
+		"_rpc_relay_registration_completed",
 		"_rpc_register_player",
 		"_rpc_registration_accepted",
 		"_rpc_content_rejected",
 		"_rpc_protocol_rejected",
 		"_rpc_join_rejected",
 		"_rpc_relay_kick_peer",
+		"_rpc_relay_identity_lookup",
+		"_rpc_relay_identity_result",
 		"_rpc_set_player_character",
 		"_rpc_sync_player_list",
 		"_rpc_start_game",
@@ -394,6 +404,26 @@ func _run() -> void:
 			main_net_manager_rpcs.has(required_method),
 			"NetManager RPC %s must be registered in the main and Relay projects." % required_method
 		)
+	_expect_rpc_mode(
+		main_net_manager_rpcs,
+		"_rpc_relay_player_registration_forward",
+		"any_peer"
+	)
+	_expect_rpc_channel(
+		main_net_manager_rpcs,
+		"_rpc_relay_player_registration_forward",
+		NetConstants.CH_MEMBERSHIP
+	)
+	_expect_rpc_mode(
+		main_net_manager_rpcs,
+		"_rpc_relay_registration_completed",
+		"any_peer"
+	)
+	_expect_rpc_channel(
+		main_net_manager_rpcs,
+		"_rpc_relay_registration_completed",
+		NetConstants.CH_MEMBERSHIP
+	)
 	if main_net_manager_rpcs.has("_rpc_register_player"):
 		_expect(
 			String(main_net_manager_rpcs["_rpc_register_player"]).contains(
@@ -410,8 +440,25 @@ func _run() -> void:
 			),
 			"Player registration must carry protocol, reconnect identity, schema, and digest fields."
 		)
+	_expect_rpc_channel(main_net_manager_rpcs, "_rpc_register_player", NetConstants.CH_AUTH)
 	_expect_rpc_mode(main_net_manager_rpcs, "_rpc_relay_kick_peer", "any_peer")
-	_expect_rpc_channel(main_net_manager_rpcs, "_rpc_relay_kick_peer", 0)
+	_expect_rpc_mode(main_net_manager_rpcs, "_rpc_relay_identity_lookup", "any_peer")
+	_expect_rpc_mode(main_net_manager_rpcs, "_rpc_relay_identity_result", "any_peer")
+	for membership_method: String in [
+		"_rpc_relay_kick_peer",
+		"_rpc_relay_identity_lookup",
+		"_rpc_relay_identity_result",
+		"_rpc_registration_accepted",
+		"_rpc_content_rejected",
+		"_rpc_protocol_rejected",
+		"_rpc_join_rejected",
+		"_rpc_sync_player_list",
+	]:
+		_expect_rpc_channel(
+			main_net_manager_rpcs,
+			membership_method,
+			NetConstants.CH_MEMBERSHIP
+		)
 	if main_net_manager_rpcs.has("_rpc_sync_player_list"):
 		_expect(
 			String(main_net_manager_rpcs["_rpc_sync_player_list"]).contains("game_mode:int=0")
@@ -428,10 +475,15 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 88,
-		"协议v88必须保留 F10 调试目录受信资源材料授予与既有内容、身份合同。"
+		NetConstants.PROTOCOL_VERSION == 90,
+		"协议v90必须冻结认证注册转发、Relay身份绑定与既有内容合同。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v88 must retain eight ENet channels.")
+	_expect(
+		NetConstants.CH_MEMBERSHIP == 8
+		and NetConstants.ENET_MAX_CHANNEL == 8
+		and NetConstants.CHANNEL_COUNT == 9,
+		"Protocol v90 must expose logical CH0..CH8 with ENet max channel 8."
+	)
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -464,13 +516,53 @@ func _compare_rpc_surfaces(label: String, main_rpcs: Dictionary, relay_rpcs: Dic
 
 
 func _test_registration_protocol_handshake_source() -> void:
-	var net_manager := NetManagerScript.new()
+	var net_manager: Variant = NetManagerScript.new()
 	_expect(
 		net_manager._is_protocol_version_compatible(NetConstants.PROTOCOL_VERSION)
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v88 hosts must accept exactly v88 and reject v87."
+		"Protocol v90 hosts must accept exactly v90 and reject v89."
+	)
+	var pending_relay_registration := {
+		"request_id": 7,
+		"player_name": "BoundMember",
+	}
+	_expect(
+		net_manager.is_valid_relay_registration_identity_binding(
+			1, 7, 3, "room_01", "BoundMember", "member", true,
+			pending_relay_registration, "room_01"
+		)
+		and not net_manager.is_valid_relay_registration_identity_binding(
+			1, 7, 3, "room_01", "ForgedName", "member", true,
+			pending_relay_registration, "room_01"
+		)
+		and not net_manager.is_valid_relay_registration_identity_binding(
+			1, 7, 3, "room_01", "BoundMember", "host", true,
+			pending_relay_registration, "room_01"
+		),
+		"Relay registration must require the peer-1 identity name, role, room, peer, and request tuple."
+	)
+	net_manager.net_role = 1
+	net_manager.conn_mode = 1
+	net_manager.relay_room_id = "room_01"
+	net_manager._pending_relay_registrations[3] = {
+		"request_id": 9,
+		"lookup_deadline_msec": 10,
+		"player_name": "BoundMember",
+	}
+	net_manager._late_registration_deadlines[3] = 10
+	net_manager._poll_relay_identity_lookup_timeouts(10)
+	_expect(
+		not net_manager._pending_relay_registrations.has(3)
+		and not net_manager._late_registration_deadlines.has(3)
+		and not net_manager._handle_relay_identity_result(
+			1, 1, 9, 3, "room_01", "BoundMember", "member", true
+		),
+		(
+			"Relay identity lookups with no response must expire at the unified registration "
+			+ "deadline, and a result arriving after expiry must remain invalid."
+		)
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -490,8 +582,16 @@ func _test_registration_protocol_handshake_source() -> void:
 		failures.append("Unable to compile registration protocol parser regex.")
 		return
 	_expect(
-		registration_call_regex.search_all(source).size() == 2,
-		"LAN and Relay registration must both send protocol, schema, and content digest."
+		registration_call_regex.search_all(source).size() == 1
+		and source.contains('"ticket": _relay_admission_ticket')
+		and source.contains('"protocol_version": NetConstants.PROTOCOL_VERSION')
+		and source.contains('"content_manifest_schema": _get_local_content_manifest_schema()')
+		and source.contains('"content_digest": _get_local_content_digest()')
+		and source.contains("_rpc_relay_registration_completed.rpc_id("),
+		(
+			"LAN registration and the Relay auth envelope must both carry protocol, "
+			+ "schema, and content digest; Relay completion must be explicit."
+		)
 	)
 	var whitespace_regex := RegEx.new()
 	if whitespace_regex.compile("\\s+") != OK:
@@ -520,38 +620,73 @@ func _test_registration_protocol_handshake_source() -> void:
 	)
 	_expect(
 		compact_source.contains("ifnot_is_registration_open():")
-		and compact_source.contains("and_begin_peer_reconnect(")
+		and compact_source.contains(
+			"ifconnection_state==ConnectionState.IN_GAME:"
+		)
+		and compact_source.contains("reconnect_started=_begin_peer_reconnect(")
 		and compact_source.contains("_rpc_join_rejected.rpc_id("),
 		"A locked Host must admit only token-matched reconnects and reject every other late registration."
 	)
 	_expect(
-		compact_source.contains(
-			"ifconnected_players.has(sender_id):returnfalse"
-		),
-		"A duplicate registration from any connected identity must remain idempotent."
+		compact_source.contains("ifconnected_players.has(sender_id):")
+		and compact_source.contains("_try_replay_relay_registration_response(")
+		and compact_source.contains("_accepted_peer_registration_tuples"),
+		(
+			"A connected Relay identity may only replay its exact accepted tuple for "
+			+ "a targeted idempotent response."
+		)
 	)
 	_expect(
-		compact_source.contains(
-			"ifis_host()andnot_is_registration_open()andpeer_id!=get_host_peer_id():"
-		)
-		and compact_source.contains("_late_registration_deadlines[peer_id]=(")
+		compact_source.contains("_late_registration_deadlines[peer_id]=(")
+		and compact_source.contains("REGISTRATION_TIMEOUT_MILLISECONDSif_is_registration_open()")
+		and compact_source.contains("elseLATE_REGISTRATION_TIMEOUT_MILLISECONDS")
+		and compact_source.contains("_pending_relay_registrations.erase(peer_id)")
 		and compact_source.contains("_reject_late_connected_peer(int(peer_id))"),
-		"A locked Host must give a transport peer only a bounded window to prove its reconnect identity."
+		"Every unregistered Host-side transport must have one bounded registration/identity deadline."
 	)
 
 
 func _test_relay_channel_count() -> void:
 	var relay_source := FileAccess.get_file_as_string(RELAY_SERVER_PATH)
 	var relay_project_source := FileAccess.get_file_as_string(RELAY_PROJECT_PATH)
+	var whitespace_regex := RegEx.new()
+	if whitespace_regex.compile("\\s+") != OK:
+		failures.append("Unable to compile Relay source whitespace regex.")
+		return
+	var compact_relay_source := whitespace_regex.sub(relay_source, "", true)
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
-		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 88")
+		relay_source.contains("const CH_MEMBERSHIP := 8")
+		and relay_source.contains("const ENET_MAX_CHANNEL := CH_MEMBERSHIP")
+		and relay_source.contains("const CHANNEL_COUNT := CH_MEMBERSHIP + 1")
+		and relay_source.contains("const PROTOCOL_VERSION := 90")
+		and relay_source.contains("const MAX_CLIENTS := 2")
 		and relay_source.contains("--max-clients=")
-		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
+		and relay_source.contains("create_server(_port, transport_capacity, ENET_MAX_CHANNEL)")
+		and relay_source.contains("multiplayer.auth_callback = _on_auth_payload")
+		and relay_source.contains("authentication=required"),
 		(
-			"Relay server must declare v88, accept the room capacity, and provision "
-			+ "the same eight ENet channels as clients."
+			"Relay server must declare v90, fail closed to two public players, and "
+			+ "provision logical CH0..CH8 with ENet max channel 8."
+		)
+	)
+	_expect(
+		relay_source.contains("const AUTH_REQUEST_KEYS := [")
+		and relay_source.contains("func _parse_registration_request(")
+		and relay_source.contains("func _registration_matches_claims(")
+		and relay_source.contains(
+			"const REGISTRATION_FORWARD_INTERVAL_MILLISECONDS := 250"
+		)
+		and relay_source.contains(
+			"const REGISTRATION_FORWARD_WINDOW_MILLISECONDS := 30_000"
+		)
+		and relay_source.contains(
+			"net_manager_stub._rpc_relay_player_registration_forward.rpc_id("
+		)
+		and relay_source.contains("func confirm_authenticated_player_registration("),
+		(
+			"Relay v90 must validate the exact authenticated registration envelope "
+			+ "and boundedly forward the stored tuple until explicit completion."
 		)
 	)
 	_expect(
@@ -561,10 +696,15 @@ func _test_relay_channel_count() -> void:
 		and relay_source.contains(
 			'get_node_or_null("/root/MpRogueRoute")'
 		)
-		and relay_source.contains(
-			"rogue_route_stub.set_multiplayer_authority(_host_peer_id)"
-		),
+		and relay_source.contains("net_manager_stub.set_multiplayer_authority(peer_id)")
+		and relay_source.contains("mp_game_stub.set_multiplayer_authority(peer_id)")
+		and relay_source.contains("rogue_route_stub.set_multiplayer_authority(peer_id)"),
 		"Relay must mount the P3 stub at /root/MpRogueRoute and assign Host authority."
+	)
+	_expect(
+		compact_relay_source.contains('ifrole=="host":_host_peer_id=peer_id_set_stub_authority(peer_id)')
+		and compact_relay_source.contains("func_set_stub_authority(peer_id:int)->void:"),
+		"A verified Host ticket must assign the same peer id to every Relay RPC stub through the authority helper."
 	)
 	_expect(
 		relay_source.contains("func request_host_peer_disconnect(")
@@ -572,6 +712,13 @@ func _test_relay_channel_count() -> void:
 		and relay_source.contains("peer.disconnect_peer(target_peer_id, true)")
 		and relay_source.contains("sender_peer_id == registered_host_peer_id"),
 		"Relay kick control must authenticate its registered Host sender and disconnect only the requested live target."
+	)
+	_expect(
+		relay_source.contains("func request_authenticated_peer_identity(")
+		and relay_source.contains("is_authorized_host_identity_lookup_target(")
+		and relay_source.contains("_identity_by_peer[target_peer_id]")
+		and relay_source.contains("_rpc_relay_identity_result.rpc_id("),
+		"Relay identity lookup must answer the live Host exclusively from its authenticated peer ledger."
 	)
 
 
@@ -1157,7 +1304,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		)
 	_expect(
 		channel_counts.get(NetConstants.CH_WORLD_EVENT, 0) == 60,
-		"Protocol v88 must expose exactly 60 MpGame RPCs on reliable world-event CH5."
+		"Protocol v90 must expose exactly 60 MpGame RPCs on reliable world-event CH5."
 	)
 
 	_expect_rpc_channel(rpcs, "net_runtime_state_requested", NetConstants.CH_AUTH)

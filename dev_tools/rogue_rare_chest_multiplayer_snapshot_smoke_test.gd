@@ -354,28 +354,37 @@ func _test_reconnect_does_not_recreate_historical_peer(
 ) -> void:
 	const OLD_PEER_ID := 2
 	const NEW_PEER_ID := 4
-	var migrating_player := host_route.get_player_for_peer(OLD_PEER_ID)
-	if migrating_player != null:
-		# 生产重连路径会在 RunState 发信号前暂存 Player 的新 transport id，
-		# 避免其余背包监听器以 old id 做创建型读取。
-		migrating_player.peer_id = NEW_PEER_ID
-	_expect(
-		run_state.remap_multiplayer_peer_state(
-			OLD_PEER_ID,
-			NEW_PEER_ID,
-			run_state.get_multiplayer_session_membership_revision() + 1
-		) == RunStateStore.MultiplayerPeerRemapResult.MIGRATED
+	var membership_revision := (
+		run_state.get_multiplayer_session_membership_revision() + 1
+	)
+	var remap_result := run_state.remap_multiplayer_peer_state(
+		OLD_PEER_ID,
+		NEW_PEER_ID,
+		membership_revision
+	)
+	var route_migrated := (
+		remap_result == RunStateStore.MultiplayerPeerRemapResult.MIGRATED
 		and host_route.migrate_multiplayer_player(
 			OLD_PEER_ID,
 			NEW_PEER_ID,
 			"乙重连",
 			PlayerCharacterRegistry.HOE_CAT_ID
 		)
+	)
+	var stable_key_updated := (
+		route_migrated
 		and host_route.set_multiplayer_participant_stable_key(
 			NEW_PEER_ID,
 			"stable:beta"
-		),
-		"重连回归夹具必须先完成 RunState、角色节点与稳定身份迁移。"
+		)
+	)
+	_expect(
+		stable_key_updated,
+		(
+			"重连回归夹具必须先完成 RunState、角色节点与稳定身份迁移"
+			+ "（remap=%d route=%s stable=%s）。"
+			% [remap_result, route_migrated, stable_key_updated]
+		)
 	)
 	var xirang_revision := run_state.get_party_xirang_ledger_revision()
 	var status_revision := run_state.get_party_status_ledger_revision()

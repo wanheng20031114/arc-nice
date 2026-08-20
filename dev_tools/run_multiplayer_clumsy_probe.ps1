@@ -1,5 +1,5 @@
 param(
-    [string]$GodotExe = "C:\Users\wh\Downloads\Godot_v4.6.3-stable_win64.exe\Godot_v4.6.3-stable_win64_console.exe",
+    [string]$GodotExe = "C:\Program Files\Godot\Godot_console.exe",
     [string]$ClumsyExe = "",
     [int]$Port = 29500,
     [ValidateSet("full", "leave", "wave")]

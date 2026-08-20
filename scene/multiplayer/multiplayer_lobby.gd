@@ -90,7 +90,7 @@ var pending_public_request: PublicRequest = PublicRequest.NONE
 var _pending_public_request_lease_generation := 0
 var _pending_public_request_acquisition_token := ""
 var _pending_public_acquisition_command: Dictionary = {}
-var _pending_public_room_after_confirm: Dictionary = {}
+var _pending_public_member_confirmation := false
 var _public_request_in_flight := false
 var _public_request_channel_quarantined := false
 var _public_request_channel_quarantine_generation := 0
@@ -432,7 +432,15 @@ func _finish_username_panel_intro() -> void:
 
 func _apply_public_browser_state() -> void:
 	browser_title.text = "公网游戏"
-	room_settings_hint.text = "以下选项用于创建房间；快速匹配仅使用所选模式。"
+	room_settings_hint.text = (
+		"以下选项用于创建房间；公网 Relay 当前经验证最多支持 %d 人。"
+		% _NetConstants.PUBLIC_RELAY_MAX_PLAYERS
+	)
+	max_players_spin.max_value = _NetConstants.PUBLIC_RELAY_MAX_PLAYERS
+	max_players_spin.value = minf(
+		max_players_spin.value,
+		float(_NetConstants.PUBLIC_RELAY_MAX_PLAYERS)
+	)
 	tab_container.visible = true
 	browser_status_label.visible = true
 	browser_back_button.visible = true
@@ -444,6 +452,7 @@ func _apply_public_browser_state() -> void:
 func _apply_lan_browser_state() -> void:
 	browser_title.text = "局域网游戏"
 	room_settings_hint.text = "以下选项由房主在创建局域网房间前确定。"
+	max_players_spin.max_value = _NetConstants.MAX_PLAYERS
 	tab_container.visible = false
 	browser_status_label.visible = false
 	browser_back_button.visible = false
@@ -576,10 +585,20 @@ func _on_create_public_room_pressed() -> void:
 		return
 	if not _prepare_selected_host_game_mode():
 		return
+	var requested_max_players := int(max_players_spin.value)
+	if requested_max_players > _NetConstants.PUBLIC_RELAY_MAX_PLAYERS:
+		_show_public_error(
+			"当前公网 Relay 已安全限制为最多 %d 人；局域网仍支持最多 %d 人。"
+			% [
+				_NetConstants.PUBLIC_RELAY_MAX_PLAYERS,
+				_NetConstants.MAX_PLAYERS,
+			]
+		)
+		return
 	var body := {
 		"name": room_name_input.text.strip_edges(),
 		"host_name": str(net_manager.local_player_name).strip_edges(),
-		"max_players": int(max_players_spin.value),
+		"max_players": requested_max_players,
 		"game_mode": _get_selected_game_mode_key(),
 	}
 	if not _begin_public_acquisition_request(
@@ -681,6 +700,8 @@ func _begin_public_acquisition_request(
 
 
 func _can_begin_public_membership() -> bool:
+	if not _ensure_public_lobby_api_available():
+		return false
 	if (
 		not public_release_in_progress
 		and pending_public_request == PublicRequest.NONE
@@ -699,6 +720,16 @@ func _send_public_request(
 	body: Dictionary = {}
 ) -> void:
 	if pending_public_request != PublicRequest.NONE:
+		return
+	if not _ensure_public_lobby_api_available():
+		if (
+			_is_membership_acquisition_action(action)
+			and public_room_lease.has_active_lease()
+		):
+			call_deferred(
+				"_cleanup_failed_public_membership",
+				public_room_lease.get_public_lobby_api_configuration_error()
+			)
 		return
 	pending_public_request = action
 	_pending_public_request_lease_generation = (
@@ -727,6 +758,16 @@ func _send_public_request(
 		}
 		return
 	_dispatch_public_request(path, headers, method, body_text)
+
+
+func _ensure_public_lobby_api_available() -> bool:
+	if public_room_lease.is_public_lobby_api_configured():
+		return true
+	var detail := public_room_lease.get_public_lobby_api_configuration_error()
+	if detail.is_empty():
+		detail = "公网大厅不可用：API 地址配置无效。"
+	_show_public_error(detail)
+	return false
 
 
 func _dispatch_public_request(
@@ -844,7 +885,7 @@ func _on_public_lobby_request_completed(
 			else:
 				_begin_public_client_room(data)
 		PublicRequest.CONFIRM_ACQUISITION:
-			_pending_public_room_after_confirm.clear()
+			_pending_public_member_confirmation = false
 			wait_status_label.text = "成员身份已确认，等待开始。"
 			_refresh_wait_player_list()
 		PublicRequest.HOST_READY:
@@ -890,7 +931,7 @@ func _cancel_public_request_side_effect(action: PublicRequest) -> void:
 	if action == PublicRequest.UPDATE_ROOM:
 		pending_start_after_public_status = false
 	elif action == PublicRequest.CONFIRM_ACQUISITION:
-		_pending_public_room_after_confirm.clear()
+		_pending_public_member_confirmation = false
 	elif action == PublicRequest.ACQUISITION_PREFLIGHT:
 		_pending_public_acquisition_command.clear()
 
@@ -1001,6 +1042,10 @@ func _begin_public_host_room(data: Dictionary) -> void:
 	var host_token := str(data.get("host_token", ""))
 	var member_token := str(data.get("member_token", ""))
 	var acquisition_token := str(data.get("acquisition_token", ""))
+	var relay_admission_ticket := str(
+		data.get("relay_admission_ticket", "")
+	).strip_edges()
+	data.erase("relay_admission_ticket")
 	relay_host_ready_sent = false
 	var identity_adopted := public_room_lease.adopt_room(
 		room_id,
@@ -1014,6 +1059,8 @@ func _begin_public_host_room(data: Dictionary) -> void:
 	if (
 		relay_ip.is_empty()
 		or relay_port <= 0
+		or room_id.is_empty()
+		or relay_admission_ticket.is_empty()
 		or not identity_adopted
 	):
 		_cleanup_failed_public_membership(
@@ -1025,7 +1072,14 @@ func _begin_public_host_room(data: Dictionary) -> void:
 		return
 
 	var max_players := _get_room_max_players(data)
-	var err: Error = net_manager.host_create_relay_room(relay_ip, relay_port, max_players)
+	var err: Error = net_manager.host_create_relay_room(
+		relay_ip,
+		relay_port,
+		max_players,
+		room_id,
+		relay_admission_ticket
+	)
+	relay_admission_ticket = ""
 	if err != OK:
 		_cleanup_failed_public_membership("连接 Relay 失败: %s" % error_string(err))
 		return
@@ -1043,6 +1097,10 @@ func _begin_public_client_room(data: Dictionary) -> void:
 	var room_id := _get_public_room_id(data)
 	var member_token := str(data.get("member_token", ""))
 	var acquisition_token := str(data.get("acquisition_token", ""))
+	var relay_admission_ticket := str(
+		data.get("relay_admission_ticket", "")
+	).strip_edges()
+	data.erase("relay_admission_ticket")
 	relay_host_ready_sent = false
 	var identity_adopted := public_room_lease.adopt_room(
 		room_id,
@@ -1057,6 +1115,8 @@ func _begin_public_client_room(data: Dictionary) -> void:
 		relay_ip.is_empty()
 		or relay_port <= 0
 		or host_peer_id <= 0
+		or room_id.is_empty()
+		or relay_admission_ticket.is_empty()
 		or not identity_adopted
 	):
 		_cleanup_failed_public_membership(
@@ -1071,8 +1131,15 @@ func _begin_public_client_room(data: Dictionary) -> void:
 		_cleanup_failed_public_membership("加入公网房间失败：无法应用房间人数上限")
 		return
 	# HTTP 响应只取得 provisional 占位；Relay 真正连通后才向目录确认长租约。
-	_pending_public_room_after_confirm = data.duplicate(true)
-	var err: Error = net_manager.client_join_relay_room(relay_ip, relay_port, host_peer_id)
+	_pending_public_member_confirmation = true
+	var err: Error = net_manager.client_join_relay_room(
+		relay_ip,
+		relay_port,
+		host_peer_id,
+		room_id,
+		relay_admission_ticket
+	)
+	relay_admission_ticket = ""
 	if err != OK:
 		_cleanup_failed_public_membership("连接 Relay 失败: %s" % error_string(err))
 		return
@@ -1082,7 +1149,7 @@ func _begin_public_client_room(data: Dictionary) -> void:
 
 func _request_public_member_confirmation() -> void:
 	if (
-		_pending_public_room_after_confirm.is_empty()
+		not _pending_public_member_confirmation
 		or public_room_lease.is_public_host()
 		or pending_public_request != PublicRequest.NONE
 	):
@@ -1307,7 +1374,7 @@ func _on_net_state_changed(new_state: NetManagerStore.ConnectionState) -> void:
 			if (
 				public_room_lease.has_active_lease()
 				and not public_room_lease.is_public_host()
-				and not _pending_public_room_after_confirm.is_empty()
+				and _pending_public_member_confirmation
 			):
 				_request_public_member_confirmation()
 			else:
@@ -1505,7 +1572,7 @@ func _clear_public_room_state() -> void:
 	pending_start_after_public_status = false
 	keep_room_view_after_connection_failure = false
 	_pending_public_acquisition_command.clear()
-	_pending_public_room_after_confirm.clear()
+	_pending_public_member_confirmation = false
 	current_room_max_players = _NetConstants.DEFAULT_ROOM_MAX_PLAYERS
 
 

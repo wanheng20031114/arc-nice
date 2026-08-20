@@ -175,7 +175,15 @@ extends RefCounted
 ## mode 切换。v86 及更旧客户端缺少该统一运行时契约，不能与 v87 房间混联。
 ## v88：F10 调试作弊目录的物品授予范围扩展到受信资源材料；v87 及更旧客户端
 ## 缺少该统一调试授权契约，不能与 v88 房间混联。RPC 签名与数量保持不变。
-const PROTOCOL_VERSION := 88
+## v89：公网 Relay 在业务 RPC 前完成原生 admission，并新增 Host 与 Relay 之间的
+## 身份查询/结果 RPC，将票据中的房间、角色与玩家名绑定到实际 peer。v88 及更旧
+## 客户端缺少该 RPC 表面和准入顺序，不能与 v89 房间混联。
+## v90：公网成员把完整注册元组并入原生认证 envelope；成员发现、身份查询、
+## 注册回执与大厅名单迁入独立可靠 CH8，避免与 Godot 硬编码在 CH0 的 auth/
+## ADD_PEER 互相阻塞。stock Godot 4.6 的第三个 transport 仍有可复现发现停滞，
+## 因而公网暂时 fail-closed 为 2 人，LAN 仍保留 8 人。v89 及更旧客户端缺少该
+## 认证 schema、转发 RPC 和信道布局，不能与 v90 混联。
+const PROTOCOL_VERSION := 90
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF
@@ -198,40 +206,172 @@ static func is_valid_network_combat_value(value: int) -> bool:
 const MIN_ROOM_PLAYERS := 2
 const DEFAULT_ROOM_MAX_PLAYERS := 4
 const MAX_PLAYERS := 8
+## Godot 4.6 stock SceneMultiplayer 在 auth_callback + server_relay 的第 3 个
+## transport 上存在可复现的 peer-discovery/CH0 停滞。公网入口必须 fail-closed
+## 到已完成真实握手验证的 2 人；DIRECT/LAN 仍支持 MAX_PLAYERS。
+const PUBLIC_RELAY_MAX_PLAYERS := 2
 const MAX_PLAYER_NAME_LENGTH := 12
 
 ## 连接超时
 const DIRECT_CONNECT_TIMEOUT_MS := 3000
-const RELAY_CONNECT_TIMEOUT_MS := 5000
-const UPNP_DISCOVER_TIMEOUT_MS := 2000
+## 覆盖底层 ENet 建连与随后最长 5 秒的双端 Relay 认证，不把两阶段挤进
+## 同一个 5 秒窗口。
+const RELAY_CONNECT_TIMEOUT_MS := 10000
 
 ## 端口
 const ENET_PORT_DEFAULT := 29170
 const RELAY_PORT_RANGE_START := 40001
 const RELAY_PORT_RANGE_END := 40100
-## 当前默认值仅指向测试服；正式服上线前必须在部署环境改为受信任 HTTPS 地址。
+## 明文测试地址只允许 debug 构建在环境变量缺失时使用。release 构建必须
+## 显式配置受信任的 HTTPS 地址，否则公网大厅在本地 fail-closed。
 const TEST_SERVER_PUBLIC_LOBBY_API_BASE_URL := "http://47.123.6.127:8000"
 const PUBLIC_LOBBY_API_BASE_URL_ENV := "ARC_PUBLIC_LOBBY_API_BASE_URL"
+const PUBLIC_LOBBY_API_MISSING_CONFIGURATION_ERROR := (
+	"公网大厅不可用：正式构建必须通过 %s 配置 HTTPS API 地址。"
+	% PUBLIC_LOBBY_API_BASE_URL_ENV
+)
+const PUBLIC_LOBBY_API_INSECURE_CONFIGURATION_ERROR := (
+	"公网大厅不可用：正式构建的 %s 必须使用 https:// 地址。"
+	% PUBLIC_LOBBY_API_BASE_URL_ENV
+)
+const PUBLIC_LOBBY_API_INVALID_CONFIGURATION_ERROR := (
+	"公网大厅不可用：%s 必须是带主机名的 http:// 或 https:// API 根地址。"
+	% PUBLIC_LOBBY_API_BASE_URL_ENV
+)
 ## 服务端进入 IN_GAME 后的 180 秒 idle lease 以 60 秒节奏续租。
 const PUBLIC_ROOM_KEEPALIVE_INTERVAL_SECONDS := 60.0
 
 
-## 公网大厅地址只允许从这一处读取，避免 lease/场景各自漂移。
-static func get_public_lobby_api_base_url() -> String:
-	var configured := OS.get_environment(PUBLIC_LOBBY_API_BASE_URL_ENV).strip_edges()
+## 纯解析入口让 smoke test 能覆盖 release 策略，而不依赖当前 Godot 可执行文件
+## 本身是 debug 还是 release。调用方只消费 base_url/error，不自行重建规则。
+static func resolve_public_lobby_api_configuration(
+	configured_value: String,
+	is_debug_build: bool
+) -> Dictionary:
+	var configured := configured_value.strip_edges()
+	var using_debug_default := false
 	if configured.is_empty():
+		if not is_debug_build:
+			return _public_lobby_api_configuration_failure(
+				PUBLIC_LOBBY_API_MISSING_CONFIGURATION_ERROR
+			)
 		configured = TEST_SERVER_PUBLIC_LOBBY_API_BASE_URL
-	return configured.trim_suffix("/")
+		using_debug_default = true
+
+	var lower_configured := configured.to_lower()
+	var is_https := lower_configured.begins_with("https://")
+	var is_http := lower_configured.begins_with("http://")
+	if not is_debug_build and not is_https:
+		return _public_lobby_api_configuration_failure(
+			PUBLIC_LOBBY_API_INSECURE_CONFIGURATION_ERROR
+		)
+	if (not is_https and not is_http) or not _has_public_lobby_api_authority(
+		configured
+	):
+		return _public_lobby_api_configuration_failure(
+			PUBLIC_LOBBY_API_INVALID_CONFIGURATION_ERROR
+		)
+	while configured.ends_with("/"):
+		configured = configured.trim_suffix("/")
+	return {
+		"base_url": configured,
+		"error": "",
+		"using_debug_default": using_debug_default,
+	}
+
+
+## 公网大厅地址只允许从这一处读取，避免 lease/场景各自漂移。
+static func get_public_lobby_api_configuration() -> Dictionary:
+	return resolve_public_lobby_api_configuration(
+		OS.get_environment(PUBLIC_LOBBY_API_BASE_URL_ENV),
+		OS.is_debug_build()
+	)
+
+
+static func get_public_lobby_api_base_url() -> String:
+	return str(get_public_lobby_api_configuration().get("base_url", ""))
+
+
+static func _public_lobby_api_configuration_failure(error: String) -> Dictionary:
+	return {
+		"base_url": "",
+		"error": error,
+		"using_debug_default": false,
+	}
+
+
+static func _has_public_lobby_api_authority(base_url: String) -> bool:
+	var authority_start := base_url.find("://") + 3
+	if authority_start < 3 or authority_start >= base_url.length():
+		return false
+	var authority_end := base_url.length()
+	for delimiter in ["/", "?", "#"]:
+		var delimiter_index := base_url.find(delimiter, authority_start)
+		if delimiter_index >= 0:
+			authority_end = mini(authority_end, delimiter_index)
+	var authority := base_url.substr(
+		authority_start,
+		authority_end - authority_start
+	)
+	if (
+		authority.is_empty()
+		or authority != authority.strip_edges()
+		or authority.contains("@")
+		or authority.contains("\\")
+	):
+		return false
+	for index in authority.length():
+		var code := authority.unicode_at(index)
+		if code <= 32 or code == 127:
+			return false
+	var host := authority
+	var port_text := ""
+	if authority.begins_with("["):
+		var closing_bracket := authority.find("]")
+		if closing_bracket <= 1:
+			return false
+		host = authority.substr(1, closing_bracket - 1)
+		if not host.is_valid_ip_address():
+			return false
+		var suffix := authority.substr(closing_bracket + 1)
+		if not suffix.is_empty():
+			if not suffix.begins_with(":"):
+				return false
+			port_text = suffix.trim_prefix(":")
+	else:
+		if authority.count(":") > 1:
+			return false
+		var port_separator := authority.rfind(":")
+		if port_separator >= 0:
+			host = authority.left(port_separator)
+			port_text = authority.substr(port_separator + 1)
+	if host.is_empty():
+		return false
+	if not port_text.is_empty():
+		if not port_text.is_valid_int():
+			return false
+		var port := port_text.to_int()
+		if port <= 0 or port > 65_535 or str(port) != port_text:
+			return false
+	elif authority.ends_with(":"):
+		return false
+	return true
 
 ## ENet 信道定义
-## 0: 认证、加载、完整状态恢复 — reliable
+## 0: 认证、加载、repair 控制/manifest — reliable；各域 repair 正文走 5/6
 ## 1: 玩家输入上报 — unreliable_ordered
 ## 2: 玩家实时状态 — unreliable_ordered
 ## 3: 敌人分块状态 — unreliable
 ## 4: 投射物请求与表现 — reliable / unreliable_ordered
-## 5: 敌人、植物、地形、基地等持久世界事件 — reliable
+## 5: 玩家可靠动作及敌人、植物、地形、基地等持久世界事件 — reliable
 ## 6: 库存、经济、洛茜与仓库事务 — reliable
 ## 7: 可丢弃的战斗反馈 — unreliable
+## 8: 成员发现、身份绑定、注册拒绝/接纳与大厅名单 — reliable
+##
+## Godot 的 ENet `max_channels` 参数表示可用的最大应用信道号；底层另加
+## 两个保留信道。因此 ENET_MAX_CHANNEL=8 对应应用层 CH0..CH8，共 9 条逻辑
+## 信道。公网 Relay 的成员准入控制全部走 CH8，避免和引擎硬编码在 CH0 的
+## auth/ADD_PEER 系统包形成队首阻塞；DIRECT/LAN 也复用它传成员注册回执。
 const CH_AUTH := 0
 const CH_INPUT := 1
 const CH_PLAYER_STATE := 2
@@ -240,7 +380,9 @@ const CH_PROJECTILE := 4
 const CH_WORLD_EVENT := 5
 const CH_TRANSACTION := 6
 const CH_FEEDBACK := 7
-const CHANNEL_COUNT := 8
+const CH_MEMBERSHIP := 8
+const ENET_MAX_CHANNEL := CH_MEMBERSHIP
+const CHANNEL_COUNT := CH_MEMBERSHIP + 1
 
 ## 同步频率 (Hz)
 const HOST_PHYSICS_HZ := 60

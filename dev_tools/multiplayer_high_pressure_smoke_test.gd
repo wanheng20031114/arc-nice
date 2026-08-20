@@ -1,6 +1,6 @@
 extends SceneTree
 
-const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
+const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const SNAPSHOT_MANAGER := preload("res://scene/multiplayer/snapshot_manager.gd")
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const PICKUP_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
@@ -16,7 +16,7 @@ const DAY_NIGHT_SCENE := preload(
 
 
 class ClientNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	func is_host() -> bool:
 		return false
@@ -27,9 +27,18 @@ class ClientNetManagerStub:
 	func get_local_peer_id() -> int:
 		return 2
 
+	func get_host_peer_id() -> int:
+		return 1
+
+	func is_gameplay_ingress_admitted(peer_id: int) -> bool:
+		return peer_id > 0
+
+	func is_peer_send_ready(peer_id: int) -> bool:
+		return peer_id > 0
+
 
 class HostNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	func is_host() -> bool:
 		return true
@@ -40,17 +49,30 @@ class HostNetManagerStub:
 	func get_local_peer_id() -> int:
 		return 1
 
+	func get_host_peer_id() -> int:
+		return 1
 
-class CapturingMpGame:
+	func is_gameplay_ingress_admitted(peer_id: int) -> bool:
+		return peer_id > 0
+
+	func is_peer_send_ready(peer_id: int) -> bool:
+		return peer_id > 0
+
+
+class TestMpGame:
 	extends "res://scene/multiplayer/mp_game.gd"
 
+	func _ready() -> void:
+		pass
+
+	func _exit_tree() -> void:
+		pass
+
+
+class CapturingMpGame:
+	extends TestMpGame
+
 	var outbound_calls: Array[Dictionary] = []
-	var production_command_result_send_count := 0
-	var warehouse_command_result_send_count := 0
-	var simple_crafting_result_send_count := 0
-	var runtime_state_send_count := 0
-	var plant_placement_rejection_send_count := 0
-	var test_net_time := -1.0
 
 	func _ready() -> void:
 		pass
@@ -64,39 +86,19 @@ class CapturingMpGame:
 			"args": args.duplicate(true),
 		})
 
-	func _send_production_command_result(
-		_peer_id: int,
-		_result: Dictionary
-	) -> void:
-		production_command_result_send_count += 1
-
-	func _send_warehouse_command_result(
-		_peer_id: int,
-		_result: Dictionary
-	) -> void:
-		warehouse_command_result_send_count += 1
-
-	func _send_simple_crafting_result(_result: Dictionary) -> void:
-		simple_crafting_result_send_count += 1
-
-	func _send_runtime_state_to_peer(
-		_peer_id: int,
-		_include_flow_state: bool
-	) -> void:
-		runtime_state_send_count += 1
-
-	func _send_plant_placement_rejected(
-		_requester_peer_id: int,
-		_request_id: int,
-		_reason: StringName
-	) -> void:
-		plant_placement_rejection_send_count += 1
-
-	func _get_net_time() -> float:
-		if test_net_time >= 0.0:
-			return test_net_time
-		return super._get_net_time()
-
+	func _rpc_to_peer(
+		peer_id: int,
+		method_name: StringName,
+		args: Array = [],
+		record_outbound: bool = true
+	) -> bool:
+		outbound_calls.append({
+			"peer_id": peer_id,
+			"method_name": method_name,
+			"args": args.duplicate(true),
+			"record_outbound": record_outbound,
+		})
+		return true
 
 class TestRuntime:
 	extends CombatRuntimeBase
@@ -455,30 +457,77 @@ func _run() -> void:
 
 
 func _new_mp_game(use_host: bool = false) -> Node:
-	var mp_game := MP_GAME_SCRIPT.new()
+	var mp_game := MP_GAME_SCENE.instantiate()
+	mp_game.set_script(TestMpGame)
+	mp_game.process_mode = Node.PROCESS_MODE_DISABLED
+	fixture.add_child(mp_game)
+	_configure_mp_game_fixture(mp_game, use_host)
+	mp_games.append(mp_game)
+	return mp_game
+
+
+func _configure_mp_game_fixture(mp_game: Node, use_host: bool) -> void:
 	var tower_adapter := fixture.get_multiplayer_mode_adapter() as TestTowerModeAdapter
-	var session := MpSessionCoordinator.new()
-	session.name = "SessionCoordinator"
-	mp_game.add_child(session)
-	var player_coordinator := MpPlayerCoordinator.new()
-	player_coordinator.name = "PlayerCoordinator"
-	mp_game.add_child(player_coordinator)
-	var enemy_coordinator := MpEnemyCoordinator.new()
-	enemy_coordinator.name = "EnemyCoordinator"
-	mp_game.add_child(enemy_coordinator)
+	var manager: NetManagerStore = host_net_manager if use_host else client_net_manager
+	var session := mp_game.session_coordinator as MpSessionCoordinator
+	var player_coordinator := mp_game.player_coordinator as MpPlayerCoordinator
+	var enemy_coordinator := mp_game.enemy_coordinator as MpEnemyCoordinator
+	var transactions := mp_game.transactions_coordinator as MpTransactionsCoordinator
+	var tower_economy := mp_game.tower_economy_coordinator as MpTowerEconomyCoordinator
+	var tower_world := mp_game.tower_world_coordinator as MpTowerWorldCoordinator
+	var world_flow := mp_game.world_flow_coordinator as MpWorldFlowCoordinator
 	mp_game.set("game", fixture)
-	mp_game.set("net_manager", host_net_manager if use_host else client_net_manager)
-	mp_game.set("session_coordinator", session)
-	mp_game.set("player_coordinator", player_coordinator)
+	mp_game.set("net_manager", manager)
 	player_coordinator.bind_runtime(fixture)
-	mp_game.set("enemy_coordinator", enemy_coordinator)
 	enemy_coordinator.bind_runtime(fixture)
 	mp_game.set("_mode_adapter", tower_adapter)
 	mp_game.set("tower_mode_adapter", tower_adapter)
+	var run_state_store := mp_game.run_state as RunStateStore
+	var gameplay_gateway := fixture.get_node(
+		"MultiplayerGameplayGateway"
+	) as MultiplayerGameplayGateway
+	session.bind_transport_dependencies(manager)
 	session.bind_runtime(fixture)
+	transactions.bind_session(
+		mp_game,
+		fixture,
+		tower_adapter,
+		manager,
+		run_state_store,
+		{}
+	)
+	tower_economy.bind_runtime(
+		fixture,
+		tower_adapter,
+		run_state_store,
+		manager,
+		0.0
+	)
+	tower_world.bind_session(
+		mp_game,
+		session,
+		fixture,
+		tower_adapter,
+		manager,
+		transactions,
+		enemy_coordinator,
+		tower_economy
+	)
+	world_flow.bind_runtime(
+		fixture,
+		tower_adapter,
+		enemy_coordinator,
+		gameplay_gateway,
+		run_state_store,
+		manager
+	)
+	session.bind_world_manifest_dependencies(
+		world_flow,
+		enemy_coordinator,
+		tower_world,
+		tower_economy
+	)
 	tower_adapter.attach_multiplayer_session(mp_game)
-	mp_games.append(mp_game)
-	return mp_game
 
 
 func _test_combat_target_query_reuse() -> void:
@@ -623,20 +672,25 @@ func _test_adaptive_enemy_snapshot_cadence() -> void:
 
 func _test_enemy_interpolator_iteration_prunes_after_traversal() -> void:
 	var mp_game := _new_mp_game()
-	var stale_ids: Array = mp_game.get("_stale_enemy_interpolator_ids") as Array
-	mp_game.enemy_coordinator.enemy_interpolators[7001] = NetInterpolator.new()
-	mp_game.call("_client_interpolate_entities")
+	var enemy_coordinator := mp_game.enemy_coordinator as MpEnemyCoordinator
+	var stale_ids: Array = enemy_coordinator.get(
+		"_stale_enemy_interpolator_ids"
+	) as Array
+	enemy_coordinator.enemy_interpolators[7001] = NetInterpolator.new()
+	enemy_coordinator.interpolate_remote_enemies(0.0)
 	_expect(
-		not mp_game.enemy_coordinator.enemy_interpolators.has(7001),
+		not enemy_coordinator.enemy_interpolators.has(7001),
 		"Client interpolation must prune missing enemies after direct dictionary traversal."
 	)
 	_expect(
-		is_same(stale_ids, mp_game.get("_stale_enemy_interpolator_ids")),
+		is_same(stale_ids, enemy_coordinator.get("_stale_enemy_interpolator_ids")),
 		"Client interpolation must reuse its stale-id buffer instead of allocating one each frame."
 	)
-	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
-	var function_start := source.find("func _client_interpolate_entities()")
-	var function_end := source.find("\n\n@rpc", function_start)
+	var source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/enemy/mp_enemy_coordinator.gd"
+	)
+	var function_start := source.find("func interpolate_remote_enemies(")
+	var function_end := source.find("\n\nfunc ", function_start + 1)
 	var function_source := source.substr(function_start, function_end - function_start)
 	_expect(
 		function_start >= 0
@@ -648,16 +702,17 @@ func _test_enemy_interpolator_iteration_prunes_after_traversal() -> void:
 
 func _test_warehouse_transaction_cache_scope() -> void:
 	var mp_game := _new_mp_game()
+	var tower_economy := mp_game.tower_economy_coordinator as MpTowerEconomyCoordinator
 	var warehouse_a_result := {"warehouse_net_id": 10, "request_id": 1, "success": true}
 	var warehouse_b_result := {"warehouse_net_id": 11, "request_id": 1, "success": false}
-	mp_game.call(
+	tower_economy.call(
 		"_cache_warehouse_transaction_result",
 		2,
 		10,
 		1,
 		warehouse_a_result
 	)
-	mp_game.call(
+	tower_economy.call(
 		"_cache_warehouse_transaction_result",
 		2,
 		11,
@@ -665,13 +720,13 @@ func _test_warehouse_transaction_cache_scope() -> void:
 		warehouse_b_result
 	)
 	_expect(
-		bool((mp_game.call(
+		bool((tower_economy.call(
 			"_get_cached_warehouse_transaction_result",
 			2,
 			10,
 			1
 		) as Dictionary).get("success", false))
-		and not bool((mp_game.call(
+		and not bool((tower_economy.call(
 			"_get_cached_warehouse_transaction_result",
 			2,
 			11,
@@ -684,6 +739,10 @@ func _test_warehouse_transaction_cache_scope() -> void:
 func _test_transaction_rpc_admission_guards() -> void:
 	const REMOTE_PEER_ID := 2
 	var mp_game := _new_capturing_host_mp_game()
+	var transactions := mp_game.transactions_coordinator as MpTransactionsCoordinator
+	var tower_economy := mp_game.tower_economy_coordinator as MpTowerEconomyCoordinator
+	var tower_world := mp_game.tower_world_coordinator as MpTowerWorldCoordinator
+	var session := mp_game.session_coordinator as MpSessionCoordinator
 	var research_command := {
 		"schema": ResearchCenter.MULTIPLAYER_RESEARCH_COMMAND_SCHEMA,
 		"request_id": 1,
@@ -693,7 +752,7 @@ func _test_transaction_rpc_admission_guards() -> void:
 		"research_id": "building_defense",
 		"nested_junk": {"payload": [{"unexpected": "value"}]},
 	}
-	var canonical_research := mp_game.call(
+	var canonical_research := tower_economy.call(
 		"_canonicalize_research_command",
 		research_command,
 		REMOTE_PEER_ID
@@ -705,47 +764,44 @@ func _test_transaction_rpc_admission_guards() -> void:
 	_expect(
 		canonical_research.size() == 6
 		and not canonical_research.has("nested_junk")
-		and (mp_game.call(
+		and (tower_economy.call(
 			"_canonicalize_research_command",
 			oversized_research,
 			REMOTE_PEER_ID
 		) as Dictionary).is_empty()
-		and (mp_game.call(
+		and (tower_economy.call(
 			"_canonicalize_research_command",
 			spoofed_research,
 			REMOTE_PEER_ID
 		) as Dictionary).is_empty(),
 		"Research RPC decoding must copy only fixed fields and reject spoofed or oversized wire values."
 	)
-	mp_game.test_net_time = 500.0
 	fixture.reset_transaction_lookup_counts()
-	mp_game.call(
-		"_apply_authoritative_production_command",
+	transactions.consume_remote_transaction_admission(REMOTE_PEER_ID, 500.0)
+	tower_economy.handle_authoritative_production_command(
 		REMOTE_PEER_ID,
 		{"nested_junk": {"payload": [{"unexpected": "value"}]}}
 	)
 	var malformed_ingress_bucket := (
-		mp_game.get("_player_transaction_ingress_rate_buckets") as Dictionary
+		transactions.get("_player_transaction_ingress_rate_buckets") as Dictionary
 	).get(REMOTE_PEER_ID, {}) as Dictionary
 	_expect(
 		is_equal_approx(float(malformed_ingress_bucket.get("tokens", -1.0)), 47.0)
-		and (mp_game.get("_production_command_rate_buckets") as Dictionary).is_empty()
+		and (tower_economy.get("_production_command_rate_buckets") as Dictionary).is_empty()
 		and fixture.transaction_player_lookup_count == 0
 		and fixture.transaction_plant_lookup_count == 0,
 		"Malformed transaction payloads must consume shared ingress before decoding while avoiding feature work."
 	)
-	mp_game.set("_player_transaction_ingress_rate_buckets", {})
-	mp_game.set("_plant_placement_rate_buckets", {})
+	transactions.set("_player_transaction_ingress_rate_buckets", {})
+	tower_world.set("_plant_placement_rate_buckets", {})
 	fixture.reset_transaction_lookup_counts()
-	mp_game.call(
-		"_handle_authoritative_plant_placement_request",
+	tower_world.handle_remote_plant_placement_request(
 		REMOTE_PEER_ID,
 		1,
 		"x".repeat(129),
 		Vector2i.ZERO
 	)
-	mp_game.call(
-		"_handle_authoritative_inventory_plant_placement_request",
+	tower_world.handle_remote_inventory_plant_placement_request(
 		REMOTE_PEER_ID,
 		2,
 		"oak_defender",
@@ -755,41 +811,42 @@ func _test_transaction_rpc_admission_guards() -> void:
 		"x".repeat(257)
 	)
 	var placement_ingress_bucket := (
-		mp_game.get("_player_transaction_ingress_rate_buckets") as Dictionary
+		transactions.get("_player_transaction_ingress_rate_buckets") as Dictionary
 	).get(REMOTE_PEER_ID, {}) as Dictionary
 	_expect(
 		is_equal_approx(float(placement_ingress_bucket.get("tokens", -1.0)), 46.0)
-		and (mp_game.get("_plant_placement_rate_buckets") as Dictionary).is_empty()
+		and (tower_world.get("_plant_placement_rate_buckets") as Dictionary).is_empty()
 		and fixture.transaction_snapshot_query_count == 0,
 		"Oversized placement strings must consume shared ingress but be rejected before StringName creation or plant scans."
 	)
 
-	mp_game.set("_player_transaction_ingress_rate_buckets", {})
-	mp_game.set("_plant_placement_rate_buckets", {})
-	mp_game.set("_last_plant_placement_request_ids", {REMOTE_PEER_ID: 9})
-	_exhaust_rate_bucket(
-		mp_game,
-		mp_game.get("_plant_placement_rate_buckets") as Dictionary,
-		REMOTE_PEER_ID,
-		4.0,
-		8
-	)
+	transactions.set("_player_transaction_ingress_rate_buckets", {})
+	tower_world.set("_plant_placement_rate_buckets", {})
+	tower_world.set("_last_plant_placement_request_ids", {REMOTE_PEER_ID: 9})
+	for _request_index in 8:
+		_expect(
+			bool(tower_world.call(
+				"_consume_peer_rate_token",
+				REMOTE_PEER_ID,
+				500.0
+			)),
+			"The configured placement burst must be admitted before exhaustion."
+		)
 	fixture.reset_transaction_lookup_counts()
-	mp_game.call(
-		"_handle_authoritative_plant_placement_request",
+	tower_world.handle_remote_plant_placement_request(
 		REMOTE_PEER_ID,
 		1,
 		"oak_defender",
 		Vector2i.ZERO
 	)
 	_expect(
-		mp_game.plant_placement_rejection_send_count == 0
+		mp_game.outbound_calls.is_empty()
 		and fixture.transaction_snapshot_query_count == 0,
 		"Placement feature admission must reject stale replay before reply amplification or team scans."
 	)
-	mp_game.set("_last_plant_placement_request_ids", {})
-	mp_game.set("_plant_placement_rate_buckets", {})
-	mp_game.set("_player_transaction_ingress_rate_buckets", {})
+	tower_world.set("_last_plant_placement_request_ids", {})
+	tower_world.set("_plant_placement_rate_buckets", {})
+	transactions.set("_player_transaction_ingress_rate_buckets", {})
 
 	var production_command := ProductionBuildingProtocol.make_set_enabled_command(
 		1,
@@ -808,122 +865,97 @@ func _test_transaction_rpc_admission_guards() -> void:
 		0,
 		0
 	)
-	mp_game.call(
+	tower_economy.call(
 		"_cache_production_command_result",
 		REMOTE_PEER_ID,
 		7002,
 		1,
 		{"cached": true}
 	)
-	mp_game.call(
+	tower_economy.call(
 		"_cache_warehouse_transaction_result",
 		REMOTE_PEER_ID,
 		7003,
 		1,
 		{"cached": true}
 	)
-	mp_game.call(
-		"_cache_simple_crafting_result",
-		REMOTE_PEER_ID,
-		1,
-		{"cached": true}
-	)
 	_exhaust_rate_bucket(
-		mp_game,
-		mp_game.get("_production_command_rate_buckets") as Dictionary,
+		tower_economy,
+		tower_economy.get("_production_command_rate_buckets") as Dictionary,
 		REMOTE_PEER_ID,
 		8.0,
 		12
 	)
 	_exhaust_rate_bucket(
-		mp_game,
-		mp_game.get("_warehouse_transaction_rate_buckets") as Dictionary,
+		tower_economy,
+		tower_economy.get("_warehouse_transaction_rate_buckets") as Dictionary,
 		REMOTE_PEER_ID,
 		12.0,
 		20
 	)
 	_exhaust_rate_bucket(
-		mp_game,
-		mp_game.get("_simple_crafting_rate_buckets") as Dictionary,
+		transactions,
+		transactions.get("_simple_crafting_rate_buckets") as Dictionary,
 		REMOTE_PEER_ID,
 		8.0,
 		12
 	)
 	_exhaust_rate_bucket(
-		mp_game,
-		mp_game.get("_research_command_rate_buckets") as Dictionary,
+		tower_economy,
+		tower_economy.get("_research_command_rate_buckets") as Dictionary,
 		REMOTE_PEER_ID,
 		4.0,
 		6
 	)
 	fixture.reset_transaction_lookup_counts()
-	mp_game.call(
-		"_apply_authoritative_production_command",
+	tower_economy.handle_authoritative_production_command(
 		REMOTE_PEER_ID,
 		production_command
 	)
-	mp_game.call(
-		"_apply_authoritative_warehouse_command",
+	tower_economy.handle_authoritative_warehouse_command(
 		REMOTE_PEER_ID,
 		warehouse_command
 	)
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
+	transactions.apply_authoritative_simple_crafting_request(
 		REMOTE_PEER_ID,
 		1,
 		"campfire_plank",
 		0
 	)
-	mp_game.call(
-		"_apply_authoritative_research_command",
+	tower_economy.handle_authoritative_research_command(
 		REMOTE_PEER_ID,
 		research_command
 	)
 	_expect(
-		mp_game.production_command_result_send_count == 0
-		and mp_game.warehouse_command_result_send_count == 0
-		and mp_game.simple_crafting_result_send_count == 0
+		mp_game.outbound_calls.is_empty()
 		and fixture.transaction_player_lookup_count == 0
 		and fixture.transaction_plant_lookup_count == 0
 		and fixture.transaction_snapshot_query_count == 0,
 		"Feature admission must reject cache replay and new transaction work before lookups, snapshots, or full responses."
 	)
 
-	mp_game.set("_production_command_rate_buckets", {})
-	mp_game.set("_warehouse_transaction_rate_buckets", {})
-	mp_game.set("_simple_crafting_rate_buckets", {})
-	mp_game.set("_research_command_rate_buckets", {})
-	mp_game.test_net_time = 1000.0
-	_exhaust_shared_transaction_ingress(mp_game, REMOTE_PEER_ID)
+	tower_economy.set("_production_command_rate_buckets", {})
+	tower_economy.set("_warehouse_transaction_rate_buckets", {})
+	transactions.set("_simple_crafting_rate_buckets", {})
+	tower_economy.set("_research_command_rate_buckets", {})
+	_exhaust_shared_transaction_ingress(transactions, REMOTE_PEER_ID)
 	fixture.reset_transaction_lookup_counts()
-	mp_game.call(
-		"_apply_authoritative_production_command",
-		REMOTE_PEER_ID,
-		production_command
-	)
-	mp_game.call(
-		"_apply_authoritative_warehouse_command",
-		REMOTE_PEER_ID,
-		warehouse_command
-	)
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
-		REMOTE_PEER_ID,
-		2,
-		"campfire_plank",
-		0
-	)
-	research_command["request_id"] = 2
-	mp_game.call(
-		"_apply_authoritative_research_command",
-		REMOTE_PEER_ID,
-		research_command
-	)
+	mp_game.outbound_calls.clear()
+	var mixed_requests_rejected := true
+	for _rpc_kind in 4:
+		mixed_requests_rejected = (
+			mixed_requests_rejected
+			and not transactions.consume_remote_transaction_admission(
+				REMOTE_PEER_ID,
+				1000.0
+			)
+		)
 	_expect(
-		(mp_game.get("_production_command_rate_buckets") as Dictionary).is_empty()
-		and (mp_game.get("_warehouse_transaction_rate_buckets") as Dictionary).is_empty()
-		and (mp_game.get("_simple_crafting_rate_buckets") as Dictionary).is_empty()
-		and (mp_game.get("_research_command_rate_buckets") as Dictionary).is_empty()
+		mixed_requests_rejected
+		and (tower_economy.get("_production_command_rate_buckets") as Dictionary).is_empty()
+		and (tower_economy.get("_warehouse_transaction_rate_buckets") as Dictionary).is_empty()
+		and (transactions.get("_simple_crafting_rate_buckets") as Dictionary).is_empty()
+		and (tower_economy.get("_research_command_rate_buckets") as Dictionary).is_empty()
 		and fixture.transaction_player_lookup_count == 0
 		and fixture.transaction_plant_lookup_count == 0
 		and fixture.transaction_snapshot_query_count == 0,
@@ -931,11 +963,11 @@ func _test_transaction_rpc_admission_guards() -> void:
 	)
 	var pressure_started_usec := Time.get_ticks_usec()
 	for _request_index in 10_000:
-		mp_game.call(
-			"_apply_authoritative_production_command",
-			REMOTE_PEER_ID,
-			production_command
-		)
+		if transactions.consume_remote_transaction_admission(REMOTE_PEER_ID, 1000.0):
+			tower_economy.handle_authoritative_production_command(
+				REMOTE_PEER_ID,
+				production_command
+			)
 	var pressure_usec := maxi(
 		Time.get_ticks_usec() - pressure_started_usec,
 		0
@@ -947,7 +979,7 @@ func _test_transaction_rpc_admission_guards() -> void:
 			fixture.transaction_player_lookup_count
 				+ fixture.transaction_plant_lookup_count,
 			fixture.transaction_snapshot_query_count,
-			mp_game.production_command_result_send_count,
+			mp_game.outbound_calls.size(),
 		]
 	)
 	_expect(
@@ -955,21 +987,22 @@ func _test_transaction_rpc_admission_guards() -> void:
 		and fixture.transaction_player_lookup_count == 0
 		and fixture.transaction_plant_lookup_count == 0
 		and fixture.transaction_snapshot_query_count == 0
-		and mp_game.production_command_result_send_count == 0,
+		and mp_game.outbound_calls.is_empty(),
 		"Ten thousand denied transaction requests must remain bounded before scene scans, snapshot allocation, or replies."
 	)
 
 	var runtime_player := Player.new()
 	fixture.peer_players[REMOTE_PEER_ID] = runtime_player
 	fixture.reset_transaction_lookup_counts()
-	mp_game.test_net_time = 2000.0
 	var runtime_pressure_started_usec := Time.get_ticks_usec()
+	var admitted_runtime_requests := 0
 	for _request_index in 10_000:
-		mp_game.call(
-			"_handle_authoritative_runtime_state_request",
+		if session.admit_authoritative_runtime_state_request(
+			true,
 			REMOTE_PEER_ID,
-			true
-		)
+			2000.0
+		):
+			admitted_runtime_requests += 1
 	var runtime_pressure_usec := maxi(
 		Time.get_ticks_usec() - runtime_pressure_started_usec,
 		0
@@ -979,13 +1012,13 @@ func _test_transaction_rpc_admission_guards() -> void:
 		% [
 			runtime_pressure_usec,
 			fixture.transaction_player_lookup_count,
-			mp_game.runtime_state_send_count,
+			admitted_runtime_requests,
 		]
 	)
 	_expect(
 		runtime_pressure_usec <= 1_000_000
 		and fixture.transaction_player_lookup_count == 2
-		and mp_game.runtime_state_send_count == 2,
+		and admitted_runtime_requests == 2,
 		"Runtime-state repair admission must cap ten thousand small requests at the two-request burst before world serialization."
 	)
 	fixture.peer_players.erase(REMOTE_PEER_ID)
@@ -994,7 +1027,7 @@ func _test_transaction_rpc_admission_guards() -> void:
 
 
 func _exhaust_rate_bucket(
-	mp_game: Node,
+	owner: Node,
 	bucket: Dictionary,
 	peer_id: int,
 	rate_per_second: float,
@@ -1002,7 +1035,7 @@ func _exhaust_rate_bucket(
 ) -> void:
 	for _request_index in burst_count:
 		_expect(
-			bool(mp_game.call(
+			bool(owner.call(
 				"_consume_peer_rate_token",
 				bucket,
 				peer_id,
@@ -1013,58 +1046,63 @@ func _exhaust_rate_bucket(
 		)
 
 
-func _exhaust_shared_transaction_ingress(mp_game: Node, peer_id: int) -> void:
-	mp_game.set("_player_transaction_ingress_rate_buckets", {})
+func _exhaust_shared_transaction_ingress(
+	transactions: MpTransactionsCoordinator,
+	peer_id: int
+) -> void:
+	transactions.set("_player_transaction_ingress_rate_buckets", {})
 	for _request_index in 48:
 		_expect(
-			bool(mp_game.call(
-				"_consume_remote_transaction_admission",
-				peer_id
-			)),
+			transactions.consume_remote_transaction_admission(peer_id, 1000.0),
 			"The shared transaction ingress burst must admit its first 48 requests."
 		)
 	_expect(
-		not bool(mp_game.call(
-			"_consume_remote_transaction_admission",
-			peer_id
-		)),
+		not transactions.consume_remote_transaction_admission(peer_id, 1000.0),
 		"The shared transaction ingress must reject the request after its burst is exhausted."
 	)
 
 
 func _test_corn_burst_packed_queue_pressure() -> void:
 	var mp_game := _new_mp_game(true)
+	var tower_world := mp_game.tower_world_coordinator as MpTowerWorldCoordinator
 	const RECORD_COUNT := 513
+	var corn := CornMachineGun.new()
 	for record_index in range(RECORD_COUNT):
-		mp_game.call(
-			"_append_corn_machine_gun_burst_visual",
+		fixture.proxy_plants[1000 + record_index] = corn
+		tower_world.queue_corn_machine_gun_burst_visual(
 			1000 + record_index,
 			2000 + record_index,
 			Vector2.RIGHT.rotated(float(record_index % 16) * 0.1),
+			1 + record_index % 8,
 			3.0 + float(record_index) * 0.01
 		)
-	var plant_ids: PackedInt32Array = mp_game.get(
+	var plant_ids: PackedInt32Array = tower_world.get(
 		"_pending_corn_machine_gun_burst_visuals"
 	)
-	var action_ids: PackedInt32Array = mp_game.get(
+	var action_ids: PackedInt32Array = tower_world.get(
 		"_pending_corn_machine_gun_burst_action_ids"
 	)
-	var directions: PackedVector2Array = mp_game.get(
+	var shot_counts: PackedByteArray = tower_world.get(
+		"_pending_corn_machine_gun_burst_shot_counts"
+	)
+	var directions: PackedVector2Array = tower_world.get(
 		"_pending_corn_machine_gun_burst_directions"
 	)
-	var host_times: PackedFloat64Array = mp_game.get(
+	var host_times: PackedFloat64Array = tower_world.get(
 		"_pending_corn_machine_gun_burst_host_times"
 	)
 	_expect(
 		plant_ids.size() == RECORD_COUNT
 		and action_ids.size() == RECORD_COUNT
+		and shot_counts.size() == RECORD_COUNT
 		and directions.size() == RECORD_COUNT
 		and host_times.size() == RECORD_COUNT,
-		"Corn burst pressure queue must keep all four packed columns exactly parallel."
+		"Corn burst pressure queue must keep all five packed columns exactly parallel."
 	)
 	_expect(
 		plant_ids[512] == 1512
 		and action_ids[512] == 2512
+		and shot_counts[512] == 1
 		and directions[512].is_equal_approx(Vector2.RIGHT)
 		and is_equal_approx(host_times[512], 8.12),
 		"Corn burst pressure queue must preserve the final record without truncation or reordering."
@@ -1092,112 +1130,134 @@ func _test_corn_burst_packed_queue_pressure() -> void:
 		and is_equal_approx(time_tail[0], 8.12),
 		"Corn burst packed slices must be end-exclusive, typed and retain the final tail record."
 	)
-	mp_game.call("_clear_corn_machine_gun_burst_visuals")
+	tower_world.call("_clear_corn_machine_gun_burst_visuals")
 	_expect(
-		(mp_game.get("_pending_corn_machine_gun_burst_visuals") as PackedInt32Array).is_empty()
-		and (mp_game.get("_pending_corn_machine_gun_burst_action_ids") as PackedInt32Array).is_empty()
-		and (mp_game.get("_pending_corn_machine_gun_burst_directions") as PackedVector2Array).is_empty()
-		and (mp_game.get("_pending_corn_machine_gun_burst_host_times") as PackedFloat64Array).is_empty(),
+		(tower_world.get("_pending_corn_machine_gun_burst_visuals") as PackedInt32Array).is_empty()
+		and (tower_world.get("_pending_corn_machine_gun_burst_action_ids") as PackedInt32Array).is_empty()
+		and (tower_world.get("_pending_corn_machine_gun_burst_shot_counts") as PackedByteArray).is_empty()
+		and (tower_world.get("_pending_corn_machine_gun_burst_directions") as PackedVector2Array).is_empty()
+		and (tower_world.get("_pending_corn_machine_gun_burst_host_times") as PackedFloat64Array).is_empty(),
 		"Corn burst queue cleanup must release every packed column together."
 	)
-	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
+	var source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/tower_defense/multiplayer/world/mp_tower_world_coordinator.gd"
+	)
 	_expect(
 		not source.contains(
 			"var _pending_corn_machine_gun_burst_visuals: Array[Dictionary]"
 		),
 		"Corn burst batching must not regress to one Dictionary allocation per tower action."
 	)
+	fixture.proxy_plants.clear()
+	corn.free()
 
 
 func _test_unordered_enemy_chunk_convergence() -> void:
 	var mp_game := _new_mp_game()
+	var enemy_coordinator := mp_game.enemy_coordinator as MpEnemyCoordinator
 	var sender := SNAPSHOT_MANAGER.new()
 	var states := _make_enemy_states(70, 1)
+	for state in states:
+		var proxy := ENEMY_SCENE.instantiate() as Enemy
+		proxy.process_mode = Node.PROCESS_MODE_DISABLED
+		proxy.is_multiplayer_proxy = true
+		fixture.add_child(proxy)
+		fixture.register_network_enemy(state.net_id, proxy)
 	var chunk_zero := sender.encode_enemy_snapshot_range_for_peer(2, states, 0, 56, true)
 	var chunk_one := sender.encode_enemy_snapshot_range_for_peer(2, states, 56, 14, true)
 
 	# Channel 3 is unordered: the tail may arrive before the head.
-	mp_game.call("_rpc_receive_enemy_snapshot", 1.0, chunk_one, 10, 1, 2, 20)
+	enemy_coordinator.apply_authoritative_snapshot(1.0, chunk_one, 10, 1, 2, 20)
 	_expect(
-		(mp_game.get("_pending_enemy_snapshot_batches") as Dictionary).has(10),
+		enemy_coordinator.pending_enemy_snapshot_batches.has(10),
 		"An out-of-order first chunk must remain pending instead of reconciling a partial roster."
 	)
-	mp_game.call("_rpc_receive_enemy_snapshot", 1.0, chunk_zero, 10, 0, 2, 20)
+	enemy_coordinator.apply_authoritative_snapshot(1.0, chunk_zero, 10, 0, 2, 20)
 	_expect(
-		int(mp_game.get("_last_completed_enemy_snapshot_batch_id")) == 10,
+		int(enemy_coordinator.get("_last_completed_snapshot_batch_id")) == 10,
 		"Both unordered chunks must converge into one completed batch."
 	)
 	_expect(
-		mp_game.enemy_coordinator.enemy_interpolators.size() == 70,
+		enemy_coordinator.enemy_interpolators.size() == 70,
 		"A completed unordered batch must apply all seventy enemy states exactly once."
 	)
 	var unordered_frame := (
-		(mp_game.enemy_coordinator.enemy_interpolators[1] as NetInterpolator).get_latest_state()
+		(enemy_coordinator.enemy_interpolators[1] as NetInterpolator).get_latest_state()
 	)
 	_expect(
 		unordered_frame.anim_state == Enemy.LocomotionState.MOVING,
 		"Unordered chunks must preserve each enemy's discrete locomotion state."
 	)
 	_expect(
-		int(mp_game.get("_current_enemy_snapshot_hz")) == 20,
+		int(enemy_coordinator.get("_current_snapshot_hz")) == 20,
 		"The client interpolator cadence must follow the Host's adaptive 20 Hz hint."
 	)
 
 	# A permanently incomplete batch must be bounded and evicted once the stream advances.
-	mp_game.call("_rpc_receive_enemy_snapshot", 2.0, chunk_zero, 11, 0, 2, 20)
+	enemy_coordinator.apply_authoritative_snapshot(2.0, chunk_zero, 11, 0, 2, 20)
 	var one_state := _make_enemy_states(1, 500)
 	var repair_keyframe := sender.encode_enemy_snapshots_for_peer(2, one_state, true)
-	mp_game.call("_rpc_receive_enemy_snapshot", 2.1, repair_keyframe, 14, 0, 1, 20)
+	enemy_coordinator.apply_authoritative_snapshot(2.1, repair_keyframe, 14, 0, 1, 20)
 	_expect(
-		not (mp_game.get("_pending_enemy_snapshot_batches") as Dictionary).has(11)
-		and int(mp_game.get("_enemy_snapshot_incomplete_batch_evict_count")) >= 1,
+		not enemy_coordinator.pending_enemy_snapshot_batches.has(11)
+		and int(enemy_coordinator.get("_snapshot_incomplete_batch_evict_count")) >= 1,
 		"A missing-chunk batch must be evicted after the bounded reorder window."
 	)
-	var stale_before := int(mp_game.get("_enemy_snapshot_stale_chunk_count"))
-	mp_game.call("_rpc_receive_enemy_snapshot", 2.2, repair_keyframe, 13, 0, 1, 20)
+	var stale_before := int(enemy_coordinator.get("_snapshot_stale_chunk_count"))
+	enemy_coordinator.apply_authoritative_snapshot(2.2, repair_keyframe, 13, 0, 1, 20)
 	_expect(
-		int(mp_game.get("_enemy_snapshot_stale_chunk_count")) == stale_before + 1,
+		int(enemy_coordinator.get("_snapshot_stale_chunk_count")) == stale_before + 1,
 		"A chunk older than the completed batch must be ignored and counted as stale."
 	)
 
 
 func _test_missing_delta_then_keyframe_recovery() -> void:
 	var mp_game := _new_mp_game()
+	var enemy_coordinator := mp_game.enemy_coordinator as MpEnemyCoordinator
 	var sender := SNAPSHOT_MANAGER.new()
 	var states := _make_enemy_states(1, 900)
+	var proxy := ENEMY_SCENE.instantiate() as Enemy
+	proxy.process_mode = Node.PROCESS_MODE_DISABLED
+	proxy.is_multiplayer_proxy = true
+	fixture.add_child(proxy)
+	fixture.register_network_enemy(900, proxy)
 	# Seed only the sender baseline. The client intentionally never sees this frame.
 	sender.encode_enemy_snapshots_for_peer(7, states, true)
 	states[0].position += Vector2(4.0, -2.0)
 	var undecodable_delta := sender.encode_enemy_snapshots_for_peer(7, states, false)
-	mp_game.call("_rpc_receive_enemy_snapshot", 3.0, undecodable_delta, 20, 0, 1, 20)
+	enemy_coordinator.apply_authoritative_snapshot(3.0, undecodable_delta, 20, 0, 1, 20)
 	_expect(
-		int(mp_game.get("_last_completed_enemy_snapshot_batch_id")) == 0
-		and mp_game.enemy_coordinator.enemy_interpolators.is_empty(),
+		int(enemy_coordinator.get("_last_completed_snapshot_batch_id")) == 0
+		and enemy_coordinator.enemy_interpolators.is_empty(),
 		"A delta with no receive baseline must not complete or create a corrupted proxy."
 	)
 
 	var keyframe := sender.encode_enemy_snapshots_for_peer(7, states, true)
-	mp_game.call("_rpc_receive_enemy_snapshot", 3.1, keyframe, 21, 0, 1, 20)
+	enemy_coordinator.apply_authoritative_snapshot(3.1, keyframe, 21, 0, 1, 20)
 	_expect(
-		int(mp_game.get("_last_completed_enemy_snapshot_batch_id")) == 21
-		and mp_game.enemy_coordinator.enemy_interpolators.has(900),
+		int(enemy_coordinator.get("_last_completed_snapshot_batch_id")) == 21
+		and enemy_coordinator.enemy_interpolators.has(900),
 		"The next keyframe must self-heal a lost baseline and converge the enemy proxy."
 	)
 	var repaired_frame := (
-		(mp_game.enemy_coordinator.enemy_interpolators[900] as NetInterpolator).get_latest_state()
+		(enemy_coordinator.enemy_interpolators[900] as NetInterpolator).get_latest_state()
 	)
 	_expect(
 		repaired_frame.anim_state == Enemy.LocomotionState.MOVING,
 		"The repair keyframe must restore locomotion together with continuous motion."
 	)
 	_expect(
-		(mp_game.get("_pending_enemy_snapshot_batches") as Dictionary).is_empty(),
+		enemy_coordinator.pending_enemy_snapshot_batches.is_empty(),
 		"Keyframe repair must discard the older incomplete delta batch."
 	)
+	fixture.clear_network_enemy_registry()
+	proxy.queue_free()
 
 
 func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 	var mp_game := _new_mp_game()
+	var session := mp_game.session_coordinator as MpSessionCoordinator
+	var tower_economy := mp_game.tower_economy_coordinator as MpTowerEconomyCoordinator
 	var live_enemy := ENEMY_SCENE.instantiate() as Enemy
 	var stale_enemy := ENEMY_SCENE.instantiate() as Enemy
 	fixture.add_child(live_enemy)
@@ -1218,18 +1278,15 @@ func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 	var live_plant := PlantDefense.new()
 	var stale_plant := PlantDefense.new()
 	fixture.proxy_plants = {20: live_plant, 21: stale_plant}
-	mp_game.call(
-		"_cache_pending_warehouse_snapshot",
+	tower_economy.cache_pending_warehouse_snapshot(
 		20,
 		{"revision": 1}
 	)
-	mp_game.call(
-		"_cache_pending_warehouse_snapshot",
+	tower_economy.cache_pending_warehouse_snapshot(
 		21,
 		{"revision": 1}
 	)
-	mp_game.call(
-		"net_runtime_world_manifest",
+	session.apply_runtime_world_manifest(
 		PackedInt32Array([1]),
 		PackedInt32Array([10]),
 		PackedInt32Array([20])
@@ -1246,10 +1303,10 @@ func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 	_expect(
 		fixture.proxy_plants.has(20)
 		and not fixture.proxy_plants.has(21)
-		and (mp_game.get("_pending_warehouse_snapshots") as Dictionary).has(20)
-		and not (mp_game.get("_pending_warehouse_snapshots") as Dictionary).has(21)
-		and int(mp_game.get("_pending_warehouse_snapshot_oldest_id")) == 20
-		and int(mp_game.get("_pending_warehouse_snapshot_newest_id")) == 20
+		and (tower_economy.get("_pending_warehouse_snapshots") as Dictionary).has(20)
+		and not (tower_economy.get("_pending_warehouse_snapshots") as Dictionary).has(21)
+		and int(tower_economy.get("_pending_warehouse_snapshot_oldest_id")) == 20
+		and int(tower_economy.get("_pending_warehouse_snapshot_newest_id")) == 20
 		and fixture.silent_plant_removal_ids.has(21)
 		and not fixture.animated_plant_removal_ids.has(21),
 		"A complete-state manifest must prune stale plants and their queued warehouse snapshots."
@@ -1264,11 +1321,11 @@ func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 
 func _test_plant_health_batch_revision_ordering() -> void:
 	var mp_game := _new_mp_game()
+	var tower_world := mp_game.tower_world_coordinator as MpTowerWorldCoordinator
 	var plant := PlantDefense.new()
 	plant.configure_multiplayer_proxy(100, 100, 3)
 	fixture.proxy_plants[42] = plant
-	mp_game.call(
-		"net_plant_health_batch",
+	tower_world.receive_plant_health_batch(
 		PackedInt32Array([42, 42, 42]),
 		PackedInt32Array([80, 15, 60]),
 		PackedInt32Array([100, 100, 100]),
@@ -1289,8 +1346,9 @@ func _test_plant_health_batch_revision_ordering() -> void:
 
 func _test_plant_health_before_spawn_debt() -> void:
 	var mp_game := _new_mp_game()
-	mp_game.call(
-		"net_plant_health_batch",
+	var tower_world := mp_game.tower_world_coordinator as MpTowerWorldCoordinator
+	var session := mp_game.session_coordinator as MpSessionCoordinator
+	tower_world.receive_plant_health_batch(
 		PackedInt32Array([71, 71, 71]),
 		PackedInt32Array([80, 15, 60]),
 		PackedInt32Array([100, 100, 100]),
@@ -1301,15 +1359,14 @@ func _test_plant_health_before_spawn_debt() -> void:
 		PackedByteArray([0, 0, 0]),
 		PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
 	)
-	var pending := mp_game.get("_pending_remote_plant_health_updates") as Dictionary
+	var pending := tower_world.get("_pending_remote_plant_health_updates") as Dictionary
 	_expect(
 		not fixture.proxy_plants.has(71)
 		and pending.size() == 1
 		and int((pending.get(71, {}) as Dictionary).get("health_revision", -1)) == 7,
 		"A CH7 health update received before its CH5 spawn must retain only the highest revision."
 	)
-	mp_game.call(
-		"net_plant_spawned",
+	tower_world.receive_plant_spawn(
 		0,
 		2,
 		71,
@@ -1329,8 +1386,7 @@ func _test_plant_health_before_spawn_debt() -> void:
 		and not pending.has(71),
 		"Plant registration must immediately settle a newer deferred health revision."
 	)
-	mp_game.call(
-		"net_plant_health_batch",
+	tower_world.receive_plant_health_batch(
 		PackedInt32Array([71, 71]),
 		PackedInt32Array([10, 55]),
 		PackedInt32Array([100, 100]),
@@ -1346,8 +1402,7 @@ func _test_plant_health_before_spawn_debt() -> void:
 		"Settling spawn debt must not let a later stale health record overwrite the replica."
 	)
 
-	mp_game.call(
-		"net_plant_health_batch",
+	tower_world.receive_plant_health_batch(
 		PackedInt32Array([72]),
 		PackedInt32Array([40]),
 		PackedInt32Array([100]),
@@ -1358,15 +1413,14 @@ func _test_plant_health_before_spawn_debt() -> void:
 		PackedByteArray([0]),
 		PackedVector2Array([Vector2.ZERO])
 	)
-	mp_game.call("net_plant_removed", 72, true)
+	tower_world.receive_plant_removed(72, true)
 	_expect(
 		fixture.animated_plant_removal_ids.has(72)
 		and fixture.destroyed_plant_removal_ids.has(72)
 		and not fixture.silent_plant_removal_ids.has(72),
 		"A reliable destroyed-building removal must preserve its reason on the animated client path."
 	)
-	mp_game.call(
-		"net_plant_health_batch",
+	tower_world.receive_plant_health_batch(
 		PackedInt32Array([72]),
 		PackedInt32Array([20]),
 		PackedInt32Array([100]),
@@ -1377,13 +1431,12 @@ func _test_plant_health_before_spawn_debt() -> void:
 		PackedByteArray([0]),
 		PackedVector2Array([Vector2.ZERO])
 	)
-	var removed_ids := mp_game.get("_removed_remote_plant_ids") as Dictionary
+	var removed_ids := tower_world.get("_removed_remote_plant_ids") as Dictionary
 	_expect(
 		not pending.has(72) and removed_ids.has(72),
 		"A reliable removal must erase health debt and reject CH7 records that arrive afterward."
 	)
-	mp_game.call(
-		"net_plant_spawned",
+	tower_world.receive_plant_spawn(
 		0,
 		2,
 		72,
@@ -1400,18 +1453,18 @@ func _test_plant_health_before_spawn_debt() -> void:
 		"A newer authoritative spawn must clear an older local removal marker."
 	)
 
-	mp_game.call("_clear_remote_plant_health_state")
+	tower_world.call("_clear_remote_plant_health_state")
 	var limit: int = MpTowerWorldCoordinator.CLIENT_PENDING_PLANT_HEALTH_MAX_ENTRIES
 	for index in range(limit + 5):
-		mp_game.call(
+		tower_world.call(
 			"_apply_or_defer_remote_plant_health",
 			1000 + index,
 			90 - index % 10,
 			100,
 			index + 1
 		)
-	pending = mp_game.get("_pending_remote_plant_health_updates") as Dictionary
-	var pending_order := mp_game.get("_pending_remote_plant_health_order") as Array
+	pending = tower_world.get("_pending_remote_plant_health_updates") as Dictionary
+	var pending_order := tower_world.get("_pending_remote_plant_health_order") as Array
 	_expect(
 		pending.size() == limit
 		and pending_order.size() == limit
@@ -1420,8 +1473,7 @@ func _test_plant_health_before_spawn_debt() -> void:
 		"Unknown-plant health debt must remain bounded at the multiplayer plant limit."
 	)
 	var newest_debt_id := 1000 + limit + 4
-	mp_game.call(
-		"net_runtime_world_manifest",
+	session.apply_runtime_world_manifest(
 		PackedInt32Array(),
 		PackedInt32Array(),
 		PackedInt32Array([72, newest_debt_id])
@@ -1433,8 +1485,7 @@ func _test_plant_health_before_spawn_debt() -> void:
 		and not removed_ids.has(1005),
 		"A CH5 manifest must not discard or tombstone unknown CH7 health debt from a future spawn."
 	)
-	mp_game.call(
-		"net_plant_spawned",
+	tower_world.receive_plant_spawn(
 		0,
 		2,
 		newest_debt_id,
@@ -1457,8 +1508,8 @@ func _test_plant_health_before_spawn_debt() -> void:
 	)
 	var tombstone_limit: int = MpTowerWorldCoordinator.CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES
 	for index in range(tombstone_limit + 5):
-		mp_game.call("_mark_remote_plant_removed", 2000 + index)
-	removed_ids = mp_game.get("_removed_remote_plant_ids") as Dictionary
+		tower_world.call("_mark_remote_plant_removed", 2000 + index)
+	removed_ids = tower_world.get("_removed_remote_plant_ids") as Dictionary
 	_expect(
 		removed_ids.size() == tombstone_limit
 		and not removed_ids.has(2000)
@@ -1466,19 +1517,20 @@ func _test_plant_health_before_spawn_debt() -> void:
 		"Late-health removal markers must remain bounded during long high-churn sessions."
 	)
 
-	mp_game.call("net_plant_removed", 71)
-	mp_game.call("net_plant_removed", 72)
-	mp_game.call("net_plant_removed", newest_debt_id)
-	mp_game.call("_clear_remote_plant_health_state")
+	tower_world.receive_plant_removed(71)
+	tower_world.receive_plant_removed(72)
+	tower_world.receive_plant_removed(newest_debt_id)
+	tower_world.call("_clear_remote_plant_health_state")
 	_expect(
-		(mp_game.get("_pending_remote_plant_health_updates") as Dictionary).is_empty()
-		and (mp_game.get("_removed_remote_plant_ids") as Dictionary).is_empty(),
+		(tower_world.get("_pending_remote_plant_health_updates") as Dictionary).is_empty()
+		and (tower_world.get("_removed_remote_plant_ids") as Dictionary).is_empty(),
 		"Leaving a session must be able to clear all deferred plant-health ordering state."
 	)
 
 
 func _test_plant_damage_feedback_revision_and_removal_ordering() -> void:
 	var mp_game := _new_mp_game()
+	var tower_world := mp_game.tower_world_coordinator as MpTowerWorldCoordinator
 	fixture.damage_number_requests.clear()
 	var feedback_position := Vector2(88.0, 96.0)
 	var feedback_arguments := [
@@ -1492,8 +1544,8 @@ func _test_plant_damage_feedback_revision_and_removal_ordering() -> void:
 		PackedByteArray([EnemyConfig.DamageType.MAGIC]),
 		PackedVector2Array([feedback_position]),
 	]
-	mp_game.callv("net_plant_health_batch", feedback_arguments)
-	mp_game.callv("net_plant_health_batch", feedback_arguments)
+	tower_world.callv("receive_plant_health_batch", feedback_arguments)
+	tower_world.callv("receive_plant_health_batch", feedback_arguments)
 	_expect(
 		fixture.damage_number_requests.size() == 2,
 		"One plant feedback revision must display damage and healing once each, without replaying either on duplicate delivery."
@@ -1523,9 +1575,8 @@ func _test_plant_damage_feedback_revision_and_removal_ordering() -> void:
 			== DamageNumberPool.DisplayPriority.IMPORTANT,
 			"Plant healing feedback must preserve its actual amount, position, semantic kind, and important priority."
 		)
-	mp_game.call("net_plant_removed", 73)
-	mp_game.call(
-		"net_plant_health_batch",
+	tower_world.receive_plant_removed(73)
+	tower_world.receive_plant_health_batch(
 		PackedInt32Array([73]),
 		PackedInt32Array([0]),
 		PackedInt32Array([100]),
@@ -1543,8 +1594,7 @@ func _test_plant_damage_feedback_revision_and_removal_ordering() -> void:
 	var newer_live_plant := PlantDefense.new()
 	newer_live_plant.configure_multiplayer_proxy(80, 100, 5)
 	fixture.proxy_plants[74] = newer_live_plant
-	mp_game.call(
-		"net_plant_health_batch",
+	tower_world.receive_plant_health_batch(
 		PackedInt32Array([74]),
 		PackedInt32Array([90]),
 		PackedInt32Array([100]),
@@ -1565,8 +1615,9 @@ func _test_plant_damage_feedback_revision_and_removal_ordering() -> void:
 
 func _test_host_plant_damage_aggregation_and_fatal_flush() -> void:
 	var mp_game := _new_capturing_host_mp_game()
-	mp_game.call("_on_host_plant_health_changed", 81, 90, 100, 2)
-	mp_game.call(
+	var tower_world := mp_game.tower_world_coordinator as MpTowerWorldCoordinator
+	tower_world.call("_on_host_plant_health_changed", 81, 90, 100, 2)
+	tower_world.call(
 		"_on_host_plant_damage_applied",
 		81,
 		6,
@@ -1574,7 +1625,7 @@ func _test_host_plant_damage_aggregation_and_fatal_flush() -> void:
 		EnemyConfig.DamageType.MAGIC,
 		Vector2(40.0, 50.0)
 	)
-	mp_game.call(
+	tower_world.call(
 		"_on_host_plant_damage_applied",
 		81,
 		4,
@@ -1582,21 +1633,21 @@ func _test_host_plant_damage_aggregation_and_fatal_flush() -> void:
 		EnemyConfig.DamageType.PHYSICAL,
 		Vector2(42.0, 52.0)
 	)
-	mp_game.call("_on_host_plant_health_changed", 81, 93, 100, 3)
-	mp_game.call(
+	tower_world.call("_on_host_plant_health_changed", 81, 93, 100, 3)
+	tower_world.call(
 		"_on_host_plant_healing_applied",
 		81,
 		3,
 		Vector2(43.0, 53.0)
 	)
-	mp_game.call("_on_host_plant_health_changed", 81, 95, 100, 4)
-	mp_game.call(
+	tower_world.call("_on_host_plant_health_changed", 81, 95, 100, 4)
+	tower_world.call(
 		"_on_host_plant_healing_applied",
 		81,
 		2,
 		Vector2(44.0, 54.0)
 	)
-	var pending := mp_game.get("_pending_plant_health_updates") as Dictionary
+	var pending := tower_world.get("_pending_plant_health_updates") as Dictionary
 	var aggregate := pending.get(81, {}) as Dictionary
 	_expect(
 		mp_game.outbound_calls.is_empty()
@@ -1606,7 +1657,7 @@ func _test_host_plant_damage_aggregation_and_fatal_flush() -> void:
 		and int(aggregate.get("health_revision", 0)) == 4,
 		"Host plant damage and healing must aggregate independently by net ID without sending one packet per event."
 	)
-	mp_game.call("_on_host_plant_removed", 81, true)
+	tower_world.call("_on_host_plant_removed", 81, true)
 	_expect(
 		mp_game.outbound_calls.size() == 2
 		and mp_game.outbound_calls[0].get("method_name", &"")
@@ -1639,23 +1690,26 @@ func _test_host_plant_damage_aggregation_and_fatal_flush() -> void:
 	mp_game.queue_free()
 
 	var chunk_mp_game := _new_capturing_host_mp_game()
+	var chunk_tower_world := (
+		chunk_mp_game.tower_world_coordinator as MpTowerWorldCoordinator
+	)
 	var plant_limit: int = MpTowerWorldCoordinator.MULTIPLAYER_TEAM_PLANT_LIMIT
 	var chunk_limit: int = MpTowerWorldCoordinator.PLANT_HEALTH_MAX_RECORDS_PER_PACKET
 	for record_index in range(plant_limit):
-		chunk_mp_game.call(
+		chunk_tower_world.call(
 			"_on_host_plant_health_changed",
 			1000 + record_index,
 			90,
 			100,
 			1
 		)
-		chunk_mp_game.call(
+		chunk_tower_world.call(
 			"_on_host_plant_healing_applied",
 			1000 + record_index,
 			1,
 			Vector2(float(record_index), 1.0)
 		)
-	chunk_mp_game.call("_flush_plant_health_updates")
+	chunk_tower_world.call("_flush_plant_health_updates")
 	var chunked_record_count := 0
 	var chunks_with_valid_size := true
 	var maximum_estimated_packet_bytes := 0
@@ -1691,33 +1745,12 @@ func _test_host_plant_damage_aggregation_and_fatal_flush() -> void:
 
 
 func _new_capturing_host_mp_game() -> CapturingMpGame:
-	var mp_game := CapturingMpGame.new()
+	var mp_game_node := MP_GAME_SCENE.instantiate()
+	mp_game_node.set_script(CapturingMpGame)
+	var mp_game := mp_game_node as CapturingMpGame
 	mp_game.process_mode = Node.PROCESS_MODE_DISABLED
-	var session := MpSessionCoordinator.new()
-	session.name = "SessionCoordinator"
-	mp_game.add_child(session)
-	var player_coordinator := MpPlayerCoordinator.new()
-	player_coordinator.name = "PlayerCoordinator"
-	mp_game.add_child(player_coordinator)
-	var enemy_coordinator := MpEnemyCoordinator.new()
-	enemy_coordinator.name = "EnemyCoordinator"
-	mp_game.add_child(enemy_coordinator)
-	var keepalive_request := HTTPRequest.new()
-	keepalive_request.name = "PublicRoomKeepaliveRequest"
-	mp_game.add_child(keepalive_request)
 	fixture.add_child(mp_game)
-	mp_game.set("game", fixture)
-	mp_game.set("net_manager", host_net_manager)
-	mp_game.set("session_coordinator", session)
-	mp_game.set("player_coordinator", player_coordinator)
-	mp_game.set("enemy_coordinator", enemy_coordinator)
-	session.bind_runtime(fixture)
-	player_coordinator.bind_runtime(fixture)
-	enemy_coordinator.bind_runtime(fixture)
-	var tower_adapter := fixture.get_multiplayer_mode_adapter() as TestTowerModeAdapter
-	mp_game._mode_adapter = tower_adapter
-	mp_game.tower_mode_adapter = tower_adapter
-	tower_adapter.attach_multiplayer_session(mp_game)
+	_configure_mp_game_fixture(mp_game, true)
 	return mp_game
 
 
@@ -1820,6 +1853,7 @@ func _test_tiyi_direct_lookup_retry() -> void:
 
 func _test_offscreen_proxy_visual_budget() -> void:
 	var mp_game := _new_mp_game()
+	var enemy_coordinator := mp_game.enemy_coordinator as MpEnemyCoordinator
 	var camera := Camera2D.new()
 	camera.name = "PressureCamera"
 	camera.position = Vector2.ZERO
@@ -1835,24 +1869,24 @@ func _test_offscreen_proxy_visual_budget() -> void:
 	far_enemy.is_multiplayer_proxy = true
 	near_enemy.global_position = Vector2.ZERO
 	far_enemy.global_position = Vector2(100000.0, 100000.0)
-	mp_game.enemy_coordinator.register_client_enemy(1, near_enemy, 0.0)
-	mp_game.enemy_coordinator.register_client_enemy(2, far_enemy, 0.0)
+	enemy_coordinator.register_client_enemy(1, near_enemy, 0.0)
+	enemy_coordinator.register_client_enemy(2, far_enemy, 0.0)
 	await process_frame
-	mp_game.call("_update_client_proxy_visual_budget", 1.0)
+	enemy_coordinator.update_proxy_visual_budget(1.0)
 	_expect(
 		near_enemy.multiplayer_proxy_visual_active
 		and not far_enemy.multiplayer_proxy_visual_active
-		and int(mp_game.get("_offscreen_enemy_proxy_count")) == 1,
+		and int(enemy_coordinator.get("_offscreen_proxy_count")) == 1,
 		"The client visual budget must pause only the safely offscreen enemy proxy."
 	)
 	var first_offscreen_sample := bool(
-		mp_game.call("_should_interpolate_enemy_proxy", 2, far_enemy, 10.0)
+		enemy_coordinator.call("_should_interpolate_proxy", 2, far_enemy, 10.0)
 	)
 	var duplicate_offscreen_sample := bool(
-		mp_game.call("_should_interpolate_enemy_proxy", 2, far_enemy, 10.0)
+		enemy_coordinator.call("_should_interpolate_proxy", 2, far_enemy, 10.0)
 	)
 	var later_offscreen_sample := bool(
-		mp_game.call("_should_interpolate_enemy_proxy", 2, far_enemy, 10.2)
+		enemy_coordinator.call("_should_interpolate_proxy", 2, far_enemy, 10.2)
 	)
 	_expect(
 		first_offscreen_sample
@@ -1861,16 +1895,16 @@ func _test_offscreen_proxy_visual_budget() -> void:
 		"A safely offscreen proxy must sample at bounded 15 Hz slots instead of every render call."
 	)
 	far_enemy.global_position = Vector2.ZERO
-	mp_game.set("_client_proxy_visual_budget_time_left", 0.0)
-	mp_game.call("_update_client_proxy_visual_budget", 0.0)
+	enemy_coordinator.set("_proxy_visual_budget_time_left", 0.0)
+	enemy_coordinator.update_proxy_visual_budget(0.0)
 	_expect(
 		far_enemy.multiplayer_proxy_visual_active
-		and int(mp_game.get("_offscreen_enemy_proxy_count")) == 0,
+		and int(enemy_coordinator.get("_offscreen_proxy_count")) == 0,
 		"A proxy re-entering the expanded camera rectangle must immediately restore visuals."
 	)
 	_expect(
-		bool(mp_game.call("_should_interpolate_enemy_proxy", 2, far_enemy, 10.2))
-		and bool(mp_game.call("_should_interpolate_enemy_proxy", 2, far_enemy, 10.2)),
+		bool(enemy_coordinator.call("_should_interpolate_proxy", 2, far_enemy, 10.2))
+		and bool(enemy_coordinator.call("_should_interpolate_proxy", 2, far_enemy, 10.2)),
 		"A visible proxy must keep full render-rate interpolation even with a retained offscreen slot."
 	)
 	fixture.clear_network_enemy_registry()

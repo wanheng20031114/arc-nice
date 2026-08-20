@@ -67,11 +67,19 @@ class RoomInfo:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     name: str = ""
     host_name: str = ""
-    host_token: str = field(default_factory=lambda: secrets.token_urlsafe(24))
+    host_token: str = field(
+        default_factory=lambda: secrets.token_urlsafe(24),
+        repr=False,
+    )
+    # 只在 Lobby 内存与该房间 Relay 的环境中存在；绝不进入 HTTP 响应或日志。
+    admission_secret: str = field(
+        default_factory=lambda: secrets.token_urlsafe(32),
+        repr=False,
+    )
     host_ip: str = ""
     host_peer_id: int = 0
     port: int = 29170
-    max_players: int = 4
+    max_players: int = 2
     game_mode: GameMode = GameMode.STANDARD
     status: RoomStatus = RoomStatus.WAITING
     players: dict[str, PlayerInfo] = field(default_factory=dict)  # name → PlayerInfo

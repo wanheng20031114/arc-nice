@@ -178,8 +178,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 88,
-		"多人协议v88必须保留内容摘要、同局成员身份、P1D/P1E 与既有 wire 合同。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 90,
+		"多人协议v90必须保留内容摘要、同局成员身份、P1D/P1E 与既有 wire 合同。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()
@@ -705,7 +705,7 @@ func _test_client_rejects_bad_authoritative_snapshot(
 	)
 	if stone_mill_slot >= 0:
 		var bad_slot := bad_slots[stone_mill_slot] as Dictionary
-		bad_slot["stack_count"] = 2
+		bad_slot["stack_count"] = 0
 	mp_game.net_simple_crafting_result(
 		REMOTE_PEER_ID,
 		77,

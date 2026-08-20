@@ -24,13 +24,23 @@ from relay_servers.lobby_api.main import (
     UpdateRoomRequest,
 )
 from relay_servers.lobby_api.models import GameMode, RoomStatus
+from relay_servers.lobby_api.relay_admission import (
+    ROLE_HOST,
+    RelayAdmissionTicketError,
+    RelayAdmissionTicketSigner,
+)
 from relay_servers.lobby_api.relay_launcher import RelayLauncher, RelayProcessLease
 from relay_servers.lobby_api.room_manager import (
+    AuthorizedRelayRef,
     ExpiredRoom,
     RoomExpirationReason,
     RoomManager,
     RoomTerminationGrant,
 )
+
+
+TEST_ROOM_ID = "room-under-test"
+TEST_ADMISSION_SECRET = "s" * 43
 
 
 class ManualClock:
@@ -104,6 +114,25 @@ class RoomLifecycleLeaseTests(unittest.TestCase):
             manager.attach_relay(grant, 40011, 12011, instance_id)
         )
         return room
+
+    def test_cancelled_relay_restart_restores_previous_admission_secret(self) -> None:
+        manager = RoomManager()
+        room = self._create_attached_room(manager, instance_id=77)
+        original_secret = room.admission_secret
+        grant = manager.begin_relay_restart(
+            room.id,
+            room.host_token,
+            AuthorizedRelayRef(
+                room.relay_port,
+                room.relay_pid,
+                room.relay_instance_id,
+            ),
+        )
+        self.assertIsNotNone(grant)
+        assert grant is not None
+        self.assertNotEqual(room.admission_secret, original_secret)
+        self.assertTrue(manager.cancel_relay_restart(grant))
+        self.assertEqual(room.admission_secret, original_secret)
 
     def test_only_host_heartbeat_renews_idle_deadline(self) -> None:
         clock = ManualClock()
@@ -494,6 +523,7 @@ class RoomLifecycleLeaseTests(unittest.TestCase):
             game_max_duration_seconds=100.0,
         )
         room = self._create_attached_room(manager, instance_id=41)
+        previous_admission_secret = room.admission_secret
         clock.advance(40.0)
         launcher = MagicMock()
         old_lease = RelayProcessLease(40011, 12011, 41)
@@ -515,10 +545,30 @@ class RoomLifecycleLeaseTests(unittest.TestCase):
             )
 
         self.assertEqual(response["relay_port"], 40011)
-        max_clients, max_lifetime = launcher.start_new_relay.call_args.args
+        (
+            max_clients,
+            max_lifetime,
+            launched_room_id,
+            admission_secret,
+        ) = launcher.start_new_relay.call_args.args
         self.assertEqual(max_clients, room.max_players)
         self.assertEqual(max_lifetime, 60.0)
+        self.assertEqual(launched_room_id, room.id)
+        self.assertEqual(admission_secret, room.admission_secret)
+        self.assertNotEqual(room.admission_secret, previous_admission_secret)
         self.assertEqual(room.relay_instance_id, 42)
+        host_claims = RelayAdmissionTicketSigner().verify(
+            response["relay_admission_ticket"],
+            room.admission_secret,
+            room.id,
+        )
+        self.assertEqual(host_claims.role, ROLE_HOST)
+        with self.assertRaises(RelayAdmissionTicketError):
+            RelayAdmissionTicketSigner().verify(
+                response["relay_admission_ticket"],
+                previous_admission_secret,
+                room.id,
+            )
 
     def test_inflight_start_task_is_never_shared_with_wrong_host_token(self) -> None:
         manager = RoomManager()
@@ -588,7 +638,11 @@ class RoomLifecycleLeaseTests(unittest.TestCase):
         def gated_start(
             _max_clients: int,
             _max_lifetime_seconds: float,
+            room_id: str,
+            admission_secret: str,
         ) -> tuple[int, RelayProcessLease, list[RelayProcessLease]]:
+            self.assertEqual(room_id, room.id)
+            self.assertEqual(admission_secret, room.admission_secret)
             spawn_entered.set()
             self.assertTrue(release_spawn.wait(timeout=2.0))
             return 40046, lease, []
@@ -983,8 +1037,10 @@ class RelayLauncherLeaseTests(unittest.TestCase):
             start_future = executor.submit(
                 launcher.start_relay,
                 port,
-                4,
+                2,
                 100.0,
+                TEST_ROOM_ID,
+                TEST_ADMISSION_SECRET,
             )
             self.assertTrue(popen_entered.wait(timeout=2.0))
             stop_future = executor.submit(launcher.stop_all)

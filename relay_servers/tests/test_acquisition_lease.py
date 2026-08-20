@@ -88,7 +88,7 @@ class AcquisitionLeaseTests(unittest.TestCase):
     def create_joinable_room(
         self,
         manager: RoomManager,
-        max_players: int = 4,
+        max_players: int = 2,
     ):
         room = manager.create_room(
             "Room",
@@ -109,7 +109,7 @@ class AcquisitionLeaseTests(unittest.TestCase):
         self.assertIsNone(legacy.acquisition_token)
         signed = capability(
             "create",
-            ("Protected 的房间", "Protected", "4", GameMode.STANDARD.value),
+            ("Protected 的房间", "Protected", "2", GameMode.STANDARD.value),
         )
         protected = lobby_main.CreateRoomRequest(
             host_name="Protected",
@@ -367,14 +367,14 @@ class AcquisitionLeaseTests(unittest.TestCase):
 
     def test_cancel_after_commit_closes_host_and_invalidates_relay_cas(self) -> None:
         manager = self.new_manager()
-        canonical = ("Room", "Host", "4", GameMode.STANDARD.value)
+        canonical = ("Room", "Host", "2", GameMode.STANDARD.value)
         claim = manager.begin_create_acquisition(
             token("d"),
             canonical,
             "Room",
             "Host",
             "",
-            4,
+            2,
             GameMode.STANDARD,
             capability_expires_at=LIVE_CAPABILITY_EXPIRY,
         )
@@ -401,19 +401,20 @@ class AcquisitionLeaseTests(unittest.TestCase):
     def test_unconfirmed_membership_expires_but_confirmed_membership_survives(self) -> None:
         clock = ManualClock()
         manager = self.new_manager(clock)
-        room = self.create_joinable_room(manager)
+        confirmed_room = self.create_joinable_room(manager)
+        expiring_room = self.create_joinable_room(manager)
         first = manager.begin_join_acquisition(
             token("e"),
-            (room.id, "First", GameMode.STANDARD.value),
-            room.id,
+            (confirmed_room.id, "First", GameMode.STANDARD.value),
+            confirmed_room.id,
             "First",
             GameMode.STANDARD,
             capability_expires_at=LIVE_CAPABILITY_EXPIRY,
         )
         second = manager.begin_join_acquisition(
             token("f"),
-            (room.id, "Second", GameMode.STANDARD.value),
-            room.id,
+            (expiring_room.id, "Second", GameMode.STANDARD.value),
+            expiring_room.id,
             "Second",
             GameMode.STANDARD,
             capability_expires_at=LIVE_CAPABILITY_EXPIRY,
@@ -422,31 +423,32 @@ class AcquisitionLeaseTests(unittest.TestCase):
         self.assertIsNotNone(second)
         first_response = manager.freeze_acquisition_response(
             token("e"),
-            (room.id, "First", GameMode.STANDARD.value),
+            (confirmed_room.id, "First", GameMode.STANDARD.value),
             "203.0.113.1",
         )
         # 冻结响应等价于客户端已经收到占位；尚未连上 Relay/confirm 仍属短租约。
         manager.freeze_acquisition_response(
             token("f"),
-            (room.id, "Second", GameMode.STANDARD.value),
+            (expiring_room.id, "Second", GameMode.STANDARD.value),
             "203.0.113.1",
         )
         self.assertTrue(
             manager.confirm_member_acquisition(
-                room.id,
+                confirmed_room.id,
                 "First",
                 first_response["member_token"],
             )
         )
         clock.advance(61.0)
-        live = manager.get_room(room.id)
-        self.assertIn("First", live.players)
-        self.assertNotIn("Second", live.players)
+        confirmed_live = manager.get_room(confirmed_room.id)
+        expiring_live = manager.get_room(expiring_room.id)
+        self.assertIn("First", confirmed_live.players)
+        self.assertNotIn("Second", expiring_live.players)
         with self.assertRaises(AcquisitionCancelledError):
             manager.begin_join_acquisition(
                 token("f"),
-                (room.id, "Second", GameMode.STANDARD.value),
-                room.id,
+                (expiring_room.id, "Second", GameMode.STANDARD.value),
+                expiring_room.id,
                 "Second",
                 GameMode.STANDARD,
                 capability_expires_at=LIVE_CAPABILITY_EXPIRY,
@@ -491,13 +493,14 @@ class AcquisitionLeaseTests(unittest.TestCase):
     def test_member_confirm_near_deadline_uses_exact_member_credentials(self) -> None:
         clock = ManualClock()
         manager = self.new_manager(clock)
-        room = self.create_joinable_room(manager)
-        valid_payload = (room.id, "Valid", GameMode.STANDARD.value)
-        wrong_payload = (room.id, "Wrong", GameMode.STANDARD.value)
+        valid_room = self.create_joinable_room(manager)
+        wrong_room = self.create_joinable_room(manager)
+        valid_payload = (valid_room.id, "Valid", GameMode.STANDARD.value)
+        wrong_payload = (wrong_room.id, "Wrong", GameMode.STANDARD.value)
         manager.begin_join_acquisition(
             token("a"),
             valid_payload,
-            room.id,
+            valid_room.id,
             "Valid",
             GameMode.STANDARD,
             capability_expires_at=LIVE_CAPABILITY_EXPIRY,
@@ -505,7 +508,7 @@ class AcquisitionLeaseTests(unittest.TestCase):
         manager.begin_join_acquisition(
             token("b"),
             wrong_payload,
-            room.id,
+            wrong_room.id,
             "Wrong",
             GameMode.STANDARD,
             capability_expires_at=LIVE_CAPABILITY_EXPIRY,
@@ -520,7 +523,7 @@ class AcquisitionLeaseTests(unittest.TestCase):
         clock.advance(59.9)
         self.assertTrue(
             manager.confirm_member_acquisition(
-                room.id,
+                valid_room.id,
                 "Valid",
                 valid_response["member_token"],
             )
@@ -528,34 +531,35 @@ class AcquisitionLeaseTests(unittest.TestCase):
         # 正确秘密配错成员名也不能推进 provisional deadline。
         self.assertFalse(
             manager.confirm_member_acquisition(
-                room.id,
+                wrong_room.id,
                 "Other",
                 wrong_response["member_token"],
             )
         )
         self.assertFalse(
             manager.confirm_member_acquisition(
-                room.id,
+                wrong_room.id,
                 "Wrong",
                 "not-the-member-secret",
             )
         )
 
         clock.advance(0.2)
-        live = manager.get_room(room.id)
-        self.assertIn("Valid", live.players)
-        self.assertNotIn("Wrong", live.players)
+        valid_live = manager.get_room(valid_room.id)
+        wrong_live = manager.get_room(wrong_room.id)
+        self.assertIn("Valid", valid_live.players)
+        self.assertNotIn("Wrong", wrong_live.players)
 
     def test_unconfirmed_host_expiry_closes_room(self) -> None:
         clock = ManualClock()
         manager = self.new_manager(clock)
         claim = manager.begin_create_acquisition(
             token("1"),
-            ("Room", "Host", "4", GameMode.STANDARD.value),
+            ("Room", "Host", "2", GameMode.STANDARD.value),
             "Room",
             "Host",
             "",
-            4,
+            2,
             GameMode.STANDARD,
             capability_expires_at=LIVE_CAPABILITY_EXPIRY,
         )
@@ -572,11 +576,11 @@ class AcquisitionLeaseTests(unittest.TestCase):
         manager = self.new_manager(clock)
         claim = manager.begin_create_acquisition(
             token("9"),
-            ("Room", "Host", "4", GameMode.STANDARD.value),
+            ("Room", "Host", "2", GameMode.STANDARD.value),
             "Room",
             "Host",
             "",
-            4,
+            2,
             GameMode.STANDARD,
             capability_expires_at=LIVE_CAPABILITY_EXPIRY,
         )
@@ -713,11 +717,11 @@ class AcquisitionApiConcurrencyTests(unittest.IsolatedAsyncioTestCase):
         )
         first_capability = capability(
             "create",
-            ("First", "Host", "4", GameMode.STANDARD.value),
+            ("First", "Host", "2", GameMode.STANDARD.value),
         )
         late_capability = capability(
             "create",
-            ("Late 的房间", "Late", "4", GameMode.STANDARD.value),
+            ("Late 的房间", "Late", "2", GameMode.STANDARD.value),
         )
         with patch.object(lobby_main, "room_mgr", manager):
             first = await lobby_main.release_acquisition(
@@ -760,12 +764,12 @@ class AcquisitionApiConcurrencyTests(unittest.IsolatedAsyncioTestCase):
             await allow_relay.wait()
             return 40001, 901
 
-        canonical = ("Concurrent", "Host", "4", GameMode.STANDARD.value)
+        canonical = ("Concurrent", "Host", "2", GameMode.STANDARD.value)
         signed = capability("create", canonical)
         request_model = lobby_main.CreateRoomRequest(
             name="Concurrent",
             host_name="Host",
-            max_players=4,
+            max_players=2,
             game_mode=GameMode.STANDARD,
             acquisition_token=signed,
         )
@@ -787,7 +791,7 @@ class AcquisitionApiConcurrencyTests(unittest.IsolatedAsyncioTestCase):
             conflicting_request = lobby_main.CreateRoomRequest(
                 name="Different",
                 host_name="Host",
-                max_players=4,
+                max_players=2,
                 game_mode=GameMode.STANDARD,
                 acquisition_token=signed,
             )
@@ -825,12 +829,12 @@ class AcquisitionApiConcurrencyTests(unittest.IsolatedAsyncioTestCase):
 
         signed = capability(
             "create",
-            ("Cancelled", "Host", "4", GameMode.STANDARD.value),
+            ("Cancelled", "Host", "2", GameMode.STANDARD.value),
         )
         request_model = lobby_main.CreateRoomRequest(
             name="Cancelled",
             host_name="Host",
-            max_players=4,
+            max_players=2,
             game_mode=GameMode.STANDARD,
             acquisition_token=signed,
         )
@@ -875,7 +879,7 @@ class AcquisitionApiConcurrencyTests(unittest.IsolatedAsyncioTestCase):
             "Join target",
             "Host",
             "",
-            max_players=4,
+            max_players=2,
             game_mode=GameMode.STANDARD,
         )
         self.assertIsNotNone(room)

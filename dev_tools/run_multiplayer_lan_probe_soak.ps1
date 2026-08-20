@@ -1,5 +1,5 @@
 param(
-    [string]$GodotExe = "C:\Users\wh\Downloads\Godot_v4.6.3-stable_win64.exe\Godot_v4.6.3-stable_win64_console.exe",
+    [string]$GodotExe = "C:\Program Files\Godot\Godot_console.exe",
     [int]$StartPort = 29400,
     [int]$Iterations = 2,
     [int]$TimeoutSeconds = 100,

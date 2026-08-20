@@ -698,16 +698,6 @@ func _exit_tree() -> void:
 			world_flow_coordinator.reset_session_state()
 		if transactions_coordinator != null:
 			transactions_coordinator.reset_session_state()
-		if tower_economy_coordinator != null:
-			tower_economy_coordinator.reset_session_state()
-		if tower_world_coordinator != null:
-			tower_world_coordinator.reset_session_state()
-		if merchant_transactions_coordinator != null:
-			merchant_transactions_coordinator.reset_session_state()
-		if tower_fate_coordinator != null:
-			tower_fate_coordinator.reset_session_state()
-		if collectible_presentation_coordinator != null:
-			collectible_presentation_coordinator.reset_session_state()
 	_gameplay_gateway = null
 	_mode_adapter = null
 	tower_mode_adapter = null
@@ -3267,7 +3257,7 @@ func set_rpc_payload_diagnostics_enabled(enabled: bool) -> void:
 
 
 func _get_rpc_traffic_channel(method_name: StringName) -> int:
-	return MpNetworkDiagnosticsCoordinatorScript.get_rpc_traffic_channel(method_name)
+	return _get_network_diagnostics_coordinator().get_rpc_traffic_channel(method_name)
 
 
 func _update_snapshot_packet_warning_timer(delta: float) -> void:
@@ -3302,11 +3292,18 @@ func get_snapshot_packet_metrics() -> Dictionary:
 
 
 func _get_network_diagnostics_coordinator() -> MpNetworkDiagnosticsCoordinatorScript:
-	if network_diagnostics_coordinator != null:
-		return network_diagnostics_coordinator
+	var coordinator := network_diagnostics_coordinator
 	# Packed-scene contract tests may call diagnostics before _ready assigns the
 	# cached @onready reference. The fixed NodePath still enforces static assembly.
-	return get_node(^"NetworkDiagnosticsCoordinator") as MpNetworkDiagnosticsCoordinatorScript
+	if coordinator == null:
+		coordinator = (
+			get_node(^"NetworkDiagnosticsCoordinator")
+			as MpNetworkDiagnosticsCoordinatorScript
+		)
+	if coordinator != null and not coordinator.is_rpc_source_bound():
+		if not coordinator.bind_rpc_source(self):
+			push_error("MpGame: 无法从 Godot RPC 元数据建立诊断信道表。")
+	return coordinator
 
 
 func _client_physics_tick(frame: int) -> void:
