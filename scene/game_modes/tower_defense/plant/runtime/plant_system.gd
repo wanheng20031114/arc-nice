@@ -662,11 +662,15 @@ func find_nearest_enemy_objective(
 			or plant.is_queued_for_deletion()
 		):
 			continue
-		if (
-			not include_water_plants
-			and plant.config != null
-			and plant.config.is_water_building()
-		):
+		var registered_config := (
+			_registered_plant_configs.get(plant) as PlantDefenseConfig
+		)
+		if registered_config == null:
+			push_error(
+				"PlantSystem is missing an enemy-objective config for a registered plant."
+			)
+			continue
+		if not include_water_plants and registered_config.is_water_building():
 			continue
 		# Eligibility and distance stay in the typed exact pass. The shared spatial
 		# index is deliberately only a broad phase, so future attack rules do not

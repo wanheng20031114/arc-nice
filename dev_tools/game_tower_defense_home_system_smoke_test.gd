@@ -744,6 +744,42 @@ func _verify_target_selection(game: TowerDefenseGame) -> void:
 		) == water_plant,
 		"A ranged enemy must retain the nearer water building as an attack objective."
 	)
+	var amphibious_melee_config := BASIC_CONFIG.duplicate(true) as YuanshiInsectConfig
+	amphibious_melee_config.terrain_traversal_types = (
+		DualGridTilemap.TraversalType.LAND
+		| DualGridTilemap.TraversalType.WATER
+	)
+	var amphibious_melee := amphibious_melee_config.enemy_scene.instantiate() as Enemy
+	game.enemy_container.add_child(amphibious_melee)
+	amphibious_melee.setup(
+		amphibious_melee_config,
+		game.player,
+		game.grid_pathfinder,
+		game
+	)
+	amphibious_melee.set_physics_process(false)
+	game.enemy_coordinator.assign_enemy_targets(amphibious_melee, near_gate)
+	_expect(
+		not amphibious_melee.can_target_water_plant_objectives()
+		and amphibious_melee.objective_target == grass_plant,
+		(
+			"The authoritative assignment pipeline must not grant water-building "
+			+ "access from amphibious traversal."
+		)
+	)
+	var ranged_enemy := FIRE_RANGED_CONFIG.enemy_scene.instantiate() as Enemy
+	game.enemy_container.add_child(ranged_enemy)
+	ranged_enemy.setup(FIRE_RANGED_CONFIG, game.player, game.grid_pathfinder, game)
+	ranged_enemy.set_physics_process(false)
+	game.enemy_coordinator.assign_enemy_targets(ranged_enemy, near_gate)
+	_expect(
+		ranged_enemy.can_target_water_plant_objectives()
+		and ranged_enemy.objective_target == water_plant,
+		(
+			"The authoritative assignment pipeline must preserve water-building "
+			+ "access for ranged enemies."
+		)
+	)
 	grass_plant.is_dead = true
 	_expect(
 		game.enemy_coordinator.call(
@@ -763,6 +799,18 @@ func _verify_target_selection(game: TowerDefenseGame) -> void:
 		) == water_plant,
 		"A ranged enemy must still pursue a living water building when no grass building remains."
 	)
+	game.enemy_coordinator.assign_enemy_targets(amphibious_melee, near_gate)
+	game.enemy_coordinator.assign_enemy_targets(ranged_enemy, near_gate)
+	_expect(
+		amphibious_melee.objective_target == gate
+		and ranged_enemy.objective_target == water_plant,
+		(
+			"Formal target assignment must send melee enemies Home while ranged "
+			+ "enemies retain the sole water building."
+		)
+	)
+	amphibious_melee.free()
+	ranged_enemy.free()
 	_release_target_probe_plant(game, grass_plant)
 	_release_target_probe_plant(game, water_plant)
 	# Leave enough margin for the retarget probe itself, which starts four world

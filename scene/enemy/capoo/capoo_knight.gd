@@ -262,15 +262,11 @@ func _apply_slash_damage() -> void:
 	slash_hit_target_ids.clear()
 	for result in results:
 		var hit_target := result.get("collider") as Node2D
-		if hit_target == null:
+		if not _is_ranged_combat_target_valid(hit_target):
 			continue
 		var player := hit_target as Player
 		var plant := hit_target as PlantDefense
-		if (
-			(player != null and player.is_dead)
-			or (plant != null and (plant.is_dead or plant.is_removing))
-			or (player == null and plant == null)
-		):
+		if player == null and plant == null:
 			continue
 		var target_id := hit_target.get_instance_id()
 		if slash_hit_target_ids.has(target_id):

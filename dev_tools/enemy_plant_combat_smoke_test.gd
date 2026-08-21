@@ -1,9 +1,21 @@
 extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const COMBAT_RUNTIME_FIXTURE_SCRIPT := preload(
+	"res://dev_tools/fixtures/combat_runtime_test_fixture.gd"
+)
 const AGAVE_SCENE := preload("res://scene/plant_defense/agave_cannon.tscn")
+const WATER_COLLECTOR_SCENE := preload(
+	"res://scene/plant_defense/water_collector.tscn"
+)
 const OAK_WAREHOUSE_SCENE := preload("res://scene/plant_defense/oak_warehouse.tscn")
 const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
+const WATER_COLLECTOR_CONFIG := preload(
+	"res://resources/config/plant_defense/water_collector.tres"
+)
+const BASIC_INSECT_CONFIG := preload(
+	"res://resources/config/enemies/yuanshi_insect_basic.tres"
+)
 const AK_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
 const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const MAGE_CONFIG := preload("res://resources/config/enemies/capoo_mage.tres")
@@ -16,8 +28,17 @@ const ELITE_KNIGHT_CONFIG := preload(
 const SWORDSMAN_CONFIG := preload(
 	"res://resources/config/enemies/capoo_swordsman.tres"
 )
+const STONE_GOLEM_CONFIG := preload(
+	"res://resources/config/enemies/stone_golem.tres"
+)
 const FIRE_INSECT_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"
+)
+const COMBAT_ROBOT_GUNNER_CONFIG := preload(
+	"res://resources/config/enemies/combat_robot_gunner.tres"
+)
+const COMBAT_ROBOT_DRONE_OPERATOR_CONFIG := preload(
+	"res://resources/config/enemies/combat_robot_drone_operator.tres"
 )
 const AK_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
 const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
@@ -28,7 +49,7 @@ const FIRE_PROJECTILE_SCENE := preload(
 )
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: CombatRuntimeTestFixture
 
 
 func _init() -> void:
@@ -36,12 +57,15 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = COMBAT_RUNTIME_FIXTURE_SCRIPT.new() as CombatRuntimeTestFixture
 	test_root.name = "EnemyPlantCombatSmokeTest"
+	test_root.install_base_runtime_nodes()
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	root.add_child(test_root)
 	current_scene = test_root
 
 	await _verify_ranged_enemy_target_contract()
+	await _verify_water_building_enemy_engagement_contract()
 	await _verify_melee_enemy_plant_attack_contract()
 	await _verify_projectile_plant_damage_contract()
 	await _verify_sniper_plant_damage_contract()
@@ -148,6 +172,100 @@ func _verify_ranged_enemy_target_contract() -> void:
 	await physics_frame
 
 
+func _verify_water_building_enemy_engagement_contract() -> void:
+	var player := _spawn_player(Vector2(600.0, 0.0))
+	var water_plant := _spawn_water_collector(Vector2(40.0, 0.0))
+	var amphibious_config := BASIC_INSECT_CONFIG.duplicate(true) as YuanshiInsectConfig
+	amphibious_config.terrain_traversal_types = (
+		DualGridTilemap.TraversalType.LAND
+		| DualGridTilemap.TraversalType.WATER
+	)
+	var melee := _spawn_enemy(amphibious_config, player)
+	var water_health_before := water_plant.current_health
+	_expect(
+		(melee.terrain_traversal_types & DualGridTilemap.TraversalType.WATER) != 0
+		and not melee.can_target_water_plant_objectives(),
+		"Amphibious traversal must not grant a melee enemy water-building combat access."
+	)
+	melee.set_objective_target(water_plant)
+	_expect(
+		melee.objective_target == null
+		and melee.get_attackable_objective() == null,
+		"Direct objective assignment must reject a water building for melee enemies."
+	)
+	melee.call("_on_touch_damage_area_body_entered", water_plant)
+	_expect(
+		melee.touching_plants.is_empty()
+		and melee.get_contact_combat_target() == null
+		and not bool(melee.call("_has_player_contact"))
+		and water_plant.current_health == water_health_before,
+		"Melee contact must neither track, stop at, nor damage a water building."
+	)
+
+	var land_plant := _spawn_agave(Vector2(80.0, 0.0))
+	var land_health_before := land_plant.current_health
+	melee.call("_on_touch_damage_area_body_entered", land_plant)
+	_expect(
+		melee.get_contact_combat_target() == land_plant
+		and land_plant.current_health < land_health_before,
+		"The water-building gate must preserve ordinary melee contact against land buildings."
+	)
+	melee.call("_on_touch_damage_area_body_exited", land_plant)
+
+	var ranged_family_configs: Array[EnemyConfig] = [
+		AK_CONFIG,
+		RPG_CONFIG,
+		MAGE_CONFIG,
+		FIRE_INSECT_CONFIG,
+		COMBAT_ROBOT_GUNNER_CONFIG,
+		COMBAT_ROBOT_DRONE_OPERATOR_CONFIG,
+	]
+	var ranged_family_enemies: Array[Enemy] = []
+	for ranged_family_config in ranged_family_configs:
+		var family_enemy := _spawn_enemy(ranged_family_config, player)
+		family_enemy.set_objective_target(water_plant)
+		_expect(
+			family_enemy.can_target_water_plant_objectives()
+			and family_enemy.can_attack_plant_target(water_plant)
+			and family_enemy.objective_target == water_plant,
+			"Every explicit ranged family must retain a water-building objective: %s."
+			% ranged_family_config.display_name
+		)
+		ranged_family_enemies.append(family_enemy)
+
+	var ranged := _spawn_enemy(FIRE_INSECT_CONFIG, player) as YuanshiInsectFireRanged
+	ranged.set_objective_target(water_plant)
+	_expect(
+		ranged.can_target_water_plant_objectives()
+		and ranged.objective_target == water_plant
+		and ranged.get_attackable_objective() == water_plant
+		and bool(ranged.call("_try_start_ranged_attack", water_plant)),
+		"An explicitly ranged enemy must retain and attack a water-building objective."
+	)
+	var projectile := FIRE_PROJECTILE_SCENE.instantiate() as YuanshiInsectFireProjectile
+	test_root.add_child(projectile)
+	projectile.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
+	projectile.setup(Vector2.RIGHT, 50, 100.0, 1.0)
+	projectile.call("_on_body_entered", water_plant)
+	_expect(
+		water_plant.current_health < water_health_before,
+		"A ranged enemy projectile must still damage the water collector."
+	)
+
+	projectile.queue_free()
+	ranged.queue_free()
+	for family_enemy in ranged_family_enemies:
+		family_enemy.queue_free()
+	melee.queue_free()
+	land_plant.begin_removal(PlantDefense.RemovalMode.SILENT)
+	water_plant.begin_removal(PlantDefense.RemovalMode.SILENT)
+	player.queue_free()
+	await physics_frame
+
+
 func _verify_melee_enemy_plant_attack_contract() -> void:
 	var player := _spawn_player(Vector2(600.0, 0.0))
 	var gate := Node2D.new()
@@ -157,10 +275,13 @@ func _verify_melee_enemy_plant_attack_contract() -> void:
 		KNIGHT_CONFIG,
 		ELITE_KNIGHT_CONFIG,
 		SWORDSMAN_CONFIG,
+		STONE_GOLEM_CONFIG,
 	]
 	for melee_config in melee_configs:
-		var plant := _spawn_agave(Vector2(42.0, 0.0))
+		var plant := _spawn_agave(Vector2(32.0, 0.0))
+		var water_plant := _spawn_water_collector(Vector2(32.0, 0.0))
 		var enemy := _spawn_enemy(melee_config, player) as CapooKnight
+		enemy.attack_cooldown_left = 0.0
 		await physics_frame
 		if enemy.touching_players.has(player.get_instance_id()):
 			enemy.call("_on_touch_damage_area_body_exited", player)
@@ -170,6 +291,7 @@ func _verify_melee_enemy_plant_attack_contract() -> void:
 			% melee_config.display_name
 		)
 		var health_before := plant.current_health
+		var water_health_before := water_plant.current_health
 		enemy.set_objective_target(plant)
 		enemy.call("_on_touch_damage_area_body_entered", plant)
 		_expect(
@@ -216,6 +338,11 @@ func _verify_melee_enemy_plant_attack_contract() -> void:
 			"%s must not apply its committed slash to the same plant twice."
 			% melee_config.display_name
 		)
+		_expect(
+			water_plant.current_health == water_health_before,
+			"%s melee area damage must not hit an overlapping water building."
+			% melee_config.display_name
+		)
 		enemy.call("_on_touch_damage_area_body_exited", plant)
 		enemy.call("_cancel_attack")
 		enemy.set_objective_target(gate)
@@ -224,7 +351,7 @@ func _verify_melee_enemy_plant_attack_contract() -> void:
 			"%s must not slash a navigation-only Home gate."
 			% melee_config.display_name
 		)
-		var removing_plant := _spawn_agave(Vector2(42.0, 0.0))
+		var removing_plant := _spawn_agave(Vector2(32.0, 0.0))
 		enemy.set_objective_target(removing_plant)
 		_expect(
 			bool(enemy.call("_try_start_windup")),
@@ -244,6 +371,7 @@ func _verify_melee_enemy_plant_attack_contract() -> void:
 		)
 		enemy.queue_free()
 		plant.begin_removal(PlantDefense.RemovalMode.SILENT)
+		water_plant.begin_removal(PlantDefense.RemovalMode.SILENT)
 		removing_plant.begin_removal(PlantDefense.RemovalMode.SILENT)
 		await physics_frame
 	gate.queue_free()
@@ -263,6 +391,11 @@ func _verify_projectile_plant_damage_contract() -> void:
 		var health_before := plant.current_health
 		var projectile := projectile_scene.instantiate() as Area2D
 		test_root.add_child(projectile)
+		projectile.call(
+			"bind_gameplay_context",
+			test_root,
+			test_root.get_multiplayer_gameplay_gateway()
+		)
 		projectile.call("setup", Vector2.RIGHT, 50, 100.0, 1.0)
 		_expect(
 			(projectile.collision_mask & 512) != 0,
@@ -285,6 +418,10 @@ func _verify_projectile_plant_damage_contract() -> void:
 	var removing_health := removing_plant.current_health
 	var ghost_bullet := AK_BULLET_SCENE.instantiate() as CapooAK47Bullet
 	test_root.add_child(ghost_bullet)
+	ghost_bullet.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	ghost_bullet.setup(Vector2.RIGHT, 50, 100.0, 1.0)
 	removing_plant.begin_removal(PlantDefense.RemovalMode.ANIMATED)
 	ghost_bullet.call("_on_body_entered", removing_plant)
@@ -418,7 +555,7 @@ func _spawn_enemy(enemy_config: EnemyConfig, player: Player) -> Enemy:
 	var enemy := enemy_config.enemy_scene.instantiate() as Enemy
 	enemy.position = Vector2.ZERO
 	test_root.add_child(enemy)
-	enemy.setup(enemy_config, player)
+	enemy.setup(enemy_config, player, null, test_root)
 	enemy.set_physics_process(false)
 	return enemy
 
@@ -436,6 +573,23 @@ func _spawn_agave(position: Vector2) -> AgaveCannon:
 	test_root.add_child(plant)
 	plant.setup(AGAVE_CONFIG, null, [Vector2i.ZERO])
 	plant.attack_timer.stop()
+	return plant
+
+
+func _spawn_water_collector(position: Vector2) -> WaterCollector:
+	var plant := WATER_COLLECTOR_SCENE.instantiate() as WaterCollector
+	plant.position = position
+	test_root.add_child(plant)
+	plant.setup(
+		WATER_COLLECTOR_CONFIG,
+		null,
+		[
+			Vector2i.ZERO,
+			Vector2i.RIGHT,
+			Vector2i.DOWN,
+			Vector2i.ONE,
+		]
+	)
 	return plant
 
 

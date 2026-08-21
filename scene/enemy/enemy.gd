@@ -630,9 +630,13 @@ func set_target_player(player: Player) -> void:
 
 
 func set_objective_target(target: Node2D) -> void:
-	if objective_target == target:
+	var resolved_target := target
+	var plant_target := resolved_target as PlantDefense
+	if plant_target != null and not can_attack_plant_target(plant_target):
+		resolved_target = null
+	if objective_target == resolved_target:
 		return
-	objective_target = target
+	objective_target = resolved_target
 	_invalidate_blocked_world_los_cache()
 	_invalidate_ranged_combat_line_cache()
 	_reset_ranged_attack_position_state()
@@ -666,7 +670,7 @@ func get_attackable_objective() -> Node2D:
 		return null if player_objective.is_dead else player_objective
 	var plant_objective := objective_target as PlantDefense
 	if plant_objective != null:
-		return null if plant_objective.is_dead or plant_objective.is_removing else plant_objective
+		return plant_objective if can_attack_plant_target(plant_objective) else null
 	# Home gates and other navigation-only objectives must never become combat
 	# targets merely because they are Node2D instances.
 	return null
@@ -711,13 +715,30 @@ func has_resolved_combat_target(
 	return get_resolved_combat_target(family_proactive_target) != null
 
 
-## Land-only melee enemies must not navigate toward water buildings they cannot
-## reach. Amphibious enemies can still use them as objectives; ranged enemy
-## families override this capability because they can attack from the shore.
+## Water traversal and water-building combat are separate capabilities. Melee
+## enemies remain unable to attack a water building even when they can traverse
+## water; ranged families explicitly override this capability.
 func can_target_water_plant_objectives() -> bool:
+	return false
+
+
+## One eligibility gate shared by proactive objectives, contact combat and
+## authored attack state machines. PlantSystem keeps its early water filter as
+## a query optimization, while this method owns the combat invariant.
+func can_attack_plant_target(plant: PlantDefense) -> bool:
+	if (
+		plant == null
+		or not is_instance_valid(plant)
+		or plant.is_queued_for_deletion()
+		or plant.is_dead
+		or plant.is_removing
+	):
+		return false
 	return (
-		terrain_traversal_types & DualGridTilemap.TraversalType.WATER
-	) != 0
+		plant.config == null
+		or not plant.config.is_water_building()
+		or can_target_water_plant_objectives()
+	)
 
 
 func is_attackable_objective_in_range(attack_range: float) -> bool:
@@ -883,7 +904,7 @@ func _is_live_ranged_combat_target(target: Node2D) -> bool:
 		return not player_target.is_dead
 	var plant_target := target as PlantDefense
 	if plant_target != null:
-		return not plant_target.is_dead and not plant_target.is_removing
+		return can_attack_plant_target(plant_target)
 	return false
 
 
@@ -4000,12 +4021,7 @@ func _has_player_contact() -> bool:
 		return true
 	for instance_id in touching_plants:
 		var plant := touching_plants[instance_id] as PlantDefense
-		if (
-			plant == null
-			or not is_instance_valid(plant)
-			or plant.is_dead
-			or plant.is_removing
-		):
+		if not can_attack_plant_target(plant):
 			continue
 		var entry_distance := float(
 			touching_plant_entry_distances.get(instance_id, INF)
@@ -4044,7 +4060,7 @@ func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 
 	var plant := body as PlantDefense
 	if plant != null:
-		if plant.is_dead or plant.is_removing:
+		if not can_attack_plant_target(plant):
 			return
 		_track_touching_plant(plant)
 		_try_deal_touch_damage()
@@ -4112,12 +4128,7 @@ func _select_touching_plant() -> PlantDefense:
 	var stale_plant_ids: Array[int] = []
 	for instance_id in touching_plants:
 		var plant := touching_plants[instance_id] as PlantDefense
-		if (
-			plant == null
-			or not is_instance_valid(plant)
-			or plant.is_dead
-			or plant.is_removing
-		):
+		if not can_attack_plant_target(plant):
 			stale_plant_ids.append(instance_id)
 			continue
 		var distance_squared := global_position.distance_squared_to(
@@ -4152,6 +4163,8 @@ func _select_touching_plant() -> PlantDefense:
 
 
 func _track_touching_plant(plant: PlantDefense) -> void:
+	if not can_attack_plant_target(plant):
+		return
 	var plant_instance_id := plant.get_instance_id()
 	touching_plants[plant_instance_id] = plant
 	if not touching_plant_entry_distances.has(plant_instance_id):
@@ -4272,9 +4285,7 @@ func _try_deal_touch_damage() -> void:
 	var outgoing_damage := get_effective_attack_damage(config.attack_damage)
 	if (
 		touched_plant != null
-		and is_instance_valid(touched_plant)
-		and not touched_plant.is_dead
-		and not touched_plant.is_removing
+		and can_attack_plant_target(touched_plant)
 	):
 		var impact_direction := global_position.direction_to(touched_plant.global_position)
 		if touched_plant.receive_damage(
