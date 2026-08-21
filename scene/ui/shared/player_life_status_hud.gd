@@ -14,6 +14,7 @@ const COUNTDOWN_PULSE_SECONDS := 0.22
 const PERMANENT_DEATH_FULL_TEXT := "本次作战无法复活"
 const PERMANENT_DEATH_COMPACT_TEXT := "观战中"
 
+@onready var death_screen_back_buffer: BackBufferCopy = $DeathScreenBackBuffer
 @onready var death_screen_effect: ColorRect = $DeathScreenEffect
 @onready var dead_players_panel: PanelContainer = $RightMargin/DeadPlayersPanel
 @onready var dead_players_label: Label = (
@@ -51,6 +52,7 @@ func _ready() -> void:
 	local_death_top_position = local_death_center.position
 	local_death_top_size = local_death_center.size
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
+	death_screen_back_buffer.hide()
 	death_screen_effect.hide()
 	dead_players_panel.hide()
 	local_death_center.hide()
@@ -217,6 +219,7 @@ func _play_local_death_intro() -> void:
 	_stop_local_death_tweens()
 	_refresh_local_death_top_position()
 	local_death_intro_active = true
+	death_screen_back_buffer.show()
 	death_screen_effect.show()
 	_set_shader_intensity(death_screen_effect, 0.0)
 	death_effect_tween = create_tween()
@@ -302,6 +305,7 @@ func _stop_local_death_presentation() -> void:
 		dead_players_tween = null
 	local_death_intro_active = false
 	local_permanent_death_active = false
+	death_screen_back_buffer.hide()
 	death_screen_effect.hide()
 	local_death_center.hide()
 	_refresh_local_death_top_position()

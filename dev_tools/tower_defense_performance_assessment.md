@@ -217,6 +217,8 @@ Draw Call 和 0.29–0.31 ms GPU。Area 保留时碰撞对始终为 42，说明�
 
 ### 守护者
 
+下表保留的是 `2026-07` 真实灯方案的历史基线，用于说明本轮结构替换的动机：
+
 | 状态 | 启用 PointLight2D | GPU p95 | 墙钟 p95 | Draw Call |
 |---|---:|---:|---:|---:|
 | 生产灯光预算 | 12 | 6.551 ms | 18.457 ms | 77 |
@@ -232,6 +234,40 @@ Draw Call 和 0.29–0.31 ms GPU。Area 保留时碰撞对始终为 42，说明�
 在 36 守护者、300 目标、643 条来源关系下从 7.937 ms 降至 4.662 ms，结果签名
 完全相同，约 1.70 倍加速；物理侧没有恢复旧的逐守护者 Area。
 
+`2026-08-22` 已把这组纯装饰 `PointLight2D` 全部替换为共享纹理的 ADD +
+UNSHADED 自发光层。旧版视觉层级没有被抹平：300 只守护者都保留原来的弱光晕，
+认领、释放与延迟递补状态机仍精确保留 12 个增强槽；只有取得槽位的 12 只额外绘制
+会读取接收表面的自发光增强层。隐藏的外层战场会释放槽位但保留候选身份，进入内层
+Rogue 时可由当前可见守护者认领，返回后外层再自动恢复；存活节点即使被移出后重挂
+到 SceneTree，也会恢复候选资格。每个 `DayNightController` 只持有一份运行时材质，
+既不会让内嵌战斗覆盖外层昼夜参数，也不会触发 Compatibility 的 instance uniform
+数量上限。
+
+本轮新方案数据采自 Godot 4.6.3、1920×1080 窗口、1152×648 Viewport、
+RTX 3080。下表每种渲染器都在同一进程中先测生产态，再关闭 12 个增强层作为对照：
+
+| 渲染器 / 状态 | PointLight2D | 弱光晕 | 增强层 | GPU p50 / p95 | Render CPU p50 / p95 | Draw Call |
+|---|---:|---:|---:|---:|---:|---:|
+| Forward+ / 生产态 | 0 | 300 | 12 | 0.361 / 0.599 ms | 0.956 / 1.100 ms | 80 |
+| Forward+ / 关闭增强 | 0 | 300 | 0 | 0.522 / 0.911 ms | 0.944 / 1.081 ms | 79 |
+| Compatibility / 生产态 | 0 | 300 | 12 | 2.238 / 2.926 ms | 2.024 / 2.288 ms | 80 |
+| Compatibility / 关闭增强 | 0 | 300 | 0 | 2.618 / 3.198 ms | 1.963 / 2.126 ms | 79 |
+
+两种渲染器的 GPU 计时都出现“生产态反而更低”的顺序噪声，因此不能把负差值解释为
+性能收益；能稳定确认的是新增 12 个增强 Sprite 只合并为 1 个 Draw Call、12 个渲染
+对象，Render CPU p95 增量分别为 0.019 ms 和 0.162 ms，GPU 增量低于本轮可测噪声。
+退出性能探针时 Godot 仍会打印该夹具既有的资源/RID 清理诊断，但进程正常以 0 退出，
+且 Compatibility 不再出现 instance allocation 上限错误。
+
+视觉 A/B 使用真实纹理地面、前景接收敌人、命中闪白和 14×13 像素密集重叠夹具。
+Forward+ 的单体总亮度比为 `1.0331–1.0500`、接收者亮度比为
+`0.9203–1.0001`；Compatibility 分别为 `1.0097–1.0396` 与
+`0.9719–0.9895`。密集夹具在 Forward+ 的亮度比为 `0.8884–0.9561`、
+RGB MAE 为 `0.0230–0.0624`、亮度 SSIM 为 `0.9446–0.9954`；
+Compatibility 分别为 `0.9239–0.9358`、`0.0216–0.0387`、
+`0.9615–0.9853`。两条渲染路径均通过亮度、覆盖、色相、饱和区域、接收者和
+SSIM 联合阈值，死亡全屏 shader 也通过显式 `BackBufferCopy` 与新屏幕采样材质隔离。
+
 ## 阶段性结论（未含正式混合塔阵）
 
 1. 300 活敌的共享寻路稳定成本约 1.7–2.3 ms/帧，是持续 CPU 基线，但没有发现
@@ -240,8 +276,8 @@ Draw Call 和 0.29–0.31 ms GPU。Area 保留时碰撞对始终为 42，说明�
    超出稳定 60 FPS 的场景；热点在高碰撞密度与同帧塔索敌/锁定，而非 GPU。
 3. 真实混合波单独运行的 p95 为 17.48–18.14 ms；复杂远程池均保持语义完整，
    没有泄漏或关键弹体丢弃。
-4. 视觉最大风险是守护者灯光重叠，其次是翠壳粒子/范围线的 Draw Call；现有真实
-   配比尚可，但极端同屏聚集会显著侵占 GPU 余量。
+4. 守护者真实灯重叠风险已通过自发光替换消除；当前主要视觉容量风险转为翠壳
+   粒子/范围线的 Draw Call，极端同屏聚集仍会侵占 GPU 余量。
 5. 同步 64 玉米塔锁定增加约 7.93 ms 是故意构造的相位最坏情况；生产代码现已
    使用确定性黄金比例首轮延迟，批量恢复也不会永久同相，不能把该控制组当作
    每秒必现卡顿。
@@ -396,11 +432,15 @@ Godot 的 `TIME_PROCESS` / `TIME_PHYSICS_PROCESS` 在短窗口中还会以较粗
 伤害时序的影响，而不是恢复全表扫描。故意同步 64 玉米塔会额外增加约 7.49 ms，
 所以该强制同相控制组应继续作为回归诊断。
 
-### P1：给守护者灯光提供质量预算
+### 已完成：守护者装饰灯改为自发光
 
-300 守护者密集同屏时，生产 12 灯比全关增加约 4.85 ms GPU；预算 12→8 可回收
-约 1.60 ms。正式混合波目前 GPU 不是首要瓶颈，所以不应无条件降画质，但建议把
-最大活动灯数做成图形质量选项，并按屏幕覆盖而非敌人总数分配。
+旧方案 300 守护者密集同屏时，生产 12 灯比全关增加约 4.85 ms GPU。当前生产
+场景已经没有守护者 `Light2D`：300 只保留共享材质弱光晕，当前可见成员中的前
+12 只继续通过原有槽位状态机取得接收表面自发光增强；隐藏/恢复战场会同步释放和
+递补槽位。双渲染器性能 A/B 中只增加 1 个 Draw Call，
+GPU 增量低于计时噪声；双渲染器视觉 A/B 也保持旧版亮度、半径、青蓝色相、命中
+闪白与身体/前景接收者可读性。后续不能把 12 槽状态机删除或改成 300 只全增强，
+否则既破坏旧视觉层级，也会放大屏幕采样覆盖成本。
 
 ### P2：按同屏密度降级翠壳与命中特效
 
@@ -423,9 +463,10 @@ Physics2D 隔离和 1200 敌人完整生命周期均已覆盖。没有发现关�
 因此没有用无效 Boss 夹具污染结论。
 
 真正的容量问题是：300/96 后期实战在本机已经越过稳定 60 FPS，CPU/Physics2D
-和密集植物接触是第一优先级，塔战斗提交是第二个可预算化热点；守护者灯光与翠壳
-视觉是可配置的 GPU 风险。当前生产代码未被冒险修改，修正的是性能探针本身的过期
-Guardian 假设和粒子关闭口径，确保后续回归可重复、可比较。
+和密集植物接触是第一优先级，塔战斗提交是第二个可预算化热点；守护者真实灯风险
+已经消除，翠壳视觉仍是可配置的 GPU 风险。守护者改动只替换无玩法语义的装饰
+灯，防御光环仍由集中式系统负责；性能探针同步改为自发光开关 A/B，确保后续回归
+可重复、可比较。
 
 ## 复现入口
 
@@ -440,9 +481,20 @@ Guardian 假设和粒子关闭口径，确保后续回归可重复、可比较�
 
 解除帧率上限/VSync 的实算对照只需再加 `-MaxFps 0`。逐敌人测试把
 `-WaveConfig` 换成 `-EnemyConfig <EnemyConfig 路径>`；爆炸类使用 `-Phase burst`。
-视觉和物理隔离分别由以下入口复现：
+守护者性能、双渲染器视觉和物理隔离分别由以下入口复现：
 
 ```powershell
-Godot_console.exe --path . --script res://dev_tools/enemy_vfx_performance_probe.gd
+Godot_console.exe --display-driver windows --audio-driver Dummy --path . `
+  --script res://dev_tools/enemy_vfx_performance_probe.gd `
+  -- --guardian-only --enemies=300 --warmup=60 --samples=180
+Godot_console.exe --display-driver windows --audio-driver Dummy `
+  --rendering-method gl_compatibility --path . `
+  --script res://dev_tools/enemy_vfx_performance_probe.gd `
+  -- --guardian-only --enemies=300 --warmup=60 --samples=180
+Godot_console.exe --display-driver windows --audio-driver Dummy --path . `
+  --editor-pid 0 res://dev_tools/guardian_night_glow_visual_test.tscn
+Godot_console.exe --display-driver windows --audio-driver Dummy `
+  --rendering-method gl_compatibility --path . --editor-pid 0 `
+  res://dev_tools/guardian_night_glow_visual_test.tscn
 Godot_console.exe --path . --script res://dev_tools/physics2d_isolation_ab_probe.gd
 ```

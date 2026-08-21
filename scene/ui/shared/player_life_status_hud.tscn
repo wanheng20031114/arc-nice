@@ -88,6 +88,10 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("1_script")
 
+[node name="DeathScreenBackBuffer" type="BackBufferCopy" parent="."]
+visible = false
+copy_mode = 2
+
 [node name="DeathScreenEffect" type="ColorRect" parent="."]
 material = SubResource("ShaderMaterial_death")
 layout_mode = 1

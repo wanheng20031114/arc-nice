@@ -5,10 +5,11 @@ signal guardian_aura_deactivated(guardian: Enemy)
 
 const AURA_RANGE_SEGMENTS := 24
 const AURA_PARTICLE_FIXED_FPS := 30
-const MAX_ACTIVE_GUARDIAN_LIGHTS := 12
+const MAX_ACTIVE_GUARDIAN_EMISSION_BOOSTS := 12
 const PLAYER_COLLISION_MASK := 2
-const GUARDIAN_LIGHT_CANDIDATE_GROUP := &"guardian_light_budget_candidates"
-const GUARDIAN_LIGHT_ACTIVE_GROUP := &"guardian_light_budget_active"
+const GUARDIAN_BASE_HALO_MODULATE := Color(0.2, 0.78, 1.0, 0.78)
+const GUARDIAN_EMISSION_CANDIDATE_GROUP := &"guardian_emission_budget_candidates"
+const GUARDIAN_EMISSION_ACTIVE_GROUP := &"guardian_emission_budget_active"
 
 @onready var aura_particles: GPUParticles2D = get_node_or_null("AuraParticles") as GPUParticles2D
 @onready var aura_range_outline: Line2D = get_node_or_null("AuraRangeOutline") as Line2D
@@ -16,7 +17,10 @@ const GUARDIAN_LIGHT_ACTIVE_GROUP := &"guardian_light_budget_active"
 @onready var aura_area_shape: CollisionShape2D = (
 	get_node_or_null("AuraArea/CollisionShape2D") as CollisionShape2D
 )
-@onready var guardian_light: PointLight2D = get_node_or_null("GuardianLight") as PointLight2D
+@onready var guardian_halo: Sprite2D = get_node_or_null("GuardianLightHalo") as Sprite2D
+@onready var guardian_light_emission: Sprite2D = (
+	get_node_or_null("GuardianLightEmission") as Sprite2D
+)
 
 # 毒性/守护光环状态。
 var aura_active: bool = false
@@ -26,11 +30,15 @@ var aura_damage_cooldown_left: float = 0.0
 
 func _ready() -> void:
 	super._ready()
-	_configure_guardian_light_budget()
+	if not tree_entered.is_connected(_on_guardian_tree_entered):
+		tree_entered.connect(_on_guardian_tree_entered)
+	if not visibility_changed.is_connected(_on_guardian_visibility_changed):
+		visibility_changed.connect(_on_guardian_visibility_changed)
+	_configure_guardian_emission_budget()
 
 
 func _exit_tree() -> void:
-	_release_guardian_light_budget()
+	_release_guardian_emission_budget()
 	super._exit_tree()
 
 
@@ -220,42 +228,84 @@ func _ensure_player_aura_signals_connected() -> void:
 		aura_area.body_exited.connect(_on_aura_area_body_exited)
 
 
-func _configure_guardian_light_budget() -> void:
-	if guardian_light == null:
+func _configure_guardian_emission_budget() -> void:
+	if (
+		guardian_halo == null
+		or guardian_light_emission == null
+		or is_dead
+		or not is_inside_tree()
+	):
 		return
-	guardian_light.enabled = false
-	add_to_group(GUARDIAN_LIGHT_CANDIDATE_GROUP)
-	_try_claim_guardian_light_budget()
+	_set_guardian_emission_boost_enabled(false)
+	add_to_group(GUARDIAN_EMISSION_CANDIDATE_GROUP)
+	_try_claim_guardian_emission_budget()
 
 
-func _try_claim_guardian_light_budget() -> void:
-	if guardian_light == null or is_dead or not is_inside_tree():
+func _try_claim_guardian_emission_budget() -> void:
+	if (
+		guardian_halo == null
+		or guardian_light_emission == null
+		or is_dead
+		or not is_inside_tree()
+	):
 		return
-	if is_in_group(GUARDIAN_LIGHT_ACTIVE_GROUP):
-		guardian_light.enabled = true
+	if not is_visible_in_tree():
+		_release_guardian_emission_budget(false)
 		return
-	if get_tree().get_nodes_in_group(GUARDIAN_LIGHT_ACTIVE_GROUP).size() >= MAX_ACTIVE_GUARDIAN_LIGHTS:
-		guardian_light.enabled = false
+	if is_in_group(GUARDIAN_EMISSION_ACTIVE_GROUP):
+		_set_guardian_emission_boost_enabled(true)
 		return
-	add_to_group(GUARDIAN_LIGHT_ACTIVE_GROUP)
-	guardian_light.enabled = true
+	if (
+		get_tree().get_nodes_in_group(GUARDIAN_EMISSION_ACTIVE_GROUP).size()
+		>= MAX_ACTIVE_GUARDIAN_EMISSION_BOOSTS
+	):
+		_set_guardian_emission_boost_enabled(false)
+		return
+	add_to_group(GUARDIAN_EMISSION_ACTIVE_GROUP)
+	_set_guardian_emission_boost_enabled(true)
 
 
-func _release_guardian_light_budget() -> void:
-	if guardian_light == null:
+func _release_guardian_emission_budget(
+	remove_candidate: bool = true
+) -> void:
+	if guardian_halo == null or guardian_light_emission == null:
 		return
-	var released_slot := is_in_group(GUARDIAN_LIGHT_ACTIVE_GROUP)
+	var released_slot := is_in_group(GUARDIAN_EMISSION_ACTIVE_GROUP)
 	if released_slot:
-		remove_from_group(GUARDIAN_LIGHT_ACTIVE_GROUP)
-	if is_in_group(GUARDIAN_LIGHT_CANDIDATE_GROUP):
-		remove_from_group(GUARDIAN_LIGHT_CANDIDATE_GROUP)
-	guardian_light.enabled = false
+		remove_from_group(GUARDIAN_EMISSION_ACTIVE_GROUP)
+	if remove_candidate and is_in_group(GUARDIAN_EMISSION_CANDIDATE_GROUP):
+		remove_from_group(GUARDIAN_EMISSION_CANDIDATE_GROUP)
+	_set_guardian_emission_boost_enabled(false)
 	if released_slot and is_inside_tree():
 		get_tree().call_group_flags(
 			SceneTree.GROUP_CALL_DEFERRED,
-			GUARDIAN_LIGHT_CANDIDATE_GROUP,
-			&"_try_claim_guardian_light_budget"
+			GUARDIAN_EMISSION_CANDIDATE_GROUP,
+			&"_try_claim_guardian_emission_budget"
 		)
+
+
+func _on_guardian_visibility_changed() -> void:
+	if is_dead or guardian_halo == null or guardian_light_emission == null:
+		return
+	if is_visible_in_tree():
+		_try_claim_guardian_emission_budget()
+	else:
+		# 内嵌作战会把外层战场留在 SceneTree 中并隐藏。隐藏成员必须释放
+		# 增强槽，但继续保留候选身份，恢复外层时才能自动重新认领。
+		_release_guardian_emission_budget(false)
+
+
+func _on_guardian_tree_entered() -> void:
+	# `_ready()` only runs once. A live guardian removed and re-added to the tree
+	# must restore its candidate membership after its child emission re-enters.
+	call_deferred("_configure_guardian_emission_budget")
+
+
+func _set_guardian_emission_boost_enabled(enabled: bool) -> void:
+	if guardian_halo != null:
+		guardian_halo.modulate = GUARDIAN_BASE_HALO_MODULATE
+	if guardian_light_emission != null:
+		guardian_light_emission.visible = enabled
 
 
 # 光环区域检测到目标进入。
@@ -321,7 +371,7 @@ func _die() -> void:
 	if is_dead:
 		return
 
-	_release_guardian_light_budget()
+	_release_guardian_emission_budget()
 	_stop_aura()
 	super._die()
 
@@ -330,6 +380,6 @@ func play_multiplayer_death_sequence() -> void:
 	if is_dead:
 		return
 	# 代理死亡不发 Enemy.defeated；先关闭光环并同步撤销本地来源。
-	_release_guardian_light_budget()
+	_release_guardian_emission_budget()
 	_stop_aura()
 	super.play_multiplayer_death_sequence()

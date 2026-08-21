@@ -11,8 +11,12 @@ const GUARDIAN_AURA_SYSTEM_SCENE := preload(
 )
 const STANDARD_GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const TOWER_GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
+const PLAYER_LIFE_STATUS_HUD_SCENE := preload(
+	"res://scene/ui/shared/player_life_status_hud.tscn"
+)
 const AURA_SCRIPT := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_aura.gd")
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/combat/feedback/shaders/entity_motion_status.gdshader"
+const LEGACY_GUARDIAN_DEATH_HALO_MODULATE := Color(0.2, 0.78, 1.0, 0.78)
 
 class NavigationStub extends Node:
 	var is_built := true
@@ -60,6 +64,8 @@ func _run() -> void:
 
 	_test_authored_game_scene_installation()
 	_test_resource_contract()
+	await _test_death_screen_back_buffer_contract()
+	await _test_nested_day_night_material_isolation()
 	await _test_authoritative_processing_gate()
 	await _test_first_source_refresh_keeps_boundary_overlap()
 	await _test_damage_defense_formulas()
@@ -196,6 +202,273 @@ func _test_resource_contract() -> void:
 	var texture := load("res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_guardian.png") as Texture2D
 	var image := texture.get_image() if texture != null else null
 	_expect(image != null and image.get_size() == Vector2i(96, 64), "Guardian sprite sheet size is incorrect.")
+
+
+func _test_death_screen_back_buffer_contract() -> void:
+	var life_status_hud := PLAYER_LIFE_STATUS_HUD_SCENE.instantiate() as PlayerLifeStatusHUD
+	_expect(
+		life_status_hud != null,
+		"Guardian screen-texture compatibility must instantiate the shared life HUD."
+	)
+	if life_status_hud == null:
+		return
+	test_root.add_child(life_status_hud)
+	await process_frame
+	var back_buffer := life_status_hud.get_node_or_null(
+		"DeathScreenBackBuffer"
+	) as BackBufferCopy
+	var death_effect := life_status_hud.get_node_or_null(
+		"DeathScreenEffect"
+	) as ColorRect
+	_expect(
+		back_buffer != null
+		and death_effect != null
+		and back_buffer.copy_mode == BackBufferCopy.COPY_MODE_VIEWPORT
+		and back_buffer.get_index() < death_effect.get_index()
+		and not back_buffer.visible
+		and not death_effect.visible,
+		"Death overlay must author a disabled full-viewport copy before its screen shader."
+	)
+	life_status_hud.call("_play_local_death_intro")
+	_expect(
+		back_buffer != null
+		and death_effect != null
+		and back_buffer.visible
+		and death_effect.visible,
+		"Death presentation must refresh the back buffer after guardian emissions."
+	)
+	life_status_hud.call("_stop_local_death_presentation")
+	_expect(
+		back_buffer != null
+		and death_effect != null
+		and not back_buffer.visible
+		and not death_effect.visible,
+		"Ending death presentation must disable its extra screen copy."
+	)
+	life_status_hud.queue_free()
+	await process_frame
+
+
+func _test_nested_day_night_material_isolation() -> void:
+	var player := _spawn_player(Vector2(160.0, 0.0))
+	var outer_fixture := _create_nested_guardian_branch(
+		"OuterTowerBranch",
+		YuanshiInsectAura.MAX_ACTIVE_GUARDIAN_EMISSION_BOOSTS,
+		true,
+		player
+	)
+	var inner_fixture := _create_nested_guardian_branch(
+		"InnerRogueBranch",
+		3,
+		false,
+		player
+	)
+	var outer_branch := outer_fixture["branch"] as Node2D
+	var inner_branch := inner_fixture["branch"] as Node2D
+	var outer_controller := outer_fixture["controller"] as DayNightController
+	var inner_controller := inner_fixture["controller"] as DayNightController
+	var outer_guardians := outer_fixture["guardians"] as Array
+	var inner_guardians := inner_fixture["guardians"] as Array
+	outer_controller.set_night_factor_immediate(0.0)
+	inner_controller.set_night_factor_immediate(1.0)
+	await process_frame
+	await process_frame
+	_expect(
+		_count_guardian_emission_slots(outer_guardians)
+		== YuanshiInsectAura.MAX_ACTIVE_GUARDIAN_EMISSION_BOOSTS
+		and _count_guardian_emission_slots(inner_guardians) == 0
+		and _count_bound_guardian_emissions(inner_guardians) == 0,
+		"A hidden nested branch must not consume the visible guardian emission budget."
+	)
+
+	outer_branch.hide()
+	inner_branch.show()
+	await process_frame
+	await process_frame
+	_expect(
+		_count_guardian_emission_slots(outer_guardians) == 0
+		and _count_bound_guardian_emissions(outer_guardians) == 0
+		and _count_guardian_emission_slots(inner_guardians) == inner_guardians.size(),
+		"Entering nested combat must release hidden outer slots for visible guardians."
+	)
+
+	# Keep both branches visible for one phase to prove that their shader state is
+	# isolated even while the global on-screen budget remains exactly twelve.
+	outer_branch.show()
+	await process_frame
+	await process_frame
+	_expect(
+		_count_guardian_emission_slots(outer_guardians) == 9
+		and _count_guardian_emission_slots(inner_guardians) == 3,
+		"Visible nested branches must share exactly twelve on-screen boost slots."
+	)
+	var day_emission := _find_bound_guardian_emission(outer_guardians)
+	var night_emission := _find_bound_guardian_emission(inner_guardians)
+	var day_material := (
+		day_emission.material as ShaderMaterial
+		if day_emission != null
+		else null
+	)
+	var night_material := (
+		night_emission.material as ShaderMaterial
+		if night_emission != null
+		else null
+	)
+	_expect(
+		day_emission != null
+		and night_emission != null
+		and day_emission.get("_controller") == outer_controller
+		and night_emission.get("_controller") == inner_controller
+		and day_material != null
+		and night_material != null
+		and day_material != night_material
+		and is_equal_approx(
+			float(day_material.get_shader_parameter(&"night_factor")),
+			0.0
+		)
+		and is_equal_approx(
+			float(night_material.get_shader_parameter(&"night_factor")),
+			1.0
+		),
+		"Nested combat branches must keep independent day/night emission materials."
+	)
+
+	var reentered_guardian: YuanshiInsectAura = null
+	for guardian_variant in outer_guardians:
+		var guardian := guardian_variant as YuanshiInsectAura
+		if not guardian.is_in_group(
+			YuanshiInsectAura.GUARDIAN_EMISSION_ACTIVE_GROUP
+		):
+			reentered_guardian = guardian
+			break
+	_expect(
+		reentered_guardian != null,
+		"The full nested budget fixture must leave an outer re-entry candidate."
+	)
+	if reentered_guardian != null:
+		var guardian_parent := reentered_guardian.get_parent()
+		guardian_parent.remove_child(reentered_guardian)
+		await process_frame
+		guardian_parent.add_child(reentered_guardian)
+		await process_frame
+		await process_frame
+		_expect(
+			reentered_guardian.is_in_group(
+				YuanshiInsectAura.GUARDIAN_EMISSION_CANDIDATE_GROUP
+			)
+			and not reentered_guardian.is_in_group(
+				YuanshiInsectAura.GUARDIAN_EMISSION_ACTIVE_GROUP
+			)
+			and _count_guardian_emission_slots(outer_guardians) == 9
+			and _count_guardian_emission_slots(inner_guardians) == 3,
+			"A re-entered guardian must remain eligible while the twelve slots are full."
+		)
+
+	inner_branch.hide()
+	await process_frame
+	await process_frame
+	outer_controller.set_night_factor_immediate(0.45)
+	await process_frame
+	_expect(
+		_count_guardian_emission_slots(outer_guardians)
+		== YuanshiInsectAura.MAX_ACTIVE_GUARDIAN_EMISSION_BOOSTS
+		and _count_guardian_emission_slots(inner_guardians) == 0
+		and is_instance_valid(day_emission)
+		and day_emission.get("_controller") == outer_controller
+		and day_material != null
+		and is_equal_approx(
+			float(day_material.get_shader_parameter(&"night_factor")),
+			0.45
+		)
+		and (
+			day_material.get_shader_parameter(
+				&"canvas_modulate_color"
+			) as Color
+		).is_equal_approx(outer_controller.color),
+		"Returning from nested combat must restore all outer slots without resetting its material."
+	)
+	inner_branch.queue_free()
+	outer_branch.queue_free()
+	player.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _create_nested_guardian_branch(
+	branch_name: String,
+	guardian_count: int,
+	branch_visible: bool,
+	player: Player
+) -> Dictionary:
+	var branch := Node2D.new()
+	branch.name = branch_name
+	branch.visible = branch_visible
+	test_root.add_child(branch)
+	var controller := DayNightController.new()
+	controller.name = "DayNightController"
+	# The smoke test only needs controller state; avoid two CanvasModulate nodes
+	# competing for the same test viewport.
+	controller.visible = false
+	branch.add_child(controller)
+	var branch_enemies := Node2D.new()
+	branch_enemies.name = "EnemyContainer"
+	branch.add_child(branch_enemies)
+	var guardians: Array[YuanshiInsectAura] = []
+	for guardian_index in range(guardian_count):
+		var guardian := GUARDIAN_CONFIG.enemy_scene.instantiate() as YuanshiInsectAura
+		guardian.name = "Guardian%d" % guardian_index
+		branch_enemies.add_child(guardian)
+		guardian.setup(GUARDIAN_CONFIG, player)
+		guardian.set_process(false)
+		guardian.set_physics_process(false)
+		guardians.append(guardian)
+	return {
+		"branch": branch,
+		"controller": controller,
+		"guardians": guardians,
+	}
+
+
+func _count_guardian_emission_slots(guardians: Array) -> int:
+	var active_count := 0
+	for guardian_variant in guardians:
+		var guardian := guardian_variant as YuanshiInsectAura
+		var emission := guardian.get_node_or_null(
+			"GuardianLightEmission"
+		) as Sprite2D
+		var owns_slot := guardian.is_in_group(
+			YuanshiInsectAura.GUARDIAN_EMISSION_ACTIVE_GROUP
+		)
+		_expect(
+			emission != null and emission.visible == owns_slot,
+			"Guardian emission visibility must exactly match active slot ownership."
+		)
+		if owns_slot:
+			active_count += 1
+	return active_count
+
+
+func _count_bound_guardian_emissions(guardians: Array) -> int:
+	var bound_count := 0
+	for guardian_variant in guardians:
+		var guardian := guardian_variant as YuanshiInsectAura
+		var emission := guardian.get_node_or_null(
+			"GuardianLightEmission"
+		) as Sprite2D
+		if emission != null and emission.get("_controller") != null:
+			bound_count += 1
+	return bound_count
+
+
+func _find_bound_guardian_emission(guardians: Array) -> Sprite2D:
+	for guardian_variant in guardians:
+		var guardian := guardian_variant as YuanshiInsectAura
+		var emission := guardian.get_node_or_null(
+			"GuardianLightEmission"
+		) as Sprite2D
+		if emission != null and emission.get("_controller") != null:
+			return emission
+	return null
 
 
 func _test_authoritative_processing_gate() -> void:
@@ -348,11 +621,26 @@ func _test_guardian_aura_visual_configuration() -> void:
 			guardian.get_node_or_null(absent_node_path) == null,
 			"Guardian must not retain unused local aura node %s." % absent_node_path
 		)
-	var guardian_light := guardian.get_node_or_null("GuardianLight") as PointLight2D
 	var guardian_halo := guardian.get_node_or_null("GuardianLightHalo") as Sprite2D
+	var guardian_light_emission := guardian.get_node_or_null(
+		"GuardianLightEmission"
+	) as Sprite2D
 	var guardian_body_material := guardian.animated_sprite.material as ShaderMaterial
-	_expect(guardian_light != null, "Guardian must use a native PointLight2D for soft blue glow.")
-	_expect(guardian_halo != null, "Guardian must use a visible soft halo sprite for readable glow.")
+	var authored_lights: Array[Node] = guardian.find_children(
+		"*",
+		"Light2D",
+		true,
+		false
+	)
+	_expect(
+		authored_lights.is_empty()
+		and guardian.get_node_or_null("GuardianLight") == null,
+		"Guardian decoration must not retain any real Light2D nodes."
+	)
+	_expect(
+		guardian_halo != null,
+		"Guardian must use a visible self-emission halo for readable glow."
+	)
 	_expect(
 		guardian_body_material == null
 		or (
@@ -377,7 +665,7 @@ func _test_guardian_aura_visual_configuration() -> void:
 		_expect(
 			halo_material != null
 			and halo_material.light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED,
-			"Every guardian halo must remain self-lit when the PointLight budget is full."
+			"Every guardian halo must remain self-lit without a real Light2D budget."
 		)
 		_expect(
 			guardian_halo.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
@@ -388,36 +676,31 @@ func _test_guardian_aura_visual_configuration() -> void:
 			"Guardian halo sprite must stay close to the body, not become a large background blob."
 		)
 		_expect(
-			guardian_halo.modulate.a > 0.0 and guardian_halo.modulate.a <= 0.8,
-			"Guardian halo sprite must stay subtle."
+			guardian_halo.modulate.is_equal_approx(
+				LEGACY_GUARDIAN_DEATH_HALO_MODULATE
+			),
+			"Guardian base halo must preserve the legacy weak cyan intensity."
 		)
 		_expect(
 			guardian_halo.z_index < guardian.animated_sprite.z_index,
 			"Guardian halo sprite must render behind the body."
 		)
-	if guardian_light != null:
-		_expect(
-			guardian_light.texture != null
-			and guardian_light.texture.resource_path.ends_with("guardian_point_light.png"),
-			"Guardian PointLight2D must use the soft radial light texture."
+	_expect(
+		guardian_light_emission != null
+		and guardian_halo != null
+		and guardian_light_emission.texture == guardian_halo.texture
+		and guardian_light_emission.material is ShaderMaterial
+		and (guardian_light_emission.material as ShaderMaterial).shader != null
+		and (guardian_light_emission.material as ShaderMaterial).shader.resource_path.ends_with(
+			"guardian_light_emission.gdshader"
 		)
-		_expect(
-			guardian_light.color.b > guardian_light.color.r
-			and guardian_light.color.g > guardian_light.color.r,
-			"Guardian PointLight2D must be blue-cyan, not a dark sprite shadow."
-		)
-		_expect(
-			guardian_light.energy > 0.0 and guardian_light.energy <= 1.0,
-			"Guardian PointLight2D must stay weak and non-threatening."
-		)
-		_expect(
-			guardian_light.texture_scale > 0.0 and guardian_light.texture_scale <= 1.0,
-			"Guardian PointLight2D radius must stay close to the body."
-		)
-		_expect(
-			not guardian_light.shadow_enabled,
-			"Guardian PointLight2D must not cast shadows."
-		)
+		and guardian_light_emission.texture_filter
+		== CanvasItem.TEXTURE_FILTER_LINEAR
+		and guardian_light_emission.scale.is_equal_approx(Vector2(0.95, 0.95))
+		and guardian_light_emission.visible
+		and guardian_light_emission.z_index > guardian.animated_sprite.z_index,
+		"Guardian boost must use the shared receiver-aware self-emission material."
+	)
 	guardian.apply_damage(1, Vector2.ZERO, EnemyConfig.DamageType.MAGIC)
 	if guardian_body_material != null:
 		_expect(
@@ -427,6 +710,18 @@ func _test_guardian_aura_visual_configuration() -> void:
 	_expect(
 		guardian.get_effective_physical_defense() == GUARDIAN_CONFIG.physical_defense,
 		"Guardian must not receive its own aura defense."
+	)
+	guardian.apply_damage(100000, Vector2.ZERO, EnemyConfig.DamageType.MAGIC)
+	_expect(
+		guardian.is_dead
+		and guardian_halo != null
+		and guardian_halo.visible
+		and guardian_halo.modulate.is_equal_approx(
+			LEGACY_GUARDIAN_DEATH_HALO_MODULATE
+		)
+		and guardian_light_emission != null
+		and not guardian_light_emission.visible,
+		"Authoritative guardian death must restore the legacy low-intensity halo transition."
 	)
 
 	guardian.queue_free()
@@ -1088,6 +1383,19 @@ func _test_multiplayer_proxy_guardian_values() -> void:
 		ally.get_effective_physical_defense() == 3,
 		"Proxy guardian death did not synchronously remove exactly one centralized source."
 	)
+	var proxy_halo := first_guardian.get_node_or_null("GuardianLightHalo") as Sprite2D
+	var proxy_light_emission := first_guardian.get_node_or_null(
+		"GuardianLightEmission"
+	) as Sprite2D
+	_expect(
+		proxy_halo != null
+		and proxy_halo.modulate.is_equal_approx(
+			LEGACY_GUARDIAN_DEATH_HALO_MODULATE
+		)
+		and proxy_light_emission != null
+		and not proxy_light_emission.visible,
+		"Proxy guardian death must use the same low-intensity self-emission transition."
+	)
 	await physics_frame
 
 	first_guardian.queue_free()
@@ -1156,6 +1464,31 @@ func _test_dense_guardian_registration_and_teardown() -> void:
 		guardian_aura_system.get_guardian_count() == guardians.size(),
 		"GuardianAuraSystem did not register the dense guardian cohort."
 	)
+	var boosted_guardians: Array[YuanshiInsect] = []
+	var emission_states_are_exact := true
+	for guardian in guardians:
+		var halo := guardian.get_node_or_null("GuardianLightHalo") as Sprite2D
+		var light_emission := guardian.get_node_or_null(
+			"GuardianLightEmission"
+		) as Sprite2D
+		var boosted := light_emission != null and light_emission.visible
+		if boosted:
+			boosted_guardians.append(guardian)
+		if (
+			halo == null
+			or not halo.visible
+			or not halo.modulate.is_equal_approx(
+				LEGACY_GUARDIAN_DEATH_HALO_MODULATE
+			)
+			or not guardian.find_children("*", "Light2D", true, false).is_empty()
+		):
+			emission_states_are_exact = false
+	_expect(
+		boosted_guardians.size()
+		== YuanshiInsectAura.MAX_ACTIVE_GUARDIAN_EMISSION_BOOSTS
+		and emission_states_are_exact,
+		"Dense guardians must preserve the legacy 12-boost/remaining-weak visual budget without Light2D."
+	)
 	var tracked_slots_are_exact := true
 	for slot in range(guardian_aura_system.tracked_enemy_ids.size()):
 		var enemy_id := int(guardian_aura_system.tracked_enemy_ids[slot])
@@ -1172,6 +1505,24 @@ func _test_dense_guardian_registration_and_teardown() -> void:
 		tracked_slots_are_exact and guardian_slots_are_exact,
 		"Dense guardian registration must keep exact O(1) removal slot mappings."
 	)
+	if not boosted_guardians.is_empty():
+		var released_boosted_guardian := boosted_guardians[0]
+		guardians.erase(released_boosted_guardian)
+		released_boosted_guardian.queue_free()
+		await process_frame
+		await process_frame
+		var replacement_boost_count := 0
+		for guardian in guardians:
+			var light_emission := guardian.get_node_or_null(
+				"GuardianLightEmission"
+			) as Sprite2D
+			if light_emission != null and light_emission.visible:
+				replacement_boost_count += 1
+		_expect(
+			replacement_boost_count
+			== YuanshiInsectAura.MAX_ACTIVE_GUARDIAN_EMISSION_BOOSTS,
+			"Releasing a self-emission slot must promote exactly one weak guardian."
+		)
 
 	for guardian in guardians:
 		guardian.queue_free()

@@ -184,33 +184,20 @@ func _run_green_cohort() -> void:
 
 func _run_guardian_cohort() -> void:
 	var setup_ms := await _replace_with_uniform_cohort(GUARDIAN_CONFIG, &"guardian")
-	# Authored production state: each guardian keeps a lightweight halo, while
-	# YuanshiInsectAura admits at most MAX_ACTIVE_GUARDIAN_LIGHTS PointLight2D
-	# nodes. GuardianAuraSystem owns defense membership; guardian scenes no
-	# longer contain the retired per-instance AuraArea at all.
-	await _measure_phase("guardian_production_light_budget", setup_ms)
+	# Every guardian retains the legacy weak halo, while the first twelve use a
+	# shared receiver-aware self-emission material in place of PointLight2D.
+	await _measure_phase("guardian_production_emission_budget", setup_ms)
 	_assert_guardian_state(
-		mini(enemy_count, YuanshiInsectAura.MAX_ACTIVE_GUARDIAN_LIGHTS),
+		mini(
+			enemy_count,
+			YuanshiInsectAura.MAX_ACTIVE_GUARDIAN_EMISSION_BOOSTS
+		),
 		0
 	)
 
-	_configure_guardian_light_budget(8)
-	await _measure_phase("guardian_eight_lights", 0.0)
-	_assert_guardian_state(mini(enemy_count, 8), 0)
-
-	_configure_guardian_light_budget(4)
-	await _measure_phase("guardian_four_lights", 0.0)
-	_assert_guardian_state(mini(enemy_count, 4), 0)
-
-	_configure_guardian_light(false)
-	await _measure_phase("guardian_all_lights_off", 0.0)
+	_configure_guardian_emission_boost_budget(0)
+	await _measure_phase("guardian_all_emission_boosts_off", 0.0)
 	_assert_guardian_state(0, 0)
-
-	# Diagnostic ceiling only: bypass the production light budget to quantify the
-	# failure mode if every guardian PointLight2D were enabled at once.
-	_configure_guardian_light(true)
-	await _measure_phase("guardian_all_lights_on_stress", 0.0)
-	_assert_guardian_state(enemy_count, 0)
 
 
 func _run_realistic_wave_cohort(
@@ -227,13 +214,20 @@ func _run_realistic_wave_cohort(
 	var counts := _get_vfx_counts()
 	if int(counts["guardian"]) > 0:
 		_expect(
-			int(counts["point_lights"])
-			<= YuanshiInsectAura.MAX_ACTIVE_GUARDIAN_LIGHTS,
-			"Realistic waves must respect the guardian PointLight2D budget."
+			int(counts["point_lights"]) == 0,
+			"Realistic waves must not create decorative guardian Light2D nodes."
 		)
 		_expect(
 			int(counts["guardian_halos"]) == int(counts["guardian"]),
-			"Budgeted guardians must retain every lightweight halo sprite."
+			"Every guardian must retain its legacy weak self-emission halo."
+		)
+		_expect(
+			int(counts["guardian_emission_boosts"])
+			== mini(
+				int(counts["guardian"]),
+				YuanshiInsectAura.MAX_ACTIVE_GUARDIAN_EMISSION_BOOSTS
+			),
+			"Realistic waves must preserve the legacy twelve-slot visual tier."
 		)
 
 
@@ -392,27 +386,23 @@ func _configure_green_visuals(
 		_set_aura_area_enabled(enemy, aura_area_enabled)
 
 
-func _configure_guardian_light(enabled: bool) -> void:
+
+func _configure_guardian_emission_boost_budget(max_boosted: int) -> void:
+	var boosted_count := 0
 	for enemy in enemies:
 		if not _is_guardian_enemy(enemy):
 			continue
-		var guardian_light := enemy.get_node_or_null("GuardianLight") as PointLight2D
-		if guardian_light != null:
-			guardian_light.enabled = enabled
-
-
-func _configure_guardian_light_budget(max_enabled: int) -> void:
-	var enabled_count := 0
-	for enemy in enemies:
-		if not _is_guardian_enemy(enemy):
-			continue
-		var guardian_light := enemy.get_node_or_null("GuardianLight") as PointLight2D
-		if guardian_light == null:
-			continue
-		var should_enable := enabled_count < maxi(max_enabled, 0)
-		guardian_light.enabled = should_enable
-		if should_enable:
-			enabled_count += 1
+		var halo := enemy.get_node_or_null("GuardianLightHalo") as Sprite2D
+		var emission := enemy.get_node_or_null(
+			"GuardianLightEmission"
+		) as Sprite2D
+		if halo != null:
+			halo.visible = true
+		if emission != null:
+			var boosted := boosted_count < maxi(max_boosted, 0)
+			emission.visible = boosted
+			if boosted:
+				boosted_count += 1
 
 
 func _set_aura_area_enabled(enemy: Enemy, enabled: bool) -> void:
@@ -612,6 +602,8 @@ func _print_phase_summary(
 		"range_outlines=%d" % int(vfx_counts["range_outlines"]),
 		"point_lights=%d" % int(vfx_counts["point_lights"]),
 		"guardian_halos=%d" % int(vfx_counts["guardian_halos"]),
+		"guardian_emission_boosts=%d"
+		% int(vfx_counts["guardian_emission_boosts"]),
 		"aura_areas=%d" % int(vfx_counts["aura_areas"]),
 		"setup_ms=%.3f" % setup_ms,
 		"transition_max_ms=%.3f" % transition_max_ms,
@@ -661,6 +653,7 @@ func _get_vfx_counts() -> Dictionary:
 		"range_outlines": 0,
 		"point_lights": 0,
 		"guardian_halos": 0,
+		"guardian_emission_boosts": 0,
 		"aura_areas": 0,
 	}
 	for enemy in enemies:
@@ -677,12 +670,26 @@ func _get_vfx_counts() -> Dictionary:
 		var range_outline := enemy.get_node_or_null("AuraRangeOutline") as Line2D
 		if range_outline != null and range_outline.is_visible_in_tree():
 			counts["range_outlines"] += 1
-		var point_light := enemy.get_node_or_null("GuardianLight") as PointLight2D
-		if point_light != null and point_light.enabled and point_light.is_visible_in_tree():
-			counts["point_lights"] += 1
-		var guardian_halo := enemy.get_node_or_null("GuardianLightHalo") as Sprite2D
-		if guardian_halo != null and guardian_halo.is_visible_in_tree():
-			counts["guardian_halos"] += 1
+		if _is_guardian_enemy(enemy):
+			counts["point_lights"] += enemy.find_children(
+				"*",
+				"Light2D",
+				true,
+				false
+			).size()
+			var guardian_halo := enemy.get_node_or_null(
+				"GuardianLightHalo"
+			) as Sprite2D
+			var guardian_light_emission := enemy.get_node_or_null(
+				"GuardianLightEmission"
+			) as Sprite2D
+			if guardian_halo != null and guardian_halo.is_visible_in_tree():
+				counts["guardian_halos"] += 1
+			if (
+				guardian_light_emission != null
+				and guardian_light_emission.is_visible_in_tree()
+			):
+				counts["guardian_emission_boosts"] += 1
 		var aura_area := enemy.get_node_or_null("AuraArea") as Area2D
 		if aura_area != null and aura_area.monitoring:
 			var aura_shape := aura_area.get_node_or_null("CollisionShape2D") as CollisionShape2D
@@ -712,19 +719,26 @@ func _assert_green_state(
 	)
 
 
-func _assert_guardian_state(expected_lights: int, expected_areas: int) -> void:
+func _assert_guardian_state(
+	expected_emissions: int,
+	expected_areas: int
+) -> void:
 	var counts := _get_vfx_counts()
 	_expect(
 		int(counts["guardian"]) == enemy_count,
 		"Guardian cohort size changed during A/B."
 	)
 	_expect(
-		int(counts["point_lights"]) == expected_lights,
-		"Guardian A/B has the wrong enabled PointLight2D count."
+		int(counts["point_lights"]) == 0,
+		"Guardian A/B must not contain active Light2D nodes."
 	)
 	_expect(
 		int(counts["guardian_halos"]) == enemy_count,
-		"Guardian A/B must retain every lightweight halo sprite."
+		"Guardian A/B must retain every legacy weak halo."
+	)
+	_expect(
+		int(counts["guardian_emission_boosts"]) == expected_emissions,
+		"Guardian A/B has the wrong visible self-emission sprite count."
 	)
 	_expect(
 		int(counts["aura_areas"]) == expected_areas,
