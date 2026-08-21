@@ -54,6 +54,7 @@ var enemy_retarget_time_left := 0.0
 var enemy_retarget_sweep_remaining := 0
 var enemy_retarget_cursor := 0
 var _home_objective_targets: Array[Node2D] = []
+var _scene_teardown_prepared := false
 
 var _random_generator: RandomNumberGenerator
 
@@ -108,6 +109,7 @@ func setup(
 	_presentation_coordinator = presentation_coordinator
 	_session_object_pool = session_object_pool
 	_enemy_spawn_effect_scene = enemy_spawn_effect_scene
+	_scene_teardown_prepared = false
 	collect_spawn_points(_enemy_spawn_points_root)
 
 
@@ -280,6 +282,8 @@ func _build_entry_round_robin_queue(
 
 func tick(max_alive_enemies: int, spawn_count_per_tick: int) -> int:
 	assert(is_bound(), "EnemyCoordinator 尚未 setup。")
+	if _scene_teardown_prepared:
+		return 0
 	var spawned_count := 0
 	var spawn_limit := maxi(spawn_count_per_tick, 1)
 	for _spawn_index in range(spawn_limit):
@@ -336,7 +340,7 @@ func register_external_enemy(
 		WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
 	)
 ) -> bool:
-	if enemy == null or not is_instance_valid(enemy):
+	if _scene_teardown_prepared or enemy == null or not is_instance_valid(enemy):
 		return false
 	return _campaign_coordinator.register_wave_enemy(enemy.get_instance_id(), role)
 
@@ -347,6 +351,20 @@ func has_active_enemy(enemy_id: int) -> bool:
 
 func clear_active_enemies() -> void:
 	_campaign_coordinator.clear_wave_enemy_entities()
+
+
+func prepare_for_scene_teardown() -> void:
+	if _scene_teardown_prepared:
+		return
+	_scene_teardown_prepared = true
+	if _enemy_spawn_timer != null:
+		_enemy_spawn_timer.stop()
+	clear_queue()
+	if _campaign_coordinator != null:
+		for enemy_id_variant in _campaign_coordinator.get_attached_wave_enemy_ids():
+			_campaign_coordinator.detach_wave_enemy(int(enemy_id_variant))
+	# 退场期间不再刷新 HUD；只释放本地集合，网络索引由运行时统一静默清理。
+	clear_hud_enemies()
 
 
 func has_active_enemies() -> bool:
@@ -427,6 +445,8 @@ func report_progress(
 
 
 func spawn_wave_batch(max_spawn_count_per_tick: int) -> void:
+	if _scene_teardown_prepared:
+		return
 	if _campaign_coordinator.wave_state != CombatFlowState.State.WAVE_ACTIVE:
 		_enemy_spawn_timer.stop()
 		return
@@ -459,7 +479,7 @@ func try_spawn_enemy(
 	enemy_config: EnemyConfig,
 	xirang_kill_reward_override: int = -1
 ) -> bool:
-	if not is_spawn_system_ready() or enemy_config == null:
+	if _scene_teardown_prepared or not is_spawn_system_ready() or enemy_config == null:
 		return false
 
 	var spawn_point := pick_spawn_point()

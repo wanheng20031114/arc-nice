@@ -1170,12 +1170,18 @@ func _set_player_xirang(target: Player, amount: int) -> void:
 	target.set_xirang_balance(amount)
 
 
+func prepare_active_runtime_for_scene_teardown() -> void:
+	if active_battle != null and is_instance_valid(active_battle):
+		active_battle.prepare_for_scene_teardown()
+
+
 func _dispose_active_battle() -> void:
 	_reset_emergency_reward_selection()
 	var battle := active_battle
 	active_battle = null
 	if battle == null or not is_instance_valid(battle):
 		return
+	battle.prepare_for_scene_teardown()
 	if battle.get_parent() != null:
 		battle.get_parent().remove_child(battle)
 	battle.free()

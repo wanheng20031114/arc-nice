@@ -18,6 +18,8 @@ const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
 )
+const MP_GAME_SCRIPT_PATH := "res://scene/multiplayer/mp_game.gd"
+const STANDARD_GAME_SCRIPT_PATH := "res://scene/game_modes/standard/standard_game.gd"
 
 const HOST_AUTHORITY := 1
 const CLIENT_VIEW := 2
@@ -98,6 +100,10 @@ func _run() -> void:
 	_test_network_enemy_registry_atomicity()
 	_test_network_pickup_registry_atomicity()
 	_test_game_enemy_removal_markers()
+	_test_runtime_scene_teardown_contract()
+	_test_nested_runtime_scene_teardown_propagation()
+	_test_mp_game_teardown_order_contract()
+	_test_standard_boss_intro_scene_teardown_contract()
 	_test_tower_defense_enemy_escape_marker()
 	_test_pickup_tree_exit_markers(GAME_SCRIPT.new(), "StandardGame")
 	_test_pickup_tree_exit_markers(TOWER_DEFENSE_GAME_SCRIPT.new(), "TowerDefenseGame")
@@ -236,6 +242,223 @@ func _test_game_enemy_removal_markers() -> void:
 	var tower_runtime := TOWER_DEFENSE_GAME_SCRIPT.new() as CombatRuntimeBase
 	_prepare_runtime_boundaries(tower_runtime)
 	_exercise_enemy_exit_pressure(tower_runtime, "TowerDefenseGame")
+
+
+func _test_runtime_scene_teardown_contract() -> void:
+	_exercise_runtime_scene_teardown(GAME_SCRIPT.new(), "StandardGame")
+	_exercise_runtime_scene_teardown(
+		TOWER_DEFENSE_GAME_SCRIPT.new(),
+		"TowerDefenseGame"
+	)
+
+
+func _exercise_runtime_scene_teardown(
+	runtime: CombatRuntimeBase,
+	label: String
+) -> void:
+	var gateway := _prepare_runtime_boundaries(runtime)
+	runtime.runtime_mode = HOST_AUTHORITY
+	var removed_ids: Array[int] = []
+	var pickup_removed_ids: Array[int] = []
+	gateway.enemy_removed.connect(
+		func(net_id: int) -> void: removed_ids.append(net_id)
+	)
+	gateway.pickup_removed.connect(
+		func(net_id: int) -> void: pickup_removed_ids.append(net_id)
+	)
+
+	var objective := Enemy.new()
+	var auxiliary := Enemy.new()
+	var pickup := Pickup.new()
+	var objective_id := objective.get_instance_id()
+	var auxiliary_id := auxiliary.get_instance_id()
+	var attached_count := Callable()
+	var removed_count := Callable()
+	var objective_registered := false
+	var auxiliary_registered := false
+	if runtime is TowerDefenseGame:
+		var tower_runtime := runtime as TowerDefenseGame
+		var campaign := tower_runtime.get_node(
+			"CampaignCoordinator"
+		) as TowerDefenseCampaignCoordinator
+		campaign.reset_wave_progress(1)
+		objective_registered = tower_runtime.enemy_coordinator.register_external_enemy(
+			objective, WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
+		)
+		auxiliary_registered = tower_runtime.enemy_coordinator.register_external_enemy(
+			auxiliary, WaveEnemyTerminalLedger.EnemyRole.AUXILIARY
+		)
+		tower_runtime.enemy_coordinator.add_hud_enemy(objective_id)
+		tower_runtime.enemy_coordinator.pending_enemy_configs.append(ENEMY_CONFIG)
+		tower_runtime.enemy_coordinator.pending_enemy_xirang_kill_rewards.append(0)
+		attached_count = func() -> int:
+			return campaign.get_attached_wave_enemy_count()
+		removed_count = func() -> int:
+			return campaign.current_wave_removed
+	else:
+		var wave_runtime := runtime as WaveCombatRuntimeBase
+		wave_runtime.reset_wave_progress(1)
+		objective_registered = wave_runtime.register_active_wave_enemy(objective)
+		auxiliary_registered = wave_runtime.register_auxiliary_wave_enemy(auxiliary)
+		wave_runtime.pending_enemy_configs.append(ENEMY_CONFIG)
+		wave_runtime.pending_enemy_xirang_kill_rewards.append(0)
+		attached_count = func() -> int:
+			return wave_runtime.wave_enemy_terminal_ledger.get_attached_enemy_count()
+		removed_count = func() -> int:
+			return wave_runtime.current_wave_removed
+
+	var objective_network_registered := runtime.register_network_enemy(901, objective)
+	var auxiliary_network_registered := runtime.register_network_enemy(902, auxiliary)
+	var pickup_network_registered := runtime.register_network_pickup(903, pickup)
+	_expect(
+		objective_registered
+		and auxiliary_registered
+		and int(attached_count.call()) == 2
+		and objective_network_registered
+		and auxiliary_network_registered
+		and pickup_network_registered
+		and runtime.get_network_enemy_count() == 2
+		and runtime.get_network_pickup_count() == 1,
+		"%s teardown 夹具必须先建立完整的存活实体与网络索引。" % label
+	)
+	runtime.prepare_for_scene_teardown()
+	var removed_after_first_prepare := int(removed_count.call())
+	runtime.prepare_for_scene_teardown()
+	_expect(
+		runtime.is_scene_teardown_prepared()
+		and runtime.process_mode == Node.PROCESS_MODE_DISABLED,
+		"%s teardown 必须幂等冻结运行时。" % label
+	)
+	_expect(
+		int(attached_count.call()) == 0
+		and removed_after_first_prepare == 1
+		and int(removed_count.call()) == removed_after_first_prepare,
+		"%s teardown 必须静默完成 ACTIVE→REMOVED→DETACHED 且不可重复计数。" % label
+	)
+	_expect(
+		runtime.get_network_enemy_count() == 0
+		and runtime.get_network_pickup_count() == 0,
+		"%s teardown 必须原子清空敌人与拾取物网络索引。" % label
+	)
+	_expect(
+		removed_ids.is_empty() and pickup_removed_ids.is_empty(),
+		"%s 整局 teardown 不得发布逐实体 removed 终结包。" % label
+	)
+	if runtime is TowerDefenseGame:
+		var tower_enemy_coordinator := (
+			(runtime as TowerDefenseGame).enemy_coordinator
+		)
+		tower_enemy_coordinator.handle_wave_enemy_tree_exited(objective_id)
+		tower_enemy_coordinator.handle_wave_enemy_tree_exited(auxiliary_id)
+		_expect(
+			tower_enemy_coordinator.hud_enemy_count() == 0
+			and not tower_enemy_coordinator.has_pending_queue(),
+			"TowerDefenseGame teardown 必须清空 HUD 与待刷队列。"
+		)
+	else:
+		runtime.call("_on_wave_enemy_tree_exited", objective_id)
+		runtime.call("_on_wave_enemy_tree_exited", auxiliary_id)
+		_expect(
+			not (runtime as WaveCombatRuntimeBase)._has_pending_enemy_configs(),
+			"StandardGame teardown 必须清空待刷队列。"
+		)
+	_expect(
+		removed_ids.is_empty(),
+		"%s teardown 后的 tree_exited 回放必须是幂等空操作。" % label
+	)
+	var late_enemy := Enemy.new()
+	var late_pickup := Pickup.new()
+	var late_domain_registration := false
+	if runtime is TowerDefenseGame:
+		late_domain_registration = (
+			(runtime as TowerDefenseGame).enemy_coordinator.register_external_enemy(
+				late_enemy, WaveEnemyTerminalLedger.EnemyRole.AUXILIARY
+			)
+		)
+	else:
+		late_domain_registration = (
+			(runtime as WaveCombatRuntimeBase).register_auxiliary_wave_enemy(late_enemy)
+		)
+	_expect(
+		not late_domain_registration
+		and not runtime.register_network_enemy(904, late_enemy)
+		and not runtime.register_network_pickup(905, late_pickup),
+		"%s teardown 后必须拒绝新的领域实体和网络索引登记。" % label
+	)
+	objective.free()
+	auxiliary.free()
+	pickup.free()
+	late_enemy.free()
+	late_pickup.free()
+	runtime.free()
+
+
+func _test_nested_runtime_scene_teardown_propagation() -> void:
+	var outer_runtime := TOWER_DEFENSE_GAME_SCRIPT.new() as CombatRuntimeBase
+	var nested_runtime := GAME_SCRIPT.new() as WaveCombatRuntimeBase
+	outer_runtime.add_child(nested_runtime)
+	var enemy := Enemy.new()
+	nested_runtime.reset_wave_progress(1)
+	nested_runtime.register_active_wave_enemy(enemy)
+	outer_runtime.prepare_for_scene_teardown()
+	_expect(
+		nested_runtime.is_scene_teardown_prepared()
+		and nested_runtime.current_wave_removed == 1
+		and nested_runtime.wave_enemy_terminal_ledger.get_attached_enemy_count() == 0,
+		"外层运行时 teardown 必须递归收束内嵌 CombatRuntime。"
+	)
+	enemy.free()
+	outer_runtime.free()
+
+
+func _test_mp_game_teardown_order_contract() -> void:
+	var source := FileAccess.get_file_as_string(MP_GAME_SCRIPT_PATH)
+	var entry_index := source.find("func _complete_return_to_lobby() -> void:")
+	var entry_source := source.substr(entry_index) if entry_index >= 0 else ""
+	var prepare_index := entry_source.find("game.prepare_for_scene_teardown()")
+	var reset_index := entry_source.find("player_coordinator.reset_session_state()")
+	var scene_change_index := entry_source.find("tree.change_scene_to_file(")
+	_expect(
+		entry_index >= 0
+		and prepare_index >= 0
+		and reset_index > prepare_index
+		and scene_change_index > reset_index,
+		"MpGame 返回大厅必须先 prepare 战斗运行时，再重置会话并切换场景。"
+	)
+
+
+func _test_standard_boss_intro_scene_teardown_contract() -> void:
+	var runtime := GAME_SCRIPT.new() as StandardGame
+	var intro_boss := Enemy.new()
+	var boss_id := intro_boss.get_instance_id()
+	runtime.runtime_mode = HOST_AUTHORITY
+	_expect(
+		runtime.register_network_enemy(906, intro_boss)
+		and not runtime.wave_enemy_terminal_ledger.has_enemy(boss_id),
+		"Standard Boss 介绍阶段夹具必须保持网络可见、波次账本尚未登记。"
+	)
+	runtime.prepare_for_scene_teardown()
+	runtime._on_boss_enemy_removed(boss_id)
+	_expect(
+		runtime.get_network_enemy_count() == 0
+		and not runtime.wave_enemy_terminal_ledger.has_enemy(boss_id),
+		"Standard Boss 介绍阶段退场必须静默清理未登记 Boss。"
+	)
+	var source := FileAccess.get_file_as_string(STANDARD_GAME_SCRIPT_PATH)
+	var handler_index := source.find("func _on_boss_enemy_removed(enemy_id: int) -> void:")
+	var handler_source := source.substr(handler_index) if handler_index >= 0 else ""
+	var teardown_guard_index := handler_source.find("is_scene_teardown_prepared()")
+	var ledger_detach_index := handler_source.find(
+		"wave_enemy_terminal_ledger.detach_enemy(enemy_id)"
+	)
+	_expect(
+		handler_index >= 0
+		and teardown_guard_index >= 0
+		and ledger_detach_index > teardown_guard_index,
+		"Standard Boss 退出处理必须先识别场景 teardown，再执行正常期强诊断。"
+	)
+	intro_boss.free()
+	runtime.free()
 
 
 func _exercise_enemy_exit_pressure(runtime: CombatRuntimeBase, label: String) -> void:

@@ -11,6 +11,7 @@ func _run() -> void:
 	_test_objective_lifecycle_and_aggregate()
 	_test_auxiliary_lifecycle()
 	_test_reserved_spawn_binding()
+	_test_terminal_batch_removal_preserves_detach_identity()
 	_test_single_wire_terminal_composition()
 	if failures.is_empty():
 		print("WAVE_ENEMY_TERMINAL_LEDGER_SMOKE_OK")
@@ -137,6 +138,32 @@ func _test_reserved_spawn_binding() -> void:
 			313, WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
 		),
 		"快照后只能绑定 spawned-resolved 个未终结实体槽位。"
+	)
+
+
+func _test_terminal_batch_removal_preserves_detach_identity() -> void:
+	var ledger := WaveEnemyTerminalLedger.new()
+	ledger.reset(2)
+	ledger.register_enemy(321, WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE)
+	ledger.register_enemy(322, WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE)
+	ledger.register_enemy(323, WaveEnemyTerminalLedger.EnemyRole.AUXILIARY)
+	ledger.resolve_enemy(321, CombatTypes.EnemyTerminalReason.DEFEATED)
+	_expect(
+		ledger.resolve_all_active_as_removed() == 2
+		and ledger.get_defeated() == 1
+		and ledger.get_removed() == 1
+		and ledger.get_resolved() == 2,
+		"终局批处理必须保留既有原因，并将剩余 ACTIVE 静默收束为 REMOVED。"
+	)
+	for enemy_id in [321, 322, 323]:
+		var detach := ledger.detach_enemy(enemy_id)
+		_expect(
+			detach.known and detach.accepted and not detach.terminal_created,
+			"终局批处理后的 tree_exited 必须只完成 DETACHED，不得再创建终结。"
+		)
+	_expect(
+		ledger.get_attached_enemy_count() == 0,
+		"终局实体全部离树后必须保留已知的 DETACHED 身份。"
 	)
 
 

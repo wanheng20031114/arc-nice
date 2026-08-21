@@ -2669,6 +2669,7 @@ func _on_route_normal_combat_snapshot_reconciled(
 	):
 		return
 	_interrupt_terminal_presentation()
+	prepare_active_runtime_for_scene_teardown()
 	if _combat_network != null and is_instance_valid(_combat_network):
 		_combat_network.queue_free()
 	_combat_network = null
@@ -2828,9 +2829,22 @@ func _set_combat_presentation_visible(visible: bool) -> void:
 		_combat_network.visible = visible
 
 
+func prepare_active_runtime_for_scene_teardown() -> void:
+	var runtime := _combat_game as CombatRuntimeBase
+	if (
+		(runtime == null or not is_instance_valid(runtime))
+		and _combat_network != null
+		and is_instance_valid(_combat_network)
+	):
+		runtime = _combat_network.get_game_runtime()
+	if runtime != null and is_instance_valid(runtime):
+		runtime.prepare_for_scene_teardown()
+
+
 func _try_release_local_runtime() -> void:
 	if not _terminal_safe_received:
 		return
+	prepare_active_runtime_for_scene_teardown()
 	if _combat_network != null and is_instance_valid(_combat_network):
 		_combat_network.queue_free()
 	_combat_network = null
@@ -3137,6 +3151,7 @@ func _apply_protocol_abort(occurrence_key: String) -> void:
 		):
 			push_error("Rogue 多人协议中止无法恢复路线 Player，拒绝拆除战场。")
 			return
+	prepare_active_runtime_for_scene_teardown()
 	if _combat_network != null and is_instance_valid(_combat_network):
 		_combat_network.queue_free()
 	_combat_network = null
@@ -3260,6 +3275,7 @@ func _release_local_combat_to_route_spectator(occurrence_key: String) -> void:
 		or occurrence_key != _active_occurrence_key
 	):
 		return
+	prepare_active_runtime_for_scene_teardown()
 	if _combat_network != null and is_instance_valid(_combat_network):
 		_combat_network.queue_free()
 	var received_settlement := (

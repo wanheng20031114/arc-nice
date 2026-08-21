@@ -460,6 +460,14 @@ func _on_runtime_activated() -> void:
 		)
 
 
+func _on_scene_teardown_prepared() -> void:
+	runtime_prewarm_tearing_down = true
+	if state_timer != null:
+		state_timer.stop()
+	if enemy_coordinator != null:
+		enemy_coordinator.prepare_for_scene_teardown()
+
+
 func _physics_process(delta: float) -> void:
 	if _is_tower_runtime_suspended_for_rogue():
 		return

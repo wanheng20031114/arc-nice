@@ -116,17 +116,29 @@ func _run() -> void:
 		"Additional spawn ticks must never exceed the 300-enemy hard cap."
 	)
 
-	# 压测主动销毁场景不属于敌人异常消失；先提交明确的 REMOVED 终结原因，
-	# 让三百个实体沿正式账本路径注销，避免 teardown 污染异常诊断。
-	for child in game.enemy_container.get_children():
-		var enemy := child as Enemy
-		if enemy == null:
-			continue
-		campaign.try_resolve_wave_enemy(
-			enemy.get_instance_id(), CombatTypes.EnemyTerminalReason.REMOVED
-		)
-		enemy.queue_free()
-	await process_frame
+	# 复现真实返回大厅：仍有三百只存活敌人和九百个待刷槽位时，先执行
+	# 运行时 teardown 事务，再让 SceneTree 递归销毁整棵战斗场景。
+	game.enemy_spawn_timer.start(60.0)
+	game.state_timer.start(60.0)
+	_expect(
+		not game.enemy_spawn_timer.is_stopped()
+		and not game.state_timer.is_stopped(),
+		"Pressure fixture must enter teardown with both flow timers running."
+	)
+	game.prepare_for_scene_teardown()
+	game.prepare_for_scene_teardown()
+	_expect(
+		campaign.current_wave_removed == EXPECTED_MAX_ALIVE
+		and game.enemy_coordinator.active_wave_enemy_ids.is_empty(),
+		"Scene teardown must silently detach all 300 live enemies exactly once."
+	)
+	_expect(
+		not game.enemy_coordinator.has_pending_queue()
+		and game.enemy_coordinator.hud_enemy_count() == 0
+		and game.enemy_spawn_timer.is_stopped()
+		and game.state_timer.is_stopped(),
+		"Scene teardown must discard pending spawns and HUD identities."
+	)
 	game.queue_free()
 	for _cleanup_frame in range(4):
 		await process_frame

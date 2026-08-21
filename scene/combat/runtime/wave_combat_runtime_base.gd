@@ -160,7 +160,7 @@ func register_active_wave_enemy(
 		WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
 	)
 ) -> bool:
-	if enemy == null or not is_instance_valid(enemy):
+	if is_scene_teardown_prepared() or enemy == null or not is_instance_valid(enemy):
 		return false
 	return wave_enemy_terminal_ledger.register_enemy(enemy.get_instance_id(), role)
 
@@ -483,6 +483,17 @@ func _on_runtime_activated() -> void:
 		return
 	if current_flow_step == null and auto_start_waves and _is_flow_system_ready():
 		_enter_pre_flow_step(_get_start_flow_step())
+
+
+func _on_scene_teardown_prepared() -> void:
+	if enemy_spawn_timer != null:
+		enemy_spawn_timer.stop()
+	if state_timer != null:
+		state_timer.stop()
+	_clear_pending_enemy_spawn_queue()
+	# 先走合法终结迁移，再保留 DETACHED 记录等待真实 tree_exited 幂等回放。
+	for enemy_id_variant in wave_enemy_terminal_ledger.get_attached_enemy_ids():
+		wave_enemy_terminal_ledger.detach_enemy(int(enemy_id_variant))
 
 
 func _physics_process(delta: float) -> void:
@@ -1313,6 +1324,7 @@ func _complete_current_step() -> void:
 func _enter_victory(emit_multiplayer: bool = true) -> void:
 	if wave_state == CombatFlowState.State.VICTORY:
 		return
+	wave_enemy_terminal_ledger.resolve_all_active_as_removed()
 	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_mode_adapter.revive_all_requested.emit()
 	wave_state = CombatFlowState.State.VICTORY
@@ -1329,6 +1341,7 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 func _enter_defeat() -> void:
 	if wave_state == CombatFlowState.State.DEFEAT:
 		return
+	wave_enemy_terminal_ledger.resolve_all_active_as_removed()
 	wave_state = CombatFlowState.State.DEFEAT
 	transition_world_to_day()
 	enemy_spawn_timer.stop()

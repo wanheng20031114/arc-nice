@@ -7973,6 +7973,8 @@ func _return_to_lobby() -> void:
 
 
 func _complete_return_to_lobby() -> void:
+	if game != null and is_instance_valid(game):
+		game.prepare_for_scene_teardown()
 	_clear_reconnected_player_projection_state()
 	_clear_peer_result_repair_state()
 	if peer_ledger_coordinator != null:

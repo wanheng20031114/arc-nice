@@ -5742,6 +5742,11 @@ func _on_regenerate_button_pressed() -> void:
 func _return_to_main_menu() -> void:
 	if not is_inside_tree():
 		return
+	var combat_coordinator := get_node_or_null(
+		"SingleplayerCombatCoordinator"
+	) as RogueCombatSingleplayerCoordinator
+	if combat_coordinator != null:
+		combat_coordinator.prepare_active_runtime_for_scene_teardown()
 	var error := get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
 	if error != OK:
 		_set_status("无法返回主菜单：%s" % error_string(error), true)

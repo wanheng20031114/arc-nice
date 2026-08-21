@@ -476,19 +476,17 @@ func _defeat_only_enemy(game: Node2D) -> void:
 
 func _settle_remaining_wave_enemies(game: Node2D) -> void:
 	var enemy_container := game.get_node("EnemyContainer") as Node2D
+	var ledger := game.get("wave_enemy_terminal_ledger") as WaveEnemyTerminalLedger
 	for child in enemy_container.get_children():
 		var enemy := child as Enemy
 		if enemy == null:
 			continue
 		_expect(
-			bool(
-				game.call(
-					"try_resolve_active_wave_enemy",
-					enemy.get_instance_id(),
-					CombatTypes.EnemyTerminalReason.REMOVED
-				)
-			),
-			"Defeat cleanup must resolve every remaining wave enemy through the Campaign owner."
+			ledger != null
+			and not ledger.is_enemy_active(enemy.get_instance_id())
+			and ledger.get_terminal_reason(enemy.get_instance_id())
+			== CombatTypes.EnemyTerminalReason.REMOVED,
+			"Entering DEFEAT must resolve every remaining wave enemy as REMOVED."
 		)
 
 

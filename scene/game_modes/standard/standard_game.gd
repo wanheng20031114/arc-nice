@@ -611,6 +611,11 @@ func _on_boss_proxy_created(boss: LinglanBoss, net_id: int) -> void:
 
 
 func _on_boss_enemy_removed(enemy_id: int) -> void:
+	# Boss 在 BOSS_INTRO 已进树，但要到 BOSS_ACTIVE 才登记波次账本。
+	# 主动退场期间收到这段窗口内的 tree_exited，只做静默索引清理。
+	if is_scene_teardown_prepared():
+		unregister_network_enemy_by_instance_id(enemy_id)
+		return
 	var result := wave_enemy_terminal_ledger.detach_enemy(enemy_id)
 	if not result.accepted:
 		if not result.known:

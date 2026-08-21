@@ -937,6 +937,7 @@ func handle_return_to_lobby_requested() -> void:
 		== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	):
 		_plant_placement_coordinator.cancel_placement()
+		tower_runtime.prepare_for_scene_teardown()
 		get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
 		return
 	return_to_lobby_requested.emit()

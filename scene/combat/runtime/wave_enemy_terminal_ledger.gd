@@ -123,6 +123,19 @@ func resolve_enemy(enemy_id: int, reason: CombatTypes.EnemyTerminalReason) -> bo
 	return true
 
 
+## 终局表现与整局 teardown 都不再等待仍存活的实体参与波次聚合。
+## 实体继续保持 ATTACHED，直到真实 tree_exited 再完成 DETACHED。
+func resolve_all_active_as_removed() -> int:
+	var resolved_count := 0
+	for enemy_id_variant in get_active_enemy_ids():
+		if resolve_enemy(
+			int(enemy_id_variant),
+			CombatTypes.EnemyTerminalReason.REMOVED
+		):
+			resolved_count += 1
+	return resolved_count
+
+
 func detach_enemy(enemy_id: int) -> DetachResult:
 	var result := DetachResult.new()
 	var record := _records.get(enemy_id) as EnemyRecord

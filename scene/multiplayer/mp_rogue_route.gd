@@ -2935,6 +2935,8 @@ func _release_before_change_to_lobby() -> void:
 
 
 func _change_to_lobby() -> void:
+	if _combat_coordinator != null and is_instance_valid(_combat_coordinator):
+		_combat_coordinator.prepare_active_runtime_for_scene_teardown()
 	var tree := get_tree()
 	if tree != null:
 		tree.change_scene_to_file(MULTIPLAYER_LOBBY_SCENE_PATH)

@@ -1050,6 +1050,7 @@ func enter_day_four_boss_preparation(boss_step: BossConfig) -> void:
 func enter_victory(emit_multiplayer: bool = true) -> void:
 	if wave_state == CombatFlowState.State.VICTORY:
 		return
+	wave_enemy_terminal_ledger.resolve_all_active_as_removed()
 	_luoxi_special_game_coordinator.cancel_all()
 	_luoxi_merchant.abort_special_game()
 	_plant_placement_coordinator.cancel_placement()
@@ -1081,6 +1082,7 @@ func enter_victory(emit_multiplayer: bool = true) -> void:
 func enter_defeat(emit_multiplayer: bool = true) -> void:
 	if wave_state == CombatFlowState.State.DEFEAT:
 		return
+	wave_enemy_terminal_ledger.resolve_all_active_as_removed()
 	_luoxi_special_game_coordinator.cancel_all()
 	_luoxi_merchant.abort_special_game()
 	_plant_placement_coordinator.cancel_placement()

@@ -133,6 +133,7 @@ var _stale_enemy_snapshot_ids: Array[int] = []
 var _enemy_spawn_effect_budget = EnemySpawnEffectBudgetScript.new()
 var runtime_activation_deferred := false
 var runtime_activated := false
+var _scene_teardown_prepared := false
 var _pending_xirang_kill_reward: int = 0
 var _xirang_kill_reward_flush_queued: bool = false
 var player_persistent_modifier_projector: PlayerPersistentModifierProjector = null
@@ -377,7 +378,12 @@ func unregister_combat_target(net_id: int) -> void:
 
 
 func register_network_enemy(net_id: int, enemy: Enemy) -> bool:
-	if net_id <= 0 or enemy == null or not is_instance_valid(enemy):
+	if (
+		_scene_teardown_prepared
+		or net_id <= 0
+		or enemy == null
+		or not is_instance_valid(enemy)
+	):
 		return false
 	var instance_id := enemy.get_instance_id()
 	var previous_net_id := int(
@@ -522,7 +528,12 @@ func _get_valid_network_enemy_entry(net_id: int) -> Enemy:
 
 
 func register_network_pickup(net_id: int, pickup: Pickup) -> bool:
-	if net_id <= 0 or pickup == null or not is_instance_valid(pickup):
+	if (
+		_scene_teardown_prepared
+		or net_id <= 0
+		or pickup == null
+		or not is_instance_valid(pickup)
+	):
 		return false
 	var instance_id := pickup.get_instance_id()
 	var previous_net_id := int(
@@ -1142,13 +1153,15 @@ func _append_enemy_snapshot_states_from_container(container: Node) -> void:
 
 
 func defer_runtime_activation() -> void:
+	if _scene_teardown_prepared:
+		return
 	runtime_activation_deferred = true
 	runtime_activated = false
 	process_mode = Node.PROCESS_MODE_DISABLED
 
 
 func activate_runtime() -> void:
-	if runtime_activated:
+	if runtime_activated or _scene_teardown_prepared:
 		return
 	runtime_activation_deferred = false
 	runtime_activated = true
@@ -1158,6 +1171,39 @@ func activate_runtime() -> void:
 
 func _on_runtime_activated() -> void:
 	pass
+
+
+## SceneTree 会先递归移除子实体，再调用运行时根节点的 _exit_tree()。
+## 所有主动切场景入口必须先经过这里，让领域账本与网络索引在子实体离树前收束。
+func prepare_for_scene_teardown() -> void:
+	if _scene_teardown_prepared:
+		return
+	_scene_teardown_prepared = true
+	runtime_activation_deferred = false
+	runtime_activated = false
+	process_mode = Node.PROCESS_MODE_DISABLED
+	_on_scene_teardown_prepared()
+	_prepare_nested_combat_runtimes_for_scene_teardown(self)
+	# 会话正在整体销毁；本地索引只需静默释放，不能再发布逐实体终结包。
+	clear_network_enemy_registry()
+	clear_network_pickup_registry()
+
+
+func is_scene_teardown_prepared() -> bool:
+	return _scene_teardown_prepared
+
+
+func _on_scene_teardown_prepared() -> void:
+	pass
+
+
+func _prepare_nested_combat_runtimes_for_scene_teardown(parent: Node) -> void:
+	for child in parent.get_children():
+		var nested_runtime := child as CombatRuntimeBase
+		if nested_runtime != null:
+			nested_runtime.prepare_for_scene_teardown()
+			continue
+		_prepare_nested_combat_runtimes_for_scene_teardown(child)
 
 
 func prewarm_shared_runtime_data(preparation_generation: int) -> void:

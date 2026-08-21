@@ -114,6 +114,7 @@ func _notification(what: int) -> void:
 	if what != NOTIFICATION_WM_CLOSE_REQUEST or _shutdown_in_progress:
 		return
 	_shutdown_in_progress = true
+	_prepare_combat_runtimes_for_window_shutdown(get_tree().root)
 	call_deferred("_release_before_window_shutdown")
 
 
@@ -715,6 +716,15 @@ func _release_before_window_shutdown() -> void:
 	if _net_manager != null and _net_manager.is_multiplayer_active():
 		_net_manager.disconnect_from_game()
 	get_tree().quit()
+
+
+func _prepare_combat_runtimes_for_window_shutdown(parent: Node) -> void:
+	for child in parent.get_children():
+		var runtime := child as CombatRuntimeBase
+		if runtime != null:
+			runtime.prepare_for_scene_teardown()
+			continue
+		_prepare_combat_runtimes_for_window_shutdown(child)
 
 
 ## 以下 fixture API 只允许调试构建驱动真实状态机，不提供给生产 UI。

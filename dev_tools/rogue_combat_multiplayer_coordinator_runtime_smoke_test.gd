@@ -213,6 +213,7 @@ func _run() -> void:
 		quit(1)
 		return
 	_test_prepare_requires_route_resolved_config()
+	_test_preparing_session_runtime_scene_teardown_fallback()
 	_test_terminal_safe_releases_protocol_but_keeps_result()
 	_test_next_prepare_collects_stale_result()
 	_test_new_layout_clears_combat_idempotency_caches()
@@ -299,6 +300,25 @@ func _test_prepare_requires_route_resolved_config() -> void:
 		and _coordinator._active_encounter_config == null,
 		"被拒绝的配置不得冻结协议状态。"
 	)
+
+
+func _test_preparing_session_runtime_scene_teardown_fallback() -> void:
+	_reset_fixture_state()
+	var session := FAKE_EMBEDDED_RUNTIME.instantiate() as RogueCombatMultiplayerTestSession
+	var runtime := RewardCombatGameHarness.new()
+	session.game_runtime = runtime
+	_fixture_root.add_child(session)
+	_coordinator._combat_network = session
+	_coordinator._combat_game = null
+	_coordinator.prepare_active_runtime_for_scene_teardown()
+	_coordinator.prepare_active_runtime_for_scene_teardown()
+	_expect(
+		runtime.is_scene_teardown_prepared()
+		and runtime.process_mode == Node.PROCESS_MODE_DISABLED,
+		"PREPARING 阶段必须从嵌入会话取得运行时，并幂等完成 teardown。"
+	)
+	_coordinator._combat_network = null
+	session.free()
 
 
 func _configure_emergency_reward_fixture(

@@ -396,6 +396,7 @@ func handle_return_to_lobby_requested() -> void:
 		and _wave_runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	):
+		_wave_runtime.prepare_for_scene_teardown()
 		get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
 		return
 	return_to_lobby_requested.emit()
