@@ -183,8 +183,8 @@ class CreateAcquisitionPayload(_StrictPayload):
     name: str = Field(default="", max_length=64)
     host_name: str = Field(min_length=1, max_length=32)
     max_players: int = Field(
-        default=config.PUBLIC_RELAY_MAX_PLAYERS,
-        ge=2,
+        default=config.DEFAULT_PLAYERS_PER_ROOM,
+        ge=config.MIN_PLAYERS_PER_ROOM,
         le=config.PUBLIC_RELAY_MAX_PLAYERS,
     )
     game_mode: GameMode = GameMode.STANDARD
@@ -1128,7 +1128,7 @@ async def quick_match(
             name=f"{req.player_name} 的房间",
             host_name=req.player_name,
             host_ip="",
-            max_players=config.PUBLIC_RELAY_MAX_PLAYERS,
+            max_players=config.DEFAULT_PLAYERS_PER_ROOM,
             game_mode=req.game_mode,
         )
         if room is None:

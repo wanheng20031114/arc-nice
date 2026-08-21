@@ -84,11 +84,6 @@ func _initialize() -> void:
 		),
 		"Ticket identity and registration player_name must match exactly"
 	)
-	_assert(
-		not RelayServerScript._should_schedule_registration_forward("host")
-		and RelayServerScript._should_schedule_registration_forward("member"),
-		"Host registration must never enter the member-forward retry ledger"
-	)
 	var malformed_registration_requests: Array[Dictionary] = []
 	var invalid_bool_request: Dictionary = valid_host_auth_request.duplicate(true)
 	invalid_bool_request["character_confirmed"] = "true"
@@ -215,32 +210,35 @@ func _initialize() -> void:
 	)
 	_assert(
 		RelayServerScript.consumed_nonce_capacity_for_room(2)
-		== RelayServerScript.consumed_nonce_capacity_for_room(8)
-		and RelayServerScript.consumed_nonce_capacity_for_room(2)
+		< RelayServerScript.consumed_nonce_capacity_for_room(8)
+		and RelayServerScript.consumed_nonce_capacity_for_room(8)
 		== RelayServerScript.MAX_CONSUMED_TICKET_NONCES,
-		"Public Relay nonce capacity must clamp to its fail-closed two-player bound"
+		"Public Relay nonce capacity must scale through the supported eight-player bound"
 	)
 	_assert(
-		RelayServerScript.transport_capacity_for_room(2) == 6
-		and RelayServerScript.transport_capacity_for_room(8) == 6,
-		"Two-player Relay transport must include exactly four pending-auth reserves"
+		RelayServerScript.transport_capacity_for_room(2) == 10
+		and RelayServerScript.transport_capacity_for_room(8) == 16,
+		"Relay transport must add eight pending-auth reserves without exceeding sixteen sockets"
 	)
 	_assert(
-		RelayServerScript.can_accept_auth_pending(4)
-		and not RelayServerScript.can_accept_auth_pending(5),
+		RelayServerScript.can_accept_auth_pending(8)
+		and not RelayServerScript.can_accept_auth_pending(9),
 		"A full pending-auth reserve must reject the next unauthenticated peer"
 	)
 	_assert(
 		RelayServerScript.has_authenticated_room_capacity(1, 2)
 		and not RelayServerScript.has_authenticated_room_capacity(2, 2)
-		and not RelayServerScript.has_authenticated_room_capacity(1, 8),
-		"Authenticated public admission must fail closed beyond two players"
+		and RelayServerScript.has_authenticated_room_capacity(7, 8)
+		and not RelayServerScript.has_authenticated_room_capacity(8, 8),
+		"Authenticated public admission must honor each room capacity through eight players"
 	)
 	_assert(
 		RelayServerScript.CH_MEMBERSHIP == 8
-		and RelayServerScript.ENET_MAX_CHANNEL == 8
+		and RelayServerScript.RELAY_CONTROL_CHANNEL == 9
+		and RelayServerScript.RELAY_SERVICE_CHANNEL == 9
+		and RelayServerScript.ENET_MAX_CHANNEL == 9
 		and RelayServerScript.CHANNEL_COUNT == 9,
-		"Relay must expose logical CH0..CH8 while passing max channel 8 to ENet"
+		"Relay must keep application CH0..CH8 and order topology plus service on CH9"
 	)
 	_assert(
 		RelayServerScript.is_admission_claim_allowed("host", "Host", 0, {}),

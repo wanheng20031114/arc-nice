@@ -588,7 +588,7 @@ func _on_create_public_room_pressed() -> void:
 	var requested_max_players := int(max_players_spin.value)
 	if requested_max_players > _NetConstants.PUBLIC_RELAY_MAX_PLAYERS:
 		_show_public_error(
-			"当前公网 Relay 已安全限制为最多 %d 人；局域网仍支持最多 %d 人。"
+			"公网房间最多支持 %d 人；局域网房间最多支持 %d 人。"
 			% [
 				_NetConstants.PUBLIC_RELAY_MAX_PLAYERS,
 				_NetConstants.MAX_PLAYERS,

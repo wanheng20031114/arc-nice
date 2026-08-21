@@ -4,6 +4,9 @@ const NetConstantsScript := preload("res://scene/multiplayer/net_constants.gd")
 const RuntimeContentManifestScript := preload(
 	"res://resources/config/generated/runtime_content_manifest.gd"
 )
+const AuthenticatedRelayMultiplayerPeerScript := preload(
+	"res://scene/multiplayer/transport/authenticated_relay_multiplayer_peer.gd"
+)
 const LOBBY_SOURCE_PATH := "res://scene/multiplayer/multiplayer_lobby.gd"
 const RELAY_SERVER_SOURCE_PATH := (
 	"res://relay_servers/relay_godot_project/relay_server.gd"
@@ -588,16 +591,13 @@ func _test_relay_admission_client_contract() -> void:
 		and manager_source.contains('"content_digest"')
 		and manager_source.contains("_rpc_relay_player_registration_forward")
 		and relay_server_source.contains("_rpc_relay_player_registration_forward")
-		and manager_source.contains("_rpc_relay_registration_completed.rpc_id(")
-		and relay_server_source.contains("func confirm_authenticated_player_registration(")
 		and manager_source.contains("conn_mode == ConnMode.DIRECT")
 		and manager_source.contains("_relay_transport_admitted = true")
 		and lobby_source.contains("relay_admission_ticket"),
 		(
 			"Public Relay identity must use SceneMultiplayer authentication before "
 			+ "the lobby transport can enter the game RPC surface; the authenticated "
-			+ "registration tuple must be relayed until the accepted/ACTIVE client "
-			+ "explicitly completes registration."
+			+ "registration tuple must be relayed once after ordered topology publication."
 		)
 	)
 
@@ -641,6 +641,10 @@ func _test_relay_business_state_waits_for_two_sided_authentication() -> void:
 	admitted_client.connection_state = NetManagerStore.ConnectionState.CONNECTING_LAN
 	admitted_client._begin_connection_attempt(1000, "fixture relay")
 	admitted_client.set("_relay_auth_locally_completed", true)
+	admitted_client.set(
+		"_relay_peer",
+		AuthenticatedRelayMultiplayerPeerScript.new()
+	)
 	admitted_client._on_connected_to_server()
 	_expect(
 		bool(admitted_client.get("_relay_transport_admitted"))

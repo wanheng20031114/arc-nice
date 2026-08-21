@@ -5,6 +5,11 @@
 import math
 import os
 
+from .models import (
+    DEFAULT_PLAYERS_PER_ROOM as DOMAIN_DEFAULT_PLAYERS_PER_ROOM,
+    MAX_SUPPORTED_PLAYERS_PER_ROOM,
+    MIN_PLAYERS_PER_ROOM as DOMAIN_MIN_PLAYERS_PER_ROOM,
+)
 from .relay_admission import (
     MAX_TICKET_REFRESH_BURST,
     MAX_TICKET_REFRESH_WINDOW_SECONDS,
@@ -234,11 +239,17 @@ _require_strict_order(
 # ─── 限制 ────────────────────────────────────────
 _relay_port_capacity = RELAY_PORT_END - RELAY_PORT_START + 1
 MAX_ROOMS = _bounded_int("MAX_ROOMS", 100, 1, _relay_port_capacity)
-MAX_PLAYERS_PER_ROOM = _bounded_int("MAX_PLAYERS_PER_ROOM", 8, 2, 8)
-# Stock Godot 4.6 的 SceneMultiplayer auth + server_relay 在第三个 transport
-# 会稳定出现 peer-discovery/CH0 停滞。公网 API 只能发布已通过真实握手门的
-# 2 人房；RoomManager 的 8 人上界仍保留给纯领域测试与未来定制 Relay。
-PUBLIC_RELAY_MAX_PLAYERS = 2
+MIN_PLAYERS_PER_ROOM = DOMAIN_MIN_PLAYERS_PER_ROOM
+DEFAULT_PLAYERS_PER_ROOM = DOMAIN_DEFAULT_PLAYERS_PER_ROOM
+MAX_PLAYERS_PER_ROOM = _bounded_int(
+    "MAX_PLAYERS_PER_ROOM",
+    MAX_SUPPORTED_PLAYERS_PER_ROOM,
+    DEFAULT_PLAYERS_PER_ROOM,
+    MAX_SUPPORTED_PLAYERS_PER_ROOM,
+)
+# 公网 API、Launcher 与 Relay 必须从同一个容量真源派生，避免某一层仍把
+# 合法的 3..8 人房间截断或拒绝。
+PUBLIC_RELAY_MAX_PLAYERS = MAX_PLAYERS_PER_ROOM
 
 # 创建/加入响应尚未被客户端确认前只授予短租约；这条服务端兜底不依赖
 # 客户端取消请求一定能送达。

@@ -1,34 +1,35 @@
 extends Node
 
 ## Godot Headless Relay Server。
-## 以无头模式运行，仅做 ENet 包转发（利用 Godot 内置 server_relay）。
+## 以无头模式运行，通过认证感知包装层转发 ENet 包。
 ## 命令行参数包含端口、容量以及三段互不混用的生命周期租约。
+
+const AuthenticatedRelayMultiplayerPeer = preload(
+	"res://authenticated_relay_multiplayer_peer.gd"
+)
 
 const DEFAULT_PORT := 40001
 const DEFAULT_STARTUP_IDLE_TIMEOUT_SEC := 120.0
 const DEFAULT_EMPTY_IDLE_TIMEOUT_SEC := 120.0
 const DEFAULT_MAX_LIFETIME_SEC := 10.0 * 60.0 * 60.0
 const MIN_CLIENTS := 2
-## Stock Godot 4.6 的 auth_callback + server_relay 在第 3 个 transport 上存在
-## 可复现的 peer-discovery/CH0 停滞；公网 Relay 在修复引擎转发层前必须
-## fail-closed 到真实握手已验证的 2 人。局域网人数不受此上限影响。
-const MAX_CLIENTS := 2
+const MAX_CLIENTS := 8
 const DEFAULT_MAX_CLIENTS := MAX_CLIENTS
-const AUTH_PENDING_RESERVE := 4
+## 最坏情况下 Host 与 7 名成员可同时处于短暂票据认证；认证成功后的房间
+## 容量仍由 _max_clients 独立约束。
+const AUTH_PENDING_RESERVE := MAX_CLIENTS
 const MAX_TRANSPORT_CLIENTS := MAX_CLIENTS + AUTH_PENDING_RESERVE
 const CH_MEMBERSHIP := 8
-const ENET_MAX_CHANNEL := CH_MEMBERSHIP
+const RELAY_CONTROL_CHANNEL := CH_MEMBERSHIP + 1
+const RELAY_SERVICE_CHANNEL := RELAY_CONTROL_CHANNEL
+const ENET_MAX_CHANNEL := RELAY_CONTROL_CHANNEL
 const CHANNEL_COUNT := CH_MEMBERSHIP + 1
-const PROTOCOL_VERSION := 90
+const PROTOCOL_VERSION := 91
 const AUTH_PROTOCOL_VERSION := 1
 const AUTH_TICKET_PREFIX := "ra1"
 const AUTH_TIMEOUT_SEC := 5.0
 const AUTH_MAX_PAYLOAD_BYTES := 4096
 const AUTH_MAX_TICKET_LENGTH := 2048
-const MEMBER_AUTH_COMPLETION_INTERVAL_MILLISECONDS := 250
-const REGISTRATION_FORWARD_INTERVAL_MILLISECONDS := 250
-const REGISTRATION_FORWARD_ROUTE_GRACE_MILLISECONDS := 250
-const REGISTRATION_FORWARD_WINDOW_MILLISECONDS := 30_000
 const MAX_REGISTRATION_PLAYER_NAME_LENGTH := 64
 const MAX_REGISTRATION_CHARACTER_ID_LENGTH := 64
 const RECONNECT_TOKEN_HEX_LENGTH := 32
@@ -66,6 +67,7 @@ var _startup_idle_timeout_sec: float = DEFAULT_STARTUP_IDLE_TIMEOUT_SEC
 var _empty_idle_timeout_sec: float = DEFAULT_EMPTY_IDLE_TIMEOUT_SEC
 var _max_lifetime_sec: float = DEFAULT_MAX_LIFETIME_SEC
 var _max_clients: int = DEFAULT_MAX_CLIENTS
+var _relay_peer: MultiplayerPeerExtension = null
 var _started_at_msec: int = 0
 var _empty_since_msec: int = 0
 var _has_had_connections: bool = false
@@ -76,17 +78,8 @@ var _admission_secret: String = ""
 var _identity_by_peer: Dictionary = {}
 var _peer_by_player_name: Dictionary = {}
 var _registration_by_peer: Dictionary = {}
-var _registration_forward_deadline_by_peer: Dictionary = {}
-var _registration_forward_not_before_by_peer: Dictionary = {}
-var _registration_forward_last_send_by_peer: Dictionary = {}
-var _registration_forward_queue: Array[int] = []
-var _active_registration_forward_peer_id: int = 0
 var _consumed_ticket_nonces: Dictionary = {}
 var _host_was_authenticated: bool = false
-var _member_auth_completion_queue: Array[int] = []
-var _member_auth_completion_last_msec: int = 0
-var _member_auth_completion_inflight_peer_id: int = 0
-var _registration_forward_batch_not_before_msec: int = 0
 
 
 func _ready() -> void:
@@ -179,16 +172,25 @@ func _parse_positive_timeout(arg: String, prefix: String, label: String) -> floa
 
 
 func _start_server() -> void:
-	var peer := ENetMultiplayerPeer.new()
+	var transport := ENetMultiplayerPeer.new()
 	var transport_capacity := transport_capacity_for_room(_max_clients)
-	var err := peer.create_server(_port, transport_capacity, ENET_MAX_CHANNEL)
+	var err := transport.create_server(_port, transport_capacity, ENET_MAX_CHANNEL)
 	if err != OK:
 		push_error("[Relay] 创建服务器失败 (port=%d): %s" % [_port, error_string(err)])
 		get_tree().quit(1)
 		return
+	_relay_peer = AuthenticatedRelayMultiplayerPeer.new()
+	err = _relay_peer.configure(transport, true)
+	if err != OK:
+		transport.close()
+		_relay_peer = null
+		push_error("[Relay] 初始化认证感知转发层失败: %s" % error_string(err))
+		get_tree().quit(1)
+		return
 
-	# 开启 server_relay：服务器自动转发客户端之间的 RPC 和包
-	multiplayer.server_relay = true
+	# 禁用 SceneMultiplayer 的隐式 mesh。认证感知包装层只向已验票 transport
+	# 发布拓扑并转发包，避免 auth_callback 与内置 ADD_PEER 的多成员时序缺陷。
+	multiplayer.server_relay = false
 	multiplayer.auth_timeout = AUTH_TIMEOUT_SEC
 	multiplayer.auth_callback = _on_auth_payload
 
@@ -196,7 +198,7 @@ func _start_server() -> void:
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.peer_authenticating.connect(_on_peer_authenticating)
 	multiplayer.peer_authentication_failed.connect(_on_peer_authentication_failed)
-	multiplayer.multiplayer_peer = peer
+	multiplayer.multiplayer_peer = _relay_peer
 	_started_at_msec = Time.get_ticks_msec()
 	_empty_since_msec = _started_at_msec
 
@@ -204,7 +206,7 @@ func _start_server() -> void:
 		(
 			"[Relay] 服务器已启动, port=%d, max_clients=%d, transport_clients=%d, protocol=v%d, "
 			+ "startup_idle=%.3f, empty_idle=%.3f, max_lifetime=%.3f, "
-			+ "server_relay=true, authentication=required"
+			+ "server_relay=authenticated_wrapper, authentication=required"
 		)
 		% [
 			_port,
@@ -221,8 +223,6 @@ func _start_server() -> void:
 func _process(_delta: float) -> void:
 	# ticks 是不受 wall clock 回拨与游戏 time scale 影响的进程单调时钟。
 	var now_msec := Time.get_ticks_msec()
-	_poll_member_auth_completions(now_msec)
-	_poll_registration_forwards(now_msec)
 	if _elapsed_seconds(_started_at_msec, now_msec) >= _max_lifetime_sec:
 		print("[Relay] 达到绝对生命周期上限，自动退出")
 		get_tree().quit(0)
@@ -237,10 +237,6 @@ func _process(_delta: float) -> void:
 
 	# 有过连接后，检查是否全部断开
 	if not multiplayer.has_multiplayer_peer():
-		return
-
-	var peer := multiplayer.multiplayer_peer as ENetMultiplayerPeer
-	if peer == null:
 		return
 
 	var connected_peers := multiplayer.get_peers()
@@ -297,6 +293,10 @@ func _on_peer_connected(peer_id: int) -> void:
 		push_error("[Relay] 认证状态缺失，断开异常 peer")
 		multiplayer.disconnect_peer(peer_id)
 		return
+	if _relay_peer == null or not _relay_peer.mark_peer_authenticated(peer_id):
+		push_error("[Relay] 无法发布已认证 peer 拓扑: %d" % peer_id)
+		multiplayer.disconnect_peer(peer_id)
+		return
 	_has_had_connections = true
 	_empty_since_msec = Time.get_ticks_msec()
 	var connected_count := multiplayer.get_peers().size()
@@ -306,27 +306,14 @@ func _on_peer_connected(peer_id: int) -> void:
 		# 若 success ack 丢失导致认证失败，Host 可用新 nonce 重试；真正进入过
 		# peer_connected 的 Host 断线后则绝不迁移。
 		_host_was_authenticated = true
-	elif _should_schedule_registration_forward(str(identity.get("role", ""))):
-		var now_msec := Time.get_ticks_msec()
-		_registration_forward_deadline_by_peer[peer_id] = (
-			now_msec + REGISTRATION_FORWARD_WINDOW_MILLISECONDS
-		)
-		_registration_forward_not_before_by_peer[peer_id] = (
-			now_msec + REGISTRATION_FORWARD_ROUTE_GRACE_MILLISECONDS
-		)
-		_registration_forward_last_send_by_peer.erase(peer_id)
-		if not _registration_forward_queue.has(peer_id):
-			_registration_forward_queue.append(peer_id)
-		if _member_auth_completion_inflight_peer_id == peer_id:
-			_member_auth_completion_inflight_peer_id = 0
-		print(
-			"[Relay] 已排入认证注册转发 peer_id=%d grace_ms=%d window_ms=%d"
-			% [
-				peer_id,
-				REGISTRATION_FORWARD_ROUTE_GRACE_MILLISECONDS,
-				REGISTRATION_FORWARD_WINDOW_MILLISECONDS,
-			]
-		)
+	elif str(identity.get("role", "")) == "member":
+		# mark_peer_authenticated() has just emitted ADD on reliable CH9. The
+		# registration RPC uses that same physical channel, so Host observes the
+		# topology before this one-shot authoritative registration tuple.
+		if not _forward_authenticated_player_registration(peer_id):
+			push_error("[Relay] 无法转发认证注册 peer_id=%d" % peer_id)
+			multiplayer.disconnect_peer(peer_id)
+			return
 	print(
 		"[Relay] 已认证玩家连接 peer_id=%d role=%s (当前 %d 人)"
 		% [peer_id, str(identity.get("role", "")), connected_count]
@@ -359,6 +346,10 @@ func _on_peer_authenticating(peer_id: int) -> void:
 
 
 func _on_auth_payload(peer_id: int, payload: PackedByteArray) -> void:
+	_process_auth_payload(peer_id, payload)
+
+
+func _process_auth_payload(peer_id: int, payload: PackedByteArray) -> void:
 	if (
 		payload.is_empty()
 		or payload.size() > AUTH_MAX_PAYLOAD_BYTES
@@ -433,26 +424,34 @@ func _on_auth_payload(peer_id: int, payload: PackedByteArray) -> void:
 		_host_peer_id = peer_id
 		_set_stub_authority(peer_id)
 
+	if _send_authenticated_peer_ack(peer_id):
+		_complete_authenticated_peer(peer_id)
+
+
+func _send_authenticated_peer_ack(peer_id: int) -> bool:
+	if (
+		not _identity_by_peer.has(peer_id)
+		or not multiplayer.get_authenticating_peers().has(peer_id)
+	):
+		return false
+	var identity := _identity_by_peer[peer_id] as Dictionary
 	var acknowledgement := {
 		"v": AUTH_PROTOCOL_VERSION,
 		"ok": true,
 		"room_id": _room_id,
-		"role": role,
-		"player_name": player_name,
+		"role": str(identity.get("role", "")),
+		"player_name": str(identity.get("player_name", "")),
 		"peer_id": peer_id,
 	}
 	var send_error: Error = multiplayer.send_auth(
 		peer_id,
 		JSON.stringify(acknowledgement).to_utf8_buffer()
 	)
-	if send_error != OK:
-		_clear_peer_identity(peer_id)
-		multiplayer.disconnect_peer(peer_id)
-		return
-	if role == "member":
-		_queue_member_auth_completion(peer_id)
-	else:
-		_complete_authenticated_peer(peer_id)
+	if send_error == OK:
+		return true
+	_clear_peer_identity(peer_id)
+	multiplayer.disconnect_peer(peer_id)
+	return false
 
 
 func _complete_authenticated_peer(peer_id: int) -> bool:
@@ -462,41 +461,6 @@ func _complete_authenticated_peer(peer_id: int) -> bool:
 		multiplayer.disconnect_peer(peer_id)
 		return false
 	return true
-
-
-func _queue_member_auth_completion(peer_id: int) -> void:
-	if peer_id <= 0 or _member_auth_completion_queue.has(peer_id):
-		return
-	_member_auth_completion_queue.append(peer_id)
-
-
-func _poll_member_auth_completions(now_msec: int) -> void:
-	# SceneMultiplayer 4.6 的认证完成与内置 ADD_PEER 都复用可靠 CH0。
-	# 同帧放行多个 member 会让逻辑 Host 稳定漏掉后续 peer discovery；因此
-	# 只有前一位已经完成 Host 注册闭环后，才允许下一位结束原生认证。
-	if (
-		_member_auth_completion_queue.is_empty()
-		or _member_auth_completion_inflight_peer_id > 0
-		or _active_registration_forward_peer_id > 0
-		or not _registration_forward_queue.is_empty()
-	):
-		return
-	if (
-		_member_auth_completion_last_msec > 0
-		and now_msec - _member_auth_completion_last_msec
-		< MEMBER_AUTH_COMPLETION_INTERVAL_MILLISECONDS
-	):
-		return
-	var peer_id := int(_member_auth_completion_queue.pop_front())
-	if not _identity_by_peer.has(peer_id):
-		return
-	_member_auth_completion_last_msec = now_msec
-	_member_auth_completion_inflight_peer_id = peer_id
-	_registration_forward_batch_not_before_msec = (
-		now_msec + REGISTRATION_FORWARD_ROUTE_GRACE_MILLISECONDS
-	)
-	if not _complete_authenticated_peer(peer_id):
-		_member_auth_completion_inflight_peer_id = 0
 
 
 static func _has_exact_auth_request_schema(request: Dictionary) -> bool:
@@ -562,10 +526,6 @@ static func _registration_matches_claims(
 	)
 
 
-static func _should_schedule_registration_forward(role: String) -> bool:
-	return role == "member"
-
-
 func _reject_auth(peer_id: int, code: String) -> void:
 	var acknowledgement := {
 		"v": AUTH_PROTOCOL_VERSION,
@@ -587,10 +547,7 @@ func _disconnect_authenticating_peer(peer_id: int) -> void:
 
 func _clear_peer_identity(peer_id: int) -> void:
 	var was_host := _host_peer_id == peer_id
-	_member_auth_completion_queue.erase(peer_id)
-	if _member_auth_completion_inflight_peer_id == peer_id:
-		_member_auth_completion_inflight_peer_id = 0
-	_clear_registration_forward_state(peer_id)
+	_registration_by_peer.erase(peer_id)
 	var identity_variant: Variant = _identity_by_peer.get(peer_id)
 	_identity_by_peer.erase(peer_id)
 	if typeof(identity_variant) != TYPE_DICTIONARY:
@@ -600,29 +557,9 @@ func _clear_peer_identity(peer_id: int) -> void:
 	if int(_peer_by_player_name.get(player_name, 0)) == peer_id:
 		_peer_by_player_name.erase(player_name)
 	if was_host:
-		_clear_all_registration_forward_state()
+		_registration_by_peer.clear()
 		_host_peer_id = 0
 		_set_stub_authority(1)
-
-
-func _clear_registration_forward_state(peer_id: int) -> void:
-	_registration_by_peer.erase(peer_id)
-	_registration_forward_deadline_by_peer.erase(peer_id)
-	_registration_forward_not_before_by_peer.erase(peer_id)
-	_registration_forward_last_send_by_peer.erase(peer_id)
-	_registration_forward_queue.erase(peer_id)
-	if _active_registration_forward_peer_id == peer_id:
-		_active_registration_forward_peer_id = 0
-
-
-func _clear_all_registration_forward_state() -> void:
-	_registration_by_peer.clear()
-	_registration_forward_deadline_by_peer.clear()
-	_registration_forward_not_before_by_peer.clear()
-	_registration_forward_last_send_by_peer.clear()
-	_registration_forward_queue.clear()
-	_active_registration_forward_peer_id = 0
-	_member_auth_completion_inflight_peer_id = 0
 
 
 func _set_stub_authority(peer_id: int) -> void:
@@ -855,61 +792,16 @@ func request_host_peer_disconnect(sender_peer_id: int, target_peer_id: int) -> b
 			% [sender_peer_id, target_peer_id, _host_peer_id]
 		)
 		return false
-	var peer := multiplayer.multiplayer_peer as ENetMultiplayerPeer
-	if peer == null:
+	if _relay_peer == null:
 		return false
-	peer.disconnect_peer(target_peer_id, true)
+	_relay_peer.disconnect_peer(target_peer_id, true)
 	return true
 
 
-## Client 在 auth data 中一次性提交原始注册元组，不依赖认证期间
-## 不可用的普通 RPC。成员双端完成认证后，Relay 向逻辑 Host 有界可靠
-## 重发；Host 尚未收到 ADD_PEER 时可以丢弃当次，后续重发会自愈。
-func _poll_registration_forwards(now_msec: int) -> void:
-	# 不在 peer_connected 回调栈里立即发送普通 RPC；先给双向 ADD_PEER 一个
-	# 固定短宽限。随后即便 Host 仍未看见目标，30 秒有界重发也会自行收敛。
-	if now_msec < _registration_forward_batch_not_before_msec:
-		return
-	while (
-		_active_registration_forward_peer_id <= 0
-		and not _registration_forward_queue.is_empty()
-	):
-		var candidate_peer_id := int(_registration_forward_queue[0])
-		if not _registration_forward_deadline_by_peer.has(candidate_peer_id):
-			_registration_forward_queue.pop_front()
-			continue
-		_active_registration_forward_peer_id = candidate_peer_id
-	if _active_registration_forward_peer_id <= 0:
-		return
-	var peer_id := _active_registration_forward_peer_id
-	var deadline_msec := int(
-		_registration_forward_deadline_by_peer.get(peer_id, 0)
-	)
-	if deadline_msec <= 0 or now_msec >= deadline_msec:
-		_clear_registration_forward_state(peer_id)
-		if multiplayer.get_peers().has(peer_id):
-			multiplayer.disconnect_peer(peer_id)
-		return
-	if now_msec < int(
-		_registration_forward_not_before_by_peer.get(peer_id, 0)
-	):
-		return
-	_try_forward_player_registration(peer_id, now_msec)
-
-
-func _try_forward_player_registration(peer_id: int, now_msec: int) -> bool:
-	var last_send_msec := int(
-		_registration_forward_last_send_by_peer.get(peer_id, -1)
-	)
-	if last_send_msec < 0:
-		print("[Relay] 开始认证注册转发 peer_id=%d" % peer_id)
-	if (
-		last_send_msec >= 0
-		and now_msec - last_send_msec
-		< REGISTRATION_FORWARD_INTERVAL_MILLISECONDS
-	):
-		return false
-	_registration_forward_last_send_by_peer[peer_id] = now_msec
+## Client 在 auth data 中一次性提交原始注册元组。mark_peer_authenticated()
+## 先在 CH9 发布 ADD，随后本函数在同一可靠有序信道向 Host 单次转发 Relay
+## 账本中的元组；不存在客户端自提交或业务层重试的第二真源。
+func _forward_authenticated_player_registration(peer_id: int) -> bool:
 	var connected_peers := multiplayer.get_peers()
 	if (
 		peer_id <= 0
@@ -948,30 +840,7 @@ func _try_forward_player_registration(peer_id: int, now_msec: int) -> bool:
 		int(registration.get("content_manifest_schema", -1)),
 		str(registration.get("content_digest", ""))
 	)
-	return true
-
-
-## 只有当前串行注册成员本人，在收到 Host accepted 与包含自身 ACTIVE 的 roster
-## 后才能推进队列。其他成员、Host 或伪造 target/room 都不能跳过前一项。
-func confirm_authenticated_player_registration(
-	sender_peer_id: int,
-	registered_peer_id: int,
-	room_id: String
-) -> bool:
-	if (
-		sender_peer_id <= 0
-		or sender_peer_id != registered_peer_id
-		or registered_peer_id != _active_registration_forward_peer_id
-		or room_id != _room_id
-		or not multiplayer.get_peers().has(sender_peer_id)
-		or not _identity_by_peer.has(sender_peer_id)
-	):
-		return false
-	var identity := _identity_by_peer[sender_peer_id] as Dictionary
-	if str(identity.get("role", "")) != "member":
-		return false
-	print("[Relay] 玩家注册完成 peer_id=%d" % sender_peer_id)
-	_clear_registration_forward_state(sender_peer_id)
+	print("[Relay] 已转发认证注册 peer_id=%d" % peer_id)
 	return true
 
 

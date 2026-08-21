@@ -2,7 +2,7 @@ extends Node
 
 ## RPC surface stub for /root/NetManager while this project runs as a pure relay.
 
-@rpc("any_peer", "call_remote", "reliable", 8)
+@rpc("any_peer", "call_remote", "reliable", 9)
 func _rpc_relay_player_registration_forward(
 	target_peer_id: int,
 	player_name: String,
@@ -14,22 +14,6 @@ func _rpc_relay_player_registration_forward(
 	content_digest: String
 ) -> void:
 	pass
-
-
-@rpc("any_peer", "call_remote", "reliable", 8)
-func _rpc_relay_registration_completed(
-	registered_peer_id: int,
-	room_id: String
-) -> void:
-	var relay_server := get_node_or_null("/root/RelayServer")
-	if relay_server == null:
-		return
-	relay_server.confirm_authenticated_player_registration(
-		multiplayer.get_remote_sender_id(),
-		registered_peer_id,
-		room_id
-	)
-
 
 @rpc("any_peer", "call_remote", "reliable", 0)
 func _rpc_register_player(
@@ -72,7 +56,7 @@ func _rpc_join_rejected(reason: String) -> void:
 
 ## Relay 专用控制面。逻辑 Host 发送给服务端 peer 1；RelayServer 会用真实
 ## sender ID 验证 Host 身份并断开目标 transport，绝不由 stub 自行决定目标。
-@rpc("any_peer", "call_remote", "reliable", 8)
+@rpc("any_peer", "call_remote", "reliable", 9)
 func _rpc_relay_kick_peer(target_peer_id: int) -> void:
 	var relay_server := get_node_or_null("/root/RelayServer")
 	if relay_server == null:
@@ -84,7 +68,7 @@ func _rpc_relay_kick_peer(target_peer_id: int) -> void:
 
 
 ## Host 查询一个已认证 transport 的票据身份；RelayServer 只信任自身认证账本。
-@rpc("any_peer", "call_remote", "reliable", 8)
+@rpc("any_peer", "call_remote", "reliable", 9)
 func _rpc_relay_identity_lookup(
 	schema_version: int,
 	request_id: int,
@@ -101,7 +85,7 @@ func _rpc_relay_identity_lookup(
 	)
 
 
-@rpc("any_peer", "call_remote", "reliable", 8)
+@rpc("any_peer", "call_remote", "reliable", 9)
 func _rpc_relay_identity_result(
 	schema_version: int,
 	request_id: int,

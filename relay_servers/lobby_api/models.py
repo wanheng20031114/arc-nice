@@ -12,6 +12,13 @@ from enum import Enum
 from typing import Optional
 
 
+# 房间容量是领域协议，不应由 API 默认值或 Relay launcher 各自重复定义。
+# 2 人仍是合法的最小房间；常规创建默认 4 人；实现的硬上界为 8 人。
+MIN_PLAYERS_PER_ROOM = 2
+DEFAULT_PLAYERS_PER_ROOM = 4
+MAX_SUPPORTED_PLAYERS_PER_ROOM = 8
+
+
 class RoomStatus(str, Enum):
     STARTING = "starting"     # Relay 已分配，等待房主连接
     WAITING = "waiting"       # 等待玩家加入
@@ -79,7 +86,7 @@ class RoomInfo:
     host_ip: str = ""
     host_peer_id: int = 0
     port: int = 29170
-    max_players: int = 2
+    max_players: int = DEFAULT_PLAYERS_PER_ROOM
     game_mode: GameMode = GameMode.STANDARD
     status: RoomStatus = RoomStatus.WAITING
     players: dict[str, PlayerInfo] = field(default_factory=dict)  # name → PlayerInfo

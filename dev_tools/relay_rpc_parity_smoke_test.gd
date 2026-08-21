@@ -15,6 +15,12 @@ const RELAY_ROGUE_ROUTE_PATH := (
 const MAIN_NET_MANAGER_PATH := "res://scene/multiplayer/net_manager.gd"
 const RELAY_NET_MANAGER_PATH := "res://relay_servers/relay_godot_project/relay_net_manager_stub.gd"
 const RELAY_SERVER_PATH := "res://relay_servers/relay_godot_project/relay_server.gd"
+const GAME_RELAY_PEER_PATH := (
+	"res://scene/multiplayer/transport/authenticated_relay_multiplayer_peer.gd"
+)
+const RELAY_PEER_PATH := (
+	"res://relay_servers/relay_godot_project/authenticated_relay_multiplayer_peer.gd"
+)
 const RELAY_PROJECT_PATH := "res://relay_servers/relay_godot_project/project.godot"
 const STANDARD_GAME_PATH := "res://scene/game_modes/standard/standard_game.gd"
 const WAVE_RUNTIME_PATH := "res://scene/combat/runtime/wave_combat_runtime_base.gd"
@@ -383,7 +389,6 @@ func _run() -> void:
 	_compare_rpc_surfaces("NetManager", main_net_manager_rpcs, relay_net_manager_rpcs)
 	for required_method in [
 		"_rpc_relay_player_registration_forward",
-		"_rpc_relay_registration_completed",
 		"_rpc_register_player",
 		"_rpc_registration_accepted",
 		"_rpc_content_rejected",
@@ -412,17 +417,7 @@ func _run() -> void:
 	_expect_rpc_channel(
 		main_net_manager_rpcs,
 		"_rpc_relay_player_registration_forward",
-		NetConstants.CH_MEMBERSHIP
-	)
-	_expect_rpc_mode(
-		main_net_manager_rpcs,
-		"_rpc_relay_registration_completed",
-		"any_peer"
-	)
-	_expect_rpc_channel(
-		main_net_manager_rpcs,
-		"_rpc_relay_registration_completed",
-		NetConstants.CH_MEMBERSHIP
+		NetConstants.RELAY_SERVICE_CHANNEL
 	)
 	if main_net_manager_rpcs.has("_rpc_register_player"):
 		_expect(
@@ -444,10 +439,17 @@ func _run() -> void:
 	_expect_rpc_mode(main_net_manager_rpcs, "_rpc_relay_kick_peer", "any_peer")
 	_expect_rpc_mode(main_net_manager_rpcs, "_rpc_relay_identity_lookup", "any_peer")
 	_expect_rpc_mode(main_net_manager_rpcs, "_rpc_relay_identity_result", "any_peer")
-	for membership_method: String in [
+	for service_method: String in [
 		"_rpc_relay_kick_peer",
 		"_rpc_relay_identity_lookup",
 		"_rpc_relay_identity_result",
+	]:
+		_expect_rpc_channel(
+			main_net_manager_rpcs,
+			service_method,
+			NetConstants.RELAY_SERVICE_CHANNEL
+		)
+	for membership_method: String in [
 		"_rpc_registration_accepted",
 		"_rpc_content_rejected",
 		"_rpc_protocol_rejected",
@@ -475,14 +477,20 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 90,
-		"协议v90必须冻结认证注册转发、Relay身份绑定与既有内容合同。"
+		NetConstants.PROTOCOL_VERSION == 91,
+		"协议v91必须冻结认证注册转发、Relay身份绑定与既有内容合同。"
 	)
 	_expect(
 		NetConstants.CH_MEMBERSHIP == 8
 		and NetConstants.ENET_MAX_CHANNEL == 8
-		and NetConstants.CHANNEL_COUNT == 9,
-		"Protocol v90 must expose logical CH0..CH8 with ENet max channel 8."
+		and NetConstants.CHANNEL_COUNT == 9
+		and NetConstants.RELAY_CONTROL_CHANNEL == 9
+		and NetConstants.RELAY_SERVICE_CHANNEL == 9
+		and NetConstants.RELAY_ENET_MAX_CHANNEL == 9,
+		(
+			"Protocol v91 must keep application CH0..CH8 and order Relay "
+			+ "topology plus service traffic on reliable CH9."
+		)
 	)
 	_test_relay_channel_count()
 
@@ -522,7 +530,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v90 hosts must accept exactly v90 and reject v89."
+		"Protocol v91 hosts must accept exactly v91 and reject v90."
 	)
 	var pending_relay_registration := {
 		"request_id": 7,
@@ -586,11 +594,10 @@ func _test_registration_protocol_handshake_source() -> void:
 		and source.contains('"ticket": _relay_admission_ticket')
 		and source.contains('"protocol_version": NetConstants.PROTOCOL_VERSION')
 		and source.contains('"content_manifest_schema": _get_local_content_manifest_schema()')
-		and source.contains('"content_digest": _get_local_content_digest()')
-		and source.contains("_rpc_relay_registration_completed.rpc_id("),
+		and source.contains('"content_digest": _get_local_content_digest()'),
 		(
 			"LAN registration and the Relay auth envelope must both carry protocol, "
-			+ "schema, and content digest; Relay completion must be explicit."
+			+ "schema, and content digest."
 		)
 	)
 	var whitespace_regex := RegEx.new()
@@ -648,6 +655,8 @@ func _test_registration_protocol_handshake_source() -> void:
 
 func _test_relay_channel_count() -> void:
 	var relay_source := FileAccess.get_file_as_string(RELAY_SERVER_PATH)
+	var game_relay_peer_source := FileAccess.get_file_as_string(GAME_RELAY_PEER_PATH)
+	var relay_peer_source := FileAccess.get_file_as_string(RELAY_PEER_PATH)
 	var relay_project_source := FileAccess.get_file_as_string(RELAY_PROJECT_PATH)
 	var whitespace_regex := RegEx.new()
 	if whitespace_regex.compile("\\s+") != OK:
@@ -656,37 +665,51 @@ func _test_relay_channel_count() -> void:
 	var compact_relay_source := whitespace_regex.sub(relay_source, "", true)
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
+		FileAccess.file_exists(GAME_RELAY_PEER_PATH)
+		and FileAccess.file_exists(RELAY_PEER_PATH)
+		and not game_relay_peer_source.is_empty()
+		and not relay_peer_source.is_empty()
+		and game_relay_peer_source == relay_peer_source
+		and game_relay_peer_source.contains("extends MultiplayerPeerExtension")
+		and game_relay_peer_source.contains("const TOPOLOGY_CHANNEL := 9")
+		and game_relay_peer_source.contains(
+			"const RELAY_SERVICE_CHANNEL := TOPOLOGY_CHANNEL"
+		),
+		(
+			"The main-project and nested Relay MultiplayerPeerExtension wrappers must "
+			+ "remain byte-for-byte identical, with topology and service ordering on CH9."
+		)
+	)
+	_expect(
 		relay_source.contains("const CH_MEMBERSHIP := 8")
-		and relay_source.contains("const ENET_MAX_CHANNEL := CH_MEMBERSHIP")
+		and relay_source.contains("const RELAY_CONTROL_CHANNEL := CH_MEMBERSHIP + 1")
+		and relay_source.contains("const RELAY_SERVICE_CHANNEL := RELAY_CONTROL_CHANNEL")
+		and relay_source.contains("const ENET_MAX_CHANNEL := RELAY_CONTROL_CHANNEL")
 		and relay_source.contains("const CHANNEL_COUNT := CH_MEMBERSHIP + 1")
-		and relay_source.contains("const PROTOCOL_VERSION := 90")
-		and relay_source.contains("const MAX_CLIENTS := 2")
+		and relay_source.contains("const PROTOCOL_VERSION := 91")
+		and relay_source.contains("const MAX_CLIENTS := 8")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, transport_capacity, ENET_MAX_CHANNEL)")
+		and relay_source.contains("multiplayer.server_relay = false")
 		and relay_source.contains("multiplayer.auth_callback = _on_auth_payload")
+		and relay_source.contains("mark_peer_authenticated(peer_id)")
 		and relay_source.contains("authentication=required"),
 		(
-			"Relay server must declare v90, fail closed to two public players, and "
-			+ "provision logical CH0..CH8 with ENet max channel 8."
+			"Relay server must declare v91, admit up to eight authenticated players, "
+			+ "keep application CH0..CH8, and reserve reliable CH9 for topology/service."
 		)
 	)
 	_expect(
 		relay_source.contains("const AUTH_REQUEST_KEYS := [")
 		and relay_source.contains("func _parse_registration_request(")
 		and relay_source.contains("func _registration_matches_claims(")
-		and relay_source.contains(
-			"const REGISTRATION_FORWARD_INTERVAL_MILLISECONDS := 250"
-		)
-		and relay_source.contains(
-			"const REGISTRATION_FORWARD_WINDOW_MILLISECONDS := 30_000"
-		)
+		and relay_source.contains("func _forward_authenticated_player_registration(")
 		and relay_source.contains(
 			"net_manager_stub._rpc_relay_player_registration_forward.rpc_id("
-		)
-		and relay_source.contains("func confirm_authenticated_player_registration("),
+		),
 		(
-			"Relay v90 must validate the exact authenticated registration envelope "
-			+ "and boundedly forward the stored tuple until explicit completion."
+			"Relay v91 must validate the exact authenticated registration envelope "
+			+ "and forward the stored tuple once after ordered topology publication."
 		)
 	)
 	_expect(
@@ -709,7 +732,7 @@ func _test_relay_channel_count() -> void:
 	_expect(
 		relay_source.contains("func request_host_peer_disconnect(")
 		and relay_source.contains("is_authorized_host_kick_request(")
-		and relay_source.contains("peer.disconnect_peer(target_peer_id, true)")
+		and relay_source.contains("_relay_peer.disconnect_peer(target_peer_id, true)")
 		and relay_source.contains("sender_peer_id == registered_host_peer_id"),
 		"Relay kick control must authenticate its registered Host sender and disconnect only the requested live target."
 	)
@@ -1304,7 +1327,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		)
 	_expect(
 		channel_counts.get(NetConstants.CH_WORLD_EVENT, 0) == 60,
-		"Protocol v90 must expose exactly 60 MpGame RPCs on reliable world-event CH5."
+		"Protocol v91 must expose exactly 60 MpGame RPCs on reliable world-event CH5."
 	)
 
 	_expect_rpc_channel(rpcs, "net_runtime_state_requested", NetConstants.CH_AUTH)

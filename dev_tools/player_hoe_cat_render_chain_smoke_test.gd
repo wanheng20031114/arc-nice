@@ -395,7 +395,7 @@ func _test_scene_action_node_contract() -> void:
 			and sword_c.position == Vector2(0.0, 72.0)
 			and sword_b.position == Vector2(-72.0, 0.0)
 			and sword_d.position == Vector2(0.0, -72.0),
-			"The four authored sword sprites must be 90 degrees apart on the radius-72 orbit."
+			"The four authored sword sprites must be 91 degrees apart on the radius-72 orbit."
 		)
 		_expect(
 			is_equal_approx(sword_a.rotation, PI / 2.0)

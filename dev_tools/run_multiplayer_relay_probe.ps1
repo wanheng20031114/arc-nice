@@ -8,7 +8,7 @@ param(
     [ValidateSet("standard", "tower_defense")]
     [string]$GameMode = "standard",
     [ValidateRange(2, 8)]
-    [int]$PlayerCount = 2,
+    [int]$PlayerCount = 4,
     [switch]$GodotVerbose,
     [string]$ProjectPath = "",
     [string]$PeerScript = "res://dev_tools/multiplayer_lan_probe_peer.gd",
@@ -26,9 +26,6 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "lan_probe_truth_common.ps1")
 
-if ($PlayerCount -gt 2) {
-    throw "Stock Godot 4.6 public Relay is fail-closed to PlayerCount 2."
-}
 if ($Scenario -eq "reconnect" -and $PlayerCount -ne 4) {
     throw "The reconnect probe currently requires -PlayerCount 4."
 }
@@ -278,7 +275,12 @@ function Wait-RelayProbeStdoutPattern {
 
     do {
         $null = Update-LanProbeOwnedProcessRegistry $context
-        Update-LanProbeLiveLineCapture $Entry
+        # Pattern waits are sequential, but every managed process keeps writing.
+        # Drain all pipes on every pass so Relay/Host cannot block while this
+        # function is temporarily waiting for a newly launched client's marker.
+        foreach ($trackedEntry in @($entries)) {
+            Update-LanProbeLiveLineCapture $trackedEntry
+        }
         $currentMatches = [regex]::Matches(
             $Entry.StdoutBuffer.ToString(),
             $Pattern
@@ -353,12 +355,12 @@ try {
 
     $relayReadyMarker = (
         "[Relay] 服务器已启动, port=$Port, max_clients=$PlayerCount, " +
-        "transport_clients=$([Math]::Min($PlayerCount + 4, 12)), " +
-	        "protocol=v90, " +
+        "transport_clients=$([Math]::Min($PlayerCount + 8, 16)), " +
+	        "protocol=v91, " +
         "startup_idle=$(Format-RelayProbeSeconds $RelayStartupIdleTimeoutSeconds), " +
         "empty_idle=$(Format-RelayProbeSeconds $RelayEmptyIdleTimeoutSeconds), " +
         "max_lifetime=$(Format-RelayProbeSeconds $relayMaxLifetimeSeconds), " +
-        "server_relay=true, authentication=required"
+        "server_relay=authenticated_wrapper, authentication=required"
     )
     $relayReadyPattern = "(?m)^$([regex]::Escape($relayReadyMarker))`r?$"
     $null = Wait-RelayProbeStdoutPattern `

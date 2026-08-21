@@ -109,7 +109,7 @@ class AcquisitionLeaseTests(unittest.TestCase):
         self.assertIsNone(legacy.acquisition_token)
         signed = capability(
             "create",
-            ("Protected 的房间", "Protected", "2", GameMode.STANDARD.value),
+            ("Protected 的房间", "Protected", "4", GameMode.STANDARD.value),
         )
         protected = lobby_main.CreateRoomRequest(
             host_name="Protected",
@@ -717,11 +717,11 @@ class AcquisitionApiConcurrencyTests(unittest.IsolatedAsyncioTestCase):
         )
         first_capability = capability(
             "create",
-            ("First", "Host", "2", GameMode.STANDARD.value),
+            ("First", "Host", "4", GameMode.STANDARD.value),
         )
         late_capability = capability(
             "create",
-            ("Late 的房间", "Late", "2", GameMode.STANDARD.value),
+            ("Late 的房间", "Late", "4", GameMode.STANDARD.value),
         )
         with patch.object(lobby_main, "room_mgr", manager):
             first = await lobby_main.release_acquisition(

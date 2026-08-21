@@ -585,7 +585,7 @@ class RoomManager:
         name: str,
         host_name: str,
         host_ip: str,
-        max_players: int = 2,
+        max_players: int = config.DEFAULT_PLAYERS_PER_ROOM,
         port: int = config.RELAY_PORT_START,
         game_mode: GameMode = GameMode.STANDARD,
     ) -> Optional[RoomInfo]:
@@ -619,7 +619,10 @@ class RoomManager:
             host_name=host_name,
             host_ip=host_ip,
             port=port,
-            max_players=min(max(max_players, 2), config.MAX_PLAYERS_PER_ROOM),
+            max_players=min(
+                max(max_players, config.MIN_PLAYERS_PER_ROOM),
+                config.MAX_PLAYERS_PER_ROOM,
+            ),
             game_mode=game_mode,
             status=RoomStatus.STARTING,
             idle_deadline=None,
@@ -779,7 +782,7 @@ class RoomManager:
                 f"{player_name} 的房间",
                 player_name,
                 "",
-                4,
+                config.DEFAULT_PLAYERS_PER_ROOM,
                 config.RELAY_PORT_START,
                 game_mode,
                 now,
@@ -1275,7 +1278,7 @@ class RoomManager:
                 return None
             if (
                 room.max_players > config.PUBLIC_RELAY_MAX_PLAYERS
-                or room.max_players < 2
+                or room.max_players < config.MIN_PLAYERS_PER_ROOM
                 or room.status != RoomStatus.STARTING
                 or room.relay_port > 0
                 or room.relay_instance_id > 0

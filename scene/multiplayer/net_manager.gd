@@ -8,6 +8,9 @@ const RuntimeContentManifestScript := preload(
 const MultiplayerReconnectTypesScript := preload(
 	"res://scene/multiplayer/reconnect/multiplayer_reconnect_types.gd"
 )
+const AuthenticatedRelayMultiplayerPeer := preload(
+	"res://scene/multiplayer/transport/authenticated_relay_multiplayer_peer.gd"
+)
 
 signal connection_state_changed(new_state: ConnectionState)
 signal player_joined(peer_id: int, player_name: String)
@@ -133,6 +136,7 @@ var local_reconnect_token: String = ""
 
 var _physics_frame_count: int = 0
 var _enet_peer: ENetMultiplayerPeer = null
+var _relay_peer: MultiplayerPeerExtension = null
 var _disconnect_in_progress: bool = false
 var _relay_admission_ticket: String = ""
 var _relay_expected_admission_role: StringName = &""
@@ -744,12 +748,19 @@ func host_create_relay_room(
 	var err: Error = _enet_peer.create_client(
 		trimmed_ip,
 		target_relay_port,
-		NetConstants.ENET_MAX_CHANNEL
+		NetConstants.RELAY_ENET_MAX_CHANNEL
 	)
 	if err != OK:
 		_enet_peer = null
 		_clear_relay_admission()
 		connection_failed.emit("连接公网 Relay 失败: %s" % error_string(err))
+		return err
+	err = _configure_authenticated_relay_transport(_enet_peer)
+	if err != OK:
+		_enet_peer.close()
+		_enet_peer = null
+		_clear_relay_admission()
+		connection_failed.emit("初始化公网 Relay 转发层失败: %s" % error_string(err))
 		return err
 
 	net_role = NetRole.HOST
@@ -768,7 +779,7 @@ func host_create_relay_room(
 	)
 	_set_connection_state(ConnectionState.CONNECTING_LAN)
 	_connect_multiplayer_signals(true)
-	multiplayer.multiplayer_peer = _enet_peer
+	multiplayer.multiplayer_peer = _relay_peer
 	_debug_log("NetManager: Host 正在连接 Relay %s:%d" % [trimmed_ip, target_relay_port])
 	return OK
 
@@ -818,12 +829,19 @@ func client_join_relay_room(
 	var err: Error = _enet_peer.create_client(
 		trimmed_ip,
 		target_relay_port,
-		NetConstants.ENET_MAX_CHANNEL
+		NetConstants.RELAY_ENET_MAX_CHANNEL
 	)
 	if err != OK:
 		_enet_peer = null
 		_clear_relay_admission()
 		connection_failed.emit("连接公网 Relay 失败: %s" % error_string(err))
+		return err
+	err = _configure_authenticated_relay_transport(_enet_peer)
+	if err != OK:
+		_enet_peer.close()
+		_enet_peer = null
+		_clear_relay_admission()
+		connection_failed.emit("初始化公网 Relay 转发层失败: %s" % error_string(err))
 		return err
 
 	net_role = NetRole.CLIENT
@@ -841,11 +859,33 @@ func client_join_relay_room(
 	)
 	_set_connection_state(ConnectionState.CONNECTING_LAN)
 	_connect_multiplayer_signals(true)
-	multiplayer.multiplayer_peer = _enet_peer
+	multiplayer.multiplayer_peer = _relay_peer
 	_debug_log(
 		"NetManager: Client 正在连接 Relay %s:%d host=%d"
 		% [trimmed_ip, target_relay_port, target_host_peer_id]
 	)
+	return OK
+
+
+func _configure_authenticated_relay_transport(
+	transport: ENetMultiplayerPeer
+) -> Error:
+	if transport == null or _relay_peer != null:
+		return ERR_INVALID_PARAMETER
+	var scene_multiplayer := multiplayer as SceneMultiplayer
+	if scene_multiplayer == null:
+		return ERR_UNAVAILABLE
+	var candidate := (
+		AuthenticatedRelayMultiplayerPeer.new() as MultiplayerPeerExtension
+	)
+	if candidate == null:
+		return ERR_CANT_CREATE
+	var err: Error = candidate.configure(transport, false)
+	if err != OK:
+		candidate.close()
+		return err
+	_relay_peer = candidate
+	scene_multiplayer.server_relay = false
 	return OK
 
 
@@ -975,10 +1015,16 @@ static func _strict_nonnegative_network_integer(value: Variant) -> int:
 func disconnect_from_game() -> void:
 	_disconnect_in_progress = true
 	_cleanup_multiplayer_signals()
+	if _relay_peer != null:
+		_relay_peer.close()
 	if multiplayer.has_multiplayer_peer():
 		multiplayer.multiplayer_peer = null
 
+	_relay_peer = null
 	_enet_peer = null
+	var scene_multiplayer := multiplayer as SceneMultiplayer
+	if scene_multiplayer != null:
+		scene_multiplayer.server_relay = true
 	_clear_relay_admission()
 	net_role = NetRole.NONE
 	conn_mode = ConnMode.DIRECT
@@ -1675,6 +1721,15 @@ func _on_connected_to_server() -> void:
 			)
 			return
 		_relay_transport_admitted = true
+		var scene_multiplayer := multiplayer as SceneMultiplayer
+		if scene_multiplayer != null:
+			# 只有物理 Relay（peer 1）参与票据认证；后续逻辑成员由已认证
+			# wrapper 的拓扑控制帧发布，不得重新进入 SceneMultiplayer auth。
+			scene_multiplayer.auth_callback = Callable()
+		if _relay_peer == null:
+			_queue_relay_authentication_failure("公网 Relay 转发层缺失。")
+			return
+		_relay_peer.enable_authenticated_topology()
 	_handle_connected_to_server()
 
 
@@ -1832,9 +1887,10 @@ func _fail_pending_connection(reason: String) -> void:
 	disconnect_from_game()
 
 
-## Relay 服务只向已认证逻辑 Host 转发，并把真实 transport peer id 放在
-## envelope 中；Host 随后仍通过独立 identity lookup 二次绑定票据身份。
-@rpc("any_peer", "call_remote", "reliable", 8)
+## Relay 在认证完成后从自己的票据账本单次转发注册元组。该 RPC 与 ADD
+## 拓扑共用可靠 CH9，因此 Host 处理它时目标 peer 已经可见；Host 随后仍通过
+## 独立 identity lookup 二次绑定票据身份。
+@rpc("any_peer", "call_remote", "reliable", 9)
 func _rpc_relay_player_registration_forward(
 	target_peer_id: int,
 	player_name: String,
@@ -1845,8 +1901,9 @@ func _rpc_relay_player_registration_forward(
 	content_manifest_schema: int,
 	content_digest: String
 ) -> void:
+	var remote_sender_id := multiplayer.get_remote_sender_id()
 	if (
-		multiplayer.get_remote_sender_id() != RELAY_SERVICE_PEER_ID
+		remote_sender_id != RELAY_SERVICE_PEER_ID
 		or not is_host()
 		or conn_mode != ConnMode.RELAY
 		or not _relay_transport_admitted
@@ -1862,18 +1919,6 @@ func _rpc_relay_player_registration_forward(
 		content_manifest_schema,
 		content_digest
 	)
-
-
-## Client 只在 accepted 与自己的 ACTIVE roster 都已提交后通知 peer 1。
-## 真实处理只存在于 Relay stub；普通游戏实例保留同一 RPC surface。
-@rpc("any_peer", "call_remote", "reliable", 8)
-func _rpc_relay_registration_completed(
-	registered_peer_id: int,
-	room_id: String
-) -> void:
-	if registered_peer_id < 0 or room_id.is_empty():
-		return
-	pass
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
@@ -1931,12 +1976,9 @@ func _queue_relay_player_registration(
 	):
 		call_deferred("_disconnect_incompatible_peer", sender_id)
 		return false
-	# Relay 的 ADD_PEER 在两个方向上分别到达。Host 可能已经提交成员，
-	# 但首次 accepted/roster 仍落在 Client 尚不可路由的窗口内。Client 会
-	# 有界重放原注册；只对首次获准的完整 wire 元组做定向幂等补发，绝不
-	# 再入账、再发 player_joined，或把一次重试放大成全房 roster 广播。
+	# Reliable ENet does not duplicate the authoritative forward, but retain exact
+	# tuple idempotence at this state boundary without generating another lookup.
 	if connected_players.has(sender_id):
-		_debug_log("NetManager: 收到 Relay 注册元组重放 peer=%d" % sender_id)
 		if not _consume_lobby_command_admission(sender_id):
 			return false
 		return _try_replay_relay_registration_response(
@@ -1949,16 +1991,25 @@ func _queue_relay_player_registration(
 			content_manifest_schema,
 			content_digest
 		)
-	if (
-		_pending_relay_registrations.has(sender_id)
-		or not _consume_lobby_command_admission(sender_id)
-	):
+	if _pending_relay_registrations.has(sender_id):
+		return _validate_pending_relay_registration(
+			sender_id,
+			player_name,
+			character_id,
+			character_confirmed,
+			protocol_version,
+			reconnect_token,
+			content_manifest_schema,
+			content_digest
+		)
+	if not _consume_lobby_command_admission(sender_id):
 		return false
 	var request_id := _allocate_relay_identity_request_id()
+	var now_msec := Time.get_ticks_msec()
 	var registration_deadline_msec := int(
 		_late_registration_deadlines.get(
 			sender_id,
-			Time.get_ticks_msec() + REGISTRATION_TIMEOUT_MILLISECONDS
+			now_msec + REGISTRATION_TIMEOUT_MILLISECONDS
 		)
 	)
 	_late_registration_deadlines[sender_id] = registration_deadline_msec
@@ -1985,6 +2036,46 @@ func _queue_relay_player_registration(
 		sender_id
 	)
 	return true
+
+
+func _validate_pending_relay_registration(
+	sender_id: int,
+	player_name: String,
+	character_id: String,
+	character_confirmed: bool,
+	protocol_version: int,
+	reconnect_token: String,
+	content_manifest_schema: int,
+	content_digest: String
+) -> bool:
+	var pending := _pending_relay_registrations[sender_id] as Dictionary
+	var replay_tuple := _make_peer_registration_tuple(
+		player_name,
+		character_id,
+		character_confirmed,
+		protocol_version,
+		reconnect_token,
+		content_manifest_schema,
+		content_digest
+	)
+	var pending_tuple := _make_peer_registration_tuple(
+		str(pending.get("player_name", "")),
+		str(pending.get("character_id", "")),
+		bool(pending.get("character_confirmed", false)),
+		int(pending.get("protocol_version", -1)),
+		str(pending.get("reconnect_token", "")),
+		int(pending.get("content_manifest_schema", -1)),
+		str(pending.get("content_digest", ""))
+	)
+	if replay_tuple != pending_tuple:
+		_pending_relay_registrations.erase(sender_id)
+		_late_registration_deadlines.erase(sender_id)
+		call_deferred("_disconnect_incompatible_peer", sender_id)
+		return false
+	return not is_relay_identity_lookup_expired(
+		pending,
+		Time.get_ticks_msec()
+	)
 
 
 func _try_replay_relay_registration_response(
@@ -2160,7 +2251,7 @@ func _poll_relay_identity_lookup_timeouts(now_msec: int = -1) -> void:
 		call_deferred("_disconnect_incompatible_peer", peer_id)
 
 
-@rpc("any_peer", "call_remote", "reliable", 8)
+@rpc("any_peer", "call_remote", "reliable", 9)
 func _rpc_relay_identity_lookup(
 	schema_version: int,
 	request_id: int,
@@ -2172,7 +2263,7 @@ func _rpc_relay_identity_lookup(
 	pass
 
 
-@rpc("any_peer", "call_remote", "reliable", 8)
+@rpc("any_peer", "call_remote", "reliable", 9)
 func _rpc_relay_identity_result(
 	schema_version: int,
 	request_id: int,
@@ -2770,7 +2861,7 @@ func _send_content_rejected_to_peer(peer_id: int) -> void:
 
 ## 该方法只由 Relay 服务端的同路径 stub 执行。普通游戏实例绝不处理来自
 ## 逻辑客户端的踢人请求；Host 仅通过 _request_relay_peer_disconnect 发往 peer 1。
-@rpc("any_peer", "call_remote", "reliable", 8)
+@rpc("any_peer", "call_remote", "reliable", 9)
 func _rpc_relay_kick_peer(target_peer_id: int) -> void:
 	pass
 
@@ -2840,17 +2931,6 @@ func _try_complete_client_registration() -> bool:
 		or not is_session_member_active(local_peer_id)
 	):
 		return false
-	if (
-		conn_mode == ConnMode.RELAY
-		and _relay_transport_admitted
-		and not relay_room_id.is_empty()
-		and is_peer_control_send_ready(RELAY_SERVICE_PEER_ID)
-	):
-		_rpc_relay_registration_completed.rpc_id(
-			RELAY_SERVICE_PEER_ID,
-			local_peer_id,
-			relay_room_id
-		)
 	_registration_started_msec = 0
 	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
 	_debug_log("NetManager: 内容摘要与 ACTIVE 成员身份均已获 Host 接受")

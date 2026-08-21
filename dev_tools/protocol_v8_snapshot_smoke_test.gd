@@ -263,10 +263,10 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 90, "Protocol must be v90.")
+	_expect(NetConstants.PROTOCOL_VERSION == 91, "Protocol must be v91.")
 	_expect(
 		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
-		"Protocol v90 must retain scene-specific bits 5..6 for shield stages, ninja boost, and main-battle airborne visuals."
+		"Protocol v91 must retain scene-specific bits 5..6 for shield stages, ninja boost, and main-battle airborne visuals."
 	)
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
@@ -289,7 +289,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7
 		and NetConstants.CH_MEMBERSHIP == 8,
-		"Protocol v90 channel assignments must remain stable."
+		"Protocol v91 channel assignments must remain stable."
 	)
 
 

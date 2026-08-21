@@ -183,7 +183,12 @@ extends RefCounted
 ## ADD_PEER 互相阻塞。stock Godot 4.6 的第三个 transport 仍有可复现发现停滞，
 ## 因而公网暂时 fail-closed 为 2 人，LAN 仍保留 8 人。v89 及更旧客户端缺少该
 ## 认证 schema、转发 RPC 和信道布局，不能与 v90 混联。
-const PROTOCOL_VERSION := 90
+## v91：公网 Relay 不再依赖 SceneMultiplayer 私有 server_relay mesh；认证感知
+## MultiplayerPeerExtension 只为已验票 transport 发布逻辑拓扑并显式转发包。
+## 专属可靠 CH9 依次承载拓扑与 Relay 服务 RPC，使 ADD 先于对应注册到达；
+## 注册元组只由 Relay 认证账本单次转发，公网与 LAN 因而统一支持 2..8 人。
+## v90 及更旧客户端缺少该帧协议与拓扑信道，不能与 v91 混联。
+const PROTOCOL_VERSION := 91
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF
@@ -206,17 +211,16 @@ static func is_valid_network_combat_value(value: int) -> bool:
 const MIN_ROOM_PLAYERS := 2
 const DEFAULT_ROOM_MAX_PLAYERS := 4
 const MAX_PLAYERS := 8
-## Godot 4.6 stock SceneMultiplayer 在 auth_callback + server_relay 的第 3 个
-## transport 上存在可复现的 peer-discovery/CH0 停滞。公网入口必须 fail-closed
-## 到已完成真实握手验证的 2 人；DIRECT/LAN 仍支持 MAX_PLAYERS。
-const PUBLIC_RELAY_MAX_PLAYERS := 2
+## 公网 Relay 与 DIRECT/LAN 共享同一份协议容量合同；服务端会在认证层按
+## 房间 max_players 再次校验，避免客户端与 Lobby/Relay 上限漂移。
+const PUBLIC_RELAY_MAX_PLAYERS := MAX_PLAYERS
 const MAX_PLAYER_NAME_LENGTH := 12
 
 ## 连接超时
 const DIRECT_CONNECT_TIMEOUT_MS := 3000
 ## 覆盖底层 ENet 建连与随后最长 5 秒的双端 Relay 认证，不把两阶段挤进
 ## 同一个 5 秒窗口。
-const RELAY_CONNECT_TIMEOUT_MS := 10000
+const RELAY_CONNECT_TIMEOUT_MS := 10_000
 
 ## 端口
 const ENET_PORT_DEFAULT := 29170
@@ -383,6 +387,12 @@ const CH_FEEDBACK := 7
 const CH_MEMBERSHIP := 8
 const ENET_MAX_CHANNEL := CH_MEMBERSHIP
 const CHANNEL_COUNT := CH_MEMBERSHIP + 1
+## 公网 Relay 包装层的拓扑控制不与应用 CH0..CH8 共用排序队列；票据身份、
+## 注册转发与踢人等 Relay 服务 RPC 与拓扑共用可靠 CH9，从而保持 ADD→服务
+## RPC 的物理有序性。LAN 仍只创建应用信道。
+const RELAY_CONTROL_CHANNEL := CH_MEMBERSHIP + 1
+const RELAY_SERVICE_CHANNEL := RELAY_CONTROL_CHANNEL
+const RELAY_ENET_MAX_CHANNEL := RELAY_CONTROL_CHANNEL
 
 ## 同步频率 (Hz)
 const HOST_PHYSICS_HZ := 60

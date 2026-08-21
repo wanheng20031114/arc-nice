@@ -340,12 +340,12 @@ func _strip_quotes(value: String) -> String:
 
 
 func _test_protocol_and_wire_values() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 90, "多人协议必须保持 v90。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 91, "多人协议必须保持 v91。")
 	_expect(
 		NET_CONSTANTS.CH_MEMBERSHIP == 8
 		and NET_CONSTANTS.ENET_MAX_CHANNEL == 8
 		and NET_CONSTANTS.CHANNEL_COUNT == 9,
-		"v90 必须保持 ENet 最大应用信道 8 与 CH0..CH8 九条逻辑信道。"
+		"v91 必须保持 ENet 最大应用信道 8 与 CH0..CH8 九条逻辑信道。"
 	)
 	_expect(GameModeCatalog.MODE_STANDARD == 0, "standard wire value 必须保持 0。")
 	_expect(GameModeCatalog.MODE_TOWER_DEFENSE == 1, "tower_defense wire value 必须保持 1。")
@@ -389,7 +389,7 @@ func _test_protocol_and_wire_values() -> void:
 		_expect(
 			int(CombatFlowState.State.get(state_name, -1))
 			== int(expected_flow_values[state_name]),
-			"CombatFlowState.%s 的 v90 wire value 改变。" % state_name
+			"CombatFlowState.%s 的 v91 wire value 改变。" % state_name
 		)
 
 

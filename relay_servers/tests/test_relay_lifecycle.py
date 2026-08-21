@@ -859,8 +859,13 @@ class RelayLauncherLeaseTests(unittest.TestCase):
             config.MAX_ROOMS,
             config.RELAY_PORT_END - config.RELAY_PORT_START + 1,
         )
-        self.assertGreaterEqual(config.MAX_PLAYERS_PER_ROOM, 2)
-        self.assertLessEqual(config.MAX_PLAYERS_PER_ROOM, 8)
+        self.assertEqual(config.MIN_PLAYERS_PER_ROOM, 2)
+        self.assertEqual(config.DEFAULT_PLAYERS_PER_ROOM, 4)
+        self.assertEqual(config.MAX_PLAYERS_PER_ROOM, 8)
+        self.assertEqual(
+            config.PUBLIC_RELAY_MAX_PLAYERS,
+            config.MAX_PLAYERS_PER_ROOM,
+        )
         self.assertGreaterEqual(config.ROOM_IDLE_TIMEOUT_SECONDS, 120.0)
         self.assertGreater(config.RELAY_EMPTY_IDLE_TIMEOUT_SECONDS, 90.0)
         self.assertLess(
