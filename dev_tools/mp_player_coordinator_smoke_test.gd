@@ -166,6 +166,60 @@ class ProbePlayer:
 		primary_cooldown_apply_count += 1
 
 
+class ProbeAmmoRangedPlayer:
+	extends AmmoRangedPlayer
+
+	var last_reconnect_form_mode := -1
+	var last_reconnect_shot_pattern := -1
+
+	func apply_run_progression_snapshot(
+		_snapshot: Dictionary,
+		_refresh_stats: bool = true
+	) -> bool:
+		return true
+
+	func apply_multiplayer_snapshot_motion(
+		remote_position: Vector2,
+		remote_velocity: Vector2,
+		_facing_id: int,
+		_anim_state: int
+	) -> void:
+		global_position = remote_position
+		velocity = remote_velocity
+
+	func apply_multiplayer_realtime_state(
+		new_current_health: int,
+		new_max_health: int,
+		_new_current_xirang: int,
+		new_is_dead: bool,
+		new_invincibility_time_left: float,
+		_new_skill1_unlocked: bool,
+		_new_skill1_charge: float,
+		_new_skill1_charge_duration: float,
+		new_form_mode: int,
+		new_shot_pattern: int,
+		_new_skill1_upgrade_level: int = -1,
+		_new_ammo_capacity: int = -1,
+		_new_current_ammo: int = -1,
+		_new_is_reloading: bool = false,
+		_new_reload_progress: float = 0.0
+	) -> void:
+		current_health = new_current_health
+		max_health = new_max_health
+		is_dead = new_is_dead
+		invincibility_time_left = new_invincibility_time_left
+		last_reconnect_form_mode = new_form_mode
+		last_reconnect_shot_pattern = new_shot_pattern
+
+	func apply_multiplayer_effective_move_speed_multiplier(
+		_multiplier: float
+	) -> void:
+		pass
+
+	func apply_multiplayer_primary_cooldown_ratio(_ratio: float) -> void:
+		pass
+
+
 class ProbeHoePlayer:
 	extends PlayerHoeCat
 
@@ -313,6 +367,9 @@ class ProbeTangoPlayer:
 
 	func is_electric_surge_active() -> bool:
 		return electric_surge_active
+
+	func is_snow_wolf_full_charge_active() -> bool:
+		return force_full_charge
 
 	func cancel_remote_electric_surge(_activation_id: int) -> void:
 		electric_surge_active = false
@@ -1264,39 +1321,26 @@ func _run() -> void:
 		"无匹配蓄力的释放必须仅向请求端拒绝。"
 	)
 	tango_host_player.force_full_charge = true
-	_probe_net_time = 62.5
-	_expect(
-		coordinator.apply_authoritative_tango_charge_started(
-			6,
-			Vector2.LEFT,
-			3
-		),
-		"雪狼破军生效时，Host 必须仍通过标准 Tango 蓄力事务接纳攻击。"
+	var snow_wolf_charge_sequence := (
+		coordinator.begin_authoritative_tango_snow_wolf_auto_fire(
+			tango_host_player,
+			Vector2.LEFT
+		)
 	)
-	coordinator.apply_authoritative_tango_charge_snapshot_ratios(
-		tango_states,
-		_probe_net_time
-	)
-	_expect(
-		is_equal_approx(tango_snapshot.primary_cooldown_ratio, 1.0),
-		"雪狼破军生效时，Host 快照必须立即发布 100% 蓄力比例。"
-	)
-	var full_charge_released := coordinator.apply_authoritative_tango_charge_released(
-		6,
-		Vector2.LEFT,
-		3
-	)
-	var full_charge_release_arguments := (
+	var snow_wolf_release_arguments := (
 		_probe_action_broadcast_packets.back()["arguments"] as Array
 	)
 	_expect(
-		full_charge_released
-		and tango_host_player.charge_released_count == 2
-		and is_equal_approx(tango_host_player.last_charge_ratio, 1.0)
+		snow_wolf_charge_sequence == 3
+		and coordinator.get_tango_charge_sequence(6) == 3
+		and not coordinator.has_active_tango_charge(6)
 		and _probe_action_broadcast_methods.back() == &"net_tango_charge_released"
-		and full_charge_release_arguments.size() == 5
-		and is_equal_approx(float(full_charge_release_arguments[2]), 1.0),
-		"雪狼破军必须允许零等待释放，并由 Host 广播 100% 满充终端。"
+		and snow_wolf_release_arguments == [6, Vector2.LEFT, 1.0, 3, 0]
+		and is_equal_approx(
+			coordinator.get_tango_laser_barrage_maximum_seconds(6, 1.0),
+			MpPlayerCoordinator.TANGO_SNOW_WOLF_AUTO_FIRE_DURATION_SECONDS
+		),
+		"雪狼破军必须由 Host 分配自动弹幕序列、广播满充终端并允许 20 秒内部生命周期。"
 	)
 	var tango_reconnect_state := SnapshotManager.PlayerState.new()
 	tango_reconnect_state.peer_id = 6
@@ -1321,6 +1365,33 @@ func _run() -> void:
 			== PickupConfig.ShotPattern.NORMAL,
 		"重连必须清除雪狼的场景瞬态，不能把旧 ARMED+SPIRAL 刷新成新的 20 秒。"
 	)
+	var weishidaier_reconnect_player := ProbeAmmoRangedPlayer.new()
+	weishidaier_reconnect_player.peer_id = 9
+	weishidaier_reconnect_player.max_health = 50
+	runtime.peer_players[9] = weishidaier_reconnect_player
+	var weishidaier_reconnect_state := SnapshotManager.PlayerState.new()
+	weishidaier_reconnect_state.peer_id = 9
+	weishidaier_reconnect_state.character_id = &"weishidaier"
+	weishidaier_reconnect_state.current_health = 50
+	weishidaier_reconnect_state.max_health = 50
+	weishidaier_reconnect_state.form_mode = PickupConfig.PlayerFormMode.ARMED
+	weishidaier_reconnect_state.shot_pattern = PickupConfig.ShotPattern.SPIRAL
+	_expect(
+		coordinator.restore_reconnected_player_snapshot(
+			weishidaier_reconnect_player,
+			weishidaier_reconnect_state,
+			{},
+			_probe_net_time,
+			true,
+			1,
+			false
+		)
+		and weishidaier_reconnect_player.last_reconnect_form_mode
+			== PickupConfig.PlayerFormMode.NORMAL
+		and weishidaier_reconnect_player.last_reconnect_shot_pattern
+			== PickupConfig.ShotPattern.NORMAL,
+		"威士戴尔重连必须清除无剩余租期的雪狼形态，不能留下永久 10 倍螺旋射速。"
+	)
 	tango_host_player.force_full_charge = false
 	_probe_net_time = 63.0
 	coordinator.handle_tango_electric_surge_request(6, 1)
@@ -1337,6 +1408,31 @@ func _run() -> void:
 		and _probe_action_broadcast_methods.back()
 			== &"net_tango_electric_surge_started",
 		"电涌必须分配独立激活序列并延长对应权威弹幕生命周期。"
+	)
+	tango_host_player.force_full_charge = true
+	var overlapping_snow_sequence := (
+		coordinator.begin_authoritative_tango_snow_wolf_auto_fire(
+			tango_host_player,
+			Vector2.DOWN
+		)
+	)
+	active_surge_record = coordinator.get_active_tango_electric_surge_record(6)
+	_expect(
+		overlapping_snow_sequence == 5
+		and int(active_surge_record.get("charge_sequence", 0)) == 5
+		and is_equal_approx(
+			coordinator.get_tango_laser_barrage_maximum_seconds(6, 1.0),
+			MpPlayerCoordinator.TANGO_SNOW_WOLF_AUTO_FIRE_DURATION_SECONDS
+		),
+		"雪狼叠加电涌时必须推进并重绑同一弹幕序列，不能让服务端寿命回落到普通 5 秒。"
+	)
+	tango_host_player.force_full_charge = false
+	_expect(
+		is_equal_approx(
+			coordinator.get_tango_laser_barrage_maximum_seconds(6, 1.0),
+			MpPlayerCoordinator.TANGO_ELECTRIC_SURGE_DURATION_SECONDS
+		),
+		"雪狼结束后，重绑序列必须继续由仍存活的电涌提供 8 秒服务端上限。"
 	)
 	_probe_net_time = 64.0
 	coordinator.send_active_tango_electric_surges_to_peer(9)
@@ -1415,10 +1511,39 @@ func _run() -> void:
 		and not coordinator.has_local_tango_prediction(),
 		"Host 拒绝必须只终止匹配的本地探戈预测。"
 	)
+	tango_client_player.force_full_charge = true
+	coordinator.apply_tango_charge_released(
+		1,
+		7,
+		Vector2.RIGHT,
+		1.0,
+		3,
+		0
+	)
+	_expect(
+		tango_client_player.reconciled_barrage_count == 2
+		and is_equal_approx(tango_client_player.last_charge_ratio, 1.0)
+		and not coordinator.has_local_tango_prediction(),
+		"Host 自主持有的 request_id=0 雪狼终端必须能启动本地玩家的满充自动弹幕。"
+	)
+	tango_client_player.force_full_charge = false
 
 	var tango_remote_player := ProbeTangoPlayer.new()
 	tango_remote_player.peer_id = 8
 	runtime.peer_players[8] = tango_remote_player
+	coordinator.apply_tango_charge_released(
+		1,
+		8,
+		Vector2.UP,
+		1.0,
+		1,
+		0
+	)
+	_expect(
+		tango_remote_player.remote_barrage_count == 1
+		and is_equal_approx(tango_remote_player.last_charge_ratio, 1.0),
+		"Host 自主持有的 request_id=0 雪狼终端必须同样启动远端玩家表现。"
+	)
 	coordinator.apply_tango_electric_surge_started(
 		1,
 		8,
@@ -1655,6 +1780,7 @@ func _run() -> void:
 	runtime.peer_players.erase(6)
 	runtime.peer_players.erase(7)
 	runtime.peer_players.erase(8)
+	runtime.peer_players.erase(9)
 	runtime.peer_players.erase(1)
 	runtime.peer_players.erase(11)
 	runtime.peer_players.erase(12)
@@ -1665,6 +1791,7 @@ func _run() -> void:
 	tango_host_player.free()
 	tango_client_player.free()
 	tango_remote_player.free()
+	weishidaier_reconnect_player.free()
 	tiyi_host_player.free()
 	tiyi_remote_host_player.free()
 	tiyi_client_player.free()

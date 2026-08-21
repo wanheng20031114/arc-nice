@@ -2,6 +2,9 @@ extends Player
 class_name AmmoRangedPlayer
 
 const DEFAULT_BULLET_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
+const SNOW_WOLF_POJUN_CONFIG := preload(
+	"res://resources/config/pickup_triggered_items/snow_wolf_pojun.tres"
+)
 const ARMED_ANIMATION_PREFIX := &"armed"
 const SPIRAL_PHASE_STEP := PI / 12.0
 
@@ -521,9 +524,23 @@ func _apply_multiplayer_character_realtime_state(
 			new_is_reloading,
 			new_reload_progress
 		)
+	var previous_fire_rate_multiplier := form_fire_rate_multiplier
 	current_form_mode = new_form_mode
 	current_shot_pattern = new_shot_pattern
+	form_fire_rate_multiplier = (
+		SNOW_WOLF_POJUN_CONFIG.fire_rate_multiplier
+		if (
+			current_form_mode == PickupConfig.PlayerFormMode.ARMED
+			and current_shot_pattern == PickupConfig.ShotPattern.SPIRAL
+		)
+		else DEFAULT_FIRE_RATE_MULTIPLIER
+	)
 	form_buff_time_left = 0.0
+	if not is_equal_approx(
+		previous_fire_rate_multiplier,
+		form_fire_rate_multiplier
+	):
+		_refresh_shooting_timer_wait_time()
 
 
 func has_active_multiplayer_character_state() -> bool:

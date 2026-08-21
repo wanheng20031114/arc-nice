@@ -188,7 +188,10 @@ extends RefCounted
 ## 专属可靠 CH9 依次承载拓扑与 Relay 服务 RPC，使 ADD 先于对应注册到达；
 ## 注册元组只由 Relay 认证账本单次转发，公网与 LAN 因而统一支持 2..8 人。
 ## v90 及更旧客户端缺少该帧协议与拓扑信道，不能与 v91 混联。
-const PROTOCOL_VERSION := 91
+## v92：拾取消费改为单一原子 collected 终端，并与 spawn/普通 remove 共用可靠
+## CH5 有序世界事件流，消除跨信道 remove-before-collected 与 collect-before-spawn。
+## v91 及更旧客户端使用不同 RPC 信道合同，不能与 v92 混联。
+const PROTOCOL_VERSION := 92
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF

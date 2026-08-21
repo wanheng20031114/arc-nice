@@ -102,7 +102,8 @@ var _electric_surge_last_seen_activation_id := 0
 var _electric_surge_origin := Vector2.ZERO
 var _electric_surge_auto_fire_activation_id := 0
 var _electric_surge_auto_fire_charge_sequence := 0
-var _electric_surge_finished_barrage_sequence := 0
+var _empowered_auto_fire_charge_sequence := 0
+var _empowered_auto_fire_finished_barrage_sequence := 0
 
 
 func _init() -> void:
@@ -139,23 +140,71 @@ func _apply_character_pickup(config: PickupConfig, _buff_duration: float) -> boo
 		or snow_wolf_full_charge_timer == null
 	):
 		return false
-	_activate_snow_wolf_full_charge(config.tango_full_charge_duration, true)
-	return true
+	return _activate_snow_wolf_full_charge(
+		config.tango_full_charge_duration,
+		true,
+		_should_run_authoritative_collectible_effects()
+	)
 
 
 func _activate_snow_wolf_full_charge(
 	duration_seconds: float,
-	refresh_duration: bool
-) -> void:
-	if snow_wolf_full_charge_timer == null:
-		return
+	refresh_duration: bool,
+	authoritative: bool = false
+) -> bool:
+	if (
+		snow_wolf_full_charge_timer == null
+		or is_dead
+		or are_combat_actions_locked()
+	):
+		return false
+	var was_active := is_snow_wolf_full_charge_active()
+	var previous_remaining_seconds := get_snow_wolf_full_charge_remaining_seconds()
 	if refresh_duration or snow_wolf_full_charge_timer.is_stopped():
 		snow_wolf_full_charge_timer.start(maxf(duration_seconds, 0.001))
-	if _casting_state == CastingState.CHARGING:
-		_charge_elapsed = MAX_CHARGE_DURATION
-		_update_charge_animation_speed()
-		_stop_charge_audio()
+	var initial_direction := _get_empowered_auto_fire_direction()
+	var needs_new_sequence := not was_active or not is_tango_barrage_active()
+	if (
+		authoritative
+		and needs_new_sequence
+		and _requires_multiplayer_gameplay_gateway()
+	):
+		if gameplay_gateway == null:
+			_restore_snow_wolf_lease_after_failed_activation(
+				was_active,
+				previous_remaining_seconds
+			)
+			return false
+		var charge_sequence := (
+			gameplay_gateway.begin_authoritative_tango_snow_wolf_auto_fire(
+				self,
+				initial_direction
+			)
+		)
+		if charge_sequence <= 0:
+			_restore_snow_wolf_lease_after_failed_activation(
+				was_active,
+				previous_remaining_seconds
+			)
+			return false
+		_empowered_auto_fire_charge_sequence = maxi(
+			_empowered_auto_fire_charge_sequence,
+			charge_sequence
+		)
+	_ensure_empowered_auto_fire(initial_direction, authoritative)
+	_refresh_empowered_attack_bar_state()
 	_update_attack_interval_bar()
+	return is_tango_empowered_auto_fire_active()
+
+
+func _restore_snow_wolf_lease_after_failed_activation(
+	was_active: bool,
+	previous_remaining_seconds: float
+) -> void:
+	if was_active and previous_remaining_seconds > 0.0:
+		snow_wolf_full_charge_timer.start(previous_remaining_seconds)
+	else:
+		snow_wolf_full_charge_timer.stop()
 
 
 func is_snow_wolf_full_charge_active() -> bool:
@@ -169,6 +218,121 @@ func get_snow_wolf_full_charge_remaining_seconds() -> float:
 	if not is_snow_wolf_full_charge_active():
 		return 0.0
 	return snow_wolf_full_charge_timer.time_left
+
+
+func is_tango_empowered_auto_fire_active() -> bool:
+	return _is_empowered_auto_fire_requested() and is_tango_barrage_active()
+
+
+func _is_empowered_auto_fire_requested() -> bool:
+	return is_snow_wolf_full_charge_active() or _electric_surge_active
+
+
+func _get_empowered_auto_fire_remaining_seconds() -> float:
+	return maxf(
+		get_snow_wolf_full_charge_remaining_seconds(),
+		get_electric_surge_remaining_seconds()
+	)
+
+
+func _get_empowered_auto_fire_direction() -> Vector2:
+	var directional_input := _get_current_shoot_input()
+	if directional_input.length_squared() > 0.001:
+		if uses_local_input:
+			_attack_aim_uses_mouse = false
+		return _get_safe_tango_direction(directional_input)
+	if uses_local_input:
+		# Automatic barrages follow the pointer without requiring the attack button.
+		_attack_aim_uses_mouse = true
+		var mouse_direction := _get_mouse_shoot_direction()
+		if mouse_direction.length_squared() > 0.001:
+			return _get_safe_tango_direction(mouse_direction)
+	else:
+		_attack_aim_uses_mouse = false
+	return _get_safe_tango_direction(last_attack_direction)
+
+
+func _ensure_empowered_auto_fire(
+	direction: Vector2,
+	authoritative: bool
+) -> void:
+	if (
+		not _is_empowered_auto_fire_requested()
+		or is_dead
+		or are_combat_actions_locked()
+	):
+		return
+	var safe_direction := _get_safe_tango_direction(direction)
+	if _casting_state == CastingState.CHARGING:
+		_local_charge_input_active = false
+		_cancel_charge_visual()
+	if is_tango_barrage_active():
+		_set_barrage_direction(safe_direction)
+		_apply_barrage_release_profile(1.0)
+		_barrage_is_authoritative = _barrage_is_authoritative or authoritative
+		_refresh_empowered_auto_fire_lifetime()
+		return
+	_start_barrage_sequence(safe_direction, 1.0, authoritative)
+	_refresh_empowered_auto_fire_lifetime()
+
+
+func _refresh_empowered_auto_fire_lifetime() -> void:
+	if not _is_empowered_auto_fire_requested() or not is_tango_barrage_active():
+		return
+	_barrage_duration = maxf(
+		_barrage_elapsed + _get_empowered_auto_fire_remaining_seconds(),
+		BARRAGE_EPSILON
+	)
+
+
+func _release_empowered_auto_fire_if_unrequested() -> void:
+	if _is_empowered_auto_fire_requested():
+		_refresh_empowered_auto_fire_lifetime()
+		return
+	_empowered_auto_fire_finished_barrage_sequence = maxi(
+		_empowered_auto_fire_finished_barrage_sequence,
+		maxi(
+			_latest_remote_action_sequence,
+			_empowered_auto_fire_charge_sequence
+		)
+	)
+	_empowered_auto_fire_charge_sequence = 0
+	_barrage_is_authoritative = false
+	if _casting_state in [CastingState.CONVERGING, CastingState.FIRING]:
+		_begin_return_to_orbit()
+
+
+func _clear_snow_wolf_auto_fire_state() -> void:
+	if snow_wolf_full_charge_timer != null:
+		snow_wolf_full_charge_timer.stop()
+	_release_empowered_auto_fire_if_unrequested()
+	_refresh_empowered_attack_bar_state()
+	_update_attack_interval_bar()
+
+
+func _suspend_snow_wolf_auto_fire_for_lock() -> void:
+	if not is_snow_wolf_full_charge_active() or not is_tango_barrage_active():
+		return
+	# Combat/life locks stop gameplay execution but do not consume the timed pickup
+	# lease. Keep its sequence/remaining time so unlock/revive resumes the source.
+	_barrage_is_authoritative = false
+	_begin_return_to_orbit()
+
+
+func _resume_snow_wolf_auto_fire_after_lock() -> void:
+	if (
+		not is_snow_wolf_full_charge_active()
+		or is_dead
+		or are_combat_actions_locked()
+		or is_tango_barrage_active()
+	):
+		return
+	_ensure_empowered_auto_fire(
+		_get_empowered_auto_fire_direction(),
+		_should_run_authoritative_collectible_effects()
+	)
+	_refresh_empowered_attack_bar_state()
+	_update_attack_interval_bar()
 
 
 func resolve_authoritative_tango_charge_progress_ratio(
@@ -340,7 +504,7 @@ func is_electric_surge_auto_fire_active() -> bool:
 		_electric_surge_active
 		and _electric_surge_auto_fire_activation_id
 			== _electric_surge_activation_id
-		and is_tango_barrage_active()
+		and is_tango_empowered_auto_fire_active()
 	)
 
 
@@ -417,32 +581,14 @@ func _start_electric_surge_auto_fire(
 	):
 		return
 	_electric_surge_auto_fire_activation_id = activation_id
-	var initial_direction := _get_electric_surge_auto_fire_direction()
-	_start_barrage_sequence(initial_direction, 1.0, authoritative)
-	# The skill timer is the hard deadline. Keeping the barrage window at least as
-	# long as the remaining buff prevents the ordinary five-second profile from
-	# returning the units to orbit while Electric Surge is still active.
-	_barrage_duration = maxf(
-		get_electric_surge_remaining_seconds(),
-		BARRAGE_EPSILON
+	_empowered_auto_fire_charge_sequence = maxi(
+		_empowered_auto_fire_charge_sequence,
+		_electric_surge_auto_fire_charge_sequence
 	)
-
-
-func _get_electric_surge_auto_fire_direction() -> Vector2:
-	var directional_input := _get_current_shoot_input()
-	if directional_input.length_squared() > 0.001:
-		if uses_local_input:
-			_attack_aim_uses_mouse = false
-		return _get_safe_tango_direction(directional_input)
-	if uses_local_input:
-		# Mouse aim owns the automatic barrage even with no fire button held.
-		_attack_aim_uses_mouse = true
-		var mouse_direction := _get_mouse_shoot_direction()
-		if mouse_direction.length_squared() > 0.001:
-			return _get_safe_tango_direction(mouse_direction)
-	else:
-		_attack_aim_uses_mouse = false
-	return _get_safe_tango_direction(last_attack_direction)
+	_ensure_empowered_auto_fire(
+		_get_empowered_auto_fire_direction(),
+		authoritative
+	)
 
 
 func _stop_electric_surge_auto_fire(activation_id: int) -> void:
@@ -452,9 +598,7 @@ func _stop_electric_surge_auto_fire(activation_id: int) -> void:
 	):
 		return
 	_electric_surge_auto_fire_activation_id = 0
-	_barrage_is_authoritative = false
-	if _casting_state in [CastingState.CONVERGING, CastingState.FIRING]:
-		_begin_return_to_orbit()
+	_release_empowered_auto_fire_if_unrequested()
 
 
 func _spawn_authoritative_electric_surge_field(
@@ -518,6 +662,8 @@ func _on_electric_surge_duration_timer_timeout() -> void:
 
 
 func _on_snow_wolf_full_charge_timer_timeout() -> void:
+	_release_empowered_auto_fire_if_unrequested()
+	_refresh_empowered_attack_bar_state()
 	_update_attack_interval_bar()
 
 
@@ -529,21 +675,13 @@ func _finish_electric_surge_state() -> void:
 
 func _clear_electric_surge_state() -> void:
 	var ending_activation_id := _electric_surge_activation_id
-	if ending_activation_id == _electric_surge_auto_fire_activation_id:
-		_electric_surge_finished_barrage_sequence = maxi(
-			_electric_surge_finished_barrage_sequence,
-			maxi(
-				_latest_remote_action_sequence,
-				_electric_surge_auto_fire_charge_sequence
-			)
-		)
 	if electric_surge_duration_timer != null:
 		electric_surge_duration_timer.stop()
-	_stop_electric_surge_auto_fire(ending_activation_id)
 	_electric_surge_active = false
 	_electric_surge_authoritative = false
 	_electric_surge_activation_id = 0
 	_electric_surge_origin = Vector2.ZERO
+	_stop_electric_surge_auto_fire(ending_activation_id)
 	_electric_surge_auto_fire_charge_sequence = 0
 	_refresh_electric_surge_research_defense()
 	if electric_surge_audio != null:
@@ -559,9 +697,7 @@ func _refresh_electric_surge_research_defense() -> void:
 
 
 func _set_electric_surge_visual_state(active: bool) -> void:
-	var tango_attack_bar := attack_interval_bar as PlayerAttackIntervalBar
-	if tango_attack_bar != null:
-		tango_attack_bar.set_empowered_active(active)
+	_refresh_empowered_attack_bar_state()
 	var surge_strength := 1.0 if active else 0.0
 	for unit in _casting_unit_sprites:
 		unit.set_instance_shader_parameter(
@@ -570,6 +706,14 @@ func _set_electric_surge_visual_state(active: bool) -> void:
 		)
 	if is_node_ready():
 		_update_attack_interval_bar()
+
+
+func _refresh_empowered_attack_bar_state() -> void:
+	var tango_attack_bar := attack_interval_bar as PlayerAttackIntervalBar
+	if tango_attack_bar != null:
+		tango_attack_bar.set_empowered_active(
+			_is_empowered_auto_fire_requested()
+		)
 
 
 func _get_character_fire_rate_multiplier() -> float:
@@ -697,17 +841,18 @@ func _apply_multiplayer_character_realtime_state(
 		and shot_pattern == PickupConfig.ShotPattern.SPIRAL
 	)
 	if should_apply_full_charge:
-		_activate_snow_wolf_full_charge(
-			snow_wolf_full_charge_timer.wait_time,
-			false
-		)
+		if snow_wolf_full_charge_timer.is_stopped():
+			_activate_snow_wolf_full_charge(
+				snow_wolf_full_charge_timer.wait_time,
+				false,
+				false
+			)
 	elif not snow_wolf_full_charge_timer.is_stopped():
-		snow_wolf_full_charge_timer.stop()
-		_update_attack_interval_bar()
+		_clear_snow_wolf_auto_fire_state()
 
 
 func apply_multiplayer_tango_charge_snapshot(ratio: float, facing_id: int) -> void:
-	if _electric_surge_active:
+	if _is_empowered_auto_fire_requested():
 		super.apply_multiplayer_primary_cooldown_ratio(0.0)
 		return
 	var safe_ratio := clampf(ratio, 0.0, 1.0)
@@ -777,20 +922,24 @@ func _update_character_resources(delta: float) -> void:
 			else:
 				cancel_authoritative_tango_charge()
 		return
+	if is_tango_empowered_auto_fire_active() and not uses_local_input:
+		var network_aim := _get_current_shoot_input()
+		if network_aim.length_squared() > 0.001:
+			_set_barrage_direction(network_aim)
 	if _casting_state == CastingState.CHARGING:
-		_charge_elapsed = (
+		_charge_elapsed = minf(
+			_charge_elapsed + maxf(delta, 0.0),
 			MAX_CHARGE_DURATION
-			if is_snow_wolf_full_charge_active()
-			else minf(
-				_charge_elapsed + maxf(delta, 0.0),
-				MAX_CHARGE_DURATION
-			)
 		)
 		_update_charge_animation_speed()
 
 
 func _handle_primary_attack_input(shoot_input: Vector2) -> void:
 	if are_combat_actions_locked() or is_dead:
+		return
+	if _is_empowered_auto_fire_requested():
+		if shoot_input.length_squared() > 0.001:
+			_set_barrage_direction(shoot_input)
 		return
 	if shoot_input.length_squared() > 0.001:
 		var safe_direction := _get_safe_tango_direction(shoot_input)
@@ -814,7 +963,6 @@ func _handle_primary_attack_input(shoot_input: Vector2) -> void:
 
 
 func _begin_local_charge_request(direction: Vector2) -> void:
-	var uses_instant_full_charge := _electric_surge_active
 	var accepted := false
 	if _requires_multiplayer_gameplay_gateway():
 		accepted = (
@@ -825,14 +973,6 @@ func _begin_local_charge_request(direction: Vector2) -> void:
 		accepted = try_authoritative_tango_charge_started(direction)
 	if not accepted:
 		_local_charge_input_active = false
-		return
-	if uses_instant_full_charge:
-		_local_charge_input_active = false
-		# A local Host already entered the authoritative sequence inside the request
-		# bridge. A client starts the same full-charge visual immediately and is
-		# reconciled by the existing reliable barrage-start confirmation.
-		if _casting_state == CastingState.ORBIT:
-			_start_barrage_sequence(direction, 1.0, false)
 		return
 	_local_charge_input_active = true
 	if _casting_state == CastingState.ORBIT:
@@ -879,7 +1019,7 @@ func try_authoritative_tango_charge_started(direction: Vector2) -> bool:
 	if (
 		is_dead
 		or are_combat_actions_locked()
-		or _electric_surge_active
+		or _is_empowered_auto_fire_requested()
 		or _casting_state != CastingState.ORBIT
 	):
 		return false
@@ -935,7 +1075,7 @@ func play_remote_tango_charge_started(direction: Vector2, sequence: int) -> void
 	if is_dead or are_combat_actions_locked():
 		return
 	var safe_direction := _get_safe_tango_direction(direction)
-	if is_electric_surge_auto_fire_active():
+	if _is_empowered_auto_fire_requested():
 		_set_barrage_direction(safe_direction)
 		return
 	_begin_charge_visual(safe_direction)
@@ -950,8 +1090,12 @@ func play_remote_tango_barrage_started(
 		return
 	if is_dead or are_combat_actions_locked() or not is_finite(charge_ratio):
 		return
-	if is_electric_surge_auto_fire_active():
-		_set_barrage_direction(direction)
+	if _is_empowered_auto_fire_requested():
+		_empowered_auto_fire_charge_sequence = maxi(
+			_empowered_auto_fire_charge_sequence,
+			sequence
+		)
+		_ensure_empowered_auto_fire(direction, false)
 		return
 	_start_barrage_sequence(
 		_get_safe_tango_direction(direction),
@@ -968,13 +1112,17 @@ func reconcile_predicted_tango_barrage_started(
 	if not _accept_remote_tango_charge_terminal(sequence):
 		return
 	if is_dead or are_combat_actions_locked() or not is_finite(charge_ratio):
-		if not is_electric_surge_auto_fire_active():
+		if not _is_empowered_auto_fire_requested():
 			_cancel_charge_visual()
 		return
 	var safe_direction := _get_safe_tango_direction(direction)
 	var safe_ratio := clampf(charge_ratio, 0.0, 1.0)
-	if is_electric_surge_auto_fire_active():
-		_set_barrage_direction(safe_direction)
+	if _is_empowered_auto_fire_requested():
+		_empowered_auto_fire_charge_sequence = maxi(
+			_empowered_auto_fire_charge_sequence,
+			sequence
+		)
+		_ensure_empowered_auto_fire(safe_direction, false)
 		return
 	if _casting_state in [CastingState.CONVERGING, CastingState.FIRING]:
 		_set_barrage_direction(safe_direction)
@@ -999,7 +1147,7 @@ func reconcile_predicted_tango_barrage_started(
 func play_remote_tango_charge_cancelled(sequence: int) -> void:
 	if not _accept_remote_tango_charge_terminal(sequence):
 		return
-	if is_electric_surge_auto_fire_active():
+	if _is_empowered_auto_fire_requested():
 		return
 	_cancel_charge_visual()
 
@@ -1028,7 +1176,7 @@ func reconcile_predicted_tango_charge_started(
 	if is_dead or are_combat_actions_locked():
 		reject_predicted_tango_charge()
 		return
-	if is_electric_surge_auto_fire_active():
+	if _is_empowered_auto_fire_requested():
 		return
 	if _casting_state == CastingState.CHARGING:
 		return
@@ -1044,7 +1192,7 @@ func reconcile_predicted_tango_charge_started(
 
 func reject_predicted_tango_charge() -> void:
 	_local_charge_input_active = false
-	if is_electric_surge_auto_fire_active():
+	if _is_empowered_auto_fire_requested():
 		return
 	_cancel_charge_visual()
 
@@ -1073,21 +1221,14 @@ func _accept_remote_tango_charge_terminal(sequence: int) -> bool:
 
 func _begin_charge_visual(direction: Vector2) -> void:
 	_casting_state_to(CastingState.CHARGING)
-	_charge_elapsed = (
-		MAX_CHARGE_DURATION
-		if is_snow_wolf_full_charge_active()
-		else 0.0
-	)
+	_charge_elapsed = 0.0
 	_charge_direction = direction
 	_attack_aim_uses_mouse = uses_local_input and mouse_fire_held
 	last_attack_direction = direction
 	_update_facing(Vector2.ZERO, direction)
 	_set_casting_unit_animation(&"charge")
 	_update_charge_animation_speed()
-	if is_snow_wolf_full_charge_active():
-		_stop_charge_audio()
-	else:
-		_play_charge_audio()
+	_play_charge_audio()
 
 
 func _cancel_charge_visual() -> void:
@@ -1116,12 +1257,6 @@ func _start_barrage_sequence(
 	authoritative: bool
 ) -> void:
 	var safe_ratio := clampf(charge_ratio, 0.0, 1.0)
-	if (
-		uses_local_input
-		and _electric_surge_active
-		and _electric_surge_auto_fire_activation_id <= 0
-	):
-		_attack_aim_uses_mouse = mouse_fire_held
 	_barrage_direction = _get_safe_tango_direction(direction)
 	_apply_barrage_release_profile(safe_ratio)
 	_barrage_elapsed = 0.0
@@ -1231,7 +1366,7 @@ func apply_remote_tango_barrage_snapshot(
 ) -> void:
 	if (
 		charge_sequence <= 0
-		or charge_sequence <= _electric_surge_finished_barrage_sequence
+		or charge_sequence <= _empowered_auto_fire_finished_barrage_sequence
 		or charge_sequence < _latest_remote_action_sequence
 		or not is_finite(charge_ratio)
 		or not is_finite(barrage_remaining_seconds)
@@ -1244,10 +1379,14 @@ func apply_remote_tango_barrage_snapshot(
 		return
 	_set_barrage_direction(direction)
 	_apply_barrage_release_profile(clampf(charge_ratio, 0.0, 1.0))
-	var surge_auto_fire_active := is_electric_surge_auto_fire_active()
-	if surge_auto_fire_active:
+	var empowered_auto_fire_active := _is_empowered_auto_fire_requested()
+	if empowered_auto_fire_active:
+		_empowered_auto_fire_charge_sequence = maxi(
+			_empowered_auto_fire_charge_sequence,
+			charge_sequence
+		)
 		_barrage_duration = maxf(
-			get_electric_surge_remaining_seconds(),
+			_get_empowered_auto_fire_remaining_seconds(),
 			BARRAGE_EPSILON
 		)
 	var signed_remaining := clampf(
@@ -1255,10 +1394,9 @@ func apply_remote_tango_barrage_snapshot(
 		-UNIT_RETURN_DURATION,
 		_barrage_duration
 	)
-	if surge_auto_fire_active:
-		# The reliable skill timer owns the replica's lifetime. Volley snapshots only
-		# reconcile aim while the automatic barrage is active, so cross-channel
-		# packet order cannot shorten it back to the ordinary five-second profile.
+	if empowered_auto_fire_active:
+		# Reliable empowered timers own replica lifetime. Volley snapshots reconcile
+		# aim only, so cross-channel order cannot shorten the shared automatic barrage.
 		signed_remaining = _barrage_duration
 	# Remote replicas never emit gameplay bullets. The Host batch itself is the
 	# cadence source, so skip their local predicted volley schedule after a sync.
@@ -1632,20 +1770,30 @@ func _update_animation() -> void:
 func _on_controls_lock_changed(locked: bool) -> void:
 	super._on_controls_lock_changed(locked)
 	if locked:
+		# Snow Wolf is forced automatic fire; a local modal only removes steering
+		# input and must not create Host/client authority differences in its cadence.
 		_finish_electric_surge_state()
+	else:
+		_resume_snow_wolf_auto_fire_after_lock()
 
 
 func _on_combat_actions_lock_changed(locked: bool) -> void:
 	super._on_combat_actions_lock_changed(locked)
 	if locked:
+		var preserves_snow_wolf_lease := is_snow_wolf_full_charge_active()
+		_suspend_snow_wolf_auto_fire_for_lock()
 		_finish_electric_surge_state()
 		if _casting_state == CastingState.CHARGING and uses_local_input:
 			_request_local_charge_cancel()
-		_reset_tango_combat_state(not is_dead)
+		if not preserves_snow_wolf_lease:
+			_reset_tango_combat_state(not is_dead)
+	else:
+		_resume_snow_wolf_auto_fire_after_lock()
 
 
 func _cleanup_character_combat_on_death() -> void:
 	super._cleanup_character_combat_on_death()
+	_suspend_snow_wolf_auto_fire_for_lock()
 	_finish_electric_surge_state()
 	_reset_tango_combat_state(false)
 	if casting_units != null:
@@ -1654,8 +1802,7 @@ func _cleanup_character_combat_on_death() -> void:
 
 func _clear_character_scene_transients() -> void:
 	super._clear_character_scene_transients()
-	if snow_wolf_full_charge_timer != null:
-		snow_wolf_full_charge_timer.stop()
+	_clear_snow_wolf_auto_fire_state()
 	_finish_electric_surge_state()
 	_reset_tango_combat_state(true)
 	if casting_units != null:
@@ -1670,6 +1817,7 @@ func _reset_character_resources_on_revive() -> void:
 	if casting_units != null:
 		casting_units.show()
 		_update_orbit_visuals(0.0)
+	_resume_snow_wolf_auto_fire_after_lock()
 
 
 func _reset_tango_combat_state(show_units: bool) -> void:
@@ -1687,6 +1835,7 @@ func _reset_tango_combat_state(show_units: bool) -> void:
 	_barrage_volley_count = 0
 	_electric_surge_auto_fire_activation_id = 0
 	_electric_surge_auto_fire_charge_sequence = 0
+	_empowered_auto_fire_charge_sequence = 0
 	_attack_aim_uses_mouse = false
 	_requires_neutral_before_charge = false
 	_unit_converge_elapsed = 0.0

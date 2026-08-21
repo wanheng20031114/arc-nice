@@ -356,7 +356,7 @@ try {
     $relayReadyMarker = (
         "[Relay] 服务器已启动, port=$Port, max_clients=$PlayerCount, " +
         "transport_clients=$([Math]::Min($PlayerCount + 8, 16)), " +
-	        "protocol=v91, " +
+	        "protocol=v92, " +
         "startup_idle=$(Format-RelayProbeSeconds $RelayStartupIdleTimeoutSeconds), " +
         "empty_idle=$(Format-RelayProbeSeconds $RelayEmptyIdleTimeoutSeconds), " +
         "max_lifetime=$(Format-RelayProbeSeconds $relayMaxLifetimeSeconds), " +

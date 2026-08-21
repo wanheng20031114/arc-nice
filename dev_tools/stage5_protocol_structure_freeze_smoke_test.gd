@@ -22,7 +22,7 @@ const EXPECTED_MP_GAME_RPC_SIGNATURE_HASH := (
 	"fd2dc29d17a31a875aa83d8bf4823f1525f381915f3ccafecdd7c22d68b40560"
 )
 const EXPECTED_MP_GAME_RPC_ANNOTATION_HASH := (
-	"04b2b355044d63a143b114fa508dd1ca55166e606d89a1815bff7a508418704a"
+	"2503b6474eac0cdc23ab780582ee805b9131df49d761da72c548bce9e4f9b3b8"
 )
 
 const EXPECTED_NET_MANAGER_RPC_COUNT := 17
@@ -340,7 +340,7 @@ func _strip_quotes(value: String) -> String:
 
 
 func _test_protocol_and_wire_values() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 91, "多人协议必须保持 v91。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 92, "多人协议必须保持 v92。")
 	_expect(
 		NET_CONSTANTS.CH_MEMBERSHIP == 8
 		and NET_CONSTANTS.ENET_MAX_CHANNEL == 8

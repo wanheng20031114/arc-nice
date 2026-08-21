@@ -115,8 +115,8 @@ func _test_standard_registry() -> void:
 	await process_frame
 	await process_frame
 	_expect(
-		terminal_events == ["removed:1000", "collected:1000"],
-		"消费后 tree_exited 必须被成对抑制，且移除/收集广播顺序保持不变。"
+		terminal_events == ["collected:1000"],
+		"消费必须只发布原子收集终结，后续 tree_exited 不得再竞争发布移除。"
 	)
 	_expect(
 		registry.pending_multiplayer_pickup_exit_ids.is_empty()
@@ -219,10 +219,10 @@ func _test_tree_less_standard_facade() -> void:
 	game._on_multiplayer_pickup_consumed(pickup, 2, true)
 	game._on_multiplayer_pickup_tree_exited(77)
 	_expect(
-		removed_ids == [77]
+		removed_ids.is_empty()
 		and collected_ids == [77]
 		and registry.pending_multiplayer_pickup_exit_ids.is_empty(),
-		"StandardGame.new() 的 tree-less 注册表必须保持消费/退出配对语义。"
+		"StandardGame.new() 的 tree-less 注册表必须保持原子消费/退出抑制语义。"
 	)
 	pickup.free()
 	game.free()
@@ -294,12 +294,12 @@ func _test_tree_less_tower_registry() -> void:
 		PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
 	)
 	_expect(
-		terminal_events == ["removed:1000", "collected:1000"]
+		terminal_events == ["collected:1000"]
 		and registry.pending_multiplayer_pickup_exit_ids.is_empty()
 		and game.get_pickup_for_net_id(
 			PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
 		) == null,
-		"塔防 PickupRegistry 必须保持消费、移除与退出抑制顺序。"
+		"塔防 PickupRegistry 必须以单一收集终结完成消费与退出抑制。"
 	)
 	pickup.free()
 	game.free()
@@ -401,6 +401,7 @@ func _test_source_boundaries() -> void:
 		"_register_dynamic_multiplayer_pickup_from_ref",
 		"handle_multiplayer_pickup_consumed",
 		"mark_multiplayer_pickup_removed",
+		"_claim_multiplayer_pickup_consumption",
 	]:
 		_expect(
 			base_source.contains(neutral_algorithm)

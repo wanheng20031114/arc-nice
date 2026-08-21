@@ -26,8 +26,10 @@ class LegacyPickupLifecycle:
 		var net_id := int(pickup.get_meta("net_id", 0))
 		if net_id <= 0:
 			return
-		if not mark_removed(net_id, true):
+		if pending_exit_ids.has(net_id) or not pickup_index.has(net_id):
 			return
+		pending_exit_ids[net_id] = true
+		pickup_index.erase(net_id)
 		gameplay_gateway.pickup_collected.emit(
 			net_id,
 			collector_peer_id,
@@ -203,9 +205,9 @@ func _measure_legacy(pickup: Pickup, samples: Array[int]) -> int:
 	_expect(
 		registry.pickup_index.is_empty()
 		and registry.pending_exit_ids.is_empty()
-		and int(counts["removed"]) == EVENTS_PER_SAMPLE
+		and int(counts["removed"]) == 0
 		and int(counts["collected"]) == EVENTS_PER_SAMPLE,
-		"旧版 Pickup 对照轨迹不完整。"
+		"原子 Pickup 对照轨迹不完整。"
 	)
 	gateway.free()
 	return state_hash
@@ -252,9 +254,9 @@ func _measure_extracted(pickup: Pickup, samples: Array[int]) -> int:
 	_expect(
 		runtime.get_network_pickup_count() == 0
 		and registry.pending_multiplayer_pickup_exit_ids.is_empty()
-		and int(counts["removed"]) == EVENTS_PER_SAMPLE
+		and int(counts["removed"]) == 0
 		and int(counts["collected"]) == EVENTS_PER_SAMPLE,
-		"提取后 Pickup 轨迹必须与旧版严格一致。"
+		"提取后 Pickup 轨迹必须保持单一收集终结。"
 	)
 	registry.free()
 	runtime.free()

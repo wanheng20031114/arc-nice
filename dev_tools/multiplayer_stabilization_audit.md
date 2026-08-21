@@ -1,10 +1,12 @@
 # 多人模式稳定化全量审计记录
 
-> 2026-08-21 当前网络基线为协议 v91。应用层继续使用 CH0..CH8 九条逻辑信道；公网 Relay 的认证感知 `MultiplayerPeerExtension` 另外使用可靠 CH9 依次发布拓扑并承载 Relay 服务控制，公网 ENet 最大信道索引为 9。文中的 v90 与 v9 小节均为历史快照，不能据此判断当前容量或协议状态。
+> 2026-08-21 当前网络基线为协议 v92。应用层继续使用 CH0..CH8 九条逻辑信道；公网 Relay 的认证感知 `MultiplayerPeerExtension` 另外使用可靠 CH9 依次发布拓扑并承载 Relay 服务控制，公网 ENet 最大信道索引为 9。v92 将拾取 spawn/collected/remove 统一为 CH5 有序世界事件；文中的 v91、v90 与 v9 小节均为历史快照，不能据此判断当前协议状态。
 
-## 2026-08-21 当前 v91 增量摘要
+## 2026-08-21 当前 v92 增量摘要
 
-公网 Relay 的容量合同现已统一为最小 2 人、默认 4 人、最大 8 人（均含 Host）。大厅 API、RoomManager、Launcher、Relay 启动参数、认证后业务容量检查与客户端房间 UI 共享同一 2..8 边界；DIRECT/LAN 的最大人数同样为 8。发行门禁仍应在目标 Godot 二进制上完成 Host + 7 members 的真实 E2E、断线、重连、丢包与长时 soak，不能只凭静态常量宣称动态链路已经稳定。
+v92 把拾取消费收敛为单一 collected 终端，并让 spawn/collected/remove 共用 reliable CH5；旧 v91 使用不同的 RPC 信道注解，必须在准入阶段拒绝混联。
+
+公网 Relay 的容量合同继续保持最小 2 人、默认 4 人、最大 8 人（均含 Host）。大厅 API、RoomManager、Launcher、Relay 启动参数、认证后业务容量检查与客户端房间 UI 共享同一 2..8 边界；DIRECT/LAN 的最大人数同样为 8。发行门禁仍应在目标 Godot 二进制上完成 Host + 7 members 的真实 E2E、断线、重连、丢包与长时 soak，不能只凭静态常量宣称动态链路已经稳定。
 
 v91 不再依赖 `SceneMultiplayer.server_relay` 的私有 mesh。Relay 只把验票成功的物理 peer 加入认证感知包装层的可路由集合，并显式发布幂等 ADD/REMOVE 拓扑帧与转发业务数据：
 

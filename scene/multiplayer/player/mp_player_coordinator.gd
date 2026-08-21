@@ -72,6 +72,7 @@ const PLAYER_ACTION_INGRESS_RATE_BURST := 32.0
 const HOE_ACTION_PRIMARY := &"primary"
 const HOE_ACTION_WHIRLWIND := &"whirlwind"
 const TANGO_BARRAGE_MAXIMUM_SECONDS := 5.0
+const TANGO_SNOW_WOLF_AUTO_FIRE_DURATION_SECONDS := 20.0
 const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
 const TANGO_CHARGE_PHASE_START := "start"
 const TANGO_CHARGE_PHASE_RELEASE := "release"
@@ -1219,6 +1220,47 @@ func apply_authoritative_tango_charge_started(
 	return true
 
 
+func begin_authoritative_tango_snow_wolf_auto_fire(
+	owner_player: Player,
+	direction: Vector2
+) -> int:
+	if (
+		not has_player_action_dependencies()
+		or not _action_net_manager.is_host()
+		or not _is_finite_vector2(direction)
+	):
+		return 0
+	var tango_player := owner_player as PlayerTango
+	if tango_player == null or not tango_player.is_snow_wolf_full_charge_active():
+		return 0
+	var peer_id := tango_player.peer_id
+	if peer_id <= 0 or _get_tango_player(peer_id) != tango_player:
+		return 0
+	if _active_tango_charges_by_peer.has(peer_id):
+		cancel_authoritative_tango_charge(peer_id, true)
+	var charge_sequence := get_tango_charge_sequence(peer_id) + 1
+	_tango_charge_sequences_by_peer[peer_id] = charge_sequence
+	var surge_record := _active_tango_electric_surges_by_peer.get(
+		peer_id,
+		{}
+	) as Dictionary
+	if not surge_record.is_empty():
+		surge_record["charge_sequence"] = charge_sequence
+		_active_tango_electric_surges_by_peer[peer_id] = surge_record
+	var safe_direction := _sanitize_tango_charge_direction(
+		tango_player,
+		direction
+	)
+	# request_id=0 identifies a Host-owned automatic release rather than a client
+	# charge transaction. It still uses the ordered Tango terminal stream so an
+	# earlier manual charge cancellation cannot race the empowered barrage.
+	player_action_rpc_broadcast_requested.emit(
+		&"net_tango_charge_released",
+		[peer_id, safe_direction, 1.0, charge_sequence, 0]
+	)
+	return charge_sequence
+
+
 func apply_authoritative_tango_charge_released(
 	peer_id: int,
 	direction: Vector2,
@@ -1379,7 +1421,7 @@ func apply_tango_charge_released(
 	if (
 		peer_id <= 0
 		or charge_sequence <= 0
-		or request_id <= 0
+		or request_id < 0
 		or not _is_finite_vector2(direction)
 		or not is_finite(charge_ratio)
 		or charge_ratio < 0.0
@@ -1394,7 +1436,7 @@ func apply_tango_charge_released(
 		_tango_charge_sequences_by_peer[peer_id] = charge_sequence
 	var safe_direction := _sanitize_tango_charge_direction(tango_player, direction)
 	if peer_id == _get_action_local_peer_id():
-		if request_id != _local_tango_active_request_id:
+		if request_id > 0 and request_id != _local_tango_active_request_id:
 			return
 		tango_player.reconcile_predicted_tango_barrage_started(
 			safe_direction,
@@ -1506,6 +1548,14 @@ func get_tango_laser_barrage_maximum_seconds(
 	charge_ratio: float
 ) -> float:
 	var charge_sequence := get_tango_charge_sequence(owner_peer_id)
+	var tango_player := _get_tango_player(owner_peer_id)
+	if (
+		tango_player != null
+		and tango_player.is_snow_wolf_full_charge_active()
+		and charge_sequence > 0
+		and charge_ratio >= 1.0 - TANGO_CHARGE_THRESHOLD_EPSILON
+	):
+		return TANGO_SNOW_WOLF_AUTO_FIRE_DURATION_SECONDS
 	var active_surge_record := _active_tango_electric_surges_by_peer.get(
 		owner_peer_id,
 		{}
@@ -5032,11 +5082,16 @@ func _apply_realtime_snapshot(
 	)
 	var snapshot_form_mode := player_state.form_mode
 	var snapshot_shot_pattern := player_state.shot_pattern
-	if preserve_persistent_progression and player_node is PlayerTango:
+	if (
+		preserve_persistent_progression
+		and snapshot_form_mode == PickupConfig.PlayerFormMode.ARMED
+		and snapshot_shot_pattern == PickupConfig.ShotPattern.SPIRAL
+	):
 		# Snow Wolf is a scene-local timed pickup. Reconnect snapshots do not carry
-		# its remaining duration, so restoring ARMED+SPIRAL would mint a fresh
-		# 20-second lease. Clear only this Tango transient on reconnect; ordinary
-		# realtime/late-join snapshots still reproduce the active presentation.
+		# its remaining duration, so restoring ARMED+SPIRAL would mint a fresh Tango
+		# lease or leave an AmmoRangedPlayer at permanent 10x cadence. Clear this
+		# transient for every character; ordinary realtime/late-join snapshots still
+		# reproduce the active Host-owned presentation.
 		snapshot_form_mode = PickupConfig.PlayerFormMode.NORMAL
 		snapshot_shot_pattern = PickupConfig.ShotPattern.NORMAL
 	var snapshot_xirang := player_state.current_xirang

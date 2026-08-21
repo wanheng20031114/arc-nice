@@ -6,6 +6,7 @@ const WORLD_FLOW_COORDINATOR_SCENE := preload(
 const MpWorldFlowCoordinatorScript := preload(
 	"res://scene/multiplayer/world_flow/mp_world_flow_coordinator.gd"
 )
+const MP_GAME_SCRIPT_PATH := "res://scene/multiplayer/mp_game.gd"
 const BOSS_CONFIG_PATH := "res://resources/config/bosses/boss_01_linglan.tres"
 const PICKUP_CONFIG_PATH := "res://resources/config/materials/material_wood.tres"
 const IMMEDIATE_PICKUP_CONFIG_PATH := (
@@ -230,6 +231,15 @@ func _run() -> void:
 	runtime.add_child(pickup_container)
 	runtime.enemy_container = pickup_container
 	_expect(coordinator != null, "WorldFlowCoordinator 场景必须可实例化。")
+	var mp_game_script := load(MP_GAME_SCRIPT_PATH) as Script
+	var mp_game_rpc_config: Dictionary = mp_game_script.get_rpc_config()
+	var pickup_spawn_rpc := mp_game_rpc_config.get(&"net_pickup_spawned", {}) as Dictionary
+	var pickup_collect_rpc := mp_game_rpc_config.get(&"net_pickup_collected", {}) as Dictionary
+	_expect(
+		int(pickup_spawn_rpc.get("channel", -1)) == 5
+		and int(pickup_collect_rpc.get("channel", -1)) == 5,
+		"Pickup spawn/collect 必须共享可靠 CH5，保证动态实体先生成再原子终结。"
+	)
 	if coordinator == null:
 		quit(1)
 		return
@@ -361,7 +371,6 @@ func _run() -> void:
 			"Host smoke 必须先构造已提交的拾取物背包状态。"
 		)
 		gameplay_gateway.pickup_spawned.emit(31, pickup_config, Vector2(4, 5))
-		gameplay_gateway.pickup_removed.emit(31)
 		gameplay_gateway.pickup_collected.emit(31, 7, pickup_config, false)
 		if not pickup_broadcast_packets.is_empty():
 			var collected_packet := pickup_broadcast_packets.back() as Dictionary
@@ -380,23 +389,26 @@ func _run() -> void:
 				== run_state.get_inventory_revision_for_peer(7),
 				"Host 收集事件必须携带已提交 revision 的权威背包快照。"
 			)
+		gameplay_gateway.pickup_spawned.emit(33, pickup_config, Vector2(6, 7))
+		gameplay_gateway.pickup_removed.emit(33)
 	mode_adapter.merchant_active_changed.emit(true)
 	if boss_config != null:
 		mode_adapter.boss_started.emit(91, boss_config, Vector2(8, 9))
 	mode_adapter.defeat_started.emit()
 	mode_adapter.victory_started.emit()
 	_expect(
-		host_events.slice(host_events.size() - 7) == [
+		host_events.slice(host_events.size() - 8) == [
+			&"net_pickup_spawned",
+			&"net_pickup_collected",
 			&"net_pickup_spawned",
 			&"net_pickup_removed",
-			&"net_pickup_collected",
 			&"merchant",
 			&"boss",
 			&"defeat",
 			&"victory",
 		]
 		and terminal_events.size() == 2,
-		"Host 世界事件、Boss 与胜败必须保持统一有序出站。"
+		"Host 原子拾取、独立移除、Boss 与胜败必须保持统一有序出站。"
 	)
 
 	coordinator.unbind_runtime(runtime)

@@ -430,9 +430,9 @@ func receive_pickup_collected(
 	)
 	if pickup_config == null:
 		return false
-	# CH5 spawn 与 CH6 collect 可跨信道乱序，且 applied LRU 只提供有界去重。
-	# 因此世界注册表本身是最终幂等 fence：只有仍存在且配置一致的同一实例
-	# 才能消费效果或背包结果，迟到重复包和 collect-before-spawn 都请求修复。
+	# Spawn/collect 共用 CH5 的有序终端流；世界注册表仍是最终幂等 fence：
+	# 只有仍存在且配置一致的同一实例才能消费效果或背包结果，迟到重复包
+	# 以及快照边界产生的缺失实例都请求修复。
 	var expected_pickup := _runtime.get_network_pickup(net_id)
 	if (
 		expected_pickup == null

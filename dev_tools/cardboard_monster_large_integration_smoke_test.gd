@@ -131,7 +131,7 @@ func _test_fate_and_protocol_boundaries() -> void:
 		"命运精英映射必须保持10项，普通与大纸箱怪都不得拥有精英替换。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 91
+		NET_CONSTANTS.PROTOCOL_VERSION == 92
 		and NET_CONSTANTS.CHANNEL_COUNT == 9
 		and CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET
 		== 18
@@ -139,7 +139,7 @@ func _test_fate_and_protocol_boundaries() -> void:
 			&"cardboard_monster_large_slash"
 		) == CombatAttackRegistry.PlayerHitWireId.INVALID
 		and CombatAttackRegistry.decode_player_hit_source(19) == &"",
-		"协议v91必须保留九条逻辑信道、内容摘要、同局成员身份、大纸箱怪及既有 wire 合同。"
+		"协议v92必须保留九条逻辑信道、内容摘要、同局成员身份、大纸箱怪及既有 wire 合同。"
 	)
 	_expect(
 		GameModeCatalog.MODE_TEST_ARENA_P1C == 6

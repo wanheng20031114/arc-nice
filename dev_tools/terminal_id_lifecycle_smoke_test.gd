@@ -347,8 +347,8 @@ func _test_pickup_tree_exit_markers(runtime: CombatRuntimeBase, label: String) -
 		pickup_registry.handle_multiplayer_pickup_consumed(pickup, 2, true)
 		pickup_registry.handle_multiplayer_pickup_tree_exited(net_id)
 	_expect(
-		removed_ids.size() == PRESSURE_EVENT_COUNT,
-		"%s consumed pickups must emit one removal despite their later tree exit." % label
+		removed_ids.is_empty(),
+		"%s consumed pickups must not publish a competing generic removal." % label
 	)
 	_expect(
 		collected_ids.size() == PRESSURE_EVENT_COUNT,
@@ -363,7 +363,7 @@ func _test_pickup_tree_exit_markers(runtime: CombatRuntimeBase, label: String) -
 	runtime.register_network_pickup(spontaneous_net_id, pickup)
 	pickup_registry.handle_multiplayer_pickup_tree_exited(spontaneous_net_id)
 	_expect(
-		removed_ids.size() == PRESSURE_EVENT_COUNT + 1,
+		removed_ids.size() == 1,
 		"%s spontaneous pickup exit must still emit one generic removal." % label
 	)
 	_expect(

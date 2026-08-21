@@ -4,6 +4,9 @@ const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier
 const PLAYER_TEST_RUNTIME := preload(
 	"res://dev_tools/player_test_combat_runtime.gd"
 )
+const SNOW_WOLF_POJUN := preload(
+	"res://resources/config/pickup_triggered_items/snow_wolf_pojun.tres"
+)
 
 var failures: Array[String] = []
 var test_root: PlayerTestCombatRuntime
@@ -37,6 +40,7 @@ func _run() -> void:
 	_test_empty_ammo_starts_reload_and_completes()
 	_test_manual_reload_starts_from_empty()
 	_test_free_shot_chance_never_consumes_at_100_percent()
+	_test_snow_wolf_spiral_cadence_and_snapshot_repair()
 	_test_spiral_shot_ignores_ammo_and_reload()
 	_test_world_movement_mode_suppresses_ammo_hud()
 	_test_death_hides_and_revive_refills_ammo()
@@ -176,6 +180,87 @@ func _test_free_shot_chance_never_consumes_at_100_percent() -> void:
 	_expect(player.current_ammo == 5, "Free-ammo chance at 100% must not consume ammo.")
 	_expect(not player.is_reloading, "Free-ammo chance at 100% must not start reload when ammo remains.")
 	player.ammo_free_shot_chance_percent = 0.0
+
+
+func _test_snow_wolf_spiral_cadence_and_snapshot_repair() -> void:
+	_clear_player_bullets()
+	player.current_form_mode = PickupConfig.PlayerFormMode.NORMAL
+	player.current_shot_pattern = PickupConfig.ShotPattern.NORMAL
+	player.form_fire_rate_multiplier = Player.DEFAULT_FIRE_RATE_MULTIPLIER
+	var base_interval := float(player.call("_get_effective_fire_interval"))
+	_expect(
+		player.apply_pickup(SNOW_WOLF_POJUN)
+		and is_equal_approx(
+			float(player.call("_get_effective_fire_interval")),
+			base_interval / SNOW_WOLF_POJUN.fire_rate_multiplier
+		),
+		"Snow Wolf must accelerate Weishidaier's spiral volley cadence by exactly 10x."
+	)
+	for _volley_index in range(24):
+		player.shooting_timer.stop()
+		player.call("_try_auto_spiral_shoot")
+	_expect(
+		is_zero_approx(player.spiral_phase)
+		and _get_player_bullet_count() == 48,
+		"Twenty-four Snow Wolf volleys must complete one PI/12 spiral revolution with paired bullets."
+	)
+	player.call("_update_character_pickup_effects", SNOW_WOLF_POJUN.duration)
+	_expect(
+		player.current_form_mode == PickupConfig.PlayerFormMode.NORMAL
+		and player.current_shot_pattern == PickupConfig.ShotPattern.NORMAL
+		and is_equal_approx(
+			float(player.call("_get_effective_fire_interval")),
+			base_interval
+		),
+		"Snow Wolf expiry must restore Weishidaier's ordinary cadence."
+	)
+
+	player.call(
+		"_apply_multiplayer_character_realtime_state",
+		PickupConfig.PlayerFormMode.ARMED,
+		PickupConfig.ShotPattern.SPIRAL,
+		player.get_ammo_capacity(),
+		player.current_ammo,
+		player.is_reloading,
+		player.reload_progress
+	)
+	var repaired_interval := float(player.call("_get_effective_fire_interval"))
+	player.call(
+		"_apply_multiplayer_character_realtime_state",
+		PickupConfig.PlayerFormMode.ARMED,
+		PickupConfig.ShotPattern.SPIRAL,
+		player.get_ammo_capacity(),
+		player.current_ammo,
+		player.is_reloading,
+		player.reload_progress
+	)
+	_expect(
+		is_equal_approx(player.form_fire_rate_multiplier, 10.0)
+		and is_equal_approx(repaired_interval, base_interval / 10.0)
+		and is_equal_approx(
+			float(player.call("_get_effective_fire_interval")),
+			repaired_interval
+		),
+		"A fresh or repeated ARMED+SPIRAL multiplayer repair must restore, not stack or omit, Snow Wolf's 10x cadence."
+	)
+	player.call(
+		"_apply_multiplayer_character_realtime_state",
+		PickupConfig.PlayerFormMode.NORMAL,
+		PickupConfig.ShotPattern.NORMAL,
+		player.get_ammo_capacity(),
+		player.current_ammo,
+		player.is_reloading,
+		player.reload_progress
+	)
+	_expect(
+		is_equal_approx(player.form_fire_rate_multiplier, 1.0)
+		and is_equal_approx(
+			float(player.call("_get_effective_fire_interval")),
+			base_interval
+		),
+		"A NORMAL multiplayer snapshot must remove the repaired Snow Wolf cadence."
+	)
+	_clear_player_bullets()
 
 
 func _test_spiral_shot_ignores_ammo_and_reload() -> void:

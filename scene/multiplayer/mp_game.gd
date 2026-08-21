@@ -1384,6 +1384,16 @@ func request_tango_electric_surge() -> bool:
 	)
 
 
+func begin_authoritative_tango_snow_wolf_auto_fire(
+	owner_player: Player,
+	direction: Vector2
+) -> int:
+	return player_coordinator.begin_authoritative_tango_snow_wolf_auto_fire(
+		owner_player,
+		direction
+	)
+
+
 func spawn_authoritative_tango_electric_surge_field(
 	owner_player: Player,
 	activation_id: int,
@@ -6121,7 +6131,7 @@ func net_pickup_spawned(net_id: int, config_path: String, pos_x: float, pos_y: f
 	)
 
 
-@rpc("authority", "call_remote", "reliable", 6)
+@rpc("authority", "call_remote", "reliable", 5)
 func net_pickup_collected(
 	net_id: int,
 	collector_peer_id: int,

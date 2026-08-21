@@ -123,6 +123,26 @@ func mark_multiplayer_pickup_removed(
 	return true
 
 
+func _claim_multiplayer_pickup_consumption(
+	net_id: int,
+	expected_pickup: Pickup
+) -> bool:
+	if (
+		net_id <= 0
+		or expected_pickup == null
+		or _runtime == null
+		or _gameplay_gateway == null
+		or pending_multiplayer_pickup_exit_ids.has(net_id)
+	):
+		return false
+	if _runtime.unregister_network_pickup(net_id, expected_pickup) == null:
+		return false
+	# Collection is one atomic world terminal. Suppress the consumed node's later
+	# tree-exit callback without publishing a competing generic removal packet.
+	pending_multiplayer_pickup_exit_ids[net_id] = true
+	return true
+
+
 func handle_multiplayer_pickup_consumed(
 	pickup: Pickup,
 	collector_peer_id: int,
@@ -135,7 +155,7 @@ func handle_multiplayer_pickup_consumed(
 	)
 	if net_id <= 0:
 		return
-	if not mark_multiplayer_pickup_removed(net_id, true, pickup):
+	if not _claim_multiplayer_pickup_consumption(net_id, pickup):
 		return
 	_gameplay_gateway.pickup_collected.emit(
 		net_id,

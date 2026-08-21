@@ -827,7 +827,7 @@ func net_pickup_removed(net_id: int) -> void:
 func net_pickup_spawned(net_id: int, config_path: String, pos_x: float, pos_y: float) -> void:
 	pass
 
-@rpc("authority", "call_remote", "reliable", 6)
+@rpc("authority", "call_remote", "reliable", 5)
 func net_pickup_collected(
 	net_id: int,
 	collector_peer_id: int,

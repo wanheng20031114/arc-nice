@@ -213,7 +213,9 @@ func _test_snow_wolf_full_charge_contract() -> void:
 		is_equal_approx(SNOW_WOLF_POJUN.duration, 5.0)
 		and is_equal_approx(SNOW_WOLF_POJUN.tango_full_charge_duration, 20.0)
 		and SNOW_WOLF_POJUN.description.contains("探戈")
-		and SNOW_WOLF_POJUN.description.contains("20秒"),
+		and SNOW_WOLF_POJUN.description.contains("20秒")
+		and SNOW_WOLF_POJUN.description.contains("自动开火")
+		and SNOW_WOLF_POJUN.description.contains("控制射击方向"),
 		"Snow Wolf Po Jun must keep the ordinary five-second form and publish Tango's 20-second override."
 	)
 
@@ -230,9 +232,16 @@ func _test_snow_wolf_full_charge_contract() -> void:
 		player.apply_pickup(SNOW_WOLF_POJUN)
 		and player.is_snow_wolf_full_charge_active()
 		and player.get_snow_wolf_full_charge_remaining_seconds() > 19.9
-		and is_equal_approx(player.get_tango_charge_ratio(), 1.0)
+		and player.is_tango_empowered_auto_fire_active()
+		and player.get_tango_casting_state() == PlayerTango.CastingState.CONVERGING
+		and not player.is_tango_charge_active()
+		and is_equal_approx(player.get_tango_release_ratio(), 1.0)
+		and is_equal_approx(player.get_tango_release_charge_seconds(), 2.4)
+		and is_equal_approx(player.get_tango_barrage_damage_multiplier(), 1.5)
+		and player.get_tango_barrage_duration() > 19.9
+		and bool(player.get("_barrage_is_authoritative"))
 		and is_equal_approx(player.skill1_charge, 7.0),
-		"Collecting Snow Wolf mid-charge must consume it, fill primary charge immediately, and leave skill charge untouched."
+		"Collecting Snow Wolf mid-charge must replace charging with one authoritative full-charge automatic barrage."
 	)
 	_expect(
 		player.get_multiplayer_form_mode() == PickupConfig.PlayerFormMode.ARMED
@@ -241,65 +250,105 @@ func _test_snow_wolf_full_charge_contract() -> void:
 		"Snow Wolf's Tango state must occupy the existing form/pattern snapshot contract."
 	)
 	_expect(
-		is_equal_approx(
-			player.resolve_authoritative_tango_charge_progress_ratio(0.0),
-			1.0
-		)
-		and is_equal_approx(
-			player.resolve_authoritative_tango_charge_release_ratio(0.0),
-			1.0
-		),
-		"The Host must see full progress and permit an immediate full-charge release."
-	)
-	var immediate_release := player.try_authoritative_tango_charge_released(
-		Vector2.RIGHT,
-		player.resolve_authoritative_tango_charge_release_ratio(0.0)
-	)
-	_expect(
-		bool(immediate_release.get("accepted", false))
-		and bool(immediate_release.get("fired", false))
-		and is_equal_approx(player.get_tango_release_ratio(), 1.0)
-		and is_equal_approx(player.get_tango_release_charge_seconds(), 2.4)
-		and is_equal_approx(player.get_tango_barrage_duration(), 5.0)
-		and is_equal_approx(player.get_tango_barrage_damage_multiplier(), 1.5),
-		"An immediate Snow Wolf release must use Tango's complete full-charge barrage profile."
-	)
-
-	player.call("_reset_tango_combat_state", true)
-	_expect(
 		is_equal_approx(player.get_primary_attack_cooldown_ratio(), 1.0)
 		and is_zero_approx(player.get_primary_cooldown_ratio()),
-		"Snow Wolf must keep the idle local HUD full without publishing a fake active charge in snapshots."
+		"Snow Wolf must keep the local HUD full without publishing a synthetic held-charge ratio."
 	)
-	var idle_snow_states := PlayerSnapshotEncoder.collect_once({1: player})
-	var idle_snow_state := idle_snow_states[0]
+	var snow_states := PlayerSnapshotEncoder.collect_once({1: player})
+	var snow_state := snow_states[0]
 	_expect(
-		idle_snow_state.form_mode == PickupConfig.PlayerFormMode.ARMED
-		and idle_snow_state.shot_pattern == PickupConfig.ShotPattern.SPIRAL
-		and is_zero_approx(idle_snow_state.primary_cooldown_ratio),
-		"An idle Snow Wolf snapshot must publish only its form bit, never a synthetic active-charge ratio."
+		snow_state.form_mode == PickupConfig.PlayerFormMode.ARMED
+		and snow_state.shot_pattern == PickupConfig.ShotPattern.SPIRAL
+		and is_zero_approx(snow_state.primary_cooldown_ratio),
+		"A Snow Wolf snapshot must publish its lease marker without impersonating an ordinary charge transaction."
 	)
-	player.call("_begin_charge_visual", Vector2.UP)
+	var volley_count_before_auto_fire := player.get_tango_barrage_volley_count()
+	player.call("_update_character_combat_state", PlayerTango.UNIT_CONVERGE_DURATION)
 	_expect(
-		is_equal_approx(player.get_tango_charge_ratio(), 1.0)
-		and is_equal_approx(player.get_primary_cooldown_ratio(), 1.0),
-		"Every real primary charge during the 20-second window must start full and publish a full active ratio."
+		player.get_tango_casting_state() == PlayerTango.CastingState.FIRING
+		and player.get_tango_barrage_volley_count() > volley_count_before_auto_fire
+		and _get_live_tango_laser_bullets().size() == 3,
+		"Snow Wolf must fire its first full-charge three-cannon volley without attack input."
 	)
+	player.call("_handle_primary_attack_input", Vector2.UP)
+	_expect(
+		Vector2(player.get("_barrage_direction")).is_equal_approx(Vector2.UP)
+		and player.is_tango_empowered_auto_fire_active()
+		and not player.is_tango_charge_active(),
+		"Attack input during Snow Wolf must steer the existing automatic barrage only."
+	)
+	player.call("_update_character_combat_state", 0.5)
+	var volley_count_before_refresh := player.get_tango_barrage_volley_count()
+	var elapsed_before_refresh := float(player.get("_barrage_elapsed"))
 	full_charge_timer.start(3.0)
 	_expect(
 		player.apply_pickup(SNOW_WOLF_POJUN)
-		and player.get_snow_wolf_full_charge_remaining_seconds() > 19.9,
-		"Collecting Snow Wolf again must refresh to 20 seconds instead of stacking duration."
+		and player.get_snow_wolf_full_charge_remaining_seconds() > 19.9
+		and player.get_tango_casting_state() == PlayerTango.CastingState.FIRING
+		and player.get_tango_barrage_volley_count() == volley_count_before_refresh
+		and player.get_tango_barrage_duration() > elapsed_before_refresh + 19.9,
+		"Collecting Snow Wolf again must refresh the lease without restarting or stacking the barrage."
+	)
+	var lease_before_control_lock := (
+		player.get_snow_wolf_full_charge_remaining_seconds()
+	)
+	player.set_control_lock(&"snow_wolf_smoke_ui", true)
+	_expect(
+		player.is_snow_wolf_full_charge_active()
+		and player.is_tango_empowered_auto_fire_active()
+		and player.get_tango_casting_state() == PlayerTango.CastingState.FIRING
+		and player.get_snow_wolf_full_charge_remaining_seconds()
+			> lease_before_control_lock - 0.1,
+		"Opening a local modal must remove steering only; forced Snow Wolf fire and its 20-second lease must continue."
+	)
+	player.set_control_lock(&"snow_wolf_smoke_ui", false)
+	_expect(
+		player.is_snow_wolf_full_charge_active()
+		and player.is_tango_empowered_auto_fire_active()
+		and player.get_tango_casting_state() == PlayerTango.CastingState.FIRING
+		and bool(player.get("_barrage_is_authoritative")),
+		"Closing the modal UI must preserve the same authoritative Snow Wolf barrage."
+	)
+	var lease_before_combat_lock := (
+		player.get_snow_wolf_full_charge_remaining_seconds()
+	)
+	player.set_combat_action_lock(&"snow_wolf_smoke_combat", true)
+	_expect(
+		player.is_snow_wolf_full_charge_active()
+		and not player.is_tango_empowered_auto_fire_active()
+		and player.get_snow_wolf_full_charge_remaining_seconds()
+			> lease_before_combat_lock - 0.1,
+		"A combat-action lock must suspend Snow Wolf without deleting its timed source."
+	)
+	player.set_combat_action_lock(&"snow_wolf_smoke_combat", false)
+	_expect(
+		player.is_tango_empowered_auto_fire_active()
+		and bool(player.get("_barrage_is_authoritative")),
+		"Removing the combat-action lock must resume Snow Wolf automatic fire."
+	)
+	var lease_before_death := player.get_snow_wolf_full_charge_remaining_seconds()
+	player.is_dead = true
+	player.call("_cleanup_character_combat_on_death")
+	_expect(
+		player.is_snow_wolf_full_charge_active()
+		and not player.is_tango_empowered_auto_fire_active()
+		and player.get_snow_wolf_full_charge_remaining_seconds()
+			> lease_before_death - 0.1,
+		"Death must stop Snow Wolf gameplay execution without deleting its still-running lease."
+	)
+	player.is_dead = false
+	player.call("_reset_character_resources_on_revive")
+	_expect(
+		player.is_snow_wolf_full_charge_active()
+		and player.is_tango_empowered_auto_fire_active()
+		and bool(player.get("_barrage_is_authoritative")),
+		"Revive must resume Snow Wolf automatic fire when time remains on the original lease."
 	)
 
-	full_charge_timer.stop()
+	for bullet in _get_live_tango_laser_bullets():
+		bullet.retire()
+	player.call("_clear_snow_wolf_auto_fire_state")
 	player.call("_reset_tango_combat_state", true)
-	player.call("_begin_charge_visual", Vector2.DOWN)
-	player.call("_update_character_resources", 0.6)
-	_expect(
-		is_equal_approx(player.get_tango_charge_ratio(), 0.25),
-		"The remote-state ordering probe must begin from a partial active charge."
-	)
 	player.call(
 		"_apply_multiplayer_character_realtime_state",
 		PickupConfig.PlayerFormMode.ARMED,
@@ -311,13 +360,11 @@ func _test_snow_wolf_full_charge_contract() -> void:
 	)
 	_expect(
 		player.is_snow_wolf_full_charge_active()
-		and is_equal_approx(player.get_tango_charge_ratio(), 1.0)
-		and is_equal_approx(
-			player.resolve_authoritative_tango_charge_release_ratio(0.0),
-			1.0
-		)
+		and player.is_tango_empowered_auto_fire_active()
+		and player.get_tango_casting_state() == PlayerTango.CastingState.CONVERGING
+		and not bool(player.get("_barrage_is_authoritative"))
 		and (attack_bar == null or attack_bar.is_ready),
-		"A late or remote form snapshot must fill an existing charge, its Host policy, and the HUD without a new protocol field."
+		"A late or repaired form snapshot must rebuild a presentation-only automatic barrage."
 	)
 	player.call(
 		"_apply_multiplayer_character_realtime_state",
@@ -329,26 +376,52 @@ func _test_snow_wolf_full_charge_contract() -> void:
 		0.0
 	)
 	_expect(
-		not player.is_snow_wolf_full_charge_active(),
-		"The authoritative normal-form snapshot must end a remote Snow Wolf state."
+		not player.is_snow_wolf_full_charge_active()
+		and not player.is_tango_empowered_auto_fire_active()
+		and player.get_tango_casting_state() == PlayerTango.CastingState.RETURNING,
+		"The authoritative normal-form snapshot must end the remote Snow Wolf barrage."
 	)
+	player.call("_update_character_combat_state", PlayerTango.UNIT_RETURN_DURATION)
 	player.call("_reset_tango_combat_state", true)
 
 	_expect(player.apply_pickup(SNOW_WOLF_POJUN), "Snow Wolf must remain reusable after a prior expiry.")
-	player.call("_reset_tango_combat_state", true)
-	player.call("_begin_charge_visual", Vector2.LEFT)
+	player.call("_begin_electric_surge", 40, Vector2.ZERO, 3.0, false, 0)
 	full_charge_timer.stop()
 	player.call("_on_snow_wolf_full_charge_timer_timeout")
 	_expect(
-		is_equal_approx(player.get_tango_charge_ratio(), 1.0),
-		"A charge already filled before timeout must remain legitimately full until released or cancelled."
+		player.is_electric_surge_active()
+		and player.is_tango_empowered_auto_fire_active(),
+		"Snow Wolf expiry must not stop an overlapping Electric Surge auto-fire source."
 	)
-	player.cancel_authoritative_tango_charge()
-	player.call("_begin_charge_visual", Vector2.LEFT)
+	player.call("_on_electric_surge_duration_timer_timeout")
+	player.call("_update_character_combat_state", PlayerTango.UNIT_RETURN_DURATION)
 	_expect(
-		is_zero_approx(player.get_tango_charge_ratio())
-		and player.resolve_authoritative_tango_charge_release_ratio(0.0) < 0.0,
-		"After the 20-second state expires, the next primary attack must use ordinary held charging again."
+		player.apply_pickup(SNOW_WOLF_POJUN),
+		"Snow Wolf must start a second overlap lease for reverse-order teardown."
+	)
+	var snow_only_interval := float(player.call("_get_effective_fire_interval"))
+	player.call("_begin_electric_surge", 40, Vector2.ZERO, 3.0, false, 0)
+	var overlap_interval := float(player.call("_get_effective_fire_interval"))
+	player.call("_on_electric_surge_duration_timer_timeout")
+	_expect(
+		player.is_snow_wolf_full_charge_active()
+		and not player.is_electric_surge_active()
+		and player.is_tango_empowered_auto_fire_active()
+		and overlap_interval < snow_only_interval
+		and is_equal_approx(
+			float(player.call("_get_effective_fire_interval")),
+			snow_only_interval
+		),
+		"Electric Surge expiry must remove only its cadence bonus while an overlapping Snow Wolf barrage keeps firing."
+	)
+	full_charge_timer.stop()
+	player.call("_on_snow_wolf_full_charge_timer_timeout")
+	player.call("_update_character_combat_state", PlayerTango.UNIT_RETURN_DURATION)
+	_expect(player.try_authoritative_tango_charge_started(Vector2.LEFT), "Ordinary charging must return after every empowered source expires.")
+	player.call("_update_character_resources", 0.6)
+	_expect(
+		is_equal_approx(player.get_tango_charge_ratio(), 0.25),
+		"After the 20-second state expires, primary attack must use ordinary held charging again."
 	)
 	player.cancel_authoritative_tango_charge()
 	_expect(player.apply_pickup(SNOW_WOLF_POJUN), "Snow Wolf must apply before scene-transient cleanup.")
@@ -358,6 +431,9 @@ func _test_snow_wolf_full_charge_contract() -> void:
 		"Changing combat scenes must clear the Snow Wolf full-charge timer."
 	)
 	player.call("_reset_tango_combat_state", true)
+	player.set("_latest_remote_action_sequence", 0)
+	player.set("_latest_remote_action_phase", 0)
+	player.set("_empowered_auto_fire_finished_barrage_sequence", 0)
 	_stop_audio_players(player)
 
 

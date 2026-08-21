@@ -250,6 +250,13 @@ func request_tango_electric_surge() -> bool
 
 
 @abstract
+func begin_authoritative_tango_snow_wolf_auto_fire(
+	owner_player: Player,
+	direction: Vector2
+) -> int
+
+
+@abstract
 func spawn_authoritative_tango_electric_surge_field(
 	owner_player: Player,
 	activation_id: int,

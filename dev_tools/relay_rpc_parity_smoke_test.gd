@@ -477,8 +477,8 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 91,
-		"协议v91必须冻结认证注册转发、Relay身份绑定与既有内容合同。"
+		NetConstants.PROTOCOL_VERSION == 92,
+		"协议v92必须冻结认证注册转发、Relay身份绑定与既有内容合同。"
 	)
 	_expect(
 		NetConstants.CH_MEMBERSHIP == 8
@@ -488,7 +488,7 @@ func _run() -> void:
 		and NetConstants.RELAY_SERVICE_CHANNEL == 9
 		and NetConstants.RELAY_ENET_MAX_CHANNEL == 9,
 		(
-			"Protocol v91 must keep application CH0..CH8 and order Relay "
+			"Protocol v92 must keep application CH0..CH8 and order Relay "
 			+ "topology plus service traffic on reliable CH9."
 		)
 	)
@@ -530,7 +530,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v91 hosts must accept exactly v91 and reject v90."
+		"Protocol v92 hosts must accept exactly v92 and reject v91."
 	)
 	var pending_relay_registration := {
 		"request_id": 7,
@@ -686,7 +686,7 @@ func _test_relay_channel_count() -> void:
 		and relay_source.contains("const RELAY_SERVICE_CHANNEL := RELAY_CONTROL_CHANNEL")
 		and relay_source.contains("const ENET_MAX_CHANNEL := RELAY_CONTROL_CHANNEL")
 		and relay_source.contains("const CHANNEL_COUNT := CH_MEMBERSHIP + 1")
-		and relay_source.contains("const PROTOCOL_VERSION := 91")
+		and relay_source.contains("const PROTOCOL_VERSION := 92")
 		and relay_source.contains("const MAX_CLIENTS := 8")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, transport_capacity, ENET_MAX_CHANNEL)")
@@ -1326,8 +1326,8 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 			"Gameplay RPC %s uses out-of-range channel %d." % [method_name, channel]
 		)
 	_expect(
-		channel_counts.get(NetConstants.CH_WORLD_EVENT, 0) == 60,
-		"Protocol v91 must expose exactly 60 MpGame RPCs on reliable world-event CH5."
+		channel_counts.get(NetConstants.CH_WORLD_EVENT, 0) == 61,
+		"Protocol v92 must expose exactly 61 MpGame RPCs on reliable world-event CH5."
 	)
 
 	_expect_rpc_channel(rpcs, "net_runtime_state_requested", NetConstants.CH_AUTH)
@@ -1372,6 +1372,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_nearest_plant_destruction_requested",
 		"net_plant_damage_status_changed",
 		"net_plant_removed",
+		"net_pickup_collected",
 		"net_base_health_changed",
 		"net_terrain_snapshot_chunk",
 		"net_terrain_delta",
@@ -1387,7 +1388,6 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_inventory_snapshot",
 		"net_simple_crafting_requested",
 		"net_simple_crafting_result",
-		"net_pickup_collected",
 		"net_xiaocong_interaction_requested",
 		"net_xiaocong_fate_vote_requested",
 		"net_xiaocong_collectible_choice_requested",
