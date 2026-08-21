@@ -851,6 +851,17 @@ func _apply_multiplayer_character_realtime_state(
 		_clear_snow_wolf_auto_fire_state()
 
 
+func finalize_multiplayer_reconnect_state() -> void:
+	super.finalize_multiplayer_reconnect_state()
+	# PlayerState 不携带普通蓄力/弹幕或强化租期的完整事务标识与剩余时长。
+	# 重连协调器已丢弃旧 request/sequence，因此 EXISTING_CURRENT 复用节点也
+	# 必须把 CHARGING/CONVERGING/FIRING/RETURNING 统一收回 ORBIT；只清 CHARGING
+	# 会让旧权威弹幕继续发射，或让副本在无终端事件时卡在返回状态。
+	_clear_snow_wolf_auto_fire_state()
+	_clear_electric_surge_state()
+	_reset_tango_combat_state(true)
+
+
 func apply_multiplayer_tango_charge_snapshot(ratio: float, facing_id: int) -> void:
 	if _is_empowered_auto_fire_requested():
 		super.apply_multiplayer_primary_cooldown_ratio(0.0)

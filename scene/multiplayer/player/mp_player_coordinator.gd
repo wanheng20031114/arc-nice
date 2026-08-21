@@ -4788,7 +4788,7 @@ func restore_reconnected_player_snapshot(
 	)
 	_apply_primary_cooldown_ratio(
 		player_node,
-		player_state.primary_cooldown_ratio,
+		0.0,
 		player_state.facing,
 		player_state.peer_id == local_peer_id and local_tango_prediction_active
 	)
@@ -4802,6 +4802,7 @@ func restore_reconnected_player_snapshot(
 	# 技能高水位；普通重连生命按上方比例保留并已钳制到新上限。
 	if not player_node.apply_run_progression_snapshot(progression_snapshot, true):
 		return false
+	player_node.finalize_multiplayer_reconnect_state()
 	if is_host:
 		remember_latest_client_state(
 			true,
@@ -5080,18 +5081,27 @@ func _apply_realtime_snapshot(
 		if preserve_persistent_progression
 		else player_state.skill1_charge_duration
 	)
+	var snapshot_invincibility_time_left := (
+		0.0
+		if preserve_persistent_progression
+		else (
+			player_state.invincibility_time_left
+			if apply_snapshot_health
+			else player_node.invincibility_time_left
+		)
+	)
 	var snapshot_form_mode := player_state.form_mode
 	var snapshot_shot_pattern := player_state.shot_pattern
 	if (
 		preserve_persistent_progression
-		and snapshot_form_mode == PickupConfig.PlayerFormMode.ARMED
-		and snapshot_shot_pattern == PickupConfig.ShotPattern.SPIRAL
+		and (
+			snapshot_form_mode != PickupConfig.PlayerFormMode.NORMAL
+			or snapshot_shot_pattern != PickupConfig.ShotPattern.NORMAL
+		)
 	):
-		# Snow Wolf is a scene-local timed pickup. Reconnect snapshots do not carry
-		# its remaining duration, so restoring ARMED+SPIRAL would mint a fresh Tango
-		# lease or leave an AmmoRangedPlayer at permanent 10x cadence. Clear this
-		# transient for every character; ordinary realtime/late-join snapshots still
-		# reproduce the active Host-owned presentation.
+		# 角色形态字段当前只承载场景内限时拾取。HoeCat 用 ARMED+NORMAL，
+		# AmmoRanged/Tango 用 ARMED+SPIRAL；按某一枚举组合清洗会让另一角色
+		# 在重连后凭空续租。重连统一归零，实时/晚加入快照仍照常重现 Host 状态。
 		snapshot_form_mode = PickupConfig.PlayerFormMode.NORMAL
 		snapshot_shot_pattern = PickupConfig.ShotPattern.NORMAL
 	var snapshot_xirang := player_state.current_xirang
@@ -5118,11 +5128,7 @@ func _apply_realtime_snapshot(
 		snapshot_max_health if apply_snapshot_health else player_node.max_health,
 		snapshot_xirang,
 		player_state.is_dead if apply_snapshot_health else player_node.is_dead,
-		(
-			player_state.invincibility_time_left
-			if apply_snapshot_health
-			else player_node.invincibility_time_left
-		),
+		snapshot_invincibility_time_left,
 		snapshot_skill1_unlocked,
 		player_state.skill1_charge,
 		snapshot_skill1_duration,
@@ -5137,9 +5143,17 @@ func _apply_realtime_snapshot(
 	if preserve_persistent_progression:
 		# 捕获值可能混入已过期减速/药水；新节点按当前永久层自行计算。
 		player_node.apply_multiplayer_effective_move_speed_multiplier(0.0)
+		player_node.apply_multiplayer_effective_fire_interval(0.0)
+		player_node.apply_multiplayer_visual_status_mask(0)
 	else:
 		player_node.apply_multiplayer_effective_move_speed_multiplier(
 			player_state.effective_move_speed_multiplier
+		)
+		player_node.apply_multiplayer_effective_fire_interval(
+			player_state.effective_fire_interval_seconds
+		)
+		player_node.apply_multiplayer_visual_status_mask(
+			player_state.visual_status_mask
 		)
 	player_node.apply_authoritative_void_battery_state(
 		player_state.void_battery_charged

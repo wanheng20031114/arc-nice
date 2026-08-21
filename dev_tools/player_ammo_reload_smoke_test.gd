@@ -35,6 +35,10 @@ func _run() -> void:
 	_stop_audio_players(player)
 
 	_test_initial_ammo_state()
+	_test_network_move_speed_override_clear_sentinel()
+	_test_network_fire_interval_override_and_clear()
+	_test_network_visual_status_mask_projection()
+	_test_reconnect_releases_ammo_capacity_snapshot_override()
 	_test_ammo_bar_separator_threshold()
 	_test_normal_shot_consumes_ammo()
 	_test_empty_ammo_starts_reload_and_completes()
@@ -83,6 +87,134 @@ func _test_initial_ammo_state() -> void:
 	_expect(player.ammo_bar.visible, "Ammo bar must be visible while player is alive.")
 	_expect(int(player.ammo_bar.get("max_ammo")) == 30, "Ammo bar must receive the player ammo capacity.")
 	_expect(int(player.ammo_bar.get("current_ammo")) == 30, "Ammo bar must receive current ammo.")
+
+
+func _test_network_move_speed_override_clear_sentinel() -> void:
+	var authoritative_speed := float(player.call("_get_effective_move_speed"))
+	player.apply_multiplayer_effective_move_speed_multiplier(0.25)
+	_expect(
+		is_equal_approx(
+			player.network_effective_move_speed_multiplier_override,
+			0.25
+		),
+		"A positive network movement multiplier must install the client-view override."
+	)
+
+	player.apply_multiplayer_effective_move_speed_multiplier(0.0)
+	_expect(
+		is_zero_approx(player.network_effective_move_speed_multiplier_override),
+		"A zero network movement multiplier must clear the override instead of clamping it to 0.05."
+	)
+	_expect(
+		is_equal_approx(
+			float(player.call("_get_effective_move_speed")),
+			authoritative_speed
+		),
+		"Clearing the network movement override must restore the authoritative movement speed."
+	)
+
+
+func _test_network_fire_interval_override_and_clear() -> void:
+	var authoritative_interval := player.get_authoritative_effective_fire_interval()
+	var network_interval := maxf(authoritative_interval * 0.5, 0.01)
+	player.apply_multiplayer_effective_fire_interval(network_interval)
+	_expect(
+		is_equal_approx(
+			float(player.call("_get_effective_fire_interval")),
+			network_interval
+		),
+		"A positive final fire interval snapshot must override the client-view firing cadence."
+	)
+
+	player.apply_multiplayer_effective_fire_interval(0.0)
+	_expect(
+		is_zero_approx(player.network_effective_fire_interval_override),
+		"A zero final fire interval must clear the client-view override."
+	)
+	_expect(
+		is_equal_approx(
+			float(player.call("_get_effective_fire_interval")),
+			authoritative_interval
+		),
+		"Clearing the final fire interval override must restore the authoritative cadence."
+	)
+
+
+func _test_network_visual_status_mask_projection() -> void:
+	var all_visual_statuses := (
+		Player.MULTIPLAYER_VISUAL_STATUS_BURN
+		| Player.MULTIPLAYER_VISUAL_STATUS_BLEED
+		| Player.MULTIPLAYER_VISUAL_STATUS_SLOWED
+		| Player.MULTIPLAYER_VISUAL_STATUS_HASTED
+		| Player.MULTIPLAYER_VISUAL_STATUS_HIDDEN
+	)
+	player.velocity = Vector2.RIGHT
+	player.apply_multiplayer_visual_status_mask(all_visual_statuses)
+	_expect(
+		player.network_visual_status_mask == all_visual_statuses
+		and is_equal_approx(
+			player._burn_overlay_strength,
+			Player.BURN_OVERLAY_ACTIVE_STRENGTH
+		)
+		and is_equal_approx(
+			player._bleed_overlay_strength,
+			Player.BLEED_OVERLAY_ACTIVE_STRENGTH
+		)
+		and is_equal_approx(
+			player._slow_overlay_strength,
+			Player.SLOW_OVERLAY_ACTIVE_STRENGTH
+		)
+		and player._speed_trail_effect_active
+		and not player.visible,
+		"An absolute network visual mask must project burn, bleed, slow, temporary haste and hidden presentation without rebuilding gameplay timers."
+	)
+
+	player.apply_multiplayer_visual_status_mask(0)
+	player.velocity = Vector2.ZERO
+	_expect(
+		player.network_visual_status_mask == 0
+		and is_zero_approx(player._burn_overlay_strength)
+		and is_zero_approx(player._bleed_overlay_strength)
+		and is_zero_approx(player._slow_overlay_strength)
+		and not player._speed_trail_effect_active
+		and player.visible,
+		"Clearing the absolute network visual mask must restore every presentation layer."
+	)
+
+
+func _test_reconnect_releases_ammo_capacity_snapshot_override() -> void:
+	player._run_ammo_capacity_bonus = 0
+	player.apply_multiplayer_ammo_state(30, 30, false, 0.0)
+	player._run_ammo_capacity_bonus = 10
+	player.finalize_multiplayer_reconnect_state()
+	_expect(
+		player._network_ammo_capacity_override == 0
+		and player.get_ammo_capacity() == 40
+		and player.current_ammo == 40,
+		"Reconnect finalization must release the old 30-round snapshot and expand full ammo to the current 40-round progression capacity."
+	)
+
+	player._run_ammo_capacity_bonus = 20
+	player.call("_on_collectible_ammunition_stats_refreshed")
+	_expect(
+		player.get_ammo_capacity() == 50 and player.current_ammo == 50,
+		"After reconnect finalization, later capacity progression must keep updating a full magazine instead of being blocked by the old snapshot override."
+	)
+
+	player.apply_multiplayer_ammo_state(50, 7, false, 0.0)
+	player._run_ammo_capacity_bonus = 5
+	player.finalize_multiplayer_reconnect_state()
+	_expect(
+		player.get_ammo_capacity() == 35 and player.current_ammo == 7,
+		"Reconnect finalization must preserve partial ammo while clamping it to the current derived capacity."
+	)
+
+	player._run_ammo_capacity_bonus = 0
+	player.call("_on_collectible_ammunition_stats_refreshed")
+	player.current_ammo = player.get_ammo_capacity()
+	player.is_reloading = false
+	player.reload_progress = 0.0
+	player.call("_update_ammo_bar")
 
 
 func _test_ammo_bar_separator_threshold() -> void:

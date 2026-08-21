@@ -3742,7 +3742,7 @@ func net_tiyi_high_noon_started(peer_id: int, activation_id: int) -> void:
 	)
 
 
-@rpc("authority", "call_remote", "unreliable_ordered", 7)
+@rpc("authority", "call_remote", "reliable", 5)
 func net_tiyi_high_noon_targets(
 	peer_id: int,
 	activation_id: int,

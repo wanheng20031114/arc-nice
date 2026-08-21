@@ -33,14 +33,16 @@ relay_servers/
 必须逐字节一致，并由 Relay parity/capacity 测试锁定。主游戏生产导出继续整体排除
 `relay_servers/*`，不会把大厅后端或 Headless Relay 工程打进客户端。
 
-当前网络基线为协议 v92。应用层使用 CH0..CH8 共 9 条逻辑信道；公网 Relay
+当前网络基线为协议 v93。应用层使用 CH0..CH8 共 9 条逻辑信道；公网 Relay
 的认证感知包装层另使用可靠 CH9 依次发布拓扑并承载 Relay 服务控制，因此公网
-ENet 最大信道索引为 9。v92 将拾取 spawn、原子 collected 终端与普通 remove
-统一放在 reliable CH5，旧 v91 的 collected 仍在 CH6，不能与 v92 安全混联。
+ENet 最大信道索引为 9。v93 扩展玩家快照以逐帧绝对复制最终开火间隔和临时
+表现状态，并把天依 High Noon 目标列表迁入 reliable CH5；v92 的玩家快照长度
+和 RPC 注解不同，不能与 v93 安全混联。v92 将拾取 spawn、原子 collected 终端
+与普通 remove 统一放在 reliable CH5，旧 v91 的 collected 仍在 CH6。
 v91 关闭 `SceneMultiplayer.server_relay` 的私有 mesh，
 只为已验票 transport 发布逻辑拓扑并显式转发数据包。v90 把公网成员的完整
 注册元组并入原生认证 envelope，当时把成员发现、身份查询、注册回执/拒绝和大厅名单
-统一放在 reliable CH8。v91 确立且 v92 保留的布局是：注册回执/拒绝与大厅名单等应用成员消息保留在 CH8；
+统一放在 reliable CH8。v91 确立且 v93 保留的布局是：注册回执/拒绝与大厅名单等应用成员消息保留在 CH8；
 ADD/REMOVE 逻辑 peer 拓扑与注册转发、身份查询/结果、踢人等 Relay 专用 RPC 都走 CH9。
 这三类消息都不与 Godot 引擎硬编码在 CH0 的 auth/peer-discovery 系统包共用应用队列。
 v90 及更旧客户端缺少 v91 的帧协议与
@@ -149,7 +151,7 @@ v35 的战斗机器人枪手弹丸及玩家受击来源 wire ID 17 保持兼容�
 P3 路线世界继续使用约 12Hz 的轻量角色姿态同步：
 Client 在输入信道上报，Host 校验后在玩家状态信道广播，非法位置通过可靠信道纠正。
 v34 的 P3 路线全量快照携带 `runtime_contract_hash`，Host 与 Client 必须使用相同的世界几何契约；
-v91 及更旧客户端不能加入 v92 房间。
+v92 及更旧客户端不能加入 v93 房间。
 Relay 只转发 RPC，不重复实现游戏状态逻辑；逻辑 Host 对不兼容、重连加载或
 运行时投影超时成员的断开请求会可靠发送至 Relay 服务端（peer 1）。Relay 只
 接受已登记 Host 的请求，并由服务端断开同房目标；普通客户端不能踢出其他成员。

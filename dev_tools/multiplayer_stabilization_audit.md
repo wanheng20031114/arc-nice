@@ -1,8 +1,12 @@
 # 多人模式稳定化全量审计记录
 
-> 2026-08-21 当前网络基线为协议 v92。应用层继续使用 CH0..CH8 九条逻辑信道；公网 Relay 的认证感知 `MultiplayerPeerExtension` 另外使用可靠 CH9 依次发布拓扑并承载 Relay 服务控制，公网 ENet 最大信道索引为 9。v92 将拾取 spawn/collected/remove 统一为 CH5 有序世界事件；文中的 v91、v90 与 v9 小节均为历史快照，不能据此判断当前协议状态。
+> 2026-08-21 当前网络基线为协议 v93。应用层继续使用 CH0..CH8 九条逻辑信道；公网 Relay 的认证感知 `MultiplayerPeerExtension` 另外使用可靠 CH9 依次发布拓扑并承载 Relay 服务控制，公网 ENet 最大信道索引为 9。v93 扩展 PlayerState 的逐帧绝对状态并把天依 High Noon 目标列表迁入 reliable CH5；文中的 v92、v91、v90 与 v9 小节均为历史快照，不能据此判断当前协议状态。
 
-## 2026-08-21 当前 v92 增量摘要
+## 2026-08-21 当前 v93 增量摘要
+
+v93 给 PlayerState 增加逐帧绝对的最终开火间隔和 burn/bleed/slow/haste/hide 表现位，避免强化射速、临时着色、尾迹和隐藏表现因跨信道乱序、丢包或晚加入永久偏离；这些位只驱动 CLIENT_VIEW 表现，不重放 Host 的伤害或倍率状态机。天依 High Noon 的目标列表同时迁入 reliable CH5，与 started/finished/cancelled 同信道有序。重连恢复额外统一清除场景临时形态、无敌、普通 Tango 蓄力、网络移速/射速覆盖，并在投影当前成长后释放旧弹容量快照覆盖。
+
+## 历史记录：2026-08-21 v92 增量摘要
 
 v92 把拾取消费收敛为单一 collected 终端，并让 spawn/collected/remove 共用 reliable CH5；旧 v91 使用不同的 RPC 信道注解，必须在准入阶段拒绝混联。
 

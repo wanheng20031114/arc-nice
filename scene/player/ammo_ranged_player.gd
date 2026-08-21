@@ -252,6 +252,27 @@ func apply_multiplayer_ammo_state(
 	_update_ammo_bar()
 
 
+func finalize_multiplayer_reconnect_state() -> void:
+	super.finalize_multiplayer_reconnect_state()
+	if _network_ammo_capacity_override <= 0:
+		return
+	var captured_capacity := maxi(_network_ammo_capacity_override, 1)
+	var captured_was_full := (
+		not is_reloading and current_ammo >= captured_capacity
+	)
+	# PlayerState 的容量只用于普通 CLIENT_VIEW 收敛。重连替换成 Host 节点后
+	# 必须释放它，再读取断线期间已经投影到当前账本的真实派生容量。
+	_network_ammo_capacity_override = 0
+	var projected_capacity := get_ammo_capacity()
+	current_ammo = (
+		projected_capacity
+		if captured_was_full
+		else mini(current_ammo, projected_capacity)
+	)
+	_last_effective_ammo_capacity = projected_capacity
+	_update_ammo_bar()
+
+
 func _reset_ammo_to_full() -> void:
 	var effective_capacity := get_ammo_capacity()
 	current_ammo = effective_capacity

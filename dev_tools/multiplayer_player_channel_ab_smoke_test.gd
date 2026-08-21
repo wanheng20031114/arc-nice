@@ -116,10 +116,15 @@ func _make_legacy_unchanged_delta(
 	stream.put_32(state.peer_id)
 	stream.put_32(state.sequence)
 	stream.put_u8(0)
-	# v56 retains the v54 absolute realtime-status byte even when the delta mask is
-	# empty. This arm remains "legacy" only in its lost-motion semantics, not in
-	# its wire version.
-	stream.put_u8(0)
+	# 保持 v93 的四字节绝对实时状态；这个 A 分支只模拟旧“运动字段按变化
+	# 发送”的语义，不伪造已经不兼容的旧 wire 长度。
+	stream.put_u8(1 if state.void_battery_charged else 0)
+	stream.put_u8(clampi(state.visual_status_mask, 0, 255))
+	stream.put_u16(clampi(
+		roundi(state.effective_fire_interval_seconds * 1000.0),
+		0,
+		65535
+	))
 	var packet := PackedByteArray([1])
 	packet.append_array(stream.data_array)
 	return packet
@@ -241,12 +246,12 @@ func _run_eight_player_packet_budget() -> void:
 		% [full_packet.size(), steady_packet.size()]
 	)
 	assert(
-		full_packet.size() == 561,
-		"Eight-player full snapshot must remain at the v56 561-byte budget."
+		full_packet.size() == 585,
+		"Eight-player full snapshot must remain at the v93 585-byte budget."
 	)
 	assert(
-		steady_packet.size() == 193,
-		"Eight-player repeated-motion snapshot must remain at the v56 193-byte budget."
+		steady_packet.size() == 217,
+		"Eight-player repeated-motion snapshot must remain at the v93 217-byte budget."
 	)
 
 

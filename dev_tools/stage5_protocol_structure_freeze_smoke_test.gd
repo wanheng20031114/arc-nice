@@ -22,18 +22,20 @@ const EXPECTED_MP_GAME_RPC_SIGNATURE_HASH := (
 	"fd2dc29d17a31a875aa83d8bf4823f1525f381915f3ccafecdd7c22d68b40560"
 )
 const EXPECTED_MP_GAME_RPC_ANNOTATION_HASH := (
-	"2503b6474eac0cdc23ab780582ee805b9131df49d761da72c548bce9e4f9b3b8"
+	"1e872020ae248dd0e733b2897b5d1ac561c76fa12a3a45fdaa596131347a9238"
 )
 
-const EXPECTED_NET_MANAGER_RPC_COUNT := 17
+## v91 移除了已被认证拓扑帧取代的 relay registration completed RPC；旧冻结
+## 基线遗漏同步，v93 在本次协议审计中按当前 16 个生产 RPC 重新锁定。
+const EXPECTED_NET_MANAGER_RPC_COUNT := 16
 const EXPECTED_NET_MANAGER_RPC_NAME_HASH := (
-	"e21b140ea3a7a94d6c1879a7650ca0b1b9d90ab6b4ee6b64cec08c3eeaa25919"
+	"09b646cdc8650e8e8271a303e4538cd2b3a2d53f4e4e791c87b913c4a7182dac"
 )
 const EXPECTED_NET_MANAGER_RPC_SIGNATURE_HASH := (
-	"e98fb19a3a7cbf8953bc3a629a494084f1f33bc1eee53a1ff81b43cf1403a0dd"
+	"f3055a9ad24ab591c576156b26c566a76d32162ecba0e29b4f36d83d71c806dc"
 )
 const EXPECTED_NET_MANAGER_RPC_ANNOTATION_HASH := (
-	"ed1c77b5392c171753dbd1d76faa25063423337343b3b610274c60993dc672a4"
+	"f128431b6a86d1b3dca13168abf56123cc7c04e67fddbc0365ad6363f151c8c8"
 )
 
 const EXPECTED_MP_ROGUE_ROUTE_RPC_COUNT := 17
@@ -340,12 +342,12 @@ func _strip_quotes(value: String) -> String:
 
 
 func _test_protocol_and_wire_values() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 92, "多人协议必须保持 v92。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 93, "多人协议必须保持 v93。")
 	_expect(
 		NET_CONSTANTS.CH_MEMBERSHIP == 8
 		and NET_CONSTANTS.ENET_MAX_CHANNEL == 8
 		and NET_CONSTANTS.CHANNEL_COUNT == 9,
-		"v91 必须保持 ENet 最大应用信道 8 与 CH0..CH8 九条逻辑信道。"
+		"v93 必须保持 ENet 最大应用信道 8 与 CH0..CH8 九条逻辑信道。"
 	)
 	_expect(GameModeCatalog.MODE_STANDARD == 0, "standard wire value 必须保持 0。")
 	_expect(GameModeCatalog.MODE_TOWER_DEFENSE == 1, "tower_defense wire value 必须保持 1。")
@@ -389,7 +391,7 @@ func _test_protocol_and_wire_values() -> void:
 		_expect(
 			int(CombatFlowState.State.get(state_name, -1))
 			== int(expected_flow_values[state_name]),
-			"CombatFlowState.%s 的 v91 wire value 改变。" % state_name
+			"CombatFlowState.%s 的 v93 wire value 改变。" % state_name
 		)
 
 

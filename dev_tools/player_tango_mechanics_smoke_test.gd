@@ -1031,6 +1031,23 @@ func _test_charge_release_contract() -> void:
 		player.get_tango_casting_state() == PlayerTango.CastingState.ORBIT,
 		"A volley older than the return animation must leave the units in orbit."
 	)
+	player.apply_remote_tango_barrage_snapshot(Vector2.RIGHT, 1.0, 21, 4.0)
+	player.finalize_multiplayer_reconnect_state()
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.ORBIT
+		and is_zero_approx(player.get_tango_barrage_duration())
+		and not player.is_snow_wolf_full_charge_active()
+		and not player.is_electric_surge_active(),
+		"Reconnect finalization must retire an existing firing barrage and every unrepresented empowered lease instead of preserving a transaction without its sequence."
+	)
+	player.set("_latest_remote_action_sequence", 0)
+	player.set("_latest_remote_action_phase", 0)
+	player.apply_multiplayer_tango_charge_snapshot(0.5, 1)
+	player.finalize_multiplayer_reconnect_state()
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.ORBIT,
+		"Reconnect finalization must also retire a snapshot-reconstructed ordinary charge."
+	)
 	player.call("_reset_tango_combat_state", true)
 	player.set("_latest_remote_action_sequence", 0)
 	player.set("_latest_remote_action_phase", 0)

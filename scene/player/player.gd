@@ -117,6 +117,7 @@ const NORMAL_ANIMATION_PREFIX := &"normal"
 const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0
 const DEFAULT_MOVE_SPEED_MULTIPLIER := 1.0
 const MAX_NETWORK_EFFECTIVE_MOVE_SPEED_RATIO := 65.535
+const MAX_NETWORK_EFFECTIVE_FIRE_INTERVAL_SECONDS := 65.535
 const CHEAT_XIRANG_AMOUNT := 1000
 const BASE_SKILL1_CHARGE_PER_SECOND := 1.0
 const SKILL1_UPGRADE_CHARGE_REDUCTION := 2.0
@@ -189,6 +190,18 @@ const TIMED_MOVE_SLOW_SCHEDULER_PATH := NodePath(
 const BURN_STATUS_ID := &"burn"
 const BLEED_STATUS_ID := &"bleed"
 const DEFAULT_BLEED_TICK_INTERVAL_SECONDS := 0.5
+const MULTIPLAYER_VISUAL_STATUS_BURN := 1 << 0
+const MULTIPLAYER_VISUAL_STATUS_BLEED := 1 << 1
+const MULTIPLAYER_VISUAL_STATUS_SLOWED := 1 << 2
+const MULTIPLAYER_VISUAL_STATUS_HASTED := 1 << 3
+const MULTIPLAYER_VISUAL_STATUS_HIDDEN := 1 << 4
+const MULTIPLAYER_VISUAL_STATUS_MASK := (
+	MULTIPLAYER_VISUAL_STATUS_BURN
+	| MULTIPLAYER_VISUAL_STATUS_BLEED
+	| MULTIPLAYER_VISUAL_STATUS_SLOWED
+	| MULTIPLAYER_VISUAL_STATUS_HASTED
+	| MULTIPLAYER_VISUAL_STATUS_HIDDEN
+)
 
 static var _collectible_temporary_source_serial: int = 0
 # Keep the former one-SceneTreeTimer-per-enemy path available for deterministic
@@ -265,6 +278,8 @@ var cold_stack_count := 0
 var cold_move_speed_multiplier := 1.0
 var timed_move_slow_multiplier := 1.0
 var network_effective_move_speed_multiplier_override: float = 0.0
+var network_effective_fire_interval_override: float = 0.0
+var network_visual_status_mask: int = 0
 var tower_defense_fate_max_health_multiplier: float = 1.0
 var tower_defense_life_tower_bonus_ratio: float = 0.0
 var tower_defense_speed_tower_bonus: float = 0.0
@@ -1304,7 +1319,7 @@ func apply_burn_status(
 
 
 func clear_burn_status() -> void:
-	_set_burn_overlay_strength(0.0)
+	_on_burn_status_active_changed(false)
 	if not is_inside_tree():
 		return
 	var scheduler := get_node_or_null(BURN_STATUS_SCHEDULER_PATH)
@@ -1344,7 +1359,7 @@ func apply_bleed_status(
 
 
 func clear_bleed_status() -> void:
-	_set_bleed_overlay_strength(0.0)
+	_on_bleed_status_active_changed(false)
 	if not is_inside_tree():
 		return
 	var scheduler := get_node_or_null(BLEED_STATUS_SCHEDULER_PATH)
@@ -1390,13 +1405,29 @@ func clear_damage_over_time_statuses() -> void:
 
 func _on_burn_status_active_changed(active: bool) -> void:
 	_set_burn_overlay_strength(
-		BURN_OVERLAY_ACTIVE_STRENGTH if active else 0.0
+		BURN_OVERLAY_ACTIVE_STRENGTH
+		if (
+			active
+			or (
+				network_visual_status_mask
+				& MULTIPLAYER_VISUAL_STATUS_BURN
+			) != 0
+		)
+		else 0.0
 	)
 
 
 func _on_bleed_status_active_changed(active: bool) -> void:
 	_set_bleed_overlay_strength(
-		BLEED_OVERLAY_ACTIVE_STRENGTH if active else 0.0
+		BLEED_OVERLAY_ACTIVE_STRENGTH
+		if (
+			active
+			or (
+				network_visual_status_mask
+				& MULTIPLAYER_VISUAL_STATUS_BLEED
+			) != 0
+		)
+		else 0.0
 	)
 
 
@@ -2807,6 +2838,9 @@ func commit_validated_run_scene_entry_finalization() -> void:
 ## 这里只清理“场景内临时层”。背包、息壤、基础升级、稀有宝箱属性、研究
 ## 等持久输入一律保留；Tower 的永久 Fate/Tower 汇总也由各自协调器继续拥有。
 func clear_scene_transient_combat_state(refresh_stats: bool = true) -> void:
+	# 网络表现位同样只属于旧场景；必须先清位，再让各状态回调重算着色，
+	# 否则旧 mask 会让 clear_burn/bleed 仍保留覆盖层。
+	network_visual_status_mask = 0
 	clear_damage_over_time_statuses()
 	clear_cold_status()
 	clear_timed_move_slows()
@@ -2814,6 +2848,7 @@ func clear_scene_transient_combat_state(refresh_stats: bool = true) -> void:
 	_stop_remote_dash_visual()
 	multiplayer_dash_protection_time_left = 0.0
 	network_effective_move_speed_multiplier_override = 0.0
+	network_effective_fire_interval_override = 0.0
 	tower_defense_fate_hurt_speed_time_left = 0.0
 	invincibility_time_left = 0.0
 	_set_hurt_blink_enabled(false)
@@ -5691,10 +5726,12 @@ func _update_tower_defense_fate_effects(delta: float) -> void:
 
 
 func apply_multiplayer_effective_move_speed_multiplier(multiplier: float) -> void:
-	network_effective_move_speed_multiplier_override = clampf(
-		multiplier,
-		0.05,
-		MAX_NETWORK_EFFECTIVE_MOVE_SPEED_RATIO
+	# 0 是重连/场景边界的显式“释放副本覆盖”哨兵，不能钳成 0.05；
+	# 否则替换后的 Host 玩家会被永久锁成基础速度的 5%。
+	network_effective_move_speed_multiplier_override = (
+		clampf(multiplier, 0.05, MAX_NETWORK_EFFECTIVE_MOVE_SPEED_RATIO)
+		if is_finite(multiplier) and multiplier > 0.0
+		else 0.0
 	)
 	_update_movement_status_visuals(Vector2.ZERO)
 
@@ -5722,11 +5759,106 @@ func _on_window_focus_exited() -> void:
 
 # 获取当前实际射击间隔（受射速加成影响）
 func _get_effective_fire_interval() -> float:
+	if network_effective_fire_interval_override > 0.0:
+		return network_effective_fire_interval_override
+	return get_authoritative_effective_fire_interval()
+
+
+## Host 最终开火间隔，不读取客户端快照 override。快照编码必须调用此入口，
+## 才不会把一次副本投影再次采样成新的权威基础。
+func get_authoritative_effective_fire_interval() -> float:
 	var speed_units := maxf(attack_speed_units_per_attack, 1.0)
 	var base_attack_speed := (speed_units / maxf(fire_interval, 0.01)) + collectible_attack_speed_bonus
 	var base_attacks_per_second := maxf(base_attack_speed, 1.0) / speed_units
 	var effective_attacks_per_second := base_attacks_per_second * _get_effective_fire_rate_multiplier()
 	return maxf(1.0 / maxf(effective_attacks_per_second, 0.01), 0.01)
+
+
+## 应用 Host 每帧绝对发送的最终开火间隔。0 只用于权威重连/场景边界
+## 释放副本覆盖；普通网络值被限制在协议的 u16 毫秒范围内。
+func apply_multiplayer_effective_fire_interval(interval_seconds: float) -> void:
+	var previous_interval := _get_effective_fire_interval()
+	network_effective_fire_interval_override = (
+		clampf(
+			interval_seconds,
+			0.01,
+			MAX_NETWORK_EFFECTIVE_FIRE_INTERVAL_SECONDS
+		)
+		if is_finite(interval_seconds) and interval_seconds > 0.0
+		else 0.0
+	)
+	if not is_equal_approx(previous_interval, _get_effective_fire_interval()):
+		_refresh_shooting_timer_wait_time()
+
+
+## 重连替换节点完成当前持久账本投影后，释放只属于 CLIENT_VIEW 的覆盖。
+## 子类可在这里清理自己的副本派生值；普通实时快照不会调用此入口。
+func finalize_multiplayer_reconnect_state() -> void:
+	apply_multiplayer_effective_move_speed_multiplier(0.0)
+	apply_multiplayer_effective_fire_interval(0.0)
+	apply_multiplayer_visual_status_mask(0)
+
+
+## Host 仅把临时状态的表现原因编码成绝对位图；伤害、倍率与倒计时继续由
+## Host 权威状态机拥有，CLIENT_VIEW 不重建 scheduler，避免双重结算。
+func get_multiplayer_visual_status_mask() -> int:
+	var status_mask := 0
+	if has_damage_over_time_status(BURN_STATUS_ID):
+		status_mask |= MULTIPLAYER_VISUAL_STATUS_BURN
+	if has_damage_over_time_status(BLEED_STATUS_ID):
+		status_mask |= MULTIPLAYER_VISUAL_STATUS_BLEED
+	if (
+		tower_defense_fate_hurt_speed_time_left > 0.0
+		or cold_stack_count > 0
+		or timed_move_slow_multiplier < DEFAULT_MOVE_SPEED_MULTIPLIER
+		or (
+			speed_buff_time_left > 0.0
+			and current_move_speed_multiplier < DEFAULT_MOVE_SPEED_MULTIPLIER
+		)
+	):
+		status_mask |= MULTIPLAYER_VISUAL_STATUS_SLOWED
+	if (
+		(
+			speed_buff_time_left > 0.0
+			and current_move_speed_multiplier > DEFAULT_MOVE_SPEED_MULTIPLIER
+		)
+		or (
+			collectible_swift_time_left > 0.0
+			and collectible_swift_move_speed_multiplier > 1.0
+		)
+		or (
+			potion_move_speed_time_left > 0.0
+			and potion_move_speed_multiplier > 1.0
+		)
+	):
+		status_mask |= MULTIPLAYER_VISUAL_STATUS_HASTED
+	if potion_hide_time_left > 0.0:
+		status_mask |= MULTIPLAYER_VISUAL_STATUS_HIDDEN
+	return status_mask
+
+
+## 消费 Host 的逐帧绝对表现位。只修改 shader、尾迹与可见性，不写入本地
+## 状态计时器，因此可靠事件晚到或一帧快照丢失时也能自然收敛。
+func apply_multiplayer_visual_status_mask(status_mask: int) -> void:
+	network_visual_status_mask = status_mask & MULTIPLAYER_VISUAL_STATUS_MASK
+	var has_local_burn := (
+		is_inside_tree()
+		and has_damage_over_time_status(BURN_STATUS_ID)
+	)
+	var has_local_bleed := (
+		is_inside_tree()
+		and has_damage_over_time_status(BLEED_STATUS_ID)
+	)
+	_on_burn_status_active_changed(has_local_burn)
+	_on_bleed_status_active_changed(has_local_bleed)
+	_update_movement_status_visuals(Vector2.ZERO)
+	_set_consumable_hide_enabled(
+		potion_hide_time_left > 0.0
+		or (
+			network_visual_status_mask
+			& MULTIPLAYER_VISUAL_STATUS_HIDDEN
+		) != 0
+	)
 
 
 # 获取当前实际射速倍率
@@ -5884,7 +6016,12 @@ func _update_potion_effects(delta: float) -> void:
 			0.0
 		)
 		if potion_hide_time_left <= 0.0:
-			_set_consumable_hide_enabled(false)
+			_set_consumable_hide_enabled(
+				(
+					network_visual_status_mask
+					& MULTIPLAYER_VISUAL_STATUS_HIDDEN
+				) != 0
+			)
 
 	if potion_damage_reduction_time_left > 0.0:
 		potion_damage_reduction_time_left = maxf(
@@ -5942,6 +6079,10 @@ func _update_movement_status_visuals(move_direction: Vector2) -> void:
 		or cold_stack_count > 0
 		or timed_move_slow_multiplier < DEFAULT_MOVE_SPEED_MULTIPLIER
 		or (
+			network_visual_status_mask
+			& MULTIPLAYER_VISUAL_STATUS_SLOWED
+		) != 0
+		or (
 			speed_buff_time_left > 0.0
 			and current_move_speed_multiplier < DEFAULT_MOVE_SPEED_MULTIPLIER
 		)
@@ -5970,6 +6111,10 @@ func _update_movement_status_visuals(move_direction: Vector2) -> void:
 			potion_move_speed_time_left > 0.0
 			and potion_move_speed_multiplier > 1.0
 		)
+		or (
+			network_visual_status_mask
+			& MULTIPLAYER_VISUAL_STATUS_HASTED
+		) != 0
 	)
 	var visual_direction := move_direction
 	if visual_direction.length_squared() <= 0.001:

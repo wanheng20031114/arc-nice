@@ -69,6 +69,10 @@ class ProbePlayer:
 	var realtime_snapshot_apply_count := 0
 	var move_speed_multiplier_apply_count := 0
 	var last_move_speed_multiplier := 0.0
+	var fire_interval_apply_count := 0
+	var last_fire_interval := 0.0
+	var visual_status_mask_apply_count := 0
+	var last_visual_status_mask := 0
 	var primary_cooldown_apply_count := 0
 
 	func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
@@ -162,6 +166,16 @@ class ProbePlayer:
 		move_speed_multiplier_apply_count += 1
 		last_move_speed_multiplier = multiplier
 
+	func apply_multiplayer_effective_fire_interval(
+		interval_seconds: float
+	) -> void:
+		fire_interval_apply_count += 1
+		last_fire_interval = interval_seconds
+
+	func apply_multiplayer_visual_status_mask(status_mask: int) -> void:
+		visual_status_mask_apply_count += 1
+		last_visual_status_mask = status_mask
+
 	func apply_multiplayer_primary_cooldown_ratio(_ratio: float) -> void:
 		primary_cooldown_apply_count += 1
 
@@ -216,6 +230,14 @@ class ProbeAmmoRangedPlayer:
 	) -> void:
 		pass
 
+	func apply_multiplayer_effective_fire_interval(
+		_interval_seconds: float
+	) -> void:
+		pass
+
+	func apply_multiplayer_visual_status_mask(_status_mask: int) -> void:
+		pass
+
 	func apply_multiplayer_primary_cooldown_ratio(_ratio: float) -> void:
 		pass
 
@@ -232,6 +254,69 @@ class ProbeHoePlayer:
 	var remote_action_count := 0
 	var last_request_id := 0
 	var last_accepted := false
+	var last_reconnect_form_mode := -1
+	var last_reconnect_shot_pattern := -1
+	var fire_interval_apply_count := 0
+	var last_fire_interval := -1.0
+	var visual_status_mask_apply_count := 0
+	var last_visual_status_mask := -1
+
+	func apply_run_progression_snapshot(
+		_snapshot: Dictionary,
+		_refresh_stats: bool = true
+	) -> bool:
+		return true
+
+	func apply_multiplayer_snapshot_motion(
+		remote_position: Vector2,
+		remote_velocity: Vector2,
+		_facing_id: int,
+		_anim_state: int
+	) -> void:
+		global_position = remote_position
+		velocity = remote_velocity
+
+	func apply_multiplayer_realtime_state(
+		new_current_health: int,
+		new_max_health: int,
+		_new_current_xirang: int,
+		new_is_dead: bool,
+		new_invincibility_time_left: float,
+		_new_skill1_unlocked: bool,
+		_new_skill1_charge: float,
+		_new_skill1_charge_duration: float,
+		new_form_mode: int,
+		new_shot_pattern: int,
+		_new_skill1_upgrade_level: int = -1,
+		_new_ammo_capacity: int = -1,
+		_new_current_ammo: int = -1,
+		_new_is_reloading: bool = false,
+		_new_reload_progress: float = 0.0
+	) -> void:
+		current_health = new_current_health
+		max_health = new_max_health
+		is_dead = new_is_dead
+		invincibility_time_left = new_invincibility_time_left
+		last_reconnect_form_mode = new_form_mode
+		last_reconnect_shot_pattern = new_shot_pattern
+
+	func apply_multiplayer_effective_move_speed_multiplier(
+		_multiplier: float
+	) -> void:
+		pass
+
+	func apply_multiplayer_effective_fire_interval(
+		interval_seconds: float
+	) -> void:
+		fire_interval_apply_count += 1
+		last_fire_interval = interval_seconds
+
+	func apply_multiplayer_visual_status_mask(status_mask: int) -> void:
+		visual_status_mask_apply_count += 1
+		last_visual_status_mask = status_mask
+
+	func apply_multiplayer_primary_cooldown_ratio(_ratio: float) -> void:
+		pass
 
 	func try_authoritative_hoe_primary_attack(_attack_direction: Vector2) -> bool:
 		if not accept_primary:
@@ -341,6 +426,14 @@ class ProbeTangoPlayer:
 	func apply_multiplayer_effective_move_speed_multiplier(
 		_multiplier: float
 	) -> void:
+		pass
+
+	func apply_multiplayer_effective_fire_interval(
+		_interval_seconds: float
+	) -> void:
+		pass
+
+	func apply_multiplayer_visual_status_mask(_status_mask: int) -> void:
 		pass
 
 	func try_start_authoritative_electric_surge(
@@ -1392,6 +1485,40 @@ func _run() -> void:
 			== PickupConfig.ShotPattern.NORMAL,
 		"威士戴尔重连必须清除无剩余租期的雪狼形态，不能留下永久 10 倍螺旋射速。"
 	)
+	var hoe_reconnect_state := SnapshotManager.PlayerState.new()
+	hoe_reconnect_state.peer_id = 5
+	hoe_reconnect_state.character_id = &"hoe_cat"
+	hoe_reconnect_state.current_health = 50
+	hoe_reconnect_state.max_health = 50
+	hoe_reconnect_state.form_mode = PickupConfig.PlayerFormMode.ARMED
+	hoe_reconnect_state.shot_pattern = PickupConfig.ShotPattern.NORMAL
+	hoe_reconnect_state.effective_fire_interval_seconds = 0.031
+	hoe_reconnect_state.visual_status_mask = 0b10101
+	hoe_reconnect_state.invincibility_time_left = 3.0
+	hoe_reconnect_state.health_revision = 8
+	hoe_player.invincibility_time_left = 2.0
+	coordinator.mark_health_revision_applied(5, 9)
+	_expect(
+		coordinator.restore_reconnected_player_snapshot(
+			hoe_player,
+			hoe_reconnect_state,
+			{},
+			_probe_net_time,
+			true,
+			1,
+			false
+		)
+		and hoe_player.last_reconnect_form_mode
+			== PickupConfig.PlayerFormMode.NORMAL
+		and hoe_player.last_reconnect_shot_pattern
+			== PickupConfig.ShotPattern.NORMAL
+		and hoe_player.fire_interval_apply_count > 0
+		and is_zero_approx(hoe_player.last_fire_interval)
+		and hoe_player.visual_status_mask_apply_count > 0
+		and hoe_player.last_visual_status_mask == 0
+		and is_zero_approx(hoe_player.invincibility_time_left),
+		"Hoe 重连必须将 ARMED+NORMAL、过期无敌、最终射速及表现状态统一清为场景默认值，即使生命 revision 已拒绝旧快照。"
+	)
 	tango_host_player.force_full_charge = false
 	_probe_net_time = 63.0
 	coordinator.handle_tango_electric_surge_request(6, 1)
@@ -1996,6 +2123,8 @@ func _run_realtime_orchestration_smoke() -> void:
 	host_state.current_health = 75
 	host_state.max_health = 100
 	host_state.effective_move_speed_multiplier = 1.25
+	host_state.effective_fire_interval_seconds = 0.125
+	host_state.visual_status_mask = 0b10101
 	runtime.probe_player_snapshot_states = [host_state]
 	coordinator.sync_snapshot_cohort_readiness([2])
 	_expect(
@@ -2036,8 +2165,12 @@ func _run_realtime_orchestration_smoke() -> void:
 			remote_player.realtime_snapshot_apply_count == 1
 			and remote_player.snapshot_motion_apply_count == 1
 			and remote_player.move_speed_multiplier_apply_count == 1
-			and is_equal_approx(remote_player.last_move_speed_multiplier, 1.25),
-			"客户端玩家快照必须应用权威最终移速倍率、实时状态并进入远端插值。"
+			and is_equal_approx(remote_player.last_move_speed_multiplier, 1.25)
+			and remote_player.fire_interval_apply_count == 1
+			and is_equal_approx(remote_player.last_fire_interval, 0.125)
+			and remote_player.visual_status_mask_apply_count == 1
+			and remote_player.last_visual_status_mask == 0b10101,
+			"客户端玩家快照必须应用权威最终移速、最终射击间隔、表现状态并进入远端插值。"
 		)
 		_expect(
 			_probe_stale_player_ids == [5],

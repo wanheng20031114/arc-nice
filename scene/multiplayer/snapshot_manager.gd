@@ -28,7 +28,10 @@ const ENEMY_LOCOMOTION_IDLE := 0
 const ENEMY_LOCOMOTION_MOVING := 1
 
 const PLAYER_SNAPSHOT_HEADER_BYTES := 9
-const PLAYER_REALTIME_STATUS_BYTES := 1
+## 不经 delta 基线的玩家瞬态：充能电池 1B + 表现状态 1B + 最终开火间隔 2B。
+## 这类值会被不同可靠频道上的物品/技能事务修改，必须逐帧绝对发送，
+## 否则一次丢包就可能让客户端沿用旧射速直到下一次 keyframe。
+const PLAYER_REALTIME_STATUS_BYTES := 4
 const ENEMY_SNAPSHOT_HEADER_BYTES := 5
 const PACKED_VECTOR2_I16_BYTES := 4
 const PACKED_VECTOR2_I32_BYTES := 8
@@ -37,6 +40,7 @@ const PACKED_U16_BYTES := 2
 const PACKED_U32_BYTES := 4
 const PLAYER_META_BYTES := 46
 const MOVE_MULTIPLIER_SCALE := 1000.0
+const FIRE_INTERVAL_SCALE := 1000.0
 const DEFAULT_CHARACTER_ID := &"weishidaier"
 const HOE_CAT_CHARACTER_ID := &"hoe_cat"
 const TIYI_CHARACTER_ID := &"tiyi"
@@ -108,9 +112,14 @@ class PlayerState:
 	var primary_cooldown_ratio: float = 0.0
 	## 每帧绝对发送，收敛物品事务与技能确认跨 ENet 频道的乱序。
 	var void_battery_charged: bool = false
+	## Host 当前玩家表现位；不在客户端重放伤害，只修复晚加入/丢包后的视觉。
+	var visual_status_mask: int = 0
 	## Host 权威的最终有效移速相对角色稳定初始移速的倍率；包含平铺属性、
 	## 支援塔、角色形态与收藏品等运行时修正。保持既有 u16 定点字段，不扩包。
 	var effective_move_speed_multiplier: float = 1.0
+	## Host 权威的最终有效开火间隔（秒）。它包含普通/药水/角色形态射速、
+	## 收藏品加速与塔加成；使用毫秒 u16，并与 void battery 一样逐帧绝对发送。
+	var effective_fire_interval_seconds: float = 1.0
 
 
 ## 按接收端或经过调用方认证的共享 cohort 维护玩家发送基线。
@@ -203,6 +212,11 @@ static func encode_player_snapshot(
 	# arm and discharge between adjacent snapshots, while the reliable inventory
 	# transaction is delivered on another ENet channel.
 	buf.put_u8(1 if current.void_battery_charged else 0)
+	buf.put_u8(clampi(current.visual_status_mask, 0, 255))
+	buf.put_u16(_pack_scaled_u16(
+		current.effective_fire_interval_seconds,
+		FIRE_INTERVAL_SCALE
+	))
 
 	return buf.data_array
 
@@ -215,6 +229,10 @@ static func is_player_snapshot_state_serializable(state: PlayerState) -> bool:
 		and NetConstants.is_valid_network_combat_value(state.current_health)
 		and NetConstants.is_valid_network_combat_value(state.max_health)
 		and NetConstants.is_valid_network_combat_value(state.health_revision)
+		and is_finite(state.effective_move_speed_multiplier)
+		and state.effective_move_speed_multiplier >= 0.0
+		and is_finite(state.effective_fire_interval_seconds)
+		and state.effective_fire_interval_seconds > 0.0
 	)
 
 
@@ -310,6 +328,10 @@ static func decode_player_snapshot(
 			float(buf.get_u16()) / MOVE_MULTIPLIER_SCALE
 		)
 	target.void_battery_charged = buf.get_u8() != 0
+	target.visual_status_mask = buf.get_u8()
+	target.effective_fire_interval_seconds = (
+		float(buf.get_u16()) / FIRE_INTERVAL_SCALE
+	)
 
 	return buf.get_position()
 
@@ -599,6 +621,8 @@ static func _copy_player_state_into(source: PlayerState, target: PlayerState) ->
 	target.primary_cooldown_ratio = source.primary_cooldown_ratio
 	target.effective_move_speed_multiplier = source.effective_move_speed_multiplier
 	target.void_battery_charged = source.void_battery_charged
+	target.visual_status_mask = source.visual_status_mask
+	target.effective_fire_interval_seconds = source.effective_fire_interval_seconds
 
 
 static func _copy_enemy_state(source: EnemyState) -> EnemyState:
@@ -624,6 +648,8 @@ static func _apply_player_delta(target: PlayerState, delta: PlayerState, mask: i
 	target.peer_id = delta.peer_id
 	target.sequence = delta.sequence
 	target.void_battery_charged = delta.void_battery_charged
+	target.visual_status_mask = delta.visual_status_mask
+	target.effective_fire_interval_seconds = delta.effective_fire_interval_seconds
 	if mask & MASK_POSITION:
 		target.position = delta.position
 	if mask & MASK_VELOCITY:

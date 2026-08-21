@@ -230,7 +230,7 @@ func _run() -> void:
 		_test_v25_high_value_player_snapshot_contract()
 		_test_player_codec_and_reuse()
 		if failures.is_empty():
-			print("PROTOCOL_V90_PLAYER_SNAPSHOT_SMOKE_TEST_OK")
+			print("PROTOCOL_V93_PLAYER_SNAPSHOT_SMOKE_TEST_OK")
 			quit()
 			return
 		for failure in failures:
@@ -254,7 +254,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V92_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V93_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -263,10 +263,10 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 92, "Protocol must be v92.")
+	_expect(NetConstants.PROTOCOL_VERSION == 93, "Protocol must be v93.")
 	_expect(
 		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
-		"Protocol v92 must retain scene-specific bits 5..6 for shield stages, ninja boost, and main-battle airborne visuals."
+		"Protocol v93 must retain scene-specific bits 5..6 for shield stages, ninja boost, and main-battle airborne visuals."
 	)
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
@@ -289,7 +289,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7
 		and NetConstants.CH_MEMBERSHIP == 8,
-		"Protocol v92 channel assignments must remain stable."
+		"Protocol v93 channel assignments must remain stable."
 	)
 
 
@@ -381,8 +381,8 @@ func _test_v25_high_value_player_snapshot_contract() -> void:
 		full_roster.append(roster_state)
 	var full_packet := SnapshotManager.new().encode_all_player_snapshots(full_roster)
 	_expect(
-		full_packet.size() == 561,
-		"Eight full v56 player snapshots must use exactly 561 bytes. actual=%d"
+		full_packet.size() == 585,
+		"Eight full v93 player snapshots must use exactly 585 bytes. actual=%d"
 		% full_packet.size()
 	)
 
@@ -392,10 +392,13 @@ func _test_v25_high_value_player_snapshot_contract() -> void:
 	var invalid_overflow := SnapshotManager.PlayerState.new()
 	invalid_overflow.current_health = 100
 	invalid_overflow.max_health = NetConstants.NETWORK_COMBAT_VALUE_MAX + 1
+	var invalid_fire_interval := SnapshotManager.PlayerState.new()
+	invalid_fire_interval.effective_fire_interval_seconds = 0.0
 	_expect(
 		not SnapshotManager.is_player_snapshot_state_serializable(invalid_negative)
-		and not SnapshotManager.is_player_snapshot_state_serializable(invalid_overflow),
-		"Player snapshot serialization must reject negative and signed-int32-overflow health."
+		and not SnapshotManager.is_player_snapshot_state_serializable(invalid_overflow)
+		and not SnapshotManager.is_player_snapshot_state_serializable(invalid_fire_interval),
+		"Player snapshots must reject invalid health and nonpositive final fire intervals."
 	)
 	var invalid_enemy := SnapshotManager.EnemyState.new()
 	invalid_enemy.health = NetConstants.NETWORK_COMBAT_VALUE_MAX + 1
@@ -622,6 +625,8 @@ func _test_player_codec_and_reuse() -> void:
 	state.ammo_capacity = 7
 	state.current_ammo = 4
 	state.effective_move_speed_multiplier = 1.375
+	state.effective_fire_interval_seconds = 0.047
+	state.visual_status_mask = 0b10101
 	var keyframe := sender.encode_player_snapshots_for_peer(8, [state], true)
 	var decoded_keyframe := receiver.decode_player_snapshots_with_baseline(keyframe)
 	_expect(decoded_keyframe.size() == 1, "Player keyframe must decode.")
@@ -631,7 +636,31 @@ func _test_player_codec_and_reuse() -> void:
 		absf(decoded_keyframe[0].effective_move_speed_multiplier - 1.375) <= 0.001,
 		"Authoritative movement multiplier must round-trip at 0.001 precision."
 	)
+	_expect(
+		absf(decoded_keyframe[0].effective_fire_interval_seconds - 0.047) <= 0.001,
+		"Authoritative final fire interval must round-trip at one-millisecond precision."
+	)
+	_expect(
+		decoded_keyframe[0].visual_status_mask == 0b10101,
+		"Authoritative player visual status must round-trip in the keyframe."
+	)
 	state.sequence = 2
+	state.visual_status_mask = 0b01010
+	var visual_status_only_delta := sender.encode_player_snapshots_for_peer(
+		8,
+		[state],
+		false
+	)
+	var decoded_visual_status_delta := receiver.decode_player_snapshots_with_baseline(
+		visual_status_only_delta
+	)
+	_expect(
+		decoded_visual_status_delta.size() == 1
+		and is_same(decoded_keyframe[0], decoded_visual_status_delta[0])
+		and decoded_visual_status_delta[0].visual_status_mask == 0b01010,
+		"Player visual status must update absolutely on the next delta frame."
+	)
+	state.sequence = 3
 	state.character_id = &"tango"
 	state.position.x += 1.0
 	var delta := sender.encode_player_snapshots_for_peer(8, [state], false)
@@ -642,6 +671,23 @@ func _test_player_codec_and_reuse() -> void:
 		and decoded_delta[0].character_id == &"tango"
 		and decoded_delta[0].position.distance_to(state.position) <= 0.11,
 		"Tango's character code must round-trip while the player delta reuses its baseline object."
+	)
+	state.sequence = 4
+	state.effective_fire_interval_seconds = 0.125
+	var fire_rate_only_delta := sender.encode_player_snapshots_for_peer(
+		8,
+		[state],
+		false
+	)
+	var decoded_fire_rate_delta := receiver.decode_player_snapshots_with_baseline(
+		fire_rate_only_delta
+	)
+	_expect(
+		decoded_fire_rate_delta.size() == 1
+		and absf(
+			decoded_fire_rate_delta[0].effective_fire_interval_seconds - 0.125
+		) <= 0.001,
+		"Final fire interval must be absolute every frame instead of depending on a delta-meta transition."
 	)
 	receiver.reset_delta_cache()
 	_expect(

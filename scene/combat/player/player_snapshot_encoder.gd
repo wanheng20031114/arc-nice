@@ -64,7 +64,13 @@ func collect(
 		state.effective_move_speed_multiplier = (
 			player_instance.get_authoritative_effective_move_speed_ratio()
 		)
+		state.effective_fire_interval_seconds = (
+			player_instance.get_authoritative_effective_fire_interval()
+		)
 		state.void_battery_charged = player_instance.has_void_battery_charge()
+		state.visual_status_mask = (
+			player_instance.get_multiplayer_visual_status_mask()
+		)
 		_output.append(state)
 	for peer_id_variant in _states_by_peer_id:
 		if not _live_peer_ids.has(int(peer_id_variant)):
