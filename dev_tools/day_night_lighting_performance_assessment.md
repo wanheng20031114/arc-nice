@@ -5,6 +5,9 @@ Godot：4.6.3 stable，D3D12 Forward+
 GPU：NVIDIA GeForce RTX 3080
 固定测试环境：1152×648、VSync 开启、60 FPS 上限
 
+> 归档说明（2026-08-21）：原昼夜性能探针已删除，本页只保留历史测量与
+> 设计判断，不再作为可直接复现的回归入口；后续需要验证时应按当前结构重写。
+
 > 2026-07-23 新增两盏NPC常驻夜灯后，数量上界与探针契约已同步更新；下方
 > D3D12长样本仍是新增前的8盏固定灯历史基线，尚未重跑10盏固定灯实渲染证书。
 >
@@ -198,63 +201,4 @@ GPU 重负载后单独运行。
   守卫候选数线性相关。
 - **高风险回归条件。** 开启阴影并加入遮挡体、给每盏灯增加 `_process` 或
   Tween、把一张热点纹理拆成多个灯、按距离持续创建销毁灯节点。出现任一
-  变化都应重新运行本探针。
-
-## 复现命令
-
-正式渲染样本必须使用真实渲染驱动，不能添加 `--headless`：
-
-```powershell
-& 'C:\Program Files\Godot\Godot.exe' `
-  --path . `
-  --script res://dev_tools/day_night_lighting_performance_probe.gd `
-  --resolution 1152x648
-```
-
-只运行 512 灯广播与生命周期 CPU 基准：
-
-```powershell
-& 'C:\Program Files\Godot\Godot.exe' `
-  --path . `
-  --script res://dev_tools/day_night_lighting_performance_probe.gd `
-  --resolution 1152x648 `
-  -- --cpu-only --micro-samples=500
-```
-
-运行 96 个真实敌人的实战昼夜样本：
-
-```powershell
-& 'C:\Program Files\Godot\Godot.exe' `
-  --path . `
-  --script res://dev_tools/day_night_lighting_performance_probe.gd `
-  --resolution 1152x648 `
-  -- --live-gameplay
-```
-
-256 灯上限诊断：
-
-```powershell
-& 'C:\Program Files\Godot\Godot.exe' `
-  --path . `
-  --script res://dev_tools/day_night_lighting_performance_probe.gd `
-  --resolution 1152x648 `
-  -- --lights=256 --warmup=20 --samples=60 --micro-samples=500
-```
-
-需要人工检查分散灯布局时，可在 `--` 后追加 `--screenshot`。截图写入
-`user://day_night_lighting_probe.png`，不会污染 Git 工作区。
-
-探针内置以下回归门槛：
-
-- 默认 100 灯 Render CPU p95 增量不超过 `0.5 ms`；
-- 默认 100 灯 GPU p95 增量不超过 `1.0 ms`；
-- 默认 100 灯渐变 Render CPU/GPU p95 增量分别不超过 `1.0/1.5 ms`；
-- 超过 100 灯的诊断渐变 Render CPU/GPU p95 增量分别不超过
-  `2.0/4.0 ms`；
-- 100/256 灯 Wall p95 不超过 `20 ms`；
-- 512 灯优化版广播 CPU p95 不超过 `1.25 ms`、max 不超过 `2 ms`；
-- 三个 A/B 阶段的优化版总耗时不得比旧版差 5% 以上；
-- 禁止发光路径必须比正常变化路径至少便宜 5%；
-- 常驻灯关闭/开启必须比完整节点创建、绑定、销毁更便宜；
-- 每段默认 5 秒渐变不得早于 `4.8 秒` 完成；
-- 返回白天后全部灯关闭，Draw Call 回到初始白天的 ±1。
+  变化都应按当前结构重写探针后重新验证。

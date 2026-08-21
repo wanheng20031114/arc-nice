@@ -5,6 +5,9 @@ Godot：4.6.3 stable
 测试机渲染：D3D12 / Forward+ / Intel UHD Graphics 770  
 真实窗口：1280×720，游戏 Viewport 1152×648，60 FPS 上限
 
+> 归档说明（2026-08-21）：本页保留历史容量测量；已删除的旧烟测与探针入口
+> 不再构成可复现回归基线，后续验证应按当前塔防协调器结构重新建立夹具。
+
 ## 目标与测量口径
 
 本评估不把“批量实例化空节点”当作塔防压力。生产场景中的地图、共享
@@ -28,7 +31,6 @@ Godot：4.6.3 stable
 - `dev_tools/tower_defense_enemy_cohort_performance_probe.gd`
 - `dev_tools/run_tower_defense_enemy_cohort_probe.ps1`
 - `dev_tools/game_tower_defense_combined_horde_turret_stress_probe.gd`
-- `dev_tools/runtime_performance_telemetry_smoke_test.gd`
 
 ## 已完成基线
 
@@ -438,10 +440,9 @@ Guardian 假设和粒子关闭口径，确保后续回归可重复、可比较�
 
 解除帧率上限/VSync 的实算对照只需再加 `-MaxFps 0`。逐敌人测试把
 `-WaveConfig` 换成 `-EnemyConfig <EnemyConfig 路径>`；爆炸类使用 `-Phase burst`。
-视觉、长波和物理隔离分别由以下入口复现：
+视觉和物理隔离分别由以下入口复现：
 
 ```powershell
 Godot_console.exe --path . --script res://dev_tools/enemy_vfx_performance_probe.gd
-Godot_console.exe --path . --script res://dev_tools/game_tower_defense_long_wave_smoke_test.gd
 Godot_console.exe --path . --script res://dev_tools/physics2d_isolation_ab_probe.gd
 ```
