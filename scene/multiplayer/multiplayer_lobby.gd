@@ -107,6 +107,13 @@ var _username_caret_blink_elapsed := 0.0
 var _game_mode_icon_cache: Dictionary = {}
 
 
+func _enter_tree() -> void:
+	# 对局场景的 Camera2D 会给共享 Viewport 留下游戏世界的 Canvas 变换。
+	# 大厅是纯 UI 场景，必须在 Control 布局前恢复 UI Canvas，否则 zoom=2
+	# 会把整个大厅放大成只能看到左上区域。
+	get_viewport().canvas_transform = Transform2D.IDENTITY
+
+
 func _ready() -> void:
 	assert(public_room_lease != null, "MultiplayerLobby 缺少 PublicRoomLease 自动加载实例。")
 	_sync_local_character_selection()
