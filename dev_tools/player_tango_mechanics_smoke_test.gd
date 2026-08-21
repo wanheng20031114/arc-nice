@@ -101,6 +101,7 @@ func _run() -> void:
 	if not pixel_only:
 		_test_character_contract()
 		_test_snow_wolf_full_charge_contract()
+		_test_remote_authority_barrage_steering_contract()
 		_test_authored_casting_units_and_orbit()
 		_test_authored_audio_contract()
 		_test_electric_surge_character_contract()
@@ -435,6 +436,33 @@ func _test_snow_wolf_full_charge_contract() -> void:
 	player.set("_latest_remote_action_phase", 0)
 	player.set("_empowered_auto_fire_finished_barrage_sequence", 0)
 	_stop_audio_players(player)
+
+
+func _test_remote_authority_barrage_steering_contract() -> void:
+	player.call("_reset_tango_combat_state", true)
+	player.uses_local_input = false
+	player.call("_start_barrage_sequence", Vector2.RIGHT, 0.5, true)
+	player.apply_network_input(Vector2.ZERO, Vector2.UP)
+	player.update_multiplayer_authority_passive_state(0.0)
+	_expect(
+		Vector2(player.get("_barrage_direction")).is_equal_approx(Vector2.UP),
+		"Host remote Tango must steer an ordinary converging barrage from network aim."
+	)
+	player.call("_update_character_combat_state", PlayerTango.UNIT_CONVERGE_DURATION)
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.FIRING,
+		"The remote-authority steering fixture must reach the active firing phase."
+	)
+	player.apply_network_input(Vector2.ZERO, Vector2.LEFT)
+	player.update_multiplayer_authority_passive_state(0.0)
+	_expect(
+		Vector2(player.get("_barrage_direction")).is_equal_approx(Vector2.LEFT),
+		"Host remote Tango must keep consuming changed aim while actively firing."
+	)
+	for bullet in _get_live_tango_laser_bullets():
+		bullet.retire()
+	player.uses_local_input = true
+	player.call("_reset_tango_combat_state", true)
 
 
 func _test_electric_surge_character_contract() -> void:

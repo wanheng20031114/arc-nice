@@ -933,7 +933,9 @@ func _update_character_resources(delta: float) -> void:
 			else:
 				cancel_authoritative_tango_charge()
 		return
-	if is_tango_empowered_auto_fire_active() and not uses_local_input:
+	# Host 会关闭远程玩家的物理处理；普通与强化弹幕都必须在权威被动
+	# 更新中持续消费最新网络瞄准，不能只锁定释放瞬间的方向。
+	if is_tango_barrage_active() and not uses_local_input:
 		var network_aim := _get_current_shoot_input()
 		if network_aim.length_squared() > 0.001:
 			_set_barrage_direction(network_aim)
