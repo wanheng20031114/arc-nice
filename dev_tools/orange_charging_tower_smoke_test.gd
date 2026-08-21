@@ -1151,7 +1151,7 @@ func _make_tower(
 		-1,
 		play_placement_effect
 	)
-	tower.set_plant_system(plant_system)
+	tower.set_ground_tile_map(ground_tile_map)
 	return tower
 
 

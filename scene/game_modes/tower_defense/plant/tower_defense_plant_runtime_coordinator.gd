@@ -884,7 +884,7 @@ func handle_plant_placed(plant: PlantDefense) -> void:
 		hydrangea.set_plant_system(_plant_system)
 	var orange_charging_tower := plant as OrangeChargingTower
 	if orange_charging_tower != null:
-		orange_charging_tower.set_plant_system(_plant_system)
+		orange_charging_tower.set_ground_tile_map(_plant_system.ground_tile_map)
 	if plant.config.is_proactive_enemy_target():
 		enemy_retarget_requested.emit()
 	if _runtime_mode == CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY:

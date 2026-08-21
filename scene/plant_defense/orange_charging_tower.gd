@@ -17,7 +17,9 @@ const VISUAL_CYCLE_DURATION_SECONDS := 2.4
 @onready var health_bar: PlantHealthBar = $HealthBar
 
 var orange_config: OrangeChargingTowerConfig = null
-var plant_system: PlantSystem = null
+# PlantDefenseRegistry preloads this scene through its config. Keep the runtime
+# dependency narrow so loading the scene cannot cycle back through PlantSystem.
+var ground_tile_map: TileMapLayer = null
 var player_charge_source_id := 0
 var player_candidates: Dictionary[Player, bool] = {}
 var buffed_players: Dictionary[Player, bool] = {}
@@ -57,13 +59,13 @@ func _on_setup_completed() -> void:
 		health_changed.connect(_on_health_changed)
 
 
-func set_plant_system(new_plant_system: PlantSystem) -> void:
-	if plant_system == new_plant_system:
+func set_ground_tile_map(new_ground_tile_map: TileMapLayer) -> void:
+	if ground_tile_map == new_ground_tile_map:
 		_seed_overlapping_player_candidates()
 		_reconcile_player_candidates()
 		return
 	_clear_all_player_charge_bonuses()
-	plant_system = new_plant_system
+	ground_tile_map = new_ground_tile_map
 	_configure_player_aura_shape()
 	_seed_overlapping_player_candidates()
 	_reconcile_player_candidates()
@@ -144,7 +146,7 @@ func _on_player_reconcile_timer_timeout() -> void:
 
 
 func _configure_player_aura_shape() -> void:
-	if plant_system == null or plant_system.ground_tile_map == null:
+	if ground_tile_map == null:
 		return
 	var rectangle := player_aura_shape.shape as RectangleShape2D
 	if rectangle == null:
@@ -153,9 +155,7 @@ func _configure_player_aura_shape() -> void:
 	var aura_rect := get_aura_cell_rect()
 	if aura_rect.size.x <= 0 or aura_rect.size.y <= 0:
 		return
-	var tile_size := Vector2(
-		plant_system.ground_tile_map.tile_set.tile_size
-	).abs()
+	var tile_size := Vector2(ground_tile_map.tile_set.tile_size).abs()
 	rectangle.size = tile_size * Vector2(aura_rect.size)
 
 
@@ -230,15 +230,13 @@ func _should_buff_player(candidate: Player) -> bool:
 		candidate == null
 		or not is_instance_valid(candidate)
 		or orange_config == null
-		or plant_system == null
-		or plant_system.ground_tile_map == null
+		or ground_tile_map == null
 		or player_charge_source_id <= 0
 		or not is_operational
 		or is_dead
 		or is_removing
 	):
 		return false
-	var ground_tile_map := plant_system.ground_tile_map
 	var player_cell := ground_tile_map.local_to_map(
 		ground_tile_map.to_local(candidate.global_position)
 	)
