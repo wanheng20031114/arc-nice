@@ -51,6 +51,25 @@ class PresentationCampaignProbe:
 		presentation.complete_defeat_presentation()
 
 
+class PresentationPlantPlacementProbe:
+	extends TowerDefensePlantPlacementCoordinator
+
+	var exclusive_modal_open := false
+
+	func has_exclusive_modal_open() -> bool:
+		return exclusive_modal_open
+
+
+class OutputDetailBuildingProbe:
+	extends ProductionBuilding
+
+	var visibility_requests: Array[bool] = []
+
+	func set_output_detail_visible(visible: bool) -> void:
+		output_detail_visible = visible
+		visibility_requests.append(visible)
+
+
 var failures: Array[String] = []
 
 
@@ -70,14 +89,30 @@ func _run() -> void:
 	var wave_hud := fixture["wave_hud"] as TowerDefenseWaveHUD
 	var announcement := fixture["announcement"] as DayPhaseAnnouncement
 	var music_player := fixture["music_player"] as AudioStreamPlayer
+	var plant_system := fixture["plant_system"] as PlantSystem
+	var plant_placement := (
+		fixture["plant_placement"] as PresentationPlantPlacementProbe
+	)
+	var existing_building := (
+		fixture["existing_building"] as OutputDetailBuildingProbe
+	)
 
 	_expect(coordinator.is_bound(), "PresentationCoordinator 必须完成强类型依赖绑定。")
+	_test_output_detail_visibility(
+		coordinator,
+		plant_system,
+		plant_placement,
+		existing_building
+	)
 	_test_lighting_and_announcement(coordinator, runtime, announcement)
 	_test_hud_and_request_bridge(coordinator, wave_hud)
 	_test_countdown_deduplication(coordinator)
 	_test_music(coordinator, music_player)
 	_test_defeat_idempotency(coordinator, campaign)
+	_test_plant_system_rebinding(fixture)
 
+	plant_system.plant_footprints.clear()
+	existing_building.free()
 	for owned_node in fixture["owned_nodes"] as Array[Node]:
 		owned_node.queue_free()
 	runtime.free()
@@ -94,7 +129,10 @@ func _create_fixture() -> Dictionary:
 	var wave_hud := WAVE_HUD_SCENE.instantiate() as TowerDefenseWaveHUD
 	var announcement := DAY_ANNOUNCEMENT_SCENE.instantiate() as DayPhaseAnnouncement
 	var status_hud := STATUS_HUD_SCENE.instantiate() as TowerDefenseStatusHUD
-	var plant_placement := TowerDefensePlantPlacementCoordinator.new()
+	var plant_placement := PresentationPlantPlacementProbe.new()
+	var plant_system := PlantSystem.new()
+	var existing_building := OutputDetailBuildingProbe.new()
+	plant_system.plant_footprints[existing_building] = []
 	var map_camera := Camera2D.new()
 	var music_player := AudioStreamPlayer.new()
 	music_player.name = "MusicPlayer"
@@ -115,6 +153,7 @@ func _create_fixture() -> Dictionary:
 		wave_start_audio,
 		defeat_audio,
 		plant_placement,
+		plant_system,
 		coordinator,
 	]:
 		root.add_child(node)
@@ -123,6 +162,7 @@ func _create_fixture() -> Dictionary:
 		runtime,
 		campaign,
 		plant_placement,
+		plant_system,
 		DAY_CYCLE,
 		map_camera,
 		music_player,
@@ -141,6 +181,14 @@ func _create_fixture() -> Dictionary:
 		"wave_hud": wave_hud,
 		"announcement": announcement,
 		"music_player": music_player,
+		"plant_system": plant_system,
+		"plant_placement": plant_placement,
+		"existing_building": existing_building,
+		"map_camera": map_camera,
+		"countdown_audio": countdown_audio,
+		"wave_start_audio": wave_start_audio,
+		"defeat_audio": defeat_audio,
+		"status_hud": status_hud,
 		"owned_nodes": [
 			wave_hud,
 			announcement,
@@ -151,6 +199,7 @@ func _create_fixture() -> Dictionary:
 			wave_start_audio,
 			defeat_audio,
 			plant_placement,
+			plant_system,
 			coordinator,
 		] as Array[Node],
 	}
@@ -194,6 +243,146 @@ func _test_static_scene_contract() -> void:
 			"presentation_coordinator.handle_unhandled_input(event)"
 		),
 		"塔防根脚本只应委托模式 UI 输入，不能重新持有表现实现或动态信号连接。"
+	)
+	var presentation_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.gd"
+	)
+	_expect(
+		presentation_source.contains('event.is_action_pressed(&"show_detail")')
+		and presentation_source.contains("and not event.is_echo()")
+		and presentation_source.contains(
+			"not _plant_placement_coordinator.has_exclusive_modal_open()"
+		)
+		and presentation_source.contains(
+			"get_viewport().set_input_as_handled()"
+		)
+		and not presentation_source.contains("rpc("),
+		"产物详情开关必须拒绝按键连发、服从独占模态门禁、消费输入，且不得进入 RPC 边界。"
+	)
+
+
+func _test_output_detail_visibility(
+	coordinator: TowerDefensePresentationCoordinator,
+	plant_system: PlantSystem,
+	plant_placement: PresentationPlantPlacementProbe,
+	existing_building: OutputDetailBuildingProbe
+) -> void:
+	_expect(
+		not bool(coordinator.get("_output_detail_visible"))
+		and existing_building.visibility_requests == [false],
+		"每局产物详情必须默认关闭，并立即应用到已放置的生产建筑。"
+	)
+	var toggle_event := InputEventAction.new()
+	toggle_event.action = &"show_detail"
+	toggle_event.pressed = true
+	coordinator.handle_unhandled_input(toggle_event)
+	_expect(
+		bool(coordinator.get("_output_detail_visible"))
+		and existing_building.visibility_requests == [false, true],
+		"show_detail 必须切换本地状态并更新现有生产建筑。"
+	)
+	var echo_event := InputEventKey.new()
+	echo_event.physical_keycode = KEY_C
+	echo_event.pressed = true
+	echo_event.echo = true
+	coordinator.handle_unhandled_input(echo_event)
+	_expect(
+		bool(coordinator.get("_output_detail_visible"))
+		and existing_building.visibility_requests == [false, true],
+		"show_detail 的键盘回响事件不得重复切换或刷新生产详情。"
+	)
+	plant_placement.exclusive_modal_open = true
+	coordinator.handle_unhandled_input(toggle_event)
+	_expect(
+		bool(coordinator.get("_output_detail_visible"))
+		and existing_building.visibility_requests == [false, true],
+		"独占模态界面打开时不得切换或刷新产物详情。"
+	)
+	plant_placement.exclusive_modal_open = false
+	coordinator.handle_unhandled_input(toggle_event)
+	var hidden_new_building := OutputDetailBuildingProbe.new()
+	plant_system.plant_placed.emit(hidden_new_building)
+	_expect(
+		not bool(coordinator.get("_output_detail_visible"))
+		and hidden_new_building.visibility_requests == [false],
+		"关闭状态下新放置的生产建筑必须立即继承隐藏状态。"
+	)
+	hidden_new_building.free()
+	coordinator.handle_unhandled_input(toggle_event)
+	var visible_new_building := OutputDetailBuildingProbe.new()
+	plant_system.plant_placed.emit(visible_new_building)
+	_expect(
+		bool(coordinator.get("_output_detail_visible"))
+		and visible_new_building.visibility_requests == [true],
+		"开启状态下新放置的生产建筑必须立即继承显示状态。"
+	)
+	visible_new_building.free()
+
+
+func _test_plant_system_rebinding(fixture: Dictionary) -> void:
+	var coordinator := fixture["coordinator"] as TowerDefensePresentationCoordinator
+	var old_plant_system := fixture["plant_system"] as PlantSystem
+	var callback := Callable(coordinator, "_on_plant_placed")
+	_setup_fixture_coordinator(fixture, old_plant_system)
+	_expect(
+		old_plant_system.plant_placed.is_connected(callback)
+		and bool(coordinator.get("_output_detail_visible")),
+		"重复 setup 必须保持单一 plant_placed 连接和本局本地开关状态。"
+	)
+	var same_system_probe := OutputDetailBuildingProbe.new()
+	old_plant_system.plant_placed.emit(same_system_probe)
+	_expect(
+		same_system_probe.visibility_requests == [true],
+		"重复绑定同一 PlantSystem 后 plant_placed 回调不得重复触发。"
+	)
+	same_system_probe.free()
+
+	var replacement_plant_system := PlantSystem.new()
+	var replacement_existing_probe := OutputDetailBuildingProbe.new()
+	replacement_plant_system.plant_footprints[replacement_existing_probe] = []
+	root.add_child(replacement_plant_system)
+	(fixture["owned_nodes"] as Array[Node]).append(replacement_plant_system)
+	_setup_fixture_coordinator(fixture, replacement_plant_system)
+	_expect(
+		not old_plant_system.plant_placed.is_connected(callback)
+		and replacement_plant_system.plant_placed.is_connected(callback)
+		and replacement_existing_probe.visibility_requests == [true],
+		"更换 PlantSystem 时必须断开旧信号、连接新信号，并应用当前本地显示状态。"
+	)
+	var stale_probe := OutputDetailBuildingProbe.new()
+	old_plant_system.plant_placed.emit(stale_probe)
+	var active_probe := OutputDetailBuildingProbe.new()
+	replacement_plant_system.plant_placed.emit(active_probe)
+	_expect(
+		stale_probe.visibility_requests.is_empty()
+		and active_probe.visibility_requests == [true],
+		"更换 PlantSystem 后只有当前系统的新建筑能够继承本地显示状态。"
+	)
+	stale_probe.free()
+	active_probe.free()
+	replacement_plant_system.plant_footprints.clear()
+	replacement_existing_probe.free()
+
+
+func _setup_fixture_coordinator(
+	fixture: Dictionary,
+	plant_system: PlantSystem
+) -> void:
+	var coordinator := fixture["coordinator"] as TowerDefensePresentationCoordinator
+	coordinator.setup(
+		fixture["runtime"] as PresentationRuntimeProbe,
+		fixture["campaign"] as PresentationCampaignProbe,
+		fixture["plant_placement"] as PresentationPlantPlacementProbe,
+		plant_system,
+		DAY_CYCLE,
+		fixture["map_camera"] as Camera2D,
+		fixture["music_player"] as AudioStreamPlayer,
+		fixture["countdown_audio"] as AudioStreamPlayer,
+		fixture["wave_start_audio"] as AudioStreamPlayer,
+		fixture["defeat_audio"] as AudioStreamPlayer,
+		fixture["wave_hud"] as TowerDefenseWaveHUD,
+		fixture["announcement"] as DayPhaseAnnouncement,
+		fixture["status_hud"] as TowerDefenseStatusHUD
 	)
 
 

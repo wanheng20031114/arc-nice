@@ -1,0 +1,125 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/ui/production_output_bubble.gd" id="1_script"]
+
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_unshaded"]
+light_mode = 1
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_working"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.055, 0.042, 0.035, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.35, 0.95, 0.38, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+shadow_color = Color(0.015, 0.012, 0.01, 0.65)
+shadow_size = 2
+shadow_offset = Vector2(0, 2)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_stopped"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.055, 0.042, 0.035, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.92, 0.28, 0.18, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+shadow_color = Color(0.015, 0.012, 0.01, 0.65)
+shadow_size = 2
+shadow_offset = Vector2(0, 2)
+
+[node name="ProductionOutputBubble" type="Node2D"]
+visible = false
+z_index = 21
+texture_filter = 1
+scale = Vector2(0.5, 0.5)
+script = ExtResource("1_script")
+working_panel_style = SubResource("StyleBoxFlat_working")
+stopped_panel_style = SubResource("StyleBoxFlat_stopped")
+
+[node name="TailBorder" type="Polygon2D" parent="."]
+z_index = -1
+texture_filter = 1
+material = SubResource("CanvasItemMaterial_unshaded")
+polygon = PackedVector2Array(-7, -10, 7, -10, 0, 0)
+color = Color(0.92, 0.28, 0.18, 1)
+
+[node name="TailFill" type="Polygon2D" parent="."]
+z_index = -1
+texture_filter = 1
+material = SubResource("CanvasItemMaterial_unshaded")
+polygon = PackedVector2Array(-4, -10, 4, -10, 0, -3)
+color = Color(0.055, 0.042, 0.035, 0.94)
+
+[node name="BubblePanel" type="PanelContainer" parent="."]
+texture_filter = 1
+material = SubResource("CanvasItemMaterial_unshaded")
+custom_minimum_size = Vector2(44, 44)
+offset_left = -22.0
+offset_top = -52.0
+offset_right = 22.0
+offset_bottom = -8.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_stopped")
+
+[node name="ContentMargin" type="MarginContainer" parent="BubblePanel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 6
+
+[node name="OutputRow" type="HBoxContainer" parent="BubblePanel/ContentMargin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="OutputSlot1" type="Control" parent="BubblePanel/ContentMargin/OutputRow"]
+visible = false
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="ProductIcon" type="Sprite2D" parent="BubblePanel/ContentMargin/OutputRow/OutputSlot1"]
+texture_filter = 1
+material = SubResource("CanvasItemMaterial_unshaded")
+position = Vector2(16, 16)
+
+[node name="OutputSlot2" type="Control" parent="BubblePanel/ContentMargin/OutputRow"]
+visible = false
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="ProductIcon" type="Sprite2D" parent="BubblePanel/ContentMargin/OutputRow/OutputSlot2"]
+texture_filter = 1
+material = SubResource("CanvasItemMaterial_unshaded")
+position = Vector2(16, 16)
+
+[node name="OutputSlot3" type="Control" parent="BubblePanel/ContentMargin/OutputRow"]
+visible = false
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="ProductIcon" type="Sprite2D" parent="BubblePanel/ContentMargin/OutputRow/OutputSlot3"]
+texture_filter = 1
+material = SubResource("CanvasItemMaterial_unshaded")
+position = Vector2(16, 16)

@@ -593,6 +593,7 @@ func _configure_presentation_coordinator() -> bool:
 		self,
 		campaign_coordinator,
 		plant_placement_coordinator,
+		plant_system,
 		day_cycle_config,
 		map_camera,
 		music_player,

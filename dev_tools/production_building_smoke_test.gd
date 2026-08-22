@@ -49,6 +49,38 @@ const SPEED_TOWER_ITEM := preload(
 const ATTACK_SPEED_TOWER_ITEM := preload(
 	"res://resources/config/buildings/building_attack_speed_tower.tres"
 )
+const PRODUCTION_OUTPUT_BUBBLE_SCENE_CASES := [
+	{
+		"label": "木头加工站",
+		"scene": preload("res://scene/plant_defense/wood_processing_station.tscn"),
+		"position": Vector2(0, -25),
+	},
+	{
+		"label": "石磨台",
+		"scene": preload("res://scene/plant_defense/stone_mill.tscn"),
+		"position": Vector2(0, -25),
+	},
+	{
+		"label": "水源采集器",
+		"scene": preload("res://scene/plant_defense/water_collector.tscn"),
+		"position": Vector2(0, -34),
+	},
+	{
+		"label": "挖土装置",
+		"scene": preload("res://scene/plant_defense/excavator.tscn"),
+		"position": Vector2(0, -34),
+	},
+	{
+		"label": "种植基地",
+		"scene": preload("res://scene/plant_defense/planting_base.tscn"),
+		"position": Vector2(0, -36),
+	},
+	{
+		"label": "植物培育中心",
+		"scene": preload("res://scene/plant_defense/plant_cultivation_center.tscn"),
+		"position": Vector2(0, -32),
+	},
+]
 
 var failures: PackedStringArray = []
 
@@ -61,6 +93,8 @@ func _run() -> void:
 	var test_root := Node.new()
 	test_root.name = "ProductionBuildingSmokeTest"
 	root.add_child(test_root)
+	_verify_production_output_bubble_scene_contracts()
+	await _verify_production_output_bubble_lifecycle_contract(test_root)
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier", false)
 
@@ -114,6 +148,137 @@ func _run() -> void:
 	if second_station != null:
 		coordinator.register_plant(second_station)
 	station.set_shared_production_panel(panel)
+	var output_bubble := (
+		station.get_node_or_null("ProductionOutputBubble")
+		as ProductionOutputBubble
+	)
+	var output_bubble_panel := (
+		output_bubble.get_node("BubblePanel") as PanelContainer
+		if output_bubble != null
+		else null
+	)
+	var output_icon := (
+		output_bubble.get_node(
+			"BubblePanel/ContentMargin/OutputRow/OutputSlot1/ProductIcon"
+		) as Sprite2D
+		if output_bubble != null
+		else null
+	)
+	var second_output_slot := (
+		output_bubble.get_node(
+			"BubblePanel/ContentMargin/OutputRow/OutputSlot2"
+		) as Control
+		if output_bubble != null
+		else null
+	)
+	var third_output_slot := (
+		output_bubble.get_node(
+			"BubblePanel/ContentMargin/OutputRow/OutputSlot3"
+		) as Control
+		if output_bubble != null
+		else null
+	)
+	var second_output_icon := (
+		second_output_slot.get_node("ProductIcon") as Sprite2D
+		if second_output_slot != null
+		else null
+	)
+	var third_output_icon := (
+		third_output_slot.get_node("ProductIcon") as Sprite2D
+		if third_output_slot != null
+		else null
+	)
+	var output_content_margin := (
+		output_bubble.get_node("BubblePanel/ContentMargin") as MarginContainer
+		if output_bubble != null
+		else null
+	)
+	var output_row := (
+		output_bubble.get_node("BubblePanel/ContentMargin/OutputRow")
+		as HBoxContainer
+		if output_bubble != null
+		else null
+	)
+	var output_tail_border := (
+		output_bubble.get_node("TailBorder") as Polygon2D
+		if output_bubble != null
+		else null
+	)
+	var output_tail_fill := (
+		output_bubble.get_node("TailFill") as Polygon2D
+		if output_bubble != null
+		else null
+	)
+	var output_panel_material := (
+		output_bubble_panel.material as CanvasItemMaterial
+		if output_bubble_panel != null
+		else null
+	)
+	_expect(
+		output_bubble != null
+		and output_bubble_panel != null
+		and output_icon != null
+		and second_output_slot != null
+		and third_output_slot != null
+		and output_content_margin != null
+		and output_row != null
+		and output_tail_border != null
+		and output_tail_fill != null
+		and output_bubble.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		and output_bubble_panel.mouse_filter == Control.MOUSE_FILTER_IGNORE
+		and output_content_margin.mouse_filter == Control.MOUSE_FILTER_IGNORE
+		and output_row.mouse_filter == Control.MOUSE_FILTER_IGNORE
+		and output_panel_material != null
+		and output_panel_material.light_mode
+		== CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		and not output_bubble.visible,
+		"生产建筑必须预置默认隐藏、鼠标穿透、最近邻且无灯光的三格共享气泡。"
+	)
+	if output_bubble != null and output_bubble_panel != null:
+		var output_count_recipe := ProductionRecipe.new()
+		output_count_recipe.recipe_id = &"smoke_output_count"
+		output_count_recipe.output_items.assign(
+			[PLANK, WATER_BOTTLE, WOODEN_CORE]
+		)
+		output_count_recipe.output_amounts.assign([1, 1, 1])
+		output_bubble.refresh(output_count_recipe, true, true)
+		_expect(
+			output_icon.texture == PLANK.icon_texture
+			and second_output_slot.visible
+			and second_output_icon.texture == WATER_BOTTLE.icon_texture
+			and third_output_slot.visible
+			and third_output_icon.texture == WOODEN_CORE.icon_texture
+			and is_equal_approx(output_bubble_panel.size.x, 116.0),
+			"共享气泡必须按顺序显示三个产物图标，并扩展为三格宽度。"
+		)
+		output_count_recipe.output_items.assign([PLANK, WATER_BOTTLE])
+		output_count_recipe.output_amounts.assign([1, 1])
+		output_bubble.refresh(output_count_recipe, true, true)
+		_expect(
+			second_output_slot.visible
+			and not third_output_slot.visible
+			and is_equal_approx(output_bubble_panel.size.x, 80.0),
+			"共享气泡必须支持两个产物图标，并收紧为两格宽度。"
+		)
+		output_count_recipe.output_items.assign([PLANK])
+		output_count_recipe.output_amounts.assign([1])
+		output_bubble.refresh(output_count_recipe, true, true)
+		_expect(
+			not second_output_slot.visible
+			and not third_output_slot.visible
+			and is_equal_approx(output_bubble_panel.size.x, 44.0),
+			"共享气泡必须支持单个产物图标，并收紧为单格宽度。"
+		)
+		output_bubble.refresh(null, false, false)
+	var output_detail_revision := station.production_revision
+	station.set_output_detail_visible(true)
+	_expect(
+		output_bubble != null
+		and not output_bubble.visible
+		and not station.is_production_actively_advancing()
+		and station.production_revision == output_detail_revision,
+		"打开详情时，无当前配方的建筑仍不得显示空气泡或改动生产revision。"
+	)
 
 	var station_direct_timers := station.find_children(
 		"*",
@@ -587,6 +752,42 @@ func _run() -> void:
 	station.set_production_enabled(true)
 	_expect(warehouse.try_add_storage_item_count(WOOD, 1), "仓库必须能加入测试木头。")
 	_expect(station.select_recipe(&"wood_to_plank"), "玩家必须能选择木材锯切配方。")
+	var selected_recipe_revision := station.production_revision
+	_expect(
+		output_bubble != null
+		and output_bubble.visible
+		and output_icon != null
+		and output_icon.texture == PLANK.icon_texture
+		and second_output_slot != null
+		and not second_output_slot.visible
+		and third_output_slot != null
+		and not third_output_slot.visible
+		and output_bubble_panel != null
+		and output_bubble_panel.get_theme_stylebox("panel")
+		== output_bubble.working_panel_style
+		and output_tail_border != null
+		and output_tail_border.color
+		== output_bubble.working_panel_style.border_color
+		and output_tail_fill != null
+		and output_tail_fill.color
+		== output_bubble.working_panel_style.bg_color
+		and station.is_production_actively_advancing(),
+		"选中配方并推进生产时，气泡与尖角必须同步使用绿色工作样式。"
+	)
+	station.set_output_detail_visible(false)
+	_expect(
+		output_bubble != null
+		and not output_bubble.visible
+		and station.production_revision == selected_recipe_revision,
+		"关闭详情必须仅在本机隐藏气泡，不得改动生产revision。"
+	)
+	station.set_output_detail_visible(true)
+	_expect(
+		output_bubble != null
+		and output_bubble.visible
+		and station.production_revision == selected_recipe_revision,
+		"再次打开详情必须恢复当前配方产物，且不得改动生产revision。"
+	)
 	if production_border != null:
 		_expect(
 			bool(production_border.get_instance_shader_parameter(&"working_active"))
@@ -662,6 +863,21 @@ func _run() -> void:
 		and not station.production_loop_enabled,
 		"默认单次模式第10秒必须原子结算一轮、进度归零并自动停止。"
 	)
+	_expect(
+		output_bubble != null
+		and output_bubble.visible
+		and not station.is_production_actively_advancing()
+		and output_bubble_panel != null
+		and output_bubble_panel.get_theme_stylebox("panel")
+		== output_bubble.stopped_panel_style
+		and output_tail_border != null
+		and output_tail_border.color
+		== output_bubble.stopped_panel_style.border_color
+		and output_tail_fill != null
+		and output_tail_fill.color
+		== output_bubble.stopped_panel_style.bg_color,
+		"单次生产完成停机后必须保留当前产物提示，并切为红色停止样式。"
+	)
 	if production_border != null:
 		_expect(
 			is_zero_approx(
@@ -691,6 +907,29 @@ func _run() -> void:
 		and coordinator.get_total_item_count(PLANK) == 2,
 		"单次模式缺料到100%时必须继续等待，不能把阻塞当作成功而提前停机。"
 	)
+	_expect(
+		output_bubble != null
+		and output_bubble.visible
+		and not station.is_production_actively_advancing(),
+		"缺料等待时必须继续显示选中产物，但不得显示为正在推进。"
+	)
+	var blocked_display_revision := station.production_revision
+	for blocked_reason: StringName in [
+		ProductionCoordinator.RESULT_STORAGE_FULL,
+		ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED,
+	]:
+		station.completion_wait_reason = blocked_reason
+		station.production_state_changed.emit(false)
+		_expect(
+			output_bubble.visible
+			and not station.is_production_actively_advancing()
+			and output_bubble_panel.get_theme_stylebox("panel")
+			== output_bubble.stopped_panel_style
+			and station.production_revision == blocked_display_revision,
+			"仓库满或本地产物槽满的既有等待状态必须映射为红色产物气泡。"
+		)
+	station.completion_wait_reason = ProductionCoordinator.RESULT_MISSING_INPUT
+	station.production_state_changed.emit(false)
 	_expect(warehouse.try_add_storage_item_count(WOOD, 1), "单次缺料等待必须能补入测试木头。")
 	_expect(
 		coordinator.get_total_item_count(WOOD) == 0
@@ -760,6 +999,15 @@ func _run() -> void:
 			not bool(production_border.get_instance_shader_parameter(&"working_active")),
 			"暂停生产后像素外圈必须立即回到棕色噪波常态。"
 		)
+	_expect(
+		output_bubble != null
+		and output_bubble.visible
+		and not station.is_production_actively_advancing()
+		and output_bubble_panel != null
+		and output_bubble_panel.get_theme_stylebox("panel")
+		== output_bubble.stopped_panel_style,
+		"暂停生产必须保留当前配方产物提示，并立即切为红色停止样式。"
+	)
 	for slot_index in OakWarehouse.STORAGE_CAPACITY:
 		if warehouse.get_storage_item(slot_index) == WOOD:
 			warehouse.discard_storage_item(slot_index)
@@ -781,6 +1029,13 @@ func _run() -> void:
 	)
 	_expect(warehouse.try_add_storage_item_count(WATER_BOTTLE, 4), "核心配方缺料测试必须先准备4瓶水。")
 	_expect(station.select_recipe(&"wooden_core_assembly"), "玩家必须能选择木制核心组装配方。")
+	_expect(
+		output_bubble != null
+		and output_bubble.visible
+		and output_icon != null
+		and output_icon.texture == WOODEN_CORE.icon_texture,
+		"切换配方后气泡必须立即切换为新配方的产物图标。"
+	)
 	station.advance_shared_production_tick(10.0)
 	_expect(
 		coordinator.get_total_item_count(PLANK) == 10
@@ -1345,6 +1600,29 @@ func _test_multiplayer_production_contract(
 	proxy.setup(config, null, [Vector2i(3, 0)], true, config.max_health, 1)
 	coordinator.register_plant(proxy)
 	proxy.configure_multiplayer_production(7, 2, true)
+	var proxy_output_bubble := (
+		proxy.get_node_or_null("ProductionOutputBubble")
+		as ProductionOutputBubble
+	)
+	var proxy_output_icon := (
+		proxy_output_bubble.get_node(
+			"BubblePanel/ContentMargin/OutputRow/OutputSlot1/ProductIcon"
+		) as Sprite2D
+		if proxy_output_bubble != null
+		else null
+	)
+	var proxy_output_revision := proxy.production_revision
+	proxy.set_output_detail_visible(true)
+	_expect(
+		proxy_output_bubble != null
+		and not proxy_output_bubble.visible
+		and not proxy.is_production_actively_advancing()
+		and proxy.production_revision == proxy_output_revision
+		and not proxy.export_multiplayer_runtime_state().has(
+			"output_detail_visible"
+		),
+		"多人客户端的详情开关必须纯本地，且首次权威配方到达前不得误显示。"
+	)
 	var requested_commands: Array[Dictionary] = []
 	var snapshot_requests: Array[int] = []
 	proxy.production_command_requested.connect(
@@ -1405,7 +1683,12 @@ func _test_multiplayer_production_contract(
 		and proxy.active_recipe_id == &"wood_to_plank"
 		and proxy.production_loop_enabled
 		and proxy.production_revision == 1
-		and is_equal_approx(proxy.progress_elapsed_seconds, 4.0),
+		and is_equal_approx(proxy.progress_elapsed_seconds, 4.0)
+		and proxy_output_bubble != null
+		and proxy_output_bubble.visible
+		and proxy_output_icon != null
+		and proxy_output_icon.texture == PLANK.icon_texture
+		and proxy.is_production_actively_advancing(),
 		"成功或失败结果都必须以完整权威状态结束请求。"
 	)
 	var stale_state := authoritative_state.duplicate(true)
@@ -1459,7 +1742,10 @@ func _test_multiplayer_production_contract(
 	_expect(
 		not proxy.multiplayer_production_request_pending
 		and not proxy.multiplayer_production_snapshot_ready
-		and snapshot_requests == [7],
+		and snapshot_requests == [7]
+		and proxy_output_bubble != null
+		and proxy_output_bubble.visible
+		and proxy.is_production_actively_advancing(),
 		"4秒命令超时必须取消假操作并请求权威快照。"
 	)
 	proxy.multiplayer_production_request_timer.stop()
@@ -1478,9 +1764,141 @@ func _test_multiplayer_production_contract(
 		and proxy.personal_output_peer_id == 0
 		and is_zero_approx(proxy.progress_elapsed_seconds)
 		and proxy.completion_wait_reason
-		== ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE,
+		== ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE
+		and proxy_output_bubble != null
+		and not proxy_output_bubble.visible,
 		"断线事件之后到达的可靠旧状态不得复活已失效的个人产物绑定。"
 	)
+
+
+func _verify_production_output_bubble_scene_contracts() -> void:
+	for case_data: Dictionary in PRODUCTION_OUTPUT_BUBBLE_SCENE_CASES:
+		var building_scene := case_data["scene"] as PackedScene
+		var building := building_scene.instantiate() as ProductionBuilding
+		var output_bubble := (
+			building.get_node_or_null("ProductionOutputBubble")
+			as ProductionOutputBubble
+			if building != null
+			else null
+		)
+		_expect(
+			building != null
+			and output_bubble != null
+			and output_bubble.position == case_data["position"]
+			and output_bubble.scale == Vector2(0.5, 0.5)
+			and output_bubble.z_index == 21
+			and not output_bubble.visible,
+			(
+				"%s必须原生实例化共享产物气泡，并按血条高度设置锚点、缩放与层级。"
+				% String(case_data["label"])
+			)
+		)
+		if building != null:
+			building.free()
+
+
+func _verify_production_output_bubble_lifecycle_contract(
+	test_root: Node
+) -> void:
+	var water_config := PlantDefenseRegistry.get_config(&"water_collector")
+	var constructing_building := (
+		water_config.plant_scene.instantiate() as ProductionBuilding
+		if water_config != null
+		else null
+	)
+	_expect(
+		constructing_building != null,
+		"施工期产物气泡夹具必须能实例化水源采集器。"
+	)
+	if constructing_building != null:
+		test_root.add_child(constructing_building)
+		await process_frame
+		constructing_building.setup(
+			water_config,
+			null,
+			[Vector2i(20, 20)],
+			false,
+			-1,
+			0,
+			-1,
+			true
+		)
+		constructing_building.set_output_detail_visible(true)
+		var constructing_bubble := (
+			constructing_building.get_node("ProductionOutputBubble")
+			as ProductionOutputBubble
+		)
+		var constructing_panel := (
+			constructing_bubble.get_node("BubblePanel") as PanelContainer
+			if constructing_bubble != null
+			else null
+		)
+		_expect(
+			not constructing_building.is_operational
+			and constructing_building.get_active_recipe() != null
+			and constructing_bubble != null
+			and constructing_bubble.visible
+			and not constructing_building.is_production_actively_advancing()
+			and constructing_panel != null
+			and constructing_panel.get_theme_stylebox("panel")
+			== constructing_bubble.stopped_panel_style,
+			"施工中的自动配方必须显示红色产物气泡，而不是被运行状态门禁隐藏。"
+		)
+		constructing_building.begin_removal(PlantDefense.RemovalMode.SILENT)
+		_expect(
+			not constructing_bubble.visible,
+			"生产建筑开始拆除时必须立即隐藏本地产物气泡。"
+		)
+		await process_frame
+
+	var cultivation_config := PlantDefenseRegistry.get_config(
+		&"plant_cultivation_center"
+	)
+	var locked_recipe_building := (
+		cultivation_config.plant_scene.instantiate() as ProductionBuilding
+		if cultivation_config != null
+		else null
+	)
+	_expect(
+		locked_recipe_building != null,
+		"锁定配方气泡夹具必须能实例化植物培育中心。"
+	)
+	if locked_recipe_building == null:
+		return
+	locked_recipe_building.set_recipe_unlock_checker(
+		func(_research_id: StringName) -> bool: return true
+	)
+	test_root.add_child(locked_recipe_building)
+	await process_frame
+	locked_recipe_building.setup(
+		cultivation_config,
+		null,
+		[Vector2i(21, 20)]
+	)
+	locked_recipe_building.set_output_detail_visible(true)
+	_expect(
+		locked_recipe_building.select_recipe(
+			&"wooden_core_to_orange_charging_tower"
+		),
+		"锁定配方状态测试必须先以已解锁状态选中橘充能塔配方。"
+	)
+	var locked_recipe_bubble := (
+		locked_recipe_building.get_node("ProductionOutputBubble")
+		as ProductionOutputBubble
+	)
+	locked_recipe_building.set_recipe_unlock_checker(
+		func(_research_id: StringName) -> bool: return false
+	)
+	_expect(
+		locked_recipe_bubble.visible
+		and not locked_recipe_building.is_production_actively_advancing()
+		and (
+			locked_recipe_bubble.get_node("BubblePanel") as PanelContainer
+		).get_theme_stylebox("panel")
+		== locked_recipe_bubble.stopped_panel_style,
+		"已选配方重新锁定后必须保留产物提示，但切为红色非推进状态。"
+	)
+	locked_recipe_building.free()
 
 
 func _expect(condition: bool, message: String) -> void:

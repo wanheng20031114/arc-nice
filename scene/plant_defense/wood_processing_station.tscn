@@ -19,6 +19,7 @@
 [ext_resource type="Resource" path="res://resources/config/production/life_tower_assembly.tres" id="17_life_tower_recipe"]
 [ext_resource type="Resource" uid="uid://btu6d5wgn6na7" path="res://resources/config/production/speed_tower_assembly.tres" id="18_speed_tower_recipe"]
 [ext_resource type="Resource" path="res://resources/config/production/attack_speed_tower_assembly.tres" id="19_attack_speed_tower_recipe"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/production_output_bubble.tscn" id="20_output_bubble"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("8_border_shader")
@@ -176,6 +177,11 @@ layout_mode = 2
 text = "打开加工站"
 label_settings = SubResource("LabelSettings_action")
 vertical_alignment = 1
+
+[node name="ProductionOutputBubble" parent="." instance=ExtResource("20_output_bubble")]
+position = Vector2(0, -25)
+scale = Vector2(0.5, 0.5)
+z_index = 21
 
 [node name="HealthBar" parent="." unique_id=2051412181 instance=ExtResource("3_health_bar")]
 custom_minimum_size = Vector2(12, 3)

@@ -13,6 +13,7 @@
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/planting_base/layers/upper_canopy.png" id="11_upper_canopy"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="12_night_light"]
 [ext_resource type="Texture2D" path="res://resources/lighting/planting_base_hotspots.svg" id="13_hotspot_texture"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/production_output_bubble.tscn" id="14_output_bubble"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("8_border_shader")
@@ -185,6 +186,11 @@ layout_mode = 2
 text = "打开种植基地"
 label_settings = SubResource("LabelSettings_action")
 vertical_alignment = 1
+
+[node name="ProductionOutputBubble" parent="." instance=ExtResource("14_output_bubble")]
+position = Vector2(0, -36)
+scale = Vector2(0.5, 0.5)
+z_index = 21
 
 [node name="HealthBar" parent="." instance=ExtResource("3_health_bar")]
 offset_left = -16.0

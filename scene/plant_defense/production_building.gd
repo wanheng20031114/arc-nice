@@ -34,6 +34,7 @@ enum PanelTheme {
 @onready var prompt_keycap: Control = $InteractionPrompt/PromptMargin/PromptRow/Keycap
 @onready var health_bar: PlantHealthBar = $HealthBar
 @onready var multiplayer_production_request_timer: Timer = $MultiplayerProductionRequestTimer
+@onready var production_output_bubble: ProductionOutputBubble = $ProductionOutputBubble
 
 var production_coordinator: ProductionCoordinator = null
 var production_panel: ProductionBuildingPanel = null
@@ -42,6 +43,7 @@ var nearby_player: Player = null
 var is_interaction_target := false
 var production_enabled := true
 var production_loop_enabled := false
+var output_detail_visible := false
 var active_recipe_id: StringName = &""
 var progress_elapsed_seconds := 0.0
 var completion_wait_reason: StringName = &""
@@ -80,6 +82,8 @@ func _ready() -> void:
 	multiplayer_production_request_timer.timeout.connect(
 		_on_multiplayer_production_request_timeout
 	)
+	production_state_changed.connect(_refresh_production_output_bubble)
+	_refresh_production_output_bubble()
 
 
 func _process(delta: float) -> void:
@@ -138,11 +142,13 @@ func _on_setup_completed() -> void:
 	health_bar.setup(max_health, current_health)
 	if not health_changed.is_connected(_on_health_changed):
 		health_changed.connect(_on_health_changed)
+	_refresh_production_output_bubble()
 
 
 func _on_operational_started() -> void:
 	_sync_visual_progress_clock()
 	interaction_area.set_deferred("monitoring", true)
+	_refresh_production_output_bubble()
 
 
 func _on_removal_started(_mode: RemovalMode) -> void:
@@ -154,6 +160,7 @@ func _on_removal_started(_mode: RemovalMode) -> void:
 	interaction_area.set_deferred("monitoring", false)
 	_set_interaction_target(false)
 	close_production_panel()
+	_refresh_production_output_bubble()
 	_refresh_interaction_selection(interaction_player)
 
 
@@ -222,6 +229,29 @@ func get_recipe(recipe_id: StringName) -> ProductionRecipe:
 
 func get_active_recipe() -> ProductionRecipe:
 	return get_recipe(active_recipe_id)
+
+
+func set_output_detail_visible(visible: bool) -> void:
+	if output_detail_visible == visible:
+		return
+	output_detail_visible = visible
+	_refresh_production_output_bubble()
+
+
+func is_production_actively_advancing() -> bool:
+	var recipe := get_active_recipe()
+	return (
+		is_operational
+		and not is_dead
+		and not is_removing
+		and production_enabled
+		and recipe != null
+		and recipe.is_valid()
+		and is_recipe_unlocked(recipe)
+		and completion_wait_reason == &""
+		and progress_elapsed_seconds < recipe.duration_seconds
+		and (not is_multiplayer_proxy or _has_multiplayer_runtime_sample)
+	)
 
 
 func get_display_recipe() -> ProductionRecipe:
@@ -1080,6 +1110,14 @@ func _bump_production_state(replicate: bool = true) -> void:
 	production_revision += 1
 	_sync_visual_progress_clock()
 	production_state_changed.emit(replicate)
+
+
+func _refresh_production_output_bubble(_replicate: bool = false) -> void:
+	production_output_bubble.refresh(
+		get_active_recipe(),
+		output_detail_visible and not is_dead and not is_removing,
+		is_production_actively_advancing()
+	)
 
 
 func _clear_ready_production_wait_registration() -> void:

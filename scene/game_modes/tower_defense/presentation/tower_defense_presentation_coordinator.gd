@@ -21,6 +21,7 @@ var spectator_camera_active := false
 var _runtime: TowerDefenseGame = null
 var _campaign_coordinator: TowerDefenseCampaignCoordinator = null
 var _plant_placement_coordinator: TowerDefensePlantPlacementCoordinator = null
+var _plant_system: PlantSystem = null
 var _day_cycle_config: DayCycleConfig = null
 var _map_camera: Camera2D = null
 var _music_player: AudioStreamPlayer = null
@@ -38,12 +39,14 @@ var _multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter = null
 var _last_day_phase_announcement_key: StringName = &""
 var _client_countdown_sequence_key: StringName = &""
 var _client_last_countdown_tick_seconds := COUNTDOWN_FINAL_SECONDS + 1
+var _output_detail_visible := false
 
 
 func setup(
 	runtime: TowerDefenseGame,
 	campaign_coordinator: TowerDefenseCampaignCoordinator,
 	plant_placement_coordinator: TowerDefensePlantPlacementCoordinator,
+	plant_system: PlantSystem,
 	day_cycle_config: DayCycleConfig,
 	map_camera: Camera2D,
 	music_player: AudioStreamPlayer,
@@ -54,9 +57,17 @@ func setup(
 	day_phase_announcement: DayPhaseAnnouncement,
 	status_hud: TowerDefenseStatusHUD
 ) -> void:
+	if (
+		_plant_system != null
+		and is_instance_valid(_plant_system)
+		and _plant_system != plant_system
+	):
+		_apply_output_detail_visibility_to_existing_buildings(false)
+	_disconnect_plant_placed()
 	_runtime = runtime
 	_campaign_coordinator = campaign_coordinator
 	_plant_placement_coordinator = plant_placement_coordinator
+	_plant_system = plant_system
 	_day_cycle_config = day_cycle_config
 	_map_camera = map_camera
 	_music_player = music_player
@@ -66,6 +77,8 @@ func setup(
 	_wave_hud = wave_hud
 	_day_phase_announcement = day_phase_announcement
 	_status_hud = status_hud
+	_connect_plant_placed()
+	_apply_output_detail_visibility_to_existing_buildings(_output_detail_visible)
 
 
 func is_bound() -> bool:
@@ -73,6 +86,7 @@ func is_bound() -> bool:
 		_runtime != null
 		and _campaign_coordinator != null
 		and _plant_placement_coordinator != null
+		and _plant_system != null
 		and _day_cycle_config != null
 		and _map_camera != null
 		and _music_player != null
@@ -168,6 +182,15 @@ func configure_minimap(
 
 
 func handle_unhandled_input(event: InputEvent) -> void:
+	if (
+		event.is_action_pressed(&"show_detail")
+		and not event.is_echo()
+		and not _plant_placement_coordinator.has_exclusive_modal_open()
+	):
+		_output_detail_visible = not _output_detail_visible
+		_apply_output_detail_visibility_to_existing_buildings(_output_detail_visible)
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("full_screen"):
 		_toggle_full_screen()
 		get_viewport().set_input_as_handled()
@@ -197,6 +220,33 @@ func _toggle_debug_collectible_window() -> void:
 	if not _multiplayer_mode_adapter.allows_debug_collectible_grants():
 		return
 	_debug_collectible_window.toggle()
+
+
+func _connect_plant_placed() -> void:
+	var callback := Callable(self, "_on_plant_placed")
+	if not _plant_system.plant_placed.is_connected(callback):
+		_plant_system.plant_placed.connect(callback)
+
+
+func _disconnect_plant_placed() -> void:
+	if _plant_system == null or not is_instance_valid(_plant_system):
+		return
+	var callback := Callable(self, "_on_plant_placed")
+	if _plant_system.plant_placed.is_connected(callback):
+		_plant_system.plant_placed.disconnect(callback)
+
+
+func _apply_output_detail_visibility_to_existing_buildings(visible: bool) -> void:
+	for plant_variant in _plant_system.plant_footprints.keys():
+		var building := plant_variant as ProductionBuilding
+		if building != null and is_instance_valid(building):
+			building.set_output_detail_visible(visible)
+
+
+func _on_plant_placed(plant: PlantDefense) -> void:
+	var building := plant as ProductionBuilding
+	if building != null:
+		building.set_output_detail_visible(_output_detail_visible)
 
 
 func connect_wave_hud_requests() -> void:

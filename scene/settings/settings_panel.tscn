@@ -867,6 +867,56 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
 text = "重置"
 
+[node name="ShowDetailRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ActionLabel" type="Label" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShowDetailRow"]
+custom_minimum_size = Vector2(100, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 14
+text = "生产详情"
+vertical_alignment = 1
+
+[node name="Slot1" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShowDetailRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot2" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShowDetailRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Slot3" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShowDetailRow"]
+custom_minimum_size = Vector2(150, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+
+[node name="Reset" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShowDetailRow"]
+custom_minimum_size = Vector2(70, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "重置"
+
 [node name="ReloadRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows"]
 layout_mode = 2
 theme_override_constants/separation = 8

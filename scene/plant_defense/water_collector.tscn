@@ -9,6 +9,7 @@
 [ext_resource type="Script" uid="uid://bqe4uxp0um77k" path="res://resources/config/production/production_recipe.gd" id="7_recipe_script"]
 [ext_resource type="Texture2D" uid="uid://dthood4sh23ov" path="res://resources/texture/production/water_collector_panel_background.png" id="8_panel_background"]
 [ext_resource type="Texture2D" uid="uid://c3bj80vdjrpu4" path="res://resources/texture/plant_defense/water_collector/water_collector_progress_ring.svg" id="9_progress_ring"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/production_output_bubble.tscn" id="10_output_bubble"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
@@ -171,6 +172,11 @@ layout_mode = 2
 text = "打开采集器"
 label_settings = SubResource("LabelSettings_action")
 vertical_alignment = 1
+
+[node name="ProductionOutputBubble" parent="." instance=ExtResource("10_output_bubble")]
+position = Vector2(0, -34)
+scale = Vector2(0.5, 0.5)
+z_index = 21
 
 [node name="HealthBar" parent="." unique_id=1502599125 instance=ExtResource("3_health_bar")]
 offset_left = -16.0

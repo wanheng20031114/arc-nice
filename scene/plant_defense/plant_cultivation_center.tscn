@@ -19,6 +19,7 @@
 [ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_hydrangea_rain_tower.tres" id="17_hydrangea_recipe"]
 [ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_grape_arc_tower.tres" id="18_grape_recipe"]
 [ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_orange_charging_tower.tres" id="19_orange_recipe"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/production_output_bubble.tscn" id="20_output_bubble"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("10_border_shader")
@@ -213,6 +214,11 @@ layout_mode = 2
 text = "打开培育中心"
 label_settings = SubResource("LabelSettings_action")
 vertical_alignment = 1
+
+[node name="ProductionOutputBubble" parent="." instance=ExtResource("20_output_bubble")]
+position = Vector2(0, -32)
+scale = Vector2(0.5, 0.5)
+z_index = 21
 
 [node name="HealthBar" parent="." unique_id=1702125570 instance=ExtResource("3_health_bar")]
 offset_left = -16.0

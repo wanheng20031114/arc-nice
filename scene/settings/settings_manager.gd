@@ -36,6 +36,7 @@ const BINDABLE_ACTIONS: Array[String] = [
 	"shoot_right",
 	"skill1",
 	"plant",
+	"show_detail",
 	"reload",
 ]
 

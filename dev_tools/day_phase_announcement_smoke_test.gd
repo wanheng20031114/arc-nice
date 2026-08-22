@@ -187,6 +187,7 @@ func _test_phase_boundary_deduplication(
 	var wave_hud := TowerDefenseWaveHUD.new()
 	var status_hud := TowerDefenseStatusHUD.new()
 	var plant_placement := TowerDefensePlantPlacementCoordinator.new()
+	var plant_system := PlantSystem.new()
 	for dependency in [
 		camera,
 		music_player,
@@ -196,12 +197,14 @@ func _test_phase_boundary_deduplication(
 		wave_hud,
 		status_hud,
 		plant_placement,
+		plant_system,
 	]:
 		presentation.add_child(dependency)
 	presentation.setup(
 		runtime,
 		campaign,
 		plant_placement,
+		plant_system,
 		DAY_CYCLE,
 		camera,
 		music_player,

@@ -242,6 +242,38 @@ func _test_config_file_reset() -> void:
 			and discrete_config.has_section_key("input_bindings", "move_up"),
 		"A successful discrete save must be visible in the settings file before returning."
 	)
+	var show_detail_replacement := InputEventKey.new()
+	show_detail_replacement.physical_keycode = KEY_V
+	_expect(
+		int(
+			settings.call(
+				"set_action_event", "show_detail", 0, show_detail_replacement
+			)
+		) == OK,
+		"Production-detail binding must be editable through UserSettings."
+	)
+	discrete_config = ConfigFile.new()
+	_expect(
+		discrete_config.load(config_path) == OK
+			and discrete_config.has_section_key("input_bindings", "show_detail"),
+		"Production-detail binding changes must persist immediately."
+	)
+	_expect(
+		int(settings.call("reset_action", "show_detail")) == OK,
+		"Production-detail binding must support per-action reset."
+	)
+	var reset_show_detail_events: Array = settings.call(
+		"get_supported_events", "show_detail"
+	)
+	var reset_show_detail_key: InputEventKey = null
+	if reset_show_detail_events.size() == 1:
+		reset_show_detail_key = reset_show_detail_events[0] as InputEventKey
+	_expect(
+		reset_show_detail_events.size() == 1
+			and reset_show_detail_key != null
+			and reset_show_detail_key.physical_keycode == KEY_C,
+		"Production-detail reset must restore the default C binding."
+	)
 
 	_expect(int(settings.call("reset_all_settings")) == OK, "Settings reset must report success.")
 	_expect(not FileAccess.file_exists(config_path), "Reset all settings must remove settings config file.")
@@ -375,6 +407,9 @@ func _test_settings_panel_scene() -> void:
 		var hotkey_hint := panel.get_node_or_null(
 			"Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Hint"
 		) as Label
+		var show_detail_label := panel.get_node_or_null(
+			"Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows/ShowDetailRow/ActionLabel"
+		) as Label
 		var settings_panel := panel.get_node_or_null("Center/Panel") as PanelContainer
 		var settings_scroll := panel.get_node_or_null("Center/Panel/Margin/Layout/Scroll") as ScrollContainer
 		var reset_settings_button := panel.get_node_or_null(
@@ -388,6 +423,12 @@ func _test_settings_panel_scene() -> void:
 		_expect(music_slider != null, "Settings panel must expose MusicSlider.")
 		_expect(music_value != null, "Settings panel must expose MusicValue.")
 		_expect(hotkey_hint != null, "Settings panel must contain the hotkey hint label for transient capture messages.")
+		_expect(show_detail_label != null, "Settings panel must expose the production-detail hotkey row.")
+		if show_detail_label != null:
+			_expect(
+				show_detail_label.text == "生产详情",
+				"Production-detail hotkey row must use the confirmed display name."
+			)
 		_expect(reset_settings_button != null, "Settings panel must expose full reset button.")
 		if settings_panel != null:
 			var panel_rect := settings_panel.get_global_rect()
@@ -646,6 +687,25 @@ func _test_hotkey_defaults_and_event_helpers() -> void:
 				or (event as InputEventKey).physical_keycode == KEY_T
 			)
 	_expect(has_keyboard_t, "plant default binding must include T.")
+
+	var show_detail_events: Array = settings.call(
+		"get_supported_events", "show_detail"
+	)
+	var has_keyboard_c := false
+	var has_default_show_detail_gamepad_binding := false
+	for event in show_detail_events:
+		if event is InputEventKey:
+			has_keyboard_c = (
+				has_keyboard_c
+				or (event as InputEventKey).physical_keycode == KEY_C
+			)
+		elif event is InputEventJoypadButton or event is InputEventJoypadMotion:
+			has_default_show_detail_gamepad_binding = true
+	_expect(has_keyboard_c, "show_detail default binding must include C.")
+	_expect(
+		not has_default_show_detail_gamepad_binding,
+		"show_detail must not add an unconfirmed default gamepad binding."
+	)
 
 	var captured_key := InputEventKey.new()
 	captured_key.pressed = true

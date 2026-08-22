@@ -17,6 +17,7 @@ const ACTION_ROW_NAMES := {
 	"shoot_right": "ShootRightRow",
 	"skill1": "Skill1Row",
 	"plant": "PlantRow",
+	"show_detail": "ShowDetailRow",
 	"reload": "ReloadRow",
 }
 
@@ -31,6 +32,7 @@ const ACTION_DISPLAY_NAMES := {
 	"shoot_right": "向右射击",
 	"skill1": "技能",
 	"plant": "植物防御塔",
+	"show_detail": "生产详情",
 	"reload": "换弹",
 }
 

@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="7_recipe_script"]
 [ext_resource type="Shader" path="res://resources/shader/excavator_border.gdshader" id="8_border_shader"]
 [ext_resource type="Script" path="res://scene/plant_defense/day_night_progress_border.gd" id="9_night_border"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/production_output_bubble.tscn" id="10_output_bubble"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("8_border_shader")
@@ -166,6 +167,11 @@ layout_mode = 2
 text = "打开挖土装置"
 label_settings = SubResource("LabelSettings_action")
 vertical_alignment = 1
+
+[node name="ProductionOutputBubble" parent="." instance=ExtResource("10_output_bubble")]
+position = Vector2(0, -34)
+scale = Vector2(0.5, 0.5)
+z_index = 21
 
 [node name="HealthBar" parent="." instance=ExtResource("3_health_bar")]
 offset_left = -16.0
