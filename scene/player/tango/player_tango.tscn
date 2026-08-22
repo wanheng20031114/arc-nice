@@ -11,7 +11,7 @@
 [ext_resource type="PackedScene" uid="uid://bcopug355gqjb" path="res://scene/player/ui/player_health_bar.tscn" id="9_health_bar"]
 [ext_resource type="PackedScene" uid="uid://db4l5h4j6dnqu" path="res://scene/player/ui/skill1_charge_bar.tscn" id="10_skill_bar"]
 [ext_resource type="Shader" uid="uid://d3dvdthptsr0k" path="res://scene/player/effects/dash_ready_glow.gdshader" id="11_dash_shader"]
-[ext_resource type="LabelSettings" path="res://resources/ui/player_name_label_settings.tres" id="12_name_settings"]
+[ext_resource type="PackedScene" path="res://scene/player/ui/player_nameplate.tscn" id="12_nameplate"]
 [ext_resource type="PackedScene" path="res://scene/combat/feedback/move_speed_trail_effect.tscn" id="13_speed_trail"]
 [ext_resource type="AudioStream" uid="uid://44ucsbesth8r" path="res://resources/audio/lucky_gem_upgrade_triad.wav" id="14_lucky_audio"]
 [ext_resource type="PackedScene" uid="uid://cmvetmpkqnxk4" path="res://scene/player/ui/player_attack_interval_bar.tscn" id="15_attack_bar"]
@@ -167,30 +167,7 @@ offset_bottom = -10.0
 offset_top = 13.0
 offset_bottom = 15.0
 
-[node name="NameLabel" type="Label" parent="." unique_id=1639465293]
-visible = false
-z_index = 6
-offset_left = -60.0
-offset_top = -38.0
-offset_right = 60.0
-offset_bottom = -22.0
-theme_override_font_sizes/font_size = 9
-text = "Player"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="NameplateLayer" type="CanvasLayer" parent="." unique_id=785352276]
-layer = 5
-visible = false
-
-[node name="NameplateLabel" type="Label" parent="NameplateLayer" unique_id=1898295297]
-custom_minimum_size = Vector2(160, 30)
-offset_right = 160.0
-offset_bottom = 30.0
-text = "Player"
-label_settings = ExtResource("12_name_settings")
-horizontal_alignment = 1
-vertical_alignment = 1
+[node name="Nameplate" parent="." unique_id=785352276 instance=ExtResource("12_nameplate")]
 
 [node name="PrimaryAttackAudio" type="AudioStreamPlayer2D" parent="." unique_id=281406012]
 stream = ExtResource("21_laser_audio")

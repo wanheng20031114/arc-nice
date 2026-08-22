@@ -3899,7 +3899,7 @@ func _test_player_multiplayer_death_visual_state() -> void:
 	_expect(not player.skill1_charge_bar.visible, "Multiplayer death must hide the skill1 charge bar.")
 	player.set_multiplayer_revive_countdown(7)
 	await process_frame
-	_expect(player.nameplate_layer.visible, "Multiplayer death countdown must keep the nameplate visible.")
+	_expect(player.nameplate.visible, "Multiplayer death countdown must keep the nameplate visible.")
 	_expect(player.nameplate_label.text == "Client 7s", "Multiplayer death countdown text is incorrect.")
 
 	player.revive_multiplayer(Vector2(8.0, 9.0), player.max_health, 0.0)
@@ -4693,8 +4693,7 @@ func _test_game_runtime_modes() -> void:
 	var host_player := host_game.get_player_for_peer(1) as Player
 	_expect(
 		host_player != null
-		and not host_player.name_label.visible
-		and host_player.nameplate_layer.visible
+		and host_player.nameplate.visible
 		and host_player.nameplate_label.text == "Host",
 		"Multiplayer player scene nameplate must show the peer name."
 	)

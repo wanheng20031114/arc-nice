@@ -136,7 +136,7 @@ func _run() -> void:
 		"五秒到期后必须稳定恢复完整玩家视觉。"
 	)
 
-	player.call("_set_nameplate_layer_visible", true)
+	player.call("_set_nameplate_visible", true)
 	player.apply_multiplayer_death_state()
 	_expect(
 		not player.apply_pickup(SEA_CUCUMBER)
@@ -148,14 +148,14 @@ func _run() -> void:
 	)
 	player.apply_permanent_death_presentation()
 	_expect(
-		not player.nameplate_layer.visible,
+		not player.nameplate.visible,
 		"隐身期间进入永久死亡表现必须更新名牌的待恢复状态。"
 	)
 	player.call("_update_potion_effects", 5.1)
 	_expect(
 		not player.is_hidden_by_consumable()
 		and player.visible
-		and not player.nameplate_layer.visible
+		and not player.nameplate.visible
 		and not bool(player_material.get_shader_parameter(HIDE_PIXELS_PARAMETER)),
 		"永久死亡期间到期必须恢复根渲染状态，但不能错误重现已隐藏的名牌。"
 	)
@@ -224,7 +224,7 @@ func _test_complete_player_visual_hide(fixture: Node2D) -> void:
 	])
 	tango.add_child(runtime_effect)
 	tango.call("_set_speed_trail_effect_active", true)
-	tango.call("_set_nameplate_layer_visible", true)
+	tango.call("_set_nameplate_visible", true)
 	var material := tango.body_sprite.material as ShaderMaterial
 	var collision_was_disabled := tango.collision_shape.disabled
 	_expect(
@@ -237,7 +237,7 @@ func _test_complete_player_visual_hide(fixture: Node2D) -> void:
 		and dash_indicator.is_visible_in_tree()
 		and runtime_effect.is_visible_in_tree()
 		and tango.night_light.is_visible_in_tree()
-		and tango.nameplate_layer.visible,
+		and tango.nameplate.is_visible_in_tree(),
 		"Tango 完整视觉隐藏测试必须从可见的角色、常驻机组与反馈节点开始。"
 	)
 	_expect(tango.apply_pickup(SEA_CUCUMBER), "Tango 必须能使用海参。")
@@ -259,7 +259,8 @@ func _test_complete_player_visual_hide(fixture: Node2D) -> void:
 		and not dash_indicator.is_visible_in_tree()
 		and not runtime_effect.is_visible_in_tree()
 		and not tango.night_light.is_visible_in_tree()
-		and not tango.nameplate_layer.visible
+		and tango.nameplate.visible
+		and not tango.nameplate.is_visible_in_tree()
 		and tango.collision_shape.disabled == collision_was_disabled,
 		"隐身必须覆盖 Tango 常驻机组、拖尾、冲刺提示、灯光和运行时子特效，同时保留各节点自身状态与碰撞。"
 	)
@@ -273,8 +274,8 @@ func _test_complete_player_visual_hide(fixture: Node2D) -> void:
 	)
 	tango.call("_update_multiplayer_nameplate_text", 3)
 	_expect(
-		not tango.nameplate_layer.visible,
-		"隐身期间死亡倒计时更新不能让独立 CanvasLayer 名牌泄露像素。"
+		tango.nameplate.visible and not tango.nameplate.is_visible_in_tree(),
+		"隐身期间死亡倒计时可以更新名牌期望状态，但不能绕过玩家根节点泄露像素。"
 	)
 	tango.call("_update_potion_effects", 5.1)
 	_expect(
@@ -288,7 +289,7 @@ func _test_complete_player_visual_hide(fixture: Node2D) -> void:
 		and dash_indicator.is_visible_in_tree()
 		and runtime_effect.is_visible_in_tree()
 		and tango.night_light.is_visible_in_tree()
-		and tango.nameplate_layer.visible
+		and tango.nameplate.is_visible_in_tree()
 		and tango.collision_shape.disabled == collision_was_disabled,
 		"到期必须原样恢复 Tango 的完整视觉、运行时子特效和最新名牌状态。"
 	)
@@ -305,7 +306,7 @@ func _test_exit_tree_visual_restore(fixture: Node2D) -> void:
 	await process_frame
 	await physics_frame
 	player.set_physics_process(false)
-	player.call("_set_nameplate_layer_visible", true)
+	player.call("_set_nameplate_visible", true)
 	player.visible = false
 	var material := player.body_sprite.material as ShaderMaterial
 	_expect(
@@ -318,7 +319,7 @@ func _test_exit_tree_visual_restore(fixture: Node2D) -> void:
 	_expect(
 		not player.is_hidden_by_consumable()
 		and not player.visible
-		and player.nameplate_layer.visible
+		and player.nameplate.visible
 		and not bool(material.get_shader_parameter(HIDE_PIXELS_PARAMETER)),
 		"退出场景树必须恢复玩家原有隐藏状态与名牌状态，不能粗暴设置 visible=true。"
 	)

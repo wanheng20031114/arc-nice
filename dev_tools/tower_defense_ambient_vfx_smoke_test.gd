@@ -124,7 +124,7 @@ func _test_native_scene_contract() -> void:
 		if particle_layer != null:
 			_expect(
 				particle_layer.layer == 1,
-				"环境粒子必须位于世界之上、玩家名牌与HUD之下的CanvasLayer 1。"
+				"环境粒子必须位于世界表现（含玩家名牌）之上、HUD之下的CanvasLayer 1。"
 			)
 	if breathing_shader_items.size() == 1:
 		_test_gpu_breathing_shader(breathing_shader_items[0])

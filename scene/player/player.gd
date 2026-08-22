@@ -102,9 +102,10 @@ var _world_movement_saved_visibility: Dictionary[StringName, bool] = {}
 @onready var health_bar: Control = $HealthBar
 @onready var skill1_charge_bar: Skill1ChargeBar = $Skill1ChargeBar
 @onready var attack_interval_bar: Control = get_node_or_null("AttackIntervalBar") as Control
-@onready var name_label: Label = $NameLabel
-@onready var nameplate_layer: CanvasLayer = $NameplateLayer
-@onready var nameplate_label: Label = $NameplateLayer/NameplateLabel
+# 名牌必须留在玩家的默认世界 canvas，才能与玩家及跟随相机共享原生物理插值；
+# 不要改回独立 CanvasLayer 后在 _process 中手工投影屏幕坐标。
+@onready var nameplate: Node2D = $Nameplate
+@onready var nameplate_label: Label = $Nameplate/Content/Label
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/combat/collectibles/collectible_area_effect.tscn")
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/combat/collectibles/collectible_frost_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/combat/collectibles/collectible_lightning_effect.tscn")
@@ -130,8 +131,6 @@ const RESEARCH_TIYI_SLOW_MULTIPLIERS := [0.75, 0.5, 0.2]
 const RESEARCH_HOE_DEFENSE_BONUSES := [15, 30, 50]
 const RESEARCH_TANGO_DEFENSE_BONUSES := [10, 25, 50]
 const MAX_MULTIPLAYER_NAME_LENGTH := 12
-const NAMEPLATE_SIZE := Vector2(160.0, 30.0)
-const NAMEPLATE_WORLD_OFFSET := Vector2(0.0, -19.0)
 const DEFAULT_NAMEPLATE_FONT_COLOR := Color(0.96, 0.98, 1.0, 1.0)
 const LOCAL_NAMEPLATE_FONT_COLOR := Color(0.38, 1.0, 0.42, 1.0)
 const HOMING_ENEMY_BODY_MASK := 4
@@ -249,7 +248,6 @@ var potion_dodge_time_left: float = 0.0
 var potion_hide_time_left: float = 0.0
 var _consumable_hide_active := false
 var _consumable_hide_player_was_visible := true
-var _consumable_hide_nameplate_restore_visible := false
 var void_battery_charged: bool = false
 var _void_battery_prediction_pending: bool = false
 var _void_battery_prediction_token: int = 0
@@ -372,7 +370,7 @@ var _dash_ready_indicator_base_position: Vector2 = Vector2.ZERO
 var _health_bar_base_position: Vector2 = Vector2.ZERO
 var _attack_interval_bar_base_position: Vector2 = Vector2.ZERO
 var _skill1_charge_bar_base_position: Vector2 = Vector2.ZERO
-var _name_label_base_position: Vector2 = Vector2.ZERO
+var _nameplate_base_position: Vector2 = Vector2.ZERO
 var _nameplate_label_settings: LabelSettings = null
 var _nameplate_default_font_color: Color = DEFAULT_NAMEPLATE_FONT_COLOR
 var _wall_overlap_query := PhysicsShapeQueryParameters2D.new()
@@ -510,8 +508,7 @@ func _ready() -> void:
 	_refresh_dash_ready_visual()
 	_initialize_nameplate_label_settings()
 	health_bar.setup(max_health, current_health)
-	name_label.visible = false
-	_set_nameplate_layer_visible(false)
+	_set_nameplate_visible(false)
 	health_changed.emit(current_health, max_health)
 	_update_animation()
 	_update_character_visual_state()
@@ -621,7 +618,6 @@ func _connect_collectible_refresh_signals() -> void:
 func _process(_delta: float) -> void:
 	_update_remote_dash_visual(_delta)
 	_update_multiplayer_visual_smoothing(_delta)
-	_update_nameplate_position()
 	_update_character_combat_state(_delta)
 
 
@@ -2229,11 +2225,9 @@ func configure_multiplayer_control(
 	if safe_display_name.length() > MAX_MULTIPLAYER_NAME_LENGTH:
 		safe_display_name = safe_display_name.left(MAX_MULTIPLAYER_NAME_LENGTH)
 	multiplayer_display_name = safe_display_name
-	name_label.visible = false
 	nameplate_label.text = safe_display_name
 	_set_nameplate_local_highlight(highlight_as_local_player)
-	_set_nameplate_layer_visible(not safe_display_name.is_empty())
-	_update_nameplate_position()
+	_set_nameplate_visible(not safe_display_name.is_empty())
 	set_process_input(uses_local_input and not world_movement_mode)
 	set_process_unhandled_input(uses_local_input and not world_movement_mode)
 	_refresh_dash_ready_visual()
@@ -2284,7 +2278,7 @@ func _cache_multiplayer_visual_base_positions() -> void:
 	if attack_interval_bar != null:
 		_attack_interval_bar_base_position = attack_interval_bar.position
 	_skill1_charge_bar_base_position = skill1_charge_bar.position
-	_name_label_base_position = name_label.position
+	_nameplate_base_position = nameplate.position
 	_cache_character_visual_base_positions()
 
 
@@ -2325,9 +2319,8 @@ func _set_multiplayer_visual_offset(offset: Vector2) -> void:
 	if attack_interval_bar != null:
 		attack_interval_bar.position = _attack_interval_bar_base_position + offset
 	skill1_charge_bar.position = _skill1_charge_bar_base_position + offset
-	name_label.position = _name_label_base_position + offset
+	nameplate.position = _nameplate_base_position + offset
 	_set_character_visual_offset(offset)
-	_update_nameplate_position()
 
 
 func _set_character_visual_offset(_offset: Vector2) -> void:
@@ -2688,13 +2681,6 @@ func get_multiplayer_is_reloading() -> bool:
 func get_multiplayer_reload_progress() -> float:
 	return 0.0
 
-func _update_nameplate_position() -> void:
-	if not nameplate_layer.visible:
-		return
-	var anchor := get_global_transform_with_canvas() * (NAMEPLATE_WORLD_OFFSET + multiplayer_visual_offset)
-	nameplate_label.position = (anchor - Vector2(NAMEPLATE_SIZE.x * 0.5, NAMEPLATE_SIZE.y)).round()
-
-
 func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
 	var clamped_health := clampi(new_health, 0, max_health)
 	if (
@@ -2988,7 +2974,7 @@ func _apply_tower_defense_hidden_death_state(force_hide_body: bool = false) -> v
 	if not keep_death_animation_visible:
 		body_sprite.stop()
 		body_sprite.hide()
-	_set_nameplate_layer_visible(false)
+	_set_nameplate_visible(false)
 	health_bar.hide()
 	if attack_interval_bar != null:
 		attack_interval_bar.hide()
@@ -3042,11 +3028,11 @@ func _update_multiplayer_nameplate_text(seconds_left: int) -> void:
 	if seconds_left >= 0:
 		var prefix: String = base_name if not base_name.is_empty() else name
 		nameplate_label.text = "%s %ds" % [prefix, seconds_left]
-		_set_nameplate_layer_visible(true)
+		_set_nameplate_visible(true)
 	else:
 		nameplate_label.text = base_name
-		_set_nameplate_layer_visible(not base_name.is_empty())
-	_update_nameplate_position()
+		_set_nameplate_visible(not base_name.is_empty())
+
 
 func get_xirang() -> int:
 	return current_xirang
@@ -6369,32 +6355,21 @@ func _set_consumable_hide_enabled(enabled: bool) -> void:
 	if enabled:
 		if not _consumable_hide_active:
 			_consumable_hide_player_was_visible = visible
-			_consumable_hide_nameplate_restore_visible = nameplate_layer.visible
 			_consumable_hide_active = true
-		# CharacterBody2D visibility is inherited by every CanvasItem in the
-		# player's visual tree, including character-specific helpers, trails and
-		# effects added while the consumable is active. Collision and processing
-		# stay enabled because only rendering visibility changes.
+		# 名牌与角色表现处于同一 CanvasItem 树，因此根节点隐藏会原生覆盖
+		# 全部视觉子节点；各子节点仍保留自己的逻辑 visible 状态。
 		visible = false
-		nameplate_layer.visible = false
 		return
 	if not _consumable_hide_active:
 		return
 	_consumable_hide_active = false
 	visible = _consumable_hide_player_was_visible
-	nameplate_layer.visible = _consumable_hide_nameplate_restore_visible
-	if nameplate_layer.visible:
-		_update_nameplate_position()
 
 
-func _set_nameplate_layer_visible(enabled: bool) -> void:
-	if _consumable_hide_active:
-		# Death/revive countdowns may change the desired nameplate state during
-		# the five-second hide. Remember that latest state without drawing it.
-		_consumable_hide_nameplate_restore_visible = enabled
-		nameplate_layer.visible = false
-		return
-	nameplate_layer.visible = enabled
+func _set_nameplate_visible(enabled: bool) -> void:
+	# 名牌是常规世界空间子节点；玩家根节点隐藏期间仍可保存其最新期望状态，
+	# 且不会像独立 CanvasLayer 那样绕过父节点泄露像素。
+	nameplate.visible = enabled
 
 
 func _start_local_revive_glow_effect() -> void:

@@ -382,7 +382,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 		and game.player.body_sprite.is_playing(),
 		"Tower-defense death must keep the authored death animation visible while controls are locked."
 	)
-	_expect(not game.player.nameplate_layer.visible, "No world-space revive countdown may remain over the death position.")
+	_expect(not game.player.nameplate.visible, "No world-space revive countdown may remain over the death position.")
 	_expect(game.player.collision_shape.disabled, "A dead tower-defense player must have no world collision.")
 	_expect(game.map_camera.get_parent() == game, "The local camera must detach from the dead player for spectator movement.")
 	_expect(status_hud.local_death_center.visible, "The local death HUD must be visible.")
