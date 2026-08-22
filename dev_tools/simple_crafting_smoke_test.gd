@@ -255,10 +255,10 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 	)
 	for registered_recipe in registered_recipes:
 		_expect(
-			registered_recipe.inputs_from_player_inventory()
+			registered_recipe.uses_simple_crafting_material_pool()
 			and registered_recipe.outputs_to_player_inventory()
 			and not registered_recipe.uses_environment_source(),
-			"简易制造必须只从玩家背包取材，并把产物放回玩家背包。"
+			"简易制造必须使用联合材料池，并把产物只放回玩家背包。"
 		)
 	_expect(
 		recipe.input_items == [SAPLING, WATER_BOTTLE]

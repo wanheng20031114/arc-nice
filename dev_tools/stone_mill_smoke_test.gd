@@ -538,7 +538,7 @@ func _recipe_matches(
 		and recipe.input_amounts == [1]
 		and recipe.output_items == [expected_output]
 		and recipe.output_amounts == [1]
-		and not recipe.inputs_from_player_inventory()
+		and not recipe.uses_simple_crafting_material_pool()
 		and not recipe.outputs_to_player_inventory()
 		and is_equal_approx(recipe.duration_seconds, 30.0)
 	)

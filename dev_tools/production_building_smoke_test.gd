@@ -1183,7 +1183,7 @@ func _recipe_matches(
 		and recipe.input_amounts == expected_input_amounts
 		and recipe.output_items == [expected_output_item]
 		and recipe.output_amounts == [expected_output_amount]
-		and not recipe.inputs_from_player_inventory()
+		and not recipe.uses_simple_crafting_material_pool()
 		and (
 			recipe.output_destination
 			== ProductionRecipe.OutputDestination.SHARED_STORAGE

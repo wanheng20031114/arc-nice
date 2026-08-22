@@ -122,14 +122,14 @@ func _test_registry_contract() -> void:
 		match category:
 			RecipeRegistry.Category.SIMPLE_CRAFTING:
 				_expect(
-					recipe.inputs_from_player_inventory()
+					recipe.uses_simple_crafting_material_pool()
 					and recipe.outputs_to_player_inventory(),
-					"简易制作必须从背包投入并回到背包：%s。"
+					"简易制作必须使用联合材料池并回到玩家背包：%s。"
 					% recipe.recipe_id
 				)
 			RecipeRegistry.Category.SHARED_PRODUCTION:
 				_expect(
-					not recipe.inputs_from_player_inventory()
+					not recipe.uses_simple_crafting_material_pool()
 					and not recipe.outputs_to_player_inventory()
 					and not recipe.outputs_to_local_slot(),
 					"共享生产必须从共享来源投入并产入共享仓库：%s。"

@@ -260,13 +260,13 @@ static func get_category_for_recipe(recipe: ProductionRecipe) -> int:
 		return (
 			Category.SIMPLE_CRAFTING
 			if (
-				recipe.inputs_from_player_inventory()
+				recipe.uses_simple_crafting_material_pool()
 				and recipe.outputs_to_player_inventory()
 			)
 			else INVALID_CATEGORY
 		)
 	if (
-		recipe.inputs_from_player_inventory()
+		recipe.uses_simple_crafting_material_pool()
 		or recipe.output_destination
 		!= ProductionRecipe.OutputDestination.SHARED_STORAGE
 	):

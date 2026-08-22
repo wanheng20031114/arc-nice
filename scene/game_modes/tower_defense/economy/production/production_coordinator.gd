@@ -1,4 +1,4 @@
-extends Node
+extends CraftingMaterialProvider
 class_name ProductionCoordinator
 
 signal storage_totals_changed
@@ -318,6 +318,137 @@ func get_total_item_count(item: PickupConfig) -> int:
 	return int(_visible_storage_item_totals.get(_get_storage_item_key(item), 0))
 
 
+func get_shared_material_item_total(item: PickupConfig) -> int:
+	return get_total_item_count(item)
+
+
+func get_simple_crafting_result(
+	recipe: ProductionRecipe,
+	completed_global_research_ids: Array[StringName] = []
+) -> StringName:
+	if run_state == null:
+		return RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+	return run_state.get_simple_crafting_result_with_external_items(
+		recipe,
+		_get_simple_crafting_storage_counts(recipe, true),
+		completed_global_research_ids
+	)
+
+
+func try_commit_simple_crafting_recipe(
+	recipe: ProductionRecipe,
+	expected_inventory_revision: int,
+	completed_global_research_ids: Array[StringName] = []
+) -> StringName:
+	if not authoritative_processing_enabled or run_state == null:
+		return RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+	var plan := run_state.prepare_simple_crafting_inventory_plan(
+		recipe,
+		expected_inventory_revision,
+		_get_simple_crafting_storage_counts(recipe, false),
+		completed_global_research_ids
+	)
+	return _commit_prepared_simple_crafting_plan(plan)
+
+
+func try_commit_simple_crafting_recipe_for_peer(
+	peer_id: int,
+	recipe: ProductionRecipe,
+	expected_inventory_revision: int,
+	completed_global_research_ids: Array[StringName] = []
+) -> StringName:
+	if (
+		not authoritative_processing_enabled
+		or run_state == null
+		or not is_personal_output_peer_available(peer_id)
+	):
+		return RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+	var plan := run_state.prepare_simple_crafting_inventory_plan_for_peer(
+		peer_id,
+		recipe,
+		expected_inventory_revision,
+		_get_simple_crafting_storage_counts(recipe, false),
+		completed_global_research_ids
+	)
+	return _commit_prepared_simple_crafting_plan(plan)
+
+
+func _commit_prepared_simple_crafting_plan(
+	plan: RunStateStore.SimpleCraftingInventoryPlan
+) -> StringName:
+	if plan == null or plan.result != RunStateStore.CRAFT_RESULT_SUCCESS:
+		return (
+			plan.result
+			if plan != null
+			else RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+		)
+	if plan.external_requirements.is_empty():
+		var direct_result := run_state.commit_simple_crafting_inventory_plan(
+			plan,
+			false
+		)
+		if direct_result == RunStateStore.CRAFT_RESULT_SUCCESS:
+			run_state.notify_inventory_transaction_completed()
+		return direct_result
+	var storage_result := _try_consume_item_requirements_transaction(
+		plan.external_requirements,
+		Callable(self, "_commit_simple_crafting_inventory_plan_without_signal").bind(
+			plan
+		),
+		true
+	)
+	match storage_result:
+		RESULT_SUCCESS:
+			run_state.notify_inventory_transaction_completed()
+			return RunStateStore.CRAFT_RESULT_SUCCESS
+		RESULT_MISSING_INPUT:
+			return RunStateStore.CRAFT_RESULT_MISSING_INPUT
+		RESULT_ACTION_FAILED:
+			return RunStateStore.CRAFT_RESULT_STALE_REVISION
+		_:
+			return RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+
+
+func _commit_simple_crafting_inventory_plan_without_signal(
+	plan: RunStateStore.SimpleCraftingInventoryPlan
+) -> bool:
+	return (
+		run_state.commit_simple_crafting_inventory_plan(plan, false)
+		== RunStateStore.CRAFT_RESULT_SUCCESS
+	)
+
+
+func _get_simple_crafting_storage_counts(
+	recipe: ProductionRecipe,
+	include_visible_proxies: bool
+) -> Array[Dictionary]:
+	var counts: Array[Dictionary] = []
+	if recipe == null:
+		return counts
+	_ensure_storage_item_totals_cache()
+	var totals := (
+		_visible_storage_item_totals
+		if include_visible_proxies
+		else _operational_storage_item_totals
+	)
+	for item in recipe.input_items:
+		var already_added := false
+		for existing in counts:
+			if PickupConfig.inventory_identity_matches(
+				existing.get("item") as PickupConfig,
+				item
+			):
+				already_added = true
+				break
+		if already_added:
+			continue
+		counts.append({
+			"item": item,
+			"count": int(totals.get(_get_storage_item_key(item), 0)),
+		})
+	return counts
+
+
 func try_consume_item_requirements(requirements: Array[Dictionary]) -> StringName:
 	return _try_consume_item_requirements_transaction(
 		requirements,
@@ -398,7 +529,7 @@ func try_commit_recipe(
 		not authoritative_processing_enabled
 		or recipe == null
 		or not recipe.is_valid()
-		or recipe.inputs_from_player_inventory()
+		or recipe.uses_simple_crafting_material_pool()
 	):
 		return RESULT_UNAVAILABLE
 	var outputs_to_inventory := recipe.outputs_to_player_inventory()
@@ -964,6 +1095,7 @@ func _on_production_tick() -> void:
 func _on_warehouse_storage_changed() -> void:
 	_storage_item_totals_cache_dirty = true
 	storage_totals_changed.emit()
+	material_state_changed.emit()
 	if _storage_transaction_in_progress:
 		_warehouse_state_changed_during_transaction = true
 		return

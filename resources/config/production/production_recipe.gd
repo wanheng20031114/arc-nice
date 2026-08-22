@@ -6,7 +6,7 @@ const MAX_OUTPUT_ITEMS := 3
 
 enum InputSource {
 	SHARED_STORAGE,
-	PLAYER_INVENTORY,
+	SIMPLE_CRAFTING_MATERIAL_POOL,
 }
 
 enum OutputDestination {
@@ -44,7 +44,7 @@ func is_valid() -> bool:
 		or input_items.size() != input_amounts.size()
 		or input_items.size() > MAX_INPUT_ITEMS
 		or input_source < InputSource.SHARED_STORAGE
-		or input_source > InputSource.PLAYER_INVENTORY
+		or input_source > InputSource.SIMPLE_CRAFTING_MATERIAL_POOL
 		or output_items.is_empty()
 		or output_items.size() != output_amounts.size()
 		or output_items.size() > MAX_OUTPUT_ITEMS
@@ -114,8 +114,8 @@ func get_local_output_capacity() -> int:
 	)
 
 
-func inputs_from_player_inventory() -> bool:
-	return input_source == InputSource.PLAYER_INVENTORY
+func uses_simple_crafting_material_pool() -> bool:
+	return input_source == InputSource.SIMPLE_CRAFTING_MATERIAL_POOL
 
 
 func get_input_summary() -> String:

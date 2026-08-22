@@ -66,6 +66,28 @@ const CRAFT_RESULT_INVENTORY_FULL := &"inventory_full"
 const CRAFT_RESULT_STALE_REVISION := &"stale_revision"
 const CRAFT_RESULT_RESEARCH_LOCKED := &"research_locked"
 
+
+## 简易制作只在准备阶段模拟个人背包变化；共享材料的实际扣除由上层模式
+## 权威事务负责。计划以 owner + revision 绑定唯一背包快照，提交成功后不可
+## 重放，便于仓库事务把“扣共享材料”和“写回个人产物”组合为同一原子操作。
+class SimpleCraftingInventoryPlan extends RefCounted:
+	var result: StringName = &"invalid_recipe"
+	var owner_peer_id: int = 0
+	var expected_revision: int = -1
+	var final_items: Array[PickupConfig] = []
+	var final_counts: Array[int] = []
+	var external_requirements: Array[Dictionary] = []
+	var _committed := false
+
+
+	func is_committed() -> bool:
+		return _committed
+
+
+	func _mark_committed() -> void:
+		_committed = true
+
+
 enum StatType {
 	ATTACK,
 	HEALTH,
@@ -355,22 +377,119 @@ func get_simple_crafting_result(
 	recipe: ProductionRecipe,
 	completed_global_research_ids: Array[StringName] = []
 ) -> StringName:
+	return get_simple_crafting_result_with_external_items(
+		recipe,
+		[],
+		completed_global_research_ids
+	)
+
+
+## 只读预览：external_item_counts 表示上层模式可提供的共享材料总量。
+## 背包材料始终优先参与模拟，产物容量仅按扣料后的个人背包计算。
+func get_simple_crafting_result_with_external_items(
+	recipe: ProductionRecipe,
+	external_item_counts: Array[Dictionary],
+	completed_global_research_ids: Array[StringName] = []
+) -> StringName:
 	if not run_started:
 		return CRAFT_RESULT_INVALID_RECIPE
 	if active_multiplayer_peer_id > 0:
-		return get_simple_crafting_result_for_peer(
+		return get_simple_crafting_result_with_external_items_for_peer(
 			active_multiplayer_peer_id,
 			recipe,
+			external_item_counts,
 			completed_global_research_ids
 		)
 	return _get_crafting_simulation_result(
-		_simulate_simple_crafting(
+		_simulate_simple_crafting_with_external_items(
 			inventory,
 			inventory_stack_counts,
 			recipe,
+			external_item_counts,
 			completed_global_research_ids
 		)
 	)
+
+
+## 无副作用地把一次简易制作绑定到当前个人背包 revision。成功计划只记录
+## 共享侧真正需要扣除的缺口，不会把已经从背包模拟扣除的数量重复上报。
+func prepare_simple_crafting_inventory_plan(
+	recipe: ProductionRecipe,
+	expected_revision: int,
+	external_item_counts: Array[Dictionary] = [],
+	completed_global_research_ids: Array[StringName] = []
+) -> SimpleCraftingInventoryPlan:
+	if not run_started:
+		return _make_failed_simple_crafting_plan(
+			0,
+			expected_revision,
+			CRAFT_RESULT_INVALID_RECIPE
+		)
+	if active_multiplayer_peer_id > 0:
+		return prepare_simple_crafting_inventory_plan_for_peer(
+			active_multiplayer_peer_id,
+			recipe,
+			expected_revision,
+			external_item_counts,
+			completed_global_research_ids
+		)
+	return _prepare_simple_crafting_inventory_plan_for_arrays(
+		0,
+		expected_revision,
+		inventory_revision,
+		inventory,
+		inventory_stack_counts,
+		recipe,
+		external_item_counts,
+		completed_global_research_ids
+	)
+
+
+## 提交仅写个人背包；共享材料必须先由调用方的权威事务锁定/扣除。失败时
+## 不修改背包、revision 或计划状态；成功时 revision 恰好前进一并禁止重放。
+func commit_simple_crafting_inventory_plan(
+	plan: SimpleCraftingInventoryPlan,
+	emit_change: bool = false
+) -> StringName:
+	if plan == null:
+		return CRAFT_RESULT_INVALID_RECIPE
+	if plan.is_committed():
+		return CRAFT_RESULT_STALE_REVISION
+	if plan.result != CRAFT_RESULT_SUCCESS:
+		return plan.result
+	if not _is_simple_crafting_plan_inventory_shape_valid(plan):
+		return CRAFT_RESULT_INVALID_RECIPE
+
+	if plan.owner_peer_id == 0:
+		if not run_started:
+			return CRAFT_RESULT_INVALID_RECIPE
+		if plan.expected_revision != inventory_revision:
+			return CRAFT_RESULT_STALE_REVISION
+		inventory.assign(plan.final_items)
+		inventory_stack_counts.assign(plan.final_counts)
+		inventory_revision = plan.expected_revision + 1
+	else:
+		if not has_multiplayer_peer_state(plan.owner_peer_id):
+			return CRAFT_RESULT_INVALID_RECIPE
+		if (
+			plan.expected_revision
+			!= get_inventory_revision_for_peer(plan.owner_peer_id)
+		):
+			return CRAFT_RESULT_STALE_REVISION
+		var peer_inventory := multiplayer_inventories[plan.owner_peer_id] as Array
+		var peer_counts := (
+			multiplayer_inventory_stack_counts[plan.owner_peer_id] as Array
+		)
+		peer_inventory.assign(plan.final_items)
+		peer_counts.assign(plan.final_counts)
+		multiplayer_inventory_revisions[plan.owner_peer_id] = (
+			plan.expected_revision + 1
+		)
+
+	plan._mark_committed()
+	if emit_change:
+		inventory_changed.emit()
+	return CRAFT_RESULT_SUCCESS
 
 
 func try_craft_inventory_recipe_if_revision(
@@ -389,23 +508,13 @@ func try_craft_inventory_recipe_if_revision(
 			completed_global_research_ids
 		)
 	_ensure_local_inventory_shape()
-	if expected_revision != inventory_revision:
-		return CRAFT_RESULT_STALE_REVISION
-	var simulation := _simulate_simple_crafting(
-		inventory,
-		inventory_stack_counts,
+	var plan := prepare_simple_crafting_inventory_plan(
 		recipe,
+		expected_revision,
+		[],
 		completed_global_research_ids
 	)
-	var result := _get_crafting_simulation_result(simulation)
-	if result != CRAFT_RESULT_SUCCESS:
-		return result
-	inventory.assign(simulation["items"] as Array)
-	inventory_stack_counts.assign(simulation["counts"] as Array)
-	_bump_local_inventory_revision()
-	if emit_change:
-		inventory_changed.emit()
-	return CRAFT_RESULT_SUCCESS
+	return commit_simple_crafting_inventory_plan(plan, emit_change)
 
 
 func get_inventory_item_total(item: PickupConfig) -> int:
@@ -1300,15 +1409,55 @@ func get_simple_crafting_result_for_peer(
 	recipe: ProductionRecipe,
 	completed_global_research_ids: Array[StringName] = []
 ) -> StringName:
+	return get_simple_crafting_result_with_external_items_for_peer(
+		peer_id,
+		recipe,
+		[],
+		completed_global_research_ids
+	)
+
+
+func get_simple_crafting_result_with_external_items_for_peer(
+	peer_id: int,
+	recipe: ProductionRecipe,
+	external_item_counts: Array[Dictionary],
+	completed_global_research_ids: Array[StringName] = []
+) -> StringName:
 	if not has_multiplayer_peer_state(peer_id):
 		return CRAFT_RESULT_INVALID_RECIPE
 	return _get_crafting_simulation_result(
-		_simulate_simple_crafting(
+		_simulate_simple_crafting_with_external_items(
 			multiplayer_inventories[peer_id] as Array,
 			multiplayer_inventory_stack_counts[peer_id] as Array,
 			recipe,
+			external_item_counts,
 			completed_global_research_ids
 		)
+	)
+
+
+func prepare_simple_crafting_inventory_plan_for_peer(
+	peer_id: int,
+	recipe: ProductionRecipe,
+	expected_revision: int,
+	external_item_counts: Array[Dictionary] = [],
+	completed_global_research_ids: Array[StringName] = []
+) -> SimpleCraftingInventoryPlan:
+	if not has_multiplayer_peer_state(peer_id):
+		return _make_failed_simple_crafting_plan(
+			peer_id,
+			expected_revision,
+			CRAFT_RESULT_INVALID_RECIPE
+		)
+	return _prepare_simple_crafting_inventory_plan_for_arrays(
+		peer_id,
+		expected_revision,
+		get_inventory_revision_for_peer(peer_id),
+		multiplayer_inventories[peer_id] as Array,
+		multiplayer_inventory_stack_counts[peer_id] as Array,
+		recipe,
+		external_item_counts,
+		completed_global_research_ids
 	)
 
 
@@ -1321,25 +1470,14 @@ func try_craft_inventory_recipe_for_peer_if_revision(
 ) -> StringName:
 	if not has_multiplayer_peer_state(peer_id):
 		return CRAFT_RESULT_INVALID_RECIPE
-	if expected_revision != get_inventory_revision_for_peer(peer_id):
-		return CRAFT_RESULT_STALE_REVISION
-	var peer_inventory := multiplayer_inventories[peer_id] as Array
-	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
-	var simulation := _simulate_simple_crafting(
-		peer_inventory,
-		peer_counts,
+	var plan := prepare_simple_crafting_inventory_plan_for_peer(
+		peer_id,
 		recipe,
+		expected_revision,
+		[],
 		completed_global_research_ids
 	)
-	var result := _get_crafting_simulation_result(simulation)
-	if result != CRAFT_RESULT_SUCCESS:
-		return result
-	peer_inventory.assign(simulation["items"] as Array)
-	peer_counts.assign(simulation["counts"] as Array)
-	_bump_inventory_revision_for_peer(peer_id)
-	if emit_change:
-		inventory_changed.emit()
-	return CRAFT_RESULT_SUCCESS
+	return commit_simple_crafting_inventory_plan(plan, emit_change)
 
 
 func get_inventory_item_total_for_peer(
@@ -4797,10 +4935,95 @@ func _simulate_add_item_counts(
 	}
 
 
+func _make_failed_simple_crafting_plan(
+	owner_peer_id: int,
+	expected_revision: int,
+	result: StringName
+) -> SimpleCraftingInventoryPlan:
+	var plan := SimpleCraftingInventoryPlan.new()
+	plan.owner_peer_id = owner_peer_id
+	plan.expected_revision = expected_revision
+	plan.result = result
+	return plan
+
+
+func _prepare_simple_crafting_inventory_plan_for_arrays(
+	owner_peer_id: int,
+	expected_revision: int,
+	current_revision: int,
+	current_items: Array,
+	current_counts: Array,
+	recipe: ProductionRecipe,
+	external_item_counts: Array[Dictionary],
+	completed_global_research_ids: Array[StringName]
+) -> SimpleCraftingInventoryPlan:
+	var plan := SimpleCraftingInventoryPlan.new()
+	plan.owner_peer_id = owner_peer_id
+	plan.expected_revision = expected_revision
+	if expected_revision != current_revision:
+		plan.result = CRAFT_RESULT_STALE_REVISION
+		return plan
+
+	var simulation := _simulate_simple_crafting_with_external_items(
+		current_items,
+		current_counts,
+		recipe,
+		external_item_counts,
+		completed_global_research_ids
+	)
+	plan.result = _get_crafting_simulation_result(simulation)
+	if simulation.has("external_requirements"):
+		plan.external_requirements.assign(
+			simulation["external_requirements"] as Array
+		)
+	if plan.result == CRAFT_RESULT_SUCCESS:
+		plan.final_items.assign(simulation["items"] as Array)
+		plan.final_counts.assign(simulation["counts"] as Array)
+	return plan
+
+
+func _is_simple_crafting_plan_inventory_shape_valid(
+	plan: SimpleCraftingInventoryPlan
+) -> bool:
+	if (
+		plan.final_items.size() != INVENTORY_CAPACITY
+		or plan.final_counts.size() != INVENTORY_CAPACITY
+	):
+		return false
+	for slot_index in INVENTORY_CAPACITY:
+		var item := plan.final_items[slot_index]
+		var count := plan.final_counts[slot_index]
+		if item == null:
+			if count != 0:
+				return false
+		elif (
+			count <= 0
+			or count > PickupConfig.get_inventory_stack_limit(item)
+		):
+			return false
+	return true
+
+
 func _simulate_simple_crafting(
 	current_items: Array,
 	current_counts: Array,
 	recipe: ProductionRecipe,
+	completed_global_research_ids: Array[StringName] = []
+) -> Dictionary:
+	return _simulate_simple_crafting_with_external_items(
+		current_items,
+		current_counts,
+		recipe,
+		[],
+		completed_global_research_ids
+	)
+
+
+func _simulate_simple_crafting_with_external_items(
+	current_items: Array,
+	current_counts: Array,
+	recipe: ProductionRecipe,
+	external_item_counts: Array[Dictionary],
 	completed_global_research_ids: Array[StringName] = []
 ) -> Dictionary:
 	if not SimpleCraftingRegistry.is_simple_crafting_recipe(recipe):
@@ -4812,14 +5035,37 @@ func _simulate_simple_crafting(
 		return {"result": CRAFT_RESULT_RESEARCH_LOCKED}
 	var simulated_items := current_items.duplicate()
 	var simulated_counts := current_counts.duplicate()
+	var external_pool := _normalize_external_item_counts(external_item_counts)
+	var external_requirements: Array[Dictionary] = []
 	for input_index in recipe.input_items.size():
-		if not _consume_item_count_from_arrays(
+		var input_item := recipe.input_items[input_index]
+		var input_amount := recipe.input_amounts[input_index]
+		var personal_consumed := _consume_available_item_count_from_arrays(
 			simulated_items,
 			simulated_counts,
-			recipe.input_items[input_index],
-			recipe.input_amounts[input_index]
+			input_item,
+			input_amount
+		)
+		var external_required := input_amount - personal_consumed
+		if external_required <= 0:
+			continue
+		_add_external_item_count(
+			external_requirements,
+			input_item,
+			external_required
+		)
+		if (
+			_consume_available_external_item_count(
+				external_pool,
+				input_item,
+				external_required
+			)
+			< external_required
 		):
-			return {"result": CRAFT_RESULT_MISSING_INPUT}
+			return {
+				"result": CRAFT_RESULT_MISSING_INPUT,
+				"external_requirements": external_requirements,
+			}
 	var output_simulation := _simulate_add_item_counts(
 		simulated_items,
 		simulated_counts,
@@ -4827,12 +5073,74 @@ func _simulate_simple_crafting(
 		recipe.output_amounts
 	)
 	if output_simulation.is_empty():
-		return {"result": CRAFT_RESULT_INVENTORY_FULL}
+		return {
+			"result": CRAFT_RESULT_INVENTORY_FULL,
+			"external_requirements": external_requirements,
+		}
 	return {
 		"result": CRAFT_RESULT_SUCCESS,
 		"items": output_simulation["items"],
 		"counts": output_simulation["counts"],
+		"external_requirements": external_requirements,
 	}
+
+
+func _normalize_external_item_counts(
+	external_item_counts: Array[Dictionary]
+) -> Array[Dictionary]:
+	var normalized: Array[Dictionary] = []
+	for entry in external_item_counts:
+		var item := entry.get("item") as PickupConfig
+		var count := int(entry.get("count", 0))
+		if item == null or count <= 0:
+			continue
+		_add_external_item_count(normalized, item, count)
+	return normalized
+
+
+func _add_external_item_count(
+	entries: Array[Dictionary],
+	item: PickupConfig,
+	count: int
+) -> void:
+	if item == null or count <= 0:
+		return
+	for entry_index in entries.size():
+		var entry := entries[entry_index]
+		if not PickupConfig.inventory_identity_matches(
+			entry.get("item") as PickupConfig,
+			item
+		):
+			continue
+		entry["count"] = int(entry.get("count", 0)) + count
+		entries[entry_index] = entry
+		return
+	entries.append({"item": item, "count": count})
+
+
+func _consume_available_external_item_count(
+	entries: Array[Dictionary],
+	item: PickupConfig,
+	count: int
+) -> int:
+	if item == null or count <= 0:
+		return 0
+	var remaining := count
+	for entry_index in entries.size():
+		var entry := entries[entry_index]
+		if not PickupConfig.inventory_identity_matches(
+			entry.get("item") as PickupConfig,
+			item
+		):
+			continue
+		var available := maxi(int(entry.get("count", 0)), 0)
+		var consumed := mini(available, remaining)
+		entry["count"] = available - consumed
+		entries[entry_index] = entry
+		remaining -= consumed
+		if remaining <= 0:
+			break
+	return count - remaining
 
 
 func _consume_item_count_from_arrays(
@@ -4843,6 +5151,24 @@ func _consume_item_count_from_arrays(
 ) -> bool:
 	if item == null or count <= 0:
 		return false
+	if _get_consumable_item_total_in_arrays(items, counts, item) < count:
+		return false
+	return (
+		_consume_available_item_count_from_arrays(items, counts, item, count)
+		== count
+	)
+
+
+## 尽可能多地扣除未锁定的个人背包材料，并返回实际扣除量。简易制作用
+## 返回值精确计算共享仓库缺口；其他必须全量成功的事务仍走上方原子封装。
+func _consume_available_item_count_from_arrays(
+	items: Array,
+	counts: Array,
+	item: PickupConfig,
+	count: int
+) -> int:
+	if item == null or count <= 0:
+		return 0
 	var remaining := count
 	for slot_index in items.size():
 		var stored_item := items[slot_index] as PickupConfig
@@ -4863,8 +5189,25 @@ func _consume_item_count_from_arrays(
 			counts[slot_index] = 0
 		remaining -= consumed
 		if remaining <= 0:
-			return true
-	return false
+			break
+	return count - remaining
+
+
+func _get_consumable_item_total_in_arrays(
+	items: Array,
+	counts: Array,
+	item: PickupConfig
+) -> int:
+	if item == null:
+		return 0
+	var total := 0
+	for slot_index in items.size():
+		var stored_item := items[slot_index] as PickupConfig
+		if stored_item == null or stored_item.inventory_locked:
+			continue
+		if PickupConfig.inventory_identity_matches(stored_item, item):
+			total += maxi(int(counts[slot_index]), 1)
+	return total
 
 
 func _get_item_total_in_arrays(

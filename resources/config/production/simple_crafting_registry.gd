@@ -117,7 +117,7 @@ static func _has_simple_crafting_contract(recipe: ProductionRecipe) -> bool:
 	return (
 		recipe != null
 		and recipe.is_valid()
-		and recipe.inputs_from_player_inventory()
+		and recipe.uses_simple_crafting_material_pool()
 		and recipe.outputs_to_player_inventory()
 		and not recipe.uses_environment_source()
 	)

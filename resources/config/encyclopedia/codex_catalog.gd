@@ -1150,8 +1150,8 @@ func _get_recipe_input_source_label(recipe: ProductionRecipe) -> String:
 		return "无需材料（启动后生产）"
 	if recipe.uses_environment_source():
 		return "环境来源"
-	if recipe.inputs_from_player_inventory():
-		return "玩家背包"
+	if recipe.uses_simple_crafting_material_pool():
+		return "个人背包与共享仓库"
 	return "共享仓库"
 
 
