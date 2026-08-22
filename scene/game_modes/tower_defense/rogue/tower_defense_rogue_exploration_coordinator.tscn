@@ -1,11 +1,14 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/tower_defense/rogue/tower_defense_rogue_exploration_coordinator.gd" id="1_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/route/rogue_route_game.tscn" id="2_route"]
 [ext_resource type="Script" path="res://scene/game_modes/rogue/combat/rogue_combat_multiplayer_coordinator.gd" id="3_multiplayer_combat"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/route/rogue_scene_transition.tscn" id="4_scene_transition"]
 
 [node name="RogueExplorationCoordinator" type="Node"]
 script = ExtResource("1_coordinator")
+
+[node name="EntrySceneTransition" parent="." instance=ExtResource("4_scene_transition")]
 
 [node name="RogueRoute" parent="." instance=ExtResource("2_route")]
 visible = false

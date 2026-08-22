@@ -32,6 +32,7 @@ class TowerAudioPlaybackLease:
 @onready var _multiplayer_combat_coordinator: RogueCombatMultiplayerCoordinator = (
 	$RogueCombatCoordinator
 )
+@onready var _entry_scene_transition: RogueSceneTransition = $EntrySceneTransition
 
 var _runtime: TowerDefenseGame = null
 var _campaign: TowerDefenseCampaignCoordinator = null
@@ -60,6 +61,14 @@ var _finishing := false
 var _presentation_exit_pending := false
 var _presentation_exit_completing := false
 var _tower_runtime_frozen := false
+var _tower_runtime_concealed := false
+var _entry_transfer_active := false
+var _entry_transfer_cancelling := false
+var _entry_transfer_serial := 0
+var _entry_transfer_day := INVALID_DAY
+var _entry_transfer_step_id: StringName = &""
+var _entry_cover_ready := false
+var _pending_combat_failure_occurrence_key := ""
 var _route_identity_configured := false
 
 var _saved_process_modes: Dictionary = {}
@@ -136,6 +145,7 @@ func setup(
 	):
 		return false
 	_connect_route_signals()
+	_connect_combat_outcome_signals()
 	_connect_run_state_signals()
 	_route.set_embedded_presentation_active(false)
 	return true
@@ -275,6 +285,25 @@ func _connect_route_signals() -> void:
 		_route.return_requested.connect(_on_route_return_requested)
 
 
+func _connect_combat_outcome_signals() -> void:
+	var singleplayer_coordinator := _route.get_node_or_null(
+		"SingleplayerCombatCoordinator"
+	)
+	for coordinator in [singleplayer_coordinator, _multiplayer_combat_coordinator]:
+		if (
+			coordinator != null
+			and coordinator.has_signal(&"battle_outcome_committed")
+			and not coordinator.is_connected(
+				&"battle_outcome_committed",
+				_on_battle_outcome_committed
+			)
+		):
+			coordinator.connect(
+				&"battle_outcome_committed",
+				_on_battle_outcome_committed
+			)
+
+
 func _connect_run_state_signals() -> void:
 	if not _run_state.party_status_ledger_changed.is_connected(
 		_on_party_status_ledger_changed
@@ -284,40 +313,86 @@ func _connect_run_state_signals() -> void:
 		)
 
 
+## 权威端日终入口。先锁住 Tower 模拟并保留最后一帧，待遮罩全黑后才
+## 原子切换相机、环境与 UI。函数只负责启动本地协程，不等待客户端 ACK。
 func begin_exploration_transfer(
 	day_number: int,
 	next_step: FlowStepConfig
 ) -> bool:
-	return enter_exploration(day_number, next_step)
-
-
-func begin_remote_exploration_transfer() -> void:
-	return
-
-
-func cancel_pending_exploration_transfer() -> bool:
-	return false
-
-
-func enter_exploration(day_number: int, next_step: FlowStepConfig) -> bool:
-	if (
-		not is_bound()
-		or day_number < 1
-		or day_number > TowerDefenseProgressionConfig.ROGUE_EXPLORATION_DAY_COUNT
-		or next_step == null
-		or next_step.step_id.is_empty()
-		or _runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-		or not _ensure_route_runtime_identity()
-	):
+	if not _is_valid_authoritative_entry_request(day_number, next_step):
 		return false
 	if _active:
 		return _active_day == day_number and _next_step_id == next_step.step_id
 	if _presentation_exit_pending:
 		return _daily_grant_ledger.has(day_number)
+	if _entry_transfer_active:
+		return (
+			_entry_transfer_day == day_number
+			and _entry_transfer_step_id == next_step.step_id
+		)
+	# 发放账本同时也是探索日的一次性消费凭证。可靠重发不能重开同日探索。
+	if _daily_grant_ledger.has(day_number):
+		return true
+	var daily_action_points := _progression.get_daily_rogue_action_points(
+		day_number
+	)
+	# 配置为零的探索日没有可展示的地图：仍消费日终入口，但直接进入 Fate。
+	if daily_action_points == 0:
+		_daily_grant_ledger[day_number] = 0
+		_campaign.resume_flow_after_rogue_exploration(next_step.step_id)
+		return true
 	if _tower_runtime_frozen:
 		return false
-	# 发放账本同时也是探索日的一次性消费凭证。已完成或失败的同一天
-	# 可能因可靠重发再次请求进入；必须幂等确认，不能重开 Rogue/Fate。
+	_begin_entry_transfer(day_number, next_step.step_id, true)
+	_run_authoritative_entry_cover(
+		_entry_transfer_serial,
+		day_number,
+		next_step
+	)
+	return true
+
+
+## 客户端由可靠的日终 INTERMISSION(0) 启动本地遮罩。黑幕后保持冻结，
+## 直到 Host 的 active Rogue 快照完成原子提交；迟到快照也会自行补齐黑幕。
+func begin_remote_exploration_transfer() -> void:
+	if (
+		not is_bound()
+		or _runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		or _active
+		or _presentation_exit_pending
+		or _entry_transfer_active
+		or _tower_runtime_frozen
+	):
+		return
+	_begin_entry_transfer(INVALID_DAY, &"", false)
+	_run_remote_entry_cover(_entry_transfer_serial)
+
+
+## 后继 flow 已证明本次入口陈旧时，必须释放本地冻结租约。恢复发生在全黑
+## 下，再揭开 Tower，避免迟到 INTERMISSION(0) 留下永久输入锁。
+func cancel_pending_exploration_transfer() -> bool:
+	if not _entry_transfer_active or _active:
+		return false
+	_entry_transfer_serial += 1
+	var serial := _entry_transfer_serial
+	_entry_transfer_active = false
+	_entry_transfer_cancelling = true
+	_entry_transfer_day = INVALID_DAY
+	_entry_transfer_step_id = &""
+	_entry_cover_ready = false
+	_run_cancelled_entry_transfer(serial)
+	return true
+
+
+## 保留为同步的低层入口，供既有调用和烟测使用；正式 Campaign 使用上面的
+## begin 接口。低层入口也会先补齐全黑遮罩，绝不在可见帧中交换世界。
+func enter_exploration(day_number: int, next_step: FlowStepConfig) -> bool:
+	if not _is_valid_authoritative_entry_request(day_number, next_step):
+		return false
+	if _active:
+		return _active_day == day_number and _next_step_id == next_step.step_id
+	if _presentation_exit_pending:
+		return _daily_grant_ledger.has(day_number)
 	if _daily_grant_ledger.has(day_number):
 		return true
 	var daily_action_points := _progression.get_daily_rogue_action_points(
@@ -327,54 +402,113 @@ func enter_exploration(day_number: int, next_step: FlowStepConfig) -> bool:
 		_daily_grant_ledger[day_number] = 0
 		_campaign.resume_flow_after_rogue_exploration(next_step.step_id)
 		return true
+	if not _entry_transfer_active:
+		if _tower_runtime_frozen:
+			return false
+		_begin_entry_transfer(day_number, next_step.step_id, true)
+	elif (
+		_entry_transfer_day != day_number
+		or _entry_transfer_step_id != next_step.step_id
+	):
+		return false
+	if not _entry_scene_transition.is_covered():
+		_entry_scene_transition.cover_immediately()
+	_entry_cover_ready = true
+	_conceal_tower_runtime_under_cover()
+	if not _commit_authoritative_exploration_entry(
+		day_number,
+		next_step,
+		daily_action_points
+	):
+		_fail_entry_transfer()
+		return false
+	_run_entry_reveal(_entry_transfer_serial)
+	return true
 
+
+func _is_valid_authoritative_entry_request(
+	day_number: int,
+	next_step: FlowStepConfig
+) -> bool:
+	return (
+		is_bound()
+		and day_number >= 1
+		and day_number
+		<= TowerDefenseProgressionConfig.ROGUE_EXPLORATION_DAY_COUNT
+		and next_step != null
+		and not next_step.step_id.is_empty()
+		and _runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		and _ensure_route_runtime_identity()
+	)
+
+
+func _begin_entry_transfer(
+	day_number: int,
+	next_step_id: StringName,
+	restore_players: bool
+) -> void:
+	_entry_transfer_serial += 1
+	_entry_transfer_active = true
+	_entry_transfer_cancelling = false
+	_entry_transfer_day = day_number
+	_entry_transfer_step_id = next_step_id
+	_entry_cover_ready = false
+	_pending_combat_failure_occurrence_key = ""
+	_finishing = false
+	# 复活信号会改写 Tower 相机与输入，必须在获取冻结租约前完成。
+	if restore_players:
+		_player_roster.restore_all_players_to_full_health(true)
+	_freeze_tower_runtime_for_transfer()
+	_route.process_mode = Node.PROCESS_MODE_DISABLED
+
+
+func _run_authoritative_entry_cover(
+	serial: int,
+	day_number: int,
+	next_step: FlowStepConfig
+) -> void:
+	var covered := await _entry_scene_transition.cover()
+	if (
+		not covered
+		or serial != _entry_transfer_serial
+		or not _entry_transfer_active
+		or _active
+	):
+		return
+	_entry_cover_ready = true
+	enter_exploration(day_number, next_step)
+
+
+func _run_remote_entry_cover(serial: int) -> void:
+	var covered := await _entry_scene_transition.cover()
+	if (
+		not covered
+		or serial != _entry_transfer_serial
+		or not _entry_transfer_active
+	):
+		return
+	_entry_cover_ready = true
+
+
+func _commit_authoritative_exploration_entry(
+	day_number: int,
+	next_step: FlowStepConfig,
+	daily_action_points: int
+) -> bool:
 	_next_step_id = next_step.step_id
 	_active_day = day_number
-	_finishing = false
-	# 先完成塔防角色复活的相机/输入副作用，再统一冻结 Tower presentation；
-	# 若反过来，revived 回调会在探索已接管后重新启用塔防相机。
-	_player_roster.restore_all_players_to_full_health(true)
-	_freeze_tower_runtime()
 	_activate_rogue_core_for_entry()
 	_route.set_embedded_presentation_active(true)
+	# 黑幕揭开前 Route 只允许同步搭建表现，不处理移动、面板或战斗输入。
+	_route.process_mode = Node.PROCESS_MODE_DISABLED
 	if not _ensure_authoritative_map():
-		_cache_rogue_core_from_run_state()
-		_restore_tower_core()
-		_restore_tower_runtime()
-		_route.set_embedded_presentation_active(false)
-		_active_day = INVALID_DAY
-		_next_step_id = &""
-		_campaign.enter_defeat()
 		return false
 	if not _route.restore_players_for_route_scene_entry():
-		_cache_rogue_core_from_run_state()
-		_restore_tower_core()
-		_restore_tower_runtime()
-		_route.set_embedded_presentation_active(false)
-		_active_day = INVALID_DAY
-		_next_step_id = &""
-		_campaign.enter_defeat()
 		return false
-	if not _daily_grant_ledger.has(day_number):
-		if not _route.grant_authoritative_action_points(daily_action_points):
-			_cache_rogue_core_from_run_state()
-			_restore_tower_core()
-			_restore_tower_runtime()
-			_route.set_embedded_presentation_active(false)
-			_active_day = INVALID_DAY
-			_next_step_id = &""
-			_campaign.enter_defeat()
-			return false
-		_daily_grant_ledger[day_number] = daily_action_points
-
+	if not _route.grant_authoritative_action_points(daily_action_points):
+		return false
+	_daily_grant_ledger[day_number] = daily_action_points
 	if not _campaign.transition_to_rogue_exploration(next_step):
-		_cache_rogue_core_from_run_state()
-		_restore_tower_core()
-		_restore_tower_runtime()
-		_route.set_embedded_presentation_active(false)
-		_active_day = INVALID_DAY
-		_next_step_id = &""
-		_campaign.enter_defeat()
 		return false
 	_active = true
 	_multiplayer_adapter.set_merchant_active(false)
@@ -384,6 +518,56 @@ func enter_exploration(day_number: int, next_step: FlowStepConfig) -> bool:
 	exploration_started.emit(day_number, snapshot)
 	exploration_snapshot_changed.emit(snapshot)
 	return true
+
+
+func _run_entry_reveal(serial: int) -> void:
+	var revealed := await _entry_scene_transition.reveal()
+	if (
+		not revealed
+		or serial != _entry_transfer_serial
+		or not _entry_transfer_active
+		or not _active
+	):
+		return
+	_route.process_mode = Node.PROCESS_MODE_INHERIT
+	_clear_entry_transfer_state()
+
+
+func _run_cancelled_entry_transfer(serial: int) -> void:
+	if _entry_scene_transition.visible:
+		_entry_scene_transition.cover_immediately()
+	_restore_tower_runtime()
+	_route.set_embedded_presentation_active(false)
+	if _entry_scene_transition.visible:
+		await _entry_scene_transition.reveal()
+	else:
+		_entry_scene_transition.hide_immediately()
+	if serial != _entry_transfer_serial or _active:
+		return
+	_clear_entry_transfer_state()
+
+
+func _fail_entry_transfer() -> void:
+	_cache_rogue_core_from_run_state()
+	_restore_tower_core()
+	_route.set_embedded_presentation_active(false)
+	_restore_tower_runtime()
+	_active = false
+	_active_day = INVALID_DAY
+	_next_step_id = &""
+	_pending_combat_failure_occurrence_key = ""
+	_entry_transfer_serial += 1
+	_entry_scene_transition.reveal()
+	_clear_entry_transfer_state()
+	_campaign.enter_defeat()
+
+
+func _clear_entry_transfer_state() -> void:
+	_entry_transfer_active = false
+	_entry_transfer_cancelling = false
+	_entry_transfer_day = INVALID_DAY
+	_entry_transfer_step_id = &""
+	_entry_cover_ready = false
 
 
 func _ensure_authoritative_map() -> bool:
@@ -401,6 +585,14 @@ func _process(_delta: float) -> void:
 	if _route.has_run_failed():
 		host_handle_exploration_failure()
 		return
+	# 作战败局优先于行动力归零。结果页与多人 terminal-safe 拆场未完成前
+	# settlement predicate 为 false，因此不会在战斗世界仍存活时切走。
+	if (
+		not _pending_combat_failure_occurrence_key.is_empty()
+		and _is_exploration_interaction_settled()
+	):
+		_finish_exploration(true)
+		return
 	if _route.get_action_points() == 0 and is_settled_for_auto_return():
 		_finish_exploration(false)
 
@@ -409,15 +601,37 @@ func is_settled_for_auto_return() -> bool:
 	return (
 		_active
 		and _route.get_action_points() == 0
+		and _is_exploration_interaction_settled()
+	)
+
+
+func _is_exploration_interaction_settled() -> bool:
+	return (
+		_active
 		and _route.is_exploration_settled_for_return()
 		and not _multiplayer_combat_coordinator.is_combat_active()
 	)
 
 
+func _on_battle_outcome_committed(
+	victory: bool,
+	occurrence_key: String
+) -> void:
+	if (
+		victory
+		or occurrence_key.is_empty()
+		or not _active
+		or not _is_local_authority()
+	):
+		return
+	# 首个权威败局锁存当日结束原因；可靠重发或终局重连不得替换它。
+	if _pending_combat_failure_occurrence_key.is_empty():
+		_pending_combat_failure_occurrence_key = occurrence_key
+
+
 func host_handle_exploration_failure() -> bool:
 	if not _active or not _is_local_authority() or not _route.has_run_failed():
 		return false
-	_requires_fresh_map = true
 	_route.acknowledge_embedded_run_failure()
 	_finish_exploration(true)
 	return true
@@ -427,6 +641,12 @@ func _finish_exploration(failed: bool) -> void:
 	if not _active or _finishing:
 		return
 	_finishing = true
+	_requires_fresh_map = failed
+	_pending_combat_failure_occurrence_key = ""
+	# 若极短探索在入口揭幕尚未结束前已完成，递增 serial 会取消陈旧 reveal。
+	if _entry_transfer_active:
+		_entry_transfer_serial += 1
+		_clear_entry_transfer_state()
 	set_process(false)
 	var completed_day := _active_day
 	var resume_step_id := _next_step_id
@@ -442,6 +662,12 @@ func _finish_exploration(failed: bool) -> void:
 
 
 func _freeze_tower_runtime() -> void:
+	_freeze_tower_runtime_for_transfer()
+	_conceal_tower_runtime_under_cover()
+
+
+## 第一阶段只冻结逻辑和输入，保留 Tower 最后一帧、相机与环境给 cover 动画。
+func _freeze_tower_runtime_for_transfer() -> void:
 	if _tower_runtime_frozen:
 		return
 	_multiplayer_adapter.cancel_all_luoxi_special_games()
@@ -487,9 +713,6 @@ func _freeze_tower_runtime() -> void:
 	)
 
 	_tower_runtime_frozen = true
-	_runtime.map_camera.enabled = false
-	if tower_environment != null:
-		tower_environment.environment = null
 	# Music/循环声只暂停当前 playback；一次性 SFX 直接终止，不能在数分钟后续播。
 	for audio_lease in _saved_audio_playback_leases:
 		var audio_player := _get_current_audio_player(audio_lease)
@@ -514,10 +737,23 @@ func _freeze_tower_runtime() -> void:
 		var child := _get_valid_saved_node(child_variant)
 		if child != null:
 			child.process_mode = Node.PROCESS_MODE_DISABLED
+
+
+## 第二阶段仅能在全黑遮罩下调用：此时才交还 Tower 相机、环境和 UI。
+func _conceal_tower_runtime_under_cover() -> void:
+	if not _tower_runtime_frozen or _tower_runtime_concealed:
+		return
+	_runtime.map_camera.enabled = false
+	var tower_environment := _runtime.get_node_or_null(
+		"WorldEnvironment"
+	) as WorldEnvironment
+	if tower_environment != null:
+		tower_environment.environment = null
 	for child_variant in _saved_visibility.keys():
 		var child := _get_valid_saved_node(child_variant)
 		if child != null:
 			child.set(&"visible", false)
+	_tower_runtime_concealed = true
 
 
 func _restore_tower_runtime() -> void:
@@ -577,6 +813,7 @@ func _restore_tower_runtime() -> void:
 		COMBAT_ACTION_LOCK_OWNER,
 		false
 	)
+	_tower_runtime_concealed = false
 	_tower_runtime_frozen = false
 
 
@@ -792,7 +1029,12 @@ func is_exploration_active() -> bool:
 
 
 func is_tower_runtime_suspended() -> bool:
-	return _active or _presentation_exit_pending
+	return (
+		_entry_transfer_active
+		or _entry_transfer_cancelling
+		or _active
+		or _presentation_exit_pending
+	)
 
 
 ## 重连会在 Rogue 已冻结塔防子树之后创建新的 Player。该节点必须加入
@@ -990,6 +1232,15 @@ func _apply_multiplayer_snapshot_guarded(snapshot: Dictionary) -> bool:
 			or int(prepared["map_generation_epoch"]) != _map_generation_epoch
 		)
 	)
+	# 从此处开始所有 prepare/CAS 均已证明可提交。入口快照必须先在本地
+	# 补齐全黑遮罩并取得 Tower 冻结租约，再允许任一 owner 发布 UI 信号。
+	if (
+		incoming_active
+		and not was_active
+		and not _prepare_active_snapshot_entry_boundary()
+	):
+		_discard_prepared_multiplayer_snapshot(prepared)
+		return false
 	# 从这里开始只有经 prepare/CAS 证明的无失败写入口；所有信号、UI 与
 	# reveal 均延迟到 Route/party/成长/Research/Fate/identity/Player 齐备。
 	if incoming_active:
@@ -1040,7 +1291,6 @@ func _apply_multiplayer_snapshot_guarded(snapshot: Dictionary) -> bool:
 	_next_step_id = StringName(prepared["next_step_id"])
 	if incoming_active and not was_active:
 		_presentation_exit_pending = false
-		_freeze_tower_runtime()
 		# 晚加入客户端可能先收到探索快照、后收到塔防全量状态；冻结时本地
 		# HomeDefense 仍是默认值，因此必须以 Host 在进入探索前保存的核心值
 		# 覆盖恢复账本，退出时才不会把真实基地血量回滚成默认值。
@@ -1082,8 +1332,24 @@ func _apply_multiplayer_snapshot_guarded(snapshot: Dictionary) -> bool:
 		)
 		if not was_active:
 			_route.set_embedded_presentation_active(true)
+			_route.process_mode = Node.PROCESS_MODE_DISABLED
 		_route.complete_prepared_full_snapshot_presentation()
+		if not was_active:
+			_run_entry_reveal(_entry_transfer_serial)
 	return true
+
+
+func _prepare_active_snapshot_entry_boundary() -> bool:
+	if not _entry_transfer_active:
+		if _tower_runtime_frozen:
+			return false
+		# 重连或乱序时 active 快照可能先于 INTERMISSION(0)，直接全黑补齐。
+		_begin_entry_transfer(INVALID_DAY, &"", false)
+	if not _entry_scene_transition.is_covered():
+		_entry_scene_transition.cover_immediately()
+	_entry_cover_ready = true
+	_conceal_tower_runtime_under_cover()
+	return _tower_runtime_frozen and _tower_runtime_concealed
 
 
 func _discard_prepared_multiplayer_snapshot(prepared: Dictionary) -> void:

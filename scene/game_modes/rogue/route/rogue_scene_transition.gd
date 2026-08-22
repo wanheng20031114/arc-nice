@@ -71,6 +71,20 @@ func reveal() -> bool:
 	return true
 
 
+func cover_immediately() -> void:
+	# 立即遮盖同时是一个显式的转场取消边界。递增 serial 会让仍在等待
+	# timer 的旧 cover/reveal 协程返回 false，不能在稍后覆盖当前画面状态。
+	if not is_covered() or is_transitioning():
+		_transition_serial += 1
+	_stop_transition_tween()
+	cover_audio.stop()
+	reveal_audio.stop()
+	visible = true
+	_set_progress(1.0)
+	if is_node_ready():
+		cover_rect.mouse_filter = Control.MOUSE_FILTER_STOP
+
+
 func hide_immediately() -> void:
 	_transition_serial += 1
 	_stop_transition_tween()
@@ -84,6 +98,10 @@ func hide_immediately() -> void:
 
 func is_covered() -> bool:
 	return visible and progress >= 0.999
+
+
+func is_transitioning() -> bool:
+	return _transition_tween != null
 
 
 func _stop_transition_tween() -> void:
