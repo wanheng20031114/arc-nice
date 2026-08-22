@@ -8,6 +8,17 @@ const FORMAL_FOUR_DAY_CAMPAIGN_IDS: Array[StringName] = [
 	&"tower_defense_multiplayer",
 ]
 
+enum IntermissionContinuation {
+	NONE,
+	BEGIN_NEXT_FLOW_STEP,
+	BEGIN_ROGUE_EXPLORATION,
+}
+
+enum IntermissionCountdownKind {
+	WAVE_INTERMISSION,
+	NEW_DAY_PREPARATION,
+}
+
 signal remote_flow_state_applied(
 	step_id: StringName,
 	state: CombatFlowState.State,
@@ -35,6 +46,12 @@ var wave_state: CombatFlowState.State = CombatFlowState.State.PRE_WAVE:
 			_plant_placement_coordinator.set_flow_state(value)
 var current_flow_step: FlowStepConfig = null
 var next_flow_step_after_rest: FlowStepConfig = null
+var intermission_continuation: IntermissionContinuation = (
+	IntermissionContinuation.NONE
+)
+var intermission_countdown_kind: IntermissionCountdownKind = (
+	IntermissionCountdownKind.WAVE_INTERMISSION
+)
 var current_wave_index := 0
 var wave_enemy_terminal_ledger := WaveEnemyTerminalLedger.new()
 var current_wave_total: int:
@@ -89,6 +106,9 @@ var _luoxi_special_game_coordinator: LuoxiSpecialGameCoordinator
 var _luoxi_merchant: TowerDefenseLuoxiMerchant
 var _day_phase_announcements_enabled := true
 var _custom_first_wave_announcement_shown := false
+var _intermission_rogue_day_number := 0
+var _intermission_completion_started := false
+var _intermission_zero_flow_state_published := false
 
 
 func configure(
@@ -285,13 +305,29 @@ func replace_flow_state_for_fixture(
 	current_flow_step = flow_step
 	next_flow_step_after_rest = next_step
 	countdown_seconds = maxi(seconds, 0)
+	_clear_intermission_context()
+	if state == CombatFlowState.State.INTERMISSION and next_step != null:
+		intermission_continuation = (
+			IntermissionContinuation.BEGIN_NEXT_FLOW_STEP
+		)
 
 
 func _commit_non_countdown_flow_state(state: CombatFlowState.State) -> void:
 	wave_state = state
 	countdown_seconds = 0
+	_clear_intermission_context()
 	stop_state_timer()
 	stop_enemy_spawn_timer()
+
+
+func _clear_intermission_context() -> void:
+	intermission_continuation = IntermissionContinuation.NONE
+	intermission_countdown_kind = (
+		IntermissionCountdownKind.WAVE_INTERMISSION
+	)
+	_intermission_rogue_day_number = 0
+	_intermission_completion_started = false
+	_intermission_zero_flow_state_published = false
 
 
 func clear() -> void:
@@ -302,6 +338,7 @@ func clear() -> void:
 	waves.clear()
 	bosses.clear()
 	configuration_errors.clear()
+	_clear_intermission_context()
 	_last_remote_wave_progress_number = 0
 	reset_wave_progress(0)
 
@@ -578,13 +615,7 @@ func request_wave_start(requester_peer_id: int = 0) -> bool:
 	if flow_step == null or countdown_seconds <= TowerDefensePresentationCoordinator.COUNTDOWN_FINAL_SECONDS:
 		return false
 	countdown_seconds = TowerDefensePresentationCoordinator.COUNTDOWN_FINAL_SECONDS
-	if _is_day_four_boss_preparation():
-		_presentation_coordinator.show_day_four_boss_preparation(
-			countdown_seconds,
-			false
-		)
-	else:
-		_presentation_coordinator.show_countdown(countdown_seconds, false)
+	_show_current_countdown(false)
 	_presentation_coordinator.play_countdown_tick()
 	_state_timer.start(1.0)
 	publish_flow_state(wave_state)
@@ -596,6 +627,7 @@ func enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 		enter_victory()
 		return
 	wave_state = CombatFlowState.State.PRE_WAVE
+	_clear_intermission_context()
 	_presentation_coordinator.transition_world_to_day()
 	current_flow_step = flow_step
 	next_flow_step_after_rest = flow_step
@@ -626,26 +658,131 @@ func enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 
 
 func enter_intermission(next_step: FlowStepConfig = null) -> void:
+	_presentation_coordinator.apply_intermission_lighting(
+		maxi(current_wave_index + 1, 1)
+	)
+	_start_intermission_countdown(
+		next_step,
+		IntermissionContinuation.BEGIN_NEXT_FLOW_STEP,
+		IntermissionCountdownKind.WAVE_INTERMISSION,
+		0
+	)
+
+
+func enter_day_end_rogue_intermission(
+	completed_day_number: int,
+	next_step: FlowStepConfig
+) -> bool:
+	var completed_wave := current_flow_step as WaveConfig
+	var completed_wave_number := get_wave_number_for_step(
+		completed_wave,
+		current_wave_index
+	)
+	if (
+		completed_wave == null
+		or next_step == null
+		or completed_day_number < 1
+		or completed_day_number
+		> TowerDefenseProgressionConfig.ROGUE_EXPLORATION_DAY_COUNT
+		or get_day_number_for_wave(completed_wave_number) != completed_day_number
+		or not should_enter_daily_rogue_exploration(completed_wave_number)
+	):
+		push_error(
+			"TowerDefenseCampaignCoordinator: 日终 Rogue 休整上下文无效。"
+		)
+		return false
+	_presentation_coordinator.apply_intermission_lighting(completed_wave_number)
+	_start_intermission_countdown(
+		next_step,
+		IntermissionContinuation.BEGIN_ROGUE_EXPLORATION,
+		IntermissionCountdownKind.WAVE_INTERMISSION,
+		completed_day_number
+	)
+	return true
+
+
+func enter_new_day_preparation(next_step: FlowStepConfig) -> void:
+	if next_step == null:
+		enter_victory()
+		return
+	current_flow_step = next_step
+	if next_step is WaveConfig:
+		current_wave_index = get_wave_number_for_step(
+			next_step as WaveConfig,
+			current_wave_index
+		) - 1
+	_presentation_coordinator.transition_world_to_day()
+	_start_intermission_countdown(
+		next_step,
+		IntermissionContinuation.BEGIN_NEXT_FLOW_STEP,
+		IntermissionCountdownKind.NEW_DAY_PREPARATION,
+		0
+	)
+
+
+func _start_intermission_countdown(
+	next_step: FlowStepConfig,
+	continuation: IntermissionContinuation,
+	countdown_kind: IntermissionCountdownKind,
+	rogue_day_number: int
+) -> void:
 	wave_state = CombatFlowState.State.INTERMISSION
-	_presentation_coordinator.apply_intermission_lighting(maxi(current_wave_index + 1, 1))
 	_enemy_spawn_timer.stop()
 	_multiplayer_adapter.set_merchant_active(true)
 	next_flow_step_after_rest = next_step
+	intermission_continuation = continuation
+	intermission_countdown_kind = countdown_kind
+	_intermission_rogue_day_number = rogue_day_number
+	_intermission_completion_started = false
+	_intermission_zero_flow_state_published = false
 	countdown_seconds = get_current_intermission_seconds()
 	_presentation_coordinator.update_post_wave_music(current_flow_step)
-	_presentation_coordinator.show_countdown(
-		countdown_seconds,
-		can_local_player_start_wave_early()
-	)
+	_show_current_countdown(can_local_player_start_wave_early())
 	publish_flow_state(CombatFlowState.State.INTERMISSION)
+	_intermission_zero_flow_state_published = countdown_seconds <= 0
 	_player_roster_coordinator.force_revive_dead_players(true)
 
 	if countdown_seconds <= 0:
-		begin_flow_step(next_flow_step_after_rest)
+		complete_intermission()
 		return
 	if countdown_seconds <= TowerDefensePresentationCoordinator.COUNTDOWN_FINAL_SECONDS:
 		_presentation_coordinator.play_countdown_tick()
 	_state_timer.start(1.0)
+
+
+func complete_intermission() -> void:
+	if (
+		wave_state != CombatFlowState.State.INTERMISSION
+		or _intermission_completion_started
+	):
+		return
+	if countdown_seconds > 0:
+		return
+	_intermission_completion_started = true
+	match intermission_continuation:
+		IntermissionContinuation.BEGIN_NEXT_FLOW_STEP:
+			var next_step := next_flow_step_after_rest
+			begin_flow_step(next_step)
+		IntermissionContinuation.BEGIN_ROGUE_EXPLORATION:
+			_publish_day_end_intermission_zero_if_needed()
+			if not _rogue_exploration_coordinator.begin_exploration_transfer(
+				_intermission_rogue_day_number,
+				next_flow_step_after_rest
+			):
+				enter_defeat()
+		_:
+			push_error(
+				"TowerDefenseCampaignCoordinator: 休整结束时缺少显式后继类型。"
+			)
+			enter_defeat()
+
+
+func _publish_day_end_intermission_zero_if_needed() -> void:
+	if _intermission_zero_flow_state_published:
+		return
+	countdown_seconds = 0
+	publish_flow_state(CombatFlowState.State.INTERMISSION)
+	_intermission_zero_flow_state_published = true
 
 
 func begin_flow_step(flow_step: FlowStepConfig) -> void:
@@ -654,6 +791,7 @@ func begin_flow_step(flow_step: FlowStepConfig) -> void:
 		return
 	current_flow_step = flow_step
 	next_flow_step_after_rest = null
+	_clear_intermission_context()
 	if flow_step is WaveConfig:
 		begin_wave_config(flow_step as WaveConfig)
 	elif flow_step is BossConfig:
@@ -723,26 +861,16 @@ func on_state_timer_timeout() -> void:
 
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
 	if countdown_seconds > 0:
-		if _is_day_four_boss_preparation():
-			_presentation_coordinator.show_day_four_boss_preparation(
-				countdown_seconds,
-				can_local_player_start_wave_early()
-			)
-		else:
-			_presentation_coordinator.show_countdown(
-				countdown_seconds,
-				can_local_player_start_wave_early()
-			)
+		_show_current_countdown(can_local_player_start_wave_early())
 		if countdown_seconds <= TowerDefensePresentationCoordinator.COUNTDOWN_FINAL_SECONDS:
 			_presentation_coordinator.play_countdown_tick()
 		return
 
 	_state_timer.stop()
-	begin_flow_step(
-		current_flow_step
-		if wave_state == CombatFlowState.State.PRE_WAVE
-		else next_flow_step_after_rest
-	)
+	if wave_state == CombatFlowState.State.PRE_WAVE:
+		begin_flow_step(current_flow_step)
+		return
+	complete_intermission()
 
 
 func start_client_flow_countdown(
@@ -752,10 +880,11 @@ func start_client_flow_countdown(
 ) -> void:
 	wave_state = state
 	var flow_step := get_flow_step_by_id(step_id)
+	_clear_intermission_context()
 	if flow_step != null:
 		current_flow_step = flow_step
 		if state == CombatFlowState.State.INTERMISSION:
-			next_flow_step_after_rest = flow_step
+			_configure_remote_intermission_context(flow_step)
 		if flow_step is WaveConfig:
 			current_wave_index = get_wave_number_for_step(
 				flow_step as WaveConfig,
@@ -768,16 +897,7 @@ func start_client_flow_countdown(
 		_multiplayer_adapter.set_local_merchants_active(true)
 		_presentation_coordinator.update_post_wave_music(flow_step)
 	countdown_seconds = maxi(seconds, 0)
-	if _is_day_four_boss_preparation():
-		_presentation_coordinator.show_day_four_boss_preparation(
-			countdown_seconds,
-			false
-		)
-	else:
-		_presentation_coordinator.show_countdown(
-			countdown_seconds,
-			can_local_player_start_wave_early()
-		)
+	_show_current_countdown(can_local_player_start_wave_early())
 	_presentation_coordinator.play_client_countdown_tick_if_new(
 		state,
 		step_id,
@@ -797,16 +917,7 @@ func update_client_flow_countdown() -> void:
 		_state_timer.stop()
 		return
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
-	if _is_day_four_boss_preparation():
-		_presentation_coordinator.show_day_four_boss_preparation(
-			countdown_seconds,
-			false
-		)
-	else:
-		_presentation_coordinator.show_countdown(
-			countdown_seconds,
-			can_local_player_start_wave_early()
-		)
+	_show_current_countdown(can_local_player_start_wave_early())
 	if countdown_seconds <= 0:
 		_state_timer.stop()
 		return
@@ -840,6 +951,23 @@ func apply_remote_flow_state(
 		return
 	if _fate_flow_coordinator.should_defer_remote_flow_state(step_id, state, seconds):
 		return
+	var remote_rogue_day_number := (
+		_get_rogue_intermission_day_number(flow_step)
+		if typed_state == CombatFlowState.State.INTERMISSION
+		else 0
+	)
+	var should_begin_remote_rogue_transfer := (
+		remote_rogue_day_number > 0
+		and seconds <= 0
+		and _progression_config.get_daily_rogue_action_points(
+			remote_rogue_day_number
+		) > 0
+	)
+	if (
+		typed_state != CombatFlowState.State.ROGUE_EXPLORATION
+		and not should_begin_remote_rogue_transfer
+	):
+		_rogue_exploration_coordinator.cancel_pending_exploration_transfer()
 	var leaving_fate_interlude := (
 		_fate_flow_coordinator.is_leaving_remote_interlude(typed_state)
 	)
@@ -871,18 +999,13 @@ func apply_remote_flow_state(
 			_presentation_coordinator.transition_world_to_day()
 			start_client_flow_countdown(typed_state, step_id, seconds)
 		CombatFlowState.State.INTERMISSION:
-			if flow_step is BossConfig and is_formal_four_day_campaign():
+			if _is_new_day_preparation_step(flow_step):
 				_presentation_coordinator.transition_world_to_day()
-				start_client_flow_countdown(typed_state, step_id, seconds)
-				_presentation_coordinator.show_day_four_boss_preparation(
-					seconds,
-					false
-				)
 			else:
 				_presentation_coordinator.apply_intermission_lighting(
 					maxi(current_wave_index + 1, 1)
 				)
-				start_client_flow_countdown(typed_state, step_id, seconds)
+			start_client_flow_countdown(typed_state, step_id, seconds)
 		CombatFlowState.State.WAVE_ACTIVE:
 			next_flow_step_after_rest = null
 			_commit_non_countdown_flow_state(
@@ -926,6 +1049,8 @@ func apply_remote_flow_state(
 			enter_victory(false)
 		CombatFlowState.State.DEFEAT:
 			enter_defeat(false)
+	if should_begin_remote_rogue_transfer:
+		_rogue_exploration_coordinator.begin_remote_exploration_transfer()
 	if leaving_fate_interlude:
 		_fate_flow_coordinator.complete_remote_flow_transition()
 	remote_flow_state_applied.emit(step_id, typed_state, seconds)
@@ -968,7 +1093,7 @@ func complete_current_step() -> void:
 			completed_wave_number
 		)
 		if should_enter_daily_rogue_exploration(completed_wave_number):
-			if not _rogue_exploration_coordinator.enter_exploration(
+			if not enter_day_end_rogue_intermission(
 				completed_day_number,
 				next_step
 			):
@@ -981,13 +1106,7 @@ func complete_current_step() -> void:
 
 func resume_flow_after_fate_interlude(next_step_id: StringName) -> void:
 	var next_step := get_flow_step_by_id(next_step_id)
-	if next_step == null:
-		enter_victory()
-		return
-	if next_step is BossConfig:
-		enter_day_four_boss_preparation(next_step as BossConfig)
-		return
-	enter_intermission(next_step)
+	enter_new_day_preparation(next_step)
 
 
 func should_enter_daily_rogue_exploration(completed_wave_number: int) -> bool:
@@ -1012,6 +1131,10 @@ func is_formal_four_day_campaign() -> bool:
 func _is_day_four_boss_preparation() -> bool:
 	return (
 		wave_state == CombatFlowState.State.INTERMISSION
+		and intermission_continuation
+		== IntermissionContinuation.BEGIN_NEXT_FLOW_STEP
+		and intermission_countdown_kind
+		== IntermissionCountdownKind.NEW_DAY_PREPARATION
 		and next_flow_step_after_rest is BossConfig
 		and is_formal_four_day_campaign()
 	)
@@ -1023,28 +1146,7 @@ func resume_flow_after_rogue_exploration(next_step_id: StringName) -> void:
 
 
 func enter_day_four_boss_preparation(boss_step: BossConfig) -> void:
-	if boss_step == null:
-		enter_victory()
-		return
-	wave_state = CombatFlowState.State.INTERMISSION
-	current_flow_step = boss_step
-	next_flow_step_after_rest = boss_step
-	_enemy_spawn_timer.stop()
-	_multiplayer_adapter.set_merchant_active(true)
-	countdown_seconds = get_new_day_preparation_seconds()
-	_presentation_coordinator.transition_world_to_day()
-	_presentation_coordinator.show_day_four_boss_preparation(
-		countdown_seconds,
-		can_local_player_start_wave_early()
-	)
-	_player_roster_coordinator.force_revive_dead_players(true)
-	publish_flow_state(CombatFlowState.State.INTERMISSION)
-	if countdown_seconds <= 0:
-		begin_flow_step(boss_step)
-		return
-	if countdown_seconds <= TowerDefensePresentationCoordinator.COUNTDOWN_FINAL_SECONDS:
-		_presentation_coordinator.play_countdown_tick()
-	_state_timer.start(1.0)
+	enter_new_day_preparation(boss_step)
 
 
 func enter_victory(emit_multiplayer: bool = true) -> void:
@@ -1058,6 +1160,7 @@ func enter_victory(emit_multiplayer: bool = true) -> void:
 	_presentation_coordinator.restore_camera_after_boss_intro(
 		_runtime_port.get_local_player()
 	)
+	_clear_intermission_context()
 	wave_state = CombatFlowState.State.VICTORY
 	_presentation_coordinator.transition_world_to_day()
 	_player_roster_coordinator.force_revive_dead_players(emit_multiplayer)
@@ -1086,6 +1189,7 @@ func enter_defeat(emit_multiplayer: bool = true) -> void:
 	_luoxi_special_game_coordinator.cancel_all()
 	_luoxi_merchant.abort_special_game()
 	_plant_placement_coordinator.cancel_placement()
+	_clear_intermission_context()
 	wave_state = CombatFlowState.State.DEFEAT
 	_presentation_coordinator.transition_world_to_day()
 	_presentation_coordinator.reset_defeat_presentation()
@@ -1134,8 +1238,91 @@ func get_new_day_preparation_seconds() -> int:
 func get_current_intermission_seconds() -> int:
 	return (
 		get_new_day_preparation_seconds()
-		if is_day_end_wave(maxi(current_wave_index + 1, 1))
+		if intermission_countdown_kind
+		== IntermissionCountdownKind.NEW_DAY_PREPARATION
 		else get_wave_intermission_seconds()
+	)
+
+
+func is_day_end_rogue_intermission() -> bool:
+	return (
+		wave_state == CombatFlowState.State.INTERMISSION
+		and intermission_continuation
+		== IntermissionContinuation.BEGIN_ROGUE_EXPLORATION
+	)
+
+
+func _configure_remote_intermission_context(flow_step: FlowStepConfig) -> void:
+	var rogue_day_number := _get_rogue_intermission_day_number(flow_step)
+	if rogue_day_number > 0:
+		intermission_continuation = (
+			IntermissionContinuation.BEGIN_ROGUE_EXPLORATION
+		)
+		intermission_countdown_kind = (
+			IntermissionCountdownKind.WAVE_INTERMISSION
+		)
+		_intermission_rogue_day_number = rogue_day_number
+		next_flow_step_after_rest = get_default_next_flow_step(flow_step)
+		return
+	intermission_continuation = (
+		IntermissionContinuation.BEGIN_NEXT_FLOW_STEP
+	)
+	intermission_countdown_kind = (
+		IntermissionCountdownKind.NEW_DAY_PREPARATION
+		if _is_new_day_preparation_step(flow_step)
+		else IntermissionCountdownKind.WAVE_INTERMISSION
+	)
+	next_flow_step_after_rest = (
+		flow_step
+		if intermission_countdown_kind
+		== IntermissionCountdownKind.NEW_DAY_PREPARATION
+		else get_default_next_flow_step(flow_step)
+	)
+
+
+func _get_rogue_intermission_day_number(flow_step: FlowStepConfig) -> int:
+	var wave_config := flow_step as WaveConfig
+	if wave_config == null:
+		return 0
+	var wave_number := get_wave_number_for_step(
+		wave_config,
+		current_wave_index
+	)
+	if not should_enter_daily_rogue_exploration(wave_number):
+		return 0
+	return get_day_number_for_wave(wave_number)
+
+
+func _is_new_day_preparation_step(flow_step: FlowStepConfig) -> bool:
+	if not is_formal_four_day_campaign():
+		return false
+	if flow_step is BossConfig:
+		return true
+	var wave_config := flow_step as WaveConfig
+	if wave_config == null:
+		return false
+	var wave_number := get_wave_number_for_step(
+		wave_config,
+		current_wave_index
+	)
+	return wave_number > 1 and get_wave_in_day(wave_number) == 1
+
+
+func _show_current_countdown(can_start_early: bool) -> void:
+	if _is_day_four_boss_preparation():
+		_presentation_coordinator.show_day_four_boss_preparation(
+			countdown_seconds,
+			can_start_early
+		)
+		return
+	_presentation_coordinator.show_countdown(
+		countdown_seconds,
+		can_start_early,
+		(
+			TowerDefenseWaveHUD.CountdownTarget.ROGUE_EXPLORATION
+			if is_day_end_rogue_intermission()
+			else TowerDefenseWaveHUD.CountdownTarget.NEXT_WAVE
+		)
 	)
 
 

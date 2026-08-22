@@ -314,8 +314,14 @@ func announce_wave_phase_start(
 	return true
 
 
-func show_countdown(seconds: int, can_start_early: bool) -> void:
-	_wave_hud.show_countdown(seconds, can_start_early)
+func show_countdown(
+	seconds: int,
+	can_start_early: bool,
+	target: TowerDefenseWaveHUD.CountdownTarget = (
+		TowerDefenseWaveHUD.CountdownTarget.NEXT_WAVE
+	)
+) -> void:
+	_wave_hud.show_countdown(seconds, can_start_early, target)
 
 
 func show_base_health(

@@ -13,6 +13,23 @@ const FLOW_STATE_CLIENT_SOURCE_PATHS: Array[String] = [
 	"res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.gd",
 ]
 
+
+class RogueTransferProbe:
+	extends TowerDefenseRogueExplorationCoordinator
+
+	var transfer_requests: Array[Dictionary] = []
+
+	func begin_exploration_transfer(
+		day_number: int,
+		next_step: FlowStepConfig
+	) -> bool:
+		transfer_requests.append({
+			"day_number": day_number,
+			"next_step_id": next_step.step_id if next_step != null else &"",
+		})
+		return true
+
+
 var failures: Array[String] = []
 
 
@@ -169,11 +186,164 @@ func _run() -> void:
 		int(snapshot.get("state", -1)) == int(CombatFlowState.State.PRE_WAVE),
 		"流程快照状态与 Campaign 状态不一致。"
 	)
+	game.state_timer.stop()
+
+	var wave_four := campaign.get_flow_step_by_id(&"wave_04") as WaveConfig
+	var wave_five := campaign.get_flow_step_by_id(&"wave_05") as WaveConfig
+	_expect(
+		wave_four != null and wave_five != null,
+		"正式流程必须存在首个日终波及下一日首波。"
+	)
+	campaign.replace_flow_state_for_fixture(
+		CombatFlowState.State.WAVE_ACTIVE,
+		wave_four
+	)
+	campaign.current_wave_index = 3
+	campaign.complete_current_step()
+	_expect(
+		campaign.wave_state == CombatFlowState.State.INTERMISSION
+		and campaign.current_flow_step == wave_four
+		and campaign.next_flow_step_after_rest == wave_five
+		and campaign.intermission_continuation
+		== TowerDefenseCampaignCoordinator.IntermissionContinuation.BEGIN_ROGUE_EXPLORATION
+		and campaign.intermission_countdown_kind
+		== TowerDefenseCampaignCoordinator.IntermissionCountdownKind.WAVE_INTERMISSION
+		and campaign.countdown_seconds == 300
+		and campaign.get_current_intermission_seconds() == 300
+		and campaign.is_day_end_rogue_intermission()
+		and not game.get_rogue_exploration_coordinator().is_tower_runtime_suspended(),
+		(
+			"第4波结束后必须先进入 wave_intermission_seconds 日终休整，"
+			+ "倒计时结束前不得生成或冻结 Rogue 世界。"
+		)
+	)
+	_expect(
+		game.wave_hud.stage_label.text == "日终休整  ·  05:00"
+		and game.wave_hud.start_wave_button.visible
+		and game.wave_hud.start_wave_button.text == "进入地下探索",
+		"单人日终休整必须允许提前进入地下探索，并显示专用目标文案。"
+	)
+	_expect(
+		campaign.request_wave_start()
+		and campaign.countdown_seconds
+		== TowerDefensePresentationCoordinator.COUNTDOWN_FINAL_SECONDS
+		and game.wave_hud.stage_label.text == "日终休整  ·  00:03",
+		"日终休整必须复用权威提前结束入口并保留最终倒计时。"
+	)
+	game.state_timer.stop()
+	var authoritative_zero_states: Array[Dictionary] = []
+	game.multiplayer_mode_adapter.flow_state_changed.connect(
+		func(step_id: StringName, state: int, seconds: int) -> void:
+			if (
+				state == int(CombatFlowState.State.INTERMISSION)
+				and seconds == 0
+			):
+				authoritative_zero_states.append({
+					"step_id": step_id,
+					"seconds": seconds,
+				})
+	)
+	var real_rogue_coordinator := game.get_rogue_exploration_coordinator()
+	var rogue_transfer_probe := RogueTransferProbe.new()
+	campaign.set("_rogue_exploration_coordinator", rogue_transfer_probe)
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	campaign.countdown_seconds = 0
+	campaign.complete_intermission()
+	campaign.complete_intermission()
+	_expect(
+		rogue_transfer_probe.transfer_requests.size() == 1
+		and int(rogue_transfer_probe.transfer_requests[0]["day_number"]) == 1
+		and StringName(
+			rogue_transfer_probe.transfer_requests[0]["next_step_id"]
+		) == &"wave_05"
+		and authoritative_zero_states.size() == 1
+		and StringName(authoritative_zero_states[0]["step_id"]) == &"wave_04",
+		(
+			"自然结束的日终休整必须先且只发布一次 INTERMISSION(0)，"
+			+ "再且只启动一次对应日的 Rogue 转场。"
+		)
+	)
+
+	var original_wave_intermission_seconds := (
+		game.progression_config.wave_intermission_seconds
+	)
+	game.progression_config.wave_intermission_seconds = 0.0
+	var wave_eight := campaign.get_flow_step_by_id(&"wave_08") as WaveConfig
+	var wave_nine := campaign.get_flow_step_by_id(&"wave_09") as WaveConfig
+	campaign.replace_flow_state_for_fixture(
+		CombatFlowState.State.WAVE_ACTIVE,
+		wave_eight
+	)
+	campaign.current_wave_index = 7
+	_expect(
+		campaign.enter_day_end_rogue_intermission(2, wave_nine),
+		"零秒日终休整夹具必须通过正式日终入口。"
+	)
+	campaign.complete_intermission()
+	_expect(
+		rogue_transfer_probe.transfer_requests.size() == 2
+		and int(rogue_transfer_probe.transfer_requests[1]["day_number"]) == 2
+		and StringName(
+			rogue_transfer_probe.transfer_requests[1]["next_step_id"]
+		) == &"wave_09"
+		and authoritative_zero_states.size() == 2
+		and StringName(authoritative_zero_states[1]["step_id"]) == &"wave_08",
+		(
+			"零秒配置必须复用同一休整完成入口，"
+			+ "初始零秒发布与重复完成都不得重复启动 Rogue。"
+		)
+	)
+	game.progression_config.wave_intermission_seconds = (
+		original_wave_intermission_seconds
+	)
+	campaign.set("_rogue_exploration_coordinator", real_rogue_coordinator)
+	rogue_transfer_probe.free()
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+
+	campaign.transition_to_fate_interlude(wave_five)
+	campaign.resume_flow_after_fate_interlude(&"wave_05")
+	_expect(
+		campaign.wave_state == CombatFlowState.State.INTERMISSION
+		and campaign.current_flow_step == wave_five
+		and campaign.next_flow_step_after_rest == wave_five
+		and campaign.intermission_continuation
+		== TowerDefenseCampaignCoordinator.IntermissionContinuation.BEGIN_NEXT_FLOW_STEP
+		and campaign.intermission_countdown_kind
+		== TowerDefenseCampaignCoordinator.IntermissionCountdownKind.NEW_DAY_PREPARATION
+		and campaign.countdown_seconds == 300
+		and campaign.get_current_intermission_seconds() == 300
+		and not campaign.is_day_end_rogue_intermission()
+		and game.wave_hud.stage_label.text == "休整  ·  05:00"
+		and game.wave_hud.start_wave_button.text == "立即开始下一波",
+		(
+			"Fate 完成后必须以明确的新日准备语义续接下一波，"
+			+ "不能复用日终 Rogue 后继或文案。"
+		)
+	)
+	game.state_timer.stop()
 
 	var boss_step := campaign.get_flow_step_by_id(&"boss_01_linglan")
 	_expect(boss_step is BossConfig, "正式流程必须存在铃兰 Boss 步骤。")
 	var typed_boss_step := boss_step as BossConfig
-	var wave_five := campaign.get_flow_step_by_id(&"wave_05")
+	var wave_twelve := campaign.get_flow_step_by_id(&"wave_12") as WaveConfig
+	campaign.replace_flow_state_for_fixture(
+		CombatFlowState.State.WAVE_ACTIVE,
+		wave_twelve
+	)
+	campaign.current_wave_index = 11
+	_expect(
+		campaign.enter_day_end_rogue_intermission(3, typed_boss_step)
+		and campaign.is_day_end_rogue_intermission()
+		and campaign.intermission_countdown_kind
+		== TowerDefenseCampaignCoordinator.IntermissionCountdownKind.WAVE_INTERMISSION
+		and game.wave_hud.stage_label.text == "日终休整  ·  05:00"
+		and game.wave_hud.start_wave_button.text == "进入地下探索",
+		(
+			"第12波后的 Boss 后继不得把前段日终休整误呈现为"
+			+ "第4日首领准备。"
+		)
+	)
+	game.state_timer.stop()
 	game.state_timer.start(1.0)
 	game.enemy_spawn_timer.start(1.0)
 	campaign.transition_to_fate_interlude(boss_step)

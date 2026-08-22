@@ -289,6 +289,27 @@ func _verify_tower_defense_layout_and_updates() -> void:
 		and hud.start_wave_button.text == "立即开始下一波",
 		"Tower-defense rest controls must use the short same-row countdown wording."
 	)
+	hud.show_countdown(
+		300,
+		true,
+		TowerDefenseWaveHUD.CountdownTarget.ROGUE_EXPLORATION
+	)
+	_expect(
+		hud.countdown_target
+		== TowerDefenseWaveHUD.CountdownTarget.ROGUE_EXPLORATION
+		and hud.stage_label.text == "日终休整  ·  05:00"
+		and hud.start_wave_button.visible
+		and hud.start_wave_button.text == "进入地下探索",
+		"日终休整必须明确显示地下探索目标，并保留权威端提前结束入口。"
+	)
+	hud.show_countdown(3, true)
+	_expect(
+		hud.countdown_target
+		== TowerDefenseWaveHUD.CountdownTarget.NEXT_WAVE
+		and hud.stage_label.text == "休整  ·  00:03"
+		and hud.start_wave_button.text == "立即开始下一波",
+		"普通休整必须在日终提示后恢复下一波文案。"
+	)
 	_expect(
 		hud.get_node_or_null("WaveInfoBar/Margin/Status") == null,
 		"TowerDefenseWaveHUD must not retain the hidden standard countdown label."

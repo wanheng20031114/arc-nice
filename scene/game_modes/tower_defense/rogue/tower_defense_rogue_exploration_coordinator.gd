@@ -284,6 +284,21 @@ func _connect_run_state_signals() -> void:
 		)
 
 
+func begin_exploration_transfer(
+	day_number: int,
+	next_step: FlowStepConfig
+) -> bool:
+	return enter_exploration(day_number, next_step)
+
+
+func begin_remote_exploration_transfer() -> void:
+	return
+
+
+func cancel_pending_exploration_transfer() -> bool:
+	return false
+
+
 func enter_exploration(day_number: int, next_step: FlowStepConfig) -> bool:
 	if (
 		not is_bound()

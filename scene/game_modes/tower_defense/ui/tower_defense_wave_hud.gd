@@ -7,6 +7,11 @@ const CORE_CRITICAL_COLOR := Color(1.0, 0.31, 0.28, 1.0)
 const CORE_HIT_FLASH_COLOR := Color(1.28, 0.78, 0.72, 1.0)
 const STAGE_FINAL_COLOR := Color(1.0, 0.76, 0.34, 1.0)
 
+enum CountdownTarget {
+	NEXT_WAVE,
+	ROGUE_EXPLORATION,
+}
+
 signal return_to_lobby_requested
 signal start_wave_requested
 
@@ -83,6 +88,7 @@ var global_wave_tween: Tween = null
 var return_button_label := "返回大厅"
 var early_start_pending := false
 var early_start_request_generation := 0
+var countdown_target: CountdownTarget = CountdownTarget.NEXT_WAVE
 var _cached_core_current := -1
 var _cached_core_max := -1
 var _cached_enemy_count := -1
@@ -288,20 +294,36 @@ func _set_boss_day_context(
 	_hide_global_wave_notice()
 
 
-func show_countdown(seconds: int, allow_early_start: bool = false) -> void:
+func show_countdown(
+	seconds: int,
+	allow_early_start: bool = false,
+	target: CountdownTarget = CountdownTarget.NEXT_WAVE
+) -> void:
 	_stop_result_tween()
 	top_bar.visible = true
 	result_overlay.visible = false
+	countdown_target = target
 	var safe_seconds := maxi(seconds, 0)
 	var countdown_text := _format_countdown(safe_seconds)
 	start_wave_button.visible = allow_early_start
 	start_wave_button.disabled = not allow_early_start or early_start_pending
 	start_wave_button.text = (
-		"等待开始……" if early_start_pending else "立即开始下一波"
+		"等待开始……"
+		if early_start_pending
+		else (
+			"进入地下探索"
+			if target == CountdownTarget.ROGUE_EXPLORATION
+			else "立即开始下一波"
+		)
 	)
 	tower_defense_stats.visible = true
 	stage_banner.visible = true
-	stage_label.text = "休整  ·  %s" % countdown_text
+	stage_label.text = "%s  ·  %s" % [
+		"日终休整"
+		if target == CountdownTarget.ROGUE_EXPLORATION
+		else "休整",
+		countdown_text,
+	]
 	stage_label.self_modulate = (
 		STAGE_FINAL_COLOR
 		if safe_seconds <= 3
