@@ -161,7 +161,7 @@ layout_mode = 2
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 13
 theme_override_colors/font_color = Color(0.78, 0.94, 0.83, 1)
-text = "背包材料"
+text = "可用材料"
 vertical_alignment = 1
 
 [node name="InputSlots" type="HBoxContainer" parent="Background/CraftArea/Margin/Content"]

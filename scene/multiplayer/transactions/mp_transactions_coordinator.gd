@@ -520,11 +520,11 @@ func apply_authoritative_simple_crafting_request(
 		):
 			result = &"invalid_player"
 		elif recipe != null:
-			result = _run_state.try_craft_inventory_recipe_for_peer_if_revision(
+			result = _mode_adapter.try_commit_simple_crafting_for_peer(
+				_run_state,
 				peer_id,
 				recipe,
 				expected_inventory_revision,
-				true,
 				_mode_adapter.get_completed_global_research_ids()
 			)
 	var transaction_result := {

@@ -34,6 +34,7 @@ signal craft_request_cancelled(request_token: int)
 
 var recipes: Array[ProductionRecipe] = []
 var research_state_provider: CraftingResearchStateProvider = null
+var material_provider: CraftingMaterialProvider = null
 var selected_recipe_id: StringName = &""
 var request_pending := false
 var _next_request_token := 0
@@ -48,6 +49,7 @@ func _ready() -> void:
 	craft_button.pressed.connect(_on_craft_pressed)
 	request_timeout.timeout.connect(_on_request_timeout)
 	_bind_research_state_provider_signal()
+	_bind_material_provider_signal()
 	_reload_recipes()
 	refresh()
 
@@ -72,6 +74,28 @@ func set_research_state_provider(
 		return
 	_bind_research_state_provider_signal()
 	_reload_recipes()
+	refresh()
+
+
+func set_material_provider(
+	new_material_provider: CraftingMaterialProvider
+) -> void:
+	if material_provider == new_material_provider:
+		return
+	if (
+		material_provider != null
+		and is_instance_valid(material_provider)
+		and material_provider.material_state_changed.is_connected(
+			_on_material_state_changed
+		)
+	):
+		material_provider.material_state_changed.disconnect(
+			_on_material_state_changed
+		)
+	material_provider = new_material_provider
+	if not is_node_ready():
+		return
+	_bind_material_provider_signal()
 	refresh()
 
 
@@ -112,11 +136,11 @@ func show_result(
 		RunStateStore.CRAFT_RESULT_SUCCESS:
 			status_label.text = "制造完成，产物已放入背包"
 		RunStateStore.CRAFT_RESULT_MISSING_INPUT:
-			status_label.text = "背包材料不足"
+			status_label.text = "背包与共享仓库材料不足"
 		RunStateStore.CRAFT_RESULT_INVENTORY_FULL:
 			status_label.text = "背包剩余空间不足"
 		RunStateStore.CRAFT_RESULT_STALE_REVISION:
-			status_label.text = "背包内容已变化，请重试"
+			status_label.text = "材料状态已变化，请重试"
 		RunStateStore.CRAFT_RESULT_RESEARCH_LOCKED:
 			status_label.text = "对应全局科研尚未完成"
 		&"rate_limited":
@@ -187,28 +211,30 @@ func _refresh_recipe_detail(recipe: ProductionRecipe) -> void:
 		slot.hide()
 	if recipe == null:
 		recipe_name.text = "暂无简易配方"
-		recipe_summary.text = "简易制造只使用背包材料，产物也会直接返回背包。"
+		recipe_summary.text = (
+			"简易制造可同时消耗个人背包与共享仓库材料，"
+			+ "产物只返回个人背包。"
+		)
 		return
 	recipe_name.text = recipe.display_name
-	recipe_summary.text = "消耗 %s\n获得 %s" % [
-		recipe.get_input_summary(),
-		recipe.get_output_summary(),
-	]
+	recipe_summary.text = (
+		"材料可来自个人背包与共享仓库\n"
+		+ "产物只返回个人背包"
+	)
 	for input_index in mini(recipe.input_items.size(), input_slots.size()):
 		var item := recipe.input_items[input_index]
-		input_slots[input_index].configure(
+		input_slots[input_index].configure_input(
 			item,
 			recipe.input_amounts[input_index],
 			run_state.get_inventory_item_total(item),
-			true
+			_get_shared_material_item_total(item)
 		)
 	for output_index in mini(recipe.output_items.size(), output_slots.size()):
 		var item := recipe.output_items[output_index]
-		output_slots[output_index].configure(
+		output_slots[output_index].configure_output(
 			item,
 			recipe.output_amounts[output_index],
-			run_state.get_inventory_item_total(item),
-			false
+			run_state.get_inventory_item_total(item)
 		)
 
 
@@ -217,15 +243,12 @@ func _refresh_crafting_state(recipe: ProductionRecipe) -> void:
 		status_label.text = "等待主机确认制造结果…"
 		craft_button.disabled = true
 		return
-	var result := run_state.get_simple_crafting_result(
-		recipe,
-		_get_completed_global_research_ids()
-	)
+	var result := _get_simple_crafting_result(recipe)
 	match result:
 		RunStateStore.CRAFT_RESULT_SUCCESS:
 			status_label.text = "材料充足，可立即制造"
 		RunStateStore.CRAFT_RESULT_MISSING_INPUT:
-			status_label.text = "背包材料不足"
+			status_label.text = "背包与共享仓库材料不足"
 		RunStateStore.CRAFT_RESULT_INVENTORY_FULL:
 			status_label.text = "背包剩余空间不足"
 		RunStateStore.CRAFT_RESULT_RESEARCH_LOCKED:
@@ -239,10 +262,7 @@ func _refresh_button_enabled_state(recipe: ProductionRecipe) -> void:
 	craft_button.disabled = (
 		request_pending
 		or recipe == null
-		or run_state.get_simple_crafting_result(
-			recipe,
-			_get_completed_global_research_ids()
-		)
+		or _get_simple_crafting_result(recipe)
 		!= RunStateStore.CRAFT_RESULT_SUCCESS
 	)
 
@@ -263,10 +283,7 @@ func _on_craft_pressed() -> void:
 	if (
 		recipe == null
 		or request_pending
-		or run_state.get_simple_crafting_result(
-			recipe,
-			_get_completed_global_research_ids()
-		)
+		or _get_simple_crafting_result(recipe)
 		!= RunStateStore.CRAFT_RESULT_SUCCESS
 	):
 		_refresh_crafting_state(recipe)
@@ -308,6 +325,25 @@ func _get_completed_global_research_ids() -> Array[StringName]:
 	return completed_ids
 
 
+func _get_shared_material_item_total(item: PickupConfig) -> int:
+	if material_provider == null or not is_instance_valid(material_provider):
+		return 0
+	return maxi(material_provider.get_shared_material_item_total(item), 0)
+
+
+func _get_simple_crafting_result(recipe: ProductionRecipe) -> StringName:
+	var completed_research_ids := _get_completed_global_research_ids()
+	if material_provider != null and is_instance_valid(material_provider):
+		return material_provider.get_simple_crafting_result(
+			recipe,
+			completed_research_ids
+		)
+	return run_state.get_simple_crafting_result(
+		recipe,
+		completed_research_ids
+	)
+
+
 func _bind_research_state_provider_signal() -> void:
 	if (
 		research_state_provider != null
@@ -321,6 +357,23 @@ func _bind_research_state_provider_signal() -> void:
 		)
 
 
+func _bind_material_provider_signal() -> void:
+	if (
+		material_provider != null
+		and is_instance_valid(material_provider)
+		and not material_provider.material_state_changed.is_connected(
+			_on_material_state_changed
+		)
+	):
+		material_provider.material_state_changed.connect(
+			_on_material_state_changed
+		)
+
+
 func _on_research_state_changed() -> void:
 	_reload_recipes()
+	refresh()
+
+
+func _on_material_state_changed() -> void:
 	refresh()

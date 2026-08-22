@@ -73,6 +73,7 @@ const CONTROL_LOCK_OWNER := &"tower_player_profile"
 
 var tracked_player: Player = null
 var research_coordinator: ResearchCoordinator = null
+var crafting_material_provider: CraftingMaterialProvider = null
 var slots: Array[InventorySlot] = []
 var current_tab := 0
 var multiplayer_requests_enabled := false
@@ -107,6 +108,7 @@ func _ready() -> void:
 		_on_simple_crafting_request_cancelled
 	)
 	simple_crafting_panel.set_research_state_provider(research_coordinator)
+	simple_crafting_panel.set_material_provider(crafting_material_provider)
 	attack_row.upgrade_requested.connect(_on_upgrade_requested)
 	health_row.upgrade_requested.connect(_on_upgrade_requested)
 	speed_row.upgrade_requested.connect(_on_upgrade_requested)
@@ -137,6 +139,14 @@ func set_research_coordinator(
 	research_coordinator = new_research_coordinator
 	if is_node_ready():
 		simple_crafting_panel.set_research_state_provider(research_coordinator)
+
+
+func set_crafting_material_provider(
+	new_crafting_material_provider: CraftingMaterialProvider
+) -> void:
+	crafting_material_provider = new_crafting_material_provider
+	if is_node_ready():
+		simple_crafting_panel.set_material_provider(crafting_material_provider)
 
 
 func open() -> void:
@@ -366,12 +376,16 @@ func _on_simple_crafting_requested(
 		multiplayer_simple_crafting_requested.emit(recipe_id, request_token)
 		return
 	var expected_revision := run_state.get_inventory_revision()
-	var result := run_state.try_craft_inventory_recipe_if_revision(
-		recipe,
-		expected_revision,
-		true,
-		completed_research_ids
-	)
+	var result := RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+	if (
+		crafting_material_provider != null
+		and is_instance_valid(crafting_material_provider)
+	):
+		result = crafting_material_provider.try_commit_simple_crafting_recipe(
+			recipe,
+			expected_revision,
+			completed_research_ids
+		)
 	simple_crafting_panel.show_result(recipe_id, result, request_token)
 
 

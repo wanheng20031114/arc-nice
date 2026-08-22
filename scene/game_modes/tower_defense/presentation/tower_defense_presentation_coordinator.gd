@@ -139,6 +139,7 @@ func configure_player_ui(
 	runtime_mode: int,
 	player_instance: Player,
 	research_coordinator: ResearchCoordinator,
+	crafting_material_provider: CraftingMaterialProvider,
 	currency_hud: CurrencyHUD,
 	player_profile_panel: TowerDefensePlayerProfilePanel,
 	settings_panel: SettingsPanel,
@@ -155,6 +156,7 @@ func configure_player_ui(
 		runtime_mode != CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	)
 	_player_profile_panel.set_research_coordinator(research_coordinator)
+	_player_profile_panel.set_crafting_material_provider(crafting_material_provider)
 	_player_profile_panel.bind_player(player_instance)
 
 

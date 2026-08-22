@@ -331,6 +331,7 @@ func _create_extracted_fixture() -> Dictionary:
 	var luoxi_merchant := TowerDefenseLuoxiMerchant.new()
 	var luoxi_game := LuoxiSpecialGameCoordinator.new()
 	var run_state := RunStateStore.new()
+	var production := ProductionCoordinator.new()
 	var research := ResearchCoordinator.new()
 	var placement := TowerDefensePlantPlacementCoordinator.new()
 	var state_timer := Timer.new()
@@ -352,6 +353,7 @@ func _create_extracted_fixture() -> Dictionary:
 		luoxi_merchant,
 		luoxi_game,
 		run_state,
+		production,
 		research,
 		placement,
 		state_timer
@@ -377,6 +379,7 @@ func _create_extracted_fixture() -> Dictionary:
 		"luoxi_merchant": luoxi_merchant,
 		"luoxi_game": luoxi_game,
 		"run_state": run_state,
+		"production": production,
 		"research": research,
 		"placement": placement,
 		"state_timer": state_timer,
@@ -674,6 +677,7 @@ func _cleanup_extracted_fixture(fixture: Dictionary) -> void:
 		"luoxi_merchant",
 		"luoxi_game",
 		"run_state",
+		"production",
 		"research",
 		"placement",
 		"state_timer",

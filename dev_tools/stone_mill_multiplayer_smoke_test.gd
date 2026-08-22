@@ -138,6 +138,15 @@ class TestTowerModeAdapter:
 	func bind_research_fixture(coordinator: ResearchCoordinator) -> void:
 		_research_coordinator = coordinator
 
+	func bind_simple_crafting_fixture(run_state: RunStateStore) -> void:
+		var production := ProductionCoordinator.new()
+		production.name = "ProductionCoordinator"
+		production.run_state = run_state
+		production.configure_multiplayer_output_peers([REMOTE_PEER_ID])
+		add_child(production)
+		_run_state = run_state
+		_production_coordinator = production
+
 	func show_simple_crafting_result(
 		recipe_id: StringName,
 		result: StringName,
@@ -211,7 +220,7 @@ func _test_host_authoritative_crafting() -> Dictionary:
 
 	var player := Player.new()
 	var runtime := TestTowerRuntime.new()
-	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime)
+	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime, run_state)
 	runtime.peer_players = {REMOTE_PEER_ID: player}
 	var net_manager := HostNetManagerStub.new()
 	var mp_game := CapturingMpGame.new()
@@ -376,6 +385,7 @@ func _test_host_research_gated_crafting() -> void:
 	runtime.research_coordinator = research_coordinator
 	var tower_adapter := _bind_tower_multiplayer_mode_adapter(
 		runtime,
+		run_state,
 		research_coordinator
 	)
 	runtime.peer_players = {REMOTE_PEER_ID: player}
@@ -609,12 +619,14 @@ func _test_inventory_building_placement_authenticity(
 
 func _bind_tower_multiplayer_mode_adapter(
 	runtime: TowerDefenseGame,
+	run_state: RunStateStore,
 	research_coordinator: ResearchCoordinator = null
 ) -> TestTowerModeAdapter:
 	var adapter := TestTowerModeAdapter.new()
 	adapter.name = "MultiplayerModeAdapter"
 	runtime.add_child(adapter)
 	adapter.bind_runtime(runtime)
+	adapter.bind_simple_crafting_fixture(run_state)
 	if research_coordinator != null:
 		adapter.bind_research_fixture(research_coordinator)
 	runtime.multiplayer_mode_adapter = adapter
@@ -673,7 +685,7 @@ func _test_client_rejects_bad_authoritative_snapshot(
 	run_state.register_multiplayer_peer_state(REMOTE_PEER_ID)
 	var player := Player.new()
 	var runtime := TestTowerRuntime.new()
-	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime)
+	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime, run_state)
 	runtime.peer_players = {REMOTE_PEER_ID: player}
 	var net_manager := ClientNetManagerStub.new()
 	_configure_active_session_member_fixture(net_manager, REMOTE_PEER_ID)

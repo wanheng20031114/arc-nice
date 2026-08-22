@@ -3,6 +3,9 @@ extends SceneTree
 const PROFILE_PANEL_SCENE := preload(
 	"res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn"
 )
+const TOWER_PROFILE_PANEL_SCENE := preload(
+	"res://scene/game_modes/tower_defense/ui/tower_defense_player_profile_panel.tscn"
+)
 const SIMPLE_CRAFTING_PANEL_SCENE := preload(
 	"res://scene/ui/shared/crafting/simple_crafting_panel.tscn"
 )
@@ -87,6 +90,41 @@ class MultiplayerCraftSceneStub:
 		request_token: int
 	) -> void:
 		cancelled_tokens.append(request_token)
+
+
+class CraftingMaterialProviderStub:
+	extends CraftingMaterialProvider
+
+	var shared_totals_by_path: Dictionary = {}
+	var preview_result := RunStateStore.CRAFT_RESULT_SUCCESS
+	var commit_result := RunStateStore.CRAFT_RESULT_SUCCESS
+	var preview_call_count := 0
+	var commit_call_count := 0
+	var last_expected_inventory_revision := -1
+
+	func set_shared_total(item: PickupConfig, count: int) -> void:
+		shared_totals_by_path[item.resource_path] = maxi(count, 0)
+
+	func get_shared_material_item_total(item: PickupConfig) -> int:
+		if item == null:
+			return 0
+		return int(shared_totals_by_path.get(item.resource_path, 0))
+
+	func get_simple_crafting_result(
+		_recipe: ProductionRecipe,
+		_completed_global_research_ids: Array[StringName] = []
+	) -> StringName:
+		preview_call_count += 1
+		return preview_result
+
+	func try_commit_simple_crafting_recipe(
+		_recipe: ProductionRecipe,
+		expected_inventory_revision: int,
+		_completed_global_research_ids: Array[StringName] = []
+	) -> StringName:
+		commit_call_count += 1
+		last_expected_inventory_revision = expected_inventory_revision
+		return commit_result
 
 
 func _init() -> void:
@@ -1123,6 +1161,9 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	var recipe_name := crafting_panel.get_node(
 		"Background/CraftArea/Margin/Content/RecipeName"
 	) as Label
+	var recipe_summary := crafting_panel.get_node(
+		"Background/CraftArea/Margin/Content/RecipeSummary"
+	) as RichTextLabel
 	var input_title := crafting_panel.get_node(
 		"Background/CraftArea/Margin/Content/InputTitle"
 	) as Label
@@ -1150,6 +1191,12 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	var detail_label := crafting_panel.get_node(
 		"Background/CraftArea/Margin/Content/InputSlots/InputSlot0/Content/Detail"
 	) as Label
+	var first_input_slot := crafting_panel.get_node(
+		"Background/CraftArea/Margin/Content/InputSlots/InputSlot0"
+	) as SimpleCraftingItemSlot
+	var first_output_slot := crafting_panel.get_node(
+		"Background/CraftArea/Margin/Content/OutputSlots/OutputSlot0"
+	) as SimpleCraftingItemSlot
 	_expect(
 		craft_area.position.x + craft_area.size.x <= recipe_area.position.x,
 		"简易制造界面必须保持左侧制造区、右侧配方区且互不重叠。"
@@ -1206,6 +1253,76 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 			and absf(left_gap - right_gap) <= 1.0,
 			"建议配方滚动条必须位于配方按钮与右侧边框空档的中央。"
 		)
+
+	var material_provider := CraftingMaterialProviderStub.new()
+	material_provider.set_shared_total(SAPLING, 3)
+	material_provider.set_shared_total(WATER_BOTTLE, 4)
+	material_provider.set_shared_total(HEALTH_PICKUP, 99)
+	ui_root.add_child(material_provider)
+	crafting_panel.set_material_provider(material_provider)
+	var personal_sapling_count := run_state.get_inventory_item_total(SAPLING)
+	var personal_output_count := run_state.get_inventory_item_total(HEALTH_PICKUP)
+	_expect(
+		input_title.text == "可用材料"
+		and recipe_summary.text.contains("个人背包与共享仓库")
+		and recipe_summary.text.contains("产物只返回个人背包")
+		and detail_label.text == "可用 %d" % (personal_sapling_count + 3)
+		and first_input_slot.tooltip_text.contains(
+			"背包 %d\n仓库 3\n合计 %d" % [
+				personal_sapling_count,
+				personal_sapling_count + 3,
+			]
+		)
+		and first_output_slot.detail_label.text
+		== "背包 %d" % personal_output_count
+		and first_output_slot.tooltip_text.contains(
+			"背包现有 %d" % personal_output_count
+		)
+		and not first_output_slot.tooltip_text.contains("仓库 99"),
+		"简易制造必须分列背包与仓库材料，输入显示合计，产物只显示个人背包数量。"
+	)
+	var preview_calls_before_click := material_provider.preview_call_count
+	crafting_panel.call("_on_craft_pressed")
+	_expect(
+		material_provider.preview_call_count > preview_calls_before_click
+		and crafting_panel.request_pending
+		and craft_button.disabled,
+		"面板可用性与点击门控必须统一使用注入的材料 Provider。"
+	)
+	crafting_panel.cancel_pending_request()
+	material_provider.set_shared_total(SAPLING, 6)
+	material_provider.material_state_changed.emit()
+	_expect(
+		detail_label.text == "可用 %d" % (personal_sapling_count + 6),
+		"共享仓库材料事件必须立即刷新已打开的简易制造面板。"
+	)
+
+	var replacement_material_provider := CraftingMaterialProviderStub.new()
+	replacement_material_provider.preview_result = (
+		RunStateStore.CRAFT_RESULT_MISSING_INPUT
+	)
+	ui_root.add_child(replacement_material_provider)
+	crafting_panel.set_material_provider(replacement_material_provider)
+	_expect(
+		not material_provider.material_state_changed.is_connected(
+			crafting_panel._on_material_state_changed
+		)
+		and replacement_material_provider.material_state_changed.is_connected(
+			crafting_panel._on_material_state_changed
+		)
+		and status_label.text == "背包与共享仓库材料不足"
+		and craft_button.disabled,
+		"切换材料 Provider 时必须解绑旧信号、绑定新信号，并以新预览结果驱动面板。"
+	)
+	crafting_panel.set_material_provider(null)
+	_expect(
+		not replacement_material_provider.material_state_changed.is_connected(
+			crafting_panel._on_material_state_changed
+		)
+		and status_label.text == "背包剩余空间不足"
+		and detail_label.text == "可用 %d" % personal_sapling_count,
+		"未注入 Provider 时必须完整回退 RunState 的背包制作语义。"
+	)
 
 	var research := (
 		RESEARCH_COORDINATOR_SCENE.instantiate() as ResearchCoordinator
@@ -1485,6 +1602,53 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 			"关闭个人数据面板必须向多人场景释放对应token，不能遗留本地映射。"
 		)
 
+	var tower_material_provider := CraftingMaterialProviderStub.new()
+	ui_root.add_child(tower_material_provider)
+	var tower_profile_panel := (
+		TOWER_PROFILE_PANEL_SCENE.instantiate()
+		as TowerDefensePlayerProfilePanel
+	)
+	tower_profile_panel.set_crafting_material_provider(tower_material_provider)
+	ui_root.add_child(tower_profile_panel)
+	await process_frame
+	var tower_crafting_panel := tower_profile_panel.get_node(
+		"Overlay/PanelRoot/SimpleCraftingPanel"
+	) as SimpleCraftingPanel
+	var expected_local_revision := run_state.get_inventory_revision()
+	tower_crafting_panel.call("_on_craft_pressed")
+	_expect(
+		tower_material_provider.commit_call_count == 1
+		and tower_material_provider.last_expected_inventory_revision
+		== expected_local_revision
+		and not tower_crafting_panel.request_pending
+		and tower_crafting_panel.status_label.text
+		== "制造完成，产物已放入背包",
+		"塔防单人简易制造必须通过注入的材料 Provider 提交联合容器事务。"
+	)
+	tower_profile_panel.configure_multiplayer_requests(true)
+	tower_profile_panel.multiplayer_simple_crafting_requested.connect(
+		ui_root.request_multiplayer_simple_crafting
+	)
+	var multiplayer_request_count := ui_root.requests.size()
+	tower_crafting_panel.call("_on_craft_pressed")
+	var tower_multiplayer_request := ui_root.requests.back() as Dictionary
+	var tower_multiplayer_token := int(
+		tower_multiplayer_request.get("request_token", 0)
+	)
+	_expect(
+		ui_root.requests.size() == multiplayer_request_count + 1
+		and tower_material_provider.commit_call_count == 1
+		and tower_multiplayer_token > 0
+		and tower_crafting_panel.request_pending,
+		"塔防多人客户端必须只转发制造请求，不得本地执行 Provider 事务。"
+	)
+	tower_profile_panel.show_simple_crafting_result(
+		SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID,
+		RunStateStore.CRAFT_RESULT_SUCCESS,
+		tower_multiplayer_token
+	)
+
+	tower_profile_panel.queue_free()
 	profile_panel.queue_free()
 	crafting_panel.queue_free()
 	await process_frame

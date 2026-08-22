@@ -365,6 +365,7 @@ func _ready() -> void:
 		int(runtime_mode),
 		player,
 		research_coordinator,
+		production_coordinator,
 		currency_hud,
 		player_profile_panel,
 		settings_panel,
@@ -765,6 +766,7 @@ func _bind_tower_multiplayer_adapter_dependencies() -> bool:
 		luoxi_merchant,
 		luoxi_special_game_coordinator,
 		run_state,
+		production_coordinator,
 		research_coordinator,
 		plant_placement_coordinator,
 		state_timer

@@ -100,6 +100,7 @@ var _merchant: ZhuangfangyiMerchant = null
 var _luoxi_merchant: TowerDefenseLuoxiMerchant = null
 var _luoxi_special_game_coordinator: LuoxiSpecialGameCoordinator = null
 var _run_state: RunStateStore = null
+var _production_coordinator: ProductionCoordinator = null
 var _research_coordinator: ResearchCoordinator = null
 var _plant_placement_coordinator: TowerDefensePlantPlacementCoordinator = null
 var _rogue_exploration_coordinator: TowerDefenseRogueExplorationCoordinator = null
@@ -148,6 +149,7 @@ func bind_tower_dependencies(
 	luoxi_merchant: TowerDefenseLuoxiMerchant,
 	luoxi_game: LuoxiSpecialGameCoordinator,
 	run_state: RunStateStore,
+	production: ProductionCoordinator,
 	research: ResearchCoordinator,
 	plant_placement: TowerDefensePlantPlacementCoordinator,
 	state_timer: Timer
@@ -169,6 +171,7 @@ func bind_tower_dependencies(
 	_luoxi_merchant = luoxi_merchant
 	_luoxi_special_game_coordinator = luoxi_game
 	_run_state = run_state
+	_production_coordinator = production
 	_research_coordinator = research
 	_plant_placement_coordinator = plant_placement
 	_state_timer = state_timer
@@ -195,6 +198,7 @@ func is_tower_bound() -> bool:
 		and _luoxi_merchant != null
 		and _luoxi_special_game_coordinator != null
 		and _run_state != null
+		and _production_coordinator != null
 		and _research_coordinator != null
 		and _plant_placement_coordinator != null
 		and _rogue_exploration_coordinator != null
@@ -1831,6 +1835,30 @@ func get_completed_global_research_ids() -> Array[StringName]:
 	if _research_coordinator == null:
 		return []
 	return _research_coordinator.get_completed_global_research_ids()
+
+
+func try_commit_simple_crafting_for_peer(
+	run_state: RunStateStore,
+	peer_id: int,
+	recipe: ProductionRecipe,
+	expected_inventory_revision: int,
+	completed_global_research_ids: Array[StringName]
+) -> StringName:
+	if (
+		_production_coordinator == null
+		or not is_instance_valid(_production_coordinator)
+		or _run_state == null
+		or not is_instance_valid(_run_state)
+		or run_state != _run_state
+		or _production_coordinator.run_state != run_state
+	):
+		return RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+	return _production_coordinator.try_commit_simple_crafting_recipe_for_peer(
+		peer_id,
+		recipe,
+		expected_inventory_revision,
+		completed_global_research_ids
+	)
 
 
 func get_research_runtime_state() -> Dictionary:

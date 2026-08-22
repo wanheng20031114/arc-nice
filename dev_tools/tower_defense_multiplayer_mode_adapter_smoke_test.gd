@@ -76,6 +76,7 @@ func _test_static_contract() -> void:
 		"var _plant_placement_coordinator: TowerDefensePlantPlacementCoordinator",
 		"var _player_roster_coordinator: TowerDefensePlayerRosterCoordinator",
 		"var _presentation_coordinator: TowerDefensePresentationCoordinator",
+		"var _production_coordinator: ProductionCoordinator",
 		"var _fate_flow_coordinator: TowerDefenseFateFlowCoordinator",
 		"var _rogue_exploration_coordinator: TowerDefenseRogueExplorationCoordinator",
 	]:
@@ -189,6 +190,8 @@ func _test_host_binding_and_authority_bridges() -> void:
 		adapter == game.tower_multiplayer_mode_adapter
 		and adapter.get_tower_runtime() == game
 		and adapter.is_tower_bound()
+		and adapter.get("_production_coordinator")
+		== game.production_coordinator
 		and adapter.get_rogue_exploration_coordinator()
 		== game.get_rogue_exploration_coordinator()
 		and adapter.get_rogue_route() != null

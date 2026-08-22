@@ -132,11 +132,29 @@ class PlacementCaptureRuntime:
 class PlacementCaptureTowerModeAdapter:
 	extends TowerDefenseMultiplayerModeAdapter
 
+	var simple_crafting_commit_count := 0
+
 	func get_authoritative_team_plant_count() -> int:
 		return 0
 
 	func get_completed_global_research_ids() -> Array[StringName]:
 		return []
+
+	func try_commit_simple_crafting_for_peer(
+		run_state: RunStateStore,
+		peer_id: int,
+		recipe: ProductionRecipe,
+		expected_inventory_revision: int,
+		completed_global_research_ids: Array[StringName]
+	) -> StringName:
+		simple_crafting_commit_count += 1
+		return run_state.try_craft_inventory_recipe_for_peer_if_revision(
+			peer_id,
+			recipe,
+			expected_inventory_revision,
+			true,
+			completed_global_research_ids
+		)
 
 	func request_authoritative_inventory_plant_placement(
 		requester_peer_id: int,
@@ -161,6 +179,29 @@ class PlacementCaptureTowerModeAdapter:
 		)
 
 
+class ProductionCommitCapture:
+	extends ProductionCoordinator
+
+	var call_count := 0
+	var captured_peer_id := 0
+	var captured_recipe: ProductionRecipe = null
+	var captured_revision := -1
+	var captured_research_ids: Array[StringName] = []
+
+	func try_commit_simple_crafting_recipe_for_peer(
+		peer_id: int,
+		recipe: ProductionRecipe,
+		expected_inventory_revision: int,
+		completed_global_research_ids: Array[StringName] = []
+	) -> StringName:
+		call_count += 1
+		captured_peer_id = peer_id
+		captured_recipe = recipe
+		captured_revision = expected_inventory_revision
+		captured_research_ids = completed_global_research_ids.duplicate()
+		return RunStateStore.CRAFT_RESULT_SUCCESS
+
+
 func _init() -> void:
 	call_deferred(&"_run")
 
@@ -170,6 +211,7 @@ func _run() -> void:
 		NET_CONSTANTS.PROTOCOL_VERSION == 93,
 		"协议v93必须保留内容摘要、同局成员身份、P1D/P1E 与既有 wire 合同。"
 	)
+	_test_tower_simple_crafting_commit_delegate()
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)
 
@@ -180,6 +222,50 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_tower_simple_crafting_commit_delegate() -> void:
+	var run_state := RunStateStore.new()
+	var production := ProductionCommitCapture.new()
+	var adapter := TowerDefenseMultiplayerModeAdapter.new()
+	var recipe := SimpleCraftingRegistry.get_recipe_by_wire_id(
+		String(SimpleCraftingRegistry.SIMPLE_FENCE_ID)
+	)
+	var completed_ids: Array[StringName] = [&"fixture_research"]
+	production.run_state = run_state
+	adapter.set("_run_state", run_state)
+	adapter.set("_production_coordinator", production)
+	var result := adapter.try_commit_simple_crafting_for_peer(
+		run_state,
+		REMOTE_PEER_ID,
+		recipe,
+		17,
+		completed_ids
+	)
+	_expect(
+		result == RunStateStore.CRAFT_RESULT_SUCCESS
+		and production.call_count == 1
+		and production.captured_peer_id == REMOTE_PEER_ID
+		and production.captured_recipe == recipe
+		and production.captured_revision == 17
+		and production.captured_research_ids == completed_ids,
+		"塔防模式适配器必须把强类型简易制作事务完整委托给 ProductionCoordinator。"
+	)
+	adapter.set("_production_coordinator", null)
+	_expect(
+		adapter.try_commit_simple_crafting_for_peer(
+			run_state,
+			REMOTE_PEER_ID,
+			recipe,
+			17,
+			completed_ids
+		) == RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+		and production.call_count == 1,
+		"塔防模式适配器缺少 ProductionCoordinator 时必须 fail closed。"
+	)
+	adapter.free()
+	production.free()
+	run_state.free()
 
 
 func _test_host_authoritative_fence_crafting() -> Dictionary:
@@ -236,7 +322,8 @@ func _test_host_authoritative_fence_crafting() -> Dictionary:
 		and run_state.get_inventory_item_total_for_peer(
 			REMOTE_PEER_ID,
 			SIMPLE_FENCE_ITEM
-		) == 1,
+		) == 1
+		and tower_adapter.simple_crafting_commit_count == 1,
 		"Host必须原子扣除1木头、立即制造1围栏并只推进一次远端背包revision。"
 	)
 
@@ -259,7 +346,8 @@ func _test_host_authoritative_fence_crafting() -> Dictionary:
 			SIMPLE_FENCE_ITEM
 		) == 1
 		and str(replay.get("result", ""))
-		== String(RunStateStore.CRAFT_RESULT_SUCCESS),
+		== String(RunStateStore.CRAFT_RESULT_SUCCESS)
+		and tower_adapter.simple_crafting_commit_count == 1,
 		"重复围栏制造request_id必须仅重放Host结果，不能重复扣木头、产出或推进revision。"
 	)
 
@@ -447,7 +535,7 @@ func _test_inventory_placement_replay_admission(
 
 func _bind_tower_multiplayer_mode_adapter(
 	runtime: PlacementCaptureRuntime
-) -> TowerDefenseMultiplayerModeAdapter:
+) -> PlacementCaptureTowerModeAdapter:
 	var adapter := PlacementCaptureTowerModeAdapter.new()
 	adapter.name = "MultiplayerModeAdapter"
 	runtime.add_child(adapter)

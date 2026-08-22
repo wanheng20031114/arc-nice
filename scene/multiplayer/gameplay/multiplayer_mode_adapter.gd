@@ -222,6 +222,27 @@ func get_completed_global_research_ids() -> Array[StringName]:
 	return []
 
 
+## Commits one authoritative simple-crafting transaction for a peer. The
+## neutral modes deliberately retain inventory-only crafting; modes that own
+## another material pool override this stable boundary.
+func try_commit_simple_crafting_for_peer(
+	run_state: RunStateStore,
+	peer_id: int,
+	recipe: ProductionRecipe,
+	expected_inventory_revision: int,
+	completed_global_research_ids: Array[StringName]
+) -> StringName:
+	if run_state == null or not is_instance_valid(run_state):
+		return RunStateStore.CRAFT_RESULT_INVALID_RECIPE
+	return run_state.try_craft_inventory_recipe_for_peer_if_revision(
+		peer_id,
+		recipe,
+		expected_inventory_revision,
+		true,
+		completed_global_research_ids
+	)
+
+
 func request_debug_collectible(config_path: String) -> bool:
 	if not has_multiplayer_session():
 		return false
