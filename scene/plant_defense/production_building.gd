@@ -17,6 +17,7 @@ const VISUAL_PROJECTION_WINDOW_SECONDS := 1.0
 const MULTIPLAYER_PRODUCTION_REQUEST_TIMEOUT_SECONDS := 4.0
 const MAX_BUFFERED_OUTPUT_PATH_LENGTH := 512
 const MIN_PRODUCTION_DURATION_MULTIPLIER := 0.05
+const OUTPUT_BUBBLE_PROMPT_CLEARANCE := 2.0
 
 enum PanelTheme {
 	DEFAULT,
@@ -62,6 +63,7 @@ var production_duration_multiplier_modifiers: Dictionary[int, float] = {}
 var cached_production_duration_multiplier := 1.0
 var interaction_selection_refresh_left := 0.0
 var prompt_rest_position := Vector2.ZERO
+var output_bubble_rest_position := Vector2.ZERO
 var prompt_tween: Tween = null
 var _visual_progress_elapsed_at_sync := 0.0
 var _visual_progress_sync_msec: int = 0
@@ -74,6 +76,7 @@ func _ready() -> void:
 	super._ready()
 	add_to_group(INTERACTION_GROUP)
 	prompt_rest_position = interaction_prompt.position
+	output_bubble_rest_position = production_output_bubble.position
 	_hide_interaction_prompt()
 	set_process(false)
 	set_process_unhandled_input(false)
@@ -1277,6 +1280,7 @@ func _show_interaction_prompt() -> void:
 	interaction_prompt.modulate = Color(1, 1, 1, 0)
 	prompt_keycap.modulate = Color(1, 1, 0.72, 1)
 	interaction_prompt.show()
+	_refresh_production_output_bubble_anchor()
 	prompt_tween = create_tween().set_parallel(true)
 	prompt_tween.tween_property(interaction_prompt, "modulate:a", 1.0, 0.08)
 	prompt_tween.tween_method(_set_prompt_reveal_offset, 1.0, 0.0, 0.08)
@@ -1289,6 +1293,18 @@ func _hide_interaction_prompt() -> void:
 	interaction_prompt.position = prompt_rest_position
 	interaction_prompt.modulate = Color.WHITE
 	prompt_keycap.modulate = Color.WHITE
+	_refresh_production_output_bubble_anchor()
+
+
+func _refresh_production_output_bubble_anchor() -> void:
+	production_output_bubble.position = (
+		Vector2(
+			output_bubble_rest_position.x,
+			prompt_rest_position.y - OUTPUT_BUBBLE_PROMPT_CLEARANCE
+		)
+		if interaction_prompt.visible
+		else output_bubble_rest_position
+	)
 
 
 func _stop_prompt_tween() -> void:

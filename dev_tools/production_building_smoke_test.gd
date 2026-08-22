@@ -49,36 +49,37 @@ const SPEED_TOWER_ITEM := preload(
 const ATTACK_SPEED_TOWER_ITEM := preload(
 	"res://resources/config/buildings/building_attack_speed_tower.tres"
 )
+const OUTPUT_BUBBLE_ANCHOR_CLEARANCE := 2.0
 const PRODUCTION_OUTPUT_BUBBLE_SCENE_CASES := [
 	{
 		"label": "木头加工站",
 		"scene": preload("res://scene/plant_defense/wood_processing_station.tscn"),
-		"position": Vector2(0, -25),
+		"position": Vector2(0, -11),
 	},
 	{
 		"label": "石磨台",
 		"scene": preload("res://scene/plant_defense/stone_mill.tscn"),
-		"position": Vector2(0, -25),
+		"position": Vector2(0, -11),
 	},
 	{
 		"label": "水源采集器",
 		"scene": preload("res://scene/plant_defense/water_collector.tscn"),
-		"position": Vector2(0, -34),
+		"position": Vector2(0, -20),
 	},
 	{
 		"label": "挖土装置",
 		"scene": preload("res://scene/plant_defense/excavator.tscn"),
-		"position": Vector2(0, -34),
+		"position": Vector2(0, -20),
 	},
 	{
 		"label": "种植基地",
 		"scene": preload("res://scene/plant_defense/planting_base.tscn"),
-		"position": Vector2(0, -36),
+		"position": Vector2(0, -23),
 	},
 	{
 		"label": "植物培育中心",
 		"scene": preload("res://scene/plant_defense/plant_cultivation_center.tscn"),
-		"position": Vector2(0, -32),
+		"position": Vector2(0, -19),
 	},
 ]
 
@@ -751,6 +752,28 @@ func _run() -> void:
 		== output_bubble.working_panel_style.bg_color
 		and station.is_production_actively_advancing(),
 		"选中配方并推进生产时，气泡与尖角必须同步使用绿色工作样式。"
+	)
+	var close_output_bubble_position := output_bubble.position
+	station.set_interaction_target_selected(true)
+	_expect(
+		station.interaction_prompt.visible
+		and output_bubble.visible
+		and output_bubble.position
+		== Vector2(
+			close_output_bubble_position.x,
+			station.prompt_rest_position.y - OUTPUT_BUBBLE_ANCHOR_CLEARANCE
+		)
+		and output_bubble.position.y < close_output_bubble_position.y
+		and station.production_revision == selected_recipe_revision,
+		"交互提示出现时必须只把气泡临时抬到提示框上方2像素，且不得改动生产状态。"
+	)
+	station.set_interaction_target_selected(false)
+	_expect(
+		not station.interaction_prompt.visible
+		and output_bubble.visible
+		and output_bubble.position == close_output_bubble_position
+		and station.production_revision == selected_recipe_revision,
+		"交互提示隐藏后必须把气泡恢复到贴近建筑的正常锚点。"
 	)
 	station.set_output_detail_visible(false)
 	_expect(
@@ -1745,15 +1768,37 @@ func _verify_production_output_bubble_scene_contracts() -> void:
 			if building != null
 			else null
 		)
+		var health_bar := (
+			building.get_node_or_null("HealthBar") as Control
+			if building != null
+			else null
+		)
+		var tail_border := (
+			output_bubble.get_node_or_null("TailBorder") as Polygon2D
+			if output_bubble != null
+			else null
+		)
+		var expected_health_bar_anchor := (
+			Vector2(
+				(health_bar.offset_left + health_bar.offset_right) * 0.5,
+				health_bar.offset_top - OUTPUT_BUBBLE_ANCHOR_CLEARANCE
+			)
+			if health_bar != null
+			else Vector2.INF
+		)
 		_expect(
 			building != null
 			and output_bubble != null
+			and health_bar != null
+			and tail_border != null
 			and output_bubble.position == case_data["position"]
+			and output_bubble.position == expected_health_bar_anchor
+			and tail_border.polygon.has(Vector2.ZERO)
 			and output_bubble.scale == Vector2(0.5, 0.5)
 			and output_bubble.z_index == 21
 			and not output_bubble.visible,
 			(
-				"%s必须原生实例化共享产物气泡，并按血条高度设置锚点、缩放与层级。"
+				"%s必须原生实例化共享产物气泡，且尾尖须在血条顶部正中上方2像素。"
 				% String(case_data["label"])
 			)
 		)
