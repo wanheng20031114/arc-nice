@@ -49,6 +49,7 @@ shader_parameter/burn_edge_width = 2.0
 shader_parameter/bleed_overlay_color = Color(0.95, 0.02, 0.08, 0.58)
 shader_parameter/bleed_outline_width = 2.0
 shader_parameter/electromagnetic_attachment_overlay_color = Color(0.2, 1.18, 1.32, 0.72)
+shader_parameter/direct_hit_flash_color = Color(1, 0.24, 0.26, 1)
 shader_parameter/revive_glow_strength = 0.0
 shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
 shader_parameter/revive_glow_outline_width = 4.5
@@ -60,7 +61,7 @@ shader_parameter/surge_yellow = Color(1, 0.78, 0.08, 1)
 shader_parameter/surge_highlight = Color(1, 1, 0.76, 1)
 shader_parameter/pulse_speed = 8.0
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_uajji"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_dso4f"]
 resource_local_to_scene = true
 shader = ExtResource("11_dash_shader")
 shader_parameter/ready_strength = 0.0
@@ -88,7 +89,7 @@ animation = &"idle_down"
 autoplay = "idle_down"
 frame_progress = 0.010444532
 
-[node name="GrassHealingParticles" parent="BodySprite" instance=ExtResource("25_grass_healing_particles")]
+[node name="GrassHealingParticles" parent="BodySprite" unique_id=569528566 instance=ExtResource("25_grass_healing_particles")]
 
 [node name="NightLight" parent="." unique_id=678869982 instance=ExtResource("17_night_light")]
 texture = ExtResource("18_light_texture")
@@ -125,7 +126,7 @@ autoplay = "orbit"
 [node name="MoveSpeedTrailEffect" parent="." unique_id=1904055585 instance=ExtResource("13_speed_trail")]
 
 [node name="DashReadyIndicator" parent="." unique_id=2099222769 instance=ExtResource("16_dash_ready")]
-material = SubResource("ShaderMaterial_uajji")
+material = SubResource("ShaderMaterial_dso4f")
 offset_top = 5.0
 offset_bottom = 13.0
 
