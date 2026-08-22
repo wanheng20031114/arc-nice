@@ -251,6 +251,8 @@ func _run() -> void:
 	_test_dispatch_window_reconnect_skips_completed_barrier()
 	await _test_abort_during_entry_reveal_clears_cover()
 	await _test_route_reset_aborts_terminal_sequence()
+	await _test_runtime_preparation_failure_aborts_without_barrier_timeout()
+	await _test_stale_runtime_preparation_failure_preserves_new_prepare()
 	_test_authoritative_prepare_failure_aborts_safely()
 	_test_authoritative_config_failure_aborts_safely()
 	await _test_authoritative_activation_failure_aborts_safely()
@@ -2793,6 +2795,150 @@ func _test_route_reset_aborts_terminal_sequence() -> void:
 		and not _route.combat_victory_presentation.visible
 		and not _route.combat_scene_transition.visible,
 		"胜利演出中断后必须恢复路线并清空标题与转场。"
+	)
+
+
+func _test_runtime_preparation_failure_aborts_without_barrier_timeout() -> void:
+	_reset_fixture_state()
+	const NODE_ID := 14
+	var occurrence_key := "combat:runtime:preparation-signal-failed:4"
+	_seed_route_combat(NODE_ID, 1404, occurrence_key)
+	var began := _coordinator._begin_protocol(
+		NODE_ID,
+		1404,
+		occurrence_key,
+		PackedInt32Array([1]),
+		{1: 500},
+		false,
+		FORMAL_CONFIG.encounter_id,
+		FORMAL_CONFIG
+	)
+	_expect(
+		began and _coordinator._phase == COORDINATOR.ProtocolPhase.PREPARING,
+		"运行时失败信号夹具必须先进入 PREPARING。"
+	)
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
+	runtime.name = "RuntimePreparationFailureSignal"
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+	_connect_runtime_preparation_failure(runtime, occurrence_key)
+	var generation := runtime.begin_runtime_preparation(
+		"fixture runtime preparation",
+		1
+	)
+	runtime.mark_runtime_preparation_failed(
+		generation,
+		"fixture asynchronous preparation failure"
+	)
+
+	# production callback 只 deferred 一次以退出子节点发信号栈；不得等到
+	# 30 秒 prepared barrier timeout 才收敛。
+	await process_frame
+	_assert_abort_recovered(NODE_ID, "内嵌运行时失败信号")
+
+
+func _test_stale_runtime_preparation_failure_preserves_new_prepare() -> void:
+	_reset_fixture_state()
+	const NODE_ID := 13
+	var occurrence_key := "combat:runtime:new-preparing-after-stale:3"
+	_seed_route_combat(NODE_ID, 1303, occurrence_key)
+	var began := _coordinator._begin_protocol(
+		NODE_ID,
+		1303,
+		occurrence_key,
+		PackedInt32Array([1]),
+		{1: 500},
+		false,
+		FORMAL_CONFIG.encounter_id,
+		FORMAL_CONFIG
+	)
+	_expect(
+		began and _coordinator._phase == COORDINATOR.ProtocolPhase.PREPARING,
+		"迟到失败信号夹具必须先建立新的 PREPARING occurrence。"
+	)
+	var current_runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
+	current_runtime.name = "CurrentPreparingRuntime"
+	_coordinator.add_child(current_runtime)
+	_coordinator._combat_network = current_runtime
+	current_runtime.begin_runtime_preparation("current preparation", 1)
+
+	# 隔离 occurrence guard：即使 expected instance 恰好仍是当前对象，旧
+	# occurrence 的迟到信号也不能中止新一轮 PREPARING。
+	_connect_runtime_preparation_failure(
+		current_runtime,
+		"combat:runtime:stale-occurrence:2"
+	)
+	current_runtime.runtime_preparation_failed.emit(
+		"late failure from stale occurrence"
+	)
+	await process_frame
+	_assert_new_prepare_unchanged(
+		NODE_ID,
+		occurrence_key,
+		current_runtime,
+		"stale occurrence guard"
+	)
+
+	# 隔离 instance guard：occurrence 相同，但信号来自已经被替换的旧实例。
+	var stale_runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
+	stale_runtime.name = "StalePreparingRuntime"
+	_coordinator.add_child(stale_runtime)
+	_connect_runtime_preparation_failure(stale_runtime, occurrence_key)
+	stale_runtime.runtime_preparation_failed.emit(
+		"late failure from replaced runtime"
+	)
+	await process_frame
+	_assert_new_prepare_unchanged(
+		NODE_ID,
+		occurrence_key,
+		current_runtime,
+		"stale runtime instance guard"
+	)
+	stale_runtime.queue_free()
+	_coordinator._abort_authoritative_protocol(&"test_cleanup")
+
+
+func _connect_runtime_preparation_failure(
+	runtime: RogueCombatMultiplayerTestSession,
+	occurrence_key: String
+) -> void:
+	var failed_callback := Callable(
+		_coordinator,
+		&"_on_embedded_runtime_preparation_failed"
+	).bind(runtime, occurrence_key)
+	runtime.runtime_preparation_failed.connect(
+		failed_callback,
+		CONNECT_ONE_SHOT
+	)
+
+
+func _assert_new_prepare_unchanged(
+	node_id: int,
+	occurrence_key: String,
+	current_runtime: RogueCombatMultiplayerTestSession,
+	context: String
+) -> void:
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.PREPARING
+		and _coordinator._active_occurrence_key == occurrence_key
+		and _coordinator._combat_network == current_runtime
+		and current_runtime.get_runtime_preparation_state()
+			== RuntimePreparationProvider.PreparationState.PREPARING,
+		"%s 不得改变新 occurrence 的 PREPARING 状态或运行时所有权。" % context
+	)
+	_expect(
+		_route.is_normal_combat_active()
+		and not _coordinator._consumed_node_ids.has(node_id),
+		"%s 不得回滚、消费或关闭新 occurrence 的作战节点。" % context
 	)
 
 

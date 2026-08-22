@@ -228,13 +228,17 @@ func _test_embedded_runtime_lifecycle() -> void:
 	var host_ready_before := net_manager.host_game_ready
 	mp_game = MP_GAME_SCENE.instantiate()
 	mp_game.set("embedded_runtime", true)
-	mp_game.set("runtime_scene_path_override", OVERRIDE_RUNTIME_SCENE_PATH)
 	_expect(
 		bool(mp_game.call(
-			"configure_embedded_participant_roster",
+			"configure_embedded_runtime_contract",
+			OVERRIDE_RUNTIME_SCENE_PATH,
+			GameModeCatalog.MODE_STANDARD,
 			PackedInt32Array([net_manager.get_local_peer_id()])
 		)),
-		"The embedded lifecycle fixture must freeze its Host-only participant roster."
+		(
+			"The embedded lifecycle fixture must atomically configure its matching "
+			+ "standard runtime contract and Host-only participant roster."
+		)
 	)
 	_expect(
 		not bool(mp_game.call("activate_embedded_runtime")),

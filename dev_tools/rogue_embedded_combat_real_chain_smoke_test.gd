@@ -69,6 +69,13 @@ func _run() -> void:
 
 	run_state.begin_new_run(&"weishidaier", false)
 	await _test_authoritative_real_combat_and_teardown()
+	_expect(
+		run_state.register_multiplayer_peer_state(CLIENT_PEER_ID),
+		(
+			"ClientView 夹具必须先模拟顶层会话为 peer 2 建立持久成长账本，"
+			+ "内嵌战场不得自行补建认证成员。"
+		)
+	)
 	await _test_embedded_client_view_damage_authority()
 	_finish()
 

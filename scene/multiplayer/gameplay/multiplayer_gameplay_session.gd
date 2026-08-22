@@ -11,6 +11,7 @@ const MultiplayerReconnectTypesScript := preload(
 const ReconnectedPlayerProjectionOutcome := (
 	MultiplayerReconnectTypesScript.RuntimeProjectionOutcome
 )
+const INVALID_RUNTIME_GAME_MODE_ID := -1
 
 signal embedded_runtime_prepared
 ## 内嵌战斗的重连 Player 投影必须给外层流程一个明确终态。外层只组合
@@ -23,6 +24,9 @@ signal reconnected_player_projection_resolved(
 
 @export_group("内嵌战斗运行时")
 @export_file("*.tscn") var runtime_scene_path_override := ""
+## 外层会话模式描述共享传输与路线；该字段只描述 override 场景自身的
+## MultiplayerModeAdapter 契约。两者不得通过改写 NetManager 相互冒充。
+@export var runtime_game_mode_id_override := INVALID_RUNTIME_GAME_MODE_ID
 @export var embedded_runtime := false
 var player_persistent_modifier_projector: PlayerPersistentModifierProjector = null
 
@@ -31,6 +35,38 @@ func configure_player_persistent_modifier_projector(
 	projector: PlayerPersistentModifierProjector
 ) -> void:
 	player_persistent_modifier_projector = projector
+
+
+## 入树前一次性提交内嵌运行时的场景、模式契约与冻结参战名单。
+## 路线会话模式仍保留在 NetManager；子战场只用 runtime_game_mode_id
+## 校验自己静态挂载的 MultiplayerModeAdapter。
+func configure_embedded_runtime_contract(
+	scene_path: String,
+	runtime_game_mode_id: int,
+	peer_ids: PackedInt32Array
+) -> bool:
+	var resolved_scene_path := scene_path.strip_edges()
+	if (
+		not embedded_runtime
+		or is_inside_tree()
+		or resolved_scene_path.is_empty()
+		or peer_ids.is_empty()
+		or not ResourceLoader.exists(resolved_scene_path, "PackedScene")
+		or not GameModeCatalog.is_known_mode_id(runtime_game_mode_id)
+	):
+		return false
+	var validated_peer_ids: Dictionary[int, bool] = {}
+	for peer_id in peer_ids:
+		if peer_id <= 0 or validated_peer_ids.has(peer_id):
+			return false
+		validated_peer_ids[peer_id] = true
+	# configure_embedded_participant_roster 自身先完整校验再提交；只有名单提交
+	# 成功后才写入成对 override，调用失败不会留下半配置子运行时。
+	if not configure_embedded_participant_roster(peer_ids):
+		return false
+	runtime_scene_path_override = resolved_scene_path
+	runtime_game_mode_id_override = runtime_game_mode_id
+	return true
 
 
 ## Host 在成员仍为 RECONNECTING 时同步调用；实现必须在返回 true 前把该成员

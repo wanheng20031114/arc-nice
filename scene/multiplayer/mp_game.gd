@@ -938,6 +938,10 @@ func _await_game_runtime_preparation(
 
 
 func _defer_lobby_return_without_active_loader() -> void:
+	# 内嵌运行时只拥有本次子战场，不拥有共享传输或 SceneTree。它的准备
+	# 失败由 runtime_preparation_failed 回报外层作战协调器统一收口。
+	if embedded_runtime:
+		return
 	var loader := get_node_or_null("/root/GameLoadCoordinator")
 	# 加载器持有失败界面、房间成员释放与返回动作；直接启动场景才自行回大厅。
 	if loader != null and bool(loader.call("is_loading")):
@@ -2158,14 +2162,32 @@ func _fail_session_membership_projection(reason: String) -> void:
 
 
 func _setup_game(mode: int) -> bool:
+	var session_game_mode := int(net_manager.get_current_game_mode())
 	_game_setup_failure_reason = (
-		"多人战场初始化失败（模式 %d）。"
-		% int(net_manager.get_current_game_mode())
+		"多人战场初始化失败（会话模式 %d）。"
+		% session_game_mode
 	)
 	if embedded_runtime and _embedded_participant_peer_ids.is_empty():
 		return _fail_game_setup("内嵌战斗缺少冻结的参战玩家名单。")
-	var game_mode := int(net_manager.get_current_game_mode())
-	var game_scene_path := _get_game_scene_path_for_mode(game_mode)
+	var has_runtime_scene_override := not runtime_scene_path_override.strip_edges().is_empty()
+	var has_runtime_mode_override := (
+		runtime_game_mode_id_override
+		!= MultiplayerGameplaySession.INVALID_RUNTIME_GAME_MODE_ID
+	)
+	if has_runtime_scene_override != has_runtime_mode_override:
+		return _fail_game_setup(
+			"运行时场景 override 与运行时模式契约必须成对配置。"
+		)
+	var runtime_game_mode := (
+		runtime_game_mode_id_override
+		if has_runtime_mode_override
+		else session_game_mode
+	)
+	if not GameModeCatalog.is_known_mode_id(runtime_game_mode):
+		return _fail_game_setup(
+			"运行时模式 %d 未在 GameModeCatalog 中注册。" % runtime_game_mode
+		)
+	var game_scene_path := _get_game_scene_path_for_mode(runtime_game_mode)
 	var game_scene := load(game_scene_path) as PackedScene
 	if game_scene == null:
 		return _fail_game_setup(
@@ -2224,11 +2246,14 @@ func _setup_game(mode: int) -> bool:
 		return _fail_game_setup(
 			"运行时缺少静态 Multiplayer Gateway/ModeAdapter。"
 		)
-	if not mode_adapter.accepts_game_mode_id(game_mode):
+	if not mode_adapter.accepts_game_mode_id(runtime_game_mode):
 		_discard_unparented_game_runtime()
 		return _fail_game_setup(
-			"游戏模式 %d 与运行时 MultiplayerModeAdapter 不匹配。"
-			% game_mode
+			(
+				"运行时模式 %d（外层会话模式 %d）与 "
+				+ "MultiplayerModeAdapter 不匹配。"
+			)
+			% [runtime_game_mode, session_game_mode]
 		)
 	if net_manager == null:
 		_discard_unparented_game_runtime()
@@ -5060,6 +5085,10 @@ func _clear_pending_player_revives() -> void:
 
 
 func _on_game_return_to_lobby_requested() -> void:
+	# 子战场 UI/Adapter 不拥有外层多人连接；任何结束或失败必须由外层路线
+	# 协议决定是回路线、重试还是结束会话。
+	if embedded_runtime:
+		return
 	if net_manager != null and net_manager.is_multiplayer_active():
 		if _public_return_in_progress:
 			return
@@ -7821,12 +7850,18 @@ func _exhaust_reconnected_player_projection(old_peer_id: int) -> void:
 		"last_status",
 		CombatRuntimeBase.ReconnectedPlayerProjectionStatus.CREATE_FAILED
 	))
+	var failure_resolution := (
+		"已交由外层路线降级处理"
+		if embedded_runtime
+		else "会话将终止"
+	)
 	var reason := (
-		"玩家 %d 的战斗运行时投影在 %d 次尝试后仍失败（%s），会话已终止。"
+		"玩家 %d 的战斗运行时投影在 %d 次尝试后仍失败（%s），%s。"
 		% [
 			new_peer_id,
 			attempts,
 			_get_reconnected_player_projection_status_name(status),
+			failure_resolution,
 		]
 	)
 	push_error("MpGame: %s" % reason)
@@ -7835,6 +7870,11 @@ func _exhaust_reconnected_player_projection(old_peer_id: int) -> void:
 		new_peer_id,
 		ReconnectedPlayerProjectionOutcome.FAILED
 	)
+	# 内嵌投影失败的终态已经交给外层路线协调器；它会把该成员降级为
+	# 本轮观战者。子战场不得因自己的可丢弃 Player 投影关闭共享会话。
+	if embedded_runtime:
+		_disconnected_player_reconnect_states.erase(old_peer_id)
+		return
 	if net_manager.is_client() and is_inside_tree():
 		_request_peer_result_full_repair()
 	var termination_started := (
@@ -7956,14 +7996,13 @@ func _clear_peer_network_state(peer_id: int) -> void:
 
 
 func _return_to_lobby() -> void:
+	# 内嵌运行时既不切场景也不断开共享传输。同步/异步准备失败已经通过
+	# RuntimePreparationProvider 的失败信号交还给外层作战协调器。
+	if embedded_runtime:
+		return
 	if _lobby_return_in_progress:
 		return
 	_lobby_return_in_progress = true
-	if embedded_runtime:
-		# 内嵌战斗不拥有 SceneTree；失败只终结共享传输，由外层会话决定落点。
-		if net_manager != null and net_manager.is_multiplayer_active():
-			net_manager.disconnect_from_game()
-		return
 	# 初始化失败、远端断线和主动返回都必须经过同一个跨场景清理门。
 	if public_room_lease != null:
 		await public_room_lease.release_current_and_wait(&"mp_game_return_to_lobby")

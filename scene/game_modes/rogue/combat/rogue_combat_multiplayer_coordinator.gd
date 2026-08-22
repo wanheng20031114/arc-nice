@@ -41,6 +41,7 @@ const CLIENT_PREPARATION_ABORT_REASONS := {
 	&"config_mismatch": true,
 	&"route_start_rejected": true,
 	&"runtime_create_failed": true,
+	&"runtime_preparation_failed": true,
 	&"runtime_config_failed": true,
 	&"client_runtime_activate_failed": true,
 	&"entry_reveal_failed": true,
@@ -708,7 +709,11 @@ func net_combat_prepare(
 
 
 func _create_embedded_runtime() -> bool:
-	if _combat_network != null or _active_occurrence_key.is_empty():
+	if (
+		_combat_network != null
+		or _active_occurrence_key.is_empty()
+		or _active_encounter_config == null
+	):
 		return false
 	var packed_scene := load(MP_GAME_SCENE_PATH) as PackedScene
 	if packed_scene == null:
@@ -730,15 +735,19 @@ func _create_embedded_runtime() -> bool:
 	instance.configure_player_persistent_modifier_projector(
 		_player_persistent_modifier_projector
 	)
-	if not instance.configure_embedded_participant_roster(
+	if not instance.configure_embedded_runtime_contract(
+		_active_encounter_config.combat_scene_path,
+		GameModeCatalog.MODE_ROGUE,
 		_pack_peer_ids(_participant_peer_ids)
 	):
 		push_error(
-			"RogueCombatMultiplayerCoordinator: 无法冻结内嵌战斗参战名单。"
+			(
+				"RogueCombatMultiplayerCoordinator: 无法提交内嵌战斗的"
+				+ "场景、模式与参战名单契约。"
+			)
 		)
 		instance.free()
 		return false
-	instance.runtime_scene_path_override = _active_encounter_config.combat_scene_path
 	if not instance.embedded_runtime_prepared.is_connected(
 		_on_embedded_runtime_prepared
 	):
@@ -751,9 +760,64 @@ func _create_embedded_runtime() -> bool:
 		instance.reconnected_player_projection_resolved.connect(
 			_on_embedded_reconnected_player_projection_resolved
 		)
+	var failed_callback := Callable(
+		self,
+		&"_on_embedded_runtime_preparation_failed"
+	).bind(instance, _active_occurrence_key)
+	instance.runtime_preparation_failed.connect(
+		failed_callback,
+		CONNECT_ONE_SHOT
+	)
 	_combat_network = instance
 	add_child(instance)
+	# add_child 会同步执行 MpGame._ready()。不能把已经进入 FAILED 的子战场
+	# 当作创建成功，否则 Host 会继续发送 prepare 并一直等到屏障超时。
+	if instance.is_runtime_preparation_failed():
+		var preparation := instance.get_runtime_preparation_snapshot()
+		push_error(
+			"RogueCombatMultiplayerCoordinator: 内嵌战场同步准备失败：%s"
+			% preparation.failure_reason
+		)
+		instance.queue_free()
+		if _combat_network == instance:
+			_combat_network = null
+		return false
 	return true
+
+
+func _on_embedded_runtime_preparation_failed(
+	reason: String,
+	expected_runtime: MultiplayerGameplaySession,
+	occurrence_key: String
+) -> void:
+	# 同步 _ready 失败由 _create_embedded_runtime 的返回值立即阻止 prepare
+	# 派发；这里 deferred 后同时覆盖子场景的异步预热失败，并避免在子节点
+	# 发信号的调用栈里拆除它。
+	call_deferred(
+		&"_handle_embedded_runtime_preparation_failed",
+		reason,
+		expected_runtime,
+		occurrence_key
+	)
+
+
+func _handle_embedded_runtime_preparation_failed(
+	reason: String,
+	expected_runtime: MultiplayerGameplaySession,
+	occurrence_key: String
+) -> void:
+	if (
+		_phase != ProtocolPhase.PREPARING
+		or occurrence_key.is_empty()
+		or occurrence_key != _active_occurrence_key
+		or not is_instance_valid(expected_runtime)
+		or _combat_network != expected_runtime
+	):
+		return
+	push_error(
+		"RogueCombatMultiplayerCoordinator: 内嵌战场准备失败：%s" % reason
+	)
+	_request_authoritative_abort(occurrence_key, &"runtime_preparation_failed")
 
 
 func _on_embedded_runtime_prepared() -> void:
