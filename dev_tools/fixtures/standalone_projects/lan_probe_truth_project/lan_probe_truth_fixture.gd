@@ -22,10 +22,14 @@ func _run() -> void:
 		push_error("Truth fixture received an unsupported family or role.")
 		quit(64)
 		return
-	if family == "relay" and role == "host":
-		# Relay runner 必须从实时 stdout 精确解析 Host 身份；
-		# fixture 不伪造网络，只提供这个有界 runner 控制面。
-		print("RELAY_PROBE_HOST_READY host_peer_id=123456789")
+	if family == "relay":
+		# Relay runner 必须从实时 stdout 精确解析 Host 身份，并在启动
+		# 后续客户端前确认当前客户端已经进入拨号阶段。fixture 不伪造
+		# 网络，只提供这两个有界的 runner 控制面标记。
+		if role == "host":
+			print("RELAY_PROBE_HOST_READY host_peer_id=123456789")
+		elif role == "client":
+			print("RELAY_PROBE_CLIENT_DIAL_STARTED")
 
 	match str(parts[1]):
 		"pass":

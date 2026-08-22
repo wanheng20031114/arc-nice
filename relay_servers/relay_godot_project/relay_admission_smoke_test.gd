@@ -289,6 +289,25 @@ func _initialize() -> void:
 		),
 		"Members cannot query identities and the Host cannot be registered as a member"
 	)
+	var connected_control_peers := PackedInt32Array([2, 3, 4])
+	_assert(
+		RelayServerScript.is_authorized_host_kick_request(
+			2, 2, 3, connected_control_peers
+		),
+		"The registered live Host may kick another live room member"
+	)
+	_assert(
+		not RelayServerScript.is_authorized_host_kick_request(
+			2, 3, 4, connected_control_peers
+		)
+		and not RelayServerScript.is_authorized_host_kick_request(
+			2, 2, 2, connected_control_peers
+		)
+		and not RelayServerScript.is_authorized_host_kick_request(
+			2, 2, 9, connected_control_peers
+		),
+		"Members, self-targets, and disconnected targets must not pass Relay kick admission"
+	)
 	print("RELAY_ADMISSION_SMOKE_TEST_OK")
 	quit(0)
 

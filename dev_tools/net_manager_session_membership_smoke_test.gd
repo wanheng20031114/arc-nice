@@ -2,9 +2,6 @@ extends SceneTree
 
 const TOKEN_A := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 const TOKEN_B := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-const RELAY_SERVER_SCRIPT := preload(
-	"res://relay_servers/relay_godot_project/relay_server.gd"
-)
 
 
 class HostProbe:
@@ -952,22 +949,6 @@ func _test_relay_host_kick_control() -> void:
 	_expect(
 		host.relay_kick_targets == PackedInt32Array([2]),
 		"Relay Host 断开逻辑客户端时必须向 server peer 1 请求 target!=1 的服务端 kick。"
-	)
-	var room_peers := PackedInt32Array([2, 3, 4])
-	_expect(
-		RELAY_SERVER_SCRIPT.is_authorized_host_kick_request(
-			2,
-			2,
-			3,
-			room_peers
-		)
-		and not RELAY_SERVER_SCRIPT.is_authorized_host_kick_request(
-			2,
-			3,
-			4,
-			room_peers
-		),
-		"Relay 只能接受已登记 Host 的 kick；非法 sender 不能踢出同房成员。"
 	)
 	host.free()
 
