@@ -29,6 +29,14 @@ const GEL_TO_WATER_BOTTLE_ID: StringName = &"gel_to_water_bottle"
 const GEL_TO_WATER_BOTTLE_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/simple_gel_to_water_bottle.tres"
 )
+const WATER_COLLECTOR_ID: StringName = &"water_collector"
+const WATER_COLLECTOR_RECIPE: ProductionRecipe = preload(
+	"res://resources/config/production/simple_water_collector.tres"
+)
+const PLANTING_BASE_ID: StringName = &"planting_base"
+const PLANTING_BASE_RECIPE: ProductionRecipe = preload(
+	"res://resources/config/production/simple_planting_base.tres"
+)
 const BAMBOO_MORTAR_ID: StringName = &"bamboo_mortar"
 const BAMBOO_MORTAR_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/simple_bamboo_mortar.tres"
@@ -46,6 +54,8 @@ const RECIPES := {
 	STONE_MILL_ID: STONE_MILL_RECIPE,
 	SIMPLE_FENCE_ID: SIMPLE_FENCE_RECIPE,
 	GEL_TO_WATER_BOTTLE_ID: GEL_TO_WATER_BOTTLE_RECIPE,
+	WATER_COLLECTOR_ID: WATER_COLLECTOR_RECIPE,
+	PLANTING_BASE_ID: PLANTING_BASE_RECIPE,
 	BAMBOO_MORTAR_ID: BAMBOO_MORTAR_RECIPE,
 	HYDRANGEA_RAIN_TOWER_ID: HYDRANGEA_RAIN_TOWER_RECIPE,
 }
@@ -77,6 +87,8 @@ static func get_all_recipes() -> Array[ProductionRecipe]:
 		STONE_MILL_ID,
 		SIMPLE_FENCE_ID,
 		GEL_TO_WATER_BOTTLE_ID,
+		WATER_COLLECTOR_ID,
+		PLANTING_BASE_ID,
 		BAMBOO_MORTAR_ID,
 		HYDRANGEA_RAIN_TOWER_ID,
 	]:

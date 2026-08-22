@@ -355,6 +355,23 @@ func _test_building_item_and_acquisition_closure() -> void:
 				reachable_recipe_paths.has(recipe.resource_path),
 				"登记的建筑获取配方未接入实际生产入口：%s。" % config.plant_id
 			)
+	var water_collector_recipe := (
+		BuildingItemRegistry.get_primary_acquisition_recipe(&"water_collector")
+	)
+	var planting_base_recipe := (
+		BuildingItemRegistry.get_primary_acquisition_recipe(&"planting_base")
+	)
+	_expect(
+		water_collector_recipe == SimpleCraftingRegistry.WATER_COLLECTOR_RECIPE
+		and planting_base_recipe == SimpleCraftingRegistry.PLANTING_BASE_RECIPE
+		and ProductionRecipeRegistry.get_producer_id(
+			water_collector_recipe.recipe_id
+		) == ProductionRecipeRegistry.SIMPLE_CRAFTING_PRODUCER_ID
+		and ProductionRecipeRegistry.get_producer_id(
+			planting_base_recipe.recipe_id
+		) == ProductionRecipeRegistry.SIMPLE_CRAFTING_PRODUCER_ID,
+		"水源采集器与种植基地的主要获取路线必须结构性归属于简易制作。"
+	)
 	var grape_recipe := BuildingItemRegistry.get_primary_acquisition_recipe(
 		&"grape_arc_tower"
 	)

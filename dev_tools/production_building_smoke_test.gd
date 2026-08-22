@@ -454,39 +454,37 @@ func _run() -> void:
 		and panel.recipe_rows[0].icon != WOOD.icon_texture
 		and panel.recipe_rows[1].icon == WOODEN_CORE.icon_texture
 		and panel.recipe_rows[2].icon == GAMBLER_TICKET.icon_texture
-		and panel.recipe_rows[3].icon == WATER_COLLECTOR_ITEM.icon_texture
-		and panel.recipe_rows[4].icon == PLANTING_BASE_ITEM.icon_texture
-		and panel.recipe_rows[5].icon == PLANT_CULTIVATION_CENTER_ITEM.icon_texture
-		and panel.recipe_rows[6].icon == RESEARCH_CENTER_ITEM.icon_texture
-		and panel.recipe_rows[7].icon == EXCAVATOR_ITEM.icon_texture
-		and panel.recipe_rows[8].icon == LIFE_TOWER_ITEM.icon_texture
-		and panel.recipe_rows[9].icon == SPEED_TOWER_ITEM.icon_texture
-		and panel.recipe_rows[10].icon == ATTACK_SPEED_TOWER_ITEM.icon_texture
-		and panel.recipe_rows.all(func(row: Button) -> bool: return row.visible)
+		and panel.recipe_rows[3].icon == PLANT_CULTIVATION_CENTER_ITEM.icon_texture
+		and panel.recipe_rows[4].icon == RESEARCH_CENTER_ITEM.icon_texture
+		and panel.recipe_rows[5].icon == EXCAVATOR_ITEM.icon_texture
+		and panel.recipe_rows[6].icon == LIFE_TOWER_ITEM.icon_texture
+		and panel.recipe_rows[7].icon == SPEED_TOWER_ITEM.icon_texture
+		and panel.recipe_rows[8].icon == ATTACK_SPEED_TOWER_ITEM.icon_texture
+		and panel.recipe_rows[8].visible
+		and not panel.recipe_rows[9].visible
+		and not panel.recipe_rows[10].visible
 		and panel.recipe_rows[2].text.contains("赌怪专用券制作")
-		and panel.recipe_rows[3].text.contains("水源采集器组装")
-		and panel.recipe_rows[4].text.contains("种植基地组装")
-		and panel.recipe_rows[5].text.contains("植物培育中心组装")
-		and panel.recipe_rows[6].text.contains("科研中心组装")
-		and panel.recipe_rows[7].text.contains("挖土装置组装")
-		and panel.recipe_rows[8].text.contains("生命强化塔组装")
-		and panel.recipe_rows[9].text.contains("移速强化塔组装")
-		and panel.recipe_rows[10].text.contains("攻速强化塔组装")
+		and panel.recipe_rows[3].text.contains("植物培育中心组装")
+		and panel.recipe_rows[4].text.contains("科研中心组装")
+		and panel.recipe_rows[5].text.contains("挖土装置组装")
+		and panel.recipe_rows[6].text.contains("生命强化塔组装")
+		and panel.recipe_rows[7].text.contains("移速强化塔组装")
+		and panel.recipe_rows[8].text.contains("攻速强化塔组装")
 		and panel.recipe_rows[3].text.contains("30秒")
-		and panel.recipe_rows[8].text.contains("30秒")
-		and panel.recipe_rows[9].text.contains("30秒")
-		and panel.recipe_rows[10].text.contains("30秒"),
-		"右侧十一条配方必须显示正确产物图标，八种功能建筑统一标明30秒。"
+		and panel.recipe_rows[6].text.contains("30秒")
+		and panel.recipe_rows[7].text.contains("30秒")
+		and panel.recipe_rows[8].text.contains("30秒"),
+		"右侧九条木站配方必须显示正确产物图标，六种功能建筑统一标明30秒。"
 	)
-	panel.recipe_scroll.ensure_control_visible(panel.recipe_rows[9])
+	panel.recipe_scroll.ensure_control_visible(panel.recipe_rows[7])
 	await process_frame
-	await _click_panel_control(panel.recipe_rows[9])
+	await _click_panel_control(panel.recipe_rows[7])
 	_expect(
 		panel.recipe_scroll.get_global_rect().encloses(
-			panel.recipe_rows[9].get_global_rect()
+			panel.recipe_rows[7].get_global_rect()
 		)
 		and station.active_recipe_id == &"speed_tower_assembly"
-		and panel.recipe_rows[9].button_pressed
+		and panel.recipe_rows[7].button_pressed
 		and panel.input_slots[0].visible
 		and panel.input_slots[0].item == PLANK
 		and panel.input_slots[0].stack_count == 10
@@ -497,17 +495,17 @@ func _run() -> void:
 		and panel.output_slots[0].visible
 		and panel.output_slots[0].item == SPEED_TOWER_ITEM
 		and panel.output_title.text == "仓库产物",
-		"滚动到第十条配方后必须能选择移速强化塔，并显示10木板、2树苗与仓库产物。"
+		"滚动到第八条配方后必须能选择移速强化塔，并显示10木板、2树苗与仓库产物。"
 	)
-	panel.recipe_scroll.ensure_control_visible(panel.recipe_rows[10])
+	panel.recipe_scroll.ensure_control_visible(panel.recipe_rows[8])
 	await process_frame
-	await _click_panel_control(panel.recipe_rows[10])
+	await _click_panel_control(panel.recipe_rows[8])
 	_expect(
 		panel.recipe_scroll.get_global_rect().encloses(
-			panel.recipe_rows[10].get_global_rect()
+			panel.recipe_rows[8].get_global_rect()
 		)
 		and station.active_recipe_id == &"attack_speed_tower_assembly"
-		and panel.recipe_rows[10].button_pressed
+		and panel.recipe_rows[8].button_pressed
 		and panel.input_slots[0].visible
 		and panel.input_slots[0].item == PLANK
 		and panel.input_slots[0].stack_count == 10
@@ -517,7 +515,7 @@ func _run() -> void:
 		and not panel.input_slots[2].visible
 		and panel.output_slots[0].visible
 		and panel.output_slots[0].item == ATTACK_SPEED_TOWER_ITEM,
-		"滚动到第十一条配方后必须能选择攻速强化塔，并显示10木板、2树苗与仓库产物。"
+		"滚动到第九条配方后必须能选择攻速强化塔，并显示10木板、2树苗与仓库产物。"
 	)
 	panel.call("_on_recipe_row_pressed", 0)
 	_expect(
@@ -617,7 +615,7 @@ func _run() -> void:
 		"所有建筑面板必须通过统一关闭规则支持第二次交互键关闭。"
 	)
 	_expect(
-		station.recipes.size() == 11
+		station.recipes.size() == 9
 		and _recipe_matches(
 			station.recipes[0],
 			&"wood_to_plank",
@@ -650,26 +648,6 @@ func _run() -> void:
 		)
 		and _recipe_matches(
 			station.recipes[3],
-			&"water_collector_assembly",
-			[PLANK],
-			[10],
-			WATER_COLLECTOR_ITEM,
-			1,
-			30.0,
-			true
-		)
-		and _recipe_matches(
-			station.recipes[4],
-			&"planting_base_assembly",
-			[PLANK, SAPLING, WATER_BOTTLE],
-			[20, 5, 5],
-			PLANTING_BASE_ITEM,
-			1,
-			30.0,
-			true
-		)
-		and _recipe_matches(
-			station.recipes[5],
 			&"plant_cultivation_center_assembly",
 			[PLANK, WATER_BOTTLE],
 			[30, 10],
@@ -679,7 +657,7 @@ func _run() -> void:
 			true
 		)
 		and _recipe_matches(
-			station.recipes[6],
+			station.recipes[4],
 			&"research_center_assembly",
 			[PLANK, WATER_BOTTLE],
 			[30, 10],
@@ -689,7 +667,7 @@ func _run() -> void:
 			true
 		)
 		and _recipe_matches(
-			station.recipes[7],
+			station.recipes[5],
 			&"excavator_assembly",
 			[PLANK],
 			[10],
@@ -699,7 +677,7 @@ func _run() -> void:
 			true
 		)
 		and _recipe_matches(
-			station.recipes[8],
+			station.recipes[6],
 			&"life_tower_assembly",
 			[PLANK, SAPLING],
 			[10, 2],
@@ -709,7 +687,7 @@ func _run() -> void:
 			true
 		)
 		and _recipe_matches(
-			station.recipes[9],
+			station.recipes[7],
 			&"speed_tower_assembly",
 			[PLANK, SAPLING],
 			[10, 2],
@@ -719,7 +697,7 @@ func _run() -> void:
 			true
 		)
 		and _recipe_matches(
-			station.recipes[10],
+			station.recipes[8],
 			&"attack_speed_tower_assembly",
 			[PLANK, SAPLING],
 			[10, 2],
@@ -728,7 +706,7 @@ func _run() -> void:
 			30.0,
 			true
 		),
-		"加工站必须按固定顺序提供三条材料配方与八条30秒功能建筑配方。"
+		"加工站必须按固定顺序提供三条材料配方与六条30秒功能建筑配方。"
 	)
 	_expect(
 		_is_valid_building_item(WATER_COLLECTOR_ITEM, &"water_collector")
@@ -1225,20 +1203,6 @@ func _test_utility_building_recipe_transactions(
 ) -> void:
 	var recipe_cases: Array[Dictionary] = [
 		{
-			"recipe_id": &"water_collector_assembly",
-			"display_name": "水源采集器",
-			"input_items": [PLANK],
-			"input_amounts": [10],
-			"output_item": WATER_COLLECTOR_ITEM,
-		},
-		{
-			"recipe_id": &"planting_base_assembly",
-			"display_name": "种植基地",
-			"input_items": [PLANK, SAPLING, WATER_BOTTLE],
-			"input_amounts": [20, 5, 5],
-			"output_item": PLANTING_BASE_ITEM,
-		},
-		{
 			"recipe_id": &"plant_cultivation_center_assembly",
 			"display_name": "植物培育中心",
 			"input_items": [PLANK, WATER_BOTTLE],
@@ -1415,7 +1379,7 @@ func _test_multiplayer_production_contract(
 		8,
 		2,
 		0,
-		&"water_collector_assembly"
+		&"plant_cultivation_center_assembly"
 	)
 	var command_with_untrusted_extensions := first_command.duplicate()
 	command_with_untrusted_extensions["nested_junk"] = {
@@ -1499,7 +1463,7 @@ func _test_multiplayer_production_contract(
 		) == ProductionBuildingProtocol.RESULT_STALE_STATE
 		and authority.production_enabled
 		and authority.production_loop_enabled
-		and authority.active_recipe_id == &"water_collector_assembly"
+		and authority.active_recipe_id == &"plant_cultivation_center_assembly"
 		and authority.personal_output_peer_id == 0
 		and authority.production_revision == 2,
 		"Host必须权威应用严格布尔循环命令；相同revision的后到命令必须零写入。"

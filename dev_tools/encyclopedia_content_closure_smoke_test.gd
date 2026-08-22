@@ -174,7 +174,7 @@ func _test_recipe_closure(catalog: CodexCatalog) -> void:
 		)
 	_expect(
 		expected_paths.size() == 32 and expected_paths == actual_paths,
-		"9条简易制作与23条建筑生产配方必须全部进入配方百科。"
+		"11条简易制作与21条建筑生产配方必须全部进入配方百科。"
 	)
 
 

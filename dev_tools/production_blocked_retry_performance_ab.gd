@@ -15,6 +15,9 @@ const WATER_SOURCE := preload(
 const WATER_COLLECTOR_ITEM := preload(
 	"res://resources/config/buildings/building_water_collector.tres"
 )
+const APPLE := preload(
+	"res://resources/config/collectibles/collectible_apple.tres"
+)
 
 const WAREHOUSE_COUNT := 32
 const BENCHMARK_ITERATIONS := 500
@@ -188,10 +191,10 @@ func _test_warehouse_capacity_wakeup(
 	_clear_warehouse(warehouse)
 	_expect(
 		warehouse.try_add_storage_item_count(
-			WATER_COLLECTOR_ITEM,
+			APPLE,
 			OakWarehouse.STORAGE_CAPACITY
 		),
-		"仓库满容量夹具必须能放入20个不可堆叠建筑物品。"
+		"仓库满容量夹具必须能放入20个不可堆叠苹果。"
 	)
 	var environment_recipe := ProductionRecipe.new()
 	environment_recipe.recipe_id = &"blocked_retry_environment_output"
@@ -240,19 +243,35 @@ func _test_inventory_capacity_wakeup(
 ) -> void:
 	_clear_warehouse(warehouse)
 	_expect(
+		run_state.register_multiplayer_peer_state(2),
+		"个人背包唤醒夹具必须先注册无关Peer。"
+	)
+	_expect(
 		warehouse.try_add_storage_item_count(PLANK, 10),
 		"个人背包阻塞夹具必须能准备10份木板。"
 	)
 	var inventory_filled := true
 	for _slot_index in RunStateStore.INVENTORY_CAPACITY:
 		inventory_filled = (
-			run_state.try_add_item(WATER_COLLECTOR_ITEM)
+			run_state.try_add_item(APPLE)
 			and inventory_filled
 		)
-	_expect(inventory_filled, "个人背包夹具必须能填满20个不可堆叠槽位。")
+	_expect(inventory_filled, "个人背包夹具必须能用苹果填满20个不可堆叠槽位。")
+	var inventory_output_recipe := ProductionRecipe.new()
+	inventory_output_recipe.recipe_id = &"blocked_retry_inventory_output"
+	inventory_output_recipe.display_name = "个人背包产物阻塞夹具"
+	inventory_output_recipe.input_items = [PLANK]
+	inventory_output_recipe.input_amounts = [10]
+	inventory_output_recipe.output_items = [WATER_COLLECTOR_ITEM]
+	inventory_output_recipe.output_amounts = [1]
+	inventory_output_recipe.output_destination = (
+		ProductionRecipe.OutputDestination.PLAYER_INVENTORY
+	)
+	inventory_output_recipe.duration_seconds = 30.0
+	station.recipes.append(inventory_output_recipe)
 	_expect(
-		station.select_recipe(&"water_collector_assembly"),
-		"必须能选择进入个人背包的水源采集器配方。"
+		station.select_recipe(inventory_output_recipe.recipe_id),
+		"必须能选择进入个人背包的阻塞唤醒夹具配方。"
 	)
 	station.advance_shared_production_tick(30.0)
 	_expect(
@@ -291,8 +310,7 @@ func _test_inventory_capacity_wakeup(
 	_expect(
 		coordinator.get_total_item_count(PLANK) == 0
 		and run_state.get_inventory_revision() == revision_before_discard + 2
-		and run_state.get_inventory_item_total(WATER_COLLECTOR_ITEM)
-		== RunStateStore.INVENTORY_CAPACITY
+		and run_state.get_inventory_item_total(WATER_COLLECTOR_ITEM) == 1
 		and is_zero_approx(station.progress_elapsed_seconds)
 		and station.completion_wait_reason == &""
 		and _count_valid_waiters(
@@ -402,7 +420,7 @@ func _test_warehouse_construction_wakeup(
 	_clear_warehouse(full_warehouse)
 	_expect(
 		full_warehouse.try_add_storage_item_count(
-			WATER_COLLECTOR_ITEM,
+			APPLE,
 			OakWarehouse.STORAGE_CAPACITY
 		),
 		"施工唤醒夹具必须先填满既有仓库。"

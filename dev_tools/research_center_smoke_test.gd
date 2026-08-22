@@ -2181,7 +2181,7 @@ func _test_recipe_unlock_research(
 			BUILDING_DEFENSE_RESEARCH_ID,
 			PLAYER_MOVE_SPEED_RESEARCH_ID,
 		]
-		and available_recipes.size() == 7
+		and available_recipes.size() == 9
 		and available_recipes.has(simple_fence_recipe)
 		and not available_recipes.has(bamboo_recipe)
 		and not available_recipes.has(hydrangea_recipe),
@@ -2231,7 +2231,7 @@ func _test_recipe_unlock_research(
 			PLAYER_MOVE_SPEED_RESEARCH_ID,
 			BAMBOO_MORTAR_CRAFTING_RESEARCH_ID,
 		]
-		and available_recipes.size() == 8
+		and available_recipes.size() == 10
 		and available_recipes.has(simple_fence_recipe)
 		and available_recipes.has(bamboo_recipe)
 		and not available_recipes.has(hydrangea_recipe),
@@ -2280,11 +2280,11 @@ func _test_recipe_unlock_research(
 		) == ResearchCoordinator.GlobalResearchState.COMPLETED
 		and research.get_active_global_research_id().is_empty()
 		and completed_ids == completed_before_orange
-		and available_recipes.size() == 9
+		and available_recipes.size() == 11
 		and available_recipes.has(simple_fence_recipe)
 		and available_recipes.has(bamboo_recipe)
 		and available_recipes.has(hydrangea_recipe),
-		"紫阳花研发满30秒后必须导出四项完成ID，并让全部九条简易配方可用。"
+		"紫阳花研发满30秒后必须导出四项完成ID，并让全部十一条简易配方可用。"
 	)
 	_expect(
 		center.try_start_global_research(
@@ -2307,7 +2307,7 @@ func _test_recipe_unlock_research(
 			29.9
 		)
 		and ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID not in completed_ids
-		and SimpleCraftingRegistry.get_available_recipes(completed_ids).size() == 9,
+		and SimpleCraftingRegistry.get_available_recipes(completed_ids).size() == 11,
 		"橘充能塔研发进行29.9秒时不得提前完成，也不得改变简易制作配方集合。"
 	)
 	research.advance_global_research(0.1)
@@ -2326,7 +2326,7 @@ func _test_recipe_unlock_research(
 		) == ResearchCoordinator.GlobalResearchState.COMPLETED
 		and research.get_active_global_research_id().is_empty()
 		and completed_ids == expected_completed_ids
-		and available_recipes.size() == 9
+		and available_recipes.size() == 11
 		and available_recipes.has(simple_fence_recipe)
 		and available_recipes.has(bamboo_recipe)
 		and available_recipes.has(hydrangea_recipe),
@@ -2379,7 +2379,7 @@ func _test_recipe_unlock_research(
 			2.0
 		)
 		and SimpleCraftingRegistry.get_available_recipes(completed_ids).size()
-		== 9,
+		== 11,
 		"植被桩蔓延增强满60秒后必须把蔓延倍率设为2，且不得污染配方解锁。"
 	)
 	_expect(
@@ -2419,7 +2419,7 @@ func _test_recipe_unlock_research(
 		and research.get_active_global_research_id().is_empty()
 		and is_equal_approx(research.get_grass_heal_ratio_bonus(), 0.2)
 		and SimpleCraftingRegistry.get_available_recipes(completed_ids).size()
-		== 9,
+		== 11,
 		"植被强化满30秒后必须额外提供20%草地回血，且不得污染配方解锁。"
 	)
 	_expect(
@@ -2476,7 +2476,7 @@ func _test_recipe_unlock_research(
 			0.5
 		)
 		and SimpleCraftingRegistry.get_available_recipes(completed_ids).size()
-		== 9,
+		== 11,
 		"采水速率提升满30秒后必须把水收集器单轮耗时倍率设为0.5，且不得污染配方解锁。"
 	)
 	_expect(
@@ -2517,7 +2517,7 @@ func _test_recipe_unlock_research(
 		and plant_system.get_global_fence_max_health_bonus() == 1000
 		and plant_system.get_global_fence_physical_defense_bonus() == 5
 		and SimpleCraftingRegistry.get_available_recipes(completed_ids).size()
-		== 9,
+		== 11,
 		"围栏强化满30秒后必须提供1000生命与5物防，且不得污染配方解锁。"
 	)
 

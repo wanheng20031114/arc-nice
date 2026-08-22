@@ -31,13 +31,13 @@ const RECIPE_ORDER: Array[StringName] = [
 	&"stone_mill",
 	&"simple_fence",
 	&"gel_to_water_bottle",
+	&"water_collector",
+	&"planting_base",
 	&"bamboo_mortar",
 	&"hydrangea_rain_tower",
 	&"wood_to_plank",
 	&"wooden_core_assembly",
 	&"gambler_ticket_assembly",
-	&"water_collector_assembly",
-	&"planting_base_assembly",
 	&"plant_cultivation_center_assembly",
 	&"research_center_assembly",
 	&"excavator_assembly",
@@ -80,6 +80,12 @@ const RECIPE_ID_TO_PATH := {
 	&"gel_to_water_bottle": (
 		"res://resources/config/production/simple_gel_to_water_bottle.tres"
 	),
+	&"water_collector": (
+		"res://resources/config/production/simple_water_collector.tres"
+	),
+	&"planting_base": (
+		"res://resources/config/production/simple_planting_base.tres"
+	),
 	&"bamboo_mortar": (
 		"res://resources/config/production/simple_bamboo_mortar.tres"
 	),
@@ -92,12 +98,6 @@ const RECIPE_ID_TO_PATH := {
 	),
 	&"gambler_ticket_assembly": (
 		"res://resources/config/production/gambler_ticket_assembly.tres"
-	),
-	&"water_collector_assembly": (
-		"res://resources/config/production/water_collector_assembly.tres"
-	),
-	&"planting_base_assembly": (
-		"res://resources/config/production/planting_base_assembly.tres"
 	),
 	&"plant_cultivation_center_assembly": (
 		"res://resources/config/production/plant_cultivation_center_assembly.tres"
@@ -163,13 +163,13 @@ const RECIPE_ID_TO_PRODUCER_ID := {
 	&"stone_mill": SIMPLE_CRAFTING_PRODUCER_ID,
 	&"simple_fence": SIMPLE_CRAFTING_PRODUCER_ID,
 	&"gel_to_water_bottle": SIMPLE_CRAFTING_PRODUCER_ID,
+	&"water_collector": SIMPLE_CRAFTING_PRODUCER_ID,
+	&"planting_base": SIMPLE_CRAFTING_PRODUCER_ID,
 	&"bamboo_mortar": SIMPLE_CRAFTING_PRODUCER_ID,
 	&"hydrangea_rain_tower": SIMPLE_CRAFTING_PRODUCER_ID,
 	&"wood_to_plank": WOOD_PROCESSING_STATION_PRODUCER_ID,
 	&"wooden_core_assembly": WOOD_PROCESSING_STATION_PRODUCER_ID,
 	&"gambler_ticket_assembly": WOOD_PROCESSING_STATION_PRODUCER_ID,
-	&"water_collector_assembly": WOOD_PROCESSING_STATION_PRODUCER_ID,
-	&"planting_base_assembly": WOOD_PROCESSING_STATION_PRODUCER_ID,
 	&"plant_cultivation_center_assembly": WOOD_PROCESSING_STATION_PRODUCER_ID,
 	&"research_center_assembly": WOOD_PROCESSING_STATION_PRODUCER_ID,
 	&"excavator_assembly": WOOD_PROCESSING_STATION_PRODUCER_ID,
@@ -205,8 +205,8 @@ const PRODUCER_LABELS := {
 }
 
 const EXPECTED_CATEGORY_COUNTS := {
-	Category.SIMPLE_CRAFTING: 9,
-	Category.SHARED_PRODUCTION: 23,
+	Category.SIMPLE_CRAFTING: 11,
+	Category.SHARED_PRODUCTION: 21,
 }
 
 

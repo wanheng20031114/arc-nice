@@ -122,8 +122,8 @@
 | --- | --- | ---: | --- |
 | `wood_to_plank` | 木头1 → 木板2 | 10s | 木头加工站 |
 | `wooden_core_assembly` | 木板10+树苗1+水瓶5 → 木制核心1 | 10s | 木头加工站 |
-| `water_collector_assembly` | 木板10 → 水源采集器箱1 | 30s | 木头加工站，输出玩家背包 |
-| `planting_base_assembly` | 木板20+树苗5+水瓶5 → 种植基地箱1 | 30s | 木头加工站，输出玩家背包 |
+| `simple_water_collector` | 木板10 → 水源采集器箱1 | 0.1s | 玩家简易制作，背包与共享仓库联合供料，产物只回玩家背包 |
+| `simple_planting_base` | 木板20+树苗5+水瓶5 → 种植基地箱1 | 0.1s | 玩家简易制作，背包与共享仓库联合供料，产物只回玩家背包 |
 | `plant_cultivation_center_assembly` | 木板30+水瓶10 → 培育中心箱1 | 30s | 木头加工站，输出玩家背包 |
 | `research_center_assembly` | 木板30+水瓶10 → 科研中心箱1 | 30s | 木头加工站，输出玩家背包 |
 | `sapling_propagation` | 树苗1 → 树苗2 | 30s | 种植基地 |
@@ -196,10 +196,10 @@
 | `building_hydrangea_rain_tower` | `hydrangea_rain_tower` | 培育中心30s |
 | `building_oak_warehouse` | `oak_warehouse` | 玩家即时合成 |
 | `building_plant_cultivation_center` | `plant_cultivation_center` | 木头加工站30s |
-| `building_planting_base` | `planting_base` | 木头加工站30s |
+| `building_planting_base` | `planting_base` | 玩家简易制作（背包与共享仓库联合供料） |
 | `building_research_center` | `research_center` | 木头加工站30s |
 | `building_vegetation_stake` | `vegetation_stake` | 玩家即时合成 |
-| `building_water_collector` | `water_collector` | 木头加工站30s |
+| `building_water_collector` | `water_collector` | 玩家简易制作（背包与共享仓库联合供料） |
 | `building_wood_processing_station` | `wood_processing_station` | 玩家即时合成 |
 
 使用建筑箱不会先消耗再让玩家找位置。`GameTowerDefense` 先验证类型、资源路径、plant ID、revision 和可放置位置；确认后用 compare-and-swap 消耗1件，再生成建筑；生成失败会把物品放回原槽（单机 `game_tower_defense.gd:1175-1311`；宿主多人 `:1400-1485`）。该链路正确且抗重复请求。

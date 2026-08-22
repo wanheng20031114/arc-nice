@@ -90,10 +90,10 @@ const WOOD_PROCESSING_STATION_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/simple_wood_processing_station.tres"
 )
 const WATER_COLLECTOR_RECIPE: ProductionRecipe = preload(
-	"res://resources/config/production/water_collector_assembly.tres"
+	"res://resources/config/production/simple_water_collector.tres"
 )
 const PLANTING_BASE_RECIPE: ProductionRecipe = preload(
-	"res://resources/config/production/planting_base_assembly.tres"
+	"res://resources/config/production/simple_planting_base.tres"
 )
 const PLANT_CULTIVATION_CENTER_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/plant_cultivation_center_assembly.tres"

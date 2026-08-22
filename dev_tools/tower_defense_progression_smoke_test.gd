@@ -16,8 +16,8 @@ const FORMAL_CAMPAIGN: WaveCampaignConfig = preload(
 const WOOD_TO_PLANK: ProductionRecipe = preload(
 	"res://resources/config/production/wood_to_plank.tres"
 )
-const WATER_COLLECTOR_ASSEMBLY: ProductionRecipe = preload(
-	"res://resources/config/production/water_collector_assembly.tres"
+const SIMPLE_WATER_COLLECTOR: ProductionRecipe = preload(
+	"res://resources/config/production/simple_water_collector.tres"
 )
 const WOOD: PickupConfig = preload(
 	"res://resources/config/materials/material_wood.tres"
@@ -199,14 +199,14 @@ func _test_progression_resource() -> void:
 	)
 	var minimum_water_chain_seconds := (
 		ceili(
-			float(WATER_COLLECTOR_ASSEMBLY.input_amounts[0])
+			float(SIMPLE_WATER_COLLECTOR.input_amounts[0])
 			/ float(WOOD_TO_PLANK.output_amounts[0])
 		) * WOOD_TO_PLANK.duration_seconds
-		+ WATER_COLLECTOR_ASSEMBLY.duration_seconds
+		+ SIMPLE_WATER_COLLECTOR.duration_seconds
 	)
 	_expect(
 		RunStateStore.STARTING_WOOD_COUNT
-		>= WATER_COLLECTOR_ASSEMBLY.input_amounts[0]
+		>= SIMPLE_WATER_COLLECTOR.input_amounts[0]
 		/ WOOD_TO_PLANK.output_amounts[0]
 		and minimum_water_chain_seconds
 		<= PROGRESSION.initial_preparation_seconds,

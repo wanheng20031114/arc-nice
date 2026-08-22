@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "68732288aa6a2ccc29b90d4b750add876cf6cf5202d75a2b98013675abca417e",
+	"content_sha256": "d74077260da655b327a9d8d9353c98d3494e11018c39a9c1efdf6fbe13f869be",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -3833,16 +3833,12 @@
 			"sha256": "46eca0ea98c9844619c4b2a1e23b6f8ba06ca65a55eca692b54b7e2184869251"
 		},
 		{
-			"path": "res://resources/config/production/planting_base_assembly.tres",
-			"sha256": "4c4ff5e9f4c59cac9ee3ca1477bae4813a8e4d3e35a652ffd217ff31da361cfe"
-		},
-		{
 			"path": "res://resources/config/production/production_recipe.gd",
-			"sha256": "eb37875b39e77f8a4d067711f9cf6d7cdbc87d827212024d704a5b0d3050f543"
+			"sha256": "380005b7db8e253501e1f7882a6e3f4113f2ce93af410e7b4af41c08ef1fb06f"
 		},
 		{
 			"path": "res://resources/config/production/production_recipe_registry.gd",
-			"sha256": "a6c8753d570ffc1c98de62f768f84ff93347f54561d6c310eb19d94a1482c3a8"
+			"sha256": "5223d720116bef246107073c4281e56d99ba845aa965a56f743b782ab4efaffb"
 		},
 		{
 			"path": "res://resources/config/production/research_center_assembly.tres",
@@ -3877,6 +3873,10 @@
 			"sha256": "79e9de2b8fc809af4026a3712907d4493fe882b5ea71812eb64512111372d459"
 		},
 		{
+			"path": "res://resources/config/production/simple_planting_base.tres",
+			"sha256": "4a10d23475ca08bdb900649d83492435f9ec6cc0783e181a593078fdca008967"
+		},
+		{
 			"path": "res://resources/config/production/simple_simple_fence.tres",
 			"sha256": "b84e5e03c9093031e52a1d63f104dfd60aba72abbb0e001031e5d98011a43a37"
 		},
@@ -3889,16 +3889,16 @@
 			"sha256": "d6decb07e2ad4d94405062b5cfd8278af02adf2fdf61c225f89b36ef1156deca"
 		},
 		{
+			"path": "res://resources/config/production/simple_water_collector.tres",
+			"sha256": "1aa90d2209f35ac9f3a02f4b48598cb915a93bcd80ebbcc69f4b5c2e1a9b1bb1"
+		},
+		{
 			"path": "res://resources/config/production/simple_wood_processing_station.tres",
 			"sha256": "068d5138d49aeb3487caf0332f5d26718b27babe0f0aa032f873fdf89a1eec8c"
 		},
 		{
 			"path": "res://resources/config/production/speed_tower_assembly.tres",
 			"sha256": "7b9014574b38703f5543952e6fd4ea9ff434b6e01e134d69b4d3c966c04a2b13"
-		},
-		{
-			"path": "res://resources/config/production/water_collector_assembly.tres",
-			"sha256": "c3ac8147b903712e948029fd7aa23e6b0a9c45dc39d7ba45b86061a9c1d85f84"
 		},
 		{
 			"path": "res://resources/config/production/water_source.tres",
@@ -8702,7 +8702,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/economy/production/production_coordinator.gd",
-			"sha256": "23c0f3d66abefdab840a0396d12bb76fd631a4335ae0457f5e66ea4e550788e5"
+			"sha256": "f5b0f111a537b109064e2305c15c1e9d5c4c85f91d7bf6ba312d25604ec9cf7a"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/economy/production/production_coordinator.tscn",
@@ -8822,7 +8822,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.gd",
-			"sha256": "73ebc0046a56b2906f07f69552d50c9e5ff7161cabecbeeeb3617cc0e4ce7dde"
+			"sha256": "482c4389fd3aeaed3166d639f485b4e8b482f58de1b06d8af5a64d8089cc857f"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.tscn",
@@ -8930,7 +8930,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.gd",
-			"sha256": "dca52a57103a22aab804d6879bc74d245ff6ead570ff2f5e47e781457ac58c2d"
+			"sha256": "844780aaa7c4ffe615e09b537d20ee56389bf9c983166a5e93601be060f738c0"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.tscn",
@@ -8954,7 +8954,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/tower_defense_game.gd",
-			"sha256": "14c53865a9d0601c21984966bcba31767e832e476483e29bfedccbc1cab2f410"
+			"sha256": "8c999f163f28fb19590bfa7ec053b9f7c59f846581c1bec057832d613fa7a473"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/tower_defense_game.tscn",
@@ -9010,7 +9010,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_player_profile_panel.gd",
-			"sha256": "a5473c4a785aa796497cbfab3e6515cdadd047a222e725bdd02f7b49cc0f482d"
+			"sha256": "445f0c5f4e255ae48d51e1d858b6b8b8462807d13a70226c14bf77e930c59665"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_player_profile_panel.tscn",
@@ -9290,7 +9290,7 @@
 		},
 		{
 			"path": "res://scene/plant_defense/wood_processing_station.tscn",
-			"sha256": "c0909783b5acbcdaa924a0c23a3e83f6d8eccac0c2cb915dcff6ad92ce396a50"
+			"sha256": "42f22be48bb7aba206f9c0a7951b0aab705d49841f8b05fedc835efdaf86a460"
 		},
 		{
 			"path": "res://scene/settings/settings_gear_icon.gd",
@@ -9310,7 +9310,7 @@
 		},
 		{
 			"path": "res://scene/ui/shared/crafting/simple_crafting_item_slot.gd",
-			"sha256": "575d743ecae1bad1b1990a2f8ddb1a979a81728d0f0078d56b27c90a273bd9bd"
+			"sha256": "5070abdc42188f585ab3a413d3fe482d521c247f8a75c6c1abd06b7728203b30"
 		},
 		{
 			"path": "res://scene/ui/shared/crafting/simple_crafting_item_slot.tscn",
@@ -9318,11 +9318,11 @@
 		},
 		{
 			"path": "res://scene/ui/shared/crafting/simple_crafting_panel.gd",
-			"sha256": "9ea09cf7ed38636881f8844cb3d2dda1ea4a8508e2ac2be302b10642d9916152"
+			"sha256": "08cb044c4253c501ab9e571ca1407e53b4ec74aaf273308f9971538e56376443"
 		},
 		{
 			"path": "res://scene/ui/shared/crafting/simple_crafting_panel.tscn",
-			"sha256": "825fd0f28eff64c967910e39dccf705f7f20ae040d00f5f55ef0f5a6a143ba7c"
+			"sha256": "8104fe5f50aa3dc405180c18700718238eaba5d949a6730822f445099f1ca114"
 		},
 		{
 			"path": "res://scene/ui/shared/debug/debug_collectible_window.gd",

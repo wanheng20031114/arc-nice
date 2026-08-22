@@ -9,11 +9,12 @@
 
 [resource]
 script = ExtResource("1_script")
-recipe_id = &"planting_base_assembly"
-display_name = "种植基地组装"
+recipe_id = &"planting_base"
+display_name = "种植基地"
 input_items = Array[ExtResource("6_pickup_script")]([ExtResource("2_plank"), ExtResource("3_sapling"), ExtResource("4_water")])
 input_amounts = Array[int]([20, 5, 5])
+input_source = 1
 output_items = Array[ExtResource("6_pickup_script")]([ExtResource("5_building")])
 output_amounts = Array[int]([1])
-output_destination = 0
-duration_seconds = 30.0
+output_destination = 1
+duration_seconds = 0.1

@@ -7,6 +7,12 @@ const WAREHOUSE_SCENE := preload("res://scene/plant_defense/oak_warehouse.tscn")
 const WOOD: PickupConfig = preload(
 	"res://resources/config/materials/material_wood.tres"
 )
+const PLANK: PickupConfig = preload(
+	"res://resources/config/materials/material_plank.tres"
+)
+const SAPLING: PickupConfig = preload(
+	"res://resources/config/materials/material_sapling.tres"
+)
 const WATER_BOTTLE: PickupConfig = preload(
 	"res://resources/config/materials/material_water_bottle.tres"
 )
@@ -18,6 +24,12 @@ const SIMPLE_FENCE_ITEM: PickupConfig = preload(
 )
 const STONE_MILL_ITEM: PickupConfig = preload(
 	"res://resources/config/buildings/building_stone_mill.tres"
+)
+const WATER_COLLECTOR_ITEM: PickupConfig = preload(
+	"res://resources/config/buildings/building_water_collector.tres"
+)
+const PLANTING_BASE_ITEM: PickupConfig = preload(
+	"res://resources/config/buildings/building_planting_base.tres"
 )
 
 const FIRST_PEER_ID := 11
@@ -34,6 +46,8 @@ var failures: Array[String] = []
 var warehouse_config: PlantDefenseConfig
 var fence_recipe: ProductionRecipe
 var stone_mill_recipe: ProductionRecipe
+var water_collector_recipe: ProductionRecipe
+var planting_base_recipe: ProductionRecipe
 
 
 func _initialize() -> void:
@@ -49,15 +63,25 @@ func _run() -> void:
 	stone_mill_recipe = SimpleCraftingRegistry.get_recipe(
 		SimpleCraftingRegistry.STONE_MILL_ID
 	)
+	water_collector_recipe = SimpleCraftingRegistry.get_recipe(
+		SimpleCraftingRegistry.WATER_COLLECTOR_ID
+	)
+	planting_base_recipe = SimpleCraftingRegistry.get_recipe(
+		SimpleCraftingRegistry.PLANTING_BASE_ID
+	)
 	_expect(run_state != null, "测试必须能读取 RunState autoload。")
 	_expect(warehouse_config != null, "测试必须能读取完工橡木仓库配置。")
 	_expect(fence_recipe != null, "测试必须能读取正式简易围栏配方。")
 	_expect(stone_mill_recipe != null, "测试必须能读取正式石磨台配方。")
+	_expect(water_collector_recipe != null, "测试必须能读取正式水源采集器简易配方。")
+	_expect(planting_base_recipe != null, "测试必须能读取正式种植基地简易配方。")
 	if (
 		run_state == null
 		or warehouse_config == null
 		or fence_recipe == null
 		or stone_mill_recipe == null
+		or water_collector_recipe == null
+		or planting_base_recipe == null
 	):
 		_finish()
 		return
@@ -78,27 +102,27 @@ func _test_local_storage_only(run_state: RunStateStore) -> void:
 	var source := fixture.warehouses[0]
 	var unrelated := fixture.warehouses[1]
 	_expect(
-		source.try_add_storage_item_count(WOOD, 1)
+		source.try_add_storage_item_count(PLANK, 10)
 		and unrelated.try_add_storage_item_count(APPLE, 1),
-		"纯仓库夹具必须能准备制作材料和无关仓库哨兵。"
+		"水源采集器纯仓库夹具必须能准备10木板和无关仓库哨兵。"
 	)
 	var inventory_revision := run_state.get_inventory_revision()
 	var source_revision := source.get_storage_revision()
 	var unrelated_revision := unrelated.get_storage_revision()
 	var unrelated_before := _warehouse_signature(unrelated)
 	var result := fixture.coordinator.try_commit_simple_crafting_recipe(
-		fence_recipe,
+		water_collector_recipe,
 		inventory_revision
 	)
 	_expect(
 		result == RunStateStore.CRAFT_RESULT_SUCCESS
-		and run_state.get_inventory_item_total(WOOD) == 0
-		and run_state.get_inventory_item_total(SIMPLE_FENCE_ITEM) == 1
+		and run_state.get_inventory_item_total(PLANK) == 0
+		and run_state.get_inventory_item_total(WATER_COLLECTOR_ITEM) == 1
 		and run_state.get_inventory_revision() == inventory_revision + 1,
 		"本地简易制作必须能只消耗共享仓库材料，且产物只进入玩家背包、revision只前进一次。"
 	)
 	_expect(
-		source.get_storage_item_total(WOOD) == 0
+		source.get_storage_item_total(PLANK) == 0
 		and source.get_storage_revision() == source_revision + 1
 		and unrelated.get_storage_revision() == unrelated_revision
 		and _warehouse_signature(unrelated) == unrelated_before,
@@ -112,19 +136,22 @@ func _test_personal_first_across_two_warehouses(
 ) -> void:
 	run_state.begin_new_run(&"weishidaier", false)
 	_expect(
-		run_state.try_add_item_count(WOOD, 4)
+		run_state.try_add_item_count(PLANK, 4)
+		and run_state.try_add_item_count(SAPLING, 2)
 		and run_state.try_add_item_count(WATER_BOTTLE, 2),
-		"跨仓夹具必须能准备个人背包材料。"
+		"种植基地跨仓夹具必须能准备三种个人背包材料。"
 	)
 	var fixture := await _create_fixture(&"PersonalFirstAcrossWarehouses", 3)
 	var first := fixture.warehouses[0]
 	var second := fixture.warehouses[1]
 	var unrelated := fixture.warehouses[2]
 	_expect(
-		first.try_add_storage_item_count(WOOD, 3)
-		and first.try_add_storage_item_count(WATER_BOTTLE, 4)
-		and second.try_add_storage_item_count(WOOD, 7)
-		and second.try_add_storage_item_count(WATER_BOTTLE, 10)
+		first.try_add_storage_item_count(PLANK, 3)
+		and first.try_add_storage_item_count(SAPLING, 2)
+		and first.try_add_storage_item_count(WATER_BOTTLE, 1)
+		and second.try_add_storage_item_count(PLANK, 13)
+		and second.try_add_storage_item_count(SAPLING, 1)
+		and second.try_add_storage_item_count(WATER_BOTTLE, 2)
 		and unrelated.try_add_storage_item_count(APPLE, 1),
 		"跨仓夹具必须能准备两个共享材料来源和无关仓库哨兵。"
 	)
@@ -134,25 +161,28 @@ func _test_personal_first_across_two_warehouses(
 	var unrelated_revision := unrelated.get_storage_revision()
 	var unrelated_before := _warehouse_signature(unrelated)
 	var result := fixture.coordinator.try_commit_simple_crafting_recipe(
-		stone_mill_recipe,
+		planting_base_recipe,
 		inventory_revision
 	)
 	_expect(
 		result == RunStateStore.CRAFT_RESULT_SUCCESS
-		and run_state.get_inventory_item_total(WOOD) == 0
+		and run_state.get_inventory_item_total(PLANK) == 0
+		and run_state.get_inventory_item_total(SAPLING) == 0
 		and run_state.get_inventory_item_total(WATER_BOTTLE) == 0
-		and run_state.get_inventory_item_total(STONE_MILL_ITEM) == 1
+		and run_state.get_inventory_item_total(PLANTING_BASE_ITEM) == 1
 		and run_state.get_inventory_revision() == inventory_revision + 1,
 		"联合制作必须优先扣个人材料、从共享仓库补足缺口，并将产物原子写回个人背包。"
 	)
 	_expect(
-		first.get_storage_item_total(WOOD) == 0
+		first.get_storage_item_total(PLANK) == 0
+		and first.get_storage_item_total(SAPLING) == 0
 		and first.get_storage_item_total(WATER_BOTTLE) == 0
-		and second.get_storage_item_total(WOOD) == 4
-		and second.get_storage_item_total(WATER_BOTTLE) == 6
+		and second.get_storage_item_total(PLANK) == 0
+		and second.get_storage_item_total(SAPLING) == 0
+		and second.get_storage_item_total(WATER_BOTTLE) == 0
 		and first.get_storage_revision() == first_revision + 1
 		and second.get_storage_revision() == second_revision + 1,
-		"跨两仓扣料必须只消耗个人背包之外的6木头和8水瓶，且每个触及仓库revision只前进一步。"
+		"种植基地跨两仓扣料必须补足16木板、3树苗和3水瓶，且每个触及仓库revision只前进一步。"
 	)
 	_expect(
 		unrelated.get_storage_revision() == unrelated_revision
@@ -280,8 +310,8 @@ func _test_target_peer_receives_personal_output(
 	)
 	var warehouse := fixture.warehouses[0]
 	_expect(
-		warehouse.try_add_storage_item_count(WOOD, 1),
-		"指定Peer夹具必须能准备一份共享木头。"
+		warehouse.try_add_storage_item_count(PLANK, 10),
+		"指定Peer夹具必须能为水源采集器准备10份共享木板。"
 	)
 	var local_revision := run_state.get_inventory_revision()
 	var local_before := _local_inventory_signature(run_state)
@@ -291,20 +321,20 @@ func _test_target_peer_receives_personal_output(
 	var warehouse_revision := warehouse.get_storage_revision()
 	var result := fixture.coordinator.try_commit_simple_crafting_recipe_for_peer(
 		FIRST_PEER_ID,
-		fence_recipe,
+		water_collector_recipe,
 		target_revision
 	)
 	_expect(
 		result == RunStateStore.CRAFT_RESULT_SUCCESS
 		and run_state.get_inventory_item_total_for_peer(
 			FIRST_PEER_ID,
-			SIMPLE_FENCE_ITEM
+			WATER_COLLECTOR_ITEM
 		) == 1
 		and run_state.get_inventory_revision_for_peer(FIRST_PEER_ID)
 		== target_revision + 1
-		and warehouse.get_storage_item_total(WOOD) == 0
+		and warehouse.get_storage_item_total(PLANK) == 0
 		and warehouse.get_storage_revision() == warehouse_revision + 1,
-		"Host为指定Peer提交联合制作时，必须只给目标Peer产物且两侧revision各前进一步。"
+		"Host为指定Peer制作水源采集器时，必须只给目标Peer产物且两侧revision各前进一步。"
 	)
 	_expect(
 		run_state.get_inventory_revision() == local_revision

@@ -7,11 +7,12 @@
 
 [resource]
 script = ExtResource("1_script")
-recipe_id = &"water_collector_assembly"
-display_name = "水源采集器组装"
+recipe_id = &"water_collector"
+display_name = "水源采集器"
 input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_plank")])
 input_amounts = Array[int]([10])
+input_source = 1
 output_items = Array[ExtResource("4_pickup_script")]([ExtResource("3_building")])
 output_amounts = Array[int]([1])
-output_destination = 0
-duration_seconds = 30.0
+output_destination = 1
+duration_seconds = 0.1

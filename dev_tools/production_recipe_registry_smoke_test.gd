@@ -11,13 +11,13 @@ const EXPECTED_RECIPE_IDS: Array[StringName] = [
 	&"stone_mill",
 	&"simple_fence",
 	&"gel_to_water_bottle",
+	&"water_collector",
+	&"planting_base",
 	&"bamboo_mortar",
 	&"hydrangea_rain_tower",
 	&"wood_to_plank",
 	&"wooden_core_assembly",
 	&"gambler_ticket_assembly",
-	&"water_collector_assembly",
-	&"planting_base_assembly",
 	&"plant_cultivation_center_assembly",
 	&"research_center_assembly",
 	&"excavator_assembly",
@@ -38,8 +38,8 @@ const EXPECTED_RECIPE_IDS: Array[StringName] = [
 	&"excavator_cycle",
 ]
 const EXPECTED_CATEGORY_COUNTS := {
-	RecipeRegistry.Category.SIMPLE_CRAFTING: 9,
-	RecipeRegistry.Category.SHARED_PRODUCTION: 23,
+	RecipeRegistry.Category.SIMPLE_CRAFTING: 11,
+	RecipeRegistry.Category.SHARED_PRODUCTION: 21,
 }
 const PRODUCER_SCENE_PATHS := {
 	RecipeRegistry.WOOD_PROCESSING_STATION_PRODUCER_ID: (
@@ -141,7 +141,7 @@ func _test_registry_contract() -> void:
 	)
 	_expect(
 		category_counts == EXPECTED_CATEGORY_COUNTS,
-		"配方分类必须固定为简易9、共享生产23，且正式配方不得使用本地产物格，实际为：%s。"
+		"配方分类必须固定为简易11、共享生产21，且正式配方不得使用本地产物格，实际为：%s。"
 		% [category_counts]
 	)
 	_expect(
@@ -162,7 +162,7 @@ func _test_runtime_source_closure() -> void:
 		runtime_simple_ids[recipe.recipe_id] = true
 	_expect(
 		registered_simple_ids == runtime_simple_ids,
-		"配方百科的9条简易制作必须与SimpleCraftingRegistry完全一致。"
+		"配方百科的11条简易制作必须与SimpleCraftingRegistry完全一致。"
 	)
 	for producer_id_variant in PRODUCER_SCENE_PATHS:
 		var producer_id := StringName(producer_id_variant)
