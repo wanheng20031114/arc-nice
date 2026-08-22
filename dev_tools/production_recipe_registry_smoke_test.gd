@@ -39,8 +39,7 @@ const EXPECTED_RECIPE_IDS: Array[StringName] = [
 ]
 const EXPECTED_CATEGORY_COUNTS := {
 	RecipeRegistry.Category.SIMPLE_CRAFTING: 9,
-	RecipeRegistry.Category.SHARED_PRODUCTION: 22,
-	RecipeRegistry.Category.LOCAL_OUTPUT_CYCLE: 1,
+	RecipeRegistry.Category.SHARED_PRODUCTION: 23,
 }
 const PRODUCER_SCENE_PATHS := {
 	RecipeRegistry.WOOD_PROCESSING_STATION_PRODUCER_ID: (
@@ -136,20 +135,13 @@ func _test_registry_contract() -> void:
 					"共享生产必须从共享来源投入并产入共享仓库：%s。"
 					% recipe.recipe_id
 				)
-			RecipeRegistry.Category.LOCAL_OUTPUT_CYCLE:
-				_expect(
-					not recipe.inputs_from_player_inventory()
-					and recipe.outputs_to_local_slot(),
-					"本地循环必须使用共享来源并产入建筑本地产物格：%s。"
-					% recipe.recipe_id
-				)
 	_expect(
 		actual_ids == EXPECTED_RECIPE_IDS,
 		"配方注册表顺序必须稳定，实际为：%s。" % [actual_ids]
 	)
 	_expect(
 		category_counts == EXPECTED_CATEGORY_COUNTS,
-		"配方分类必须固定为简易9、共享生产22、本地循环1，实际为：%s。"
+		"配方分类必须固定为简易9、共享生产23，且正式配方不得使用本地产物格，实际为：%s。"
 		% [category_counts]
 	)
 	_expect(

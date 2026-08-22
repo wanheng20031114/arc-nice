@@ -44,8 +44,7 @@ const EXPECTED_CHARACTER_CATEGORY_COUNTS := {
 }
 const EXPECTED_RECIPE_CATEGORY_COUNTS := {
 	&"simple_crafting": 9,
-	&"shared_production": 22,
-	&"local_output_cycle": 1,
+	&"shared_production": 23,
 }
 const EXPECTED_RESEARCH_CATEGORY_COUNTS := {
 	&"attribute": 5,
@@ -1077,10 +1076,12 @@ func _test_new_section_content_contract(catalog: CodexCatalog) -> void:
 		and String(excavator_stats.get("材料来源", ""))
 		== "无需材料（启动后生产）"
 		and String(excavator_stats.get("产物去向", ""))
-		== "建筑本地产物格"
-		and excavator_recipe.notes.has("本地产物格容量：5")
+		== "共享仓库"
+		and excavator_recipe.primary_badge == "共享仓库生产"
+		and excavator_recipe.filter_key == &"shared_production"
+		and not excavator_recipe.notes.has("本地产物格容量：5")
 		and excavator_recipe.notes.has("生产模式：默认单次，可在建筑面板开启∞循环"),
-		"Excavator recipe must describe one-shot default and optional loop mode accurately."
+		"Excavator recipe must describe direct shared-storage output and its production modes accurately."
 	)
 
 	var bamboo_research := _find_entry(

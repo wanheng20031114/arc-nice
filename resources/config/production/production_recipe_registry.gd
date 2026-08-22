@@ -9,7 +9,6 @@ const INVALID_CATEGORY := -1
 enum Category {
 	SIMPLE_CRAFTING,
 	SHARED_PRODUCTION,
-	LOCAL_OUTPUT_CYCLE,
 }
 
 const SIMPLE_CRAFTING_PRODUCER_ID: StringName = &"simple_crafting"
@@ -207,8 +206,7 @@ const PRODUCER_LABELS := {
 
 const EXPECTED_CATEGORY_COUNTS := {
 	Category.SIMPLE_CRAFTING: 9,
-	Category.SHARED_PRODUCTION: 22,
-	Category.LOCAL_OUTPUT_CYCLE: 1,
+	Category.SHARED_PRODUCTION: 23,
 }
 
 
@@ -259,9 +257,22 @@ static func get_category_for_recipe(recipe: ProductionRecipe) -> int:
 	if expected_path.is_empty() or recipe.resource_path != expected_path:
 		return INVALID_CATEGORY
 	if get_producer_id(recipe.recipe_id) == SIMPLE_CRAFTING_PRODUCER_ID:
-		return Category.SIMPLE_CRAFTING
-	if recipe.outputs_to_local_slot():
-		return Category.LOCAL_OUTPUT_CYCLE
+		return (
+			Category.SIMPLE_CRAFTING
+			if (
+				recipe.inputs_from_player_inventory()
+				and recipe.outputs_to_player_inventory()
+			)
+			else INVALID_CATEGORY
+		)
+	if (
+		recipe.inputs_from_player_inventory()
+		or recipe.output_destination
+		!= ProductionRecipe.OutputDestination.SHARED_STORAGE
+	):
+		# 正式建筑生产统一结算到共享仓库；本地产物格仍是底层通用能力，
+		# 但本地产物格或个人背包事务不得悄然重新进入正式生产目录。
+		return INVALID_CATEGORY
 	return Category.SHARED_PRODUCTION
 
 
@@ -271,8 +282,6 @@ static func get_category_key(category: int) -> StringName:
 			return &"simple_crafting"
 		Category.SHARED_PRODUCTION:
 			return &"shared_production"
-		Category.LOCAL_OUTPUT_CYCLE:
-			return &"local_output_cycle"
 		_:
 			return &""
 
@@ -283,8 +292,6 @@ static func get_category_label(category: int) -> String:
 			return "简易制作"
 		Category.SHARED_PRODUCTION:
 			return "共享仓库生产"
-		Category.LOCAL_OUTPUT_CYCLE:
-			return "本地产物循环"
 		_:
 			return "未知配方"
 

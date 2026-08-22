@@ -8,7 +8,7 @@
 script = ExtResource("1_config")
 plant_id = &"simple_fence"
 display_name = "简易围栏"
-description = "一格木质路障。不会进入敌人主动索敌与寻路目标；敌人局部接触后会停下并攻击。"
+description = "可建于任意陆地的一格木质路障。不会进入敌人主动索敌与寻路目标；敌人局部接触后会停下并攻击。"
 icon = ExtResource("2_icon")
 plant_scene = ExtResource("3_scene")
 supports_multiplayer = true

@@ -1475,7 +1475,9 @@ func _is_terrain_supported_for_config(
 		PlantDefenseConfig.PlacementSurface.GRASS_ONLY:
 			return terrain_map.is_cell_plantable(cell)
 		PlantDefenseConfig.PlacementSurface.ANY_LAND:
-			var terrain_type := terrain_map.get_terrain_type(cell)
+			# 未显式绘制语义层的格子由底图表现为泥地，也应按陆地处理。
+			# 与寻路统一使用 effective terrain，避免画面是泥地却无法放置。
+			var terrain_type := terrain_map.get_effective_terrain_type(cell)
 			return (
 				terrain_type == DualGridTilemap.TerrainType.GRASS
 				or terrain_type == DualGridTilemap.TerrainType.DIRT

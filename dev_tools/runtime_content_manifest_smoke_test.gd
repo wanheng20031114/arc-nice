@@ -3,6 +3,12 @@ extends SceneTree
 const RuntimeContentManifestScript := preload(
 	"res://resources/config/generated/runtime_content_manifest.gd"
 )
+const PlantDefenseRegistryScript := preload(
+	"res://resources/config/plant_defense/plant_defense_registry.gd"
+)
+const ProductionRecipeRegistryScript := preload(
+	"res://resources/config/production/production_recipe_registry.gd"
+)
 const MANIFEST_PATH := (
 	"res://resources/config/generated/runtime_content_manifest.schema1.json"
 )
@@ -16,6 +22,24 @@ const LINGLAN_BOSS_DYNAMIC_SCENE_PATHS := [
 ]
 const WOOD_PROCESSING_STATION_PATH := (
 	"res://scene/plant_defense/wood_processing_station.tscn"
+)
+const TOWER_DEFENSE_GAME_SCENE_PATH := (
+	"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
+)
+const PLANT_SYSTEM_SCRIPT_PATH := (
+	"res://scene/game_modes/tower_defense/plant/runtime/plant_system.gd"
+)
+const PRODUCTION_BUILDING_PANEL_SCRIPT_PATH := (
+	"res://scene/game_modes/tower_defense/economy/production/production_building_panel.gd"
+)
+const PLANT_DEFENSE_REGISTRY_PATH := (
+	"res://resources/config/plant_defense/plant_defense_registry.gd"
+)
+const PRODUCTION_RECIPE_REGISTRY_PATH := (
+	"res://resources/config/production/production_recipe_registry.gd"
+)
+const EXCAVATOR_CYCLE_PATH := (
+	"res://resources/config/production/excavator_cycle.tres"
 )
 const GLOBAL_RESEARCH_REGISTRY_PATH := (
 	"res://resources/config/research/global_research_registry.gd"
@@ -34,8 +58,10 @@ const ENHANCEMENT_TOWER_RECIPE_PATHS := [
 	"res://resources/config/production/speed_tower_assembly.tres",
 	"res://resources/config/production/attack_speed_tower_assembly.tres",
 ]
+const EXPECTED_PLANT_DEFENSE_CONFIG_COUNT := 19
+const EXPECTED_PRODUCTION_RECIPE_COUNT := 32
 const GOLDEN_CONTENT_SHA256 := (
-	"6142a38793d4a4bd8e6aa8ab9f2ee7abd4b191b9fd06b038ebdd04253e46452f"
+	"68732288aa6a2ccc29b90d4b750add876cf6cf5202d75a2b98013675abca417e"
 )
 
 var failures: Array[String] = []
@@ -126,6 +152,11 @@ func _validate_manifest(manifest: Dictionary) -> void:
 	)
 	_validate_explicit_boss_dependency_closure(dependency_hashes)
 	_validate_boss_digest_mutation_sensitivity(canonical_lines, dependency_hashes)
+	_validate_tower_defense_dependency_closure(
+		canonical_lines,
+		dependency_hashes
+	)
+	_validate_plant_defense_config_dependency_closure(dependency_hashes)
 	_validate_production_recipe_dependency_closure(
 		canonical_lines,
 		dependency_hashes
@@ -133,14 +164,89 @@ func _validate_manifest(manifest: Dictionary) -> void:
 	_validate_research_dependency_closure(canonical_lines, dependency_hashes)
 
 
+func _validate_tower_defense_dependency_closure(
+	canonical_lines: PackedStringArray,
+	dependency_hashes: Dictionary[String, String]
+) -> void:
+	for dependency_path in [
+		TOWER_DEFENSE_GAME_SCENE_PATH,
+		PLANT_SYSTEM_SCRIPT_PATH,
+		PRODUCTION_BUILDING_PANEL_SCRIPT_PATH,
+	]:
+		_expect(
+			FileAccess.file_exists(dependency_path)
+			and dependency_hashes.has(dependency_path),
+			"塔防主场景及其运行时代码必须进入内容摘要：%s。"
+			% dependency_path
+		)
+	if not dependency_hashes.has(PLANT_SYSTEM_SCRIPT_PATH):
+		return
+	var mutated_plant_system_source := (
+		_get_canonical_text(PLANT_SYSTEM_SCRIPT_PATH)
+		+ "\n# plant system manifest mutation fixture"
+	)
+	_expect_dependency_mutation_changes_digest(
+		canonical_lines,
+		PLANT_SYSTEM_SCRIPT_PATH,
+		mutated_plant_system_source.sha256_text(),
+		PLANT_SYSTEM_SCRIPT_PATH
+	)
+
+
+func _validate_plant_defense_config_dependency_closure(
+	dependency_hashes: Dictionary[String, String]
+) -> void:
+	_expect(
+		FileAccess.file_exists(PLANT_DEFENSE_REGISTRY_PATH)
+		and dependency_hashes.has(PLANT_DEFENSE_REGISTRY_PATH),
+		"建筑配置注册表必须作为多人玩法内容摘要根。"
+	)
+	var configs := PlantDefenseRegistryScript.get_all_configs()
+	_expect(
+		configs.size() == EXPECTED_PLANT_DEFENSE_CONFIG_COUNT,
+		"内容摘要验证必须覆盖完整%d项建筑配置。"
+		% EXPECTED_PLANT_DEFENSE_CONFIG_COUNT
+	)
+	for config in configs:
+		var config_path := config.resource_path if config != null else ""
+		_expect(
+			config != null
+			and config.is_valid()
+			and FileAccess.file_exists(config_path)
+			and dependency_hashes.has(config_path),
+			"每项正式建筑配置都必须存在并进入内容摘要：%s。" % config_path
+		)
+
+
 func _validate_production_recipe_dependency_closure(
 	canonical_lines: PackedStringArray,
 	dependency_hashes: Dictionary[String, String]
 ) -> void:
 	_expect(
+		FileAccess.file_exists(PRODUCTION_RECIPE_REGISTRY_PATH)
+		and dependency_hashes.has(PRODUCTION_RECIPE_REGISTRY_PATH),
+		"正式生产配方注册表必须作为多人玩法内容摘要根。"
+	)
+	_expect(
 		dependency_hashes.has(WOOD_PROCESSING_STATION_PATH),
 		"木头加工站必须作为多人生产内容摘要的显式玩法依赖根。"
 	)
+	var recipes := ProductionRecipeRegistryScript.get_all_recipes()
+	_expect(
+		ProductionRecipeRegistryScript.validate_contract()
+		and recipes.size() == EXPECTED_PRODUCTION_RECIPE_COUNT,
+		"内容摘要验证必须覆盖完整%d条正式生产配方。"
+		% EXPECTED_PRODUCTION_RECIPE_COUNT
+	)
+	for recipe in recipes:
+		var recipe_path := recipe.resource_path if recipe != null else ""
+		_expect(
+			recipe != null
+			and recipe.is_valid()
+			and FileAccess.file_exists(recipe_path)
+			and dependency_hashes.has(recipe_path),
+			"每条正式生产配方都必须存在并进入内容摘要：%s。" % recipe_path
+		)
 	for recipe_path_variant in ENHANCEMENT_TOWER_RECIPE_PATHS:
 		var recipe_path := str(recipe_path_variant)
 		_expect(
@@ -158,6 +264,21 @@ func _validate_production_recipe_dependency_closure(
 			recipe_path,
 			mutated_recipe_source.sha256_text(),
 			recipe_path
+		)
+	_expect(
+		dependency_hashes.has(EXCAVATOR_CYCLE_PATH),
+		"挖土装置权威循环配方必须进入多人内容摘要。"
+	)
+	if dependency_hashes.has(EXCAVATOR_CYCLE_PATH):
+		var mutated_excavator_cycle_source := (
+			_get_canonical_text(EXCAVATOR_CYCLE_PATH)
+			+ "\n# excavator cycle manifest mutation fixture"
+		)
+		_expect_dependency_mutation_changes_digest(
+			canonical_lines,
+			EXCAVATOR_CYCLE_PATH,
+			mutated_excavator_cycle_source.sha256_text(),
+			EXCAVATOR_CYCLE_PATH
 		)
 
 

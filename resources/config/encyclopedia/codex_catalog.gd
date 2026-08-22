@@ -33,7 +33,6 @@ const CHARACTER_FILTER_KEYS := {
 const RECIPE_FILTER_KEYS := {
 	&"simple_crafting": "简易制作",
 	&"shared_production": "共享仓库生产",
-	&"local_output_cycle": "本地产物循环",
 }
 const RESEARCH_FILTER_KEYS := {
 	&"attribute": "属性强化",
@@ -1088,8 +1087,6 @@ func _get_recipe_sort_group(filter_key: StringName) -> int:
 	match filter_key:
 		&"shared_production":
 			return 1
-		&"local_output_cycle":
-			return 2
 		_:
 			return 0
 

@@ -524,6 +524,7 @@ func _test_four_water_cell_support(test_root: Node) -> void:
 		&"excavator",
 		&"oak_warehouse",
 		&"stone_mill",
+		&"simple_fence",
 	]
 	var all_support_dirt := true
 	for plant_id in non_vegetation_building_ids:
@@ -546,7 +547,7 @@ func _test_four_water_cell_support(test_root: Node) -> void:
 			changed_cell,
 			WATER_COLLECTOR_CONFIG
 		)),
-		"木头加工站、挖土装置、橡木仓库和石磨台必须支持非植被泥地；草地建筑与水源建筑仍须拒绝。"
+		"木头加工站、挖土装置、橡木仓库、石磨台和简易围栏必须支持非植被泥地；草地建筑与水源建筑仍须拒绝。"
 	)
 	terrain.set_tile(changed_cell, DualGridTilemap.TerrainType.WATER)
 	var all_reject_water := true
@@ -560,7 +561,7 @@ func _test_four_water_cell_support(test_root: Node) -> void:
 		)
 	_expect(
 		all_reject_water,
-		"不依赖草地的四种陆地建筑仍必须拒绝水面，避免两个布尔依赖退化成任意地形。"
+		"不依赖草地的五种陆地建筑仍必须拒绝水面，避免两个布尔依赖退化成任意地形。"
 	)
 	_stop_audio_players(game)
 	game.queue_free()

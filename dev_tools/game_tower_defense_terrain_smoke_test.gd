@@ -434,6 +434,32 @@ func _verify_open_ground_terrain_rules(
 		DualGridTilemap.TraversalType.LAND | DualGridTilemap.TraversalType.WATER
 	)
 
+	terrain.set_tile(terrain_cell, DualGridTilemap.TerrainType.EMPTY)
+	_expect(
+		bool(game.plant_system.call(
+			"_is_floor_cell_available",
+			ground_cell,
+			PlantDefenseRegistry.get_config(&"excavator")
+		)),
+		"Excavator must accept unpainted ground as effective dirt."
+	)
+	_expect(
+		bool(game.plant_system.call(
+			"_is_floor_cell_available",
+			ground_cell,
+			PlantDefenseRegistry.get_config(&"simple_fence")
+		)),
+		"Simple fence must accept unpainted ground as effective dirt."
+	)
+	_expect(
+		not bool(game.plant_system.call(
+			"_is_floor_cell_available",
+			ground_cell,
+			PlantDefenseRegistry.get_config(&"agave_cannon")
+		)),
+		"Grass-only buildings must reject unpainted effective dirt."
+	)
+
 	terrain.set_tile(terrain_cell, DualGridTilemap.TerrainType.WATER)
 	pathfinder.rebuild()
 	_expect(
@@ -509,6 +535,8 @@ func _verify_runtime_placement_visibility(game: TowerDefenseGame) -> void:
 	_expect(not controller.selection_hud.visible, "Plant selection CanvasLayer must start hidden.")
 	_expect(instructions != null and not instructions.visible, "Placement instructions must start hidden.")
 
+	# 该用例只验证界面生命周期，不应依赖本局背包是否恰好持有建筑箱。
+	controller.set_free_placement_enabled(true)
 	_expect(controller.open_selection(), "Plant selection must open at runtime.")
 	_expect(controller.selection_hud.visible, "Plant selection CanvasLayer must show at runtime.")
 	_expect(controller.selection_hud.is_open(), "Plant selection Root must show at runtime.")

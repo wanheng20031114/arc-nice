@@ -258,6 +258,7 @@ func _test_surface_semantics() -> void:
 	for plant_id in ANY_LAND_IDS:
 		var config := PlantDefenseRegistry.get_config(plant_id)
 		for land_type in [
+			DualGridTilemap.TerrainType.EMPTY,
 			DualGridTilemap.TerrainType.GRASS,
 			DualGridTilemap.TerrainType.DIRT,
 			DualGridTilemap.TerrainType.METAL,

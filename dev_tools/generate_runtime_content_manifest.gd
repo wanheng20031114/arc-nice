@@ -3,6 +3,12 @@ extends SceneTree
 const RuntimeContentCatalogScript := preload(
 	"res://resources/config/runtime_content_catalog.gd"
 )
+const PlantDefenseRegistryScript := preload(
+	"res://resources/config/plant_defense/plant_defense_registry.gd"
+)
+const ProductionRecipeRegistryScript := preload(
+	"res://resources/config/production/production_recipe_registry.gd"
+)
 
 const WRITE_ARGUMENT := "--write"
 const CHECK_ARGUMENT := "--check"
@@ -19,13 +25,27 @@ const SCHEMA_VERSION := 1
 const EXPECTED_ENEMY_COUNT := 64
 const EXPECTED_PICKUP_COUNT := 181
 const EXPECTED_CAMPAIGN_COUNT := 26
+const EXPECTED_PLANT_DEFENSE_CONFIG_COUNT := 19
+const EXPECTED_PRODUCTION_RECIPE_COUNT := 32
 const GLOBAL_RESEARCH_REGISTRY_PATH := (
 	"res://resources/config/research/global_research_registry.gd"
+)
+const PLANT_DEFENSE_REGISTRY_PATH := (
+	"res://resources/config/plant_defense/plant_defense_registry.gd"
+)
+const PRODUCTION_RECIPE_REGISTRY_PATH := (
+	"res://resources/config/production/production_recipe_registry.gd"
+)
+const TOWER_DEFENSE_GAME_SCENE_PATH := (
+	"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
 )
 ## 这些玩法资源不是敌人、道具或 Campaign 根，但其中的稳定 ID 会直接进入
 ## 多人命令与运行时快照，必须参与同构建内容摘要。
 const EXPLICIT_GAMEPLAY_DEPENDENCY_ROOTS := [
 	GLOBAL_RESEARCH_REGISTRY_PATH,
+	PLANT_DEFENSE_REGISTRY_PATH,
+	PRODUCTION_RECIPE_REGISTRY_PATH,
+	TOWER_DEFENSE_GAME_SCENE_PATH,
 	"res://scene/plant_defense/wood_processing_station.tscn",
 ]
 const TEXT_EXTENSIONS := {
@@ -245,6 +265,8 @@ func _build_dependency_entries(
 			continue
 		all_root_paths.append(gameplay_root)
 	_append_global_research_config_roots(all_root_paths)
+	_append_plant_defense_config_roots(all_root_paths)
+	_append_production_recipe_roots(all_root_paths)
 	var visited := _collect_dependency_closure(all_root_paths, false)
 
 	# ResourceLoader 能发现资源文件的 ext_resource，但不会展开 GDScript
@@ -293,6 +315,61 @@ func _append_global_research_config_roots(
 			failures.append("全局科研配置不存在或路径非法：%s。" % config_path)
 			continue
 		root_paths.append(config_path)
+
+
+func _append_plant_defense_config_roots(
+	root_paths: PackedStringArray
+) -> void:
+	var configs := PlantDefenseRegistryScript.get_all_configs()
+	if configs.size() != EXPECTED_PLANT_DEFENSE_CONFIG_COUNT:
+		failures.append(
+			"正式建筑配置数量必须为 %d，实际为 %d。"
+			% [EXPECTED_PLANT_DEFENSE_CONFIG_COUNT, configs.size()]
+		)
+	var seen_paths: Dictionary[String, bool] = {}
+	for config in configs:
+		if config == null or not config.is_valid():
+			failures.append("正式建筑配置无效，无法生成完整内容摘要。")
+			continue
+		var config_path := config.resource_path
+		if (
+			not _is_safe_resource_path(config_path)
+			or not FileAccess.file_exists(config_path)
+			or seen_paths.has(config_path)
+		):
+			failures.append("正式建筑配置路径不存在、非法或重复：%s。" % config_path)
+			continue
+		seen_paths[config_path] = true
+		root_paths.append(config_path)
+
+
+func _append_production_recipe_roots(
+	root_paths: PackedStringArray
+) -> void:
+	if not ProductionRecipeRegistryScript.validate_contract():
+		failures.append("正式生产配方注册表无效，无法生成完整内容摘要。")
+		return
+	var recipes := ProductionRecipeRegistryScript.get_all_recipes()
+	if recipes.size() != EXPECTED_PRODUCTION_RECIPE_COUNT:
+		failures.append(
+			"正式生产配方数量必须为 %d，实际为 %d。"
+			% [EXPECTED_PRODUCTION_RECIPE_COUNT, recipes.size()]
+		)
+	var seen_paths: Dictionary[String, bool] = {}
+	for recipe in recipes:
+		if recipe == null or not recipe.is_valid():
+			failures.append("正式生产配方无效，无法生成完整内容摘要。")
+			continue
+		var recipe_path := recipe.resource_path
+		if (
+			not _is_safe_resource_path(recipe_path)
+			or not FileAccess.file_exists(recipe_path)
+			or seen_paths.has(recipe_path)
+		):
+			failures.append("正式生产配方路径不存在、非法或重复：%s。" % recipe_path)
+			continue
+		seen_paths[recipe_path] = true
+		root_paths.append(recipe_path)
 
 
 func _collect_dependency_closure(

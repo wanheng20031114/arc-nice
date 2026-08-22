@@ -8,7 +8,7 @@
 script = ExtResource("1_config")
 plant_id = &"excavator"
 display_name = "挖土装置"
-description = "2×2生产建筑。无需材料，每20秒固定产出1个土块；产物格最多暂存5个，存满后自动停机。"
+description = "2×2生产建筑，可建于任意陆地。无需材料，每20秒固定产出1个土块并直接存入全场仓库；仓库无空间时等待。"
 icon = ExtResource("2_icon")
 plant_scene = ExtResource("3_scene")
 supports_multiplayer = true

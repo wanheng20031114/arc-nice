@@ -271,10 +271,16 @@ func _refresh_all(_replicate: bool = false) -> void:
 				display_recipe.output_items.size(),
 				output_slots.size()
 			):
+				var output_item := display_recipe.output_items[output_index]
 				output_slots[output_index].set_item(
-					display_recipe.output_items[output_index],
+					output_item,
 					display_recipe.output_amounts[output_index]
 				)
+				if _is_excavation_recipe(display_recipe):
+					output_slots[output_index].tooltip_text = "%s\n%s\n挖掘完成后直接存入全场仓库。" % [
+						output_item.display_name,
+						output_item.description,
+					]
 
 	_last_visual_remaining_seconds = -1
 	_refresh_visual_progress()
@@ -297,18 +303,22 @@ func _refresh_progress_text() -> void:
 	var remaining := ceili(building.get_visual_remaining_seconds())
 	if remaining <= 0:
 		progress_label.text = (
-			"制作完成 · 等待背包接收"
-			if recipe.outputs_to_player_inventory()
+			"挖掘完成 · 等待仓库接收"
+			if _is_excavation_recipe(recipe)
 			else (
-				"采集完成 · 等待仓库接收"
-				if recipe.uses_environment_source()
-				else "剩余 0 秒 · 等待仓库结算"
+				"制作完成 · 等待背包接收"
+				if recipe.outputs_to_player_inventory()
+				else (
+					"采集完成 · 等待仓库接收"
+					if recipe.uses_environment_source()
+					else "剩余 0 秒 · 等待仓库结算"
+				)
 			)
 		)
 	else:
 		progress_label.text = (
 			"挖掘中 · 剩余 %d 秒" % remaining
-			if recipe.outputs_to_local_slot()
+			if _is_excavation_recipe(recipe)
 			else "采集中 · 剩余 %d 秒" % remaining
 			if recipe.uses_environment_source()
 			else "剩余 %d 秒" % remaining
@@ -318,7 +328,7 @@ func _refresh_progress_text() -> void:
 func _get_loop_button_tooltip() -> String:
 	var context := "加工站将按所选模式生产。"
 	var recipe := building.get_display_recipe()
-	if recipe != null and recipe.outputs_to_local_slot():
+	if _is_excavation_recipe(recipe):
 		context = "挖土装置将按所选模式挖掘。"
 	elif building.uses_environment_source():
 		context = "水源采集器将按所选模式采水。"
@@ -335,7 +345,7 @@ func _get_loop_button_tooltip() -> String:
 func _get_toggle_button_tooltip() -> String:
 	var operation := "生产"
 	var recipe := building.get_display_recipe()
-	if recipe != null and recipe.outputs_to_local_slot():
+	if _is_excavation_recipe(recipe):
 		operation = "挖掘"
 	elif building.uses_environment_source():
 		operation = "采集"
@@ -355,12 +365,12 @@ func _get_toggle_button_tooltip() -> String:
 func _get_stopped_progress_text(recipe: ProductionRecipe) -> String:
 	if not building.production_loop_enabled:
 		var one_shot_text := "已停止，点击 ▶ 再生产一轮"
-		if recipe.outputs_to_local_slot():
+		if _is_excavation_recipe(recipe):
 			return one_shot_text + "（挖掘）"
 		if recipe.uses_environment_source():
 			return one_shot_text + "（采水）"
 		return one_shot_text
-	if recipe.outputs_to_local_slot():
+	if _is_excavation_recipe(recipe):
 		return "循环挖掘已暂停 · 本轮进度已清空"
 	if recipe.uses_environment_source():
 		return "循环采集已暂停 · 本轮进度已清空"
@@ -384,7 +394,10 @@ func _refresh_recipe_rows() -> void:
 		building.uses_environment_source()
 		or (
 			display_recipe != null
-			and display_recipe.outputs_to_local_slot()
+			and (
+				display_recipe.outputs_to_local_slot()
+				or _is_excavation_recipe(display_recipe)
+			)
 		)
 	):
 		for row in recipe_rows:
@@ -454,6 +467,14 @@ func _uses_compact_building_recipe_summary(recipe: ProductionRecipe) -> bool:
 	)
 
 
+func _is_excavation_recipe(recipe: ProductionRecipe) -> bool:
+	return (
+		recipe != null
+		and recipe.input_items.is_empty()
+		and not recipe.uses_environment_source()
+	)
+
+
 func _refresh_material_rows() -> void:
 	for button in material_buttons:
 		button.hide()
@@ -499,6 +520,36 @@ func _refresh_status() -> void:
 		status_label.text = "原配方选择者已离开，生产已安全停止；请重新选择配方。"
 		return
 	var active_recipe := building.get_active_recipe()
+	if _is_excavation_recipe(active_recipe):
+		var excavation_output := active_recipe.output_items[0]
+		if not building.production_enabled:
+			status_label.text = (
+				"挖土装置循环挖掘已暂停；重新启动后从 0 秒开始。"
+				if building.production_loop_enabled
+				else "挖土装置单次挖掘已停止；点击 ▶ 再生产一轮。"
+			)
+			return
+		match building.completion_wait_reason:
+			ProductionCoordinator.RESULT_MISSING_INPUT:
+				status_label.text = "挖掘完成，等待至少一座可用仓库接收%s。" % excavation_output.display_name
+			ProductionCoordinator.RESULT_STORAGE_FULL:
+				status_label.text = "挖掘完成，等待任意仓库腾出%s空间。" % excavation_output.display_name
+			ProductionCoordinator.RESULT_UNAVAILABLE:
+				status_label.text = "仓库网络刚刚变化，将在下个同步周期重试入仓。"
+			_:
+				status_label.text = (
+					"无需材料；每%.0f秒挖出%d个%s并直接存入全场仓库。" % [
+						active_recipe.duration_seconds,
+						active_recipe.output_amounts[0],
+						excavation_output.display_name,
+					]
+					+ (
+						" 循环挖掘：完成后自动开始下一轮。"
+						if building.production_loop_enabled
+						else " 单次挖掘：完成一轮后停止。"
+					)
+				)
+		return
 	if active_recipe != null and active_recipe.outputs_to_local_slot():
 		var output_item := active_recipe.output_items[0]
 		var output_capacity := active_recipe.get_local_output_capacity()
@@ -631,10 +682,7 @@ func _on_loop_pressed() -> void:
 			if building.uses_environment_source()
 			else (
 				"挖土装置循环模式尚未同步，请稍后重试。"
-				if (
-					display_recipe != null
-					and display_recipe.outputs_to_local_slot()
-				)
+				if _is_excavation_recipe(display_recipe)
 				else "加工站循环模式尚未同步，请稍后重试。"
 			)
 		)
@@ -649,10 +697,15 @@ func _on_toggle_pressed() -> void:
 		if not building.request_multiplayer_enabled_change(
 			not building.production_enabled
 		):
+			var display_recipe := building.get_display_recipe()
 			_show_transient_status(
 				"采集器状态尚未同步，请稍后重试。"
 				if building.uses_environment_source()
-				else "加工站状态尚未同步，请稍后重试。"
+				else (
+					"挖土装置状态尚未同步，请稍后重试。"
+					if _is_excavation_recipe(display_recipe)
+					else "加工站状态尚未同步，请稍后重试。"
+				)
 			)
 		return
 	building.set_production_enabled(not building.production_enabled)
@@ -855,12 +908,14 @@ func _clear_slots() -> void:
 
 
 func _apply_panel_layout(recipe: ProductionRecipe) -> void:
+	var excavation_layout := _is_excavation_recipe(recipe)
 	var automatic_layout := (
 		building != null
 		and recipe != null
 		and (
 			recipe.uses_environment_source()
 			or recipe.outputs_to_local_slot()
+			or excavation_layout
 		)
 	)
 	background.texture = (
@@ -894,9 +949,9 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 		output_title.text = (
 			"产物格（点击领取）"
 			if recipe.outputs_to_local_slot()
-			else "采集产物"
+			else "仓库产物" if excavation_layout else "采集产物"
 		)
-		if recipe.outputs_to_local_slot():
+		if recipe.outputs_to_local_slot() or excavation_layout:
 			# 默认背景是左右分栏：所有生产状态留在左框，产物格独占右框。
 			_set_control_rect(building_title, Rect2(85, 106, 311, 50))
 			_set_control_rect(input_title, Rect2(105, 184, 290, 40))

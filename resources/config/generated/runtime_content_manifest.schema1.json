@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "6142a38793d4a4bd8e6aa8ab9f2ee7abd4b191b9fd06b038ebdd04253e46452f",
+	"content_sha256": "68732288aa6a2ccc29b90d4b750add876cf6cf5202d75a2b98013675abca417e",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -1305,6 +1305,22 @@
 			"sha256": "62a016c908f4d3cb6d41867c85f09cf7c1868d5b199a49e3927d3d62fbc57b24"
 		},
 		{
+			"path": "res://resources/animation/luoxi.tres",
+			"sha256": "a6bb3474a1ebb310eedeced11d1e0193707a8a0716c0b53c3bd9c568da9296d8"
+		},
+		{
+			"path": "res://resources/animation/plant_defense/agave_body_sprite_frames.tres",
+			"sha256": "15e166310b81e5304807fa58f657cf9048396b1c808af8ba34ce6f0dd755e6d5"
+		},
+		{
+			"path": "res://resources/animation/plant_defense/agave_cannon_sprite_frames.tres",
+			"sha256": "66b8b59d47003f1f8bad7c07e60fdf0d6348610f1f70de4c676fb2fce3ebaf87"
+		},
+		{
+			"path": "res://resources/animation/plant_defense/bamboo_mortar_sprite_frames.tres",
+			"sha256": "ad36c772bced49504367a54d59dbc3d494d24e05c618a3db8a0b4c87026e8a83"
+		},
+		{
 			"path": "res://resources/animation/slime.tres",
 			"sha256": "98bfb7bea7c73a30dad6701f3838992c49ab161da8afd7bf5d89e24be60ab010"
 		},
@@ -1417,6 +1433,10 @@
 			"sha256": "04f0978e8d3751333c0ffff2ac07e3072ff4e1e267d087ebe13012a7bb95edde"
 		},
 		{
+			"path": "res://resources/animation/xiaocong.tres",
+			"sha256": "064074808a0c0d242accf1d2f9ff34950fecfa56b9979480c6751954d55d8172"
+		},
+		{
 			"path": "res://resources/animation/yuanshi_insect_basic.tres",
 			"sha256": "72096eda67405fbddb742277013d1e6d1cf3c60bd055875b31fb136a0bf1facc"
 		},
@@ -1447,6 +1467,10 @@
 		{
 			"path": "res://resources/animation/yuanshi_insect_shell.tres",
 			"sha256": "5c86992926339559025ab147a8ac31de292c6b9e28406cd6330259acc3d89091"
+		},
+		{
+			"path": "res://resources/animation/zhuangfangyi.tres",
+			"sha256": "6677f1dead4a0fed08eb69eeb7663ff5462b2454e6b3f8d8a2378f09660f8654"
 		},
 		{
 			"path": "res://resources/atlas/battle_spirit_potion.tres",
@@ -1721,6 +1745,14 @@
 			"sha256": "03c89edbf0454d43fa9e18eca19381169f2cdc6c6e88d8b5220f2eb1f89bc099"
 		},
 		{
+			"path": "res://resources/audio/cowboy_dead.wav",
+			"sha256": "2eb2ab60d38ffb52a6dc96c94c69201b01ea5c3fe148c43ef1ae763085bc39d3"
+		},
+		{
+			"path": "res://resources/audio/cowboy_dead.wav.import",
+			"sha256": "d372fa8bd6a6f177b1c6d83e3a387ff66e80b5cf3d0f1e95dea91ee847d40286"
+		},
+		{
 			"path": "res://resources/audio/cowboy_explosion.wav",
 			"sha256": "09a2e771412135bd5ed151ec8c27025f6ced128fd0777ecebdf416b47c86903f"
 		},
@@ -1743,6 +1775,30 @@
 		{
 			"path": "res://resources/audio/cowboy_monsterhit.wav.import",
 			"sha256": "ad35c2e69400112950908cb634cb0183d3da711a3f61362678600d46f1858d1a"
+		},
+		{
+			"path": "res://resources/audio/grape_arc_zap.wav",
+			"sha256": "15a7f74734fd899a63657a589f127853062c909c99cf9230619d751ce17d1fc7"
+		},
+		{
+			"path": "res://resources/audio/grape_arc_zap.wav.import",
+			"sha256": "de054a19c2be175028213b22f408436e7d8015234b0f797e3e311b69f324ad4c"
+		},
+		{
+			"path": "res://resources/audio/hydrangea_rain_cast.wav",
+			"sha256": "05b56aea60b2d48916270ce3e1893d0ae5e0ae6f3932c5b0b5d61797d1be1af7"
+		},
+		{
+			"path": "res://resources/audio/hydrangea_rain_cast.wav.import",
+			"sha256": "b6ec35fafe3aa48ef8605708dff148ea597b9ee7a8020ad274322e4950b6ca78"
+		},
+		{
+			"path": "res://resources/audio/rogue_route_cave.ogg",
+			"sha256": "08a607d6d6758f856c4ba8cc5da147c839e77d6a8851aa6314d3246426bf5010"
+		},
+		{
+			"path": "res://resources/audio/rogue_route_cave.ogg.import",
+			"sha256": "f546109709df9c1a48e97ee0ed1626751b5d7f80e868fb66c99cec7abc0a6c90"
 		},
 		{
 			"path": "res://resources/audio/shenmu_forest_combat.ogg",
@@ -1791,6 +1847,78 @@
 		{
 			"path": "res://resources/audio/shenmu_town_intermission.ogg.import",
 			"sha256": "f1e7370a0484721817f19d28718b1ecc298efe1be93bed9a069370440845dd7b"
+		},
+		{
+			"path": "res://resources/audio/ui/countdown_tick.wav",
+			"sha256": "0b0bbba00263dd885500a8b6e8842c7494ad4b657d3ec7c4a841cb6e35eddace"
+		},
+		{
+			"path": "res://resources/audio/ui/countdown_tick.wav.import",
+			"sha256": "949781bdbcffe3187a87261506a20e44ac91915739d42d2b9c80c270ea34fbce"
+		},
+		{
+			"path": "res://resources/audio/ui/day_phase_announcement_dong.wav",
+			"sha256": "1cb90ff128ed4234c4551166f8bd5971a44b5b9a7f6abbe0a74363e011f451a1"
+		},
+		{
+			"path": "res://resources/audio/ui/day_phase_announcement_dong.wav.import",
+			"sha256": "dee0d36149507f157cc2e8ee5828702dca778b98d860948be34211dd708efe9a"
+		},
+		{
+			"path": "res://resources/audio/ui/dialogue_blip.wav",
+			"sha256": "2f30b37804494475368a9c765a5e51064be30606f173148a98bfc9059310fb65"
+		},
+		{
+			"path": "res://resources/audio/ui/dialogue_blip.wav.import",
+			"sha256": "3b1c0961ecd8795d32da7c5b62e85909c869a578791a61e728c76cc90fb3edcc"
+		},
+		{
+			"path": "res://resources/audio/ui/home_gate_double_warning.wav",
+			"sha256": "e6f3df6127f0fcd3898c0ad6512d321178f6fc5b9dca1b45e90824e645f8e180"
+		},
+		{
+			"path": "res://resources/audio/ui/home_gate_double_warning.wav.import",
+			"sha256": "ac2123bde5ecae12c4f6efeb1c824cd1dd513f05c4f8feebd8ef00da3dd5c627"
+		},
+		{
+			"path": "res://resources/audio/ui/rogue_combat_victory.wav",
+			"sha256": "53f9f0289987fa6126b6d1c1ab7b22d63cecc3bd75c04fd0d3119f24e75cf24b"
+		},
+		{
+			"path": "res://resources/audio/ui/rogue_combat_victory.wav.import",
+			"sha256": "98a792cd2623fe1062f6f63a01842db0ad483f111834c1abcd045a0415ff79c6"
+		},
+		{
+			"path": "res://resources/audio/ui/rogue_shop_purchase_success.wav",
+			"sha256": "cb96657ca7e65902f8dd859aa062ef1b125eeb416a41e19ed5cdb670402ca49d"
+		},
+		{
+			"path": "res://resources/audio/ui/rogue_shop_purchase_success.wav.import",
+			"sha256": "48bbea49f0e45fa46f5a1d288e7214fa49fb8a8d5d7dcaa5cf54c64dc811dc01"
+		},
+		{
+			"path": "res://resources/audio/ui/wave_start.wav",
+			"sha256": "1807ed39ae8e596efb7e5fc767fac9b1a75311afe4b95f1284ebe09cb735e848"
+		},
+		{
+			"path": "res://resources/audio/ui/wave_start.wav.import",
+			"sha256": "619645b96c328eb002ff2d7684addf0eca1e9c482d4196e29c8ce828c2471dc3"
+		},
+		{
+			"path": "res://resources/audio/ui/xiaocong_transition_cover.wav",
+			"sha256": "d14bd8416f1e17c5e55b5f568b0592ec684d170bc905693e52a52945f9af9762"
+		},
+		{
+			"path": "res://resources/audio/ui/xiaocong_transition_cover.wav.import",
+			"sha256": "66a8036edb2d1d690f9f755fe098316765649567ca45759277126b81632045a4"
+		},
+		{
+			"path": "res://resources/audio/ui/xiaocong_transition_reveal.wav",
+			"sha256": "9fc51c8030ca8b02e8ae15ba8e3773b8394b19560db07a194dc961df54326bb1"
+		},
+		{
+			"path": "res://resources/audio/ui/xiaocong_transition_reveal.wav.import",
+			"sha256": "2588fd7a3c089323b374fc053d541d75663ad198a8533f57e1a9a64d817848f8"
 		},
 		{
 			"path": "res://resources/audio/yuanshi_insect_fire_attack.wav",
@@ -1894,7 +2022,7 @@
 		},
 		{
 			"path": "res://resources/config/buildings/building_simple_fence.tres",
-			"sha256": "0da19d7c62bc6eb729feb820a2bbb325008c06b2a43b0a9d6619cfdd5593de29"
+			"sha256": "a1dfe34dd17fe6b746b9023f9e1f2ed0467228a631b22d6a97845ad6b26a4ff1"
 		},
 		{
 			"path": "res://resources/config/buildings/building_speed_tower.tres",
@@ -3558,7 +3686,7 @@
 		},
 		{
 			"path": "res://resources/config/pickup_triggered_items/snow_wolf_pojun.tres",
-			"sha256": "7874facc79ed5bea9a2683bef5e6b2e9de3cc0730a5f1c91fceed8cda798348c"
+			"sha256": "a562e1424a91ea34128a7adb6fad8de4bb9061441d168c592033fdc8205ba4db"
 		},
 		{
 			"path": "res://resources/config/pickup_triggered_items/speed_boots.tres",
@@ -3569,12 +3697,128 @@
 			"sha256": "f5e272347b138d2780eb6404ecb53ece70c21c661b0ed583f2023bc554ddfb6d"
 		},
 		{
+			"path": "res://resources/config/plant_defense/agave_cannon.tres",
+			"sha256": "b2e237d2d77795399202c4f28466d8ae7ef9236f40aa613bcad5da2de51761f3"
+		},
+		{
+			"path": "res://resources/config/plant_defense/attack_speed_tower.tres",
+			"sha256": "ebfd320cb4d7c675c2433918f1f6fe278741e6c1ca731ef7a0e0d3754da21019"
+		},
+		{
+			"path": "res://resources/config/plant_defense/attack_speed_tower_config.gd",
+			"sha256": "e955ad20fcd03a8fe6037610767b63b21e9a5218f7f8b928c77b574ab3db0ff7"
+		},
+		{
+			"path": "res://resources/config/plant_defense/bamboo_mortar.tres",
+			"sha256": "3e1cd609cfb4f006a0b2639c48d9190b27dea372e64a1bb8ecfc4c81ec5fb133"
+		},
+		{
+			"path": "res://resources/config/plant_defense/corn_machine_gun.tres",
+			"sha256": "9488ef6853224dd223f8fc53332ae01edbd0b27260068470ecda1cc9b2626ab0"
+		},
+		{
+			"path": "res://resources/config/plant_defense/excavator.tres",
+			"sha256": "35c4c6583f0969574e63ae74ef08e7c9520e64eb833a7e42cb2162761a0d2103"
+		},
+		{
+			"path": "res://resources/config/plant_defense/grape_arc_tower.tres",
+			"sha256": "0b7f1648101c9cfc3c950bd594353184e15c1c3cf8c9f1095856b9f91c304366"
+		},
+		{
+			"path": "res://resources/config/plant_defense/grape_arc_tower_config.gd",
+			"sha256": "5c295ce8a4975bcd40e28337866ffdfd53f3141cf69996cbabcdc21ea098e7ed"
+		},
+		{
+			"path": "res://resources/config/plant_defense/hydrangea_rain_tower.tres",
+			"sha256": "5df019864457f846125d1b44122cd4530a4a8aa9b45649af8fe5bec636b76467"
+		},
+		{
+			"path": "res://resources/config/plant_defense/hydrangea_rain_tower_config.gd",
+			"sha256": "733c452a3337c0f49fe5658f9f577d305739af2a386834db4e0523710249f762"
+		},
+		{
+			"path": "res://resources/config/plant_defense/life_tower.tres",
+			"sha256": "2ce2fd422f1cf84dbf618cb7fac48ed1cbc9ad0d49b1bf549ee89a7d113f0913"
+		},
+		{
+			"path": "res://resources/config/plant_defense/life_tower_config.gd",
+			"sha256": "d30487a9aff8e0e49b7bbdf097140aa3decb173f13890243bb39c8ab88c1d3ef"
+		},
+		{
+			"path": "res://resources/config/plant_defense/oak_warehouse.tres",
+			"sha256": "afe57c28386e56b01fa12ebac935a767acf3a9b0cd844d4145d485f81be3e0ad"
+		},
+		{
+			"path": "res://resources/config/plant_defense/orange_charging_tower.tres",
+			"sha256": "d4146f98a1843fdf6f748c1de3334fc05e87251cadca9fc19538fadd98faf4df"
+		},
+		{
+			"path": "res://resources/config/plant_defense/orange_charging_tower_config.gd",
+			"sha256": "fd50a77bfa1ee94cba17ea71ef9673321d93c5cb91e82310a0c47ce2a9dfdee8"
+		},
+		{
+			"path": "res://resources/config/plant_defense/plant_cultivation_center.tres",
+			"sha256": "f52b0e41e77d6369d54c4e3fb326f4d92f78c5f1e45df289572c878ef2df9811"
+		},
+		{
+			"path": "res://resources/config/plant_defense/plant_defense_config.gd",
+			"sha256": "72a6b7dbb4582c3dca6719cf6b0b094456b766a717b41ed3fafd030c4fc9d583"
+		},
+		{
+			"path": "res://resources/config/plant_defense/plant_defense_registry.gd",
+			"sha256": "66b16eb7fadb78e416728df567494848b7e74a5a17345de8cc774fe8af1fc6c1"
+		},
+		{
+			"path": "res://resources/config/plant_defense/planting_base.tres",
+			"sha256": "17e1f27eba1059686d9938a75a7dea625a0906c40cf35cfcebe5f6e0483e5f2e"
+		},
+		{
+			"path": "res://resources/config/plant_defense/research_center.tres",
+			"sha256": "d8bb90162b6f85e26a644f32fc9ca05575c82d7315f20be13ecd933386a10aac"
+		},
+		{
+			"path": "res://resources/config/plant_defense/simple_fence.tres",
+			"sha256": "92d5f1ee3cfcda82ae0153fc7ca9d159899ec7357a538bb76e7adf9b1006a9e2"
+		},
+		{
+			"path": "res://resources/config/plant_defense/speed_tower.tres",
+			"sha256": "4a2c4ac28e58531a7cc0c503ac9818f6ba86a3fab1c67c6f9127e3fad9d54596"
+		},
+		{
+			"path": "res://resources/config/plant_defense/speed_tower_config.gd",
+			"sha256": "3481d2641bf729830fbd49703916ff2be2980299d85633217b562e26752a0a7b"
+		},
+		{
+			"path": "res://resources/config/plant_defense/stone_mill.tres",
+			"sha256": "c7d505995d38edc230d3a3f7bf5c22210ceb85c0c8268ad74f7066c5695fae71"
+		},
+		{
+			"path": "res://resources/config/plant_defense/vegetation_stake.tres",
+			"sha256": "24f60d371342a6684d9d8238ddcfb751e711ff6eb6115ce8a1b140299b10f661"
+		},
+		{
+			"path": "res://resources/config/plant_defense/water_collector.tres",
+			"sha256": "5b37dca1621a230eab4c1957e71ecadb66219e00b92c7ee650d7197c34931169"
+		},
+		{
+			"path": "res://resources/config/plant_defense/wood_processing_station.tres",
+			"sha256": "0db723e3085631fad51ede5e850bcbe2eb483a358f0b9bd5b448205ed6d5b67b"
+		},
+		{
 			"path": "res://resources/config/production/attack_speed_tower_assembly.tres",
 			"sha256": "b20b50e93241520502cba760b05428a2b68c30d474ab3bfa5a5ad5c6b9701d80"
 		},
 		{
+			"path": "res://resources/config/production/capoo_blue_crystal_to_powder.tres",
+			"sha256": "c06cdcd4fc460b95b13b8c64312e2980cdafcdbf3c367bbaa605b7ff57022551"
+		},
+		{
 			"path": "res://resources/config/production/excavator_assembly.tres",
 			"sha256": "4074ef33fc4ef3f6e3d7cc468dede4f30e62bcfd8a5cd6e49a0d294ec280981d"
+		},
+		{
+			"path": "res://resources/config/production/excavator_cycle.tres",
+			"sha256": "a6541e16eec0ba3b9e6ae8fdda192ad3f948403b6bfc2f6124708c8f9e8bd450"
 		},
 		{
 			"path": "res://resources/config/production/gambler_ticket_assembly.tres",
@@ -3597,8 +3841,56 @@
 			"sha256": "eb37875b39e77f8a4d067711f9cf6d7cdbc87d827212024d704a5b0d3050f543"
 		},
 		{
+			"path": "res://resources/config/production/production_recipe_registry.gd",
+			"sha256": "a6c8753d570ffc1c98de62f768f84ff93347f54561d6c310eb19d94a1482c3a8"
+		},
+		{
 			"path": "res://resources/config/production/research_center_assembly.tres",
 			"sha256": "b89a6a45b3fce9ca16cfe131f122db2f22bb1c1971f2ec6099aec7ab4095bfcd"
+		},
+		{
+			"path": "res://resources/config/production/sapling_propagation.tres",
+			"sha256": "3dda0c82c1a88b0f5bf5bd95596d2250a2e7343c0881dcdada57b5642ddd0a2d"
+		},
+		{
+			"path": "res://resources/config/production/sapling_to_wood.tres",
+			"sha256": "bbded3e3240cebed32e6be93a78f660cc32caae5a9e6dbf5a159feae8d4f65dc"
+		},
+		{
+			"path": "res://resources/config/production/simple_bamboo_mortar.tres",
+			"sha256": "2d676810114ab7fa9b273a0506b3885648f85a4a8c8e016b5acf5b702fb952ab"
+		},
+		{
+			"path": "res://resources/config/production/simple_gel_to_water_bottle.tres",
+			"sha256": "16822504b216b411d9e4bc5e04e0d204e847e9cf47b4b5d4e4083cc451f37d9b"
+		},
+		{
+			"path": "res://resources/config/production/simple_herbal_health_potion.tres",
+			"sha256": "15ca14a09577ffa2ca6184fc286c4a509f92cd9f22bef3d4410adb2837eab0fc"
+		},
+		{
+			"path": "res://resources/config/production/simple_hydrangea_rain_tower.tres",
+			"sha256": "f658860a0a457195e8d42fa0581fad691ec8ae6d723c30839998e1ecc91f7068"
+		},
+		{
+			"path": "res://resources/config/production/simple_oak_warehouse.tres",
+			"sha256": "79e9de2b8fc809af4026a3712907d4493fe882b5ea71812eb64512111372d459"
+		},
+		{
+			"path": "res://resources/config/production/simple_simple_fence.tres",
+			"sha256": "b84e5e03c9093031e52a1d63f104dfd60aba72abbb0e001031e5d98011a43a37"
+		},
+		{
+			"path": "res://resources/config/production/simple_stone_mill.tres",
+			"sha256": "a208887b024343cd03717d016a6a942757ca984171a04d1ff6247453952fd974"
+		},
+		{
+			"path": "res://resources/config/production/simple_vegetation_stake.tres",
+			"sha256": "d6decb07e2ad4d94405062b5cfd8278af02adf2fdf61c225f89b36ef1156deca"
+		},
+		{
+			"path": "res://resources/config/production/simple_wood_processing_station.tres",
+			"sha256": "068d5138d49aeb3487caf0332f5d26718b27babe0f0aa032f873fdf89a1eec8c"
 		},
 		{
 			"path": "res://resources/config/production/speed_tower_assembly.tres",
@@ -3613,12 +3905,44 @@
 			"sha256": "cda122d457ef2df66036e06e5a93db1abd1d24bda4f65d91a3ddfa52348fc207"
 		},
 		{
+			"path": "res://resources/config/production/water_to_bottle.tres",
+			"sha256": "000a71b8665fad81d4869f6d7b11f588896182ed6fb263678953a5d724bf3573"
+		},
+		{
+			"path": "res://resources/config/production/white_crystal_to_powder.tres",
+			"sha256": "2ca26c73c51e8a6433e2c9b7acf153877baa7580e837931ee169d7eac991738e"
+		},
+		{
 			"path": "res://resources/config/production/wood_to_plank.tres",
 			"sha256": "4e480c5883e0273c180e1910d872bfa743f2c161daa91043e4f0dcea3f53ef15"
 		},
 		{
 			"path": "res://resources/config/production/wooden_core_assembly.tres",
 			"sha256": "7091fc0b2bf5ad673aa6bdc5dabb66de33ecd4d09bb3358f2151ee4005ee64b7"
+		},
+		{
+			"path": "res://resources/config/production/wooden_core_to_agave_cannon.tres",
+			"sha256": "c8eafd12e02d268705cfc68ef16e189782601bbd270cadec2c302935b2c14807"
+		},
+		{
+			"path": "res://resources/config/production/wooden_core_to_bamboo_mortar.tres",
+			"sha256": "565d1f0aa131301cd77291925bda83693039e6cbce306a02942fe7e1ee1b51cc"
+		},
+		{
+			"path": "res://resources/config/production/wooden_core_to_corn_machine_gun.tres",
+			"sha256": "519b7643984dbee9ca668854ad060838c8ff282114ba0655e0a9173bddff217b"
+		},
+		{
+			"path": "res://resources/config/production/wooden_core_to_grape_arc_tower.tres",
+			"sha256": "5ac4d8eaaf08c24ae5b25483dc3e3272db0f98b1bb021b42a1605995672ade59"
+		},
+		{
+			"path": "res://resources/config/production/wooden_core_to_hydrangea_rain_tower.tres",
+			"sha256": "972972a943d5395e461ef555d5e0866d2ee4d8cc987ef33cf69ff8cbba598683"
+		},
+		{
+			"path": "res://resources/config/production/wooden_core_to_orange_charging_tower.tres",
+			"sha256": "24569ec84ac25c4c0c68e0c1296d4737c56b76bdee3ac60b86a9b21e18e760c4"
 		},
 		{
 			"path": "res://resources/config/research/agave_cannon_muzzle_improvement.tres",
@@ -3717,6 +4041,230 @@
 			"sha256": "8468ad11a887971051a70d3b59b2d157edc0d5987a0b45c936edfe7e9865776c"
 		},
 		{
+			"path": "res://resources/config/rogue_combat/abandoned_mine_01.tres",
+			"sha256": "cebbc1b348f52e8cb146ea026dc03ebd15ec4057b48afaa234ecfab050cca28f"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/emergency_abandoned_mine_01.tres",
+			"sha256": "298869047dd527eb790a1804c6b64a35f77f5c9ab9001d1dbdecefe40dfebd0f"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/emergency_narrow_road_01.tres",
+			"sha256": "5295b561af5dbb902757646ed83e165c9c0f2eb6b1f375e9ae043423749d50ff"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/emergency_underground_church_01.tres",
+			"sha256": "2fc333712161b9d6d40da63a0ff33384f09c1db78b6de1668b4368dfbdbbe001"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/emergency_underground_sewer_01.tres",
+			"sha256": "26baaa74b5e8b70cb322deff93124d69567b8257eae5ea0074e4cea764e4272c"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/encounter_01.tres",
+			"sha256": "5ca964ac3462e19544cc0f0c3b860788b9b21b30692418b639f24280dfee989b"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/reward_emergency_combat.tres",
+			"sha256": "21bde601efdb93c2c9b2d120b4fb04ab6087b7d0aae970e0a5eda066e147661c"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/reward_encounter_01.tres",
+			"sha256": "5ae2931f28d4b8bd394bf0f338553511ac8ee0f042c8bce95f6bb67f3f221a5d"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/reward_suitcase_battle.tres",
+			"sha256": "827f91aab8ec8054c10a15f7960081100e4487d2f53c25d9eefc6ca82c797890"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/rogue_combat_encounter_config.gd",
+			"sha256": "ad454061de15aa31438adc061cb77f62dfb3bede28c1093cd904d3b937524aed"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/rogue_combat_pool_config.gd",
+			"sha256": "a274595cbe8f818ff41e34507d2a0d12dbd1920c61e701742eb4031d722d6d91"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/rogue_combat_pool_entry.gd",
+			"sha256": "5354f159ab8e313b2132fdfe1f544d2de402731601b505eea33798b46f7bfae7"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/rogue_combat_reward_config.gd",
+			"sha256": "d36580d78d43d9b0a7f5c9b7a519a2918c031356b8c5028134f1624f191ee8ed"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/rogue_combat_reward_item_entry.gd",
+			"sha256": "fe80d5c756f6fe00a033750889c75e3f4612f0254259e8db769e7010caf69c4d"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/shallow_mine_emergency_combat_pool.tres",
+			"sha256": "825afc3f744a25bd3be622015a31d73a2f369f674c0d9fea6eb397499e75a252"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/shallow_mine_normal_combat_pool.tres",
+			"sha256": "80fc62443949e9f25e3eb9abfcb984862b6a63223a845c272646a9318f7c9e90"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/suitcase_battle.tres",
+			"sha256": "ef322139df4c7a8afb9f481db72405a6d4d3258a4eb494df15b1d2b5ad310210"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/underground_church_01.tres",
+			"sha256": "c0aa099ee62b30573889f924afc8d4a74ed2c3cd2e6f15cdbf7ef747512f6569"
+		},
+		{
+			"path": "res://resources/config/rogue_combat/underground_sewer_01.tres",
+			"sha256": "4f932973d8da631bd83e7058bad31baf8de3c0658c80023575ce1b34df2b1052"
+		},
+		{
+			"path": "res://resources/config/rogue_route/emergency_combat.tres",
+			"sha256": "01752c8ec0e22a499e401c33439733a54ba4dc1a0fdc8b28d3dccfd113d65f56"
+		},
+		{
+			"path": "res://resources/config/rogue_route/magical_encounter.tres",
+			"sha256": "8cdccb41dc64dbb5fc0a4ea28b2fec253bfaf4fd636e835a10357f13e7570f17"
+		},
+		{
+			"path": "res://resources/config/rogue_route/normal_combat.tres",
+			"sha256": "10da3f5ba43dce6a8405d0bd994b4da1b75dc73261ba1b451e420d6c68908309"
+		},
+		{
+			"path": "res://resources/config/rogue_route/p3_generation_config.tres",
+			"sha256": "a35e69779f577cda4b4f3194e32496cc2b2c444de7451e041f06556f1c0f0573"
+		},
+		{
+			"path": "res://resources/config/rogue_route/p3_world_metrics.tres",
+			"sha256": "dacfcaabbc36c6ef3a9d15c6018d4b2675f5028eb868fa179effc939447144ae"
+		},
+		{
+			"path": "res://resources/config/rogue_route/prepare_ahead.tres",
+			"sha256": "9cb74cfe004712031f2c5bcdb7e3b5362383701cf62935d54e6f61ce5a3806ed"
+		},
+		{
+			"path": "res://resources/config/rogue_route/rogue_route_floor_definition.gd",
+			"sha256": "d87e38ff984813d5f978f6c488b86572ad20e8aad7eeb94d5c4f377a0bd52e46"
+		},
+		{
+			"path": "res://resources/config/rogue_route/rogue_route_generation_config.gd",
+			"sha256": "07118da391306fac5bd9b22063ee36e975851050bebf717ce7b01a27104ff73c"
+		},
+		{
+			"path": "res://resources/config/rogue_route/rogue_route_node_type_config.gd",
+			"sha256": "0a531beffd75c54b05864b1811a60018c8e420704728228a37c6ae7780b4a0b7"
+		},
+		{
+			"path": "res://resources/config/rogue_route/rogue_route_template_config.gd",
+			"sha256": "3beb7608c357a1667a22dc53f4d7cc5f8122293d9d79acfefa8dc098c9ba4698"
+		},
+		{
+			"path": "res://resources/config/rogue_route/rogue_route_world_metrics.gd",
+			"sha256": "0f6c014abf825e814584db5cc1d098d89b55a0ec8e687c309e52fe5f59f377b7"
+		},
+		{
+			"path": "res://resources/config/rogue_route/shallow_mine_floor.tres",
+			"sha256": "8fe70e1e7c9b0bdeb8b53484a2edfcfe064511a079927b34d533192dc4af5081"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/4a.tres",
+			"sha256": "be688fff047176c8467215e339284e6fdf9ee883fd2ccbc8f2b1f06fdb5c22aa"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/4b.tres",
+			"sha256": "70e3b0ba0699c54850d7a6e1c4897f0b8e9f32ce736ca068d81e931f10c3e3d2"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/4c.tres",
+			"sha256": "9f809b69c80c16ee9497442402b6e47294ac60165d50c4fd5e186839aa32532b"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/4d.tres",
+			"sha256": "b9f3c8cd1262b32e647365b5317af65851e781cdf1f872b22ecee86f2226828d"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/4e.tres",
+			"sha256": "8845609e16567979507a120575ddfd5bd51bdaa7f85f0f6498f00c7b7cacd5f3"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/4f.tres",
+			"sha256": "b395f42e82d1464c15e52b1c2454a0fecd5224653849bfe4b9fea07865de4cc4"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/4g.tres",
+			"sha256": "f19c6d8840fe5d9ebde31ca20d5bb36b1eb1bec829be4b25f39f17bd4acfa22e"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/4h.tres",
+			"sha256": "f70af6eda87b9a971b00db63817b7cdba2708894a052396607c101d21a49eb49"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/4i.tres",
+			"sha256": "93e9a13fd28236810026f959cee745489bd718cf8ded162b23c9e37f8aa8a1c8"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/4j.tres",
+			"sha256": "a1451766cb5d0d34bf37605e71ec687faf143916cfbf6339be926c7580e4fca4"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/5a.tres",
+			"sha256": "7b3b6c1bbe57857cd2c7fda16caf6d02915c50ace4cda5cf482ca9048fe0d500"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/5b.tres",
+			"sha256": "6d290c0f5b3a1c412e408447e5ca21245a508163e34775ed78a1f136f15367fd"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/5c.tres",
+			"sha256": "000409a045c7c1aef9935f17a08a710ea2fa27f320230641501a0686b7cc521a"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/5d.tres",
+			"sha256": "6abe3e01725651465243157baa65ec271c517cd3b58417f133f5186fa5347733"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/5e.tres",
+			"sha256": "ee3c1a5e7342c3f229152f0d25851f020a000f0801d07669257104d8cc1f8da1"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/5f.tres",
+			"sha256": "b0f8b203a9870c874320c0b934da13d2198542cde792d19407efa1990796a055"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/5g.tres",
+			"sha256": "2076a72c9237a45ffa85b4711ac3c0d5118684dae288ce21a7c9b831fa0d86f5"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/5h.tres",
+			"sha256": "3e8ccc880652e76f91207f5bf39166755ed15772993dd98c17a2826d0f39ca68"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/5i.tres",
+			"sha256": "4260e52192a8fb8cd04545ba5329e4a1155b5161e185a96ffbf68d263dd273d6"
+		},
+		{
+			"path": "res://resources/config/rogue_route/templates/5j.tres",
+			"sha256": "d9f8ee1e136b6637efcdee009db1445e5d21405a923168c91ff722d0f04c8ccb"
+		},
+		{
+			"path": "res://resources/config/rogue_route/underground_shop.tres",
+			"sha256": "1076d506577086c1f3e625d04b4c1ba6d3179ce33389534419da3bea44772086"
+		},
+		{
+			"path": "res://resources/config/rogue_route/wilderness_resource.tres",
+			"sha256": "f3316de5329609eff1b45ef8d2f55609a7bec01e62ff0952d4b720653f21d8d9"
+		},
+		{
+			"path": "res://resources/config/rogue_shop/rogue_underground_shop_config.gd",
+			"sha256": "3300a284198a09604c407ff4d5de7456a95a1599d361623cfdcf8e3feab765dd"
+		},
+		{
+			"path": "res://resources/config/rogue_shop/rogue_underground_shop_listing.gd",
+			"sha256": "73e6f1073000e4b645a63ad02bade1d16d3a12ba8995208c084cece14c024c3f"
+		},
+		{
+			"path": "res://resources/config/rogue_shop/shallow_mine_underground_shop.tres",
+			"sha256": "e7ae9f10581aff6202d1195b0f35111336ccc1fd9df91be31bc1a58014dde4ad"
+		},
+		{
 			"path": "res://resources/config/waves/wave_campaign_config.gd",
 			"sha256": "f333ff078668a68ac0428a3232e3fcbae27354e76dc3a6a7554f972ea77c61f8"
 		},
@@ -3729,6 +4277,14 @@
 			"sha256": "b7ad75d0a77e8a564c1d36f85e8b6388734ce6e8a3c38e09c5b08b4382ac5df4"
 		},
 		{
+			"path": "res://resources/font/NotoSansHans-Black.otf",
+			"sha256": "d6ef258892def01cf66100e6202087e432c4abf78deb636bfc1e309d2482f9d2"
+		},
+		{
+			"path": "res://resources/font/NotoSansHans-Black.otf.import",
+			"sha256": "9a31a48b93daa50a9016ce045d7bd1d153f275aa1845e3dda2dcbd235edf1acd"
+		},
+		{
 			"path": "res://resources/font/ResourceHanRoundedCN-Medium.ttf",
 			"sha256": "b2ec1727fbc04b70255db6cb71be0eca3b7a7167ef11655059c5576cc920143f"
 		},
@@ -3737,12 +4293,84 @@
 			"sha256": "37ce8d215cac62badf780a9429f2719763cd59586e404dc1bafe5e1aa08d3651"
 		},
 		{
+			"path": "res://resources/lighting/plant_cultivation_center_hotspots.svg",
+			"sha256": "ec98f50219825cce09947c76c33edbaf720a1d1fa92219e0e5f3ffc05af3c51f"
+		},
+		{
+			"path": "res://resources/lighting/plant_cultivation_center_hotspots.svg.import",
+			"sha256": "45f781665f258be313d1faee2ae01d32a97285756511835ac89b3aff688b0c3b"
+		},
+		{
+			"path": "res://resources/lighting/planting_base_hotspots.svg",
+			"sha256": "c80d87b875d0259da2dab25f44543a15a9909723135d399d0772332b7ca24213"
+		},
+		{
+			"path": "res://resources/lighting/planting_base_hotspots.svg.import",
+			"sha256": "6db860153857d57735fa54a66f6a4ffdc39cb5d9ebfbf02752b57438c9885c64"
+		},
+		{
+			"path": "res://resources/lighting/research_center_hotspots.svg",
+			"sha256": "109e54da031a6e35b06130c393f7bd7daf9c243cb35893a936e95fa2182053d4"
+		},
+		{
+			"path": "res://resources/lighting/research_center_hotspots.svg.import",
+			"sha256": "874d38d654355721f9b6ee804a87bd26a1f51af99344905b5debd374d960474c"
+		},
+		{
+			"path": "res://resources/lighting/soft_micro_point_light.tres",
+			"sha256": "6fdaa41623760fbd5b7f71a87aedb109437990396ba2ce688b1af09eb17f0d1f"
+		},
+		{
+			"path": "res://resources/lighting/soft_player_point_light.tres",
+			"sha256": "dcc9308085883f92ed9ad544d218112206704e94ea502fef9400b8e992ae7a3f"
+		},
+		{
 			"path": "res://resources/lighting/soft_white_point_light.tres",
 			"sha256": "d9de0d4d6a21156b50ef78f074cd3a82d01cf67b97e71587981fa01ddabc628c"
 		},
 		{
+			"path": "res://resources/lighting/vegetation_ring_point_light.tres",
+			"sha256": "856f6199e12ff2e9d8326c52e06d444c9ff3b45a921d9da6dd173be305f57732"
+		},
+		{
+			"path": "res://resources/shader/bamboo_mortar_glow.gdshader",
+			"sha256": "5a253035072933ce7ff079ae00ea344515c9e5eae4d74f744327a8a165f5de15"
+		},
+		{
+			"path": "res://resources/shader/bamboo_mortar_split_lifecycle.gdshader",
+			"sha256": "a92a1575eeea5cb8b5cfff56a45c5d65d6346e11a1fb8b6c489be0caef481e54"
+		},
+		{
+			"path": "res://resources/shader/bamboo_mortar_split_lifecycle_material.tres",
+			"sha256": "9e5982802bc8aca9c4bf787aedaac705feaebe022100c86636d8ca74a69e1b0f"
+		},
+		{
+			"path": "res://resources/shader/excavator_border.gdshader",
+			"sha256": "41891ee6de371482f892104f2f31361e5ae65040b63da90c25acd8b99078c11b"
+		},
+		{
 			"path": "res://resources/shader/frost_projectile_single_pass.tres",
 			"sha256": "a0b4f2ab3e72eb90141d278a6520203131e448e5a7a45022d67788b1940cd254"
+		},
+		{
+			"path": "res://resources/shader/grape_arc_charge.gdshader",
+			"sha256": "eae126cec0b95b16ac5c67d794e23e4015c20829e72945d9917fbb84be3cd695"
+		},
+		{
+			"path": "res://resources/shader/hydrangea_rain_field.gdshader",
+			"sha256": "d1debcc26102aa5c557bf6bff672c491bec7573d5ee27160985ab53d45e73550"
+		},
+		{
+			"path": "res://resources/shader/hydrangea_rain_ripple.gdshader",
+			"sha256": "4b98a8b40a9fd652061a778c7fd6e3be88c72eae930e481e51e5c9048a92249a"
+		},
+		{
+			"path": "res://resources/shader/luoxi_collectible_card_aura.gdshader",
+			"sha256": "8bf0d5811a66b80fa8cc62b54e44d41b96b312a24ae1883a22b8ff0cdae2dfe2"
+		},
+		{
+			"path": "res://resources/shader/night_self_emission_particle.gdshader",
+			"sha256": "0d0bcf9929eb22c4480892980c1bbc9f12d645c7cd92428c812894f2eb065dbb"
 		},
 		{
 			"path": "res://resources/shader/night_vfx_emission_additive.tres",
@@ -3751,6 +4379,30 @@
 		{
 			"path": "res://resources/shader/night_vfx_emission_mask.gdshader",
 			"sha256": "e872aefd4e1361c03d931d6426859d535413d44da0a2dac836307150d251e24f"
+		},
+		{
+			"path": "res://resources/shader/orange_charging_ground_ring.gdshader",
+			"sha256": "fc77fc4f9dd180ee523883569d50f8e348ada04ed65111a3ef523756aba835db"
+		},
+		{
+			"path": "res://resources/shader/orange_charging_tower_cycle.gdshader",
+			"sha256": "761fce42f78141d75f4cb63f682409cf34b5cccbe552293c5568c59784c71771"
+		},
+		{
+			"path": "res://resources/shader/orange_charging_tower_glass_cycle.tres",
+			"sha256": "b77694203c4c3e59cc4da0377e1f84761f19948e040711364fc7d0c89464278e"
+		},
+		{
+			"path": "res://resources/shader/orange_charging_tower_orange_cycle.tres",
+			"sha256": "2f0aca540946802dc3cceff14c118684a71da4bda86c9f623ec167aa00f8e25a"
+		},
+		{
+			"path": "res://resources/shader/plant_cultivation_center_border.gdshader",
+			"sha256": "19bc265c973d1c63683e00ed892733a0571e12cc570522c4db42a708062134f0"
+		},
+		{
+			"path": "res://resources/shader/plant_cultivation_center_lifecycle_glow.gdshader",
+			"sha256": "e9bd59e3999cd7c5f0019c5bca6d6822e0787197623f91d86cc17ce3fcb9df93"
 		},
 		{
 			"path": "res://resources/shader/plant_lifecycle.gdshader",
@@ -3765,6 +4417,10 @@
 			"sha256": "8480c7ec521130e9d075c6243352778a5369421e7e004b01054c628c9a602eff"
 		},
 		{
+			"path": "res://resources/shader/plant_visual_pixel_snap.gdshader",
+			"sha256": "08d9ebdfce9e677092e221270e9c1f34ba7fe84f4a2a808146ec83b7dd8c88f7"
+		},
+		{
 			"path": "res://resources/shader/rapid_projectile_single_pass.gdshader",
 			"sha256": "76140a3c5015099afcb209b378eeed73c486a8838b5bc637c022db276b47ae4b"
 		},
@@ -3773,8 +4429,80 @@
 			"sha256": "f1523342d53750e3dcbe5f1d40172c0d1aabcf258ee2bc6766a13cef77ac10bc"
 		},
 		{
+			"path": "res://resources/shader/research_center_border.gdshader",
+			"sha256": "5fc35180d88b73bd201287c973d77f22a475f668fc532bf5f81f13efedc17b93"
+		},
+		{
+			"path": "res://resources/shader/research_center_lifecycle_glow.gdshader",
+			"sha256": "b2bedeec2082ac8653512869a954ad424a00a66821e09a6b645eaa747062af68"
+		},
+		{
+			"path": "res://resources/shader/rogue_underground_shop_diamond_transition.gdshader",
+			"sha256": "8c071f1ad37a15909048916293d444d0c1c6818a048c8447637ac176d9a349b9"
+		},
+		{
+			"path": "res://resources/shader/stone_mill_border.gdshader",
+			"sha256": "85e66947926eb3935b75f041aeb84939d95ab1dda53dd97015abfb62d87fe0f1"
+		},
+		{
+			"path": "res://resources/shader/vegetation_stake_border.gdshader",
+			"sha256": "2a0da7ba52ccdc2119c0aafe47f1be7b06f03fc4f0408257cfec2157ff9f8bdc"
+		},
+		{
+			"path": "res://resources/shader/vegetation_stake_glow.gdshader",
+			"sha256": "3079670104764deb51e503d349ed568acb875791ccb1f3759ec47a743c26eb4a"
+		},
+		{
 			"path": "res://resources/shader/wood_processing_station_border.gdshader",
 			"sha256": "a8ca49da5e63e2bf16390f821ebcbe0d690c18f7cfb76db5d2ff14d136ccc65c"
+		},
+		{
+			"path": "res://resources/shader/xiaocong_fate_entrance_reveal.gdshader",
+			"sha256": "b8147f28a65fe6113579cfb0010b51a6efdf934fec3bb436510c3186ba49f085"
+		},
+		{
+			"path": "res://resources/shader/xiaocong_fate_scene_transition.gdshader",
+			"sha256": "9abda26e3ec9f783c413d31ef53696c39e98a12016ae61bc3dbaa755269ff4b7"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/dirt_clay_details_16.png",
+			"sha256": "377b6cb8f5eec045eb3a3f84adc3bc36284484b5bdc0d33ac7c6534fe959faee"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/dirt_clay_details_16.png.import",
+			"sha256": "2f3312eb03e28189d5196c1de5bbbb67912ac11899b932feaba45bbe3eca37a1"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/grass_flower_details_16.png",
+			"sha256": "fd810b16e7b4b3b0dc9aa759884d90bc5a7ce4b4a73df978e3e4ebe42b4b83b2"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/grass_flower_details_16.png.import",
+			"sha256": "a43af54779174056e70634238d9530be3ef6716049ba6184eb1dfb68f4f27456"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/gray_metal_floor_dual_grid_atlas_16.png",
+			"sha256": "f0b7c383a0850d778c990e85d500f890be9d1de6870c75639471fae7745ec011"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/gray_metal_floor_dual_grid_atlas_16.png.import",
+			"sha256": "7a5609994b1ca9253ef46ebaad909fac6477bd40f04ce16056051ee395f03130"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/meadow_grass_dual_grid_atlas_16.png",
+			"sha256": "5986485ba5e5a45f571c824eb6948302eed05cc1e4a42c7a068ae265b4b699d8"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/meadow_grass_dual_grid_atlas_16.png.import",
+			"sha256": "3b1eb3e4f551761e74c8673bf056e3de1030cbd501448be39264802678f25b58"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/sky_blue_water_dual_grid_animation_16.png",
+			"sha256": "884a5173741f411c9f04baf059f2b11689a16a2efd7b94975a6b7612db127bb8"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/sky_blue_water_dual_grid_animation_16.png.import",
+			"sha256": "e766b5b541daaabb0020634016c1e68aa691d390ddf3f63b9202aaccc9e62860"
 		},
 		{
 			"path": "res://resources/terrain/dual_grid/sky_blue_water_reference_tile_32.png",
@@ -3783,6 +4511,38 @@
 		{
 			"path": "res://resources/terrain/dual_grid/sky_blue_water_reference_tile_32.png.import",
 			"sha256": "246322103ad9a7b185e2353e5f9792679b8d2c2c1f93e0f188be6eb77c7893e6"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/terrain_dual_grid_placeholders_16.png",
+			"sha256": "d0fb31d927da76fc8a64b6e160ad2fa72d5c054a28ee09aa7f4e81a4d4549591"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/terrain_dual_grid_placeholders_16.png.import",
+			"sha256": "0fc0f3151da21158dbe7a5f174f36b82b5bcd176ab08a7b26b269994eede8c60"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/terrain_dual_grid_tileset_16.tres",
+			"sha256": "5b95c174ed1c94ae92c0127c64d1092ea3a9cd4088d32609299c817d7eac86e1"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/terrain_water_collision_tileset_16.tres",
+			"sha256": "f253d93f957a67cffb378a5de450ab9c586a1f61fd38d93dfc3143ee754966ca"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/tilled_soil_dual_grid_atlas_16.png",
+			"sha256": "238b58d538617fb08b6530c498e0c342c38a27eff2c102a36220ade4f51478ac"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/tilled_soil_dual_grid_atlas_16.png.import",
+			"sha256": "c44a43ddf6839c0f8af8a7f6e6c8c88365d9f72b812cceaee973b692ead37425"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/tilled_soil_full_tile_16.png",
+			"sha256": "f5984dadcd0e77ea09c4a7849c4f6ad14696e0fc52d9922f9f088e139fad71fc"
+		},
+		{
+			"path": "res://resources/terrain/dual_grid/tilled_soil_full_tile_16.png.import",
+			"sha256": "a3066425d529e5e5b5fcebf27ee20519815a8a7e446bd00b58fb2ee21c70d749"
 		},
 		{
 			"path": "res://resources/texture/apple_collectible.png",
@@ -5009,6 +5769,14 @@
 			"sha256": "99e600b4ba844ad9660b38e025c3822a7b2f57d5064000b3798b60e8bd08eb83"
 		},
 		{
+			"path": "res://resources/texture/defeat_window_background.png",
+			"sha256": "80717a4426009296e13c4c25f516967b0e13a1a4540701ca6fd99096dd9f4c1f"
+		},
+		{
+			"path": "res://resources/texture/defeat_window_background.png.import",
+			"sha256": "6e3a16a7d761ddc075d03fa3bfb04af28e010c30823c2517a7d85495dfccc8ba"
+		},
+		{
 			"path": "res://resources/texture/enemy/artificial_creation/cardboard_monster.png",
 			"sha256": "73bad923829c873b83c808954d610735826884e2786a5fb1da21a04240578f2c"
 		},
@@ -5717,6 +6485,30 @@
 			"sha256": "c0b81ce2243fe22aef0c1fa6f0d2d77279b9f8eff0c4ac8ae4f2c8c16f03b4b5"
 		},
 		{
+			"path": "res://resources/texture/item_category_badge_collectible.png",
+			"sha256": "95bebf510517542a477c5682e351cfeea83f72e710ca412389330baad60b4671"
+		},
+		{
+			"path": "res://resources/texture/item_category_badge_collectible.png.import",
+			"sha256": "8e9761adb0ba862fe078577fdc0a0439dacff43e660629b5229eeb5cacd98238"
+		},
+		{
+			"path": "res://resources/texture/item_detail_panel_bg.png",
+			"sha256": "75949341e91415bd1430b26339919622757733b6920126d1cd8d2e7feeac3131"
+		},
+		{
+			"path": "res://resources/texture/item_detail_panel_bg.png.import",
+			"sha256": "d49baa9ab4fad4b6ed8c30bb41819cc8d21cdc0a82998d29a8d4159dc26fee71"
+		},
+		{
+			"path": "res://resources/texture/luoxi_idle.png",
+			"sha256": "e706543f61f50ce5ed4977d9e9689fa3831ced3446029e9f68972ec40cf367b5"
+		},
+		{
+			"path": "res://resources/texture/luoxi_idle.png.import",
+			"sha256": "b86ca08d987288134f6fcc3e0b52a0d0c643e1b402fdf6e26c355c255cdcfd77"
+		},
+		{
 			"path": "res://resources/texture/materials/capoo_blue_crystal.png",
 			"sha256": "8a1394fd75ae584e819328c9a4a7d292c6bc79d5ead868c5d52f20523ad0c728"
 		},
@@ -5837,6 +6629,86 @@
 			"sha256": "559bc906f49a7d8be8af48e5b72175665e410e302cdc95be50f8da803d09b463"
 		},
 		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_body_idle_0.png",
+			"sha256": "b0d6ee757d1062e3c6dfb66d1990408c846a8b705c119de5b3a86d669448e9bc"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_body_idle_0.png.import",
+			"sha256": "b6bad58b47786dea6ac906372250e3c643276f6cdc330c89639bb205389c3d07"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_body_idle_1.png",
+			"sha256": "b0d6ee757d1062e3c6dfb66d1990408c846a8b705c119de5b3a86d669448e9bc"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_body_idle_1.png.import",
+			"sha256": "a7787e4997428652afc71cae0f5e9ae0e124d5ed35b03fb90dfdfed035444901"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_body_idle_2.png",
+			"sha256": "b0d6ee757d1062e3c6dfb66d1990408c846a8b705c119de5b3a86d669448e9bc"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_body_idle_2.png.import",
+			"sha256": "9b39a1315e6cff63482d9cf45317344f500b2cbd368451ec4ca7475b85869a3e"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_body_idle_3.png",
+			"sha256": "b0d6ee757d1062e3c6dfb66d1990408c846a8b705c119de5b3a86d669448e9bc"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_body_idle_3.png.import",
+			"sha256": "0a74ed7a5da9274f2bdf03b7a0f79b656fe70f30b00d8ab26441aec899a99241"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_0.png",
+			"sha256": "4aee16098f8396cbf187f60fd52ba538e18f0c73e52e76b1d9bb42e76b810cc9"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_0.png.import",
+			"sha256": "566ee01be2c455c8390039de68f9fc7a894c396db8c887ccb43070730f23e07c"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_1.png",
+			"sha256": "6f0a54ac0c6610f91bc1c27fe907bc412bcb2f7eb7942dfed8bd92340a8dc005"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_1.png.import",
+			"sha256": "c60dfe75ce8e1f5393d44c1961935e3de9bf8b3db6ecdf64bd8fd4f6809d9cf9"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_2.png",
+			"sha256": "4aee16098f8396cbf187f60fd52ba538e18f0c73e52e76b1d9bb42e76b810cc9"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_2.png.import",
+			"sha256": "7be3a183a217051efb5d8cf676a552594147bb35bd395f520a67daef88c176d4"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_3.png",
+			"sha256": "6f0a54ac0c6610f91bc1c27fe907bc412bcb2f7eb7942dfed8bd92340a8dc005"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_3.png.import",
+			"sha256": "948bc107a81f75e0de1b8dc0e981cce24d41260c9c639af87eb63b307a25efe2"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_4.png",
+			"sha256": "4aee16098f8396cbf187f60fd52ba538e18f0c73e52e76b1d9bb42e76b810cc9"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_cannon_fire_4.png.import",
+			"sha256": "249c6f3905f899eb7059da1fd1c4793a232d4995cfbd4694cba93ea0ca3c08df"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_cannon_idle_0.png",
+			"sha256": "4aee16098f8396cbf187f60fd52ba538e18f0c73e52e76b1d9bb42e76b810cc9"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/agave_cannon/agave_cannon_idle_0.png.import",
+			"sha256": "d0c7c87489f7ea433aa055ad78ef3620ca9f4a45b6e15b089b76c916d9fb1a40"
+		},
+		{
 			"path": "res://resources/texture/plant_defense/agave_cannon/icon.png",
 			"sha256": "15ec70ecbea95b5f781f28fa8148452674c466411768f97e765365f33008a75d"
 		},
@@ -5853,12 +6725,220 @@
 			"sha256": "c67796afc1bfbf850d52c546e13fa9b04674968cec28cfa5209e36e9681f0a97"
 		},
 		{
+			"path": "res://resources/texture/plant_defense/attack_speed_tower/layers/speed_foreground.png",
+			"sha256": "8bdcaf59396722c76b29a4c8c8666aa44a321e71e66b037d815a9f3c674d17ad"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/attack_speed_tower/layers/speed_foreground.png.import",
+			"sha256": "e87988d9013057554f303bed8aabb510e483dbda9af3b5722762806b1334c531"
+		},
+		{
 			"path": "res://resources/texture/plant_defense/bamboo_mortar/idle.png",
 			"sha256": "2bfb8a6c633d7dc334470f19b97e9b6cd7f0e093f9c43e55b9df849c23958e58"
 		},
 		{
 			"path": "res://resources/texture/plant_defense/bamboo_mortar/idle.png.import",
 			"sha256": "7454e6cd8e9f5679e5aa782216f88640058b25ff93fe4cd8b2bfddf374911008"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/lower_idle.png",
+			"sha256": "434e98df2838d94811f3e693e32f04a33301784315db4f037dfef261e9bf5cd7"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/lower_idle.png.import",
+			"sha256": "aa2b5da39379245b84c39e3b1924ca438453fe6e7204c04b666b4b0ab8a2f866"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_0.png",
+			"sha256": "c0ad49296d564f5fc197b8b08536a278b4c480a8319cac05053ff2750bd2fddb"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_0.png.import",
+			"sha256": "96b20b3291e9ed0eb5639db238e20cb8116b7988d83c247cf51870e9dcb48c3e"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_1.png",
+			"sha256": "7c75b33b388b1a3c4d882437d5278286a420d24b79a588875a680ee2dac1d3ee"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_1.png.import",
+			"sha256": "2e5cc694cfe30939d0c4187d0b7bf25758bcc8e757ea53344fd2d01543fb6a8d"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_2.png",
+			"sha256": "6818840e05e5cda04b9819e60cfc0c915d97865e7f1dd00f8d78ccb41852413a"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_2.png.import",
+			"sha256": "de1286b84a64b7fca42890bdf08ba725bde911ce89729bc38c30723e43c8d528"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_3.png",
+			"sha256": "d26b1b6ca6730a0e689521589821c8081de909f7b1a2ce77b43ddbcca33b0826"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_3.png.import",
+			"sha256": "b45fa0367accbc36a27364df118a5361f891b9f264d4693da13d4677bdce3a5f"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_4.png",
+			"sha256": "22c66ea39dc91f310c6751665b9d0bf88f3060e1188209b29985c2e2e5d54cb2"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_4.png.import",
+			"sha256": "46dd68c259f947dcb91d8a20e153ac0bbbf04d23e0351c68baeefdec4fc8440b"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_5.png",
+			"sha256": "41fb79bc0515ddcf2b34b72250a181f68a00e1a0f874bf0a54c4173ba60254cd"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_5.png.import",
+			"sha256": "b8a838dfd9e89af65f587aaded84fe255bff858016722d7448d79423f4fb8622"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_6.png",
+			"sha256": "fcfd8a6f3cef42225e7380c5e6ddc771458097455fb46ff4c9bd9edcd5179d8d"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_6.png.import",
+			"sha256": "a3956eac069972747e923fd48770e39b34cef8f136979de6ea09196724565848"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_7.png",
+			"sha256": "c242a3b6299754bb6bfdccb1517deb80a27a5ae85ace32831db810ab0bbdfdbb"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_charge_7.png.import",
+			"sha256": "84eeb81041ee7b2213d42b4b1788a8f1f673290008e42bcefae28d966929fc53"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_fire_0.png",
+			"sha256": "9ee0ab30fd600ca2e243f07e8d255779ff0dc19268911db119e29988cd34c66b"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_fire_0.png.import",
+			"sha256": "1f40f4ccca96d51835a23c6d02464cbd3ce53ed8c05f1b95a931813623c8fd51"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_fire_1.png",
+			"sha256": "b1fdbe7b0ed402d7bbe76f700f31d6942e7a0c5516a0683d7dde54e73c9ec158"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_fire_1.png.import",
+			"sha256": "b4ffaaa069e6e8aa57b82cb1dcb535c078ad555da2a3dff79d6991d94b8c5a36"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_fire_2.png",
+			"sha256": "9bc9380797cbfd45b9d20c2103fe134801b12f0378208f7388856a6e9bb01c82"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_fire_2.png.import",
+			"sha256": "ae4e6ec096bbc44332d6a57e3c7e9bd9ab6ecdabe2a54ff25b1506cf88d24406"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_fire_3.png",
+			"sha256": "061276ead70c30c775bd0e07eec3913c192ebefaa3d2b950baa24cb4ea077615"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_fire_3.png.import",
+			"sha256": "cd73931558b13216ef21b5853eeaebde890987c0281d0020e026232966b7073c"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_idle.png",
+			"sha256": "f6afe3bdd7bc1f889b9fa7a7f3343d736ddc8e31b18fb8270752d0bfd843dc00"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/bamboo_mortar/layers/upper_idle.png.import",
+			"sha256": "5b89540292aa265c885c157840d9e56f01748525d4262cf66cfcc7531df22905"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_0.png",
+			"sha256": "777bae2cbdf8fd6d46e07dc81ff45332989024e00d9c42712264ded5498e1dd7"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_0.png.import",
+			"sha256": "d5171c09ca1fc8410ecd8ea05204ff88233873857c6568df715a11f1f14dc17f"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_1.png",
+			"sha256": "777bae2cbdf8fd6d46e07dc81ff45332989024e00d9c42712264ded5498e1dd7"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_1.png.import",
+			"sha256": "6e19277b595d4a6f474c8bd0e38d8cb0a0720284723aa61a08fa1c7d8731872a"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_2.png",
+			"sha256": "777bae2cbdf8fd6d46e07dc81ff45332989024e00d9c42712264ded5498e1dd7"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_2.png.import",
+			"sha256": "0fab30c1fc0536e23a1ee90d6380e9a441a31772a87e22905fe0109e472ba723"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_3.png",
+			"sha256": "777bae2cbdf8fd6d46e07dc81ff45332989024e00d9c42712264ded5498e1dd7"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_body_idle_3.png.import",
+			"sha256": "b2964296cb71b6231bbc20dba4894aa0fed07dcaca0d893b15cae4bf9684be92"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_muzzle_flash_0.png",
+			"sha256": "b478ef98465f6f836c2cc1f704791d1339bbc752b6e546f39117b4e92e03df80"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_muzzle_flash_0.png.import",
+			"sha256": "c1f7a3df6ca04c3782c78e63885bb5845f251defa9ae25d14aeeb2cd84c61a3b"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_muzzle_flash_1.png",
+			"sha256": "202fb583d1befd97e6778da7fc891b1b903d7eb9ff163cbccdf4192fb7c25aba"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_muzzle_flash_1.png.import",
+			"sha256": "66c1c93cc0e83721bbe42670c56bd8a14e523ca7e626ac4b5b2d3da266cc8969"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_turret_idle_0.png",
+			"sha256": "732fdf4440b403518c28c5cac14ead28d940c7580863898b61e3dbdbd2087f31"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_turret_idle_0.png.import",
+			"sha256": "5133562c8c5d645dd7bb64aac70de4e1152a045061db602825b8ae3267d754f8"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_0.png",
+			"sha256": "732fdf4440b403518c28c5cac14ead28d940c7580863898b61e3dbdbd2087f31"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_0.png.import",
+			"sha256": "627765c2b28e8292c6aabf649818609b075d672f0795e41550a022f9110f6160"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_1.png",
+			"sha256": "732fdf4440b403518c28c5cac14ead28d940c7580863898b61e3dbdbd2087f31"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_1.png.import",
+			"sha256": "ca58c361260ac48b1ce77b38bb69de1ab12d7e0378c6d6d0bb42c21a21f5697f"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_2.png",
+			"sha256": "732fdf4440b403518c28c5cac14ead28d940c7580863898b61e3dbdbd2087f31"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_2.png.import",
+			"sha256": "4859097ad67ec22589150a6b64b2e11b4d70339d45d07891aad0afe060a95d75"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_3.png",
+			"sha256": "732fdf4440b403518c28c5cac14ead28d940c7580863898b61e3dbdbd2087f31"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/corn_machine_gun/corn_turret_spin_3.png.import",
+			"sha256": "a189f6d63e87d280415a21a24853d0fbd38fd30a3e65f07778a012000afdc5fb"
 		},
 		{
 			"path": "res://resources/texture/plant_defense/corn_machine_gun/icon.png",
@@ -5877,6 +6957,14 @@
 			"sha256": "1104719b85bf4d2260b5ee901fc3d14044c7aec917ce9d7243e7b43868691ab5"
 		},
 		{
+			"path": "res://resources/texture/plant_defense/grape_arc_tower/firing_grapes.png",
+			"sha256": "bd9e8e948a996c5ac1d751b8f6251eba9205f45aabca9ec561dfbd137c81b8b6"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/grape_arc_tower/firing_grapes.png.import",
+			"sha256": "7b394e16ef8bdd0556796d6da7d19a7839c641556664b5fad57fcd5118529ca0"
+		},
+		{
 			"path": "res://resources/texture/plant_defense/grape_arc_tower/icon.png",
 			"sha256": "62fbaa54c0ad4a1bf0cb1ab4d5c230da3f128a14d719976ef841ddc162d27d00"
 		},
@@ -5885,12 +6973,52 @@
 			"sha256": "7176dec1d7393dc52983815032d8948be012d67d927c6f5c456842dc45b81904"
 		},
 		{
+			"path": "res://resources/texture/plant_defense/grape_arc_tower/side_grapes.png",
+			"sha256": "a75e58410b994ce5b71d5f4e7b8b3a0792b860bd7c2a7516314e5aa53bbade4f"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/grape_arc_tower/side_grapes.png.import",
+			"sha256": "c1de6c983bfb264deb7d0df402539a02f8c4f64e7cfc1bd64efc9b77d8acf0ee"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/grape_arc_tower/support.png",
+			"sha256": "a920ad55babfb0722e779aa29a2d29a99f669f749348c8abf4c9cbe8bd86147f"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/grape_arc_tower/support.png.import",
+			"sha256": "39fa29cb3d5baaf8102e393e5347215a47f98d4e6105dfc9fd7333420bd9f3a8"
+		},
+		{
 			"path": "res://resources/texture/plant_defense/hydrangea_rain_tower/idle.png",
 			"sha256": "ab2f7b83150d2cb154e8d1c4a9e197775f49d8e82fb67f3fa53a0f61dcdbb92e"
 		},
 		{
 			"path": "res://resources/texture/plant_defense/hydrangea_rain_tower/idle.png.import",
 			"sha256": "ba664016645be30bd22d47f81782459a3c0530ddaf8df2bd45839d38ae832790"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/hydrangea_rain_tower/rain.png",
+			"sha256": "d716f6a4b6adb6f62b01d361675084eb118355c6b28fa2a63eb7555fff3924fb"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/hydrangea_rain_tower/rain.png.import",
+			"sha256": "98f94a1ba2a8e426f5c7d4db279d29d38ded94c9bef17a84bd321df18e439b89"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/life_tower/layers/heart_foreground.png",
+			"sha256": "d7ee5272a8a6962c013ba0d50136503654c783025683c943eef7c44261575e64"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/life_tower/layers/heart_foreground.png.import",
+			"sha256": "a5c513adf939820ad6b269c3ec646747183a931a5d5ec31a0c8441a6eb3eeb99"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/life_tower/layers/lower_body.png",
+			"sha256": "2815c1ca6400bc4487021aa2be69704bde5ced69b90241a4210a79f89658e77d"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/life_tower/layers/lower_body.png.import",
+			"sha256": "1b6733d148ede6371322858bf493c9480876aaa18f65e70b830676b0b15d8685"
 		},
 		{
 			"path": "res://resources/texture/plant_defense/life_tower/life_tower.png",
@@ -5909,12 +7037,60 @@
 			"sha256": "d71b31ab8f9d0ed38bbe73f85dba87895d85c008ea9520c4a60b81117bd7057a"
 		},
 		{
+			"path": "res://resources/texture/plant_defense/oak_warehouse/oak_warehouse_panel_background.png",
+			"sha256": "a38519453e4b59e311fc3ab3eb62a5f2f93cc24b8d97f4b347a4a56e33bf3936"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/oak_warehouse/oak_warehouse_panel_background.png.import",
+			"sha256": "7426a679e88531bf3c165f6f3545f2e2efe513df5db6d22aed54e5b2e3d42866"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/orange_charging_tower/body.png",
+			"sha256": "3150c2c24e6cb63b72d0b8e705387fac203c0346172c43e903d0dc15409f8c56"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/orange_charging_tower/body.png.import",
+			"sha256": "2635f773b42b56cc52dc65dd6d8d800a3bfe305a3966ea04eaa9a0119dbf4a8c"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/orange_charging_tower/glass_cycle_glow.png",
+			"sha256": "37d931d331356e011fc94c965a239376bcb7a5d73afd35cbd21e68794e16363a"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/orange_charging_tower/glass_cycle_glow.png.import",
+			"sha256": "937c9b4631ff70156633fc1e8050c101411bd5901303859cdeab3e218d88f77a"
+		},
+		{
 			"path": "res://resources/texture/plant_defense/orange_charging_tower/icon.png",
 			"sha256": "464aba5527519467d9ea63e6f083136e3fe707001cead9d6744494b4442bda08"
 		},
 		{
 			"path": "res://resources/texture/plant_defense/orange_charging_tower/icon.png.import",
 			"sha256": "1b291522ad8a3361b2613281a7bec8adc34e849311ba289c1d52ecdd54bf094d"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/orange_charging_tower/orange_layers_glow.png",
+			"sha256": "01b27a3adb85211b3d5a53f1386d143c018a56337c151305f286e93fcd5f052c"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/orange_charging_tower/orange_layers_glow.png.import",
+			"sha256": "f18a756b965cc328a72de913dda92cc19f4f343e7e840629df3f10d3d28ce7fc"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/plant_cultivation_center/layers/lower_body.png",
+			"sha256": "fd2d85edb03226a21962ac536fedf425799551a9eebea4be411df8df956576c5"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/plant_cultivation_center/layers/lower_body.png.import",
+			"sha256": "401b96b2d121a44efef2d46c166f9dab1379b9104f46f06f0a0c94cd99b67ea4"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/plant_cultivation_center/layers/upper_foreground.png",
+			"sha256": "daa36e428059679ed0bd0235cf463f0b8af3168d25ed174bdad9c36baff243e6"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/plant_cultivation_center/layers/upper_foreground.png.import",
+			"sha256": "bfc9841dbba1a356bdf9036901c9b72a4d5a972b7adefc42363939a0fc7c610f"
 		},
 		{
 			"path": "res://resources/texture/plant_defense/plant_cultivation_center/plant_cultivation_center.png",
@@ -5925,12 +7101,44 @@
 			"sha256": "0a147abc436d74e3ec731ff07b2711aaddb79bd065fd627a414fa376fb206669"
 		},
 		{
+			"path": "res://resources/texture/plant_defense/planting_base/layers/lower_body.png",
+			"sha256": "3b474af6eaca565930e252e403422f55125ad0de3f8028f85610335bc8bfa605"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/planting_base/layers/lower_body.png.import",
+			"sha256": "1d28a6c73845f50d356f15f30af0184365dae54f6f26bbad686ed8b0d27bd443"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/planting_base/layers/upper_canopy.png",
+			"sha256": "a0102c36ba10f117cc42a20107da4d0d13513e73263596d94b5d2c49a14b196a"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/planting_base/layers/upper_canopy.png.import",
+			"sha256": "03966a77a34ee71699f2d2f99abbedd81f2595bbaf00470847217703397f99c4"
+		},
+		{
 			"path": "res://resources/texture/plant_defense/planting_base/planting_base.png",
 			"sha256": "ab3d69947283f686a0d74ac73bb200d4847cf9ff61e4e214618fe31753be6f3a"
 		},
 		{
 			"path": "res://resources/texture/plant_defense/planting_base/planting_base.png.import",
 			"sha256": "6eeb50e89e18f1dd3bca9e12153d4f2b71a465b467259d5c50855da8275bbe68"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/research_center/layers/lower_body.png",
+			"sha256": "810aeb725fe3b600ba5386648488ed5ef805242c318090a5b62fb965bc61d6ac"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/research_center/layers/lower_body.png.import",
+			"sha256": "76aa1b406afb0b7a7a670f943043336c5826df966041a069f773f4ca55ea92f2"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/research_center/layers/upper_foreground.png",
+			"sha256": "2118257f60ea5aaa3a5132b34a788c9f74e20c5260c846b7fb621e337af43a69"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/research_center/layers/upper_foreground.png.import",
+			"sha256": "ec548582d462f38203a07880a69e71b4eea77f8151932d707d2aa7f027f8ab22"
 		},
 		{
 			"path": "res://resources/texture/plant_defense/research_center/research_center.png",
@@ -5947,6 +7155,22 @@
 		{
 			"path": "res://resources/texture/plant_defense/simple_fence/simple_fence_atlas.png.import",
 			"sha256": "770b061118c695fcf703643976ef995d02aadba7417cf5cc80e4fdcb13ab57dc"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/simple_fence/simple_fence_connector.png",
+			"sha256": "d4071877651ea8cdb7b42deb732b8526ee56a7fc59b024ce16b24047426bde15"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/simple_fence/simple_fence_connector.png.import",
+			"sha256": "a7cea2d3c5e1a7cb8449f47483a072e6316a381a2af554971cbe377d2d3eda22"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/speed_tower/layers/boot_foreground.png",
+			"sha256": "e316ad13059977e7d56868392c8829fb866736916a2559ac584e3eb69929b536"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/speed_tower/layers/boot_foreground.png.import",
+			"sha256": "e7ef81f746abb433edb24f0921d0e1ff9ece69f677ce652e22d0cd83f643c4c4"
 		},
 		{
 			"path": "res://resources/texture/plant_defense/speed_tower/speed_tower.png",
@@ -5973,12 +7197,28 @@
 			"sha256": "7534432eabe8324413fd560eb9d4982ecb8af52b5c14b12e23a43bde29cf2118"
 		},
 		{
+			"path": "res://resources/texture/plant_defense/vegetation_stake/vegetation_stake_glow.png",
+			"sha256": "8793d2a066884b892da4a5f3d52e2d2f63a54043c971ccac6968cf53ee14d41f"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/vegetation_stake/vegetation_stake_glow.png.import",
+			"sha256": "383672a62908c3b0687d82aa8c89d652e1b6704796cb5b798058686716463710"
+		},
+		{
 			"path": "res://resources/texture/plant_defense/water_collector/water_collector.png",
 			"sha256": "dede05bc6f92e2b4d2301556af5ffba1903e2c29dfb480a37c97ef4e4da73cf3"
 		},
 		{
 			"path": "res://resources/texture/plant_defense/water_collector/water_collector.png.import",
 			"sha256": "77394767e45cce8a1928d21178d88ce5c56d94af971c9b97db65e978833f5585"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/water_collector/water_collector_progress_ring.svg",
+			"sha256": "199077ecbcf6cec55b5b02f6319201d5c6590d2f62cd8336e1e408f6d44a67fc"
+		},
+		{
+			"path": "res://resources/texture/plant_defense/water_collector/water_collector_progress_ring.svg.import",
+			"sha256": "2c5b82ac7bd4318291be0ddd09756beeb511c04b32ba2821a8f6340ba2f514ce"
 		},
 		{
 			"path": "res://resources/texture/plant_defense/wood_processing_station/wood_processing_station.png",
@@ -5989,6 +7229,478 @@
 			"sha256": "55e5f23c163d993f101ad728039d3f274b05cc2b6f644e2f8e21a70b4f7c147b"
 		},
 		{
+			"path": "res://resources/texture/player_profile_background.png",
+			"sha256": "4fabca500e3be210b307751ccd9b42a066a3a5606f3e4c478143d85dd202ea1a"
+		},
+		{
+			"path": "res://resources/texture/player_profile_background.png.import",
+			"sha256": "88ed2a32ae3ae971d96ab77c4edf635d90d9d903f81e5d23f058a3852657ef33"
+		},
+		{
+			"path": "res://resources/texture/production/plant_cultivation_center_panel_background.png",
+			"sha256": "572a659cf90d97dced09abfe4cf4615d8090e201a94a0e6305ada8d573c82e88"
+		},
+		{
+			"path": "res://resources/texture/production/plant_cultivation_center_panel_background.png.import",
+			"sha256": "07755840a3e8a70bbbface1a4eb8790d007f78063497c6262719394af48e4e32"
+		},
+		{
+			"path": "res://resources/texture/production/production_loop_icon.svg",
+			"sha256": "69d1538f2ffce8af8e00a5b46f3f4708e3ad3f18802a5b4acff8c30017ce7243"
+		},
+		{
+			"path": "res://resources/texture/production/production_loop_icon.svg.import",
+			"sha256": "a8f93afc0ef18c093813f38290b43a311c7793f9f0fd7ac2e7f521626c4d24fc"
+		},
+		{
+			"path": "res://resources/texture/production/production_panel_background.png",
+			"sha256": "1abec01c03451cceb65f4bb0914257f95f685b23e5467f43b53f62b3f531a2d1"
+		},
+		{
+			"path": "res://resources/texture/production/production_panel_background.png.import",
+			"sha256": "eaaead24833a17ed785706ae8f5a0cc1669f798078fd2569ab1847c516214c0a"
+		},
+		{
+			"path": "res://resources/texture/production/water_collector_panel_background.png",
+			"sha256": "696c2aa0d1964e47d642fef82dfac98bc84ad9cd211870813a0fb2d468434a25"
+		},
+		{
+			"path": "res://resources/texture/production/water_collector_panel_background.png.import",
+			"sha256": "3d69de09584ae9901641a09608199a59ec4e1ab7d3c2b963bbccf92551fc43ed"
+		},
+		{
+			"path": "res://resources/texture/profile_gun_icon.png",
+			"sha256": "aa510eef5ec137f6e5266d8a28f5fa0710ea6f39099c7172002620f7b9d31f94"
+		},
+		{
+			"path": "res://resources/texture/profile_gun_icon.png.import",
+			"sha256": "61e5e3e8f4a4364a98bd33b963ff70c1f9529f1d7beba221a55efe0830453643"
+		},
+		{
+			"path": "res://resources/texture/profile_tab_hovered.png",
+			"sha256": "8d058e012c80c45c776d37d336097849c28f5d59f8f5c26734f82e1a6e47c805"
+		},
+		{
+			"path": "res://resources/texture/profile_tab_hovered.png.import",
+			"sha256": "0d592250b7aa784fee4fa87449a258ecec4070a767a33494742877805bed7f01"
+		},
+		{
+			"path": "res://resources/texture/profile_tab_selected.png",
+			"sha256": "ea295a27356afe5d594b8afc1dd02f632b9efc81a76e48d92f848e824f6290e3"
+		},
+		{
+			"path": "res://resources/texture/profile_tab_selected.png.import",
+			"sha256": "cebbed55c449047de77021f9bb875b6aa55d209ad7f6f14b7d237e292c5fd503"
+		},
+		{
+			"path": "res://resources/texture/profile_tab_unselected.png",
+			"sha256": "e53374e6278a72dc485151bee3228291d81a2625d7f3e4615ca168488645e94d"
+		},
+		{
+			"path": "res://resources/texture/profile_tab_unselected.png.import",
+			"sha256": "86e971000272569ca146ddfe7c56a726985f36386c9e7e2f8322423fccd28837"
+		},
+		{
+			"path": "res://resources/texture/research/research_center_panel_background.png",
+			"sha256": "09e44baaa7d96249b495c0dcfebfe4fdba6452109ddffa138752e5bad56580ce"
+		},
+		{
+			"path": "res://resources/texture/research/research_center_panel_background.png.import",
+			"sha256": "ab1cabafc0a84b1f9a084f5525a97b0299180fb0a41c447c9193ff9a24de879e"
+		},
+		{
+			"path": "res://resources/texture/rogue_combat/abandoned_mine/abandoned_mine_background.png",
+			"sha256": "9b3f43f3ddb6fbd53376529bcf05bafdc7042d4cfe5d455ce4a888d1fb7f34b4"
+		},
+		{
+			"path": "res://resources/texture/rogue_combat/abandoned_mine/abandoned_mine_background.png.import",
+			"sha256": "546cf072a90141d6a072c6007ded061059513c93279d0c07aa55be4d82b550c6"
+		},
+		{
+			"path": "res://resources/texture/rogue_combat/underground_church/underground_church_background.png",
+			"sha256": "b4b7a02d0c90e1f97e187b84e0e17a876d0330d388723cabaca519b6332db7b9"
+		},
+		{
+			"path": "res://resources/texture/rogue_combat/underground_church/underground_church_background.png.import",
+			"sha256": "fd4a763b37673dcb11c0373c8e51388c40e25a105f09cd36c082620f39c6d8ec"
+		},
+		{
+			"path": "res://resources/texture/rogue_combat/underground_sewer/underground_sewer_background.png",
+			"sha256": "a41a77f3916734726b2e93d9b723411673daa52adf3c7ddf37639833caba6daf"
+		},
+		{
+			"path": "res://resources/texture/rogue_combat/underground_sewer/underground_sewer_background.png.import",
+			"sha256": "658c9de5adc0ef75020adba6036acfcb65660da7229809edaeeb9952c0259e52"
+		},
+		{
+			"path": "res://resources/texture/rogue_encounter/chicken_bro.png",
+			"sha256": "d4c604ac04ec452c2dba0f41087bc3d9300ca6c62ad944a81abd4013d4971bd7"
+		},
+		{
+			"path": "res://resources/texture/rogue_encounter/chicken_bro.png.import",
+			"sha256": "e1ed33eeb34600c8bb36c29461d04eb658e909e14cf6377323122f13d0744495"
+		},
+		{
+			"path": "res://resources/texture/rogue_encounter/encounter_panel_frame.png",
+			"sha256": "e870060ec0156b11c4b5a0ab0604f9385b5a56f1b3fac0faa5a105c22d683258"
+		},
+		{
+			"path": "res://resources/texture/rogue_encounter/encounter_panel_frame.png.import",
+			"sha256": "f1f62969160f512757bc54000bae35baada048ce170810f9d0943bf12eabc79a"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/hud/hud_action_points_v4.png",
+			"sha256": "7d39a3df09daabc58247cbed8da978a567a9a4984715f4032d5ee74085ccaa4e"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/hud/hud_action_points_v4.png.import",
+			"sha256": "418562890fb34b9ed6c6bcf2bb158ca402e253ae42e1bc637d59938a75f3b08e"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/hud/hud_core_life_v5.png",
+			"sha256": "e62d0b3afcdd7a627bbaba67ee8409d29a68b96094b514df5667c4a88a9b7272"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/hud/hud_core_life_v5.png.import",
+			"sha256": "f1eed58086d8db79778355702dbba42fecc64982f6a254c234ea2f9ce473f3e3"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/hud/hud_light_stone_v1.png",
+			"sha256": "fa4d163a2bd450d52c4552ed94dc922e4bf4801f905d7eda2ab10fbd21f0fe73"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/hud/hud_light_stone_v1.png.import",
+			"sha256": "9f033524fdf40aefa0030ee5516398495a196403c6c682143916158a6505c380"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/hud_ap_icon.png",
+			"sha256": "ae96982a1370b3c26ff6aa0f613004ad051a8441be013a67cac02c29dd5b5d07"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/hud_ap_icon.png.import",
+			"sha256": "f67c4f78435f837a1766626443eebb8655869870a34adb16c5aa2fb318ef1676"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/hud_location_icon.png",
+			"sha256": "30de8db7e10c9648e646126ed4cb75dd3850a3af79d0b7eecd1138bfbf0a852c"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/hud_location_icon.png.import",
+			"sha256": "f87412aa463cf3ce9450f5ce027513dfabbe9f0f95ed37d519c59c957462aa45"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/inventory/inventory_bag_button_ref_v3.png",
+			"sha256": "d36680d0909b31cddced607918341161239c0bd9e310c365111c5d30e56ee97b"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/inventory/inventory_bag_button_ref_v3.png.import",
+			"sha256": "3c9ca5abdf345eef4e56c2d314884ec8a369d0f572d0f641de643f486ca6f02f"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/inventory/inventory_bar_center_tile_ref_v4.png",
+			"sha256": "98ebad72f002ead2cd8a5dba792da9d557c61ff93eaed67b7105f6946d73a6c1"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/inventory/inventory_bar_center_tile_ref_v4.png.import",
+			"sha256": "9c20ef43b0a77052b2961157891fe597544b7f10570f4a14596b607f9abf2cf1"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/inventory/inventory_scroll_left_ref_v3.png",
+			"sha256": "2988ea27e58d759d039f7a868af51afe33fa5cb7be4de46adf90b81b5c433c4b"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/inventory/inventory_scroll_left_ref_v3.png.import",
+			"sha256": "49eda504fac47989282dc6a2342e9c0278cd70b564ae2b1f72c21dabd3e6e536"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/inventory/inventory_scroll_right_ref_v3.png",
+			"sha256": "e464dcc5b0c6ea87fc87fb4165aec6a1608826cd079b5862e19e23379bf68a67"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/inventory/inventory_scroll_right_ref_v3.png.import",
+			"sha256": "8120cd2052ee562eaff98f01c8816b65bd8c77e2c89bb1eb5de9652fa56bbb4b"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/inventory/inventory_slot_empty_ref_v3.png",
+			"sha256": "078c084c6b0f271cdd7b15d164ad11e8a4506e515ff235468ac58423d50bfd62"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/inventory/inventory_slot_empty_ref_v3.png.import",
+			"sha256": "5cc0d51b3b8c510516887ce3225a7ae9ef1131a34211caf8eb9a5c5328c886e7"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/inventory/inventory_slot_selected_ref_v3.png",
+			"sha256": "564c9bd4c376dd1333e79561a592461a72704e2dfa5e90428e82d554071f8675"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/inventory/inventory_slot_selected_ref_v3.png.import",
+			"sha256": "d4bf72ef516702a920b0ad67940b5ae407ab65cbecf167ce6b60c9328b5613ef"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/nodes/node_emergency_combat_a_ref_v3.png",
+			"sha256": "d10a1e9c11e40e6c0415ce28372cce7e4a87201f415f8de18c0a4a055bbfede9"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/nodes/node_emergency_combat_a_ref_v3.png.import",
+			"sha256": "3963a4ec513889fa966f7991d1870275520e41b2035969706588a4e13c8592d7"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/nodes/node_gift_b_ref_v3.png",
+			"sha256": "3ac318c07232c9f432a3b884732405b01df0649d30cc5709eab7048046f16f6a"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/nodes/node_gift_b_ref_v3.png.import",
+			"sha256": "e4d0252e04641978015561a2becf695a41755652c14ce18084c6c8d0b7a75876"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/nodes/node_magical_encounter_b_ref_v3.png",
+			"sha256": "39e1d7d89e5b39bf47381970e88e7e127faedd007a9e5ff8bfb4a25296d062ad"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/nodes/node_magical_encounter_b_ref_v3.png.import",
+			"sha256": "5763d5828dcfa8ad4d511abb0433a918ebedeb7fc6ca87a638d2f1ccb21fcdad"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/nodes/node_normal_combat_b_ref_v3.png",
+			"sha256": "6428b7c891741c5c0948270a18d3b6e1a084321b5f65f59db109c30e22e7a3c4"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/nodes/node_normal_combat_b_ref_v3.png.import",
+			"sha256": "f0488560cc22946407be4862a9725292f0bc6feb710f0ddaae9a3e900c742f83"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/nodes/node_underground_shop_b_ref_v3.png",
+			"sha256": "77756ab806a9260853fdf5c90d45b42f01795ec1b069911afa44ca8c68080f0f"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/nodes/node_underground_shop_b_ref_v3.png.import",
+			"sha256": "df83aa83349d4abda42b1cc53fecc3a8e1ae1d12d4dfbedaaaf33812179d7493"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/nodes/node_wilderness_resource_ref_v3.png",
+			"sha256": "56affbb1d02a96632ea80f2a0068450cd5b18d899fc82f69f91b68f3c3f25eda"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/nodes/node_wilderness_resource_ref_v3.png.import",
+			"sha256": "4c33e0feadb8cd2eb4e27e33ef0539f813650c7fb9e7a13bd026cab5d9a1c28f"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/normal_combat_briefing_visual.png",
+			"sha256": "317cb8f4804799ef1b027b1c2c7af656ba24c6da8f4a5fb115ef87d4c9cf96e3"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/normal_combat_briefing_visual.png.import",
+			"sha256": "786f5b7429eb5fc91c1258ecf56f3d6fcf32c3eb433f6691875f4dbfc669fde5"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/prepare_ahead/rare_chest_tableau.png",
+			"sha256": "b3cc638315da2ebc7dff4e9d96803ea700165ed6f52a8dbc18ba4561c7ab0a91"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/prepare_ahead/rare_chest_tableau.png.import",
+			"sha256": "7892d18e6652f43a5182057dbd44ae262406b936bb0b50ebe8b5f94493f27bfe"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/route_move_confirmation_frame.png",
+			"sha256": "c4892b2913c473c26d52e0b94cafa96c2bbbe6b16fb768e64d1983982aa970c9"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/route_move_confirmation_frame.png.import",
+			"sha256": "cab40efa83677c35a448a0b064e7db434ce56047c2af2b6ba78b0bd3d07c75d4"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/supply/supply_choice_panel.png",
+			"sha256": "07c83da60316bb1cf60ca9154aec518ba4a03bf9577ce757f325e7f049a196ec"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/supply/supply_choice_panel.png.import",
+			"sha256": "46382191db1b139b915e64f3a08c9392cabbd17917288a489f3347b256a9755d"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/supply/supply_tableau.png",
+			"sha256": "a5b2a7d567e6c1cce0d0c9b1cfd1f67f3476389b9f0a6cd29e637b506d3cf04a"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/supply/supply_tableau.png.import",
+			"sha256": "72c20d0f455c103c84b09fa4525725e8cecad92e2f58f559b22884d1f8d9fa86"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/underground_ruins_background.png",
+			"sha256": "835e936eb8284c914887eda3ab0166bd643594b2a05735ee3efbb04d5613f4d4"
+		},
+		{
+			"path": "res://resources/texture/rogue_route/underground_ruins_background.png.import",
+			"sha256": "111788347e92b728a351da10da6b8fb36f56c7ef9ec51b6dabb13f2ee0e01fe2"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_button_disabled_v1.png",
+			"sha256": "59bb0a8abde8d3a3e401e672abe97c3a7666f67a8dd16020109fd6f406002d0a"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_button_disabled_v1.png.import",
+			"sha256": "45ebec87d15c1c4a8cc805b5afca8009bfb2ba26c5d7e0db8f946650844c2153"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_button_hover_v1.png",
+			"sha256": "878dca93fcb5553b4033410a8afa67176c506596738184c829bcad02f99d335a"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_button_hover_v1.png.import",
+			"sha256": "477799d57b797a82b3620b04a3d80f0afc9a67dda179b0f16982c55c6c752090"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_button_normal_v1.png",
+			"sha256": "a3e1ee423745e1b659ab2474226c2979ae555a5cca9fe5ecd4edeaf236777336"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_button_normal_v1.png.import",
+			"sha256": "1898abcd64412c6c56733b69fede1b6d67d0d0d53470fa388a0ff7a5986b5a88"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_button_pressed_v1.png",
+			"sha256": "be90e07f818694eb47bd63f8e11c147fe572ac3ddd17448edd32040c9710d34c"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_button_pressed_v1.png.import",
+			"sha256": "19829bd5aeedef35a83752cab439febb0d2f8029070a34ad7f40e57e4461370d"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_panel_frame_v1.png",
+			"sha256": "5cbeddeeb3684618efdc701b8c270dd7a56bc9f234349b802725bb0c88bb54a3"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_panel_frame_v1.png.import",
+			"sha256": "c4ebb35c91ff1795eae1281da0087b75e136f1cdb1a962a1ba8b4e38195e0ce9"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_product_card_disabled_v2.png",
+			"sha256": "be0de05acbe611f8d8330e3dc782d7a71efcde5989979ed7a706989acf6de60c"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_product_card_disabled_v2.png.import",
+			"sha256": "ae9c0f700869873ff5daea16ae38c22239321fe13961a3cc95aad79d8885ceb3"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_product_card_hover_v2.png",
+			"sha256": "716347ba3ee03fc4e68e5460564253494d4cb41289011fe79ce0f62e9b4feeb1"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_product_card_hover_v2.png.import",
+			"sha256": "f6c79254e571fc926d7aa85da5e63e72c73da313fa95876bebf79ac13bff4069"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_product_card_normal_v2.png",
+			"sha256": "7c9a7458b2f4ca84b691ae6fad5e090b6bc284b90f2c45cce2a5fb1601116a7b"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_product_card_normal_v2.png.import",
+			"sha256": "89c6c064c24ec447102691353ed78c5f54bc897b44562f08aac26ffb58bfbb01"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_product_card_pressed_v2.png",
+			"sha256": "2fa233dffc77d7cc0bb9b50e4d047d8dac5caad5f9d9170d48193a3ef5f3d66b"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_product_card_pressed_v2.png.import",
+			"sha256": "d18bd6f6d6dcffad2041b6f3d7bfadc2874afa229116fa5ab9c8ce2667a3c604"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_title_plaque_v1.png",
+			"sha256": "fd4f289972e10043ad97cfc97971c6e109c5203875d3bdafdfcb0897af2a663b"
+		},
+		{
+			"path": "res://resources/texture/rogue_shop/ui/shop_title_plaque_v1.png.import",
+			"sha256": "0dfa197f9b9a8729ceb8f784bbb7d9753aa5f4b4f7aca7452b0b50ce15f10bc9"
+		},
+		{
+			"path": "res://resources/texture/ui/inventory/quick_use_badge.png",
+			"sha256": "563a302f169c8dfd5ec897393a7d94ef4695db24a68e998c5aa1ee19039b1c2d"
+		},
+		{
+			"path": "res://resources/texture/ui/inventory/quick_use_badge.png.import",
+			"sha256": "c519d46f2d5dad25d43e52372fe0163a96482ac62e711b4c18db3ebcf47e60d6"
+		},
+		{
+			"path": "res://resources/texture/upgrade_attack.png",
+			"sha256": "a06db6f0de3680e13647a19246a81982d9b28203d0b434b797d1324a6278fc84"
+		},
+		{
+			"path": "res://resources/texture/upgrade_attack.png.import",
+			"sha256": "f2f6c468c65723325c7f9529580d291a07622a12f5252ee3096895df008d4fcb"
+		},
+		{
+			"path": "res://resources/texture/upgrade_dodge.png",
+			"sha256": "907ac059dbc7416182d62e1e97cb9d9097c4632fb6e80b37bee3ac4e6b1b57d9"
+		},
+		{
+			"path": "res://resources/texture/upgrade_dodge.png.import",
+			"sha256": "f66d2ddab14a98ac54904f7d927e978a91b14eaaec6745a94e958e89d4d18773"
+		},
+		{
+			"path": "res://resources/texture/upgrade_health.png",
+			"sha256": "494e273b081fbe83dd6a0cac0f035eb342f90e64904297db5a211d1b9cfd86e7"
+		},
+		{
+			"path": "res://resources/texture/upgrade_health.png.import",
+			"sha256": "08c63c00de41181b1be9eeaf1f39989899ce247cb78a4297dfc28039f312cdab"
+		},
+		{
+			"path": "res://resources/texture/upgrade_panel_surface.png",
+			"sha256": "056c07a6080d29b6d5e9bbe94cfad651e3671f3dd93a5ea9a47849a0157bf562"
+		},
+		{
+			"path": "res://resources/texture/upgrade_panel_surface.png.import",
+			"sha256": "a311176c4850821079980791b94c0fd9ff934728983dc8bfb86b63d23bbdf916"
+		},
+		{
+			"path": "res://resources/texture/upgrade_speed.png",
+			"sha256": "958f047196d5a1d811cae938424b5fd7dd19afd48b6b48c0b3d8184b44e1a14e"
+		},
+		{
+			"path": "res://resources/texture/upgrade_speed.png.import",
+			"sha256": "e9d02cba482aa73685efa8b141e91de00223128c4823a0294cf58a8283052312"
+		},
+		{
+			"path": "res://resources/texture/xiaocong_fate/choice_panel_dew.png",
+			"sha256": "8c49a8e596bdf9e73e81bff4bcdf68b71c9463c82d9c2b2aa2f54223bd498268"
+		},
+		{
+			"path": "res://resources/texture/xiaocong_fate/choice_panel_dew.png.import",
+			"sha256": "f414a2253f8c0052fdce927e611d2e95401aa7903e6f5cf85a95f303a2da6cb5"
+		},
+		{
+			"path": "res://resources/texture/xiaocong_fate/choice_panel_moon.png",
+			"sha256": "dc6d93e740914d9f7b96706decddf7adbfad518963000781bef43bf6a511e196"
+		},
+		{
+			"path": "res://resources/texture/xiaocong_fate/choice_panel_moon.png.import",
+			"sha256": "ed50249506892ffe3fa7862a554ede22913657a1b6e25e1d7a34c17b01e0f09f"
+		},
+		{
+			"path": "res://resources/texture/xiaocong_fate/choice_panel_seed.png",
+			"sha256": "8f3cca55d618b4370f664ebaec78fd535769eecad797a08993e1737d65268403"
+		},
+		{
+			"path": "res://resources/texture/xiaocong_fate/choice_panel_seed.png.import",
+			"sha256": "7886cd84039b70e3a67573f56d5b3ad280f525d49bd5b7571a3ae37b22c977de"
+		},
+		{
+			"path": "res://resources/texture/xiaocong_fate/fate_garden_backdrop.png",
+			"sha256": "b48573c98218d70d248b1123599bb790a1daa986a21959d3e2cefecb55d655e3"
+		},
+		{
+			"path": "res://resources/texture/xiaocong_fate/fate_garden_backdrop.png.import",
+			"sha256": "2e103afc16d47920d97e5b588b11e4d8d24e10ab702152628c3b82bdff5440b0"
+		},
+		{
+			"path": "res://resources/texture/xiaocong_fate/xiaocong_keypose_hd.png",
+			"sha256": "415688823169a7f55c0cb36d1def0f408f4c7459b1b722f8f5044c03a6829336"
+		},
+		{
+			"path": "res://resources/texture/xiaocong_fate/xiaocong_keypose_hd.png.import",
+			"sha256": "1cc64889ea41e6b3fb9a24be4c23274fd6ce5c87ab9e8a617fd20c2bf9e04c37"
+		},
+		{
 			"path": "res://resources/texture/xiaocong_fate_stone.png",
 			"sha256": "2d73b87799eab30b54a9163e3a5e109f749a46d95bafd2a3925d1eae2755ad70"
 		},
@@ -5997,12 +7709,68 @@
 			"sha256": "3b296322f796a10118df8cec481c20a92206b847dd3280095236d6ed5700f913"
 		},
 		{
+			"path": "res://resources/texture/xiaocong_idle.png",
+			"sha256": "45d3a6e1b9ca9defa1e07856979a758f952ff56434e05d4abd083f6f98ae8974"
+		},
+		{
+			"path": "res://resources/texture/xiaocong_idle.png.import",
+			"sha256": "5fd8dfde7f608847380a59c2d272a8aadb776bee0ed1205839cdbf0c8666a39e"
+		},
+		{
+			"path": "res://resources/texture/xirang_icon.png",
+			"sha256": "c8eeb91c65f139156117e70a3324301610652520ac6d91482a1b30abc9cb7bd5"
+		},
+		{
+			"path": "res://resources/texture/xirang_icon.png.import",
+			"sha256": "5c29cff36ac438d8ddbf3daab8c828cd58ca7d66cb40a351a04ce926dd3db7c5"
+		},
+		{
+			"path": "res://resources/texture/zhuangfangyi_idle.png",
+			"sha256": "c860ee59152bc446a1b82c80d7d73bb8bbffd1d03a43c1c80e04e81b506cd2bf"
+		},
+		{
+			"path": "res://resources/texture/zhuangfangyi_idle.png.import",
+			"sha256": "2ed3fdac35aa61ea122e1f84022a54bffef0804dcecc94ab731a3160157238ad"
+		},
+		{
+			"path": "res://resources/texture/动态瓦片.png",
+			"sha256": "fb1b3e7c91a308ef79d43a397799700f0252d5cd6e326619fdde329540d82b91"
+		},
+		{
+			"path": "res://resources/texture/动态瓦片.png.import",
+			"sha256": "845c38a5694c80feef760bce321d0b3c1e57749a2a1cd52ba7f39dc0625361bd"
+		},
+		{
+			"path": "res://resources/texture/瓦片.png",
+			"sha256": "8a50ea01f9ecacbed5f33dc4ce04099070c73daba0a370e142755510eb33227c"
+		},
+		{
+			"path": "res://resources/texture/瓦片.png.import",
+			"sha256": "e50c3c5fbd7e1721fbbf730ee89baf7f379b680abf36da973b4b44b02d4fbd8f"
+		},
+		{
 			"path": "res://resources/texture/道具ui.png",
 			"sha256": "e4927990ae3733bd49b2a731e7a88d30555b0cdfadd9fc6288ac43f8b1f2d82d"
 		},
 		{
 			"path": "res://resources/texture/道具ui.png.import",
 			"sha256": "60a00f78561681bdf0af4b0bc2c182c5c402919665da2b88b47339f9455313c1"
+		},
+		{
+			"path": "res://resources/ui/settings_switch_checked.png",
+			"sha256": "59cbd58cbdba8345f6cee996838c6a6aab4a3d6b08d9a2985287f2f72a5296ef"
+		},
+		{
+			"path": "res://resources/ui/settings_switch_checked.png.import",
+			"sha256": "3648a935795a046d2b142dd1a6d0f9821129ad257cad60f3a834239f09ff0fda"
+		},
+		{
+			"path": "res://resources/ui/settings_switch_unchecked.png",
+			"sha256": "36ae28e3055ae670f25e02f80d13d53ad637c322209e51d21a6c8b67989cf14e"
+		},
+		{
+			"path": "res://resources/ui/settings_switch_unchecked.png.import",
+			"sha256": "3e1cf049e6e68c9b5685385cf8cf97a3fd72be053bca121f9ccc07c3fcf30384"
 		},
 		{
 			"path": "res://scene/boss/linglan/boss_health_hud.gd",
@@ -6081,8 +7849,32 @@
 			"sha256": "d181773a43bbd7c924b6cfb1b05477611bec026111023c1a2c03b90ddab489ab"
 		},
 		{
+			"path": "res://scene/combat/feedback/damage_number_pool.gd",
+			"sha256": "e20da8a674c489a25c4ba9a2ae4c7f69e8da355425b0184be2fb5e7d633e8cba"
+		},
+		{
+			"path": "res://scene/combat/feedback/shaders/blink.gdshader",
+			"sha256": "2f0d2ca3ed38395981351fd7d7e0411a5e57d936e049e47e2e7f762ff685d89b"
+		},
+		{
 			"path": "res://scene/combat/feedback/shaders/entity_motion_status.gdshader",
 			"sha256": "a9724e312c3c80836bb8bf77c4a7bcec47cf308754a648a752eba368a8e2e1b4"
+		},
+		{
+			"path": "res://scene/combat/navigation/grid_pathfinder.gd",
+			"sha256": "a8666a9d6348608c7ddf78db0dbcc56ef67c555ca55c38ab86da8981b490012e"
+		},
+		{
+			"path": "res://scene/combat/pickups/pickup.gd",
+			"sha256": "ab9ce8543905122cbfddca95eac046c794c6752a8bc50a2b3c05dd0d0f6a6cc9"
+		},
+		{
+			"path": "res://scene/combat/pickups/pickup.tscn",
+			"sha256": "0e054b5e364b738a3fbe08d89950ea7f59afaa2e8df0b9c77f967f44774bb9ad"
+		},
+		{
+			"path": "res://scene/combat/pooling/session_object_pool.gd",
+			"sha256": "6df439509336d1a2f54a78b92dc161197532a86df1817d92a99f889c6cc2cea6"
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/cardboard_monster.gd",
@@ -6102,7 +7894,7 @@
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/stone_golem.gd",
-			"sha256": "94e6ff2419a4e483ed3affa05db3b3afd28dfece003926fd7a8a9f7efa5397fe"
+			"sha256": "cafcc8dd9334388a6d5cea12c3ca4d9c7b070a6a6b4c311d23e30d141975fc32"
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/stone_golem.tscn",
@@ -6134,7 +7926,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_knight.gd",
-			"sha256": "c702e2da457e4d146499fdee8d1d3ac79611258df2258a5f020323993986d7ef"
+			"sha256": "f6e20eea9c4035a0e604127f6839b9acad0e152980e075da45d91c2458dc4e12"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_knight.tscn",
@@ -6167,6 +7959,14 @@
 		{
 			"path": "res://scene/enemy/capoo/capoo_mage_fireball.tscn",
 			"sha256": "537eec47e20c1d913d910aac04ed5d7f12af1e099f275a5b43a384eaa010a81c"
+		},
+		{
+			"path": "res://scene/enemy/capoo/capoo_projectile_motion_system.gd",
+			"sha256": "a5a27f26cc4ce41ffd5481785c61f01bd3131410c9091311356b7fd24bfaa4c7"
+		},
+		{
+			"path": "res://scene/enemy/capoo/capoo_projectile_motion_system.tscn",
+			"sha256": "9f0ac77e97b8412d4cdf914a0b8bd2503932e9269a765b3143f8e91c51ec4281"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_rpg.gd",
@@ -6213,6 +8013,10 @@
 			"sha256": "9d411d3dc7de05ca5a6db237f4e0f22f40021141229f34b8496bd5babd4cd46b"
 		},
 		{
+			"path": "res://scene/enemy/capoo/capoo_sniper_lock_visual_coordinator.gd",
+			"sha256": "22c346b691df2780377ce34f00d0740fdd1d26023f02fe51c84ec57264e6fecb"
+		},
+		{
 			"path": "res://scene/enemy/capoo/capoo_swordsman.gd",
 			"sha256": "51a3d8e64cb342490aceb48627a060c84b789088e35684e459f0be4c78cf9e74"
 		},
@@ -6226,7 +8030,7 @@
 		},
 		{
 			"path": "res://scene/enemy/enemy.gd",
-			"sha256": "366686a9031cc7aaf1f1b4ea4117d93f78bb145bdd65c7332be162da969e3de2"
+			"sha256": "99c7a0e875304c18a014c1ce1d86045695bd97dc0f37ba3ff9ffa88c0f58dbcd"
 		},
 		{
 			"path": "res://scene/enemy/enemy.tscn",
@@ -6239,6 +8043,14 @@
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot.tscn",
 			"sha256": "988154c25f3dd34bec9667ad39896350e91be4a9ec290a7810f8af74dc9a7988"
+		},
+		{
+			"path": "res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.gd",
+			"sha256": "14ff50560b6bc22ff33c2ae5deaba0b1b38fc1a3f28daf72742db9bfc88180c2"
+		},
+		{
+			"path": "res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn",
+			"sha256": "443bd1ce24365abf495cc71c93f4807ce47b21479c46e931d834f79a2ef8daa4"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_drone_operator.gd",
@@ -6509,6 +8321,22 @@
 			"sha256": "37a1ec72b525097e9071fb69a35bc7ea44d85ffa94dafaea3bc9cac04bb92dd9"
 		},
 		{
+			"path": "res://scene/enemy/yuanshi_insect/guardian_aura_system.gd",
+			"sha256": "d39016b3668e8bf85f59920218f93bc26530800a3d7438d678791610a08a0d9d"
+		},
+		{
+			"path": "res://scene/enemy/yuanshi_insect/guardian_aura_system.tscn",
+			"sha256": "ee8046160b4139c5ed31617b4f11ece0da89e7d56a62e04ddcf4a0111574ce4c"
+		},
+		{
+			"path": "res://scene/enemy/yuanshi_insect/guardian_light_emission.gd",
+			"sha256": "d00d51fdf868a1087f5efc4407b3b59ca72983626a110ba3e1fdb6176a066029"
+		},
+		{
+			"path": "res://scene/enemy/yuanshi_insect/guardian_light_emission.gdshader",
+			"sha256": "fc3fbbcd5f96b98c6eb599fd83e01203b6d31692cd521a083ba89595fb875f33"
+		},
+		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect.gd",
 			"sha256": "f15368ee36dbf664dafd3cb65fba29c3ccef1c60423517d1e4aa7eed0dd20b86"
 		},
@@ -6518,7 +8346,7 @@
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_aura.gd",
-			"sha256": "708ba9cc040d975ad1896497366528492cf22da35f83435d21666bc0d72010f7"
+			"sha256": "53576eed2f0af116505bd5fc404422c56cba93e72fdb14141e490b2b6eb671a9"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_basic.tscn",
@@ -6558,7 +8386,7 @@
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_guardian.tscn",
-			"sha256": "d33b6ccb1741307b282afa894e0a1ad9b76808f2e4478e884526718d2735f09e"
+			"sha256": "fcf532b8584814512ab07ce461ad861fcc9142e1c001038d051a0dbc3415bd44"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.tscn",
@@ -6569,12 +8397,860 @@
 			"sha256": "2dac8b6d1fc6cb87b1f7ad2d7f50b34a8af69727ec768b3fcdd72bd7de9e27d7"
 		},
 		{
+			"path": "res://scene/game_modes/definitions/tower_defense.tres",
+			"sha256": "5c42366c355d82eea5659d9121e7bb81dbc508702295961944221da8eac4cd99"
+		},
+		{
+			"path": "res://scene/game_modes/game_mode_definition.gd",
+			"sha256": "488e14174043b4106c3c806a87e149a51ce66f3f0ddef2993aa724cdc795c7b3"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/combat/reward/rogue_emergency_reward_choice_overlay.gd",
+			"sha256": "3fea73daf9defc31f42e6da90c56e5871d3d4dd5dc9cab128776fefd142bb385"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/combat/reward/rogue_emergency_reward_choice_overlay.tscn",
+			"sha256": "e475781a50a40e6c5f99d20879c70d164378ac683c8886afb1400610aa287c7a"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/combat/rogue_combat_multiplayer_coordinator.gd",
+			"sha256": "8f60efe6aec30b45e4fff1db4f4802319900a787bcac4a594dbf2764fcf76f6e"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/combat/rogue_combat_result_overlay.gd",
+			"sha256": "f6fac1a7007552e6c50f5092b57b93e3adc853296a4708b8a45a3ba2822a09fa"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/combat/rogue_combat_result_overlay.tscn",
+			"sha256": "099ccef1413bfd4ad2d954d6143c76109c3d06c19f7fce7d515074b2e42ee8ec"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/combat/rogue_combat_singleplayer_coordinator.gd",
+			"sha256": "78002ecd711bf773a6edee1ef7389f452fe00cd8a02e2dacc88fdc0974046e8a"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/combat/rogue_combat_victory_presentation.gd",
+			"sha256": "1230d73572df9f0bea293e9a47e151cdb1cd4be4ea0350ff5c93228cd240ef8c"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/combat/rogue_combat_victory_presentation.tscn",
+			"sha256": "356fc8072c369ee4b7fcb115764590ac7e9a37a1d8b80831b84a44ab7aa777b7"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_choice_card.gd",
+			"sha256": "753a640d45dbc0c6766b96c571f6681562ccef999ab667e19b7f117f67f65fb1"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_choice_card.tscn",
+			"sha256": "25a8d76b6f27689d998abacccf4a475e1506e76616489d885594b113f84c466e"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_economy_coordinator.gd",
+			"sha256": "1d0cfba48c097bf5b07dd9081c00991da6289139695284e43ce8329c14b81237"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_overlay.gd",
+			"sha256": "e9b8c817d1d2d4d08a2e09d667558151a7364ab86c8cf14a3045c7b4beb598ea"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_overlay.tscn",
+			"sha256": "2eea397495b5720387a0c2a0930d2d005dfe7ea3ee511ce7f99b5f0690646e06"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_scene.gd",
+			"sha256": "116b7145a8394d8baae290bc7f51cfb382a38771199b0657f283f6238db4ee1d"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_scene.tscn",
+			"sha256": "33082e0f805addfc2f08f23e32513b65880b1dd64330f2f92998a43cc5c70537"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_session.gd",
+			"sha256": "ffa6504312549f7bbe119ce5a2b44255d31d59fbcffe4d24d3b1cbcd120baba4"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/rare_chest/domain/rogue_rare_chest_economy_coordinator.gd",
+			"sha256": "4a01bb74322828bfe4ccbf10290e98bc09121bb3c73828ac10641af264ec4d2b"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/rare_chest/rogue_rare_chest_choice_card.gd",
+			"sha256": "b72a3977d4fb1b5715966c1a53abd0543b9103ae6006d97cbcb2da2c0bfb9a5d"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/rare_chest/rogue_rare_chest_choice_card.tscn",
+			"sha256": "b0ecfa5d4976445afb16b778a09a1b08a4cb6d8f1e17de657467b8adbc67a5d2"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/rare_chest/rogue_rare_chest_overlay.gd",
+			"sha256": "0ca82625dcdc157db7824f7334e860e2661d09524b4fa9cf64d65aa0c0ab36c2"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/rare_chest/rogue_rare_chest_overlay.tscn",
+			"sha256": "528cde67ed8ca89336e214014d50a295f811aa25565633010b26bb77b109adbb"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/rare_chest/rogue_rare_chest_session.gd",
+			"sha256": "6d87f51c928a6df54e98025a65905bc5e9ecde12db84a737d525fbba6f6fc4c1"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_ambient_vfx.tscn",
+			"sha256": "dc3eb2ca42268ffe4b967f88716d2635673bf80b5815d7ee0e47d666c7817ed4"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_board.gd",
+			"sha256": "d472e6825ff192be46a5a5bc02936a3212b4128057ba84a966691bf612860d48"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_board.tscn",
+			"sha256": "bd985db28f1185f850214f4796d4e5d70e69c4501946841ad84735eddffb06c4"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_connections.gd",
+			"sha256": "be54ab251e78398447a968feb8031b0baff4c15ff467ec167f48457aed078b19"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_connections.tscn",
+			"sha256": "9ef1aad6d49197db1df2001a87b26fa67446b76860ddde35ec77e99d626848dd"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_game.gd",
+			"sha256": "94f047d42d3586a3730c7f14f0f93ad5c194e3475a5f257ec49c2aaa9d864cb0"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_game.tscn",
+			"sha256": "118ed318dcf0eafd6886a2282b84a69824d2bdd1131ea01efd0f668b42ced2d6"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_inventory_strip.gd",
+			"sha256": "14d23a3fed9153d5ba9fc93cfc622ddfa0960eb000369cf37d414ee5b403afa4"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_inventory_strip.tscn",
+			"sha256": "9805ae310d20568c36a146cc308a51903f1199fe3f48d09c4f94e3a578ec5a75"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_move_confirmation.gd",
+			"sha256": "d2fd1795d128fe1757c2bbed92888c7178a48971fb8b2eeb7f6e59abd4d81e6c"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_move_confirmation.tscn",
+			"sha256": "6b7f5a42ea79d9c15f7bade0b99a7b959e2e1e546eb1297ac0ea526285daafad"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_node_briefing.gd",
+			"sha256": "b2e897e873178553c981a15252621937f2be7458eee84941d85bb626cc114489"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_node_briefing.tscn",
+			"sha256": "ceff99b5dabaa6bcf277e4db287a0dad1e944b8ff88ead9817fbcfe58aaaf558"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_world.gd",
+			"sha256": "ca26097dc49e50930110dc1a378186149155fac023bc931f441a624c30d09e2d"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_run_defeat_overlay.gd",
+			"sha256": "9cb5482b37cd11af22b8549249fabdc1f14d56993eac71ca66fcf31251a11c7c"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_run_defeat_overlay.tscn",
+			"sha256": "fa4a9822a3a3028a6a7ebdc28cc50e60937d49c39dc665962a5b80e1fc80af48"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_scene_transition.gd",
+			"sha256": "c8f521b6481ec7fd429c75b326c98dd2802d26a2da84b10344bc0bbfe047f1da"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_scene_transition.tscn",
+			"sha256": "cd4f5c7e23206c7f6d82fc1e77b5874dbfae621ff6855e3d859e5c83e20ef5e5"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/shaders/rogue_route_connection_flow.gdshader",
+			"sha256": "7176e8659c4bf4d049f19bb42437ccdfc726324722df788813c58b636f06db4c"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/ui/rogue_route_top_bar.gd",
+			"sha256": "67a3666d43a8533d8bd4ca4597c222ed41f8f77b88210b659ca3c98c0116f2b7"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/ui/rogue_route_top_bar.tscn",
+			"sha256": "ec78bd029e605f607a7cd4cf03fb2237911472dfcc87ad6e42839da2c0ebbfaf"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/shop/domain/rogue_underground_shop_economy_coordinator.gd",
+			"sha256": "3c7fbd34060e786a5a7911f3575440138b033085d8db8b9e6357ee475779e7c0"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/shop/rogue_underground_shop_controller.gd",
+			"sha256": "c5cda71018949d93d6b742d6b6ff27c62b15266bbdd417a4a2cf0bc1cefee62b"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/shop/rogue_underground_shop_controller.tscn",
+			"sha256": "0d668b82993f5c1a9f8f341d47fc13f6c243c4c88e94e156f4d616ba78974b09"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_item_card.gd",
+			"sha256": "ccade3a7f07265fef6b76445c1a1b9739fc133b0e71b4d53f46bbb7188532324"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_item_card.tscn",
+			"sha256": "8df78cce15f690cf4ddece5cef9b63c2e31fd232bee8bea8649153dd7566205f"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_transition.gd",
+			"sha256": "993b0124d4a11ef8205f0792d01914d72ffa757cbdfc7cd45f8dae85a44ba798"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_transition.tscn",
+			"sha256": "c590997727a7673b23029c76dbd00497df6fe385a0a8e21e5f0747eb183d4d6b"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_view.gd",
+			"sha256": "9719c44637f140d5b80c7042e63817dfc478ffd90cb879470bb79f720e5d1e19"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_view.tscn",
+			"sha256": "b0a2087ef0964c4e65a7f562ae552b785f0e6456ad5738cdd4167f685e5d0d72"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/supply/domain/rogue_supply_economy_coordinator.gd",
+			"sha256": "7cc4bd2036cbb7f9609eb24afe7334fffdcaebd4d268e8b2cbeea2176096dcc7"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/supply/rogue_supply_choice_card.gd",
+			"sha256": "333e1c6fe707e839cdf5050ed620fdced7e940a391b0619d6fb1567a4780171d"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/supply/rogue_supply_choice_card.tscn",
+			"sha256": "ab16ea38bfceafd5ef1340cca2bed4171b87d48e2bd2e57c497ea9d1db24d167"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/supply/rogue_supply_collectible_card.gd",
+			"sha256": "960df52794c26dc64d59db21720f872dbf88bd3b27052d49a13d9b06b18a3445"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/supply/rogue_supply_collectible_card.tscn",
+			"sha256": "df97a8feb3ed2b57db8a8c2c0cce05f4f6bd7935302ded89e98e0ee6e02b365f"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/supply/rogue_supply_collectible_choice_panel.gd",
+			"sha256": "a8460b49ba9569a033935930a9a81c49649568bf8cc4a83d729b144f1e945b7e"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/supply/rogue_supply_collectible_choice_panel.tscn",
+			"sha256": "bd0980e7c9aa8d0545af405bb6492fe67229ff0c759c380746a6630d38938bff"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/supply/rogue_supply_overlay.gd",
+			"sha256": "0b8345244e2f43739c561d57d58e8d68976fae9bce9bebd50c048cfecb650d66"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/supply/rogue_supply_overlay.tscn",
+			"sha256": "b260099972e02a9652ae1ed513f017855abb1f6e573ee22efcd539f693269060"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/supply/rogue_supply_session.gd",
+			"sha256": "197e3aaf58175511d20e2af33a336515f2b49f5e9986511160861fc1b9c20abb"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/ui/rogue_player_profile_panel.gd",
+			"sha256": "993be2ade89e045e481309488057b1ade80bdcc50d16a0a6f0a65debebd2d3c8"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/ui/rogue_player_profile_panel.tscn",
+			"sha256": "ec65f7113b8be25e71657b6adebd7566270e8844d1d1f2b013699d2a509340ad"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/boss/tower_defense_boss_coordinator.gd",
+			"sha256": "714ffdd743dada7c32b244553f8a286ff8d438ae374240586159b2f4bb525670"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/boss/tower_defense_boss_coordinator.tscn",
+			"sha256": "c883a18370644795dbb3ec08dd31ac3bac5a8185d4afeb2345d2129a020cc5ef"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/boss/tower_defense_linglan_boss_runtime_port.gd",
+			"sha256": "b308b40b5e3f48ac056559810fbbae3e221c8f8cdd94da8455819d1b7672e265"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/boss/tower_defense_linglan_boss_runtime_port.tscn",
+			"sha256": "c5919ab93973a1fdfc7203c94a5b4ea11d0b786c9bb623818a6c432daceffb59"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_coordinator.gd",
+			"sha256": "a2a00bfeef609be584b11f36f906863aa2b06e84927852d3ee0ae3f99eb95225"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_coordinator.tscn",
+			"sha256": "b64c8d3de453e48c984b56c35254e0602b4a1fc435284de0123f9f8b0684d3bf"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_runtime_port.gd",
+			"sha256": "e811fdca7f0486d21d50dc43f4bbcfe4dff2e7f60eed519f32f5c36ce6755c10"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_runtime_port.tscn",
+			"sha256": "be7f9ca0f40980f28152b970827cfbe4e810a1194b11c6c5c3017d3d859577a2"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/economy/production/production_building_panel.gd",
+			"sha256": "42d4bfd1565121e3ddb8ecd9ce603d2890f763363cbe3bd4b34d359e6080cf94"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/economy/production/production_building_panel.tscn",
+			"sha256": "deeed5ccbffadb3479473b63f3f8de2ba9bf6e7211e7c6c8a56722432caaa6fd"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/economy/production/production_coordinator.gd",
+			"sha256": "23c0f3d66abefdab840a0396d12bb76fd631a4335ae0457f5e66ea4e550788e5"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/economy/production/production_coordinator.tscn",
+			"sha256": "bc48fc0b7ced0f456b9888dcc4d05679efdfe9d7dadaa0e96c0fb387b35f3c70"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/economy/research/research_center_panel.gd",
+			"sha256": "5015b6c5e83d8e272e0e4f7bc48e4cbea62a01308909fc549a8b3487fb3a2215"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/economy/research/research_center_panel.tscn",
+			"sha256": "1880c4fc8a7b1dbad6f53c8fc49b4ce17aedefbca34f8bcca667750fe5fa5caa"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/economy/research/research_coordinator.gd",
+			"sha256": "a82c5c3565598c57f8c948d853caa9e087a2393dc0ceefcefddee4760885ad6f"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/economy/research/research_coordinator.tscn",
+			"sha256": "36ca98a9d1324f0e2b87a6a094f3412563cf2da5bff781e037a3c0aaeb473452"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/economy/shared/tower_economy_inventory_slot.tscn",
+			"sha256": "d30ba514974d1a95914dcb1dd9136ab89879fe8a09951bec2fc03e6a30a87648"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/economy/warehouse/oak_warehouse_panel.gd",
+			"sha256": "704225b0b7e662f442a268ff37b494a5dabe18c2d5849bc9c975456e498e45b4"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/economy/warehouse/oak_warehouse_panel.tscn",
+			"sha256": "f814c45d242b61a7194481445de357fd656b6a6f6978a04ccd7ced243cf37376"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/enemy/tower_defense_enemy_coordinator.gd",
+			"sha256": "d6d04495442a8dd42eab03071c285aa8f4186f5da3420186881facd70b7bb0bd"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/enemy/tower_defense_enemy_coordinator.tscn",
+			"sha256": "59b36cdb5f85e277f6f9501302867256392da8851a1e1969adca360493e326cf"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/fate/fate_coordinator.gd",
+			"sha256": "6fb7cda78509f74867b25ddc4672e67f81bde8b153f955fcf2345bc82713c96f"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/fate/fate_coordinator.tscn",
+			"sha256": "18ebfee72fce2a9dacbe749943e31c874c63b085a176bcdfefbf91e6ad1ef9d7"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/fate/tower_defense_fate_flow_coordinator.gd",
+			"sha256": "cf64ca00e25464597ea7f1273cac7e56032ad8a1827a0fb314c929638093249a"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/fate/tower_defense_fate_flow_coordinator.tscn",
+			"sha256": "8be8028351adc1fa885ec47ec8451e107d24e34b945b091882729da70acfc910"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/fate/tower_defense_fate_manager.gd",
+			"sha256": "e886377f4a135d487e92ae88f4c8730f0690b8e1ed27fe710ed6cd965c6ba085"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/fate/xiaocong_dialogue_bubble.tscn",
+			"sha256": "c71714a68f78ead494db3fa2601951aec0f27d38abbccd30416246bc623de299"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/fate/xiaocong_fate_choice_card.gd",
+			"sha256": "333c3b8f7eee121439cc3d037c521d7de9a5b15f4ecc30a126ecd2fefcf8a506"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/fate/xiaocong_fate_choice_card.tscn",
+			"sha256": "23745b77d0f1673367dfbd6f191d237aef6c265541de165708e8e17931ef4afc"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/fate/xiaocong_fate_choice_overlay.gd",
+			"sha256": "1ebcb6d7d4ef46227e655e4dc647abb90f5f73e8ba0bd9bb45ade6eedc33642c"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/fate/xiaocong_fate_choice_overlay.tscn",
+			"sha256": "55ca61999645c60277d189cda6c953ff816d150d3684d1ce32f97ddd0d48a56e"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/fate/xiaocong_fate_interlude.gd",
+			"sha256": "aed6c18df5f6bca040f17f5704b97f0d7c784f7e9d213ef6c3dd04af0e8226fc"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/fate/xiaocong_fate_interlude.tscn",
+			"sha256": "634bf8181a3fefd973d8c5ae1f57854560b37e50064c86f76cf268497a19c6f0"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/home/tower_defense_home_defense_coordinator.gd",
+			"sha256": "e7dfa285d06edae4856d2abc4bdf8b5bbb23cdbe84deb9d727017bf9f20d54ce"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/home/tower_defense_home_defense_coordinator.tscn",
+			"sha256": "e2f51fffdbacba05dfc1fbc3d9a4c196bdbed0a20f8df4456d299210e6bb25e1"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/merchants/luoxi/luoxi_special_game_coordinator.gd",
+			"sha256": "20b9241726047d66654095b0ce5e6c5c2127c0f1e7c8f17e184905a8f1d89adf"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/merchants/luoxi/luoxi_special_game_overlay.gd",
+			"sha256": "de74786e7a4be12937d99348721d9b8dc142ba28c395d83b357c05b44f0c1c9e"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/merchants/luoxi/luoxi_special_game_overlay.tscn",
+			"sha256": "5e2e24446d3e0a3ca95dce8ddedb5bd2ec5ee2adeee90c4d4618b0d2cc7aba52"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/merchants/luoxi/tower_defense_luoxi_merchant.gd",
+			"sha256": "885542e7004823bc5cb7355ec316522801a02ca2dc9e3acb253839489dbde0c3"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/merchants/luoxi/tower_defense_luoxi_merchant.tscn",
+			"sha256": "220b0e8c277a02e3a41628130d35e95e3a7d3a3b065b1d29bddccc361e203831"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.gd",
+			"sha256": "73ebc0046a56b2906f07f69552d50c9e5ff7161cabecbeeeb3617cc0e4ce7dde"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.tscn",
+			"sha256": "d6a3143bd4b8ac4dbf42c57060063ca57a81cd663b3387ca5939abdb11eccfc2"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/multiplayer/tower_plant_gameplay_bridge.gd",
+			"sha256": "83d6d40a5cce4cea6b6ac26dc38cfb10c965aa6e743f01df4caed35b3ee08ed8"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/pickup/tower_defense_pickup_registry.gd",
+			"sha256": "5704e5c046798d1ae6b0d81e7856a56fafaa922c98cfafeb5175b4f5fe530caf"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/pickup/tower_defense_pickup_registry.tscn",
+			"sha256": "415d034d19d2780632568e3453a42fb935ec68e9b81d3d3f334c4a26204e9da9"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/combat/bamboo_mortar_combat_system.gd",
+			"sha256": "c80451a351dabecbed05eec182e802548205d9a6c4259beb778b3104c27ffd05"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/combat/bamboo_mortar_combat_system.tscn",
+			"sha256": "ada320e085424fd0b7627d7fa8c59ecf16ea825ed67d95264c0ced3f1f5dfb1f"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/combat/orange_charging_aura_coordinator.gd",
+			"sha256": "09ab5c5b73fa212343fc17176f33cb4a0421769cb8184189e02be2a413cdae59"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/placement/plant_placement_controller.gd",
+			"sha256": "465c233df60ce3a3269606df2097170a2959b55597c4f564c92c48eeb8357163"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/placement/plant_placement_controller.tscn",
+			"sha256": "49b02fd6b8f6115c08eeea206d6cadb3e55a0384c407c3bd310924ec99f6caa1"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/placement/plant_placement_preview.gd",
+			"sha256": "03b53df50389a2f261193c9a2d931694a4271a02b0d16a334cb8dbfc70da7d71"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/placement/plant_placement_preview.tscn",
+			"sha256": "f444082465895e5e751d735897e13937444c9008a47aad7e20518dfbdef89e85"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/runtime/plant_system.gd",
+			"sha256": "6b7bf4845d695fdd45d6fc3ed7c276984f7921c4b218e2df4cd128fb3407afc6"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/support/attack_speed_tower_coordinator.gd",
+			"sha256": "c5b5b97892123d53d2728f6b4f82b57da26695fbbd15bdc4ea08046b18e7b85d"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/support/life_tower_health_coordinator.gd",
+			"sha256": "a90c2bf35290a7455578aae03fa07bcb3c29f598204794ed702ccf63fbbdbcbc"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/support/speed_tower_move_speed_coordinator.gd",
+			"sha256": "0c40af1db73f7f7afc3e450aa9d747a6430a4468b2e7e39cb5da7604fdddb041"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/tower_defense_plant_placement_coordinator.gd",
+			"sha256": "7eaff34159b60a9553e40515ce5e69c850c1b7d9c64d85f4c23dc8cb0523342e"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/tower_defense_plant_placement_coordinator.tscn",
+			"sha256": "4c85cbcf9fe409565f0cae21c5bb311fabd07c312d2da40680bb47c35b1164c2"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/tower_defense_plant_runtime_coordinator.gd",
+			"sha256": "86905c3afc8718a140bcca4e17f19e660175bd5cf7b64af337678cbe835a55aa"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/tower_defense_plant_runtime_coordinator.tscn",
+			"sha256": "19dd8e2810d9dfc9bf4b8acd4e0c98359b3d0e1e4d64a7fa62055b4b3a9cb555"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/vegetation/vegetation_growth_overlay.gdshader",
+			"sha256": "f352244fefda132f8edb6c7922fb4a52bbc14b76ad7f96abb2aa2fedaecbe8ce"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/vegetation/vegetation_spread_system.gd",
+			"sha256": "df4c7c9be84b1665451cacd631414aeb7aad0712777b41d6dc9b0271ad888368"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/plant/vegetation/vegetation_spread_system.tscn",
+			"sha256": "87991aa553d5025e05b4e7dc5e06031b07bfd8f479008b36b73eb7bfb41e9749"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/player/grass_healing_coordinator.gd",
+			"sha256": "7ee08579a3e7437e6f3f59d9e6561d72193446ec8380d01f5183462e0db1cfe6"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/player/tower_defense_player_roster_coordinator.gd",
+			"sha256": "71b79210ba84107856fafd245f846ae5683f91d7690040b4763871e0ebb9a3fe"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/player/tower_defense_player_roster_coordinator.tscn",
+			"sha256": "6b8a953597d55033cc171e9d3e483f916b6b89ea7ee7d4e5b85693f1b9acd052"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/presentation/tower_defense_ambient_vfx.tscn",
+			"sha256": "1dc21a87afc1aa1b5c066598af0aa0aadcd12e86bcab42f8ee30a0051d62d049"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.gd",
+			"sha256": "dca52a57103a22aab804d6879bc74d245ff6ead570ff2f5e47e781457ac58c2d"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.tscn",
+			"sha256": "16cfe67c69bacbc9af3c704cf7fb3d36829848dfd6f35aa3f12669e84118a166"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.gd",
+			"sha256": "d0b902ebddd212e5cd216468a75acacb0e05426575cfc60e455d46481bb8f57b"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.tscn",
+			"sha256": "88bcd3c06d4f89e6d8f2c4b539f4b2e60f3e383816086eb83cdd39a395b38033"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/rogue/tower_defense_rogue_exploration_coordinator.gd",
+			"sha256": "af54b7ad1443926e2b0307207d1590df67930c226e71713a0802ed73ba52971b"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/rogue/tower_defense_rogue_exploration_coordinator.tscn",
+			"sha256": "ea9a0a39ff0e3f0d5bd3a2357a2dfd52536c0cf5538b950de57f599b2d0988b7"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/tower_defense_game.gd",
+			"sha256": "14c53865a9d0601c21984966bcba31767e832e476483e29bfedccbc1cab2f410"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/tower_defense_game.tscn",
+			"sha256": "0b1f618ed393dfd7bb4f4c3dca4c2e5ba14d2e988d3e84667a4285e555192105"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/day_phase_announcement.gd",
+			"sha256": "0653cbed11e6389277467c29d62b2ac90de5b7d673187fe4a3c141d87d0a5b58"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/day_phase_announcement.tscn",
+			"sha256": "ba2ebfc097d26641fc6f7fad69272876c82e9f88220eda6d212a4fe54922e7c9"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap.gd",
+			"sha256": "cd5a348606ad598c724c042a0d6adca183eba7d6e6afd2d4045da4ace85accbc"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap.tscn",
+			"sha256": "38462ea348721a6a8e246a44276eda667afb78eacf868ac8192ffa0f649d9092"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap_canvas.gd",
+			"sha256": "3db0a75f68c80398699e67200c05aaba3ef16ab191c069477823b6e95d5045c4"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap_dynamic_layer.gd",
+			"sha256": "caf14051cb50a2f20716ed379b0afdb5a7da29face8035459c46c4f42091941a"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap_enemy_marker.gdshader",
+			"sha256": "2d7cedbefa7c2510667ce6fb0c511bc67a33d5b230e15893adc332e9e34e201a"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap_static_layer.gd",
+			"sha256": "f1e94912ecd5f3717d66ca894c59b048c86aba20dfaaeb529d1f1c446372528e"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/plant_selection/plant_selection_hud.gd",
+			"sha256": "e2c64b0f1922fc4e4f8fe2799d2705ba4835de93f37c414fa7d92df2fde729e8"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/plant_selection/plant_selection_hud.tscn",
+			"sha256": "57f6192c7df23af05db0eb45a3168cc80ccbaef298af12f6f6127d66b6acf6e1"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_day_dial.gd",
+			"sha256": "5386774cd12080ba76e8f91ef591d761820e94fcf73471ac2bdd14aaf8745cb0"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_gate_warning.gdshader",
+			"sha256": "945def3c4e260da2e3c1c456dc3fcdfebd31e5e4f3a7b94c29ace9e1a2b94f4d"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_player_profile_panel.gd",
+			"sha256": "a5473c4a785aa796497cbfab3e6515cdadd047a222e725bdd02f7b49cc0f482d"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_player_profile_panel.tscn",
+			"sha256": "21135df629d4e933532e04d1b02339a3d5a101b55e387a429980a093d8f83ead"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_status_hud.gd",
+			"sha256": "02d67d567528ba0305646e91ea8a1955c9e5b8b2433e930af8b6c042c42e8ed0"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_status_hud.tscn",
+			"sha256": "7663bb00319dff680534935bfca50771d04d626fd6d1659b22df4801dfcdb7fb"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_wave_hud.gd",
+			"sha256": "0cc4298866826c2da47d1d28fc590fbd8bf697f2a4127aa8540546fa36c09e8f"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_wave_hud.tscn",
+			"sha256": "cac51e11779b701358e420d0e78927d2c22c53ffb89a02eba15e13d6363a295b"
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/world/home_gate_controller.gd",
+			"sha256": "a01b31fffc698f41f9b0c9881459ac48136b97a07953f6124925296d97702a1c"
+		},
+		{
+			"path": "res://scene/lighting/day_night_controller.gd",
+			"sha256": "ac5c7be4380f782474e736a06424a6032091d7eaffc84c7def94494b430169b4"
+		},
+		{
+			"path": "res://scene/lighting/day_night_controller.tscn",
+			"sha256": "7a44311f772b98a849fa38fbee6de6caebc20ccd40f73036484c1a88a8812e25"
+		},
+		{
+			"path": "res://scene/lighting/night_point_light.gd",
+			"sha256": "a6f7556b917b4878bae319a0322ff145446504548d1629b9be6b602789817164"
+		},
+		{
+			"path": "res://scene/lighting/night_point_light.tscn",
+			"sha256": "9c8f81bc3e29bf55cf7d41aa34882ad25e0fcbee640e7b584291014f16a5b9ba"
+		},
+		{
+			"path": "res://scene/lighting/night_self_emission_particles_2d.gd",
+			"sha256": "d330b392b95094c3aa61d5fa8fe7f57870e86cc988711e17b89e1758ecfc172c"
+		},
+		{
+			"path": "res://scene/lighting/night_vfx_flash.gd",
+			"sha256": "91bd182e6097002dc9379fe56f83b9be386a8079dda371a25923bfabf603e55a"
+		},
+		{
+			"path": "res://scene/lighting/night_vfx_flash.tscn",
+			"sha256": "f84bf8c34447ec0a3d55c0cec41a69c32b670bc2235d5ee0216fd0c25769e3b1"
+		},
+		{
+			"path": "res://scene/lighting/night_vfx_flash_pool.gd",
+			"sha256": "7aab050acd030def408d04e20af8baad4615c9b95c14386bad413c23ead7cc4f"
+		},
+		{
+			"path": "res://scene/lighting/night_vfx_flash_pool.tscn",
+			"sha256": "516161bbf811fea8270364a7482b94511871fe6a08283af4d540e99fe14df0db"
+		},
+		{
 			"path": "res://scene/lighting/projectile_emission_halo.tscn",
 			"sha256": "7ad13f954b471c7dffd1808f6933f2c8f582d5d83aa689d7d52aa95714ad4da4"
 		},
 		{
+			"path": "res://scene/merchants/luoxi/luoxi_collectible_choice_overlay.gd",
+			"sha256": "cff5e5a8103fd85dcff9f2edb0968bb5c285e2a9574f89d3241cb9efcc884010"
+		},
+		{
+			"path": "res://scene/merchants/luoxi/luoxi_collectible_choice_overlay.tscn",
+			"sha256": "e303bc1a13225247770a7eba1264e42a2f0bdf2697486fe1bb36c70c8a27109a"
+		},
+		{
+			"path": "res://scene/merchants/luoxi/luoxi_dialogue_bubble.tscn",
+			"sha256": "7ee16a89faa2a060c22189291067e22d6137ded056a6315bd42f2ec13ff3e5b4"
+		},
+		{
+			"path": "res://scene/merchants/luoxi/luoxi_merchant.gd",
+			"sha256": "7e4902e82cc718cab635655eded47337f3bf659e8502d214a28a146811e32c30"
+		},
+		{
+			"path": "res://scene/merchants/luoxi/luoxi_merchant.tscn",
+			"sha256": "f7df33f7f53e9ecfcd8b3fa564c26fb583c45f192564b0e21e79295bea686db6"
+		},
+		{
+			"path": "res://scene/merchants/shared/merchant_dialogue_bubble.gd",
+			"sha256": "1d753dbd5ee5eebafbadb2034fefb4d914e1d3ed33f928ce45865fa66d7ede8b"
+		},
+		{
+			"path": "res://scene/merchants/shared/merchant_dialogue_bubble.tscn",
+			"sha256": "dcbdfae893664f2c606ab96686cfbca327904651ca5eebd872824265e91fb1e2"
+		},
+		{
+			"path": "res://scene/merchants/zhuangfangyi/zhuangfangyi_merchant.gd",
+			"sha256": "9e6a6ebe2c92d038c7474e7eae2a559ed30930864ee14ec0720ab882f06b5d8b"
+		},
+		{
+			"path": "res://scene/merchants/zhuangfangyi/zhuangfangyi_merchant.tscn",
+			"sha256": "c60c6dece26dba7c06194c9e3d75fa9fe06bacaf7ed5f45e587036ac627ad01d"
+		},
+		{
+			"path": "res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.gd",
+			"sha256": "aeaf209e916e7b715a6177aaf3bae8027d7781a545bf30f6ead8b2a33fc604d8"
+		},
+		{
+			"path": "res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn",
+			"sha256": "5b7036e4a90a7f80e5fe47f83c67d7224414a09665f04b4995155af6f9d9e366"
+		},
+		{
+			"path": "res://scene/plant_defense/agave_cannon.gd",
+			"sha256": "9bb2cbf9844c635a77e6c96e38840486a018f2d20bebe5f0ca901ed431f1853e"
+		},
+		{
+			"path": "res://scene/plant_defense/agave_cannon.tscn",
+			"sha256": "9f2831daee4d2bffa8cb7c9fb2f49a6ebd89c196001bba78c096e49af7e910fc"
+		},
+		{
+			"path": "res://scene/plant_defense/attack_speed_tower.gd",
+			"sha256": "d64a2cab226b7b146061dd24ae659c3938480fed9edd543e199a80cfee1d083f"
+		},
+		{
+			"path": "res://scene/plant_defense/attack_speed_tower.tscn",
+			"sha256": "913c6f67a9426958ec1bc3b1ef6a9b25d4d9720a174b56b64cfb36e5685b1225"
+		},
+		{
+			"path": "res://scene/plant_defense/bamboo_mortar.gd",
+			"sha256": "97d1a2dab9d7296592e41cd045606980784c02fb2bfaeca159c94e61efcd9cc1"
+		},
+		{
+			"path": "res://scene/plant_defense/bamboo_mortar.tscn",
+			"sha256": "97111539873510cee3e489354e28544cc66660495834894727e369df6e0d432f"
+		},
+		{
+			"path": "res://scene/plant_defense/cardinal_connected_plant.gd",
+			"sha256": "5746b9af3a7617512aea78efaae77804e22af414a6a4b0b660e515f62eb38462"
+		},
+		{
+			"path": "res://scene/plant_defense/corn_machine_gun.gd",
+			"sha256": "f4d9355189644c7f724214065c5435ab264fda56241aa7177fe1c390c7b3753d"
+		},
+		{
+			"path": "res://scene/plant_defense/corn_machine_gun.tscn",
+			"sha256": "5424508ec35b2e94816a74e5290efbae37e0dd87a99caef59d709e888c244cea"
+		},
+		{
 			"path": "res://scene/plant_defense/day_night_progress_border.gd",
 			"sha256": "5a1e6d26f739a82fafa3ed58552ee3d4131d561fdc62a531089e4601538aa570"
+		},
+		{
+			"path": "res://scene/plant_defense/excavator.gd",
+			"sha256": "481adfd9eb73b1b8b60ab3eec5d45e3ee9b33c9b27aa93d09a8640de42a93083"
+		},
+		{
+			"path": "res://scene/plant_defense/excavator.tscn",
+			"sha256": "f44f1af8373a0999288c61bc7a83888ada02ff5dc600f51cafb35e9512375c58"
+		},
+		{
+			"path": "res://scene/plant_defense/grape_arc_tower.gd",
+			"sha256": "57a1cb7b6b24407c3bb2f5ff92d0ecbdc99eb59064f9e33fc45d6432802b5071"
+		},
+		{
+			"path": "res://scene/plant_defense/grape_arc_tower.tscn",
+			"sha256": "3f393c6eff41a23d782c4d507b4fa01278ddcce0835526c8d16190fe8cac2418"
+		},
+		{
+			"path": "res://scene/plant_defense/hydrangea_rain_tower.gd",
+			"sha256": "437a47ddfe8f560f62a79dbd02dba218384205bd8934b892cdd4b57525a22f91"
+		},
+		{
+			"path": "res://scene/plant_defense/hydrangea_rain_tower.tscn",
+			"sha256": "4d70fe3fa76c54af8b6b5ad6ce3d87a0eaeec29117afa4b650e034dd6bb4f5a8"
+		},
+		{
+			"path": "res://scene/plant_defense/life_tower.gd",
+			"sha256": "d94ac0b4269b8d59cc94cf2a09c2872801845fbec09298c343687e27e56c9231"
+		},
+		{
+			"path": "res://scene/plant_defense/life_tower.tscn",
+			"sha256": "12681adf253a6798ebeb55af9bb5420c4573219bf5fac9ce8a8e44d46d61d564"
+		},
+		{
+			"path": "res://scene/plant_defense/oak_warehouse.gd",
+			"sha256": "057324bcb48720a0540817ef5da26b881c954546084f155298104f5ac97f29d3"
+		},
+		{
+			"path": "res://scene/plant_defense/oak_warehouse.tscn",
+			"sha256": "1e8a2b78391952ceebba206319229c726c6ba25dccc01ee23ba215fd4027905b"
+		},
+		{
+			"path": "res://scene/plant_defense/orange_charging_tower.gd",
+			"sha256": "0331c0d6d5fa7dfb8fdbc1ac0f5e2da388f9ba7af025b047400527211d64262a"
+		},
+		{
+			"path": "res://scene/plant_defense/orange_charging_tower.tscn",
+			"sha256": "87cf0a46a7f4560abb1b61de1a8809174bd5e3f5ce30aec8322e7f09ae98ad99"
+		},
+		{
+			"path": "res://scene/plant_defense/plant_cultivation_center.gd",
+			"sha256": "94c7c9244321c2c6851292acf418cab41614e88abd4419c40122040cbb3124f7"
+		},
+		{
+			"path": "res://scene/plant_defense/plant_cultivation_center.tscn",
+			"sha256": "31908ce4d61560b9e497f06391ca9e04757d80b3d6b84101c712bfca2250fa41"
+		},
+		{
+			"path": "res://scene/plant_defense/planting_base.gd",
+			"sha256": "87bad9dca2e028082253ab5359cdfefa38d741b90d968c44a2b2ae4f54bd6460"
+		},
+		{
+			"path": "res://scene/plant_defense/planting_base.tscn",
+			"sha256": "93b780f19d1f3cb0f27a2fbce804e932523c4120028d88714212154b1e52d73d"
+		},
+		{
+			"path": "res://scene/plant_defense/research_center.gd",
+			"sha256": "653443cb83079a97711b412154a0dd97897ffd46ece8f8571992eef5c7fd074e"
+		},
+		{
+			"path": "res://scene/plant_defense/research_center.tscn",
+			"sha256": "cbe8878dd09660222403e4c0c10a4cdaf849b2e36e28d5f0c0509612d15fcb02"
+		},
+		{
+			"path": "res://scene/plant_defense/simple_fence.tscn",
+			"sha256": "a22df0e3c0ce4795036d5b5d5f3361609cdb97dc33ce5ce67f762b476762a5f6"
+		},
+		{
+			"path": "res://scene/plant_defense/speed_tower.gd",
+			"sha256": "87b753729cd909e1995701e3d238480eaeb5e434603692732ca117c4953dfa9b"
+		},
+		{
+			"path": "res://scene/plant_defense/speed_tower.tscn",
+			"sha256": "2d742282874d3889c33ebc10f0ee457ee9519543a3d3c35eff1e1ee9efbbe4f5"
+		},
+		{
+			"path": "res://scene/plant_defense/stone_mill.gd",
+			"sha256": "a7e2945c8d4de440d0fd84e7f05bea989ffeee9b43e7f829ddcb24b53d36318d"
+		},
+		{
+			"path": "res://scene/plant_defense/stone_mill.tscn",
+			"sha256": "1626800206e95fa5a2e6b1fb7a37bfd74e0b21267fa359475fc9e0589cf492b1"
 		},
 		{
 			"path": "res://scene/plant_defense/ui/plant_health_bar.gd",
@@ -6585,12 +9261,152 @@
 			"sha256": "537ac2dad9a18cf13cf5ecde89b651fb868a01f15942388b892d62b9567b5f72"
 		},
 		{
+			"path": "res://scene/plant_defense/ui/production_output_bubble.gd",
+			"sha256": "f30907ac296d86aa8134c19c9aa8997e8cffbfd29a0aa675a247603b619dae21"
+		},
+		{
+			"path": "res://scene/plant_defense/ui/production_output_bubble.tscn",
+			"sha256": "0d22764ca10f237a8caa8a07e1914c041420edca6e6b99879623e6607aa47ff9"
+		},
+		{
+			"path": "res://scene/plant_defense/vegetation_stake.gd",
+			"sha256": "af16691985cfccd13313e77c1a351a77f1dcc58a598b6d97ac39091cd1ce2d01"
+		},
+		{
+			"path": "res://scene/plant_defense/vegetation_stake.tscn",
+			"sha256": "b164a75b526ecfebb73328bca6c8d041679bab2b2ac86d2a28bdcb0dcd4493d3"
+		},
+		{
+			"path": "res://scene/plant_defense/water_collector.gd",
+			"sha256": "e62bb51835cac1e77340dfb4fd16441c718daf882854af24b3f226bb40d23fa2"
+		},
+		{
+			"path": "res://scene/plant_defense/water_collector.tscn",
+			"sha256": "12e58bd81888d7ae03eccf617e761f99ce9ae338a093123b9782e9cdc580cfcb"
+		},
+		{
 			"path": "res://scene/plant_defense/wood_processing_station.gd",
 			"sha256": "a791789f4dd9592b188a95f2bcd21d93f5c936b75c14ffd83a6bfeb62b64be3f"
 		},
 		{
 			"path": "res://scene/plant_defense/wood_processing_station.tscn",
-			"sha256": "b11cb21b72bc93708107774bf6f3115c480f32c388f3d04b732eabec51a8fa84"
+			"sha256": "c0909783b5acbcdaa924a0c23a3e83f6d8eccac0c2cb915dcff6ad92ce396a50"
+		},
+		{
+			"path": "res://scene/settings/settings_gear_icon.gd",
+			"sha256": "e1ad0c00eb1313f3e53d896f629ca89f6e59bff677af2f0e65612f9716cb4a3e"
+		},
+		{
+			"path": "res://scene/settings/settings_panel.gd",
+			"sha256": "4a8fa07ac0d81c6b8cda9926a32b2716c3df070b44e9fe4532acb94cca86cea4"
+		},
+		{
+			"path": "res://scene/settings/settings_panel.tscn",
+			"sha256": "5e463c4d280aee261bcb9ffc585ce94dca0cb66e96c406ee080a17121708f9a8"
+		},
+		{
+			"path": "res://scene/terrain/dual_grid_tilemap.gd",
+			"sha256": "3a4167d855faa8f3e3664948c75c441300864a654b95a2cbaed0eedb3c5fe555"
+		},
+		{
+			"path": "res://scene/ui/shared/crafting/simple_crafting_item_slot.gd",
+			"sha256": "575d743ecae1bad1b1990a2f8ddb1a979a81728d0f0078d56b27c90a273bd9bd"
+		},
+		{
+			"path": "res://scene/ui/shared/crafting/simple_crafting_item_slot.tscn",
+			"sha256": "b7c320b806c05c6343311958e3f4812e3eb7860c08293e7b82c9b59a8b305607"
+		},
+		{
+			"path": "res://scene/ui/shared/crafting/simple_crafting_panel.gd",
+			"sha256": "9ea09cf7ed38636881f8844cb3d2dda1ea4a8508e2ac2be302b10642d9916152"
+		},
+		{
+			"path": "res://scene/ui/shared/crafting/simple_crafting_panel.tscn",
+			"sha256": "825fd0f28eff64c967910e39dccf705f7f20ae040d00f5f55ef0f5a6a143ba7c"
+		},
+		{
+			"path": "res://scene/ui/shared/debug/debug_collectible_window.gd",
+			"sha256": "30364ffe7a210282ea2479d9f4a4ffff486bbf4e1fd03845679efffe598b4bc7"
+		},
+		{
+			"path": "res://scene/ui/shared/debug/debug_collectible_window.tscn",
+			"sha256": "b4b9eac1e0b3ca87e4b5150fcabb6ee27ca884bf59689af1c805122f647e35d6"
+		},
+		{
+			"path": "res://scene/ui/shared/dialogue/dialogue_typewriter_controller.gd",
+			"sha256": "4e70c9d8261ac8c0156dc3db5dd0096e5d9e413df076fbdf60580d7f92f3e3cb"
+		},
+		{
+			"path": "res://scene/ui/shared/hud/currency_hud.gd",
+			"sha256": "7ffc403a10135db2cf87176aae9e9d85696734cf6da02455229ab20e371c0645"
+		},
+		{
+			"path": "res://scene/ui/shared/hud/currency_hud.tscn",
+			"sha256": "8afd0f6f74017f40cd2904dc39b2851e96126c83a53855fbbcb21a349cf3f708"
+		},
+		{
+			"path": "res://scene/ui/shared/inventory/inventory_slot.gd",
+			"sha256": "4d4c2c2f9f757868faa861dafe3475f48b07ad3d62d1effdc49c41c77b7b550f"
+		},
+		{
+			"path": "res://scene/ui/shared/inventory/inventory_slot.tscn",
+			"sha256": "6d0e9905347e6eb5805b4eaacd0ad9b99bef15ff6c9067eebf0e6beb8506217a"
+		},
+		{
+			"path": "res://scene/ui/shared/player_death_screen.gdshader",
+			"sha256": "9edae32c2683520608e2c5fe9fd27d76d1647180bdd1af72d2544febdd42b5dd"
+		},
+		{
+			"path": "res://scene/ui/shared/player_life_status_hud.gd",
+			"sha256": "2c42523201a186e0eee34e947966995291b59b06b837c97d003698cd773dd537"
+		},
+		{
+			"path": "res://scene/ui/shared/player_life_status_hud.tscn",
+			"sha256": "2a5142a73fe5f5e5e66bfa2f66b0671438bd2ec9cdedea379e3d570af316199c"
+		},
+		{
+			"path": "res://scene/ui/shared/profile/basic_player_profile_panel.gd",
+			"sha256": "ef6570502f38944b404a69ff230a6062885fe6997d78a7c42103fcb2872ab311"
+		},
+		{
+			"path": "res://scene/ui/shared/profile/basic_player_profile_panel.tscn",
+			"sha256": "539c0ca9b937c64f8fac572a7176f8679302e6cdf99b956587a25b04621be4aa"
+		},
+		{
+			"path": "res://scene/ui/shared/profile/player_inventory_view.gd",
+			"sha256": "7cab284589f486802fb269fd84bf62f55ff5e648a318d04d9018fe7dbc65e0a2"
+		},
+		{
+			"path": "res://scene/ui/shared/profile/player_inventory_view.tscn",
+			"sha256": "f144d48cfd7000014261b3ee6e10d3b96c1b058dc98ffe33d4cae3b9b09e7c5d"
+		},
+		{
+			"path": "res://scene/ui/shared/profile/player_stats_view.gd",
+			"sha256": "e388cdff76ee4308de52ed2eae9ea92a1be9f04bcb709e6496a8fe443e41b0e3"
+		},
+		{
+			"path": "res://scene/ui/shared/profile/player_stats_view.tscn",
+			"sha256": "79d2ea7b9d6eb8edce2d0396d0561caed320d33c7d67de8ed1e8196e03340231"
+		},
+		{
+			"path": "res://scene/ui/shared/upgrade/upgrade_progress_block.gd",
+			"sha256": "8b07925956b08f94476760ade91cbfe468eac80a532e99e7b5c88151722661ef"
+		},
+		{
+			"path": "res://scene/ui/shared/upgrade/upgrade_progress_block.tscn",
+			"sha256": "aa6f4456b48b307d8ade7b87643e34e68c0614928ed2f10451ab29722d9147a5"
+		},
+		{
+			"path": "res://scene/ui/shared/upgrade/upgrade_row.gd",
+			"sha256": "75934592b7e607c3dc5a4064e3c601159a2b4de347b4367fe305d836afbf8490"
+		},
+		{
+			"path": "res://scene/ui/shared/upgrade/upgrade_row.tscn",
+			"sha256": "2ef6dcbbb3b316ff944ddaf18c8e9378b145d21fc73f2216a52ef964d2b1708e"
+		},
+		{
+			"path": "res://scene/ui/shared/vote_portrait.tscn",
+			"sha256": "c1837b348e2add9285c817dec2abfb7e4ac9c81b1fe78c769c9a67335fb1a2dc"
 		}
 	]
 }
