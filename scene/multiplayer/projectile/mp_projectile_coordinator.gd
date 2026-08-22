@@ -2014,15 +2014,23 @@ func get_authoritative_client_projectile_parameters(
 				),
 			}
 		TIYI_SNIPER_PROJECTILE_TYPE:
+			var tiyi_player := owner_player as PlayerTiyi
 			if (
-				not _is_valid_tiyi_player(owner_player)
+				tiyi_player == null
+				or not _is_valid_tiyi_player(owner_player)
 				or not owner_player.can_request_multiplayer_projectile(projectile_type)
 				or not owner_player.has_method("try_accept_authoritative_primary_shot")
-				or not bool(owner_player.call(
-					"try_accept_authoritative_primary_shot",
-					projectile_type
-				))
 			):
+				return {}
+			# 与本地逐发构造顺序保持一致：先快照技能租约，再执行会消耗弹药并
+			# 触发攻击收藏品的 Host 原子准入，避免同步副作用改写当前这一发。
+			var guaranteed_piercing := (
+				tiyi_player.has_guaranteed_primary_projectile_piercing()
+			)
+			if not bool(owner_player.call(
+				"try_accept_authoritative_primary_shot",
+				projectile_type
+			)):
 				return {}
 			var sniper_scene := _get_runtime_packed_scene(
 				TIYI_SNIPER_BULLET_SCENE_PATH
@@ -2041,7 +2049,8 @@ func get_authoritative_client_projectile_parameters(
 				"speed": float(defaults["speed"]),
 				"lifetime": float(defaults["lifetime"]),
 				"pierces_enemies": (
-					randf() < owner_player.get_inventory_bullet_pierce_chance()
+					guaranteed_piercing
+					or randf() < owner_player.get_inventory_bullet_pierce_chance()
 				),
 				"homes_to_enemy": (
 					randf() < owner_player._get_inventory_bullet_homing_chance()

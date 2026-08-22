@@ -64,6 +64,18 @@ func _get_primary_attack_damage_type() -> EnemyConfig.DamageType:
 	return EnemyConfig.DamageType.MAGIC
 
 
+func has_guaranteed_primary_projectile_piercing() -> bool:
+	return _high_noon_active
+
+
+func _should_fire_piercing_bullet() -> bool:
+	# 正午锁定从开始事件持续到结算或取消；这段租约内的每一发普通狙击弹
+	# 都必须确定性穿透，不能再依赖收藏品的随机判定。
+	if has_guaranteed_primary_projectile_piercing():
+		return true
+	return super._should_fire_piercing_bullet()
+
+
 func plays_multiplayer_death_animation() -> bool:
 	return true
 

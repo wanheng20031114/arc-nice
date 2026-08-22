@@ -12,6 +12,7 @@ const PLAYER_TEST_RUNTIME := preload(
 var failures: Array[String] = []
 var test_root: PlayerTestCombatRuntime
 var player: PlayerTiyi
+var projectile_coordinator: MpProjectileCoordinator
 
 
 func _init() -> void:
@@ -31,6 +32,10 @@ func _run() -> void:
 		return
 	test_root.add_child(player)
 	test_root.bind_player_runtime_context(player)
+	projectile_coordinator = MpProjectileCoordinator.new()
+	projectile_coordinator.name = "TiyiProjectileCoordinator"
+	test_root.add_child(projectile_coordinator)
+	projectile_coordinator.bind_runtime(test_root)
 	await process_frame
 	await physics_frame
 	_stop_audio_players(player)
@@ -51,6 +56,10 @@ func _test_stats_ammo_and_animation() -> void:
 	_expect(player.attack_damage == 100, "Tiyi must start at 100 attack damage.")
 	_expect(player.get_ammo_capacity() == 5 and player.current_ammo == 5, "Tiyi must start at 5/5 ammo.")
 	_expect(player.has_skill1(), "Tiyi must start with High Noon unlocked.")
+	_expect(
+		not player.has_guaranteed_primary_projectile_piercing(),
+		"Tiyi must not gain guaranteed sniper piercing before High Noon starts."
+	)
 	_expect(
 		is_equal_approx(player.skill1_charge_duration, 24.0),
 		"Tiyi High Noon must require 24 charge at upgrade level zero."
@@ -381,6 +390,15 @@ func _test_high_noon() -> void:
 	player.skill1_charge = player.skill1_charge_duration
 	_expect(bool(player.call("_try_use_skill1")), "A fully charged Tiyi must start High Noon.")
 	_expect(player.is_high_noon_active(), "High Noon must become active immediately.")
+	_expect(
+		player.has_guaranteed_primary_projectile_piercing(),
+		"Every ordinary sniper shot must gain guaranteed piercing while High Noon locks."
+	)
+	for _piercing_roll in range(8):
+		_expect(
+			bool(player.call("_should_fire_piercing_bullet")),
+			"High Noon piercing must be deterministic instead of an inventory chance roll."
+		)
 	_expect(player.get_high_noon_target_count() == 1, "High Noon must acquire its first target at t=0.")
 	_expect(
 		player.high_noon_cast_effect_sprite.visible
@@ -403,11 +421,50 @@ func _test_high_noon() -> void:
 	player.current_ammo = player.get_ammo_capacity()
 	player.is_reloading = false
 	player.shooting_timer.stop()
-	player.call("_try_shoot", Vector2.UP)
-	_expect(
-		player.current_ammo == 4 and player.is_high_noon_active(),
-		"High Noon must not block ordinary sniper fire or consume skill ammunition."
+	var original_peer_id := player.peer_id
+	player.peer_id = 73
+	var authoritative_parameters := (
+		projectile_coordinator.get_authoritative_client_projectile_parameters(
+			&"tiyi_sniper_bullet",
+			player.peer_id
+		)
 	)
+	_expect(
+		not authoritative_parameters.is_empty()
+		and bool(authoritative_parameters.get("pierces_enemies", false)),
+		"The host must force a remote Tiyi sniper request to pierce during High Noon."
+	)
+	var authoritative_bullet := projectile_coordinator.instantiate_projectile(
+		&"tiyi_sniper_bullet",
+		player.peer_id,
+		Vector2.UP,
+		int(authoritative_parameters.get("damage", 0)),
+		float(authoritative_parameters.get("speed", 0.0)),
+		float(authoritative_parameters.get("lifetime", 0.0)),
+		bool(authoritative_parameters.get("pierces_enemies", false))
+	) as TiyiSniperBullet
+	_expect(
+		authoritative_bullet != null and authoritative_bullet.pierces_enemies,
+		"The host-accepted multiplayer parameters must construct a piercing sniper bullet."
+	)
+	player.peer_id = original_peer_id
+
+	# Host validation consumes its own authoritative round; reset the same player
+	# before exercising the separate local/predicted construction path.
+	player.current_ammo = player.get_ammo_capacity()
+	player.is_reloading = false
+	player.shooting_timer.stop()
+	player.call("_try_shoot", Vector2.UP)
+	var local_high_noon_bullet := _find_owned_sniper_bullet()
+	_expect(
+		player.current_ammo == 4
+		and player.is_high_noon_active()
+		and local_high_noon_bullet != null
+		and local_high_noon_bullet.pierces_enemies,
+		"High Noon must keep ordinary fire available and construct every local shot as piercing."
+	)
+	if local_high_noon_bullet != null:
+		local_high_noon_bullet.retire()
 	_expect(
 		bool(player.call("_try_start_reload")) and player.is_high_noon_active(),
 		"High Noon must allow a manual reload while locks remain active."
@@ -450,6 +507,39 @@ func _test_high_noon() -> void:
 	)
 	player.call("_update_high_noon", 0.02)
 	_expect(not player.is_high_noon_active(), "High Noon must finish at four seconds.")
+	_expect(
+		not player.has_guaranteed_primary_projectile_piercing(),
+		"Guaranteed sniper piercing must end with the four-second High Noon lock."
+	)
+	_expect(
+		authoritative_bullet != null and authoritative_bullet.pierces_enemies,
+		"A sniper fired during High Noon must keep its per-shot piercing snapshot after the lock ends."
+	)
+	if authoritative_bullet != null:
+		authoritative_bullet.free()
+	_expect(
+		is_zero_approx(player.get_inventory_bullet_pierce_chance()),
+		"The isolated Tiyi fixture must have zero inventory pierce chance for exit-state coverage."
+	)
+	player.current_ammo = player.get_ammo_capacity()
+	player.is_reloading = false
+	player.shooting_timer.stop()
+	player.peer_id = 73
+	var post_high_noon_parameters := (
+		projectile_coordinator.get_authoritative_client_projectile_parameters(
+			&"tiyi_sniper_bullet",
+			player.peer_id
+		)
+	)
+	player.peer_id = original_peer_id
+	_expect(
+		not post_high_noon_parameters.is_empty()
+		and not bool(post_high_noon_parameters.get("pierces_enemies", true)),
+		"The host must restore ordinary inventory-based piercing after High Noon ends."
+	)
+	player.current_ammo = player.get_ammo_capacity()
+	player.is_reloading = false
+	player.shooting_timer.stop()
 	_expect(
 		not player.high_noon_cast_effect_sprite.visible
 		and not player.high_noon_cast_effect_sprite.is_playing(),
@@ -640,6 +730,27 @@ func _spawn_test_bullet(
 	bullet.global_position = spawn_position
 	bullet.set_physics_process(false)
 	return bullet
+
+
+func _find_owned_sniper_bullet() -> TiyiSniperBullet:
+	return _find_owned_sniper_bullet_recursive(test_root)
+
+
+func _find_owned_sniper_bullet_recursive(node: Node) -> TiyiSniperBullet:
+	if node == null:
+		return null
+	for child in node.get_children():
+		var bullet := child as TiyiSniperBullet
+		if (
+			bullet != null
+			and not bullet.is_queued_for_deletion()
+			and bullet.collectible_owner == player
+		):
+			return bullet
+		var nested_bullet := _find_owned_sniper_bullet_recursive(child)
+		if nested_bullet != null:
+			return nested_bullet
+	return null
 
 
 func _finish() -> void:
