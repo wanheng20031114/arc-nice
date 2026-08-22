@@ -1,6 +1,8 @@
 extends Node
 class_name RogueCombatMultiplayerCoordinator
 
+signal battle_outcome_committed(victory: bool, occurrence_key: String)
+
 ## 多人 Rouge 路线与一次性作战运行时之间的权威协调器。
 ##
 ## 此节点必须静态存在于 MpRogueRoute 场景中，保证所有 peer 的 RPC
@@ -123,6 +125,7 @@ var _pending_settlement: Dictionary = {}
 var _settlement_scheduled := false
 var _abort_settlement_in_progress := false
 var _settled_occurrences: Dictionary = {}
+var _committed_outcome_occurrences: Dictionary[String, bool] = {}
 
 var _emergency_reward_session: RogueEmergencyRewardSelectionSession = null
 var _emergency_reward_overlay: RogueEmergencyRewardChoiceOverlay = null
@@ -484,6 +487,7 @@ func _on_host_layout_committed(
 	if _phase == ProtocolPhase.IDLE:
 		_consumed_node_ids.clear()
 		_settled_occurrences.clear()
+		_committed_outcome_occurrences.clear()
 
 
 func _disconnect_net_manager_signals() -> void:
@@ -2581,6 +2585,10 @@ func _try_finalize_local_terminal() -> void:
 		)
 		return
 	_local_terminal_finalized = true
+	_emit_battle_outcome_committed_once(
+		_local_outcome_victory,
+		_active_occurrence_key
+	)
 	_stop_local_combat_processing()
 	_local_result_occurrence_key = _active_occurrence_key
 	_local_result_participant_peer_ids = _participant_peer_ids.duplicate()
@@ -2610,6 +2618,19 @@ func _try_finalize_local_terminal() -> void:
 	else:
 		_clear_local_result_lifecycle()
 	_mark_local_terminal_ready()
+
+
+func _emit_battle_outcome_committed_once(
+	victory: bool,
+	occurrence_key: String
+) -> void:
+	if (
+		occurrence_key.is_empty()
+		or _committed_outcome_occurrences.has(occurrence_key)
+	):
+		return
+	_committed_outcome_occurrences[occurrence_key] = true
+	battle_outcome_committed.emit(victory, occurrence_key)
 
 
 func _play_local_victory_terminal(occurrence_key: String) -> void:

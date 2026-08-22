@@ -217,6 +217,7 @@ func _run() -> void:
 	_test_terminal_safe_releases_protocol_but_keeps_result()
 	_test_next_prepare_collects_stale_result()
 	_test_new_layout_clears_combat_idempotency_caches()
+	_test_committed_outcome_waits_for_settlement_and_local_result()
 	_test_host_settlement_commit_gates_broadcast()
 	_test_pending_reconnect_is_spectator_before_settlement_broadcast()
 	_test_late_activation_cannot_rewind_settled_phase()
@@ -862,15 +863,93 @@ func _test_new_layout_clears_combat_idempotency_caches() -> void:
 	_reset_fixture_state()
 	_coordinator._consumed_node_ids[17] = true
 	_coordinator._settled_occurrences["combat:old-layout:17:1"] = true
+	_coordinator._committed_outcome_occurrences[
+		"combat:old-layout:17:1"
+	] = true
 	_coordinator._on_host_layout_committed({}, {})
 	_expect(
 		_coordinator._consumed_node_ids.is_empty()
-		and _coordinator._settled_occurrences.is_empty(),
+		and _coordinator._settled_occurrences.is_empty()
+		and _coordinator._committed_outcome_occurrences.is_empty(),
 		(
-			"新路线布局提交时必须同时清理节点消费与 occurrence 结算幂等缓存，"
+			"新路线布局提交时必须同时清理节点消费、结算与胜负信号幂等缓存，"
 			+ "避免确定性 key 在下一局被误判为已结算。"
 		)
 	)
+
+
+func _test_committed_outcome_waits_for_settlement_and_local_result() -> void:
+	_reset_fixture_state()
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.register_multiplayer_peer_state(1),
+		"胜负提交信号夹具必须注册本地参战者。"
+	)
+	var occurrence_key := "combat:runtime:outcome-committed:2b"
+	_seed_route_combat(17, 1702, occurrence_key)
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_node_id = 17
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._active_encounter_config = FORMAL_CONFIG
+	_coordinator._participant_peer_ids = {1: true}
+	var committed_outcomes: Array[Dictionary] = []
+	var outcome_callable := func(victory: bool, committed_key: String) -> void:
+		committed_outcomes.append({
+			"victory": victory,
+			"occurrence_key": committed_key,
+		})
+	_coordinator.battle_outcome_committed.connect(outcome_callable)
+	var settlement := {
+		"node_id": 17,
+		"occurrence_key": occurrence_key,
+		"victory": false,
+		"consume_node": false,
+		"final_xirang_by_peer": {1: 432},
+		"inventory_snapshots_by_peer": {
+			1: run_state.export_inventory_snapshot_for_peer(1),
+		},
+		"results_by_peer": {
+			1: {
+				"peer_id": 1,
+				"victory": false,
+				"failure_reason": "测试失败",
+			},
+		},
+	}
+	var invalid_settlement := settlement.duplicate(true)
+	invalid_settlement.erase("results_by_peer")
+	_expect(
+		not _coordinator._apply_settlement(invalid_settlement)
+		and committed_outcomes.is_empty(),
+		"字段不完整、尚未提交经济的 settlement 绝不能发布胜负信号。"
+	)
+	_expect(
+		_coordinator._apply_settlement(settlement)
+		and run_state.get_party_xirang_balance(1) == 432
+		and committed_outcomes.is_empty(),
+		(
+			"完整 settlement 必须先提交经济；本地战斗 outcome 尚未到达时"
+			+ "仍不能抢先发布。"
+		)
+	)
+	_coordinator._local_outcome_received = true
+	_coordinator._local_outcome_victory = false
+	_coordinator._try_finalize_local_terminal()
+	_coordinator._try_finalize_local_terminal()
+	_expect(
+		committed_outcomes.size() == 1
+		and not bool(committed_outcomes[0].get("victory", true))
+		and str(committed_outcomes[0].get("occurrence_key", ""))
+		== occurrence_key,
+		(
+			"本地 outcome 与已验证 settlement 汇合后，每端每 occurrence"
+			+ "必须且只能发布一次权威失败结果。"
+		)
+	)
+	if _coordinator.battle_outcome_committed.is_connected(outcome_callable):
+		_coordinator.battle_outcome_committed.disconnect(outcome_callable)
+	_reset_fixture_state()
 
 
 func _test_host_settlement_commit_gates_broadcast() -> void:

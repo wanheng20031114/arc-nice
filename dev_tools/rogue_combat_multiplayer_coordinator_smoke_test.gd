@@ -29,6 +29,7 @@ func _run() -> void:
 	_test_occurrence_campaign_is_isolated()
 	_test_kill_reward_policy_is_explicit()
 	_test_config_signature_uses_complete_runtime_contract()
+	_test_outcome_signal_contract()
 	_test_protocol_contract_is_static_and_order_safe()
 
 	if _failures.is_empty():
@@ -190,6 +191,18 @@ func _test_config_signature_uses_complete_runtime_contract() -> void:
 		COORDINATOR._make_config_signature(changed) != isolated_baseline,
 		"任一敌人条目数量变化必须触发多人配置签名不匹配。"
 	)
+
+
+func _test_outcome_signal_contract() -> void:
+	var multiplayer_coordinator := COORDINATOR.new()
+	var singleplayer_coordinator := SINGLE_COORDINATOR.new()
+	_expect(
+		multiplayer_coordinator.has_signal(&"battle_outcome_committed")
+		and singleplayer_coordinator.has_signal(&"battle_outcome_committed"),
+		"单人和多人 Rogue 作战协调器必须公开统一的权威胜负提交信号。"
+	)
+	multiplayer_coordinator.free()
+	singleplayer_coordinator.free()
 
 
 func _test_protocol_contract_is_static_and_order_safe() -> void:

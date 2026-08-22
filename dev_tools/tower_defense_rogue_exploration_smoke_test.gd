@@ -359,11 +359,43 @@ func _run() -> void:
 	game.player.set_multiplayer_health_state(1, false)
 
 	var wave_five := game.campaign_coordinator.get_flow_step_by_id(&"wave_05")
+	var entry_transition := coordinator.get_node_or_null(
+		"EntrySceneTransition"
+	) as RogueSceneTransition
 	_expect(
-		coordinator.enter_exploration(1, wave_five),
-		"第4波后必须能进入首日地下探索。"
+		entry_transition != null
+		and coordinator.begin_exploration_transfer(1, wave_five),
+		"第4波后必须能通过显式黑幕入口启动首日地下探索。"
 	)
-	await process_frame
+	_expect(
+		coordinator.is_tower_runtime_suspended()
+		and game.map_camera.enabled
+		and (game.get_node("WorldEnvironment") as WorldEnvironment).environment
+			== restored_tower_environment
+		and not route.visible
+		and game.player.has_combat_action_lock(&"tower_rogue_exploration"),
+		(
+			"入口遮罩覆盖期间必须已经锁住战斗/管理逻辑，但继续显示塔防"
+			+ "最后一帧、相机与环境。"
+		)
+	)
+	_expect(
+		await _wait_for_exploration_active(coordinator),
+		"入口遮罩全黑后必须提交 Rogue 权威会话。"
+	)
+	_expect(
+		entry_transition.visible
+		and not game.map_camera.enabled
+		and game.get_node("WorldEnvironment").environment == null
+		and route.visible
+		and route.process_mode == Node.PROCESS_MODE_DISABLED,
+		"全黑后才可隐藏 Tower 并搭建不可操作的 Rogue 表现。"
+	)
+	_expect(
+		await _wait_for_entry_reveal(coordinator, entry_transition)
+		and route.process_mode == Node.PROCESS_MODE_INHERIT,
+		"Rogue 必须等入口揭幕完成后才恢复路线处理与操作。"
+	)
 	var first_epoch := int(
 		coordinator.export_multiplayer_snapshot_for_peer().get(
 			"map_generation_epoch",
@@ -564,7 +596,10 @@ func _run() -> void:
 		coordinator.enter_exploration(2, wave_nine),
 		"第二日结束后必须能复用地下探索。"
 	)
-	await process_frame
+	_expect(
+		await _wait_for_entry_reveal(coordinator, entry_transition),
+		"第二日复用地图也必须等黑幕揭开后才恢复路线操作。"
+	)
 	var second_snapshot := coordinator.export_multiplayer_snapshot_for_peer()
 	_expect(
 		str(route.export_layout_snapshot().get("layout_hash", ""))
@@ -617,10 +652,71 @@ func _run() -> void:
 		)
 	)
 
-	route.call("_show_run_defeat")
+	var failure_combat_fixture := _configure_adjacent_normal_combat_route(route)
+	var failure_singleplayer_combat := (
+		coordinator.get_combat_coordinator()
+		as RogueCombatSingleplayerCoordinator
+	)
+	var failure_runtime_state := route.get(
+		"_runtime_state"
+	) as RogueRouteRuntimeState
+	if failure_singleplayer_combat != null:
+		# 夹具重建布局绕过了外层 epoch；显式复用正式 layout commit 回调，
+		# 清除上一张夹具地图的节点/occurrence 幂等账本。
+		failure_singleplayer_combat.call(
+			"_on_host_layout_committed",
+			{},
+			{}
+		)
 	_expect(
-		coordinator.host_handle_exploration_failure(),
-		"嵌入式败局必须由外层权威协调器直接消费。"
+		not failure_combat_fixture.is_empty()
+		and failure_singleplayer_combat != null
+		and failure_runtime_state.try_move(
+			int(failure_combat_fixture["combat_node_id"]),
+			route.generation_config.move_action_cost,
+			failure_runtime_state.state_revision
+		),
+		"第二日必须能以剩余行动力进入真实普通作战败局夹具。"
+	)
+	var failure_battle: RogueCombatGame = null
+	if failure_singleplayer_combat != null:
+		failure_battle = await _wait_for_active_battle(
+			failure_singleplayer_combat
+		)
+	_expect(failure_battle != null, "普通作战败局夹具必须创建真实战场。")
+	if failure_battle != null:
+		var remaining_action_points := route.get_action_points()
+		failure_battle.call("_enter_defeat")
+		_expect(
+			await _wait_for_combat_result(route)
+			and remaining_action_points > 0
+			and coordinator.is_exploration_active()
+			and not str(
+				coordinator.get(
+					"_pending_combat_failure_occurrence_key"
+				)
+			).is_empty()
+			and not coordinator.has_pending_presentation_exit(),
+			(
+				"普通作战失败必须先锁存探索败局；即使仍有行动力，"
+				+ "结果页未关闭时也不得提前进入 Fate。"
+			)
+		)
+		for _blocked_failure_frame in range(4):
+			await process_frame
+		_expect(
+			coordinator.is_exploration_active()
+			and route.combat_result_overlay.visible,
+			"失败结果页显示期间必须持续保留 Rogue 会话。"
+		)
+		route.combat_result_overlay.close_button.pressed.emit()
+		_expect(
+			await _wait_for_combat_settlement(failure_singleplayer_combat),
+			"关闭失败结果后必须先完成作战安全拆场。"
+		)
+	_expect(
+		await _wait_for_pending_presentation_exit(coordinator),
+		"普通作战败局必须在结果关闭且拆场稳定后结束当日探索。"
 	)
 	_expect(
 		coordinator.has_pending_presentation_exit()
@@ -667,7 +763,10 @@ func _run() -> void:
 		coordinator.enter_exploration(3, boss),
 		"第三日结束后必须能生成失败后的新地图。"
 	)
-	await process_frame
+	_expect(
+		await _wait_for_entry_reveal(coordinator, entry_transition),
+		"失败后新地图必须完成入口揭幕后再开放操作。"
+	)
 	_expect(
 		int(
 			coordinator.export_multiplayer_snapshot_for_peer().get(
@@ -678,10 +777,25 @@ func _run() -> void:
 		"上一日探索失败后，下一次探索必须推进地图生成 epoch。"
 	)
 	_set_route_action_points_for_boundary_test(route, 0)
-	coordinator.call("_finish_exploration", false)
+	coordinator.call(
+		"_on_battle_outcome_committed",
+		false,
+		"fixture_failure_at_zero_action_points"
+	)
+	coordinator.call("_process", 0.0)
+	var zero_failure_entered_fate := await _wait_for_fate_interlude_entry(
+		game,
+		coordinator
+	)
+	var zero_failure_requires_fresh_map := bool(
+		coordinator.get("_requires_fresh_map")
+	)
 	_expect(
-		await _wait_for_fate_interlude_entry(game, coordinator),
-		"第三次探索结束后也必须先进入小葱命运间奏。"
+		zero_failure_requires_fresh_map and zero_failure_entered_fate,
+		(
+			"战败与行动力同时归零时必须以战败优先结束探索并标记新地图，"
+			+ "随后进入小葱命运间奏。"
+		)
 	)
 	_expect(
 		await _force_finish_fate_and_wait_for_tower(game),
@@ -1389,6 +1503,31 @@ func _configure_adjacent_normal_combat_route(
 	return {}
 
 
+func _wait_for_exploration_active(
+	coordinator: TowerDefenseRogueExplorationCoordinator
+) -> bool:
+	for _frame_index in range(180):
+		if coordinator.is_exploration_active():
+			return true
+		await process_frame
+	return false
+
+
+func _wait_for_entry_reveal(
+	coordinator: TowerDefenseRogueExplorationCoordinator,
+	transition: RogueSceneTransition
+) -> bool:
+	for _frame_index in range(240):
+		if (
+			coordinator.is_exploration_active()
+			and not bool(coordinator.get("_entry_transfer_active"))
+			and not transition.visible
+		):
+			return true
+		await process_frame
+	return false
+
+
 func _wait_for_active_battle(
 	coordinator: RogueCombatSingleplayerCoordinator
 ) -> RogueCombatGame:
@@ -1416,6 +1555,16 @@ func _wait_for_combat_settlement(
 			coordinator.get_active_battle() == null
 			and not coordinator.is_runtime_busy()
 		):
+			return true
+		await process_frame
+	return false
+
+
+func _wait_for_pending_presentation_exit(
+	coordinator: TowerDefenseRogueExplorationCoordinator
+) -> bool:
+	for _frame_index in range(180):
+		if coordinator.has_pending_presentation_exit():
 			return true
 		await process_frame
 	return false

@@ -428,9 +428,17 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 	var start_node_id := runtime.current_node_id
 	var battle_starts: Array[RogueCombatGame] = []
 	var victory_playback_count := [0]
+	var committed_outcomes: Array[Dictionary] = []
 	route.combat_victory_presentation.playback_finished.connect(
 		func() -> void:
 			victory_playback_count[0] = int(victory_playback_count[0]) + 1
+	)
+	coordinator.battle_outcome_committed.connect(
+		func(victory: bool, occurrence_key: String) -> void:
+			committed_outcomes.append({
+				"victory": victory,
+				"occurrence_key": occurrence_key,
+			})
 	)
 	coordinator.battle_started.connect(
 		func(
@@ -548,7 +556,9 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 		and route.player.controls_locked
 		and bool(route.route_board.get("_interaction_locked"))
 		and coordinator.is_node_consumed(combat_node_id)
-		and int(victory_playback_count[0]) == 1,
+		and int(victory_playback_count[0]) == 1
+		and committed_outcomes.size() == 1
+		and bool(committed_outcomes[0].get("victory", false)),
 		"先回图策略必须先完成/释放战斗，再在路线中央显示胜利结算并消费节点。"
 	)
 	_expect_route_camera_contract(route, "胜利返回路线后")
@@ -794,9 +804,17 @@ func _test_timeout_result_does_not_reenter() -> void:
 	_set_player_xirang(route.player, 777)
 	var coordinator := _get_coordinator(route)
 	var victory_playback_count := [0]
+	var committed_outcomes: Array[Dictionary] = []
 	route.combat_victory_presentation.playback_finished.connect(
 		func() -> void:
 			victory_playback_count[0] = int(victory_playback_count[0]) + 1
+	)
+	coordinator.battle_outcome_committed.connect(
+		func(victory: bool, occurrence_key: String) -> void:
+			committed_outcomes.append({
+				"victory": victory,
+				"occurrence_key": occurrence_key,
+			})
 	)
 	var runtime := route.get("_runtime_state") as RogueRouteRuntimeState
 	var combat_node_id := int(fixture["combat_node_id"])
@@ -843,8 +861,23 @@ func _test_timeout_result_does_not_reenter() -> void:
 		and not route.combat_victory_presentation.visible
 		and int(victory_playback_count[0]) == 0
 		and route.combat_result_overlay.result_subtitle_label.text
-		== RogueCombatGame.TIMEOUT_FAILURE_REASON,
+		== RogueCombatGame.TIMEOUT_FAILURE_REASON
+		and committed_outcomes.size() == 1
+		and not bool(committed_outcomes[0].get("victory", true))
+		and str(committed_outcomes[0].get("occurrence_key", ""))
+		== route.get_normal_combat_occurrence_key(),
 		"战场上结算策略必须冻结战斗并等待玩家关闭，再恢复路线。"
+	)
+	coordinator.call(
+		"_on_battle_outcome_started",
+		false,
+		RogueCombatGame.TIMEOUT_FAILURE_REASON,
+		battle
+	)
+	await process_frame
+	_expect(
+		committed_outcomes.size() == 1,
+		"单人权威结果的重复回调不得二次发布同一 occurrence。"
 	)
 	route.combat_result_overlay.close_button.pressed.emit()
 	_expect(

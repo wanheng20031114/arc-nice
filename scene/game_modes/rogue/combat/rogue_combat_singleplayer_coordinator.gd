@@ -11,6 +11,7 @@ signal battle_returned(
 	occurrence_key: String,
 	result: Dictionary
 )
+signal battle_outcome_committed(victory: bool, occurrence_key: String)
 
 const SINGLEPLAYER_PEER_ID := 0
 const INVALID_NODE_ID := -1
@@ -46,6 +47,7 @@ var _active_encounter_config: RogueCombatEncounterConfig = null
 var _pending_victory := false
 var _pending_result: Dictionary = {}
 var _consumed_node_ids: Dictionary[int, bool] = {}
+var _committed_outcome_occurrences: Dictionary[String, bool] = {}
 var _last_result: Dictionary = {}
 var _victory_sequence_serial := 0
 var _emergency_reward_session: RogueEmergencyRewardSelectionSession = null
@@ -206,6 +208,7 @@ func _on_host_layout_committed(
 	# 节点 ID 只在当前生成布局内有意义；重新生成路线后必须清空消费记录。
 	if active_battle == null:
 		_consumed_node_ids.clear()
+		_committed_outcome_occurrences.clear()
 
 
 func _on_combat_requested(
@@ -466,6 +469,7 @@ func _resolve_active_outcome(victory: bool, failure_reason: String) -> void:
 	if active_battle == null or route == null:
 		return
 	_pending_victory = victory
+	_emit_battle_outcome_committed_once(victory, _active_occurrence_key)
 	if victory and _uses_emergency_reward_selection():
 		_consumed_node_ids[_active_node_id] = true
 		if _begin_emergency_reward_selection():
@@ -517,6 +521,19 @@ func _resolve_active_outcome(victory: bool, failure_reason: String) -> void:
 	if not _show_route_combat_result(_pending_result):
 		_waiting_for_result_dismissal = false
 		_finalize_return_from_battle()
+
+
+func _emit_battle_outcome_committed_once(
+	victory: bool,
+	occurrence_key: String
+) -> void:
+	if (
+		occurrence_key.is_empty()
+		or _committed_outcome_occurrences.has(occurrence_key)
+	):
+		return
+	_committed_outcome_occurrences[occurrence_key] = true
+	battle_outcome_committed.emit(victory, occurrence_key)
 
 
 func _uses_emergency_reward_selection() -> bool:
