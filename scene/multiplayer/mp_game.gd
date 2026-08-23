@@ -3885,6 +3885,42 @@ func register_local_projectile(
 	)
 
 
+func register_local_data_projectile(
+	service: RapidFireSimulationService,
+	handle: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	spawn_position: Vector2,
+	direction: Vector2,
+	damage: int,
+	speed: float,
+	lifetime: float
+) -> int:
+	return projectile_coordinator.register_local_data_projectile(
+		service,
+		handle,
+		projectile_type,
+		owner_peer_id,
+		spawn_position,
+		direction,
+		damage,
+		speed,
+		lifetime
+	)
+
+
+func notify_data_projectile_finished(
+	projectile_id: int,
+	service: RapidFireSimulationService,
+	handle: int
+) -> void:
+	projectile_coordinator.notify_data_projectile_finished(
+		projectile_id,
+		service,
+		handle
+	)
+
+
 func register_local_tango_laser_volley(
 	projectiles: Array[Node],
 	spawn_positions: PackedVector2Array,

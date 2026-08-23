@@ -144,6 +144,8 @@ var _linglan_skill4_config: Resource = null
 var _linglan_skill4_orb_scene: PackedScene = null
 var _next_projectile_sequence := 1
 var _known_projectiles: Dictionary = {}
+var _known_data_projectile_services: Dictionary[int, RapidFireSimulationService] = {}
+var _known_data_projectile_handles: Dictionary[int, int] = {}
 var _projectile_records: Dictionary = {}
 var _stale_projectile_record_ids: Array[int] = []
 var _processed_enemy_hit_ids: Dictionary = {}
@@ -274,6 +276,114 @@ func submit_local_projectile(
 			&"_rpc_projectile_fired_from_client",
 			arguments
 		)
+
+
+func register_local_data_projectile(
+	service: RapidFireSimulationService,
+	handle: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	spawn_position: Vector2,
+	direction: Vector2,
+	damage: int,
+	speed: float,
+	lifetime: float
+) -> int:
+	if (
+		service == null
+		or not is_instance_valid(service)
+		or handle <= RapidFireSimulationService.INVALID_HANDLE
+		or projectile_type == &""
+		or not has_network_facade_dependencies()
+		or not _net_manager.is_multiplayer_active()
+		or not _net_manager.is_host()
+		or not _NetConstants.is_valid_network_combat_value(damage)
+		or not _is_finite_vector2(spawn_position)
+		or not _is_finite_vector2(direction)
+		or direction.length_squared() <= 0.001
+		or not is_finite(speed)
+		or speed <= 0.0
+		or not is_finite(lifetime)
+		or lifetime <= 0.0
+		or service.get_slot_mode(handle) != RapidFireSimulationService.Mode.DATA
+	):
+		return 0
+	var projectile_namespace := owner_peer_id
+	if projectile_namespace <= 0:
+		projectile_namespace = PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
+	var projectile_id := allocate_projectile_id(projectile_namespace, true)
+	if projectile_id <= 0:
+		return 0
+	if not service.assign_projectile_identity(handle, projectile_id):
+		return 0
+	_known_data_projectile_services[projectile_id] = service
+	_known_data_projectile_handles[projectile_id] = handle
+	remember_projectile_record(
+		projectile_id,
+		owner_peer_id,
+		projectile_type,
+		damage,
+		lifetime,
+		false,
+		_get_net_time()
+	)
+	var host_fire_timestamp := _get_net_time()
+	rpc_broadcast_requested.emit(
+		&"net_projectile_fired",
+		[
+			projectile_id,
+			String(projectile_type),
+			owner_peer_id,
+			spawn_position,
+			direction,
+			damage,
+			speed,
+			lifetime,
+			false,
+			0,
+			host_fire_timestamp,
+			0,
+		]
+	)
+	return projectile_id
+
+
+func notify_data_projectile_finished(
+	projectile_id: int,
+	service: RapidFireSimulationService,
+	handle: int
+) -> void:
+	if (
+		_known_data_projectile_services.get(projectile_id) == service
+		and int(_known_data_projectile_handles.get(
+			projectile_id,
+			RapidFireSimulationService.INVALID_HANDLE
+		)) == handle
+	):
+		_erase_data_projectile_backend(projectile_id)
+
+
+func _erase_data_projectile_backend(projectile_id: int) -> void:
+	_known_data_projectile_services.erase(projectile_id)
+	_known_data_projectile_handles.erase(projectile_id)
+
+
+func _release_and_erase_data_projectile_backend(projectile_id: int) -> void:
+	var service: RapidFireSimulationService = (
+		_known_data_projectile_services.get(projectile_id)
+	)
+	var handle := int(_known_data_projectile_handles.get(
+		projectile_id,
+		RapidFireSimulationService.INVALID_HANDLE
+	))
+	if (
+		service != null
+		and is_instance_valid(service)
+		and handle > RapidFireSimulationService.INVALID_HANDLE
+		and service.is_handle_live(handle)
+	):
+		service.release_projectile(handle)
+	_erase_data_projectile_backend(projectile_id)
 
 
 func submit_local_tango_laser_volley(
@@ -848,6 +958,7 @@ func allocate_projectile_id(owner_peer_id: int, host_origin: bool) -> int:
 		if (
 			projectile_id > 0
 			and not _known_projectiles.has(projectile_id)
+			and not _known_data_projectile_services.has(projectile_id)
 			and not _projectile_records.has(projectile_id)
 		):
 			return projectile_id
@@ -868,6 +979,7 @@ func accept_client_projectile_request_identity(
 		or owner_peer_id != sender_id
 		or is_suspended
 		or _known_projectiles.has(projectile_id)
+		or _known_data_projectile_services.has(projectile_id)
 		or _projectile_records.has(projectile_id)
 		or not is_projectile_id_valid_for_client_owner(
 			projectile_id,
@@ -885,6 +997,20 @@ func accept_client_projectile_request_identity(
 
 func has_projectile(projectile_id: int) -> bool:
 	return _known_projectiles.has(projectile_id)
+
+
+func has_data_projectile(projectile_id: int) -> bool:
+	var service: RapidFireSimulationService = (
+		_known_data_projectile_services.get(projectile_id)
+	)
+	if (
+		service == null
+		or not is_instance_valid(service)
+		or not _known_data_projectile_handles.has(projectile_id)
+	):
+		_erase_data_projectile_backend(projectile_id)
+		return false
+	return true
 
 
 func has_projectile_record(projectile_id: int) -> bool:
@@ -961,6 +1087,8 @@ func receive_projectile_fired(
 ) -> void:
 	if not _NetConstants.is_valid_network_combat_value(damage):
 		return
+	if has_data_projectile(projectile_id):
+		return
 	if _known_projectiles.has(projectile_id):
 		_reconcile_predicted_projectile(
 			projectile_id,
@@ -1026,7 +1154,11 @@ func receive_tango_laser_volley(
 		return current_charge_sequence
 	for projectile_index in range(TANGO_LASER_VOLLEY_PROJECTILE_COUNT):
 		var projectile_id := int(projectile_ids[projectile_index])
-		if has_projectile(projectile_id) or has_projectile_record(projectile_id):
+		if (
+			has_projectile(projectile_id)
+			or has_data_projectile(projectile_id)
+			or has_projectile_record(projectile_id)
+		):
 			continue
 		_spawn_network_projectile(
 			projectile_id,
@@ -1080,7 +1212,11 @@ func receive_linglan_skill1_ring(
 	)
 	for projectile_index in range(projectile_ids.size()):
 		var projectile_id := int(projectile_ids[projectile_index])
-		if has_projectile(projectile_id) or has_projectile_record(projectile_id):
+		if (
+			has_projectile(projectile_id)
+			or has_data_projectile(projectile_id)
+			or has_projectile_record(projectile_id)
+		):
 			continue
 		_spawn_network_projectile(
 			projectile_id,
@@ -1321,6 +1457,7 @@ func clear_peer(peer_id: int) -> void:
 	_client_projectile_request_rate_buckets.erase(peer_id)
 	_last_tango_volley_visual_state_by_peer.erase(peer_id)
 	clear_projectiles_for_peer(peer_id)
+	clear_data_projectiles_for_peer(peer_id)
 	clear_projectile_records_for_peer(peer_id)
 
 
@@ -1345,6 +1482,21 @@ func clear_projectiles_for_peer(peer_id: int) -> void:
 			projectile.queue_free()
 
 
+func clear_data_projectiles_for_peer(peer_id: int) -> void:
+	var projectile_ids: Array[int] = []
+	for projectile_id in _known_data_projectile_services:
+		var record_variant: Variant = _projectile_records.get(projectile_id)
+		var recorded_owner_peer_id := (
+			int((record_variant as Dictionary).get("owner_peer_id", 0))
+			if record_variant is Dictionary
+			else decode_projectile_owner_peer_id(projectile_id)
+		)
+		if recorded_owner_peer_id == peer_id:
+			projectile_ids.append(projectile_id)
+	for projectile_id in projectile_ids:
+		_release_and_erase_data_projectile_backend(projectile_id)
+
+
 func clear_projectile_records_for_peer(peer_id: int) -> void:
 	var projectile_ids: Array[int] = []
 	for projectile_id_variant in _projectile_records.keys():
@@ -1366,6 +1518,10 @@ func reset_session_state() -> void:
 		else:
 			projectile.queue_free()
 	_known_projectiles.clear()
+	for projectile_id in _known_data_projectile_services.keys():
+		_release_and_erase_data_projectile_backend(projectile_id)
+	_known_data_projectile_services.clear()
+	_known_data_projectile_handles.clear()
 	_projectile_records.clear()
 	_stale_projectile_record_ids.clear()
 	_processed_enemy_hit_ids.clear()
@@ -1378,6 +1534,7 @@ func get_state_metrics() -> Dictionary:
 	return {
 		"next_sequence": _next_projectile_sequence,
 		"known_projectiles": _known_projectiles.size(),
+		"known_data_projectiles": _known_data_projectile_services.size(),
 		"projectile_records": _projectile_records.size(),
 		"request_rate_buckets": _client_projectile_request_rate_buckets.size(),
 		"enemy_hit_dedupe": _processed_enemy_hit_ids.size(),
@@ -2334,6 +2491,13 @@ func _spawn_network_projectile(
 	compensation_age: float,
 	now: float
 ) -> void:
+	if (
+		projectile_id <= 0
+		or _known_projectiles.has(projectile_id)
+		or has_data_projectile(projectile_id)
+		or _projectile_records.has(projectile_id)
+	):
+		return
 	var projectile := instantiate_projectile(
 		projectile_type,
 		owner_peer_id,

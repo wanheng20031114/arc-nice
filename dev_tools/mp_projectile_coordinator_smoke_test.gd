@@ -6,6 +6,12 @@ const PROJECTILE_COORDINATOR_SCENE := preload(
 const MpProjectileCoordinatorScript := preload(
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
 )
+const PROJECTILE_COORDINATOR_SCRIPT_PATH := (
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
+const RapidFireSimulationServiceScript := preload(
+	"res://scene/combat/simulation/rapid_fire_simulation_service.gd"
+)
 
 
 class ProbeRuntime:
@@ -69,6 +75,7 @@ class ProbeProjectile:
 var failures: Array[String] = []
 var broadcast_methods: Array[StringName] = []
 var broadcast_argument_counts: Array[int] = []
+var broadcast_arguments: Array = []
 var host_request_methods: Array[StringName] = []
 
 
@@ -81,6 +88,9 @@ func _run() -> void:
 		PROJECTILE_COORDINATOR_SCENE.instantiate() as MpProjectileCoordinatorScript
 	)
 	var runtime := ProbeRuntime.new()
+	var runtime_gateway := MultiplayerGameplayGateway.new()
+	runtime_gateway.name = &"MultiplayerGameplayGateway"
+	runtime.add_child(runtime_gateway)
 	_expect(coordinator != null, "ProjectileCoordinator 场景必须可实例化。")
 	if coordinator == null:
 		quit(1)
@@ -104,6 +114,19 @@ func _run() -> void:
 	_expect(
 		coordinator.has_network_facade_dependencies(),
 		"弹体网络门面必须显式注入 NetManager、玩家协调器与时钟入口。"
+	)
+	var coordinator_source := FileAccess.get_file_as_string(
+		PROJECTILE_COORDINATOR_SCRIPT_PATH
+	)
+	_expect(
+		not coordinator_source.contains("DataProjectileBackend")
+		and coordinator_source.contains(
+			"_known_data_projectile_services: Dictionary"
+		)
+		and coordinator_source.contains(
+			"_known_data_projectile_handles: Dictionary"
+		),
+		"Data backend 必须使用 id→service/id→handle 平行存储，不得逐发分配对象。"
 	)
 
 	var host_projectile := ProbeProjectile.new()
@@ -189,6 +212,227 @@ func _run() -> void:
 		"Client 本地预测弹体必须由协调器请求根节点发往 Host。"
 	)
 	net_manager.net_role = NetManagerStore.NetRole.HOST
+
+	var data_service := RapidFireSimulationServiceScript.new()
+	data_service.reserve_projectile_capacity(3)
+	var data_handle := _register_data_projectile_handle(
+		data_service,
+		Vector2(12.0, 34.0)
+	)
+	var data_broadcast_count_before := broadcast_methods.size()
+	var data_record_count_before := int(
+		coordinator.get_state_metrics().get("projectile_records", -1)
+	)
+	var data_projectile_id := coordinator.register_local_data_projectile(
+		data_service,
+		data_handle,
+		&"capoo_ak47_bullet",
+		0,
+		Vector2(12.0, 34.0),
+		Vector2.RIGHT,
+		23,
+		160.0,
+		1.25
+	)
+	var data_payload := broadcast_arguments.back() as Array
+	_expect(
+		data_projectile_id > 0
+		and MpProjectileCoordinatorScript.is_projectile_id_valid_for_host_owner(
+			data_projectile_id,
+			MpProjectileCoordinatorScript.PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
+		)
+		and data_service.get_projectile_id(data_handle) == data_projectile_id
+		and coordinator.has_data_projectile(data_projectile_id)
+		and not coordinator.has_projectile(data_projectile_id)
+		and coordinator.has_projectile_record(data_projectile_id)
+		and int(coordinator.get_state_metrics().get(
+			"known_data_projectiles",
+			-1
+		)) == 1,
+		"Host data handle 必须获得现有 projectile ID、record 与唯一 data backend。"
+	)
+	_expect(
+		broadcast_methods.size() == data_broadcast_count_before + 1
+		and broadcast_methods.back() == &"net_projectile_fired"
+		and broadcast_argument_counts.back() == 12
+		and data_payload.size() == 12
+		and int(data_payload[0]) == data_projectile_id
+		and String(data_payload[1]) == "capoo_ak47_bullet"
+		and int(data_payload[2]) == 0
+		and data_payload[3] == Vector2(12.0, 34.0)
+		and data_payload[4] == Vector2.RIGHT
+		and int(data_payload[5]) == 23
+		and is_equal_approx(float(data_payload[6]), 160.0)
+		and is_equal_approx(float(data_payload[7]), 1.25)
+		and not bool(data_payload[8])
+		and int(data_payload[9]) == 0
+		and int(data_payload[11]) == 0,
+		"Data handle 必须复用既有 net_projectile_fired 12 字段载荷。"
+	)
+	var client_visual_coordinator := (
+		PROJECTILE_COORDINATOR_SCENE.instantiate() as MpProjectileCoordinatorScript
+	)
+	client_visual_coordinator.bind_runtime(runtime)
+	client_visual_coordinator.bind_network_facade_dependencies(
+		net_manager,
+		player_coordinator,
+		func() -> float: return 400.0,
+		func(_host_timestamp: float) -> float: return 0.05,
+		func(_peer_id: int) -> bool: return false
+	)
+	net_manager.net_role = NetManagerStore.NetRole.CLIENT
+	client_visual_coordinator.receive_projectile_fired(
+		data_projectile_id,
+		&"capoo_ak47_bullet",
+		0,
+		Vector2(12.0, 34.0),
+		Vector2.RIGHT,
+		23,
+		160.0,
+		1.25,
+		false,
+		0,
+		0,
+		0.0,
+		400.0
+	)
+	var client_visual_proxy := client_visual_coordinator.get_projectile(
+		data_projectile_id
+	)
+	_expect(
+		client_visual_proxy is CapooAK47Bullet
+		and not client_visual_coordinator.has_data_projectile(data_projectile_id),
+		"Client 收到既有广播后必须继续实例化旧 CapooAK47Bullet 视觉代理。"
+	)
+	client_visual_coordinator.notify_projectile_finished(
+		data_projectile_id,
+		client_visual_proxy
+	)
+	if client_visual_proxy != null and is_instance_valid(client_visual_proxy):
+		client_visual_proxy.free()
+	client_visual_coordinator.reset_session_state()
+	client_visual_coordinator.unbind_runtime(runtime)
+	client_visual_coordinator.free()
+	net_manager.net_role = NetManagerStore.NetRole.HOST
+	coordinator.receive_projectile_fired(
+		data_projectile_id,
+		&"capoo_ak47_bullet",
+		0,
+		Vector2(12.0, 34.0),
+		Vector2.RIGHT,
+		23,
+		160.0,
+		1.25,
+		false,
+		0,
+		0,
+		0.0,
+		400.0
+	)
+	_expect(
+		coordinator.has_data_projectile(data_projectile_id)
+		and not coordinator.has_projectile(data_projectile_id),
+		"同一 projectile ID 已有 data backend 时不得再生成 Node backend。"
+	)
+
+	var duplicate_metrics_before := coordinator.get_state_metrics()
+	var duplicate_broadcast_count_before := broadcast_methods.size()
+	_expect(
+		coordinator.register_local_data_projectile(
+			data_service,
+			data_handle,
+			&"capoo_ak47_bullet",
+			0,
+			Vector2(12.0, 34.0),
+			Vector2.RIGHT,
+			23,
+			160.0,
+			1.25
+		) == 0
+		and broadcast_methods.size() == duplicate_broadcast_count_before
+		and int(coordinator.get_state_metrics().get(
+			"known_data_projectiles",
+			-1
+		)) == int(duplicate_metrics_before.get("known_data_projectiles", -2))
+		and int(coordinator.get_state_metrics().get(
+			"projectile_records",
+			-1
+		)) == data_record_count_before + 1,
+		"重复 handle 的 assign 失败必须原子保持 backend/record 且不广播。"
+	)
+	coordinator.notify_data_projectile_finished(
+		data_projectile_id,
+		data_service,
+		data_handle + 1
+	)
+	_expect(
+		coordinator.has_data_projectile(data_projectile_id),
+		"错误 handle 的 finish 不得移除 live data backend。"
+	)
+	data_service.release_projectile(data_handle)
+	coordinator.notify_data_projectile_finished(
+		data_projectile_id,
+		data_service,
+		data_handle
+	)
+	_expect(
+		not coordinator.has_data_projectile(data_projectile_id)
+		and coordinator.has_projectile_record(data_projectile_id)
+		and data_service.get_active_slot_count() == 0,
+		"Data finish 只移除精确 live backend，并保留短期 record。"
+	)
+
+	var client_data_service := RapidFireSimulationServiceScript.new()
+	var client_data_handle := _register_data_projectile_handle(
+		client_data_service,
+		Vector2.ZERO
+	)
+	net_manager.net_role = NetManagerStore.NetRole.CLIENT
+	var client_broadcast_count_before := broadcast_methods.size()
+	var client_request_count_before := host_request_methods.size()
+	_expect(
+		coordinator.register_local_data_projectile(
+			client_data_service,
+			client_data_handle,
+			&"capoo_ak47_bullet",
+			0,
+			Vector2.ZERO,
+			Vector2.RIGHT,
+			9,
+			120.0,
+			1.0
+		) == 0
+		and client_data_service.get_projectile_id(client_data_handle) == 0
+		and broadcast_methods.size() == client_broadcast_count_before
+		and host_request_methods.size() == client_request_count_before,
+		"Client 不得登记或上行权威 data projectile。"
+	)
+	net_manager.net_role = NetManagerStore.NetRole.HOST
+	client_data_service.release_projectile(client_data_handle)
+
+	var offline_gateway := MultiplayerGameplayGateway.new()
+	var offline_data_service := RapidFireSimulationServiceScript.new()
+	var offline_data_handle := _register_data_projectile_handle(
+		offline_data_service,
+		Vector2.ONE
+	)
+	_expect(
+		offline_gateway.register_local_data_projectile(
+			offline_data_service,
+			offline_data_handle,
+			&"capoo_ak47_bullet",
+			0,
+			Vector2.ONE,
+			Vector2.RIGHT,
+			7,
+			100.0,
+			1.0
+		) == 0
+		and offline_data_service.get_projectile_id(offline_data_handle) == 0,
+		"单机 gateway 无 session 时必须返回 0 且不改变 data handle。"
+	)
+	offline_data_service.release_projectile(offline_data_handle)
+	offline_gateway.free()
 
 	var encoded_host_id := MpProjectileCoordinatorScript.encode_projectile_id(
 		7,
@@ -329,23 +573,71 @@ func _run() -> void:
 		true,
 		300.0
 	)
+	var peer_data_service := RapidFireSimulationServiceScript.new()
+	peer_data_service.reserve_projectile_capacity(2)
+	var peer_two_data_handle := _register_data_projectile_handle(
+		peer_data_service,
+		Vector2(2.0, 0.0)
+	)
+	var peer_three_data_handle := _register_data_projectile_handle(
+		peer_data_service,
+		Vector2(3.0, 0.0)
+	)
+	var peer_two_data_id := coordinator.register_local_data_projectile(
+		peer_data_service,
+		peer_two_data_handle,
+		&"capoo_ak47_bullet",
+		2,
+		Vector2(2.0, 0.0),
+		Vector2.RIGHT,
+		10,
+		100.0,
+		1.0
+	)
+	var peer_three_data_id := coordinator.register_local_data_projectile(
+		peer_data_service,
+		peer_three_data_handle,
+		&"capoo_ak47_bullet",
+		3,
+		Vector2(3.0, 0.0),
+		Vector2.RIGHT,
+		10,
+		100.0,
+		1.0
+	)
+	_expect(
+		peer_two_data_id > 0
+		and peer_three_data_id > 0
+		and peer_data_service.get_active_slot_count() == 2,
+		"Peer clear/reset 前必须登记两个 live data handles。"
+	)
+	coordinator.clear_projectile_records_for_peer(2)
 	coordinator.clear_peer(2)
 	_expect(
 		peer_two_projectile.retired
 		and not coordinator.has_projectile(peer_two_id)
 		and not coordinator.has_projectile_record(peer_two_id)
 		and not peer_three_projectile.retired
-		and coordinator.get_projectile(peer_three_id) == peer_three_projectile,
-		"peer 清理必须只回收该玩家的弹体、记录与限流状态。"
+		and coordinator.get_projectile(peer_three_id) == peer_three_projectile
+		and not coordinator.has_data_projectile(peer_two_data_id)
+		and not coordinator.has_projectile_record(peer_two_data_id)
+		and coordinator.has_data_projectile(peer_three_data_id)
+		and peer_data_service.get_active_slot_count() == 1,
+		"peer 清理必须只回收该玩家的 Node/data 弹体、记录与限流状态。"
 	)
 
 	coordinator.reset_session_state()
 	_expect(
 		peer_three_projectile.retired
+		and peer_data_service.get_active_slot_count() == 0
 		and int(coordinator.get_state_metrics().get("next_sequence", -1)) == 1
 		and int(coordinator.get_state_metrics().get("known_projectiles", -1)) == 0
+		and int(coordinator.get_state_metrics().get(
+			"known_data_projectiles",
+			-1
+		)) == 0
 		and int(coordinator.get_state_metrics().get("projectile_records", -1)) == 0,
-		"会话重置必须回收存活弹体并清空身份、记录和序号状态。"
+		"会话重置必须回收存活 Node/data 弹体并清空身份、记录和序号状态。"
 	)
 	coordinator.unbind_runtime(runtime)
 	_expect(not coordinator.is_bound(), "解绑后不得保留旧战斗运行时。")
@@ -366,6 +658,14 @@ func _run() -> void:
 	finished_projectile.free()
 	peer_two_projectile.free()
 	peer_three_projectile.free()
+	data_service.prepare_for_runtime_teardown()
+	data_service.free()
+	client_data_service.prepare_for_runtime_teardown()
+	client_data_service.free()
+	offline_data_service.prepare_for_runtime_teardown()
+	offline_data_service.free()
+	peer_data_service.prepare_for_runtime_teardown()
+	peer_data_service.free()
 	coordinator.free()
 	runtime.free()
 	if failures.is_empty():
@@ -375,6 +675,25 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _register_data_projectile_handle(
+	service: RapidFireSimulationServiceScript,
+	position: Vector2
+) -> int:
+	return service.register_projectile(
+		RapidFireSimulationServiceScript.Mode.DATA,
+		RapidFireSimulationServiceScript.Profile.AK,
+		position,
+		Vector2.RIGHT,
+		120.0,
+		2.0,
+		12,
+		500,
+		0,
+		2,
+		0
+	)
 
 
 func _expect(condition: bool, message: String) -> void:
@@ -388,6 +707,7 @@ func _on_rpc_broadcast_requested(
 ) -> void:
 	broadcast_methods.append(method_name)
 	broadcast_argument_counts.append(arguments.size())
+	broadcast_arguments.append(arguments.duplicate())
 
 
 func _on_rpc_to_host_requested(
