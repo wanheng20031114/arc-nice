@@ -262,6 +262,17 @@ func _run() -> void:
 		),
 		"Data backend 必须使用 id→service/id→handle 平行存储，不得逐发分配对象。"
 	)
+	_expect(
+		coordinator_source.contains(
+			"func register_local_capoo_mage_fireball_data("
+		)
+		and coordinator_source.contains(
+			"func _receive_capoo_mage_fireball_replica("
+		)
+		and not coordinator_source.contains("CAPOO_MAGE_FIREBALL_SCENE")
+		and not coordinator_source.contains("as CapooMageFireball"),
+		"Mage 火球多人路径必须使用 typed DATA/REPLICA 映射且不得保留旧 Node 实例化分支。"
+	)
 	var gateway_data_registration_source := _get_data_registration_source(
 		GAMEPLAY_GATEWAY_SCRIPT_PATH
 	)

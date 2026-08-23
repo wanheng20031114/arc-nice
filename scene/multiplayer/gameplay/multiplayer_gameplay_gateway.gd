@@ -4,6 +4,9 @@ class_name MultiplayerGameplayGateway
 const CapooRPGRocketSimulationServiceScript := preload(
 	"res://scene/combat/simulation/capoo_rpg_rocket_simulation_service.gd"
 )
+const CapooMageFireballSimulationServiceScript := preload(
+	"res://scene/combat/simulation/capoo_mage_fireball_simulation_service.gd"
+)
 
 ## Neutral runtime-to-session boundary. Entity code receives this object
 ## explicitly; it must never discover networking through SceneTree.current_scene.
@@ -190,6 +193,52 @@ func notify_capoo_rpg_data_finished(
 	if multiplayer_session == null:
 		return
 	multiplayer_session.notify_capoo_rpg_data_finished(
+		projectile_id,
+		service,
+		handle
+	)
+
+
+func register_local_capoo_mage_fireball_data(
+	service: CapooMageFireballSimulationServiceScript,
+	handle: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	spawn_position: Vector2,
+	direction: Vector2,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	target_peer_id: int,
+	target_enemy_net_id: int,
+	damage_source_snapshot: DamageSourceSnapshot
+) -> int:
+	if multiplayer_session == null:
+		return 0
+	return multiplayer_session.register_local_capoo_mage_fireball_data(
+		service,
+		handle,
+		projectile_type,
+		owner_peer_id,
+		spawn_position,
+		direction,
+		damage,
+		speed,
+		lifetime,
+		target_peer_id,
+		target_enemy_net_id,
+		damage_source_snapshot
+	)
+
+
+func notify_capoo_mage_fireball_data_finished(
+	projectile_id: int,
+	service: CapooMageFireballSimulationServiceScript,
+	handle: int
+) -> void:
+	if multiplayer_session == null:
+		return
+	multiplayer_session.notify_capoo_mage_fireball_data_finished(
 		projectile_id,
 		service,
 		handle

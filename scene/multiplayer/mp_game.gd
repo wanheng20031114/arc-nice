@@ -4001,6 +4001,48 @@ func notify_capoo_rpg_data_finished(
 	)
 
 
+func register_local_capoo_mage_fireball_data(
+	service: CapooMageFireballSimulationServiceScript,
+	handle: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	spawn_position: Vector2,
+	direction: Vector2,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	target_peer_id: int,
+	target_enemy_net_id: int,
+	damage_source_snapshot: DamageSourceSnapshot
+) -> int:
+	return projectile_coordinator.register_local_capoo_mage_fireball_data(
+		service,
+		handle,
+		projectile_type,
+		owner_peer_id,
+		spawn_position,
+		direction,
+		damage,
+		speed,
+		lifetime,
+		target_peer_id,
+		target_enemy_net_id,
+		damage_source_snapshot
+	)
+
+
+func notify_capoo_mage_fireball_data_finished(
+	projectile_id: int,
+	service: CapooMageFireballSimulationServiceScript,
+	handle: int
+) -> void:
+	projectile_coordinator.notify_capoo_mage_fireball_data_finished(
+		projectile_id,
+		service,
+		handle
+	)
+
+
 func register_local_fire_sorcerer_volley_data(
 	service: FireSorcererVolleySimulationService,
 	handle: int,

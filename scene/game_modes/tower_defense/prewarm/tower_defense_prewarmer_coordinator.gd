@@ -17,9 +17,6 @@ const COMBAT_ROBOT_SUICIDE_DRONE_ELITE_POOL_SCENE := preload(
 const CAPOO_SMG_BULLET_POOL_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn"
 )
-const CAPOO_MAGE_FIREBALL_POOL_SCENE := preload(
-	"res://scene/enemy/capoo/capoo_mage_fireball.tscn"
-)
 const FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE := preload(
 	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
 )
@@ -53,14 +50,11 @@ const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
 
 const PLANT_LIFECYCLE_VFX_PREWARM_COUNT := 8
 const PLANT_LIFECYCLE_VFX_RETAINED_CAPACITY := 32
-# Wave 9 can have roughly 120 AK rounds and more than 30 mage fireballs alive
-# concurrently. Instantiate that steady-state set while the loading mask is
-# active instead of growing the elastic gameplay pools on synchronized attacks.
-# The retained capacities are deliberately unchanged.
+# Wave 9 can have roughly 120 AK rounds alive concurrently. Instantiate that
+# steady-state set while the loading mask is active instead of growing the
+# elastic gameplay pool on synchronized attacks. Mage fireballs are data rows.
 const LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT := 32
 const EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT := 128
-const LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT := 24
-const EXPANDED_CAPOO_MAGE_FIREBALL_PREWARM_COUNT := 64
 
 @onready var plant_lifecycle_shader_prewarm: Sprite2D = (
 	$PlantLifecycleShaderPrewarm
@@ -190,15 +184,6 @@ func register_runtime_object_pools(expanded_projectile_prewarm: bool) -> void:
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_ELITE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
-	session_object_pool.register_scene(
-		CAPOO_MAGE_FIREBALL_POOL_SCENE,
-		(
-			EXPANDED_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
-			if expanded_projectile_prewarm
-			else LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
-		),
-		192
-	)
 	# A 7 s flight plus expiry visuals slightly overlaps a third 3.6 s attack
 	# cycle. Capacity includes those visual-only leases and release quarantine.
 	session_object_pool.register_scene(
@@ -214,11 +199,6 @@ func register_runtime_object_pools(expanded_projectile_prewarm: bool) -> void:
 	# One 7 s ice spike spans two 3.6 s cast cycles. Capacity intentionally
 	# covers the 300-enemy gameplay probe while prewarm stays loading-friendly.
 	session_object_pool.register_scene(FROST_SORCERER_ICE_SPIKE_POOL_SCENE, 48, 704)
-	CombatRuntimeBase.register_capoo_mage_fireball_impact_pool(
-		session_object_pool,
-		48,
-		64
-	)
 	projectile_pool_registration_ms = float(
 		Time.get_ticks_usec() - registration_started_usec
 	) / 1000.0

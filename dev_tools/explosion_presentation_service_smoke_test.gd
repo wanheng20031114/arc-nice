@@ -49,14 +49,20 @@ func _test_headless_and_preallocated_queue(fixture: Node2D) -> void:
 	var base := system.get_node("ExplosionBase") as MultiMeshInstance2D
 	var emission := system.get_node("ExplosionEmission") as MultiMeshInstance2D
 	var audio_root := system.get_node("AudioVoices")
+	var mage_base := system.get_node("MageImpactBase") as MultiMeshInstance2D
+	var mage_emission := system.get_node("MageImpactEmission") as MultiMeshInstance2D
+	var mage_audio_root := system.get_node("MageAudioVoices")
 	_expect(
-		system.get_child_count() == 3
+		system.get_child_count() == 6
 		and base != null
 		and emission != null
+		and mage_base != null
+		and mage_emission != null
 		and audio_root.get_child_count() == 6
+		and mage_audio_root.get_child_count() == 6
 		and not system.is_processing()
 		and not system.is_physics_processing(),
-		"Scene must author two MultiMesh families and six voices while remaining externally driven."
+		"Scene must author RPG/Mage MultiMesh families and fixed voices while remaining externally driven."
 	)
 	for index in range(SERVICE_SCRIPT.PENDING_CAPACITY + 257):
 		_expect(system.queue_explosion(
@@ -67,9 +73,11 @@ func _test_headless_and_preallocated_queue(fixture: Node2D) -> void:
 	var metrics := system.get_metrics()
 	_expect(
 		bool(metrics["headless_disabled"])
-		and int(metrics["draw_family_count"]) == 2
+		and int(metrics["draw_family_count"]) == 4
 		and int(metrics["allocated_base_instances"]) == 0
 		and int(metrics["allocated_emission_instances"]) == 0
+		and int(metrics["allocated_mage_base_instances"]) == 0
+		and int(metrics["allocated_mage_emission_instances"]) == 0
 		and int(metrics["headless_omissions"]) == SERVICE_SCRIPT.PENDING_CAPACITY
 		and int(metrics["pending_capacity_drops"]) == 257
 		and int(metrics["visual_writes"]) == 0,
@@ -166,11 +174,56 @@ func _test_fixed_multimesh_path(
 		and int(metrics["visual_completions"]) == SERVICE_SCRIPT.VISUAL_CAPACITY,
 		"Packed visual ages must retire all 96 slots at the animation duration."
 	)
+	_expect(
+		system.queue_explosion(
+			SERVICE_SCRIPT.Profile.CAPOO_MAGE,
+			Vector2(12.0, 8.0)
+		),
+		"Mage impact profile must be accepted by the shared service."
+	)
+	visible = system.flush_presenter(0.0)
+	metrics = system.get_metrics()
+	var mage_base_multimesh := (
+		(system.get_node("MageImpactBase") as MultiMeshInstance2D).multimesh
+	)
+	var mage_emission_multimesh := (
+		(system.get_node("MageImpactEmission") as MultiMeshInstance2D).multimesh
+	)
+	_expect(
+		visible == 1
+		and int(metrics["visible_rpg_visuals"]) == 0
+		and int(metrics["visible_mage_visuals"]) == 1
+		and mage_base_multimesh.visible_instance_count == 1
+		and mage_emission_multimesh.visible_instance_count == 1
+		and is_equal_approx(
+			(mage_base_multimesh.mesh as QuadMesh).size.x,
+			29.44
+		),
+		(
+			"Mage impact must use its shared six-frame 0.46-scale draw family: "
+			+ "visible=%d rpg=%d mage=%d base=%d emission=%d scale=%.3f"
+			% [
+				visible,
+				int(metrics["visible_rpg_visuals"]),
+				int(metrics["visible_mage_visuals"]),
+				mage_base_multimesh.visible_instance_count,
+				mage_emission_multimesh.visible_instance_count,
+				(mage_base_multimesh.mesh as QuadMesh).size.x,
+			]
+		)
+	)
+	system.flush_presenter(SERVICE_SCRIPT.MAGE_IMPACT_DURATION_SECONDS)
+	_expect(
+		int(system.get_metrics()["active_visuals"]) == 0,
+		"Mage impact must retire at the legacy six-frame duration."
+	)
 	system.prepare_for_runtime_teardown()
 	metrics = system.get_metrics()
 	_expect(
 		int(metrics["allocated_base_instances"]) == 0
 		and int(metrics["allocated_emission_instances"]) == 0
+		and int(metrics["allocated_mage_base_instances"]) == 0
+		and int(metrics["allocated_mage_emission_instances"]) == 0
 		and int(metrics["active_audio_voices"]) == 0,
 		"Teardown must synchronously release fixed visual and audio storage."
 	)

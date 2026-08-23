@@ -49,7 +49,6 @@ const REQUIRED_RUNTIME_NODES: Array[NodePath] = [
 	^"SettingsLayer/SettingsPanel",
 	^"SettingsLayer/DebugCollectibleWindow",
 	^"DamageNumberPool",
-	^"SniperLockVisualCoordinator",
 	^"SessionObjectPool",
 	^"CapooProjectileMotionSystem",
 	^"CombatRobotDroneMotionSystem",

@@ -20,9 +20,6 @@ const TELEMETRY_SCRIPT := preload("res://scene/combat/diagnostics/runtime_perfor
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
-const CAPOO_MAGE_FIREBALL_SCRIPT := preload(
-	"res://scene/enemy/capoo/capoo_mage_fireball.gd"
-)
 const STONE_GOLEM_SCRIPT := preload("res://scene/enemy/artificial_creation/stone_golem.gd")
 const CORN_CONFIG := preload(
 	"res://resources/config/plant_defense/corn_machine_gun.tres"
@@ -50,7 +47,7 @@ const CAPOO_AK47_BULLET_POOL_PATH := "res://scene/enemy/capoo/capoo_ak47_bullet.
 const COMBAT_ROBOT_GUNNER_BULLET_POOL_PATH := (
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
 )
-const CAPOO_MAGE_FIREBALL_POOL_PATH := "res://scene/enemy/capoo/capoo_mage_fireball.tscn"
+const CAPOO_MAGE_FIREBALL_SCRIPT_PATH := "res://scene/enemy/capoo/capoo_mage_fireball.gd"
 const BULLET_HIT_EFFECT_POOL_PATH := "res://scene/combat/projectiles/bullet_hit_effect.tscn"
 const ENEMY_HIT_EFFECT_POOL_PATH := "res://scene/enemy/enemy_hit_effect.tscn"
 const FIXTURE_CENTER := Vector2(512.0, 352.0)
@@ -146,7 +143,6 @@ var requested_smg_hitscan_attack := true
 var requested_disable_smg_projectiles := false
 var requested_expanded_projectile_prewarm := true
 var requested_enemy_attack_audio_limiter := true
-var requested_pooled_mage_impact_effect := true
 var original_max_fps := 0
 var original_navigation_render_dedupe := true
 var original_navigation_refresh_budget := true
@@ -161,7 +157,6 @@ var original_smg_short_range_targeting := true
 var original_smg_hitscan_attack := true
 var original_expanded_projectile_prewarm := true
 var original_enemy_attack_audio_limiter := true
-var original_pooled_mage_impact_effect := true
 var original_vsync_mode := DisplayServer.VSYNC_ENABLED
 var vsync_overridden := false
 var movement_start_physics_frame := 0
@@ -333,10 +328,6 @@ func _parse_user_arguments() -> void:
 			requested_enemy_attack_audio_limiter = (
 				argument.get_slice("=", 1).to_lower() == "true"
 			)
-		elif argument.begins_with("--pooled-mage-impact-effect="):
-			requested_pooled_mage_impact_effect = (
-				argument.get_slice("=", 1).to_lower() == "true"
-			)
 
 	if phase == ProbePhase.BURST:
 		# The first frames are the workload for self-destruct enemies. Warming
@@ -399,9 +390,6 @@ func _run() -> void:
 		TowerDefenseGame.expanded_projectile_pool_prewarm_enabled
 	)
 	original_enemy_attack_audio_limiter = ENEMY_ATTACK_AUDIO_LIMITER.limiting_enabled
-	original_pooled_mage_impact_effect = (
-		CAPOO_MAGE_FIREBALL_SCRIPT.pooled_impact_effect_enabled
-	)
 	Enemy.navigation_render_frame_dedupe_enabled = requested_navigation_render_dedupe
 	Enemy.navigation_process_frame_budget_enabled = requested_navigation_refresh_budget
 	Enemy.combat_sense_throttling_enabled = requested_combat_sense_throttling
@@ -426,9 +414,6 @@ func _run() -> void:
 	)
 	ENEMY_ATTACK_AUDIO_LIMITER.limiting_enabled = (
 		requested_enemy_attack_audio_limiter
-	)
-	CAPOO_MAGE_FIREBALL_SCRIPT.pooled_impact_effect_enabled = (
-		requested_pooled_mage_impact_effect
 	)
 	Engine.max_fps = requested_max_fps
 	if requested_max_fps == 0 or requested_vsync_mode != "project":
@@ -815,6 +800,67 @@ func _count_subtree_nodes(node: Node) -> int:
 	for child in node.get_children():
 		total += _count_subtree_nodes(child)
 	return total
+
+
+func _count_nodes_with_script_path(node: Node, script_path: String) -> int:
+	var total := 0
+	var node_script := node.get_script() as Script
+	if node_script != null and node_script.resource_path == script_path:
+		total += 1
+	for child in node.get_children():
+		total += _count_nodes_with_script_path(child, script_path)
+	return total
+
+
+func _cohort_contains_mage_config() -> bool:
+	for config in cohort_configs:
+		if config is CapooMageConfig:
+			return true
+	return false
+
+
+func _build_mage_activity_window(before: Dictionary, after: Dictionary) -> Dictionary:
+	var before_simulation := before.get(
+		"capoo_mage_fireball_simulation",
+		{}
+	) as Dictionary
+	var after_simulation := after.get(
+		"capoo_mage_fireball_simulation",
+		{}
+	) as Dictionary
+	var before_completions := (
+		int(before_simulation.get("world_completions", 0))
+		+ int(before_simulation.get("direct_completions", 0))
+		+ int(before_simulation.get("lifetime_completions", 0))
+	)
+	var after_completions := (
+		int(after_simulation.get("world_completions", 0))
+		+ int(after_simulation.get("direct_completions", 0))
+		+ int(after_simulation.get("lifetime_completions", 0))
+	)
+	return {
+		"spawns": (
+			int(after_simulation.get("spawns", 0))
+			- int(before_simulation.get("spawns", 0))
+		),
+		"advances": (
+			int(after_simulation.get("advances", 0))
+			- int(before_simulation.get("advances", 0))
+		),
+		"direct_queries": (
+			int(after_simulation.get("direct_queries", 0))
+			- int(before_simulation.get("direct_queries", 0))
+		),
+		"completions": after_completions - before_completions,
+		"damage_accepts": (
+			int(after.get("mage_damage_accepts", 0))
+			- int(before.get("mage_damage_accepts", 0))
+		),
+		"presentation_requests": (
+			int(after.get("mage_presentation_requests", 0))
+			- int(before.get("mage_presentation_requests", 0))
+		),
+	}
 
 
 func _count_fence_collision_shapes() -> int:
@@ -1292,6 +1338,16 @@ func _measure_sample_window(
 	var pool_before := _aggregate_pool_metrics()
 	var pool_buckets_before := _get_pool_bucket_metrics()
 	var projectile_pool_before := _get_projectile_pool_metrics()
+	var initial_enemy_combat_services := game.get_enemy_combat_services()
+	_expect(
+		initial_enemy_combat_services != null,
+		"EnemyCombatServices must be mounted before the cohort sample begins."
+	)
+	var initial_shared_combat_metrics := (
+		initial_enemy_combat_services.get_metrics()
+		if initial_enemy_combat_services != null
+		else {}
+	)
 	var player_health_before := game.player.current_health
 	var base_health_before := game.current_base_health
 	var physics_frames_before := Engine.get_physics_frames()
@@ -1502,6 +1558,19 @@ func _measure_sample_window(
 	var pool_after := _aggregate_pool_metrics()
 	var pool_buckets_after := _get_pool_bucket_metrics()
 	var projectile_pool_after := _get_projectile_pool_metrics()
+	var shared_combat_metrics := (
+		initial_enemy_combat_services.get_metrics()
+		if initial_enemy_combat_services != null
+		else {}
+	)
+	var mage_activity_window := _build_mage_activity_window(
+		initial_shared_combat_metrics,
+		shared_combat_metrics
+	)
+	var legacy_mage_projectile_nodes := _count_nodes_with_script_path(
+		game,
+		CAPOO_MAGE_FIREBALL_SCRIPT_PATH
+	)
 	var wall_summary := _summarize(wall_samples)
 	var final_fence_metrics := simple_fence_fixture_metrics.duplicate(true)
 	final_fence_metrics["all_target_index_final"] = (
@@ -1617,7 +1686,6 @@ func _measure_sample_window(
 		"expanded_projectile_prewarm": requested_expanded_projectile_prewarm,
 		"enemy_attack_audio_limiter": requested_enemy_attack_audio_limiter,
 		"enemy_attack_audio": ENEMY_ATTACK_AUDIO_LIMITER.get_metrics(),
-		"pooled_mage_impact_effect": requested_pooled_mage_impact_effect,
 		"frame_budget": {
 			"over_16_667_count": _count_over_budget(wall_samples, FRAME_BUDGET_60_FPS_MS),
 			"over_16_667_ratio": _ratio_over_budget(wall_samples, FRAME_BUDGET_60_FPS_MS),
@@ -1698,6 +1766,9 @@ func _measure_sample_window(
 			projectile_pool_before,
 			projectile_pool_after
 		),
+		"enemy_combat_services": shared_combat_metrics,
+		"mage_activity_window": mage_activity_window,
+		"legacy_mage_projectile_nodes": legacy_mage_projectile_nodes,
 		"combat_index_size": game.combat_target_index.enemies_by_net_id.size(),
 		"renderer": RenderingServer.get_current_rendering_method(),
 		"render_driver": RenderingServer.get_current_rendering_driver_name(),
@@ -1754,6 +1825,70 @@ func _measure_sample_window(
 		int(result["combat_index_size"]) >= int(final_counts["active_enemies"]),
 		"CombatTargetIndex must retain every live cohort enemy."
 	)
+	var mage_simulation_metrics := shared_combat_metrics.get(
+		"capoo_mage_fireball_simulation",
+		{}
+	) as Dictionary
+	var mage_presenter_metrics := shared_combat_metrics.get(
+		"capoo_mage_fireball_presenter",
+		{}
+	) as Dictionary
+	var impact_presentation_metrics := shared_combat_metrics.get(
+		"explosion_presentation",
+		{}
+	) as Dictionary
+	_expect(
+		not mage_simulation_metrics.is_empty()
+		and bool(mage_simulation_metrics.get("bound", false))
+		and int(mage_simulation_metrics.get("reserved_capacity", 0))
+			>= 2048
+		and not bool(mage_simulation_metrics.get("teardown_prepared", true))
+		and int(mage_simulation_metrics.get("teardowns", -1)) == 0,
+		"Mage shared simulation metrics must remain live and preallocated during the cohort window."
+	)
+	_expect(
+		not mage_presenter_metrics.is_empty()
+		and bool(mage_presenter_metrics.get("bound", false))
+		and int(mage_presenter_metrics.get("draw_family_count", 0)) == 3
+		and not bool(mage_presenter_metrics.get("teardown_prepared", true))
+		and int(mage_presenter_metrics.get("teardown_count", -1)) == 0,
+		"Mage shared projectile presenter metrics must remain visible without early teardown."
+	)
+	_expect(
+		not impact_presentation_metrics.is_empty()
+		and int(impact_presentation_metrics.get("draw_family_count", 0)) == 4
+		and int(impact_presentation_metrics.get("teardown_count", -1)) == 0,
+		"Shared impact metrics must expose the authored RPG and Mage draw families."
+	)
+	_expect(
+		legacy_mage_projectile_nodes == 0,
+		"Production cohorts must not instantiate legacy CapooMage fireball nodes."
+	)
+	if phase == ProbePhase.ENGAGEMENT and _cohort_contains_mage_config():
+		_expect(
+			int(mage_activity_window["spawns"]) > 0,
+			"Mage engagement must spawn production DATA fireballs during the sample window."
+		)
+		_expect(
+			int(mage_activity_window["advances"]) > 0,
+			"Mage engagement must advance production DATA fireballs during the sample window."
+		)
+		_expect(
+			int(mage_activity_window["direct_queries"]) > 0,
+			"Mage engagement must execute direct-hit queries during the sample window."
+		)
+		_expect(
+			int(mage_activity_window["completions"]) > 0,
+			"Mage engagement must complete production DATA fireballs during the sample window."
+		)
+		_expect(
+			int(mage_activity_window["damage_accepts"]) > 0,
+			"Mage engagement must resolve accepted authoritative damage during the sample window."
+		)
+		_expect(
+			int(mage_activity_window["presentation_requests"]) > 0,
+			"Mage engagement must request shared impact presentation during the sample window."
+		)
 	if DisplayServer.get_name() != "headless":
 		_expect(
 			float((result["render_cpu_ms"] as Dictionary)["p50"]) > 0.0,
@@ -2152,7 +2287,6 @@ func _get_projectile_pool_metrics() -> Dictionary:
 	for scene_path in [
 		CAPOO_AK47_BULLET_POOL_PATH,
 		COMBAT_ROBOT_GUNNER_BULLET_POOL_PATH,
-		CAPOO_MAGE_FIREBALL_POOL_PATH,
 		BULLET_HIT_EFFECT_POOL_PATH,
 	]:
 		result[scene_path] = game.session_object_pool.get_metrics(scene_path)
@@ -2165,17 +2299,8 @@ func _validate_projectile_pool_startup(metrics_by_path: Dictionary) -> void:
 		if requested_expanded_projectile_prewarm
 		else TowerDefensePrewarmerCoordinator.LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT
 	)
-	var expected_mage_prewarm := (
-		TowerDefensePrewarmerCoordinator.EXPANDED_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
-		if requested_expanded_projectile_prewarm
-		else TowerDefensePrewarmerCoordinator.LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
-	)
 	var ak47_metrics := metrics_by_path.get(
 		CAPOO_AK47_BULLET_POOL_PATH,
-		{}
-	) as Dictionary
-	var mage_metrics := metrics_by_path.get(
-		CAPOO_MAGE_FIREBALL_POOL_PATH,
 		{}
 	) as Dictionary
 	var gunner_metrics := metrics_by_path.get(
@@ -2185,10 +2310,6 @@ func _validate_projectile_pool_startup(metrics_by_path: Dictionary) -> void:
 	_expect(
 		int(ak47_metrics.get("created", -1)) == expected_ak47_prewarm,
 		"AK projectile pool startup count must match the selected A/B variant."
-	)
-	_expect(
-		int(mage_metrics.get("created", -1)) == expected_mage_prewarm,
-		"Mage projectile pool startup count must match the selected A/B variant."
 	)
 	_expect(
 		int(gunner_metrics.get("created", -1))
@@ -2201,9 +2322,8 @@ func _validate_projectile_pool_startup(metrics_by_path: Dictionary) -> void:
 		"Gunner projectile pool startup metrics must match the isolated A/B values."
 	)
 	_expect(
-		int(ak47_metrics.get("retained_capacity", -1)) == 384
-		and int(mage_metrics.get("retained_capacity", -1)) == 192,
-		"Expanded prewarming must not change projectile retained capacities."
+		int(ak47_metrics.get("retained_capacity", -1)) == 384,
+		"Expanded prewarming must not change the AK projectile capacity."
 	)
 
 
@@ -2212,7 +2332,6 @@ func _build_pool_metric_window(before: Dictionary, after: Dictionary) -> Diction
 	for scene_path in [
 		CAPOO_AK47_BULLET_POOL_PATH,
 		COMBAT_ROBOT_GUNNER_BULLET_POOL_PATH,
-		CAPOO_MAGE_FIREBALL_POOL_PATH,
 		BULLET_HIT_EFFECT_POOL_PATH,
 	]:
 		var before_metrics := before.get(scene_path, {}) as Dictionary
@@ -2429,9 +2548,6 @@ func _finish() -> void:
 	)
 	ENEMY_ATTACK_AUDIO_LIMITER.limiting_enabled = (
 		original_enemy_attack_audio_limiter
-	)
-	CAPOO_MAGE_FIREBALL_SCRIPT.pooled_impact_effect_enabled = (
-		original_pooled_mage_impact_effect
 	)
 	Engine.max_fps = original_max_fps
 	if vsync_overridden:

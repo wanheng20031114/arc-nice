@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://scene/combat/simulation/enemy_combat_services.gd" id="1_services"]
 [ext_resource type="PackedScene" path="res://scene/combat/simulation/rapid_fire_simulation_service.tscn" id="2_rapid_fire"]
@@ -12,6 +12,8 @@
 [ext_resource type="PackedScene" path="res://scene/combat/simulation/explosion_resolution_service.tscn" id="10_explosion_resolution"]
 [ext_resource type="PackedScene" path="res://scene/combat/presentation/capoo_rpg_rocket_presenter.tscn" id="11_rpg_presenter"]
 [ext_resource type="PackedScene" path="res://scene/combat/presentation/explosion_presentation_service.tscn" id="12_explosion_presentation"]
+[ext_resource type="PackedScene" path="res://scene/combat/simulation/capoo_mage_fireball_simulation_service.tscn" id="13_mage_simulation"]
+[ext_resource type="PackedScene" path="res://scene/combat/presentation/capoo_mage_fireball_presenter.tscn" id="14_mage_presenter"]
 
 [node name="EnemyCombatServices" type="Node"]
 process_physics_priority = 6
@@ -38,3 +40,7 @@ script = ExtResource("1_services")
 [node name="CapooRPGRocketPresenter" parent="." instance=ExtResource("11_rpg_presenter")]
 
 [node name="ExplosionPresentationService" parent="." instance=ExtResource("12_explosion_presentation")]
+
+[node name="CapooMageFireballSimulationService" parent="." instance=ExtResource("13_mage_simulation")]
+
+[node name="CapooMageFireballPresenter" parent="." instance=ExtResource("14_mage_presenter")]

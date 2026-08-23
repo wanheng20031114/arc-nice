@@ -1,0 +1,12 @@
+[gd_resource type="ShaderMaterial" load_steps=3 format=3]
+
+[ext_resource type="Shader" path="res://scene/combat/presentation/capoo_mage_fireball_effect.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" path="res://resources/texture/enemy/capoo/capoo_mage_fireball.png" id="2_texture"]
+
+[resource]
+shader = ExtResource("1_shader")
+shader_parameter/fireball_atlas = ExtResource("2_texture")
+shader_parameter/layer_kind = 0
+shader_parameter/atlas_row = 0.0
+shader_parameter/effect_tint = Color(1.82, 1.02, 0.42, 0.46)
+shader_parameter/effect_strength = 1.0

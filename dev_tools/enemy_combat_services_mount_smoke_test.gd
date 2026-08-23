@@ -33,6 +33,12 @@ const FireSorcererVolleyPresenterScript := preload(
 const CapooRPGRocketSimulationServiceScript := preload(
 	"res://scene/combat/simulation/capoo_rpg_rocket_simulation_service.gd"
 )
+const CapooMageFireballSimulationServiceScript := preload(
+	"res://scene/combat/simulation/capoo_mage_fireball_simulation_service.gd"
+)
+const CapooMageFireballPresenterScript := preload(
+	"res://scene/combat/presentation/capoo_mage_fireball_presenter.gd"
+)
 const FIXTURE_SCENE := preload(
 	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
 )
@@ -135,6 +141,12 @@ func _test_authored_coordinator_service_tree_defaults_to_idle() -> void:
 		var rpg_presenter := combat_services.get_capoo_rpg_rocket_presenter()
 		var explosion_presentation := (
 			combat_services.get_explosion_presentation_service()
+		)
+		var mage_fireball_service: CapooMageFireballSimulationServiceScript = (
+			combat_services.get_capoo_mage_fireball_simulation_service()
+		)
+		var mage_fireball_presenter: CapooMageFireballPresenterScript = (
+			combat_services.get_capoo_mage_fireball_presenter()
 		)
 		_expect(
 			rapid_fire_service != null,
@@ -244,6 +256,19 @@ func _test_authored_coordinator_service_tree_defaults_to_idle() -> void:
 				and not rpg_rocket_service.is_physics_processing(),
 				"The authored RPG data kernel must start empty and idle."
 			)
+		_expect(
+			mage_fireball_service != null
+			and mage_fireball_presenter != null,
+			"EnemyCombatServices must statically author Mage simulation and presentation."
+		)
+		if mage_fireball_service != null:
+			var mage_metrics := mage_fireball_service.get_metrics()
+			_expect(
+				int(mage_metrics["live_count"]) == 0
+				and not bool(mage_metrics["bound"])
+				and not mage_fireball_service.is_physics_processing(),
+				"The authored Mage data kernel must start empty and idle."
+			)
 	coordinator.free()
 
 
@@ -321,6 +346,12 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 		var explosion_presentation := (
 			combat_services.get_explosion_presentation_service()
 		)
+		var mage_fireball_service: CapooMageFireballSimulationServiceScript = (
+			combat_services.get_capoo_mage_fireball_simulation_service()
+		)
+		var mage_fireball_presenter: CapooMageFireballPresenterScript = (
+			combat_services.get_capoo_mage_fireball_presenter()
+		)
 		_expect(
 			combat_services.is_bound_to(runtime, coordinator),
 			"EnemyCombatServices must bind to its authored runtime and coordinator."
@@ -382,6 +413,15 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 			and explosion_presentation.is_bound(),
 			"RPG resolution and both presentation systems must share the authored runtime context."
 		)
+		_expect(
+			mage_fireball_service != null
+			and mage_fireball_service.is_bound()
+			and mage_fireball_service.get_reserved_capacity()
+				>= combat_services.CAPOO_MAGE_FIREBALL_RESERVED_CAPACITY
+			and mage_fireball_presenter != null
+			and mage_fireball_presenter.is_bound(),
+			"Mage simulation and presenter must bind with 2048 reserved records."
+		)
 		if rapid_projectile_presenter != null:
 			var mounted_presenter_metrics := rapid_projectile_presenter.get_metrics()
 			_expect(
@@ -407,11 +447,78 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 				and int(mounted_volley_presenter_metrics["last_scanned_record_count"]) == 0,
 				"A mounted headless fire-sorcerer volley presenter must allocate, scan, and upload nothing."
 			)
+		if mage_fireball_presenter != null:
+			var mounted_mage_presenter_metrics := mage_fireball_presenter.get_metrics()
+			_expect(
+				bool(mounted_mage_presenter_metrics["headless_disabled"])
+				and int(mounted_mage_presenter_metrics["allocated_base_instances"]) == 0
+				and int(mounted_mage_presenter_metrics["allocated_emission_instances"]) == 0
+				and int(mounted_mage_presenter_metrics["allocated_halo_instances"]) == 0
+				and int(mounted_mage_presenter_metrics["visible_fireballs"]) == 0,
+				"A mounted headless Mage presenter must allocate and upload nothing."
+			)
 		if damageable_spatial_index != null:
 			var initial_index_metrics := damageable_spatial_index.get_metrics()
 			_expect(
 				int(initial_index_metrics["registered_count"]) == 0,
 				"A non-tower runtime must keep the damageable index empty."
+			)
+		if mage_fireball_service != null:
+			var source_snapshot := DamageSourceSnapshot.create(
+				CombatRelationService.HOSTILE_WAVE,
+				0,
+				731,
+				0,
+				CapooMageFireballSimulationServiceScript.SOURCE_TYPE
+			)
+			var data_handle := mage_fireball_service.spawn_authoritative(
+				Vector2(80_000.0, 80_000.0),
+				Vector2.RIGHT,
+				1,
+				1.0,
+				0.01,
+				CapooMageFireballSimulationServiceScript.DEFAULT_RADIUS,
+				null,
+				0.0,
+				source_snapshot
+			)
+			var replica_handle := mage_fireball_service.spawn_replica(
+				771,
+				Vector2(80_000.0, 80_010.0),
+				Vector2.RIGHT,
+				1.0,
+				0.01,
+				CapooMageFireballSimulationServiceScript.DEFAULT_RADIUS,
+				null,
+				0.0,
+				0.0
+			)
+			_expect(
+				data_handle > 0 and replica_handle > 0,
+				"Mounted Mage service must accept DATA and REPLICA records."
+			)
+			for _completion_frame in range(3):
+				await physics_frame
+			var completion_metrics := combat_services.get_metrics()
+			var completed_mage_metrics := (
+				completion_metrics["capoo_mage_fireball_simulation"]
+				as Dictionary
+			)
+			var completed_impact_metrics := (
+				completion_metrics["explosion_presentation"] as Dictionary
+			)
+			var completed_resolution_metrics := (
+				completion_metrics["explosion_resolution"] as Dictionary
+			)
+			_expect(
+				int(completion_metrics["mage_completion_batches"]) == 1
+				and int(completion_metrics["mage_completions"]) == 2
+				and int(completion_metrics["mage_presentation_requests"]) == 2
+				and int(completed_resolution_metrics["resolution_count"]) == 1
+				and int(completed_mage_metrics["live_count"]) == 0
+				and int(completed_mage_metrics["pending_completions"]) == 0
+				and int(completed_impact_metrics["queue_requests"]) == 2,
+				"EnemyCombatServices must resolve only DATA while consuming DATA/REPLICA Mage completions and queueing both impacts in the same frame."
 			)
 		runtime.prepare_for_scene_teardown()
 		runtime.prepare_for_scene_teardown()
@@ -439,6 +546,12 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 		)
 		var explosion_presentation_metrics: Dictionary = (
 			service_metrics["explosion_presentation"]
+		)
+		var mage_metrics: Dictionary = (
+			service_metrics["capoo_mage_fireball_simulation"]
+		)
+		var mage_presenter_metrics: Dictionary = (
+			service_metrics["capoo_mage_fireball_presenter"]
 		)
 		_expect(
 			int(service_metrics["teardown_count"]) == 1,
@@ -475,6 +588,14 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 			and int(rpg_presenter_metrics["teardown_count"]) == 1
 			and int(explosion_presentation_metrics["teardown_count"]) == 1,
 			"All RPG shared services must teardown exactly once with no live handles."
+		)
+		_expect(
+			int(mage_metrics["teardowns"]) == 1
+			and int(mage_metrics["live_count"]) == 0
+			and int(mage_metrics["pending_completions"]) == 0
+			and int(mage_presenter_metrics["teardown_count"]) == 1
+			and int(mage_presenter_metrics["visible_fireballs"]) == 0,
+			"Mage shared simulation and presenter must teardown once with no live handles."
 		)
 		_expect(
 			not bool(service_metrics["bound"])
@@ -563,6 +684,18 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 					fire_sorcerer_volley_service
 				),
 				"FireSorcererVolleyPresenter must reject rebind after teardown."
+			)
+		if mage_fireball_service != null:
+			_expect(
+				not mage_fireball_service.bind_context(runtime, coordinator),
+				"Mage simulation service must reject rebind after teardown."
+			)
+		if mage_fireball_presenter != null:
+			_expect(
+				not mage_fireball_presenter.bind_simulation_service(
+					mage_fireball_service
+				),
+				"Mage presenter must reject rebind after teardown."
 			)
 
 	runtime.queue_free()

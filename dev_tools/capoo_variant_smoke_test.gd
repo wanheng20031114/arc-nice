@@ -31,7 +31,6 @@ const COMBAT_RUNTIME_FIXTURE_SCENE := preload(
 
 var failures: Array[String] = []
 var test_root: EnemyGameplayGatewayTestRuntime
-var spawned_fireballs: Array[CapooMageFireball] = []
 var spawned_smg_bullets: Array[CapooAK47Bullet] = []
 var spawned_smg_bullet_directions := PackedVector2Array()
 var reticle_coordinator: CapooSniperLockVisualCoordinator = null
@@ -110,7 +109,14 @@ func _test_resource_contract() -> void:
 	_expect(MAGE_CONFIG.enemy_scene == MAGE_SCENE, "Mage Capoo must use its own scene.")
 	_expect(SNIPER_CONFIG.enemy_scene == SNIPER_SCENE, "Sniper Capoo must use its own scene.")
 	_expect(SMG_CONFIG.enemy_scene == SMG_SCENE, "SMG Capoo must use its own scene.")
-	_expect(MAGE_CONFIG.projectile_scene == FIREBALL_SCENE, "Mage Capoo must use the generated fireball scene.")
+	_expect(
+		not _object_has_property(MAGE_CONFIG, &"projectile_scene"),
+		"Mage production config must not retain the legacy fireball scene."
+	)
+	_expect(
+		FIREBALL_SCENE != null,
+		"Legacy Mage fireball scene must remain available for isolated regression fixtures."
+	)
 	_expect(SNIPER_CONFIG.lock_reticle_scene == RETICLE_SCENE, "Legacy sniper reticle regression resource must remain available.")
 	_expect(SMG_CONFIG.projectile_scene == SMG_BULLET_SCENE, "SMG Capoo must use its short-lived bullet scene.")
 	_expect(
@@ -170,7 +176,7 @@ func _test_resource_contract() -> void:
 	_expect(_has_fireball_impact_audio(), "Fireball impact audio contract failed.")
 	_expect(_sprite_frames_count("res://resources/animation/capoo_smg_bullet.tres", &"fly") == 3, "SMG bullet frame count mismatch.")
 	_expect(_has_reticle_scene_contract(), "Sniper reticle scene contract failed.")
-	_test_reticle_coordinator_scene_installation()
+	_test_legacy_reticle_coordinator_removed_from_production_scenes()
 
 
 func _test_shared_sniper_warning_arbitration() -> void:
@@ -206,26 +212,62 @@ func _test_shared_sniper_warning_arbitration() -> void:
 	)
 
 
-func _test_reticle_coordinator_scene_installation() -> void:
-	for scene_path in ["res://scene/game_modes/standard/standard_game.tscn", "res://scene/game_modes/tower_defense/tower_defense_game.tscn"]:
+func _test_legacy_reticle_coordinator_removed_from_production_scenes() -> void:
+	var production_scene_paths: Array[String] = [
+		"res://scene/game_modes/standard/standard_game.tscn",
+		"res://scene/game_modes/tower_defense/tower_defense_game.tscn",
+		"res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn",
+		"res://scene/game_modes/rogue/combat/rogue_combat_game_02.tscn",
+		"res://scene/game_modes/rogue/combat/rogue_combat_game_03.tscn",
+		"res://scene/game_modes/rogue/combat/rogue_combat_game_04.tscn",
+	]
+	for scene_path in production_scene_paths:
 		var packed_scene := load(scene_path) as PackedScene
-		var game_instance := packed_scene.instantiate() if packed_scene != null else null
-		_expect(game_instance != null, "Sniper coordinator scene fixture failed to instantiate: %s" % scene_path)
-		if game_instance == null:
+		_expect(
+			packed_scene != null,
+			"Sniper presentation scene fixture failed to load: %s"
+			% scene_path
+		)
+		if packed_scene == null:
 			continue
-		var coordinator := game_instance.get_node_or_null("SniperLockVisualCoordinator")
-		var enemy_container := game_instance.get_node_or_null("EnemyContainer")
+		var scene_state := packed_scene.get_state()
 		_expect(
-			coordinator is CapooSniperLockVisualCoordinator,
-			"Gameplay scene must author the shared sniper lock coordinator: %s" % scene_path
+			not _scene_state_has_node_named(
+				scene_state,
+				&"SniperLockVisualCoordinator"
+			),
+			"Production scene must not retain the idle legacy sniper coordinator: %s"
+			% scene_path
 		)
 		_expect(
-			coordinator != null
-			and enemy_container != null
-			and coordinator.get_index() < enemy_container.get_index(),
-			"Coordinator must enter the tree before runtime enemies can spawn: %s" % scene_path
+			_scene_state_has_instanced_scene(
+				scene_state,
+				&"EnemySimulationCoordinator",
+				"res://scene/combat/simulation/enemy_simulation_coordinator.tscn"
+			),
+			"Production scene must retain the authored enemy simulation coordinator: %s"
+			% scene_path
 		)
-		game_instance.free()
+	var coordinator_scene := load(
+		"res://scene/combat/simulation/enemy_simulation_coordinator.tscn"
+	) as PackedScene
+	var services_scene := load(
+		"res://scene/combat/simulation/enemy_combat_services.tscn"
+	) as PackedScene
+	_expect(
+		coordinator_scene != null
+		and _scene_state_has_instanced_scene(
+			coordinator_scene.get_state(),
+			&"EnemyCombatServices",
+			"res://scene/combat/simulation/enemy_combat_services.tscn"
+		)
+		and services_scene != null
+		and _scene_state_has_node_named(
+			services_scene.get_state(),
+			&"EnemyWarningPresentationSystem"
+		),
+		"The authored simulation coordinator must statically mount the shared warning system."
+	)
 
 
 func _test_reticle_highest_progress_priority() -> void:
@@ -365,20 +407,35 @@ func _test_reticle_coordinator_runtime_scope() -> void:
 
 
 func _test_mage_windup_fireball_and_obstruction() -> void:
-	spawned_fireballs.clear()
+	var mage_service := (
+		test_root.get_enemy_combat_services()
+		.get_capoo_mage_fireball_simulation_service()
+	)
+	_expect(
+		mage_service != null,
+		"Mage fixture must mount the shared fireball simulation service."
+	)
+	if mage_service == null:
+		return
+	mage_service.clear()
+	var blocked_spawns_before := int(mage_service.get_metrics()["spawns"])
 	var blocked_player := _spawn_player(Vector2(240.0, 0.0), 200)
 	var wall := _spawn_wall(Vector2(120.0, 0.0), 10.0)
 	await physics_frame
 	var blocked_mage := _spawn_mage(Vector2.ZERO, blocked_player)
 	await _wait_physics_frames(12)
 	_expect(blocked_mage.combat_state == CapooMage.CombatState.CHASE, "Mage Capoo attacked through a World wall.")
-	_expect(spawned_fireballs.is_empty(), "Mage Capoo fired through a World wall.")
+	_expect(
+		int(mage_service.get_metrics()["spawns"]) == blocked_spawns_before,
+		"Mage Capoo spawned a data fireball through a World wall."
+	)
 	blocked_mage.queue_free()
 	wall.queue_free()
 	blocked_player.queue_free()
 	await physics_frame
 
-	spawned_fireballs.clear()
+	mage_service.clear()
+	var spawns_before := int(mage_service.get_metrics()["spawns"])
 	var player := _spawn_player(Vector2(240.0, 0.0), 200)
 	var mage := _spawn_mage(Vector2.ZERO, player)
 	_expect(
@@ -388,7 +445,10 @@ func _test_mage_windup_fireball_and_obstruction() -> void:
 	)
 	await _wait_physics_frames(8)
 	_expect(mage.combat_state == CapooMage.CombatState.WINDUP, "Mage Capoo did not enter windup.")
-	_expect(spawned_fireballs.is_empty(), "Mage Capoo fired before windup.")
+	_expect(
+		int(mage_service.get_metrics()["spawns"]) == spawns_before,
+		"Mage Capoo spawned a data fireball before windup."
+	)
 	var replacement_player := _spawn_player(Vector2(220.0, 80.0), 200)
 	mage.set_target_player(replacement_player)
 	_expect(
@@ -396,15 +456,35 @@ func _test_mage_windup_fireball_and_obstruction() -> void:
 		"Mage windup must retain the explicit target chosen at attack start."
 	)
 	var fireball_guard_frames := 0
-	while spawned_fireballs.is_empty() and fireball_guard_frames < 90:
+	while (
+		int(mage_service.get_metrics()["spawns"]) == spawns_before
+		and fireball_guard_frames < 90
+	):
 		await physics_frame
 		fireball_guard_frames += 1
-	_expect(spawned_fireballs.size() == 1, "Mage Capoo did not fire exactly one fireball after windup.")
-	if not spawned_fireballs.is_empty() and is_instance_valid(spawned_fireballs[0]):
-		_expect(is_equal_approx(spawned_fireballs[0].fireball_radius, MAGE_CONFIG.fireball_radius), "Fireball radius did not use config.")
+	_expect(
+		int(mage_service.get_metrics()["spawns"]) == spawns_before + 1,
+		"Mage Capoo did not spawn exactly one data fireball after windup."
+	)
+	var fireball_handle := mage_service.get_handle_at_stable_index(0)
+	if mage_service.is_handle_live(fireball_handle):
 		_expect(
-			spawned_fireballs[0].target_player == player,
-			"Fireball must keep the attack's explicit soft-homing target."
+			is_equal_approx(
+				mage_service.get_radius(fireball_handle),
+				MAGE_CONFIG.fireball_radius
+			),
+			"Data fireball radius did not use config."
+		)
+		_expect(
+			is_equal_approx(
+				mage_service.get_homing_turn_rate(fireball_handle),
+				MAGE_CONFIG.fireball_homing_turn_rate
+			),
+			"Data fireball homing rate did not use config."
+		)
+		_expect(
+			mage_service.get_target(fireball_handle) == player,
+			"Data fireball must keep the attack's explicit soft-homing target."
 		)
 	var post_fire_guard_frames := 0
 	while mage.combat_state != CapooMage.CombatState.CHASE and post_fire_guard_frames < 30:
@@ -424,10 +504,7 @@ func _test_mage_windup_fireball_and_obstruction() -> void:
 		and mage.global_position.distance_squared_to(cooldown_position) < 0.01,
 		"Mage Capoo must stand at clear attack range throughout cooldown."
 	)
-	for fireball in spawned_fireballs:
-		if is_instance_valid(fireball):
-			fireball.queue_free()
-	spawned_fireballs.clear()
+	mage_service.clear()
 	mage.queue_free()
 	player.queue_free()
 	replacement_player.queue_free()
@@ -962,12 +1039,11 @@ func _test_multiplayer_projectile_registry() -> void:
 		MAGE_CONFIG.attack_damage,
 		MAGE_CONFIG.projectile_speed,
 		MAGE_CONFIG.projectile_lifetime
-	) as CapooMageFireball
-	_expect(fireball != null, "Multiplayer registry did not instantiate capoo_mage_fireball.")
-	if fireball != null:
-		_expect(fireball.damage == MAGE_CONFIG.attack_damage, "Registry mage fireball damage mismatch.")
-		_expect(is_equal_approx(fireball.speed, MAGE_CONFIG.projectile_speed), "Registry mage fireball speed mismatch.")
-		fireball.free()
+	)
+	_expect(
+		fireball == null,
+		"Multiplayer registry must not instantiate a legacy Mage projectile Node."
+	)
 
 	var smg_bullet := coordinator.instantiate_projectile(
 		&"capoo_smg_bullet",
@@ -1197,6 +1273,45 @@ func _resource_path(resource: Resource) -> String:
 	return resource.resource_path if resource != null else ""
 
 
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	if object == null:
+		return false
+	for property in object.get_property_list():
+		if StringName(property.get("name", "")) == property_name:
+			return true
+	return false
+
+
+func _scene_state_has_node_named(
+	state: SceneState,
+	node_name: StringName
+) -> bool:
+	if state == null:
+		return false
+	for node_index in range(state.get_node_count()):
+		if state.get_node_name(node_index) == node_name:
+			return true
+	return false
+
+
+func _scene_state_has_instanced_scene(
+	state: SceneState,
+	node_name: StringName,
+	expected_scene_path: String
+) -> bool:
+	if state == null:
+		return false
+	for node_index in range(state.get_node_count()):
+		if state.get_node_name(node_index) != node_name:
+			continue
+		var instance_scene := state.get_node_instance(node_index) as PackedScene
+		return (
+			instance_scene != null
+			and instance_scene.resource_path == expected_scene_path
+		)
+	return false
+
+
 func _sprite_frames_count(path: String, animation_name: StringName) -> int:
 	var frames := load(path) as SpriteFrames
 	if frames == null or not frames.has_animation(animation_name):
@@ -1236,9 +1351,6 @@ func _count_wave_entries_for_config(wave_config: WaveConfig, enemy_config: Enemy
 
 
 func _on_child_entered_tree(child: Node) -> void:
-	var fireball := child as CapooMageFireball
-	if fireball != null:
-		spawned_fireballs.append(fireball)
 	var smg_bullet := child as CapooAK47Bullet
 	if smg_bullet != null:
 		spawned_smg_bullets.append(smg_bullet)

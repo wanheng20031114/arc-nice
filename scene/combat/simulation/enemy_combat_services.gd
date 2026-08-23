@@ -34,9 +34,16 @@ const CapooRPGRocketPresenterScript := preload(
 const ExplosionPresentationServiceScript := preload(
 	"res://scene/combat/presentation/explosion_presentation_service.gd"
 )
+const CapooMageFireballSimulationServiceScript := preload(
+	"res://scene/combat/simulation/capoo_mage_fireball_simulation_service.gd"
+)
+const CapooMageFireballPresenterScript := preload(
+	"res://scene/combat/presentation/capoo_mage_fireball_presenter.gd"
+)
 const RAPID_PROJECTILE_RESERVED_CAPACITY := 4096
 const FIRE_SORCERER_VOLLEY_RESERVED_CAPACITY := 2048
 const CAPOO_RPG_ROCKET_RESERVED_CAPACITY := 2048
+const CAPOO_MAGE_FIREBALL_RESERVED_CAPACITY := 2048
 
 ## Authored service boundary owned by EnemySimulationCoordinator. These inert
 ## rapid-fire, hitscan, and presentation seams do not replace existing combat
@@ -59,6 +66,11 @@ var _metric_rpg_completions := 0
 var _metric_rpg_damage_accepts := 0
 var _metric_rpg_presentation_requests := 0
 var _metric_rpg_backend_finish_notifications := 0
+var _metric_mage_completion_batches := 0
+var _metric_mage_completions := 0
+var _metric_mage_damage_accepts := 0
+var _metric_mage_presentation_requests := 0
+var _metric_mage_backend_finish_notifications := 0
 
 
 func _init() -> void:
@@ -103,6 +115,8 @@ func bind_context(
 	var explosion_resolution_service := get_explosion_resolution_service()
 	var rpg_rocket_presenter := get_capoo_rpg_rocket_presenter()
 	var explosion_presentation_service := get_explosion_presentation_service()
+	var mage_fireball_service := get_capoo_mage_fireball_simulation_service()
+	var mage_fireball_presenter := get_capoo_mage_fireball_presenter()
 	if (
 		rapid_fire_service == null
 		or damageable_spatial_index == null
@@ -115,6 +129,8 @@ func bind_context(
 		or explosion_resolution_service == null
 		or rpg_rocket_presenter == null
 		or explosion_presentation_service == null
+		or mage_fireball_service == null
+		or mage_fireball_presenter == null
 		or not damageable_spatial_index.bind_context(combat_runtime, coordinator)
 		or not rapid_fire_service.bind_context(combat_runtime, coordinator)
 		or not rapid_fire_service.reserve_projectile_capacity(
@@ -148,6 +164,13 @@ func bind_context(
 			combat_runtime,
 			coordinator
 		)
+		or not mage_fireball_service.bind_context(combat_runtime, coordinator)
+		or not mage_fireball_service.reserve(
+			CAPOO_MAGE_FIREBALL_RESERVED_CAPACITY
+		)
+		or not mage_fireball_presenter.bind_simulation_service(
+			mage_fireball_service
+		)
 	):
 		return false
 	_combat_runtime = combat_runtime
@@ -166,10 +189,12 @@ func _physics_process(delta: float) -> void:
 		get_fire_sorcerer_volley_simulation_service()
 	)
 	var rpg_rocket_service := get_capoo_rpg_rocket_simulation_service()
+	var mage_fireball_service := get_capoo_mage_fireball_simulation_service()
 	if (
 		rapid_fire_service == null
 		and fire_sorcerer_volley_service == null
 		and rpg_rocket_service == null
+		and mage_fireball_service == null
 	):
 		set_physics_process(false)
 		return
@@ -187,9 +212,13 @@ func _physics_process(delta: float) -> void:
 		gateway
 	)
 	_consume_capoo_rpg_rocket_completions(rpg_rocket_service, gateway)
+	_consume_capoo_mage_fireball_completions(mage_fireball_service, gateway)
 	var rpg_rocket_presenter := get_capoo_rpg_rocket_presenter()
 	if rpg_rocket_presenter != null:
 		rpg_rocket_presenter.flush_presenter()
+	var mage_fireball_presenter := get_capoo_mage_fireball_presenter()
+	if mage_fireball_presenter != null:
+		mage_fireball_presenter.flush_presenter()
 	var explosion_presentation_service := get_explosion_presentation_service()
 	if explosion_presentation_service != null:
 		explosion_presentation_service.flush_presenter(delta)
@@ -357,6 +386,68 @@ func _consume_capoo_rpg_rocket_completions(
 	service.clear_completion_records()
 
 
+func _consume_capoo_mage_fireball_completions(
+	service: CapooMageFireballSimulationServiceScript,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	if service == null:
+		return
+	var completion_count := service.get_completion_count()
+	if completion_count <= 0:
+		return
+	_metric_mage_completion_batches += 1
+	var resolver := get_explosion_resolution_service()
+	var presentation := get_explosion_presentation_service()
+	for completion_index in range(completion_count):
+		_metric_mage_completions += 1
+		var mode := service.get_completion_mode(completion_index)
+		var snapshot := service.get_completion_damage_source_snapshot(
+			completion_index
+		)
+		var source_enemy_id := (
+			snapshot.instigator_entity_id if snapshot != null else 0
+		)
+		var source_type := (
+			snapshot.source_type
+			if snapshot != null and snapshot.source_type != &""
+			else CapooMageFireballSimulationServiceScript.SOURCE_TYPE
+		)
+		if (
+			mode == CapooMageFireballSimulationServiceScript.Mode.DATA
+			and resolver != null
+		):
+			_metric_mage_damage_accepts += resolver.resolve_hostile_explosion(
+				service.get_completion_position(completion_index),
+				service.get_completion_radius(completion_index),
+				service.get_completion_damage(completion_index),
+				service.get_completion_direct_hit(completion_index),
+				snapshot,
+				source_enemy_id,
+				service.get_completion_projectile_id(completion_index),
+				source_type,
+				EnemyConfig.DamageType.MAGIC
+			)
+		if (
+			presentation != null
+			and presentation.queue_explosion(
+				ExplosionPresentationServiceScript.Profile.CAPOO_MAGE,
+				service.get_completion_position(completion_index)
+			)
+		):
+			_metric_mage_presentation_requests += 1
+		var projectile_id := service.get_completion_projectile_id(
+			completion_index
+		)
+		if projectile_id > 0 and gateway != null:
+			gateway.notify_capoo_mage_fireball_data_finished(
+				projectile_id,
+				service,
+				service.get_completion_handle(completion_index)
+			)
+			_metric_mage_backend_finish_notifications += 1
+	service.clear_completion_records()
+
+
 func is_bound() -> bool:
 	return (
 		_combat_runtime != null
@@ -443,6 +534,18 @@ func get_explosion_presentation_service() -> ExplosionPresentationServiceScript:
 	) as ExplosionPresentationServiceScript
 
 
+func get_capoo_mage_fireball_simulation_service() -> CapooMageFireballSimulationServiceScript:
+	return get_node_or_null(
+		"CapooMageFireballSimulationService"
+	) as CapooMageFireballSimulationServiceScript
+
+
+func get_capoo_mage_fireball_presenter() -> CapooMageFireballPresenterScript:
+	return get_node_or_null(
+		"CapooMageFireballPresenter"
+	) as CapooMageFireballPresenterScript
+
+
 func prepare_for_runtime_teardown() -> void:
 	if _teardown_prepared:
 		return
@@ -452,6 +555,9 @@ func prepare_for_runtime_teardown() -> void:
 	var explosion_presentation_service := get_explosion_presentation_service()
 	if explosion_presentation_service != null:
 		explosion_presentation_service.prepare_for_runtime_teardown()
+	var mage_fireball_presenter := get_capoo_mage_fireball_presenter()
+	if mage_fireball_presenter != null:
+		mage_fireball_presenter.prepare_for_runtime_teardown()
 	var rpg_rocket_presenter := get_capoo_rpg_rocket_presenter()
 	if rpg_rocket_presenter != null:
 		rpg_rocket_presenter.prepare_for_runtime_teardown()
@@ -480,6 +586,9 @@ func prepare_for_runtime_teardown() -> void:
 	var rpg_rocket_service := get_capoo_rpg_rocket_simulation_service()
 	if rpg_rocket_service != null:
 		rpg_rocket_service.teardown()
+	var mage_fireball_service := get_capoo_mage_fireball_simulation_service()
+	if mage_fireball_service != null:
+		mage_fireball_service.teardown()
 	var explosion_resolution_service := get_explosion_resolution_service()
 	if explosion_resolution_service != null:
 		explosion_resolution_service.prepare_for_runtime_teardown()
@@ -506,6 +615,8 @@ func get_metrics() -> Dictionary:
 	var explosion_resolution_service := get_explosion_resolution_service()
 	var rpg_rocket_presenter := get_capoo_rpg_rocket_presenter()
 	var explosion_presentation_service := get_explosion_presentation_service()
+	var mage_fireball_service := get_capoo_mage_fireball_simulation_service()
+	var mage_fireball_presenter := get_capoo_mage_fireball_presenter()
 	return {
 		"bound": is_bound(),
 		"teardown_prepared": _teardown_prepared,
@@ -526,6 +637,13 @@ func get_metrics() -> Dictionary:
 		"rpg_presentation_requests": _metric_rpg_presentation_requests,
 		"rpg_backend_finish_notifications": (
 			_metric_rpg_backend_finish_notifications
+		),
+		"mage_completion_batches": _metric_mage_completion_batches,
+		"mage_completions": _metric_mage_completions,
+		"mage_damage_accepts": _metric_mage_damage_accepts,
+		"mage_presentation_requests": _metric_mage_presentation_requests,
+		"mage_backend_finish_notifications": (
+			_metric_mage_backend_finish_notifications
 		),
 		"rapid_fire": (
 			rapid_fire_service.get_metrics()
@@ -580,6 +698,16 @@ func get_metrics() -> Dictionary:
 		"explosion_presentation": (
 			explosion_presentation_service.get_metrics()
 			if explosion_presentation_service != null
+			else {}
+		),
+		"capoo_mage_fireball_simulation": (
+			mage_fireball_service.get_metrics()
+			if mage_fireball_service != null
+			else {}
+		),
+		"capoo_mage_fireball_presenter": (
+			mage_fireball_presenter.get_metrics()
+			if mage_fireball_presenter != null
 			else {}
 		),
 	}

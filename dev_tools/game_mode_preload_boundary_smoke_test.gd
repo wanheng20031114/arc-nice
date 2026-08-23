@@ -27,7 +27,6 @@ const LEGACY_TOWER_PRELOAD_PATHS := [
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn",
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn",
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn",
-	"res://scene/enemy/capoo/capoo_mage_fireball.tscn",
 	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
 	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn",

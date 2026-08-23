@@ -4,6 +4,9 @@ class_name RuntimePerformanceTelemetry
 const CapooRPGRocketSimulationServiceScript := preload(
 	"res://scene/combat/simulation/capoo_rpg_rocket_simulation_service.gd"
 )
+const CapooMageFireballSimulationServiceScript := preload(
+	"res://scene/combat/simulation/capoo_mage_fireball_simulation_service.gd"
+)
 
 const PROJECTILE_GROUP := &"runtime_projectiles"
 const DEFAULT_MAX_FRAME_SAMPLES := 3600
@@ -19,7 +22,6 @@ const PROJECTILE_SCRIPT_PATHS := {
 	"res://scene/combat/collectibles/collectible_arrow_projectile.gd": true,
 	"res://scene/enemy/capoo/capoo_ak47_bullet.gd": true,
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.gd": true,
-	"res://scene/enemy/capoo/capoo_mage_fireball.gd": true,
 	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.gd": true,
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.gd": true,
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.gd": true,
@@ -272,6 +274,11 @@ func _accumulate_runtime_counts(node: Node, counts: Dictionary) -> void:
 	if rpg_service != null:
 		counts["active_projectiles"] = (
 			int(counts["active_projectiles"]) + rpg_service.get_live_count()
+		)
+	var mage_service := node as CapooMageFireballSimulationServiceScript
+	if mage_service != null:
+		counts["active_projectiles"] = (
+			int(counts["active_projectiles"]) + mage_service.get_live_count()
 		)
 	for child in node.get_children():
 		_accumulate_runtime_counts(child, counts)

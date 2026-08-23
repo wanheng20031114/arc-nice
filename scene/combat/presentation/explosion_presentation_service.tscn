@@ -1,9 +1,12 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://scene/combat/presentation/explosion_presentation_service.gd" id="1_script"]
 [ext_resource type="Material" path="res://scene/combat/presentation/explosion_presentation_base_material.tres" id="2_base"]
 [ext_resource type="Material" path="res://scene/combat/presentation/explosion_presentation_emission_material.tres" id="3_emission"]
 [ext_resource type="AudioStream" path="res://resources/audio/cowboy_explosion.wav" id="4_audio"]
+[ext_resource type="Material" path="res://scene/combat/presentation/capoo_mage_fireball_impact_base_material.tres" id="5_mage_base"]
+[ext_resource type="Material" path="res://scene/combat/presentation/capoo_mage_fireball_impact_emission_material.tres" id="6_mage_emission"]
+[ext_resource type="AudioStream" path="res://resources/audio/capoo_mage_fireball_impact.wav" id="7_mage_audio"]
 
 [sub_resource type="QuadMesh" id="QuadMesh_base"]
 size = Vector2(96, 96)
@@ -25,6 +28,26 @@ use_custom_data = true
 visible_instance_count = 0
 mesh = SubResource("QuadMesh_emission")
 
+[sub_resource type="QuadMesh" id="QuadMesh_mage_base"]
+size = Vector2(29.44, 29.44)
+
+[sub_resource type="MultiMesh" id="MultiMesh_mage_base"]
+resource_local_to_scene = true
+transform_format = 0
+use_custom_data = true
+visible_instance_count = 0
+mesh = SubResource("QuadMesh_mage_base")
+
+[sub_resource type="QuadMesh" id="QuadMesh_mage_emission"]
+size = Vector2(29.44, 29.44)
+
+[sub_resource type="MultiMesh" id="MultiMesh_mage_emission"]
+resource_local_to_scene = true
+transform_format = 0
+use_custom_data = true
+visible_instance_count = 0
+mesh = SubResource("QuadMesh_mage_emission")
+
 [node name="ExplosionPresentationService" type="Node2D"]
 z_index = 5
 script = ExtResource("1_script")
@@ -36,6 +59,14 @@ multimesh = SubResource("MultiMesh_base")
 [node name="ExplosionEmission" type="MultiMeshInstance2D" parent="."]
 material = ExtResource("3_emission")
 multimesh = SubResource("MultiMesh_emission")
+
+[node name="MageImpactBase" type="MultiMeshInstance2D" parent="."]
+material = ExtResource("5_mage_base")
+multimesh = SubResource("MultiMesh_mage_base")
+
+[node name="MageImpactEmission" type="MultiMeshInstance2D" parent="."]
+material = ExtResource("6_mage_emission")
+multimesh = SubResource("MultiMesh_mage_emission")
 
 [node name="AudioVoices" type="Node2D" parent="."]
 
@@ -68,3 +99,41 @@ volume_db = -9.0
 bus = &"SFX"
 stream = ExtResource("4_audio")
 volume_db = -9.0
+
+[node name="MageAudioVoices" type="Node2D" parent="."]
+
+[node name="MageImpactVoice01" type="AudioStreamPlayer2D" parent="MageAudioVoices"]
+bus = &"SFX"
+stream = ExtResource("7_mage_audio")
+volume_db = -7.0
+max_distance = 220.0
+
+[node name="MageImpactVoice02" type="AudioStreamPlayer2D" parent="MageAudioVoices"]
+bus = &"SFX"
+stream = ExtResource("7_mage_audio")
+volume_db = -7.0
+max_distance = 220.0
+
+[node name="MageImpactVoice03" type="AudioStreamPlayer2D" parent="MageAudioVoices"]
+bus = &"SFX"
+stream = ExtResource("7_mage_audio")
+volume_db = -7.0
+max_distance = 220.0
+
+[node name="MageImpactVoice04" type="AudioStreamPlayer2D" parent="MageAudioVoices"]
+bus = &"SFX"
+stream = ExtResource("7_mage_audio")
+volume_db = -7.0
+max_distance = 220.0
+
+[node name="MageImpactVoice05" type="AudioStreamPlayer2D" parent="MageAudioVoices"]
+bus = &"SFX"
+stream = ExtResource("7_mage_audio")
+volume_db = -7.0
+max_distance = 220.0
+
+[node name="MageImpactVoice06" type="AudioStreamPlayer2D" parent="MageAudioVoices"]
+bus = &"SFX"
+stream = ExtResource("7_mage_audio")
+volume_db = -7.0
+max_distance = 220.0

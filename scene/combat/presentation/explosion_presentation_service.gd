@@ -14,28 +14,41 @@ const NIGHT_VFX_FLASH_POOL := preload(
 enum Profile {
 	INVALID,
 	CAPOO_RPG,
+	CAPOO_MAGE,
 }
 
 const VISUAL_CAPACITY := 96
+const TOTAL_VISUAL_SLOT_CAPACITY := VISUAL_CAPACITY * 2
 const PENDING_CAPACITY := 2048
 const AUDIO_VOICE_CAPACITY := 6
 const EXPLOSION_FRAME_COUNT := 8
 const EXPLOSION_FPS := 14.0
 const EXPLOSION_DURATION_SECONDS := float(EXPLOSION_FRAME_COUNT) / EXPLOSION_FPS
+const MAGE_IMPACT_FRAME_COUNT := 6
+const MAGE_IMPACT_FPS := 32.0
+const MAGE_IMPACT_DURATION_SECONDS := (
+	float(MAGE_IMPACT_FRAME_COUNT) / MAGE_IMPACT_FPS
+)
 const VISIBILITY_MARGIN := 64.0
 const BASE_AUDIO_VOLUME_DB := -9.0
+const MAGE_AUDIO_VOLUME_DB := -7.0
 
 @onready var base_instances: MultiMeshInstance2D = $ExplosionBase
 @onready var emission_instances: MultiMeshInstance2D = $ExplosionEmission
 @onready var _audio_voices_root: Node2D = $AudioVoices
+@onready var mage_base_instances: MultiMeshInstance2D = $MageImpactBase
+@onready var mage_emission_instances: MultiMeshInstance2D = $MageImpactEmission
+@onready var _mage_audio_voices_root: Node2D = $MageAudioVoices
 
 var _combat_runtime: CombatRuntimeBase = null
 var _enemy_simulation_coordinator: EnemySimulationCoordinator = null
-var _audio_voices: Array[AudioStreamPlayer2D] = []
+var _rpg_audio_voices: Array[AudioStreamPlayer2D] = []
+var _mage_audio_voices: Array[AudioStreamPlayer2D] = []
 var _slot_active := PackedByteArray()
 var _slot_profiles := PackedInt32Array()
 var _slot_positions := PackedVector2Array()
 var _slot_ages := PackedFloat32Array()
+var _active_profile_counts := PackedInt32Array()
 var _pending_profiles := PackedInt32Array()
 var _pending_positions := PackedVector2Array()
 var _pending_elapsed_seconds := PackedFloat32Array()
@@ -43,6 +56,8 @@ var _pending_count := 0
 var _headless_disabled := false
 var _teardown_prepared := false
 var _last_visible_count := 0
+var _last_rpg_visible_count := 0
+var _last_mage_visible_count := 0
 var _last_offscreen_omissions := 0
 var _metric_queue_requests := 0
 var _metric_queue_rejections := 0
@@ -66,10 +81,11 @@ var _metric_teardown_count := 0
 
 func _init() -> void:
 	_headless_disabled = DisplayServer.get_name() == "headless"
-	_slot_active.resize(VISUAL_CAPACITY)
-	_slot_profiles.resize(VISUAL_CAPACITY)
-	_slot_positions.resize(VISUAL_CAPACITY)
-	_slot_ages.resize(VISUAL_CAPACITY)
+	_slot_active.resize(TOTAL_VISUAL_SLOT_CAPACITY)
+	_slot_profiles.resize(TOTAL_VISUAL_SLOT_CAPACITY)
+	_slot_positions.resize(TOTAL_VISUAL_SLOT_CAPACITY)
+	_slot_ages.resize(TOTAL_VISUAL_SLOT_CAPACITY)
+	_active_profile_counts.resize(Profile.CAPOO_MAGE + 1)
 	_pending_profiles.resize(PENDING_CAPACITY)
 	_pending_positions.resize(PENDING_CAPACITY)
 	_pending_elapsed_seconds.resize(PENDING_CAPACITY)
@@ -126,7 +142,7 @@ func queue_explosion(
 	_metric_queue_requests += 1
 	if (
 		_teardown_prepared
-		or profile != Profile.CAPOO_RPG
+		or (profile != Profile.CAPOO_RPG and profile != Profile.CAPOO_MAGE)
 		or not world_position.is_finite()
 		or not is_finite(elapsed_seconds)
 	):
@@ -167,6 +183,7 @@ func prepare_for_runtime_teardown() -> void:
 	_metric_teardown_count += 1
 	_pending_count = 0
 	_slot_active.fill(0)
+	_active_profile_counts.fill(0)
 	_stop_all_audio()
 	_combat_runtime = null
 	_enemy_simulation_coordinator = null
@@ -182,13 +199,24 @@ func get_metrics() -> Dictionary:
 		"pending_capacity": PENDING_CAPACITY,
 		"pending_capacity_drops": _metric_pending_capacity_drops,
 		"flushes": _metric_flushes,
-		"draw_family_count": 2,
+		"draw_family_count": 4,
 		"visual_capacity": VISUAL_CAPACITY,
+		"total_visual_slot_capacity": TOTAL_VISUAL_SLOT_CAPACITY,
 		"effective_visual_capacity": 0 if _headless_disabled else VISUAL_CAPACITY,
-		"authored_audio_voice_capacity": _audio_voices.size(),
-		"effective_audio_voice_capacity": 0 if _headless_disabled else _audio_voices.size(),
+		"authored_audio_voice_capacity": (
+			_rpg_audio_voices.size() + _mage_audio_voices.size()
+		),
+		"authored_rpg_audio_voice_capacity": _rpg_audio_voices.size(),
+		"authored_mage_audio_voice_capacity": _mage_audio_voices.size(),
+		"effective_audio_voice_capacity": (
+			0
+			if _headless_disabled
+			else _rpg_audio_voices.size() + _mage_audio_voices.size()
+		),
 		"active_visuals": _count_active_visuals(),
 		"visible_visuals": _last_visible_count,
+		"visible_rpg_visuals": _last_rpg_visible_count,
+		"visible_mage_visuals": _last_mage_visible_count,
 		"last_offscreen_omissions": _last_offscreen_omissions,
 		"peak_active_visuals": _metric_peak_active_visuals,
 		"active_audio_voices": _count_active_audio_voices(),
@@ -206,6 +234,12 @@ func get_metrics() -> Dictionary:
 		"light_accepts": _metric_light_accepts,
 		"allocated_base_instances": _instance_count(_get_base_multimesh()),
 		"allocated_emission_instances": _instance_count(_get_emission_multimesh()),
+		"allocated_mage_base_instances": _instance_count(
+			_get_mage_base_multimesh()
+		),
+		"allocated_mage_emission_instances": _instance_count(
+			_get_mage_emission_multimesh()
+		),
 		"headless_disabled": _headless_disabled,
 		"teardown_prepared": _teardown_prepared,
 		"teardown_count": _metric_teardown_count,
@@ -215,19 +249,24 @@ func get_metrics() -> Dictionary:
 func _advance_visual_slots(delta: float) -> void:
 	if delta <= 0.0:
 		return
-	for slot in range(VISUAL_CAPACITY):
+	for slot in range(TOTAL_VISUAL_SLOT_CAPACITY):
 		if _slot_active[slot] == 0:
 			continue
 		_slot_ages[slot] += delta
-		if _slot_ages[slot] >= EXPLOSION_DURATION_SECONDS:
+		if _slot_ages[slot] >= _get_profile_duration(_slot_profiles[slot]):
+			var profile := int(_slot_profiles[slot])
 			_slot_active[slot] = 0
+			_active_profile_counts[profile] = maxi(
+				int(_active_profile_counts[profile]) - 1,
+				0
+			)
 			_metric_visual_completions += 1
 
 
 func _consume_pending_requests() -> void:
 	for request_index in range(_pending_count):
 		var elapsed := float(_pending_elapsed_seconds[request_index])
-		if elapsed >= EXPLOSION_DURATION_SECONDS:
+		if elapsed >= _get_profile_duration(_pending_profiles[request_index]):
 			_metric_expired_omissions += 1
 			continue
 		var position := _pending_positions[request_index]
@@ -236,17 +275,18 @@ func _consume_pending_requests() -> void:
 		):
 			_metric_offscreen_omissions += 1
 			continue
-		var slot := _find_free_slot()
+		var slot := _find_free_slot(_pending_profiles[request_index])
 		if slot < 0:
 			_metric_visual_capacity_drops += 1
 			continue
 		_slot_active[slot] = 1
 		_slot_profiles[slot] = _pending_profiles[request_index]
+		_active_profile_counts[_pending_profiles[request_index]] += 1
 		_slot_positions[slot] = position
 		_slot_ages[slot] = elapsed
 		_metric_visual_starts += 1
-		_start_audio_voice(position, elapsed)
-		_request_night_flash(position, elapsed)
+		_start_audio_voice(_pending_profiles[request_index], position, elapsed)
+		_request_night_flash(_pending_profiles[request_index], position, elapsed)
 	_metric_peak_active_visuals = maxi(
 		_metric_peak_active_visuals, _count_active_visuals()
 	)
@@ -255,12 +295,21 @@ func _consume_pending_requests() -> void:
 func _rebuild_multimeshes() -> void:
 	var base := _get_base_multimesh()
 	var emission := _get_emission_multimesh()
-	if base == null or emission == null:
+	var mage_base := _get_mage_base_multimesh()
+	var mage_emission := _get_mage_emission_multimesh()
+	if (
+		base == null
+		or emission == null
+		or mage_base == null
+		or mage_emission == null
+	):
 		_clear_visible_prefixes()
 		return
 	_last_visible_count = 0
+	_last_rpg_visible_count = 0
+	_last_mage_visible_count = 0
 	_last_offscreen_omissions = 0
-	for slot in range(VISUAL_CAPACITY):
+	for slot in range(TOTAL_VISUAL_SLOT_CAPACITY):
 		if _slot_active[slot] == 0:
 			continue
 		var position := _slot_positions[slot]
@@ -269,51 +318,84 @@ func _rebuild_multimeshes() -> void:
 		):
 			_last_offscreen_omissions += 1
 			continue
-		var draw_slot := _last_visible_count
+		var profile := int(_slot_profiles[slot]) as Profile
+		var draw_slot := (
+			_last_mage_visible_count
+			if profile == Profile.CAPOO_MAGE
+			else _last_rpg_visible_count
+		)
 		var transform := Transform2D(0.0, to_local(position))
+		var frame_count := _get_profile_frame_count(profile)
 		var frame := clampi(
-			floori(float(_slot_ages[slot]) * EXPLOSION_FPS),
+			floori(float(_slot_ages[slot]) * _get_profile_fps(profile)),
 			0,
-			EXPLOSION_FRAME_COUNT - 1
+			frame_count - 1
 		)
 		var custom := Color(
-			(float(frame) + 0.5) / float(EXPLOSION_FRAME_COUNT),
+			(float(frame) + 0.5) / float(frame_count),
 			0.0, 0.0, 1.0
 		)
-		base.set_instance_transform_2d(draw_slot, transform)
-		emission.set_instance_transform_2d(draw_slot, transform)
-		base.set_instance_custom_data(draw_slot, custom)
-		emission.set_instance_custom_data(draw_slot, custom)
+		if profile == Profile.CAPOO_MAGE:
+			mage_base.set_instance_transform_2d(draw_slot, transform)
+			mage_emission.set_instance_transform_2d(draw_slot, transform)
+			mage_base.set_instance_custom_data(draw_slot, custom)
+			mage_emission.set_instance_custom_data(draw_slot, custom)
+			_last_mage_visible_count += 1
+		else:
+			base.set_instance_transform_2d(draw_slot, transform)
+			emission.set_instance_transform_2d(draw_slot, transform)
+			base.set_instance_custom_data(draw_slot, custom)
+			emission.set_instance_custom_data(draw_slot, custom)
+			_last_rpg_visible_count += 1
 		_last_visible_count += 1
-	base.visible_instance_count = _last_visible_count
-	emission.visible_instance_count = _last_visible_count
+	base.visible_instance_count = _last_rpg_visible_count
+	emission.visible_instance_count = _last_rpg_visible_count
+	mage_base.visible_instance_count = _last_mage_visible_count
+	mage_emission.visible_instance_count = _last_mage_visible_count
 	_metric_visual_writes += _last_visible_count * 2
 
 
-func _find_free_slot() -> int:
-	for slot in range(VISUAL_CAPACITY):
+func _find_free_slot(profile: int) -> int:
+	if int(_active_profile_counts[profile]) >= VISUAL_CAPACITY:
+		return -1
+	for slot in range(TOTAL_VISUAL_SLOT_CAPACITY):
 		if _slot_active[slot] == 0:
 			return slot
 	return -1
 
 
 func _collect_authored_audio() -> void:
-	_audio_voices.clear()
+	_rpg_audio_voices.clear()
 	for child in _audio_voices_root.get_children():
 		var voice := child as AudioStreamPlayer2D
 		if voice != null:
-			_audio_voices.append(voice)
+			_rpg_audio_voices.append(voice)
+	_mage_audio_voices.clear()
+	for child in _mage_audio_voices_root.get_children():
+		var voice := child as AudioStreamPlayer2D
+		if voice != null:
+			_mage_audio_voices.append(voice)
 
 
-func _start_audio_voice(position: Vector2, elapsed: float) -> void:
+func _start_audio_voice(profile: int, position: Vector2, elapsed: float) -> void:
 	_metric_audio_attempts += 1
-	for voice in _audio_voices:
+	var voices := (
+		_mage_audio_voices
+		if profile == Profile.CAPOO_MAGE
+		else _rpg_audio_voices
+	)
+	var volume_db := (
+		MAGE_AUDIO_VOLUME_DB
+		if profile == Profile.CAPOO_MAGE
+		else BASE_AUDIO_VOLUME_DB
+	)
+	for voice in voices:
 		if voice.playing:
 			continue
 		if voice.stream == null or elapsed >= voice.stream.get_length():
 			return
 		voice.global_position = position
-		voice.volume_db = BASE_AUDIO_VOLUME_DB
+		voice.volume_db = volume_db
 		EXPLOSION_AUDIO_LIMITER.play(voice, self)
 		if voice.playing:
 			if elapsed > 0.0:
@@ -323,19 +405,34 @@ func _start_audio_voice(position: Vector2, elapsed: float) -> void:
 	_metric_audio_capacity_drops += 1
 
 
-func _request_night_flash(position: Vector2, elapsed: float) -> void:
+func _request_night_flash(
+	profile: int,
+	position: Vector2,
+	elapsed: float
+) -> void:
 	_metric_light_requests += 1
-	if NIGHT_VFX_FLASH_POOL.request_from(
-		self, position, Color(1.0, 0.56, 0.22, 1.0),
-		1.08, 0.82, 0.04, 0.06, 0.30, 2, elapsed
-	):
+	var accepted := false
+	if profile == Profile.CAPOO_MAGE:
+		accepted = NIGHT_VFX_FLASH_POOL.request_from(
+			self, position, Color(1.0, 0.56, 0.24, 1.0),
+			0.78, 0.34, 0.025, 0.035, 0.18, 1, elapsed
+		)
+	else:
+		accepted = NIGHT_VFX_FLASH_POOL.request_from(
+			self, position, Color(1.0, 0.56, 0.22, 1.0),
+			1.08, 0.82, 0.04, 0.06, 0.30, 2, elapsed
+		)
+	if accepted:
 		_metric_light_accepts += 1
 
 
 func _stop_all_audio() -> void:
-	for voice in _audio_voices:
+	for voice in _rpg_audio_voices:
 		EXPLOSION_AUDIO_LIMITER.stop(voice)
 		voice.volume_db = BASE_AUDIO_VOLUME_DB
+	for voice in _mage_audio_voices:
+		EXPLOSION_AUDIO_LIMITER.stop(voice)
+		voice.volume_db = MAGE_AUDIO_VOLUME_DB
 
 
 func _count_active_visuals() -> int:
@@ -348,7 +445,10 @@ func _count_active_visuals() -> int:
 
 func _count_active_audio_voices() -> int:
 	var count := 0
-	for voice in _audio_voices:
+	for voice in _rpg_audio_voices:
+		if voice.playing:
+			count += 1
+	for voice in _mage_audio_voices:
 		if voice.playing:
 			count += 1
 	return count
@@ -359,6 +459,8 @@ func _clear_visible_prefixes() -> void:
 		if multimesh != null:
 			multimesh.visible_instance_count = 0
 	_last_visible_count = 0
+	_last_rpg_visible_count = 0
+	_last_mage_visible_count = 0
 
 
 func _disable_visual_storage() -> void:
@@ -367,10 +469,17 @@ func _disable_visual_storage() -> void:
 			multimesh.visible_instance_count = 0
 			multimesh.instance_count = 0
 	_last_visible_count = 0
+	_last_rpg_visible_count = 0
+	_last_mage_visible_count = 0
 
 
 func _get_multimeshes() -> Array[MultiMesh]:
-	return [_get_base_multimesh(), _get_emission_multimesh()]
+	return [
+		_get_base_multimesh(),
+		_get_emission_multimesh(),
+		_get_mage_base_multimesh(),
+		_get_mage_emission_multimesh(),
+	]
 
 
 func _get_base_multimesh() -> MultiMesh:
@@ -381,6 +490,36 @@ func _get_base_multimesh() -> MultiMesh:
 func _get_emission_multimesh() -> MultiMesh:
 	var node := get_node_or_null("ExplosionEmission") as MultiMeshInstance2D
 	return node.multimesh if node != null else null
+
+
+func _get_mage_base_multimesh() -> MultiMesh:
+	var node := get_node_or_null("MageImpactBase") as MultiMeshInstance2D
+	return node.multimesh if node != null else null
+
+
+func _get_mage_emission_multimesh() -> MultiMesh:
+	var node := get_node_or_null("MageImpactEmission") as MultiMeshInstance2D
+	return node.multimesh if node != null else null
+
+
+static func _get_profile_duration(profile: int) -> float:
+	return (
+		MAGE_IMPACT_DURATION_SECONDS
+		if profile == Profile.CAPOO_MAGE
+		else EXPLOSION_DURATION_SECONDS
+	)
+
+
+static func _get_profile_frame_count(profile: int) -> int:
+	return (
+		MAGE_IMPACT_FRAME_COUNT
+		if profile == Profile.CAPOO_MAGE
+		else EXPLOSION_FRAME_COUNT
+	)
+
+
+static func _get_profile_fps(profile: int) -> float:
+	return MAGE_IMPACT_FPS if profile == Profile.CAPOO_MAGE else EXPLOSION_FPS
 
 
 static func _is_valid_authored_multimesh(multimesh: MultiMesh) -> bool:

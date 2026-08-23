@@ -364,7 +364,7 @@ func _validate(
 		"The presentation phase must queue 300 requests and flush exactly once."
 	)
 	_expect(
-		int(presentation_result["draw_family_count"]) == 2
+		int(presentation_result["draw_family_count"]) == 4
 		and int(presentation_result["visual_capacity"]) == 96
 		and int(presentation_result["active_flash_count"]) <= 8
 		and int(presentation_result["active_audio_count"]) <= 6,
@@ -404,7 +404,7 @@ func _validate(
 		"All workload counts must come from accepted DamageRequest sink results."
 	)
 	_expect(
-		int(full_result["draw_family_count"]) == 2
+		int(full_result["draw_family_count"]) == 4
 		and int(full_result["visual_capacity"]) == 96
 		and int(full_result["active_flash_count"]) <= 8
 		and int(full_result["active_audio_count"]) <= 6,

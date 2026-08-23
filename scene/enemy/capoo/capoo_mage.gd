@@ -5,6 +5,9 @@ const MageConfig := preload("res://resources/config/enemies/capoo_mage_config.gd
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
+const CapooMageFireballSimulationServiceScript := preload(
+	"res://scene/combat/simulation/capoo_mage_fireball_simulation_service.gd"
+)
 
 enum CombatState {
 	CHASE,
@@ -117,7 +120,7 @@ func _update_attack_cooldown(delta: float) -> void:
 
 func _try_start_windup(candidate_target: Node2D = null) -> bool:
 	var mage_config := config as MageConfig
-	if mage_config == null or mage_config.projectile_scene == null:
+	if mage_config == null:
 		return false
 	if attack_cooldown_left > 0.0:
 		return false
@@ -219,69 +222,86 @@ func _update_fire(delta: float) -> void:
 
 func _fire_fireball() -> bool:
 	var mage_config := config as MageConfig
-	if mage_config == null or mage_config.projectile_scene == null:
+	if mage_config == null:
 		return false
 
 	if (
 		combat_runtime == null
 		or not is_instance_valid(combat_runtime)
-		or gameplay_gateway == null
-		or not is_instance_valid(gameplay_gateway)
 	):
 		return false
-	var spawn_parent: Node = combat_runtime
-	var fireball: CapooMageFireball = null
-	if combat_runtime.has_session_object_pool_scene(mage_config.projectile_scene):
-		fireball = combat_runtime.acquire_session_object(
-			mage_config.projectile_scene,
-			false
-		) as CapooMageFireball
-	else:
-		fireball = mage_config.projectile_scene.instantiate() as CapooMageFireball
-	if fireball == null:
-		push_warning("Mage Capoo projectile scene must instantiate CapooMageFireball.")
+	var fireball_service := _get_capoo_mage_fireball_simulation_service()
+	if fireball_service == null:
 		return false
 
 	var outgoing_damage := get_effective_attack_damage(mage_config.attack_damage)
-	fireball.bind_gameplay_context(combat_runtime, gameplay_gateway)
-	fireball.top_level = true
-	fireball.setup(
-		fire_direction,
+	var safe_direction := (
+		fire_direction.normalized()
+		if fire_direction != Vector2.ZERO
+		else Vector2.RIGHT
+	)
+	var spawn_position := (
+		global_position + safe_direction * mage_config.projectile_spawn_distance
+	)
+	var source_snapshot := create_damage_source_snapshot(
+		0,
+		&"capoo_mage_fireball"
+	)
+	var handle := fireball_service.spawn_authoritative(
+		spawn_position,
+		safe_direction,
 		outgoing_damage,
 		mage_config.projectile_speed,
 		mage_config.projectile_lifetime,
 		mage_config.fireball_radius,
 		attack_target,
 		mage_config.fireball_homing_turn_rate,
-		create_damage_source_snapshot(0, &"capoo_mage_fireball")
+		source_snapshot
 	)
-	if fireball.get_parent() == null:
-		spawn_parent.add_child(fireball)
-	elif fireball.get_parent() != spawn_parent:
-		fireball.reparent(spawn_parent)
-	fireball.global_position = global_position + fire_direction * mage_config.projectile_spawn_distance
-	fireball.reset_physics_interpolation()
+	if handle <= CapooMageFireballSimulationServiceScript.INVALID_HANDLE:
+		return false
+	if (
+		combat_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		return true
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
+		fireball_service.release(handle)
+		return false
 	var target_peer_id := 0
 	var target_world_net_id := 0
 	var player_target := attack_target as Player
 	if player_target != null:
 		target_peer_id = player_target.peer_id
-	else:
+	elif attack_target != null and is_instance_valid(attack_target):
 		target_world_net_id = int(attack_target.get_meta(&"net_id", 0))
-	gameplay_gateway.register_local_projectile(
-		fireball,
+	var projectile_id := gameplay_gateway.register_local_capoo_mage_fireball_data(
+		fireball_service,
+		handle,
 		&"capoo_mage_fireball",
 		0,
-		fireball.global_position,
-		fire_direction,
+		spawn_position,
+		safe_direction,
 		outgoing_damage,
 		mage_config.projectile_speed,
 		mage_config.projectile_lifetime,
-		false,
 		target_peer_id,
-		target_world_net_id
+		target_world_net_id,
+		source_snapshot
 	)
+	if projectile_id <= 0:
+		fireball_service.release(handle)
+		return false
 	return true
+
+
+func _get_capoo_mage_fireball_simulation_service() -> CapooMageFireballSimulationServiceScript:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
+		return null
+	var combat_services := combat_runtime.get_enemy_combat_services()
+	if combat_services == null:
+		return null
+	return combat_services.get_capoo_mage_fireball_simulation_service()
 
 
 func _finish_fire() -> void:

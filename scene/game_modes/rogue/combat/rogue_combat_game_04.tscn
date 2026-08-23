@@ -18,7 +18,6 @@
 [ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="14_settings"]
 [ext_resource type="PackedScene" path="res://scene/ui/shared/debug/debug_collectible_window.tscn" id="15_debug_collectibles"]
 [ext_resource type="Script" uid="uid://i1yhvo6yryuc" path="res://scene/combat/feedback/damage_number_pool.gd" id="16_damage_pool"]
-[ext_resource type="Script" uid="uid://dfuccjc7ww0jj" path="res://scene/enemy/capoo/capoo_sniper_lock_visual_coordinator.gd" id="17_sniper_visuals"]
 [ext_resource type="Script" uid="uid://c53fvlhqiuysa" path="res://scene/combat/pooling/session_object_pool.gd" id="18_session_pool"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo/capoo_projectile_motion_system.tscn" id="19_capoo_motion"]
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="20_drone_motion"]
@@ -118,9 +117,6 @@ layer = 30
 [node name="DamageNumberPool" type="Node2D" parent="." unique_id=1800111746]
 z_index = 100
 script = ExtResource("16_damage_pool")
-
-[node name="SniperLockVisualCoordinator" type="Node" parent="." unique_id=651914644]
-script = ExtResource("17_sniper_visuals")
 
 [node name="SessionObjectPool" type="Node2D" parent="." unique_id=701337171]
 script = ExtResource("18_session_pool")

@@ -18,9 +18,6 @@ const COMBAT_ROBOT_SUICIDE_DRONE_ELITE_POOL_SCENE := preload(
 const CAPOO_SMG_BULLET_POOL_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn"
 )
-const CAPOO_MAGE_FIREBALL_POOL_SCENE := preload(
-	"res://scene/enemy/capoo/capoo_mage_fireball.tscn"
-)
 const FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE := preload(
 	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
 )
@@ -361,7 +358,6 @@ func _ready() -> void:
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_ELITE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
-	session_object_pool.register_scene(CAPOO_MAGE_FIREBALL_POOL_SCENE, 12, 96)
 	session_object_pool.register_scene(
 		FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE,
 		48,
@@ -373,11 +369,6 @@ func _ready() -> void:
 		704
 	)
 	session_object_pool.register_scene(FROST_SORCERER_ICE_SPIKE_POOL_SCENE, 48, 704)
-	CombatRuntimeBase.register_capoo_mage_fireball_impact_pool(
-		session_object_pool,
-		12,
-		24
-	)
 	session_object_pool.register_scene(YUANSHI_FIRE_PROJECTILE_POOL_SCENE, 24, 192)
 	session_object_pool.register_scene(COLLECTIBLE_ARROW_POOL_SCENE, 24, 192)
 	session_object_pool.register_scene(COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE, 8, 64)
