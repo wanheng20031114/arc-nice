@@ -199,9 +199,11 @@ func sync_from_service(
 		if handle <= RapidFireSimulationServiceScript.INVALID_HANDLE:
 			continue
 		_last_scanned_count += 1
+		var mode := service.get_slot_mode(handle)
 		if (
-			service.get_slot_mode(handle)
-			!= RapidFireSimulationServiceScript.Mode.DATA
+			not _is_presentable_mode(mode)
+			or service.get_slot_state(handle)
+			!= RapidFireSimulationServiceScript.SlotState.ACTIVE
 		):
 			_last_culled_count += 1
 			continue
@@ -258,14 +260,18 @@ func sync_from_service(
 			write_index,
 			build_instance_transform(local_position, local_direction)
 		)
-		var age_physics_frames := maxi(
-			physics_frame - service.get_spawn_physics_frame(handle),
-			0
+		var age_seconds := (
+			service.get_replica_active_age_seconds(handle)
+			if mode == RapidFireSimulationServiceScript.Mode.REPLICA
+			else float(maxi(
+				physics_frame - service.get_spawn_physics_frame(handle),
+				0
+			)) / physics_ticks_per_second
 		)
 		target_multimesh.set_instance_custom_data(
 			write_index,
 			Color(
-				float(age_physics_frames) / physics_ticks_per_second,
+				age_seconds,
 				0.0,
 				0.0,
 				1.0
@@ -312,7 +318,10 @@ func queue_completion_hit(
 	if (
 		_is_headless_display()
 		or _teardown_prepared
-		or mode != RapidFireSimulationServiceScript.Mode.DATA
+		or (
+			mode != RapidFireSimulationServiceScript.Mode.DATA
+			and mode != RapidFireSimulationServiceScript.Mode.REPLICA
+		)
 		or not _is_supported_profile(profile)
 		or (
 			reason != RapidFireSimulationServiceScript.CompletionReason.WORLD
@@ -554,8 +563,9 @@ static func count_presentable_projectiles_for_profile_and_view(
 			handle <= RapidFireSimulationServiceScript.INVALID_HANDLE
 			or service.get_slot_profile(handle)
 			!= profile
-			or service.get_slot_mode(handle)
-			!= RapidFireSimulationServiceScript.Mode.DATA
+			or not _is_presentable_mode(service.get_slot_mode(handle))
+			or service.get_slot_state(handle)
+			!= RapidFireSimulationServiceScript.SlotState.ACTIVE
 			or not is_world_position_visible(
 				service.get_position(handle),
 				expanded_view_rect
@@ -736,6 +746,15 @@ static func _is_supported_profile(
 		profile == RapidFireSimulationServiceScript.Profile.AK
 		or profile == RapidFireSimulationServiceScript.Profile.GUNNER
 		or profile == RapidFireSimulationServiceScript.Profile.GUNNER_ELITE
+	)
+
+
+static func _is_presentable_mode(
+	mode: RapidFireSimulationServiceScript.Mode
+) -> bool:
+	return (
+		mode == RapidFireSimulationServiceScript.Mode.DATA
+		or mode == RapidFireSimulationServiceScript.Mode.REPLICA
 	)
 
 

@@ -1698,6 +1698,18 @@ func configure_multiplayer_proxy() -> void:
 	_ensure_multiplayer_proxy_move_animation()
 
 
+## Visual-only rapid-fire replicas ask their authored source for the muzzle
+## position at the scheduled fire instant. The default preserves the encoded
+## fallback; moving ranged families override this without granting clients any
+## collision or damage authority.
+func resolve_multiplayer_rapid_fire_spawn_position(
+	_profile: int,
+	_direction: Vector2,
+	fallback_position: Vector2
+) -> Vector2:
+	return fallback_position
+
+
 func _refresh_projectile_motion_system() -> void:
 	projectile_motion_system = null
 	if combat_runtime == null or not is_instance_valid(combat_runtime):

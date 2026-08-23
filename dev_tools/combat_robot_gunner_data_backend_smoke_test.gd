@@ -21,6 +21,9 @@ const GUNNER_ELITE_BULLET_SCENE := preload(
 const ENEMY_SIMULATION_COORDINATOR_SCENE := preload(
 	"res://scene/combat/simulation/enemy_simulation_coordinator.tscn"
 )
+const RAPID_FIRE_CODEC := preload(
+	"res://scene/multiplayer/projectile/enemy_rapid_fire_network_codec.gd"
+)
 const FIXED_SEED := 8242026
 const SOURCE_ENEMY_ID := 731
 const WORLD_COLLISION_LAYER := 1
@@ -32,6 +35,8 @@ class CapturingGateway:
 	var next_projectile_id := 9101
 	var legacy_shots: Array[Dictionary] = []
 	var data_shots: Array[Dictionary] = []
+	var burst_descriptors: Array[PackedByteArray] = []
+	var released_reservations := PackedInt64Array()
 	var enemy_actions: Array[Dictionary] = []
 	var reject_data_registration := false
 
@@ -114,6 +119,57 @@ class CapturingGateway:
 		return projectile_id
 
 
+	func reserve_enemy_rapid_fire_projectile_ids(
+		count: int
+	) -> PackedInt64Array:
+		var ids := PackedInt64Array()
+		for _shot_index in range(count):
+			ids.append(next_projectile_id)
+			next_projectile_id += 1
+		return ids
+
+
+	func release_enemy_rapid_fire_projectile_ids(
+		projectile_ids: PackedInt64Array
+	) -> bool:
+		released_reservations.append_array(projectile_ids)
+		return true
+
+
+	func attach_reserved_enemy_rapid_fire_projectile(
+		service: RapidFireSimulationService,
+		handle: int,
+		projectile_id: int,
+		projectile_type: StringName,
+		_owner_peer_id: int,
+		damage: int,
+		lifetime: float,
+		damage_source_snapshot: DamageSourceSnapshot = null
+	) -> bool:
+		if reject_data_registration:
+			return false
+		if not service.assign_projectile_identity(handle, projectile_id):
+			return false
+		data_shots.append({
+			"projectile_id": projectile_id,
+			"projectile_type": projectile_type,
+			"spawn_position": service.get_position(handle),
+			"direction": service.get_direction(handle),
+			"damage": damage,
+			"lifetime": lifetime,
+			"damage_source_snapshot": damage_source_snapshot,
+			"payload_size": 0,
+		})
+		return true
+
+
+	func broadcast_enemy_rapid_fire_burst(
+		descriptor: PackedByteArray
+	) -> bool:
+		burst_descriptors.append(descriptor)
+		return true
+
+
 	func broadcast_enemy_action(
 		net_id: int,
 		action_name: StringName,
@@ -191,6 +247,7 @@ func _test_fixed_seed_backend_parity(
 	var legacy_shots := legacy_result.get("shots", []) as Array
 	var data_shots := data_result.get("shots", []) as Array
 	var data_records := data_result.get("data_records", []) as Array
+	var data_descriptors := data_result.get("burst_descriptors", []) as Array
 	_expect(
 		legacy_shots.size() == enemy_config.burst_count
 		and data_shots.size() == enemy_config.burst_count
@@ -214,9 +271,32 @@ func _test_fixed_seed_backend_parity(
 		int(legacy_result.get("action_sequence", -1))
 		== enemy_config.burst_count
 		and int(data_result.get("action_sequence", -1))
-		== enemy_config.burst_count,
-		"%s successful shots must preserve the action sequence." % label
+		== 1,
+		"%s DATA burst must reserve one action id while LEGACY remains per-shot."
+		% label
 	)
+	_expect(
+		data_descriptors.size() == 1,
+		"%s DATA burst must emit one projectile descriptor." % label
+	)
+	var decoded_descriptor := (
+		RAPID_FIRE_CODEC.decode_burst(
+			data_descriptors[0] as PackedByteArray
+		)
+		if data_descriptors.size() == 1
+		else {}
+	)
+	_expect(
+		bool(decoded_descriptor.get("valid", false))
+		and int(decoded_descriptor.get("count", 0)) == enemy_config.burst_count
+		and int(decoded_descriptor.get("source_enemy_id", 0)) == SOURCE_ENEMY_ID
+		and int(decoded_descriptor.get("action_id", 0)) == 1,
+		"%s descriptor must preserve count, source identity and action id." % label
+	)
+	var descriptor_directions := decoded_descriptor.get(
+		"directions",
+		PackedVector2Array()
+	) as PackedVector2Array
 
 	var compare_count := mini(
 		legacy_shots.size(),
@@ -226,12 +306,14 @@ func _test_fixed_seed_backend_parity(
 		var legacy_shot := legacy_shots[shot_index] as Dictionary
 		var data_shot := data_shots[shot_index] as Dictionary
 		var data_record := data_records[shot_index] as Dictionary
+		var source_snapshot := data_shot.get(
+			"damage_source_snapshot"
+		) as DamageSourceSnapshot
 		_expect(
 			legacy_shot.get("projectile_type") == enemy_config.projectile_type
 			and data_shot.get("projectile_type")
-			== enemy_config.projectile_type
-			and int(data_shot.get("payload_size", 0)) == 12,
-			"%s shot %d must retain its projectile type and 12-field RPC."
+			== enemy_config.projectile_type,
+			"%s shot %d must retain its projectile type without per-shot RPC."
 			% [label, shot_index]
 		)
 		_expect(
@@ -245,13 +327,31 @@ func _test_fixed_seed_backend_parity(
 			== int(data_shot.get("damage", -2))
 			and is_equal_approx(
 				float(legacy_shot.get("speed", -1.0)),
-				float(data_shot.get("speed", -2.0))
+				enemy_config.projectile_speed
 			)
 			and is_equal_approx(
 				float(legacy_shot.get("lifetime", -1.0)),
 				float(data_shot.get("lifetime", -2.0))
 			),
 			"%s shot %d fixed-seed spawn, spread, damage, speed and lifetime differ."
+			% [label, shot_index]
+		)
+		_expect(
+			source_snapshot != null
+			and source_snapshot.source_faction_id
+			== CombatRelationService.HOSTILE_WAVE
+			and source_snapshot.instigator_entity_id == SOURCE_ENEMY_ID,
+			"%s shot %d 必须把敌军发射来源快照贯穿批量预留注册。"
+			% [label, shot_index]
+		)
+		_expect(
+			shot_index < descriptor_directions.size()
+			and absf(
+				descriptor_directions[shot_index].angle_to(
+					data_shot.get("direction") as Vector2
+				)
+			) < 0.0002,
+			"%s shot %d descriptor direction must match fixed-seed gameplay RNG."
 			% [label, shot_index]
 		)
 		_expect(
@@ -315,6 +415,7 @@ func _capture_complete_burst(
 		"action_sequence": enemy.action_sequence,
 		"live_nodes": _count_live_gunner_bullets(fixture),
 		"data_records": _collect_data_records(service),
+		"burst_descriptors": gateway.burst_descriptors.duplicate(true),
 	}
 	await _destroy_fixture(fixture)
 	return result
@@ -401,6 +502,7 @@ func _test_data_host_rejection_and_client_boundary() -> void:
 	var service := _get_rapid_service(fixture)
 	gateway.reject_data_registration = true
 	CombatRobotGunner.projectile_backend = CombatRobotGunner.ProjectileBackend.DATA
+	enemy.call(&"_prepare_network_burst")
 	_expect(
 		not bool(enemy.call(&"_fire_locked_bullet"))
 		and gateway.legacy_shots.is_empty()
@@ -442,6 +544,7 @@ func _test_data_muzzle_world_clearance() -> void:
 	wall.global_position = enemy.global_position + Vector2(8.0, 0.0)
 	await physics_frame
 	CombatRobotGunner.projectile_backend = CombatRobotGunner.ProjectileBackend.DATA
+	enemy.call(&"_prepare_network_burst")
 	_expect(
 		bool(enemy.call(&"_fire_locked_bullet"))
 		and gateway.data_shots.size() == 1,
@@ -517,6 +620,7 @@ func _fire_complete_burst(
 	enemy.combat_state = CombatRobotGunner.CombatState.BURST
 	enemy.burst_shots_fired = 0
 	enemy.burst_fire_time_left = 0.0
+	enemy.call(&"_prepare_network_burst")
 	for shot_index in range(enemy_config.burst_count):
 		enemy.call(
 			&"_update_burst",
@@ -558,25 +662,17 @@ func _compare_action_sequences(
 	label: String
 ) -> void:
 	_expect(
-		legacy_actions.size() == data_actions.size()
-		and legacy_actions.size() == GUNNER_CONFIG.burst_count,
-		"%s LEGACY/DATA action counts must match." % label
+		legacy_actions.size() == GUNNER_CONFIG.burst_count
+		and data_actions.is_empty()
+		and 1.0 - 1.0 / float(GUNNER_CONFIG.burst_count * 2) >= 0.8,
+		"%s DATA must fold all per-shot action/projectile RPCs into one burst."
+		% label
 	)
-	for action_index in range(mini(legacy_actions.size(), data_actions.size())):
+	for action_index in range(legacy_actions.size()):
 		var legacy_action := legacy_actions[action_index] as Dictionary
-		var data_action := data_actions[action_index] as Dictionary
 		_expect(
-			legacy_action.get("net_id") == data_action.get("net_id")
-			and legacy_action.get("action_name") == data_action.get("action_name")
-			and (legacy_action.get("direction") as Vector2).is_equal_approx(
-				data_action.get("direction") as Vector2
-			)
-			and (legacy_action.get("action_position") as Vector2).is_equal_approx(
-				data_action.get("action_position") as Vector2
-			)
-			and int(legacy_action.get("action_id", 0)) == action_index + 1
-			and int(data_action.get("action_id", 0)) == action_index + 1,
-			"%s action %d order or payload differs across backends."
+			int(legacy_action.get("action_id", 0)) == action_index + 1,
+			"%s LEGACY action %d order changed during batch migration."
 			% [label, action_index]
 		)
 

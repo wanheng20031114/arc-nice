@@ -195,7 +195,10 @@ extends RefCounted
 ## 射速及 burn/bleed/slow/haste/hide 的晚加入收敛；天依 High Noon 目标列表
 ## 迁入 reliable CH5，与 started/finished/cancelled 保持同信道有序。v92 及更旧
 ## 客户端使用不同玩家快照长度与 RPC 注解，不能与 v93 混联。
-const PROTOCOL_VERSION := 93
+## v94：敌人高频连发改为 CH4 单次编码 burst；终止、迟加入和运行时修复
+## 使用可靠 CH5，确保无碰撞的客户端表现弹最终收敛。
+## 分块视觉快照。v93 及更旧客户端缺少该 RPC 表面和描述符合同，不能与 v94 混联。
+const PROTOCOL_VERSION := 94
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF

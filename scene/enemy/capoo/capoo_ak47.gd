@@ -6,8 +6,9 @@ const CapooConfig := preload("res://resources/config/enemies/capoo_ak47_config.g
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
-
-
+const EnemyRapidFireNetworkCodec := preload(
+	"res://scene/multiplayer/projectile/enemy_rapid_fire_network_codec.gd"
+)
 # Center-first ordering keeps every complete five-agent group at zero mean while
 # spreading the five-physics-tick authored burst cadence across all five phases.
 const ATTACK_PHASE_OFFSETS_PHYSICS_FRAMES: Array[int] = [0, -1, 1, -2, 2]
@@ -52,6 +53,10 @@ var committed_attack_phase_offset_seconds: float = 0.0
 var committed_windup_duration_seconds: float = 0.0
 var local_data_projectile_sequence: int = 0
 var shadow_registration_failures: int = 0
+var network_burst_projectile_ids := PackedInt64Array()
+var network_burst_attached_states := PackedByteArray()
+var network_burst_descriptor := PackedByteArray()
+var network_burst_descriptor_sent := false
 
 
 func supports_dynamic_enemy_targeting() -> bool:
@@ -148,6 +153,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _apply_config() -> void:
+	_release_unused_network_burst_ids()
 	super._apply_config()
 	combat_state = CombatState.CHASE
 	attack_cooldown_left = 0.0
@@ -167,6 +173,7 @@ func _apply_config() -> void:
 
 
 func _die() -> void:
+	_release_unused_network_burst_ids()
 	combat_state = CombatState.CHASE
 	attack_target = null
 	_clear_committed_attack_timing()
@@ -291,7 +298,8 @@ func _start_burst(shoot_direction: Vector2) -> void:
 	_update_facing(burst_shot_direction)
 	_play_config_animation(capoo_config.attack_animation_name)
 	_set_muzzle_heat(1.0, burst_shot_direction)
-	_broadcast_enemy_action(&"burst", burst_shot_direction)
+	if not _prepare_network_burst(capoo_config):
+		_broadcast_enemy_action(&"burst", burst_shot_direction)
 
 
 func _update_burst(delta: float) -> void:
@@ -325,8 +333,8 @@ func _fire_locked_bullet() -> bool:
 		or not is_instance_valid(gameplay_gateway)
 	):
 		return false
-	# Client enemies only replay the action. Their legacy projectile proxy is
-	# created by MpProjectileCoordinator from the Host's existing 12-field RPC.
+	# Client enemies only replay the action. MpProjectileCoordinator rebuilds
+	# visual-only REPLICA rows from the Host burst descriptor.
 	if combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return false
 
@@ -497,26 +505,131 @@ func _fire_data_projectile(capoo_config: CapooConfig) -> bool:
 		combat_runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	):
-		projectile_id = gameplay_gateway.register_local_data_projectile(
+		projectile_id = _attach_network_data_projectile(
 			rapid_fire_service,
 			handle,
-			&"capoo_ak47_bullet",
-			0,
-			spawn_position,
-			safe_direction,
 			outgoing_damage,
-			capoo_config.projectile_speed,
 			capoo_config.projectile_lifetime,
 			launch_source_snapshot
 		)
-		# Identity assignment and network record creation are one operation in
-		# the gateway. Failure releases the inert handle and never falls back to
-		# an Area2D authority backend.
+		# Reserved identity attachment and record creation are one operation.
+		# Failure releases the inert handle and never falls back to Area2D.
 		if projectile_id <= 0:
 			rapid_fire_service.release_projectile(handle)
 			return false
 
 	return true
+
+
+func _prepare_network_burst(capoo_config: CapooConfig) -> bool:
+	_release_unused_network_burst_ids()
+	if (
+		combat_runtime == null
+		or combat_runtime.runtime_mode
+			!= CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		or CapooAK47.projectile_backend != ProjectileBackend.DATA
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
+	):
+		return false
+	var shot_count := maxi(capoo_config.burst_count, 1)
+	network_burst_projectile_ids = (
+		gameplay_gateway.reserve_enemy_rapid_fire_projectile_ids(shot_count)
+	)
+	if network_burst_projectile_ids.size() != shot_count:
+		network_burst_projectile_ids = PackedInt64Array()
+		return false
+	network_burst_attached_states.resize(shot_count)
+	network_burst_attached_states.fill(0)
+	var safe_direction := (
+		burst_shot_direction.normalized()
+		if burst_shot_direction != Vector2.ZERO
+		else Vector2.RIGHT
+	)
+	var directions := PackedVector2Array()
+	directions.resize(shot_count)
+	directions.fill(safe_direction)
+	var spawn_position := (
+		global_position
+		+ safe_direction * capoo_config.projectile_spawn_distance
+	)
+	var batch_action_id := action_sequence + 1
+	network_burst_descriptor = EnemyRapidFireNetworkCodec.encode_burst(
+		RapidFireSimulationService.Profile.AK,
+		batch_action_id,
+		int(network_burst_projectile_ids[0]),
+		_get_stable_source_enemy_id(),
+		global_position,
+		spawn_position,
+		safe_direction,
+		maxf(capoo_config.burst_fire_interval, 0.01),
+		capoo_config.projectile_speed,
+		capoo_config.projectile_lifetime,
+		directions
+	)
+	if network_burst_descriptor.is_empty():
+		_release_unused_network_burst_ids()
+		return false
+	action_sequence = batch_action_id
+	return true
+
+
+func _attach_network_data_projectile(
+	service: RapidFireSimulationService,
+	handle: int,
+	damage: int,
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot
+) -> int:
+	var shot_index := burst_shots_fired
+	if (
+		shot_index < 0
+		or shot_index >= network_burst_projectile_ids.size()
+		or shot_index >= network_burst_attached_states.size()
+		or network_burst_attached_states[shot_index] != 0
+	):
+		return 0
+	var projectile_id := int(network_burst_projectile_ids[shot_index])
+	if not gameplay_gateway.attach_reserved_enemy_rapid_fire_projectile(
+		service,
+		handle,
+		projectile_id,
+		&"capoo_ak47_bullet",
+		0,
+		damage,
+		lifetime,
+		damage_source_snapshot
+	):
+		return 0
+	network_burst_attached_states[shot_index] = 1
+	if not network_burst_descriptor_sent:
+		network_burst_descriptor_sent = (
+			gameplay_gateway.broadcast_enemy_rapid_fire_burst(
+				network_burst_descriptor
+			)
+		)
+	return projectile_id
+
+
+func _release_unused_network_burst_ids() -> void:
+	if (
+		gameplay_gateway != null
+		and is_instance_valid(gameplay_gateway)
+		and not network_burst_projectile_ids.is_empty()
+	):
+		var unused_ids := PackedInt64Array()
+		for projectile_index in range(network_burst_projectile_ids.size()):
+			if (
+				projectile_index >= network_burst_attached_states.size()
+				or network_burst_attached_states[projectile_index] == 0
+			):
+				unused_ids.append(network_burst_projectile_ids[projectile_index])
+		if not unused_ids.is_empty():
+			gameplay_gateway.release_enemy_rapid_fire_projectile_ids(unused_ids)
+	network_burst_projectile_ids = PackedInt64Array()
+	network_burst_attached_states = PackedByteArray()
+	network_burst_descriptor = PackedByteArray()
+	network_burst_descriptor_sent = false
 
 
 func _get_rapid_fire_simulation_service() -> RapidFireSimulationService:
@@ -533,6 +646,22 @@ func _get_stable_source_enemy_id() -> int:
 	return int(get_instance_id())
 
 
+func resolve_multiplayer_rapid_fire_spawn_position(
+	_profile: int,
+	direction: Vector2,
+	fallback_position: Vector2
+) -> Vector2:
+	var capoo_config := config as CapooConfig
+	if capoo_config == null or not global_position.is_finite():
+		return fallback_position
+	var safe_direction := (
+		direction.normalized()
+		if direction.is_finite() and not direction.is_zero_approx()
+		else Vector2.RIGHT
+	)
+	return global_position + safe_direction * capoo_config.projectile_spawn_distance
+
+
 func _next_local_data_phase_identity() -> int:
 	local_data_projectile_sequence += 1
 	# Singleplayer previously derived the two-tick world-query phase from the
@@ -542,6 +671,7 @@ func _next_local_data_phase_identity() -> int:
 
 
 func _finish_burst() -> void:
+	_release_unused_network_burst_ids()
 	combat_state = CombatState.CHASE
 	attack_target = null
 	burst_shots_fired = 0
@@ -554,6 +684,7 @@ func _finish_burst() -> void:
 
 
 func _cancel_attack() -> void:
+	_release_unused_network_burst_ids()
 	combat_state = CombatState.CHASE
 	attack_target = null
 	_clear_committed_attack_timing()
@@ -570,28 +701,61 @@ func _clear_committed_attack_timing() -> void:
 	committed_windup_duration_seconds = 0.0
 
 
-func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, action_id: int) -> void:
+func play_multiplayer_enemy_action(
+	action_name: StringName,
+	direction: Vector2,
+	action_id: int
+) -> void:
+	play_multiplayer_enemy_action_with_context(
+		action_name,
+		direction,
+		global_position,
+		action_id,
+		0.0
+	)
+
+
+func play_multiplayer_enemy_action_with_context(
+	action_name: StringName,
+	direction: Vector2,
+	_action_position: Vector2,
+	action_id: int,
+	action_elapsed: float
+) -> void:
 	if action_id <= latest_proxy_action_id:
 		return
 	latest_proxy_action_id = action_id
+	var safe_elapsed := maxf(action_elapsed, 0.0)
 	var safe_direction := direction.normalized() if direction != Vector2.ZERO else Vector2.RIGHT
 	var capoo_config := config as CapooConfig
 	if action_name == &"windup":
 		if capoo_config != null:
+			var windup_visual_duration := capoo_config.attack_windup + 0.15
+			if safe_elapsed >= windup_visual_duration:
+				return
 			_play_multiplayer_proxy_action_animation(
 				capoo_config.windup_animation_name,
-				capoo_config.attack_windup + 0.15
+				windup_visual_duration - safe_elapsed
 			)
-			_play_proxy_muzzle_heat(safe_direction, capoo_config.attack_windup, action_id)
+			_play_proxy_muzzle_heat(
+				safe_direction,
+				capoo_config.attack_windup,
+				action_id,
+				safe_elapsed
+			)
 		_update_facing(safe_direction)
 	elif action_name == &"burst":
 		if capoo_config != null:
+			if safe_elapsed >= 0.28:
+				_set_muzzle_heat(0.0, safe_direction)
+				return
 			_play_multiplayer_proxy_action_animation(
 				capoo_config.attack_animation_name,
-				0.28
+				0.28 - safe_elapsed
 			)
 		_update_facing(safe_direction)
-		_set_muzzle_heat(1.0, safe_direction)
+		var fade_progress := clampf(safe_elapsed / 0.22, 0.0, 1.0)
+		_set_muzzle_heat(1.0 - fade_progress, safe_direction)
 		var burst_action_id := action_id
 		var tween := create_tween()
 		tween.tween_method(
@@ -599,23 +763,33 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 				if burst_action_id != latest_proxy_action_id:
 					return
 				_set_muzzle_heat(progress, safe_direction),
-			1.0,
+			1.0 - fade_progress,
 			0.0,
-			0.22
+			maxf(0.22 - safe_elapsed, 0.001)
 		)
 
 
-func _play_proxy_muzzle_heat(direction: Vector2, duration: float, action_id: int) -> void:
-	_set_muzzle_heat(0.12, direction)
+func _play_proxy_muzzle_heat(
+	direction: Vector2,
+	duration: float,
+	action_id: int,
+	elapsed: float = 0.0
+) -> void:
+	var safe_duration := maxf(duration, 0.01)
+	var progress := clampf(elapsed / safe_duration, 0.0, 1.0)
+	var initial_heat := lerpf(0.12, 1.0, progress)
+	_set_muzzle_heat(initial_heat, direction)
+	if progress >= 1.0:
+		return
 	var tween := create_tween()
 	tween.tween_method(
 		func(progress: float) -> void:
 			if action_id != latest_proxy_action_id:
 				return
 			_set_muzzle_heat(progress, direction),
-		0.12,
+		initial_heat,
 		1.0,
-		maxf(duration, 0.01)
+		maxf(safe_duration - elapsed, 0.001)
 	)
 
 

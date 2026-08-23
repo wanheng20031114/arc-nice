@@ -477,8 +477,8 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 93,
-		"协议v93必须冻结认证注册转发、Relay身份绑定与既有内容合同。"
+		NetConstants.PROTOCOL_VERSION == 94,
+		"协议v94必须冻结认证注册转发、Relay身份绑定与既有内容合同。"
 	)
 	_expect(
 		NetConstants.CH_MEMBERSHIP == 8
@@ -488,7 +488,7 @@ func _run() -> void:
 		and NetConstants.RELAY_SERVICE_CHANNEL == 9
 		and NetConstants.RELAY_ENET_MAX_CHANNEL == 9,
 		(
-			"Protocol v93 must keep application CH0..CH8 and order Relay "
+			"Protocol v94 must keep application CH0..CH8 and order Relay "
 			+ "topology plus service traffic on reliable CH9."
 		)
 	)
@@ -530,7 +530,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v93 hosts must accept exactly v93 and reject v92."
+		"Protocol v94 hosts must accept exactly v94 and reject v93."
 	)
 	var pending_relay_registration := {
 		"request_id": 7,
@@ -686,7 +686,7 @@ func _test_relay_channel_count() -> void:
 		and relay_source.contains("const RELAY_SERVICE_CHANNEL := RELAY_CONTROL_CHANNEL")
 		and relay_source.contains("const ENET_MAX_CHANNEL := RELAY_CONTROL_CHANNEL")
 		and relay_source.contains("const CHANNEL_COUNT := CH_MEMBERSHIP + 1")
-		and relay_source.contains("const PROTOCOL_VERSION := 93")
+		and relay_source.contains("const PROTOCOL_VERSION := 94")
 		and relay_source.contains("const MAX_CLIENTS := 8")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, transport_capacity, ENET_MAX_CHANNEL)")
@@ -1326,8 +1326,8 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 			"Gameplay RPC %s uses out-of-range channel %d." % [method_name, channel]
 		)
 	_expect(
-		channel_counts.get(NetConstants.CH_WORLD_EVENT, 0) == 62,
-		"Protocol v93 must expose exactly 62 MpGame RPCs on reliable world-event CH5."
+		channel_counts.get(NetConstants.CH_WORLD_EVENT, 0) == 65,
+		"Protocol v94 must expose exactly 65 MpGame RPCs on reliable world-event CH5."
 	)
 
 	_expect_rpc_channel(rpcs, "net_runtime_state_requested", NetConstants.CH_AUTH)
@@ -1349,6 +1349,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 	for projectile_batch_method in [
 		"net_tango_laser_volley",
 		"net_linglan_skill1_ring_batch",
+		"net_enemy_rapid_fire_burst",
 	]:
 		_expect_rpc_channel(
 			rpcs,
@@ -1356,6 +1357,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 			NetConstants.CH_PROJECTILE
 		)
 	for world_event_method in [
+		"net_enemy_rapid_fire_finished_batch",
 		"net_tango_electric_surge_requested",
 		"net_tango_electric_surge_started",
 		"net_tango_electric_surge_finished",
@@ -1368,6 +1370,8 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_tango_charge_rejected",
 		"net_enemy_spawned_batch",
 		"net_enemy_terminal",
+		"net_enemy_rapid_fire_repair_burst",
+		"net_enemy_rapid_fire_snapshot_chunk",
 		"net_plant_spawned",
 		"net_nearest_plant_destruction_requested",
 		"net_plant_damage_status_changed",
@@ -1380,6 +1384,27 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_test_arena_manual_night_changed",
 	]:
 		_expect_rpc_channel(rpcs, world_event_method, NetConstants.CH_WORLD_EVENT)
+	for signature_fragment in [
+		"host_first_shot_timestamp:float",
+		"descriptor:PackedByteArray",
+	]:
+		_expect_rpc_signature_contains(
+			rpcs,
+			"net_enemy_rapid_fire_burst",
+			signature_fragment
+		)
+	for signature_fragment in [
+		"snapshot_id:int",
+		"chunk_index:int",
+		"chunk_count:int",
+		"host_snapshot_timestamp:float",
+		"descriptor:PackedByteArray",
+	]:
+		_expect_rpc_signature_contains(
+			rpcs,
+			"net_enemy_rapid_fire_snapshot_chunk",
+			signature_fragment
+		)
 	for transaction_method in [
 		"net_inventory_item_use_requested",
 		"net_inventory_item_discard_requested",

@@ -126,12 +126,23 @@ func _physics_process(_delta: float) -> void:
 			completion_index
 		)
 		if projectile_id > 0 and gateway != null:
+			var completion_position := rapid_fire_service.get_completion_position(
+				completion_index
+			)
+			var completion_direction := rapid_fire_service.get_completion_direction(
+				completion_index
+			)
 			gateway.notify_data_projectile_finished(
 				projectile_id,
 				rapid_fire_service,
-				rapid_fire_service.get_completion_handle(completion_index)
+				rapid_fire_service.get_completion_handle(completion_index),
+				reason,
+				completion_position,
+				completion_direction
 			)
 			_metric_network_finish_notifications += 1
+	if gateway != null:
+		gateway.flush_enemy_rapid_fire_finish_batch()
 	# Completion records are a frame-local transfer buffer. Priority 6 consumes
 	# the priority-4 simulation output exactly once before the next physics tick.
 	rapid_fire_service.clear_completion_records()

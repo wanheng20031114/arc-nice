@@ -138,11 +138,49 @@ func register_local_data_projectile(
 
 
 @abstract
+func reserve_enemy_rapid_fire_projectile_ids(
+	count: int
+) -> PackedInt64Array
+
+
+@abstract
+func release_enemy_rapid_fire_projectile_ids(
+	projectile_ids: PackedInt64Array
+) -> bool
+
+
+@abstract
+func attach_reserved_enemy_rapid_fire_projectile(
+	service: RapidFireSimulationService,
+	handle: int,
+	projectile_id: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	damage: int,
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot = null
+) -> bool
+
+
+@abstract
+func broadcast_enemy_rapid_fire_burst(
+	descriptor: PackedByteArray
+) -> bool
+
+
+@abstract
 func notify_data_projectile_finished(
 	projectile_id: int,
 	service: RapidFireSimulationService,
-	handle: int
+	handle: int,
+	completion_reason: int = RapidFireSimulationService.CompletionReason.NONE,
+	completion_position: Vector2 = Vector2.ZERO,
+	completion_direction: Vector2 = Vector2.RIGHT
 ) -> void
+
+
+@abstract
+func flush_enemy_rapid_fire_finish_batch() -> bool
 
 
 @abstract

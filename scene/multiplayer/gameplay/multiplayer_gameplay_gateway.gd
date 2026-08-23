@@ -148,17 +148,80 @@ func register_local_data_projectile(
 	)
 
 
+func reserve_enemy_rapid_fire_projectile_ids(
+	count: int
+) -> PackedInt64Array:
+	if multiplayer_session == null:
+		return PackedInt64Array()
+	return multiplayer_session.reserve_enemy_rapid_fire_projectile_ids(count)
+
+
+func release_enemy_rapid_fire_projectile_ids(
+	projectile_ids: PackedInt64Array
+) -> bool:
+	if multiplayer_session == null:
+		return false
+	return multiplayer_session.release_enemy_rapid_fire_projectile_ids(
+		projectile_ids
+	)
+
+
+func attach_reserved_enemy_rapid_fire_projectile(
+	service: RapidFireSimulationService,
+	handle: int,
+	projectile_id: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	damage: int,
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot = null
+) -> bool:
+	if multiplayer_session == null:
+		return false
+	return multiplayer_session.attach_reserved_enemy_rapid_fire_projectile(
+		service,
+		handle,
+		projectile_id,
+		projectile_type,
+		owner_peer_id,
+		damage,
+		lifetime,
+		damage_source_snapshot
+	)
+
+
+func broadcast_enemy_rapid_fire_burst(
+	descriptor: PackedByteArray
+) -> bool:
+	if multiplayer_session == null:
+		return false
+	return multiplayer_session.broadcast_enemy_rapid_fire_burst(descriptor)
+
+
 func notify_data_projectile_finished(
 	projectile_id: int,
 	service: RapidFireSimulationService,
-	handle: int
+	handle: int,
+	completion_reason: int = RapidFireSimulationService.CompletionReason.NONE,
+	completion_position: Vector2 = Vector2.ZERO,
+	completion_direction: Vector2 = Vector2.RIGHT
 ) -> void:
 	if multiplayer_session == null:
 		return
 	multiplayer_session.notify_data_projectile_finished(
 		projectile_id,
 		service,
-		handle
+		handle,
+		completion_reason,
+		completion_position,
+		completion_direction
+	)
+
+
+func flush_enemy_rapid_fire_finish_batch() -> bool:
+	return (
+		multiplayer_session != null
+		and multiplayer_session.flush_enemy_rapid_fire_finish_batch()
 	)
 
 

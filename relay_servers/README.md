@@ -33,11 +33,12 @@ relay_servers/
 必须逐字节一致，并由 Relay parity/capacity 测试锁定。主游戏生产导出继续整体排除
 `relay_servers/*`，不会把大厅后端或 Headless Relay 工程打进客户端。
 
-当前网络基线为协议 v93。应用层使用 CH0..CH8 共 9 条逻辑信道；公网 Relay
+当前网络基线为协议 v94。应用层使用 CH0..CH8 共 9 条逻辑信道；公网 Relay
 的认证感知包装层另使用可靠 CH9 依次发布拓扑并承载 Relay 服务控制，因此公网
-ENet 最大信道索引为 9。v93 扩展玩家快照以逐帧绝对复制最终开火间隔和临时
-表现状态，并把天依 High Noon 目标列表迁入 reliable CH5；v92 的玩家快照长度
-和 RPC 注解不同，不能与 v93 安全混联。v92 将拾取 spawn、原子 collected 终端
+ENet 最大信道索引为 9。v94 将敌人高频连发压缩为 CH4 单次 burst，并通过
+reliable CH5 收敛命中/取消结果及分块恢复迟加入客户端的活跃视觉弹体；其 RPC 表面和描述符合同与
+v93 不同，不能安全混联。v93 扩展玩家快照以逐帧绝对复制最终开火间隔和临时
+表现状态，并把天依 High Noon 目标列表迁入 reliable CH5。v92 将拾取 spawn、原子 collected 终端
 与普通 remove 统一放在 reliable CH5，旧 v91 的 collected 仍在 CH6。
 v91 关闭 `SceneMultiplayer.server_relay` 的私有 mesh，
 只为已验票 transport 发布逻辑拓扑并显式转发数据包。v90 把公网成员的完整
@@ -151,7 +152,7 @@ v35 的战斗机器人枪手弹丸及玩家受击来源 wire ID 17 保持兼容�
 P3 路线世界继续使用约 12Hz 的轻量角色姿态同步：
 Client 在输入信道上报，Host 校验后在玩家状态信道广播，非法位置通过可靠信道纠正。
 v34 的 P3 路线全量快照携带 `runtime_contract_hash`，Host 与 Client 必须使用相同的世界几何契约；
-v92 及更旧客户端不能加入 v93 房间。
+v93 及更旧客户端不能加入 v94 房间。
 Relay 只转发 RPC，不重复实现游戏状态逻辑；逻辑 Host 对不兼容、重连加载或
 运行时投影超时成员的断开请求会可靠发送至 Relay 服务端（peer 1）。Relay 只
 接受已登记 Host 的请求，并由服务端断开同房目标；普通客户端不能踢出其他成员。

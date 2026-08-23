@@ -19,6 +19,7 @@ const HIT_PRESENTER_SHADER_PATH := (
 	"res://scene/combat/simulation/rapid_projectile_hit_presenter.gdshader"
 )
 const TEST_VIEW_RECT := Rect2(-32.0, -32.0, 64.0, 64.0)
+const TEST_DELTA := 1.0 / 60.0
 
 var failures: Array[String] = []
 
@@ -30,7 +31,8 @@ func _init() -> void:
 func _run() -> void:
 	_test_static_authored_multimesh_contract()
 	_test_direction_transforms_and_animation_frames()
-	_test_offscreen_compaction_and_capacity_do_not_mutate_simulation()
+	await _test_replica_selection_and_animation_age()
+	await _test_offscreen_compaction_and_capacity_do_not_mutate_simulation()
 	if DisplayServer.get_name() == "headless":
 		await _test_headless_sync_clear_and_teardown()
 	else:
@@ -213,6 +215,145 @@ func _test_direction_transforms_and_animation_frames() -> void:
 	)
 
 
+func _test_replica_selection_and_animation_age() -> void:
+	var service := RapidFireSimulationServiceScript.new()
+	service.reserve_projectile_capacity(5)
+	var data_handle := _register_projectile(
+		service,
+		Vector2(-4.0, 0.0),
+		Vector2.RIGHT,
+		8_001
+	)
+	_register_projectile(
+		service,
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		8_002,
+		RapidFireSimulationServiceScript.Mode.SHADOW
+	)
+	var delayed_replica_handle := service.register_replica_projectile(
+		RapidFireSimulationServiceScript.Profile.AK,
+		Vector2(4.0, 0.0),
+		Vector2.RIGHT,
+		120.0,
+		2.0,
+		500,
+		8_003,
+		TEST_DELTA * 1.5
+	)
+	var gunner_replica_handle := service.register_replica_projectile(
+		RapidFireSimulationServiceScript.Profile.GUNNER,
+		Vector2(0.0, 4.0),
+		Vector2.DOWN,
+		60.0,
+		2.0,
+		500,
+		8_004,
+		0.0
+	)
+	var pending_elite_handle := service.register_replica_projectile(
+		RapidFireSimulationServiceScript.Profile.GUNNER_ELITE,
+		Vector2(0.0, -4.0),
+		Vector2.UP,
+		60.0,
+		2.0,
+		500,
+		8_005,
+		TEST_DELTA * 10.0
+	)
+	_expect(
+		data_handle > 0
+		and delayed_replica_handle > 0
+		and gunner_replica_handle > 0
+		and pending_elite_handle > 0
+		and PresenterScript.count_presentable_projectiles_for_view(
+			service,
+			TEST_VIEW_RECT,
+			PresenterScript.FIXED_INSTANCE_CAPACITY
+		) == 0
+		and PresenterScript.count_presentable_projectiles_for_profile_and_view(
+			service,
+			RapidFireSimulationServiceScript.Profile.GUNNER,
+			TEST_VIEW_RECT,
+			PresenterScript.GUNNER_FIXED_INSTANCE_CAPACITY
+		) == 0,
+		"DATA and REPLICA records must both stay hidden while pending activation."
+	)
+	service._physics_process(TEST_DELTA)
+	_expect(
+		PresenterScript.count_presentable_projectiles_for_view(
+			service,
+			TEST_VIEW_RECT,
+			PresenterScript.FIXED_INSTANCE_CAPACITY
+		) == 0,
+		"Presenter selection must retain the service's registration-frame gate."
+	)
+
+	await physics_frame
+	service._physics_process(TEST_DELTA)
+	_expect(
+		PresenterScript.count_presentable_projectiles_for_view(
+			service,
+			TEST_VIEW_RECT,
+			PresenterScript.FIXED_INSTANCE_CAPACITY
+		) == 1
+		and PresenterScript.count_presentable_projectiles_for_profile_and_view(
+			service,
+			RapidFireSimulationServiceScript.Profile.GUNNER,
+			TEST_VIEW_RECT,
+			PresenterScript.GUNNER_FIXED_INSTANCE_CAPACITY
+		) == 1
+		and PresenterScript.count_presentable_projectiles_for_profile_and_view(
+			service,
+			RapidFireSimulationServiceScript.Profile.GUNNER_ELITE,
+			TEST_VIEW_RECT,
+			PresenterScript.GUNNER_ELITE_FIXED_INSTANCE_CAPACITY
+		) == 0
+		and service.get_slot_state(delayed_replica_handle)
+		== RapidFireSimulationServiceScript.SlotState.PENDING_ACTIVATION
+		and service.get_slot_state(gunner_replica_handle)
+		== RapidFireSimulationServiceScript.SlotState.ACTIVE
+		and is_equal_approx(
+			service.get_replica_active_age_seconds(gunner_replica_handle),
+			TEST_DELTA
+		)
+		and service.get_position(gunner_replica_handle).is_equal_approx(
+			Vector2(0.0, 5.0)
+		),
+		"Only ACTIVE DATA/REPLICA rows may enter their profile-specific visual prefixes."
+	)
+
+	await physics_frame
+	service._physics_process(TEST_DELTA)
+	_expect(
+		PresenterScript.count_presentable_projectiles_for_view(
+			service,
+			TEST_VIEW_RECT,
+			PresenterScript.FIXED_INSTANCE_CAPACITY
+		) == 2
+		and PresenterScript.count_presentable_projectiles_for_view(
+			service,
+			TEST_VIEW_RECT,
+			1
+		) == 1
+		and service.get_slot_state(delayed_replica_handle)
+		== RapidFireSimulationServiceScript.SlotState.ACTIVE
+		and is_equal_approx(
+			service.get_replica_active_age_seconds(delayed_replica_handle),
+			TEST_DELTA * 0.5
+		)
+		and service.get_position(delayed_replica_handle).is_equal_approx(
+			Vector2(5.0, 0.0)
+		)
+		and service.get_slot_state(pending_elite_handle)
+		== RapidFireSimulationServiceScript.SlotState.PENDING_ACTIVATION
+		and service.get_active_slot_count() == 5,
+		"Delay overshoot age must drive REPLICA animation while capacity truncation stays visual-only."
+	)
+	service.prepare_for_runtime_teardown()
+	service.free()
+
+
 func _test_offscreen_compaction_and_capacity_do_not_mutate_simulation() -> void:
 	var culling_service := RapidFireSimulationServiceScript.new()
 	culling_service.reserve_projectile_capacity(5)
@@ -261,6 +402,16 @@ func _test_offscreen_compaction_and_capacity_do_not_mutate_simulation() -> void:
 		RapidFireSimulationServiceScript.Mode.DATA,
 		RapidFireSimulationServiceScript.Profile.GUNNER_ELITE
 	)
+	_expect(
+		PresenterScript.count_presentable_projectiles_for_view(
+			culling_service,
+			TEST_VIEW_RECT,
+			PresenterScript.FIXED_INSTANCE_CAPACITY
+		) == 0,
+		"Pending culling fixtures must not be considered presentable."
+	)
+	await physics_frame
+	culling_service._physics_process(TEST_DELTA)
 	var culling_active_before := culling_service.get_active_slot_count()
 	var compact_visible_count := PresenterScript.count_presentable_projectiles_for_view(
 		culling_service,
@@ -306,6 +457,8 @@ func _test_offscreen_compaction_and_capacity_do_not_mutate_simulation() -> void:
 			Vector2.RIGHT,
 			10_000 + projectile_index
 		)
+	await physics_frame
+	capacity_service._physics_process(TEST_DELTA)
 	var capped_visible_count := PresenterScript.count_presentable_projectiles_for_view(
 		capacity_service,
 		TEST_VIEW_RECT,
@@ -431,7 +584,7 @@ func _test_headless_sync_clear_and_teardown() -> void:
 func _test_display_sync_hidden_and_teardown() -> void:
 	var presenter := PRESENTER_SCENE.instantiate() as PresenterScript
 	var service := RapidFireSimulationServiceScript.new()
-	service.reserve_projectile_capacity(6)
+	service.reserve_projectile_capacity(7)
 	_register_projectile(service, Vector2(-10.0, 0.0), Vector2.RIGHT, 30_001)
 	_register_projectile(service, Vector2(500.0, 0.0), Vector2.LEFT, 30_002)
 	_register_projectile(service, Vector2(0.0, 10.0), Vector2.DOWN, 30_003)
@@ -458,8 +611,21 @@ func _test_display_sync_hidden_and_teardown() -> void:
 		RapidFireSimulationServiceScript.Mode.DATA,
 		RapidFireSimulationServiceScript.Profile.GUNNER_ELITE
 	)
+	var replica_handle := service.register_replica_projectile(
+		RapidFireSimulationServiceScript.Profile.AK,
+		Vector2(10.0, -5.0),
+		Vector2.RIGHT,
+		60.0,
+		2.0,
+		500,
+		30_007,
+		TEST_DELTA * 0.5
+	)
+	_expect(replica_handle > 0, "Display fixture REPLICA must register.")
 	root.add_child(presenter)
 	await process_frame
+	await physics_frame
+	service._physics_process(TEST_DELTA)
 	var multimesh_instance := presenter.get_multimesh_instance()
 	var multimesh := multimesh_instance.multimesh
 	var gunner_multimesh := presenter.get_gunner_multimesh_instance().multimesh
@@ -482,20 +648,27 @@ func _test_display_sync_hidden_and_teardown() -> void:
 	)
 	var active_before_sync := service.get_active_slot_count()
 	_expect(
-		presenter.sync_from_service(service, TEST_VIEW_RECT) == 4
-		and multimesh.visible_instance_count == 2
+		presenter.sync_from_service(service, TEST_VIEW_RECT) == 5
+		and multimesh.visible_instance_count == 3
 		and gunner_multimesh.visible_instance_count == 1
 		and gunner_elite_multimesh.visible_instance_count == 1,
-		"Display sync must route visible DATA records into three family prefixes."
+		"Display sync must route visible ACTIVE DATA/REPLICA records into three family prefixes."
 	)
 	var first_transform := multimesh.get_instance_transform_2d(0)
 	var second_transform := multimesh.get_instance_transform_2d(1)
+	var replica_transform := multimesh.get_instance_transform_2d(2)
 	_expect(
 		first_transform.origin.is_equal_approx(Vector2(-10.0, 0.0))
 		and first_transform.x.normalized().is_equal_approx(Vector2.RIGHT)
 		and second_transform.origin.is_equal_approx(Vector2(0.0, 10.0))
-		and second_transform.x.normalized().is_equal_approx(Vector2.DOWN),
-		"Display uploads must retain stable order, position, and direction transforms."
+		and second_transform.x.normalized().is_equal_approx(Vector2.DOWN)
+		and replica_transform.origin.is_equal_approx(Vector2(10.5, -5.0))
+		and replica_transform.x.normalized().is_equal_approx(Vector2.RIGHT)
+		and is_equal_approx(
+			multimesh.get_instance_custom_data(2).r,
+			TEST_DELTA * 0.5
+		),
+		"Display uploads must retain stable transforms and use active REPLICA age for animation."
 	)
 	_expect(
 		service.get_active_slot_count() == active_before_sync,
@@ -522,8 +695,15 @@ func _test_display_sync_hidden_and_teardown() -> void:
 			RapidFireSimulationServiceScript.CompletionReason.WORLD,
 			Vector2.ZERO,
 			Vector2.RIGHT
+		)
+		and not presenter.queue_completion_hit(
+			RapidFireSimulationServiceScript.Mode.REPLICA,
+			RapidFireSimulationServiceScript.Profile.AK,
+			RapidFireSimulationServiceScript.CompletionReason.TARGET,
+			Vector2.ZERO,
+			Vector2.RIGHT
 		),
-		"Only DATA world/target completions may enter the fixed hit batch."
+		"Only authoritative DATA world/target completions may enter the fixed hit batch."
 	)
 	presenter._sync_hits(0.01, TEST_VIEW_RECT)
 	_expect(

@@ -208,8 +208,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 93,
-		"协议v93必须保留内容摘要、同局成员身份、P1D/P1E 与既有 wire 合同。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 94,
+		"协议v94必须保留内容摘要、同局成员身份、P1D/P1E 与既有 wire 合同。"
 	)
 	_test_tower_simple_crafting_commit_delegate()
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()

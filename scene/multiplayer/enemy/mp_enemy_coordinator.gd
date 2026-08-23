@@ -1335,6 +1335,7 @@ func broadcast_host_terminal(
 			terminal.get("impact_direction", Vector2.ZERO) as Vector2,
 			int(terminal.get("damage_type", EnemyConfig.DamageType.PHYSICAL)),
 			int(terminal.get("presentation_flags", 0)),
+			_get_network_time(),
 		]
 	)
 

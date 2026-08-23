@@ -37,6 +37,7 @@ var _transactions_coordinator: MpTransactionsCoordinator = null
 var _merchant_transactions_coordinator: MpMerchantTransactionsCoordinator = null
 var _tower_fate_coordinator: MpTowerFateCoordinator = null
 var _network_diagnostics_coordinator: MpNetworkDiagnosticsCoordinator = null
+var _projectile_coordinator: MpProjectileCoordinator = null
 var _tower_mode_adapter: TowerDefenseMultiplayerModeAdapter = null
 ## 首次进局同步是一局一次的启动屏障；后续异常修复使用下面独立的短租约，
 ## 不能再由这个 one-shot 标记永久挡住。
@@ -167,6 +168,7 @@ func bind_runtime_repair_dependencies(
 	merchant_transactions_coordinator_instance: MpMerchantTransactionsCoordinator,
 	tower_fate_coordinator_instance: MpTowerFateCoordinator,
 	network_diagnostics_coordinator_instance: MpNetworkDiagnosticsCoordinator,
+	projectile_coordinator_instance: MpProjectileCoordinator,
 	tower_mode_adapter_instance: TowerDefenseMultiplayerModeAdapter = null
 ) -> void:
 	assert(
@@ -189,11 +191,16 @@ func bind_runtime_repair_dependencies(
 		network_diagnostics_coordinator_instance != null,
 		"MpSessionCoordinator 缺少网络诊断协调器。"
 	)
+	assert(
+		projectile_coordinator_instance != null,
+		"MpSessionCoordinator 缺少弹体协调器。"
+	)
 	_player_coordinator = player_coordinator_instance
 	_transactions_coordinator = transactions_coordinator_instance
 	_merchant_transactions_coordinator = merchant_transactions_coordinator_instance
 	_tower_fate_coordinator = tower_fate_coordinator_instance
 	_network_diagnostics_coordinator = network_diagnostics_coordinator_instance
+	_projectile_coordinator = projectile_coordinator_instance
 	_tower_mode_adapter = tower_mode_adapter_instance
 
 
@@ -225,6 +232,8 @@ func has_runtime_repair_dependencies() -> bool:
 		and _tower_fate_coordinator != null
 		and is_instance_valid(_tower_fate_coordinator)
 		and _network_diagnostics_coordinator != null
+		and _projectile_coordinator != null
+		and is_instance_valid(_projectile_coordinator)
 		and is_instance_valid(_network_diagnostics_coordinator)
 	)
 
@@ -413,6 +422,10 @@ func send_authoritative_runtime_state_to_peer(
 	_merchant_transactions_coordinator.send_offer_state_if_present(peer_id)
 	_enemy_coordinator.send_live_spawn_roster_to_peer(peer_id)
 	_world_flow_coordinator.send_live_pickup_roster_to_peer(peer_id)
+	if not _projectile_coordinator.send_active_data_visual_snapshot_to_peer(
+		peer_id
+	):
+		return false
 	if has_tower_mode:
 		_tower_world_coordinator.request_base_health_snapshot_for_peer(peer_id)
 	var progress_snapshot := _world_flow_coordinator.get_wave_progress_snapshot()
@@ -623,6 +636,7 @@ func _clear_world_manifest_dependencies() -> void:
 	_merchant_transactions_coordinator = null
 	_tower_fate_coordinator = null
 	_network_diagnostics_coordinator = null
+	_projectile_coordinator = null
 	_tower_mode_adapter = null
 
 

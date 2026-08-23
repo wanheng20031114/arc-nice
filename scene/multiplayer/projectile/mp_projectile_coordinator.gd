@@ -3,8 +3,25 @@ class_name MpProjectileCoordinator
 
 signal rpc_to_host_requested(method_name: StringName, arguments: Array)
 signal rpc_broadcast_requested(method_name: StringName, arguments: Array)
+signal rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	arguments: Array
+)
+signal enemy_rapid_fire_action_requested(
+	source_enemy_id: int,
+	profile: int,
+	direction: Vector2,
+	source_position: Vector2,
+	action_id: int,
+	host_action_timestamp: float,
+	action_elapsed: float
+)
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
+const EnemyRapidFireNetworkCodecScript := preload(
+	"res://scene/multiplayer/projectile/enemy_rapid_fire_network_codec.gd"
+)
 
 const BULLET_SCENE_PATH := "res://scene/combat/projectiles/bullet.tscn"
 const TANGO_LASER_BULLET_SCENE_PATH := (
@@ -117,6 +134,19 @@ const TANGO_LASER_VOLLEY_PROJECTILE_COUNT := 3
 const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := 32
 const CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE := 224.0
 const TANGO_NETWORK_BARRAGE_MAXIMUM_SECONDS := 5.0
+const ENEMY_RAPID_FIRE_SNAPSHOT_MAX_DESCRIPTOR_BYTES := 960
+const ENEMY_RAPID_FIRE_SNAPSHOT_MAX_PROJECTILES_PER_CHUNK := 28
+const ENEMY_RAPID_FIRE_BURST_MAX_DESCRIPTOR_BYTES := (
+	EnemyRapidFireNetworkCodecScript.MAX_BURST_PAYLOAD_BYTES
+)
+const ENEMY_RAPID_FIRE_MAX_RESERVATION_COUNT := 4096
+const ENEMY_RAPID_FIRE_REPLICA_DEDUP_RETENTION_SECONDS := 5.0
+const ENEMY_RAPID_FIRE_FINISH_DEDUP_RETENTION_SECONDS := 30.0
+const ENEMY_RAPID_FIRE_TERMINAL_SOURCE_RETENTION_SECONDS := 30.0
+const ENEMY_RAPID_FIRE_MAX_PENDING_SNAPSHOTS := 4
+const ENEMY_RAPID_FIRE_MAX_SNAPSHOT_CHUNKS := 256
+const ENEMY_RAPID_FIRE_FINISH_MAX_DESCRIPTOR_BYTES := 960
+const ENEMY_RAPID_FIRE_FINISH_REASON_CANCELLED := 4
 
 
 class EnemyHitAdmission:
@@ -147,6 +177,30 @@ var _next_projectile_sequence := 1
 var _known_projectiles: Dictionary = {}
 var _known_data_projectile_services: Dictionary[int, RapidFireSimulationService] = {}
 var _known_data_projectile_handles: Dictionary[int, int] = {}
+var _known_data_projectile_types: Dictionary[int, StringName] = {}
+var _known_data_projectile_owner_peer_ids: Dictionary[int, int] = {}
+var _known_data_projectile_damages: Dictionary[int, int] = {}
+var _known_data_projectile_lifetimes: Dictionary[int, float] = {}
+var _reserved_host_projectile_ids: Dictionary[int, int] = {}
+var _active_enemy_rapid_fire_bursts: Dictionary[int, Dictionary] = {}
+var _active_enemy_rapid_fire_base_by_reserved_id: Dictionary[int, int] = {}
+var _pending_enemy_rapid_fire_finish_records: Array[Dictionary] = []
+var _enemy_rapid_fire_finish_flush_queued := false
+var _known_replica_projectile_services: Dictionary[int, RapidFireSimulationService] = {}
+var _known_replica_projectile_handles: Dictionary[int, int] = {}
+var _known_replica_projectile_host_timestamps: Dictionary[int, float] = {}
+var _seen_enemy_rapid_fire_projectile_expirations: Dictionary[int, float] = {}
+var _finished_enemy_rapid_fire_projectile_timestamps: Dictionary[int, float] = {}
+var _terminal_enemy_rapid_fire_source_expirations: Dictionary[int, float] = {}
+var _terminal_enemy_rapid_fire_source_host_timestamps: Dictionary[int, float] = {}
+var _stale_replica_projectile_ids: Array[int] = []
+var _stale_enemy_rapid_fire_projectile_ids: Array[int] = []
+var _stale_terminal_enemy_rapid_fire_source_ids: Array[int] = []
+var _replica_prune_pass_count := 0
+var _pending_enemy_rapid_fire_snapshots: Dictionary[int, Dictionary] = {}
+var _next_enemy_rapid_fire_snapshot_id := 1
+var _latest_applied_enemy_rapid_fire_snapshot_id := 0
+var _latest_applied_enemy_rapid_fire_snapshot_host_timestamp := -1.0
 var _projectile_records: Dictionary = {}
 var _stale_projectile_record_ids: Array[int] = []
 var _processed_enemy_hit_ids: Dictionary = {}
@@ -343,6 +397,13 @@ func register_local_data_projectile(
 		registered_source_snapshot = service.get_damage_source_snapshot(handle)
 	_known_data_projectile_services[projectile_id] = service
 	_known_data_projectile_handles[projectile_id] = handle
+	_remember_data_projectile_metadata(
+		projectile_id,
+		projectile_type,
+		owner_peer_id,
+		damage,
+		lifetime
+	)
 	remember_projectile_record(
 		projectile_id,
 		owner_peer_id,
@@ -374,10 +435,500 @@ func register_local_data_projectile(
 	return projectile_id
 
 
+## Reserves one contiguous Host-origin identity interval without attaching any
+## simulation records. A range never wraps and never skips a collision: callers
+## either receive the whole interval or an empty result with the sequence cursor
+## unchanged.
+func reserve_host_projectile_id_range(
+	owner_peer_id: int,
+	count: int
+) -> PackedInt64Array:
+	if (
+		not has_network_facade_dependencies()
+		or not _net_manager.is_multiplayer_active()
+		or not _net_manager.is_host()
+		or count <= 0
+		or count > ENEMY_RAPID_FIRE_MAX_RESERVATION_COUNT
+	):
+		return PackedInt64Array()
+	var projectile_namespace := owner_peer_id
+	if projectile_namespace <= 0:
+		projectile_namespace = PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
+	if projectile_namespace > PROJECTILE_ID_MAX_OWNER_PEER_ID:
+		return PackedInt64Array()
+	if (
+		_next_projectile_sequence <= 0
+		or _next_projectile_sequence > PROJECTILE_ID_SEQUENCE_COUNTER_MASK
+	):
+		_next_projectile_sequence = 1
+	var first_sequence := _next_projectile_sequence
+	var last_sequence := first_sequence + count - 1
+	if last_sequence > PROJECTILE_ID_SEQUENCE_COUNTER_MASK:
+		return PackedInt64Array()
+	var projectile_ids := PackedInt64Array()
+	projectile_ids.resize(count)
+	for range_index in range(count):
+		var sequence := (first_sequence + range_index) | PROJECTILE_ID_HOST_ORIGIN_BIT
+		var projectile_id := encode_projectile_id(projectile_namespace, sequence)
+		if (
+			projectile_id <= 0
+			or _known_projectiles.has(projectile_id)
+			or _known_data_projectile_services.has(projectile_id)
+			or _known_replica_projectile_services.has(projectile_id)
+			or _projectile_records.has(projectile_id)
+			or _reserved_host_projectile_ids.has(projectile_id)
+		):
+			return PackedInt64Array()
+		projectile_ids[range_index] = projectile_id
+	for projectile_id in projectile_ids:
+		_reserved_host_projectile_ids[int(projectile_id)] = projectile_namespace
+	_next_projectile_sequence = last_sequence + 1
+	if _next_projectile_sequence > PROJECTILE_ID_SEQUENCE_COUNTER_MASK:
+		_next_projectile_sequence = 1
+	return projectile_ids
+
+
+func release_reserved_host_projectile_ids(
+	projectile_ids: PackedInt64Array
+) -> bool:
+	if (
+		projectile_ids.is_empty()
+		or not has_network_facade_dependencies()
+		or not _net_manager.is_host()
+	):
+		return false
+	var released_any := false
+	var discarded_burst_base_ids: Dictionary[int, bool] = {}
+	var cancelled_ids_by_burst: Dictionary[int, PackedInt64Array] = {}
+	for projectile_id_variant in projectile_ids:
+		var projectile_id := int(projectile_id_variant)
+		if not _reserved_host_projectile_ids.has(projectile_id):
+			continue
+		var active_burst_base_id := int(
+			_active_enemy_rapid_fire_base_by_reserved_id.get(projectile_id, 0)
+		)
+		if active_burst_base_id > 0:
+			discarded_burst_base_ids[active_burst_base_id] = true
+			var cancelled_ids := cancelled_ids_by_burst.get(
+				active_burst_base_id,
+				PackedInt64Array()
+			) as PackedInt64Array
+			cancelled_ids.append(projectile_id)
+			cancelled_ids_by_burst[active_burst_base_id] = cancelled_ids
+		_reserved_host_projectile_ids.erase(projectile_id)
+		released_any = true
+	for active_burst_base_id in discarded_burst_base_ids.keys():
+		_queue_reserved_enemy_rapid_fire_cancellations(
+			active_burst_base_id,
+			cancelled_ids_by_burst.get(
+				active_burst_base_id,
+				PackedInt64Array()
+			) as PackedInt64Array
+		)
+		_discard_active_enemy_rapid_fire_burst(active_burst_base_id)
+	return released_any
+
+
+func _queue_reserved_enemy_rapid_fire_cancellations(
+	base_projectile_id: int,
+	projectile_ids: PackedInt64Array
+) -> void:
+	var active_burst := _active_enemy_rapid_fire_bursts.get(
+		base_projectile_id,
+		{}
+	) as Dictionary
+	if active_burst.is_empty() or projectile_ids.is_empty():
+		return
+	var decoded := EnemyRapidFireNetworkCodecScript.decode_burst(
+		active_burst.get("descriptor", PackedByteArray()) as PackedByteArray
+	)
+	if not bool(decoded.get("valid", false)):
+		return
+	var directions := decoded.get(
+		"directions",
+		PackedVector2Array()
+	) as PackedVector2Array
+	var origin := decoded.get("origin", Vector2.ZERO) as Vector2
+	for projectile_id_variant in projectile_ids:
+		var projectile_id := int(projectile_id_variant)
+		var projectile_index := projectile_id - base_projectile_id
+		if projectile_index < 0 or projectile_index >= directions.size():
+			continue
+		_pending_enemy_rapid_fire_finish_records.append({
+			"projectile_id": projectile_id,
+			"reason": ENEMY_RAPID_FIRE_FINISH_REASON_CANCELLED,
+			"position": origin,
+			"direction": directions[projectile_index],
+		})
+	_schedule_enemy_rapid_fire_finish_flush()
+
+
+func _discard_active_enemy_rapid_fire_burst(base_projectile_id: int) -> void:
+	_active_enemy_rapid_fire_bursts.erase(base_projectile_id)
+	for reserved_projectile_id_variant in (
+		_active_enemy_rapid_fire_base_by_reserved_id.keys()
+	):
+		var reserved_projectile_id := int(reserved_projectile_id_variant)
+		if int(_active_enemy_rapid_fire_base_by_reserved_id.get(
+			reserved_projectile_id,
+			0
+		)) == base_projectile_id:
+			_active_enemy_rapid_fire_base_by_reserved_id.erase(
+				reserved_projectile_id
+			)
+
+
+## Attaches a previously reserved identity to an inert authoritative DATA row.
+## This operation deliberately performs no RPC emission; one encoded burst owns
+## the corresponding wire event for the entire range.
+func attach_reserved_local_data_projectile(
+	service: RapidFireSimulationService,
+	handle: int,
+	projectile_id: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	damage: int,
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot = null
+) -> bool:
+	var projectile_namespace := owner_peer_id
+	if projectile_namespace <= 0:
+		projectile_namespace = PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
+	if (
+		service == null
+		or not is_instance_valid(service)
+		or handle <= RapidFireSimulationService.INVALID_HANDLE
+		or projectile_id <= 0
+		or projectile_type == &""
+		or not has_network_facade_dependencies()
+		or not _net_manager.is_multiplayer_active()
+		or not _net_manager.is_host()
+		or not _NetConstants.is_valid_network_combat_value(damage)
+		or not is_finite(lifetime)
+		or lifetime <= 0.0
+		or (
+			damage_source_snapshot != null
+			and not damage_source_snapshot.is_valid()
+		)
+		or service.get_slot_mode(handle) != RapidFireSimulationService.Mode.DATA
+		or int(_reserved_host_projectile_ids.get(projectile_id, 0))
+			!= projectile_namespace
+		or not is_projectile_id_valid_for_host_owner(
+			projectile_id,
+			projectile_namespace
+		)
+		or _known_projectiles.has(projectile_id)
+		or _known_data_projectile_services.has(projectile_id)
+		or _known_replica_projectile_services.has(projectile_id)
+		or _projectile_records.has(projectile_id)
+	):
+		return false
+	if not service.assign_projectile_identity(handle, projectile_id):
+		return false
+	var registered_source_snapshot: DamageSourceSnapshot = null
+	if damage_source_snapshot != null:
+		registered_source_snapshot = DamageSourceSnapshot.create(
+			damage_source_snapshot.source_faction_id,
+			damage_source_snapshot.credit_peer_id,
+			damage_source_snapshot.instigator_entity_id,
+			projectile_id,
+			(
+				damage_source_snapshot.source_type
+				if damage_source_snapshot.source_type != &""
+				else projectile_type
+			)
+		)
+	else:
+		registered_source_snapshot = service.get_damage_source_snapshot(handle)
+	var active_burst_base_id := int(
+		_active_enemy_rapid_fire_base_by_reserved_id.get(projectile_id, 0)
+	)
+	_reserved_host_projectile_ids.erase(projectile_id)
+	_active_enemy_rapid_fire_base_by_reserved_id.erase(projectile_id)
+	_known_data_projectile_services[projectile_id] = service
+	_known_data_projectile_handles[projectile_id] = handle
+	_remember_data_projectile_metadata(
+		projectile_id,
+		projectile_type,
+		owner_peer_id,
+		damage,
+		lifetime
+	)
+	remember_projectile_record(
+		projectile_id,
+		owner_peer_id,
+		projectile_type,
+		damage,
+		lifetime,
+		false,
+		_get_net_time(),
+		registered_source_snapshot
+	)
+	if active_burst_base_id > 0:
+		var active_burst := _active_enemy_rapid_fire_bursts.get(
+			active_burst_base_id,
+			{}
+		) as Dictionary
+		if not active_burst.is_empty():
+			var remaining_reserved_count := maxi(
+				int(active_burst.get("remaining_reserved_count", 0)) - 1,
+				0
+			)
+			if remaining_reserved_count <= 0:
+				_active_enemy_rapid_fire_bursts.erase(active_burst_base_id)
+			else:
+				active_burst["remaining_reserved_count"] = remaining_reserved_count
+				_active_enemy_rapid_fire_bursts[active_burst_base_id] = active_burst
+	return true
+
+
+func broadcast_enemy_rapid_fire_burst(
+	host_first_shot_timestamp: float,
+	descriptor: PackedByteArray
+) -> bool:
+	if (
+		not has_network_facade_dependencies()
+		or not _net_manager.is_multiplayer_active()
+		or not _net_manager.is_host()
+		or not is_finite(host_first_shot_timestamp)
+		or host_first_shot_timestamp < 0.0
+		or descriptor.is_empty()
+		or descriptor.size() > ENEMY_RAPID_FIRE_BURST_MAX_DESCRIPTOR_BYTES
+	):
+		return false
+	var decoded := EnemyRapidFireNetworkCodecScript.decode_burst(descriptor)
+	if not _is_attached_enemy_rapid_fire_burst(decoded):
+		return false
+	var base_projectile_id := int(decoded.get("base_projectile_id", 0))
+	var projectile_count := int(decoded.get("count", 0))
+	var remaining_reserved_count := 0
+	for projectile_index in range(projectile_count):
+		var projectile_id := base_projectile_id + projectile_index
+		if not _reserved_host_projectile_ids.has(projectile_id):
+			continue
+		_active_enemy_rapid_fire_base_by_reserved_id[projectile_id] = (
+			base_projectile_id
+		)
+		remaining_reserved_count += 1
+	if remaining_reserved_count > 0:
+		_active_enemy_rapid_fire_bursts[base_projectile_id] = {
+			"host_first_shot_timestamp": host_first_shot_timestamp,
+			"descriptor": descriptor,
+			"remaining_reserved_count": remaining_reserved_count,
+		}
+	rpc_broadcast_requested.emit(
+		&"net_enemy_rapid_fire_burst",
+		[host_first_shot_timestamp, descriptor]
+	)
+	return true
+
+
+func _is_attached_enemy_rapid_fire_burst(decoded: Dictionary) -> bool:
+	if not bool(decoded.get("valid", false)):
+		return false
+	var count := int(decoded.get("count", 0))
+	var base_projectile_id := int(decoded.get("base_projectile_id", 0))
+	var profile := int(decoded.get("profile", 0))
+	var source_enemy_id := int(decoded.get("source_enemy_id", 0))
+	var speed := float(decoded.get("speed", 0.0))
+	var lifetime := float(decoded.get("lifetime", 0.0))
+	if (
+		not _is_supported_enemy_rapid_fire_profile(profile)
+		or not _is_valid_enemy_rapid_fire_projectile_range(
+			base_projectile_id,
+			count
+		)
+	):
+		return false
+	var saw_reserved_suffix := false
+	for projectile_index in range(count):
+		var projectile_id := base_projectile_id + projectile_index
+		if not _known_data_projectile_services.has(projectile_id):
+			if (
+				int(_reserved_host_projectile_ids.get(projectile_id, 0))
+				!= PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
+			):
+				return false
+			saw_reserved_suffix = true
+			continue
+		if saw_reserved_suffix:
+			return false
+		var service: RapidFireSimulationService = (
+			_known_data_projectile_services.get(projectile_id)
+		)
+		var handle := int(_known_data_projectile_handles.get(
+			projectile_id,
+			RapidFireSimulationService.INVALID_HANDLE
+		))
+		if (
+			service == null
+			or not is_instance_valid(service)
+			or not service.is_handle_live(handle)
+			or service.get_slot_mode(handle) != RapidFireSimulationService.Mode.DATA
+			or service.get_slot_profile(handle) != profile
+			or service.get_source_enemy_id(handle) != source_enemy_id
+			or not is_equal_approx(service.get_speed(handle), speed)
+			or not is_equal_approx(
+				float(_known_data_projectile_lifetimes.get(projectile_id, 0.0)),
+				lifetime
+			)
+		):
+			return false
+	return not saw_reserved_suffix or _known_data_projectile_services.has(
+		base_projectile_id
+	)
+
+
+func send_active_data_visual_snapshot_to_peer(peer_id: int) -> bool:
+	if (
+		peer_id <= 0
+		or not has_network_facade_dependencies()
+		or not _net_manager.is_multiplayer_active()
+		or not _net_manager.is_host()
+	):
+		return false
+	var active_burst_base_ids: Array[int] = []
+	var repair_host_timestamps := PackedFloat64Array()
+	var repair_descriptors: Array[PackedByteArray] = []
+	for base_projectile_id_variant in _active_enemy_rapid_fire_bursts.keys():
+		active_burst_base_ids.append(int(base_projectile_id_variant))
+	active_burst_base_ids.sort()
+	for base_projectile_id in active_burst_base_ids:
+		var active_burst := _active_enemy_rapid_fire_bursts.get(
+			base_projectile_id,
+			{}
+		) as Dictionary
+		var descriptor := active_burst.get(
+			"descriptor",
+			PackedByteArray()
+		) as PackedByteArray
+		var host_first_shot_timestamp := float(active_burst.get(
+			"host_first_shot_timestamp",
+			-1.0
+		))
+		if (
+			descriptor.is_empty()
+			or descriptor.size() > ENEMY_RAPID_FIRE_BURST_MAX_DESCRIPTOR_BYTES
+			or not is_finite(host_first_shot_timestamp)
+			or host_first_shot_timestamp < 0.0
+		):
+			return false
+		repair_host_timestamps.append(host_first_shot_timestamp)
+		repair_descriptors.append(descriptor)
+	var snapshot_id := _next_enemy_rapid_fire_snapshot_id
+	_next_enemy_rapid_fire_snapshot_id += 1
+	if _next_enemy_rapid_fire_snapshot_id <= 0:
+		_next_enemy_rapid_fire_snapshot_id = 1
+	var host_snapshot_timestamp := _get_net_time()
+	var sorted_projectile_ids: Array[int] = []
+	for projectile_id_variant in _known_data_projectile_services.keys():
+		sorted_projectile_ids.append(int(projectile_id_variant))
+	sorted_projectile_ids.sort()
+	var records: Array[Dictionary] = []
+	for projectile_id in sorted_projectile_ids:
+		var service: RapidFireSimulationService = (
+			_known_data_projectile_services.get(projectile_id)
+		)
+		var handle := int(_known_data_projectile_handles.get(
+			projectile_id,
+			RapidFireSimulationService.INVALID_HANDLE
+		))
+		if (
+			service == null
+			or not is_instance_valid(service)
+			or not service.is_handle_live(handle)
+			or service.get_slot_mode(handle) != RapidFireSimulationService.Mode.DATA
+		):
+			_erase_data_projectile_backend(projectile_id)
+			continue
+		var remaining_lifetime := service.get_remaining_lifetime(handle)
+		if remaining_lifetime <= 0.0:
+			continue
+		records.append({
+			"projectile_id": projectile_id,
+			"profile": int(service.get_slot_profile(handle)),
+			"source_enemy_id": service.get_source_enemy_id(handle),
+			"position": service.get_position(handle),
+			"direction": service.get_direction(handle),
+			"speed": service.get_speed(handle),
+			"remaining_lifetime": remaining_lifetime,
+		})
+	if records.is_empty():
+		for repair_index in range(repair_descriptors.size()):
+			rpc_to_peer_requested.emit(
+				peer_id,
+				&"net_enemy_rapid_fire_repair_burst",
+				[
+					repair_host_timestamps[repair_index],
+					repair_descriptors[repair_index],
+				]
+			)
+		rpc_to_peer_requested.emit(
+			peer_id,
+			&"net_enemy_rapid_fire_snapshot_chunk",
+			[
+				snapshot_id,
+				0,
+				0,
+				host_snapshot_timestamp,
+				PackedByteArray(),
+			]
+		)
+		return true
+	var descriptors: Array[PackedByteArray] = []
+	for chunk_start in range(
+		0,
+		records.size(),
+		ENEMY_RAPID_FIRE_SNAPSHOT_MAX_PROJECTILES_PER_CHUNK
+	):
+		var chunk_end := mini(
+			chunk_start + ENEMY_RAPID_FIRE_SNAPSHOT_MAX_PROJECTILES_PER_CHUNK,
+			records.size()
+		)
+		var descriptor := EnemyRapidFireNetworkCodecScript.encode_snapshot_chunk(
+			records.slice(chunk_start, chunk_end)
+		)
+		if (
+			descriptor.is_empty()
+			or descriptor.size() > ENEMY_RAPID_FIRE_SNAPSHOT_MAX_DESCRIPTOR_BYTES
+		):
+			return false
+		descriptors.append(descriptor)
+	if descriptors.size() > ENEMY_RAPID_FIRE_MAX_SNAPSHOT_CHUNKS:
+		return false
+	# Validate and encode the complete repair before emitting any RPC. A failed
+	# retry must not expose a burst-only partial manifest to the joining peer.
+	for repair_index in range(repair_descriptors.size()):
+		rpc_to_peer_requested.emit(
+			peer_id,
+			&"net_enemy_rapid_fire_repair_burst",
+			[
+				repair_host_timestamps[repair_index],
+				repair_descriptors[repair_index],
+			]
+		)
+	for chunk_index in range(descriptors.size()):
+		rpc_to_peer_requested.emit(
+			peer_id,
+			&"net_enemy_rapid_fire_snapshot_chunk",
+			[
+				snapshot_id,
+				chunk_index,
+				descriptors.size(),
+				host_snapshot_timestamp,
+				descriptors[chunk_index],
+			]
+		)
+	return true
+
+
 func notify_data_projectile_finished(
 	projectile_id: int,
 	service: RapidFireSimulationService,
-	handle: int
+	handle: int,
+	completion_reason: int = RapidFireSimulationService.CompletionReason.NONE,
+	completion_position: Vector2 = Vector2.ZERO,
+	completion_direction: Vector2 = Vector2.RIGHT
 ) -> void:
 	if (
 		_known_data_projectile_services.get(projectile_id) == service
@@ -386,12 +937,309 @@ func notify_data_projectile_finished(
 			RapidFireSimulationService.INVALID_HANDLE
 		)) == handle
 	):
+		if (
+			has_network_facade_dependencies()
+			and _net_manager.is_multiplayer_active()
+			and _net_manager.is_host()
+			and completion_reason
+				> RapidFireSimulationService.CompletionReason.NONE
+			and completion_reason
+				<= RapidFireSimulationService.CompletionReason.TARGET
+			and completion_position.is_finite()
+			and completion_direction.is_finite()
+			and not completion_direction.is_zero_approx()
+		):
+			_pending_enemy_rapid_fire_finish_records.append({
+				"projectile_id": projectile_id,
+				"reason": completion_reason,
+				"position": completion_position,
+				"direction": completion_direction.normalized(),
+			})
 		_erase_data_projectile_backend(projectile_id)
+
+
+func _schedule_enemy_rapid_fire_finish_flush() -> void:
+	if _enemy_rapid_fire_finish_flush_queued:
+		return
+	_enemy_rapid_fire_finish_flush_queued = true
+	if is_inside_tree():
+		call_deferred(&"_flush_deferred_enemy_rapid_fire_finishes")
+
+
+func _flush_deferred_enemy_rapid_fire_finishes() -> void:
+	flush_enemy_rapid_fire_finish_batch()
+
+
+func flush_enemy_rapid_fire_finish_batch() -> bool:
+	_enemy_rapid_fire_finish_flush_queued = false
+	if _pending_enemy_rapid_fire_finish_records.is_empty():
+		return true
+	if (
+		not has_network_facade_dependencies()
+		or not _net_manager.is_multiplayer_active()
+		or not _net_manager.is_host()
+	):
+		_pending_enemy_rapid_fire_finish_records.clear()
+		return false
+	var host_finish_timestamp := _get_net_time()
+	var record_start := 0
+	while record_start < _pending_enemy_rapid_fire_finish_records.size():
+		var record_end := mini(
+			record_start + EnemyRapidFireNetworkCodecScript.MAX_FINISH_RECORDS,
+			_pending_enemy_rapid_fire_finish_records.size()
+		)
+		var descriptor := EnemyRapidFireNetworkCodecScript.encode_finish_batch(
+			_pending_enemy_rapid_fire_finish_records.slice(
+				record_start,
+				record_end
+			)
+		)
+		if (
+			descriptor.is_empty()
+			or descriptor.size() > ENEMY_RAPID_FIRE_FINISH_MAX_DESCRIPTOR_BYTES
+		):
+			return false
+		rpc_broadcast_requested.emit(
+			&"net_enemy_rapid_fire_finished_batch",
+			[host_finish_timestamp, descriptor]
+		)
+		record_start = record_end
+	_pending_enemy_rapid_fire_finish_records.clear()
+	return true
 
 
 func _erase_data_projectile_backend(projectile_id: int) -> void:
 	_known_data_projectile_services.erase(projectile_id)
 	_known_data_projectile_handles.erase(projectile_id)
+	_known_data_projectile_types.erase(projectile_id)
+	_known_data_projectile_owner_peer_ids.erase(projectile_id)
+	_known_data_projectile_damages.erase(projectile_id)
+	_known_data_projectile_lifetimes.erase(projectile_id)
+
+
+func _remember_data_projectile_metadata(
+	projectile_id: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	damage: int,
+	lifetime: float
+) -> void:
+	_known_data_projectile_types[projectile_id] = projectile_type
+	_known_data_projectile_owner_peer_ids[projectile_id] = owner_peer_id
+	_known_data_projectile_damages[projectile_id] = damage
+	_known_data_projectile_lifetimes[projectile_id] = lifetime
+
+
+func _remember_replica_projectile_backend(
+	projectile_id: int,
+	service: RapidFireSimulationService,
+	handle: int,
+	host_timestamp: float,
+	live_until: float
+) -> void:
+	_known_replica_projectile_services[projectile_id] = service
+	_known_replica_projectile_handles[projectile_id] = handle
+	_known_replica_projectile_host_timestamps[projectile_id] = host_timestamp
+	_seen_enemy_rapid_fire_projectile_expirations[projectile_id] = (
+		live_until + ENEMY_RAPID_FIRE_REPLICA_DEDUP_RETENTION_SECONDS
+	)
+
+
+func _erase_replica_projectile_backend(projectile_id: int) -> void:
+	_known_replica_projectile_services.erase(projectile_id)
+	_known_replica_projectile_handles.erase(projectile_id)
+	_known_replica_projectile_host_timestamps.erase(projectile_id)
+
+
+func _release_and_erase_replica_projectile_backend(projectile_id: int) -> void:
+	var service: RapidFireSimulationService = (
+		_known_replica_projectile_services.get(projectile_id)
+	)
+	var handle := int(_known_replica_projectile_handles.get(
+		projectile_id,
+		RapidFireSimulationService.INVALID_HANDLE
+	))
+	if (
+		service != null
+		and is_instance_valid(service)
+		and handle > RapidFireSimulationService.INVALID_HANDLE
+		and service.is_handle_live(handle)
+	):
+		service.release_projectile(handle)
+	_erase_replica_projectile_backend(projectile_id)
+
+
+func release_replica_projectiles_for_source(
+	source_enemy_id: int,
+	host_terminal_timestamp: float = -1.0
+) -> int:
+	if source_enemy_id <= 0:
+		return 0
+	var now := _get_net_time()
+	var terminal_cutoff := (
+		host_terminal_timestamp
+		if is_finite(host_terminal_timestamp) and host_terminal_timestamp >= 0.0
+		else now
+	)
+	var previous_cutoff := float(
+		_terminal_enemy_rapid_fire_source_host_timestamps.get(
+			source_enemy_id,
+			INF
+		)
+	)
+	terminal_cutoff = minf(terminal_cutoff, previous_cutoff)
+	_terminal_enemy_rapid_fire_source_host_timestamps[source_enemy_id] = (
+		terminal_cutoff
+	)
+	_terminal_enemy_rapid_fire_source_expirations[source_enemy_id] = (
+		now + ENEMY_RAPID_FIRE_TERMINAL_SOURCE_RETENTION_SECONDS
+	)
+	var released_count := 0
+	for projectile_id_variant in _known_replica_projectile_services.keys():
+		var projectile_id := int(projectile_id_variant)
+		var service: RapidFireSimulationService = (
+			_known_replica_projectile_services.get(projectile_id)
+		)
+		var handle := int(_known_replica_projectile_handles.get(
+			projectile_id,
+			RapidFireSimulationService.INVALID_HANDLE
+		))
+		if (
+			service == null
+			or not is_instance_valid(service)
+			or handle <= RapidFireSimulationService.INVALID_HANDLE
+			or not service.is_handle_live(handle)
+		):
+			_erase_replica_projectile_backend(projectile_id)
+			continue
+		if service.get_source_enemy_id(handle) != source_enemy_id:
+			continue
+		# Preserve every projectile authored no later than the Host terminal
+		# timestamp. CH4 burst and CH5 terminal packets may arrive in either order;
+		# comparing Host-domain timestamps is the only order-independent boundary.
+		if float(_known_replica_projectile_host_timestamps.get(
+			projectile_id,
+			INF
+		)) <= terminal_cutoff:
+			continue
+		_release_and_erase_replica_projectile_backend(projectile_id)
+		released_count += 1
+	return released_count
+
+
+func _is_terminal_enemy_rapid_fire_source(
+	source_enemy_id: int,
+	now: float
+) -> bool:
+	var expires_at := float(_terminal_enemy_rapid_fire_source_expirations.get(
+		source_enemy_id,
+		0.0
+	))
+	if expires_at <= now:
+		_terminal_enemy_rapid_fire_source_expirations.erase(source_enemy_id)
+		_terminal_enemy_rapid_fire_source_host_timestamps.erase(source_enemy_id)
+		return false
+	return true
+
+
+func _get_terminal_enemy_rapid_fire_host_timestamp(
+	source_enemy_id: int,
+	now: float
+) -> float:
+	if not _is_terminal_enemy_rapid_fire_source(source_enemy_id, now):
+		return -1.0
+	return float(_terminal_enemy_rapid_fire_source_host_timestamps.get(
+		source_enemy_id,
+		-1.0
+	))
+
+
+func _prune_replica_projectile_backends(now: float) -> void:
+	# This is a full maintenance sweep and must only run from the existing bounded
+	# periodic prune tick. Burst/finish/snapshot packet handlers validate touched
+	# IDs lazily; invoking this per packet turns 300 synchronized attackers into
+	# an accidental O(packet_count * retained_projectile_count) workload.
+	_replica_prune_pass_count += 1
+	_stale_replica_projectile_ids.clear()
+	for projectile_id_variant in _known_replica_projectile_services:
+		var projectile_id := int(projectile_id_variant)
+		var service: RapidFireSimulationService = (
+			_known_replica_projectile_services.get(projectile_id)
+		)
+		var handle := int(_known_replica_projectile_handles.get(
+			projectile_id,
+			RapidFireSimulationService.INVALID_HANDLE
+		))
+		if (
+			service == null
+			or not is_instance_valid(service)
+			or not service.is_handle_live(handle)
+		):
+			_stale_replica_projectile_ids.append(projectile_id)
+	for projectile_id in _stale_replica_projectile_ids:
+		_erase_replica_projectile_backend(projectile_id)
+	_stale_enemy_rapid_fire_projectile_ids.clear()
+	for projectile_id_variant in _seen_enemy_rapid_fire_projectile_expirations:
+		var projectile_id := int(projectile_id_variant)
+		if (
+			float(_seen_enemy_rapid_fire_projectile_expirations[projectile_id])
+			<= now
+			and not _known_replica_projectile_services.has(projectile_id)
+		):
+			_stale_enemy_rapid_fire_projectile_ids.append(projectile_id)
+	for projectile_id in _stale_enemy_rapid_fire_projectile_ids:
+		_seen_enemy_rapid_fire_projectile_expirations.erase(projectile_id)
+		_finished_enemy_rapid_fire_projectile_timestamps.erase(projectile_id)
+	_stale_terminal_enemy_rapid_fire_source_ids.clear()
+	for source_enemy_id_variant in _terminal_enemy_rapid_fire_source_expirations:
+		var source_enemy_id := int(source_enemy_id_variant)
+		if (
+			float(_terminal_enemy_rapid_fire_source_expirations[source_enemy_id])
+			<= now
+		):
+			_stale_terminal_enemy_rapid_fire_source_ids.append(source_enemy_id)
+	for source_enemy_id in _stale_terminal_enemy_rapid_fire_source_ids:
+		_terminal_enemy_rapid_fire_source_expirations.erase(source_enemy_id)
+		_terminal_enemy_rapid_fire_source_host_timestamps.erase(source_enemy_id)
+
+
+func _get_rapid_fire_simulation_service() -> RapidFireSimulationService:
+	if not is_bound():
+		return null
+	var combat_services := _runtime.get_enemy_combat_services()
+	if combat_services == null:
+		return null
+	return combat_services.get_rapid_fire_simulation_service()
+
+
+static func _is_supported_enemy_rapid_fire_profile(profile: int) -> bool:
+	return (
+		profile == RapidFireSimulationService.Profile.AK
+		or profile == RapidFireSimulationService.Profile.GUNNER
+		or profile == RapidFireSimulationService.Profile.GUNNER_ELITE
+	)
+
+
+static func _is_valid_enemy_rapid_fire_projectile_range(
+	base_projectile_id: int,
+	count: int
+) -> bool:
+	if count <= 0:
+		return false
+	var expected_owner := PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
+	for projectile_index in range(count):
+		var projectile_id := base_projectile_id + projectile_index
+		if not is_projectile_id_valid_for_host_owner(
+			projectile_id,
+			expected_owner
+		):
+			return false
+		if (
+			decode_projectile_sequence_counter(projectile_id)
+			!= decode_projectile_sequence_counter(base_projectile_id) + projectile_index
+		):
+			return false
+	return true
 
 
 func _release_and_erase_data_projectile_backend(projectile_id: int) -> void:
@@ -680,6 +1528,453 @@ func apply_authority_projectile_fired(
 		),
 		_get_net_time()
 	)
+
+
+func apply_authority_enemy_rapid_fire_burst(
+	sender_id: int,
+	host_first_shot_timestamp: float,
+	descriptor: PackedByteArray
+) -> bool:
+	if (
+		not _is_authority_sender(sender_id)
+		or not is_finite(host_first_shot_timestamp)
+		or host_first_shot_timestamp < 0.0
+		or descriptor.is_empty()
+		or descriptor.size() > ENEMY_RAPID_FIRE_BURST_MAX_DESCRIPTOR_BYTES
+	):
+		return false
+	var decoded := EnemyRapidFireNetworkCodecScript.decode_burst(descriptor)
+	if not bool(decoded.get("valid", false)):
+		return false
+	var projectile_count := int(decoded.get("count", 0))
+	var base_projectile_id := int(decoded.get("base_projectile_id", 0))
+	var profile := int(decoded.get("profile", 0))
+	var source_enemy_id := int(decoded.get("source_enemy_id", 0))
+	var source_position := decoded.get("source_position", Vector2.ZERO) as Vector2
+	var action_id := int(decoded.get("action_id", 0))
+	var origin := decoded.get("origin", Vector2.ZERO) as Vector2
+	var locked_direction := decoded.get(
+		"locked_direction",
+		Vector2.RIGHT
+	) as Vector2
+	var interval := float(decoded.get("interval", -1.0))
+	var speed := float(decoded.get("speed", 0.0))
+	var lifetime := float(decoded.get("lifetime", 0.0))
+	var directions := decoded.get("directions", PackedVector2Array()) as PackedVector2Array
+	if (
+		projectile_count <= 0
+		or projectile_count > EnemyRapidFireNetworkCodecScript.MAX_BURST_PROJECTILES
+		or directions.size() != projectile_count
+		or not _is_supported_enemy_rapid_fire_profile(profile)
+		or not _is_valid_enemy_rapid_fire_projectile_range(
+			base_projectile_id,
+			projectile_count
+		)
+	):
+		return false
+	var service := _get_rapid_fire_simulation_service()
+	if service == null:
+		return false
+	var now := _get_net_time()
+	var terminal_host_timestamp := (
+		_get_terminal_enemy_rapid_fire_host_timestamp(source_enemy_id, now)
+	)
+	var first_shot_event_age := _get_host_event_age(host_first_shot_timestamp)
+	var should_present_action := (
+		(
+			terminal_host_timestamp < 0.0
+			or host_first_shot_timestamp <= terminal_host_timestamp
+		)
+		and
+		_latest_applied_enemy_rapid_fire_snapshot_host_timestamp
+			< host_first_shot_timestamp
+		and not has_replica_projectile(base_projectile_id)
+		and float(_seen_enemy_rapid_fire_projectile_expirations.get(
+			base_projectile_id,
+			0.0
+		)) <= now
+	)
+	for projectile_index in range(projectile_count):
+		var projectile_id := base_projectile_id + projectile_index
+		var shot_offset := interval * projectile_index
+		var projectile_host_timestamp := host_first_shot_timestamp + shot_offset
+		if (
+			terminal_host_timestamp >= 0.0
+			and projectile_host_timestamp > terminal_host_timestamp
+		):
+			_seen_enemy_rapid_fire_projectile_expirations[projectile_id] = (
+				now + ENEMY_RAPID_FIRE_FINISH_DEDUP_RETENTION_SECONDS
+			)
+			continue
+		if (
+			_latest_applied_enemy_rapid_fire_snapshot_host_timestamp >= 0.0
+			and projectile_host_timestamp
+				<= _latest_applied_enemy_rapid_fire_snapshot_host_timestamp
+		):
+			_seen_enemy_rapid_fire_projectile_expirations[projectile_id] = (
+				now + ENEMY_RAPID_FIRE_REPLICA_DEDUP_RETENTION_SECONDS
+			)
+			continue
+		if (
+			has_replica_projectile(projectile_id)
+			or float(_seen_enemy_rapid_fire_projectile_expirations.get(
+				projectile_id,
+				0.0
+			)) > now
+		):
+			continue
+		var shot_age := first_shot_event_age - shot_offset
+		var activation_delay := maxf(-shot_age, 0.0)
+		var active_age := maxf(shot_age, 0.0)
+		var remaining_lifetime := lifetime - active_age
+		if remaining_lifetime <= 0.0:
+			_seen_enemy_rapid_fire_projectile_expirations[projectile_id] = (
+				now + ENEMY_RAPID_FIRE_REPLICA_DEDUP_RETENTION_SECONDS
+			)
+			continue
+		var direction := directions[projectile_index]
+		var compensated_position := origin + direction * speed * active_age
+		var handle := service.register_replica_projectile(
+			profile as RapidFireSimulationService.Profile,
+			compensated_position,
+			direction,
+			speed,
+			remaining_lifetime,
+			source_enemy_id,
+			projectile_id,
+			activation_delay
+		)
+		if handle <= RapidFireSimulationService.INVALID_HANDLE:
+			continue
+		_remember_replica_projectile_backend(
+			projectile_id,
+			service,
+			handle,
+			projectile_host_timestamp,
+			now + activation_delay + remaining_lifetime
+		)
+	if should_present_action:
+		enemy_rapid_fire_action_requested.emit(
+			source_enemy_id,
+			profile,
+			locked_direction,
+			source_position,
+			action_id,
+			host_first_shot_timestamp,
+			first_shot_event_age
+		)
+	return true
+
+
+func apply_authority_enemy_rapid_fire_finished_batch(
+	sender_id: int,
+	host_finish_timestamp: float,
+	descriptor: PackedByteArray
+) -> bool:
+	if (
+		not _is_authority_sender(sender_id)
+		or not is_finite(host_finish_timestamp)
+		or host_finish_timestamp < 0.0
+		or descriptor.is_empty()
+		or descriptor.size() > ENEMY_RAPID_FIRE_FINISH_MAX_DESCRIPTOR_BYTES
+	):
+		return false
+	var decoded := EnemyRapidFireNetworkCodecScript.decode_finish_batch(
+		descriptor
+	)
+	if not bool(decoded.get("valid", false)):
+		return false
+	var now := _get_net_time()
+	var combat_services := (
+		_runtime.get_enemy_combat_services()
+		if is_bound()
+		else null
+	)
+	var presenter := (
+		combat_services.get_rapid_projectile_presenter()
+		if combat_services != null
+		else null
+	)
+	for record_variant in decoded.get("records", []) as Array:
+		var record := record_variant as Dictionary
+		var projectile_id := int(record.get("projectile_id", 0))
+		var previous_finish_timestamp := float(
+			_finished_enemy_rapid_fire_projectile_timestamps.get(
+				projectile_id,
+				-1.0
+			)
+		)
+		if host_finish_timestamp < previous_finish_timestamp:
+			continue
+		_finished_enemy_rapid_fire_projectile_timestamps[projectile_id] = (
+			host_finish_timestamp
+		)
+		_seen_enemy_rapid_fire_projectile_expirations[projectile_id] = (
+			now + ENEMY_RAPID_FIRE_FINISH_DEDUP_RETENTION_SECONDS
+		)
+		if not has_replica_projectile(projectile_id):
+			continue
+		var service: RapidFireSimulationService = (
+			_known_replica_projectile_services.get(projectile_id)
+		)
+		var handle := int(_known_replica_projectile_handles.get(
+			projectile_id,
+			RapidFireSimulationService.INVALID_HANDLE
+		))
+		if service == null or not service.is_handle_live(handle):
+			_erase_replica_projectile_backend(projectile_id)
+			continue
+		var reason := int(record.get(
+			"reason",
+			RapidFireSimulationService.CompletionReason.NONE
+		)) as RapidFireSimulationService.CompletionReason
+		if (
+			presenter != null
+			and (
+				reason == RapidFireSimulationService.CompletionReason.WORLD
+				or reason == RapidFireSimulationService.CompletionReason.TARGET
+			)
+		):
+			presenter.queue_completion_hit(
+				RapidFireSimulationService.Mode.REPLICA,
+				service.get_slot_profile(handle),
+				reason,
+				record.get("position", Vector2.ZERO) as Vector2,
+				record.get("direction", Vector2.RIGHT) as Vector2
+			)
+		_release_and_erase_replica_projectile_backend(projectile_id)
+	return true
+
+
+func apply_authority_enemy_rapid_fire_snapshot_chunk(
+	sender_id: int,
+	snapshot_id: int,
+	chunk_index: int,
+	chunk_count: int,
+	host_snapshot_timestamp: float,
+	descriptor: PackedByteArray
+) -> bool:
+	if (
+		not _is_authority_sender(sender_id)
+		or snapshot_id <= 0
+		or chunk_count < 0
+		or chunk_count > ENEMY_RAPID_FIRE_MAX_SNAPSHOT_CHUNKS
+		or not is_finite(host_snapshot_timestamp)
+		or host_snapshot_timestamp < 0.0
+		or snapshot_id <= _latest_applied_enemy_rapid_fire_snapshot_id
+	):
+		return snapshot_id <= _latest_applied_enemy_rapid_fire_snapshot_id
+	if chunk_count == 0:
+		if chunk_index != 0 or not descriptor.is_empty():
+			return false
+		return _apply_complete_enemy_rapid_fire_snapshot(
+			snapshot_id,
+			host_snapshot_timestamp,
+			[]
+		)
+	if (
+		chunk_index < 0
+		or chunk_index >= chunk_count
+		or descriptor.is_empty()
+		or descriptor.size() > ENEMY_RAPID_FIRE_SNAPSHOT_MAX_DESCRIPTOR_BYTES
+	):
+		return false
+	var decoded := EnemyRapidFireNetworkCodecScript.decode_snapshot_chunk(
+		descriptor
+	)
+	if not bool(decoded.get("valid", false)):
+		return false
+	var pending: Dictionary
+	if _pending_enemy_rapid_fire_snapshots.has(snapshot_id):
+		pending = _pending_enemy_rapid_fire_snapshots[snapshot_id] as Dictionary
+		if (
+			int(pending.get("chunk_count", -1)) != chunk_count
+			or not is_equal_approx(
+				float(pending.get("host_snapshot_timestamp", -1.0)),
+				host_snapshot_timestamp
+			)
+		):
+			return false
+	else:
+		_trim_pending_enemy_rapid_fire_snapshots()
+		pending = {
+			"chunk_count": chunk_count,
+			"host_snapshot_timestamp": host_snapshot_timestamp,
+			"chunks": {},
+		}
+	var chunks := pending.get("chunks", {}) as Dictionary
+	if chunks.has(chunk_index):
+		return (chunks[chunk_index] as PackedByteArray) == descriptor
+	chunks[chunk_index] = descriptor
+	pending["chunks"] = chunks
+	_pending_enemy_rapid_fire_snapshots[snapshot_id] = pending
+	if chunks.size() < chunk_count:
+		return true
+	var records: Array[Dictionary] = []
+	var seen_projectile_ids: Dictionary[int, bool] = {}
+	for ordered_chunk_index in range(chunk_count):
+		if not chunks.has(ordered_chunk_index):
+			return true
+		var ordered_decoded := (
+			EnemyRapidFireNetworkCodecScript.decode_snapshot_chunk(
+				chunks[ordered_chunk_index] as PackedByteArray
+			)
+		)
+		if not bool(ordered_decoded.get("valid", false)):
+			_pending_enemy_rapid_fire_snapshots.erase(snapshot_id)
+			return false
+		var chunk_records := ordered_decoded.get("records", []) as Array
+		for record_variant in chunk_records:
+			var record := record_variant as Dictionary
+			var projectile_id := int(record.get("projectile_id", 0))
+			if seen_projectile_ids.has(projectile_id):
+				_pending_enemy_rapid_fire_snapshots.erase(snapshot_id)
+				return false
+			seen_projectile_ids[projectile_id] = true
+			records.append(record)
+	return _apply_complete_enemy_rapid_fire_snapshot(
+		snapshot_id,
+		host_snapshot_timestamp,
+		records
+	)
+
+
+func _apply_complete_enemy_rapid_fire_snapshot(
+	snapshot_id: int,
+	host_snapshot_timestamp: float,
+	records: Array[Dictionary]
+) -> bool:
+	var service := _get_rapid_fire_simulation_service()
+	if service == null:
+		_pending_enemy_rapid_fire_snapshots.erase(snapshot_id)
+		return false
+	for record in records:
+		var projectile_id := int(record.get("projectile_id", 0))
+		var profile := int(record.get("profile", 0))
+		if (
+			not _is_supported_enemy_rapid_fire_profile(profile)
+			or not is_projectile_id_valid_for_host_owner(
+				projectile_id,
+				PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
+			)
+		):
+			_pending_enemy_rapid_fire_snapshots.erase(snapshot_id)
+			return false
+	var event_age := _get_host_event_age(host_snapshot_timestamp)
+	var now := _get_net_time()
+	var prepared_projectile_ids := PackedInt64Array()
+	var prepared_records: Array[Dictionary] = []
+	var prepared_handles := PackedInt64Array()
+	var prepared_remaining_lifetimes := PackedFloat64Array()
+	var expired_projectile_ids := PackedInt64Array()
+	for record in records:
+		var projectile_id := int(record["projectile_id"])
+		if float(_finished_enemy_rapid_fire_projectile_timestamps.get(
+			projectile_id,
+			-1.0
+		)) >= host_snapshot_timestamp:
+			continue
+		if (
+			has_replica_projectile(projectile_id)
+			and float(_known_replica_projectile_host_timestamps.get(
+				projectile_id,
+				-INF
+			)) > host_snapshot_timestamp
+		):
+			continue
+		# A repair snapshot is a later reliable statement about live Host DATA.
+		# It may legitimately contain a projectile fired before its source enemy
+		# terminated, so the burst-only terminal fence must not suppress it.
+		var remaining_lifetime := (
+			float(record["remaining_lifetime"]) - event_age
+		)
+		if remaining_lifetime <= 0.0:
+			expired_projectile_ids.append(projectile_id)
+			continue
+		prepared_projectile_ids.append(projectile_id)
+		prepared_records.append(record)
+		prepared_remaining_lifetimes.append(remaining_lifetime)
+	# Register the complete replacement set alongside the old rows. Only after
+	# every handle exists do we release the previous snapshot and publish maps.
+	# This makes capacity/teardown/generation failures retryable and atomic.
+	if not service.reserve_projectile_capacity(
+		service.get_dense_record_count() + prepared_projectile_ids.size()
+	):
+		_pending_enemy_rapid_fire_snapshots.erase(snapshot_id)
+		return false
+	for prepared_index in range(prepared_projectile_ids.size()):
+		var projectile_id := int(prepared_projectile_ids[prepared_index])
+		var record := prepared_records[prepared_index]
+		var direction := record["direction"] as Vector2
+		var speed := float(record["speed"])
+		var position := (
+			record["position"] as Vector2
+		) + direction * speed * event_age
+		var handle := service.register_replica_projectile(
+			int(record["profile"]) as RapidFireSimulationService.Profile,
+			position,
+			direction,
+			speed,
+			prepared_remaining_lifetimes[prepared_index],
+			int(record["source_enemy_id"]),
+			projectile_id,
+			0.0
+		)
+		if handle <= RapidFireSimulationService.INVALID_HANDLE:
+			for prepared_handle in prepared_handles:
+				service.release_projectile(int(prepared_handle))
+			_pending_enemy_rapid_fire_snapshots.erase(snapshot_id)
+			return false
+		prepared_handles.append(handle)
+	for projectile_id_variant in _known_replica_projectile_services.keys():
+		var projectile_id := int(projectile_id_variant)
+		if (
+			float(_known_replica_projectile_host_timestamps.get(
+				projectile_id,
+				-INF
+			)) <= host_snapshot_timestamp
+		):
+			_release_and_erase_replica_projectile_backend(projectile_id)
+	for expired_projectile_id in expired_projectile_ids:
+		_seen_enemy_rapid_fire_projectile_expirations[int(expired_projectile_id)] = (
+			now + ENEMY_RAPID_FIRE_REPLICA_DEDUP_RETENTION_SECONDS
+		)
+	for prepared_index in range(prepared_projectile_ids.size()):
+		var projectile_id := int(prepared_projectile_ids[prepared_index])
+		var remaining_lifetime := prepared_remaining_lifetimes[prepared_index]
+		_remember_replica_projectile_backend(
+			projectile_id,
+			service,
+			int(prepared_handles[prepared_index]),
+			host_snapshot_timestamp,
+			now + remaining_lifetime
+		)
+	_latest_applied_enemy_rapid_fire_snapshot_id = snapshot_id
+	_latest_applied_enemy_rapid_fire_snapshot_host_timestamp = (
+		host_snapshot_timestamp
+	)
+	for pending_snapshot_id_variant in (
+		_pending_enemy_rapid_fire_snapshots.keys()
+	):
+		var pending_snapshot_id := int(pending_snapshot_id_variant)
+		if pending_snapshot_id <= snapshot_id:
+			_pending_enemy_rapid_fire_snapshots.erase(pending_snapshot_id)
+	return true
+
+
+func _trim_pending_enemy_rapid_fire_snapshots() -> void:
+	if (
+		_pending_enemy_rapid_fire_snapshots.size()
+		< ENEMY_RAPID_FIRE_MAX_PENDING_SNAPSHOTS
+	):
+		return
+	var oldest_snapshot_id := 0
+	for snapshot_id_variant in _pending_enemy_rapid_fire_snapshots.keys():
+		var snapshot_id := int(snapshot_id_variant)
+		if oldest_snapshot_id == 0 or snapshot_id < oldest_snapshot_id:
+			oldest_snapshot_id = snapshot_id
+	if oldest_snapshot_id > 0:
+		_pending_enemy_rapid_fire_snapshots.erase(oldest_snapshot_id)
 
 
 func apply_authority_tango_laser_volley(
@@ -996,7 +2291,9 @@ func allocate_projectile_id(owner_peer_id: int, host_origin: bool) -> int:
 			projectile_id > 0
 			and not _known_projectiles.has(projectile_id)
 			and not _known_data_projectile_services.has(projectile_id)
+			and not _known_replica_projectile_services.has(projectile_id)
 			and not _projectile_records.has(projectile_id)
+			and not _reserved_host_projectile_ids.has(projectile_id)
 		):
 			return projectile_id
 		if _next_projectile_sequence == first_sequence:
@@ -1046,6 +2343,26 @@ func has_data_projectile(projectile_id: int) -> bool:
 		or not _known_data_projectile_handles.has(projectile_id)
 	):
 		_erase_data_projectile_backend(projectile_id)
+		return false
+	return true
+
+
+func has_replica_projectile(projectile_id: int) -> bool:
+	var service: RapidFireSimulationService = (
+		_known_replica_projectile_services.get(projectile_id)
+	)
+	var handle := int(_known_replica_projectile_handles.get(
+		projectile_id,
+		RapidFireSimulationService.INVALID_HANDLE
+	))
+	if (
+		service == null
+		or not is_instance_valid(service)
+		or handle <= RapidFireSimulationService.INVALID_HANDLE
+		or not service.is_handle_live(handle)
+		or service.get_slot_mode(handle) != RapidFireSimulationService.Mode.REPLICA
+	):
+		_erase_replica_projectile_backend(projectile_id)
 		return false
 	return true
 
@@ -1510,11 +2827,16 @@ func prune_records(now: float) -> void:
 			expired_hit_keys.append(hit_key)
 	for hit_key in expired_hit_keys:
 		_processed_enemy_hit_ids.erase(hit_key)
+	_prune_replica_projectile_backends(now)
 
 
 func clear_peer(peer_id: int) -> void:
 	_client_projectile_request_rate_buckets.erase(peer_id)
 	_last_tango_volley_visual_state_by_peer.erase(peer_id)
+	for projectile_id_variant in _reserved_host_projectile_ids.keys():
+		var projectile_id := int(projectile_id_variant)
+		if int(_reserved_host_projectile_ids[projectile_id]) == peer_id:
+			_reserved_host_projectile_ids.erase(projectile_id)
 	clear_projectiles_for_peer(peer_id)
 	clear_data_projectiles_for_peer(peer_id)
 	clear_projectile_records_for_peer(peer_id)
@@ -1581,12 +2903,38 @@ func reset_session_state() -> void:
 		_release_and_erase_data_projectile_backend(projectile_id)
 	_known_data_projectile_services.clear()
 	_known_data_projectile_handles.clear()
+	_known_data_projectile_types.clear()
+	_known_data_projectile_owner_peer_ids.clear()
+	_known_data_projectile_damages.clear()
+	_known_data_projectile_lifetimes.clear()
+	_reserved_host_projectile_ids.clear()
+	_active_enemy_rapid_fire_bursts.clear()
+	_active_enemy_rapid_fire_base_by_reserved_id.clear()
+	_pending_enemy_rapid_fire_finish_records.clear()
+	_enemy_rapid_fire_finish_flush_queued = false
+	for projectile_id in _known_replica_projectile_services.keys():
+		_release_and_erase_replica_projectile_backend(int(projectile_id))
+	_known_replica_projectile_services.clear()
+	_known_replica_projectile_handles.clear()
+	_known_replica_projectile_host_timestamps.clear()
+	_seen_enemy_rapid_fire_projectile_expirations.clear()
+	_finished_enemy_rapid_fire_projectile_timestamps.clear()
+	_terminal_enemy_rapid_fire_source_expirations.clear()
+	_terminal_enemy_rapid_fire_source_host_timestamps.clear()
+	_stale_replica_projectile_ids.clear()
+	_stale_enemy_rapid_fire_projectile_ids.clear()
+	_stale_terminal_enemy_rapid_fire_source_ids.clear()
+	_replica_prune_pass_count = 0
+	_pending_enemy_rapid_fire_snapshots.clear()
 	_projectile_records.clear()
 	_stale_projectile_record_ids.clear()
 	_processed_enemy_hit_ids.clear()
 	_client_projectile_request_rate_buckets.clear()
 	_last_tango_volley_visual_state_by_peer.clear()
 	_next_projectile_sequence = 1
+	_next_enemy_rapid_fire_snapshot_id = 1
+	_latest_applied_enemy_rapid_fire_snapshot_id = 0
+	_latest_applied_enemy_rapid_fire_snapshot_host_timestamp = -1.0
 
 
 func get_state_metrics() -> Dictionary:
@@ -1594,6 +2942,18 @@ func get_state_metrics() -> Dictionary:
 		"next_sequence": _next_projectile_sequence,
 		"known_projectiles": _known_projectiles.size(),
 		"known_data_projectiles": _known_data_projectile_services.size(),
+		"reserved_host_projectile_ids": _reserved_host_projectile_ids.size(),
+		"active_enemy_rapid_fire_bursts": _active_enemy_rapid_fire_bursts.size(),
+		"pending_enemy_rapid_fire_finishes": (
+			_pending_enemy_rapid_fire_finish_records.size()
+		),
+		"known_replica_projectiles": _known_replica_projectile_services.size(),
+		"terminal_rapid_fire_sources": (
+			_terminal_enemy_rapid_fire_source_expirations.size()
+		),
+		"replica_prune_passes": _replica_prune_pass_count,
+		"pending_rapid_fire_snapshots": _pending_enemy_rapid_fire_snapshots.size(),
+		"latest_rapid_fire_snapshot_id": _latest_applied_enemy_rapid_fire_snapshot_id,
 		"projectile_records": _projectile_records.size(),
 		"request_rate_buckets": _client_projectile_request_rate_buckets.size(),
 		"enemy_hit_dedupe": _processed_enemy_hit_ids.size(),

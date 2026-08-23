@@ -5,6 +5,7 @@ const RapidFireSimulationServiceScript := preload(
 )
 const TEST_DELTA := 1.0 / 60.0
 const LARGE_PROJECTILE_COUNT := 100_000
+const REPLICA_PROJECTILE_COUNT := 4_096
 const FIXED_SEED := 0x5A17C0DE
 const CARDINAL_DIRECTIONS := [
 	Vector2.RIGHT,
@@ -23,10 +24,12 @@ func _init() -> void:
 func _run() -> void:
 	await _test_same_frame_activation_and_final_lifetime_step()
 	await _test_gunner_profile_metadata_identity_and_mixed_completion()
+	await _test_replica_delay_activation_lifetime_and_compaction()
 	_test_stale_handle_and_generation_reuse()
 	_test_frozen_damage_source_storage_and_compaction()
 	await _test_stable_tombstone_compaction_and_completion_order()
 	await _test_shadow_difference_read_model_and_teardown()
+	await _test_fixed_seed_replica_time_only_cohort()
 	await _test_fixed_seed_hundred_thousand_projectiles()
 	_finish()
 
@@ -283,6 +286,239 @@ func _test_gunner_profile_metadata_identity_and_mixed_completion() -> void:
 		"Mixed Gunner/Elite final-delta completions must preserve stable order, profile, and mode."
 	)
 	service.prepare_for_runtime_teardown()
+	service.free()
+
+
+func _test_replica_delay_activation_lifetime_and_compaction() -> void:
+	var service := RapidFireSimulationServiceScript.new()
+	_expect(
+		service.reserve_projectile_capacity(4),
+		"REPLICA lifecycle storage must be fully preallocated."
+	)
+	_expect(
+		service.register_projectile(
+			RapidFireSimulationServiceScript.Mode.REPLICA,
+			RapidFireSimulationServiceScript.Profile.AK,
+			Vector2.ZERO,
+			Vector2.RIGHT,
+			60.0,
+			1.0,
+			0,
+			700,
+			4_100,
+			2,
+			0
+		) == RapidFireSimulationServiceScript.INVALID_HANDLE,
+		"The generic authoritative registration path must reject REPLICA mode."
+	)
+	_expect(
+		service.register_replica_projectile(
+			RapidFireSimulationServiceScript.Profile.AK,
+			Vector2.ZERO,
+			Vector2.RIGHT,
+			60.0,
+			1.0,
+			700,
+			0,
+			0.0
+		) == RapidFireSimulationServiceScript.INVALID_HANDLE
+		and service.register_replica_projectile(
+			RapidFireSimulationServiceScript.Profile.AK,
+			Vector2.ZERO,
+			Vector2.RIGHT,
+			60.0,
+			1.0,
+			700,
+			4_100,
+			-TEST_DELTA
+		) == RapidFireSimulationServiceScript.INVALID_HANDLE,
+		"REPLICA registration must require a positive identity and non-negative finite delay."
+	)
+
+	var delayed_handle := service.register_replica_projectile(
+		RapidFireSimulationServiceScript.Profile.AK,
+		Vector2(10.0, 20.0),
+		Vector2.RIGHT,
+		120.0,
+		TEST_DELTA * 1.25,
+		701,
+		4_101,
+		TEST_DELTA * 1.5
+	)
+	var released_middle_handle := _register_test_projectile(
+		service,
+		RapidFireSimulationServiceScript.Mode.DATA,
+		4_102,
+		1.0
+	)
+	var trailing_handle := service.register_replica_projectile(
+		RapidFireSimulationServiceScript.Profile.GUNNER,
+		Vector2(0.0, 5.0),
+		Vector2.DOWN,
+		60.0,
+		TEST_DELTA * 1.25,
+		702,
+		4_103,
+		TEST_DELTA * 0.25
+	)
+	var zero_delay_handle := service.register_replica_projectile(
+		RapidFireSimulationServiceScript.Profile.GUNNER_ELITE,
+		Vector2(-2.0, 0.0),
+		Vector2.LEFT,
+		30.0,
+		TEST_DELTA * 1.25,
+		703,
+		4_104,
+		0.0
+	)
+	_expect(
+		delayed_handle > 0
+		and released_middle_handle > 0
+		and trailing_handle > 0
+		and zero_delay_handle > 0
+		and service.get_damage(delayed_handle) == 0
+		and is_equal_approx(service.get_speed(delayed_handle), 120.0)
+		and service.get_world_step_index(delayed_handle) == 0
+		and not service.is_world_query_due(delayed_handle),
+		"REPLICA registration must retain visual metadata without damage or cadence state."
+	)
+	_expect(
+		service.release_projectile(released_middle_handle),
+		"The middle DATA row must release before stable compaction."
+	)
+	service._physics_process(TEST_DELTA)
+	_expect(
+		service.get_dense_record_count() == 3
+		and service.get_handle_at_stable_index(0) == delayed_handle
+		and service.get_handle_at_stable_index(1) == trailing_handle
+		and service.get_handle_at_stable_index(2) == zero_delay_handle
+		and service.get_slot_state(delayed_handle)
+		== RapidFireSimulationServiceScript.SlotState.PENDING_ACTIVATION
+		and service.get_position(delayed_handle).is_equal_approx(
+			Vector2(10.0, 20.0)
+		)
+		and is_equal_approx(
+			service.get_activation_delay_remaining(trailing_handle),
+			TEST_DELTA * 0.25
+		),
+		"Spawn-frame compaction must preserve REPLICA order, delay, and inert state."
+	)
+
+	await physics_frame
+	service._physics_process(TEST_DELTA)
+	_expect(
+		service.get_slot_state(delayed_handle)
+		== RapidFireSimulationServiceScript.SlotState.PENDING_ACTIVATION
+		and is_equal_approx(
+			service.get_activation_delay_remaining(delayed_handle),
+			TEST_DELTA * 0.5
+		)
+		and service.get_position(delayed_handle).is_equal_approx(
+			Vector2(10.0, 20.0)
+		)
+		and is_equal_approx(
+			service.get_remaining_lifetime(delayed_handle),
+			TEST_DELTA * 1.25
+		)
+		and service.get_slot_state(trailing_handle)
+		== RapidFireSimulationServiceScript.SlotState.ACTIVE
+		and is_equal_approx(
+			service.get_replica_active_age_seconds(trailing_handle),
+			TEST_DELTA * 0.75
+		)
+		and service.get_position(trailing_handle).is_equal_approx(
+			Vector2(0.0, 5.75)
+		)
+		and service.get_slot_state(zero_delay_handle)
+		== RapidFireSimulationServiceScript.SlotState.ACTIVE
+		and is_equal_approx(
+			service.get_replica_active_age_seconds(zero_delay_handle),
+			TEST_DELTA
+		)
+		and service.get_position(zero_delay_handle).is_equal_approx(
+			Vector2(-2.5, 0.0)
+		),
+		"REPLICA delay must wait without motion, while crossing zero advances only the overshoot."
+	)
+	_expect(
+		service.get_world_step_index(delayed_handle) == 0
+		and service.get_world_step_index(trailing_handle) == 0
+		and not service.is_world_query_due(delayed_handle)
+		and not service.is_world_query_due(trailing_handle),
+		"REPLICA advancement must never touch authoritative world cadence."
+	)
+
+	await physics_frame
+	service._physics_process(TEST_DELTA)
+	_expect(
+		service.get_slot_state(delayed_handle)
+		== RapidFireSimulationServiceScript.SlotState.ACTIVE
+		and is_equal_approx(
+			service.get_replica_active_age_seconds(delayed_handle),
+			TEST_DELTA * 0.5
+		)
+		and service.get_position(delayed_handle).is_equal_approx(
+			Vector2(11.0, 20.0)
+		)
+		and service.get_completion_count() == 2
+		and service.get_completion_projectile_id(0) == 4_103
+		and service.get_completion_projectile_id(1) == 4_104,
+		"The second tick must activate the delayed row and keep completion order stable."
+	)
+	for completion_index in range(service.get_completion_count()):
+		_expect(
+			service.get_completion_mode(completion_index)
+			== RapidFireSimulationServiceScript.Mode.REPLICA
+			and service.get_completion_reason(completion_index)
+			== RapidFireSimulationServiceScript.CompletionReason.LIFETIME
+			and service.get_completion_target_kind(completion_index)
+			== RapidFireSimulationServiceScript.TargetKind.NONE
+			and not service.get_completion_damage_applied(completion_index),
+			"REPLICA completion must be visual-only lifetime output."
+		)
+
+	await physics_frame
+	service._physics_process(TEST_DELTA)
+	_expect(
+		service.get_completion_count() == 1
+		and service.get_completion_handle(0) == delayed_handle
+		and service.get_completion_projectile_id(0) == 4_101
+		and service.get_completion_mode(0)
+		== RapidFireSimulationServiceScript.Mode.REPLICA
+		and service.get_completion_profile(0)
+		== RapidFireSimulationServiceScript.Profile.AK
+		and service.get_completion_position(0).is_equal_approx(
+			Vector2(13.0, 20.0)
+		)
+		and not service.get_completion_damage_applied(0)
+		and service.get_active_slot_count() == 0
+		and service.get_dense_record_count() == 0,
+		"The final REPLICA lifetime must finish without damage and compact all rows."
+	)
+	var metrics := service.get_metrics()
+	_expect(
+		int(metrics["replica_slots"]) == 0
+		and int(metrics["replica_registrations"]) == 3
+		and int(metrics["replica_delay_waits"]) == 1
+		and int(metrics["replica_delay_overshoots"]) == 2
+		and int(metrics["replica_activations"]) == 3
+		and int(metrics["replica_advances"]) == 6
+		and int(metrics["replica_lifetime_completions"]) == 3
+		and int(metrics["world_queries"]) == 0
+		and int(metrics["plant_broad_queries"]) == 0
+		and int(metrics["plant_exact_queries"]) == 0
+		and int(metrics["player_exact_queries"]) == 0
+		and int(metrics["damage_applications"]) == 0,
+		"REPLICA metrics must account for pure-time work and prove zero queries or damage."
+	)
+	service.prepare_for_runtime_teardown()
+	var teardown_metrics := service.get_metrics()
+	_expect(
+		int(teardown_metrics["replica_slots"]) == 0
+		and int(teardown_metrics["reserved_capacity"]) == 0
+		and int(teardown_metrics["dense_records"]) == 0,
+		"REPLICA teardown must release delay storage and reset all slot counts."
+	)
 	service.free()
 
 
@@ -615,6 +851,125 @@ func _test_shadow_difference_read_model_and_teardown() -> void:
 		) == RapidFireSimulationServiceScript.INVALID_HANDLE,
 		"A torn-down kernel must reject all new registrations."
 	)
+	service.free()
+
+
+func _test_fixed_seed_replica_time_only_cohort() -> void:
+	var service := RapidFireSimulationServiceScript.new()
+	_expect(
+		service.reserve_projectile_capacity(REPLICA_PROJECTILE_COUNT),
+		"The fixed-seed REPLICA cohort must preallocate every packed row."
+	)
+	var random := RandomNumberGenerator.new()
+	random.seed = FIXED_SEED ^ 0x51A7E
+	var delay_choices := PackedFloat64Array([
+		0.0,
+		TEST_DELTA * 0.5,
+		TEST_DELTA * 1.5,
+		TEST_DELTA * 2.25,
+	])
+	var registration_failed := false
+	for projectile_index in range(REPLICA_PROJECTILE_COUNT):
+		var profile := (
+			1 + projectile_index % 3
+		) as RapidFireSimulationServiceScript.Profile
+		var direction: Vector2 = CARDINAL_DIRECTIONS[
+			random.randi_range(0, CARDINAL_DIRECTIONS.size() - 1)
+		]
+		var lifetime_ticks := random.randi_range(1, 4)
+		var handle := service.register_replica_projectile(
+			profile,
+			Vector2(
+				float(projectile_index % 128),
+				float(projectile_index / 128)
+			),
+			direction,
+			float(random.randi_range(30, 240)),
+			TEST_DELTA * (float(lifetime_ticks) - 0.25),
+			800 + projectile_index % 64,
+			50_000 + projectile_index,
+			delay_choices[random.randi_range(0, delay_choices.size() - 1)]
+		)
+		if handle <= RapidFireSimulationServiceScript.INVALID_HANDLE:
+			registration_failed = true
+			break
+	_expect(
+		not registration_failed,
+		"Every projectile in the fixed-seed REPLICA cohort must register."
+	)
+	if registration_failed:
+		service.prepare_for_runtime_teardown()
+		service.free()
+		return
+
+	var registration_metrics := service.get_metrics()
+	_expect(
+		int(registration_metrics["active_slots"])
+		== REPLICA_PROJECTILE_COUNT
+		and int(registration_metrics["pending_slots"])
+		== REPLICA_PROJECTILE_COUNT
+		and int(registration_metrics["replica_slots"])
+		== REPLICA_PROJECTILE_COUNT
+		and int(registration_metrics["data_slots"]) == 0
+		and int(registration_metrics["shadow_slots"]) == 0,
+		"The fixed-seed cohort must occupy only preallocated REPLICA storage."
+	)
+	service._physics_process(TEST_DELTA)
+	_expect(
+		service.get_completion_count() == 0
+		and service.get_active_slot_count() == REPLICA_PROJECTILE_COUNT,
+		"The complete fixed-seed REPLICA cohort must stay inert on its spawn frame."
+	)
+
+	var total_completion_count := 0
+	var completion_identity_valid := true
+	for _active_tick in range(7):
+		await physics_frame
+		service._physics_process(TEST_DELTA)
+		var previous_projectile_id := 0
+		for completion_index in range(service.get_completion_count()):
+			var projectile_id := service.get_completion_projectile_id(
+				completion_index
+			)
+			if (
+				projectile_id <= previous_projectile_id
+				or service.get_completion_mode(completion_index)
+				!= RapidFireSimulationServiceScript.Mode.REPLICA
+				or service.get_completion_reason(completion_index)
+				!= RapidFireSimulationServiceScript.CompletionReason.LIFETIME
+				or service.get_completion_target_kind(completion_index)
+				!= RapidFireSimulationServiceScript.TargetKind.NONE
+				or service.get_completion_damage_applied(completion_index)
+			):
+				completion_identity_valid = false
+				break
+			previous_projectile_id = projectile_id
+		total_completion_count += service.get_completion_count()
+	_expect(
+		completion_identity_valid
+		and total_completion_count == REPLICA_PROJECTILE_COUNT
+		and service.get_active_slot_count() == 0
+		and service.get_dense_record_count() == 0
+		and not service.is_physics_processing(),
+		"Fixed-seed REPLICA completions must be stable, visual-only, and exhaustive."
+	)
+	var metrics := service.get_metrics()
+	_expect(
+		int(metrics["replica_registrations"]) == REPLICA_PROJECTILE_COUNT
+		and int(metrics["replica_activations"]) == REPLICA_PROJECTILE_COUNT
+		and int(metrics["replica_lifetime_completions"])
+		== REPLICA_PROJECTILE_COUNT
+		and int(metrics["world_queries"]) == 0
+		and int(metrics["world_certificates"]) == 0
+		and int(metrics["plant_broad_queries"]) == 0
+		and int(metrics["plant_exact_queries"]) == 0
+		and int(metrics["player_exact_queries"]) == 0
+		and int(metrics["target_completions"]) == 0
+		and int(metrics["world_completions"]) == 0
+		and int(metrics["damage_applications"]) == 0,
+		"Fixed-seed REPLICA simulation must perform no collision, target, or damage work."
+	)
+	service.prepare_for_runtime_teardown()
 	service.free()
 
 

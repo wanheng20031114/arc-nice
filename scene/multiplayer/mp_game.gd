@@ -534,6 +534,48 @@ func _on_projectile_rpc_to_host_requested(
 	_rpc_to_peer(_get_host_peer_id(), method_name, arguments)
 
 
+func _on_projectile_rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	arguments: Array
+) -> void:
+	if peer_id <= 0 or not net_manager.is_host():
+		return
+	_rpc_to_peer(peer_id, method_name, arguments)
+
+
+func _on_projectile_enemy_rapid_fire_action_requested(
+	source_enemy_id: int,
+	profile: int,
+	direction: Vector2,
+	source_position: Vector2,
+	action_id: int,
+	host_action_timestamp: float,
+	action_elapsed: float
+) -> void:
+	if net_manager.is_host() or game == null or source_enemy_id <= 0:
+		return
+	var action_name: StringName
+	match profile:
+		RapidFireSimulationService.Profile.AK:
+			action_name = &"burst"
+		RapidFireSimulationService.Profile.GUNNER, RapidFireSimulationService.Profile.GUNNER_ELITE:
+			action_name = &"combat_robot_gunner_burst"
+		_:
+			return
+	var received_at := _get_net_time()
+	enemy_coordinator.receive_enemy_action(
+		source_enemy_id,
+		action_name,
+		direction,
+		source_position,
+		action_id,
+		received_at - maxf(action_elapsed, 0.0),
+		received_at,
+		host_action_timestamp
+	)
+
+
 func _on_projectile_rpc_broadcast_requested(
 	method_name: StringName,
 	arguments: Array
@@ -2114,6 +2156,10 @@ func prepare_reconnected_member_delivery(
 		or not net_manager.is_reconnect_delivery_preparing(new_peer_id)
 	):
 		return false
+	if not projectile_coordinator.send_active_data_visual_snapshot_to_peer(
+		new_peer_id
+	):
+		return false
 	if tower_mode_adapter == null:
 		return true
 	if not _send_tower_rogue_exploration_snapshot_to_peer(new_peer_id, true):
@@ -2389,6 +2435,7 @@ func _setup_game(mode: int) -> bool:
 		merchant_transactions_coordinator,
 		tower_fate_coordinator,
 		network_diagnostics_coordinator,
+		projectile_coordinator,
 		tower_mode_adapter
 	)
 	if net_manager.is_host():
@@ -3911,16 +3958,74 @@ func register_local_data_projectile(
 	)
 
 
+func reserve_enemy_rapid_fire_projectile_ids(
+	count: int
+) -> PackedInt64Array:
+	return projectile_coordinator.reserve_host_projectile_id_range(
+		MpProjectileCoordinatorScript.PROJECTILE_ID_FALLBACK_OWNER_PEER_ID,
+		count
+	)
+
+
+func release_enemy_rapid_fire_projectile_ids(
+	projectile_ids: PackedInt64Array
+) -> bool:
+	return projectile_coordinator.release_reserved_host_projectile_ids(
+		projectile_ids
+	)
+
+
+func attach_reserved_enemy_rapid_fire_projectile(
+	service: RapidFireSimulationService,
+	handle: int,
+	projectile_id: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	damage: int,
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot = null
+) -> bool:
+	return projectile_coordinator.attach_reserved_local_data_projectile(
+		service,
+		handle,
+		projectile_id,
+		projectile_type,
+		owner_peer_id,
+		damage,
+		lifetime,
+		damage_source_snapshot
+	)
+
+
+func broadcast_enemy_rapid_fire_burst(
+	descriptor: PackedByteArray
+) -> bool:
+	return projectile_coordinator.broadcast_enemy_rapid_fire_burst(
+		_get_net_time(),
+		descriptor
+	)
+
+
 func notify_data_projectile_finished(
 	projectile_id: int,
 	service: RapidFireSimulationService,
-	handle: int
+	handle: int,
+	completion_reason: int = RapidFireSimulationService.CompletionReason.NONE,
+	completion_position: Vector2 = Vector2.ZERO,
+	completion_direction: Vector2 = Vector2.RIGHT
 ) -> void:
 	projectile_coordinator.notify_data_projectile_finished(
 		projectile_id,
 		service,
-		handle
+		handle,
+		completion_reason,
+		completion_position,
+		completion_direction
 	)
+
+
+func flush_enemy_rapid_fire_finish_batch() -> bool:
+	return projectile_coordinator.flush_enemy_rapid_fire_finish_batch()
 
 
 func register_local_tango_laser_volley(
@@ -4032,6 +4137,60 @@ func net_projectile_fired(
 		target_peer_id,
 		host_fire_timestamp,
 		target_enemy_net_id
+	)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 4)
+func net_enemy_rapid_fire_burst(
+	host_first_shot_timestamp: float,
+	descriptor: PackedByteArray
+) -> void:
+	projectile_coordinator.apply_authority_enemy_rapid_fire_burst(
+		multiplayer.get_remote_sender_id(),
+		host_first_shot_timestamp,
+		descriptor
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_enemy_rapid_fire_finished_batch(
+	host_finish_timestamp: float,
+	descriptor: PackedByteArray
+) -> void:
+	projectile_coordinator.apply_authority_enemy_rapid_fire_finished_batch(
+		multiplayer.get_remote_sender_id(),
+		host_finish_timestamp,
+		descriptor
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_enemy_rapid_fire_repair_burst(
+	host_first_shot_timestamp: float,
+	descriptor: PackedByteArray
+) -> void:
+	projectile_coordinator.apply_authority_enemy_rapid_fire_burst(
+		multiplayer.get_remote_sender_id(),
+		host_first_shot_timestamp,
+		descriptor
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_enemy_rapid_fire_snapshot_chunk(
+	snapshot_id: int,
+	chunk_index: int,
+	chunk_count: int,
+	host_snapshot_timestamp: float,
+	descriptor: PackedByteArray
+) -> void:
+	projectile_coordinator.apply_authority_enemy_rapid_fire_snapshot_chunk(
+		multiplayer.get_remote_sender_id(),
+		snapshot_id,
+		chunk_index,
+		chunk_count,
+		host_snapshot_timestamp,
+		descriptor
 	)
 
 
@@ -5917,8 +6076,14 @@ func net_enemy_terminal(
 	confirmed_damage: int = 0,
 	impact_direction: Vector2 = Vector2.ZERO,
 	damage_type: int = EnemyConfig.DamageType.PHYSICAL,
-	presentation_flags: int = 0
+	presentation_flags: int = 0,
+	host_terminal_timestamp: float = -1.0
 ) -> void:
+	if projectile_coordinator != null:
+		projectile_coordinator.release_replica_projectiles_for_source(
+			net_id,
+			host_terminal_timestamp
+		)
 	enemy_coordinator.receive_enemy_terminal(
 		net_id,
 		reason,
@@ -5934,16 +6099,22 @@ func net_enemy_terminal(
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
+	if projectile_coordinator != null:
+		projectile_coordinator.release_replica_projectiles_for_source(net_id)
 	enemy_coordinator.receive_enemy_defeated(net_id, defeat_position)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_enemy_removed(net_id: int) -> void:
+	if projectile_coordinator != null:
+		projectile_coordinator.release_replica_projectiles_for_source(net_id)
 	enemy_coordinator.receive_enemy_removed(net_id)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_enemy_escaped(net_id: int) -> void:
+	if projectile_coordinator != null:
+		projectile_coordinator.release_replica_projectiles_for_source(net_id)
 	if not _has_tower_mode():
 		return
 	enemy_coordinator.receive_enemy_escaped(net_id)

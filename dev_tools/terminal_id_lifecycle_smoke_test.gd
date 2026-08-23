@@ -938,7 +938,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 		and result.applied_damage == 1
 		and enemy.is_dead
 		and runtime.amount == 10000
-		and args.size() == 9
+		and args.size() == 10
 		and int(args[0]) == net_id
 		and int(args[1]) == ENEMY_TERMINAL_DEFEATED
 		and int(args[3]) == 0
@@ -946,7 +946,9 @@ func _test_real_batch_damage_terminal_chain() -> void:
 		and int(args[5]) == 10000
 		and args[6] == Vector2.RIGHT
 		and int(args[7]) == int(EnemyConfig.DamageType.PHYSICAL)
-		and int(args[8]) == 3,
+		and int(args[8]) == 3
+		and is_finite(float(args[9]))
+		and float(args[9]) >= 0.0,
 		"1生命敌人受到10000点伤害时，本地浮字和可靠terminal都必须携带完整结算伤害，生命扣除仍只能为1。"
 	)
 	_expect(
@@ -954,7 +956,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 		and not enemy_coordinator.active_enemy_damage_feedback_context.has(net_id),
 		"真实致死批伤结束后不得遗留不可靠反馈或活动伤害上下文。"
 	)
-	if args.size() != 9:
+	if args.size() != 10:
 		runtime.clear_network_enemy_registry()
 		root.remove_child(enemy)
 		enemy.free()

@@ -9,6 +9,7 @@ enum Mode {
 	DISABLED,
 	SHADOW,
 	DATA,
+	REPLICA,
 }
 
 enum Profile {
@@ -96,6 +97,9 @@ var _positions := PackedVector2Array()
 var _directions := PackedVector2Array()
 var _speeds := PackedFloat64Array()
 var _remaining_lifetimes := PackedFloat64Array()
+## REPLICA stores a positive activation countdown while pending, then the
+## negative active age after activation. DATA/SHADOW rows keep zero here.
+var _replica_activation_delays := PackedFloat64Array()
 var _damages := PackedInt32Array()
 var _source_enemy_ids := PackedInt64Array()
 var _projectile_ids := PackedInt64Array()
@@ -127,6 +131,7 @@ var _active_slot_count := 0
 var _pending_activation_count := 0
 var _shadow_slot_count := 0
 var _data_slot_count := 0
+var _replica_slot_count := 0
 var _tombstone_count := 0
 
 # Handles use a stable logical slot. Dense rows may move during stable
@@ -186,6 +191,12 @@ var _metric_damage_applications := 0
 var _metric_compactions := 0
 var _metric_compacted_tombstones := 0
 var _metric_difference_records := 0
+var _metric_replica_registrations := 0
+var _metric_replica_delay_waits := 0
+var _metric_replica_delay_overshoots := 0
+var _metric_replica_activations := 0
+var _metric_replica_advances := 0
+var _metric_replica_lifetime_completions := 0
 
 
 func _init() -> void:
@@ -308,6 +319,92 @@ func register_projectile(
 	):
 		_metric_registration_rejections += 1
 		return INVALID_HANDLE
+	return _register_validated_projectile(
+		mode,
+		profile,
+		position,
+		direction,
+		speed,
+		lifetime,
+		damage,
+		source_enemy_id,
+		projectile_id,
+		world_check_interval,
+		world_check_phase,
+		damage_source_snapshot,
+		0.0
+	)
+
+
+func register_replica_projectile(
+	profile: Profile,
+	position: Vector2,
+	direction: Vector2,
+	speed: float,
+	lifetime: float,
+	source_enemy_id: int,
+	projectile_id: int,
+	activation_delay_seconds: float
+) -> int:
+	var world_check_interval := get_profile_world_check_interval(profile)
+	var world_check_phase := (
+		projectile_id % world_check_interval
+		if projectile_id > 0 and world_check_interval > 0
+		else 0
+	)
+	if (
+		projectile_id <= 0
+		or not is_finite(activation_delay_seconds)
+		or activation_delay_seconds < 0.0
+		or not _is_valid_registration(
+			Mode.DATA,
+			profile,
+			position,
+			direction,
+			speed,
+			lifetime,
+			0,
+			source_enemy_id,
+			projectile_id,
+			world_check_interval,
+			world_check_phase,
+			null
+		)
+	):
+		_metric_registration_rejections += 1
+		return INVALID_HANDLE
+	return _register_validated_projectile(
+		Mode.REPLICA,
+		profile,
+		position,
+		direction,
+		speed,
+		lifetime,
+		0,
+		source_enemy_id,
+		projectile_id,
+		world_check_interval,
+		world_check_phase,
+		null,
+		activation_delay_seconds
+	)
+
+
+func _register_validated_projectile(
+	mode: Mode,
+	profile: Profile,
+	position: Vector2,
+	direction: Vector2,
+	speed: float,
+	lifetime: float,
+	damage: int,
+	source_enemy_id: int,
+	projectile_id: int,
+	world_check_interval: int,
+	world_check_phase: int,
+	damage_source_snapshot: DamageSourceSnapshot,
+	replica_activation_delay: float
+) -> int:
 	if not _ensure_projectile_capacity(_record_count + 1):
 		_metric_registration_rejections += 1
 		return INVALID_HANDLE
@@ -323,6 +420,7 @@ func register_projectile(
 	_directions[dense_slot] = direction.normalized()
 	_speeds[dense_slot] = speed
 	_remaining_lifetimes[dense_slot] = lifetime
+	_replica_activation_delays[dense_slot] = replica_activation_delay
 	_damages[dense_slot] = damage
 	_source_enemy_ids[dense_slot] = source_enemy_id
 	_projectile_ids[dense_slot] = projectile_id
@@ -357,8 +455,11 @@ func register_projectile(
 	_pending_activation_count += 1
 	if mode == Mode.SHADOW:
 		_shadow_slot_count += 1
-	else:
+	elif mode == Mode.DATA:
 		_data_slot_count += 1
+	else:
+		_replica_slot_count += 1
+		_metric_replica_registrations += 1
 	_metric_registrations += 1
 	set_physics_process(true)
 	return _encode_handle(handle_slot, generation)
@@ -419,6 +520,8 @@ func get_handle_generation(handle: int) -> int:
 func get_mode() -> Mode:
 	if _data_slot_count > 0:
 		return Mode.DATA
+	if _replica_slot_count > 0:
+		return Mode.REPLICA
 	if _shadow_slot_count > 0:
 		return Mode.SHADOW
 	return Mode.DISABLED
@@ -468,6 +571,11 @@ func get_direction(handle: int) -> Vector2:
 	return _directions[dense_slot] if dense_slot >= 0 else Vector2.ZERO
 
 
+func get_speed(handle: int) -> float:
+	var dense_slot := _resolve_dense_slot(handle)
+	return _speeds[dense_slot] if dense_slot >= 0 else 0.0
+
+
 func get_remaining_lifetime(handle: int) -> float:
 	var dense_slot := _resolve_dense_slot(handle)
 	return _remaining_lifetimes[dense_slot] if dense_slot >= 0 else 0.0
@@ -500,6 +608,24 @@ func get_damage_source_snapshot(handle: int) -> DamageSourceSnapshot:
 func get_spawn_physics_frame(handle: int) -> int:
 	var dense_slot := _resolve_dense_slot(handle)
 	return int(_spawn_physics_frames[dense_slot]) if dense_slot >= 0 else -1
+
+
+func get_activation_delay_remaining(handle: int) -> float:
+	var dense_slot := _resolve_dense_slot(handle)
+	if dense_slot < 0 or _modes[dense_slot] != Mode.REPLICA:
+		return 0.0
+	return maxf(_replica_activation_delays[dense_slot], 0.0)
+
+
+func get_replica_active_age_seconds(handle: int) -> float:
+	var dense_slot := _resolve_dense_slot(handle)
+	if (
+		dense_slot < 0
+		or _modes[dense_slot] != Mode.REPLICA
+		or _states[dense_slot] != SlotState.ACTIVE
+	):
+		return 0.0
+	return maxf(-_replica_activation_delays[dense_slot], 0.0)
 
 
 func get_slot_state(handle: int) -> SlotState:
@@ -808,6 +934,7 @@ func clear() -> void:
 	_directions.resize(0)
 	_speeds.resize(0)
 	_remaining_lifetimes.resize(0)
+	_replica_activation_delays.resize(0)
 	_damages.resize(0)
 	_source_enemy_ids.resize(0)
 	_projectile_ids.resize(0)
@@ -858,6 +985,7 @@ func clear() -> void:
 	_pending_activation_count = 0
 	_shadow_slot_count = 0
 	_data_slot_count = 0
+	_replica_slot_count = 0
 	_tombstone_count = 0
 	_handle_capacity = 0
 	_next_handle_slot = 0
@@ -882,6 +1010,7 @@ func get_metrics() -> Dictionary:
 		"pending_slots": _pending_activation_count,
 		"shadow_slots": _shadow_slot_count,
 		"data_slots": _data_slot_count,
+		"replica_slots": _replica_slot_count,
 		"dense_records": _record_count,
 		"tombstones": _tombstone_count,
 		"reserved_capacity": _record_capacity,
@@ -912,6 +1041,14 @@ func get_metrics() -> Dictionary:
 		"compactions": _metric_compactions,
 		"compacted_tombstones": _metric_compacted_tombstones,
 		"recorded_differences": _metric_difference_records,
+		"replica_registrations": _metric_replica_registrations,
+		"replica_delay_waits": _metric_replica_delay_waits,
+		"replica_delay_overshoots": _metric_replica_delay_overshoots,
+		"replica_activations": _metric_replica_activations,
+		"replica_advances": _metric_replica_advances,
+		"replica_lifetime_completions": (
+			_metric_replica_lifetime_completions
+		),
 	}
 
 
@@ -942,6 +1079,9 @@ func _physics_process(delta: float) -> void:
 			_metric_activation_skips += 1
 			continue
 		if not valid_delta:
+			continue
+		if _modes[dense_slot] == Mode.REPLICA:
+			_advance_replica_record(dense_slot, state, delta)
 			continue
 		if state == SlotState.PENDING_ACTIVATION:
 			_states[dense_slot] = SlotState.ACTIVE
@@ -1030,6 +1170,87 @@ func _physics_process(delta: float) -> void:
 	if _tombstone_count > 0:
 		_stable_compact_tombstones()
 	set_physics_process(_record_count > 0)
+
+
+func _advance_replica_record(
+	dense_slot: int,
+	state: int,
+	delta: float
+) -> void:
+	var step_delta := delta
+	if state == SlotState.PENDING_ACTIVATION:
+		var activation_delay := maxf(
+			_replica_activation_delays[dense_slot],
+			0.0
+		)
+		if delta < activation_delay:
+			_replica_activation_delays[dense_slot] = activation_delay - delta
+			_metric_replica_delay_waits += 1
+			return
+		if activation_delay > 0.0:
+			_resolve_scheduled_replica_spawn_position(dense_slot)
+		step_delta = delta - activation_delay
+		_replica_activation_delays[dense_slot] = -step_delta
+		_states[dense_slot] = SlotState.ACTIVE
+		_pending_activation_count = maxi(_pending_activation_count - 1, 0)
+		_metric_activations += 1
+		_metric_replica_activations += 1
+		if activation_delay > 0.0 and step_delta > 0.0:
+			_metric_replica_delay_overshoots += 1
+	else:
+		_replica_activation_delays[dense_slot] -= delta
+	if step_delta <= 0.0:
+		return
+
+	var remaining_after_step := _remaining_lifetimes[dense_slot] - step_delta
+	var endpoint := _positions[dense_slot] + (
+		_directions[dense_slot]
+		* _speeds[dense_slot]
+		* step_delta
+	)
+	_positions[dense_slot] = endpoint
+	_remaining_lifetimes[dense_slot] = maxf(remaining_after_step, 0.0)
+	_simulation_ticks[dense_slot] += 1
+	_metric_advances += 1
+	_metric_replica_advances += 1
+	if remaining_after_step > 0.0:
+		return
+	_append_completion(
+		dense_slot,
+		CompletionReason.LIFETIME,
+		TargetKind.NONE,
+		0,
+		endpoint,
+		false
+	)
+	_mark_tombstone(dense_slot)
+	_metric_lifetime_completions += 1
+	_metric_replica_lifetime_completions += 1
+
+
+func _resolve_scheduled_replica_spawn_position(dense_slot: int) -> void:
+	if (
+		_combat_runtime == null
+		or not is_instance_valid(_combat_runtime)
+		or dense_slot < 0
+		or dense_slot >= _record_count
+		or _modes[dense_slot] != Mode.REPLICA
+	):
+		return
+	var source_enemy := _combat_runtime.get_enemy_for_net_id(
+		int(_source_enemy_ids[dense_slot])
+	)
+	if source_enemy == null or not is_instance_valid(source_enemy):
+		return
+	var resolved_position := source_enemy.resolve_multiplayer_rapid_fire_spawn_position(
+		int(_profiles[dense_slot]),
+		_directions[dense_slot],
+		_positions[dense_slot]
+	)
+	if not resolved_position.is_finite():
+		return
+	_positions[dense_slot] = resolved_position
+	_world_collision_anchors[dense_slot] = resolved_position
 
 
 func _resolve_world_contact(
@@ -1706,6 +1927,7 @@ func _resize_record_storage(new_capacity: int) -> void:
 	_directions.resize(new_capacity)
 	_speeds.resize(new_capacity)
 	_remaining_lifetimes.resize(new_capacity)
+	_replica_activation_delays.resize(new_capacity)
 	_damages.resize(new_capacity)
 	_source_enemy_ids.resize(new_capacity)
 	_projectile_ids.resize(new_capacity)
@@ -1860,6 +2082,8 @@ func _mark_tombstone(dense_slot: int) -> void:
 		_shadow_slot_count = maxi(_shadow_slot_count - 1, 0)
 	elif mode == Mode.DATA:
 		_data_slot_count = maxi(_data_slot_count - 1, 0)
+	elif mode == Mode.REPLICA:
+		_replica_slot_count = maxi(_replica_slot_count - 1, 0)
 	_states[dense_slot] = SlotState.TOMBSTONE
 	_active_slot_count = maxi(_active_slot_count - 1, 0)
 	_tombstone_count += 1
@@ -1904,6 +2128,7 @@ func _copy_record(from_slot: int, to_slot: int) -> void:
 	_directions[to_slot] = _directions[from_slot]
 	_speeds[to_slot] = _speeds[from_slot]
 	_remaining_lifetimes[to_slot] = _remaining_lifetimes[from_slot]
+	_replica_activation_delays[to_slot] = _replica_activation_delays[from_slot]
 	_damages[to_slot] = _damages[from_slot]
 	_source_enemy_ids[to_slot] = _source_enemy_ids[from_slot]
 	_projectile_ids[to_slot] = _projectile_ids[from_slot]
@@ -1938,6 +2163,7 @@ func _clear_record_row(dense_slot: int) -> void:
 	_directions[dense_slot] = Vector2.ZERO
 	_speeds[dense_slot] = 0.0
 	_remaining_lifetimes[dense_slot] = 0.0
+	_replica_activation_delays[dense_slot] = 0.0
 	_damages[dense_slot] = 0
 	_source_enemy_ids[dense_slot] = 0
 	_projectile_ids[dense_slot] = 0
@@ -1987,6 +2213,12 @@ func _reset_kernel_metrics() -> void:
 	_metric_compactions = 0
 	_metric_compacted_tombstones = 0
 	_metric_difference_records = 0
+	_metric_replica_registrations = 0
+	_metric_replica_delay_waits = 0
+	_metric_replica_delay_overshoots = 0
+	_metric_replica_activations = 0
+	_metric_replica_advances = 0
+	_metric_replica_lifetime_completions = 0
 
 
 func _exit_tree() -> void:

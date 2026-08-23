@@ -212,6 +212,37 @@ func net_projectile_fired(
 	pass
 
 @rpc("authority", "call_remote", "unreliable_ordered", 4)
+func net_enemy_rapid_fire_burst(
+	host_first_shot_timestamp: float,
+	descriptor: PackedByteArray
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_enemy_rapid_fire_finished_batch(
+	host_finish_timestamp: float,
+	descriptor: PackedByteArray
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_enemy_rapid_fire_repair_burst(
+	host_first_shot_timestamp: float,
+	descriptor: PackedByteArray
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_enemy_rapid_fire_snapshot_chunk(
+	snapshot_id: int,
+	chunk_index: int,
+	chunk_count: int,
+	host_snapshot_timestamp: float,
+	descriptor: PackedByteArray
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "unreliable_ordered", 4)
 func net_tango_laser_volley(
 	projectile_ids: PackedInt64Array,
 	spawn_positions: PackedVector2Array,
@@ -569,7 +600,8 @@ func net_enemy_terminal(
 	confirmed_damage: int = 0,
 	impact_direction: Vector2 = Vector2.ZERO,
 	damage_type: int = 0,
-	presentation_flags: int = 0
+	presentation_flags: int = 0,
+	host_terminal_timestamp: float = -1.0
 ) -> void:
 	pass
 

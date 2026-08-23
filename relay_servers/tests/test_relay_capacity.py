@@ -787,7 +787,7 @@ class RelayCapacityTests(unittest.TestCase):
         self.assertIsNone(manager.get_room(room.id))
         launcher.stop_relay.assert_called_once_with(40055, 55)
 
-    def test_relay_project_freezes_public_capacity_channels_and_protocol_v93(
+    def test_relay_project_freezes_public_capacity_channels_and_protocol_v94(
         self,
     ) -> None:
         relay_root = Path(__file__).resolve().parents[1]
@@ -820,7 +820,7 @@ class RelayCapacityTests(unittest.TestCase):
         )
 
         self.assertEqual(game_relay_peer_bytes, relay_peer_bytes)
-        self.assertIn("const PROTOCOL_VERSION := 93", relay_source)
+        self.assertIn("const PROTOCOL_VERSION := 94", relay_source)
         self.assertIn("const MAX_CLIENTS := 8", relay_source)
         self.assertIn("const CH_MEMBERSHIP := 8", relay_source)
         self.assertIn(

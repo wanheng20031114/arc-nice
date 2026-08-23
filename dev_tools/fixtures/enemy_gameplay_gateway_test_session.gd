@@ -53,14 +53,27 @@ func request_multiplayer_player_damage(
 func notify_data_projectile_finished(
 	projectile_id: int,
 	service: RapidFireSimulationService,
-	handle: int
+	handle: int,
+	completion_reason: int = RapidFireSimulationService.CompletionReason.NONE,
+	completion_position: Vector2 = Vector2.ZERO,
+	completion_direction: Vector2 = Vector2.RIGHT
 ) -> void:
 	data_projectile_finish_notifications.append({
 		"projectile_id": projectile_id,
 		"service": service,
 		"handle": handle,
+		"completion_reason": completion_reason,
+		"completion_position": completion_position,
+		"completion_direction": completion_direction,
 	})
-	super.notify_data_projectile_finished(projectile_id, service, handle)
+	super.notify_data_projectile_finished(
+		projectile_id,
+		service,
+		handle,
+		completion_reason,
+		completion_position,
+		completion_direction
+	)
 
 
 func request_multiplayer_player_damage_with_source_snapshot(

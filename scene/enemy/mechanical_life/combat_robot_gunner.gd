@@ -7,9 +7,11 @@ const GunnerConfig := preload(
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
-
-
+const EnemyRapidFireNetworkCodec := preload(
+	"res://scene/multiplayer/projectile/enemy_rapid_fire_network_codec.gd"
+)
 const ACTION_FIRE: StringName = &"combat_robot_gunner_fire"
+const ACTION_BURST: StringName = &"combat_robot_gunner_burst"
 const WORLD_COLLISION_MASK := 1
 const MUZZLE_RIGHT_POSITION := Vector2(14.0, 1.0)
 const MUZZLE_WORLD_CLEARANCE := 5.0
@@ -62,6 +64,10 @@ func supports_dynamic_enemy_targeting() -> bool:
 var gunner_config_cache: GunnerConfig = null
 var local_data_projectile_sequence: int = 0
 var shadow_registration_failures: int = 0
+var network_burst_projectile_ids := PackedInt64Array()
+var network_burst_attached_states := PackedByteArray()
+var network_burst_descriptor := PackedByteArray()
+var network_burst_descriptor_sent := false
 
 var proxy_fire_visual_time_left: float = 0.0
 var proxy_fire_upper_phase: float = 0.0
@@ -164,6 +170,7 @@ func _process(delta: float) -> void:
 
 
 func _apply_config() -> void:
+	_release_unused_network_burst_ids()
 	super._apply_config()
 	combat_state = CombatState.TRACKING_READY
 	attack_cooldown_left = 0.0
@@ -241,6 +248,7 @@ func _try_start_burst(candidate_target: Node2D = null) -> bool:
 	_clear_cached_navigation_move_direction()
 	_update_facing(locked_fire_direction)
 	_apply_fire_composite_frame(fire_upper_phase, fire_leg_phase)
+	_prepare_network_burst()
 	return true
 
 
@@ -278,6 +286,7 @@ func _update_burst(delta: float) -> void:
 func _finish_burst() -> void:
 	if combat_state != CombatState.BURST:
 		return
+	_release_unused_network_burst_ids()
 	combat_state = CombatState.TRACKING_COOLDOWN
 	attack_cooldown_left = (
 		maxf(gunner_config_cache.attack_cooldown, 0.0)
@@ -290,6 +299,7 @@ func _finish_burst() -> void:
 
 
 func _cancel_burst(play_move_animation: bool) -> void:
+	_release_unused_network_burst_ids()
 	combat_state = CombatState.TRACKING_READY
 	attack_cooldown_left = 0.0
 	burst_target = null
@@ -379,8 +389,8 @@ func _fire_locked_bullet() -> bool:
 		or not is_instance_valid(gameplay_gateway)
 	):
 		return false
-	# Client enemies replay Host actions and receive the existing legacy visual
-	# proxy from MpProjectileCoordinator. They never own an authority backend.
+	# Client enemies replay Host actions while MpProjectileCoordinator rebuilds
+	# visual-only REPLICA rows. They never own an authority backend.
 	if combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return false
 
@@ -408,7 +418,8 @@ func _fire_locked_bullet() -> bool:
 	if burst_shots_fired % 2 == 0:
 		attack_audio.pitch_scale = random_generator.randf_range(0.98, 1.03)
 		ENEMY_ATTACK_AUDIO_LIMITER.play_rapid_fire(attack_audio)
-	_broadcast_enemy_action(ACTION_FIRE, locked_fire_direction)
+	if not network_burst_descriptor_sent:
+		_broadcast_enemy_action(ACTION_FIRE, locked_fire_direction)
 	return true
 
 
@@ -536,6 +547,10 @@ func _fire_data_projectile(shot_direction: Vector2) -> bool:
 	)
 	var phase_identity := _next_local_data_phase_identity()
 	var profile_source_type := rapid_fire_service.get_profile_source_type(profile)
+	var launch_source_snapshot := create_damage_source_snapshot(
+		0,
+		profile_source_type
+	)
 	var handle := rapid_fire_service.register_projectile(
 		RapidFireSimulationService.Mode.DATA,
 		profile,
@@ -551,7 +566,7 @@ func _fire_data_projectile(shot_direction: Vector2) -> bool:
 			phase_identity,
 			CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES
 		),
-		create_damage_source_snapshot(0, profile_source_type)
+		launch_source_snapshot
 	)
 	if handle <= RapidFireSimulationService.INVALID_HANDLE:
 		return false
@@ -560,16 +575,12 @@ func _fire_data_projectile(shot_direction: Vector2) -> bool:
 		combat_runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	):
-		var projectile_id := gameplay_gateway.register_local_data_projectile(
+		var projectile_id := _attach_network_data_projectile(
 			rapid_fire_service,
 			handle,
-			gunner_config_cache.projectile_type,
-			0,
-			spawn_position,
-			shot_direction,
 			outgoing_damage,
-			gunner_config_cache.projectile_speed,
-			gunner_config_cache.projectile_lifetime
+			gunner_config_cache.projectile_lifetime,
+			launch_source_snapshot
 		)
 		# A rejected Host identity is terminal: release the inert handle and do
 		# not silently reintroduce a Node authority backend.
@@ -577,6 +588,130 @@ func _fire_data_projectile(shot_direction: Vector2) -> bool:
 			rapid_fire_service.release_projectile(handle)
 			return false
 	return true
+
+
+func _prepare_network_burst() -> bool:
+	_release_unused_network_burst_ids()
+	if (
+		gunner_config_cache == null
+		or combat_runtime == null
+		or combat_runtime.runtime_mode
+			!= CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		or CombatRobotGunner.projectile_backend != ProjectileBackend.DATA
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
+	):
+		return false
+	var shot_count := maxi(gunner_config_cache.burst_count, 1)
+	network_burst_projectile_ids = (
+		gameplay_gateway.reserve_enemy_rapid_fire_projectile_ids(shot_count)
+	)
+	if network_burst_projectile_ids.size() != shot_count:
+		network_burst_projectile_ids = PackedInt64Array()
+		return false
+	network_burst_attached_states.resize(shot_count)
+	network_burst_attached_states.fill(0)
+	var directions := _preview_network_burst_directions(shot_count)
+	var profile := _get_rapid_fire_profile()
+	var batch_action_id := action_sequence + 1
+	network_burst_descriptor = EnemyRapidFireNetworkCodec.encode_burst(
+		profile,
+		batch_action_id,
+		int(network_burst_projectile_ids[0]),
+		_get_stable_source_enemy_id(),
+		global_position,
+		_get_safe_muzzle_spawn_position(),
+		locked_fire_direction,
+		maxf(gunner_config_cache.burst_fire_interval, 0.01),
+		gunner_config_cache.projectile_speed,
+		gunner_config_cache.projectile_lifetime,
+		directions
+	)
+	if network_burst_descriptor.is_empty():
+		_release_unused_network_burst_ids()
+		return false
+	action_sequence = batch_action_id
+	return true
+
+
+func _preview_network_burst_directions(
+	shot_count: int
+) -> PackedVector2Array:
+	var preview_rng := RandomNumberGenerator.new()
+	preview_rng.state = random_generator.state
+	var spread_radians := deg_to_rad(
+		maxf(gunner_config_cache.spread_angle_degrees, 0.0)
+	)
+	var directions := PackedVector2Array()
+	directions.resize(shot_count)
+	for shot_index in range(shot_count):
+		directions[shot_index] = locked_fire_direction.rotated(
+			preview_rng.randf_range(-spread_radians, spread_radians)
+		).normalized()
+		# Successful authored shots draw pitch only on even indices. Simulating
+		# that draw on a cloned RNG keeps descriptor prediction bit-independent
+		# from the real gameplay RNG stream.
+		if shot_index % 2 == 0:
+			var _discarded_pitch := preview_rng.randf_range(0.98, 1.03)
+	return directions
+
+
+func _attach_network_data_projectile(
+	service: RapidFireSimulationService,
+	handle: int,
+	damage: int,
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot
+) -> int:
+	var shot_index := burst_shots_fired
+	if (
+		shot_index < 0
+		or shot_index >= network_burst_projectile_ids.size()
+		or shot_index >= network_burst_attached_states.size()
+		or network_burst_attached_states[shot_index] != 0
+	):
+		return 0
+	var projectile_id := int(network_burst_projectile_ids[shot_index])
+	if not gameplay_gateway.attach_reserved_enemy_rapid_fire_projectile(
+		service,
+		handle,
+		projectile_id,
+		gunner_config_cache.projectile_type,
+		0,
+		damage,
+		lifetime,
+		damage_source_snapshot
+	):
+		return 0
+	network_burst_attached_states[shot_index] = 1
+	if not network_burst_descriptor_sent:
+		network_burst_descriptor_sent = (
+			gameplay_gateway.broadcast_enemy_rapid_fire_burst(
+				network_burst_descriptor
+			)
+		)
+	return projectile_id
+
+
+func _release_unused_network_burst_ids() -> void:
+	if (
+		gameplay_gateway != null
+		and is_instance_valid(gameplay_gateway)
+		and not network_burst_projectile_ids.is_empty()
+	):
+		var unused_ids := PackedInt64Array()
+		for projectile_index in range(network_burst_projectile_ids.size()):
+			if (
+				projectile_index >= network_burst_attached_states.size()
+				or network_burst_attached_states[projectile_index] == 0
+			):
+				unused_ids.append(network_burst_projectile_ids[projectile_index])
+		if not unused_ids.is_empty():
+			gameplay_gateway.release_enemy_rapid_fire_projectile_ids(unused_ids)
+	network_burst_projectile_ids = PackedInt64Array()
+	network_burst_attached_states = PackedByteArray()
+	network_burst_descriptor = PackedByteArray()
+	network_burst_descriptor_sent = false
 
 
 func _get_rapid_fire_simulation_service() -> RapidFireSimulationService:
@@ -633,6 +768,23 @@ func _get_safe_muzzle_spawn_position() -> Vector2:
 		safe_distance,
 		muzzle_distance
 	)
+
+
+func resolve_multiplayer_rapid_fire_spawn_position(
+	_profile: int,
+	direction: Vector2,
+	fallback_position: Vector2
+) -> Vector2:
+	if (
+		not is_inside_tree()
+		or not global_position.is_finite()
+		or not direction.is_finite()
+		or direction.is_zero_approx()
+	):
+		return fallback_position
+	locked_fire_direction = direction.normalized()
+	_update_facing(locked_fire_direction)
+	return _get_safe_muzzle_spawn_position()
 
 
 func _capture_authoritative_leg_phase() -> void:
@@ -767,13 +919,20 @@ func play_multiplayer_enemy_action_with_context(
 	if action_id <= latest_proxy_action_id:
 		return
 	latest_proxy_action_id = action_id
-	if action_name != ACTION_FIRE:
+	var is_batched_burst := action_name == ACTION_BURST
+	if action_name != ACTION_FIRE and not is_batched_burst:
 		return
 	if not multiplayer_proxy_visual_active:
 		return
 
+	var visual_duration := FIRE_VISUAL_DURATION
+	if is_batched_burst and gunner_config_cache != null:
+		visual_duration += (
+			maxi(gunner_config_cache.burst_count - 1, 0)
+			* maxf(gunner_config_cache.burst_fire_interval, 0.01)
+		)
 	var safe_elapsed := maxf(action_elapsed, 0.0)
-	if safe_elapsed >= FIRE_VISUAL_DURATION:
+	if safe_elapsed >= visual_duration:
 		_clear_proxy_fire_visual(true)
 		return
 	var safe_direction := (
@@ -793,12 +952,16 @@ func play_multiplayer_enemy_action_with_context(
 			proxy_fire_leg_phase + safe_elapsed * FIRE_LEG_FPS,
 			float(FIRE_LEG_PHASE_COUNT)
 		)
-	var proxy_base_upper_phase := 0.0 if action_id % 2 == 1 else 2.0
+	var proxy_base_upper_phase := (
+		0.0
+		if is_batched_burst
+		else (0.0 if action_id % 2 == 1 else 2.0)
+	)
 	proxy_fire_upper_phase = fposmod(
 		proxy_base_upper_phase + safe_elapsed * FIRE_UPPER_FPS,
 		float(FIRE_UPPER_PHASE_COUNT)
 	)
-	proxy_fire_visual_time_left = FIRE_VISUAL_DURATION - safe_elapsed
+	proxy_fire_visual_time_left = visual_duration - safe_elapsed
 	proxy_fire_visual_active = true
 
 	var animation_name := gunner_config_cache.fire_walk_animation_name

@@ -8,13 +8,18 @@ const BULLET_SCENE := preload(
 const ENEMY_SIMULATION_COORDINATOR_SCENE := preload(
 	"res://scene/combat/simulation/enemy_simulation_coordinator.tscn"
 )
+const RAPID_FIRE_CODEC := preload(
+	"res://scene/multiplayer/projectile/enemy_rapid_fire_network_codec.gd"
+)
 
 
 class CapturingGateway:
 	extends MultiplayerGameplayGateway
 
 	var next_projectile_id := 7001
-	var data_payloads: Array[Array] = []
+	var data_payloads: Array[Dictionary] = []
+	var burst_descriptors: Array[PackedByteArray] = []
+	var released_reservations := PackedInt64Array()
 	var legacy_registration_count := 0
 	var data_finish_count := 0
 	var reject_data_registration := false
@@ -62,29 +67,79 @@ class CapturingGateway:
 		if not service.assign_projectile_identity(handle, projectile_id):
 			return 0
 		next_projectile_id += 1
-		# Mirrors the established net_projectile_fired payload. The actual
-		# coordinator contract is separately exercised by its integration smoke.
-		data_payloads.append([
-			projectile_id,
-			String(projectile_type),
-			owner_peer_id,
-			spawn_position,
-			direction,
-			damage,
-			speed,
-			lifetime,
-			false,
-			0,
-			12.5,
-			0,
-		])
+		# Explicit legacy per-shot registration remains available to regression
+		# probes; production AK DATA uses the batch methods below.
+		data_payloads.append({
+			"projectile_id": projectile_id,
+			"projectile_type": projectile_type,
+			"owner_peer_id": owner_peer_id,
+			"spawn_position": spawn_position,
+			"direction": direction,
+			"damage": damage,
+			"speed": speed,
+			"lifetime": lifetime,
+			"legacy_rpc": true,
+		})
 		return projectile_id
+
+
+	func reserve_enemy_rapid_fire_projectile_ids(
+		count: int
+	) -> PackedInt64Array:
+		var ids := PackedInt64Array()
+		for _shot_index in range(count):
+			ids.append(next_projectile_id)
+			next_projectile_id += 1
+		return ids
+
+
+	func release_enemy_rapid_fire_projectile_ids(
+		projectile_ids: PackedInt64Array
+	) -> bool:
+		released_reservations.append_array(projectile_ids)
+		return true
+
+
+	func attach_reserved_enemy_rapid_fire_projectile(
+		service: RapidFireSimulationService,
+		handle: int,
+		projectile_id: int,
+		projectile_type: StringName,
+		owner_peer_id: int,
+		damage: int,
+		lifetime: float,
+		damage_source_snapshot: DamageSourceSnapshot = null
+	) -> bool:
+		if reject_data_registration:
+			return false
+		if not service.assign_projectile_identity(handle, projectile_id):
+			return false
+		data_payloads.append({
+			"projectile_id": projectile_id,
+			"projectile_type": projectile_type,
+			"owner_peer_id": owner_peer_id,
+			"damage": damage,
+			"lifetime": lifetime,
+			"damage_source_snapshot": damage_source_snapshot,
+			"legacy_rpc": false,
+		})
+		return true
+
+
+	func broadcast_enemy_rapid_fire_burst(
+		descriptor: PackedByteArray
+	) -> bool:
+		burst_descriptors.append(descriptor)
+		return true
 
 
 	func notify_data_projectile_finished(
 		_projectile_id: int,
 		_service: RapidFireSimulationService,
-		_handle: int
+		_handle: int,
+		_completion_reason: int = RapidFireSimulationService.CompletionReason.NONE,
+		_completion_position: Vector2 = Vector2.ZERO,
+		_completion_direction: Vector2 = Vector2.RIGHT
 	) -> void:
 		data_finish_count += 1
 
@@ -184,20 +239,39 @@ func _test_host_data_identity_and_payload() -> void:
 		"Host DATA burst must use handles without authority projectile Nodes."
 	)
 	_expect(
-		gateway.data_payloads.size() == CAPOO_CONFIG.burst_count,
-		"Host DATA burst must register one existing-format broadcast per shot."
+		gateway.data_payloads.size() == CAPOO_CONFIG.burst_count
+		and gateway.burst_descriptors.size() == 1,
+		"Host DATA burst must attach every shot and emit one batch descriptor."
+	)
+	var descriptor := (
+		RAPID_FIRE_CODEC.decode_burst(gateway.burst_descriptors[0])
+		if gateway.burst_descriptors.size() == 1
+		else {}
+	)
+	_expect(
+		bool(descriptor.get("valid", false))
+		and int(descriptor.get("count", 0)) == CAPOO_CONFIG.burst_count
+		and int(descriptor.get("source_enemy_id", 0)) == 91,
+		"Host DATA descriptor must preserve count and source identity."
 	)
 	for stable_index in range(service.get_dense_record_count()):
 		var handle := service.get_handle_at_stable_index(stable_index)
 		var payload := gateway.data_payloads[stable_index]
-		var projectile_id := int(payload[0])
+		var projectile_id := int(payload["projectile_id"])
+		var source_snapshot := payload.get(
+			"damage_source_snapshot"
+		) as DamageSourceSnapshot
 		_expect(
-			payload.size() == 12
-			and String(payload[1]) == "capoo_ak47_bullet"
+			not bool(payload["legacy_rpc"])
+			and String(payload["projectile_type"]) == "capoo_ak47_bullet"
+			and source_snapshot != null
+			and source_snapshot.source_faction_id
+			== CombatRelationService.HOSTILE_WAVE
+			and source_snapshot.instigator_entity_id == 91
 			and service.get_projectile_id(handle) == projectile_id
 			and service.get_world_check_phase(handle) == projectile_id % 2
 			and service.get_source_enemy_id(handle) == 91,
-			"Host DATA must atomically bind its 12-field payload, handle identity, phase and source id."
+			"Host DATA must atomically bind batch identity, phase and source id."
 		)
 	_release_all_handles(service)
 	await physics_frame
@@ -220,6 +294,7 @@ func _test_host_registration_failure_is_terminal() -> void:
 	var enemy := _spawn_enemy(fixture, gateway)
 	var service := _get_rapid_service(fixture)
 	CapooAK47.projectile_backend = CapooAK47.ProjectileBackend.DATA
+	enemy.call(&"_prepare_network_burst", CAPOO_CONFIG)
 	var fired := bool(enemy.call(&"_fire_locked_bullet"))
 	_expect(
 		not fired
@@ -369,6 +444,7 @@ func _fire_complete_burst(enemy: CapooAK47) -> void:
 	enemy.combat_state = CapooAK47.CombatState.BURST
 	enemy.burst_shots_fired = 0
 	enemy.burst_fire_time_left = 0.0
+	enemy.call(&"_prepare_network_burst", CAPOO_CONFIG)
 	for shot_index in range(CAPOO_CONFIG.burst_count):
 		enemy.call(
 			&"_update_burst",
