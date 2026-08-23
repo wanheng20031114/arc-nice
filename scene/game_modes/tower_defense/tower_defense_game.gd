@@ -24,10 +24,6 @@ const MULTIPLAYER_SPAWN_OFFSETS: Array[Vector2] = [
 	Vector2(-18.0, -18.0),
 	Vector2(18.0, -18.0),
 ]
-# Production defaults to loading-time prewarming. The cohort performance probe
-# can disable it before scene instantiation for a strict old/new A/B.
-static var expanded_projectile_pool_prewarm_enabled := true
-
 @export_group("战役资源")
 @export var mode_definition: GameModeDefinition = null
 @export var singleplayer_campaign: WaveCampaignConfig = null
@@ -287,9 +283,7 @@ func _ready() -> void:
 		_configure_singleplayer_player()
 	_configure_enemy_coordinator()
 	_configure_timers()
-	prewarmer_coordinator.register_runtime_object_pools(
-		expanded_projectile_pool_prewarm_enabled
-	)
+	prewarmer_coordinator.register_runtime_object_pools()
 	projectile_pool_registration_ms = (
 		prewarmer_coordinator.projectile_pool_registration_ms
 	)

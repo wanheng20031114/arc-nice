@@ -22,18 +22,6 @@ const FIRE_LEG_FPS := 7.0
 const FIRE_VISUAL_DURATION := 0.08
 const FIRE_VISUAL_TIME_EPSILON := 0.000001
 
-enum ProjectileBackend {
-	LEGACY,
-	SHADOW,
-	DATA,
-}
-
-# Fixed-seed parity, authored collision probes and the production SHADOW stage
-# certify the shared kernel for both ordinary and elite profiles. The explicit
-# switch remains available to deterministic rollback tests, while production
-# authority is node-free DATA for the whole process-wide gunner cohort.
-static var projectile_backend: ProjectileBackend = ProjectileBackend.DATA
-
 enum CombatState {
 	TRACKING_READY,
 	BURST,
@@ -63,7 +51,6 @@ func supports_dynamic_enemy_targeting() -> bool:
 	return true
 var gunner_config_cache: GunnerConfig = null
 var local_data_projectile_sequence: int = 0
-var shadow_registration_failures: int = 0
 var network_burst_projectile_ids := PackedInt64Array()
 var network_burst_attached_states := PackedByteArray()
 var network_burst_descriptor := PackedByteArray()
@@ -188,7 +175,6 @@ func _apply_config() -> void:
 	proxy_action_restore_animation_name = &""
 	proxy_action_restore_token_snapshot = 0
 	local_data_projectile_sequence = 0
-	shadow_registration_failures = 0
 	gunner_config_cache = config as GunnerConfig
 	if attack_audio != null:
 		attack_audio.stream = (
@@ -222,8 +208,6 @@ func _try_start_burst(candidate_target: Node2D = null) -> bool:
 	if gunner_config_cache == null:
 		return false
 	if combat_state != CombatState.TRACKING_READY:
-		return false
-	if gunner_config_cache.projectile_scene == null:
 		return false
 	if not _is_ranged_combat_target_in_range(
 		candidate_target,
@@ -380,7 +364,7 @@ func _update_tracking_movement(
 
 
 func _fire_locked_bullet() -> bool:
-	if gunner_config_cache == null or gunner_config_cache.projectile_scene == null:
+	if gunner_config_cache == null:
 		return false
 	if (
 		combat_runtime == null
@@ -400,20 +384,11 @@ func _fire_locked_bullet() -> bool:
 	var shot_direction := locked_fire_direction.rotated(
 		random_generator.randf_range(-spread_radians, spread_radians)
 	).normalized()
-	var fired := false
-	match CombatRobotGunner.projectile_backend:
-		ProjectileBackend.LEGACY:
-			fired = _fire_legacy_projectile(shot_direction, false)
-		ProjectileBackend.SHADOW:
-			fired = _fire_legacy_projectile(shot_direction, true)
-		ProjectileBackend.DATA:
-			fired = _fire_data_projectile(shot_direction)
-	if not fired:
+	if not _fire_data_projectile(shot_direction):
 		return false
 
-	# These operations intentionally remain after successful backend
-	# registration. This preserves animation, pitch RNG, audio cadence and
-	# action broadcast ordering across LEGACY, SHADOW and DATA.
+	# Preserve animation, pitch RNG, audio cadence and action broadcast ordering
+	# after successful data registration.
 	_show_authoritative_shot_phase(burst_shots_fired)
 	if burst_shots_fired % 2 == 0:
 		attack_audio.pitch_scale = random_generator.randf_range(0.98, 1.03)
@@ -421,117 +396,6 @@ func _fire_locked_bullet() -> bool:
 	if not network_burst_descriptor_sent:
 		_broadcast_enemy_action(ACTION_FIRE, locked_fire_direction)
 	return true
-
-
-func _fire_legacy_projectile(
-	shot_direction: Vector2,
-	register_shadow: bool
-) -> bool:
-	var rapid_fire_service: RapidFireSimulationService = null
-	if register_shadow:
-		rapid_fire_service = _get_rapid_fire_simulation_service()
-	var spawn_parent: Node = combat_runtime
-	var projectile: CapooAK47Bullet = null
-	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
-		gunner_config_cache.projectile_scene
-	)
-	if uses_registered_pool:
-		projectile = combat_runtime.acquire_session_object(
-			gunner_config_cache.projectile_scene,
-			false
-		) as CapooAK47Bullet
-	else:
-		projectile = (
-			gunner_config_cache.projectile_scene.instantiate()
-			as CapooAK47Bullet
-		)
-	if projectile == null:
-		push_warning("持枪战斗机器人弹丸场景必须实例化 CapooAK47Bullet。")
-		return false
-
-	var outgoing_damage := get_effective_attack_damage(
-		gunner_config_cache.attack_damage
-	)
-	var projectile_spawn_position := _get_safe_muzzle_spawn_position()
-	projectile.top_level = true
-	var gunner_bullet := projectile as CombatRobotGunnerBullet
-	if gunner_bullet == null:
-		push_warning("持枪战斗机器人弹丸必须使用 CombatRobotGunnerBullet。")
-		if uses_registered_pool:
-			combat_runtime.release_session_object(projectile)
-		else:
-			projectile.queue_free()
-		return false
-	gunner_bullet.bind_gameplay_context(combat_runtime, gameplay_gateway)
-	if projectile.get_parent() == null:
-		spawn_parent.add_child(projectile)
-	elif projectile.get_parent() != spawn_parent:
-		projectile.reparent(spawn_parent)
-	projectile.setup(
-		shot_direction,
-		outgoing_damage,
-		gunner_config_cache.projectile_speed,
-		gunner_config_cache.projectile_lifetime,
-		pathfinder as GridPathfinder,
-		projectile_motion_system,
-		create_damage_source_snapshot(0, gunner_bullet.authored_source_type)
-	)
-	projectile.global_position = projectile_spawn_position
-	projectile.reset_physics_interpolation()
-	gameplay_gateway.register_local_projectile(
-		projectile,
-		gunner_config_cache.projectile_type,
-		0,
-		projectile.global_position,
-		shot_direction,
-		outgoing_damage,
-		gunner_config_cache.projectile_speed,
-		gunner_config_cache.projectile_lifetime
-	)
-	if register_shadow and rapid_fire_service != null:
-		var profile := _get_rapid_fire_profile()
-		var shadow_projectile_id := projectile.projectile_id
-		var shadow_phase_identity := (
-			shadow_projectile_id
-			if shadow_projectile_id > 0
-			else int(projectile.get_instance_id())
-		)
-		var shadow_handle := rapid_fire_service.register_projectile(
-			RapidFireSimulationService.Mode.SHADOW,
-			profile,
-			projectile.global_position,
-			shot_direction,
-			gunner_config_cache.projectile_speed,
-			gunner_config_cache.projectile_lifetime,
-			outgoing_damage,
-			_get_stable_source_enemy_id(),
-			shadow_projectile_id,
-			CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES,
-			posmod(
-				shadow_phase_identity,
-				CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES
-			),
-			create_damage_source_snapshot(
-				shadow_projectile_id,
-				gunner_bullet.authored_source_type
-			)
-		)
-		if (
-			shadow_handle <= RapidFireSimulationService.INVALID_HANDLE
-			or not projectile.bind_shadow_simulation(
-				rapid_fire_service,
-				shadow_handle
-			)
-		):
-			if rapid_fire_service.is_handle_live(shadow_handle):
-				rapid_fire_service.release_projectile(shadow_handle)
-			shadow_registration_failures += 1
-	elif register_shadow:
-		# SHADOW is an observer. Missing comparison infrastructure must never
-		# cancel or replace the already registered legacy authority projectile.
-		shadow_registration_failures += 1
-	return true
-
 
 func _fire_data_projectile(shot_direction: Vector2) -> bool:
 	var rapid_fire_service := _get_rapid_fire_simulation_service()
@@ -561,10 +425,10 @@ func _fire_data_projectile(shot_direction: Vector2) -> bool:
 		outgoing_damage,
 		_get_stable_source_enemy_id(),
 		0,
-		CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES,
+		RapidFireSimulationService.GUNNER_WORLD_CHECK_INTERVAL,
 		posmod(
 			phase_identity,
-			CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES
+			RapidFireSimulationService.GUNNER_WORLD_CHECK_INTERVAL
 		),
 		launch_source_snapshot
 	)
@@ -597,7 +461,6 @@ func _prepare_network_burst() -> bool:
 		or combat_runtime == null
 		or combat_runtime.runtime_mode
 			!= CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-		or CombatRobotGunner.projectile_backend != ProjectileBackend.DATA
 		or gameplay_gateway == null
 		or not is_instance_valid(gameplay_gateway)
 	):

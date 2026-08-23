@@ -27,17 +27,12 @@ const INVALID_REWARD_OFFER_INDEX := -1
 const YUANSHI_FIRE_PROJECTILE_POOL_SCENE := preload(
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn"
 )
-const SUITCASE_COMBAT_CONFIG_ID := &"suitcase_battle"
-const SUITCASE_ELITE_BULLET_POOL_CAPACITY := 480
-const UNDERGROUND_CHURCH_COMBAT_CONFIG_ID := &"underground_church_01"
-const UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY := 240
 const UNDERGROUND_SEWER_COMBAT_CONFIG_ID := &"underground_sewer_01"
 const EMERGENCY_UNDERGROUND_SEWER_COMBAT_CONFIG_ID := (
 	&"emergency_underground_sewer_01"
 )
 const UNDERGROUND_SEWER_FIRE_PROJECTILE_PREWARM_COUNT := 48
 const UNDERGROUND_SEWER_FIRE_PROJECTILE_RETAINED_CAPACITY := 192
-const EMERGENCY_UNDERGROUND_SEWER_ELITE_BULLET_POOL_CAPACITY := 144
 const CLIENT_PREPARATION_ABORT_REASONS := {
 	&"local_config_disabled": true,
 	&"config_mismatch": true,
@@ -913,18 +908,6 @@ func _configure_occurrence_runtime() -> bool:
 		_active_encounter_config.enemy_pickup_drops
 		== RogueCombatEncounterConfig.Decision.YES
 	)
-	if _active_combat_config_id == SUITCASE_COMBAT_CONFIG_ID:
-		CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(
-			_combat_game.session_object_pool,
-			SUITCASE_ELITE_BULLET_POOL_CAPACITY,
-			SUITCASE_ELITE_BULLET_POOL_CAPACITY
-		)
-	elif _active_combat_config_id == UNDERGROUND_CHURCH_COMBAT_CONFIG_ID:
-		CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(
-			_combat_game.session_object_pool,
-			UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY,
-			UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY
-		)
 	_apply_underground_sewer_projectile_pool_overrides(
 		_combat_game.session_object_pool,
 		_active_combat_config_id
@@ -966,13 +949,6 @@ func _apply_underground_sewer_projectile_pool_overrides(
 		UNDERGROUND_SEWER_FIRE_PROJECTILE_PREWARM_COUNT,
 		UNDERGROUND_SEWER_FIRE_PROJECTILE_RETAINED_CAPACITY
 	)
-	if encounter_id == EMERGENCY_UNDERGROUND_SEWER_COMBAT_CONFIG_ID:
-		# 10名精英枪手一轮至多120发；144为完整齐射保留20%余量。
-		CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(
-			pool,
-			EMERGENCY_UNDERGROUND_SEWER_ELITE_BULLET_POOL_CAPACITY,
-			EMERGENCY_UNDERGROUND_SEWER_ELITE_BULLET_POOL_CAPACITY
-		)
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)

@@ -15,15 +15,6 @@ const ENEMY_HIT_EFFECT_POOL_SCENE := preload("res://scene/enemy/enemy_hit_effect
 const MOVE_SPEED_TRAIL_EFFECT_POOL_SCENE := preload(
 	"res://scene/combat/feedback/move_speed_trail_effect.tscn"
 )
-const CAPOO_MAGE_FIREBALL_IMPACT_POOL_SCENE := preload(
-	"res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn"
-)
-const COMBAT_ROBOT_GUNNER_BULLET_POOL_SCENE_PATH := (
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
-)
-const COMBAT_ROBOT_GUNNER_ELITE_BULLET_POOL_SCENE_PATH := (
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn"
-)
 const LIGHTNING_SORCERER_LIGHTNING_VFX_POOL_SCENE := preload(
 	"res://scene/enemy/sorcerer/lightning_sorcerer_lightning_vfx.tscn"
 )
@@ -34,20 +25,7 @@ const ENEMY_HIT_EFFECT_CAPACITY := 128
 const MOVE_SPEED_TRAIL_EFFECT_RETAINED_CAPACITY := 32
 const LIGHTNING_SORCERER_LIGHTNING_VFX_PREWARM_COUNT := 64
 const LIGHTNING_SORCERER_LIGHTNING_VFX_RETAINED_CAPACITY := 96
-const COMBAT_ROBOT_GUNNER_BULLET_PREWARM_COUNT := 0
-const COMBAT_ROBOT_GUNNER_BULLET_RETAINED_CAPACITY := 96
-const COMBAT_ROBOT_GUNNER_ELITE_BULLET_PREWARM_COUNT := 0
-const COMBAT_ROBOT_GUNNER_ELITE_BULLET_RETAINED_CAPACITY := 96
 const SINGLEPLAYER_BULK_INDEX_MIN_TARGETS := 512
-
-# The cohort probe overrides these before scene creation for isolated A/B runs.
-# Production keeps the proven lazy 0/96 policy in both runtime modes.
-static var combat_robot_gunner_bullet_pool_prewarm_count := (
-	COMBAT_ROBOT_GUNNER_BULLET_PREWARM_COUNT
-)
-static var combat_robot_gunner_bullet_pool_retained_capacity := (
-	COMBAT_ROBOT_GUNNER_BULLET_RETAINED_CAPACITY
-)
 
 enum RuntimeMode {
 	SINGLEPLAYER,
@@ -104,7 +82,6 @@ class ReconnectedPlayerProjection:
 
 @onready var enemy_container: Node2D = $EnemyContainer
 @onready var grid_pathfinder: Node = $GridPathfinder
-@onready var capoo_projectile_motion_system: Node = $CapooProjectileMotionSystem
 @onready var combat_robot_drone_motion_system: CombatRobotDroneMotionSystem = (
 	$CombatRobotDroneMotionSystem
 )
@@ -379,76 +356,10 @@ static func register_common_visual_effect_pools(pool: SessionObjectPool) -> void
 	)
 
 
-static func register_combat_robot_gunner_bullet_pool(
-	pool: SessionObjectPool,
-	prewarm_count: int = -1,
-	retained_capacity: int = -1
-) -> void:
-	if pool == null:
-		return
-	# Runtime loading avoids a compile-time cycle: the projectile inherits shared
-	# enemy code that resolves CombatRuntimeBase while this base script is loading.
-	var projectile_scene := load(
-		COMBAT_ROBOT_GUNNER_BULLET_POOL_SCENE_PATH
-	) as PackedScene
-	if projectile_scene == null:
-		push_error("无法加载持枪战斗机器人弹丸池场景。")
-		return
-	var resolved_prewarm_count := (
-		combat_robot_gunner_bullet_pool_prewarm_count
-		if prewarm_count < 0
-		else prewarm_count
-	)
-	var resolved_retained_capacity := (
-		combat_robot_gunner_bullet_pool_retained_capacity
-		if retained_capacity < 0
-		else retained_capacity
-	)
-	pool.register_scene(
-		projectile_scene,
-		maxi(resolved_prewarm_count, 0),
-		maxi(resolved_retained_capacity, 1)
-	)
-
-
-static func register_combat_robot_gunner_elite_bullet_pool(
-	pool: SessionObjectPool,
-	prewarm_count: int = COMBAT_ROBOT_GUNNER_ELITE_BULLET_PREWARM_COUNT,
-	retained_capacity: int = COMBAT_ROBOT_GUNNER_ELITE_BULLET_RETAINED_CAPACITY
-) -> void:
-	if pool == null:
-		return
-	var projectile_scene := load(
-		COMBAT_ROBOT_GUNNER_ELITE_BULLET_POOL_SCENE_PATH
-	) as PackedScene
-	if projectile_scene == null:
-		push_error("无法加载精英持枪战斗机器人弹丸池场景。")
-		return
-	pool.register_scene(
-		projectile_scene,
-		maxi(prewarm_count, 0),
-		maxi(retained_capacity, 1)
-	)
-
-
 ## Shared singleplayer/host/client visual entry point. Multiplayer packets and
 ## authoritative enemies pass the same compact world-space chain path here.
 func play_lightning_sorcerer_chain_vfx(world_path: PackedVector2Array) -> bool:
 	return LightningSorcererLightningVfx.try_spawn(self, world_path)
-
-
-static func register_capoo_mage_fireball_impact_pool(
-	pool: SessionObjectPool,
-	prewarm_count: int,
-	retained_capacity: int
-) -> void:
-	if pool == null:
-		return
-	pool.register_scene(
-		CAPOO_MAGE_FIREBALL_IMPACT_POOL_SCENE,
-		maxi(prewarm_count, 0),
-		maxi(retained_capacity, 1)
-	)
 
 
 func try_reserve_enemy_spawn_effect(

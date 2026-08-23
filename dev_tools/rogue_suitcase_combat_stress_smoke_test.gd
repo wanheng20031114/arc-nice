@@ -327,8 +327,8 @@ func _test_elite_bullet_pool_capacity() -> void:
 	var pool := SessionObjectPool.new()
 	pool.name = "SuitcaseEliteBulletPool"
 	root.add_child(pool)
-	CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(
-		pool,
+	pool.register_scene(
+		ELITE_BULLET_SCENE,
 		ELITE_BULLET_CAPACITY,
 		ELITE_BULLET_CAPACITY
 	)
@@ -416,8 +416,8 @@ func _test_multiplayer_elite_bullet_proxy_stress() -> void:
 	gateway.name = "MultiplayerGameplayGateway"
 	runtime.add_child(gateway)
 	gateway.bind_runtime(runtime)
-	CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(
-		pool,
+	pool.register_scene(
+		ELITE_BULLET_SCENE,
 		ELITE_BULLET_CAPACITY,
 		ELITE_BULLET_CAPACITY
 	)

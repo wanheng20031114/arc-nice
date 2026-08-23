@@ -37,7 +37,6 @@
 [ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect/guardian_aura_system.tscn" id="36_guardian_aura_system"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/economy/production/production_coordinator.tscn" id="39_production_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/economy/production/production_building_panel.tscn" id="40_production_panel"]
-[ext_resource type="PackedScene" path="res://scene/enemy/capoo/capoo_projectile_motion_system.tscn" id="42_capoo_projectile_motion"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/economy/research/research_coordinator.tscn" id="43_research_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/economy/research/research_center_panel.tscn" id="44_research_panel"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/plant/combat/bamboo_mortar_combat_system.tscn" id="45_bamboo_mortar_combat"]
@@ -437,8 +436,6 @@ script = ExtResource("18_damage_pool")
 
 [node name="SessionObjectPool" type="Node2D" parent="." unique_id=501179968]
 script = ExtResource("29_session_pool")
-
-[node name="CapooProjectileMotionSystem" parent="." unique_id=1401613609 instance=ExtResource("42_capoo_projectile_motion")]
 
 [node name="CombatRobotDroneMotionSystem" parent="." unique_id=1620010670 instance=ExtResource("57_combat_robot_drone_motion")]
 

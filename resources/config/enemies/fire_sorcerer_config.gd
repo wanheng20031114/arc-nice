@@ -16,8 +16,6 @@ class_name FireSorcererConfig
 # 自然耗尽；0.9 秒在 60 Hz 下提供 54 个桶，不改变任意两次“生成完成”
 # 之间的 3 秒攻击间隔。
 @export_range(0.0, 2.0, 0.01, "or_greater") var initial_attack_stagger_window: float = 0.9
-# 独立的三火球齐射场景。
-@export var volley_scene: PackedScene
 # 普通火球以 100 像素/秒飞行；精英变体在独立配置中保持快 15。
 @export_range(0.0, 2000.0, 0.1, "or_greater") var projectile_speed: float = 100.0
 @export_range(0.01, 30.0, 0.01, "or_greater") var projectile_lifetime: float = 7.0

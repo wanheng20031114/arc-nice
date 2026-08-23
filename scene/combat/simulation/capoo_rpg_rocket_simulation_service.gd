@@ -212,9 +212,13 @@ func spawn_replica(
 	speed: float,
 	lifetime: float,
 	explosion_radius: float,
-	visual_age: float,
-	damage_source_snapshot: DamageSourceSnapshot = null
+	transit_age: float,
+	damage_source_snapshot: DamageSourceSnapshot = null,
+	authoritative_visual_age: float = -1.0
 ) -> int:
+	var resolved_visual_age := transit_age
+	if authoritative_visual_age >= 0.0:
+		resolved_visual_age = authoritative_visual_age + transit_age
 	var replica_source := (
 		DamageSourceSnapshot.create(
 			damage_source_snapshot.source_faction_id,
@@ -241,7 +245,7 @@ func spawn_replica(
 		speed,
 		lifetime,
 		explosion_radius,
-		visual_age,
+		resolved_visual_age,
 		replica_source
 	)
 

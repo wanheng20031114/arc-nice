@@ -15,14 +15,9 @@ func _init() -> void:
 func _run() -> void:
 	var pool := SessionObjectPool.new()
 	root.add_child(pool)
-	# Wave runtime first applies the shared lazy 0/96 baseline. The encounter
-	# coordinator must be able to upgrade that existing bucket before activation.
-	CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(pool)
-	CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(
-		pool,
-		CHURCH_POOL_CAPACITY,
-		CHURCH_POOL_CAPACITY
-	)
+	# The retired resource remains directly testable without restoring a formal
+	# runtime registration path.
+	pool.register_scene(BULLET_SCENE, CHURCH_POOL_CAPACITY, CHURCH_POOL_CAPACITY)
 	_assert_coordinator_bindings()
 	_assert_recycled_metrics(pool, "预热")
 	for round_index in range(2):
@@ -65,16 +60,9 @@ func _assert_coordinator_bindings() -> void:
 	]:
 		var source := FileAccess.get_file_as_string(source_path)
 		_expect(
-			source.contains(
-				"UNDERGROUND_CHURCH_COMBAT_CONFIG_ID := &\"underground_church_01\""
-			)
-			and source.contains(
-				"UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY := 240"
-			)
-			and source.contains(
-				"CombatRuntimeBase.register_combat_robot_gunner_bullet_pool("
-			),
-			"%s 必须只为地下教会覆盖普通枪手弹丸池为240。" % source_path
+			not source.contains("UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY")
+			and not source.contains("register_combat_robot_gunner_bullet_pool"),
+			"%s 不得为地下教会恢复旧枪手弹丸池。" % source_path
 		)
 
 

@@ -22,15 +22,29 @@ const GUNNER_ELITE_CONFIG := preload(
 	"res://resources/config/enemies/combat_robot_gunner_elite.tres"
 )
 const AK_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
-const SMG_CONFIG := preload("res://resources/config/enemies/capoo_smg.tres")
+const AK_RETIRED_POOL_PATH := "res://scene/enemy/capoo/capoo_ak47_bullet.tscn"
+const GUNNER_RETIRED_POOL_PATH := (
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
+)
+const GUNNER_ELITE_RETIRED_POOL_PATH := (
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn"
+)
+const RETIRED_ENEMY_PROJECTILE_POOL_PATHS: Array[String] = [
+	AK_RETIRED_POOL_PATH,
+	GUNNER_RETIRED_POOL_PATH,
+	GUNNER_ELITE_RETIRED_POOL_PATH,
+	"res://scene/enemy/capoo/capoo_smg_bullet.tscn",
+	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
+	"res://scene/enemy/capoo/capoo_mage_fireball.tscn",
+	"res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn",
+]
 
 const SAMPLE_PHYSICS_FRAMES := 12
 const MINIMUM_FLIGHT_DISTANCE := 1.0
 const MAX_RECYCLE_PHYSICS_FRAMES := 180
 
 var _failures := PackedStringArray()
-var _saved_batched_motion_enabled := true
-var _saved_smg_hitscan_enabled := true
 
 
 func _init() -> void:
@@ -38,14 +52,9 @@ func _init() -> void:
 
 
 func _run() -> void:
-	_saved_batched_motion_enabled = CapooAK47Bullet.batched_motion_enabled
-	_saved_smg_hitscan_enabled = CapooSMG.hitscan_attack_enabled
-	CapooAK47Bullet.batched_motion_enabled = true
 	_assert_shared_scene_contracts()
 	await _test_rogue_runtime(ROGUE_GAME_01, "狭路相逢", true)
 	await _test_rogue_runtime(ROGUE_GAME_02, "地下教会", false)
-	CapooAK47Bullet.batched_motion_enabled = _saved_batched_motion_enabled
-	CapooSMG.hitscan_attack_enabled = _saved_smg_hitscan_enabled
 	_finish()
 
 
@@ -70,44 +79,39 @@ func _test_rogue_runtime(
 		runtime.player.set_physics_process(false)
 
 	var pool := runtime.get_node_or_null("SessionObjectPool") as SessionObjectPool
-	var motion_system := runtime.get_node_or_null(
-		"CapooProjectileMotionSystem"
-	) as CapooProjectileMotionSystem
 	var pathfinder := runtime.get_node_or_null("GridPathfinder") as GridPathfinder
 	_expect(pool != null, "%s必须提供正式会话对象池。" % label)
-	_expect(motion_system != null, "%s必须提供批量弹丸运动系统。" % label)
-	if pool != null and motion_system != null:
+	_expect(
+		runtime.get_node_or_null("CapooProjectileMotionSystem") == null,
+		"%s正式场景不得再挂载旧 CapooProjectileMotionSystem。" % label
+	)
+	if pool != null:
+		_assert_retired_pools_absent(pool, label)
 		await _test_gunner_authoritative_fire(
 			runtime,
 			pool,
-			motion_system,
 			pathfinder,
 			GUNNER_CONFIG,
 			RapidFireSimulationService.Profile.GUNNER,
+			GUNNER_RETIRED_POOL_PATH,
 			label + "普通持枪机器人"
 		)
 		if test_capoo_paths:
 			await _test_gunner_authoritative_fire(
 				runtime,
 				pool,
-				motion_system,
 				pathfinder,
 				GUNNER_ELITE_CONFIG,
 				RapidFireSimulationService.Profile.GUNNER_ELITE,
+				GUNNER_ELITE_RETIRED_POOL_PATH,
 				label + "精英持枪机器人"
 			)
 			await _test_ak_authoritative_fire(
 				runtime,
 				pool,
-				motion_system,
 				pathfinder
 			)
-			await _test_smg_projectile_fallback(
-				runtime,
-				pool,
-				motion_system,
-				pathfinder
-			)
+		_assert_retired_pools_absent(pool, label + "结算后")
 
 	current_scene = null
 	runtime.queue_free()
@@ -118,17 +122,12 @@ func _test_rogue_runtime(
 func _test_gunner_authoritative_fire(
 	runtime: RogueCombatGame,
 	pool: SessionObjectPool,
-	motion_system: CapooProjectileMotionSystem,
 	pathfinder: GridPathfinder,
 	gunner_config: CombatRobotGunnerConfig,
 	expected_profile: RapidFireSimulationService.Profile,
+	retired_pool_path: String,
 	label: String
 ) -> void:
-	_expect(
-		CombatRobotGunner.projectile_backend
-		== CombatRobotGunner.ProjectileBackend.DATA,
-		"%s生产默认必须使用DATA权威弹体后端。" % label
-	)
 	var combat_services := runtime.get_enemy_combat_services()
 	var rapid_fire_service := (
 		combat_services.get_rapid_fire_simulation_service()
@@ -138,12 +137,9 @@ func _test_gunner_authoritative_fire(
 	_expect(rapid_fire_service != null, "%s必须接入共享连发弹体服务。" % label)
 	if rapid_fire_service == null:
 		return
-	var pool_metrics_before := pool.get_metrics(
-		gunner_config.projectile_scene.resource_path
-	)
+	var pool_metrics_before := pool.get_metrics(retired_pool_path)
 	var pool_in_use_before := int(pool_metrics_before.get("in_use", 0))
 	var pool_pending_before := int(pool_metrics_before.get("pending_release", 0))
-	var motion_count_before := motion_system.get_active_projectile_count()
 	var service_metrics_before := rapid_fire_service.get_metrics()
 	var active_slots_before := rapid_fire_service.get_active_slot_count()
 	var data_slots_before := int(service_metrics_before.get("data_slots", 0))
@@ -177,14 +173,11 @@ func _test_gunner_authoritative_fire(
 	_expect(
 		_find_active_pooled_bullet(
 			runtime,
-			gunner_config.projectile_scene
-		) == null
-		and motion_system.get_active_projectile_count() == motion_count_before,
-		"%s DATA开火不得创建或注册权威Bullet Node/Area。" % label
+			retired_pool_path
+		) == null,
+		"%s DATA开火不得创建权威 Bullet Node/Area。" % label
 	)
-	var pool_metrics_after_fire := pool.get_metrics(
-		gunner_config.projectile_scene.resource_path
-	)
+	var pool_metrics_after_fire := pool.get_metrics(retired_pool_path)
 	_expect(
 		int(pool_metrics_after_fire.get("in_use", 0)) == pool_in_use_before
 		and int(pool_metrics_after_fire.get("pending_release", 0))
@@ -200,9 +193,7 @@ func _test_gunner_authoritative_fire(
 		maximum_pool_in_use = maxi(
 			maximum_pool_in_use,
 			int(
-				pool.get_metrics(
-					gunner_config.projectile_scene.resource_path
-				).get("in_use", 0)
+				pool.get_metrics(retired_pool_path).get("in_use", 0)
 			)
 		)
 		if rapid_fire_service.is_handle_live(data_handle):
@@ -227,16 +218,12 @@ func _test_gunner_authoritative_fire(
 		maximum_pool_in_use = maxi(
 			maximum_pool_in_use,
 			int(
-				pool.get_metrics(
-					gunner_config.projectile_scene.resource_path
-				).get("in_use", 0)
+				pool.get_metrics(retired_pool_path).get("in_use", 0)
 			)
 		)
 	await physics_frame
 	var final_service_metrics := rapid_fire_service.get_metrics()
-	var final_pool_metrics := pool.get_metrics(
-		gunner_config.projectile_scene.resource_path
-	)
+	var final_pool_metrics := pool.get_metrics(retired_pool_path)
 	_expect(
 		not rapid_fire_service.is_handle_live(data_handle)
 		and rapid_fire_service.get_active_slot_count() == active_slots_before
@@ -253,10 +240,9 @@ func _test_gunner_authoritative_fire(
 	_expect(
 		_find_active_pooled_bullet(
 			runtime,
-			gunner_config.projectile_scene
-		) == null
-		and motion_system.get_active_projectile_count() == motion_count_before,
-		"%s DATA完成后不得遗留权威Bullet Node/Area或运动记录。" % label
+			retired_pool_path
+		) == null,
+		"%s DATA完成后不得遗留权威 Bullet Node/Area。" % label
 	)
 	gunner.queue_free()
 	await process_frame
@@ -265,13 +251,8 @@ func _test_gunner_authoritative_fire(
 func _test_ak_authoritative_fire(
 	runtime: RogueCombatGame,
 	pool: SessionObjectPool,
-	motion_system: CapooProjectileMotionSystem,
 	pathfinder: GridPathfinder
 ) -> void:
-	_expect(
-		CapooAK47.projectile_backend == CapooAK47.ProjectileBackend.DATA,
-		"AK猫猫生产默认必须使用DATA权威弹体后端。"
-	)
 	var combat_services := runtime.get_enemy_combat_services()
 	var rapid_fire_service := (
 		combat_services.get_rapid_fire_simulation_service()
@@ -281,10 +262,9 @@ func _test_ak_authoritative_fire(
 	_expect(rapid_fire_service != null, "AK猫猫测试需要共享连发弹体服务。")
 	if rapid_fire_service == null:
 		return
-	var pool_metrics_before := pool.get_metrics(AK_CONFIG.projectile_scene.resource_path)
+	var pool_metrics_before := pool.get_metrics(AK_RETIRED_POOL_PATH)
 	var pool_in_use_before := int(pool_metrics_before.get("in_use", 0))
 	var pool_pending_before := int(pool_metrics_before.get("pending_release", 0))
-	var motion_count_before := motion_system.get_active_projectile_count()
 	var service_metrics_before := rapid_fire_service.get_metrics()
 	var active_slots_before := rapid_fire_service.get_active_slot_count()
 	var data_slots_before := int(service_metrics_before.get("data_slots", 0))
@@ -329,13 +309,10 @@ func _test_ak_authoritative_fire(
 		"AK猫猫开火必须只增加一个DATA权威记录。"
 	)
 	_expect(
-		_find_active_pooled_bullet(runtime, AK_CONFIG.projectile_scene) == null
-		and motion_system.get_active_projectile_count() == motion_count_before,
-		"AK猫猫DATA开火不得创建或注册权威Bullet Node/Area。"
+		_find_active_pooled_bullet(runtime, AK_RETIRED_POOL_PATH) == null,
+		"AK猫猫 DATA 开火不得创建权威 Bullet Node/Area。"
 	)
-	var pool_metrics_after_fire := pool.get_metrics(
-		AK_CONFIG.projectile_scene.resource_path
-	)
+	var pool_metrics_after_fire := pool.get_metrics(AK_RETIRED_POOL_PATH)
 	_expect(
 		int(pool_metrics_after_fire.get("in_use", 0)) == pool_in_use_before
 		and int(pool_metrics_after_fire.get("pending_release", 0))
@@ -351,7 +328,7 @@ func _test_ak_authoritative_fire(
 		maximum_pool_in_use = maxi(
 			maximum_pool_in_use,
 			int(
-				pool.get_metrics(AK_CONFIG.projectile_scene.resource_path).get(
+				pool.get_metrics(AK_RETIRED_POOL_PATH).get(
 					"in_use",
 					0
 				)
@@ -379,7 +356,7 @@ func _test_ak_authoritative_fire(
 		maximum_pool_in_use = maxi(
 			maximum_pool_in_use,
 			int(
-				pool.get_metrics(AK_CONFIG.projectile_scene.resource_path).get(
+				pool.get_metrics(AK_RETIRED_POOL_PATH).get(
 					"in_use",
 					0
 				)
@@ -388,9 +365,7 @@ func _test_ak_authoritative_fire(
 	# Give frame-end stable compaction one physics turn after the handle retires.
 	await physics_frame
 	var final_service_metrics := rapid_fire_service.get_metrics()
-	var final_pool_metrics := pool.get_metrics(
-		AK_CONFIG.projectile_scene.resource_path
-	)
+	var final_pool_metrics := pool.get_metrics(AK_RETIRED_POOL_PATH)
 	_expect(
 		not rapid_fire_service.is_handle_live(data_handle)
 		and rapid_fire_service.get_active_slot_count() == active_slots_before
@@ -404,9 +379,8 @@ func _test_ak_authoritative_fire(
 		"AK猫猫DATA弹体整个生命周期不得占用旧对象池。"
 	)
 	_expect(
-		_find_active_pooled_bullet(runtime, AK_CONFIG.projectile_scene) == null
-		and motion_system.get_active_projectile_count() == motion_count_before,
-		"AK猫猫DATA弹体完成后不得遗留权威Bullet Node/Area或运动系统记录。"
+		_find_active_pooled_bullet(runtime, AK_RETIRED_POOL_PATH) == null,
+		"AK猫猫 DATA 弹体完成后不得遗留权威 Bullet Node/Area。"
 	)
 	enemy.queue_free()
 	await process_frame
@@ -448,90 +422,23 @@ func _find_live_rapid_handle_for_source(
 	return RapidFireSimulationService.INVALID_HANDLE
 
 
-func _test_smg_projectile_fallback(
-	runtime: RogueCombatGame,
-	pool: SessionObjectPool,
-	motion_system: CapooProjectileMotionSystem,
-	pathfinder: GridPathfinder
-) -> void:
-	CapooSMG.hitscan_attack_enabled = false
-	var enemy := SMG_CONFIG.enemy_scene.instantiate() as CapooSMG
-	runtime.enemy_container.add_child(enemy)
-	enemy.global_position = Vector2(145.0, 191.0)
-	enemy.setup(SMG_CONFIG, runtime.player, pathfinder, runtime)
-	enemy.set_process(false)
-	enemy.set_physics_process(false)
-	var fired := bool(enemy.call("_fire_bullet", Vector2.RIGHT))
-	_expect(fired, "SMG hitscan=false时必须通过权威弹丸回退路径成功开火。")
-	var bullet := _find_active_pooled_bullet(runtime, SMG_CONFIG.projectile_scene)
-	await _assert_registered_flight_and_recycle(
-		bullet,
-		SMG_CONFIG.projectile_scene,
-		pool,
-		motion_system,
-		4,
-		"SMG弹丸回退"
-	)
-	enemy.queue_free()
-	CapooSMG.hitscan_attack_enabled = _saved_smg_hitscan_enabled
-	await process_frame
-
-
-func _assert_registered_flight_and_recycle(
-	bullet: CapooAK47Bullet,
-	projectile_scene: PackedScene,
-	pool: SessionObjectPool,
-	motion_system: CapooProjectileMotionSystem,
-	sample_frames: int,
-	label: String
-) -> void:
-	_expect(bullet != null, "%s必须产生真实池化 CapooAK47Bullet。" % label)
-	if bullet == null:
-		return
-	var start_position := bullet.global_position
-	_expect(
-		bullet.batched_motion_system == motion_system
-		and motion_system.has_projectile(bullet),
-		"%s在生产开火返回时必须已注册批量运动系统。" % label
-	)
-	for _frame_index in range(sample_frames):
-		await physics_frame
-	var flight_distance := bullet.global_position.distance_to(start_position)
-	_expect(
-		flight_distance > MINIMUM_FLIGHT_DISTANCE,
-		"%s经过%d个物理帧必须产生位移，实测%.3f像素。"
-		% [label, sample_frames, flight_distance]
-	)
-	for _frame_index in range(MAX_RECYCLE_PHYSICS_FRAMES):
-		var metrics := pool.get_metrics(projectile_scene.resource_path)
-		if (
-			int(metrics.get("in_use", -1)) == 0
-			and int(metrics.get("pending_release", -1)) == 0
-		):
-			break
-		await physics_frame
-	var final_metrics := pool.get_metrics(projectile_scene.resource_path)
-	_expect(
-		int(final_metrics.get("in_use", -1)) == 0
-		and int(final_metrics.get("pending_release", -1)) == 0
-		and int(final_metrics.get("inactive", 0)) > 0,
-		"%s生命周期结束后必须完整归还对象池。" % label
-	)
-	_expect(
-		not motion_system.has_projectile(bullet),
-		"%s归还对象池后必须注销批量运动系统。" % label
-	)
+func _assert_retired_pools_absent(pool: SessionObjectPool, label: String) -> void:
+	for scene_path in RETIRED_ENEMY_PROJECTILE_POOL_PATHS:
+		_expect(
+			pool.get_metrics(scene_path).is_empty(),
+			"%s不得注册旧敌人弹体池：%s。" % [label, scene_path]
+		)
 
 
 func _find_active_pooled_bullet(
 	runtime: Node,
-	projectile_scene: PackedScene
+	retired_pool_path: String
 ) -> CapooAK47Bullet:
 	for child in runtime.get_children():
 		var bullet := child as CapooAK47Bullet
 		if bullet == null or not bullet.pool_active:
 			continue
-		if str(child.get_meta(SessionObjectPool.POOL_KEY_META, "")) == projectile_scene.resource_path:
+		if str(child.get_meta(SessionObjectPool.POOL_KEY_META, "")) == retired_pool_path:
 			return bullet
 	return null
 
@@ -549,9 +456,8 @@ func _assert_shared_scene_contracts() -> void:
 			"%s必须共享会话对象池合同。" % label
 		)
 		_expect(
-			scene.get_node_or_null("CapooProjectileMotionSystem")
-			is CapooProjectileMotionSystem,
-			"%s必须共享批量弹丸运动合同。" % label
+			scene.get_node_or_null("CapooProjectileMotionSystem") == null,
+			"%s正式场景不得再挂载旧批量弹丸运动节点。" % label
 		)
 		scene.free()
 	for wave_path in [

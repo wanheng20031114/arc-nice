@@ -265,12 +265,11 @@ func _test_projectile_pool_overrides() -> void:
 				"UNDERGROUND_SEWER_FIRE_PROJECTILE_RETAINED_CAPACITY := 192"
 			)
 			and source.contains(
-				"EMERGENCY_UNDERGROUND_SEWER_ELITE_BULLET_POOL_CAPACITY := 144"
-			)
-			and source.contains(
 				"_apply_underground_sewer_projectile_pool_overrides("
-			),
-			"%s必须为普通与紧急地下水道应用一致的冗余弹丸池策略。" % source_path
+			)
+			and not source.contains("register_combat_robot_gunner")
+			and not source.contains("ELITE_BULLET_POOL_CAPACITY"),
+			"%s必须只保留原石虫火焰弹池，不得恢复旧枪手弹丸池。" % source_path
 		)
 
 	var pool := SessionObjectPool.new()
@@ -282,9 +281,13 @@ func _test_projectile_pool_overrides() -> void:
 		FIRE_PROJECTILE_PREWARM_COUNT,
 		FIRE_PROJECTILE_RETAINED_CAPACITY
 	)
-	CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(pool)
-	CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(
-		pool,
+	pool.register_scene(
+		COMBAT_ROBOT_GUNNER_ELITE_BULLET_SCENE,
+		0,
+		96
+	)
+	pool.register_scene(
+		COMBAT_ROBOT_GUNNER_ELITE_BULLET_SCENE,
 		ELITE_GUNNER_BULLET_POOL_CAPACITY,
 		ELITE_GUNNER_BULLET_POOL_CAPACITY
 	)

@@ -15,16 +15,17 @@ const ROGUE_COMBAT_COORDINATOR_SOURCE_PATH := (
 const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 
 ## v94 adds enemy faction/target/source replication plus encoded rapid-fire
-## burst, reliable finish/repair and visual snapshot RPCs.
-const EXPECTED_MP_GAME_RPC_COUNT := 151
+## burst, reliable finish/repair and visual snapshot RPCs. The final DATA-only
+## cleanup also adds the reliable unified RPG/Mage late-join snapshot RPC.
+const EXPECTED_MP_GAME_RPC_COUNT := 152
 const EXPECTED_MP_GAME_RPC_NAME_HASH := (
-	"16a78c4b385d1b831f2efbb3034ebec87f68c386003e2bee4d69c511ac030279"
+	"9c7728e612eb781f84340a32345dff9c349a9af23d0ee2b4b4cb9a4c8a31505b"
 )
 const EXPECTED_MP_GAME_RPC_SIGNATURE_HASH := (
-	"6ddcd595385e4282b9fa0f24320124a8b9182dd83e9fd994ad43ee1df92b662a"
+	"0947942d5f895f2b19b11c98817349c908266802bea2f5141a15dc5921cdfe59"
 )
 const EXPECTED_MP_GAME_RPC_ANNOTATION_HASH := (
-	"5d39ed0cc706cce4832f71861d393eacc89c07edfe36d5cd80bbb700d00c22b6"
+	"99bd05526b4851f5d005c722b4edbba039c1132addb0fa3f647f2deec1c2b3f2"
 )
 
 ## v91 移除了已被认证拓扑帧取代的 relay registration completed RPC；旧冻结
@@ -137,6 +138,11 @@ func _run() -> void:
 	_test_scene_uid_contracts()
 	_test_scene_node_paths()
 	_test_rogue_combat_network_path()
+	# Scene/script resources release through deferred engine queues. Give the
+	# headless renderer enough main-loop turns to retire their RIDs before quit.
+	for _cleanup_frame in range(4):
+		await process_frame
+		await physics_frame
 	_finish()
 
 
@@ -277,7 +283,11 @@ func _validate_effective_rpc_config(
 	annotation_by_name: Dictionary,
 	expected_count: int
 ) -> void:
-	var script := load(source_path) as Script
+	var script := ResourceLoader.load(
+		source_path,
+		"Script",
+		ResourceLoader.CACHE_MODE_IGNORE_DEEP
+	) as Script
 	_expect(script != null, "%s 脚本无法加载，不能校验有效 RPC 配置。" % label)
 	if script == null:
 		return
@@ -307,6 +317,7 @@ func _validate_effective_rpc_config(
 				% [label, method_name, config]
 			)
 		)
+	script = null
 
 
 func _parse_rpc_annotation(annotation: String) -> Dictionary:
@@ -457,7 +468,6 @@ func _test_scene_node_paths() -> void:
 			NodePath("DayNightController"),
 			NodePath("EnemyContainer"),
 			NodePath("GridPathfinder"),
-			NodePath("CapooProjectileMotionSystem"),
 			NodePath("CombatRobotDroneMotionSystem"),
 			NodePath("EnemySpawnPoints"),
 			NodePath("EnemySpawnTimer"),
@@ -476,7 +486,6 @@ func _test_scene_node_paths() -> void:
 			NodePath("DayNightController"),
 			NodePath("EnemyContainer"),
 			NodePath("GridPathfinder"),
-			NodePath("CapooProjectileMotionSystem"),
 			NodePath("CombatRobotDroneMotionSystem"),
 			NodePath("EnemySpawnPoints"),
 			NodePath("EnemySpawnTimer"),
@@ -503,7 +512,6 @@ func _test_scene_node_paths() -> void:
 			NodePath("DayNightController"),
 			NodePath("EnemyContainer"),
 			NodePath("GridPathfinder"),
-			NodePath("CapooProjectileMotionSystem"),
 			NodePath("CombatRobotDroneMotionSystem"),
 			NodePath("EnemySpawnPoints"),
 			NodePath("EnemySpawnTimer"),
@@ -558,41 +566,110 @@ func _test_packed_scene_structure(
 	expected_root_name: StringName,
 	required_paths: Array[NodePath]
 ) -> void:
-	var packed_scene := load(path) as PackedScene
-	_expect(packed_scene != null, "无法加载 %s 根场景：%s。" % [label, path])
-	if packed_scene == null:
+	var source := FileAccess.get_file_as_string(path)
+	_expect(not source.is_empty(), "无法读取 %s 根场景：%s。" % [label, path])
+	if source.is_empty():
 		return
-	var instance := packed_scene.instantiate()
-	_expect(instance != null, "无法实例化 %s 根场景。" % label)
-	if instance == null:
+	var structure := _parse_tscn_node_structure(source)
+	var root_name := StringName(structure.get("root_name", &""))
+	var node_paths := structure.get("node_paths", {}) as Dictionary
+	var instance_paths := structure.get("instance_paths", {}) as Dictionary
+	_expect(root_name != &"", "%s 根场景缺少可解析根节点。" % label)
+	if root_name == &"":
 		return
-	_expect(instance.name == expected_root_name, "%s 根节点名称改变。" % label)
+	_expect(root_name == expected_root_name, "%s 根节点名称改变。" % label)
 	for required_path in required_paths:
+		var required_path_text := String(required_path)
+		var path_exists := node_paths.has(required_path_text)
+		if not path_exists and required_path_text.contains("/"):
+			var separator_index := required_path_text.find("/")
+			var instance_root := required_path_text.substr(0, separator_index)
+			var nested_path := required_path_text.substr(separator_index + 1)
+			var instance_scene_path := String(instance_paths.get(instance_root, ""))
+			if not instance_scene_path.is_empty():
+				var instance_source := FileAccess.get_file_as_string(
+					instance_scene_path
+				)
+				var nested_structure := _parse_tscn_node_structure(
+					instance_source
+				)
+				var nested_paths := nested_structure.get(
+					"node_paths",
+					{}
+				) as Dictionary
+				path_exists = nested_paths.has(nested_path)
 		_expect(
-			instance.get_node_or_null(required_path) != null,
+			path_exists,
 			"%s 关键 NodePath 改变或缺失：%s。" % [label, required_path]
 		)
-	instance.free()
+
+
+func _parse_tscn_node_structure(source: String) -> Dictionary:
+	var root_name := &""
+	var node_paths: Dictionary[String, bool] = {}
+	var external_paths_by_id: Dictionary[String, String] = {}
+	var instance_paths: Dictionary[String, String] = {}
+	for raw_line in source.split("\n"):
+		var line := String(raw_line).strip_edges()
+		if line.begins_with("[ext_resource "):
+			var external_id := _get_tscn_header_attribute(line, "id")
+			var external_path := _get_tscn_header_attribute(line, "path")
+			if not external_id.is_empty() and not external_path.is_empty():
+				external_paths_by_id[external_id] = external_path
+			continue
+		if not line.begins_with("[node "):
+			continue
+		var node_name := _get_tscn_header_attribute(line, "name")
+		if node_name.is_empty():
+			continue
+		var parent_path := _get_tscn_header_attribute(line, "parent")
+		if root_name == &"":
+			root_name = StringName(node_name)
+			continue
+		var relative_path := node_name
+		if not parent_path.is_empty() and parent_path != ".":
+			relative_path = "%s/%s" % [parent_path, node_name]
+		node_paths[relative_path] = true
+		var instance_id := _get_tscn_ext_resource_id(line, "instance")
+		if not instance_id.is_empty() and external_paths_by_id.has(instance_id):
+			instance_paths[relative_path] = external_paths_by_id[instance_id]
+	return {
+		"root_name": root_name,
+		"node_paths": node_paths,
+		"instance_paths": instance_paths,
+	}
+
+
+func _get_tscn_header_attribute(header: String, attribute: String) -> String:
+	var marker := '%s="' % attribute
+	var value_start := header.find(marker)
+	if value_start < 0:
+		return ""
+	value_start += marker.length()
+	var value_end := header.find('"', value_start)
+	return header.substr(value_start, value_end - value_start) if value_end >= 0 else ""
+
+
+func _get_tscn_ext_resource_id(header: String, attribute: String) -> String:
+	var marker := '%s=ExtResource("' % attribute
+	var value_start := header.find(marker)
+	if value_start < 0:
+		return ""
+	value_start += marker.length()
+	var value_end := header.find('")', value_start)
+	return header.substr(value_start, value_end - value_start) if value_end >= 0 else ""
 
 
 func _test_rogue_combat_network_path() -> void:
-	var route_scene := load(MP_ROGUE_ROUTE_SCENE_PATH) as PackedScene
-	if route_scene == null:
-		return
-	var route_instance := route_scene.instantiate()
-	if route_instance == null:
-		return
-	var coordinator := route_instance.get_node_or_null("RogueCombatCoordinator")
-	_expect(coordinator != null, "MpRogueRoute 必须静态保留 RogueCombatCoordinator。")
-	if coordinator != null:
-		var coordinator_script := coordinator.get_script() as Script
-		_expect(
-			coordinator_script != null
-			and coordinator_script.resource_path
-			== ROGUE_COMBAT_COORDINATOR_SOURCE_PATH,
-			"RogueCombatCoordinator NodePath 绑定了错误脚本。"
+	var route_source := FileAccess.get_file_as_string(MP_ROGUE_ROUTE_SCENE_PATH)
+	_expect(
+		not route_source.is_empty()
+		and route_source.contains(
+			'path="%s"' % ROGUE_COMBAT_COORDINATOR_SOURCE_PATH
 		)
-	route_instance.free()
+		and route_source.contains('[node name="RogueCombatCoordinator"'),
+		"MpRogueRoute 必须静态保留并绑定 RogueCombatCoordinator 脚本。"
+	)
 
 	var source := FileAccess.get_file_as_string(
 		ROGUE_COMBAT_COORDINATOR_SOURCE_PATH

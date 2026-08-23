@@ -3,12 +3,10 @@
 [ext_resource type="Script" uid="uid://bb2yp4r3i2pqk" path="res://resources/config/enemies/capoo_smg_config.gd" id="1_script"]
 [ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_o3ntc"]
 [ext_resource type="PackedScene" path="res://scene/enemy/stone_eroded/stone_eroded_capoo_smg.tscn" id="2_scene"]
-[ext_resource type="PackedScene" path="res://scene/enemy/capoo/capoo_smg_bullet.tscn" id="3_bullet"]
 [ext_resource type="AudioStream" uid="uid://chx8qq8m532lm" path="res://resources/audio/capoo_smg_fire.wav" id="4_audio"]
 
 [resource]
 script = ExtResource("1_script")
-projectile_scene = ExtResource("3_bullet")
 attack_audio_stream = ExtResource("4_audio")
 display_name = "被石头侵蚀的冲锋枪 Capoo"
 category_tags = PackedStringArray("capoo", "stone_eroded")

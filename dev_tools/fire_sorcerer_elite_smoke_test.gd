@@ -109,9 +109,12 @@ func _test_config_contract() -> void:
 		"Elite must own an independent enemy scene."
 	)
 	_expect(
-		ELITE_CONFIG.volley_scene == ELITE_VOLLEY_SCENE
-		and ELITE_CONFIG.volley_scene != BASE_VOLLEY_SCENE,
-		"Elite must own an independent blue-fire volley scene."
+		not _object_has_property(ELITE_CONFIG, &"volley_scene"),
+		"Elite DATA config must not expose a retired volley scene."
+	)
+	_expect(
+		ELITE_VOLLEY_SCENE != BASE_VOLLEY_SCENE,
+		"The isolated elite volley fixture must remain distinct from the base fixture."
 	)
 	_expect(
 		ELITE_CONFIG.max_health == 300,
@@ -673,6 +676,13 @@ func _spawn_player(position: Vector2) -> Player:
 		"Player speed fixture changed unexpectedly."
 	)
 	return player
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if StringName(property.get("name", "")) == property_name:
+			return true
+	return false
 
 
 func _expect(condition: bool, message: String) -> void:

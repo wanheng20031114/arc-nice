@@ -218,7 +218,6 @@ var dynamic_target_reachability_next_physics_frame := 0
 var dynamic_targeting_state_active := false
 var gameplay_gateway: MultiplayerGameplayGateway = null
 var _xirang_kill_reward_override: int = -1
-var projectile_motion_system: Node = null
 var current_health: int = 1
 var health_revision: int = 0
 var runtime_max_health_multiplier: float = 1.0
@@ -674,7 +673,6 @@ func setup(
 	target_player = player
 	objective_target = player
 	pathfinder = shared_pathfinder
-	_refresh_projectile_motion_system()
 	navigation_agent_profile = null
 	navigation_flow_prefetch_next_physics_frame = 0
 	last_navigation_update_render_frame = -1
@@ -1664,7 +1662,6 @@ func set_pathfinder(shared_pathfinder: Node) -> void:
 	if pathfinder == shared_pathfinder:
 		return
 	pathfinder = shared_pathfinder
-	_refresh_projectile_motion_system()
 	navigation_agent_profile = null
 	navigation_flow_prefetch_next_physics_frame = 0
 	_invalidate_ranged_combat_line_cache()
@@ -1692,7 +1689,6 @@ func configure_multiplayer_proxy() -> void:
 	pathfinder = null
 	_invalidate_ranged_combat_line_cache()
 	_reset_ranged_attack_position_state()
-	projectile_motion_system = null
 	_clear_touching_players()
 	touch_damage_cooldown_left = 0.0
 	proxy_action_animation_name_in_use = &""
@@ -1732,13 +1728,6 @@ func apply_multiplayer_target_presentation_state(
 	_remaining_seconds: float
 ) -> void:
 	pass
-
-
-func _refresh_projectile_motion_system() -> void:
-	projectile_motion_system = null
-	if combat_runtime == null or not is_instance_valid(combat_runtime):
-		return
-	projectile_motion_system = combat_runtime.capoo_projectile_motion_system
 
 
 func remove_for_home_escape() -> bool:

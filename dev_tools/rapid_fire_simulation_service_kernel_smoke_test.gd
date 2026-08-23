@@ -28,7 +28,7 @@ func _run() -> void:
 	_test_stale_handle_and_generation_reuse()
 	_test_frozen_damage_source_storage_and_compaction()
 	await _test_stable_tombstone_compaction_and_completion_order()
-	await _test_shadow_difference_read_model_and_teardown()
+	await _test_cadence_and_teardown()
 	await _test_fixed_seed_replica_time_only_cohort()
 	await _test_fixed_seed_hundred_thousand_projectiles()
 	_finish()
@@ -218,7 +218,7 @@ func _test_gunner_profile_metadata_identity_and_mixed_completion() -> void:
 		0
 	)
 	var elite_handle := service.register_projectile(
-		RapidFireSimulationServiceScript.Mode.SHADOW,
+		RapidFireSimulationServiceScript.Mode.DATA,
 		RapidFireSimulationServiceScript.Profile.GUNNER_ELITE,
 		Vector2(10.0, 0.0),
 		Vector2.LEFT,
@@ -279,7 +279,7 @@ func _test_gunner_profile_metadata_identity_and_mixed_completion() -> void:
 		and service.get_completion_profile(1)
 		== RapidFireSimulationServiceScript.Profile.GUNNER_ELITE
 		and service.get_completion_mode(1)
-		== RapidFireSimulationServiceScript.Mode.SHADOW
+		== RapidFireSimulationServiceScript.Mode.DATA
 		and service.get_completion_position(1).is_equal_approx(
 			Vector2(8.5, 0.0)
 		),
@@ -527,7 +527,7 @@ func _test_stale_handle_and_generation_reuse() -> void:
 	service.reserve_projectile_capacity(2)
 	var old_handle := _register_test_projectile(
 		service,
-		RapidFireSimulationServiceScript.Mode.SHADOW,
+		RapidFireSimulationServiceScript.Mode.DATA,
 		1,
 		1.0
 	)
@@ -539,7 +539,7 @@ func _test_stale_handle_and_generation_reuse() -> void:
 	)
 	var replacement_handle := _register_test_projectile(
 		service,
-		RapidFireSimulationServiceScript.Mode.SHADOW,
+		RapidFireSimulationServiceScript.Mode.DATA,
 		2,
 		1.0
 	)
@@ -621,7 +621,7 @@ func _test_frozen_damage_source_storage_and_compaction() -> void:
 		&"compacted_ak_probe"
 	)
 	var survivor_handle := service.register_projectile(
-		RapidFireSimulationServiceScript.Mode.SHADOW,
+		RapidFireSimulationServiceScript.Mode.DATA,
 		RapidFireSimulationServiceScript.Profile.AK,
 		Vector2.ONE,
 		Vector2.RIGHT,
@@ -750,17 +750,17 @@ func _test_stable_tombstone_compaction_and_completion_order() -> void:
 	service.free()
 
 
-func _test_shadow_difference_read_model_and_teardown() -> void:
+func _test_cadence_and_teardown() -> void:
 	var service := RapidFireSimulationServiceScript.new()
 	service.reserve_projectile_capacity(4)
-	var shadow_handle := _register_test_projectile(
+	var phase_zero_handle := _register_test_projectile(
 		service,
-		RapidFireSimulationServiceScript.Mode.SHADOW,
+		RapidFireSimulationServiceScript.Mode.DATA,
 		71,
 		TEST_DELTA * 4.0,
 		0
 	)
-	var data_handle := _register_test_projectile(
+	var phase_one_handle := _register_test_projectile(
 		service,
 		RapidFireSimulationServiceScript.Mode.DATA,
 		72,
@@ -771,59 +771,28 @@ func _test_shadow_difference_read_model_and_teardown() -> void:
 	await physics_frame
 	service._physics_process(TEST_DELTA)
 	_expect(
-		service.is_world_query_due(shadow_handle)
-		and not service.is_world_query_due(data_handle)
-		and service.get_world_step_index(shadow_handle) == 1
-		and service.get_world_step_index(data_handle) == 1,
+		service.is_world_query_due(phase_zero_handle)
+		and not service.is_world_query_due(phase_one_handle)
+		and service.get_world_step_index(phase_zero_handle) == 1
+		and service.get_world_step_index(phase_one_handle) == 1,
 		"Step index 0 must select phase 0 and then advance to index 1."
 	)
 	await physics_frame
 	service._physics_process(TEST_DELTA)
 	_expect(
-		not service.is_world_query_due(shadow_handle)
-		and service.is_world_query_due(data_handle)
-		and service.get_world_step_index(shadow_handle) == 0
-		and service.get_world_step_index(data_handle) == 0,
+		not service.is_world_query_due(phase_zero_handle)
+		and service.is_world_query_due(phase_one_handle)
+		and service.get_world_step_index(phase_zero_handle) == 0
+		and service.get_world_step_index(phase_one_handle) == 0,
 		"Step index 1 must select phase 1 and wrap the interval to index 0."
 	)
-	var expected_position := service.get_position(shadow_handle)
-	var expected_lifetime := service.get_remaining_lifetime(shadow_handle)
+	var live_metrics := service.get_metrics()
 	_expect(
-		service.record_shadow_observation(
-			shadow_handle,
-			expected_position + Vector2(0.25, -0.5),
-			expected_lifetime + 0.125
-		),
-		"A live SHADOW slot must accept a scalar observation."
-	)
-	_expect(
-		not service.record_shadow_observation(
-			data_handle,
-			service.get_position(data_handle),
-			service.get_remaining_lifetime(data_handle)
-		),
-		"A DATA slot must reject shadow-only observations."
-	)
-	_expect(
-		service.get_difference_count() == 1
-		and service.get_difference_handle(0) == shadow_handle
-		and service.get_difference_projectile_id(0) == 71
-		and service.get_difference_position_delta(0).is_equal_approx(
-			Vector2(0.25, -0.5)
-		)
-		and is_equal_approx(service.get_difference_lifetime_delta(0), 0.125),
-		"Difference getters must expose immutable scalar deltas."
-	)
-	await physics_frame
-	service._physics_process(TEST_DELTA)
-	_expect(
-		service.get_difference_count() == 0,
-		"Frame-local SHADOW differences must expire before the next priority-4 simulation tick."
-	)
-	service.clear_difference_records()
-	_expect(
-		service.get_difference_count() == 0,
-		"Difference records must clear without touching live slots."
+		int(live_metrics["data_slots"]) == 2
+		and not live_metrics.has("shadow_slots")
+		and not live_metrics.has("difference_records")
+		and not live_metrics.has("world_certificates"),
+		"The release kernel must expose only the authoritative DATA runtime metrics."
 	)
 
 	service.prepare_for_runtime_teardown()
@@ -834,7 +803,6 @@ func _test_shadow_difference_read_model_and_teardown() -> void:
 		and int(teardown_metrics["dense_records"]) == 0
 		and int(teardown_metrics["reserved_capacity"]) == 0
 		and int(teardown_metrics["completion_records"]) == 0
-		and int(teardown_metrics["difference_records"]) == 0
 		and not bool(teardown_metrics["physics_processing"]),
 		"Teardown must release every packed storage domain and stop physics."
 	)
@@ -911,7 +879,7 @@ func _test_fixed_seed_replica_time_only_cohort() -> void:
 		and int(registration_metrics["replica_slots"])
 		== REPLICA_PROJECTILE_COUNT
 		and int(registration_metrics["data_slots"]) == 0
-		and int(registration_metrics["shadow_slots"]) == 0,
+		and not registration_metrics.has("shadow_slots"),
 		"The fixed-seed cohort must occupy only preallocated REPLICA storage."
 	)
 	service._physics_process(TEST_DELTA)
@@ -960,7 +928,6 @@ func _test_fixed_seed_replica_time_only_cohort() -> void:
 		and int(metrics["replica_lifetime_completions"])
 		== REPLICA_PROJECTILE_COUNT
 		and int(metrics["world_queries"]) == 0
-		and int(metrics["world_certificates"]) == 0
 		and int(metrics["plant_broad_queries"]) == 0
 		and int(metrics["plant_exact_queries"]) == 0
 		and int(metrics["player_exact_queries"]) == 0
@@ -1001,15 +968,10 @@ func _test_fixed_seed_hundred_thousand_projectiles() -> void:
 			float(projectile_index / 1000)
 		)
 		var projectile_id := projectile_index + 1
-		var mode := (
-			RapidFireSimulationServiceScript.Mode.SHADOW
-			if projectile_index % 2 == 0
-			else RapidFireSimulationServiceScript.Mode.DATA
-		)
 		var world_check_interval := 2
 		var world_check_phase := random.randi_range(0, 1)
 		var handle := service.register_projectile(
-			mode,
+			RapidFireSimulationServiceScript.Mode.DATA,
 			RapidFireSimulationServiceScript.Profile.AK,
 			position,
 			direction,
@@ -1048,10 +1010,10 @@ func _test_fixed_seed_hundred_thousand_projectiles() -> void:
 	var cohort_metrics := service.get_metrics()
 	_expect(
 		int(cohort_metrics["active_slots"]) == LARGE_PROJECTILE_COUNT
-		and int(cohort_metrics["shadow_slots"]) == LARGE_PROJECTILE_COUNT / 2
-		and int(cohort_metrics["data_slots"]) == LARGE_PROJECTILE_COUNT / 2
+		and int(cohort_metrics["data_slots"]) == LARGE_PROJECTILE_COUNT
+		and not cohort_metrics.has("shadow_slots")
 		and int(cohort_metrics["reserved_capacity"]) >= LARGE_PROJECTILE_COUNT,
-		"The 100k cohort must occupy preallocated mixed SHADOW/DATA storage."
+		"The 100k cohort must occupy preallocated DATA storage."
 	)
 	_expect(
 		service.get_spawn_physics_frame(handles[0]) == registration_frame

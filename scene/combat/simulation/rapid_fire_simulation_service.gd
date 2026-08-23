@@ -7,7 +7,6 @@ class_name RapidFireSimulationService
 
 enum Mode {
 	DISABLED,
-	SHADOW,
 	DATA,
 	REPLICA,
 }
@@ -68,14 +67,8 @@ var _enemy_simulation_coordinator: EnemySimulationCoordinator = null
 var _enemy_damageable_spatial_index: EnemyDamageableSpatialIndex = null
 var _combat_target_index: CombatTargetIndex = null
 var _combat_relation_service: CombatRelationService = null
-var _grid_pathfinder: GridPathfinder = null
 var _teardown_prepared := false
 var _teardown_count := 0
-
-## Disabled by default, matching the legacy projectile. When enabled, only a
-## positive GridPathfinder certificate suppresses the native ray query;
-## unavailable or uncertain certificates always fall back to PhysicsServer2D.
-static var world_collision_certificate_enabled := false
 
 var _ak_collision_shape := RectangleShape2D.new()
 var _gunner_collision_shape := RectangleShape2D.new()
@@ -98,7 +91,7 @@ var _directions := PackedVector2Array()
 var _speeds := PackedFloat64Array()
 var _remaining_lifetimes := PackedFloat64Array()
 ## REPLICA stores a positive activation countdown while pending, then the
-## negative active age after activation. DATA/SHADOW rows keep zero here.
+## negative active age after activation. DATA rows keep zero here.
 var _replica_activation_delays := PackedFloat64Array()
 var _damages := PackedInt32Array()
 var _source_enemy_ids := PackedInt64Array()
@@ -129,7 +122,6 @@ var _record_capacity := 0
 var _record_count := 0
 var _active_slot_count := 0
 var _pending_activation_count := 0
-var _shadow_slot_count := 0
 var _data_slot_count := 0
 var _replica_slot_count := 0
 var _tombstone_count := 0
@@ -160,16 +152,6 @@ var _completion_profiles := PackedInt32Array()
 var _completion_capacity := 0
 var _completion_count := 0
 
-# Shadow comparison records are scalar snapshots. Read APIs return copies of
-# individual values rather than mutable backing arrays.
-var _difference_handles := PackedInt64Array()
-var _difference_projectile_ids := PackedInt64Array()
-var _difference_position_deltas := PackedVector2Array()
-var _difference_lifetime_deltas := PackedFloat64Array()
-var _difference_physics_frames := PackedInt64Array()
-var _difference_capacity := 0
-var _difference_count := 0
-
 var _metric_registrations := 0
 var _metric_registration_rejections := 0
 var _metric_releases := 0
@@ -181,7 +163,6 @@ var _metric_lifetime_completions := 0
 var _metric_world_completions := 0
 var _metric_target_completions := 0
 var _metric_world_queries := 0
-var _metric_world_certificates := 0
 var _metric_plant_broad_queries := 0
 var _metric_plant_exact_queries := 0
 var _metric_player_exact_queries := 0
@@ -190,7 +171,6 @@ var _metric_enemy_exact_queries := 0
 var _metric_damage_applications := 0
 var _metric_compactions := 0
 var _metric_compacted_tombstones := 0
-var _metric_difference_records := 0
 var _metric_replica_registrations := 0
 var _metric_replica_delay_waits := 0
 var _metric_replica_delay_overshoots := 0
@@ -231,9 +211,6 @@ func bind_context(
 		return false
 	_combat_runtime = combat_runtime
 	_enemy_simulation_coordinator = coordinator
-	_grid_pathfinder = combat_runtime.get_node_or_null(
-		"GridPathfinder"
-	) as GridPathfinder
 	var combat_services := get_parent() as EnemyCombatServices
 	_enemy_damageable_spatial_index = (
 		combat_services.get_enemy_damageable_spatial_index()
@@ -249,7 +226,6 @@ func bind_context(
 	):
 		_combat_runtime = null
 		_enemy_simulation_coordinator = null
-		_grid_pathfinder = null
 		_enemy_damageable_spatial_index = null
 		_combat_target_index = null
 		_combat_relation_service = null
@@ -285,7 +261,6 @@ func reserve_projectile_capacity(minimum_capacity: int) -> bool:
 	_resize_record_storage(minimum_capacity)
 	_resize_handle_storage(minimum_capacity)
 	_resize_completion_storage(minimum_capacity)
-	_resize_difference_storage(minimum_capacity)
 	return true
 
 
@@ -453,9 +428,7 @@ func _register_validated_projectile(
 
 	_active_slot_count += 1
 	_pending_activation_count += 1
-	if mode == Mode.SHADOW:
-		_shadow_slot_count += 1
-	elif mode == Mode.DATA:
+	if mode == Mode.DATA:
 		_data_slot_count += 1
 	else:
 		_replica_slot_count += 1
@@ -522,8 +495,6 @@ func get_mode() -> Mode:
 		return Mode.DATA
 	if _replica_slot_count > 0:
 		return Mode.REPLICA
-	if _shadow_slot_count > 0:
-		return Mode.SHADOW
 	return Mode.DISABLED
 
 
@@ -836,84 +807,6 @@ func get_completion_profile(index: int) -> Profile:
 	)
 
 
-func clear_difference_records() -> void:
-	_difference_count = 0
-
-
-func record_shadow_observation(
-	handle: int,
-	observed_position: Vector2,
-	observed_remaining_lifetime: float
-) -> bool:
-	var dense_slot := _resolve_dense_slot(handle)
-	if (
-		dense_slot < 0
-		or _modes[dense_slot] != Mode.SHADOW
-		or not observed_position.is_finite()
-		or not is_finite(observed_remaining_lifetime)
-		or observed_remaining_lifetime < 0.0
-		or _difference_count >= _difference_capacity
-	):
-		return false
-	var difference_index := _difference_count
-	_difference_count += 1
-	_difference_handles[difference_index] = handle
-	_difference_projectile_ids[difference_index] = _projectile_ids[dense_slot]
-	_difference_position_deltas[difference_index] = (
-		observed_position - _positions[dense_slot]
-	)
-	_difference_lifetime_deltas[difference_index] = (
-		observed_remaining_lifetime - _remaining_lifetimes[dense_slot]
-	)
-	_difference_physics_frames[difference_index] = Engine.get_physics_frames()
-	_metric_difference_records += 1
-	return true
-
-
-func get_difference_count() -> int:
-	return _difference_count
-
-
-func get_difference_handle(index: int) -> int:
-	return (
-		int(_difference_handles[index])
-		if index >= 0 and index < _difference_count
-		else INVALID_HANDLE
-	)
-
-
-func get_difference_projectile_id(index: int) -> int:
-	return (
-		int(_difference_projectile_ids[index])
-		if index >= 0 and index < _difference_count
-		else 0
-	)
-
-
-func get_difference_position_delta(index: int) -> Vector2:
-	return (
-		_difference_position_deltas[index]
-		if index >= 0 and index < _difference_count
-		else Vector2.ZERO
-	)
-
-
-func get_difference_lifetime_delta(index: int) -> float:
-	return (
-		_difference_lifetime_deltas[index]
-		if index >= 0 and index < _difference_count
-		else 0.0
-	)
-
-
-func get_difference_physics_frame(index: int) -> int:
-	return (
-		int(_difference_physics_frames[index])
-		if index >= 0 and index < _difference_count
-		else -1
-	)
-
-
 func prepare_for_runtime_teardown() -> void:
 	if _teardown_prepared:
 		return
@@ -923,7 +816,6 @@ func prepare_for_runtime_teardown() -> void:
 	_enemy_damageable_spatial_index = null
 	_combat_target_index = null
 	_combat_relation_service = null
-	_grid_pathfinder = null
 	_combat_runtime = null
 	_enemy_simulation_coordinator = null
 
@@ -974,16 +866,10 @@ func clear() -> void:
 	_completion_damage_applied_states.resize(0)
 	_completion_modes.resize(0)
 	_completion_profiles.resize(0)
-	_difference_handles.resize(0)
-	_difference_projectile_ids.resize(0)
-	_difference_position_deltas.resize(0)
-	_difference_lifetime_deltas.resize(0)
-	_difference_physics_frames.resize(0)
 	_record_capacity = 0
 	_record_count = 0
 	_active_slot_count = 0
 	_pending_activation_count = 0
-	_shadow_slot_count = 0
 	_data_slot_count = 0
 	_replica_slot_count = 0
 	_tombstone_count = 0
@@ -992,8 +878,6 @@ func clear() -> void:
 	_free_handle_count = 0
 	_completion_capacity = 0
 	_completion_count = 0
-	_difference_capacity = 0
-	_difference_count = 0
 	_plant_query_results.clear()
 	_enemy_query_results.clear()
 	_endpoint_target = null
@@ -1008,14 +892,12 @@ func get_metrics() -> Dictionary:
 		"mode": int(get_mode()),
 		"active_slots": _active_slot_count,
 		"pending_slots": _pending_activation_count,
-		"shadow_slots": _shadow_slot_count,
 		"data_slots": _data_slot_count,
 		"replica_slots": _replica_slot_count,
 		"dense_records": _record_count,
 		"tombstones": _tombstone_count,
 		"reserved_capacity": _record_capacity,
 		"completion_records": _completion_count,
-		"difference_records": _difference_count,
 		"physics_processing": is_physics_processing(),
 		"bound": is_bound(),
 		"teardown_prepared": _teardown_prepared,
@@ -1031,7 +913,6 @@ func get_metrics() -> Dictionary:
 		"world_completions": _metric_world_completions,
 		"target_completions": _metric_target_completions,
 		"world_queries": _metric_world_queries,
-		"world_certificates": _metric_world_certificates,
 		"plant_broad_queries": _metric_plant_broad_queries,
 		"plant_exact_queries": _metric_plant_exact_queries,
 		"player_exact_queries": _metric_player_exact_queries,
@@ -1040,7 +921,6 @@ func get_metrics() -> Dictionary:
 		"damage_applications": _metric_damage_applications,
 		"compactions": _metric_compactions,
 		"compacted_tombstones": _metric_compacted_tombstones,
-		"recorded_differences": _metric_difference_records,
 		"replica_registrations": _metric_replica_registrations,
 		"replica_delay_waits": _metric_replica_delay_waits,
 		"replica_delay_overshoots": _metric_replica_delay_overshoots,
@@ -1054,10 +934,6 @@ func get_metrics() -> Dictionary:
 
 func _physics_process(delta: float) -> void:
 	_completion_count = 0
-	# SHADOW observations belong to the immediately preceding physics result.
-	# Priority 4 clears them before advancing; the priority 5 legacy batch then
-	# writes the current frame's comparison set for post-physics consumers.
-	_difference_count = 0
 	if _record_count <= 0:
 		set_physics_process(false)
 		return
@@ -1260,17 +1136,6 @@ func _resolve_world_contact(
 ) -> bool:
 	_world_hit_position = to_position
 	if from_position.is_equal_approx(to_position):
-		return false
-	if (
-		world_collision_certificate_enabled
-		and _grid_pathfinder != null
-		and is_instance_valid(_grid_pathfinder)
-		and _grid_pathfinder.is_world_collision_segment_certified_clear(
-			from_position,
-			to_position
-		)
-	):
-		_metric_world_certificates += 1
 		return false
 	_world_ray_query.from = from_position
 	_world_ray_query.to = to_position
@@ -1890,7 +1755,7 @@ func _is_valid_registration(
 	)
 	return (
 		not _teardown_prepared
-		and (mode == Mode.SHADOW or mode == Mode.DATA)
+		and mode == Mode.DATA
 		and supported_profile
 		and position.is_finite()
 		and direction.is_finite()
@@ -1986,15 +1851,6 @@ func _resize_completion_storage(new_capacity: int) -> void:
 	_completion_capacity = new_capacity
 
 
-func _resize_difference_storage(new_capacity: int) -> void:
-	_difference_handles.resize(new_capacity)
-	_difference_projectile_ids.resize(new_capacity)
-	_difference_position_deltas.resize(new_capacity)
-	_difference_lifetime_deltas.resize(new_capacity)
-	_difference_physics_frames.resize(new_capacity)
-	_difference_capacity = new_capacity
-
-
 func _acquire_handle_slot() -> int:
 	var handle_slot := INVALID_SLOT
 	if _free_handle_count > 0:
@@ -2078,9 +1934,7 @@ func _mark_tombstone(dense_slot: int) -> void:
 	if state == SlotState.PENDING_ACTIVATION:
 		_pending_activation_count = maxi(_pending_activation_count - 1, 0)
 	var mode := int(_modes[dense_slot])
-	if mode == Mode.SHADOW:
-		_shadow_slot_count = maxi(_shadow_slot_count - 1, 0)
-	elif mode == Mode.DATA:
+	if mode == Mode.DATA:
 		_data_slot_count = maxi(_data_slot_count - 1, 0)
 	elif mode == Mode.REPLICA:
 		_replica_slot_count = maxi(_replica_slot_count - 1, 0)
@@ -2203,7 +2057,6 @@ func _reset_kernel_metrics() -> void:
 	_metric_world_completions = 0
 	_metric_target_completions = 0
 	_metric_world_queries = 0
-	_metric_world_certificates = 0
 	_metric_plant_broad_queries = 0
 	_metric_plant_exact_queries = 0
 	_metric_player_exact_queries = 0
@@ -2212,7 +2065,6 @@ func _reset_kernel_metrics() -> void:
 	_metric_damage_applications = 0
 	_metric_compactions = 0
 	_metric_compacted_tombstones = 0
-	_metric_difference_records = 0
 	_metric_replica_registrations = 0
 	_metric_replica_delay_waits = 0
 	_metric_replica_delay_overshoots = 0

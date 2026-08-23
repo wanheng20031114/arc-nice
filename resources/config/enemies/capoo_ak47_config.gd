@@ -9,7 +9,6 @@ class_name CapooAK47Config
 @export_range(1, 100, 1, "or_greater") var burst_count: int = 10
 @export_range(0.01, 10.0, 0.01, "or_greater") var burst_fire_interval: float = 0.08
 @export_range(0.01, 60.0, 0.01, "or_greater") var attack_interval: float = 3.5
-@export var projectile_scene: PackedScene
 @export_range(0.0, 2000.0, 0.1, "or_greater") var projectile_speed: float = 142.5
 @export_range(0.01, 30.0, 0.01, "or_greater") var projectile_lifetime: float = 2.0
 @export_range(0.0, 256.0, 0.5, "or_greater") var projectile_spawn_distance: float = 13.0

@@ -5,23 +5,11 @@ const PLAYER_BULLET_POOL_SCENE := preload("res://scene/combat/projectiles/bullet
 const TANGO_LASER_BULLET_POOL_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
 )
-const CAPOO_AK47_BULLET_POOL_SCENE := preload(
-	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn"
-)
 const COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
 )
 const COMBAT_ROBOT_SUICIDE_DRONE_ELITE_POOL_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn"
-)
-const CAPOO_SMG_BULLET_POOL_SCENE := preload(
-	"res://scene/enemy/capoo/capoo_smg_bullet.tscn"
-)
-const FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE := preload(
-	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
-)
-const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_POOL_SCENE := preload(
-	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
 )
 const FROST_SORCERER_ICE_SPIKE_POOL_SCENE := preload(
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn"
@@ -50,11 +38,6 @@ const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
 
 const PLANT_LIFECYCLE_VFX_PREWARM_COUNT := 8
 const PLANT_LIFECYCLE_VFX_RETAINED_CAPACITY := 32
-# Wave 9 can have roughly 120 AK rounds alive concurrently. Instantiate that
-# steady-state set while the loading mask is active instead of growing the
-# elastic gameplay pool on synchronized attacks. Mage fireballs are data rows.
-const LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT := 32
-const EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT := 128
 
 @onready var plant_lifecycle_shader_prewarm: Sprite2D = (
 	$PlantLifecycleShaderPrewarm
@@ -151,7 +134,7 @@ func prewarm_enemy_visual_resources() -> void:
 		guardian_point_light_texture.get_size()
 
 
-func register_runtime_object_pools(expanded_projectile_prewarm: bool) -> void:
+func register_runtime_object_pools() -> void:
 	if session_object_pool == null:
 		push_error("TowerDefensePrewarmerCoordinator: 对象池尚未绑定。")
 		return
@@ -170,32 +153,8 @@ func register_runtime_object_pools(expanded_projectile_prewarm: bool) -> void:
 	var registration_started_usec := Time.get_ticks_usec()
 	session_object_pool.register_scene(PLAYER_BULLET_POOL_SCENE, 64, 768)
 	session_object_pool.register_scene(TANGO_LASER_BULLET_POOL_SCENE, 64, 768)
-	session_object_pool.register_scene(
-		CAPOO_AK47_BULLET_POOL_SCENE,
-		(
-			EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT
-			if expanded_projectile_prewarm
-			else LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT
-		),
-		384
-	)
-	CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(session_object_pool)
-	CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(session_object_pool)
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_ELITE_POOL_SCENE, 0, 384)
-	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
-	# A 7 s flight plus expiry visuals slightly overlaps a third 3.6 s attack
-	# cycle. Capacity includes those visual-only leases and release quarantine.
-	session_object_pool.register_scene(
-		FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE,
-		48,
-		704
-	)
-	session_object_pool.register_scene(
-		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_POOL_SCENE,
-		48,
-		704
-	)
 	# One 7 s ice spike spans two 3.6 s cast cycles. Capacity intentionally
 	# covers the 300-enemy gameplay probe while prewarm stays loading-friendly.
 	session_object_pool.register_scene(FROST_SORCERER_ICE_SPIKE_POOL_SCENE, 48, 704)

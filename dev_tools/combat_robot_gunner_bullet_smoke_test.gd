@@ -128,7 +128,7 @@ func _test_multiplayer_projectile_branch_preserves_host_direction() -> void:
 	var coordinator := MpProjectileCoordinator.new()
 	coordinator.bind_runtime(runtime)
 	var host_direction := Vector2(0.6, 0.8)
-	var projectile := coordinator.instantiate_projectile(
+	var retired_normal_backend := coordinator.instantiate_projectile(
 		&"combat_robot_gunner_bullet",
 		1,
 		host_direction,
@@ -138,19 +138,8 @@ func _test_multiplayer_projectile_branch_preserves_host_direction() -> void:
 		false,
 		0,
 		0
-	) as CombatRobotGunnerBullet
-	_expect(projectile != null, "MpGame must instantiate the dedicated gunner projectile type.")
-	if projectile != null:
-		projectile.set_physics_process(false)
-		_expect(
-			projectile.direction.is_equal_approx(host_direction),
-			"MpGame must preserve the Host-authored spread direction exactly."
-		)
-		_expect(
-			is_equal_approx(projectile.rotation, host_direction.angle()),
-			"Gunner projectile rotation must follow the accepted Host direction."
-		)
-	var elite_projectile := coordinator.instantiate_projectile(
+	)
+	var retired_elite_backend := coordinator.instantiate_projectile(
 		&"combat_robot_gunner_elite_bullet",
 		1,
 		host_direction,
@@ -160,18 +149,21 @@ func _test_multiplayer_projectile_branch_preserves_host_direction() -> void:
 		false,
 		0,
 		0
-	) as CombatRobotGunnerBullet
-	_expect(
-		elite_projectile != null,
-		"MpGame must instantiate the elite projectile type."
 	)
-	if elite_projectile != null:
-		elite_projectile.set_physics_process(false)
-		_expect(
-			elite_projectile.authored_source_type
-			== &"combat_robot_gunner_elite_bullet",
-			"Elite projectile must retain its authored stable source before tree entry."
-		)
+	var coordinator_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+	)
+	_expect(
+		retired_normal_backend == null
+		and retired_elite_backend == null
+		and coordinator_source.contains("func attach_reserved_local_data_projectile(")
+		and coordinator_source.contains("func broadcast_enemy_rapid_fire_burst(")
+		and not coordinator_source.contains("COMBAT_ROBOT_GUNNER_BULLET_SCENE")
+		and not coordinator_source.contains(
+			"COMBAT_ROBOT_GUNNER_ELITE_BULLET_SCENE"
+		),
+		"Multiplayer Gunner shots must use typed DATA rows plus one burst descriptor, never per-shot projectile Nodes."
+	)
 	coordinator.unbind_runtime(runtime)
 	coordinator.free()
 	runtime.free()
@@ -185,51 +177,40 @@ func _test_runtime_registration_contract() -> void:
 	]:
 		var source := FileAccess.get_file_as_string(source_path)
 		_expect(
-			source.contains(
-				"CombatRuntimeBase.register_combat_robot_gunner_bullet_pool("
-			),
-			"%s must use the shared gunner projectile pool contract." % source_path
-		)
-		_expect(
-			source.contains(
-				"CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool("
-			),
-			"%s must use the shared elite gunner projectile pool contract." % source_path
+			not source.contains("combat_robot_gunner_bullet.tscn")
+			and not source.contains("combat_robot_gunner_elite_bullet.tscn")
+			and not source.contains("register_combat_robot_gunner"),
+			"%s must not register retired gunner projectile pools." % source_path
 		)
 	var pool := SessionObjectPool.new()
 	root.add_child(pool)
-	CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(pool)
-	CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(pool)
+	pool.register_scene(BULLET_SCENE, 0, 96)
+	pool.register_scene(ELITE_BULLET_SCENE, 0, 96)
 	var pool_metrics := pool.get_metrics(BULLET_SCENE.resource_path)
 	_expect(
-		int(pool_metrics.get("created", -1))
-			== CombatRuntimeBase.COMBAT_ROBOT_GUNNER_BULLET_PREWARM_COUNT
-		and int(pool_metrics.get("inactive", -1))
-			== CombatRuntimeBase.COMBAT_ROBOT_GUNNER_BULLET_PREWARM_COUNT
-		and int(pool_metrics.get("retained_capacity", -1))
-			== CombatRuntimeBase.COMBAT_ROBOT_GUNNER_BULLET_RETAINED_CAPACITY,
-		"Shared gunner pool must stay lazy (0 prewarm) and retain 96 in both runtimes."
+		int(pool_metrics.get("created", -1)) == 0
+		and int(pool_metrics.get("inactive", -1)) == 0
+		and int(pool_metrics.get("retained_capacity", -1)) == 96,
+		"The isolated legacy gunner fixture must stay lazy and retain 96."
 	)
 	var elite_pool_metrics := pool.get_metrics(ELITE_BULLET_SCENE.resource_path)
 	_expect(
-		int(elite_pool_metrics.get("created", -1))
-			== CombatRuntimeBase.COMBAT_ROBOT_GUNNER_ELITE_BULLET_PREWARM_COUNT
-		and int(elite_pool_metrics.get("retained_capacity", -1))
-			== CombatRuntimeBase.COMBAT_ROBOT_GUNNER_ELITE_BULLET_RETAINED_CAPACITY,
-		"Shared elite gunner pool must stay lazy (0 prewarm) and retain 96."
+		int(elite_pool_metrics.get("created", -1)) == 0
+		and int(elite_pool_metrics.get("retained_capacity", -1)) == 96,
+		"The isolated legacy elite-gunner fixture must stay lazy and retain 96."
 	)
 	pool.free()
 	var catalog_source := FileAccess.get_file_as_string(
 		"res://scene/game_modes/game_mode_catalog.gd"
 	)
 	_expect(
-		catalog_source.contains(
+		not catalog_source.contains(
 			"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
 		)
-		and catalog_source.contains(
+		and not catalog_source.contains(
 			"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn"
 		),
-		"GameModeCatalog must stage-load both gunner projectile scenes."
+		"GameModeCatalog must not stage-load retired gunner projectile scenes."
 	)
 	var telemetry_source := FileAccess.get_file_as_string(
 		"res://scene/combat/diagnostics/runtime_performance_telemetry.gd"

@@ -2,6 +2,9 @@ extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
+const MOTION_SYSTEM_SCENE := preload(
+	"res://scene/enemy/capoo/capoo_projectile_motion_system.tscn"
+)
 const WORLD_COLLISION_MASK := 1
 
 var failures: Array[String] = []
@@ -73,11 +76,17 @@ func _run() -> void:
 	await physics_frame
 
 	var pathfinder := game.grid_pathfinder as GridPathfinder
-	var motion_system: Node = game.capoo_projectile_motion_system
+	_expect(
+		game.get_node_or_null(^"CapooProjectileMotionSystem") == null,
+		"Tower-defense production must not mount the retired Capoo motion system."
+	)
+	var motion_system := MOTION_SYSTEM_SCENE.instantiate()
+	motion_system.name = "LegacyCapooProjectileMotionFixture"
+	game.add_child(motion_system)
 	_expect(pathfinder != null and pathfinder.is_built, "GridPathfinder must be built.")
 	_expect(
 		motion_system != null,
-		"Tower-defense runtime must provide the shared Capoo projectile motion system."
+		"The isolated legacy projectile fixture must provide its own motion system."
 	)
 	if pathfinder == null or not pathfinder.is_built:
 		await _finish()
@@ -606,11 +615,17 @@ func _physics_world_ray_hits(from_position: Vector2, to_position: Vector2) -> bo
 
 func _finish() -> void:
 	current_scene = null
-	if game != null:
-		game.queue_free()
+	var game_to_free := game
+	game = null
+	if game_to_free != null:
+		game_to_free.queue_free()
 	for _frame_index in range(4):
 		await process_frame
 		await physics_frame
+	_expect(
+		game_to_free == null or not is_instance_valid(game_to_free),
+		"The production runtime and isolated legacy fixture must teardown cleanly."
+	)
 	if failures.is_empty():
 		print("CAPOO_PROJECTILE_WORLD_CERTIFICATE_SMOKE_TEST_OK")
 		quit(0)

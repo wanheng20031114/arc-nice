@@ -73,7 +73,6 @@ const REQUIRED_RUNTIME_NODES: Array[NodePath] = [
 	^"SettingsLayer/DebugCollectibleWindow",
 	^"DamageNumberPool",
 	^"SessionObjectPool",
-	^"CapooProjectileMotionSystem",
 	^"CombatRobotDroneMotionSystem",
 	^"BossContainer",
 	^"EnemyContainer",
@@ -116,6 +115,10 @@ func _test_runtime_shell(game: RogueCombatGame) -> void:
 			game.get_node_or_null(path) != null,
 			"场景壳缺少通用运行时节点：%s。" % path
 		)
+	_expect(
+		game.get_node_or_null(^"CapooProjectileMotionSystem") == null,
+		"正式地下水道不得再挂载旧 Capoo 弹丸运动节点。"
+	)
 
 
 func _test_background_and_torches(game: RogueCombatGame) -> void:

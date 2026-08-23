@@ -77,7 +77,10 @@ func _test_resource_contract() -> void:
 	_expect(is_equal_approx(CAPOO_CONFIG.attack_windup, 1.5), "AK Capoo windup must be 1.5 seconds.")
 	_expect(is_equal_approx(CAPOO_CONFIG.projectile_speed, 142.5), "AK projectile speed mismatch.")
 	_expect(CAPOO_CONFIG.enemy_scene == CAPOO_SCENE, "AK Capoo must use its own enemy scene.")
-	_expect(CAPOO_CONFIG.projectile_scene == BULLET_SCENE, "AK Capoo must use AK bullet scene.")
+	_expect(
+		not _object_has_property(CAPOO_CONFIG, &"projectile_scene"),
+		"AK DATA config must not expose a legacy projectile scene."
+	)
 	_expect(CAPOO_CONFIG.attack_audio_stream != null, "AK fire audio is missing.")
 	var capoo_scene_instance := CAPOO_SCENE.instantiate()
 	var attack_audio := capoo_scene_instance.get_node("AttackAudio") as AudioStreamPlayer2D
@@ -224,10 +227,6 @@ func _test_combat_sense_phase_semantics() -> void:
 
 
 func _test_attack_phase_stagger_contract() -> void:
-	_expect(
-		CapooAK47.attack_phase_stagger_enabled,
-		"AK deterministic attack phase staggering must be enabled by default."
-	)
 	var offsets: Array[int] = []
 	var offset_sum := 0
 	var minimum_offset := 100
@@ -299,9 +298,7 @@ func _test_attack_phase_stagger_contract() -> void:
 
 
 func _test_two_round_attack_phase_stability() -> void:
-	var saved_stagger_enabled := CapooAK47.attack_phase_stagger_enabled
 	var saved_sensing_enabled := Enemy.combat_sense_throttling_enabled
-	CapooAK47.attack_phase_stagger_enabled = true
 	Enemy.combat_sense_throttling_enabled = true
 	var fast_config := CAPOO_CONFIG.duplicate(true) as CapooAK47Config
 	fast_config.attack_windup = 0.1
@@ -430,13 +427,10 @@ func _test_two_round_attack_phase_stability() -> void:
 	phase_plus_two.queue_free()
 	player.queue_free()
 	await physics_frame
-	CapooAK47.attack_phase_stagger_enabled = saved_stagger_enabled
 	Enemy.combat_sense_throttling_enabled = saved_sensing_enabled
 
 
 func _test_attack_timing_lock_cleanup() -> void:
-	var saved_stagger_enabled := CapooAK47.attack_phase_stagger_enabled
-	CapooAK47.attack_phase_stagger_enabled = true
 	var player := _spawn_player(Vector2(120.0, 0.0))
 	var enemy := _spawn_capoo(Vector2.ZERO, player)
 	enemy.set_physics_process(false)
@@ -456,17 +450,20 @@ func _test_attack_timing_lock_cleanup() -> void:
 		"Cancelling an attack must clear every committed timing field."
 	)
 
-	CapooAK47.attack_phase_stagger_enabled = false
 	_expect(
 		bool(enemy.call("_try_start_windup", player))
-		and enemy.committed_attack_phase_offset_seconds == 0.0,
-		"The static A/B switch must make the next windup use the authored zero phase."
+		and enemy.committed_attack_phase_offset_seconds > 0.0,
+		"The next windup must deterministically restore the configured attack phase."
 	)
-	CapooAK47.attack_phase_stagger_enabled = true
-	enemy.call("_update_windup", CAPOO_CONFIG.attack_windup)
+	var locked_phase_offset := enemy.committed_attack_phase_offset_seconds
+	var locked_windup_duration := enemy.committed_windup_duration_seconds
+	enemy.call("_update_windup", locked_windup_duration)
 	_expect(
-		is_equal_approx(enemy.attack_cooldown_left, CAPOO_CONFIG.attack_interval),
-		"Changing the A/B switch mid-windup must not break the locked windup/cooldown pair."
+		is_equal_approx(
+			enemy.attack_cooldown_left,
+			CAPOO_CONFIG.attack_interval - locked_phase_offset
+		),
+		"The locked windup/cooldown pair must preserve its authored cycle."
 	)
 
 	enemy.setup(CAPOO_CONFIG, player)
@@ -492,7 +489,6 @@ func _test_attack_timing_lock_cleanup() -> void:
 		enemy.queue_free()
 	player.queue_free()
 	await physics_frame
-	CapooAK47.attack_phase_stagger_enabled = saved_stagger_enabled
 
 
 func _test_windup_and_locked_burst() -> void:
@@ -908,6 +904,13 @@ func _release_all_data_projectiles(
 func _wait_physics_frames(frame_count: int) -> void:
 	for _frame_index in range(frame_count):
 		await physics_frame
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if StringName(property.get("name", "")) == property_name:
+			return true
+	return false
 
 
 func _expect(condition: bool, message: String) -> void:

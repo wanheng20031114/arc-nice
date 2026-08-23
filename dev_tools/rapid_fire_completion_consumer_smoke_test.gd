@@ -117,28 +117,17 @@ func _run() -> void:
 		"Lifetime completion must notify networking without requesting a hit visual."
 	)
 
-	var shadow_handle := _register_short_projectile(
+	var disabled_handle := _register_short_projectile(
 		rapid_fire_service,
-		RapidFireService.Mode.SHADOW,
+		RapidFireService.Mode.DISABLED,
 		81_232
 	)
-	rapid_fire_service.set_physics_process(false)
-	await physics_frame
-	rapid_fire_service._physics_process(TEST_DELTA)
-	rapid_fire_service.set_physics_process(false)
 	_expect(
-		rapid_fire_service.get_completion_count() == 1
-		and rapid_fire_service.get_completion_handle(0) == shadow_handle
-		and rapid_fire_service.get_completion_mode(0)
-		== RapidFireService.Mode.SHADOW,
-		"SHADOW completion must retain its mode in the transfer record."
-	)
-	services._physics_process(0.0)
-	_expect(
-		session.data_projectile_finish_notifications.size() == 1
+		disabled_handle == RapidFireService.INVALID_HANDLE
 		and rapid_fire_service.get_completion_count() == 0
+		and session.data_projectile_finish_notifications.size() == 1
 		and int(services.get_metrics()["consumed_completions"]) == 1,
-		"SHADOW completion must be cleared without networking or presentation."
+		"The final kernel must reject disabled registrations without creating a completion."
 	)
 
 	var live_handle := rapid_fire_service.register_projectile(

@@ -22,6 +22,9 @@ const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const EnemyRapidFireNetworkCodecScript := preload(
 	"res://scene/multiplayer/projectile/enemy_rapid_fire_network_codec.gd"
 )
+const CapooDataProjectileSnapshotCodecScript := preload(
+	"res://scene/multiplayer/projectile/capoo_data_projectile_snapshot_codec.gd"
+)
 const CapooRPGRocketSimulationServiceScript := preload(
 	"res://scene/combat/simulation/capoo_rpg_rocket_simulation_service.gd"
 )
@@ -45,29 +48,11 @@ const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload(
 const SKILL1_BOMB_SCENE_PATH := (
 	"res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn"
 )
-const CAPOO_AK47_BULLET_SCENE := preload(
-	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn"
-)
-const COMBAT_ROBOT_GUNNER_BULLET_SCENE := preload(
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
-)
-const COMBAT_ROBOT_GUNNER_ELITE_BULLET_SCENE := preload(
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn"
-)
 const COMBAT_ROBOT_SUICIDE_DRONE_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
 )
 const COMBAT_ROBOT_SUICIDE_DRONE_ELITE_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn"
-)
-const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
-)
-const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
-)
-const CAPOO_SMG_BULLET_SCENE := preload(
-	"res://scene/enemy/capoo/capoo_smg_bullet.tscn"
 )
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload(
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn"
@@ -160,6 +145,10 @@ const ENEMY_RAPID_FIRE_MAX_PENDING_SNAPSHOTS := 4
 const ENEMY_RAPID_FIRE_MAX_SNAPSHOT_CHUNKS := 256
 const ENEMY_RAPID_FIRE_FINISH_MAX_DESCRIPTOR_BYTES := 960
 const ENEMY_RAPID_FIRE_FINISH_REASON_CANCELLED := 4
+const CAPOO_DATA_MAX_PENDING_SNAPSHOTS := 4
+const CAPOO_DATA_MAX_SNAPSHOT_CHUNKS := 256
+const CAPOO_DATA_PENDING_SNAPSHOT_RETENTION_SECONDS := 10.0
+const CAPOO_DATA_PROTOCOL_TIMESTAMP_STEP_SECONDS := 0.000001
 
 
 class EnemyHitAdmission:
@@ -204,12 +193,15 @@ var _known_capoo_rpg_data_handles: Dictionary[int, int] = {}
 var _known_capoo_rpg_metadata: Dictionary[int, Dictionary] = {}
 var _known_capoo_rpg_replica_services: Dictionary[int, CapooRPGRocketSimulationServiceScript] = {}
 var _known_capoo_rpg_replica_handles: Dictionary[int, int] = {}
+var _known_capoo_rpg_replica_host_timestamps: Dictionary[int, float] = {}
 var _known_capoo_mage_data_services: Dictionary[int, CapooMageFireballSimulationServiceScript] = {}
 var _known_capoo_mage_data_handles: Dictionary[int, int] = {}
 var _known_capoo_mage_metadata: Dictionary[int, Dictionary] = {}
 var _known_capoo_mage_replica_services: Dictionary[int, CapooMageFireballSimulationServiceScript] = {}
 var _known_capoo_mage_replica_handles: Dictionary[int, int] = {}
 var _known_capoo_mage_replica_target_metadata: Dictionary[int, Dictionary] = {}
+var _pending_capoo_mage_replica_target_ids: Dictionary[int, bool] = {}
+var _known_capoo_mage_replica_host_timestamps: Dictionary[int, float] = {}
 var _reserved_host_projectile_ids: Dictionary[int, int] = {}
 var _active_enemy_rapid_fire_bursts: Dictionary[int, Dictionary] = {}
 var _active_enemy_rapid_fire_base_by_reserved_id: Dictionary[int, int] = {}
@@ -230,6 +222,14 @@ var _pending_enemy_rapid_fire_snapshots: Dictionary[int, Dictionary] = {}
 var _next_enemy_rapid_fire_snapshot_id := 1
 var _latest_applied_enemy_rapid_fire_snapshot_id := 0
 var _latest_applied_enemy_rapid_fire_snapshot_host_timestamp := -1.0
+var _pending_capoo_data_snapshots: Dictionary[int, Dictionary] = {}
+var _next_capoo_data_snapshot_id := 1
+var _latest_seen_capoo_data_snapshot_id := 0
+var _latest_applied_capoo_data_snapshot_id := 0
+var _latest_applied_capoo_data_snapshot_host_timestamp := -1.0
+var _latest_discarded_capoo_data_snapshot_id := 0
+var _last_capoo_data_protocol_timestamp := -1.0
+var _cleared_capoo_data_owner_peer_ids: Dictionary[int, bool] = {}
 var _projectile_records: Dictionary = {}
 var _stale_projectile_record_ids: Array[int] = []
 var _processed_enemy_hit_ids: Dictionary = {}
@@ -381,107 +381,6 @@ func submit_local_projectile(
 		)
 
 
-func register_local_data_projectile(
-	service: RapidFireSimulationService,
-	handle: int,
-	projectile_type: StringName,
-	owner_peer_id: int,
-	spawn_position: Vector2,
-	direction: Vector2,
-	damage: int,
-	speed: float,
-	lifetime: float,
-	damage_source_snapshot: DamageSourceSnapshot = null
-) -> int:
-	if (
-		service == null
-		or not is_instance_valid(service)
-		or handle <= RapidFireSimulationService.INVALID_HANDLE
-		or projectile_type == &""
-		or not has_network_facade_dependencies()
-		or not _net_manager.is_multiplayer_active()
-		or not _net_manager.is_host()
-		or not _NetConstants.is_valid_network_combat_value(damage)
-		or not _is_finite_vector2(spawn_position)
-		or not _is_finite_vector2(direction)
-		or direction.length_squared() <= 0.001
-		or not is_finite(speed)
-		or speed <= 0.0
-		or not is_finite(lifetime)
-		or lifetime <= 0.0
-		or (
-			damage_source_snapshot != null
-			and not damage_source_snapshot.is_valid()
-		)
-		or service.get_slot_mode(handle) != RapidFireSimulationService.Mode.DATA
-	):
-		return 0
-	var projectile_namespace := owner_peer_id
-	if projectile_namespace <= 0:
-		projectile_namespace = PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
-	var projectile_id := allocate_projectile_id(projectile_namespace, true)
-	if projectile_id <= 0:
-		return 0
-	if not service.assign_projectile_identity(handle, projectile_id):
-		return 0
-	var registered_source_snapshot: DamageSourceSnapshot = null
-	if damage_source_snapshot != null:
-		registered_source_snapshot = DamageSourceSnapshot.create(
-			damage_source_snapshot.source_faction_id,
-			damage_source_snapshot.credit_peer_id,
-			damage_source_snapshot.instigator_entity_id,
-			projectile_id,
-			(
-				damage_source_snapshot.source_type
-				if damage_source_snapshot.source_type != &""
-				else projectile_type
-			)
-		)
-	else:
-		# The data service owns the authoritative launch-time fallback for its
-		# enemy-only profile. Reuse that frozen value so the parallel multiplayer
-		# record cannot silently become legacy player-owned when an older caller
-		# omits the optional argument.
-		registered_source_snapshot = service.get_damage_source_snapshot(handle)
-	_known_data_projectile_services[projectile_id] = service
-	_known_data_projectile_handles[projectile_id] = handle
-	_remember_data_projectile_metadata(
-		projectile_id,
-		projectile_type,
-		owner_peer_id,
-		damage,
-		lifetime
-	)
-	remember_projectile_record(
-		projectile_id,
-		owner_peer_id,
-		projectile_type,
-		damage,
-		lifetime,
-		false,
-		_get_net_time(),
-		registered_source_snapshot
-	)
-	var host_fire_timestamp := _get_net_time()
-	var arguments := [
-		projectile_id,
-		String(projectile_type),
-		owner_peer_id,
-		spawn_position,
-		direction,
-		damage,
-		speed,
-		lifetime,
-		false,
-		0,
-		host_fire_timestamp,
-		0,
-	]
-	_append_projectile_source_payload(arguments, projectile_id)
-	rpc_broadcast_requested.emit(&"net_projectile_fired", arguments)
-	return projectile_id
-
-
 func register_local_capoo_rpg_data(
 	service: CapooRPGRocketSimulationServiceScript,
 	handle: int,
@@ -505,6 +404,10 @@ func register_local_capoo_rpg_data(
 		or not has_network_facade_dependencies()
 		or not _net_manager.is_multiplayer_active()
 		or not _net_manager.is_host()
+		or (
+			owner_peer_id > 0
+			and _cleared_capoo_data_owner_peer_ids.has(owner_peer_id)
+		)
 		or not _NetConstants.is_valid_network_combat_value(damage)
 		or not _is_finite_vector2(spawn_position)
 		or not _is_finite_vector2(direction)
@@ -538,7 +441,7 @@ func register_local_capoo_rpg_data(
 			else projectile_type
 		)
 	)
-	var host_fire_timestamp := _get_net_time()
+	var host_fire_timestamp := _allocate_capoo_data_protocol_timestamp()
 	_known_capoo_rpg_data_services[projectile_id] = service
 	_known_capoo_rpg_data_handles[projectile_id] = handle
 	_known_capoo_rpg_metadata[projectile_id] = {
@@ -628,6 +531,10 @@ func register_local_capoo_mage_fireball_data(
 		or not has_network_facade_dependencies()
 		or not _net_manager.is_multiplayer_active()
 		or not _net_manager.is_host()
+		or (
+			owner_peer_id > 0
+			and _cleared_capoo_data_owner_peer_ids.has(owner_peer_id)
+		)
 		or not _NetConstants.is_valid_network_combat_value(damage)
 		or not _is_finite_vector2(spawn_position)
 		or not _is_finite_vector2(direction)
@@ -661,7 +568,7 @@ func register_local_capoo_mage_fireball_data(
 			else projectile_type
 		)
 	)
-	var host_fire_timestamp := _get_net_time()
+	var host_fire_timestamp := _allocate_capoo_data_protocol_timestamp()
 	_known_capoo_mage_data_services[projectile_id] = service
 	_known_capoo_mage_data_handles[projectile_id] = handle
 	_known_capoo_mage_metadata[projectile_id] = {
@@ -1393,7 +1300,10 @@ func _send_active_capoo_data_projectiles_to_peer(peer_id: int) -> bool:
 	for projectile_id_variant in _known_capoo_mage_data_services.keys():
 		projectile_ids.append(int(projectile_id_variant))
 	projectile_ids.sort()
-	var host_snapshot_timestamp := _get_net_time()
+	var host_snapshot_timestamp := _allocate_capoo_data_protocol_timestamp()
+	if not is_finite(host_snapshot_timestamp) or host_snapshot_timestamp < 0.0:
+		return false
+	var records: Array[Dictionary] = []
 	for projectile_id in projectile_ids:
 		if _known_capoo_rpg_data_services.has(projectile_id):
 			if not has_capoo_rpg_data(projectile_id):
@@ -1407,28 +1317,29 @@ func _send_active_capoo_data_projectiles_to_peer(peer_id: int) -> bool:
 			))
 			var rpg_lifetime := rpg_service.get_remaining_lifetime(rpg_handle)
 			var rpg_record := get_projectile_record(projectile_id)
-			if rpg_lifetime <= 0.0 or rpg_record.is_empty():
+			var rpg_source := rpg_service.get_damage_source_snapshot(rpg_handle)
+			if rpg_lifetime <= 0.0:
 				continue
-			var rpg_arguments := [
-				projectile_id,
-				"capoo_rpg_rocket",
-				int(rpg_record["owner_peer_id"]),
-				rpg_service.get_position(rpg_handle),
-				rpg_service.get_direction(rpg_handle),
-				rpg_service.get_damage(rpg_handle),
-				rpg_service.get_speed(rpg_handle),
-				rpg_lifetime,
-				false,
-				0,
-				host_snapshot_timestamp,
-				0,
-			]
-			_append_projectile_source_payload(rpg_arguments, projectile_id)
-			rpc_to_peer_requested.emit(
-				peer_id,
-				&"net_projectile_fired",
-				rpg_arguments
-			)
+			if rpg_record.is_empty() or rpg_source == null:
+				return false
+			records.append({
+				"projectile_id": projectile_id,
+				"family": CapooDataProjectileSnapshotCodecScript.FAMILY_CAPOO_RPG,
+				"owner_peer_id": int(rpg_record["owner_peer_id"]),
+				"position": rpg_service.get_position(rpg_handle),
+				"direction": rpg_service.get_direction(rpg_handle),
+				"speed": rpg_service.get_speed(rpg_handle),
+				"damage": rpg_service.get_damage(rpg_handle),
+				"remaining_lifetime": rpg_lifetime,
+				"visual_age": rpg_service.get_visual_age(rpg_handle),
+				"target_peer_id": 0,
+				"target_enemy_net_id": 0,
+				"source_faction_id": rpg_source.source_faction_id,
+				"source_credit_peer_id": rpg_source.credit_peer_id,
+				"source_instigator_entity_id": rpg_source.instigator_entity_id,
+				"source_event_id": rpg_source.event_source_id,
+				"source_type": rpg_source.source_type,
+			})
 			continue
 		if not has_capoo_mage_data(projectile_id):
 			continue
@@ -1444,27 +1355,83 @@ func _send_active_capoo_data_projectiles_to_peer(peer_id: int) -> bool:
 			projectile_id,
 			{}
 		) as Dictionary
-		if mage_lifetime <= 0.0 or mage_metadata.is_empty():
+		var mage_source := mage_service.get_damage_source_snapshot(mage_handle)
+		if mage_lifetime <= 0.0:
 			continue
-		var mage_arguments := [
-			projectile_id,
-			"capoo_mage_fireball",
-			int(mage_metadata["owner_peer_id"]),
-			mage_service.get_position(mage_handle),
-			mage_service.get_direction(mage_handle),
-			mage_service.get_damage(mage_handle),
-			mage_service.get_speed(mage_handle),
-			mage_lifetime,
-			false,
-			int(mage_metadata["target_peer_id"]),
-			host_snapshot_timestamp,
-			int(mage_metadata["target_enemy_net_id"]),
-		]
-		_append_projectile_source_payload(mage_arguments, projectile_id)
+		if mage_metadata.is_empty() or mage_source == null:
+			return false
+		records.append({
+			"projectile_id": projectile_id,
+			"family": CapooDataProjectileSnapshotCodecScript.FAMILY_CAPOO_MAGE,
+			"owner_peer_id": int(mage_metadata["owner_peer_id"]),
+			"position": mage_service.get_position(mage_handle),
+			"direction": mage_service.get_direction(mage_handle),
+			"speed": mage_service.get_speed(mage_handle),
+			"damage": mage_service.get_damage(mage_handle),
+			"remaining_lifetime": mage_lifetime,
+			"visual_age": mage_service.get_visual_age(mage_handle),
+			"target_peer_id": int(mage_metadata["target_peer_id"]),
+			"target_enemy_net_id": int(mage_metadata["target_enemy_net_id"]),
+			"source_faction_id": mage_source.source_faction_id,
+			"source_credit_peer_id": mage_source.credit_peer_id,
+			"source_instigator_entity_id": mage_source.instigator_entity_id,
+			"source_event_id": mage_source.event_source_id,
+			"source_type": mage_source.source_type,
+		})
+	var snapshot_id := _next_capoo_data_snapshot_id
+	_next_capoo_data_snapshot_id += 1
+	if (
+		_next_capoo_data_snapshot_id <= 0
+		or _next_capoo_data_snapshot_id > PROJECTILE_ID_SEQUENCE_COUNTER_MASK
+	):
+		_next_capoo_data_snapshot_id = 1
+	if records.is_empty():
 		rpc_to_peer_requested.emit(
 			peer_id,
-			&"net_projectile_fired",
-			mage_arguments
+			&"net_capoo_data_projectile_snapshot_chunk",
+			[
+				snapshot_id,
+				0,
+				0,
+				host_snapshot_timestamp,
+				PackedByteArray(),
+			]
+		)
+		return true
+	var descriptors: Array[PackedByteArray] = []
+	for chunk_start in range(
+		0,
+		records.size(),
+		CapooDataProjectileSnapshotCodecScript.MAX_RECORDS_PER_CHUNK
+	):
+		var chunk_end := mini(
+			chunk_start
+				+ CapooDataProjectileSnapshotCodecScript.MAX_RECORDS_PER_CHUNK,
+			records.size()
+		)
+		var descriptor := CapooDataProjectileSnapshotCodecScript.encode_chunk(
+			records.slice(chunk_start, chunk_end)
+		)
+		if (
+			descriptor.is_empty()
+			or descriptor.size()
+				> CapooDataProjectileSnapshotCodecScript.MAX_PAYLOAD_BYTES
+		):
+			return false
+		descriptors.append(descriptor)
+	if descriptors.size() > CAPOO_DATA_MAX_SNAPSHOT_CHUNKS:
+		return false
+	for chunk_index in range(descriptors.size()):
+		rpc_to_peer_requested.emit(
+			peer_id,
+			&"net_capoo_data_projectile_snapshot_chunk",
+			[
+				snapshot_id,
+				chunk_index,
+				descriptors.size(),
+				host_snapshot_timestamp,
+				descriptors[chunk_index],
+			]
 		)
 	return true
 
@@ -1584,6 +1551,7 @@ func _erase_capoo_rpg_data_backend(projectile_id: int) -> void:
 func _erase_capoo_rpg_replica_backend(projectile_id: int) -> void:
 	_known_capoo_rpg_replica_services.erase(projectile_id)
 	_known_capoo_rpg_replica_handles.erase(projectile_id)
+	_known_capoo_rpg_replica_host_timestamps.erase(projectile_id)
 
 
 func _release_and_erase_capoo_rpg_data_backend(projectile_id: int) -> void:
@@ -1632,6 +1600,8 @@ func _erase_capoo_mage_replica_backend(projectile_id: int) -> void:
 	_known_capoo_mage_replica_services.erase(projectile_id)
 	_known_capoo_mage_replica_handles.erase(projectile_id)
 	_known_capoo_mage_replica_target_metadata.erase(projectile_id)
+	_pending_capoo_mage_replica_target_ids.erase(projectile_id)
+	_known_capoo_mage_replica_host_timestamps.erase(projectile_id)
 
 
 func _release_and_erase_capoo_mage_data_backend(projectile_id: int) -> void:
@@ -2251,7 +2221,8 @@ func handle_client_projectile_fired(
 		accepted_target_enemy_net_id,
 		0.0,
 		host_fire_timestamp,
-		accepted_source_snapshot
+		accepted_source_snapshot,
+		host_fire_timestamp
 	)
 
 
@@ -2321,7 +2292,8 @@ func apply_authority_projectile_fired(
 			projectile_type
 		),
 		_get_net_time(),
-		source_snapshot
+		source_snapshot,
+		host_fire_timestamp
 	)
 
 
@@ -2770,6 +2742,369 @@ func _trim_pending_enemy_rapid_fire_snapshots() -> void:
 			oldest_snapshot_id = snapshot_id
 	if oldest_snapshot_id > 0:
 		_pending_enemy_rapid_fire_snapshots.erase(oldest_snapshot_id)
+
+
+func apply_authority_capoo_data_projectile_snapshot_chunk(
+	sender_id: int,
+	snapshot_id: int,
+	chunk_index: int,
+	chunk_count: int,
+	host_snapshot_timestamp: float,
+	descriptor: PackedByteArray
+) -> bool:
+	if (
+		not _is_authority_sender(sender_id)
+		or not _net_manager.is_client()
+		or snapshot_id <= 0
+		or chunk_count < 0
+		or chunk_count > CAPOO_DATA_MAX_SNAPSHOT_CHUNKS
+		or not is_finite(host_snapshot_timestamp)
+		or host_snapshot_timestamp < 0.0
+	):
+		return false
+	if snapshot_id <= _latest_applied_capoo_data_snapshot_id:
+		return snapshot_id == _latest_applied_capoo_data_snapshot_id
+	if snapshot_id == _latest_discarded_capoo_data_snapshot_id:
+		return false
+	if snapshot_id < _latest_seen_capoo_data_snapshot_id:
+		return false
+	if snapshot_id > _latest_seen_capoo_data_snapshot_id:
+		_pending_capoo_data_snapshots.clear()
+		_latest_seen_capoo_data_snapshot_id = snapshot_id
+	if chunk_count == 0:
+		if chunk_index != 0 or not descriptor.is_empty():
+			return false
+		return _apply_complete_capoo_data_projectile_snapshot(
+			snapshot_id,
+			host_snapshot_timestamp,
+			[]
+		)
+	if (
+		chunk_index < 0
+		or chunk_index >= chunk_count
+		or descriptor.is_empty()
+		or descriptor.size()
+			> CapooDataProjectileSnapshotCodecScript.MAX_PAYLOAD_BYTES
+	):
+		return false
+	var decoded := CapooDataProjectileSnapshotCodecScript.decode_chunk(descriptor)
+	if not bool(decoded.get("valid", false)):
+		return false
+	var pending: Dictionary
+	if _pending_capoo_data_snapshots.has(snapshot_id):
+		pending = _pending_capoo_data_snapshots[snapshot_id] as Dictionary
+		if (
+			int(pending.get("chunk_count", -1)) != chunk_count
+			or float(pending.get("host_snapshot_timestamp", -1.0))
+				!= host_snapshot_timestamp
+		):
+			_discard_pending_capoo_data_snapshot(snapshot_id)
+			return false
+	else:
+		_trim_pending_capoo_data_snapshots()
+		pending = {
+			"chunk_count": chunk_count,
+			"host_snapshot_timestamp": host_snapshot_timestamp,
+			"expires_at": (
+				_get_net_time()
+				+ CAPOO_DATA_PENDING_SNAPSHOT_RETENTION_SECONDS
+			),
+			"chunks": {},
+			"cleared_owner_peer_ids": (
+				_cleared_capoo_data_owner_peer_ids.duplicate()
+			),
+		}
+	var chunks := pending.get("chunks", {}) as Dictionary
+	if chunks.has(chunk_index):
+		if (chunks[chunk_index] as PackedByteArray) == descriptor:
+			return true
+		_discard_pending_capoo_data_snapshot(snapshot_id)
+		return false
+	chunks[chunk_index] = descriptor.duplicate()
+	pending["chunks"] = chunks
+	_pending_capoo_data_snapshots[snapshot_id] = pending
+	if chunks.size() < chunk_count:
+		return true
+	var records: Array[Dictionary] = []
+	var previous_projectile_id := 0
+	var cleared_owner_peer_ids := pending.get(
+		"cleared_owner_peer_ids",
+		{}
+	) as Dictionary
+	for ordered_chunk_index in range(chunk_count):
+		if not chunks.has(ordered_chunk_index):
+			return true
+		var ordered_decoded := CapooDataProjectileSnapshotCodecScript.decode_chunk(
+			chunks[ordered_chunk_index] as PackedByteArray
+		)
+		if not bool(ordered_decoded.get("valid", false)):
+			_discard_pending_capoo_data_snapshot(snapshot_id)
+			return false
+		var chunk_records := ordered_decoded.get("records", []) as Array
+		for record_variant in chunk_records:
+			var record := record_variant as Dictionary
+			var projectile_id := int(record.get("projectile_id", 0))
+			if projectile_id <= previous_projectile_id:
+				_discard_pending_capoo_data_snapshot(snapshot_id)
+				return false
+			previous_projectile_id = projectile_id
+			if cleared_owner_peer_ids.has(int(record.get("owner_peer_id", 0))):
+				continue
+			records.append(record)
+	return _apply_complete_capoo_data_projectile_snapshot(
+		snapshot_id,
+		host_snapshot_timestamp,
+		records
+	)
+
+
+func _apply_complete_capoo_data_projectile_snapshot(
+	snapshot_id: int,
+	host_snapshot_timestamp: float,
+	records: Array[Dictionary]
+) -> bool:
+	var rpg_service := _get_capoo_rpg_rocket_simulation_service()
+	var mage_service := _get_capoo_mage_fireball_simulation_service()
+	if rpg_service == null or mage_service == null:
+		_discard_pending_capoo_data_snapshot(snapshot_id)
+		return false
+	var rpg_prepare_count := 0
+	var mage_prepare_count := 0
+	for record in records:
+		var projectile_id := int(record.get("projectile_id", 0))
+		var family := int(record.get("family", 0))
+		var owner_peer_id := int(record.get("owner_peer_id", 0))
+		var projectile_namespace := owner_peer_id
+		if projectile_namespace <= 0:
+			projectile_namespace = PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
+		var has_rpg_replica := has_capoo_rpg_replica(projectile_id)
+		var has_mage_replica := has_capoo_mage_replica(projectile_id)
+		if (
+			not is_projectile_id_valid_for_host_owner(
+				projectile_id,
+				projectile_namespace
+			)
+			or has_capoo_rpg_data(projectile_id)
+			or has_capoo_mage_data(projectile_id)
+			or has_data_projectile(projectile_id)
+			or has_fire_sorcerer_volley_data(projectile_id)
+			or has_fire_sorcerer_volley_replica(projectile_id)
+			or _known_projectiles.has(projectile_id)
+			or (
+				_projectile_records.has(projectile_id)
+				and not has_rpg_replica
+				and not has_mage_replica
+			)
+			or (
+				family == CapooDataProjectileSnapshotCodecScript.FAMILY_CAPOO_RPG
+				and has_mage_replica
+			)
+			or (
+				family == CapooDataProjectileSnapshotCodecScript.FAMILY_CAPOO_MAGE
+				and has_rpg_replica
+			)
+		):
+			_discard_pending_capoo_data_snapshot(snapshot_id)
+			return false
+		match family:
+			CapooDataProjectileSnapshotCodecScript.FAMILY_CAPOO_RPG:
+				rpg_prepare_count += 1
+			CapooDataProjectileSnapshotCodecScript.FAMILY_CAPOO_MAGE:
+				mage_prepare_count += 1
+			_:
+				_discard_pending_capoo_data_snapshot(snapshot_id)
+				return false
+	if (
+		not rpg_service.reserve(
+			rpg_service.get_dense_record_count()
+				+ rpg_service.get_completion_count()
+				+ rpg_prepare_count
+		)
+		or not mage_service.reserve(
+			mage_service.get_dense_record_count()
+				+ mage_service.get_completion_count()
+				+ mage_prepare_count
+		)
+	):
+		_discard_pending_capoo_data_snapshot(snapshot_id)
+		return false
+	var event_age := _get_host_event_age(host_snapshot_timestamp)
+	var now := _get_net_time()
+	var prepared_records: Array[Dictionary] = []
+	for record in records:
+		var projectile_id := int(record["projectile_id"])
+		var family := int(record["family"])
+		var existing_host_timestamp := (
+			float(_known_capoo_rpg_replica_host_timestamps.get(
+				projectile_id,
+				-INF
+			))
+			if family == CapooDataProjectileSnapshotCodecScript.FAMILY_CAPOO_RPG
+			else float(_known_capoo_mage_replica_host_timestamps.get(
+				projectile_id,
+				-INF
+			))
+		)
+		if existing_host_timestamp > host_snapshot_timestamp:
+			continue
+		var remaining_lifetime := float(record["remaining_lifetime"]) - event_age
+		if remaining_lifetime <= 0.0:
+			continue
+		var source_snapshot := DamageSourceSnapshot.create(
+			int(record["source_faction_id"]),
+			int(record["source_credit_peer_id"]),
+			int(record["source_instigator_entity_id"]),
+			projectile_id,
+			StringName(record["source_type"])
+		)
+		var handle := 0
+		if family == CapooDataProjectileSnapshotCodecScript.FAMILY_CAPOO_RPG:
+			var direction := (record["direction"] as Vector2).normalized()
+			handle = rpg_service.spawn_replica(
+				projectile_id,
+				(record["position"] as Vector2)
+					+ direction * float(record["speed"]) * event_age,
+				direction,
+				float(record["speed"]),
+				remaining_lifetime,
+				CapooRPGRocketSimulationServiceScript.DEFAULT_EXPLOSION_RADIUS,
+				event_age,
+				source_snapshot,
+				float(record["visual_age"])
+			)
+		else:
+			var target: Node2D = null
+			var target_peer_id := int(record["target_peer_id"])
+			var target_enemy_net_id := int(record["target_enemy_net_id"])
+			if target_peer_id > 0:
+				target = _get_player(target_peer_id)
+			elif target_enemy_net_id > 0:
+				target = _resolve_mode_world_target(target_enemy_net_id)
+			handle = mage_service.spawn_replica(
+				projectile_id,
+				record["position"] as Vector2,
+				(record["direction"] as Vector2).normalized(),
+				float(record["speed"]),
+				float(record["remaining_lifetime"]),
+				CapooMageFireballSimulationServiceScript.DEFAULT_RADIUS,
+				target,
+				CapooMageFireballSimulationServiceScript.DEFAULT_HOMING_TURN_RATE,
+				event_age,
+				CapooMageFireballSimulationServiceScript.Profile.NORMAL,
+				source_snapshot,
+				float(record["visual_age"])
+			)
+		var invalid_handle := (
+			CapooRPGRocketSimulationServiceScript.INVALID_HANDLE
+			if family == CapooDataProjectileSnapshotCodecScript.FAMILY_CAPOO_RPG
+			else CapooMageFireballSimulationServiceScript.INVALID_HANDLE
+		)
+		if handle <= invalid_handle:
+			_release_prepared_capoo_data_snapshot_records(prepared_records)
+			_discard_pending_capoo_data_snapshot(snapshot_id)
+			return false
+		prepared_records.append({
+			"record": record,
+			"handle": handle,
+			"remaining_lifetime": remaining_lifetime,
+			"source_snapshot": source_snapshot,
+		})
+	for projectile_id_variant in _known_capoo_rpg_replica_services.keys():
+		var projectile_id := int(projectile_id_variant)
+		if float(_known_capoo_rpg_replica_host_timestamps.get(
+			projectile_id,
+			-INF
+		)) <= host_snapshot_timestamp:
+			_release_and_erase_capoo_rpg_replica_backend(projectile_id)
+			_projectile_records.erase(projectile_id)
+	for projectile_id_variant in _known_capoo_mage_replica_services.keys():
+		var projectile_id := int(projectile_id_variant)
+		if float(_known_capoo_mage_replica_host_timestamps.get(
+			projectile_id,
+			-INF
+		)) <= host_snapshot_timestamp:
+			_release_and_erase_capoo_mage_replica_backend(projectile_id)
+			_projectile_records.erase(projectile_id)
+	for prepared in prepared_records:
+		var record := prepared["record"] as Dictionary
+		var projectile_id := int(record["projectile_id"])
+		var family := int(record["family"])
+		var handle := int(prepared["handle"])
+		if family == CapooDataProjectileSnapshotCodecScript.FAMILY_CAPOO_RPG:
+			_known_capoo_rpg_replica_services[projectile_id] = rpg_service
+			_known_capoo_rpg_replica_handles[projectile_id] = handle
+			_known_capoo_rpg_replica_host_timestamps[projectile_id] = (
+				host_snapshot_timestamp
+			)
+		else:
+			_known_capoo_mage_replica_services[projectile_id] = mage_service
+			_known_capoo_mage_replica_handles[projectile_id] = handle
+			_known_capoo_mage_replica_target_metadata[projectile_id] = {
+				"target_peer_id": int(record["target_peer_id"]),
+				"target_enemy_net_id": int(record["target_enemy_net_id"]),
+			}
+			if (
+				int(record["target_peer_id"]) > 0
+				or int(record["target_enemy_net_id"]) > 0
+			):
+				_pending_capoo_mage_replica_target_ids[projectile_id] = true
+				_refresh_capoo_mage_replica_target(projectile_id)
+			_known_capoo_mage_replica_host_timestamps[projectile_id] = (
+				host_snapshot_timestamp
+			)
+		remember_projectile_record(
+			projectile_id,
+			int(record["owner_peer_id"]),
+			CapooDataProjectileSnapshotCodecScript.source_type_for_family(family),
+			int(record["damage"]),
+			float(prepared["remaining_lifetime"]),
+			false,
+			now,
+			prepared["source_snapshot"] as DamageSourceSnapshot
+		)
+	_latest_applied_capoo_data_snapshot_id = snapshot_id
+	_latest_applied_capoo_data_snapshot_host_timestamp = host_snapshot_timestamp
+	_pending_capoo_data_snapshots.clear()
+	return true
+
+
+func _release_prepared_capoo_data_snapshot_records(
+	prepared_records: Array[Dictionary]
+) -> void:
+	var rpg_service := _get_capoo_rpg_rocket_simulation_service()
+	var mage_service := _get_capoo_mage_fireball_simulation_service()
+	for prepared in prepared_records:
+		var record := prepared.get("record", {}) as Dictionary
+		var handle := int(prepared.get("handle", 0))
+		if (
+			int(record.get("family", 0))
+			== CapooDataProjectileSnapshotCodecScript.FAMILY_CAPOO_RPG
+		):
+			if rpg_service != null:
+				rpg_service.release(handle)
+		else:
+			if mage_service != null:
+				mage_service.release(handle)
+
+
+func _discard_pending_capoo_data_snapshot(snapshot_id: int) -> void:
+	_pending_capoo_data_snapshots.erase(snapshot_id)
+	_latest_discarded_capoo_data_snapshot_id = maxi(
+		_latest_discarded_capoo_data_snapshot_id,
+		snapshot_id
+	)
+
+
+func _trim_pending_capoo_data_snapshots() -> void:
+	while _pending_capoo_data_snapshots.size() >= CAPOO_DATA_MAX_PENDING_SNAPSHOTS:
+		var oldest_snapshot_id := 0
+		for snapshot_id_variant in _pending_capoo_data_snapshots.keys():
+			var snapshot_id := int(snapshot_id_variant)
+			if oldest_snapshot_id == 0 or snapshot_id < oldest_snapshot_id:
+				oldest_snapshot_id = snapshot_id
+		if oldest_snapshot_id <= 0:
+			return
+		_pending_capoo_data_snapshots.erase(oldest_snapshot_id)
 
 
 func apply_authority_tango_laser_volley(
@@ -3426,7 +3761,8 @@ func receive_projectile_fired(
 	target_enemy_net_id: int,
 	compensation_age: float,
 	now: float,
-	damage_source_snapshot: DamageSourceSnapshot
+	damage_source_snapshot: DamageSourceSnapshot,
+	host_fire_timestamp: float = -1.0
 ) -> void:
 	if not is_valid_authority_projectile_payload(
 		projectile_id,
@@ -3457,6 +3793,23 @@ func receive_projectile_fired(
 		or damage_source_snapshot.source_type == &""
 	):
 		return
+	if (
+		projectile_type in [&"capoo_rpg_rocket", &"capoo_mage_fireball"]
+		and owner_peer_id > 0
+		and _cleared_capoo_data_owner_peer_ids.has(owner_peer_id)
+	):
+		return
+	if (
+		projectile_type in [&"capoo_rpg_rocket", &"capoo_mage_fireball"]
+		and host_fire_timestamp >= 0.0
+		and _latest_applied_capoo_data_snapshot_host_timestamp >= 0.0
+		and host_fire_timestamp
+			<= _latest_applied_capoo_data_snapshot_host_timestamp
+	):
+		# A completed reliable snapshot is a newer statement of the complete
+		# active set. Do not let a delayed unordered launch resurrect an omitted
+		# projectile or overwrite its current-state replica.
+		return
 	if _is_fire_sorcerer_volley_type(projectile_type):
 		_receive_fire_sorcerer_volley_replica(
 			projectile_id,
@@ -3484,7 +3837,8 @@ func receive_projectile_fired(
 			lifetime,
 			compensation_age,
 			now,
-			damage_source_snapshot
+			damage_source_snapshot,
+			host_fire_timestamp if host_fire_timestamp >= 0.0 else now
 		)
 		return
 	if projectile_type == &"capoo_mage_fireball":
@@ -3500,7 +3854,8 @@ func receive_projectile_fired(
 			target_enemy_net_id,
 			compensation_age,
 			now,
-			damage_source_snapshot
+			damage_source_snapshot,
+			host_fire_timestamp if host_fire_timestamp >= 0.0 else now
 		)
 		return
 	if has_data_projectile(projectile_id):
@@ -3555,7 +3910,8 @@ func _receive_capoo_rpg_replica(
 	lifetime: float,
 	compensation_age: float,
 	now: float,
-	damage_source_snapshot: DamageSourceSnapshot
+	damage_source_snapshot: DamageSourceSnapshot,
+	host_fire_timestamp: float
 ) -> void:
 	var projectile_namespace := owner_peer_id
 	if projectile_namespace <= 0:
@@ -3586,6 +3942,8 @@ func _receive_capoo_rpg_replica(
 		or not is_finite(compensation_age)
 		or compensation_age < 0.0
 		or compensation_age >= lifetime
+		or not is_finite(host_fire_timestamp)
+		or host_fire_timestamp < 0.0
 	):
 		return
 	var service := _get_capoo_rpg_rocket_simulation_service()
@@ -3610,6 +3968,7 @@ func _receive_capoo_rpg_replica(
 		return
 	_known_capoo_rpg_replica_services[projectile_id] = service
 	_known_capoo_rpg_replica_handles[projectile_id] = handle
+	_known_capoo_rpg_replica_host_timestamps[projectile_id] = host_fire_timestamp
 	var frozen_source := DamageSourceSnapshot.create(
 		damage_source_snapshot.source_faction_id,
 		damage_source_snapshot.credit_peer_id,
@@ -3641,7 +4000,8 @@ func _receive_capoo_mage_fireball_replica(
 	target_enemy_net_id: int,
 	compensation_age: float,
 	now: float,
-	damage_source_snapshot: DamageSourceSnapshot
+	damage_source_snapshot: DamageSourceSnapshot,
+	host_fire_timestamp: float
 ) -> void:
 	var projectile_namespace := owner_peer_id
 	if projectile_namespace <= 0:
@@ -3678,6 +4038,8 @@ func _receive_capoo_mage_fireball_replica(
 		or compensation_age >= lifetime
 		or damage_source_snapshot == null
 		or not damage_source_snapshot.is_valid()
+		or not is_finite(host_fire_timestamp)
+		or host_fire_timestamp < 0.0
 	):
 		return
 	var service := _get_capoo_mage_fireball_simulation_service()
@@ -3705,10 +4067,13 @@ func _receive_capoo_mage_fireball_replica(
 		return
 	_known_capoo_mage_replica_services[projectile_id] = service
 	_known_capoo_mage_replica_handles[projectile_id] = handle
+	_known_capoo_mage_replica_host_timestamps[projectile_id] = host_fire_timestamp
 	_known_capoo_mage_replica_target_metadata[projectile_id] = {
 		"target_peer_id": target_peer_id,
 		"target_enemy_net_id": target_enemy_net_id,
 	}
+	if target == null and (target_peer_id > 0 or target_enemy_net_id > 0):
+		_pending_capoo_mage_replica_target_ids[projectile_id] = true
 	var frozen_source := DamageSourceSnapshot.create(
 		damage_source_snapshot.source_faction_id,
 		damage_source_snapshot.credit_peer_id,
@@ -4214,6 +4579,7 @@ func prune_records(now: float) -> void:
 	_prune_fire_sorcerer_volley_backends()
 	_prune_capoo_rpg_backends()
 	_prune_capoo_mage_backends()
+	_prune_pending_capoo_data_snapshots(now)
 
 
 func _prune_fire_sorcerer_volley_backends() -> void:
@@ -4236,27 +4602,47 @@ func _prune_capoo_mage_backends() -> void:
 	for projectile_id_variant in _known_capoo_mage_data_services.keys():
 		has_capoo_mage_data(int(projectile_id_variant))
 	for projectile_id_variant in _known_capoo_mage_replica_services.keys():
+		has_capoo_mage_replica(int(projectile_id_variant))
+	refresh_pending_capoo_mage_replica_targets()
+
+
+func _prune_pending_capoo_data_snapshots(now: float) -> void:
+	for snapshot_id_variant in _pending_capoo_data_snapshots.keys():
+		var snapshot_id := int(snapshot_id_variant)
+		var pending := _pending_capoo_data_snapshots[snapshot_id] as Dictionary
+		if float(pending.get("expires_at", 0.0)) <= now:
+			_discard_pending_capoo_data_snapshot(snapshot_id)
+
+
+func refresh_pending_capoo_mage_replica_targets() -> void:
+	for projectile_id_variant in _pending_capoo_mage_replica_target_ids.keys():
 		var projectile_id := int(projectile_id_variant)
-		if has_capoo_mage_replica(projectile_id):
-			_refresh_capoo_mage_replica_target(projectile_id)
+		if not has_capoo_mage_replica(projectile_id):
+			_pending_capoo_mage_replica_target_ids.erase(projectile_id)
+			continue
+		_refresh_capoo_mage_replica_target(projectile_id)
 
 
-func _refresh_capoo_mage_replica_target(projectile_id: int) -> void:
+func _refresh_capoo_mage_replica_target(projectile_id: int) -> bool:
 	var metadata := _known_capoo_mage_replica_target_metadata.get(
 		projectile_id,
 		{}
 	) as Dictionary
 	if metadata.is_empty():
-		return
+		_pending_capoo_mage_replica_target_ids.erase(projectile_id)
+		return false
 	var target_peer_id := int(metadata.get("target_peer_id", 0))
 	var target_enemy_net_id := int(metadata.get("target_enemy_net_id", 0))
+	if target_peer_id <= 0 and target_enemy_net_id <= 0:
+		_pending_capoo_mage_replica_target_ids.erase(projectile_id)
+		return true
 	var target: Node2D = null
 	if target_peer_id > 0:
 		target = _get_player(target_peer_id)
 	elif target_enemy_net_id > 0:
 		target = _resolve_mode_world_target(target_enemy_net_id)
 	if target == null or not is_instance_valid(target):
-		return
+		return false
 	var service: CapooMageFireballSimulationServiceScript = (
 		_known_capoo_mage_replica_services.get(projectile_id)
 	)
@@ -4265,24 +4651,44 @@ func _refresh_capoo_mage_replica_target(projectile_id: int) -> void:
 		CapooMageFireballSimulationServiceScript.INVALID_HANDLE
 	))
 	if service == null or not is_instance_valid(service):
-		return
-	service.rebind_replica_target(handle, target)
+		return false
+	if not service.rebind_replica_target(handle, target):
+		return false
+	_pending_capoo_mage_replica_target_ids.erase(projectile_id)
+	return true
 
 
 func clear_peer(peer_id: int) -> void:
 	_client_projectile_request_rate_buckets.erase(peer_id)
 	_client_projectile_replay_windows.erase(peer_id)
 	_last_tango_volley_visual_state_by_peer.erase(peer_id)
+	if peer_id > 0:
+		_cleared_capoo_data_owner_peer_ids[peer_id] = true
 	for projectile_id_variant in _reserved_host_projectile_ids.keys():
 		var projectile_id := int(projectile_id_variant)
 		if int(_reserved_host_projectile_ids[projectile_id]) == peer_id:
 			_reserved_host_projectile_ids.erase(projectile_id)
+	for snapshot_id_variant in _pending_capoo_data_snapshots.keys():
+		var snapshot_id := int(snapshot_id_variant)
+		var pending := _pending_capoo_data_snapshots[snapshot_id] as Dictionary
+		var cleared_owner_peer_ids := pending.get(
+			"cleared_owner_peer_ids",
+			{}
+		) as Dictionary
+		cleared_owner_peer_ids[peer_id] = true
+		pending["cleared_owner_peer_ids"] = cleared_owner_peer_ids
+		_pending_capoo_data_snapshots[snapshot_id] = pending
 	clear_projectiles_for_peer(peer_id)
 	clear_data_projectiles_for_peer(peer_id)
 	clear_fire_sorcerer_volleys_for_peer(peer_id)
 	clear_capoo_rpg_backends_for_peer(peer_id)
 	clear_capoo_mage_backends_for_peer(peer_id)
 	clear_projectile_records_for_peer(peer_id)
+
+
+func mark_capoo_data_owner_active(peer_id: int) -> void:
+	if peer_id > 0:
+		_cleared_capoo_data_owner_peer_ids.erase(peer_id)
 
 
 func clear_projectiles_for_peer(peer_id: int) -> void:
@@ -4431,6 +4837,7 @@ func reset_session_state() -> void:
 		_release_and_erase_capoo_rpg_replica_backend(int(projectile_id))
 	_known_capoo_rpg_replica_services.clear()
 	_known_capoo_rpg_replica_handles.clear()
+	_known_capoo_rpg_replica_host_timestamps.clear()
 	for projectile_id in _known_capoo_mage_data_services.keys():
 		_release_and_erase_capoo_mage_data_backend(int(projectile_id))
 	_known_capoo_mage_data_services.clear()
@@ -4441,6 +4848,8 @@ func reset_session_state() -> void:
 	_known_capoo_mage_replica_services.clear()
 	_known_capoo_mage_replica_handles.clear()
 	_known_capoo_mage_replica_target_metadata.clear()
+	_pending_capoo_mage_replica_target_ids.clear()
+	_known_capoo_mage_replica_host_timestamps.clear()
 	_reserved_host_projectile_ids.clear()
 	_active_enemy_rapid_fire_bursts.clear()
 	_active_enemy_rapid_fire_base_by_reserved_id.clear()
@@ -4460,6 +4869,7 @@ func reset_session_state() -> void:
 	_stale_terminal_enemy_rapid_fire_source_ids.clear()
 	_replica_prune_pass_count = 0
 	_pending_enemy_rapid_fire_snapshots.clear()
+	_pending_capoo_data_snapshots.clear()
 	_projectile_records.clear()
 	_stale_projectile_record_ids.clear()
 	_processed_enemy_hit_ids.clear()
@@ -4470,6 +4880,13 @@ func reset_session_state() -> void:
 	_next_enemy_rapid_fire_snapshot_id = 1
 	_latest_applied_enemy_rapid_fire_snapshot_id = 0
 	_latest_applied_enemy_rapid_fire_snapshot_host_timestamp = -1.0
+	_next_capoo_data_snapshot_id = 1
+	_latest_seen_capoo_data_snapshot_id = 0
+	_latest_applied_capoo_data_snapshot_id = 0
+	_latest_applied_capoo_data_snapshot_host_timestamp = -1.0
+	_latest_discarded_capoo_data_snapshot_id = 0
+	_last_capoo_data_protocol_timestamp = -1.0
+	_cleared_capoo_data_owner_peer_ids.clear()
 
 
 func get_state_metrics() -> Dictionary:
@@ -4499,6 +4916,9 @@ func get_state_metrics() -> Dictionary:
 		"capoo_mage_replica_target_records": (
 			_known_capoo_mage_replica_target_metadata.size()
 		),
+		"pending_capoo_mage_replica_targets": (
+			_pending_capoo_mage_replica_target_ids.size()
+		),
 		"reserved_host_projectile_ids": _reserved_host_projectile_ids.size(),
 		"active_enemy_rapid_fire_bursts": _active_enemy_rapid_fire_bursts.size(),
 		"pending_enemy_rapid_fire_finishes": (
@@ -4511,6 +4931,14 @@ func get_state_metrics() -> Dictionary:
 		"replica_prune_passes": _replica_prune_pass_count,
 		"pending_rapid_fire_snapshots": _pending_enemy_rapid_fire_snapshots.size(),
 		"latest_rapid_fire_snapshot_id": _latest_applied_enemy_rapid_fire_snapshot_id,
+		"pending_capoo_data_snapshots": _pending_capoo_data_snapshots.size(),
+		"latest_seen_capoo_data_snapshot_id": (
+			_latest_seen_capoo_data_snapshot_id
+		),
+		"latest_capoo_data_snapshot_id": _latest_applied_capoo_data_snapshot_id,
+		"cleared_capoo_data_owner_peers": (
+			_cleared_capoo_data_owner_peer_ids.size()
+		),
 		"projectile_records": _projectile_records.size(),
 		"request_rate_buckets": _client_projectile_request_rate_buckets.size(),
 		"request_replay_windows": _client_projectile_replay_windows.size(),
@@ -4841,64 +5269,6 @@ func instantiate_projectile(
 			bomb.set("max_lifetime", lifetime)
 			bomb.set("remaining_lifetime", lifetime)
 			return bomb
-		&"capoo_ak47_bullet":
-			var capoo_bullet := (
-				_acquire_or_instantiate_projectile(CAPOO_AK47_BULLET_SCENE)
-				as CapooAK47Bullet
-			)
-			if capoo_bullet == null:
-				return null
-			capoo_bullet.top_level = true
-			if not _prepare_enemy_network_projectile(capoo_bullet):
-				_release_projectile(capoo_bullet)
-				return null
-			capoo_bullet.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				_runtime.grid_pathfinder as GridPathfinder,
-				_runtime.capoo_projectile_motion_system,
-				damage_source_snapshot
-			)
-			return capoo_bullet
-		&"combat_robot_gunner_bullet", &"combat_robot_gunner_elite_bullet":
-			var gunner_bullet_scene := (
-				COMBAT_ROBOT_GUNNER_ELITE_BULLET_SCENE
-				if projectile_type == &"combat_robot_gunner_elite_bullet"
-				else COMBAT_ROBOT_GUNNER_BULLET_SCENE
-			)
-			var gunner_bullet := (
-				_acquire_or_instantiate_projectile(
-					gunner_bullet_scene
-				)
-				as CombatRobotGunnerBullet
-			)
-			if gunner_bullet == null:
-				return null
-			gunner_bullet.top_level = true
-			var gateway := _runtime.get_multiplayer_gameplay_gateway()
-			var projectile_parent := (
-				gateway.get_projectile_parent() if gateway != null else null
-			)
-			if gateway == null or projectile_parent == null:
-				_release_projectile(gunner_bullet)
-				return null
-			gunner_bullet.bind_gameplay_context(_runtime, gateway)
-			if gunner_bullet.get_parent() == null:
-				projectile_parent.add_child(gunner_bullet)
-			elif gunner_bullet.get_parent() != projectile_parent:
-				gunner_bullet.reparent(projectile_parent)
-			gunner_bullet.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				_runtime.grid_pathfinder as GridPathfinder,
-				_runtime.capoo_projectile_motion_system,
-				damage_source_snapshot
-			)
-			return gunner_bullet
 		COMBAT_ROBOT_SUICIDE_DRONE_TYPE, COMBAT_ROBOT_SUICIDE_DRONE_ELITE_TYPE:
 			if _runtime.combat_robot_drone_motion_system == null:
 				return null
@@ -4938,62 +5308,6 @@ func instantiate_projectile(
 				damage_source_snapshot
 			)
 			return drone
-		FIRE_SORCERER_FIREBALL_VOLLEY_TYPE, \
-		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE:
-			var volley_scene := (
-				FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE
-				if projectile_type == FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE
-				else FIRE_SORCERER_FIREBALL_VOLLEY_SCENE
-			)
-			var volley := (
-				_acquire_or_instantiate_projectile(volley_scene)
-				as FireSorcererFireballVolley
-			)
-			if volley == null:
-				return null
-			volley.top_level = true
-			if not _prepare_enemy_network_projectile(volley):
-				_release_projectile(volley)
-				return null
-			var target: Node2D = null
-			if target_peer_id > 0:
-				target = _get_player(target_peer_id)
-			elif target_enemy_net_id > 0:
-				target = _resolve_mode_world_target(target_enemy_net_id)
-			volley.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				target,
-				6.0,
-				_runtime,
-				-1.0,
-				-1,
-				damage_source_snapshot
-			)
-			return volley
-		&"capoo_smg_bullet":
-			var smg_bullet := (
-				_acquire_or_instantiate_projectile(CAPOO_SMG_BULLET_SCENE)
-				as CapooAK47Bullet
-			)
-			if smg_bullet == null:
-				return null
-			smg_bullet.top_level = true
-			if not _prepare_enemy_network_projectile(smg_bullet):
-				_release_projectile(smg_bullet)
-				return null
-			smg_bullet.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				_runtime.grid_pathfinder as GridPathfinder,
-				_runtime.capoo_projectile_motion_system,
-				damage_source_snapshot
-			)
-			return smg_bullet
 		&"yuanshi_fire_projectile":
 			var fire_projectile := (
 				_acquire_or_instantiate_projectile(
@@ -5397,19 +5711,13 @@ func _prepare_enemy_network_projectile(projectile: Node) -> bool:
 	var gateway := _runtime.get_multiplayer_gameplay_gateway()
 	if gateway == null:
 		return false
-	var capoo_bullet := projectile as CapooAK47Bullet
-	var sorcerer_volley := projectile as FireSorcererFireballVolley
 	var yuanshi_fire := projectile as YuanshiInsectFireProjectile
 	var frost_spike := projectile as FrostSorcererIceSpike
 	var linglan_skill1 := projectile as LinglanSakuraBullet
 	var linglan_skill2 := projectile as LinglanSkill2SakuraRocket
 	var linglan_skill3 := projectile as LinglanSkill3LightOrb
 	var linglan_skill4 := projectile as LinglanSkill4LightOrb
-	if capoo_bullet != null:
-		capoo_bullet.bind_gameplay_context(_runtime, gateway)
-	elif sorcerer_volley != null:
-		sorcerer_volley.bind_gameplay_context(_runtime, gateway)
-	elif yuanshi_fire != null:
+	if yuanshi_fire != null:
 		yuanshi_fire.bind_gameplay_context(_runtime, gateway)
 	elif frost_spike != null:
 		frost_spike.bind_gameplay_context(_runtime, gateway)
@@ -5760,10 +6068,7 @@ static func _apply_damage_source_snapshot_to_projectile(
 		return
 	var frozen_source := source_snapshot.duplicate_snapshot()
 	var player_bullet := projectile as Bullet
-	var capoo_bullet := projectile as CapooAK47Bullet
 	var suicide_drone := projectile as CombatRobotSuicideDrone
-	var rpg_rocket := projectile as CapooRPGRocket
-	var sorcerer_volley := projectile as FireSorcererFireballVolley
 	var yuanshi_fire := projectile as YuanshiInsectFireProjectile
 	var frost_spike := projectile as FrostSorcererIceSpike
 	var linglan_skill1 := projectile as LinglanSakuraBullet
@@ -5772,14 +6077,8 @@ static func _apply_damage_source_snapshot_to_projectile(
 	var linglan_skill4 := projectile as LinglanSkill4LightOrb
 	if player_bullet != null:
 		player_bullet.damage_source_snapshot = frozen_source
-	elif capoo_bullet != null:
-		capoo_bullet.damage_source_snapshot = frozen_source
 	elif suicide_drone != null:
 		suicide_drone.damage_source_snapshot = frozen_source
-	elif rpg_rocket != null:
-		rpg_rocket.damage_source_snapshot = frozen_source
-	elif sorcerer_volley != null:
-		sorcerer_volley.damage_source_snapshot = frozen_source
 	elif yuanshi_fire != null:
 		yuanshi_fire.damage_source_snapshot = frozen_source
 	elif frost_spike != null:
@@ -5935,14 +6234,6 @@ func apply_projectile_lifetime_compensation(
 		return
 	if projectile is CollectibleArrowProjectile:
 		projectile.set("remaining_lifetime", remaining)
-		return
-	var capoo_bullet := projectile as CapooAK47Bullet
-	if capoo_bullet != null:
-		capoo_bullet.remaining_lifetime = remaining
-		return
-	var fire_sorcerer_volley := projectile as FireSorcererFireballVolley
-	if fire_sorcerer_volley != null:
-		fire_sorcerer_volley.remaining_lifetime = remaining
 		return
 	var fire_projectile := projectile as YuanshiInsectFireProjectile
 	if fire_projectile != null:
@@ -6213,6 +6504,17 @@ func _get_net_time() -> float:
 		return 0.0
 	var now := float(_get_net_time_callable.call())
 	return now if is_finite(now) else 0.0
+
+
+func _allocate_capoo_data_protocol_timestamp() -> float:
+	var now := _get_net_time()
+	var timestamp := maxf(
+		now,
+		_last_capoo_data_protocol_timestamp
+			+ CAPOO_DATA_PROTOCOL_TIMESTAMP_STEP_SECONDS
+	)
+	_last_capoo_data_protocol_timestamp = timestamp
+	return timestamp
 
 
 func _get_host_event_age(host_event_timestamp: float) -> float:

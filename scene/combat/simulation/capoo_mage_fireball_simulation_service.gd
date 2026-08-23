@@ -235,13 +235,17 @@ func spawn_replica(
 	radius: float,
 	target: Node2D,
 	homing_turn_rate: float,
-	visual_age: float,
+	transit_age: float,
 	profile: Profile = Profile.NORMAL,
-	damage_source_snapshot: DamageSourceSnapshot = null
+	damage_source_snapshot: DamageSourceSnapshot = null,
+	authoritative_visual_age: float = -1.0
 ) -> int:
 	var normalized_direction := direction.normalized()
-	var compensated_position := position + normalized_direction * speed * visual_age
-	var compensated_lifetime := lifetime - visual_age
+	var compensated_position := position + normalized_direction * speed * transit_age
+	var compensated_lifetime := lifetime - transit_age
+	var resolved_visual_age := transit_age
+	if authoritative_visual_age >= 0.0:
+		resolved_visual_age = authoritative_visual_age + transit_age
 	var replica_source := (
 		DamageSourceSnapshot.create(
 			damage_source_snapshot.source_faction_id,
@@ -270,7 +274,7 @@ func spawn_replica(
 		radius,
 		target,
 		homing_turn_rate,
-		visual_age,
+		resolved_visual_age,
 		replica_source,
 		profile
 	)

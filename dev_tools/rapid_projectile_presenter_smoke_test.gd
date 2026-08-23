@@ -217,19 +217,19 @@ func _test_direction_transforms_and_animation_frames() -> void:
 
 func _test_replica_selection_and_animation_age() -> void:
 	var service := RapidFireSimulationServiceScript.new()
-	service.reserve_projectile_capacity(5)
+	service.reserve_projectile_capacity(4)
 	var data_handle := _register_projectile(
 		service,
 		Vector2(-4.0, 0.0),
 		Vector2.RIGHT,
 		8_001
 	)
-	_register_projectile(
+	var rejected_handle := _register_projectile(
 		service,
 		Vector2.ZERO,
 		Vector2.RIGHT,
 		8_002,
-		RapidFireSimulationServiceScript.Mode.SHADOW
+		RapidFireSimulationServiceScript.Mode.DISABLED
 	)
 	var delayed_replica_handle := service.register_replica_projectile(
 		RapidFireSimulationServiceScript.Profile.AK,
@@ -263,6 +263,7 @@ func _test_replica_selection_and_animation_age() -> void:
 	)
 	_expect(
 		data_handle > 0
+		and rejected_handle == RapidFireSimulationServiceScript.INVALID_HANDLE
 		and delayed_replica_handle > 0
 		and gunner_replica_handle > 0
 		and pending_elite_handle > 0
@@ -347,7 +348,7 @@ func _test_replica_selection_and_animation_age() -> void:
 		)
 		and service.get_slot_state(pending_elite_handle)
 		== RapidFireSimulationServiceScript.SlotState.PENDING_ACTIVATION
-		and service.get_active_slot_count() == 5,
+		and service.get_active_slot_count() == 4,
 		"Delay overshoot age must drive REPLICA animation while capacity truncation stays visual-only."
 	)
 	service.prepare_for_runtime_teardown()
@@ -356,7 +357,7 @@ func _test_replica_selection_and_animation_age() -> void:
 
 func _test_offscreen_compaction_and_capacity_do_not_mutate_simulation() -> void:
 	var culling_service := RapidFireSimulationServiceScript.new()
-	culling_service.reserve_projectile_capacity(5)
+	culling_service.reserve_projectile_capacity(8)
 	var positions := [
 		Vector2(-500.0, 0.0),
 		Vector2(-10.0, 0.0),
@@ -371,12 +372,12 @@ func _test_offscreen_compaction_and_capacity_do_not_mutate_simulation() -> void:
 			Vector2.RIGHT,
 			projectile_index + 1
 		)
-	_register_projectile(
+	var rejected_handle := _register_projectile(
 		culling_service,
 		Vector2.ZERO,
 		Vector2.RIGHT,
 		9_999,
-		RapidFireSimulationServiceScript.Mode.SHADOW
+		RapidFireSimulationServiceScript.Mode.DISABLED
 	)
 	_register_projectile(
 		culling_service,
@@ -403,7 +404,8 @@ func _test_offscreen_compaction_and_capacity_do_not_mutate_simulation() -> void:
 		RapidFireSimulationServiceScript.Profile.GUNNER_ELITE
 	)
 	_expect(
-		PresenterScript.count_presentable_projectiles_for_view(
+		rejected_handle == RapidFireSimulationServiceScript.INVALID_HANDLE
+		and PresenterScript.count_presentable_projectiles_for_view(
 			culling_service,
 			TEST_VIEW_RECT,
 			PresenterScript.FIXED_INSTANCE_CAPACITY
@@ -421,8 +423,8 @@ func _test_offscreen_compaction_and_capacity_do_not_mutate_simulation() -> void:
 	_expect(
 		compact_visible_count == 3,
 		(
-			"Two offscreen DATA records and one visible SHADOW record must be skipped "
-			+ "while visible DATA records compact to the prefix."
+			"Two offscreen DATA records must be skipped while visible DATA records "
+			+ "compact to the prefix."
 		)
 	)
 	_expect(
@@ -584,16 +586,16 @@ func _test_headless_sync_clear_and_teardown() -> void:
 func _test_display_sync_hidden_and_teardown() -> void:
 	var presenter := PRESENTER_SCENE.instantiate() as PresenterScript
 	var service := RapidFireSimulationServiceScript.new()
-	service.reserve_projectile_capacity(7)
+	service.reserve_projectile_capacity(6)
 	_register_projectile(service, Vector2(-10.0, 0.0), Vector2.RIGHT, 30_001)
 	_register_projectile(service, Vector2(500.0, 0.0), Vector2.LEFT, 30_002)
 	_register_projectile(service, Vector2(0.0, 10.0), Vector2.DOWN, 30_003)
-	_register_projectile(
+	var rejected_handle := _register_projectile(
 		service,
 		Vector2.ZERO,
 		Vector2.UP,
 		30_004,
-		RapidFireSimulationServiceScript.Mode.SHADOW
+		RapidFireSimulationServiceScript.Mode.DISABLED
 	)
 	_register_projectile(
 		service,
@@ -621,7 +623,11 @@ func _test_display_sync_hidden_and_teardown() -> void:
 		30_007,
 		TEST_DELTA * 0.5
 	)
-	_expect(replica_handle > 0, "Display fixture REPLICA must register.")
+	_expect(
+		rejected_handle == RapidFireSimulationServiceScript.INVALID_HANDLE
+		and replica_handle > 0,
+		"Display fixture must reject disabled records and register the REPLICA."
+	)
 	root.add_child(presenter)
 	await process_frame
 	await physics_frame
@@ -690,7 +696,7 @@ func _test_display_sync_hidden_and_teardown() -> void:
 			Vector2.RIGHT
 		)
 		and not presenter.queue_completion_hit(
-			RapidFireSimulationServiceScript.Mode.SHADOW,
+			RapidFireSimulationServiceScript.Mode.DISABLED,
 			RapidFireSimulationServiceScript.Profile.AK,
 			RapidFireSimulationServiceScript.CompletionReason.WORLD,
 			Vector2.ZERO,

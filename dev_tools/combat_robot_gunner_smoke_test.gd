@@ -3,9 +3,6 @@ extends SceneTree
 const GUNNER_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_gunner.tscn"
 )
-const BULLET_SCENE := preload(
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
-)
 const GUNNER_CONFIG := preload(
 	"res://resources/config/enemies/combat_robot_gunner.tres"
 )
@@ -99,40 +96,6 @@ class GunnerTestGateway:
 		})
 
 
-	func register_local_data_projectile(
-		service: RapidFireSimulationService,
-		handle: int,
-		projectile_type: StringName,
-		_owner_peer_id: int,
-		spawn_position: Vector2,
-		direction: Vector2,
-		damage: int,
-		speed: float,
-		lifetime: float,
-		_damage_source_snapshot: DamageSourceSnapshot = null
-	) -> int:
-		if reject_next_data_registration:
-			reject_next_data_registration = false
-			return 0
-		var projectile_id := next_projectile_id
-		if not service.assign_projectile_identity(handle, projectile_id):
-			return 0
-		next_projectile_id += 1
-		registered_projectiles.append({
-			"projectile": null,
-			"service": service,
-			"handle": handle,
-			"projectile_id": projectile_id,
-			"projectile_type": projectile_type,
-			"spawn_position": spawn_position,
-			"direction": direction,
-			"damage": damage,
-			"speed": speed,
-			"lifetime": lifetime,
-		})
-		return projectile_id
-
-
 	func reserve_enemy_rapid_fire_projectile_ids(
 		count: int
 	) -> PackedInt64Array:
@@ -206,12 +169,6 @@ class GunnerTestRoot:
 	func _init() -> void:
 		super()
 		runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-		var motion_placeholder := get_node("CapooProjectileMotionSystem")
-		remove_child(motion_placeholder)
-		motion_placeholder.free()
-		var motion_system := CapooProjectileMotionSystem.new()
-		motion_system.name = "CapooProjectileMotionSystem"
-		add_child(motion_system)
 
 		var gateway_placeholder := get_node("MultiplayerGameplayGateway")
 		remove_child(gateway_placeholder)
@@ -232,11 +189,6 @@ func _init() -> void:
 
 
 func _run() -> void:
-	_expect(
-		CombatRobotGunner.projectile_backend
-		== CombatRobotGunner.ProjectileBackend.DATA,
-		"Production gunner backend must default to DATA."
-	)
 	test_root = GunnerTestRoot.new()
 	test_root.name = "CombatRobotGunnerSmokeTest"
 	root.add_child(test_root)
@@ -280,8 +232,8 @@ func _test_resource_and_scene_contract() -> void:
 	)
 	_expect(GUNNER_CONFIG.enemy_scene == GUNNER_SCENE, "Enemy scene binding mismatch.")
 	_expect(
-		GUNNER_CONFIG.projectile_scene == BULLET_SCENE,
-		"Projectile scene binding mismatch."
+		not _object_has_property(GUNNER_CONFIG, &"projectile_scene"),
+		"Gunner DATA config must not expose a legacy projectile scene."
 	)
 	_expect(GUNNER_CONFIG.max_health == 180, "Maximum health must be 180.")
 	_expect(GUNNER_CONFIG.attack_damage == 35, "Attack damage must be 35.")
@@ -888,6 +840,13 @@ func _cleanup_registered_projectiles() -> void:
 	test_root.registered_projectiles.clear()
 	test_root.burst_descriptors.clear()
 	test_root.recording_gateway.reject_next_data_registration = false
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if StringName(property.get("name", "")) == property_name:
+			return true
+	return false
 
 
 func _expect(condition: bool, message: String) -> void:

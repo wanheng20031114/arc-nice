@@ -30,13 +30,8 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_basic.tscn",
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_shell.tscn",
 	"res://scene/enemy/capoo/capoo_ak47.tscn",
-	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn",
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn",
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn",
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn",
-	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
-	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn",
 	"res://resources/config/enemies/capoo_knight_elite.tres",
 	"res://resources/config/enemies/stone_golem_elite.tres",
@@ -77,6 +72,16 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://scene/game_modes/tower_defense/plant/presentation/plant_placement_particles.tscn",
 	"res://scene/game_modes/tower_defense/plant/presentation/plant_removal_smoke.tscn",
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_spawn_effect.tscn",
+]
+const RETIRED_ENEMY_PROJECTILE_POOL_PATHS: Array[String] = [
+	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn",
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn",
+	"res://scene/enemy/capoo/capoo_smg_bullet.tscn",
+	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
+	"res://scene/enemy/capoo/capoo_mage_fireball.tscn",
+	"res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn",
 ]
 
 var failures: Array[String] = []
@@ -598,8 +603,8 @@ func _test_runtime_activation_gate() -> void:
 		and game.process_mode == Node.PROCESS_MODE_INHERIT,
 		"Barrier completion must reactivate gameplay exactly once."
 	)
-	_expect_sorcerer_projectile_pools(game, 48, 704)
-	_expect_gunner_projectile_pool(game)
+	_expect_frost_sorcerer_projectile_pool(game, 48, 704)
+	_expect_retired_enemy_projectile_pools_absent(game)
 	_expect_drone_projectile_pool(game)
 	game.queue_free()
 	await process_frame
@@ -662,28 +667,24 @@ func _test_mode_specific_mp_game_source() -> void:
 		"MpGame must expose only a thin façade over the static WorldFlowCoordinator."
 	)
 	_expect(
-		projectile_source.contains("FIRE_SORCERER_FIREBALL_VOLLEY_SCENE")
+		projectile_source.contains("func register_local_fire_sorcerer_volley_data(")
 		and projectile_source.contains(
+			"func _receive_fire_sorcerer_volley_replica("
+		)
+		and projectile_source.contains(
+			"_known_fire_sorcerer_volley_services: Dictionary"
+		)
+		and projectile_source.contains(
+			"_known_replica_fire_sorcerer_volley_services: Dictionary"
+		)
+		and not projectile_source.contains("FIRE_SORCERER_FIREBALL_VOLLEY_SCENE")
+		and not projectile_source.contains(
 			"FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE"
 		)
-		and projectile_source.contains('&"fire_sorcerer_fireball_volley"')
-		and projectile_source.contains(
-			'&"fire_sorcerer_elite_fireball_volley"'
-		)
-		and projectile_source.contains(
-			"target = _get_player(target_peer_id)"
-		)
-		and projectile_source.contains(
-			"target = _resolve_mode_world_target(target_enemy_net_id)"
-		)
-		and projectile_source.contains("as FireSorcererFireballVolley")
-		and projectile_source.contains("_prepare_enemy_network_projectile(volley)")
-		and projectile_source.contains(
-			'projectile.has_method("simulate_compensated_motion")'
-		),
+		and not projectile_source.contains("as FireSorcererFireballVolley"),
 		(
-			"ProjectileCoordinator must instantiate, target, time-compensate, and lifetime-compensate "
-			+ "Fire Sorcerer volleys."
+			"ProjectileCoordinator must retain typed Fire Sorcerer DATA/REPLICA maps "
+			+ "without loading or instantiating legacy volley Nodes."
 		)
 	)
 	var player_source := FileAccess.get_file_as_string("res://scene/player/player.gd")
@@ -799,7 +800,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 			"Standard loading must retain delayed Boss runtime resource: %s" % path
 		)
 	_expect_tango_projectile_pool(runtime)
-	_expect_gunner_projectile_pool(runtime)
+	_expect_retired_enemy_projectile_pools_absent(runtime)
 	_expect_drone_projectile_pool(runtime)
 
 	load_errors.clear()
@@ -822,9 +823,9 @@ func _test_singleplayer_coordinator_flow() -> void:
 		and bool(tower_runtime.get("plant_lifecycle_shader_prewarmed")),
 		"Tower-defense loading must finish staged preparation before activation."
 	)
-	_expect_sorcerer_projectile_pools(tower_runtime, 48, 704)
+	_expect_frost_sorcerer_projectile_pool(tower_runtime, 48, 704)
 	_expect_tango_projectile_pool(tower_runtime)
-	_expect_gunner_projectile_pool(tower_runtime)
+	_expect_retired_enemy_projectile_pools_absent(tower_runtime)
 	_expect_drone_projectile_pool(tower_runtime)
 	await physics_frame
 	await physics_frame
@@ -906,6 +907,7 @@ func _test_mp_game_preparation_barrier() -> void:
 		and bool(runtime.get("plant_lifecycle_shader_prewarmed")),
 		"MpGame must finish preparation while disabled, report ready, then activate."
 	)
+	_expect_retired_enemy_projectile_pools_absent(runtime)
 	mp_game.queue_free()
 	await process_frame
 	net_manager.disconnect_from_game()
@@ -1001,7 +1003,7 @@ func _expect_lifecycle_prewarm_pool_released(runtime: CombatRuntimeBase) -> void
 		)
 
 
-func _expect_sorcerer_projectile_pools(
+func _expect_frost_sorcerer_projectile_pool(
 	runtime: CombatRuntimeBase,
 	expected_prewarm_count: int,
 	expected_retained_capacity: int
@@ -1012,30 +1014,20 @@ func _expect_sorcerer_projectile_pools(
 	_expect(object_pool != null, "Runtime must expose its projectile object pool.")
 	if object_pool == null:
 		return
-	for scene_path in [
-		"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
-		"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
-		"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn",
-	]:
-		var metrics := object_pool.get_metrics(scene_path)
-		_expect(
-			int(metrics.get("created", -1)) == expected_prewarm_count
-			and int(metrics.get("inactive", -1)) == expected_prewarm_count
-			and int(metrics.get("in_use", -1)) == 0
-			and int(metrics.get("pending_release", -1)) == 0
-			and int(metrics.get("overflow", -1)) == 0
-			and int(metrics.get("dropped", -1)) == 0
-			and int(metrics.get("retained_capacity", -1))
-				== expected_retained_capacity,
-			(
-				"%s pool must prewarm %d leases with capacity %d."
-				% [
-					scene_path,
-					expected_prewarm_count,
-					expected_retained_capacity,
-				]
-			)
-		)
+	var scene_path := "res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn"
+	var metrics := object_pool.get_metrics(scene_path)
+	_expect(
+		int(metrics.get("created", -1)) == expected_prewarm_count
+		and int(metrics.get("inactive", -1)) == expected_prewarm_count
+		and int(metrics.get("in_use", -1)) == 0
+		and int(metrics.get("pending_release", -1)) == 0
+		and int(metrics.get("overflow", -1)) == 0
+		and int(metrics.get("dropped", -1)) == 0
+		and int(metrics.get("retained_capacity", -1))
+			== expected_retained_capacity,
+		"%s pool must prewarm %d leases with capacity %d."
+		% [scene_path, expected_prewarm_count, expected_retained_capacity]
+	)
 
 
 func _expect_tango_projectile_pool(runtime: CombatRuntimeBase) -> void:
@@ -1059,24 +1051,20 @@ func _expect_tango_projectile_pool(runtime: CombatRuntimeBase) -> void:
 	)
 
 
-func _expect_gunner_projectile_pool(runtime: CombatRuntimeBase) -> void:
+func _expect_retired_enemy_projectile_pools_absent(
+	runtime: CombatRuntimeBase
+) -> void:
 	if runtime == null:
 		return
 	var object_pool := runtime.get_node_or_null("SessionObjectPool") as SessionObjectPool
-	_expect(object_pool != null, "Runtime must expose the gunner projectile object pool.")
+	_expect(object_pool != null, "Runtime must expose its session object pool.")
 	if object_pool == null:
 		return
-	for scene_path in [
-		"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn",
-		"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn",
-	]:
+	for scene_path in RETIRED_ENEMY_PROJECTILE_POOL_PATHS:
 		var metrics := object_pool.get_metrics(scene_path)
 		_expect(
-			int(metrics.get("created", -1)) == 0
-			and int(metrics.get("inactive", -1)) == 0
-			and int(metrics.get("in_use", -1)) == 0
-			and int(metrics.get("retained_capacity", -1)) == 96,
-			"Gunner bullet pool must register lazily with retained capacity 96: %s"
+			metrics.is_empty(),
+			"Production runtime must not register retired enemy projectile pool: %s"
 			% scene_path
 		)
 

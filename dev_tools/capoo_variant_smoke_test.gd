@@ -117,8 +117,16 @@ func _test_resource_contract() -> void:
 		FIREBALL_SCENE != null,
 		"Legacy Mage fireball scene must remain available for isolated regression fixtures."
 	)
-	_expect(SNIPER_CONFIG.lock_reticle_scene == RETICLE_SCENE, "Legacy sniper reticle regression resource must remain available.")
-	_expect(SMG_CONFIG.projectile_scene == SMG_BULLET_SCENE, "SMG Capoo must use its short-lived bullet scene.")
+	_expect(
+		not _object_has_property(SNIPER_CONFIG, &"lock_reticle_scene"),
+		"Sniper production config must not expose the retired lock-reticle scene."
+	)
+	_expect(RETICLE_SCENE != null, "The isolated sniper reticle fixture must remain loadable.")
+	_expect(
+		not _object_has_property(SMG_CONFIG, &"projectile_scene"),
+		"SMG hitscan config must not expose the retired bullet scene."
+	)
+	_expect(SMG_BULLET_SCENE != null, "The isolated SMG bullet fixture must remain loadable.")
 	_expect(
 		_resource_path(MAGE_CONFIG.attack_audio_stream).ends_with("capoo_mage_fireball_cast.wav"),
 		"Mage Capoo must use the fireball cast audio stream."
@@ -828,10 +836,6 @@ func _test_proxy_action_visuals() -> void:
 	var smg_player := _spawn_player(Vector2(140.0, 0.0), 200)
 	var smg := _spawn_smg(Vector2.ZERO, smg_player)
 	smg.configure_multiplayer_proxy()
-	_expect(
-		CapooSMG.allocation_free_proxy_visuals_enabled,
-		"Production SMG proxy visuals must use the allocation-free timer path."
-	)
 	smg.play_multiplayer_enemy_action(&"fire", Vector2.RIGHT, 1)
 	_expect(smg.muzzle_flash.visible, "Proxy SMG muzzle flash did not appear.")
 	smg.call("_process", 0.10)
@@ -852,8 +856,7 @@ func _test_proxy_action_visuals() -> void:
 		"Later proxy SMG fire must restart the complete action restore interval."
 	)
 	_expect(
-		smg.proxy_visual_timer_action_count == 2
-		and smg.proxy_visual_tween_action_count == 0,
+		smg.proxy_visual_timer_action_count == 2,
 		"Proxy SMG fire must not allocate per-action Tweens in production."
 	)
 	smg.call("_process", 0.10)
@@ -907,29 +910,6 @@ func _test_proxy_action_visuals() -> void:
 	)
 	smg.queue_free()
 	smg_player.queue_free()
-	await physics_frame
-
-	CapooSMG.allocation_free_proxy_visuals_enabled = false
-	var legacy_smg_player := _spawn_player(Vector2(140.0, 0.0), 200)
-	var legacy_smg := _spawn_smg(Vector2.ZERO, legacy_smg_player)
-	legacy_smg.configure_multiplayer_proxy()
-	legacy_smg.play_multiplayer_enemy_action(&"fire", Vector2.RIGHT, 1)
-	_expect(
-		legacy_smg.muzzle_flash.visible
-		and legacy_smg.proxy_visual_tween_action_count == 1,
-		"Legacy SMG A/B fixture must start its Tween visual path."
-	)
-	legacy_smg.set_multiplayer_proxy_visual_active(false)
-	legacy_smg.set_multiplayer_proxy_visual_active(true)
-	await create_timer(0.18).timeout
-	_expect(
-		not legacy_smg.muzzle_flash.visible
-		and legacy_smg.animated_sprite.animation == SMG_CONFIG.move_animation_name,
-		"Culled legacy SMG Tween callbacks must not revive stale attack visuals."
-	)
-	legacy_smg.queue_free()
-	legacy_smg_player.queue_free()
-	CapooSMG.allocation_free_proxy_visuals_enabled = true
 	await physics_frame
 
 	var sniper_player := _spawn_player(Vector2(240.0, 0.0), 200)
@@ -1045,19 +1025,18 @@ func _test_multiplayer_projectile_registry() -> void:
 		"Multiplayer registry must not instantiate a legacy Mage projectile Node."
 	)
 
-	var smg_bullet := coordinator.instantiate_projectile(
+	var retired_smg_bullet := coordinator.instantiate_projectile(
 		&"capoo_smg_bullet",
 		0,
 		Vector2.RIGHT,
 		40,
 		SMG_CONFIG.projectile_speed,
 		SMG_CONFIG.projectile_lifetime
-	) as CapooAK47Bullet
-	_expect(smg_bullet != null, "Multiplayer registry did not instantiate capoo_smg_bullet.")
-	if smg_bullet != null:
-		_expect(smg_bullet.damage == 40, "Registry SMG bullet damage mismatch.")
-		_expect(is_equal_approx(smg_bullet.max_lifetime, SMG_CONFIG.projectile_lifetime), "Registry SMG bullet lifetime mismatch.")
-		smg_bullet.free()
+	)
+	_expect(
+		retired_smg_bullet == null,
+		"Multiplayer registry must not instantiate the retired SMG projectile Node."
+	)
 	coordinator.unbind_runtime(test_root)
 	coordinator.free()
 	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER

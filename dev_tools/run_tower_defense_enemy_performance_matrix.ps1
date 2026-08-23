@@ -251,10 +251,6 @@ function Get-FingerprintIdentity {
                 $flags `
                 "runtime_count_scans" `
                 $null
-            projectile_hot_metrics = Get-OptionalPropertyValue `
-                $flags `
-                "projectile_hot_metrics" `
-                $null
         }
     }
     return $projection | ConvertTo-Json -Depth 8 -Compress
@@ -554,7 +550,6 @@ function Get-BackendArguments {
         (ConvertTo-BoolParameterToken "EnemyHotMetrics" $false),
         (ConvertTo-BoolParameterToken "GuardianOverlapMetrics" $false),
         (ConvertTo-BoolParameterToken "RuntimeCountScans" $false),
-        (ConvertTo-BoolParameterToken "ProjectileHotMetrics" $false),
         "-GodotExe", $GodotExe,
         "-ProjectRoot", $ResolvedProjectRoot,
         "-ExternalSampleIntervalMs", [string]$ExternalSampleIntervalMs,
@@ -950,7 +945,6 @@ function New-SelfTestFingerprint {
             enemy_hot_metrics = $false
             guardian_overlap_metrics = $false
             runtime_count_scans = $false
-            projectile_hot_metrics = $false
         }
     }
 }

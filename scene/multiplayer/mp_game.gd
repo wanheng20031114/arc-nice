@@ -778,6 +778,7 @@ func _physics_process(delta: float) -> void:
 		_update_authoritative_tango_charge_lifecycle()
 		_host_physics_tick(frame, delta)
 	elif net_manager.is_client():
+		projectile_coordinator.refresh_pending_capoo_mage_replica_targets()
 		_client_physics_tick(frame)
 
 
@@ -3937,32 +3938,6 @@ func register_local_projectile(
 	)
 
 
-func register_local_data_projectile(
-	service: RapidFireSimulationService,
-	handle: int,
-	projectile_type: StringName,
-	owner_peer_id: int,
-	spawn_position: Vector2,
-	direction: Vector2,
-	damage: int,
-	speed: float,
-	lifetime: float,
-	damage_source_snapshot: DamageSourceSnapshot = null
-) -> int:
-	return projectile_coordinator.register_local_data_projectile(
-		service,
-		handle,
-		projectile_type,
-		owner_peer_id,
-		spawn_position,
-		direction,
-		damage,
-		speed,
-		lifetime,
-		damage_source_snapshot
-	)
-
-
 func register_local_capoo_rpg_data(
 	service: CapooRPGRocketSimulationServiceScript,
 	handle: int,
@@ -4324,6 +4299,24 @@ func net_enemy_rapid_fire_snapshot_chunk(
 	descriptor: PackedByteArray
 ) -> void:
 	projectile_coordinator.apply_authority_enemy_rapid_fire_snapshot_chunk(
+		multiplayer.get_remote_sender_id(),
+		snapshot_id,
+		chunk_index,
+		chunk_count,
+		host_snapshot_timestamp,
+		descriptor
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_capoo_data_projectile_snapshot_chunk(
+	snapshot_id: int,
+	chunk_index: int,
+	chunk_count: int,
+	host_snapshot_timestamp: float,
+	descriptor: PackedByteArray
+) -> void:
+	projectile_coordinator.apply_authority_capoo_data_projectile_snapshot_chunk(
 		multiplayer.get_remote_sender_id(),
 		snapshot_id,
 		chunk_index,
@@ -7811,6 +7804,8 @@ func _on_net_player_reconnected(
 		_commit_embedded_participant_identity_remap(old_peer_id, new_peer_id)
 		_clear_peer_network_state(old_peer_id)
 		_clear_peer_network_state(new_peer_id)
+		if projectile_coordinator != null:
+			projectile_coordinator.mark_capoo_data_owner_active(new_peer_id)
 		_finalize_reconnected_projection_and_claim(
 			old_peer_id,
 			new_peer_id,
@@ -7856,6 +7851,8 @@ func _on_net_player_reconnected(
 		)
 		return
 	if completed_new_peer_id == new_peer_id:
+		if projectile_coordinator != null:
+			projectile_coordinator.mark_capoo_data_owner_active(new_peer_id)
 		if game == null:
 			# 已完成事务没有第二份 capture 可重放；运行时重建完成后由权威
 			# roster/keyframe 恢复表现；对当前作战显式报告无法继续参战。
@@ -7928,6 +7925,8 @@ func _on_net_player_reconnected(
 		return
 	if embedded_participant_projection:
 		_commit_embedded_participant_identity_remap(old_peer_id, new_peer_id)
+	if projectile_coordinator != null:
+		projectile_coordinator.mark_capoo_data_owner_active(new_peer_id)
 	_attempt_reconnected_player_projection(
 		old_peer_id,
 		new_peer_id,

@@ -21,7 +21,6 @@
 [ext_resource type="PackedScene" path="res://scene/ui/shared/debug/debug_collectible_window.tscn" id="18_a2yr0"]
 [ext_resource type="Script" uid="uid://i1yhvo6yryuc" path="res://scene/combat/feedback/damage_number_pool.gd" id="19_djb10"]
 [ext_resource type="Script" uid="uid://c53fvlhqiuysa" path="res://scene/combat/pooling/session_object_pool.gd" id="21_ljjm3"]
-[ext_resource type="PackedScene" path="res://scene/enemy/capoo/capoo_projectile_motion_system.tscn" id="22_nfv0p"]
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="23_phkr4"]
 [ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect/guardian_aura_system.tscn" id="24_2un5p"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="25_ririg"]
@@ -143,8 +142,6 @@ script = ExtResource("19_djb10")
 
 [node name="SessionObjectPool" type="Node2D" parent="." unique_id=257385340]
 script = ExtResource("21_ljjm3")
-
-[node name="CapooProjectileMotionSystem" parent="." unique_id=504617950 instance=ExtResource("22_nfv0p")]
 
 [node name="CombatRobotDroneMotionSystem" parent="." unique_id=977384593 instance=ExtResource("23_phkr4")]
 

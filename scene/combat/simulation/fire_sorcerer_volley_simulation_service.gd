@@ -6,7 +6,6 @@ class_name FireSorcererVolleySimulationService
 
 enum Mode {
 	INVALID,
-	SHADOW,
 	DATA,
 	REPLICA,
 }

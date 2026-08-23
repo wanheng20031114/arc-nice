@@ -61,7 +61,7 @@ const ENHANCEMENT_TOWER_RECIPE_PATHS := [
 const EXPECTED_PLANT_DEFENSE_CONFIG_COUNT := 19
 const EXPECTED_PRODUCTION_RECIPE_COUNT := 32
 const GOLDEN_CONTENT_SHA256 := (
-	"75ec42f84368a2a5f184f43145cedb1c7eae03cb7fa2783ef4365d4094bf4f98"
+	"75f8433867ce8586a48cd4688dd167d4af5781ca55ea585e80e63719611a3b18"
 )
 
 var failures: Array[String] = []
@@ -458,6 +458,7 @@ func _test_invalid_boss_path_check_fails() -> void:
 		OS.get_executable_path(),
 		PackedStringArray([
 			"--headless",
+			"--editor",
 			"--path",
 			ProjectSettings.globalize_path("res://"),
 			"--script",

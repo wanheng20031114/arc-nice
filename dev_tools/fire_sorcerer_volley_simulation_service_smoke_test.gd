@@ -31,7 +31,7 @@ func _test_generation_reuse_and_stable_compaction() -> void:
 	var service := ServiceScript.new()
 	_expect(service.reserve_capacity(3), "Reserve must preallocate volley and ball SoA.")
 	var first := _register_basic(service, ServiceScript.Mode.DATA, ServiceScript.Profile.NORMAL, 1001, 1.0)
-	var survivor := _register_basic(service, ServiceScript.Mode.SHADOW, ServiceScript.Profile.ELITE, 1002, 1.0)
+	var survivor := _register_basic(service, ServiceScript.Mode.DATA, ServiceScript.Profile.ELITE, 1002, 1.0)
 	var first_slot := service.get_handle_slot(first)
 	var first_generation := service.get_handle_generation(first)
 	_expect(first > 0 and survivor > 0, "Reserved rows must register valid handles.")
@@ -65,8 +65,8 @@ func _test_next_tick_three_ball_homing_modes_completion_and_teardown() -> void:
 		ServiceScript.Mode.DATA, ServiceScript.Profile.NORMAL, positions, directions,
 		10.0, 0.2, 2.0, 7, 77, 2001, target, 2.5, 4
 	)
-	var shadow_handle := service.register_volley(
-		ServiceScript.Mode.SHADOW, ServiceScript.Profile.NORMAL, positions, directions,
+	var second_data_handle := service.register_volley(
+		ServiceScript.Mode.DATA, ServiceScript.Profile.NORMAL, positions, directions,
 		10.0, 0.2, 0.0, 7, 77, 2002
 	)
 	var replica_handle := service.register_volley(
@@ -90,10 +90,10 @@ func _test_next_tick_three_ball_homing_modes_completion_and_teardown() -> void:
 		"Independent masks and max-turn-rate homing must advance on the next tick."
 	)
 	_expect(
-		service.get_slot_mode(shadow_handle) == ServiceScript.Mode.SHADOW
+		service.get_slot_mode(second_data_handle) == ServiceScript.Mode.DATA
 		and service.get_slot_mode(replica_handle) == ServiceScript.Mode.REPLICA
 		and service.get_slot_profile(replica_handle) == ServiceScript.Profile.ELITE,
-		"SHADOW/REPLICA and NORMAL/ELITE identities must remain per record."
+		"DATA/REPLICA and NORMAL/ELITE identities must remain per record."
 	)
 	service.advance_authoritative(0.11)
 	_expect(
@@ -114,7 +114,7 @@ func _test_next_tick_three_ball_homing_modes_completion_and_teardown() -> void:
 	_expect(
 		service.get_terminal_completion_count() == 3
 		and not service.is_handle_live(data_handle)
-		and not service.is_handle_live(shadow_handle)
+		and not service.is_handle_live(second_data_handle)
 		and not service.is_handle_live(replica_handle),
 		"All-effect completion must publish stable terminal records and stale handles."
 	)

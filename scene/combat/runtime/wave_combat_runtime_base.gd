@@ -6,23 +6,11 @@ class_name WaveCombatRuntimeBase
 # 模式规则、Boss、商人、HUD、音乐和终局表现由具体模式根脚本拥有。
 
 const PLAYER_BULLET_POOL_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
-const CAPOO_AK47_BULLET_POOL_SCENE := preload(
-	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn"
-)
 const COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
 )
 const COMBAT_ROBOT_SUICIDE_DRONE_ELITE_POOL_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn"
-)
-const CAPOO_SMG_BULLET_POOL_SCENE := preload(
-	"res://scene/enemy/capoo/capoo_smg_bullet.tscn"
-)
-const FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE := preload(
-	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
-)
-const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_POOL_SCENE := preload(
-	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
 )
 const FROST_SORCERER_ICE_SPIKE_POOL_SCENE := preload(
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn"
@@ -352,22 +340,8 @@ func _ready() -> void:
 	_prewarm_enemy_visual_resources()
 	CombatRuntimeBase.register_common_visual_effect_pools(session_object_pool)
 	session_object_pool.register_scene(PLAYER_BULLET_POOL_SCENE, 64, 768)
-	session_object_pool.register_scene(CAPOO_AK47_BULLET_POOL_SCENE, 32, 384)
-	CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(session_object_pool)
-	CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(session_object_pool)
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_ELITE_POOL_SCENE, 0, 384)
-	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
-	session_object_pool.register_scene(
-		FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE,
-		48,
-		704
-	)
-	session_object_pool.register_scene(
-		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_POOL_SCENE,
-		48,
-		704
-	)
 	session_object_pool.register_scene(FROST_SORCERER_ICE_SPIKE_POOL_SCENE, 48, 704)
 	session_object_pool.register_scene(YUANSHI_FIRE_PROJECTILE_POOL_SCENE, 24, 192)
 	session_object_pool.register_scene(COLLECTIBLE_ARROW_POOL_SCENE, 24, 192)

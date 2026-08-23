@@ -273,30 +273,37 @@ func _run() -> void:
 		and not coordinator_source.contains("as CapooMageFireball"),
 		"Mage 火球多人路径必须使用 typed DATA/REPLICA 映射且不得保留旧 Node 实例化分支。"
 	)
-	var gateway_data_registration_source := _get_data_registration_source(
-		GAMEPLAY_GATEWAY_SCRIPT_PATH
-	)
-	var session_data_registration_source := _get_data_registration_source(
-		GAMEPLAY_SESSION_SCRIPT_PATH
-	)
-	var mp_game_data_registration_source := _get_data_registration_source(
-		MP_GAME_SCRIPT_PATH
-	)
-	var coordinator_data_registration_source := _get_data_registration_source(
-		PROJECTILE_COORDINATOR_SCRIPT_PATH
-	)
 	_expect(
-		gateway_data_registration_source.count("damage_source_snapshot") == 2
-		and session_data_registration_source.count(
-			"damage_source_snapshot"
-		) == 1
-		and mp_game_data_registration_source.count(
-			"damage_source_snapshot"
-		) == 2
-		and coordinator_data_registration_source.contains(
-			"damage_source_snapshot: DamageSourceSnapshot = null"
+		coordinator_source.contains(
+			"func apply_authority_capoo_data_projectile_snapshot_chunk("
+		)
+		and coordinator_source.contains(
+			'&"net_capoo_data_projectile_snapshot_chunk"'
+		)
+		and not coordinator_source.contains("CAPOO_AK47_BULLET_SCENE")
+		and not coordinator_source.contains("COMBAT_ROBOT_GUNNER_BULLET_SCENE")
+		and not coordinator_source.contains(
+			"COMBAT_ROBOT_GUNNER_ELITE_BULLET_SCENE"
+		)
+		and not coordinator_source.contains("CAPOO_SMG_BULLET_SCENE")
+		and not coordinator_source.contains("FIRE_SORCERER_FIREBALL_VOLLEY_SCENE")
+		and not coordinator_source.contains(
+			"FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE"
 		),
-		"Data projectile 的可选来源快照必须贯穿 gateway、session、MpGame 与 coordinator。"
+		"AK/Gunner/SMG/Fire/Mage 多人收口必须只保留 typed DATA、burst 与可靠完整快照。"
+	)
+	var gateway_source := FileAccess.get_file_as_string(GAMEPLAY_GATEWAY_SCRIPT_PATH)
+	var session_source := FileAccess.get_file_as_string(GAMEPLAY_SESSION_SCRIPT_PATH)
+	var mp_game_source := FileAccess.get_file_as_string(MP_GAME_SCRIPT_PATH)
+	_expect(
+		not gateway_source.contains("func register_local_data_projectile(")
+		and not session_source.contains("func register_local_data_projectile(")
+		and not mp_game_source.contains("func register_local_data_projectile(")
+		and not coordinator_source.contains("func register_local_data_projectile(")
+		and coordinator_source.contains(
+			"func attach_reserved_local_data_projectile("
+		),
+		"废弃的逐发 DATA 注册桥必须从 gateway、session、MpGame 与 coordinator 一并删除。"
 	)
 
 	var host_projectile := ProbeProjectile.new()
@@ -420,102 +427,6 @@ func _run() -> void:
 	)
 	net_manager.net_role = NetManagerStore.NetRole.HOST
 
-	var data_service := RapidFireSimulationServiceScript.new()
-	data_service.reserve_projectile_capacity(3)
-	var data_damage_source_snapshot := DamageSourceSnapshot.create(
-		CombatRelationService.HOSTILE_WAVE,
-		37,
-		4201,
-		99,
-		&"capoo_ak47_data"
-	)
-	var data_handle := _register_data_projectile_handle(
-		data_service,
-		Vector2(12.0, 34.0),
-		data_damage_source_snapshot
-	)
-	var data_broadcast_count_before := broadcast_methods.size()
-	var data_record_count_before := int(
-		coordinator.get_state_metrics().get("projectile_records", -1)
-	)
-	var data_projectile_id := coordinator.register_local_data_projectile(
-		data_service,
-		data_handle,
-		&"capoo_ak47_bullet",
-		0,
-		Vector2(12.0, 34.0),
-		Vector2.RIGHT,
-		23,
-		160.0,
-		1.25,
-		data_damage_source_snapshot
-	)
-	var data_payload := broadcast_arguments.back() as Array
-	var data_frozen_source := (
-		coordinator.get_projectile_damage_source_snapshot(data_projectile_id)
-	)
-	var data_body_source := data_service.get_damage_source_snapshot(data_handle)
-	_expect(
-		data_projectile_id > 0
-		and MpProjectileCoordinatorScript.is_projectile_id_valid_for_host_owner(
-			data_projectile_id,
-			MpProjectileCoordinatorScript.PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
-		)
-		and data_service.get_projectile_id(data_handle) == data_projectile_id
-		and coordinator.has_data_projectile(data_projectile_id)
-		and not coordinator.has_projectile(data_projectile_id)
-		and coordinator.has_projectile_record(data_projectile_id)
-		and int(coordinator.get_state_metrics().get(
-			"known_data_projectiles",
-			-1
-		)) == 1,
-		"Host data handle 必须获得现有 projectile ID、record 与唯一 data backend。"
-	)
-	_expect(
-		data_frozen_source != null
-		and data_frozen_source.source_faction_id
-		== CombatRelationService.HOSTILE_WAVE
-		and data_frozen_source.credit_peer_id == 37
-		and data_frozen_source.instigator_entity_id == 4201
-		and data_frozen_source.event_source_id == data_projectile_id
-		and data_frozen_source.source_type == &"capoo_ak47_data",
-		"Host data projectile record 必须冻结敌军阵营与 credit，并把事件ID绑定到分配后的 projectile ID。"
-	)
-	_expect(
-		data_body_source != null
-		and data_frozen_source != null
-		and data_body_source.source_faction_id
-		== data_frozen_source.source_faction_id
-		and data_body_source.credit_peer_id == data_frozen_source.credit_peer_id
-		and data_body_source.instigator_entity_id
-		== data_frozen_source.instigator_entity_id
-		and data_body_source.event_source_id == data_projectile_id
-		and data_body_source.source_type == data_frozen_source.source_type,
-		"Host data 模拟槽与网络 record 必须持有同一份冻结来源值。"
-	)
-	_expect(
-		broadcast_methods.size() == data_broadcast_count_before + 1
-		and broadcast_methods.back() == &"net_projectile_fired"
-		and broadcast_argument_counts.back() == 17
-		and data_payload.size() == 17
-		and int(data_payload[0]) == data_projectile_id
-		and String(data_payload[1]) == "capoo_ak47_bullet"
-		and int(data_payload[2]) == 0
-		and data_payload[3] == Vector2(12.0, 34.0)
-		and data_payload[4] == Vector2.RIGHT
-		and int(data_payload[5]) == 23
-		and is_equal_approx(float(data_payload[6]), 160.0)
-		and is_equal_approx(float(data_payload[7]), 1.25)
-		and not bool(data_payload[8])
-		and int(data_payload[9]) == 0
-		and int(data_payload[11]) == 0
-		and int(data_payload[12]) == CombatRelationService.HOSTILE_WAVE
-		and int(data_payload[13]) == 37
-		and int(data_payload[14]) == 4201
-		and int(data_payload[15]) == data_projectile_id
-		and String(data_payload[16]) == "capoo_ak47_data",
-		"Data handle 广播必须追加与模拟槽一致的冻结来源载荷。"
-	)
 	var client_visual_coordinator := (
 		PROJECTILE_COORDINATOR_SCENE.instantiate() as MpProjectileCoordinatorScript
 	)
@@ -530,146 +441,6 @@ func _run() -> void:
 	client_visual_coordinator.enemy_rapid_fire_action_requested.connect(
 		_on_enemy_rapid_fire_action_requested
 	)
-	net_manager.net_role = NetManagerStore.NetRole.CLIENT
-	client_visual_coordinator.apply_authority_projectile_fired(
-		1,
-		data_projectile_id,
-		"capoo_ak47_bullet",
-		0,
-		Vector2(12.0, 34.0),
-		Vector2.RIGHT,
-		23,
-		160.0,
-		1.25,
-		false,
-		0,
-		400.0,
-		0,
-		CombatRelationService.HOSTILE_WAVE,
-		37,
-		4201,
-		data_projectile_id,
-		"capoo_ak47_data"
-	)
-	var client_visual_proxy := client_visual_coordinator.get_projectile(
-		data_projectile_id
-	)
-	var client_visual_bullet := client_visual_proxy as CapooAK47Bullet
-	var client_visual_source := (
-		client_visual_bullet.damage_source_snapshot
-		if client_visual_bullet != null
-		else null
-	)
-	_expect(
-		client_visual_proxy is CapooAK47Bullet
-		and not client_visual_coordinator.has_data_projectile(data_projectile_id)
-		and client_visual_source != null
-		and client_visual_source.source_faction_id
-		== CombatRelationService.HOSTILE_WAVE
-		and client_visual_source.credit_peer_id == 37
-		and client_visual_source.instigator_entity_id == 4201
-		and client_visual_source.event_source_id == data_projectile_id
-		and client_visual_source.source_type == &"capoo_ak47_data",
-		"Client 必须从 Host 标量载荷重建快照并传给网络视觉弹体。"
-	)
-	client_visual_coordinator.apply_authority_projectile_fired(
-		1,
-		data_projectile_id,
-		"capoo_ak47_bullet",
-		0,
-		Vector2(99.0, 99.0),
-		Vector2.LEFT,
-		99,
-		99.0,
-		9.0,
-		false,
-		0,
-		399.0,
-		0,
-		3,
-		999,
-		999,
-		999,
-		"stale_source"
-	)
-	var source_after_stale_packet := (
-		client_visual_coordinator.get_projectile_damage_source_snapshot(
-			data_projectile_id
-		)
-	)
-	_expect(
-		source_after_stale_packet != null
-		and source_after_stale_packet.source_faction_id
-		== CombatRelationService.HOSTILE_WAVE
-		and source_after_stale_packet.credit_peer_id == 37
-		and source_after_stale_packet.source_type == &"capoo_ak47_data",
-		"重复或乱序的 authority 包不得覆盖首次确认的冻结来源。"
-	)
-	var invalid_faction_id := MpProjectileCoordinatorScript.encode_projectile_id(
-		MpProjectileCoordinatorScript.PROJECTILE_ID_FALLBACK_OWNER_PEER_ID,
-		MpProjectileCoordinatorScript.PROJECTILE_ID_HOST_ORIGIN_BIT | 701
-	)
-	client_visual_coordinator.apply_authority_projectile_fired(
-		1,
-		invalid_faction_id,
-		"capoo_ak47_bullet",
-		0,
-		Vector2.ZERO,
-		Vector2.RIGHT,
-		5,
-		100.0,
-		1.0,
-		false,
-		0,
-		400.0,
-		0,
-		CombatRelationService.MAX,
-		0,
-		0,
-		invalid_faction_id,
-		"invalid_faction"
-	)
-	var negative_credit_id := MpProjectileCoordinatorScript.encode_projectile_id(
-		MpProjectileCoordinatorScript.PROJECTILE_ID_FALLBACK_OWNER_PEER_ID,
-		MpProjectileCoordinatorScript.PROJECTILE_ID_HOST_ORIGIN_BIT | 702
-	)
-	client_visual_coordinator.apply_authority_projectile_fired(
-		1,
-		negative_credit_id,
-		"capoo_ak47_bullet",
-		0,
-		Vector2.ZERO,
-		Vector2.RIGHT,
-		5,
-		100.0,
-		1.0,
-		false,
-		0,
-		400.0,
-		0,
-		CombatRelationService.HOSTILE_WAVE,
-		-2,
-		0,
-		negative_credit_id,
-		"negative_credit"
-	)
-	_expect(
-		not client_visual_coordinator.has_projectile(invalid_faction_id)
-		and not client_visual_coordinator.has_projectile_record(
-			invalid_faction_id
-		)
-		and not client_visual_coordinator.has_projectile(negative_credit_id)
-		and not client_visual_coordinator.has_projectile_record(
-			negative_credit_id
-		),
-		"非法阵营或负来源 ID 的 authority 载荷必须在实例化前拒绝。"
-	)
-	client_visual_coordinator.notify_projectile_finished(
-		data_projectile_id,
-		client_visual_proxy
-	)
-	if client_visual_proxy != null and is_instance_valid(client_visual_proxy):
-		client_visual_proxy.free()
 
 	# Production AK/Gunner routing reserves one contiguous range, attaches Host
 	# DATA rows at the authored cadence, and emits exactly one compact burst.
@@ -766,8 +537,9 @@ func _run() -> void:
 		and peer_rpc_methods == [
 			&"net_enemy_rapid_fire_repair_burst",
 			&"net_enemy_rapid_fire_snapshot_chunk",
+			&"net_capoo_data_projectile_snapshot_chunk",
 		],
-		"进行中 burst 的 repair 必须先可靠补描述，再发送已 attach 前缀快照。"
+		"进行中 burst 的 repair 必须先可靠补描述，再发送 rapid 与 Capoo 完整清单。"
 	)
 	peer_rpc_peer_ids.clear()
 	peer_rpc_methods.clear()
@@ -926,9 +698,8 @@ func _run() -> void:
 		"CH5 终止先到时必须按 Host 时间恢复终止前3发，并拒绝终止后尾弹。"
 	)
 
-	# The 32-row batch plus the earlier live DATA row split into two reliable
-	# repair chunks. Applying them in reverse order must remain atomic.
-	# in reverse order must be atomic and duplicate-safe.
+	# The 32-row batch splits into two reliable rapid-fire chunks, followed by
+	# the independent empty Capoo manifest. Reverse rapid delivery stays atomic.
 	client_visual_coordinator.reset_session_state()
 	peer_rpc_peer_ids.clear()
 	peer_rpc_methods.clear()
@@ -936,15 +707,17 @@ func _run() -> void:
 	net_manager.net_role = NetManagerStore.NetRole.HOST
 	_expect(
 		coordinator.send_active_data_visual_snapshot_to_peer(77)
-		and peer_rpc_methods.size() == 2
+		and peer_rpc_methods.size() == 3
 		and peer_rpc_methods[0]
 		== &"net_enemy_rapid_fire_snapshot_chunk"
 		and peer_rpc_methods[1]
-		== &"net_enemy_rapid_fire_snapshot_chunk",
-		"全部 33 个活跃 DATA rows 必须分成两个 peer-specific 视觉快照块。"
+		== &"net_enemy_rapid_fire_snapshot_chunk"
+		and peer_rpc_methods[2]
+		== &"net_capoo_data_projectile_snapshot_chunk",
+		"全部 32 个 rapid DATA rows 必须分成两个块，并保留独立 Capoo 清单链。"
 	)
 	net_manager.net_role = NetManagerStore.NetRole.CLIENT
-	if peer_rpc_arguments.size() == 2:
+	if peer_rpc_arguments.size() == 3:
 		var tail_chunk := peer_rpc_arguments[1]
 		var head_chunk := peer_rpc_arguments[0]
 		_expect(
@@ -974,7 +747,7 @@ func _run() -> void:
 			and int(client_visual_coordinator.get_state_metrics().get(
 				"known_replica_projectiles",
 				-1
-			)) == RAPID_BURST_COUNT + 1,
+			)) == RAPID_BURST_COUNT,
 			"全部乱序块收齐后必须原子恢复每个视觉 row。"
 		)
 		_expect(
@@ -1112,13 +885,13 @@ func _run() -> void:
 	)
 	var explicit_local_source := DamageSourceSnapshot.legacy_player_owned(
 		explicit_local_id,
-		&"capoo_ak47_bullet",
+		&"player_bullet",
 		4,
 		4
 	)
 	client_visual_coordinator.receive_projectile_fired(
 		explicit_local_id,
-		&"capoo_ak47_bullet",
+		&"player_bullet",
 		4,
 		Vector2.ZERO,
 		Vector2.RIGHT,
@@ -1260,134 +1033,6 @@ func _run() -> void:
 		cancellation_service,
 		cancellation_handle
 	)
-	coordinator.receive_projectile_fired(
-		data_projectile_id,
-		&"capoo_ak47_bullet",
-		0,
-		Vector2(12.0, 34.0),
-		Vector2.RIGHT,
-		23,
-		160.0,
-		1.25,
-		false,
-		0,
-		0,
-		0.0,
-		400.0,
-		data_frozen_source
-	)
-	_expect(
-		coordinator.has_data_projectile(data_projectile_id)
-		and not coordinator.has_projectile(data_projectile_id),
-		"同一 projectile ID 已有 data backend 时不得再生成 Node backend。"
-	)
-
-	var duplicate_metrics_before := coordinator.get_state_metrics()
-	var duplicate_broadcast_count_before := broadcast_methods.size()
-	_expect(
-		coordinator.register_local_data_projectile(
-			data_service,
-			data_handle,
-			&"capoo_ak47_bullet",
-			0,
-			Vector2(12.0, 34.0),
-			Vector2.RIGHT,
-			23,
-			160.0,
-			1.25
-		) == 0
-		and broadcast_methods.size() == duplicate_broadcast_count_before
-		and int(coordinator.get_state_metrics().get(
-			"known_data_projectiles",
-			-1
-		)) == int(duplicate_metrics_before.get("known_data_projectiles", -2))
-		and int(coordinator.get_state_metrics().get(
-			"projectile_records",
-			-1
-		)) == int(duplicate_metrics_before.get("projectile_records", -2)),
-		"重复 handle 的 assign 失败必须原子保持 backend/record 且不广播。"
-	)
-	coordinator.notify_data_projectile_finished(
-		data_projectile_id,
-		data_service,
-		data_handle + 1
-	)
-	_expect(
-		coordinator.has_data_projectile(data_projectile_id),
-		"错误 handle 的 finish 不得移除 live data backend。"
-	)
-	data_service.release_projectile(data_handle)
-	var finish_broadcast_start := broadcast_methods.size()
-	coordinator.notify_data_projectile_finished(
-		data_projectile_id,
-		data_service,
-		data_handle,
-		RapidFireSimulationServiceScript.CompletionReason.WORLD,
-		Vector2(18.0, 34.0),
-		Vector2.RIGHT
-	)
-	_expect(
-		not coordinator.has_data_projectile(data_projectile_id)
-		and coordinator.has_projectile_record(data_projectile_id)
-		and data_service.get_active_slot_count() == 0
-		and coordinator.flush_enemy_rapid_fire_finish_batch()
-		and broadcast_methods.size() == finish_broadcast_start + 1
-		and broadcast_methods.back() == &"net_enemy_rapid_fire_finished_batch",
-		"Data finish 必须移除精确 backend、保留 record 并合批广播权威终点。"
-	)
-
-	var client_data_service := RapidFireSimulationServiceScript.new()
-	var client_data_handle := _register_data_projectile_handle(
-		client_data_service,
-		Vector2.ZERO
-	)
-	net_manager.net_role = NetManagerStore.NetRole.CLIENT
-	var client_broadcast_count_before := broadcast_methods.size()
-	var client_request_count_before := host_request_methods.size()
-	_expect(
-		coordinator.register_local_data_projectile(
-			client_data_service,
-			client_data_handle,
-			&"capoo_ak47_bullet",
-			0,
-			Vector2.ZERO,
-			Vector2.RIGHT,
-			9,
-			120.0,
-			1.0
-		) == 0
-		and client_data_service.get_projectile_id(client_data_handle) == 0
-		and broadcast_methods.size() == client_broadcast_count_before
-		and host_request_methods.size() == client_request_count_before,
-		"Client 不得登记或上行权威 data projectile。"
-	)
-	net_manager.net_role = NetManagerStore.NetRole.HOST
-	client_data_service.release_projectile(client_data_handle)
-
-	var offline_gateway := MultiplayerGameplayGateway.new()
-	var offline_data_service := RapidFireSimulationServiceScript.new()
-	var offline_data_handle := _register_data_projectile_handle(
-		offline_data_service,
-		Vector2.ONE
-	)
-	_expect(
-		offline_gateway.register_local_data_projectile(
-			offline_data_service,
-			offline_data_handle,
-			&"capoo_ak47_bullet",
-			0,
-			Vector2.ONE,
-			Vector2.RIGHT,
-			7,
-			100.0,
-			1.0
-		) == 0
-		and offline_data_service.get_projectile_id(offline_data_handle) == 0,
-		"单机 gateway 无 session 时必须返回 0 且不改变 data handle。"
-	)
-	offline_data_service.release_projectile(offline_data_handle)
-	offline_gateway.free()
-
 	var encoded_host_id := MpProjectileCoordinatorScript.encode_projectile_id(
 		7,
 		MpProjectileCoordinatorScript.PROJECTILE_ID_HOST_ORIGIN_BIT | 19
@@ -1712,33 +1357,33 @@ func _run() -> void:
 		peer_data_service,
 		Vector2(3.0, 0.0)
 	)
-	var peer_two_data_id := coordinator.register_local_data_projectile(
-		peer_data_service,
-		peer_two_data_handle,
-		&"capoo_ak47_bullet",
-		2,
-		Vector2(2.0, 0.0),
-		Vector2.RIGHT,
-		10,
-		100.0,
-		1.0
-	)
-	var peer_three_data_id := coordinator.register_local_data_projectile(
-		peer_data_service,
-		peer_three_data_handle,
-		&"capoo_ak47_bullet",
-		3,
-		Vector2(3.0, 0.0),
-		Vector2.RIGHT,
-		10,
-		100.0,
-		1.0
-	)
+	var peer_two_data_ids := coordinator.reserve_host_projectile_id_range(2, 1)
+	var peer_three_data_ids := coordinator.reserve_host_projectile_id_range(3, 1)
+	var peer_two_data_id := int(peer_two_data_ids[0])
+	var peer_three_data_id := int(peer_three_data_ids[0])
 	_expect(
 		peer_two_data_id > 0
 		and peer_three_data_id > 0
+		and coordinator.attach_reserved_local_data_projectile(
+			peer_data_service,
+			peer_two_data_handle,
+			peer_two_data_id,
+			&"capoo_ak47_bullet",
+			2,
+			12,
+			2.0
+		)
+		and coordinator.attach_reserved_local_data_projectile(
+			peer_data_service,
+			peer_three_data_handle,
+			peer_three_data_id,
+			&"capoo_ak47_bullet",
+			3,
+			12,
+			2.0
+		)
 		and peer_data_service.get_active_slot_count() == 2,
-		"Peer clear/reset 前必须登记两个 live data handles。"
+		"Peer clear/reset 前必须通过 typed reservation 登记两个 live DATA handles。"
 	)
 	coordinator.clear_projectile_records_for_peer(2)
 	coordinator.clear_peer(2)
@@ -1791,12 +1436,6 @@ func _run() -> void:
 	finished_projectile.free()
 	peer_two_projectile.free()
 	peer_three_projectile.free()
-	data_service.prepare_for_runtime_teardown()
-	data_service.free()
-	client_data_service.prepare_for_runtime_teardown()
-	client_data_service.free()
-	offline_data_service.prepare_for_runtime_teardown()
-	offline_data_service.free()
 	peer_data_service.prepare_for_runtime_teardown()
 	peer_data_service.free()
 	batch_service.prepare_for_runtime_teardown()
@@ -1833,20 +1472,6 @@ func _register_data_projectile_handle(
 		0,
 		damage_source_snapshot
 	)
-
-
-func _get_data_registration_source(script_path: String) -> String:
-	var source := FileAccess.get_file_as_string(script_path)
-	var function_start := source.find("func register_local_data_projectile(")
-	if function_start < 0:
-		return ""
-	var function_end := source.find("\nfunc ", function_start + 1)
-	var next_abstract := source.find("\n@abstract", function_start + 1)
-	if function_end < 0:
-		function_end = source.length()
-	if next_abstract >= 0:
-		function_end = mini(function_end, next_abstract)
-	return source.substr(function_start, function_end - function_start)
 
 
 func _test_atomic_snapshot_commit(

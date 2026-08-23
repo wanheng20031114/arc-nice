@@ -87,31 +87,7 @@ param(
 
     [bool]$RuntimeCountScans = $false,
 
-    [bool]$ProjectileWorldCertificate = $false,
-
-    [bool]$ProjectileHotMetrics = $false,
-
-    [bool]$BatchedProjectileMotion = $true,
-
-    [bool]$AkAttackPhaseStagger = $true,
-
-    [bool]$SmgShortRangeTargeting = $true,
-
-    [bool]$SmgHitscanAttack = $true,
-
-    [bool]$DisableSmgProjectiles = $false,
-
-    [bool]$ExpandedProjectilePrewarm = $true,
-
-    [ValidateRange(0, 5000)]
-    [int]$GunnerBulletPoolPrewarm = 0,
-
-    [ValidateRange(1, 10000)]
-    [int]$GunnerBulletPoolRetained = 96,
-
     [bool]$EnemyAttackAudioLimiter = $true,
-
-    [bool]$PooledMageImpactEffect = $true,
 
     [string]$GodotExe = "C:\Program Files\Godot\Godot_console.exe",
 
@@ -252,8 +228,7 @@ if ($GateProfile -ne "diagnostic") {
         $FenceAbMetrics -or
         $EnemyHotMetrics -or
         $GuardianOverlapMetrics -or
-        $RuntimeCountScans -or
-        $ProjectileHotMetrics
+        $RuntimeCountScans
     ) {
         $gateConfigurationFailures.Add(
             "Intrusive hot-path/count instrumentation must be disabled."
@@ -412,18 +387,7 @@ $godotArguments += @(
     "--guardian-unchanged-diff-fast-path=$($GuardianUnchangedDiffFastPath.ToString().ToLowerInvariant())",
     "--guardian-refresh-interval=$GuardianRefreshInterval",
     "--runtime-count-scans=$($RuntimeCountScans.ToString().ToLowerInvariant())",
-    "--projectile-world-certificate=$($ProjectileWorldCertificate.ToString().ToLowerInvariant())",
-    "--projectile-hot-metrics=$($ProjectileHotMetrics.ToString().ToLowerInvariant())",
-    "--batched-projectile-motion=$($BatchedProjectileMotion.ToString().ToLowerInvariant())",
-    "--ak-attack-phase-stagger=$($AkAttackPhaseStagger.ToString().ToLowerInvariant())",
-    "--smg-short-range-targeting=$($SmgShortRangeTargeting.ToString().ToLowerInvariant())",
-    "--smg-hitscan-attack=$($SmgHitscanAttack.ToString().ToLowerInvariant())",
-    "--disable-smg-projectiles=$($DisableSmgProjectiles.ToString().ToLowerInvariant())",
-    "--expanded-projectile-prewarm=$($ExpandedProjectilePrewarm.ToString().ToLowerInvariant())",
-    "--gunner-bullet-pool-prewarm=$GunnerBulletPoolPrewarm",
-    "--gunner-bullet-pool-retained=$GunnerBulletPoolRetained",
-    "--enemy-attack-audio-limiter=$($EnemyAttackAudioLimiter.ToString().ToLowerInvariant())",
-    "--pooled-mage-impact-effect=$($PooledMageImpactEffect.ToString().ToLowerInvariant())"
+    "--enemy-attack-audio-limiter=$($EnemyAttackAudioLimiter.ToString().ToLowerInvariant())"
 )
 if (-not [string]::IsNullOrWhiteSpace($WindowSize)) {
     if ($WindowSize -notmatch '^\d+x\d+$') {
@@ -1043,13 +1007,11 @@ try {
         enemy_hot_metrics = $EnemyHotMetrics
         guardian_overlap_metrics = $GuardianOverlapMetrics
         runtime_count_scans = $RuntimeCountScans
-        projectile_hot_metrics = $ProjectileHotMetrics
         any_enabled = (
             $FenceAbMetrics -or
             $EnemyHotMetrics -or
             $GuardianOverlapMetrics -or
-            $RuntimeCountScans -or
-            $ProjectileHotMetrics
+            $RuntimeCountScans
         )
     }
     $fingerprint = [ordered]@{

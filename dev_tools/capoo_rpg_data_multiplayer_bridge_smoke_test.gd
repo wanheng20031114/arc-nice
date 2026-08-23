@@ -9,6 +9,9 @@ const COORDINATOR_SCENE := preload(
 const CapooRPGRocketSimulationServiceScript := preload(
 	"res://scene/combat/simulation/capoo_rpg_rocket_simulation_service.gd"
 )
+const CapooDataProjectileSnapshotCodecScript := preload(
+	"res://scene/multiplayer/projectile/capoo_data_projectile_snapshot_codec.gd"
+)
 
 const PROJECTILE_TYPE := &"capoo_rpg_rocket"
 const SPAWN_POSITION := Vector2(120.0, 80.0)
@@ -181,23 +184,37 @@ func _run() -> void:
 	for message in peer_messages:
 		if (
 			int(message["peer_id"]) == 9
-			and StringName(message["method_name"]) == &"net_projectile_fired"
+			and StringName(message["method_name"])
+				== &"net_capoo_data_projectile_snapshot_chunk"
 		):
-			var arguments := message["arguments"] as Array
-			if not arguments.is_empty() and int(arguments[0]) == projectile_id:
-				late_join_payload = arguments
-				break
+			late_join_payload = message["arguments"] as Array
+			break
+	var late_join_record: Dictionary = {}
+	if late_join_payload.size() == 5:
+		var decoded := CapooDataProjectileSnapshotCodecScript.decode_chunk(
+			late_join_payload[4] as PackedByteArray
+		)
+		if bool(decoded.get("valid", false)):
+			var decoded_records := decoded.get("records", []) as Array
+			if decoded_records.size() == 1:
+				late_join_record = decoded_records[0] as Dictionary
 	_expect(
 		sent_late_join_snapshot
-		and late_join_payload.size() == 17
-		and int(late_join_payload[0]) == projectile_id
-		and int(late_join_payload[12])
+		and late_join_payload.size() == 5
+		and int(late_join_payload[1]) == 0
+		and int(late_join_payload[2]) == 1
+		and float(late_join_payload[3]) > float(broadcasts[0][10])
+		and int(late_join_record.get("projectile_id", 0)) == projectile_id
+		and int(late_join_record.get("family", 0))
+			== CapooDataProjectileSnapshotCodecScript.FAMILY_CAPOO_RPG
+		and int(late_join_record.get("source_faction_id", -1))
 			== CombatRelationService.HOSTILE_WAVE
-		and int(late_join_payload[13]) == 0
-		and int(late_join_payload[14]) == 731
-		and int(late_join_payload[15]) == projectile_id
-		and StringName(late_join_payload[16]) == PROJECTILE_TYPE,
-		"Late-join repair must replay the live RPG DATA row with its original frozen source."
+		and int(late_join_record.get("source_credit_peer_id", -1)) == 0
+		and int(late_join_record.get("source_instigator_entity_id", -1)) == 731
+		and int(late_join_record.get("source_event_id", 0)) == projectile_id
+		and StringName(late_join_record.get("source_type", &""))
+			== PROJECTILE_TYPE,
+		"Late-join repair must include the live RPG DATA row and its frozen source in the reliable unified snapshot."
 	)
 
 	var wrong_type_handle := _spawn_pending(service, launch_source)

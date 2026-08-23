@@ -129,34 +129,6 @@ func register_local_projectile(
 	)
 
 
-func register_local_data_projectile(
-	service: RapidFireSimulationService,
-	handle: int,
-	projectile_type: StringName,
-	owner_peer_id: int,
-	spawn_position: Vector2,
-	direction: Vector2,
-	damage: int,
-	speed: float,
-	lifetime: float,
-	damage_source_snapshot: DamageSourceSnapshot = null
-) -> int:
-	if multiplayer_session == null:
-		return 0
-	return multiplayer_session.register_local_data_projectile(
-		service,
-		handle,
-		projectile_type,
-		owner_peer_id,
-		spawn_position,
-		direction,
-		damage,
-		speed,
-		lifetime,
-		damage_source_snapshot
-	)
-
-
 func register_local_capoo_rpg_data(
 	service: CapooRPGRocketSimulationServiceScript,
 	handle: int,

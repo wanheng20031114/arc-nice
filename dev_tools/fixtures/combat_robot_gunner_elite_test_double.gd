@@ -12,7 +12,6 @@ func _fire_locked_bullet() -> bool:
 		return false
 	accepted_shots.append({
 		"projectile_type": gunner_config_cache.projectile_type,
-		"projectile_scene": gunner_config_cache.projectile_scene,
 		"damage": get_effective_attack_damage(gunner_config_cache.attack_damage),
 		"speed": gunner_config_cache.projectile_speed,
 		"lifetime": gunner_config_cache.projectile_lifetime,

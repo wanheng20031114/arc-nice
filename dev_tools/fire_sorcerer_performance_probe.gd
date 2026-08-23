@@ -74,10 +74,8 @@ func _init() -> void:
 
 
 func _run() -> void:
-	# This retained probe is the explicit LEGACY baseline. DATA acceptance lives
-	# in fire_sorcerer_data_performance_probe.gd and must never consume this
-	# Area2D/object-pool result as a migrated-path pass.
-	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.LEGACY
+	# This retained probe loads the retired Area2D fixture directly as an isolated
+	# baseline. DATA acceptance lives in fire_sorcerer_data_performance_probe.gd.
 	fixture = PoolRuntimeFixture.new()
 	fixture.name = "FireSorcererPerformanceProbe"
 	root.add_child(fixture)
@@ -213,7 +211,6 @@ func _run() -> void:
 	)
 
 	FireSorcererFireballVolley.set_performance_metrics_enabled(false)
-	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.DATA
 	current_scene = null
 	fixture.queue_free()
 	await process_frame

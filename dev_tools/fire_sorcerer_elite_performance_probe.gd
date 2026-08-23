@@ -74,9 +74,8 @@ func _init() -> void:
 
 
 func _run() -> void:
-	# This retained probe is the explicit LEGACY baseline. DATA acceptance lives
-	# in fire_sorcerer_data_performance_probe.gd and covers NORMAL and ELITE rows.
-	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.LEGACY
+	# This retained probe loads the retired elite Area2D fixture directly as an
+	# isolated baseline. The DATA probe covers NORMAL and ELITE rows.
 	fixture = PoolRuntimeFixture.new()
 	fixture.name = "FireSorcererElitePerformanceProbe"
 	root.add_child(fixture)
@@ -212,7 +211,6 @@ func _run() -> void:
 	)
 
 	FireSorcererFireballVolley.set_performance_metrics_enabled(false)
-	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.DATA
 	current_scene = null
 	fixture.queue_free()
 	await process_frame

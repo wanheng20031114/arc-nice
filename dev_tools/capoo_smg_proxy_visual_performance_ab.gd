@@ -12,7 +12,6 @@ var failures: Array[String] = []
 var fixture: Node2D = null
 var proxies: Array[CapooSMG] = []
 var action_id := 0
-var original_allocation_free_mode := true
 
 
 func _init() -> void:
@@ -20,7 +19,6 @@ func _init() -> void:
 
 
 func _run() -> void:
-	original_allocation_free_mode = CapooSMG.allocation_free_proxy_visuals_enabled
 	fixture = Node2D.new()
 	fixture.name = "CapooSmgProxyVisualPerformanceAB"
 	root.add_child(fixture)
@@ -37,30 +35,16 @@ func _run() -> void:
 		proxies.append(proxy)
 	await process_frame
 
-	await _measure_mode(false)
-	await _measure_mode(true)
-	var legacy_samples := PackedFloat64Array()
+	await _measure_round()
 	var timer_samples := PackedFloat64Array()
-	for pair_index in range(SAMPLE_PAIRS):
-		if pair_index % 2 == 0:
-			legacy_samples.append(await _measure_mode(false))
-			timer_samples.append(await _measure_mode(true))
-		else:
-			timer_samples.append(await _measure_mode(true))
-			legacy_samples.append(await _measure_mode(false))
+	for _sample_index in range(SAMPLE_PAIRS):
+		timer_samples.append(await _measure_round())
 
-	var legacy_median := _median(legacy_samples)
 	var timer_median := _median(timer_samples)
 	_expect(
-		_sum_tween_actions() == ACTIONS_PER_ROUND
-		and _sum_timer_actions() == 0,
-		"Final legacy phase must route every action through its Tween path."
-	)
-	await _measure_mode(true)
-	_expect(
 		_sum_timer_actions() == ACTIONS_PER_ROUND
-		and _sum_tween_actions() == 0,
-		"Allocation-free phase must route every action through one timer state."
+		and timer_median > 0.0,
+		"Every proxy action must use the allocation-free timer state."
 	)
 	_expect(
 		_all_proxies_dormant(),
@@ -68,29 +52,23 @@ func _run() -> void:
 	)
 	print(
 		(
-			"CAPOO_SMG_PROXY_VISUAL_AB actions=%d proxies=%d "
-			+ "legacy_tweens=%d timer_tweens=0 "
-			+ "legacy_dispatch_median_usec=%.0f timer_dispatch_median_usec=%.0f "
-			+ "dispatch_speedup=%.3fx"
+			"CAPOO_SMG_PROXY_VISUAL_DATA actions=%d proxies=%d "
+			+ "timer_dispatch_median_usec=%.0f"
 		)
 		% [
 			ACTIONS_PER_ROUND,
 			PROXY_COUNT,
-			ACTIONS_PER_ROUND * 2,
-			legacy_median,
 			timer_median,
-			legacy_median / maxf(timer_median, 1.0),
 		]
 	)
 
-	CapooSMG.allocation_free_proxy_visuals_enabled = original_allocation_free_mode
 	current_scene = null
 	fixture.queue_free()
 	for _cleanup_frame in range(4):
 		await process_frame
 		await physics_frame
 	if failures.is_empty():
-		print("CAPOO_SMG_PROXY_VISUAL_PERFORMANCE_AB_OK")
+		print("CAPOO_SMG_PROXY_VISUAL_PERFORMANCE_OK")
 		quit(0)
 		return
 	for failure in failures:
@@ -98,11 +76,9 @@ func _run() -> void:
 	quit(1)
 
 
-func _measure_mode(allocation_free: bool) -> float:
-	CapooSMG.allocation_free_proxy_visuals_enabled = allocation_free
+func _measure_round() -> float:
 	for proxy in proxies:
 		proxy.proxy_visual_timer_action_count = 0
-		proxy.proxy_visual_tween_action_count = 0
 	var started_usec := Time.get_ticks_usec()
 	for request_index in range(ACTIONS_PER_ROUND):
 		var proxy := proxies[request_index % proxies.size()]
@@ -118,13 +94,6 @@ func _sum_timer_actions() -> int:
 	var total := 0
 	for proxy in proxies:
 		total += proxy.proxy_visual_timer_action_count
-	return total
-
-
-func _sum_tween_actions() -> int:
-	var total := 0
-	for proxy in proxies:
-		total += proxy.proxy_visual_tween_action_count
 	return total
 
 

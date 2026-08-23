@@ -773,25 +773,6 @@ func _test_player_authority_modes() -> void:
 		"CLIENT_VIEW DATA contact must consume locally without damage or network output."
 	)
 
-	await _reset_context(
-		FAR_POSITION,
-		Vector2(12.0, 0.0),
-		FAR_POSITION,
-		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	)
-	var shadow_health := player.current_health
-	_register_projectile(RapidFireService.Mode.SHADOW, 504, 1.0, 1)
-	await _next_manual_step()
-	await _next_manual_step()
-	_expect(
-		service.get_completion_count() == 1
-		and not service.get_completion_damage_applied(0)
-		and player.current_health == shadow_health
-		and session.player_damage_requests.is_empty(),
-		"SHADOW contact must never damage, send a packet, or require an effect path."
-	)
-
-
 func _test_host_plant_and_stable_spawn_order() -> void:
 	await _reset_context(
 		Vector2.ZERO,
@@ -810,8 +791,8 @@ func _test_host_plant_and_stable_spawn_order() -> void:
 	)
 
 	await _reset_context(Vector2(12.0, 0.0))
-	_register_projectile(RapidFireService.Mode.SHADOW, 701, 1.0, 1)
-	_register_projectile(RapidFireService.Mode.SHADOW, 702, 1.0, 1)
+	_register_projectile(RapidFireService.Mode.DATA, 701, 1.0, 1)
+	_register_projectile(RapidFireService.Mode.DATA, 702, 1.0, 1)
 	await _next_manual_step()
 	await _next_manual_step()
 	_expect(

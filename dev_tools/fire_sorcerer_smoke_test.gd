@@ -92,9 +92,8 @@ func _init() -> void:
 
 
 func _run() -> void:
-	# This suite certifies the authored legacy Area2D behavior. The dedicated
-	# data-backend smoke covers the production node-free path.
-	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.LEGACY
+	# This suite loads the retired Area2D fixture directly for isolated behavior
+	# coverage. Production authority is certified by the DATA backend smoke.
 	test_root = PlayerTestCombatRuntime.new()
 	test_root.name = "FireSorcererSmokeTest"
 	root.add_child(test_root)
@@ -102,7 +101,6 @@ func _run() -> void:
 
 	_test_resource_and_scene_contract()
 	await _test_defense_contract()
-	await _test_three_fireball_windup_and_cooldown_origin()
 	await _test_magic_first_contact_without_aoe()
 	await _test_strong_homing()
 	await _test_low_frequency_target_refresh()
@@ -119,8 +117,6 @@ func _run() -> void:
 	await physics_frame
 	for _cleanup_frame in range(4):
 		await process_frame
-	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.DATA
-
 	if failures.is_empty():
 		print("FIRE_SORCERER_SMOKE_TEST_OK")
 		quit(0)
@@ -144,9 +140,10 @@ func _test_resource_and_scene_contract() -> void:
 		"Fire Sorcerer must own an independent enemy scene."
 	)
 	_expect(
-		FIRE_SORCERER_CONFIG.volley_scene == FIREBALL_VOLLEY_SCENE,
-		"Fire Sorcerer must own an independent three-fireball volley scene."
+		not _object_has_property(FIRE_SORCERER_CONFIG, &"volley_scene"),
+		"Fire Sorcerer DATA config must not expose the retired volley scene."
 	)
+	_expect(FIREBALL_VOLLEY_SCENE != null, "The isolated legacy volley fixture must remain loadable.")
 	_expect(
 		FIRE_SORCERER_CONFIG.max_health == 200,
 		"Fire Sorcerer health must be 200."
@@ -395,134 +392,6 @@ func _test_defense_contract() -> void:
 	)
 	enemy.queue_free()
 	await process_frame
-
-
-func _test_three_fireball_windup_and_cooldown_origin() -> void:
-	var player := _spawn_player(Vector2(240.0, 0.0))
-	player.collision_layer = 0
-	player.collision_mask = 0
-	var enemy := _spawn_sorcerer(Vector2.ZERO, player, null)
-	enemy.set_physics_process(false)
-	await physics_frame
-
-	var volleys_before := _collect_volleys().size()
-	_expect(
-		bool(enemy.call(
-			"_try_start_summon",
-			player,
-			FIRE_SORCERER_CONFIG
-		)),
-		"An unobstructed target inside 672 px must start summon windup."
-	)
-	_expect(
-		enemy.combat_state == FireSorcerer.CombatState.SUMMON
-		and enemy.animated_sprite.animation == &"windup"
-		and is_zero_approx(enemy.attack_cooldown_left),
-		"Windup must begin before the post-generation cooldown."
-	)
-	for preview in enemy.summon_previews:
-		_expect(
-			preview.visible and preview.scale.length() < 0.001,
-			"Every preview fireball must begin visible at scale zero."
-		)
-	_expect(
-		_collect_volleys().size() == volleys_before,
-		"Real fireballs must not exist at the beginning of windup."
-	)
-
-	enemy.summon_animation_player.advance(
-		FIRE_SORCERER_CONFIG.summon_duration * 0.5
-	)
-	var growing_preview_count := 0
-	for preview in enemy.summon_previews:
-		if (
-			preview.scale.x > 0.0
-			and preview.scale.x < 1.0
-			and preview.scale.y > 0.0
-			and preview.scale.y < 1.0
-		):
-			growing_preview_count += 1
-	_expect(
-		growing_preview_count == 3,
-		"All three preview fireballs must visibly grow from 0 toward 1."
-	)
-
-	enemy.call(
-		"_update_summon",
-		FIRE_SORCERER_CONFIG.summon_duration - 0.01
-	)
-	_expect(
-		_collect_volleys().size() == volleys_before
-		and is_zero_approx(enemy.attack_cooldown_left),
-		"Neither the volley nor its 3 s cooldown may begin before windup completes."
-	)
-	enemy.call("_update_summon", 0.02)
-	var volleys := _collect_volleys()
-	_expect(
-		volleys.size() == volleys_before + 1,
-		"Completing windup must create exactly one three-fireball volley root."
-	)
-	_expect(
-		enemy.combat_state == FireSorcerer.CombatState.CHASE
-		and enemy.animated_sprite.animation == &"attack"
-		and is_equal_approx(
-			enemy.attack_cooldown_left,
-			FIRE_SORCERER_CONFIG.attack_interval
-		),
-		"The 3 s cooldown must start only after real fireballs are generated."
-	)
-	enemy.animated_sprite.animation_finished.emit()
-	_expect(
-		enemy.animated_sprite.animation == &"move",
-		"The authority animation must return to move after the non-looping "
-		+ "staff attack finishes."
-	)
-	var spawned_volley: FireSorcererFireballVolley = volleys.back()
-	spawned_volley.set_physics_process(false)
-	_expect(
-		spawned_volley.global_position.is_equal_approx(
-			enemy.summon_pivot.global_position
-		),
-		"Real fireballs must replace the previews at the staff summon pivot."
-	)
-	var expected_offsets := {}
-	for marker in enemy.summon_markers:
-		expected_offsets[marker.position] = true
-	var actual_offsets := {}
-	for ball in spawned_volley.ball_areas:
-		actual_offsets[ball.position] = true
-	_expect(
-		actual_offsets == expected_offsets,
-		"Generated fireballs must preserve the three preview marker offsets."
-	)
-	for preview in enemy.summon_previews:
-		_expect(
-			not preview.visible and preview.scale.length() < 0.001,
-			"Preview fireballs must hide after the real volley appears."
-		)
-
-	enemy.call(
-		"_update_attack_cooldown",
-		FIRE_SORCERER_CONFIG.attack_interval - 0.01
-	)
-	_expect(
-		enemy.attack_cooldown_left > 0.0,
-		"Post-generation cooldown must remain active until the full 3 seconds."
-	)
-	enemy.call("_update_attack_cooldown", 0.02)
-	_expect(
-		is_zero_approx(enemy.attack_cooldown_left)
-		and FIRE_SORCERER_CONFIG.summon_duration
-			+ FIRE_SORCERER_CONFIG.attack_interval
-			> FIRE_SORCERER_CONFIG.attack_interval,
-		"Overall attack cycle must exceed 3 seconds because windup is additional."
-	)
-
-	spawned_volley.queue_free()
-	enemy.queue_free()
-	player.queue_free()
-	await process_frame
-	await physics_frame
 
 
 func _test_magic_first_contact_without_aoe() -> void:
@@ -1109,6 +978,13 @@ func _collect_volleys() -> Array[FireSorcererFireballVolley]:
 		if volley != null and not volley.is_queued_for_deletion():
 			volleys.append(volley)
 	return volleys
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if StringName(property.get("name", "")) == property_name:
+			return true
+	return false
 
 
 func _expect(condition: bool, message: String) -> void:

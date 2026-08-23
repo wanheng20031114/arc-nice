@@ -247,6 +247,16 @@ func net_enemy_rapid_fire_snapshot_chunk(
 ) -> void:
 	pass
 
+@rpc("authority", "call_remote", "reliable", 5)
+func net_capoo_data_projectile_snapshot_chunk(
+	snapshot_id: int,
+	chunk_index: int,
+	chunk_count: int,
+	host_snapshot_timestamp: float,
+	descriptor: PackedByteArray
+) -> void:
+	pass
+
 @rpc("authority", "call_remote", "unreliable_ordered", 4)
 func net_tango_laser_volley(
 	projectile_ids: PackedInt64Array,

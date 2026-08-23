@@ -129,21 +129,6 @@ func register_local_projectile(
 ) -> void
 
 
-@abstract
-func register_local_data_projectile(
-	service: RapidFireSimulationService,
-	handle: int,
-	projectile_type: StringName,
-	owner_peer_id: int,
-	spawn_position: Vector2,
-	direction: Vector2,
-	damage: int,
-	speed: float,
-	lifetime: float,
-	damage_source_snapshot: DamageSourceSnapshot = null
-) -> int
-
-
 ## RPG DATA integration is optional for specialized test/session subclasses.
 ## Production MpGame overrides this bridge; legacy sessions safely reject it.
 func register_local_capoo_rpg_data(

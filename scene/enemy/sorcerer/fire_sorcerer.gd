@@ -12,17 +12,6 @@ const ATTACK_TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target_world"
 const NORMAL_PROJECTILE_SOURCE_TYPE := &"fire_sorcerer_fireball_volley"
 const ELITE_PROJECTILE_SOURCE_TYPE := &"fire_sorcerer_elite_fireball_volley"
 
-enum ProjectileBackend {
-	LEGACY,
-	SHADOW,
-	DATA,
-}
-
-# The three-ball kernel keeps every authored ball independent and preserves the
-# original one-physics-tick activation boundary. Production authority is DATA;
-# this explicit process-wide switch remains available for parity probes.
-static var projectile_backend: ProjectileBackend = ProjectileBackend.DATA
-
 enum CombatState {
 	CHASE,
 	SUMMON,
@@ -56,7 +45,6 @@ var summon_target: Node2D = null
 var latest_proxy_action_id: int = 0
 var cached_runtime_attack_target: Node2D = null
 var attack_target_refresh_left: float = 0.0
-var shadow_registration_failures: int = 0
 
 
 func _ready() -> void:
@@ -143,10 +131,6 @@ func _physics_process(delta: float) -> void:
 	if (
 		combat_target != null
 		and fire_config != null
-		and (
-			FireSorcerer.projectile_backend != ProjectileBackend.LEGACY
-			or fire_config.volley_scene != null
-		)
 		and _try_hold_ranged_attack_position(
 			combat_target,
 			fire_config.attack_range,
@@ -204,7 +188,6 @@ func _apply_config() -> void:
 	latest_proxy_action_id = 0
 	cached_runtime_attack_target = null
 	attack_target_refresh_left = 0.0
-	shadow_registration_failures = 0
 	_reset_ranged_attack_position_state()
 	if is_node_ready():
 		_hide_summon_previews()
@@ -355,120 +338,7 @@ func _spawn_fireball_volley(fire_config: FireConfig) -> bool:
 	# rebuilds visual-only REPLICA rows from the Host registration.
 	if combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return false
-	match FireSorcerer.projectile_backend:
-		ProjectileBackend.LEGACY:
-			return _spawn_legacy_fireball_volley(fire_config, false)
-		ProjectileBackend.SHADOW:
-			return _spawn_legacy_fireball_volley(fire_config, true)
-		ProjectileBackend.DATA:
-			return _spawn_data_fireball_volley(fire_config)
-	return false
-
-
-func _spawn_legacy_fireball_volley(
-	fire_config: FireConfig,
-	register_shadow: bool
-) -> bool:
-	if (
-		fire_config.volley_scene == null
-		or gameplay_gateway == null
-		or not is_instance_valid(gameplay_gateway)
-	):
-		return false
-	var fire_sorcerer_service: FireSorcererVolleySimulationService = null
-	if register_shadow:
-		fire_sorcerer_service = (
-			_get_fire_sorcerer_volley_simulation_service()
-		)
-	var spawn_parent: Node = combat_runtime
-	var volley: FireSorcererFireballVolley = null
-	if combat_runtime.has_session_object_pool_scene(fire_config.volley_scene):
-		volley = combat_runtime.acquire_session_object(
-			fire_config.volley_scene,
-			false
-		) as FireSorcererFireballVolley
-	else:
-		volley = (
-			fire_config.volley_scene.instantiate()
-			as FireSorcererFireballVolley
-		)
-	if volley == null:
-		push_warning("火焰术士齐射场景必须实例化 FireSorcererFireballVolley。")
-		return false
-
-	var outgoing_damage := get_effective_attack_damage(fire_config.attack_damage)
-	volley.bind_gameplay_context(combat_runtime, gameplay_gateway)
-	volley.top_level = true
-	volley.setup(
-		summon_direction,
-		outgoing_damage,
-		fire_config.projectile_speed,
-		fire_config.projectile_lifetime,
-		summon_target,
-		fire_config.homing_turn_rate,
-		combat_runtime,
-		fire_config.burn_duration,
-		fire_config.burn_level,
-		create_damage_source_snapshot(0, _get_fireball_projectile_type())
-	)
-	if volley.get_parent() == null:
-		spawn_parent.add_child(volley)
-	elif volley.get_parent() != spawn_parent:
-		volley.reparent(spawn_parent)
-	# 与场景中三枚预览火球共用法杖前方的旋转枢轴，避免完成前摇时
-	# 实体火球相对预览图像向下跳动。
-	volley.global_position = summon_pivot.global_position
-	volley.reset_physics_interpolation()
-	var target_peer_id := 0
-	var target_plant_net_id := 0
-	var player_target := summon_target as Player
-	if player_target != null:
-		target_peer_id = player_target.peer_id
-	else:
-		var plant_target := summon_target as PlantDefense
-		if plant_target != null:
-			target_plant_net_id = int(plant_target.get_meta(&"net_id", 0))
-		else:
-			var enemy_target := summon_target as Enemy
-			if enemy_target != null:
-				target_plant_net_id = int(enemy_target.get_meta(&"net_id", 0))
-	gameplay_gateway.register_local_projectile(
-		volley,
-		_get_fireball_projectile_type(),
-		0,
-		volley.global_position,
-		summon_direction,
-		outgoing_damage,
-		fire_config.projectile_speed,
-		fire_config.projectile_lifetime,
-		false,
-		target_peer_id,
-		target_plant_net_id
-	)
-	if register_shadow and fire_sorcerer_service != null:
-		var shadow_handle := fire_sorcerer_service.register_volley(
-			FireSorcererVolleySimulationService.Mode.SHADOW,
-			_get_fire_sorcerer_volley_profile(),
-			_get_authored_volley_positions(),
-			_get_authored_volley_directions(),
-			fire_config.projectile_speed,
-			fire_config.projectile_lifetime,
-			fire_config.homing_turn_rate,
-			0,
-			_get_stable_source_enemy_id(),
-			0,
-			summon_target,
-			0.0,
-			0,
-			null
-		)
-		if shadow_handle <= FireSorcererVolleySimulationService.INVALID_HANDLE:
-			shadow_registration_failures += 1
-	elif register_shadow:
-		# SHADOW is comparison-only. Missing infrastructure cannot replace or
-		# cancel the already registered legacy authority volley.
-		shadow_registration_failures += 1
-	return true
+	return _spawn_data_fireball_volley(fire_config)
 
 
 func _spawn_data_fireball_volley(fire_config: FireConfig) -> bool:

@@ -58,11 +58,6 @@ func _init() -> void:
 
 
 func _run() -> void:
-	_expect(
-		FireSorcerer.projectile_backend
-		== FireSorcerer.ProjectileBackend.DATA,
-		"Fire Sorcerer production backend must default to DATA."
-	)
 	_runtime = PlayerTestCombatRuntime.new()
 	_gateway = RejectingFireVolleyGateway.new()
 	var default_gateway := _runtime.get_node("MultiplayerGameplayGateway")
@@ -76,11 +71,9 @@ func _run() -> void:
 	await process_frame
 
 	await _test_singleplayer_data_registration()
-	await _test_shadow_keeps_legacy_authority_without_data_authority()
 	await _test_host_registration_failure_releases_handle()
 	_test_elite_profile_selection()
 
-	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.DATA
 	var coordinator := _runtime.get_enemy_simulation_coordinator()
 	if coordinator != null:
 		coordinator.prepare_combat_services_for_runtime_teardown()
@@ -94,7 +87,6 @@ func _run() -> void:
 
 
 func _test_singleplayer_data_registration() -> void:
-	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.DATA
 	_runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var service := _get_service()
 	var enemy := _spawn_sorcerer(FIRE_SORCERER_SCENE)
@@ -104,19 +96,17 @@ func _test_singleplayer_data_registration() -> void:
 	var expected_positions := PackedVector2Array()
 	for marker in enemy.summon_markers:
 		expected_positions.append(marker.global_position)
-	var node_count_before := _count_legacy_volleys(_runtime)
-	var data_config := FIRE_SORCERER_CONFIG.duplicate() as FireSorcererConfig
-	data_config.volley_scene = null
+	var node_count_before := _count_retired_volley_nodes(_runtime)
 	var fired := bool(enemy.call(
 		"_spawn_fireball_volley",
-		data_config
+		FIRE_SORCERER_CONFIG
 	))
 	_expect(
 		fired,
 		"Singleplayer DATA must not depend on the legacy volley scene."
 	)
 	_expect(
-		_count_legacy_volleys(_runtime) == node_count_before,
+		_count_retired_volley_nodes(_runtime) == node_count_before,
 		"DATA authority must not create a FireSorcererFireballVolley Node."
 	)
 	_expect(
@@ -157,45 +147,12 @@ func _test_singleplayer_data_registration() -> void:
 	await process_frame
 
 
-func _test_shadow_keeps_legacy_authority_without_data_authority() -> void:
-	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.SHADOW
-	_runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
-	var service := _get_service()
-	var enemy := _spawn_sorcerer(FIRE_SORCERER_SCENE)
-	enemy.summon_direction = Vector2.RIGHT
-	enemy.summon_pivot.rotation = 0.0
-	var node_count_before := _count_legacy_volleys(_runtime)
-	var fired := bool(enemy.call(
-		"_spawn_fireball_volley",
-		FIRE_SORCERER_CONFIG
-	))
-	var handle := _find_live_handle(service)
-	_expect(
-		fired and _count_legacy_volleys(_runtime) == node_count_before + 1,
-		"SHADOW must retain exactly one authoritative legacy volley Node."
-	)
-	_expect(
-		handle > FireSorcererVolleySimulationService.INVALID_HANDLE
-		and service.get_slot_mode(handle)
-			== FireSorcererVolleySimulationService.Mode.SHADOW
-		and service.get_projectile_id(handle) == 0
-		and int(service.get_metrics()["damage_applications"]) == 0,
-		"SHADOW row must remain non-networked and unable to apply damage."
-	)
-	service.release_volley(handle)
-	for child in _collect_legacy_volleys(_runtime):
-		child.queue_free()
-	enemy.queue_free()
-	await process_frame
-
-
 func _test_host_registration_failure_releases_handle() -> void:
-	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.DATA
 	_runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	var service := _get_service()
 	var enemy := _spawn_sorcerer(FIRE_SORCERER_SCENE)
 	enemy.summon_direction = Vector2.RIGHT
-	var node_count_before := _count_legacy_volleys(_runtime)
+	var node_count_before := _count_retired_volley_nodes(_runtime)
 	var calls_before := _gateway.fire_volley_registration_calls
 	var fired := bool(enemy.call(
 		"_spawn_fireball_volley",
@@ -226,7 +183,7 @@ func _test_host_registration_failure_releases_handle() -> void:
 		"Host registration must forward pivot, direction, damage and a valid snapshot."
 	)
 	_expect(
-		_count_legacy_volleys(_runtime) == node_count_before,
+		_count_retired_volley_nodes(_runtime) == node_count_before,
 		"Rejected Host DATA must never fall back to a projectile Node."
 	)
 	enemy.queue_free()
@@ -273,11 +230,11 @@ func _find_live_handle(
 	return FireSorcererVolleySimulationService.INVALID_HANDLE
 
 
-func _count_legacy_volleys(parent: Node) -> int:
-	return _collect_legacy_volleys(parent).size()
+func _count_retired_volley_nodes(parent: Node) -> int:
+	return _collect_retired_volley_nodes(parent).size()
 
 
-func _collect_legacy_volleys(
+func _collect_retired_volley_nodes(
 	parent: Node
 ) -> Array[FireSorcererFireballVolley]:
 	var volleys: Array[FireSorcererFireballVolley] = []
@@ -285,7 +242,7 @@ func _collect_legacy_volleys(
 		var volley := child as FireSorcererFireballVolley
 		if volley != null:
 			volleys.append(volley)
-		volleys.append_array(_collect_legacy_volleys(child))
+		volleys.append_array(_collect_retired_volley_nodes(child))
 	return volleys
 
 

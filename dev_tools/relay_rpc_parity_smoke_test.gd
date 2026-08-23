@@ -1326,8 +1326,8 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 			"Gameplay RPC %s uses out-of-range channel %d." % [method_name, channel]
 		)
 	_expect(
-		channel_counts.get(NetConstants.CH_WORLD_EVENT, 0) == 67,
-		"Protocol v94 must expose exactly 67 MpGame RPCs on reliable world-event CH5."
+		channel_counts.get(NetConstants.CH_WORLD_EVENT, 0) == 68,
+		"Protocol v94 must expose exactly 68 MpGame RPCs on reliable world-event CH5."
 	)
 
 	_expect_rpc_channel(rpcs, "net_runtime_state_requested", NetConstants.CH_AUTH)
@@ -1374,6 +1374,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_enemy_terminal",
 		"net_enemy_rapid_fire_repair_burst",
 		"net_enemy_rapid_fire_snapshot_chunk",
+		"net_capoo_data_projectile_snapshot_chunk",
 		"net_plant_spawned",
 		"net_nearest_plant_destruction_requested",
 		"net_plant_damage_status_changed",
@@ -1405,6 +1406,11 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		_expect_rpc_signature_contains(
 			rpcs,
 			"net_enemy_rapid_fire_snapshot_chunk",
+			signature_fragment
+		)
+		_expect_rpc_signature_contains(
+			rpcs,
+			"net_capoo_data_projectile_snapshot_chunk",
 			signature_fragment
 		)
 	for transaction_method in [

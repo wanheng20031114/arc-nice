@@ -13,19 +13,6 @@ const EnemyRapidFireNetworkCodec := preload(
 # spreading the five-physics-tick authored burst cadence across all five phases.
 const ATTACK_PHASE_OFFSETS_PHYSICS_FRAMES: Array[int] = [0, -1, 1, -2, 2]
 
-static var attack_phase_stagger_enabled := true
-
-enum ProjectileBackend {
-	LEGACY,
-	SHADOW,
-	DATA,
-}
-
-# The fixed-seed kernel, authored collision fixture and production SHADOW path
-# certify the DATA backend. The process-wide switch remains explicit for
-# deterministic regression probes; a live cohort never mixes authority paths.
-static var projectile_backend: ProjectileBackend = ProjectileBackend.DATA
-
 enum CombatState {
 	CHASE,
 	WINDUP,
@@ -52,7 +39,6 @@ var attack_target: Node2D = null
 var committed_attack_phase_offset_seconds: float = 0.0
 var committed_windup_duration_seconds: float = 0.0
 var local_data_projectile_sequence: int = 0
-var shadow_registration_failures: int = 0
 var network_burst_projectile_ids := PackedInt64Array()
 var network_burst_attached_states := PackedByteArray()
 var network_burst_descriptor := PackedByteArray()
@@ -163,7 +149,6 @@ func _apply_config() -> void:
 	burst_audio_step = 0
 	attack_target = null
 	local_data_projectile_sequence = 0
-	shadow_registration_failures = 0
 	_clear_committed_attack_timing()
 	_reset_ranged_attack_position_state()
 
@@ -205,8 +190,6 @@ func _try_start_windup(candidate_target: Node2D = null) -> bool:
 		candidate_target = _get_preferred_ranged_combat_target()
 	if candidate_target == null:
 		return false
-	if capoo_config.projectile_scene == null:
-		return false
 	if not _is_ranged_combat_target_in_range(
 		candidate_target,
 		capoo_config.attack_range
@@ -227,8 +210,6 @@ func _try_start_windup(candidate_target: Node2D = null) -> bool:
 			navigation_update_frame_offset,
 			Engine.physics_ticks_per_second
 		)
-		if CapooAK47.attack_phase_stagger_enabled
-		else 0.0
 	)
 	committed_windup_duration_seconds = maxf(
 		capoo_config.attack_windup + committed_attack_phase_offset_seconds,
@@ -324,7 +305,7 @@ func _update_burst(delta: float) -> void:
 
 func _fire_locked_bullet() -> bool:
 	var capoo_config := config as CapooConfig
-	if capoo_config == null or capoo_config.projectile_scene == null:
+	if capoo_config == null:
 		return false
 	if (
 		combat_runtime == null
@@ -338,125 +319,15 @@ func _fire_locked_bullet() -> bool:
 	if combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return false
 
-	var fired := false
-	match CapooAK47.projectile_backend:
-		ProjectileBackend.LEGACY:
-			fired = _fire_legacy_projectile(capoo_config, false)
-		ProjectileBackend.SHADOW:
-			fired = _fire_legacy_projectile(capoo_config, true)
-		ProjectileBackend.DATA:
-			fired = _fire_data_projectile(capoo_config)
-	if not fired:
+	if not _fire_data_projectile(capoo_config):
 		return false
 
-	# Keep the authored RNG and audio cadence after successful registration in
-	# every backend. Backend migration therefore cannot perturb later spread or
-	# pitch draws in the burst.
+	# Keep the authored RNG and audio cadence after successful data registration.
 	if burst_audio_step % 2 == 0:
 		attack_audio.pitch_scale = random_generator.randf_range(0.98, 1.03)
 		ENEMY_ATTACK_AUDIO_LIMITER.play_rapid_fire(attack_audio)
 	burst_audio_step += 1
 	return true
-
-
-func _fire_legacy_projectile(
-	capoo_config: CapooConfig,
-	register_shadow: bool
-) -> bool:
-	var rapid_fire_service: RapidFireSimulationService = null
-	if register_shadow:
-		rapid_fire_service = _get_rapid_fire_simulation_service()
-	var spawn_parent: Node = combat_runtime
-	var projectile: CapooAK47Bullet = null
-	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
-		capoo_config.projectile_scene
-	)
-	if uses_registered_pool:
-		projectile = combat_runtime.acquire_session_object(
-			capoo_config.projectile_scene,
-			false
-		) as CapooAK47Bullet
-	else:
-		projectile = capoo_config.projectile_scene.instantiate() as CapooAK47Bullet
-	if projectile == null:
-		push_warning("AK 猫猫虫子弹场景必须实例化 CapooAK47Bullet。")
-		return false
-
-	var outgoing_damage := get_effective_attack_damage(
-		capoo_config.attack_damage
-	)
-	var launch_source_snapshot := create_damage_source_snapshot(
-		0,
-		RapidFireSimulationService.AK_SOURCE_TYPE
-	)
-	projectile.bind_gameplay_context(combat_runtime, gameplay_gateway)
-	projectile.top_level = true
-	if projectile.get_parent() == null:
-		spawn_parent.add_child(projectile)
-	elif projectile.get_parent() != spawn_parent:
-		projectile.reparent(spawn_parent)
-	projectile.setup(
-		burst_shot_direction,
-		outgoing_damage,
-		capoo_config.projectile_speed,
-		capoo_config.projectile_lifetime,
-		pathfinder as GridPathfinder,
-		projectile_motion_system,
-		launch_source_snapshot
-	)
-	projectile.global_position = global_position + burst_shot_direction * capoo_config.projectile_spawn_distance
-	projectile.reset_physics_interpolation()
-	gameplay_gateway.register_local_projectile(
-		projectile,
-		&"capoo_ak47_bullet",
-		0,
-		projectile.global_position,
-		burst_shot_direction,
-		outgoing_damage,
-		capoo_config.projectile_speed,
-		capoo_config.projectile_lifetime
-	)
-	if register_shadow and rapid_fire_service != null:
-		var shadow_projectile_id := projectile.projectile_id
-		var shadow_phase_identity := (
-			shadow_projectile_id
-			if shadow_projectile_id > 0
-			else int(projectile.get_instance_id())
-		)
-		var shadow_handle := rapid_fire_service.register_projectile(
-			RapidFireSimulationService.Mode.SHADOW,
-			RapidFireSimulationService.Profile.AK,
-			projectile.global_position,
-			burst_shot_direction,
-			capoo_config.projectile_speed,
-			capoo_config.projectile_lifetime,
-			outgoing_damage,
-			_get_stable_source_enemy_id(),
-			shadow_projectile_id,
-			CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES,
-			posmod(
-				shadow_phase_identity,
-				CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES
-			),
-			create_damage_source_snapshot(
-				shadow_projectile_id,
-				RapidFireSimulationService.AK_SOURCE_TYPE
-			)
-		)
-		if (
-			shadow_handle <= RapidFireSimulationService.INVALID_HANDLE
-			or not projectile.bind_shadow_simulation(
-				rapid_fire_service,
-				shadow_handle
-			)
-		):
-			if rapid_fire_service.is_handle_live(shadow_handle):
-				rapid_fire_service.release_projectile(shadow_handle)
-			shadow_registration_failures += 1
-	elif register_shadow:
-		shadow_registration_failures += 1
-	return true
-
 
 func _fire_data_projectile(capoo_config: CapooConfig) -> bool:
 	var rapid_fire_service := _get_rapid_fire_simulation_service()
@@ -490,10 +361,10 @@ func _fire_data_projectile(capoo_config: CapooConfig) -> bool:
 		outgoing_damage,
 		_get_stable_source_enemy_id(),
 		0,
-		CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES,
+		RapidFireSimulationService.AK_WORLD_CHECK_INTERVAL,
 		posmod(
 			phase_identity,
-			CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES
+			RapidFireSimulationService.AK_WORLD_CHECK_INTERVAL
 		),
 		launch_source_snapshot
 	)
@@ -527,7 +398,6 @@ func _prepare_network_burst(capoo_config: CapooConfig) -> bool:
 		combat_runtime == null
 		or combat_runtime.runtime_mode
 			!= CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-		or CapooAK47.projectile_backend != ProjectileBackend.DATA
 		or gameplay_gateway == null
 		or not is_instance_valid(gameplay_gateway)
 	):

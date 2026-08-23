@@ -7,7 +7,7 @@ const ROGUE_MODE_ID := 4
 const AGAVE_CANNONBALL_PATH := (
 	"res://scene/plant_defense/agave_cannonball.tscn"
 )
-const LEGACY_TOWER_PRELOAD_PATHS := [
+const TOWER_PRELOAD_PATHS := [
 	"res://scene/plant_defense/agave_cannon.tscn",
 	AGAVE_CANNONBALL_PATH,
 	"res://scene/plant_defense/oak_warehouse.tscn",
@@ -21,19 +21,23 @@ const LEGACY_TOWER_PRELOAD_PATHS := [
 	"res://scene/combat/collectibles/collectible_arrow_projectile.tscn",
 	"res://scene/combat/collectibles/collectible_sakura_rocket.tscn",
 	"res://scene/combat/collectibles/collectible_sakura_explosion.tscn",
-	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn",
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn",
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn",
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn",
-	"res://scene/enemy/capoo/capoo_smg_bullet.tscn",
-	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
-	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn",
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn",
 	"res://scene/combat/projectiles/bullet.tscn",
 	"res://scene/combat/projectiles/bullet_hit_effect.tscn",
 	"res://scene/enemy/enemy_hit_effect.tscn",
+]
+const RETIRED_ENEMY_PROJECTILE_PRELOAD_PATHS := [
+	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn",
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn",
+	"res://scene/enemy/capoo/capoo_smg_bullet.tscn",
+	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
+	"res://scene/enemy/capoo/capoo_mage_fireball.tscn",
+	"res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn",
 ]
 const SORTED_PLANT_IDS := [
 	"agave_cannon",
@@ -126,6 +130,10 @@ func _test_catalog_profiles(expected_profile: Array[String]) -> void:
 			actual_profile.size() == _unique_count(actual_profile),
 			"Mode %d tower preload profile contains duplicates." % mode_id
 		)
+		_expect_retired_projectiles_absent(
+			actual_profile,
+			"mode %d preload profile" % mode_id
+		)
 
 
 func _test_loading_manifests(expected_profile: Array[String]) -> void:
@@ -174,11 +182,19 @@ func _test_loading_manifests(expected_profile: Array[String]) -> void:
 			expected_profile,
 			"multiplayer mode %d" % mode_id
 		)
+		_expect_retired_projectiles_absent(
+			singleplayer_manifest,
+			"single-player mode %d manifest" % mode_id
+		)
+		_expect_retired_projectiles_absent(
+			multiplayer_manifest,
+			"multiplayer mode %d manifest" % mode_id
+		)
 
 
 func _build_expected_tower_profile() -> Array[String]:
 	var result: Array[String] = []
-	for path_variant in LEGACY_TOWER_PRELOAD_PATHS:
+	for path_variant in TOWER_PRELOAD_PATHS:
 		result.append(str(path_variant))
 	for plant_id_variant in SORTED_PLANT_IDS:
 		var plant_id := str(plant_id_variant)
@@ -228,6 +244,15 @@ func _expect_profile_once_in_order(
 			"%s changed tower preload ordering at: %s" % [label, path]
 		)
 		previous_index = path_index
+
+
+func _expect_retired_projectiles_absent(paths: Array, label: String) -> void:
+	for retired_path in RETIRED_ENEMY_PROJECTILE_PRELOAD_PATHS:
+		_expect(
+			not paths.has(retired_path),
+			"%s must not preload retired enemy projectile: %s"
+			% [label, retired_path]
+		)
 
 
 func _unique_count(values: Array) -> int:

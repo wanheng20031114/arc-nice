@@ -224,11 +224,6 @@ func _test_real_gunner_projectile_damage(
 	player: AmmoRangedPlayer
 ) -> void:
 	_reset_player_for_damage_test(player)
-	_expect(
-		CombatRobotGunner.projectile_backend
-		== CombatRobotGunner.ProjectileBackend.DATA,
-		"持枪战斗机器人正式链路必须使用DATA权威弹体。"
-	)
 	var combat_services := battle.get_enemy_combat_services()
 	var rapid_fire_service := (
 		combat_services.get_rapid_fire_simulation_service()

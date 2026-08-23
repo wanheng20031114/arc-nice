@@ -22,11 +22,7 @@ class PoolRuntime:
 		session_object_pool = SessionObjectPool.new()
 		session_object_pool.name = "SessionObjectPool"
 		add_child(session_object_pool)
-		CombatRuntimeBase.register_capoo_mage_fireball_impact_pool(
-			session_object_pool,
-			prewarm_count,
-			capacity
-		)
+		session_object_pool.register_scene(_scene, prewarm_count, capacity)
 
 	func has_session_object_pool_scene(scene: PackedScene) -> bool:
 		return session_object_pool != null and session_object_pool.is_registered(scene)

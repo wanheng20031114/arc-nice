@@ -131,31 +131,12 @@ var requested_guardian_overlap_metrics := false
 var requested_guardian_unchanged_diff_fast_path := true
 var requested_guardian_refresh_interval := 0.0
 var requested_runtime_count_scans := false
-var requested_projectile_world_certificate := false
-var effective_projectile_world_certificate := false
-var requested_projectile_hot_metrics := false
-var requested_batched_projectile_motion := true
-var requested_ak_attack_phase_stagger := true
-var requested_gunner_bullet_pool_prewarm := 0
-var requested_gunner_bullet_pool_retained := 96
-var requested_smg_short_range_targeting := true
-var requested_smg_hitscan_attack := true
-var requested_disable_smg_projectiles := false
-var requested_expanded_projectile_prewarm := true
 var requested_enemy_attack_audio_limiter := true
 var original_max_fps := 0
 var original_navigation_render_dedupe := true
 var original_navigation_refresh_budget := true
 var original_combat_sense_throttling := true
 var original_guardian_unchanged_diff_fast_path := true
-var original_projectile_world_certificate := true
-var original_batched_projectile_motion := true
-var original_ak_attack_phase_stagger := true
-var original_gunner_bullet_pool_prewarm := 0
-var original_gunner_bullet_pool_retained := 96
-var original_smg_short_range_targeting := true
-var original_smg_hitscan_attack := true
-var original_expanded_projectile_prewarm := true
 var original_enemy_attack_audio_limiter := true
 var original_vsync_mode := DisplayServer.VSYNC_ENABLED
 var vsync_overridden := false
@@ -282,48 +263,6 @@ func _parse_user_arguments() -> void:
 			requested_runtime_count_scans = (
 				argument.get_slice("=", 1).to_lower() == "true"
 			)
-		elif argument.begins_with("--projectile-world-certificate="):
-			requested_projectile_world_certificate = (
-				argument.get_slice("=", 1).to_lower() == "true"
-			)
-		elif argument.begins_with("--projectile-hot-metrics="):
-			requested_projectile_hot_metrics = (
-				argument.get_slice("=", 1).to_lower() == "true"
-			)
-		elif argument.begins_with("--batched-projectile-motion="):
-			requested_batched_projectile_motion = (
-				argument.get_slice("=", 1).to_lower() == "true"
-			)
-		elif argument.begins_with("--ak-attack-phase-stagger="):
-			requested_ak_attack_phase_stagger = (
-				argument.get_slice("=", 1).to_lower() == "true"
-			)
-		elif argument.begins_with("--gunner-bullet-pool-prewarm="):
-			requested_gunner_bullet_pool_prewarm = maxi(
-				int(argument.get_slice("=", 1)),
-				0
-			)
-		elif argument.begins_with("--gunner-bullet-pool-retained="):
-			requested_gunner_bullet_pool_retained = maxi(
-				int(argument.get_slice("=", 1)),
-				1
-			)
-		elif argument.begins_with("--smg-short-range-targeting="):
-			requested_smg_short_range_targeting = (
-				argument.get_slice("=", 1).to_lower() == "true"
-			)
-		elif argument.begins_with("--smg-hitscan-attack="):
-			requested_smg_hitscan_attack = (
-				argument.get_slice("=", 1).to_lower() == "true"
-			)
-		elif argument.begins_with("--disable-smg-projectiles="):
-			requested_disable_smg_projectiles = (
-				argument.get_slice("=", 1).to_lower() == "true"
-			)
-		elif argument.begins_with("--expanded-projectile-prewarm="):
-			requested_expanded_projectile_prewarm = (
-				argument.get_slice("=", 1).to_lower() == "true"
-			)
 		elif argument.begins_with("--enemy-attack-audio-limiter="):
 			requested_enemy_attack_audio_limiter = (
 				argument.get_slice("=", 1).to_lower() == "true"
@@ -373,44 +312,12 @@ func _run() -> void:
 	original_guardian_unchanged_diff_fast_path = (
 		GuardianAuraSystem.unchanged_source_diff_fast_path_enabled
 	)
-	original_projectile_world_certificate = (
-		CapooAK47Bullet.world_collision_certificate_enabled
-	)
-	original_batched_projectile_motion = CapooAK47Bullet.batched_motion_enabled
-	original_ak_attack_phase_stagger = CapooAK47.attack_phase_stagger_enabled
-	original_gunner_bullet_pool_prewarm = (
-		CombatRuntimeBase.combat_robot_gunner_bullet_pool_prewarm_count
-	)
-	original_gunner_bullet_pool_retained = (
-		CombatRuntimeBase.combat_robot_gunner_bullet_pool_retained_capacity
-	)
-	original_smg_short_range_targeting = CapooSMG.short_range_targeting_enabled
-	original_smg_hitscan_attack = CapooSMG.hitscan_attack_enabled
-	original_expanded_projectile_prewarm = (
-		TowerDefenseGame.expanded_projectile_pool_prewarm_enabled
-	)
 	original_enemy_attack_audio_limiter = ENEMY_ATTACK_AUDIO_LIMITER.limiting_enabled
 	Enemy.navigation_render_frame_dedupe_enabled = requested_navigation_render_dedupe
 	Enemy.navigation_process_frame_budget_enabled = requested_navigation_refresh_budget
 	Enemy.combat_sense_throttling_enabled = requested_combat_sense_throttling
 	GuardianAuraSystem.unchanged_source_diff_fast_path_enabled = (
 		requested_guardian_unchanged_diff_fast_path
-	)
-	# The production scene contract is checked after GridPathfinder is ready.
-	# Keep the static switch disabled until both halves of the certificate agree.
-	CapooAK47Bullet.world_collision_certificate_enabled = false
-	CapooAK47Bullet.batched_motion_enabled = requested_batched_projectile_motion
-	CapooAK47.attack_phase_stagger_enabled = requested_ak_attack_phase_stagger
-	CombatRuntimeBase.combat_robot_gunner_bullet_pool_prewarm_count = (
-		requested_gunner_bullet_pool_prewarm
-	)
-	CombatRuntimeBase.combat_robot_gunner_bullet_pool_retained_capacity = (
-		requested_gunner_bullet_pool_retained
-	)
-	CapooSMG.short_range_targeting_enabled = requested_smg_short_range_targeting
-	CapooSMG.hitscan_attack_enabled = requested_smg_hitscan_attack
-	TowerDefenseGame.expanded_projectile_pool_prewarm_enabled = (
-		requested_expanded_projectile_prewarm
 	)
 	ENEMY_ATTACK_AUDIO_LIMITER.limiting_enabled = (
 		requested_enemy_attack_audio_limiter
@@ -449,9 +356,6 @@ func _run() -> void:
 	if cohort_configs.size() != requested_enemy_count:
 		await _finish()
 		return
-	if requested_disable_smg_projectiles:
-		_disable_smg_projectiles_in_cohort()
-
 	var runtime_setup_started_usec := Time.get_ticks_usec()
 	tower_scene = load(TOWER_SCENE_PATH) as PackedScene
 	_expect(tower_scene != null, "Enemy cohort probe must load TowerDefenseGame scene.")
@@ -490,25 +394,6 @@ func _run() -> void:
 	_expect(pathfinder != null and pathfinder.is_built, "Production GridPathfinder must be built.")
 	_expect(game.player != null, "Enemy cohort probe requires the real local player.")
 	if pathfinder == null or not pathfinder.is_built or game.player == null:
-		await _finish()
-		return
-	effective_projectile_world_certificate = (
-		requested_projectile_world_certificate
-		and pathfinder.world_collision_layer_exclusive_to_authored_tiles
-	)
-	CapooAK47Bullet.world_collision_certificate_enabled = (
-		effective_projectile_world_certificate
-	)
-	_expect(
-		not requested_projectile_world_certificate
-		or effective_projectile_world_certificate,
-		(
-			"Projectile world certificate A/B requires a fixture whose world "
-			+ "collision layer is exclusive to authored tiles; the production "
-			+ "tower-defense scene contains additional StaticBody2D colliders."
-		)
-	)
-	if requested_projectile_world_certificate and not effective_projectile_world_certificate:
 		await _finish()
 		return
 	if requested_navigation_refresh_cap > 0:
@@ -562,8 +447,7 @@ func _run() -> void:
 			"TOWER_DEFENSE_ENEMY_COHORT_FIXTURE source=%s display_name=%s "
 			+ "phase=%s enemies=%d fences=%d corn=%d agave=%d warmup=%d samples=%d "
 			+ "setup_ms=%.3f tower_setup_ms=%.3f runtime_setup_ms=%.3f "
-			+ "projectile_pool_registration_ms=%.3f expanded_prewarm=%s "
-			+ "gunner_pool=%d/%d "
+			+ "projectile_pool_registration_ms=%.3f "
 			+ "seed=%d max_fps=%d physics_hz=%d renderer=%s driver=%s gpu=%s"
 		)
 		% [
@@ -580,9 +464,6 @@ func _run() -> void:
 			tower_setup_ms,
 			runtime_setup_ms,
 			game.projectile_pool_registration_ms,
-			str(requested_expanded_projectile_prewarm),
-			requested_gunner_bullet_pool_prewarm,
-			requested_gunner_bullet_pool_retained,
 			fixed_seed,
 			Engine.max_fps,
 			Engine.physics_ticks_per_second,
@@ -924,25 +805,6 @@ func _build_scaled_wave_configs(source_wave: WaveConfig) -> Array[EnemyConfig]:
 		configs[source_index] = configs[target_index]
 		configs[target_index] = temporary
 	return configs
-
-
-func _disable_smg_projectiles_in_cohort() -> void:
-	var duplicates_by_config_id: Dictionary[int, CapooSMGConfig] = {}
-	for config_index in range(cohort_configs.size()):
-		var smg_config := cohort_configs[config_index] as CapooSMGConfig
-		if smg_config == null:
-			continue
-		var config_id := smg_config.get_instance_id()
-		var duplicate_config := duplicates_by_config_id.get(
-			config_id
-		) as CapooSMGConfig
-		if duplicate_config == null:
-			duplicate_config = smg_config.duplicate() as CapooSMGConfig
-			if duplicate_config == null:
-				continue
-			duplicate_config.projectile_scene = null
-			duplicates_by_config_id[config_id] = duplicate_config
-		cohort_configs[config_index] = duplicate_config
 
 
 func _get_cohort_source_path() -> String:
@@ -1321,8 +1183,6 @@ func _measure_sample_window(
 	STONE_GOLEM_SCRIPT.slam_performance_metrics_enabled = (
 		requested_enemy_hot_metrics
 	)
-	CapooAK47Bullet.reset_performance_metrics()
-	CapooAK47Bullet.performance_metrics_enabled = requested_projectile_hot_metrics
 	ENEMY_ATTACK_AUDIO_LIMITER.reset_metrics()
 	var guardian_aura_system := game.get_node_or_null(
 		"GuardianAuraSystem"
@@ -1545,8 +1405,6 @@ func _measure_sample_window(
 	var stone_golem_slam_metrics: Dictionary = (
 		STONE_GOLEM_SCRIPT.get_slam_performance_metrics(true)
 	)
-	CapooAK47Bullet.performance_metrics_enabled = false
-	var projectile_metrics := CapooAK47Bullet.get_performance_metrics(true)
 	var guardian_aura_metrics := {}
 	if guardian_aura_system != null:
 		guardian_aura_system.collect_overlap_query_metrics = false
@@ -1671,19 +1529,6 @@ func _measure_sample_window(
 			)
 		),
 		"runtime_count_scans": requested_runtime_count_scans,
-		"projectile_world_certificate_requested": (
-			requested_projectile_world_certificate
-		),
-		"projectile_world_certificate": effective_projectile_world_certificate,
-		"projectile_hot_metrics": requested_projectile_hot_metrics,
-		"batched_projectile_motion": requested_batched_projectile_motion,
-		"ak_attack_phase_stagger": requested_ak_attack_phase_stagger,
-		"gunner_bullet_pool_prewarm": requested_gunner_bullet_pool_prewarm,
-		"gunner_bullet_pool_retained": requested_gunner_bullet_pool_retained,
-		"smg_short_range_targeting": requested_smg_short_range_targeting,
-		"smg_hitscan_attack": requested_smg_hitscan_attack,
-		"disable_smg_projectiles": requested_disable_smg_projectiles,
-		"expanded_projectile_prewarm": requested_expanded_projectile_prewarm,
 		"enemy_attack_audio_limiter": requested_enemy_attack_audio_limiter,
 		"enemy_attack_audio": ENEMY_ATTACK_AUDIO_LIMITER.get_metrics(),
 		"frame_budget": {
@@ -1752,7 +1597,6 @@ func _measure_sample_window(
 		"boss_runtime_state": _get_boss_runtime_state(),
 		"enemy_hot_segments": _format_enemy_hot_segments(enemy_metrics),
 		"stone_golem_slam": stone_golem_slam_metrics,
-		"projectile_hot_segments": projectile_metrics,
 		"guardian_aura": guardian_aura_metrics,
 		"pool_before": pool_before,
 		"pool_after": pool_after,
@@ -1990,7 +1834,6 @@ func _evaluate_gate(result: Dictionary) -> Dictionary:
 		)
 	if (
 		requested_enemy_hot_metrics
-		or requested_projectile_hot_metrics
 		or requested_guardian_overlap_metrics
 		or requested_runtime_count_scans
 		or requested_simple_fence_ab_metrics
@@ -2294,11 +2137,6 @@ func _get_projectile_pool_metrics() -> Dictionary:
 
 
 func _validate_projectile_pool_startup(metrics_by_path: Dictionary) -> void:
-	var expected_ak47_prewarm := (
-		TowerDefensePrewarmerCoordinator.EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT
-		if requested_expanded_projectile_prewarm
-		else TowerDefensePrewarmerCoordinator.LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT
-	)
 	var ak47_metrics := metrics_by_path.get(
 		CAPOO_AK47_BULLET_POOL_PATH,
 		{}
@@ -2308,22 +2146,12 @@ func _validate_projectile_pool_startup(metrics_by_path: Dictionary) -> void:
 		{}
 	) as Dictionary
 	_expect(
-		int(ak47_metrics.get("created", -1)) == expected_ak47_prewarm,
-		"AK projectile pool startup count must match the selected A/B variant."
+		ak47_metrics.is_empty(),
+		"Production must not register the retired AK projectile pool."
 	)
 	_expect(
-		int(gunner_metrics.get("created", -1))
-		== requested_gunner_bullet_pool_prewarm
-		and int(gunner_metrics.get("retained_capacity", -1))
-		== maxi(
-			requested_gunner_bullet_pool_prewarm,
-			requested_gunner_bullet_pool_retained
-		),
-		"Gunner projectile pool startup metrics must match the isolated A/B values."
-	)
-	_expect(
-		int(ak47_metrics.get("retained_capacity", -1)) == 384,
-		"Expanded prewarming must not change the AK projectile capacity."
+		gunner_metrics.is_empty(),
+		"Production must not register the retired gunner projectile pool."
 	)
 
 
@@ -2523,28 +2351,11 @@ func _finish() -> void:
 	_release_movement_input()
 	Enemy.performance_metrics_enabled = false
 	STONE_GOLEM_SCRIPT.slam_performance_metrics_enabled = false
-	CapooAK47Bullet.performance_metrics_enabled = false
 	Enemy.navigation_render_frame_dedupe_enabled = original_navigation_render_dedupe
 	Enemy.navigation_process_frame_budget_enabled = original_navigation_refresh_budget
 	Enemy.combat_sense_throttling_enabled = original_combat_sense_throttling
 	GuardianAuraSystem.unchanged_source_diff_fast_path_enabled = (
 		original_guardian_unchanged_diff_fast_path
-	)
-	CapooAK47Bullet.world_collision_certificate_enabled = (
-		original_projectile_world_certificate
-	)
-	CapooAK47Bullet.batched_motion_enabled = original_batched_projectile_motion
-	CapooAK47.attack_phase_stagger_enabled = original_ak_attack_phase_stagger
-	CombatRuntimeBase.combat_robot_gunner_bullet_pool_prewarm_count = (
-		original_gunner_bullet_pool_prewarm
-	)
-	CombatRuntimeBase.combat_robot_gunner_bullet_pool_retained_capacity = (
-		original_gunner_bullet_pool_retained
-	)
-	CapooSMG.short_range_targeting_enabled = original_smg_short_range_targeting
-	CapooSMG.hitscan_attack_enabled = original_smg_hitscan_attack
-	TowerDefenseGame.expanded_projectile_pool_prewarm_enabled = (
-		original_expanded_projectile_prewarm
 	)
 	ENEMY_ATTACK_AUDIO_LIMITER.limiting_enabled = (
 		original_enemy_attack_audio_limiter

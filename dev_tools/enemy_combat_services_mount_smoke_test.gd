@@ -99,6 +99,15 @@ func _test_all_runtime_scenes_mount_the_shared_coordinator() -> void:
 				+ "coordinator: %s" % scene_path
 			)
 		)
+		if not scene_path.begins_with("res://dev_tools/"):
+			_expect(
+				scene_source.count('[node name="CapooProjectileMotionSystem"') == 0
+				and not scene_source.contains(
+					"res://scene/enemy/capoo/capoo_projectile_motion_system.tscn"
+				),
+				"Production runtime must not mount the retired Capoo motion system: %s"
+				% scene_path
+			)
 
 
 func _test_authored_coordinator_service_tree_defaults_to_idle() -> void:

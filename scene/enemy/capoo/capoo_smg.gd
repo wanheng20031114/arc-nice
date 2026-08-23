@@ -6,10 +6,7 @@ const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
 const HITSCAN_COLLISION_MASK := 1 | 2 | 4 | 512
-
-static var short_range_targeting_enabled := true
-static var hitscan_attack_enabled := true
-static var allocation_free_proxy_visuals_enabled := true
+const TARGET_REFRESH_HZ := 20.0
 
 @onready var muzzle_flash: Polygon2D = $MuzzleFlash
 @onready var muzzle_halo: Sprite2D = $MuzzleFlash/ProjectileHalo
@@ -29,8 +26,6 @@ var proxy_action_restore_animation_name: StringName = &""
 var proxy_action_restore_token_snapshot := 0
 var proxy_visual_direction := Vector2.RIGHT
 var proxy_visual_timer_action_count := 0
-var proxy_visual_tween_action_count := 0
-var proxy_visual_token := 0
 var cached_combat_target: Node2D = null
 var combat_target_cache_initialized := false
 var combat_target_refresh_count := 0
@@ -148,8 +143,6 @@ func _apply_config() -> void:
 	proxy_action_restore_token_snapshot = 0
 	proxy_visual_direction = Vector2.RIGHT
 	proxy_visual_timer_action_count = 0
-	proxy_visual_tween_action_count = 0
-	proxy_visual_token = 0
 	cached_combat_target = null
 	combat_target_cache_initialized = false
 	combat_target_refresh_count = 0
@@ -172,7 +165,6 @@ func _die() -> void:
 
 func play_multiplayer_death_sequence() -> void:
 	latest_proxy_action_id += 1
-	proxy_visual_token += 1
 	proxy_muzzle_flash_time_left = 0.0
 	proxy_action_restore_time_left = 0.0
 	proxy_action_restore_animation_name = &""
@@ -184,7 +176,6 @@ func set_multiplayer_proxy_visual_active(active: bool) -> void:
 	super.set_multiplayer_proxy_visual_active(active)
 	if active or not is_multiplayer_proxy:
 		return
-	proxy_visual_token += 1
 	if proxy_action_animation_name_in_use != &"":
 		_restore_multiplayer_proxy_move_animation(
 			proxy_action_restore_token,
@@ -206,26 +197,15 @@ func _try_fire_scatter(
 		return false
 	if smg_config_cache == null:
 		return false
-	if (
-		not CapooSMG.hitscan_attack_enabled
-		and smg_config_cache.projectile_scene == null
-	):
-		return false
 	if attack_target == null:
 		attack_target = _get_cached_combat_target()
 		if attack_target == null:
 			return false
 
-	var aim_direction := base_direction
-	var contact_target := get_contact_combat_target()
-	if (
-		CapooSMG.short_range_targeting_enabled
-		or attack_target == contact_target
-	):
-		var target_offset := attack_target.global_position - global_position
-		if target_offset.length_squared() > attack_range_squared:
-			return false
-		aim_direction = target_offset.normalized()
+	var target_offset := attack_target.global_position - global_position
+	if target_offset.length_squared() > attack_range_squared:
+		return false
+	var aim_direction := target_offset.normalized()
 	if aim_direction == Vector2.ZERO:
 		return false
 
@@ -254,66 +234,7 @@ func _try_fire_scatter(
 func _fire_bullet(shoot_direction: Vector2) -> bool:
 	if smg_config_cache == null:
 		return false
-	if CapooSMG.hitscan_attack_enabled:
-		return _fire_hitscan(shoot_direction)
-	if smg_config_cache.projectile_scene == null:
-		return false
-	if (
-		combat_runtime == null
-		or not is_instance_valid(combat_runtime)
-		or gameplay_gateway == null
-		or not is_instance_valid(gameplay_gateway)
-	):
-		return false
-	var spawn_parent: Node = combat_runtime
-	var projectile: CapooAK47Bullet = null
-	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
-		smg_config_cache.projectile_scene
-	)
-	if uses_registered_pool:
-		projectile = combat_runtime.acquire_session_object(
-			smg_config_cache.projectile_scene,
-			false
-		) as CapooAK47Bullet
-	else:
-		projectile = smg_config_cache.projectile_scene.instantiate() as CapooAK47Bullet
-	if projectile == null:
-		push_warning("SMG Capoo projectile scene must instantiate CapooAK47Bullet.")
-		return false
-	var outgoing_damage := get_effective_attack_damage(
-		smg_config_cache.attack_damage
-	)
-	projectile.bind_gameplay_context(combat_runtime, gameplay_gateway)
-	projectile.top_level = true
-	if projectile.get_parent() == null:
-		spawn_parent.add_child(projectile)
-	elif projectile.get_parent() != spawn_parent:
-		projectile.reparent(spawn_parent)
-	projectile.setup(
-		shoot_direction,
-		outgoing_damage,
-		smg_config_cache.projectile_speed,
-		smg_config_cache.projectile_lifetime,
-		pathfinder as GridPathfinder,
-		projectile_motion_system,
-		create_damage_source_snapshot(0, &"capoo_smg_bullet")
-	)
-	projectile.global_position = (
-		global_position
-		+ shoot_direction * smg_config_cache.projectile_spawn_distance
-	)
-	projectile.reset_physics_interpolation()
-	gameplay_gateway.register_local_projectile(
-		projectile,
-		&"capoo_smg_bullet",
-		0,
-		projectile.global_position,
-		shoot_direction,
-		outgoing_damage,
-		smg_config_cache.projectile_speed,
-		smg_config_cache.projectile_lifetime
-	)
-	return true
+	return _fire_hitscan(shoot_direction)
 
 
 func _fire_hitscan(shoot_direction: Vector2) -> bool:
@@ -362,11 +283,17 @@ func _fire_hitscan(shoot_direction: Vector2) -> bool:
 
 func _get_cached_combat_target() -> Node2D:
 	var physics_frame := Engine.get_physics_frames()
+	var refresh_interval_frames := maxi(
+		roundi(float(Engine.physics_ticks_per_second) / TARGET_REFRESH_HZ),
+		1
+	)
 	var refresh_due := (
 		not combat_target_cache_initialized
 		or (
 			physics_frame != combat_target_last_refresh_physics_frame
-			and _is_combat_sense_refresh_due()
+			and (
+				physics_frame + navigation_update_frame_offset
+			) % refresh_interval_frames == 0
 		)
 	)
 	if refresh_due:
@@ -406,45 +333,24 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 		return
 	if not multiplayer_proxy_visual_active:
 		return
-	proxy_visual_token += 1
 	var safe_direction := direction.normalized() if direction != Vector2.ZERO else Vector2.RIGHT
 	var smg_config := config as SMGConfig
 	_update_facing(safe_direction)
 	_set_muzzle_flash(1.0, safe_direction)
-	if CapooSMG.allocation_free_proxy_visuals_enabled:
-		if smg_config != null:
-			_play_multiplayer_proxy_action_animation(
-				smg_config.attack_animation_name,
-				-1.0
-			)
-			proxy_action_restore_animation_name = smg_config.attack_animation_name
-			proxy_action_restore_token_snapshot = proxy_action_restore_token
-		else:
-			proxy_action_restore_animation_name = &""
-		proxy_action_restore_time_left = 0.14
-		proxy_visual_direction = safe_direction
-		proxy_muzzle_flash_time_left = 0.08
-		proxy_visual_timer_action_count += 1
-		set_process(true)
-		return
-
 	if smg_config != null:
-		_play_multiplayer_proxy_action_animation(smg_config.attack_animation_name, 0.14)
-	proxy_visual_tween_action_count += 1
-	var fire_visual_token := proxy_visual_token
-	var tween := create_tween()
-	tween.tween_method(
-		func(progress: float) -> void:
-			if (
-				fire_visual_token != proxy_visual_token
-				or not multiplayer_proxy_visual_active
-			):
-				return
-			_set_muzzle_flash(progress, safe_direction),
-		1.0,
-		0.0,
-		0.08
-	)
+		_play_multiplayer_proxy_action_animation(
+			smg_config.attack_animation_name,
+			-1.0
+		)
+		proxy_action_restore_animation_name = smg_config.attack_animation_name
+		proxy_action_restore_token_snapshot = proxy_action_restore_token
+	else:
+		proxy_action_restore_animation_name = &""
+	proxy_action_restore_time_left = 0.14
+	proxy_visual_direction = safe_direction
+	proxy_muzzle_flash_time_left = 0.08
+	proxy_visual_timer_action_count += 1
+	set_process(true)
 
 
 func _set_muzzle_flash(progress: float, direction: Vector2) -> void:

@@ -12,12 +12,6 @@ const GUNNER_CONFIG := preload(
 const GUNNER_ELITE_CONFIG := preload(
 	"res://resources/config/enemies/combat_robot_gunner_elite.tres"
 )
-const GUNNER_BULLET_SCENE := preload(
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
-)
-const GUNNER_ELITE_BULLET_SCENE := preload(
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn"
-)
 const ENEMY_SIMULATION_COORDINATOR_SCENE := preload(
 	"res://scene/combat/simulation/enemy_simulation_coordinator.tscn"
 )
@@ -33,7 +27,7 @@ class CapturingGateway:
 	extends MultiplayerGameplayGateway
 
 	var next_projectile_id := 9101
-	var legacy_shots: Array[Dictionary] = []
+	var node_shots: Array[Dictionary] = []
 	var data_shots: Array[Dictionary] = []
 	var burst_descriptors: Array[PackedByteArray] = []
 	var released_reservations := PackedInt64Array()
@@ -57,14 +51,7 @@ class CapturingGateway:
 	) -> void:
 		var projectile_id := next_projectile_id
 		next_projectile_id += 1
-		var bullet := projectile as CapooAK47Bullet
-		if bullet != null:
-			bullet.setup_multiplayer(
-				projectile_id,
-				owner_peer_id,
-				projectile_type
-			)
-		legacy_shots.append({
+		node_shots.append({
 			"projectile_id": projectile_id,
 			"projectile_type": projectile_type,
 			"spawn_position": spawn_position,
@@ -73,51 +60,6 @@ class CapturingGateway:
 			"speed": speed,
 			"lifetime": lifetime,
 		})
-
-
-	func register_local_data_projectile(
-		service: RapidFireSimulationService,
-		handle: int,
-		projectile_type: StringName,
-		owner_peer_id: int,
-		spawn_position: Vector2,
-		direction: Vector2,
-		damage: int,
-		speed: float,
-		lifetime: float,
-		_damage_source_snapshot: DamageSourceSnapshot = null
-	) -> int:
-		if reject_data_registration:
-			return 0
-		var projectile_id := next_projectile_id
-		if not service.assign_projectile_identity(handle, projectile_id):
-			return 0
-		next_projectile_id += 1
-		var payload := [
-			projectile_id,
-			String(projectile_type),
-			owner_peer_id,
-			spawn_position,
-			direction,
-			damage,
-			speed,
-			lifetime,
-			false,
-			0,
-			7.25,
-			0,
-		]
-		data_shots.append({
-			"projectile_id": projectile_id,
-			"projectile_type": projectile_type,
-			"spawn_position": spawn_position,
-			"direction": direction,
-			"damage": damage,
-			"speed": speed,
-			"lifetime": lifetime,
-			"payload_size": payload.size(),
-		})
-		return projectile_id
 
 
 	func reserve_enemy_rapid_fire_projectile_ids(
@@ -188,7 +130,6 @@ class CapturingGateway:
 
 
 var failures := PackedStringArray()
-var saved_projectile_backend := CombatRobotGunner.ProjectileBackend.DATA
 
 
 func _init() -> void:
@@ -196,84 +137,65 @@ func _init() -> void:
 
 
 func _run() -> void:
-	saved_projectile_backend = CombatRobotGunner.projectile_backend
-	_expect(
-		CombatRobotGunner.projectile_backend
-		== CombatRobotGunner.ProjectileBackend.DATA,
-		"Certified gunner production must default to node-free DATA authority."
-	)
-	await _test_fixed_seed_backend_parity(
+	await _test_fixed_seed_data_burst(
 		GUNNER_SCENE,
 		GUNNER_CONFIG,
 		RapidFireSimulationService.Profile.GUNNER,
 		"ordinary"
 	)
-	await _test_fixed_seed_backend_parity(
+	await _test_fixed_seed_data_burst(
 		GUNNER_ELITE_SCENE,
 		GUNNER_ELITE_CONFIG,
 		RapidFireSimulationService.Profile.GUNNER_ELITE,
 		"elite"
 	)
-	await _test_shadow_observer(GUNNER_SCENE, GUNNER_CONFIG, "ordinary")
-	await _test_shadow_observer(
-		GUNNER_ELITE_SCENE,
-		GUNNER_ELITE_CONFIG,
-		"elite"
-	)
-	await _test_shadow_failure_does_not_cancel_legacy()
 	await _test_data_host_rejection_and_client_boundary()
 	await _test_data_muzzle_world_clearance()
-	CombatRobotGunner.projectile_backend = saved_projectile_backend
 	_finish()
 
 
-func _test_fixed_seed_backend_parity(
+func _test_fixed_seed_data_burst(
 	enemy_scene: PackedScene,
 	enemy_config: CombatRobotGunnerConfig,
 	expected_profile: RapidFireSimulationService.Profile,
 	label: String
 ) -> void:
-	var legacy_result := await _capture_complete_burst(
-		enemy_scene,
-		enemy_config,
-		CombatRobotGunner.ProjectileBackend.LEGACY,
-		"GunnerLegacy%s" % label
-	)
 	var data_result := await _capture_complete_burst(
 		enemy_scene,
 		enemy_config,
-		CombatRobotGunner.ProjectileBackend.DATA,
 		"GunnerData%s" % label
 	)
-	var legacy_shots := legacy_result.get("shots", []) as Array
+	var repeat_result := await _capture_complete_burst(
+		enemy_scene,
+		enemy_config,
+		"GunnerDataRepeat%s" % label
+	)
 	var data_shots := data_result.get("shots", []) as Array
+	var repeat_shots := repeat_result.get("shots", []) as Array
 	var data_records := data_result.get("data_records", []) as Array
 	var data_descriptors := data_result.get("burst_descriptors", []) as Array
 	_expect(
-		legacy_shots.size() == enemy_config.burst_count
-		and data_shots.size() == enemy_config.burst_count
+		data_shots.size() == enemy_config.burst_count
+		and repeat_shots.size() == enemy_config.burst_count
 		and data_records.size() == enemy_config.burst_count,
-		"%s gunner LEGACY/DATA must both commit the authored burst count."
+		"%s gunner DATA must commit the authored burst count deterministically."
 		% label
 	)
 	_expect(
-		int(legacy_result.get("live_nodes", -1)) == enemy_config.burst_count
-		and int(data_result.get("live_nodes", -1)) == 0,
+		int(data_result.get("live_nodes", -1)) == 0
+		and int(repeat_result.get("live_nodes", -1)) == 0,
 		"%s DATA authority must replace every live projectile Node with a handle."
 		% label
 	)
 	_expect(
-		int(legacy_result.get("random_state", -1))
-		== int(data_result.get("random_state", -2)),
-		"%s fixed-seed spread and pitch RNG order must match LEGACY exactly."
+		int(data_result.get("random_state", -1))
+		== int(repeat_result.get("random_state", -2)),
+		"%s fixed-seed DATA spread and pitch RNG order must be deterministic."
 		% label
 	)
 	_expect(
-		int(legacy_result.get("action_sequence", -1))
-		== enemy_config.burst_count
-		and int(data_result.get("action_sequence", -1))
-		== 1,
-		"%s DATA burst must reserve one action id while LEGACY remains per-shot."
+		int(data_result.get("action_sequence", -1)) == 1,
+		"%s DATA burst must reserve exactly one action id."
 		% label
 	)
 	_expect(
@@ -300,41 +222,35 @@ func _test_fixed_seed_backend_parity(
 	) as PackedVector2Array
 
 	var compare_count := mini(
-		legacy_shots.size(),
-		mini(data_shots.size(), data_records.size())
+		data_shots.size(),
+		mini(repeat_shots.size(), data_records.size())
 	)
 	for shot_index in range(compare_count):
-		var legacy_shot := legacy_shots[shot_index] as Dictionary
 		var data_shot := data_shots[shot_index] as Dictionary
+		var repeat_shot := repeat_shots[shot_index] as Dictionary
 		var data_record := data_records[shot_index] as Dictionary
 		var source_snapshot := data_shot.get(
 			"damage_source_snapshot"
 		) as DamageSourceSnapshot
 		_expect(
-			legacy_shot.get("projectile_type") == enemy_config.projectile_type
-			and data_shot.get("projectile_type")
+			data_shot.get("projectile_type")
 			== enemy_config.projectile_type,
 			"%s shot %d must retain its projectile type without per-shot RPC."
 			% [label, shot_index]
 		)
 		_expect(
-			(legacy_shot.get("spawn_position") as Vector2).is_equal_approx(
-				data_shot.get("spawn_position") as Vector2
+			(data_shot.get("spawn_position") as Vector2).is_equal_approx(
+				repeat_shot.get("spawn_position") as Vector2
 			)
-			and (legacy_shot.get("direction") as Vector2).is_equal_approx(
-				data_shot.get("direction") as Vector2
+			and (data_shot.get("direction") as Vector2).is_equal_approx(
+				repeat_shot.get("direction") as Vector2
 			)
-			and int(legacy_shot.get("damage", -1))
-			== int(data_shot.get("damage", -2))
+			and int(data_shot.get("damage", -1)) == enemy_config.attack_damage
 			and is_equal_approx(
-				float(legacy_shot.get("speed", -1.0)),
-				enemy_config.projectile_speed
-			)
-			and is_equal_approx(
-				float(legacy_shot.get("lifetime", -1.0)),
-				float(data_shot.get("lifetime", -2.0))
+				float(data_shot.get("lifetime", -1.0)),
+				enemy_config.projectile_lifetime
 			),
-			"%s shot %d fixed-seed spawn, spread, damage, speed and lifetime differ."
+			"%s shot %d must preserve deterministic spawn, spread and authored damage/lifetime."
 			% [label, shot_index]
 		)
 		_expect(
@@ -360,11 +276,11 @@ func _test_fixed_seed_backend_parity(
 			and int(data_record.get("projectile_id", 0))
 			== int(data_shot.get("projectile_id", -1))
 			and int(data_record.get("world_check_interval", 0))
-			== CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES
+			== RapidFireSimulationService.GUNNER_WORLD_CHECK_INTERVAL
 			and int(data_record.get("world_check_phase", -1))
 			== (
 				int(data_shot.get("projectile_id", 0))
-				% CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES
+				% RapidFireSimulationService.GUNNER_WORLD_CHECK_INTERVAL
 			)
 			and int(data_record.get("source_enemy_id", 0)) == SOURCE_ENEMY_ID
 			and (data_record.get("position") as Vector2).is_equal_approx(
@@ -378,17 +294,15 @@ func _test_fixed_seed_backend_parity(
 			"%s shot %d DATA record must preserve identity, profile and semantics."
 			% [label, shot_index]
 		)
-	_compare_action_sequences(
-		legacy_result.get("actions", []) as Array,
-		data_result.get("actions", []) as Array,
-		label
+	_expect(
+		(data_result.get("actions", []) as Array).is_empty(),
+		"%s DATA burst must use its descriptor without per-shot enemy actions." % label
 	)
 
 
 func _capture_complete_burst(
 	enemy_scene: PackedScene,
 	enemy_config: CombatRobotGunnerConfig,
-	backend: CombatRobotGunner.ProjectileBackend,
 	fixture_name: String
 ) -> Dictionary:
 	var fixture := _create_fixture(
@@ -400,17 +314,11 @@ func _capture_complete_burst(
 	) as CapturingGateway
 	var enemy := _spawn_enemy(fixture, gateway, enemy_scene, enemy_config)
 	var service := _get_rapid_service(fixture)
-	CombatRobotGunner.projectile_backend = backend
 	enemy.random_generator.seed = FIXED_SEED
 	_fire_complete_burst(enemy, enemy_config)
 
-	var shots := (
-		gateway.data_shots.duplicate(true)
-		if backend == CombatRobotGunner.ProjectileBackend.DATA
-		else gateway.legacy_shots.duplicate(true)
-	)
 	var result := {
-		"shots": shots,
+		"shots": gateway.data_shots.duplicate(true),
 		"actions": gateway.enemy_actions.duplicate(true),
 		"random_state": enemy.random_generator.state,
 		"action_sequence": enemy.action_sequence,
@@ -420,75 +328,6 @@ func _capture_complete_burst(
 	}
 	await _destroy_fixture(fixture)
 	return result
-
-
-func _test_shadow_observer(
-	enemy_scene: PackedScene,
-	enemy_config: CombatRobotGunnerConfig,
-	label: String
-) -> void:
-	var fixture := _create_fixture(
-		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
-		"GunnerShadow%s" % label
-	)
-	var gateway := fixture.get_node(
-		"MultiplayerGameplayGateway"
-	) as CapturingGateway
-	var enemy := _spawn_enemy(fixture, gateway, enemy_scene, enemy_config)
-	var service := _get_rapid_service(fixture)
-	CombatRobotGunner.projectile_backend = CombatRobotGunner.ProjectileBackend.SHADOW
-	_expect(
-		bool(enemy.call(&"_fire_locked_bullet")),
-		"%s SHADOW shot must retain legacy authority." % label
-	)
-	var handle := service.get_handle_at_stable_index(0)
-	var expected_profile := (
-		RapidFireSimulationService.Profile.GUNNER_ELITE
-		if enemy_config.projectile_type
-		== &"combat_robot_gunner_elite_bullet"
-		else RapidFireSimulationService.Profile.GUNNER
-	)
-	_expect(
-		_count_live_gunner_bullets(fixture) == 1
-		and service.get_active_slot_count() == 1
-		and service.get_slot_mode(handle)
-		== RapidFireSimulationService.Mode.SHADOW
-		and service.get_slot_profile(handle) == expected_profile
-		and int(service.get_metrics().get("damage_applications", -1)) == 0,
-		"%s SHADOW must pair one authoritative Node with one inert typed handle."
-		% label
-	)
-	var bullet := _find_live_gunner_bullet(fixture)
-	if bullet != null:
-		bullet.retire(false)
-	await physics_frame
-	_expect(
-		service.get_active_slot_count() == 0,
-		"%s SHADOW retirement must release its observer handle." % label
-	)
-	await _destroy_fixture(fixture)
-
-
-func _test_shadow_failure_does_not_cancel_legacy() -> void:
-	var fixture := _create_fixture(
-		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
-		"GunnerRejectedShadow"
-	)
-	var gateway := fixture.get_node(
-		"MultiplayerGameplayGateway"
-	) as CapturingGateway
-	var enemy := _spawn_enemy(fixture, gateway, GUNNER_SCENE, GUNNER_CONFIG)
-	var service := _get_rapid_service(fixture)
-	service.prepare_for_runtime_teardown()
-	CombatRobotGunner.projectile_backend = CombatRobotGunner.ProjectileBackend.SHADOW
-	_expect(
-		bool(enemy.call(&"_fire_locked_bullet"))
-		and gateway.legacy_shots.size() == 1
-		and _count_live_gunner_bullets(fixture) == 1
-		and enemy.shadow_registration_failures == 1,
-		"Rejected SHADOW observation must not cancel the legacy authority shot."
-	)
-	await _destroy_fixture(fixture)
 
 
 func _test_data_host_rejection_and_client_boundary() -> void:
@@ -502,11 +341,10 @@ func _test_data_host_rejection_and_client_boundary() -> void:
 	var enemy := _spawn_enemy(fixture, gateway, GUNNER_SCENE, GUNNER_CONFIG)
 	var service := _get_rapid_service(fixture)
 	gateway.reject_data_registration = true
-	CombatRobotGunner.projectile_backend = CombatRobotGunner.ProjectileBackend.DATA
 	enemy.call(&"_prepare_network_burst")
 	_expect(
 		not bool(enemy.call(&"_fire_locked_bullet"))
-		and gateway.legacy_shots.is_empty()
+		and gateway.node_shots.is_empty()
 		and gateway.data_shots.is_empty()
 		and _count_live_gunner_bullets(fixture) == 0
 		and service.get_active_slot_count() == 0
@@ -544,7 +382,6 @@ func _test_data_muzzle_world_clearance() -> void:
 	fixture.add_child(wall)
 	wall.global_position = enemy.global_position + Vector2(8.0, 0.0)
 	await physics_frame
-	CombatRobotGunner.projectile_backend = CombatRobotGunner.ProjectileBackend.DATA
 	enemy.call(&"_prepare_network_burst")
 	_expect(
 		bool(enemy.call(&"_fire_locked_bullet"))
@@ -572,13 +409,6 @@ func _create_fixture(
 	var fixture := PlayerTestCombatRuntime.new()
 	fixture.name = fixture_name
 	fixture.runtime_mode = runtime_mode
-	var motion_placeholder := fixture.get_node("CapooProjectileMotionSystem")
-	fixture.remove_child(motion_placeholder)
-	motion_placeholder.free()
-	var motion_system := CapooProjectileMotionSystem.new()
-	motion_system.name = "CapooProjectileMotionSystem"
-	motion_system.process_physics_priority = 5
-	fixture.add_child(motion_system)
 	var gateway_placeholder := fixture.get_node("MultiplayerGameplayGateway")
 	fixture.remove_child(gateway_placeholder)
 	gateway_placeholder.free()
@@ -657,27 +487,6 @@ func _collect_data_records(
 	return records
 
 
-func _compare_action_sequences(
-	legacy_actions: Array,
-	data_actions: Array,
-	label: String
-) -> void:
-	_expect(
-		legacy_actions.size() == GUNNER_CONFIG.burst_count
-		and data_actions.is_empty()
-		and 1.0 - 1.0 / float(GUNNER_CONFIG.burst_count * 2) >= 0.8,
-		"%s DATA must fold all per-shot action/projectile RPCs into one burst."
-		% label
-	)
-	for action_index in range(legacy_actions.size()):
-		var legacy_action := legacy_actions[action_index] as Dictionary
-		_expect(
-			int(legacy_action.get("action_id", 0)) == action_index + 1,
-			"%s LEGACY action %d order changed during batch migration."
-			% [label, action_index]
-		)
-
-
 func _count_live_gunner_bullets(fixture: Node) -> int:
 	var count := 0
 	for child in fixture.get_children():
@@ -685,16 +494,6 @@ func _count_live_gunner_bullets(fixture: Node) -> int:
 		if bullet != null and bullet.pool_active and not bullet.has_hit:
 			count += 1
 	return count
-
-
-func _find_live_gunner_bullet(
-	fixture: Node
-) -> CombatRobotGunnerBullet:
-	for child in fixture.get_children():
-		var bullet := child as CombatRobotGunnerBullet
-		if bullet != null and bullet.pool_active and not bullet.has_hit:
-			return bullet
-	return null
 
 
 func _destroy_fixture(fixture: PlayerTestCombatRuntime) -> void:

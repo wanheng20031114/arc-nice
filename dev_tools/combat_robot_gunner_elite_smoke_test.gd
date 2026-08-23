@@ -130,7 +130,10 @@ func _test_config_scene_and_geometry_contract() -> void:
 	_expect(is_equal_approx(ELITE_CONFIG.move_speed * ELITE_CONFIG.burst_move_speed_multiplier, 25.0), "精英连射基础有效移速必须为25。")
 	_expect(is_equal_approx(ELITE_CONFIG.attack_cooldown, 2.0), "精英连射冷却必须为2秒。")
 	_expect(ELITE_CONFIG.projectile_type == &"combat_robot_gunner_elite_bullet", "精英投射物类型不正确。")
-	_expect(ELITE_CONFIG.projectile_scene == ELITE_BULLET_SCENE, "精英投射物场景绑定不正确。")
+	_expect(
+		not _object_has_property(ELITE_CONFIG, &"projectile_scene"),
+		"精英枪手 DATA 配置不得暴露旧投射物场景。"
+	)
 	_expect(is_equal_approx(ELITE_CONFIG.projectile_speed, 80.0), "弹速必须保持80。")
 	_expect(is_equal_approx(ELITE_CONFIG.projectile_lifetime, 1.5), "弹体寿命必须保持1.5秒。")
 
@@ -282,7 +285,6 @@ func _test_burst_scheduler_and_half_speed() -> void:
 	for shot in accepted_shots:
 		_expect(
 			shot.projectile_type == &"combat_robot_gunner_elite_bullet"
-			and shot.projectile_scene == ELITE_BULLET_SCENE
 			and shot.damage == 50
 			and is_equal_approx(shot.speed, 80.0)
 			and is_equal_approx(shot.lifetime, 1.5),
@@ -292,6 +294,13 @@ func _test_burst_scheduler_and_half_speed() -> void:
 	player.queue_free()
 	pathfinder.queue_free()
 	await process_frame
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if StringName(property.get("name", "")) == property_name:
+			return true
+	return false
 
 
 func _test_network_pool_and_fate_contract() -> void:
@@ -315,13 +324,13 @@ func _test_network_pool_and_fate_contract() -> void:
 
 	var pool := SessionObjectPool.new()
 	test_root.add_child(pool)
-	CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(pool)
+	pool.register_scene(ELITE_BULLET_SCENE, 0, 96)
 	var metrics := pool.get_metrics(ELITE_BULLET_SCENE.resource_path)
 	_expect(
 		int(metrics.get("created", -1)) == 0
 		and int(metrics.get("inactive", -1)) == 0
 		and int(metrics.get("retained_capacity", -1)) == 96,
-		"精英紫弹对象池必须保持预热0、保留96。"
+		"隔离的旧精英紫弹夹具必须保持预热0、保留96。"
 	)
 	pool.queue_free()
 	await process_frame
@@ -345,7 +354,7 @@ func _test_network_pool_and_fate_contract() -> void:
 	var coordinator := MP_PROJECTILE_COORDINATOR_SCRIPT.new()
 	coordinator.bind_runtime(runtime)
 	var host_direction := Vector2(0.6, 0.8)
-	var projectile := coordinator.instantiate_projectile(
+	var retired_projectile := coordinator.instantiate_projectile(
 		&"combat_robot_gunner_elite_bullet",
 		1,
 		host_direction,
@@ -355,16 +364,21 @@ func _test_network_pool_and_fate_contract() -> void:
 		false,
 		0,
 		0
-	) as CombatRobotGunnerBullet
+	)
+	var coordinator_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+	)
 	_expect(
-		projectile != null
-		and projectile.authored_source_type
-			== &"combat_robot_gunner_elite_bullet"
-		and projectile.direction.is_equal_approx(host_direction)
-		and projectile.damage == 50
-		and is_equal_approx(projectile.speed, 80.0)
-		and is_equal_approx(projectile.remaining_lifetime, 1.5),
-		"客户端必须按Host方向实例化独立紫弹表现，且保留50点快照。"
+		retired_projectile == null,
+		"客户端不得再为精英枪手创建旧紫弹 Node；批量描述只驱动共享表现。"
+	)
+	_expect(
+		coordinator_source.contains("func attach_reserved_local_data_projectile(")
+		and coordinator_source.contains("func broadcast_enemy_rapid_fire_burst(")
+		and not coordinator_source.contains(
+			"COMBAT_ROBOT_GUNNER_ELITE_BULLET_SCENE"
+		),
+		"精英枪手多人路径必须与普通枪手共享 typed DATA 与 burst 描述。"
 	)
 	coordinator.unbind_runtime(runtime)
 	coordinator.free()

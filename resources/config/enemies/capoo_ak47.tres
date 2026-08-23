@@ -3,12 +3,10 @@
 [ext_resource type="Script" uid="uid://gho1ntlrkebh" path="res://resources/config/enemies/capoo_ak47_config.gd" id="1_script"]
 [ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_4ct4u"]
 [ext_resource type="PackedScene" uid="uid://dto67lqb21m3d" path="res://scene/enemy/capoo/capoo_ak47.tscn" id="2_scene"]
-[ext_resource type="PackedScene" uid="uid://cu2jhdju6m1kc" path="res://scene/enemy/capoo/capoo_ak47_bullet.tscn" id="3_bullet"]
 [ext_resource type="AudioStream" uid="uid://clmf0o5otxr8x" path="res://resources/audio/capoo_ak47_fire.wav" id="5_audio"]
 
 [resource]
 script = ExtResource("1_script")
-projectile_scene = ExtResource("3_bullet")
 attack_audio_stream = ExtResource("5_audio")
 display_name = "AK猫猫虫"
 category_tags = PackedStringArray("capoo")

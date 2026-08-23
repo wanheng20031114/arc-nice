@@ -2,7 +2,6 @@
 
 [ext_resource type="Script" path="res://resources/config/enemies/fire_sorcerer_elite_config.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/enemy/sorcerer/fire_sorcerer_elite.tscn" id="2_scene"]
-[ext_resource type="PackedScene" path="res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn" id="3_volley"]
 [ext_resource type="AudioStream" path="res://resources/audio/capoo_mage_fireball_cast.wav" id="4_audio"]
 
 [resource]
@@ -11,7 +10,6 @@ attack_range = 672.0
 summon_duration = 0.6
 attack_interval = 3.0
 initial_attack_stagger_window = 0.9
-volley_scene = ExtResource("3_volley")
 projectile_speed = 115.0
 projectile_lifetime = 7.0
 homing_turn_rate = 6.0
