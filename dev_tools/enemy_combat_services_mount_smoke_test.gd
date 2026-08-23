@@ -3,6 +3,9 @@ extends SceneTree
 const COORDINATOR_SCENE_PATH := (
 	"res://scene/combat/simulation/enemy_simulation_coordinator.tscn"
 )
+const CONTACT_SERVICE_SCENE_PATH := (
+	"res://scene/combat/contact/enemy_contact_service.tscn"
+)
 const COORDINATOR_SCENE := preload(
 	"res://scene/combat/simulation/enemy_simulation_coordinator.tscn"
 )
@@ -14,6 +17,12 @@ const RapidFireSimulationServiceScript := preload(
 )
 const EnemyDamageableSpatialIndexScript := preload(
 	"res://scene/combat/targeting/enemy_damageable_spatial_index.gd"
+)
+const ImmediateHitscanResolverScript := preload(
+	"res://scene/combat/simulation/immediate_hitscan_resolver.gd"
+)
+const RapidProjectilePresenterScript := preload(
+	"res://scene/combat/simulation/rapid_projectile_presenter.gd"
 )
 const FIXTURE_SCENE := preload(
 	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
@@ -65,6 +74,16 @@ func _test_all_runtime_scenes_mount_the_shared_coordinator() -> void:
 			"Runtime must instance the shared coordinator PackedScene: %s"
 			% scene_path
 		)
+		_expect(
+			scene_source.count(
+				'[node name="EnemyContactService" parent="."'
+			) == 1
+			and scene_source.contains(CONTACT_SERVICE_SCENE_PATH),
+			(
+				"Runtime must retain exactly one root EnemyContactService beside the "
+				+ "coordinator: %s" % scene_path
+			)
+		)
 
 
 func _test_authored_coordinator_service_tree_defaults_to_idle() -> void:
@@ -83,6 +102,12 @@ func _test_authored_coordinator_service_tree_defaults_to_idle() -> void:
 		)
 		var damageable_spatial_index: EnemyDamageableSpatialIndexScript = (
 			combat_services.get_enemy_damageable_spatial_index()
+		)
+		var immediate_hitscan_resolver: ImmediateHitscanResolverScript = (
+			combat_services.get_immediate_hitscan_resolver()
+		)
+		var rapid_projectile_presenter: RapidProjectilePresenterScript = (
+			combat_services.get_rapid_projectile_presenter()
 		)
 		_expect(
 			rapid_fire_service != null,
@@ -119,6 +144,34 @@ func _test_authored_coordinator_service_tree_defaults_to_idle() -> void:
 				and int(index_metrics["membership_count"]) == 0,
 				"The authored damageable index must start empty."
 			)
+		_expect(
+			immediate_hitscan_resolver != null,
+			"EnemyCombatServices must author ImmediateHitscanResolver."
+		)
+		if immediate_hitscan_resolver != null:
+			var hitscan_metrics := immediate_hitscan_resolver.get_metrics()
+			_expect(
+				not bool(hitscan_metrics["bound"])
+				and int(hitscan_metrics["resolution_count"]) == 0
+				and int(hitscan_metrics["query_count"]) == 0
+				and not immediate_hitscan_resolver.is_physics_processing(),
+				"The authored hitscan resolver must start unbound and idle."
+			)
+		_expect(
+			rapid_projectile_presenter != null,
+			"EnemyCombatServices must author RapidProjectilePresenter."
+		)
+		if rapid_projectile_presenter != null:
+			var presenter_metrics := rapid_projectile_presenter.get_metrics()
+			_expect(
+				int(presenter_metrics["fixed_capacity"])
+				== RapidProjectilePresenterScript.FIXED_INSTANCE_CAPACITY
+				and int(presenter_metrics["allocated_instances"]) == 0
+				and int(presenter_metrics["visible_instances"]) == 0
+				and int(presenter_metrics["sync_executions"]) == 0
+				and not rapid_projectile_presenter.is_physics_processing(),
+				"The authored presenter must start unallocated and idle."
+			)
 	coordinator.free()
 
 
@@ -151,10 +204,23 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 
 	var coordinator := runtime.get_enemy_simulation_coordinator()
 	var combat_services := runtime.get_enemy_combat_services()
+	var contact_service := runtime.get_enemy_contact_service()
 	_expect(coordinator != null, "The gateway fixture must expose its coordinator.")
 	_expect(
 		combat_services != null,
 		"The gateway fixture must expose bound enemy combat services."
+	)
+	_expect(
+		contact_service != null
+		and contact_service.get_parent() == runtime
+		and (
+			combat_services == null
+			or combat_services.get_node_or_null("EnemyContactService") == null
+		),
+		(
+			"EnemyContactService must remain a distinct runtime-root service, not a "
+			+ "child of EnemyCombatServices."
+		)
 	)
 	if coordinator != null and combat_services != null:
 		var rapid_fire_service := (
@@ -162,6 +228,12 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 		)
 		var damageable_spatial_index: EnemyDamageableSpatialIndexScript = (
 			combat_services.get_enemy_damageable_spatial_index()
+		)
+		var immediate_hitscan_resolver: ImmediateHitscanResolverScript = (
+			combat_services.get_immediate_hitscan_resolver()
+		)
+		var rapid_projectile_presenter: RapidProjectilePresenterScript = (
+			combat_services.get_rapid_projectile_presenter()
 		)
 		_expect(
 			combat_services.is_bound_to(runtime, coordinator),
@@ -177,6 +249,25 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 			and damageable_spatial_index.is_bound_to(runtime, coordinator),
 			"EnemyDamageableSpatialIndex must inherit the same bound context."
 		)
+		_expect(
+			immediate_hitscan_resolver != null
+			and immediate_hitscan_resolver.is_bound_to(runtime),
+			"ImmediateHitscanResolver must bind to the same combat runtime."
+		)
+		_expect(
+			rapid_projectile_presenter != null,
+			"The bound service tree must expose RapidProjectilePresenter."
+		)
+		if rapid_projectile_presenter != null:
+			var mounted_presenter_metrics := rapid_projectile_presenter.get_metrics()
+			_expect(
+				bool(mounted_presenter_metrics["headless_disabled"])
+				and int(mounted_presenter_metrics["allocated_instances"]) == 0
+				and int(mounted_presenter_metrics["visible_instances"]) == 0
+				and int(mounted_presenter_metrics["sync_executions"]) == 0
+				and int(mounted_presenter_metrics["last_scanned_count"]) == 0,
+				"A mounted headless presenter must allocate, scan, and upload nothing."
+			)
 		if damageable_spatial_index != null:
 			var initial_index_metrics := damageable_spatial_index.get_metrics()
 			_expect(
@@ -189,6 +280,12 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 		var rapid_fire_metrics: Dictionary = service_metrics["rapid_fire"]
 		var damageable_index_metrics: Dictionary = (
 			service_metrics["enemy_damageable_spatial_index"]
+		)
+		var hitscan_metrics: Dictionary = (
+			service_metrics["immediate_hitscan_resolver"]
+		)
+		var presenter_metrics: Dictionary = (
+			service_metrics["rapid_projectile_presenter"]
 		)
 		_expect(
 			int(service_metrics["teardown_count"]) == 1,
@@ -203,9 +300,18 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 			"EnemyDamageableSpatialIndex teardown must be idempotent."
 		)
 		_expect(
+			int(hitscan_metrics["teardown_count"]) == 1,
+			"ImmediateHitscanResolver teardown must be idempotent."
+		)
+		_expect(
+			int(presenter_metrics["teardown_count"]) == 1,
+			"RapidProjectilePresenter teardown must be idempotent."
+		)
+		_expect(
 			not bool(service_metrics["bound"])
 			and not bool(rapid_fire_metrics["bound"])
-			and not bool(damageable_index_metrics["bound"]),
+			and not bool(damageable_index_metrics["bound"])
+			and not bool(hitscan_metrics["bound"]),
 			"Teardown must release all runtime and coordinator references."
 		)
 		_expect(
@@ -217,6 +323,19 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 			int(rapid_fire_metrics["active_slots"]) == 0
 			and not bool(rapid_fire_metrics["physics_processing"]),
 			"Teardown must leave zero rapid-fire slots and physics disabled."
+		)
+		_expect(
+			int(presenter_metrics["allocated_instances"]) == 0
+			and int(presenter_metrics["visible_instances"]) == 0
+			and int(presenter_metrics["sync_executions"]) == 0
+			and int(presenter_metrics["last_scanned_count"]) == 0,
+			"Teardown must retain the headless presenter's zero-work state."
+		)
+		_expect(
+			contact_service != null
+			and runtime.get_enemy_contact_service() == contact_service
+			and contact_service.get_parent() == runtime,
+			"Combat-service teardown must not consume the distinct contact service."
 		)
 		_expect(
 			runtime.get_enemy_combat_services() == null,
@@ -235,6 +354,11 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 			_expect(
 				not damageable_spatial_index.bind_context(runtime, coordinator),
 				"EnemyDamageableSpatialIndex must reject rebind after teardown."
+			)
+		if immediate_hitscan_resolver != null:
+			_expect(
+				not immediate_hitscan_resolver.bind_combat_runtime(runtime),
+				"ImmediateHitscanResolver must reject rebind after teardown."
 			)
 
 	runtime.queue_free()
