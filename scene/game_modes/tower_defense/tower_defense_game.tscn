@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://d1w121mq74kpw" path="res://scene/game_modes/tower_defense/tower_defense_game.gd" id="1_17rxn"]
 [ext_resource type="PackedScene" path="res://scene/combat/simulation/enemy_simulation_coordinator.tscn" id="enemy_simulation"]
+[ext_resource type="PackedScene" path="res://scene/combat/contact/enemy_contact_service.tscn" id="enemy_contact"]
 [ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="1_80nbo"]
 [ext_resource type="Texture2D" uid="uid://ciwwo78eluybc" path="res://resources/texture/动态瓦片.png" id="2_e2o6t"]
 [ext_resource type="PackedScene" uid="uid://c3l67vm8hu25t" path="res://scene/combat/pickups/pickup.tscn" id="4_qpk70"]
@@ -484,6 +485,8 @@ position = Vector2(168, 331)
 config = ExtResource("8_rrr3j")
 
 [node name="EnemySimulationCoordinator" parent="." instance=ExtResource("enemy_simulation")]
+
+[node name="EnemyContactService" parent="." instance=ExtResource("enemy_contact")]
 
 [node name="EnemyContainer" type="Node2D" parent="." unique_id=1663148247]
 

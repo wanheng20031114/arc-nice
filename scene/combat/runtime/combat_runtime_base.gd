@@ -127,6 +127,10 @@ var _network_pickup_by_net_id: Dictionary[int, Pickup] = {}
 var _network_enemy_net_id_by_instance_id: Dictionary[int, int] = {}
 var _network_enemy_by_net_id: Dictionary[int, Enemy] = {}
 var combat_target_index = CombatTargetIndexScript.new()
+## Relation policy and the cross-store query facade are runtime-owned so every
+## enemy, coordinator and multiplayer projection observes the same live rules.
+var combat_relation_service: CombatRelationService = CombatRelationService.new()
+var combat_query_facade: CombatQueryFacade = null
 var _singleplayer_combat_target_index_enabled := false
 var _singleplayer_combat_target_index_force_local_queries := false
 var _enemy_snapshot_states_by_net_id: Dictionary = {}
@@ -170,6 +174,22 @@ func get_enemy_combat_services() -> EnemyCombatServicesScript:
 	):
 		return null
 	return combat_services
+
+
+func get_enemy_contact_service() -> EnemyContactService:
+	return get_node_or_null("EnemyContactService") as EnemyContactService
+
+
+func get_combat_relation_service() -> CombatRelationService:
+	return combat_relation_service
+
+
+func get_combat_query_facade() -> CombatQueryFacade:
+	if combat_query_facade == null:
+		combat_query_facade = CombatQueryFacade.new(self)
+	else:
+		combat_query_facade.bind_runtime(self)
+	return combat_query_facade
 
 
 func get_multiplayer_mode_adapter() -> MultiplayerModeAdapter:

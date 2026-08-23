@@ -13,6 +13,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_factories_and_clear()
+	_test_value_copy_and_identity()
 	_test_network_round_trip()
 	_test_invalid_payloads_are_rejected()
 	if failures.is_empty():
@@ -26,11 +27,15 @@ func _run() -> void:
 
 func _test_factories_and_clear() -> void:
 	var empty := TargetDescriptor.create_none()
+	var ordered_empty := TargetDescriptor.create_none(7)
 	_expect(
 		empty != null
 		and empty.kind == TargetDescriptor.Kind.NONE
-		and empty.is_valid(),
-		"NONE 工厂必须返回规范空描述符。"
+		and empty.is_valid()
+		and ordered_empty != null
+		and ordered_empty.revision == 7
+		and ordered_empty.is_valid(),
+		"NONE 工厂必须支持规范空描述符及带序列号的清空事件。"
 	)
 	var player := TargetDescriptor.create_player(7, 2, Vector2(10.5, -4.0))
 	var plant := TargetDescriptor.create_plant(8, 3, Vector2(-2.0, 6.0))
@@ -52,6 +57,42 @@ func _test_factories_and_clear() -> void:
 	)
 
 
+func _test_value_copy_and_identity() -> void:
+	var source := TargetDescriptor.create_enemy(922337, 4, Vector2(3.0, 9.0))
+	var copied := source.duplicate()
+	var copied_alias := source.copy()
+	var assigned := TargetDescriptor.create_none()
+	var copied_from := assigned.copy_from(source)
+	_expect(
+		copied != source
+		and copied.same_identity(source)
+		and copied_alias != source
+		and copied_alias.same_identity(source)
+		and copied_from
+		and assigned.same_identity(source)
+		and copied.get_stable_key() == "3:922337"
+		and copied.stable_key() == copied.get_stable_key()
+		and assigned.get_stable_key() == copied.get_stable_key(),
+		"duplicate/copy_from 必须生成独立值副本，identity 与稳定键不得受 revision 影响。"
+	)
+	copied.revision = 99
+	copied.fallback_position = Vector2.ZERO
+	_expect(
+		copied.same_identity(source)
+		and source.revision == 4
+		and source.fallback_position == Vector2(3.0, 9.0)
+		and not TargetDescriptor.create_player(1).same_identity(source),
+		"同一目标刷新 revision/fallback 后应保持身份连续，且不得回写源对象。"
+	)
+	var invalid := TargetDescriptor.new()
+	invalid.kind = TargetDescriptor.Kind.ENEMY
+	invalid.id = 0
+	_expect(
+		not assigned.copy_from(invalid),
+		"copy_from 必须拒绝非法源值。"
+	)
+
+
 func _test_network_round_trip() -> void:
 	var source := TargetDescriptor.create_enemy(314, 12, Vector2(8.25, -19.5))
 	var payload: Dictionary = source.to_network_dictionary()
@@ -66,13 +107,14 @@ func _test_network_round_trip() -> void:
 		"有效描述符必须无损往返，且不得返回原对象。"
 	)
 	var empty_payload: Dictionary = (
-		TargetDescriptor.create_none().to_network_dictionary()
+		TargetDescriptor.create_none(23).to_network_dictionary()
 	)
 	var restored_empty := TargetDescriptor.from_network_dictionary(empty_payload)
 	_expect(
 		restored_empty != null and restored_empty.is_valid()
-		and restored_empty.kind == TargetDescriptor.Kind.NONE,
-		"规范 NONE 描述符必须可序列化。"
+		and restored_empty.kind == TargetDescriptor.Kind.NONE
+		and restored_empty.revision == 23,
+		"带 revision 的规范 NONE 描述符必须可序列化。"
 	)
 
 

@@ -10,6 +10,16 @@ class_name YuanshiInsect
 # 足够接近玩家时直接追踪玩家当前位置，避免围绕玩家所在格子中心反复寻路。
 @export var direct_chase_extra_distance: float = 2.0
 
+# LAYERED_AREA only throttles perception/navigation decisions. Touch timers,
+# Area2D contact observation and CharacterBody2D movement remain at physics rate.
+@export_range(1, 60, 1, "or_greater") var layered_area_decision_interval_frames := (
+	EnemySimulationPolicy.DEFAULT_LAYERED_AREA_DECISION_INTERVAL_FRAMES
+)
+
+var layered_area_planned_move_direction := Vector2.ZERO
+var layered_area_last_can_move := false
+var layered_area_motion_state_known := false
+
 func _physics_process(delta: float) -> void:
 	if not _should_run_individual_authoritative_physics():
 		return
@@ -18,6 +28,35 @@ func _physics_process(delta: float) -> void:
 
 func supports_centralized_authoritative_simulation() -> bool:
 	return true
+
+
+func supports_layered_area_authoritative_simulation() -> bool:
+	return true
+
+
+func supports_dynamic_enemy_targeting() -> bool:
+	return supports_layered_area_authoritative_simulation()
+
+
+func get_layered_area_decision_interval_frames() -> int:
+	return maxi(layered_area_decision_interval_frames, 1)
+
+
+func get_layered_area_planned_displacement(delta: float) -> Vector2:
+	if not _can_run_layered_area_motion():
+		return Vector2.ZERO
+	return (
+		layered_area_planned_move_direction
+		* _get_move_speed()
+		* maxf(delta, 0.0)
+	)
+
+
+func prepare_layered_area_authoritative_simulation() -> void:
+	super.prepare_layered_area_authoritative_simulation()
+	layered_area_planned_move_direction = Vector2.ZERO
+	layered_area_last_can_move = false
+	layered_area_motion_state_known = false
 
 
 func simulate_authoritative_physics_step(
@@ -30,6 +69,88 @@ func simulate_authoritative_physics_step(
 	_run_authoritative_physics_step(delta)
 
 
+func simulate_layered_area_event_phase(
+	delta: float,
+	simulation_tick: int,
+	token: int
+) -> bool:
+	if not _accept_layered_area_event_phase(token, simulation_tick):
+		return false
+	if is_dead:
+		velocity = Vector2.ZERO
+		layered_area_planned_move_direction = Vector2.ZERO
+		return true
+
+	# Touch cooldowns and overlap-derived damage are event semantics and must stay
+	# at 60 Hz even when direction decisions are less frequent.
+	_update_touch_damage(delta)
+	var can_move := _can_run_layered_area_motion()
+	if not layered_area_motion_state_known or can_move != layered_area_last_can_move:
+		request_layered_area_urgent_decision()
+	layered_area_motion_state_known = true
+	layered_area_last_can_move = can_move
+	if not can_move:
+		layered_area_planned_move_direction = Vector2.ZERO
+		velocity = Vector2.ZERO
+	return true
+
+
+func simulate_layered_area_decision_phase(
+	delta: float,
+	simulation_tick: int,
+	token: int
+) -> bool:
+	if not _accept_layered_area_followup_phase(token, simulation_tick):
+		return false
+	refresh_dynamic_combat_target_decision(Engine.get_physics_frames())
+	if not _can_run_layered_area_motion():
+		layered_area_planned_move_direction = Vector2.ZERO
+	else:
+		layered_area_planned_move_direction = _get_navigation_move_direction(delta)
+	# Facing can mirror collision-shape offsets, rotations and SegmentShape points.
+	# Commit it before the coordinator captures planned contact geometry.
+	_update_facing(layered_area_planned_move_direction)
+	layered_area_decision_urgent = false
+	return true
+
+
+func simulate_layered_area_motion_phase(
+	delta: float,
+	simulation_tick: int,
+	token: int
+) -> bool:
+	if not _accept_layered_area_followup_phase(token, simulation_tick):
+		return false
+	if not _can_run_layered_area_motion():
+		velocity = Vector2.ZERO
+		return true
+
+	var move_direction := layered_area_planned_move_direction
+	var full_velocity := move_direction * _get_move_speed()
+	var safe_motion_fraction := 1.0
+	var enemy_target := objective_target as Enemy
+	if enemy_target != null:
+		safe_motion_fraction = get_layered_area_directed_safe_motion_fraction(
+			enemy_target
+		)
+	velocity = full_velocity * safe_motion_fraction
+	_move_until_player_contact(delta)
+	if safe_motion_fraction < 1.0:
+		# The submitted displacement ends on the directed attack shell. Report a
+		# stopped body immediately; the next current-contact snapshot will turn
+		# this prediction into ordinary contact/attack state.
+		velocity = Vector2.ZERO
+	return true
+
+
+func _can_run_layered_area_motion() -> bool:
+	return (
+		not is_dead
+		and is_instance_valid(objective_target)
+		and not _has_player_contact()
+	)
+
+
 func _run_authoritative_physics_step(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
@@ -39,7 +160,7 @@ func _run_authoritative_physics_step(delta: float) -> void:
 
 	if not is_instance_valid(objective_target):
 		velocity = Vector2.ZERO
-		_move_until_player_contact()
+		_move_until_player_contact(delta)
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
@@ -48,7 +169,7 @@ func _run_authoritative_physics_step(delta: float) -> void:
 	var move_direction := _get_navigation_move_direction(delta)
 	_update_facing(move_direction)
 	velocity = move_direction * _get_move_speed()
-	_move_until_player_contact()
+	_move_until_player_contact(delta)
 
 
 func _get_move_speed() -> float:

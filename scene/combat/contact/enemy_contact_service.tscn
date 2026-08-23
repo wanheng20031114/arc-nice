@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/combat/contact/enemy_contact_service.gd" id="1_service"]
+
+[node name="EnemyContactService" type="Node"]
+process_physics_priority = 10
+script = ExtResource("1_service")
+initial_mode = 0
+automatic_physics_step = false
+capture_event_streams = false
+capture_candidate_order = false

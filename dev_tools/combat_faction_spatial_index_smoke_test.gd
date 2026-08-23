@@ -93,6 +93,28 @@ func _run() -> void:
 	)
 	index.query_world_aabb_into(Rect2(Vector2.ZERO, Vector2.ZERO), aabb_result)
 	_expect(aabb_result.is_empty(), "Degenerate AABBs must fail closed.")
+	var hostile_aabb_result: Array[Enemy] = [neutral]
+	index.query_hostile_world_aabb_unordered_into(
+		Rect2(Vector2(32.0, 16.0), Vector2(-64.0, -32.0)),
+		RELATIONS.PLAYER_ALLIED,
+		hostile_aabb_result,
+		player_ally
+	)
+	_expect(
+		hostile_aabb_result == [hostile_high_id],
+		"Hostile AABB broadphase must clear caller storage and exclude friendly partitions."
+	)
+	index.query_hostile_world_aabb_unordered_into(
+		Rect2(Vector2(32.0, 16.0), Vector2(-64.0, -32.0)),
+		3,
+		hostile_aabb_result,
+		future_faction,
+		custom_relations
+	)
+	_expect(
+		hostile_aabb_result == [hostile_high_id],
+		"Hostile AABB broadphase must honor directional runtime relations without sorting."
+	)
 
 	var boss := Enemy.new()
 	var boss_config := EnemyConfig.new()

@@ -21,6 +21,10 @@ var explosion_damage_done := false
 var outgoing_explosion_damage_snapshot := 0
 
 
+func supports_layered_area_authoritative_simulation() -> bool:
+	return false
+
+
 func _apply_config() -> void:
 	super._apply_config()
 	outgoing_explosion_damage_snapshot = 0

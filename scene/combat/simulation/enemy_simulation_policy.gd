@@ -17,6 +17,7 @@ enum MotionMode {
 }
 
 const MODE_ARGUMENT_PREFIX := "--enemy-simulation-mode="
+const DEFAULT_LAYERED_AREA_DECISION_INTERVAL_FRAMES := 2
 const MODE_NAMES: PackedStringArray = [
 	"LEGACY",
 	"COMPAT_60",
@@ -25,7 +26,9 @@ const MODE_NAMES: PackedStringArray = [
 ]
 
 @export var mode: Mode = Mode.LEGACY
-@export_range(1, 60, 1, "or_greater") var decision_interval_frames := 2
+@export_range(1, 60, 1, "or_greater") var decision_interval_frames := (
+	DEFAULT_LAYERED_AREA_DECISION_INTERVAL_FRAMES
+)
 @export_range(1, 60, 1, "or_greater") var navigation_interval_frames := 6
 @export var motion_mode: MotionMode = MotionMode.FULL_PHYSICAL
 @export var allow_enemy_targets := false

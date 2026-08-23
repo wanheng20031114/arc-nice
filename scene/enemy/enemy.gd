@@ -13,6 +13,12 @@ signal combat_faction_changed(
 const COMBAT_RELATION_SERVICE := preload(
 	"res://scene/combat/faction/combat_relation_service.gd"
 )
+const COMBAT_TARGET_DESCRIPTOR := preload(
+	"res://scene/combat/targeting/combat_target_descriptor.gd"
+)
+const ENEMY_TARGETING_STATE := preload(
+	"res://scene/combat/targeting/enemy_targeting_state.gd"
+)
 
 const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
 const BURN_OVERLAY_STRENGTH_SHADER_PARAMETER := &"burn_overlay_strength"
@@ -87,6 +93,7 @@ const DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES := 6
 # Attack acquisition may lag by at most two physics ticks while committed
 # windups, bursts, movement and hit resolution continue at 60 Hz.
 const DEFAULT_COMBAT_SENSE_UPDATE_INTERVAL_FRAMES := 3
+const DYNAMIC_TARGET_REACHABILITY_INTERVAL_FRAMES := 6
 # A moving flow field is rebuilt in bounded slices. While the replacement is
 # pending, its published anchor may legitimately lag behind the live player.
 # Once that lag reaches two cells, prefer the live target immediately whenever
@@ -193,9 +200,16 @@ var objective_target: Node2D = null:
 		if objective_target == value:
 			return
 		objective_target = value
+		request_layered_area_urgent_decision()
 		objective_target_changed.emit(self, objective_target)
 var pathfinder: Node = null
 var combat_runtime: CombatRuntimeBase = null
+var combat_query_facade = null
+var combat_relation_service: CombatRelationService = null
+var targeting_state: EnemyTargetingState = ENEMY_TARGETING_STATE.new()
+var automatic_navigation_fallback: Node2D = null
+var dynamic_target_reachability_next_physics_frame := 0
+var dynamic_targeting_state_active := false
 var gameplay_gateway: MultiplayerGameplayGateway = null
 var _xirang_kill_reward_override: int = -1
 var projectile_motion_system: Node = null
@@ -244,6 +258,7 @@ var touch_damage_extent_radius: float = 0.0
 var body_collision_half_extents: Vector2 = Vector2.ZERO
 var collision_shape_mirror_states: Dictionary = {}
 var facing_left: bool = false
+var contact_shape_revision := 0
 var proxy_action_animation_name_in_use: StringName = &""
 var proxy_action_restore_token: int = 0
 var navigation_update_frame_offset: int = 0
@@ -316,10 +331,22 @@ var authoritative_simulation_driver := AuthoritativeSimulationDriver.INDIVIDUAL
 var scheduled_authoritative_step_count := 0
 var suppressed_direct_authoritative_step_count := 0
 var individual_simulation_activation_physics_frame := -1
+var layered_area_decision_urgent := true
+var layered_area_last_event_tick := -1
 
 
 func bind_combat_runtime(runtime_instance: CombatRuntimeBase) -> void:
 	combat_runtime = runtime_instance
+	combat_query_facade = (
+		runtime_instance.get_combat_query_facade()
+		if runtime_instance != null
+		else null
+	)
+	combat_relation_service = (
+		runtime_instance.get_combat_relation_service()
+		if runtime_instance != null
+		else null
+	)
 	bind_gameplay_gateway(
 		runtime_instance.get_multiplayer_gameplay_gateway()
 		if runtime_instance != null
@@ -413,6 +440,7 @@ func _ready() -> void:
 	navigation_scheduled_refresh_interval_frames = initial_navigation_interval
 	_refresh_collision_shape_cache()
 	_cache_collision_shape_mirror_states()
+	_connect_contact_shape_change_signals()
 	if animated_sprite != null:
 		multiplayer_proxy_authored_animation_speed = animated_sprite.speed_scale
 		animated_sprite_base_position = animated_sprite.position
@@ -606,6 +634,10 @@ func setup(
 	_xirang_kill_reward_override = -1
 	config = enemy_config
 	_reset_combat_faction_from_config()
+	targeting_state.reset()
+	automatic_navigation_fallback = null
+	dynamic_target_reachability_next_physics_frame = 0
+	dynamic_targeting_state_active = false
 	target_player = player
 	objective_target = player
 	pathfinder = shared_pathfinder
@@ -688,6 +720,7 @@ func set_combat_faction_id(
 		combat_faction_id,
 		faction_revision
 	)
+	request_layered_area_urgent_decision()
 	return true
 
 
@@ -723,6 +756,125 @@ func supports_centralized_authoritative_simulation() -> bool:
 	return false
 
 
+func supports_layered_area_authoritative_simulation() -> bool:
+	return false
+
+
+func supports_dynamic_enemy_targeting() -> bool:
+	return false
+
+
+func get_layered_area_decision_interval_frames() -> int:
+	return EnemySimulationPolicy.DEFAULT_LAYERED_AREA_DECISION_INTERVAL_FRAMES
+
+
+## Translation-only plan consumed by EnemyContactService between the decision
+## and movement phases. Unsupported families return zero and never invent a
+## predicted transform.
+func get_layered_area_planned_displacement(_delta: float) -> Vector2:
+	return Vector2.ZERO
+
+
+func get_layered_area_planned_touch_position(delta: float) -> Vector2:
+	if touch_damage_shape == null or not is_instance_valid(touch_damage_shape):
+		return Vector2(INF, INF)
+	return (
+		touch_damage_shape.global_position
+		+ get_layered_area_planned_displacement(delta)
+	)
+
+
+func get_layered_area_planned_body_position(delta: float) -> Vector2:
+	if collision_shape == null or not is_instance_valid(collision_shape):
+		return Vector2(INF, INF)
+	return (
+		collision_shape.global_position
+		+ get_layered_area_planned_displacement(delta)
+	)
+
+
+## Certifies only the static-physics portion of a straight plan. The contact
+## service separately proves whether the target's complete displacement is a
+## commitment. Stage 4 authorizes only stationary targets or mutually targeted
+## enemy pairs whose members consume the same normalized motion fraction.
+func is_layered_area_contact_plan_certified(
+	delta: float,
+	_counterpart: Node2D
+) -> bool:
+	var planned_motion := get_layered_area_planned_displacement(delta)
+	if planned_motion.is_zero_approx():
+		return true
+	return _can_use_verified_direct_objective_linear_movement(planned_motion)
+
+
+func get_layered_area_contact_target() -> Node2D:
+	return (
+		objective_target
+		if objective_target != null and is_instance_valid(objective_target)
+		else null
+	)
+
+
+func get_contact_shape_revision() -> int:
+	return contact_shape_revision
+
+
+## Runtime systems replacing or mutating authored Shape2D geometry should call
+## this method. Shape2D.changed is connected automatically for in-place size,
+## point and radius edits; the coordinator also compares resource identity and
+## transform basis before each contact snapshot.
+func mark_contact_shape_geometry_changed() -> void:
+	contact_shape_revision += 1
+
+
+func get_layered_area_directed_safe_motion_fraction(target: Enemy) -> float:
+	if target == null or not is_instance_valid(target):
+		return 1.0
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
+		return 1.0
+	var contact_service := combat_runtime.get_enemy_contact_service()
+	if contact_service == null:
+		return 1.0
+	return contact_service.get_directed_safe_motion_fraction(self, target)
+
+
+func prepare_layered_area_authoritative_simulation() -> void:
+	layered_area_decision_urgent = true
+	layered_area_last_event_tick = -1
+
+
+func request_layered_area_urgent_decision() -> void:
+	layered_area_decision_urgent = true
+
+
+func is_layered_area_decision_urgent() -> bool:
+	return layered_area_decision_urgent
+
+
+func simulate_layered_area_event_phase(
+	_delta: float,
+	_simulation_tick: int,
+	_token: int
+) -> bool:
+	return false
+
+
+func simulate_layered_area_decision_phase(
+	_delta: float,
+	_simulation_tick: int,
+	_token: int
+) -> bool:
+	return false
+
+
+func simulate_layered_area_motion_phase(
+	_delta: float,
+	_simulation_tick: int,
+	_token: int
+) -> bool:
+	return false
+
+
 func simulate_authoritative_physics_step(
 	_delta: float,
 	_simulation_tick: int,
@@ -747,6 +899,34 @@ func _accept_scheduled_authoritative_step(token: int) -> bool:
 		return false
 	scheduled_authoritative_step_count += 1
 	return true
+
+
+func _accept_layered_area_event_phase(token: int, simulation_tick: int) -> bool:
+	if (
+		enemy_simulation_coordinator == null
+		or not is_instance_valid(enemy_simulation_coordinator)
+		or enemy_simulation_coordinator.mode
+		!= EnemySimulationPolicy.Mode.LAYERED_AREA
+		or not _accept_scheduled_authoritative_step(token)
+	):
+		return false
+	layered_area_last_event_tick = simulation_tick
+	return true
+
+
+func _accept_layered_area_followup_phase(token: int, simulation_tick: int) -> bool:
+	return (
+		layered_area_last_event_tick == simulation_tick
+		and authoritative_simulation_driver
+		== AuthoritativeSimulationDriver.SCHEDULED_ACTIVE
+		and token > 0
+		and token == enemy_simulation_token
+		and enemy_simulation_coordinator != null
+		and is_instance_valid(enemy_simulation_coordinator)
+		and enemy_simulation_coordinator.mode
+		== EnemySimulationPolicy.Mode.LAYERED_AREA
+		and enemy_simulation_coordinator.owns_enemy(self, token)
+	)
 
 
 func _should_run_individual_authoritative_physics() -> bool:
@@ -818,6 +998,7 @@ func try_attach_to_enemy_simulation_coordinator(
 		)
 	scheduled_authoritative_step_count = 0
 	suppressed_direct_authoritative_step_count = 0
+	layered_area_last_event_tick = -1
 	set_physics_process(false)
 	return true
 
@@ -886,6 +1067,7 @@ func on_enemy_simulation_coordinator_released(
 		AuthoritativeSimulationDriver.INDIVIDUAL
 	)
 	individual_simulation_activation_physics_frame = Engine.get_physics_frames()
+	prepare_layered_area_authoritative_simulation()
 	set_physics_process(
 		resume_individual_processing
 		and not is_dead
@@ -910,6 +1092,7 @@ func _release_authoritative_simulation_driver(
 	enemy_simulation_coordinator = null
 	enemy_simulation_token = 0
 	simulation_id = 0
+	prepare_layered_area_authoritative_simulation()
 	authoritative_simulation_driver = next_driver
 	if (
 		next_driver == AuthoritativeSimulationDriver.INDIVIDUAL
@@ -956,6 +1139,202 @@ func set_objective_target(target: Node2D) -> void:
 	_clear_cached_navigation_move_direction()
 
 
+## Host-authored assignments and automatic targeting share one ordered state,
+## but navigation-only home objectives remain outside the network descriptor.
+## This keeps a cached automatic fallback ready while a designated target owns
+## absolute priority.
+func apply_designated_combat_target(
+	descriptor: CombatTargetDescriptor
+) -> bool:
+	if descriptor == null or not targeting_state.apply_assignment(descriptor):
+		return false
+	dynamic_targeting_state_active = true
+	dynamic_target_reachability_next_physics_frame = 0
+	request_layered_area_urgent_decision()
+	_refresh_targeting_state_objective()
+	return true
+
+
+func consider_automatic_combat_target(
+	candidate: Node2D,
+	candidate_priority: int,
+	navigation_fallback: Node2D = null
+) -> bool:
+	dynamic_targeting_state_active = true
+	automatic_navigation_fallback = (
+		navigation_fallback
+		if navigation_fallback == null or is_instance_valid(navigation_fallback)
+		else null
+	)
+	var current_automatic := _resolve_combat_target_descriptor(
+		targeting_state.automatic_target
+	)
+	if current_automatic != null and not can_attack_combat_target(current_automatic):
+		targeting_state.clear_automatic_target()
+		current_automatic = null
+	if candidate == null or not can_attack_combat_target(candidate):
+		var cleared := targeting_state.clear_automatic_target()
+		_refresh_targeting_state_objective()
+		return cleared
+	var descriptor := _describe_combat_target(candidate)
+	if descriptor == null:
+		# Authored diagnostics may attach a local plant/player without entering the
+		# runtime identity registry. Preserve the pre-descriptor local behavior, but
+		# deliberately keep this object outside ordered/network target state.
+		dynamic_targeting_state_active = false
+		set_objective_target(candidate)
+		return true
+	var current_distance := (
+		global_position.distance_to(current_automatic.global_position)
+		if current_automatic != null
+		else INF
+	)
+	var candidate_distance := global_position.distance_to(candidate.global_position)
+	var changed := targeting_state.consider_automatic_target(
+		descriptor,
+		current_distance,
+		candidate_distance,
+		candidate_priority
+	)
+	_refresh_targeting_state_objective()
+	return changed
+
+
+func get_automatic_combat_target() -> Node2D:
+	return _resolve_combat_target_descriptor(targeting_state.automatic_target)
+
+
+func clear_automatic_combat_target() -> bool:
+	var cleared := targeting_state.clear_automatic_target()
+	if cleared:
+		_refresh_targeting_state_objective()
+	return cleared
+
+
+func refresh_dynamic_combat_target_decision(simulation_tick: int) -> void:
+	if not dynamic_targeting_state_active:
+		return
+	var current_physics_frame := maxi(simulation_tick, 0)
+	if not targeting_state.has_assigned_target():
+		_refresh_targeting_state_objective()
+		return
+	var assigned_target := _resolve_combat_target_descriptor(
+		targeting_state.assigned_target
+	)
+	if assigned_target == null or not can_attack_combat_target(assigned_target):
+		targeting_state.suppress_assignment(current_physics_frame)
+		_refresh_targeting_state_objective()
+		return
+	if not targeting_state.can_evaluate_assignment(current_physics_frame):
+		_refresh_targeting_state_objective()
+		return
+	if current_physics_frame < dynamic_target_reachability_next_physics_frame:
+		return
+	dynamic_target_reachability_next_physics_frame = (
+		current_physics_frame + DYNAMIC_TARGET_REACHABILITY_INTERVAL_FRAMES
+	)
+	var reachability := classify_combat_target_reachability(assigned_target)
+	targeting_state.observe_assignment_reachability(
+		reachability,
+		current_physics_frame
+	)
+	_refresh_targeting_state_objective()
+
+
+func classify_combat_target_reachability(target: Node2D) -> int:
+	if target == null or not can_attack_combat_target(target):
+		return ENEMY_TARGETING_STATE.ReachabilityResult.UNREACHABLE
+	var grid_pathfinder := pathfinder as GridPathfinder
+	var profile := _get_navigation_agent_profile()
+	if grid_pathfinder == null or profile == null:
+		return ENEMY_TARGETING_STATE.ReachabilityResult.DEFERRED
+	var connectivity := (
+		grid_pathfinder.classify_dynamic_target_connectivity_with_profile(
+			global_position,
+			target.global_position,
+			get_dynamic_target_contact_goal_radius(target),
+			profile
+		)
+	)
+	if connectivity == GridPathfinder.NavigationConnectivityStatus.CONNECTED:
+		return ENEMY_TARGETING_STATE.ReachabilityResult.REACHABLE
+	if connectivity == GridPathfinder.NavigationConnectivityStatus.DISCONNECTED:
+		return ENEMY_TARGETING_STATE.ReachabilityResult.UNREACHABLE
+	return ENEMY_TARGETING_STATE.ReachabilityResult.DEFERRED
+
+
+func can_attack_combat_target(target: Node2D) -> bool:
+	if target == null or not is_instance_valid(target) or target == self:
+		return false
+	var player_target := target as Player
+	if player_target != null:
+		return (
+			not player_target.is_dead
+			and _is_hostile_combat_faction(COMBAT_RELATION_SERVICE.PLAYER_ALLIED)
+		)
+	var plant_target := target as PlantDefense
+	if plant_target != null:
+		return (
+			_is_hostile_combat_faction(COMBAT_RELATION_SERVICE.PLAYER_ALLIED)
+			and can_attack_plant_target(plant_target)
+		)
+	var enemy_target := target as Enemy
+	if enemy_target != null:
+		return (
+			not enemy_target.is_dead
+			and not enemy_target.is_queued_for_deletion()
+			and _is_hostile_combat_faction(enemy_target.get_combat_faction_id())
+		)
+	return false
+
+
+func _is_hostile_combat_faction(target_faction_id: int) -> bool:
+	if combat_relation_service != null:
+		return combat_relation_service.is_hostile(
+			combat_faction_id,
+			target_faction_id
+		)
+	return COMBAT_RELATION_SERVICE.is_default_hostile(
+		combat_faction_id,
+		target_faction_id
+	)
+
+
+func _describe_combat_target(target: Node2D) -> CombatTargetDescriptor:
+	if combat_query_facade == null:
+		return null
+	var target_revision := 0
+	var enemy_target := target as Enemy
+	if enemy_target != null:
+		target_revision = enemy_target.get_faction_revision()
+	return combat_query_facade.describe_target(target, target_revision)
+
+
+func _resolve_combat_target_descriptor(
+	descriptor: CombatTargetDescriptor
+) -> Node2D:
+	if combat_query_facade == null or descriptor == null:
+		return null
+	return combat_query_facade.resolve_target(descriptor)
+
+
+func _refresh_targeting_state_objective() -> void:
+	var resolved_target := _resolve_combat_target_descriptor(
+		targeting_state.active_target
+	)
+	if resolved_target != null and can_attack_combat_target(resolved_target):
+		set_objective_target(resolved_target)
+		return
+	if targeting_state.has_active_target():
+		targeting_state.clear_active_target(targeting_state.active_target)
+	set_objective_target(
+		automatic_navigation_fallback
+		if automatic_navigation_fallback == null
+			or is_instance_valid(automatic_navigation_fallback)
+		else null
+	)
+
+
 func set_near_moving_target_direct_distance(distance: float) -> void:
 	var normalized_distance := maxf(distance, 0.0)
 	if is_equal_approx(near_moving_target_direct_distance, normalized_distance):
@@ -978,12 +1357,8 @@ func is_objective_targeting_player() -> bool:
 func get_attackable_objective() -> Node2D:
 	if objective_target == null or not is_instance_valid(objective_target):
 		return null
-	var player_objective := objective_target as Player
-	if player_objective != null:
-		return null if player_objective.is_dead else player_objective
-	var plant_objective := objective_target as PlantDefense
-	if plant_objective != null:
-		return plant_objective if can_attack_plant_target(plant_objective) else null
+	if can_attack_combat_target(objective_target):
+		return objective_target
 	# Home gates and other navigation-only objectives must never become combat
 	# targets merely because they are Node2D instances.
 	return null
@@ -1210,15 +1585,7 @@ func _normalize_locomotion_state(state: int) -> int:
 
 
 func _is_live_ranged_combat_target(target: Node2D) -> bool:
-	if target == null or not is_instance_valid(target):
-		return false
-	var player_target := target as Player
-	if player_target != null:
-		return not player_target.is_dead
-	var plant_target := target as PlantDefense
-	if plant_target != null:
-		return can_attack_plant_target(plant_target)
-	return false
+	return can_attack_combat_target(target)
 
 
 func _set_ranged_attack_position_held(held: bool) -> void:
@@ -1257,6 +1624,10 @@ func configure_multiplayer_proxy() -> void:
 	reset_physics_interpolation()
 	target_player = null
 	objective_target = null
+	targeting_state.reset()
+	automatic_navigation_fallback = null
+	dynamic_target_reachability_next_physics_frame = 0
+	dynamic_targeting_state_active = false
 	pathfinder = null
 	_invalidate_ranged_combat_line_cache()
 	_reset_ranged_attack_position_state()
@@ -3005,6 +3376,9 @@ func get_dynamic_target_contact_goal_radius(target_node: Node2D) -> float:
 	var player_target := target_node as Player
 	if player_target != null:
 		target_extent_radius = player_target.get_navigation_collision_extent_radius()
+	var enemy_target := target_node as Enemy
+	if enemy_target != null:
+		target_extent_radius = enemy_target.body_collision_extent_radius
 	var grid_half_diagonal := 0.0
 	var grid_pathfinder := pathfinder as GridPathfinder
 	if grid_pathfinder != null:
@@ -3161,6 +3535,15 @@ func _cache_collision_shape_mirror_states() -> void:
 		collision_shape_mirror_states[shape_node.get_instance_id()] = state
 
 
+func _connect_contact_shape_change_signals() -> void:
+	var callback := Callable(self, &"mark_contact_shape_geometry_changed")
+	for shape_node in mirrored_collision_shapes:
+		if shape_node == null or shape_node.shape == null:
+			continue
+		if not shape_node.shape.changed.is_connected(callback):
+			shape_node.shape.changed.connect(callback)
+
+
 func _set_facing_from_direction(direction: Vector2) -> void:
 	if is_zero_approx(direction.x):
 		return
@@ -3173,6 +3556,7 @@ func _set_facing_left(new_facing_left: bool) -> void:
 	facing_left = new_facing_left
 	_apply_sprite_facing()
 	_apply_facing_mirror()
+	mark_contact_shape_geometry_changed()
 
 
 func _apply_sprite_facing() -> void:
@@ -3376,7 +3760,7 @@ func _get_safe_navigation_move_direction_unprofiled(
 				),
 				true
 			)
-	elif target_node != target_player:
+	elif not _is_dynamic_navigation_target(target_node):
 		# Between the near and far tiers, keep using the same bounded short-step
 		# certificate. Static obstacles hand the enemy to the complete flow route
 		# as soon as the next staggered probe reaches them.
@@ -3399,7 +3783,7 @@ func _prefetch_dynamic_player_flow_if_obstacle_ahead(
 	if (
 		not Enemy.dynamic_flow_obstacle_lookahead_enabled
 		or target_node == null
-		or target_node != target_player
+		or not _is_dynamic_navigation_target(target_node)
 		or not is_instance_valid(target_node)
 	):
 		return
@@ -3478,7 +3862,7 @@ func _get_flow_navigation_move_direction(
 		if navigation_flow_context == null:
 			navigation_flow_context = GridPathfinder.FlowQueryContext.new()
 		if (
-			target_node == target_player
+			_is_dynamic_navigation_target(target_node)
 			and grid_pathfinder.has_method(
 				"try_write_dynamic_target_navigation_step"
 			)
@@ -3500,7 +3884,7 @@ func _get_flow_navigation_move_direction(
 				target_node.global_position,
 				_get_body_collision_half_extents(),
 				terrain_traversal_types,
-				target_node != target_player
+				not _is_dynamic_navigation_target(target_node)
 			)
 		status = navigation_step_result.status
 		is_complete_route = navigation_step_result.is_complete_route
@@ -3554,7 +3938,7 @@ func _get_flow_navigation_move_direction(
 					<= waypoint_arrival_radius * waypoint_arrival_radius
 			)
 			if reached_resolved_flow_endpoint:
-				if target_node != target_player:
+				if not _is_dynamic_navigation_target(target_node):
 					return _cache_navigation_move_direction(
 						_get_static_objective_final_alignment_direction(
 							target_node.global_position,
@@ -3602,7 +3986,7 @@ func _get_flow_navigation_move_direction(
 				return cached_navigation_move_direction
 			return _cache_navigation_move_direction(Vector2.ZERO)
 		GridPathfinder.NavigationStepStatus.ARRIVED:
-			if target_node != target_player:
+			if not _is_dynamic_navigation_target(target_node):
 				return _cache_navigation_move_direction(
 					_get_static_objective_final_alignment_direction(
 						target_node.global_position,
@@ -3646,7 +4030,7 @@ func _get_outdated_dynamic_flow_direct_correction(
 ) -> Vector2:
 	if (
 		target_node == null
-		or target_node != target_player
+		or not _is_dynamic_navigation_target(target_node)
 		or navigation_step_result == null
 		or navigation_flow_context == null
 		or navigation_flow_context.dynamic_slot_key == ""
@@ -3678,7 +4062,7 @@ func _get_dynamic_target_final_alignment_direction(
 ) -> Vector2:
 	if (
 		target_node == null
-		or target_node != target_player
+		or not _is_dynamic_navigation_target(target_node)
 		or not is_instance_valid(target_node)
 		or _has_player_contact()
 	):
@@ -4134,10 +4518,25 @@ func _get_navigation_update_interval_frames(target_node: Node2D) -> int:
 	return interval
 
 
+func _is_dynamic_navigation_target(target_node: Node2D) -> bool:
+	if target_node == null or not is_instance_valid(target_node):
+		return false
+	var player_target := target_node as Player
+	if player_target != null:
+		return not player_target.is_dead
+	var enemy_target := target_node as Enemy
+	return (
+		enemy_target != null
+		and enemy_target != self
+		and not enemy_target.is_dead
+		and not enemy_target.is_queued_for_deletion()
+	)
+
+
 func _is_far_static_objective(target_node: Node2D) -> bool:
 	return (
 		is_instance_valid(target_node)
-		and target_node != target_player
+		and not _is_dynamic_navigation_target(target_node)
 		and global_position.distance_squared_to(target_node.global_position)
 			>= FAR_STATIC_OBJECTIVE_DISTANCE_SQUARED
 	)
@@ -4146,7 +4545,7 @@ func _is_far_static_objective(target_node: Node2D) -> bool:
 func _is_near_static_objective(target_node: Node2D) -> bool:
 	return (
 		is_instance_valid(target_node)
-		and target_node != target_player
+		and not _is_dynamic_navigation_target(target_node)
 		and global_position.distance_squared_to(target_node.global_position)
 			<= NEAR_STATIC_DIRECT_OBJECTIVE_DISTANCE_SQUARED
 	)
@@ -4155,7 +4554,7 @@ func _is_near_static_objective(target_node: Node2D) -> bool:
 func _is_near_moving_target(target_node: Node2D) -> bool:
 	return (
 		is_instance_valid(target_node)
-		and target_node == target_player
+		and _is_dynamic_navigation_target(target_node)
 		and global_position.distance_squared_to(target_node.global_position)
 			<= near_moving_target_direct_distance_squared
 	)
@@ -4198,6 +4597,7 @@ func _cache_navigation_move_direction(
 
 
 func _clear_cached_navigation_move_direction() -> void:
+	request_layered_area_urgent_decision()
 	last_navigation_update_render_frame = -1
 	navigation_refresh_deferred = false
 	cached_navigation_move_direction = Vector2.ZERO
@@ -4248,7 +4648,7 @@ func _is_navigation_motion_shape_safe(direction: Vector2, probe_distance: float)
 	return normalized_direction.dot(navigation_collision_probe.get_normal()) >= -0.001
 
 
-func _move_until_player_contact() -> void:
+func _move_until_player_contact(delta: float = -1.0) -> void:
 	if velocity == Vector2.ZERO:
 		return
 	if _has_player_contact():
@@ -4257,7 +4657,7 @@ func _move_until_player_contact() -> void:
 	if (
 		cached_navigation_tracks_live_target_direction
 		and is_instance_valid(objective_target)
-		and objective_target == target_player
+		and _is_dynamic_navigation_target(objective_target)
 		and cached_navigation_move_direction.dot(
 			objective_target.global_position - global_position
 		) <= 0.0
@@ -4268,7 +4668,8 @@ func _move_until_player_contact() -> void:
 		velocity = Vector2.ZERO
 		_clear_cached_navigation_move_direction()
 		return
-	var motion := velocity * get_physics_process_delta_time()
+	var motion_delta := delta if delta >= 0.0 else get_physics_process_delta_time()
+	var motion := velocity * motion_delta
 	if _can_use_verified_direct_objective_linear_movement(motion):
 		global_position += motion
 		cached_navigation_verified_direct_motion_clearance = maxf(
@@ -4314,7 +4715,7 @@ func _can_use_verified_direct_objective_linear_movement(motion: Vector2) -> bool
 	var live_target_still_ahead := (
 		not cached_navigation_tracks_live_target_direction
 		or (
-			objective_target == target_player
+			_is_dynamic_navigation_target(objective_target)
 			and cached_navigation_move_direction.dot(
 				objective_target.global_position - global_position
 			) > 0.0
@@ -4336,17 +4737,19 @@ func _can_use_verified_direct_objective_linear_movement(motion: Vector2) -> bool
 # permits a nearby moving player within an exact, generation-bound sweep.
 func _can_use_verified_static_objective_linear_movement(motion: Vector2) -> bool:
 	return (
-		objective_target != target_player
+		not _is_dynamic_navigation_target(objective_target)
 		and _can_use_verified_direct_objective_linear_movement(motion)
 	)
 
 
 func _has_player_contact() -> bool:
-	if not touching_players.is_empty():
+	if _has_dynamic_enemy_target_contact():
+		return true
+	if _select_touching_player() != null:
 		return true
 	for instance_id in touching_plants:
 		var plant := touching_plants[instance_id] as PlantDefense
-		if not can_attack_plant_target(plant):
+		if not can_attack_combat_target(plant):
 			continue
 		var entry_distance := float(
 			touching_plant_entry_distances.get(instance_id, INF)
@@ -4360,6 +4763,39 @@ func _has_player_contact() -> bool:
 		if global_position.distance_to(plant.global_position) <= stop_distance:
 			return true
 	return false
+
+
+func _has_dynamic_enemy_target_contact() -> bool:
+	var enemy_target := objective_target as Enemy
+	if enemy_target == null or not can_attack_combat_target(enemy_target):
+		return false
+	if combat_runtime != null and is_instance_valid(combat_runtime):
+		var contact_service := combat_runtime.get_enemy_contact_service()
+		if contact_service != null:
+			if contact_service.has_directed_contact(self, enemy_target):
+				return true
+			# Once both exact proxies are owned, false is authoritative. Falling
+			# through to two bounding radii would turn offset/capsule AABBs into a
+			# larger false-positive shell and can permanently stop the attacker.
+			if (
+				contact_service.owns_enemy(self)
+				and contact_service.owns_enemy(enemy_target)
+			):
+				return false
+	# has_directed_contact() intentionally exposes only the current transform
+	# snapshot. Future planned sweeps are consumed solely as a motion fraction;
+	# they must not start attack/contact state before movement reaches the shell.
+	# This exact active-target shell also keeps LEGACY/fixtures correct without
+	# adding an enemy collision layer or a broad cohort scan.
+	var contact_radius := (
+		maxf(touch_damage_extent_radius, body_collision_extent_radius)
+		+ enemy_target.body_collision_extent_radius
+	)
+	return (
+		contact_radius > 0.0
+		and global_position.distance_squared_to(enemy_target.global_position)
+			<= contact_radius * contact_radius
+	)
 
 
 func _clear_touching_players() -> void:
@@ -4401,6 +4837,7 @@ func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 
 
 func _on_touch_damage_area_body_exited(body: Node2D) -> void:
+	request_layered_area_urgent_decision()
 	var plant := body as PlantDefense
 	if plant != null:
 		_untrack_touching_plant(plant)
@@ -4425,6 +4862,8 @@ func _select_touching_player() -> Player:
 		var player := touching_players[instance_id] as Player
 		if player == null or not is_instance_valid(player) or player.is_dead:
 			stale_player_ids.append(instance_id)
+			continue
+		if not can_attack_combat_target(player):
 			continue
 		var peer_id := player.peer_id
 		if (
@@ -4455,6 +4894,8 @@ func _select_touching_plant() -> PlantDefense:
 		var plant := touching_plants[instance_id] as PlantDefense
 		if not can_attack_plant_target(plant):
 			stale_plant_ids.append(instance_id)
+			continue
+		if not can_attack_combat_target(plant):
 			continue
 		var distance_squared := global_position.distance_squared_to(
 			plant.global_position
@@ -4583,7 +5024,7 @@ func _update_touch_damage_unprofiled(delta: float) -> void:
 			_try_deal_touch_damage()
 		return
 
-	if touched_player == null:
+	if touched_player == null or not can_attack_combat_target(touched_player):
 		touched_player = _select_touching_player()
 		if touched_player == null:
 			return
@@ -4610,7 +5051,7 @@ func _try_deal_touch_damage() -> void:
 	var outgoing_damage := get_effective_attack_damage(config.attack_damage)
 	if (
 		touched_plant != null
-		and can_attack_plant_target(touched_plant)
+		and can_attack_combat_target(touched_plant)
 	):
 		var impact_direction := global_position.direction_to(touched_plant.global_position)
 		if touched_plant.receive_damage(
@@ -4622,7 +5063,7 @@ func _try_deal_touch_damage() -> void:
 			touch_damage_cooldown_left = touch_damage_interval
 			_on_touch_damage_applied(touched_plant)
 		return
-	if touched_player == null:
+	if touched_player == null or not can_attack_combat_target(touched_player):
 		return
 
 	if _try_request_player_damage(

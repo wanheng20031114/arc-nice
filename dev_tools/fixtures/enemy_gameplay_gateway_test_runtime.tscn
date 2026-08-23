@@ -1,7 +1,8 @@
-[gd_scene load_steps=8 format=3 uid="uid://dmvgr5i0iihy0"]
+[gd_scene load_steps=9 format=3 uid="uid://dmvgr5i0iihy0"]
 
 [ext_resource type="Script" path="res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.gd" id="1_runtime"]
 [ext_resource type="PackedScene" path="res://scene/combat/simulation/enemy_simulation_coordinator.tscn" id="enemy_simulation"]
+[ext_resource type="PackedScene" path="res://scene/combat/contact/enemy_contact_service.tscn" id="enemy_contact"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo/capoo_projectile_motion_system.tscn" id="2_capoo_motion"]
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="3_drone_motion"]
 [ext_resource type="PackedScene" path="res://scene/lighting/day_night_controller.tscn" id="4_day_night"]
@@ -12,6 +13,8 @@
 script = ExtResource("1_runtime")
 
 [node name="EnemySimulationCoordinator" parent="." instance=ExtResource("enemy_simulation")]
+
+[node name="EnemyContactService" parent="." instance=ExtResource("enemy_contact")]
 
 [node name="EnemyContainer" type="Node2D" parent="."]
 

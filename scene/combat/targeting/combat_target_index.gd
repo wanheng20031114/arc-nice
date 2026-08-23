@@ -402,6 +402,88 @@ func query_world_aabb_into(
 	_limit_result(result, max_count)
 
 
+## Unordered faction-aware broadphase for shared contact simulation. The caller
+## owns and reuses `result`; only exact contact candidates are sorted later.
+func query_hostile_world_aabb_unordered_into(
+	world_aabb: Rect2,
+	source_faction_id: int,
+	result: Array[Enemy],
+	excluded_enemy: Enemy = null,
+	relation_service: CombatRelationService = null
+) -> void:
+	result.clear()
+	if (
+		not world_aabb.position.is_finite()
+		or not world_aabb.size.is_finite()
+		or not COMBAT_RELATIONS.is_valid_faction_id(source_faction_id)
+	):
+		return
+	var normalized_aabb := world_aabb.abs()
+	if normalized_aabb.size.x <= 0.0 or normalized_aabb.size.y <= 0.0:
+		return
+	var minimum := normalized_aabb.position
+	var maximum := normalized_aabb.end
+	_advance_safety_audit_once_per_physics_frame()
+	_stale_enemy_net_ids.clear()
+	if _should_scan_radius_registry(minimum, maximum):
+		for net_id_variant in enemies_by_net_id:
+			var net_id := int(net_id_variant)
+			var enemy_variant: Variant = enemies_by_net_id.get(net_id)
+			if enemy_variant == null or not is_instance_valid(enemy_variant):
+				_stale_enemy_net_ids.append(net_id)
+				continue
+			var enemy := enemy_variant as Enemy
+			if not is_enemy_queryable(enemy):
+				_stale_enemy_net_ids.append(net_id)
+				continue
+			if enemy == excluded_enemy:
+				continue
+			var target_faction_id := int(faction_by_net_id.get(net_id, -1))
+			if not _is_hostile_relation(
+				source_faction_id,
+				target_faction_id,
+				relation_service
+			):
+				continue
+			if normalized_aabb.has_point(enemy.global_position):
+				result.append(enemy)
+	else:
+		var minimum_cell := _to_bucket(minimum)
+		var maximum_cell := _to_bucket(maximum)
+		for target_faction_id in range(COMBAT_RELATIONS.MAX_FACTION_COUNT):
+			if not _is_hostile_relation(
+				source_faction_id,
+				target_faction_id,
+				relation_service
+			):
+				continue
+			var faction_cells_variant: Variant = faction_buckets.get(target_faction_id)
+			if faction_cells_variant == null:
+				continue
+			var faction_cells := faction_cells_variant as Dictionary
+			for cell_y in range(minimum_cell.y, maximum_cell.y + 1):
+				for cell_x in range(minimum_cell.x, maximum_cell.x + 1):
+					var cell := Vector2i(cell_x, cell_y)
+					if not faction_cells.has(cell):
+						continue
+					for net_id_variant in faction_cells[cell] as Array:
+						var net_id := int(net_id_variant)
+						var enemy_variant: Variant = enemies_by_net_id.get(net_id)
+						if enemy_variant == null or not is_instance_valid(enemy_variant):
+							_stale_enemy_net_ids.append(net_id)
+							continue
+						var enemy := enemy_variant as Enemy
+						if not is_enemy_queryable(enemy):
+							_stale_enemy_net_ids.append(net_id)
+							continue
+						if enemy == excluded_enemy:
+							continue
+						if normalized_aabb.has_point(enemy.global_position):
+							result.append(enemy)
+	for stale_net_id in _stale_enemy_net_ids:
+		_remove_enemy_entry(stale_net_id)
+
+
 func _append_hostile_in_radius_registry(
 	center: Vector2,
 	radius_squared: float,

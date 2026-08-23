@@ -1306,6 +1306,24 @@ func query_living_plants_in_radius_into(
 		_plant_system.query_living_plants_in_world_radius_into(center, radius, result)
 
 
+func query_living_plants_in_world_aabb_into(
+	world_aabb: Rect2,
+	result: Array[PlantDefense]
+) -> void:
+	result.clear()
+	if _plant_system != null:
+		_plant_system.query_living_plants_in_world_aabb_into(world_aabb, result)
+
+
+func get_combat_target_plant_net_id(plant: PlantDefense) -> int:
+	if plant == null or not is_instance_valid(plant):
+		return 0
+	var net_id := int(plant.get_meta(&"net_id", 0))
+	if net_id <= 0 or _plant_system == null:
+		return 0
+	return net_id if _plant_system.get_plant_by_net_id(net_id) == plant else 0
+
+
 func apply_authoritative_enemy_damage_batch(
 	damage_source_id: int,
 	enemy: Enemy,

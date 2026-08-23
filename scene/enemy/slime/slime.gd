@@ -5,6 +5,10 @@ const FIRE_TOUCH_SOURCE_FAMILY := CombatAttackRegistry.FIRE_SLIME_TOUCH
 const FROST_TOUCH_SOURCE_TYPE := CombatAttackRegistry.FROST_SLIME_TOUCH
 
 
+func supports_layered_area_authoritative_simulation() -> bool:
+	return false
+
+
 func _get_touch_damage_type() -> EnemyConfig.DamageType:
 	if _is_elemental_variant():
 		return EnemyConfig.DamageType.MAGIC

@@ -107,6 +107,7 @@ var countdown_seconds: int = 0
 var current_flow_step: FlowStepConfig = null
 var next_flow_step_after_rest: FlowStepConfig = null
 var enemy_retarget_time_left: float = 0.0
+var _dynamic_enemy_target_query_scratch: Array[Enemy] = []
 var next_multiplayer_enemy_net_id: int = 1
 var navigation_prewarm_requested: bool = false
 var navigation_prewarmed: bool = false
@@ -499,6 +500,7 @@ func _on_scene_teardown_prepared() -> void:
 func _physics_process(delta: float) -> void:
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		_update_multiplayer_remote_player_passive_state(delta)
+	if runtime_mode != RuntimeMode.CLIENT_VIEW:
 		_update_multiplayer_enemy_targets(delta)
 
 func apply_remote_flow_state(
@@ -1368,7 +1370,77 @@ func _update_multiplayer_enemy_targets(delta: float) -> void:
 		var enemy := child as Enemy
 		if enemy == null or enemy.is_dead:
 			continue
+		_assign_dynamic_wave_target(enemy)
+
+
+func _assign_dynamic_wave_target(enemy: Enemy) -> void:
+	if not enemy.supports_dynamic_enemy_targeting():
 		enemy.set_target_player(_pick_enemy_target(enemy.global_position))
+		return
+	var relation_service := get_combat_relation_service()
+	var attacks_player_allied := relation_service.is_hostile(
+		enemy.get_combat_faction_id(),
+		CombatRelationService.PLAYER_ALLIED
+	)
+	var player_candidate := (
+		_pick_enemy_target(enemy.global_position) if attacks_player_allied else null
+	)
+	enemy.set_target_player(player_candidate)
+	_dynamic_enemy_target_query_scratch.clear()
+	query_hostile_combat_targets_into(
+		enemy.global_position,
+		320.0,
+		enemy.get_combat_faction_id(),
+		_dynamic_enemy_target_query_scratch,
+		0,
+		enemy,
+		relation_service
+	)
+	var enemy_candidate: Enemy = null
+	for candidate in _dynamic_enemy_target_query_scratch:
+		if (
+			enemy.classify_combat_target_reachability(candidate)
+			== EnemyTargetingState.ReachabilityResult.UNREACHABLE
+		):
+			continue
+		enemy_candidate = candidate
+		break
+	if (
+		player_candidate != null
+		and enemy.classify_combat_target_reachability(player_candidate)
+		== EnemyTargetingState.ReachabilityResult.UNREACHABLE
+	):
+		player_candidate = null
+	var current_automatic_target := enemy.get_automatic_combat_target()
+	if (
+		current_automatic_target != null
+		and (
+			enemy.classify_combat_target_reachability(current_automatic_target)
+				== EnemyTargetingState.ReachabilityResult.UNREACHABLE
+			or (
+				current_automatic_target is Enemy
+				and enemy.global_position.distance_squared_to(
+					current_automatic_target.global_position
+				) > 320.0 * 320.0
+			)
+		)
+	):
+		enemy.clear_automatic_combat_target()
+	var automatic_candidate: Node2D = player_candidate
+	if (
+		enemy_candidate != null
+		and (
+			automatic_candidate == null
+			or enemy.global_position.distance_squared_to(
+				enemy_candidate.global_position
+			) < enemy.global_position.distance_squared_to(
+				automatic_candidate.global_position
+			)
+		)
+	):
+		automatic_candidate = enemy_candidate
+	enemy.consider_automatic_combat_target(automatic_candidate, 0)
+	enemy.refresh_dynamic_combat_target_decision(Engine.get_physics_frames())
 
 func _pick_enemy_target(from_position: Vector2) -> Player:
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:

@@ -6,7 +6,7 @@ const STAGED_PROFILE_EXTENTS := Vector2(3.0, 15.0)
 const RUNTIME_PROFILE_EXTENTS := Vector2(14.0, 11.0)
 const LAND_TRAVERSAL := DualGridTilemap.TraversalType.LAND
 const MANUAL_EXPANSIONS_PER_FRAME := 16
-const MAX_MANUAL_BUILD_FRAMES := 2000
+const MAX_MANUAL_BUILD_FRAMES := 4000
 
 var failures: Array[String] = []
 
@@ -37,6 +37,7 @@ func _run() -> void:
 		return
 
 	_test_default_open_and_blocked_rectangles(pathfinder)
+	_test_profile_connected_components(pathfinder)
 	await _test_synchronous_and_loading_profile_snapshots(pathfinder)
 	_test_rebuild_invalidates_profile_snapshots(pathfinder)
 	_test_runtime_profile_build_is_staged_and_atomic(pathfinder)
@@ -96,6 +97,90 @@ func _test_default_open_and_blocked_rectangles(pathfinder: GridPathfinder) -> vo
 	)
 
 
+func _test_profile_connected_components(pathfinder: GridPathfinder) -> void:
+	var profile := pathfinder.try_get_agent_navigation_profile(
+		Vector2.ZERO,
+		LAND_TRAVERSAL
+	)
+	_expect(profile != null, "The default navigation profile must resolve.")
+	if profile == null:
+		return
+	var snapshot := profile.solid_integral_snapshot
+	var total_cells := snapshot.region.size.x * snapshot.region.size.y
+	_expect(
+		snapshot.component_build_complete
+		and snapshot.component_ids.size() == total_cells
+		and snapshot.component_count > 0,
+		"A published profile must include complete generation-bound components."
+	)
+	if not snapshot.component_build_complete:
+		return
+	var first_by_component: Dictionary[int, Vector2i] = {}
+	var same_component_pair: Array[Vector2i] = []
+	var different_component_pair: Array[Vector2i] = []
+	for cell_index in range(total_cells):
+		var component_id := snapshot.component_ids[cell_index]
+		if snapshot.solid_cells[cell_index] != 0:
+			_expect(component_id == 0, "Solid cells must never receive a component ID.")
+			continue
+		_expect(component_id > 0, "Every walkable cell must receive a component ID.")
+		var cell := snapshot.region.position + Vector2i(
+			cell_index % snapshot.region.size.x,
+			floori(float(cell_index) / float(snapshot.region.size.x))
+		)
+		if first_by_component.has(component_id):
+			if same_component_pair.is_empty():
+				same_component_pair = [first_by_component[component_id], cell]
+		else:
+			first_by_component[component_id] = cell
+			if first_by_component.size() >= 2 and different_component_pair.is_empty():
+				var component_ids := first_by_component.keys()
+				different_component_pair = [
+					first_by_component[int(component_ids[0])],
+					first_by_component[int(component_ids[1])],
+				]
+	_expect(not same_component_pair.is_empty(), "The map must expose a connected cell pair.")
+	if not same_component_pair.is_empty():
+		var connected := pathfinder.classify_dynamic_target_connectivity_with_profile(
+			pathfinder.call("_map_to_global", same_component_pair[0]) as Vector2,
+			pathfinder.call("_map_to_global", same_component_pair[1]) as Vector2,
+			0.5,
+			profile
+		)
+		_expect(
+			connected == GridPathfinder.NavigationConnectivityStatus.CONNECTED,
+			"Cells with the same component must classify as CONNECTED."
+		)
+	if not different_component_pair.is_empty():
+		var disconnected := pathfinder.classify_dynamic_target_connectivity_with_profile(
+			pathfinder.call("_map_to_global", different_component_pair[0]) as Vector2,
+			pathfinder.call("_map_to_global", different_component_pair[1]) as Vector2,
+			0.5,
+			profile
+		)
+		_expect(
+			disconnected == GridPathfinder.NavigationConnectivityStatus.DISCONNECTED,
+			"Cells in different components must classify as DISCONNECTED."
+		)
+	var outside_position := pathfinder.call(
+		"_map_to_global",
+		snapshot.region.position - Vector2i.ONE
+	) as Vector2
+	var valid_position := pathfinder.call(
+		"_map_to_global",
+		first_by_component.values()[0]
+	) as Vector2
+	_expect(
+		pathfinder.classify_dynamic_target_connectivity_with_profile(
+			outside_position,
+			valid_position,
+			0.5,
+			profile
+		) == GridPathfinder.NavigationConnectivityStatus.UNKNOWN,
+		"An out-of-region source must stay UNKNOWN instead of becoming unreachable."
+	)
+
+
 func _test_synchronous_and_loading_profile_snapshots(pathfinder: GridPathfinder) -> void:
 	var sync_key := pathfinder.call(
 		"_get_agent_grid_cache_key",
@@ -112,6 +197,10 @@ func _test_synchronous_and_loading_profile_snapshots(pathfinder: GridPathfinder)
 	var first_snapshot: Variant = pathfinder.agent_open_plain_integral_cache.get(sync_key)
 	_expect(first_grid != null, "Synchronous profile prewarm must create an agent grid.")
 	_expect(first_snapshot != null, "Synchronous profile prewarm must create its integral snapshot.")
+	_expect(
+		first_snapshot != null and bool(first_snapshot.get("component_build_complete")),
+		"Synchronous profile publication must include complete components."
+	)
 	var second_grid := pathfinder.call(
 		"_get_or_create_agent_grid",
 		SYNC_PROFILE_EXTENTS,
@@ -140,6 +229,11 @@ func _test_synchronous_and_loading_profile_snapshots(pathfinder: GridPathfinder)
 	_expect(
 		pathfinder.agent_open_plain_integral_cache.has(staged_key),
 		"Loading prewarm must publish the matching integral snapshot."
+	)
+	var staged_snapshot: Variant = pathfinder.agent_open_plain_integral_cache.get(staged_key)
+	_expect(
+		staged_snapshot != null and bool(staged_snapshot.get("component_build_complete")),
+		"Loading prewarm must finish components before atomic publication."
 	)
 
 
@@ -265,6 +359,11 @@ func _test_runtime_profile_build_is_staged_and_atomic(pathfinder: GridPathfinder
 	)
 
 	var runtime_grid := pathfinder.agent_grid_cache.get(runtime_key) as AStarGrid2D
+	var runtime_snapshot: Variant = pathfinder.agent_open_plain_integral_cache.get(runtime_key)
+	_expect(
+		runtime_snapshot != null and bool(runtime_snapshot.get("component_build_complete")),
+		"Runtime publication must wait for the staged component build."
+	)
 	var runtime_walkable_cell := _find_any_walkable_cell(runtime_grid)
 	_expect(runtime_walkable_cell != Vector2i.MAX, "The runtime profile must retain walkable cells.")
 	if runtime_walkable_cell != Vector2i.MAX:

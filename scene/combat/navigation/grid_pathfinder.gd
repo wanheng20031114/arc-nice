@@ -43,6 +43,12 @@ enum NavigationStepStatus {
 	UNREACHABLE,
 }
 
+enum NavigationConnectivityStatus {
+	UNKNOWN,
+	CONNECTED,
+	DISCONNECTED,
+}
+
 enum RuntimeFlowJobPriority {
 	BACKGROUND,
 	STATIC_OBJECTIVE,
@@ -203,6 +209,22 @@ class AgentSolidIntegralSnapshot:
 	# AStarGrid2D method calls. It is built atomically beside the prefix sums.
 	var solid_cells: PackedByteArray = PackedByteArray()
 	var transition_masks: PackedByteArray = PackedByteArray()
+	# Component IDs are built from the exact transition masks, so diagonal corner
+	# rules remain identical to flow navigation. Zero is reserved for solid or
+	# unpublished cells; live components start at one.
+	var component_ids: PackedInt32Array = PackedInt32Array()
+	var component_count: int = 0
+	var component_build_complete: bool = false
+
+
+class AgentConnectedComponentBuildState:
+	var snapshot: AgentSolidIntegralSnapshot = null
+	var next_seed_index: int = 0
+	var next_component_id: int = 1
+	var active_component_id: int = 0
+	var pending_cell_indices: PackedInt32Array = PackedInt32Array()
+	var pending_head: int = 0
+	var completed: bool = false
 
 
 class AgentNavigationProfile:
@@ -226,6 +248,7 @@ class RuntimeAgentGridBuildJob:
 	var solid_integral_snapshot: AgentSolidIntegralSnapshot = null
 	var next_integral_cell_index: int = 0
 	var next_transition_cell_index: int = 0
+	var component_build_state: AgentConnectedComponentBuildState = null
 
 @export var obstacle_tile_layer_path: NodePath = ^"../GroundTileMapLayer"
 @export var terrain_map_path: NodePath
@@ -952,6 +975,66 @@ func is_agent_navigation_profile_valid(profile: AgentNavigationProfile) -> bool:
 	return _is_agent_navigation_profile_valid(profile)
 
 
+## Fast conservative reachability classification for moving combat targets.
+## UNKNOWN means the caller must keep the existing navigation path and perform
+## its normal query; it must never be treated as proof of unreachability.
+func classify_dynamic_target_connectivity_with_profile(
+	from_global_position: Vector2,
+	target_global_position: Vector2,
+	target_contact_radius_world: float,
+	profile: AgentNavigationProfile
+) -> NavigationConnectivityStatus:
+	if (
+		not from_global_position.is_finite()
+		or not target_global_position.is_finite()
+		or not is_finite(target_contact_radius_world)
+		or target_contact_radius_world < 0.0
+		or not _is_agent_navigation_profile_valid(profile)
+	):
+		return NavigationConnectivityStatus.UNKNOWN
+	var snapshot := profile.solid_integral_snapshot
+	if (
+		not snapshot.component_build_complete
+		or snapshot.component_ids.size()
+		!= snapshot.region.size.x * snapshot.region.size.y
+	):
+		return NavigationConnectivityStatus.UNKNOWN
+	var source_cell := _global_to_map(from_global_position)
+	var target_cell := _global_to_map(target_global_position)
+	if (
+		not snapshot.region.has_point(source_cell)
+		or not snapshot.region.has_point(target_cell)
+	):
+		return NavigationConnectivityStatus.UNKNOWN
+	var source_index := _get_snapshot_cell_index(snapshot, source_cell)
+	if (
+		source_index < 0
+		or snapshot.solid_cells[source_index] != 0
+		or snapshot.component_ids[source_index] <= 0
+	):
+		# Collision recovery can temporarily place a body in a conservative solid
+		# cell. That is not proof that its actual physics body is disconnected.
+		return NavigationConnectivityStatus.UNKNOWN
+	var goal_cells := _get_dynamic_target_goal_cells(
+		target_cell,
+		target_global_position,
+		profile.path_grid,
+		profile.traversal_types,
+		target_contact_radius_world
+	)
+	if goal_cells.is_empty():
+		return NavigationConnectivityStatus.DISCONNECTED
+	var source_component := snapshot.component_ids[source_index]
+	for goal_cell in goal_cells:
+		var goal_index := _get_snapshot_cell_index(snapshot, goal_cell)
+		if (
+			goal_index >= 0
+			and snapshot.component_ids[goal_index] == source_component
+		):
+			return NavigationConnectivityStatus.CONNECTED
+	return NavigationConnectivityStatus.DISCONNECTED
+
+
 func try_is_navigation_segment_walkable_with_profile(
 	from_global_position: Vector2,
 	to_global_position: Vector2,
@@ -1430,6 +1513,22 @@ func prewarm_agent_grid_staged(
 				or navigation_generation != build_generation
 			):
 				return
+	var component_state := _create_agent_connected_component_build_state(
+		solid_integral_snapshot
+	)
+	completed_rows = 0
+	while _advance_agent_connected_component_build(component_state):
+		completed_rows += 1
+		if completed_rows < maxi(rows_per_frame, 1):
+			continue
+		completed_rows = 0
+		await get_tree().process_frame
+		if (
+			not is_inside_tree()
+			or not is_built
+			or navigation_generation != build_generation
+		):
+			return
 	if navigation_generation != build_generation:
 		return
 	_store_agent_open_plain_integral_snapshot(
@@ -2171,6 +2270,15 @@ func _advance_first_runtime_agent_grid_job() -> bool:
 		)
 		job.next_transition_cell_index += 1
 		if job.next_transition_cell_index < total_cells:
+			return true
+
+	if job.component_build_state == null:
+		job.component_build_state = _create_agent_connected_component_build_state(
+			job.solid_integral_snapshot
+		)
+		return true
+	if not job.component_build_state.completed:
+		if _advance_agent_connected_component_build(job.component_build_state):
 			return true
 
 	_store_agent_open_plain_integral_snapshot(
@@ -4187,7 +4295,96 @@ func _build_agent_solid_integral_snapshot(
 		_write_agent_solid_integral_cell(snapshot, path_grid, cell_index)
 	for cell_index in range(total_cells):
 		_write_agent_transition_mask_cell(snapshot, cell_index)
+	_complete_agent_connected_component_build(snapshot)
 	return snapshot
+
+
+func _create_agent_connected_component_build_state(
+	snapshot: AgentSolidIntegralSnapshot
+) -> AgentConnectedComponentBuildState:
+	if snapshot == null:
+		return null
+	var state := AgentConnectedComponentBuildState.new()
+	state.snapshot = snapshot
+	var total_cells := snapshot.region.size.x * snapshot.region.size.y
+	snapshot.component_ids.resize(total_cells)
+	snapshot.component_ids.fill(0)
+	snapshot.component_count = 0
+	snapshot.component_build_complete = false
+	return state
+
+
+## Advances at most one seed or one connected-cell expansion. Runtime profile
+## jobs call this through the existing wall-clock scheduler, preventing a large
+## map from introducing a new profile-publication spike.
+func _advance_agent_connected_component_build(
+	state: AgentConnectedComponentBuildState
+) -> bool:
+	if state == null or state.completed or state.snapshot == null:
+		return false
+	var snapshot := state.snapshot
+	var width := snapshot.region.size.x
+	var total_cells := width * snapshot.region.size.y
+	if state.pending_head < state.pending_cell_indices.size():
+		var cell_index := state.pending_cell_indices[state.pending_head]
+		state.pending_head += 1
+		var transition_mask := snapshot.transition_masks[cell_index]
+		var local_x := cell_index % width
+		var local_y := floori(float(cell_index) / float(width))
+		for direction_index in range(FLOW_DIRECTIONS.size()):
+			if (transition_mask & (1 << direction_index)) == 0:
+				continue
+			var neighbor_local := Vector2i(local_x, local_y) + (
+				FLOW_DIRECTIONS[direction_index]
+			)
+			var neighbor_index := neighbor_local.y * width + neighbor_local.x
+			if (
+				snapshot.solid_cells[neighbor_index] != 0
+				or snapshot.component_ids[neighbor_index] != 0
+			):
+				continue
+			snapshot.component_ids[neighbor_index] = state.active_component_id
+			state.pending_cell_indices.append(neighbor_index)
+		if state.pending_head >= state.pending_cell_indices.size():
+			state.pending_cell_indices.clear()
+			state.pending_head = 0
+			state.active_component_id = 0
+		return true
+	if state.next_seed_index < total_cells:
+		var seed_index := state.next_seed_index
+		state.next_seed_index += 1
+		if (
+			snapshot.solid_cells[seed_index] == 0
+			and snapshot.component_ids[seed_index] == 0
+		):
+			state.active_component_id = state.next_component_id
+			state.next_component_id += 1
+			snapshot.component_ids[seed_index] = state.active_component_id
+			state.pending_cell_indices.append(seed_index)
+		return true
+	snapshot.component_count = state.next_component_id - 1
+	snapshot.component_build_complete = true
+	state.completed = true
+	state.pending_cell_indices.clear()
+	return false
+
+
+func _complete_agent_connected_component_build(
+	snapshot: AgentSolidIntegralSnapshot
+) -> void:
+	var state := _create_agent_connected_component_build_state(snapshot)
+	while _advance_agent_connected_component_build(state):
+		pass
+
+
+func _get_snapshot_cell_index(
+	snapshot: AgentSolidIntegralSnapshot,
+	cell: Vector2i
+) -> int:
+	if snapshot == null or not snapshot.region.has_point(cell):
+		return -1
+	var local_cell := cell - snapshot.region.position
+	return local_cell.y * snapshot.region.size.x + local_cell.x
 
 
 func _create_empty_agent_solid_integral_snapshot(

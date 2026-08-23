@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://ctfnnphhg0fm" path="res://scene/game_modes/rogue/combat/rogue_combat_game.gd" id="1_cb4l3"]
 [ext_resource type="PackedScene" path="res://scene/combat/simulation/enemy_simulation_coordinator.tscn" id="enemy_simulation"]
+[ext_resource type="PackedScene" path="res://scene/combat/contact/enemy_contact_service.tscn" id="enemy_contact"]
 [ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/underground_church_01/campaign.tres" id="2_kmxr7"]
 [ext_resource type="PackedScene" uid="uid://b2h7qgwej5n3a" path="res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn" id="3_wtrxt"]
 [ext_resource type="PackedScene" uid="uid://bwy4m8w6x0rae" path="res://scene/game_modes/rogue/multiplayer/rogue_multiplayer_mode_adapter.tscn" id="4_0brre"]
@@ -154,6 +155,8 @@ script = ExtResource("21_ljjm3")
 [node name="BossContainer" type="Node2D" parent="." unique_id=1704115178]
 
 [node name="EnemySimulationCoordinator" parent="." instance=ExtResource("enemy_simulation")]
+
+[node name="EnemyContactService" parent="." instance=ExtResource("enemy_contact")]
 
 [node name="EnemyContainer" type="Node2D" parent="." unique_id=1663148247]
 

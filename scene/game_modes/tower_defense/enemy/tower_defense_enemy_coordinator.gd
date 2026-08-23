@@ -19,6 +19,8 @@ const PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS := 16.0
 const PLAYER_NEAR_MOVING_DIRECT_DISTANCE := (
 	PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS * AUTHORED_LOGICAL_TILE_SIZE
 )
+const AUTOMATIC_TARGET_PRIORITY_PLANT := 0
+const AUTOMATIC_TARGET_PRIORITY_COMBATANT := 1
 
 var _runtime: CombatRuntimeBase
 var _campaign_coordinator: TowerDefenseCampaignCoordinator
@@ -56,6 +58,7 @@ var enemy_retarget_cursor := 0
 var _home_objective_targets: Array[Node2D] = []
 var _scene_teardown_prepared := false
 var _plant_objective_enemy_index := PlantObjectiveEnemyIndex.new()
+var _dynamic_enemy_target_scratch: Array[Enemy] = []
 
 var _random_generator: RandomNumberGenerator
 
@@ -112,6 +115,15 @@ func setup(
 	_session_object_pool = session_object_pool
 	_enemy_spawn_effect_scene = enemy_spawn_effect_scene
 	_scene_teardown_prepared = false
+	_runtime.get_combat_query_facade().bind_plant_query_port(
+		Callable(_plant_runtime_coordinator, &"get_multiplayer_plant"),
+		Callable(_plant_runtime_coordinator, &"query_living_plants_in_radius_into"),
+		Callable(
+			_plant_runtime_coordinator,
+			&"query_living_plants_in_world_aabb_into"
+		),
+		Callable(_plant_runtime_coordinator, &"get_combat_target_plant_net_id")
+	)
 	collect_spawn_points(_enemy_spawn_points_root)
 
 
@@ -845,14 +857,141 @@ func assign_enemy_targets(enemy: Enemy, from_position: Vector2) -> void:
 	enemy.set_near_moving_target_direct_distance(
 		PLAYER_NEAR_MOVING_DIRECT_DISTANCE
 	)
-	var combat_player := pick_enemy_target(from_position)
-	var objective := _pick_enemy_objective(
-		from_position,
-		combat_player,
-		enemy.can_target_water_plant_objectives()
+	if not enemy.supports_dynamic_enemy_targeting():
+		var legacy_player := pick_enemy_target(from_position)
+		var legacy_objective := _pick_enemy_objective(
+			from_position,
+			legacy_player,
+			enemy.can_target_water_plant_objectives()
+		)
+		enemy.set_target_player(legacy_player)
+		enemy.set_objective_target(legacy_objective)
+		return
+	var relation_service := _runtime.get_combat_relation_service()
+	var attacks_player_allied := relation_service.is_hostile(
+		enemy.get_combat_faction_id(),
+		CombatRelationService.PLAYER_ALLIED
+	)
+	var combat_player := (
+		pick_enemy_target(from_position) if attacks_player_allied else null
 	)
 	enemy.set_target_player(combat_player)
-	enemy.set_objective_target(objective)
+	var home_fallback := (
+		_get_nearest_home_target(from_position) if attacks_player_allied else null
+	)
+	var automatic_candidate: Node2D = null
+	var automatic_priority := AUTOMATIC_TARGET_PRIORITY_COMBATANT
+	if attacks_player_allied:
+		automatic_candidate = (
+			_plant_runtime_coordinator.find_nearest_enemy_objective(
+				from_position,
+				PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS,
+				enemy.can_target_water_plant_objectives()
+			)
+		)
+		if automatic_candidate != null:
+			automatic_priority = AUTOMATIC_TARGET_PRIORITY_PLANT
+	if automatic_candidate == null:
+		automatic_candidate = _pick_nearest_dynamic_combatant(
+			enemy,
+			from_position,
+			combat_player,
+			relation_service
+		)
+	_prune_out_of_sense_automatic_target(enemy, from_position)
+	enemy.consider_automatic_combat_target(
+		automatic_candidate,
+		automatic_priority,
+		home_fallback
+	)
+	enemy.refresh_dynamic_combat_target_decision(Engine.get_physics_frames())
+
+
+func _pick_nearest_dynamic_combatant(
+	source_enemy: Enemy,
+	from_position: Vector2,
+	combat_player: Player,
+	relation_service: CombatRelationService
+) -> Node2D:
+	var player_candidate: Player = null
+	var player_distance_squared := INF
+	if (
+		combat_player != null
+		and is_instance_valid(combat_player)
+		and not combat_player.is_dead
+	):
+		player_distance_squared = _get_logical_tile_distance_squared(
+			from_position,
+			combat_player.global_position
+		)
+		if (
+			player_distance_squared
+			<= PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS
+				* PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS
+			and source_enemy.classify_combat_target_reachability(combat_player)
+				!= EnemyTargetingState.ReachabilityResult.UNREACHABLE
+		):
+			player_candidate = combat_player
+	_dynamic_enemy_target_scratch.clear()
+	_runtime.query_hostile_combat_targets_into(
+		from_position,
+		PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS * AUTHORED_LOGICAL_TILE_SIZE,
+		source_enemy.get_combat_faction_id(),
+		_dynamic_enemy_target_scratch,
+		0,
+		source_enemy,
+		relation_service
+	)
+	var enemy_candidate: Enemy = null
+	for candidate in _dynamic_enemy_target_scratch:
+		if (
+			source_enemy.classify_combat_target_reachability(candidate)
+			== EnemyTargetingState.ReachabilityResult.UNREACHABLE
+		):
+			continue
+		enemy_candidate = candidate
+		break
+	if enemy_candidate == null:
+		return player_candidate
+	var enemy_distance_squared := _get_logical_tile_distance_squared(
+		from_position,
+		enemy_candidate.global_position
+	)
+	if (
+		enemy_distance_squared
+		> PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS
+			* PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS
+	):
+		return player_candidate
+	if player_candidate == null or enemy_distance_squared < player_distance_squared:
+		return enemy_candidate
+	# TargetDescriptor kind ordering is the deterministic final tie breaker;
+	# PLAYER precedes ENEMY without consuming RNG.
+	return player_candidate
+
+
+func _prune_out_of_sense_automatic_target(
+	enemy: Enemy,
+	from_position: Vector2
+) -> void:
+	var current_target := enemy.get_automatic_combat_target()
+	if current_target == null:
+		return
+	var maximum_radius := (
+		PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS
+		if current_target is PlantDefense
+		else PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS
+	)
+	if (
+		not enemy.can_attack_combat_target(current_target)
+		or enemy.classify_combat_target_reachability(current_target)
+			== EnemyTargetingState.ReachabilityResult.UNREACHABLE
+		or _get_logical_tile_distance_squared(
+			from_position,
+			current_target.global_position
+		) > maximum_radius * maximum_radius
+	):
+		enemy.clear_automatic_combat_target()
 
 
 func pick_enemy_target(from_position: Vector2) -> Player:

@@ -51,6 +51,10 @@ func supports_centralized_authoritative_simulation() -> bool:
 	return false
 
 
+func supports_layered_area_authoritative_simulation() -> bool:
+	return false
+
+
 func _apply_config() -> void:
 	super._apply_config()
 

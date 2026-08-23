@@ -36,6 +36,10 @@ func supports_centralized_authoritative_simulation() -> bool:
 	return false
 
 
+func supports_layered_area_authoritative_simulation() -> bool:
+	return false
+
+
 func _physics_process(delta: float) -> void:
 	_update_attack_cooldown(delta)
 
