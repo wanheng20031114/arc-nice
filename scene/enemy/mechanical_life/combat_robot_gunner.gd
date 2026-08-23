@@ -20,6 +20,18 @@ const FIRE_LEG_FPS := 7.0
 const FIRE_VISUAL_DURATION := 0.08
 const FIRE_VISUAL_TIME_EPSILON := 0.000001
 
+enum ProjectileBackend {
+	LEGACY,
+	SHADOW,
+	DATA,
+}
+
+# Ordinary and elite gunners share one process-wide migration cohort. SHADOW
+# keeps the authored Area2D authoritative while the data kernel records an
+# inert comparison; DATA can then be certified without mixing backends inside
+# one live burst.
+static var projectile_backend: ProjectileBackend = ProjectileBackend.SHADOW
+
 enum CombatState {
 	TRACKING_READY,
 	BURST,
@@ -48,6 +60,8 @@ var latest_proxy_action_id: int = 0
 func supports_dynamic_enemy_targeting() -> bool:
 	return true
 var gunner_config_cache: GunnerConfig = null
+var local_data_projectile_sequence: int = 0
+var shadow_registration_failures: int = 0
 
 var proxy_fire_visual_time_left: float = 0.0
 var proxy_fire_upper_phase: float = 0.0
@@ -166,6 +180,8 @@ func _apply_config() -> void:
 	proxy_fire_visual_active = false
 	proxy_action_restore_animation_name = &""
 	proxy_action_restore_token_snapshot = 0
+	local_data_projectile_sequence = 0
+	shadow_registration_failures = 0
 	gunner_config_cache = config as GunnerConfig
 	if attack_audio != null:
 		attack_audio.stream = (
@@ -363,7 +379,10 @@ func _fire_locked_bullet() -> bool:
 		or not is_instance_valid(gameplay_gateway)
 	):
 		return false
-	var spawn_parent: Node = combat_runtime
+	# Client enemies replay Host actions and receive the existing legacy visual
+	# proxy from MpProjectileCoordinator. They never own an authority backend.
+	if combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+		return false
 
 	var spread_radians := deg_to_rad(
 		maxf(gunner_config_cache.spread_angle_degrees, 0.0)
@@ -371,6 +390,36 @@ func _fire_locked_bullet() -> bool:
 	var shot_direction := locked_fire_direction.rotated(
 		random_generator.randf_range(-spread_radians, spread_radians)
 	).normalized()
+	var fired := false
+	match CombatRobotGunner.projectile_backend:
+		ProjectileBackend.LEGACY:
+			fired = _fire_legacy_projectile(shot_direction, false)
+		ProjectileBackend.SHADOW:
+			fired = _fire_legacy_projectile(shot_direction, true)
+		ProjectileBackend.DATA:
+			fired = _fire_data_projectile(shot_direction)
+	if not fired:
+		return false
+
+	# These operations intentionally remain after successful backend
+	# registration. This preserves animation, pitch RNG, audio cadence and
+	# action broadcast ordering across LEGACY, SHADOW and DATA.
+	_show_authoritative_shot_phase(burst_shots_fired)
+	if burst_shots_fired % 2 == 0:
+		attack_audio.pitch_scale = random_generator.randf_range(0.98, 1.03)
+		ENEMY_ATTACK_AUDIO_LIMITER.play_rapid_fire(attack_audio)
+	_broadcast_enemy_action(ACTION_FIRE, locked_fire_direction)
+	return true
+
+
+func _fire_legacy_projectile(
+	shot_direction: Vector2,
+	register_shadow: bool
+) -> bool:
+	var rapid_fire_service: RapidFireSimulationService = null
+	if register_shadow:
+		rapid_fire_service = _get_rapid_fire_simulation_service()
+	var spawn_parent: Node = combat_runtime
 	var projectile: CapooAK47Bullet = null
 	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
 		gunner_config_cache.projectile_scene
@@ -428,13 +477,134 @@ func _fire_locked_bullet() -> bool:
 		gunner_config_cache.projectile_speed,
 		gunner_config_cache.projectile_lifetime
 	)
-
-	_show_authoritative_shot_phase(burst_shots_fired)
-	if burst_shots_fired % 2 == 0:
-		attack_audio.pitch_scale = random_generator.randf_range(0.98, 1.03)
-		ENEMY_ATTACK_AUDIO_LIMITER.play_rapid_fire(attack_audio)
-	_broadcast_enemy_action(ACTION_FIRE, locked_fire_direction)
+	if register_shadow and rapid_fire_service != null:
+		var profile := _get_rapid_fire_profile()
+		var shadow_projectile_id := projectile.projectile_id
+		var shadow_phase_identity := (
+			shadow_projectile_id
+			if shadow_projectile_id > 0
+			else int(projectile.get_instance_id())
+		)
+		var shadow_handle := rapid_fire_service.register_projectile(
+			RapidFireSimulationService.Mode.SHADOW,
+			profile,
+			projectile.global_position,
+			shot_direction,
+			gunner_config_cache.projectile_speed,
+			gunner_config_cache.projectile_lifetime,
+			outgoing_damage,
+			_get_stable_source_enemy_id(),
+			shadow_projectile_id,
+			CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES,
+			posmod(
+				shadow_phase_identity,
+				CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES
+			),
+			create_damage_source_snapshot(
+				shadow_projectile_id,
+				gunner_bullet.authored_source_type
+			)
+		)
+		if (
+			shadow_handle <= RapidFireSimulationService.INVALID_HANDLE
+			or not projectile.bind_shadow_simulation(
+				rapid_fire_service,
+				shadow_handle
+			)
+		):
+			if rapid_fire_service.is_handle_live(shadow_handle):
+				rapid_fire_service.release_projectile(shadow_handle)
+			shadow_registration_failures += 1
+	elif register_shadow:
+		# SHADOW is an observer. Missing comparison infrastructure must never
+		# cancel or replace the already registered legacy authority projectile.
+		shadow_registration_failures += 1
 	return true
+
+
+func _fire_data_projectile(shot_direction: Vector2) -> bool:
+	var rapid_fire_service := _get_rapid_fire_simulation_service()
+	if rapid_fire_service == null:
+		return false
+	var profile := _get_rapid_fire_profile()
+	if profile == RapidFireSimulationService.Profile.INVALID:
+		return false
+
+	var spawn_position := _get_safe_muzzle_spawn_position()
+	var outgoing_damage := get_effective_attack_damage(
+		gunner_config_cache.attack_damage
+	)
+	var phase_identity := _next_local_data_phase_identity()
+	var profile_source_type := rapid_fire_service.get_profile_source_type(profile)
+	var handle := rapid_fire_service.register_projectile(
+		RapidFireSimulationService.Mode.DATA,
+		profile,
+		spawn_position,
+		shot_direction,
+		gunner_config_cache.projectile_speed,
+		gunner_config_cache.projectile_lifetime,
+		outgoing_damage,
+		_get_stable_source_enemy_id(),
+		0,
+		CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES,
+		posmod(
+			phase_identity,
+			CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES
+		),
+		create_damage_source_snapshot(0, profile_source_type)
+	)
+	if handle <= RapidFireSimulationService.INVALID_HANDLE:
+		return false
+
+	if (
+		combat_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		var projectile_id := gameplay_gateway.register_local_data_projectile(
+			rapid_fire_service,
+			handle,
+			gunner_config_cache.projectile_type,
+			0,
+			spawn_position,
+			shot_direction,
+			outgoing_damage,
+			gunner_config_cache.projectile_speed,
+			gunner_config_cache.projectile_lifetime
+		)
+		# A rejected Host identity is terminal: release the inert handle and do
+		# not silently reintroduce a Node authority backend.
+		if projectile_id <= 0:
+			rapid_fire_service.release_projectile(handle)
+			return false
+	return true
+
+
+func _get_rapid_fire_simulation_service() -> RapidFireSimulationService:
+	var combat_services := combat_runtime.get_enemy_combat_services()
+	if combat_services == null:
+		return null
+	return combat_services.get_rapid_fire_simulation_service()
+
+
+func _get_rapid_fire_profile() -> RapidFireSimulationService.Profile:
+	match gunner_config_cache.projectile_type:
+		&"combat_robot_gunner_bullet":
+			return RapidFireSimulationService.Profile.GUNNER
+		&"combat_robot_gunner_elite_bullet":
+			return RapidFireSimulationService.Profile.GUNNER_ELITE
+	return RapidFireSimulationService.Profile.INVALID
+
+
+func _get_stable_source_enemy_id() -> int:
+	var network_enemy_id := int(get_meta(&"net_id", 0))
+	if network_enemy_id > 0:
+		return network_enemy_id
+	return int(get_instance_id())
+
+
+func _next_local_data_phase_identity() -> int:
+	local_data_projectile_sequence += 1
+	return int(get_instance_id()) + local_data_projectile_sequence
 
 
 func _get_safe_muzzle_spawn_position() -> Vector2:

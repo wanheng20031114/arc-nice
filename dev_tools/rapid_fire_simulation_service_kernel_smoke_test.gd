@@ -22,6 +22,7 @@ func _init() -> void:
 
 func _run() -> void:
 	await _test_same_frame_activation_and_final_lifetime_step()
+	await _test_gunner_profile_metadata_identity_and_mixed_completion()
 	_test_stale_handle_and_generation_reuse()
 	_test_frozen_damage_source_storage_and_compaction()
 	await _test_stable_tombstone_compaction_and_completion_order()
@@ -167,6 +168,122 @@ func _test_same_frame_activation_and_final_lifetime_step() -> void:
 	)
 	identity_service.prepare_for_runtime_teardown()
 	identity_service.free()
+
+
+func _test_gunner_profile_metadata_identity_and_mixed_completion() -> void:
+	var service := RapidFireSimulationServiceScript.new()
+	service.reserve_projectile_capacity(3)
+	_expect(
+		service.get_ak_collision_size() == Vector2(5.0, 2.0)
+		and is_equal_approx(
+			service.get_ak_collision_center_forward_offset(), 0.5
+		)
+		and service.get_profile_collision_size(
+			RapidFireSimulationServiceScript.Profile.GUNNER
+		) == Vector2(9.0, 3.0)
+		and service.get_profile_collision_size(
+			RapidFireSimulationServiceScript.Profile.GUNNER_ELITE
+		) == Vector2(9.0, 3.0)
+		and is_zero_approx(service.get_profile_collision_center_forward_offset(
+			RapidFireSimulationServiceScript.Profile.GUNNER
+		))
+		and service.get_profile_world_collision_mask(
+			RapidFireSimulationServiceScript.Profile.GUNNER_ELITE
+		) == 1
+		and service.get_profile_world_check_interval(
+			RapidFireSimulationServiceScript.Profile.GUNNER
+		) == 2
+		and service.get_profile_source_type(
+			RapidFireSimulationServiceScript.Profile.GUNNER
+		) == &"combat_robot_gunner_bullet"
+		and service.get_profile_source_type(
+			RapidFireSimulationServiceScript.Profile.GUNNER_ELITE
+		) == &"combat_robot_gunner_elite_bullet",
+		"Rapid-fire profiles must expose exact AK/Gunner geometry, cadence, mask, and source types."
+	)
+	var gunner_handle := service.register_projectile(
+		RapidFireSimulationServiceScript.Mode.DATA,
+		RapidFireSimulationServiceScript.Profile.GUNNER,
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		90.0,
+		TEST_DELTA * 0.5,
+		35,
+		601,
+		0,
+		2,
+		0
+	)
+	var elite_handle := service.register_projectile(
+		RapidFireSimulationServiceScript.Mode.SHADOW,
+		RapidFireSimulationServiceScript.Profile.GUNNER_ELITE,
+		Vector2(10.0, 0.0),
+		Vector2.LEFT,
+		90.0,
+		TEST_DELTA * 0.5,
+		50,
+		602,
+		0,
+		2,
+		1
+	)
+	var wrong_interval_handle := service.register_projectile(
+		RapidFireSimulationServiceScript.Mode.DATA,
+		RapidFireSimulationServiceScript.Profile.GUNNER,
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		90.0,
+		1.0,
+		35,
+		601,
+		9003,
+		1,
+		0
+	)
+	_expect(
+		gunner_handle > 0
+		and elite_handle > 0
+		and wrong_interval_handle
+		== RapidFireSimulationServiceScript.INVALID_HANDLE
+		and service.assign_projectile_identity(gunner_handle, 3001)
+		and service.assign_projectile_identity(elite_handle, 3002)
+		and service.get_world_check_phase(gunner_handle) == 1
+		and service.get_world_check_phase(elite_handle) == 0
+		and service.get_world_step_index(gunner_handle) == 0
+		and service.get_world_step_index(elite_handle) == 0,
+		"Gunner identity assignment must derive phase from each slot cadence and reject a wrong interval."
+	)
+	service._physics_process(TEST_DELTA)
+	_expect(
+		service.get_completion_count() == 0
+		and service.get_position(gunner_handle).is_equal_approx(Vector2.ZERO)
+		and service.get_position(elite_handle).is_equal_approx(Vector2(10.0, 0.0)),
+		"Mixed Gunner profiles must retain the shared spawn-frame activation gate."
+	)
+	await physics_frame
+	service._physics_process(TEST_DELTA)
+	_expect(
+		service.get_completion_count() == 2
+		and service.get_completion_projectile_id(0) == 3001
+		and service.get_completion_profile(0)
+		== RapidFireSimulationServiceScript.Profile.GUNNER
+		and service.get_completion_mode(0)
+		== RapidFireSimulationServiceScript.Mode.DATA
+		and service.get_completion_position(0).is_equal_approx(
+			Vector2(1.5, 0.0)
+		)
+		and service.get_completion_projectile_id(1) == 3002
+		and service.get_completion_profile(1)
+		== RapidFireSimulationServiceScript.Profile.GUNNER_ELITE
+		and service.get_completion_mode(1)
+		== RapidFireSimulationServiceScript.Mode.SHADOW
+		and service.get_completion_position(1).is_equal_approx(
+			Vector2(8.5, 0.0)
+		),
+		"Mixed Gunner/Elite final-delta completions must preserve stable order, profile, and mode."
+	)
+	service.prepare_for_runtime_teardown()
+	service.free()
 
 
 func _test_stale_handle_and_generation_reuse() -> void:

@@ -42,6 +42,7 @@ func _run() -> void:
 	await _mount_fixture()
 	if service != null:
 		_test_authored_contract()
+		await _test_gunner_profiles_endpoint_world_and_source_types()
 		await _test_next_frame_endpoint_delay_and_stable_damage()
 		await _test_endpoint_only_and_initial_overlap()
 		await _test_world_cadence_and_lifetime_ordering()
@@ -157,8 +158,157 @@ func _test_authored_contract() -> void:
 		service.get_ak_collision_size() == Vector2(5.0, 2.0)
 		and is_equal_approx(
 			service.get_ak_collision_center_forward_offset(), 0.5
-		),
-		"AK DATA collision must exactly preserve the effective 5x2 shape and 0.5 forward center."
+		)
+		and service.get_profile_collision_size(
+			RapidFireService.Profile.GUNNER
+		) == Vector2(9.0, 3.0)
+		and service.get_profile_collision_size(
+			RapidFireService.Profile.GUNNER_ELITE
+		) == Vector2(9.0, 3.0)
+		and is_zero_approx(service.get_profile_collision_center_forward_offset(
+			RapidFireService.Profile.GUNNER
+		))
+		and is_zero_approx(service.get_profile_collision_center_forward_offset(
+			RapidFireService.Profile.GUNNER_ELITE
+		)),
+		"AK and Gunner DATA profiles must preserve their exact authored rectangles and center offsets."
+	)
+
+
+func _test_gunner_profiles_endpoint_world_and_source_types() -> void:
+	await _reset_context(Vector2(16.0, 0.0))
+	var normal_health := plant.current_health
+	var normal_handle := _register_projectile(
+		RapidFireService.Mode.DATA,
+		801,
+		1.0,
+		1,
+		RapidFireService.Profile.GUNNER
+	)
+	await _next_manual_step()
+	_expect(
+		service.get_completion_count() == 0
+		and service.get_position(normal_handle).is_equal_approx(Vector2(10.0, 0.0))
+		and plant.current_health == normal_health,
+		"GUNNER 9x3 endpoint contact must retain the Area-style one-physics-tick delay."
+	)
+	await _next_manual_step()
+	_expect(
+		service.get_completion_count() == 1
+		and service.get_completion_reason(0)
+		== RapidFireService.CompletionReason.TARGET
+		and service.get_completion_profile(0)
+		== RapidFireService.Profile.GUNNER
+		and service.get_completion_position(0).is_equal_approx(Vector2(10.0, 0.0))
+		and plant.current_health < normal_health
+		and plant.last_damage_result != null
+		and plant.last_damage_result.request.source_type
+		== RapidFireService.GUNNER_SOURCE_TYPE
+		and plant.last_damage_result.request.source_enemy_id == 700
+		and plant.last_damage_result.request.source_projectile_id == 801,
+		"GUNNER must use endpoint exact contact and its stable normal source type."
+	)
+
+	await _reset_context(Vector2.ZERO)
+	var elite_health := plant.current_health
+	_register_projectile(
+		RapidFireService.Mode.DATA,
+		802,
+		1.0,
+		0,
+		RapidFireService.Profile.GUNNER_ELITE
+	)
+	await _next_manual_step()
+	_expect(
+		service.get_completion_count() == 1
+		and service.get_completion_profile(0)
+		== RapidFireService.Profile.GUNNER_ELITE
+		and service.get_completion_position(0).is_equal_approx(Vector2.ZERO)
+		and plant.current_health < elite_health
+		and plant.last_damage_result.request.source_type
+		== RapidFireService.GUNNER_ELITE_SOURCE_TYPE,
+		"GUNNER_ELITE spawn overlap must preserve zero movement and its elite source type."
+	)
+
+	await _reset_context(FAR_POSITION, FAR_POSITION, Vector2(5.0, 0.0))
+	var phase_one := _register_projectile(
+		RapidFireService.Mode.DATA,
+		803,
+		1.0,
+		1,
+		RapidFireService.Profile.GUNNER_ELITE
+	)
+	await _next_manual_step()
+	_expect(
+		service.get_completion_count() == 0
+		and service.get_position(phase_one).is_equal_approx(Vector2(10.0, 0.0)),
+		"GUNNER_ELITE phase 1 must skip its first World ray and keep full movement."
+	)
+	await _next_manual_step()
+	_expect_world_completion(
+		"GUNNER_ELITE must catch a thin wall with the accumulated two-tick World segment."
+	)
+	_expect(
+		service.get_completion_profile(0)
+		== RapidFireService.Profile.GUNNER_ELITE,
+		"World completion must retain the originating elite Profile."
+	)
+
+	await _reset_context(Vector2(16.0, 0.0))
+	var final_health := plant.current_health
+	_register_projectile(
+		RapidFireService.Mode.DATA,
+		804,
+		TEST_DELTA * 0.5,
+		1,
+		RapidFireService.Profile.GUNNER
+	)
+	await _next_manual_step()
+	_expect(
+		service.get_completion_count() == 1
+		and service.get_completion_reason(0)
+		== RapidFireService.CompletionReason.LIFETIME
+		and service.get_completion_target_kind(0)
+		== RapidFireService.TargetKind.NONE
+		and plant.current_health == final_health,
+		"GUNNER final lifetime must validate World then finish without endpoint target damage."
+	)
+
+	await _reset_context(Vector2(10.0, 0.0), Vector2(10.0, 0.0))
+	low_enemy.global_position = Vector2(22.0, 0.0)
+	var allied_gunner_source := DamageSourceSnapshot.create(
+		CombatRelationService.PLAYER_ALLIED,
+		29,
+		700,
+		805,
+		RapidFireService.GUNNER_SOURCE_TYPE
+	)
+	var allied_plant_health := plant.current_health
+	var allied_player_health := player.current_health
+	var hostile_enemy_health := low_enemy.current_health
+	_register_projectile(
+		RapidFireService.Mode.DATA,
+		805,
+		1.0,
+		1,
+		RapidFireService.Profile.GUNNER,
+		allied_gunner_source
+	)
+	await _next_manual_step()
+	await _next_manual_step()
+	_expect(
+		service.get_completion_count() == 1
+		and service.get_completion_target_kind(0)
+		== RapidFireService.TargetKind.ENEMY
+		and service.get_completion_target_id(0) == LOW_ENEMY_ID
+		and plant.current_health == allied_plant_health
+		and player.current_health == allied_player_health
+		and low_enemy.current_health < hostile_enemy_health
+		and low_enemy.last_damage_result.request.source_type
+		== RapidFireService.GUNNER_SOURCE_TYPE
+		and low_enemy.last_damage_result.request.source_snapshot.credit_peer_id == 29
+		and low_enemy.last_damage_result.request.source_snapshot.event_source_id == 805,
+		"A player-allied Gunner 9x3 boundary contact must pass through allied Player/Plant bodies, hit the hostile Enemy, and preserve launch attribution."
 	)
 
 
@@ -404,6 +554,7 @@ func _test_enemy_contact_and_friendly_transparency() -> void:
 		901,
 		1.0,
 		1,
+		RapidFireService.Profile.AK,
 		allied_source
 	)
 	await _next_manual_step()
@@ -454,6 +605,7 @@ func _test_pending_enemy_faction_change_and_stable_order() -> void:
 		903,
 		1.0,
 		1,
+		RapidFireService.Profile.AK,
 		allied_source
 	)
 	await _next_manual_step()
@@ -495,6 +647,7 @@ func _test_pending_enemy_faction_change_and_stable_order() -> void:
 		904,
 		1.0,
 		1,
+		RapidFireService.Profile.AK,
 		stable_source
 	)
 	await _next_manual_step()
@@ -525,6 +678,7 @@ func _test_enemy_defeat_source_snapshot_attribution() -> void:
 		905,
 		1.0,
 		1,
+		RapidFireService.Profile.AK,
 		allied_source
 	)
 	await _next_manual_step()
@@ -714,11 +868,12 @@ func _register_projectile(
 	projectile_id: int,
 	lifetime: float,
 	phase: int,
+	profile: int = RapidFireService.Profile.AK,
 	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> int:
 	var handle := service.register_projectile(
 		mode as RapidFireService.Mode,
-		RapidFireService.Profile.AK,
+		profile as RapidFireService.Profile,
 		Vector2.ZERO,
 		Vector2.RIGHT,
 		TEST_SPEED,
@@ -726,7 +881,9 @@ func _register_projectile(
 		25,
 		700,
 		projectile_id,
-		RapidFireService.AK_WORLD_CHECK_INTERVAL,
+		service.get_profile_world_check_interval(
+			profile as RapidFireService.Profile
+		),
 		phase,
 		damage_source_snapshot
 	)

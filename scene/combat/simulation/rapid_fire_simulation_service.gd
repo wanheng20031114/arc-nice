@@ -14,6 +14,8 @@ enum Mode {
 enum Profile {
 	INVALID,
 	AK,
+	GUNNER,
+	GUNNER_ELITE,
 }
 
 enum SlotState {
@@ -39,12 +41,20 @@ enum TargetKind {
 }
 
 const PROFILE_AK := &"ak"
+const PROFILE_GUNNER := &"gunner"
+const PROFILE_GUNNER_ELITE := &"gunner_elite"
 const AK_SOURCE_TYPE := &"capoo_ak47_bullet"
+const GUNNER_SOURCE_TYPE := &"combat_robot_gunner_bullet"
+const GUNNER_ELITE_SOURCE_TYPE := &"combat_robot_gunner_elite_bullet"
 const AK_WORLD_COLLISION_MASK := 1
 const AK_WORLD_CHECK_INTERVAL := 2
 const AK_COLLISION_SIZE := Vector2(5.0, 2.0)
 const AK_COLLISION_CENTER_FORWARD_OFFSET := 0.5
 const BROAD_PHASE_CLOSED_BOUNDARY_EPSILON := 0.001
+const GUNNER_WORLD_COLLISION_MASK := 1
+const GUNNER_WORLD_CHECK_INTERVAL := 2
+const GUNNER_COLLISION_SIZE := Vector2(9.0, 3.0)
+const GUNNER_COLLISION_CENTER_FORWARD_OFFSET := 0.0
 const INVALID_HANDLE := 0
 const INVALID_SLOT := -1
 const HANDLE_SLOT_BITS := 32
@@ -67,6 +77,7 @@ var _teardown_count := 0
 static var world_collision_certificate_enabled := false
 
 var _ak_collision_shape := RectangleShape2D.new()
+var _gunner_collision_shape := RectangleShape2D.new()
 var _world_ray_query := PhysicsRayQueryParameters2D.create(
 	Vector2.ZERO,
 	Vector2.ZERO,
@@ -180,6 +191,7 @@ var _metric_difference_records := 0
 func _init() -> void:
 	set_physics_process(false)
 	_ak_collision_shape.size = AK_COLLISION_SIZE
+	_gunner_collision_shape.size = GUNNER_COLLISION_SIZE
 	_world_ray_query.collide_with_bodies = true
 	_world_ray_query.collide_with_areas = false
 
@@ -353,12 +365,15 @@ func register_projectile(
 
 
 ## Multiplayer identity is assigned while the record is still inert. The
-## write is atomic with the AK phase derivation and never rewinds cadence.
+## write is atomic with the registered Profile cadence and never rewinds it.
 func assign_projectile_identity(handle: int, projectile_id: int) -> bool:
 	if projectile_id <= 0:
 		return false
 	var dense_slot := _resolve_dense_slot(handle)
 	if dense_slot < 0 or _states[dense_slot] != SlotState.PENDING_ACTIVATION:
+		return false
+	var world_check_interval := int(_world_check_intervals[dense_slot])
+	if world_check_interval <= 0:
 		return false
 	var current_projectile_id := int(_projectile_ids[dense_slot])
 	if current_projectile_id > 0:
@@ -366,12 +381,12 @@ func assign_projectile_identity(handle: int, projectile_id: int) -> bool:
 			return false
 		_source_event_ids[dense_slot] = projectile_id
 		_world_check_phases[dense_slot] = (
-			projectile_id % AK_WORLD_CHECK_INTERVAL
+			projectile_id % world_check_interval
 		)
 		return true
 	_projectile_ids[dense_slot] = projectile_id
 	_source_event_ids[dense_slot] = projectile_id
-	_world_check_phases[dense_slot] = projectile_id % AK_WORLD_CHECK_INTERVAL
+	_world_check_phases[dense_slot] = projectile_id % world_check_interval
 	return true
 
 
@@ -540,11 +555,63 @@ func get_spawn_sequence(handle: int) -> int:
 
 
 func get_ak_collision_size() -> Vector2:
-	return _ak_collision_shape.size
+	return get_profile_collision_size(Profile.AK)
 
 
 func get_ak_collision_center_forward_offset() -> float:
-	return AK_COLLISION_CENTER_FORWARD_OFFSET
+	return get_profile_collision_center_forward_offset(Profile.AK)
+
+
+func get_profile_collision_size(profile: Profile) -> Vector2:
+	match profile:
+		Profile.AK:
+			return AK_COLLISION_SIZE
+		Profile.GUNNER, Profile.GUNNER_ELITE:
+			return GUNNER_COLLISION_SIZE
+		_:
+			return Vector2.ZERO
+
+
+func get_profile_collision_center_forward_offset(profile: Profile) -> float:
+	match profile:
+		Profile.AK:
+			return AK_COLLISION_CENTER_FORWARD_OFFSET
+		Profile.GUNNER, Profile.GUNNER_ELITE:
+			return GUNNER_COLLISION_CENTER_FORWARD_OFFSET
+		_:
+			return 0.0
+
+
+func get_profile_world_collision_mask(profile: Profile) -> int:
+	match profile:
+		Profile.AK:
+			return AK_WORLD_COLLISION_MASK
+		Profile.GUNNER, Profile.GUNNER_ELITE:
+			return GUNNER_WORLD_COLLISION_MASK
+		_:
+			return 0
+
+
+func get_profile_world_check_interval(profile: Profile) -> int:
+	match profile:
+		Profile.AK:
+			return AK_WORLD_CHECK_INTERVAL
+		Profile.GUNNER, Profile.GUNNER_ELITE:
+			return GUNNER_WORLD_CHECK_INTERVAL
+		_:
+			return 0
+
+
+func get_profile_source_type(profile: Profile) -> StringName:
+	match profile:
+		Profile.AK:
+			return AK_SOURCE_TYPE
+		Profile.GUNNER:
+			return GUNNER_SOURCE_TYPE
+		Profile.GUNNER_ELITE:
+			return GUNNER_ELITE_SOURCE_TYPE
+		_:
+			return &""
 
 
 func clear_completion_records() -> void:
@@ -923,6 +990,7 @@ func _physics_process(delta: float) -> void:
 		)
 		if resolve_contacts and must_validate_world:
 			if _resolve_world_contact(
+				dense_slot,
 				_world_collision_anchors[dense_slot],
 				endpoint
 			):
@@ -964,7 +1032,11 @@ func _physics_process(delta: float) -> void:
 	set_physics_process(_record_count > 0)
 
 
-func _resolve_world_contact(from_position: Vector2, to_position: Vector2) -> bool:
+func _resolve_world_contact(
+	dense_slot: int,
+	from_position: Vector2,
+	to_position: Vector2
+) -> bool:
 	_world_hit_position = to_position
 	if from_position.is_equal_approx(to_position):
 		return false
@@ -981,6 +1053,9 @@ func _resolve_world_contact(from_position: Vector2, to_position: Vector2) -> boo
 		return false
 	_world_ray_query.from = from_position
 	_world_ray_query.to = to_position
+	_world_ray_query.collision_mask = get_profile_world_collision_mask(
+		int(_profiles[dense_slot]) as Profile
+	)
 	_metric_world_queries += 1
 	var hit := _combat_runtime.get_world_2d().direct_space_state.intersect_ray(
 		_world_ray_query
@@ -999,9 +1074,13 @@ func _find_endpoint_target(
 	_endpoint_target = null
 	_endpoint_target_kind = TargetKind.NONE
 	_endpoint_target_id = 0
+	var profile := int(_profiles[dense_slot]) as Profile
+	var projectile_shape := _get_profile_collision_shape(profile)
+	if projectile_shape == null:
+		return false
 	var projectile_transform := Transform2D(
 		direction.angle(),
-		endpoint + direction * AK_COLLISION_CENTER_FORWARD_OFFSET
+		endpoint + direction * get_profile_collision_center_forward_offset(profile)
 	)
 	if _find_endpoint_player(dense_slot, projectile_transform):
 		return true
@@ -1026,6 +1105,7 @@ func _resolve_pending_target_contact(dense_slot: int) -> bool:
 	# This reproduces Area2D's one-physics-flush delivery: the endpoint was
 	# observed last tick, but the unchecked world suffix is adjudicated now.
 	if _resolve_world_contact(
+		dense_slot,
 		_world_collision_anchors[dense_slot],
 		target_position
 	):
@@ -1104,15 +1184,31 @@ func _clear_pending_target(dense_slot: int) -> void:
 	_pending_target_positions[dense_slot] = Vector2.ZERO
 
 
+func _get_profile_collision_shape(profile: Profile) -> RectangleShape2D:
+	match profile:
+		Profile.AK:
+			return _ak_collision_shape
+		Profile.GUNNER, Profile.GUNNER_ELITE:
+			return _gunner_collision_shape
+		_:
+			return null
+
+
 func _find_endpoint_player(
 	dense_slot: int,
 	projectile_transform: Transform2D
 ) -> bool:
+	var projectile_shape := _get_profile_collision_shape(
+		int(_profiles[dense_slot]) as Profile
+	)
+	if projectile_shape == null:
+		return false
 	var local_player := _combat_runtime.player
 	_consider_endpoint_player(
 		dense_slot,
 		local_player,
 		_get_player_stable_id(local_player, _combat_runtime.multiplayer_local_peer_id),
+		projectile_shape,
 		projectile_transform
 	)
 	for peer_id_variant in _combat_runtime.peer_players:
@@ -1123,6 +1219,7 @@ func _find_endpoint_player(
 			dense_slot,
 			player,
 			_get_player_stable_id(player, int(peer_id_variant)),
+			projectile_shape,
 			projectile_transform
 		)
 	return _endpoint_target != null
@@ -1132,6 +1229,7 @@ func _consider_endpoint_player(
 	dense_slot: int,
 	player: Player,
 	stable_id: int,
+	projectile_shape: RectangleShape2D,
 	projectile_transform: Transform2D
 ) -> void:
 	if (
@@ -1146,7 +1244,7 @@ func _consider_endpoint_player(
 	):
 		return
 	_metric_player_exact_queries += 1
-	if not _ak_collision_shape.collide(
+	if not projectile_shape.collide(
 		projectile_transform,
 		player.collision_shape.shape,
 		player.collision_shape.global_transform
@@ -1173,7 +1271,12 @@ func _find_endpoint_plant(
 	projectile_transform: Transform2D,
 	direction: Vector2
 ) -> bool:
-	var half_size := AK_COLLISION_SIZE * 0.5
+	var profile := int(_profiles[dense_slot]) as Profile
+	var projectile_shape := _get_profile_collision_shape(profile)
+	var collision_size := get_profile_collision_size(profile)
+	if projectile_shape == null or collision_size.is_zero_approx():
+		return false
+	var half_size := collision_size * 0.5
 	var world_extents := Vector2(
 		absf(direction.x) * half_size.x + absf(direction.y) * half_size.y,
 		absf(direction.y) * half_size.x + absf(direction.x) * half_size.y
@@ -1199,7 +1302,7 @@ func _find_endpoint_plant(
 		_metric_plant_exact_queries += 1
 		if not _enemy_damageable_spatial_index.damageable_overlaps_shape(
 			plant,
-			_ak_collision_shape,
+			projectile_shape,
 			projectile_transform
 		):
 			continue
@@ -1229,7 +1332,12 @@ func _find_endpoint_enemy(
 ) -> bool:
 	if _combat_target_index == null:
 		return false
-	var half_size := AK_COLLISION_SIZE * 0.5
+	var profile := int(_profiles[dense_slot]) as Profile
+	var projectile_shape := _get_profile_collision_shape(profile)
+	var collision_size := get_profile_collision_size(profile)
+	if projectile_shape == null or collision_size.is_zero_approx():
+		return false
+	var half_size := collision_size * 0.5
 	var world_extents := Vector2(
 		absf(direction.x) * half_size.x + absf(direction.y) * half_size.y,
 		absf(direction.y) * half_size.x + absf(direction.x) * half_size.y
@@ -1263,7 +1371,11 @@ func _find_endpoint_enemy(
 		):
 			continue
 		_metric_enemy_exact_queries += 1
-		if not _enemy_body_overlaps_projectile(enemy, projectile_transform):
+		if not _enemy_body_overlaps_projectile(
+			enemy,
+			projectile_shape,
+			projectile_transform
+		):
 			continue
 		var stable_id := _get_enemy_stable_id(enemy)
 		var instance_id := int(enemy.get_instance_id())
@@ -1284,6 +1396,7 @@ func _find_endpoint_enemy(
 
 func _enemy_body_overlaps_projectile(
 	enemy: Enemy,
+	projectile_shape: RectangleShape2D,
 	projectile_transform: Transform2D
 ) -> bool:
 	for shape_node in enemy.body_collision_shapes:
@@ -1294,7 +1407,7 @@ func _enemy_body_overlaps_projectile(
 			or shape_node.shape == null
 		):
 			continue
-		if _ak_collision_shape.collide(
+		if projectile_shape.collide(
 			projectile_transform,
 			shape_node.shape,
 			shape_node.global_transform
@@ -1403,6 +1516,9 @@ func _complete_target_contact(dense_slot: int, position: Vector2) -> void:
 
 
 func _apply_authoritative_damage(dense_slot: int) -> bool:
+	var source_type := StringName(_source_types[dense_slot])
+	if source_type.is_empty():
+		return false
 	if _endpoint_target_kind == TargetKind.PLANT:
 		var plant := _endpoint_target as PlantDefense
 		return (
@@ -1434,7 +1550,6 @@ func _apply_authoritative_damage(dense_slot: int) -> bool:
 				_make_damage_request(dense_slot)
 			).accepted
 		var projectile_id := int(_projectile_ids[dense_slot])
-		var source_type := StringName(_source_types[dense_slot])
 		var source_snapshot := _make_damage_source_snapshot(dense_slot)
 		var gateway := _combat_runtime.get_multiplayer_gameplay_gateway()
 		return (
@@ -1495,6 +1610,7 @@ func _write_damage_source_snapshot(
 	projectile_id: int,
 	damage_source_snapshot: DamageSourceSnapshot
 ) -> void:
+	var profile_source_type := get_profile_source_type(profile as Profile)
 	if damage_source_snapshot != null:
 		_source_faction_ids[dense_slot] = (
 			damage_source_snapshot.source_faction_id
@@ -1513,20 +1629,18 @@ func _write_damage_source_snapshot(
 		_source_types[dense_slot] = String(
 			damage_source_snapshot.source_type
 			if damage_source_snapshot.source_type != &""
-			else AK_SOURCE_TYPE
+			else profile_source_type
 		)
 		return
 
-	# Optional snapshots keep old fixtures source-compatible. AK's fallback is
-	# nevertheless explicit and hostile, so a data record can never inherit the
-	# legacy player-owned default merely because it has no live projectile Node.
+	# Optional snapshots keep old fixtures source-compatible. The profile fallback
+	# is nevertheless explicit and hostile, so a data record can never inherit a
+	# player-owned default merely because it has no live projectile Node.
 	_source_faction_ids[dense_slot] = CombatRelationService.HOSTILE_WAVE
 	_source_credit_peer_ids[dense_slot] = 0
 	_source_instigator_entity_ids[dense_slot] = source_enemy_id
 	_source_event_ids[dense_slot] = projectile_id
-	_source_types[dense_slot] = String(
-		AK_SOURCE_TYPE if profile == Profile.AK else &"enemy_projectile"
-	)
+	_source_types[dense_slot] = String(profile_source_type)
 
 
 func _is_valid_registration(
@@ -1543,10 +1657,20 @@ func _is_valid_registration(
 	world_check_phase: int,
 	damage_source_snapshot: DamageSourceSnapshot
 ) -> bool:
+	var supported_profile := (
+		profile == Profile.AK
+		or profile == Profile.GUNNER
+		or profile == Profile.GUNNER_ELITE
+	)
+	var expected_world_check_interval := (
+		get_profile_world_check_interval(profile as Profile)
+		if supported_profile
+		else 0
+	)
 	return (
 		not _teardown_prepared
 		and (mode == Mode.SHADOW or mode == Mode.DATA)
-		and profile == Profile.AK
+		and supported_profile
 		and position.is_finite()
 		and direction.is_finite()
 		and direction.length_squared() > 0.0
@@ -1557,7 +1681,7 @@ func _is_valid_registration(
 		and damage >= 0
 		and source_enemy_id >= 0
 		and projectile_id >= 0
-		and world_check_interval == AK_WORLD_CHECK_INTERVAL
+		and world_check_interval == expected_world_check_interval
 		and world_check_phase >= 0
 		and world_check_phase < world_check_interval
 		and (

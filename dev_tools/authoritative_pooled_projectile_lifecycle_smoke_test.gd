@@ -108,6 +108,26 @@ func _test_gunner_authoritative_fire(
 	pathfinder: GridPathfinder,
 	label: String
 ) -> void:
+	var combat_services := runtime.get_enemy_combat_services()
+	var rapid_fire_service := (
+		combat_services.get_rapid_fire_simulation_service()
+		if combat_services != null
+		else null
+	) as RapidFireSimulationService
+	_expect(
+		CombatRobotGunner.projectile_backend
+		== CombatRobotGunner.ProjectileBackend.SHADOW,
+		"%s的持枪机器人生产默认必须处于SHADOW迁移阶段。" % label
+	)
+	_expect(
+		rapid_fire_service != null,
+		"%s的持枪机器人必须接入共享连发弹体服务。" % label
+	)
+	var rapid_active_before := (
+		rapid_fire_service.get_active_slot_count()
+		if rapid_fire_service != null
+		else 0
+	)
 	var gunner := GUNNER_CONFIG.enemy_scene.instantiate() as CombatRobotGunner
 	runtime.enemy_container.add_child(gunner)
 	gunner.global_position = Vector2(145.0, 127.0)
@@ -117,6 +137,21 @@ func _test_gunner_authoritative_fire(
 	gunner.locked_fire_direction = Vector2.RIGHT
 	var fired := bool(gunner.call("_fire_locked_bullet"))
 	_expect(fired, "%s的持枪机器人必须通过权威生产路径成功开火。" % label)
+	var shadow_handle := (
+		_find_live_rapid_handle_for_source(
+			rapid_fire_service,
+			int(gunner.get_instance_id()),
+			RapidFireSimulationService.Mode.SHADOW,
+			RapidFireSimulationService.Profile.GUNNER
+		)
+		if rapid_fire_service != null
+		else RapidFireSimulationService.INVALID_HANDLE
+	)
+	_expect(
+		shadow_handle > RapidFireSimulationService.INVALID_HANDLE
+		and rapid_fire_service.get_active_slot_count() == rapid_active_before + 1,
+		"%s的持枪机器人SHADOW开火必须配对一个普通枪手观察句柄。" % label
+	)
 	var bullet := _find_active_pooled_bullet(
 		runtime,
 		GUNNER_CONFIG.projectile_scene
@@ -128,6 +163,12 @@ func _test_gunner_authoritative_fire(
 		motion_system,
 		SAMPLE_PHYSICS_FRAMES,
 		label + "持枪机器人"
+	)
+	_expect(
+		rapid_fire_service != null
+		and not rapid_fire_service.is_handle_live(shadow_handle)
+		and rapid_fire_service.get_active_slot_count() == rapid_active_before,
+		"%s的持枪机器人弹丸回池时必须同步释放SHADOW观察句柄。" % label
 	)
 	gunner.queue_free()
 	await process_frame
@@ -296,6 +337,24 @@ func _find_live_ak_data_handle(
 			and rapid_fire_service.get_slot_profile(handle)
 			== RapidFireSimulationService.Profile.AK
 			and rapid_fire_service.get_source_enemy_id(handle) == source_enemy_id
+		):
+			return handle
+	return RapidFireSimulationService.INVALID_HANDLE
+
+
+func _find_live_rapid_handle_for_source(
+	rapid_fire_service: RapidFireSimulationService,
+	source_enemy_id: int,
+	mode: RapidFireSimulationService.Mode,
+	profile: RapidFireSimulationService.Profile
+) -> int:
+	for stable_index in range(rapid_fire_service.get_dense_record_count()):
+		var handle := rapid_fire_service.get_handle_at_stable_index(stable_index)
+		if (
+			handle > RapidFireSimulationService.INVALID_HANDLE
+			and rapid_fire_service.get_source_enemy_id(handle) == source_enemy_id
+			and rapid_fire_service.get_slot_mode(handle) == mode
+			and rapid_fire_service.get_slot_profile(handle) == profile
 		):
 			return handle
 	return RapidFireSimulationService.INVALID_HANDLE
