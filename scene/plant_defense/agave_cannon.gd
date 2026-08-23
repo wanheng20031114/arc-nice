@@ -2,10 +2,14 @@ extends PlantDefense
 class_name AgaveCannon
 
 const CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
+const ATTACK_PHASE_SCHEDULER := preload(
+	"res://scene/plant_defense/plant_attack_phase_scheduler.gd"
+)
 const WORLD_COLLISION_MASK := 1
 const DEFAULT_ATTACK_DAMAGE := 20
 const DEFAULT_ATTACK_RANGE := 130.0
 const DEFAULT_ATTACK_INTERVAL := 2.0
+const INITIAL_ATTACK_DELAY_MIN_SECONDS := 0.05
 const CANNONBALL_SPEED := 180.0
 const CANNONBALL_EXPLOSION_RADIUS := 18.0
 const FIRE_PROJECTILE_FRAME := 2
@@ -92,8 +96,35 @@ func _on_operational_started() -> void:
 		_disable_proxy_combat_runtime()
 		return
 	var attack_interval := _get_effective_attack_interval()
+	attack_timer.start(calculate_initial_attack_delay_seconds(
+		attack_interval,
+		_get_attack_phase_identity()
+	))
+	# Only the first target lock is phased. Restore the authored repeat interval
+	# immediately so every later cycle keeps the exact original cadence.
 	attack_timer.wait_time = attack_interval
-	attack_timer.start()
+
+
+static func calculate_initial_attack_delay_seconds(
+	attack_interval: float,
+	phase_identity: int
+) -> float:
+	return ATTACK_PHASE_SCHEDULER.calculate_initial_delay_seconds(
+		attack_interval,
+		phase_identity,
+		INITIAL_ATTACK_DELAY_MIN_SECONDS
+	)
+
+
+func get_initial_attack_delay_seconds() -> float:
+	return calculate_initial_attack_delay_seconds(
+		_get_effective_attack_interval(),
+		_get_attack_phase_identity()
+	)
+
+
+func _get_attack_phase_identity() -> int:
+	return ATTACK_PHASE_SCHEDULER.resolve_plant_identity(self)
 
 
 func _on_multiplayer_proxy_configured() -> void:

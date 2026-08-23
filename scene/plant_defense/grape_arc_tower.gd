@@ -4,6 +4,9 @@ class_name GrapeArcTower
 const AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/plant_attack_audio_limiter.gd"
 )
+const ATTACK_PHASE_SCHEDULER := preload(
+	"res://scene/plant_defense/plant_attack_phase_scheduler.gd"
+)
 const DEFAULT_ATTACK_INTERVAL := 1.4
 const TARGET_RETRY_SECONDS := 0.18
 const INITIAL_ATTACK_DELAY_MIN_SECONDS := 0.08
@@ -202,29 +205,15 @@ static func calculate_initial_attack_delay_seconds(
 	attack_interval: float,
 	phase_identity: int
 ) -> float:
-	var safe_interval := maxf(attack_interval, 0.001)
-	if safe_interval <= INITIAL_ATTACK_DELAY_MIN_SECONDS:
-		return safe_interval
-	var phase_window := safe_interval - INITIAL_ATTACK_DELAY_MIN_SECONDS
-	return (
+	return ATTACK_PHASE_SCHEDULER.calculate_initial_delay_seconds(
+		attack_interval,
+		phase_identity,
 		INITIAL_ATTACK_DELAY_MIN_SECONDS
-		+ fposmod(
-			float(phase_identity)
-			* ATTACK_PHASE_GOLDEN_RATIO
-			* safe_interval,
-			phase_window
-		)
 	)
 
 
 func _get_attack_phase_identity() -> int:
-	var network_identity := int(get_meta(&"net_id", 0))
-	if network_identity > 0:
-		return network_identity
-	return int(hash(Vector2i(
-		roundi(global_position.x),
-		roundi(global_position.y)
-	)))
+	return ATTACK_PHASE_SCHEDULER.resolve_plant_identity(self)
 
 
 func _get_initial_idle_scan_delay_seconds() -> float:

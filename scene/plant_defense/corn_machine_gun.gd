@@ -4,6 +4,9 @@ class_name CornMachineGun
 signal burst_shot_emitted(shot_index: int, authoritative: bool)
 
 const AUDIO_LIMITER := preload("res://scene/combat/audio/plant_attack_audio_limiter.gd")
+const ATTACK_PHASE_SCHEDULER := preload(
+	"res://scene/plant_defense/plant_attack_phase_scheduler.gd"
+)
 const PROJECTILE_SHIELD_COLLISION_MASK := 1 << 12
 const WORLD_AND_ENEMY_COLLISION_MASK := 5 | PROJECTILE_SHIELD_COLLISION_MASK
 const DEFAULT_ATTACK_DAMAGE := 30
@@ -28,7 +31,6 @@ const PROXY_BURST_EXPIRY_SECONDS := (
 )
 const LINEAR_BLOCKED_TARGET_ATTEMPTS := 3
 const INITIAL_ATTACK_DELAY_MIN_SECONDS := 0.05
-const ATTACK_PHASE_GOLDEN_RATIO := 0.61803398875
 
 @onready var body_sprite: AnimatedSprite2D = $VisualRoot/BodySprite
 @onready var aim_pivot: Node2D = $VisualRoot/AimPivot
@@ -150,18 +152,10 @@ static func calculate_initial_attack_delay_seconds(
 	attack_interval: float,
 	phase_identity: int
 ) -> float:
-	var safe_interval := maxf(attack_interval, 0.001)
-	if safe_interval <= INITIAL_ATTACK_DELAY_MIN_SECONDS:
-		return safe_interval
-	var phase_window := safe_interval - INITIAL_ATTACK_DELAY_MIN_SECONDS
-	return (
+	return ATTACK_PHASE_SCHEDULER.calculate_initial_delay_seconds(
+		attack_interval,
+		phase_identity,
 		INITIAL_ATTACK_DELAY_MIN_SECONDS
-		+ fposmod(
-			float(phase_identity)
-			* ATTACK_PHASE_GOLDEN_RATIO
-			* safe_interval,
-			phase_window
-		)
 	)
 
 
@@ -174,19 +168,7 @@ func get_initial_attack_delay_seconds() -> float:
 
 
 func _get_attack_phase_identity() -> int:
-	var network_identity := int(get_meta(&"net_id", 0))
-	if network_identity > 0:
-		return network_identity
-	# Single-player plants do not require a network id. Their authored grid
-	# position is stable across save/load and distributes simultaneous restores.
-	return int(
-		hash(
-			Vector2i(
-				roundi(global_position.x),
-				roundi(global_position.y)
-			)
-		)
-	)
+	return ATTACK_PHASE_SCHEDULER.resolve_plant_identity(self)
 
 
 func _on_multiplayer_proxy_configured() -> void:

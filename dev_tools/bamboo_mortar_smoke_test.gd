@@ -364,6 +364,7 @@ func _create_mortar(as_proxy: bool, net_id: int) -> BambooMortar:
 	runtime.add_child(mortar)
 	mortar.setup(MORTAR_CONFIG, null, [], as_proxy)
 	mortar.attack_timer.stop()
+	mortar._initial_attack_phase_pending = false
 	mortar.target_track_timer.stop()
 	return mortar
 
@@ -1354,12 +1355,27 @@ func _test_target_ring_and_tracking(mortar: BambooMortar) -> void:
 	var operational_query_count := runtime.query_count
 	mortar.call("_on_operational_started")
 	_expect(
+		runtime.query_count == operational_query_count
+		and mortar.pending_target == null
+		and mortar.combat_phase == BambooMortar.CombatPhase.IDLE
+		and not mortar.attack_timer.is_stopped()
+		and mortar._initial_attack_phase_pending
+		and absf(
+			mortar.attack_timer.time_left
+			- mortar.get_initial_attack_delay_seconds()
+		) < 0.001
+		and runtime.queued_visuals.is_empty(),
+		"建造完成后的首次索敌必须按稳定身份错峰，不能让同帧恢复的炮塔同步请求目标。"
+	)
+	mortar.attack_timer.stop()
+	mortar.call("_on_attack_timer_timeout")
+	_expect(
 		runtime.query_count == operational_query_count + 1
+		and not mortar._initial_attack_phase_pending
 		and mortar.pending_target == outer_edge
 		and mortar.combat_phase == BambooMortar.CombatPhase.WINDUP
-		and mortar.attack_timer.is_stopped()
 		and runtime.queued_visuals.size() == 1,
-		"建造完成进入可用状态时必须立即索敌并开始前摇，不能先空等2秒冷却。"
+		"首次相位计时到期后必须立即索敌并开始原有前摇，不得附加2秒冷却。"
 	)
 	mortar.target_track_timer.stop()
 	mortar.pending_target = null

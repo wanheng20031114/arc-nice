@@ -16,12 +16,16 @@ const SPLIT_LIFECYCLE_MATERIAL := preload(
 const AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/plant_attack_audio_limiter.gd"
 )
+const ATTACK_PHASE_SCHEDULER := preload(
+	"res://scene/plant_defense/plant_attack_phase_scheduler.gd"
+)
 const DEFAULT_ATTACK_DAMAGE := 140
 const OUTER_ATTACK_DAMAGE := 70
 const DEFAULT_ATTACK_RANGE := 224.0
 const MINIMUM_ATTACK_RANGE := 32.0
 const TARGET_RETRY_INTERVAL_SECONDS := 2.0
 const WINDUP_DURATION_SECONDS := 4.0
+const INITIAL_ATTACK_DELAY_MIN_SECONDS := 0.05
 const TARGET_TRACK_INTERVAL_SECONDS := 0.5
 const WINDUP_FRAME_COUNT := 8
 const WINDUP_FPS := 2.0
@@ -95,6 +99,7 @@ var committed_windup_duration_seconds := WINDUP_DURATION_SECONDS
 
 var _target_candidates: Array[Enemy] = []
 var _target_request_pending := false
+var _initial_attack_phase_pending := false
 var _windup_started_at_seconds := 0.0
 var _authoritative_fire_action_id := 0
 var _latest_proxy_shell_action_id := 0
@@ -123,6 +128,12 @@ func _on_setup_completed() -> void:
 	health_bar.call("setup", max_health, current_health)
 	if not health_changed.is_connected(_on_health_changed):
 		health_changed.connect(_on_health_changed)
+	if not attack_interval_multiplier_changed.is_connected(
+		_on_attack_interval_multiplier_changed
+	):
+		attack_interval_multiplier_changed.connect(
+			_on_attack_interval_multiplier_changed
+		)
 	main_sprite.play(&"idle")
 	main_sprite.speed_scale = 1.0
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
@@ -145,7 +156,11 @@ func _on_operational_started() -> void:
 	if is_multiplayer_proxy:
 		_disable_proxy_combat_runtime()
 		return
-	_try_begin_windup()
+	_initial_attack_phase_pending = true
+	attack_timer.start(get_initial_attack_delay_seconds())
+	# AttackTimer remains the fixed two-second no-target retry timer after this
+	# one initial phase. Updating wait_time does not alter the active time_left.
+	attack_timer.wait_time = TARGET_RETRY_INTERVAL_SECONDS
 
 
 func _on_multiplayer_proxy_configured() -> void:
@@ -154,6 +169,7 @@ func _on_multiplayer_proxy_configured() -> void:
 
 func _disable_proxy_combat_runtime() -> void:
 	attack_timer.stop()
+	_initial_attack_phase_pending = false
 	target_track_timer.stop()
 	_cancel_scheduled_target_request()
 	pending_target = null
@@ -168,6 +184,7 @@ func _on_removal_started(mode: RemovalMode) -> void:
 	if mode == RemovalMode.ANIMATED:
 		_activate_transition_lifecycle_material()
 	attack_timer.stop()
+	_initial_attack_phase_pending = false
 	target_track_timer.stop()
 	_cancel_scheduled_target_request()
 	pending_target = null
@@ -300,9 +317,53 @@ func _on_health_changed(new_health: int, new_max_health: int) -> void:
 	health_bar.call("set_health", new_health, new_max_health)
 
 
+static func calculate_initial_attack_delay_seconds(
+	attack_interval: float,
+	phase_identity: int
+) -> float:
+	return ATTACK_PHASE_SCHEDULER.calculate_initial_delay_seconds(
+		attack_interval,
+		phase_identity,
+		INITIAL_ATTACK_DELAY_MIN_SECONDS
+	)
+
+
+func get_initial_attack_delay_seconds() -> float:
+	return calculate_initial_attack_delay_seconds(
+		get_effective_attack_interval(WINDUP_DURATION_SECONDS),
+		_get_attack_phase_identity()
+	)
+
+
+func _get_attack_phase_identity() -> int:
+	return ATTACK_PHASE_SCHEDULER.resolve_plant_identity(self)
+
+
+func _on_attack_interval_multiplier_changed(
+	previous_multiplier: float,
+	current_multiplier: float
+) -> void:
+	if (
+		is_multiplayer_proxy
+		or not is_operational
+		or is_dead
+		or is_removing
+		or not _initial_attack_phase_pending
+		or attack_timer.is_stopped()
+	):
+		return
+	PlantDefense.retime_attack_cycle_timer(
+		attack_timer,
+		WINDUP_DURATION_SECONDS * previous_multiplier,
+		WINDUP_DURATION_SECONDS * current_multiplier
+	)
+	attack_timer.wait_time = TARGET_RETRY_INTERVAL_SECONDS
+
+
 func _on_attack_timer_timeout() -> void:
 	if is_multiplayer_proxy or is_dead or is_removing:
 		return
+	_initial_attack_phase_pending = false
 	_try_begin_windup()
 
 
@@ -313,6 +374,7 @@ func _try_begin_windup() -> void:
 		or is_removing
 		or combat_phase == CombatPhase.WINDUP
 		or combat_phase == CombatPhase.FIRING
+		or _initial_attack_phase_pending
 		or _target_request_pending
 	):
 		return
@@ -374,6 +436,7 @@ func _cancel_scheduled_target_request() -> void:
 
 
 func _begin_authoritative_windup(target: Enemy) -> void:
+	_initial_attack_phase_pending = false
 	_target_request_pending = false
 	pending_target = target
 	last_valid_target_position = target.global_position
