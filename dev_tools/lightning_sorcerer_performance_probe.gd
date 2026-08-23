@@ -20,6 +20,9 @@ const LIGHTNING_VFX_SCENE := preload(
 const NIGHT_FLASH_POOL_SCENE := preload(
 	"res://scene/lighting/night_vfx_flash_pool.tscn"
 )
+const PERFORMANCE_RUNTIME_SCENE := preload(
+	"res://dev_tools/fixtures/lightning_sorcerer_performance_runtime.tscn"
+)
 
 const TILE_SIZE := 16.0
 const ENEMY_COUNT := 300
@@ -40,9 +43,20 @@ const VFX_EXPECTED_DROPS_PER_BURST := (
 	VFX_REQUEST_COUNT - VFX_RETAINED_CAPACITY
 )
 const VFX_MANUAL_FRAME_COUNT := 11
+const WARNING_MANUAL_FRAME_COUNT := 18
 const TEST_DELTA := 1.0 / 60.0
 const POOL_IDLE_GUARD_FRAMES := 30
 const PROBE_PLANT_HEALTH := 1_000_000_000
+
+# Headless CPU gates intentionally leave CI variance headroom while still
+# rejecting a return to unbounded per-caster scans or per-frame node growth.
+const CHAIN_P95_LIMIT_MS := 33.333
+const DENSE_QUERY_P95_LIMIT_MS := 18.0
+const VFX_BURST_LIMIT_MS := 18.0
+const VFX_UPDATE_P95_LIMIT_MS := 2.0
+const VFX_OFFSCREEN_LIMIT_MS := 6.0
+const WARNING_START_LIMIT_MS := 18.0
+const WARNING_UPDATE_P95_LIMIT_MS := 2.0
 
 
 class ProbePlantSystem:
@@ -92,48 +106,9 @@ class ProbePlantSystem:
 		return nearest
 
 
-class ProbeRuntime:
-	extends Node2D
-
-	var plant_system: ProbePlantSystem = null
-	var session_object_pool: SessionObjectPool = null
-	var attack_target_query_count := 0
-
-	func find_nearest_enemy_attack_target_world(
-		from_position: Vector2,
-		max_distance: float,
-		excluded_instance_ids: Dictionary = {}
-	) -> Node2D:
-		attack_target_query_count += 1
-		if plant_system == null:
-			return null
-		return plant_system.find_nearest_enemy_attack_target_world(
-			from_position,
-			max_distance,
-			excluded_instance_ids
-		)
-
-	func has_session_object_pool_scene(scene: PackedScene) -> bool:
-		return (
-			session_object_pool != null
-			and session_object_pool.is_registered(scene)
-		)
-
-	func acquire_session_object(
-		scene: PackedScene,
-		strict: bool = false
-	) -> Node:
-		if session_object_pool == null:
-			return null
-		return (
-			session_object_pool.try_acquire(scene)
-			if strict
-			else session_object_pool.acquire(scene)
-		)
-
-
 var failures: Array[String] = []
-var runtime: ProbeRuntime = null
+var budget_violations: Array[String] = []
+var runtime: LightningSorcererPerformanceRuntime = null
 var tile_map: TileMapLayer = null
 var plant_container: Node2D = null
 var plant_system: ProbePlantSystem = null
@@ -173,20 +148,23 @@ func _run() -> void:
 	)
 	var distant_result := await _measure_chain_case()
 	var density_result := await _measure_local_density()
+	var warning_result := _measure_warning_pressure()
 	var vfx_result := await _measure_vfx_pressure()
 
-	_print_results(
-		local_result,
-		distant_result,
-		density_result,
-		vfx_result,
-		local_candidate_count_before,
-		local_candidate_count_after
-	)
 	_validate_results(
 		local_result,
 		distant_result,
 		density_result,
+		warning_result,
+		vfx_result,
+		local_candidate_count_before,
+		local_candidate_count_after
+	)
+	_print_results(
+		local_result,
+		distant_result,
+		density_result,
+		warning_result,
 		vfx_result,
 		local_candidate_count_before,
 		local_candidate_count_after
@@ -195,10 +173,18 @@ func _run() -> void:
 
 
 func _build_fixture() -> void:
-	runtime = ProbeRuntime.new()
+	runtime = PERFORMANCE_RUNTIME_SCENE.instantiate() as LightningSorcererPerformanceRuntime
+	if runtime == null:
+		_expect(false, "Lightning performance runtime fixture must instantiate.")
+		return
 	runtime.name = "LightningSorcererPerformanceProbe"
 	root.add_child(runtime)
 	current_scene = runtime
+	var simulation_coordinator := runtime.get_node_or_null(
+		"EnemySimulationCoordinator"
+	)
+	if simulation_coordinator != null:
+		simulation_coordinator.process_mode = Node.PROCESS_MODE_DISABLED
 
 	var camera := Camera2D.new()
 	camera.name = "Camera2D"
@@ -213,7 +199,6 @@ func _build_fixture() -> void:
 	object_pool = SessionObjectPool.new()
 	object_pool.name = "SessionObjectPool"
 	runtime.add_child(object_pool)
-	runtime.session_object_pool = object_pool
 	var pool_started_usec := Time.get_ticks_usec()
 	object_pool.register_scene(
 		LIGHTNING_VFX_SCENE,
@@ -246,9 +231,7 @@ func _build_fixture() -> void:
 	plant_system.set_enemy_target_query_metrics_enabled(true)
 	runtime.plant_system = plant_system
 
-	pathfinder = Node.new()
-	pathfinder.name = "GridPathfinder"
-	runtime.add_child(pathfinder)
+	pathfinder = runtime.get_node_or_null("GridPathfinder")
 
 
 func _spawn_local_targets() -> void:
@@ -324,7 +307,7 @@ func _spawn_enemies() -> void:
 		runtime.add_child(enemy)
 		enemy.name = "LightningSorcerer%03d" % enemy_index
 		enemy.global_position = Vector2.ZERO
-		enemy.setup(LIGHTNING_CONFIG, null, pathfinder)
+		enemy.setup(LIGHTNING_CONFIG, null, pathfinder, runtime)
 		enemy.collision_layer = 0
 		enemy.collision_mask = 0
 		enemy.set_process(false)
@@ -476,6 +459,54 @@ func _run_query_only_sweep(center_world: Vector2) -> Dictionary:
 	}
 
 
+func _measure_warning_pressure() -> Dictionary:
+	var started_usec := Time.get_ticks_usec()
+	var started_count := 0
+	for enemy in enemies:
+		if bool(enemy.call("_try_start_windup", local_targets[0], LIGHTNING_CONFIG)):
+			started_count += 1
+	var start_ms := float(Time.get_ticks_usec() - started_usec) / 1000.0
+
+	var active_count := 0
+	var visible_count := 0
+	var processing_count := 0
+	for enemy in enemies:
+		if enemy.target_warning.is_warning_active():
+			active_count += 1
+		if enemy.target_warning.visible:
+			visible_count += 1
+		if enemy.target_warning.is_processing():
+			processing_count += 1
+
+	var samples_ms: Array[float] = []
+	for _frame_index in range(WARNING_MANUAL_FRAME_COUNT):
+		started_usec = Time.get_ticks_usec()
+		for enemy in enemies:
+			enemy.call("_update_windup", TEST_DELTA)
+		samples_ms.append(
+			float(Time.get_ticks_usec() - started_usec) / 1000.0
+		)
+
+	var windup_count := 0
+	var progressed_count := 0
+	for enemy in enemies:
+		if enemy.combat_state == LightningSorcerer.CombatState.WINDUP:
+			windup_count += 1
+		if enemy.target_warning.get_warning_progress() > 0.0:
+			progressed_count += 1
+		enemy.call("_cancel_windup", false)
+	return {
+		"start_ms": start_ms,
+		"started_count": started_count,
+		"active_count": active_count,
+		"visible_count": visible_count,
+		"processing_count": processing_count,
+		"windup_count": windup_count,
+		"progressed_count": progressed_count,
+		"timing": _summarize(samples_ms),
+	}
+
+
 func _measure_vfx_pressure() -> Dictionary:
 	var startup_metrics := _vfx_metrics()
 	var maximum_gameplay_path := PackedVector2Array([
@@ -585,7 +616,7 @@ func _release_all_active_vfx() -> void:
 
 func _get_active_vfx() -> Array[LightningSorcererLightningVfx]:
 	var result: Array[LightningSorcererLightningVfx] = []
-	for child in object_pool.get_children():
+	for child in runtime.get_children():
 		var effect := child as LightningSorcererLightningVfx
 		if effect == null or not effect.pool_active:
 			continue
@@ -614,6 +645,7 @@ func _print_results(
 	local_result: Dictionary,
 	distant_result: Dictionary,
 	density_result: Dictionary,
+	warning_result: Dictionary,
 	vfx_result: Dictionary,
 	local_candidate_count_before: int,
 	local_candidate_count_after: int
@@ -633,6 +665,25 @@ func _print_results(
 	var update_timing := update_result["timing"] as Dictionary
 	var offscreen_before := vfx_result["offscreen_before"] as Dictionary
 	var offscreen_after := vfx_result["offscreen_after"] as Dictionary
+	var warning_timing := warning_result["timing"] as Dictionary
+	print(
+		(
+			"LIGHTNING_SORCERER_WARNING_PERFORMANCE enemies=%d started=%d "
+			+ "active=%d visible=%d node_process=%d start_ms=%.3f "
+			+ "frames=%d update_ms=%s progressed=%d"
+		)
+		% [
+			ENEMY_COUNT,
+			int(warning_result["started_count"]),
+			int(warning_result["active_count"]),
+			int(warning_result["visible_count"]),
+			int(warning_result["processing_count"]),
+			float(warning_result["start_ms"]),
+			WARNING_MANUAL_FRAME_COUNT,
+			_format_summary(warning_timing),
+			int(warning_result["progressed_count"]),
+		]
+	)
 	print(
 		(
 			"LIGHTNING_SORCERER_CHAIN_PERFORMANCE enemies=%d hits_per_sweep=%d "
@@ -724,12 +775,46 @@ func _print_results(
 		"LIGHTNING_SORCERER_HEADLESS_NOTE GPU timing, actual draw calls, HDR glow, "
 		+ "overdraw, and PointLight2D pixel cost require a non-headless run."
 	)
+	var result := {
+		"schema_version": 1,
+		"valid": failures.is_empty(),
+		"verdict": (
+			"passed"
+			if failures.is_empty() and budget_violations.is_empty()
+			else "failed"
+		),
+		"enemy_count": ENEMY_COUNT,
+		"thresholds_ms": {
+			"chain_p95": CHAIN_P95_LIMIT_MS,
+			"dense_query_p95": DENSE_QUERY_P95_LIMIT_MS,
+			"warning_start": WARNING_START_LIMIT_MS,
+			"warning_update_p95": WARNING_UPDATE_P95_LIMIT_MS,
+			"vfx_burst": VFX_BURST_LIMIT_MS,
+			"vfx_update_p95": VFX_UPDATE_P95_LIMIT_MS,
+			"vfx_offscreen": VFX_OFFSCREEN_LIMIT_MS,
+		},
+		"chain": {
+			"local": local_result,
+			"distant": distant_result,
+		},
+		"density": density_result,
+		"warning": warning_result,
+		"vfx": vfx_result,
+		"workload_violations": failures,
+		"budget_violations": budget_violations,
+		"violations": failures + budget_violations,
+	}
+	print(
+		"LIGHTNING_SORCERER_PERFORMANCE_RESULT ",
+		JSON.stringify(result)
+	)
 
 
 func _validate_results(
 	local_result: Dictionary,
 	distant_result: Dictionary,
 	density_result: Dictionary,
+	warning_result: Dictionary,
 	vfx_result: Dictionary,
 	local_candidate_count_before: int,
 	local_candidate_count_after: int
@@ -795,6 +880,33 @@ func _validate_results(
 		and int(dense_density_result["registry_query_total"]) == 0,
 		"With the retained distant population, every density case must stay on bounded local buckets."
 	)
+	_expect_budget(
+		float((local_result["timing"] as Dictionary)["p95"])
+			<= CHAIN_P95_LIMIT_MS
+		and float((distant_result["timing"] as Dictionary)["p95"])
+			<= CHAIN_P95_LIMIT_MS,
+		"A real 300 x 5 chain sweep exceeded the headless CPU p95 gate."
+	)
+	_expect_budget(
+		float((dense_density_result["timing"] as Dictionary)["p95"])
+			<= DENSE_QUERY_P95_LIMIT_MS,
+		"The 1200-query dense local-target sweep exceeded the CPU p95 gate."
+	)
+	_expect(
+		int(warning_result["started_count"]) == ENEMY_COUNT
+		and int(warning_result["active_count"]) == ENEMY_COUNT
+		and int(warning_result["visible_count"]) == ENEMY_COUNT
+		and int(warning_result["processing_count"]) == 0
+		and int(warning_result["windup_count"]) == ENEMY_COUNT
+		and int(warning_result["progressed_count"]) == ENEMY_COUNT,
+		"The pressure case must drive 300 authored warnings through real WINDUP without per-node processing."
+	)
+	_expect_budget(
+		float(warning_result["start_ms"]) <= WARNING_START_LIMIT_MS
+		and float((warning_result["timing"] as Dictionary)["p95"])
+			<= WARNING_UPDATE_P95_LIMIT_MS,
+		"The 300-warning WINDUP batch exceeded its headless CPU gate."
+	)
 
 	var startup := vfx_result["startup_metrics"] as Dictionary
 	var first_burst := vfx_result["first_burst"] as Dictionary
@@ -853,6 +965,20 @@ func _validate_results(
 			== int(offscreen_before.get("dropped", -1)),
 		"Offscreen lightning must be omitted before taking or dropping a pool lease."
 	)
+	_expect_budget(
+		float(first_burst["elapsed_ms"]) <= VFX_BURST_LIMIT_MS
+		and float(second_burst["elapsed_ms"]) <= VFX_BURST_LIMIT_MS,
+		"A 300-request Lightning VFX burst exceeded the synchronous CPU gate."
+	)
+	_expect_budget(
+		float((update_result["timing"] as Dictionary)["p95"])
+			<= VFX_UPDATE_P95_LIMIT_MS,
+		"Updating all 96 retained Lightning VFX exceeded the CPU p95 gate."
+	)
+	_expect_budget(
+		float(vfx_result["offscreen_ms"]) <= VFX_OFFSCREEN_LIMIT_MS,
+		"The 300-request offscreen Lightning VFX rejection exceeded its CPU gate."
+	)
 
 
 func _summarize(samples: Array[float]) -> Dictionary:
@@ -895,15 +1021,22 @@ func _finish() -> void:
 	for _cleanup_frame in range(6):
 		await process_frame
 		await physics_frame
-	if failures.is_empty():
+	if failures.is_empty() and budget_violations.is_empty():
 		print("LIGHTNING_SORCERER_PERFORMANCE_PROBE_OK")
 		quit(0)
 		return
 	for failure in failures:
 		push_error(failure)
+	for violation in budget_violations:
+		push_error(violation)
 	quit(1)
 
 
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _expect_budget(condition: bool, message: String) -> void:
+	if not condition:
+		budget_violations.append(message)
