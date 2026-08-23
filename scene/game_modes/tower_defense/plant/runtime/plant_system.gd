@@ -4,6 +4,9 @@ class_name PlantSystem
 const PlantTargetSpatialIndexScript := preload(
 	"res://scene/combat/targeting/plant_target_spatial_index.gd"
 )
+const EnemyDamageableSpatialIndexScript := preload(
+	"res://scene/combat/targeting/enemy_damageable_spatial_index.gd"
+)
 
 signal plant_placed(plant: PlantDefense)
 signal plant_removed(plant: PlantDefense)
@@ -81,6 +84,7 @@ var _enemy_target_spatial_index = PlantTargetSpatialIndexScript.new(
 var _enemy_target_plants: Dictionary = {}
 var _enemy_target_query_scratch: Array = []
 var _registered_plant_configs: Dictionary = {}
+var _enemy_damageable_spatial_index: EnemyDamageableSpatialIndexScript = null
 var _unsupported_terrain_plants: Dictionary = {}
 var _terrain_support_plants_by_cell: Dictionary = {}
 var _terrain_support_cells_by_plant: Dictionary = {}
@@ -142,6 +146,7 @@ func setup(
 ) -> void:
 	_disconnect_terrain_changed_signal()
 	_clear_local_interaction_selection_state()
+	_release_enemy_damageable_spatial_index_binding()
 	ground_tile_map = new_ground_tile_map
 	terrain_map = new_terrain_map
 	owner_player = new_owner_player
@@ -152,15 +157,81 @@ func setup(
 	_connect_terrain_changed_signal()
 	_rebuild_plant_target_spatial_index()
 	_rebuild_unsupported_terrain_plants()
+	_bind_enemy_damageable_spatial_index_from_combat_runtime()
 
 
 func _exit_tree() -> void:
 	_disconnect_terrain_changed_signal()
 	_clear_local_interaction_selection_state()
+	_release_enemy_damageable_spatial_index_binding()
 	terrain_map = null
 	_unsupported_terrain_plants.clear()
 	_terrain_support_plants_by_cell.clear()
 	_terrain_support_cells_by_plant.clear()
+	combat_runtime = null
+
+
+func bind_enemy_damageable_spatial_index(
+	spatial_index: EnemyDamageableSpatialIndexScript
+) -> bool:
+	if (
+		spatial_index == null
+		or not is_instance_valid(spatial_index)
+		or not spatial_index.is_bound()
+	):
+		return false
+	if (
+		_enemy_damageable_spatial_index != null
+		and _enemy_damageable_spatial_index != spatial_index
+	):
+		return false
+	if _enemy_damageable_spatial_index == spatial_index:
+		return true
+	_enemy_damageable_spatial_index = spatial_index
+	if not spatial_index.runtime_teardown_prepared.is_connected(
+		_on_enemy_damageable_spatial_index_teardown
+	):
+		spatial_index.runtime_teardown_prepared.connect(
+			_on_enemy_damageable_spatial_index_teardown
+		)
+	_rebuild_enemy_damageable_spatial_index()
+	return true
+
+
+func unbind_enemy_damageable_spatial_index(
+	expected_spatial_index: EnemyDamageableSpatialIndexScript
+) -> bool:
+	if (
+		expected_spatial_index == null
+		or _enemy_damageable_spatial_index != expected_spatial_index
+	):
+		return false
+	if expected_spatial_index.runtime_teardown_prepared.is_connected(
+		_on_enemy_damageable_spatial_index_teardown
+	):
+		expected_spatial_index.runtime_teardown_prepared.disconnect(
+			_on_enemy_damageable_spatial_index_teardown
+		)
+	for plant_variant in plant_footprints:
+		var plant := plant_variant as PlantDefense
+		if (
+			plant != null
+			and is_instance_valid(plant)
+			and expected_spatial_index.contains_damageable(plant)
+		):
+			expected_spatial_index.unregister_damageable(plant)
+	_enemy_damageable_spatial_index = null
+	return true
+
+
+func get_enemy_damageable_spatial_index() -> EnemyDamageableSpatialIndexScript:
+	return _enemy_damageable_spatial_index
+
+
+func _on_enemy_damageable_spatial_index_teardown(spatial_index: Node) -> void:
+	var typed_index := spatial_index as EnemyDamageableSpatialIndexScript
+	if typed_index != null and _enemy_damageable_spatial_index == typed_index:
+		unbind_enemy_damageable_spatial_index(typed_index)
 
 
 func configure(
@@ -425,6 +496,10 @@ func _instantiate_registered_plant(
 		initial_maximum_health,
 		play_placement_effect
 	)
+	# Subclass setup may author or mutate root collision shapes. Refresh once
+	# after setup; steady-state projectile queries never inspect scene geometry.
+	if plant_footprints.has(plant):
+		refresh_enemy_damageable_spatial_entry(plant)
 	_register_plant_terrain_support(plant)
 	_apply_research_stat_bonuses(plant)
 	_apply_water_collector_duration_multiplier(plant)
@@ -1424,6 +1499,60 @@ func _rebuild_plant_target_spatial_index() -> void:
 			push_error("PlantSystem failed to rebuild an enemy target spatial entry.")
 
 
+func _bind_enemy_damageable_spatial_index_from_combat_runtime() -> void:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
+		return
+	var combat_services := combat_runtime.get_enemy_combat_services()
+	if combat_services == null:
+		return
+	var spatial_index := combat_services.get_enemy_damageable_spatial_index()
+	if (
+		spatial_index == null
+		or not bind_enemy_damageable_spatial_index(spatial_index)
+	):
+		push_error("PlantSystem failed to bind the enemy damageable spatial index.")
+
+
+func _release_enemy_damageable_spatial_index_binding() -> void:
+	var spatial_index := _enemy_damageable_spatial_index
+	if spatial_index == null:
+		return
+	if is_instance_valid(spatial_index):
+		unbind_enemy_damageable_spatial_index(spatial_index)
+	else:
+		_enemy_damageable_spatial_index = null
+
+
+func _rebuild_enemy_damageable_spatial_index() -> void:
+	if _enemy_damageable_spatial_index == null:
+		return
+	_enemy_damageable_spatial_index.clear()
+	for plant_variant in plant_footprints:
+		var plant := plant_variant as PlantDefense
+		if plant == null or not is_instance_valid(plant):
+			continue
+		if not _enemy_damageable_spatial_index.register_damageable(plant):
+			push_error(
+				"PlantSystem failed to rebuild an enemy damageable spatial entry."
+			)
+
+
+## Explicit refresh seam for the rare owner that moves a registered building or
+## mutates its root collision shapes. This must be called by that owner; there is
+## intentionally no per-frame PlantSystem scan.
+func refresh_enemy_damageable_spatial_entry(plant: PlantDefense) -> bool:
+	if (
+		_enemy_damageable_spatial_index == null
+		or plant == null
+		or not is_instance_valid(plant)
+		or not plant_footprints.has(plant)
+	):
+		return false
+	if _enemy_damageable_spatial_index.contains_damageable(plant):
+		return _enemy_damageable_spatial_index.update_damageable(plant)
+	return _enemy_damageable_spatial_index.register_damageable(plant)
+
+
 func set_plant_target_query_metrics_enabled(enabled: bool) -> void:
 	_plant_target_spatial_index.set_query_metrics_enabled(enabled)
 
@@ -1898,6 +2027,11 @@ func _register_plant_footprint(
 	plant_footprints[plant] = cells.duplicate()
 	for cell in cells:
 		occupied_cells[cell] = plant
+	if (
+		_enemy_damageable_spatial_index != null
+		and not _enemy_damageable_spatial_index.register_damageable(plant)
+	):
+		push_error("PlantSystem failed to register an enemy damageable spatial entry.")
 	if not _plant_target_spatial_index.register(plant, plant.global_position):
 		push_error("PlantSystem failed to register a plant target spatial entry.")
 	if config.is_proactive_enemy_target():
@@ -1919,6 +2053,12 @@ func _release_plant_footprint(plant: PlantDefense) -> void:
 	if config == null:
 		push_error("PlantSystem is missing the explicit config for a registered plant.")
 		return
+	if (
+		_enemy_damageable_spatial_index != null
+		and _enemy_damageable_spatial_index.contains_damageable(plant)
+		and not _enemy_damageable_spatial_index.unregister_damageable(plant)
+	):
+		push_error("PlantSystem failed to unregister an enemy damageable spatial entry.")
 	if not _plant_target_spatial_index.unregister(plant):
 		push_error("PlantSystem failed to unregister a plant target spatial entry.")
 	if _enemy_target_plants.erase(plant):

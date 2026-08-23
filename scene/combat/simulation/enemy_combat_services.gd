@@ -4,6 +4,9 @@ class_name EnemyCombatServices
 const RapidFireSimulationServiceScript := preload(
 	"res://scene/combat/simulation/rapid_fire_simulation_service.gd"
 )
+const EnemyDamageableSpatialIndexScript := preload(
+	"res://scene/combat/targeting/enemy_damageable_spatial_index.gd"
+)
 
 ## Authored service boundary owned by EnemySimulationCoordinator. This phase
 ## only exposes an inert rapid-fire seam; existing combat systems remain the
@@ -39,9 +42,12 @@ func bind_context(
 	):
 		return false
 	var rapid_fire_service := get_rapid_fire_simulation_service()
+	var damageable_spatial_index := get_enemy_damageable_spatial_index()
 	if (
 		rapid_fire_service == null
+		or damageable_spatial_index == null
 		or not rapid_fire_service.bind_context(combat_runtime, coordinator)
+		or not damageable_spatial_index.bind_context(combat_runtime, coordinator)
 	):
 		return false
 	_combat_runtime = combat_runtime
@@ -75,11 +81,20 @@ func get_rapid_fire_simulation_service() -> RapidFireSimulationServiceScript:
 	) as RapidFireSimulationServiceScript
 
 
+func get_enemy_damageable_spatial_index() -> EnemyDamageableSpatialIndexScript:
+	return get_node_or_null(
+		"EnemyDamageableSpatialIndex"
+	) as EnemyDamageableSpatialIndexScript
+
+
 func prepare_for_runtime_teardown() -> void:
 	if _teardown_prepared:
 		return
 	_teardown_prepared = true
 	_teardown_count += 1
+	var damageable_spatial_index := get_enemy_damageable_spatial_index()
+	if damageable_spatial_index != null:
+		damageable_spatial_index.prepare_for_runtime_teardown()
 	var rapid_fire_service := get_rapid_fire_simulation_service()
 	if rapid_fire_service != null:
 		rapid_fire_service.prepare_for_runtime_teardown()
@@ -89,6 +104,7 @@ func prepare_for_runtime_teardown() -> void:
 
 func get_metrics() -> Dictionary:
 	var rapid_fire_service := get_rapid_fire_simulation_service()
+	var damageable_spatial_index := get_enemy_damageable_spatial_index()
 	return {
 		"bound": is_bound(),
 		"teardown_prepared": _teardown_prepared,
@@ -96,6 +112,11 @@ func get_metrics() -> Dictionary:
 		"rapid_fire": (
 			rapid_fire_service.get_metrics()
 			if rapid_fire_service != null
+			else {}
+		),
+		"enemy_damageable_spatial_index": (
+			damageable_spatial_index.get_metrics()
+			if damageable_spatial_index != null
 			else {}
 		),
 	}
