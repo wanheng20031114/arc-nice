@@ -1,7 +1,9 @@
 extends SceneTree
 
 const ENTITY_COUNT := 300
-const CHUNK_SIZE := 46
+## Full enemy keyframes are 29 bytes after faction repair data is appended.
+## 41 records plus the u16 count use 1191 bytes and stay below the 1200-byte budget.
+const CHUNK_SIZE := 41
 # 300 entities use MpGame's high-pressure cadence. Keep the benchmark aligned
 # with production so its bytes/s result measures the actual acceptance path.
 const SNAPSHOT_HZ := 20
@@ -15,7 +17,9 @@ const LARGE_FANOUT_WARMUP_TICKS := 5
 const LARGE_FANOUT_MEASURE_TICKS := 30
 const FANOUT_CLIENT_COUNTS := [1, 4, 7]
 const PAYLOAD_BUDGET_BYTES := 1200
-const PAYLOAD_BUDGET_BYTES_PER_SECOND := 65_000.0
+## The 0.5-second keyframe cadence adds 300 * 5 * 2 = 3000 bytes/s for
+## faction identity repair. Keep the measured application budget explicit.
+const PAYLOAD_BUDGET_BYTES_PER_SECOND := 68_000.0
 const RECEIVER_PEER_ID := 77
 
 var failures: Array[String] = []
@@ -35,6 +39,8 @@ func _run() -> void:
 		state.velocity = Vector2(8.0 + float(enemy_index % 5), 0.0)
 		state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		state.health = 100
+		state.faction_id = enemy_index % 32
+		state.faction_revision = enemy_index
 		states.append(state)
 
 	var sender := SnapshotManager.new()
@@ -151,7 +157,7 @@ func _run() -> void:
 	_expect(max_payload_bytes <= PAYLOAD_BUDGET_BYTES, "Snapshot payload must stay within budget.")
 	_expect(
 		payload_bytes_per_second <= PAYLOAD_BUDGET_BYTES_PER_SECOND,
-		"The 300-enemy 20 Hz application payload must stay below about 65 KB/s."
+		"The 300-enemy 20 Hz faction-aware payload must stay below about 68 KB/s."
 	)
 	for fanout_metric_variant in fanout_metrics:
 		var fanout_metric := fanout_metric_variant as Dictionary
@@ -439,6 +445,8 @@ func _make_enemy_states(entity_count: int) -> Array[SnapshotManager.EnemyState]:
 		state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		state.health = 100 + enemy_index % 100
 		state.visual_status_mask = enemy_index % 16
+		state.faction_id = enemy_index % 32
+		state.faction_revision = enemy_index
 		states.append(state)
 	return states
 
@@ -515,6 +523,10 @@ func _enemy_decoded_states_equal(
 			or shared.is_dead != source.is_dead
 			or legacy.visual_status_mask != source.visual_status_mask
 			or shared.visual_status_mask != source.visual_status_mask
+			or legacy.faction_id != source.faction_id
+			or shared.faction_id != source.faction_id
+			or legacy.faction_revision != source.faction_revision
+			or shared.faction_revision != source.faction_revision
 		):
 			return false
 	return true

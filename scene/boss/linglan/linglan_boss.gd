@@ -595,18 +595,33 @@ func _fire_skill1_ring(skill_elapsed: float) -> void:
 	var angle_step := TAU / float(direction_count)
 	var base_angle := _get_skill1_base_angle(skill_elapsed)
 	var outgoing_damage := get_effective_attack_damage(skill1_config.projectile_damage)
+	var launch_source_snapshot := create_damage_source_snapshot(
+		0,
+		&"linglan_skill1"
+	)
 	var projectiles: Array[Node] = []
 	var spawn_positions := PackedVector2Array()
 	var directions := PackedVector2Array()
 	for index in range(direction_count):
 		var direction := Vector2.RIGHT.rotated(base_angle + angle_step * float(index))
-		var projectile := _spawn_skill1_projectile(direction, false, outgoing_damage)
+		var projectile := _spawn_skill1_projectile(
+			direction,
+			false,
+			outgoing_damage,
+			launch_source_snapshot
+		)
 		if projectile == null:
 			continue
 		projectiles.append(projectile)
 		spawn_positions.append(projectile.global_position)
 		directions.append(direction)
-	_register_multiplayer_skill1_ring(projectiles, spawn_positions, directions, outgoing_damage)
+	_register_multiplayer_skill1_ring(
+		projectiles,
+		spawn_positions,
+		directions,
+		outgoing_damage,
+		launch_source_snapshot
+	)
 
 
 func _get_skill1_base_angle(skill_elapsed: float) -> float:
@@ -619,7 +634,8 @@ func _get_skill1_base_angle(skill_elapsed: float) -> float:
 func _spawn_skill1_projectile(
 	direction: Vector2,
 	register_immediately: bool = true,
-	damage_snapshot: int = -1
+	damage_snapshot: int = -1,
+	launch_source_snapshot: DamageSourceSnapshot = null
 ) -> LinglanSakuraBullet:
 	var spawn_parent := _get_effect_spawn_parent()
 	if spawn_parent == null or gameplay_gateway == null:
@@ -641,8 +657,14 @@ func _spawn_skill1_projectile(
 	var outgoing_damage := damage_snapshot
 	if outgoing_damage < 0:
 		outgoing_damage = get_effective_attack_damage(skill1_config.projectile_damage)
+	if launch_source_snapshot == null:
+		launch_source_snapshot = create_damage_source_snapshot(
+			0,
+			&"linglan_skill1"
+		)
 	projectile.top_level = true
 	projectile.bind_gameplay_context(combat_runtime, gameplay_gateway)
+	projectile.set_damage_source_snapshot(launch_source_snapshot)
 	projectile.setup(
 		direction,
 		outgoing_damage,
@@ -658,7 +680,8 @@ func _spawn_skill1_projectile(
 			projectile,
 			projectile.global_position,
 			direction,
-			outgoing_damage
+			outgoing_damage,
+			launch_source_snapshot
 		)
 	return projectile
 
@@ -667,7 +690,8 @@ func _register_multiplayer_skill1_ring(
 	projectiles: Array[Node],
 	spawn_positions: PackedVector2Array,
 	directions: PackedVector2Array,
-	damage_snapshot: int
+	damage_snapshot: int,
+	launch_source_snapshot: DamageSourceSnapshot
 ) -> void:
 	if projectiles.is_empty():
 		return
@@ -680,7 +704,8 @@ func _register_multiplayer_skill1_ring(
 		get_multiplayer_authority(),
 		damage_snapshot,
 		skill1_config.projectile_speed,
-		skill1_config.projectile_lifetime
+		skill1_config.projectile_lifetime,
+		launch_source_snapshot
 	)
 
 
@@ -688,7 +713,8 @@ func _register_multiplayer_projectile(
 	projectile: LinglanSakuraBullet,
 	spawn_position: Vector2,
 	projectile_direction: Vector2,
-	damage_snapshot: int
+	damage_snapshot: int,
+	launch_source_snapshot: DamageSourceSnapshot
 ) -> void:
 	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return
@@ -701,7 +727,10 @@ func _register_multiplayer_projectile(
 		damage_snapshot,
 		skill1_config.projectile_speed,
 		skill1_config.projectile_lifetime,
-		false
+		false,
+		0,
+		0,
+		launch_source_snapshot
 	)
 
 
@@ -975,8 +1004,13 @@ func _fire_skill2_rocket() -> void:
 
 	var spawn_position := global_position + skill2_pending_direction * skill2_config.rocket_spawn_distance
 	var outgoing_damage := get_effective_attack_damage(skill2_config.rocket_damage)
+	var launch_source_snapshot := create_damage_source_snapshot(
+		0,
+		&"linglan_skill2_rocket"
+	)
 	projectile.top_level = true
 	projectile.bind_gameplay_context(combat_runtime, gameplay_gateway)
+	projectile.set_damage_source_snapshot(launch_source_snapshot)
 	projectile.setup(
 		skill2_pending_direction,
 		outgoing_damage,
@@ -994,7 +1028,8 @@ func _fire_skill2_rocket() -> void:
 		spawn_position,
 		skill2_pending_direction,
 		skill2_pending_target_player,
-		outgoing_damage
+		outgoing_damage,
+		launch_source_snapshot
 	)
 
 
@@ -1003,7 +1038,8 @@ func _register_skill2_multiplayer_projectile(
 	spawn_position: Vector2,
 	projectile_direction: Vector2,
 	projectile_target_player: Player,
-	damage_snapshot: int
+	damage_snapshot: int,
+	launch_source_snapshot: DamageSourceSnapshot
 ) -> void:
 	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return
@@ -1018,7 +1054,9 @@ func _register_skill2_multiplayer_projectile(
 		skill2_config.rocket_speed,
 		skill2_config.rocket_lifetime,
 		false,
-		target_peer_id
+		target_peer_id,
+		0,
+		launch_source_snapshot
 	)
 
 
@@ -1145,8 +1183,13 @@ func _fire_skill3_orb() -> void:
 	var direction := _get_random_skill3_direction()
 	var grow_delay := skill3_config.get_random_grow_delay(skill3_random)
 	var outgoing_damage := get_effective_attack_damage(skill3_config.orb_damage)
+	var launch_source_snapshot := create_damage_source_snapshot(
+		0,
+		&"linglan_skill3_orb"
+	)
 	orb.top_level = true
 	orb.bind_gameplay_context(combat_runtime, gameplay_gateway)
+	orb.set_damage_source_snapshot(launch_source_snapshot)
 	orb.setup(
 		direction,
 		outgoing_damage,
@@ -1164,7 +1207,8 @@ func _fire_skill3_orb() -> void:
 		global_position,
 		direction,
 		grow_delay,
-		outgoing_damage
+		outgoing_damage,
+		launch_source_snapshot
 	)
 
 
@@ -1179,7 +1223,8 @@ func _register_skill3_multiplayer_projectile(
 	spawn_position: Vector2,
 	projectile_direction: Vector2,
 	grow_delay: float,
-	damage_snapshot: int
+	damage_snapshot: int,
+	launch_source_snapshot: DamageSourceSnapshot
 ) -> void:
 	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return
@@ -1192,7 +1237,10 @@ func _register_skill3_multiplayer_projectile(
 		damage_snapshot,
 		skill3_config.orb_speed,
 		grow_delay,
-		false
+		false,
+		0,
+		0,
+		launch_source_snapshot
 	)
 
 
@@ -1322,8 +1370,13 @@ func _spawn_skill4_orb(spawn_from_left: bool, y_cell: int) -> void:
 	var direction := Vector2.RIGHT if spawn_from_left else Vector2.LEFT
 	var spawn_position := _resolve_skill4_orb_spawn_global_position(spawn_from_left, y_cell)
 	var outgoing_damage := get_effective_attack_damage(config4.orb_damage)
+	var launch_source_snapshot := create_damage_source_snapshot(
+		0,
+		&"linglan_skill4_orb"
+	)
 	orb.top_level = true
 	orb.bind_gameplay_context(combat_runtime, gameplay_gateway)
+	orb.set_damage_source_snapshot(launch_source_snapshot)
 	orb.setup(
 		direction,
 		outgoing_damage,
@@ -1334,14 +1387,21 @@ func _spawn_skill4_orb(spawn_from_left: bool, y_cell: int) -> void:
 	)
 	spawn_parent.add_child(orb)
 	orb.global_position = spawn_position
-	_register_skill4_multiplayer_projectile(orb, spawn_position, direction, outgoing_damage)
+	_register_skill4_multiplayer_projectile(
+		orb,
+		spawn_position,
+		direction,
+		outgoing_damage,
+		launch_source_snapshot
+	)
 
 
 func _register_skill4_multiplayer_projectile(
 	projectile: Node,
 	spawn_position: Vector2,
 	projectile_direction: Vector2,
-	damage_snapshot: int
+	damage_snapshot: int,
+	launch_source_snapshot: DamageSourceSnapshot
 ) -> void:
 	var config4 := _get_skill4_config()
 	if config4 == null:
@@ -1357,7 +1417,10 @@ func _register_skill4_multiplayer_projectile(
 		damage_snapshot,
 		config4.orb_speed,
 		config4.orb_lifetime,
-		false
+		false,
+		0,
+		0,
+		launch_source_snapshot
 	)
 
 
@@ -1375,6 +1438,9 @@ func _spawn_skill4_laser_field(enable_damage: bool) -> void:
 		return
 	field.top_level = true
 	field.bind_gameplay_context(combat_runtime, gameplay_gateway)
+	field.set_damage_source_snapshot(
+		create_damage_source_snapshot(0, &"linglan_skill4_laser")
+	)
 	spawn_parent.add_child(field)
 	field.global_position = Vector2.ZERO
 	var outgoing_damage := (

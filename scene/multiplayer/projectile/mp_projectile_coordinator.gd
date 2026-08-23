@@ -112,6 +112,10 @@ const CLIENT_PROJECTILE_DIRECTION_MIN_LENGTH := 0.2
 const CLIENT_PROJECTILE_DIRECTION_MAX_LENGTH := 1.5
 const CLIENT_PROJECTILE_REQUEST_RATE_PER_SECOND := 256.0
 const CLIENT_PROJECTILE_REQUEST_RATE_BURST := 64.0
+const CLIENT_PROJECTILE_REPLAY_WINDOW_SIZE := 256
+const CLIENT_PROJECTILE_SEQUENCE_HALF_RANGE := (
+	PROJECTILE_ID_SEQUENCE_COUNTER_MASK >> 1
+)
 const PROJECTILE_TIME_COMPENSATION_MAX_SECONDS := 0.25
 const HIT_DEDUP_RETENTION_SECONDS := 30.0
 const FIRE_SORCERER_FIREBALL_VOLLEY_TYPE: StringName = (
@@ -197,6 +201,7 @@ var _known_replica_fire_sorcerer_volley_services: Dictionary[int, FireSorcererVo
 var _known_replica_fire_sorcerer_volley_handles: Dictionary[int, int] = {}
 var _known_capoo_rpg_data_services: Dictionary[int, CapooRPGRocketSimulationServiceScript] = {}
 var _known_capoo_rpg_data_handles: Dictionary[int, int] = {}
+var _known_capoo_rpg_metadata: Dictionary[int, Dictionary] = {}
 var _known_capoo_rpg_replica_services: Dictionary[int, CapooRPGRocketSimulationServiceScript] = {}
 var _known_capoo_rpg_replica_handles: Dictionary[int, int] = {}
 var _reserved_host_projectile_ids: Dictionary[int, int] = {}
@@ -223,6 +228,7 @@ var _projectile_records: Dictionary = {}
 var _stale_projectile_record_ids: Array[int] = []
 var _processed_enemy_hit_ids: Dictionary = {}
 var _client_projectile_request_rate_buckets: Dictionary = {}
+var _client_projectile_replay_windows: Dictionary = {}
 var _last_tango_volley_visual_state_by_peer: Dictionary = {}
 
 
@@ -301,7 +307,8 @@ func submit_local_projectile(
 	lifetime: float,
 	pierces_enemies: bool = false,
 	target_peer_id: int = 0,
-	target_enemy_net_id: int = 0
+	target_enemy_net_id: int = 0,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> void:
 	if (
 		projectile == null
@@ -314,6 +321,19 @@ func submit_local_projectile(
 			"MpProjectileCoordinator: 投射物伤害超出网络 signed int32 契约，已拒绝发送。"
 		)
 		return
+	if (
+		damage_source_snapshot != null
+		and (
+			not damage_source_snapshot.is_valid()
+			or damage_source_snapshot.source_type == &""
+		)
+	):
+		return
+	if damage_source_snapshot != null:
+		_apply_damage_source_snapshot_to_projectile(
+			projectile,
+			damage_source_snapshot
+		)
 	var now := _get_net_time()
 	var projectile_id := register_local_projectile(
 		projectile,
@@ -343,8 +363,12 @@ func submit_local_projectile(
 		target_enemy_net_id,
 	]
 	if _net_manager.is_host():
+		_append_projectile_source_payload(arguments, projectile_id)
 		rpc_broadcast_requested.emit(&"net_projectile_fired", arguments)
 	elif _net_manager.is_client():
+		# Client requests deliberately retain the legacy 12-field contract. The
+		# Host derives attribution from the authenticated owner instead of trusting
+		# any client-supplied faction or reward fields.
 		rpc_to_host_requested.emit(
 			&"_rpc_projectile_fired_from_client",
 			arguments
@@ -433,23 +457,22 @@ func register_local_data_projectile(
 		registered_source_snapshot
 	)
 	var host_fire_timestamp := _get_net_time()
-	rpc_broadcast_requested.emit(
-		&"net_projectile_fired",
-		[
-			projectile_id,
-			String(projectile_type),
-			owner_peer_id,
-			spawn_position,
-			direction,
-			damage,
-			speed,
-			lifetime,
-			false,
-			0,
-			host_fire_timestamp,
-			0,
-		]
-	)
+	var arguments := [
+		projectile_id,
+		String(projectile_type),
+		owner_peer_id,
+		spawn_position,
+		direction,
+		damage,
+		speed,
+		lifetime,
+		false,
+		0,
+		host_fire_timestamp,
+		0,
+	]
+	_append_projectile_source_payload(arguments, projectile_id)
+	rpc_broadcast_requested.emit(&"net_projectile_fired", arguments)
 	return projectile_id
 
 
@@ -512,6 +535,16 @@ func register_local_capoo_rpg_data(
 	var host_fire_timestamp := _get_net_time()
 	_known_capoo_rpg_data_services[projectile_id] = service
 	_known_capoo_rpg_data_handles[projectile_id] = handle
+	_known_capoo_rpg_metadata[projectile_id] = {
+		"projectile_type": projectile_type,
+		"owner_peer_id": owner_peer_id,
+		"spawn_position": spawn_position,
+		"direction": direction.normalized(),
+		"damage": damage,
+		"speed": speed,
+		"lifetime": lifetime,
+		"host_fire_timestamp": host_fire_timestamp,
+	}
 	remember_projectile_record(
 		projectile_id,
 		owner_peer_id,
@@ -522,23 +555,22 @@ func register_local_capoo_rpg_data(
 		host_fire_timestamp,
 		frozen_source
 	)
-	rpc_broadcast_requested.emit(
-		&"net_projectile_fired",
-		[
-			projectile_id,
-			String(projectile_type),
-			owner_peer_id,
-			spawn_position,
-			direction,
-			damage,
-			speed,
-			lifetime,
-			false,
-			0,
-			host_fire_timestamp,
-			0,
-		]
-	)
+	var arguments := [
+		projectile_id,
+		String(projectile_type),
+		owner_peer_id,
+		spawn_position,
+		direction.normalized(),
+		damage,
+		speed,
+		lifetime,
+		false,
+		0,
+		host_fire_timestamp,
+		0,
+	]
+	_append_damage_source_payload(arguments, frozen_source)
+	rpc_broadcast_requested.emit(&"net_projectile_fired", arguments)
 	return projectile_id
 
 
@@ -651,23 +683,22 @@ func register_local_fire_sorcerer_volley_data(
 		host_fire_timestamp,
 		frozen_source
 	)
-	rpc_broadcast_requested.emit(
-		&"net_projectile_fired",
-		[
-			projectile_id,
-			String(projectile_type),
-			owner_peer_id,
-			spawn_position,
-			direction.normalized(),
-			damage,
-			speed,
-			lifetime,
-			false,
-			target_peer_id,
-			host_fire_timestamp,
-			target_enemy_net_id,
-		]
-	)
+	var arguments := [
+		projectile_id,
+		String(projectile_type),
+		owner_peer_id,
+		spawn_position,
+		direction.normalized(),
+		damage,
+		speed,
+		lifetime,
+		false,
+		target_peer_id,
+		host_fire_timestamp,
+		target_enemy_net_id,
+	]
+	_append_damage_source_payload(arguments, frozen_source)
+	rpc_broadcast_requested.emit(&"net_projectile_fired", arguments)
 	return projectile_id
 
 
@@ -1204,23 +1235,63 @@ func _send_active_fire_sorcerer_volleys_to_peer(peer_id: int) -> bool:
 		if metadata.is_empty():
 			_erase_fire_sorcerer_volley_backend(projectile_id)
 			continue
+		var arguments := [
+			projectile_id,
+			String(metadata["projectile_type"]),
+			int(metadata["owner_peer_id"]),
+			metadata["spawn_position"] as Vector2,
+			metadata["direction"] as Vector2,
+			int(metadata["damage"]),
+			float(metadata["speed"]),
+			float(metadata["lifetime"]),
+			false,
+			int(metadata["target_peer_id"]),
+			float(metadata["host_fire_timestamp"]),
+			int(metadata["target_enemy_net_id"]),
+		]
+		_append_projectile_source_payload(arguments, projectile_id)
 		rpc_to_peer_requested.emit(
 			peer_id,
 			&"net_projectile_fired",
-			[
-				projectile_id,
-				String(metadata["projectile_type"]),
-				int(metadata["owner_peer_id"]),
-				metadata["spawn_position"] as Vector2,
-				metadata["direction"] as Vector2,
-				int(metadata["damage"]),
-				float(metadata["speed"]),
-				float(metadata["lifetime"]),
-				false,
-				int(metadata["target_peer_id"]),
-				float(metadata["host_fire_timestamp"]),
-				int(metadata["target_enemy_net_id"]),
-			]
+			arguments
+		)
+	return _send_active_capoo_rpg_data_to_peer(peer_id)
+
+
+func _send_active_capoo_rpg_data_to_peer(peer_id: int) -> bool:
+	var projectile_ids: Array[int] = []
+	for projectile_id_variant in _known_capoo_rpg_data_services.keys():
+		projectile_ids.append(int(projectile_id_variant))
+	projectile_ids.sort()
+	for projectile_id in projectile_ids:
+		if not has_capoo_rpg_data(projectile_id):
+			continue
+		var metadata := _known_capoo_rpg_metadata.get(
+			projectile_id,
+			{}
+		) as Dictionary
+		if metadata.is_empty():
+			_release_and_erase_capoo_rpg_data_backend(projectile_id)
+			continue
+		var arguments := [
+			projectile_id,
+			String(metadata["projectile_type"]),
+			int(metadata["owner_peer_id"]),
+			metadata["spawn_position"] as Vector2,
+			metadata["direction"] as Vector2,
+			int(metadata["damage"]),
+			float(metadata["speed"]),
+			float(metadata["lifetime"]),
+			false,
+			0,
+			float(metadata["host_fire_timestamp"]),
+			0,
+		]
+		_append_projectile_source_payload(arguments, projectile_id)
+		rpc_to_peer_requested.emit(
+			peer_id,
+			&"net_projectile_fired",
+			arguments
 		)
 	return true
 
@@ -1334,6 +1405,7 @@ func _erase_replica_fire_sorcerer_volley_backend(projectile_id: int) -> void:
 func _erase_capoo_rpg_data_backend(projectile_id: int) -> void:
 	_known_capoo_rpg_data_services.erase(projectile_id)
 	_known_capoo_rpg_data_handles.erase(projectile_id)
+	_known_capoo_rpg_metadata.erase(projectile_id)
 
 
 func _erase_capoo_rpg_replica_backend(projectile_id: int) -> void:
@@ -1770,7 +1842,8 @@ func submit_local_linglan_skill1_ring(
 	owner_peer_id: int,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot
 ) -> void:
 	var projectile_count := projectiles.size()
 	if (
@@ -1780,6 +1853,9 @@ func submit_local_linglan_skill1_ring(
 		or not has_network_facade_dependencies()
 		or not _net_manager.is_multiplayer_active()
 		or not _net_manager.is_host()
+		or damage_source_snapshot == null
+		or not damage_source_snapshot.is_valid()
+		or damage_source_snapshot.source_type == &""
 	):
 		return
 	var projectile_ids := register_local_linglan_skill1_ring(
@@ -1787,7 +1863,8 @@ func submit_local_linglan_skill1_ring(
 		owner_peer_id,
 		damage,
 		lifetime,
-		_get_net_time()
+		_get_net_time(),
+		damage_source_snapshot
 	)
 	if projectile_ids.size() != projectile_count:
 		return
@@ -1812,6 +1889,10 @@ func submit_local_linglan_skill1_ring(
 				speed,
 				lifetime,
 				host_fire_timestamp,
+				damage_source_snapshot.source_faction_id,
+				damage_source_snapshot.credit_peer_id,
+				damage_source_snapshot.instigator_entity_id,
+				String(damage_source_snapshot.source_type),
 			]
 		)
 
@@ -1827,7 +1908,7 @@ func handle_client_projectile_fired(
 	_reported_speed: float,
 	_reported_lifetime: float,
 	_reported_pierces_enemies: bool = false,
-	target_peer_id: int = 0,
+	_target_peer_id: int = 0,
 	_client_fire_timestamp: float = -1.0,
 	_target_enemy_net_id: int = 0
 ) -> void:
@@ -1895,7 +1976,18 @@ func handle_client_projectile_fired(
 		accepted_direction,
 		bool(accepted_parameters.get("homes_to_enemy", false))
 	)
+	# Client-authored player targets are never authoritative. Current client
+	# projectile families only use Host-derived enemy homing; keep this lane closed
+	# so a future projectile type cannot accidentally consume a spoofed peer ID.
+	var accepted_target_peer_id := sanitize_client_projectile_target_peer_id(
+		_target_peer_id
+	)
 	var host_fire_timestamp := _get_net_time()
+	var accepted_source_snapshot := _make_authoritative_client_source_snapshot(
+		projectile_id,
+		projectile_type,
+		owner_peer_id
+	)
 	var accepted_arguments := [
 		projectile_id,
 		projectile_type_text,
@@ -1906,10 +1998,14 @@ func handle_client_projectile_fired(
 		accepted_speed,
 		accepted_lifetime,
 		accepted_pierces_enemies,
-		target_peer_id,
+		accepted_target_peer_id,
 		host_fire_timestamp,
 		accepted_target_enemy_net_id,
 	]
+	_append_damage_source_payload(
+		accepted_arguments,
+		accepted_source_snapshot
+	)
 	rpc_broadcast_requested.emit(&"net_projectile_fired", accepted_arguments)
 	receive_projectile_fired(
 		projectile_id,
@@ -1921,10 +2017,11 @@ func handle_client_projectile_fired(
 		accepted_speed,
 		accepted_lifetime,
 		accepted_pierces_enemies,
-		target_peer_id,
+		accepted_target_peer_id,
 		accepted_target_enemy_net_id,
 		0.0,
-		host_fire_timestamp
+		host_fire_timestamp,
+		accepted_source_snapshot
 	)
 
 
@@ -1938,14 +2035,43 @@ func apply_authority_projectile_fired(
 	damage: int,
 	speed: float,
 	lifetime: float,
-	pierces_enemies: bool = false,
-	target_peer_id: int = 0,
-	host_fire_timestamp: float = -1.0,
-	target_enemy_net_id: int = 0
+	pierces_enemies: bool,
+	target_peer_id: int,
+	host_fire_timestamp: float,
+	target_enemy_net_id: int,
+	source_faction_id: int,
+	credit_peer_id: int,
+	instigator_entity_id: int,
+	event_source_id: int,
+	source_type_text: String
 ) -> void:
 	if not _is_authority_sender(sender_id):
 		return
 	var projectile_type := StringName(projectile_type_text)
+	if not is_valid_authority_projectile_payload(
+		projectile_id,
+		projectile_type,
+		owner_peer_id,
+		spawn_position,
+		direction,
+		damage,
+		speed,
+		lifetime,
+		target_peer_id,
+		target_enemy_net_id,
+		host_fire_timestamp
+	):
+		return
+	var source_snapshot := _decode_authority_damage_source_snapshot(
+		projectile_id,
+		source_faction_id,
+		credit_peer_id,
+		instigator_entity_id,
+		event_source_id,
+		source_type_text
+	)
+	if source_snapshot == null:
+		return
 	var event_age := _get_host_event_age(host_fire_timestamp)
 	receive_projectile_fired(
 		projectile_id,
@@ -1964,7 +2090,8 @@ func apply_authority_projectile_fired(
 			lifetime,
 			projectile_type
 		),
-		_get_net_time()
+		_get_net_time(),
+		source_snapshot
 	)
 
 
@@ -2520,9 +2647,22 @@ func apply_authority_linglan_skill1_ring(
 	damage: int,
 	speed: float,
 	lifetime: float,
-	host_fire_timestamp: float
+	host_fire_timestamp: float,
+	source_faction_id: int,
+	credit_peer_id: int,
+	instigator_entity_id: int,
+	source_type_text: String
 ) -> void:
 	if not _is_authority_sender(sender_id):
+		return
+	var source_snapshot := DamageSourceSnapshot.create(
+		source_faction_id,
+		credit_peer_id,
+		instigator_entity_id,
+		0,
+		StringName(source_type_text)
+	)
+	if not source_snapshot.is_valid() or source_snapshot.source_type == &"":
 		return
 	receive_linglan_skill1_ring(
 		projectile_ids,
@@ -2534,7 +2674,8 @@ func apply_authority_linglan_skill1_ring(
 		lifetime,
 		host_fire_timestamp,
 		_get_host_event_age(host_fire_timestamp),
-		_get_net_time()
+		_get_net_time(),
+		source_snapshot
 	)
 
 
@@ -2553,6 +2694,26 @@ func register_local_projectile(
 		or not is_instance_valid(projectile)
 		or not _NetConstants.is_valid_network_combat_value(damage)
 	):
+		return 0
+	var source_snapshot_variant: Variant = (
+		projectile.get_meta(DAMAGE_SOURCE_SNAPSHOT_META)
+		if projectile.has_meta(DAMAGE_SOURCE_SNAPSHOT_META)
+		else null
+	)
+	var source_snapshot := (
+		source_snapshot_variant as DamageSourceSnapshot
+		if source_snapshot_variant is DamageSourceSnapshot
+		else null
+	)
+	if (
+		_is_linglan_projectile_type(projectile_type)
+		and (
+			source_snapshot == null
+			or not source_snapshot.is_valid()
+			or source_snapshot.source_type == &""
+		)
+	):
+		push_error("MpProjectileCoordinator: 灵岚投射物缺少合法的显式冻结伤害来源，已拒绝注册。")
 		return 0
 	if not bind_player_projectile_gameplay_context(projectile):
 		return 0
@@ -2575,17 +2736,24 @@ func register_local_projectile(
 		owner_peer_id,
 		projectile_type
 	)
+	if source_snapshot != null:
+		source_snapshot = DamageSourceSnapshot.create(
+			source_snapshot.source_faction_id,
+			source_snapshot.credit_peer_id,
+			source_snapshot.instigator_entity_id,
+			(
+				source_snapshot.event_source_id
+				if source_snapshot.event_source_id > 0
+				else projectile_id
+			),
+			(
+				source_snapshot.source_type
+				if source_snapshot.source_type != &""
+				else projectile_type
+			)
+		)
+		_apply_damage_source_snapshot_to_projectile(projectile, source_snapshot)
 	_known_projectiles[projectile_id] = projectile
-	var source_snapshot_variant: Variant = (
-		projectile.get_meta(DAMAGE_SOURCE_SNAPSHOT_META)
-		if projectile.has_meta(DAMAGE_SOURCE_SNAPSHOT_META)
-		else null
-	)
-	var source_snapshot := (
-		source_snapshot_variant as DamageSourceSnapshot
-		if source_snapshot_variant is DamageSourceSnapshot
-		else null
-	)
 	remember_projectile_record(
 		projectile_id,
 		owner_peer_id,
@@ -2677,13 +2845,17 @@ func register_local_linglan_skill1_ring(
 	owner_peer_id: int,
 	damage: int,
 	lifetime: float,
-	now: float
+	now: float,
+	damage_source_snapshot: DamageSourceSnapshot
 ) -> PackedInt64Array:
 	if (
 		projectiles.is_empty()
 		or owner_peer_id <= 0
 		or owner_peer_id > PROJECTILE_ID_MAX_OWNER_PEER_ID
 		or not _NetConstants.is_valid_network_combat_value(damage)
+		or damage_source_snapshot == null
+		or not damage_source_snapshot.is_valid()
+		or damage_source_snapshot.source_type == &""
 	):
 		return PackedInt64Array()
 	for projectile in projectiles:
@@ -2691,6 +2863,10 @@ func register_local_linglan_skill1_ring(
 			return PackedInt64Array()
 	var projectile_ids := PackedInt64Array()
 	for projectile in projectiles:
+		_apply_damage_source_snapshot_to_projectile(
+			projectile,
+			damage_source_snapshot
+		)
 		var projectile_id := register_local_projectile(
 			projectile,
 			&"linglan_skill1",
@@ -2767,12 +2943,18 @@ func accept_client_projectile_request_identity(
 		)
 	):
 		return false
-	return _consume_peer_rate_token(
+	var sequence := decode_projectile_sequence_counter(projectile_id)
+	if not _is_client_projectile_sequence_fresh(sender_id, sequence):
+		return false
+	if not _consume_peer_rate_token(
 		sender_id,
 		now,
 		CLIENT_PROJECTILE_REQUEST_RATE_PER_SECOND,
 		CLIENT_PROJECTILE_REQUEST_RATE_BURST
-	)
+	):
+		return false
+	_remember_client_projectile_sequence(sender_id, sequence)
+	return true
 
 
 func has_projectile(projectile_id: int) -> bool:
@@ -2967,9 +3149,37 @@ func receive_projectile_fired(
 	target_peer_id: int,
 	target_enemy_net_id: int,
 	compensation_age: float,
-	now: float
+	now: float,
+	damage_source_snapshot: DamageSourceSnapshot
 ) -> void:
-	if not _NetConstants.is_valid_network_combat_value(damage):
+	if not is_valid_authority_projectile_payload(
+		projectile_id,
+		projectile_type,
+		owner_peer_id,
+		spawn_position,
+		direction,
+		damage,
+		speed,
+		lifetime,
+		target_peer_id,
+		target_enemy_net_id,
+		now
+	):
+		return
+	if (
+		not is_finite(compensation_age)
+		or compensation_age < 0.0
+		or compensation_age > _get_projectile_time_compensation_limit(
+			lifetime,
+			projectile_type
+		)
+	):
+		return
+	if (
+		damage_source_snapshot == null
+		or not damage_source_snapshot.is_valid()
+		or damage_source_snapshot.source_type == &""
+	):
 		return
 	if _is_fire_sorcerer_volley_type(projectile_type):
 		_receive_fire_sorcerer_volley_replica(
@@ -2997,12 +3207,18 @@ func receive_projectile_fired(
 			speed,
 			lifetime,
 			compensation_age,
-			now
+			now,
+			damage_source_snapshot
 		)
 		return
 	if has_data_projectile(projectile_id):
 		return
 	if _known_projectiles.has(projectile_id):
+		var predicted_record := get_projectile_record(projectile_id)
+		if bool(predicted_record.get("authority_confirmed", false)):
+			# First authority confirmation wins. A duplicated or stale ordered packet
+			# must not roll a projectile's frozen launch attribution backwards.
+			return
 		_reconcile_predicted_projectile(
 			projectile_id,
 			owner_peer_id,
@@ -3013,7 +3229,8 @@ func receive_projectile_fired(
 			lifetime,
 			pierces_enemies,
 			target_enemy_net_id,
-			now
+			now,
+			damage_source_snapshot
 		)
 		return
 	if _projectile_records.has(projectile_id):
@@ -3031,7 +3248,8 @@ func receive_projectile_fired(
 		target_peer_id,
 		target_enemy_net_id,
 		compensation_age,
-		now
+		now,
+		damage_source_snapshot
 	)
 
 
@@ -3044,7 +3262,8 @@ func _receive_capoo_rpg_replica(
 	speed: float,
 	lifetime: float,
 	compensation_age: float,
-	now: float
+	now: float,
+	damage_source_snapshot: DamageSourceSnapshot
 ) -> void:
 	var projectile_namespace := owner_peer_id
 	if projectile_namespace <= 0:
@@ -3092,18 +3311,19 @@ func _receive_capoo_rpg_replica(
 		speed,
 		remaining_lifetime,
 		CapooRPGRocketSimulationServiceScript.DEFAULT_EXPLOSION_RADIUS,
-		compensation_age
+		compensation_age,
+		damage_source_snapshot
 	)
 	if handle <= CapooRPGRocketSimulationServiceScript.INVALID_HANDLE:
 		return
 	_known_capoo_rpg_replica_services[projectile_id] = service
 	_known_capoo_rpg_replica_handles[projectile_id] = handle
 	var frozen_source := DamageSourceSnapshot.create(
-		CombatRelationService.HOSTILE_WAVE,
-		maxi(owner_peer_id, 0),
-		0,
+		damage_source_snapshot.source_faction_id,
+		damage_source_snapshot.credit_peer_id,
+		damage_source_snapshot.instigator_entity_id,
 		projectile_id,
-		&"capoo_rpg_rocket"
+		damage_source_snapshot.source_type
 	)
 	remember_projectile_record(
 		projectile_id,
@@ -3294,7 +3514,8 @@ func receive_linglan_skill1_ring(
 	lifetime: float,
 	host_fire_timestamp: float,
 	event_age: float,
-	now: float
+	now: float,
+	damage_source_snapshot: DamageSourceSnapshot
 ) -> void:
 	if not is_valid_linglan_skill1_ring_payload(
 		projectile_ids,
@@ -3304,7 +3525,8 @@ func receive_linglan_skill1_ring(
 		damage,
 		speed,
 		lifetime,
-		host_fire_timestamp
+		host_fire_timestamp,
+		damage_source_snapshot
 	):
 		return
 	var compensation_age := clampf(
@@ -3333,8 +3555,24 @@ func receive_linglan_skill1_ring(
 			0,
 			0,
 			compensation_age,
-			now
+			now,
+			DamageSourceSnapshot.create(
+				damage_source_snapshot.source_faction_id,
+				damage_source_snapshot.credit_peer_id,
+				damage_source_snapshot.instigator_entity_id,
+				projectile_id,
+				damage_source_snapshot.source_type
+			)
 		)
+
+
+static func _is_linglan_projectile_type(projectile_type: StringName) -> bool:
+	return (
+		projectile_type == &"linglan_skill1"
+		or projectile_type == &"linglan_skill2_rocket"
+		or projectile_type == &"linglan_skill3_orb"
+		or projectile_type == &"linglan_skill4_orb"
+	)
 
 
 static func _is_combat_robot_suicide_drone_type(
@@ -3351,20 +3589,26 @@ func get_projectile_time_compensation_age(
 	lifetime: float,
 	projectile_type: StringName = &""
 ) -> float:
-	if _is_combat_robot_suicide_drone_type(projectile_type):
-		return clampf(
-			unbounded_event_age,
-			0.0,
-			(
-				CombatRobotSuicideDrone.DEPLOY_DELAY
-					+ maxf(lifetime, 0.0)
-					+ CombatRobotSuicideDrone.EXPLOSION_DURATION
-			)
-		)
 	return clampf(
 		unbounded_event_age,
 		0.0,
-		minf(PROJECTILE_TIME_COMPENSATION_MAX_SECONDS, maxf(lifetime, 0.0))
+		_get_projectile_time_compensation_limit(lifetime, projectile_type)
+	)
+
+
+static func _get_projectile_time_compensation_limit(
+	lifetime: float,
+	projectile_type: StringName
+) -> float:
+	if _is_combat_robot_suicide_drone_type(projectile_type):
+		return (
+			CombatRobotSuicideDrone.DEPLOY_DELAY
+			+ maxf(lifetime, 0.0)
+			+ CombatRobotSuicideDrone.EXPLOSION_DURATION
+		)
+	return minf(
+		PROJECTILE_TIME_COMPENSATION_MAX_SECONDS,
+		maxf(lifetime, 0.0)
 	)
 
 
@@ -3598,6 +3842,7 @@ func _prune_capoo_rpg_backends() -> void:
 
 func clear_peer(peer_id: int) -> void:
 	_client_projectile_request_rate_buckets.erase(peer_id)
+	_client_projectile_replay_windows.erase(peer_id)
 	_last_tango_volley_visual_state_by_peer.erase(peer_id)
 	for projectile_id_variant in _reserved_host_projectile_ids.keys():
 		var projectile_id := int(projectile_id_variant)
@@ -3732,6 +3977,7 @@ func reset_session_state() -> void:
 		_release_and_erase_capoo_rpg_data_backend(int(projectile_id))
 	_known_capoo_rpg_data_services.clear()
 	_known_capoo_rpg_data_handles.clear()
+	_known_capoo_rpg_metadata.clear()
 	for projectile_id in _known_capoo_rpg_replica_services.keys():
 		_release_and_erase_capoo_rpg_replica_backend(int(projectile_id))
 	_known_capoo_rpg_replica_services.clear()
@@ -3759,6 +4005,7 @@ func reset_session_state() -> void:
 	_stale_projectile_record_ids.clear()
 	_processed_enemy_hit_ids.clear()
 	_client_projectile_request_rate_buckets.clear()
+	_client_projectile_replay_windows.clear()
 	_last_tango_volley_visual_state_by_peer.clear()
 	_next_projectile_sequence = 1
 	_next_enemy_rapid_fire_snapshot_id = 1
@@ -3781,6 +4028,7 @@ func get_state_metrics() -> Dictionary:
 			_known_fire_sorcerer_volley_metadata.size()
 		),
 		"known_capoo_rpg_data": _known_capoo_rpg_data_services.size(),
+		"capoo_rpg_late_join_records": _known_capoo_rpg_metadata.size(),
 		"known_capoo_rpg_replicas": (
 			_known_capoo_rpg_replica_services.size()
 		),
@@ -3798,9 +4046,47 @@ func get_state_metrics() -> Dictionary:
 		"latest_rapid_fire_snapshot_id": _latest_applied_enemy_rapid_fire_snapshot_id,
 		"projectile_records": _projectile_records.size(),
 		"request_rate_buckets": _client_projectile_request_rate_buckets.size(),
+		"request_replay_windows": _client_projectile_replay_windows.size(),
 		"enemy_hit_dedupe": _processed_enemy_hit_ids.size(),
 		"tango_visual_peers": _last_tango_volley_visual_state_by_peer.size(),
 	}
+
+
+static func is_valid_authority_projectile_payload(
+	projectile_id: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	spawn_position: Vector2,
+	direction: Vector2,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	target_peer_id: int,
+	target_enemy_net_id: int,
+	host_fire_timestamp: float
+) -> bool:
+	var projectile_namespace := owner_peer_id
+	if projectile_namespace <= 0:
+		projectile_namespace = PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
+	return (
+		is_projectile_id_valid_for_owner(projectile_id, projectile_namespace)
+		and projectile_type != &""
+		and _is_finite_vector2(spawn_position)
+		and _is_finite_vector2(direction)
+		and direction.length_squared() > 0.001
+		and damage >= 0
+		and _NetConstants.is_valid_network_combat_value(damage)
+		and is_finite(speed)
+		and speed > 0.0
+		and is_finite(lifetime)
+		and lifetime > 0.0
+		and target_peer_id >= 0
+		and target_peer_id <= PROJECTILE_ID_MAX_OWNER_PEER_ID
+		and target_enemy_net_id >= 0
+		and _NetConstants.is_valid_network_combat_value(target_enemy_net_id)
+		and is_finite(host_fire_timestamp)
+		and host_fire_timestamp >= 0.0
+	)
 
 
 static func is_projectile_id_valid_for_owner(
@@ -3877,6 +4163,12 @@ static func get_valid_client_projectile_direction(direction: Vector2) -> Vector2
 	return direction / direction_length
 
 
+static func sanitize_client_projectile_target_peer_id(
+	_reported_target_peer_id: int
+) -> int:
+	return 0
+
+
 static func is_valid_tango_laser_volley_payload(
 	projectile_ids: PackedInt64Array,
 	spawn_positions: PackedVector2Array,
@@ -3936,7 +4228,8 @@ static func is_valid_linglan_skill1_ring_payload(
 	damage: int,
 	speed: float,
 	lifetime: float,
-	host_fire_timestamp: float
+	host_fire_timestamp: float,
+	damage_source_snapshot: DamageSourceSnapshot
 ) -> bool:
 	var projectile_count := projectile_ids.size()
 	if (
@@ -3947,11 +4240,14 @@ static func is_valid_linglan_skill1_ring_payload(
 		or owner_peer_id <= 0
 		or not _NetConstants.is_valid_network_combat_value(damage)
 		or not is_finite(speed)
-		or speed < 0.0
+		or speed <= 0.0
 		or not is_finite(lifetime)
 		or lifetime <= 0.0
 		or not is_finite(host_fire_timestamp)
 		or host_fire_timestamp < 0.0
+		or damage_source_snapshot == null
+		or not damage_source_snapshot.is_valid()
+		or damage_source_snapshot.source_type == &""
 	):
 		return false
 	var seen_projectile_ids: Dictionary[int, bool] = {}
@@ -3982,7 +4278,8 @@ func instantiate_projectile(
 	lifetime: float,
 	pierces_enemies: bool = false,
 	target_peer_id: int = 0,
-	target_enemy_net_id: int = 0
+	target_enemy_net_id: int = 0,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> Node:
 	if not is_bound():
 		return null
@@ -3996,6 +4293,10 @@ func instantiate_projectile(
 				return null
 			bullet.top_level = true
 			bullet.setup(direction, damage, pierces_enemies)
+			_apply_damage_source_snapshot_to_projectile(
+				bullet,
+				damage_source_snapshot
+			)
 			if target_enemy_net_id > 0:
 				bullet.setup_homing(_runtime.get_enemy_for_net_id(target_enemy_net_id))
 			bullet.speed = speed
@@ -4013,6 +4314,10 @@ func instantiate_projectile(
 				return null
 			laser.top_level = true
 			laser.setup(direction, damage, false)
+			_apply_damage_source_snapshot_to_projectile(
+				laser,
+				damage_source_snapshot
+			)
 			laser.speed = speed
 			laser.max_lifetime = lifetime
 			laser.remaining_lifetime = lifetime
@@ -4029,6 +4334,10 @@ func instantiate_projectile(
 				return null
 			sniper.top_level = true
 			sniper.setup(direction, damage, pierces_enemies)
+			_apply_damage_source_snapshot_to_projectile(
+				sniper,
+				damage_source_snapshot
+			)
 			if target_enemy_net_id > 0:
 				sniper.setup_homing(_runtime.get_enemy_for_net_id(target_enemy_net_id))
 			sniper.speed = speed
@@ -4082,7 +4391,8 @@ func instantiate_projectile(
 				speed,
 				lifetime,
 				_runtime.grid_pathfinder as GridPathfinder,
-				_runtime.capoo_projectile_motion_system
+				_runtime.capoo_projectile_motion_system,
+				damage_source_snapshot
 			)
 			return capoo_bullet
 		&"combat_robot_gunner_bullet", &"combat_robot_gunner_elite_bullet":
@@ -4118,7 +4428,8 @@ func instantiate_projectile(
 				speed,
 				lifetime,
 				_runtime.grid_pathfinder as GridPathfinder,
-				_runtime.capoo_projectile_motion_system
+				_runtime.capoo_projectile_motion_system,
+				damage_source_snapshot
 			)
 			return gunner_bullet
 		COMBAT_ROBOT_SUICIDE_DRONE_TYPE, COMBAT_ROBOT_SUICIDE_DRONE_ELITE_TYPE:
@@ -4156,7 +4467,8 @@ func instantiate_projectile(
 				speed,
 				lifetime,
 				CombatRobotSuicideDrone.DEFAULT_EXPLOSION_RADIUS,
-				_runtime.combat_robot_drone_motion_system
+				_runtime.combat_robot_drone_motion_system,
+				damage_source_snapshot
 			)
 			return drone
 		&"capoo_mage_fireball":
@@ -4182,7 +4494,8 @@ func instantiate_projectile(
 				lifetime,
 				fireball.fireball_radius,
 				fireball_target,
-				fireball.homing_turn_rate
+				fireball.homing_turn_rate,
+				damage_source_snapshot
 			)
 			return fireball
 		FIRE_SORCERER_FIREBALL_VOLLEY_TYPE, \
@@ -4214,7 +4527,10 @@ func instantiate_projectile(
 				lifetime,
 				target,
 				6.0,
-				_runtime
+				_runtime,
+				-1.0,
+				-1,
+				damage_source_snapshot
 			)
 			return volley
 		&"capoo_smg_bullet":
@@ -4234,7 +4550,8 @@ func instantiate_projectile(
 				speed,
 				lifetime,
 				_runtime.grid_pathfinder as GridPathfinder,
-				_runtime.capoo_projectile_motion_system
+				_runtime.capoo_projectile_motion_system,
+				damage_source_snapshot
 			)
 			return smg_bullet
 		&"yuanshi_fire_projectile":
@@ -4250,7 +4567,13 @@ func instantiate_projectile(
 			if not _prepare_enemy_network_projectile(fire_projectile):
 				_release_projectile(fire_projectile)
 				return null
-			fire_projectile.setup(direction, damage, speed, lifetime)
+			fire_projectile.setup(
+				direction,
+				damage,
+				speed,
+				lifetime,
+				damage_source_snapshot
+			)
 			return fire_projectile
 		FROST_SORCERER_ICE_SPIKE_TYPE:
 			var spike := (
@@ -4265,7 +4588,13 @@ func instantiate_projectile(
 			if not _prepare_enemy_network_projectile(spike):
 				_release_projectile(spike)
 				return null
-			spike.setup(direction, damage, speed, lifetime)
+			spike.setup(
+				direction,
+				damage,
+				speed,
+				lifetime,
+				damage_source_snapshot
+			)
 			return spike
 		&"linglan_skill1":
 			_ensure_linglan_projectile_resources(projectile_type)
@@ -4633,6 +4962,10 @@ func _prepare_enemy_network_projectile(projectile: Node) -> bool:
 	var sorcerer_volley := projectile as FireSorcererFireballVolley
 	var yuanshi_fire := projectile as YuanshiInsectFireProjectile
 	var frost_spike := projectile as FrostSorcererIceSpike
+	var linglan_skill1 := projectile as LinglanSakuraBullet
+	var linglan_skill2 := projectile as LinglanSkill2SakuraRocket
+	var linglan_skill3 := projectile as LinglanSkill3LightOrb
+	var linglan_skill4 := projectile as LinglanSkill4LightOrb
 	if capoo_bullet != null:
 		capoo_bullet.bind_gameplay_context(_runtime, gateway)
 	elif mage_fireball != null:
@@ -4643,6 +4976,14 @@ func _prepare_enemy_network_projectile(projectile: Node) -> bool:
 		yuanshi_fire.bind_gameplay_context(_runtime, gateway)
 	elif frost_spike != null:
 		frost_spike.bind_gameplay_context(_runtime, gateway)
+	elif linglan_skill1 != null:
+		linglan_skill1.bind_gameplay_context(_runtime, gateway)
+	elif linglan_skill2 != null:
+		linglan_skill2.bind_gameplay_context(_runtime, gateway)
+	elif linglan_skill3 != null:
+		linglan_skill3.bind_gameplay_context(_runtime, gateway)
+	elif linglan_skill4 != null:
+		linglan_skill4.bind_gameplay_context(_runtime, gateway)
 	else:
 		return false
 	var projectile_parent := gateway.get_projectile_parent()
@@ -4747,7 +5088,8 @@ func _spawn_network_projectile(
 	target_peer_id: int,
 	target_enemy_net_id: int,
 	compensation_age: float,
-	now: float
+	now: float,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> void:
 	if (
 		projectile_id <= 0
@@ -4767,7 +5109,8 @@ func _spawn_network_projectile(
 		lifetime,
 		pierces_enemies,
 		target_peer_id,
-		target_enemy_net_id
+		target_enemy_net_id,
+		damage_source_snapshot
 	)
 	if projectile == null:
 		return
@@ -4780,6 +5123,10 @@ func _spawn_network_projectile(
 		owner_peer_id,
 		projectile_type
 	)
+	_apply_damage_source_snapshot_to_projectile(
+		projectile,
+		damage_source_snapshot
+	)
 	_known_projectiles[projectile_id] = projectile
 	remember_projectile_record(
 		projectile_id,
@@ -4788,8 +5135,13 @@ func _spawn_network_projectile(
 		damage,
 		lifetime,
 		pierces_enemies,
-		now
+		now,
+		damage_source_snapshot
 	)
+	var authority_record := get_projectile_record(projectile_id)
+	if not authority_record.is_empty():
+		authority_record["authority_confirmed"] = true
+		_projectile_records[projectile_id] = authority_record
 	if projectile.get_parent() == null:
 		var projectile_parent := _get_projectile_parent()
 		if projectile_parent == null:
@@ -4834,7 +5186,8 @@ func _reconcile_predicted_projectile(
 	lifetime: float,
 	pierces_enemies: bool,
 	target_enemy_net_id: int,
-	now: float
+	now: float,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> void:
 	var projectile := get_projectile(projectile_id)
 	if projectile == null:
@@ -4852,6 +5205,10 @@ func _reconcile_predicted_projectile(
 		if is_bound() and target_enemy_net_id > 0:
 			homing_target = _runtime.get_enemy_for_net_id(target_enemy_net_id)
 		bullet.setup_homing(homing_target)
+	_apply_damage_source_snapshot_to_projectile(
+		projectile,
+		damage_source_snapshot
+	)
 	remember_projectile_record(
 		projectile_id,
 		owner_peer_id,
@@ -4859,7 +5216,8 @@ func _reconcile_predicted_projectile(
 		damage,
 		lifetime,
 		pierces_enemies,
-		now
+		now,
+		damage_source_snapshot
 	)
 	var confirmed_record := get_projectile_record(projectile_id)
 	if not confirmed_record.is_empty():
@@ -4871,6 +5229,139 @@ func _reconcile_predicted_projectile(
 			owner_player.confirm_predicted_void_battery_activation(
 				projectile.get_instance_id()
 			)
+
+
+func _append_projectile_source_payload(
+	arguments: Array,
+	projectile_id: int
+) -> void:
+	var source_snapshot := get_projectile_damage_source_snapshot(projectile_id)
+	if source_snapshot == null:
+		var record := get_projectile_record(projectile_id)
+		source_snapshot = DamageSourceSnapshot.legacy_player_owned(
+			projectile_id,
+			StringName(record.get("projectile_type", &"player_bullet")),
+			maxi(int(record.get("owner_peer_id", 0)), 0),
+			maxi(int(record.get("owner_peer_id", 0)), 0)
+		)
+	_append_damage_source_payload(arguments, source_snapshot)
+
+
+static func _append_damage_source_payload(
+	arguments: Array,
+	source_snapshot: DamageSourceSnapshot
+) -> void:
+	assert(
+		source_snapshot != null
+		and source_snapshot.is_valid()
+		and source_snapshot.source_type != &"",
+		"MpProjectileCoordinator: Host 广播缺少有效的冻结伤害来源。"
+	)
+	arguments.append(source_snapshot.source_faction_id)
+	arguments.append(source_snapshot.credit_peer_id)
+	arguments.append(source_snapshot.instigator_entity_id)
+	arguments.append(source_snapshot.event_source_id)
+	arguments.append(String(source_snapshot.source_type))
+
+
+func _make_authoritative_client_source_snapshot(
+	projectile_id: int,
+	projectile_type: StringName,
+	owner_peer_id: int
+) -> DamageSourceSnapshot:
+	var owner_player := _get_player(owner_peer_id)
+	if owner_player != null:
+		return owner_player.create_damage_source_snapshot(
+			projectile_id,
+			projectile_type
+		)
+	# The authenticated owner/ID checks have already succeeded. This fallback is
+	# only for short spawn/despawn ordering gaps and never consumes client fields.
+	return DamageSourceSnapshot.create(
+		CombatRelationService.PLAYER_ALLIED,
+		maxi(owner_peer_id, 0),
+		maxi(owner_peer_id, 0),
+		projectile_id,
+		projectile_type
+	)
+
+
+static func _decode_authority_damage_source_snapshot(
+	projectile_id: int,
+	source_faction_id: int,
+	credit_peer_id: int,
+	instigator_entity_id: int,
+	event_source_id: int,
+	source_type_text: String
+) -> DamageSourceSnapshot:
+	if (
+		credit_peer_id < 0
+		or instigator_entity_id < 0
+		or event_source_id < 0
+		or source_type_text.is_empty()
+	):
+		return null
+	var source_snapshot := DamageSourceSnapshot.create(
+		source_faction_id,
+		credit_peer_id,
+		instigator_entity_id,
+		event_source_id if event_source_id > 0 else projectile_id,
+		StringName(source_type_text)
+	)
+	return source_snapshot if source_snapshot.is_valid() else null
+
+
+static func _apply_damage_source_snapshot_to_projectile(
+	projectile: Node,
+	source_snapshot: DamageSourceSnapshot
+) -> void:
+	if (
+		projectile == null
+		or source_snapshot == null
+		or not source_snapshot.is_valid()
+	):
+		return
+	var frozen_source := source_snapshot.duplicate_snapshot()
+	var player_bullet := projectile as Bullet
+	var capoo_bullet := projectile as CapooAK47Bullet
+	var suicide_drone := projectile as CombatRobotSuicideDrone
+	var rpg_rocket := projectile as CapooRPGRocket
+	var mage_fireball := projectile as CapooMageFireball
+	var sorcerer_volley := projectile as FireSorcererFireballVolley
+	var yuanshi_fire := projectile as YuanshiInsectFireProjectile
+	var frost_spike := projectile as FrostSorcererIceSpike
+	var linglan_skill1 := projectile as LinglanSakuraBullet
+	var linglan_skill2 := projectile as LinglanSkill2SakuraRocket
+	var linglan_skill3 := projectile as LinglanSkill3LightOrb
+	var linglan_skill4 := projectile as LinglanSkill4LightOrb
+	if player_bullet != null:
+		player_bullet.damage_source_snapshot = frozen_source
+	elif capoo_bullet != null:
+		capoo_bullet.damage_source_snapshot = frozen_source
+	elif suicide_drone != null:
+		suicide_drone.damage_source_snapshot = frozen_source
+	elif rpg_rocket != null:
+		rpg_rocket.damage_source_snapshot = frozen_source
+	elif mage_fireball != null:
+		mage_fireball.damage_source_snapshot = frozen_source
+	elif sorcerer_volley != null:
+		sorcerer_volley.damage_source_snapshot = frozen_source
+	elif yuanshi_fire != null:
+		yuanshi_fire.damage_source_snapshot = frozen_source
+	elif frost_spike != null:
+		frost_spike.damage_source_snapshot = frozen_source
+	elif linglan_skill1 != null:
+		linglan_skill1.damage_source_snapshot = frozen_source
+	elif linglan_skill2 != null:
+		linglan_skill2.damage_source_snapshot = frozen_source
+	elif linglan_skill3 != null:
+		linglan_skill3.damage_source_snapshot = frozen_source
+	elif linglan_skill4 != null:
+		linglan_skill4.damage_source_snapshot = frozen_source
+	projectile.set_meta(
+		DAMAGE_SOURCE_SNAPSHOT_META,
+		frozen_source.duplicate_snapshot()
+	)
 
 
 func remember_projectile_record(
@@ -5119,6 +5610,76 @@ static func _get_fire_sorcerer_fireball_source_bit(
 			return 4
 		_:
 			return 0
+
+
+func _is_client_projectile_sequence_fresh(peer_id: int, sequence: int) -> bool:
+	if (
+		peer_id <= 0
+		or sequence <= 0
+		or sequence > PROJECTILE_ID_SEQUENCE_COUNTER_MASK
+	):
+		return false
+	var window := _client_projectile_replay_windows.get(peer_id, {}) as Dictionary
+	if window.is_empty():
+		return true
+	var highest_sequence := int(window.get("highest_sequence", 0))
+	if highest_sequence <= 0:
+		return true
+	if sequence == highest_sequence:
+		return false
+	var forward_distance := _get_client_projectile_sequence_forward_distance(
+		highest_sequence,
+		sequence
+	)
+	if (
+		forward_distance > 0
+		and forward_distance <= CLIENT_PROJECTILE_SEQUENCE_HALF_RANGE
+	):
+		return true
+	var age := _get_client_projectile_sequence_forward_distance(
+		sequence,
+		highest_sequence
+	)
+	if age <= 0 or age >= CLIENT_PROJECTILE_REPLAY_WINDOW_SIZE:
+		return false
+	var seen_sequences: PackedInt64Array = window["seen_sequences"]
+	var slot_index := (sequence - 1) % CLIENT_PROJECTILE_REPLAY_WINDOW_SIZE
+	return int(seen_sequences[slot_index]) != sequence
+
+
+func _remember_client_projectile_sequence(peer_id: int, sequence: int) -> void:
+	var window := _client_projectile_replay_windows.get(peer_id, {}) as Dictionary
+	var highest_sequence := int(window.get("highest_sequence", 0))
+	var seen_sequences := PackedInt64Array()
+	if window.is_empty():
+		seen_sequences.resize(CLIENT_PROJECTILE_REPLAY_WINDOW_SIZE)
+		seen_sequences.fill(0)
+	else:
+		seen_sequences = window["seen_sequences"] as PackedInt64Array
+	if highest_sequence <= 0:
+		highest_sequence = sequence
+	elif (
+		_get_client_projectile_sequence_forward_distance(
+			highest_sequence,
+			sequence
+		) <= CLIENT_PROJECTILE_SEQUENCE_HALF_RANGE
+	):
+		highest_sequence = sequence
+	var slot_index := (sequence - 1) % CLIENT_PROJECTILE_REPLAY_WINDOW_SIZE
+	seen_sequences[slot_index] = sequence
+	window["highest_sequence"] = highest_sequence
+	window["seen_sequences"] = seen_sequences
+	_client_projectile_replay_windows[peer_id] = window
+
+
+static func _get_client_projectile_sequence_forward_distance(
+	from_sequence: int,
+	to_sequence: int
+) -> int:
+	var distance := to_sequence - from_sequence
+	if distance < 0:
+		distance += PROJECTILE_ID_SEQUENCE_COUNTER_MASK
+	return distance
 
 
 func _consume_peer_rate_token(

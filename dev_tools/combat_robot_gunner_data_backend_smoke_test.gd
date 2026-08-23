@@ -52,7 +52,8 @@ class CapturingGateway:
 		lifetime: float,
 		_pierces_enemies: bool = false,
 		_target_peer_id: int = 0,
-		_target_enemy_net_id: int = 0
+		_target_enemy_net_id: int = 0,
+		_damage_source_snapshot: DamageSourceSnapshot = null
 	) -> void:
 		var projectile_id := next_projectile_id
 		next_projectile_id += 1

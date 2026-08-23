@@ -60,7 +60,8 @@ class Skill2Host:
 		lifetime: float,
 		pierces_enemies: bool = false,
 		target_peer_id: int = 0,
-		_target_enemy_net_id: int = 0
+		_target_enemy_net_id: int = 0,
+		damage_source_snapshot: DamageSourceSnapshot = null
 	) -> void:
 		projectile_records.append({
 			"projectile": projectile,
@@ -73,6 +74,7 @@ class Skill2Host:
 			"lifetime": lifetime,
 			"pierces_enemies": pierces_enemies,
 			"target_peer_id": target_peer_id,
+			"damage_source_snapshot": damage_source_snapshot,
 		})
 
 
@@ -388,6 +390,13 @@ func _test_boss_skill2_schedule() -> void:
 		_expect(int(record.get("damage", 0)) == 80, "Skill2 registered wrong rocket damage.")
 		_expect(is_equal_approx(float(record.get("speed", 0.0)), 210.0), "Skill2 registered wrong rocket speed.")
 		_expect(int(record.get("target_peer_id", 0)) == 7, "Skill2 rocket must register target peer id.")
+		var source_snapshot := record.get("damage_source_snapshot") as DamageSourceSnapshot
+		_expect(
+			source_snapshot != null
+			and source_snapshot.source_faction_id == CombatRelationService.HOSTILE_WAVE
+			and source_snapshot.source_type == &"linglan_skill2_rocket",
+			"Skill2 rocket must freeze Linglan's hostile launch source."
+		)
 
 	host.queue_free()
 	await process_frame
@@ -608,6 +617,15 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 			_expect(not shape_node.disabled, "Linglan body collision must be enabled before Skill2 explosion query.")
 
 	var explosion_rocket := ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+	explosion_rocket.set_damage_source_snapshot(
+		DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			9201,
+			0,
+			&"linglan_skill2_rocket"
+		)
+	)
 	test_root.add_child(explosion_rocket)
 	(test_root as LinglanCombatTestRuntime).bind_linglan_node(explosion_rocket)
 	explosion_rocket.global_position = Vector2.ZERO
@@ -619,10 +637,14 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 	await process_frame
 
 	_expect(player.current_health == 120, "Skill2 explosion must deal 80 damage to the player.")
-	_expect(enemy.current_health == 120, "Skill2 explosion must deal 80 damage to normal enemies.")
 	_expect(
-		linglan.current_health == 420,
-		"Skill2 explosion must also damage Linglan, health is %d." % linglan.current_health
+		enemy.current_health == 200,
+		"Hostile Skill2 rockets must reject same-faction normal enemies."
+	)
+	_expect(
+		linglan.current_health == 500,
+		"Hostile Skill2 rockets must reject same-faction Linglan, health is %d."
+		% linglan.current_health
 	)
 	_expect(_count_skill2_explosions(test_root) == 1, "Skill2 rocket must spawn one explosion effect.")
 	_clear_skill2_explosions(test_root)
@@ -640,6 +662,12 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 	player.current_health = 200
 	var sakura_mode_rocket := (
 		COLLECTIBLE_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
+	)
+	sakura_mode_rocket.set_damage_source_snapshot(
+		player.create_damage_source_snapshot(
+			0,
+			&"collectible_sakura_rocket"
+		)
 	)
 	test_root.add_child(sakura_mode_rocket)
 	(test_root as LinglanCombatTestRuntime).bind_linglan_node(sakura_mode_rocket)
@@ -659,6 +687,13 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 	_expect(sakura_mode_rocket.target_node == enemy, "Sakura-mode rocket must track the enemy target node.")
 	_expect(sakura_mode_rocket.enemies_only, "Sakura-mode rocket must be enemy-only.")
 	_expect(sakura_mode_rocket.damage_type == EnemyConfig.DamageType.MAGIC, "Sakura-mode rocket must be magic damage.")
+	_expect(
+		sakura_mode_rocket.damage_source_snapshot != null
+		and sakura_mode_rocket.damage_source_snapshot.source_faction_id
+			== CombatRelationService.PLAYER_ALLIED
+		and sakura_mode_rocket.damage_source_snapshot.credit_peer_id == player.peer_id,
+		"Player Sakura rockets must freeze PLAYER_ALLIED ownership before entering the tree."
+	)
 	_expect(
 		is_equal_approx(sakura_mode_rocket.explosion_radius, 47.0),
 		"Sakura-mode rocket explosion radius must be Weishidaier Skill1 radius plus 3."

@@ -1283,6 +1283,13 @@ func _test_linglan_skill1_ring_payload_contract() -> void:
 	var projectile_ids := PackedInt64Array([first_projectile_id, second_projectile_id])
 	var spawn_positions := PackedVector2Array([Vector2(10.0, 20.0), Vector2(30.0, 40.0)])
 	var directions := PackedVector2Array([Vector2.RIGHT, Vector2.UP])
+	var source_snapshot := DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		900,
+		0,
+		&"linglan_skill1"
+	)
 	_expect(
 		int(mp_game.call(
 			"_get_rpc_traffic_channel",
@@ -1299,7 +1306,8 @@ func _test_linglan_skill1_ring_payload_contract() -> void:
 			50,
 			300.0,
 			2.0,
-			1.25
+			1.25,
+			source_snapshot
 		),
 		"Linglan ring batches must accept aligned, finite packed columns."
 	)
@@ -1312,7 +1320,8 @@ func _test_linglan_skill1_ring_payload_contract() -> void:
 			50,
 			300.0,
 			2.0,
-			1.25
+			1.25,
+			source_snapshot
 		),
 		"Linglan ring batches must reject duplicate projectile IDs."
 	)
@@ -1331,7 +1340,8 @@ func _test_linglan_skill1_ring_payload_contract() -> void:
 			50,
 			300.0,
 			2.0,
-			1.25
+			1.25,
+			source_snapshot
 		),
 		"Linglan ring batches must reject an ID encoded for another owner."
 	)
@@ -1347,7 +1357,8 @@ func _test_linglan_skill1_ring_payload_contract() -> void:
 			50,
 			300.0,
 			2.0,
-			1.25
+			1.25,
+			source_snapshot
 		),
 		"Host-authored Linglan batches must reject client-origin projectile IDs."
 	)
@@ -1371,7 +1382,8 @@ func _test_linglan_skill1_ring_payload_contract() -> void:
 			50,
 			300.0,
 			2.0,
-			1.25
+			1.25,
+			source_snapshot
 		),
 		"A valid Host ring must survive the 31-bit counter wrap without relying on monotonic IDs."
 	)
@@ -1593,7 +1605,13 @@ func _test_projectile_origin_lane_runtime_contract() -> void:
 		0,
 		0,
 		0.0,
-		0.0
+		0.0,
+		DamageSourceSnapshot.legacy_player_owned(
+			client_lane_id,
+			&"player_bullet",
+			2,
+			2
+		)
 	)
 	var reconciled_record := coordinator.get_projectile_record(client_lane_id)
 	_expect(
@@ -1621,7 +1639,13 @@ func _test_projectile_origin_lane_runtime_contract() -> void:
 		0,
 		0,
 		0.0,
-		0.0
+		0.0,
+		DamageSourceSnapshot.legacy_player_owned(
+			host_lane_id,
+			&"player_bullet",
+			2,
+			2
+		)
 	)
 	var host_bullet := known_projectiles.get(host_lane_id) as Bullet
 	_expect(
@@ -1666,7 +1690,7 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 	var sender := SnapshotManager.new()
 	var receiver := SnapshotManager.new()
 	var states: Array[SnapshotManager.EnemyState] = []
-	for enemy_index in range(46):
+	for enemy_index in range(41):
 		var state := SnapshotManager.EnemyState.new()
 		state.net_id = enemy_index + 1
 		state.position = Vector2(enemy_index * 2.0, enemy_index * -1.5)
@@ -1674,6 +1698,8 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 		state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		state.health = 100 + enemy_index
 		state.health_revision = enemy_index + 3
+		state.faction_id = enemy_index % 32
+		state.faction_revision = enemy_index + 1
 		# Enemy 1 combines the common low-five status bits with the scene-specific
 		# high bits. Shield bearers use them as 10 = critical; v45 ninja robots
 		# independently use bit 5 as their boost flag.
@@ -1681,44 +1707,71 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 		states.append(state)
 	var keyframe := sender.encode_enemy_snapshots_for_peer(8, states, true)
 	_expect(
-		keyframe.size() == 1106,
-		"A v25 46-enemy keyframe must use 1106 bytes and stay within the 1200-byte budget."
+		keyframe.size() == 1191,
+		"A 41-enemy faction keyframe must use 1191 bytes and stay within the 1200-byte budget."
 	)
 	var decoded_keyframe := receiver.decode_enemy_snapshots_with_baseline(keyframe)
-	_expect(decoded_keyframe.size() == 46, "The complete 46-enemy keyframe must decode.")
+	_expect(decoded_keyframe.size() == 41, "The complete 41-enemy keyframe must decode.")
 	if decoded_keyframe.is_empty():
 		return
 	_expect(
-		decoded_keyframe[0].visual_status_mask == 0b1011101
+		decoded_keyframe.size() == 41
+		and decoded_keyframe[0].visual_status_mask == 0b1011101
 		and decoded_keyframe[0].locomotion_state
 			== SnapshotManager.ENEMY_LOCOMOTION_MOVING
-		and decoded_keyframe[0].health_revision == 3,
-		"Enemy visual status, locomotion and health revision must round-trip in a keyframe."
+		and decoded_keyframe[0].health_revision == 3
+		and decoded_keyframe[0].faction_id == 0
+		and decoded_keyframe[0].faction_revision == 1
+		and decoded_keyframe[31].faction_id == 31,
+		"Enemy visual status, locomotion, health and faction boundaries must round-trip in a keyframe."
 	)
 	states[0].position.x += 2.0
 	# Preserve common bits while setting both scene-specific bits. This remains
 	# 11 = broken for shield bearers and also proves the v45 ninja bit5 survives.
 	states[0].visual_status_mask = 0b1110100
 	states[0].locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_IDLE
+	states[0].faction_id = 31
+	states[0].faction_revision = NetConstants.NETWORK_COMBAT_VALUE_MAX
 	var delta := sender.encode_enemy_snapshots_for_peer(8, states, false)
 	var decoded_delta := receiver.decode_enemy_snapshots_with_baseline(delta)
 	_expect(
-		decoded_delta.size() == 46
+		decoded_delta.size() == 41
 		and is_same(decoded_keyframe[0], decoded_delta[0])
 		and decoded_delta[0].visual_status_mask == 0b1110100
 		and decoded_delta[0].locomotion_state
-			== SnapshotManager.ENEMY_LOCOMOTION_IDLE,
-		"Enemy delta output must reuse objects and update visual and locomotion bits."
+			== SnapshotManager.ENEMY_LOCOMOTION_IDLE
+		and decoded_delta[0].faction_id == 0
+		and decoded_delta[0].faction_revision == 1,
+		"Enemy delta output must reuse objects and leave faction repair data to full keyframes."
+	)
+	var faction_repair_keyframe := sender.encode_enemy_snapshots_for_peer(
+		8,
+		states,
+		true
+	)
+	var decoded_faction_repair := receiver.decode_enemy_snapshots_with_baseline(
+		faction_repair_keyframe
+	)
+	_expect(
+		faction_repair_keyframe.size() == 1191
+		and decoded_faction_repair.size() == 41
+		and decoded_faction_repair[0].faction_id == 31
+		and decoded_faction_repair[0].faction_revision
+			== NetConstants.NETWORK_COMBAT_VALUE_MAX,
+		"A full keyframe must repair faction identity and its latest revision."
 	)
 	var unchanged_delta := sender.encode_enemy_snapshots_for_peer(8, states, false)
 	var decoded_unchanged := receiver.decode_enemy_snapshots_with_baseline(
 		unchanged_delta
 	)
 	_expect(
-		decoded_unchanged.size() == 46
+		decoded_unchanged.size() == 41
 		and is_same(decoded_delta[0], decoded_unchanged[0])
-		and decoded_unchanged[0].visual_status_mask == 0b1110100,
-		"An unchanged delta must retain combined common and shield-stage status bits."
+		and decoded_unchanged[0].visual_status_mask == 0b1110100
+		and decoded_unchanged[0].faction_id == 31
+		and decoded_unchanged[0].faction_revision
+			== NetConstants.NETWORK_COMBAT_VALUE_MAX,
+		"An unchanged delta must retain visual bits and repaired faction state."
 	)
 	receiver.prune_enemy_receive_baseline_to_ids({1: true})
 	_expect(
@@ -1753,6 +1806,32 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 		and decoded_locomotion_delta[0].locomotion_state
 			== SnapshotManager.ENEMY_LOCOMOTION_IDLE,
 		"A locomotion-only enemy delta must use exactly one payload byte and round-trip."
+	)
+
+	var invalid_negative_faction := SnapshotManager.EnemyState.new()
+	invalid_negative_faction.faction_id = -1
+	var invalid_overflow_faction := SnapshotManager.EnemyState.new()
+	invalid_overflow_faction.faction_id = 32
+	var invalid_negative_revision := SnapshotManager.EnemyState.new()
+	invalid_negative_revision.faction_revision = -1
+	var invalid_overflow_revision := SnapshotManager.EnemyState.new()
+	invalid_overflow_revision.faction_revision = (
+		NetConstants.NETWORK_COMBAT_VALUE_MAX + 1
+	)
+	_expect(
+		not SnapshotManager.is_enemy_snapshot_state_serializable(
+			invalid_negative_faction
+		)
+		and not SnapshotManager.is_enemy_snapshot_state_serializable(
+			invalid_overflow_faction
+		)
+		and not SnapshotManager.is_enemy_snapshot_state_serializable(
+			invalid_negative_revision
+		)
+		and not SnapshotManager.is_enemy_snapshot_state_serializable(
+			invalid_overflow_revision
+		),
+		"Enemy snapshots must reject faction IDs outside 0..31 and invalid revisions."
 	)
 
 

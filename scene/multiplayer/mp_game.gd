@@ -3441,6 +3441,8 @@ func _rpc_receive_enemy_snapshot(
 ) -> void:
 	if _is_tower_world_suspended_for_rogue_exploration():
 		return
+	if not is_finite(host_timestamp) or host_timestamp < 0.0:
+		return
 	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
 	enemy_coordinator.apply_authoritative_snapshot(
 		snapshot_time,
@@ -3448,7 +3450,8 @@ func _rpc_receive_enemy_snapshot(
 		batch_id,
 		chunk_index,
 		chunk_count,
-		snapshot_hz
+		snapshot_hz,
+		host_timestamp
 	)
 
 
@@ -3915,7 +3918,8 @@ func register_local_projectile(
 	lifetime: float,
 	pierces_enemies: bool = false,
 	target_peer_id: int = 0,
-	target_enemy_net_id: int = 0
+	target_enemy_net_id: int = 0,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> void:
 	projectile_coordinator.submit_local_projectile(
 		projectile,
@@ -3928,7 +3932,8 @@ func register_local_projectile(
 		lifetime,
 		pierces_enemies,
 		target_peer_id,
-		target_enemy_net_id
+		target_enemy_net_id,
+		damage_source_snapshot
 	)
 
 
@@ -4139,7 +4144,8 @@ func register_local_linglan_skill1_ring(
 	owner_peer_id: int,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot
 ) -> void:
 	projectile_coordinator.submit_local_linglan_skill1_ring(
 		projectiles,
@@ -4148,7 +4154,8 @@ func register_local_linglan_skill1_ring(
 		owner_peer_id,
 		damage,
 		speed,
-		lifetime
+		lifetime,
+		damage_source_snapshot
 	)
 
 
@@ -4197,10 +4204,15 @@ func net_projectile_fired(
 	damage: int,
 	speed: float,
 	lifetime: float,
-	pierces_enemies: bool = false,
-	target_peer_id: int = 0,
-	host_fire_timestamp: float = -1.0,
-	target_enemy_net_id: int = 0
+	pierces_enemies: bool,
+	target_peer_id: int,
+	host_fire_timestamp: float,
+	target_enemy_net_id: int,
+	source_faction_id: int,
+	credit_peer_id: int,
+	instigator_entity_id: int,
+	event_source_id: int,
+	source_type_text: String
 ) -> void:
 	var sender_id := multiplayer.get_remote_sender_id()
 	projectile_coordinator.apply_authority_projectile_fired(
@@ -4216,7 +4228,12 @@ func net_projectile_fired(
 		pierces_enemies,
 		target_peer_id,
 		host_fire_timestamp,
-		target_enemy_net_id
+		target_enemy_net_id,
+		source_faction_id,
+		credit_peer_id,
+		instigator_entity_id,
+		event_source_id,
+		source_type_text
 	)
 
 
@@ -4314,7 +4331,11 @@ func net_linglan_skill1_ring_batch(
 	damage: int,
 	speed: float,
 	lifetime: float,
-	host_fire_timestamp: float
+	host_fire_timestamp: float,
+	source_faction_id: int,
+	credit_peer_id: int,
+	instigator_entity_id: int,
+	source_type_text: String
 ) -> void:
 	var sender_id := multiplayer.get_remote_sender_id()
 	projectile_coordinator.apply_authority_linglan_skill1_ring(
@@ -4326,7 +4347,11 @@ func net_linglan_skill1_ring_batch(
 		damage,
 		speed,
 		lifetime,
-		host_fire_timestamp
+		host_fire_timestamp,
+		source_faction_id,
+		credit_peer_id,
+		instigator_entity_id,
+		source_type_text
 	)
 
 
@@ -5132,16 +5157,34 @@ func broadcast_enemy_action(
 func broadcast_enemy_target_action(
 	net_id: int,
 	action_name: StringName,
-	target_peer_id: int,
+	target_descriptor: CombatTargetDescriptor,
 	action_position: Vector2,
 	action_id: int
 ) -> void:
 	enemy_coordinator.broadcast_enemy_target_action(
 		net_id,
 		action_name,
-		target_peer_id,
+		target_descriptor,
 		action_position,
 		action_id
+	)
+
+
+func broadcast_enemy_target_presentation_state(
+	net_id: int,
+	phase: int,
+	target_descriptor: CombatTargetDescriptor,
+	duration_seconds: float,
+	action_position: Vector2,
+	state_revision: int
+) -> void:
+	enemy_coordinator.set_host_enemy_target_presentation_state(
+		net_id,
+		phase,
+		target_descriptor,
+		duration_seconds,
+		action_position,
+		state_revision
 	)
 
 
@@ -6115,7 +6158,9 @@ func net_enemy_spawned(
 	config_path: String,
 	pos_x: float,
 	pos_y: float,
-	host_spawn_timestamp: float
+	host_spawn_timestamp: float,
+	faction_id: int,
+	faction_revision: int
 ) -> void:
 	enemy_coordinator.receive_enemy_spawn_packet(
 		net_id,
@@ -6124,7 +6169,10 @@ func net_enemy_spawned(
 		host_spawn_timestamp,
 		_get_net_time(),
 		session_coordinator.has_host_time_offset(),
-		session_coordinator.get_host_to_client_time_offset()
+		session_coordinator.get_host_to_client_time_offset(),
+		faction_id,
+		faction_revision,
+		true
 	)
 
 
@@ -6133,13 +6181,61 @@ func net_enemy_spawned_batch(
 	net_ids: PackedInt32Array,
 	config_paths: PackedStringArray,
 	positions: PackedVector2Array,
-	spawn_times: PackedFloat64Array
+	spawn_times: PackedFloat64Array,
+	faction_ids: PackedByteArray,
+	faction_revisions: PackedInt32Array
 ) -> void:
 	enemy_coordinator.receive_enemy_spawn_batch(
 		net_ids,
 		config_paths,
 		positions,
 		spawn_times,
+		_get_net_time(),
+		session_coordinator.has_host_time_offset(),
+		session_coordinator.get_host_to_client_time_offset(),
+		faction_ids,
+		faction_revisions,
+		true
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_enemy_faction_changed_batch(
+	net_ids: PackedInt32Array,
+	faction_ids: PackedByteArray,
+	faction_revisions: PackedInt32Array
+) -> void:
+	enemy_coordinator.receive_enemy_faction_changed_batch(
+		net_ids,
+		faction_ids,
+		faction_revisions
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_enemy_target_presentation_state_batch(
+	net_ids: PackedInt32Array,
+	state_revisions: PackedInt32Array,
+	phases: PackedByteArray,
+	target_kinds: PackedByteArray,
+	target_ids: PackedInt32Array,
+	target_revisions: PackedInt32Array,
+	target_fallback_positions: PackedVector2Array,
+	host_start_times: PackedFloat64Array,
+	host_end_times: PackedFloat64Array,
+	action_positions: PackedVector2Array
+) -> void:
+	enemy_coordinator.receive_enemy_target_presentation_state_batch_packet(
+		net_ids,
+		state_revisions,
+		phases,
+		target_kinds,
+		target_ids,
+		target_revisions,
+		target_fallback_positions,
+		host_start_times,
+		host_end_times,
+		action_positions,
 		_get_net_time(),
 		session_coordinator.has_host_time_offset(),
 		session_coordinator.get_host_to_client_time_offset()
@@ -6434,7 +6530,10 @@ func net_enemy_action(
 func net_enemy_target_action(
 	net_id: int,
 	action_name: String,
-	target_peer_id: int,
+	target_kind: int,
+	target_id: int,
+	target_revision: int,
+	target_fallback_position: Vector2,
 	action_position: Vector2,
 	action_id: int,
 	host_action_timestamp: float = -1.0
@@ -6442,7 +6541,10 @@ func net_enemy_target_action(
 	enemy_coordinator.receive_enemy_target_action_packet(
 		net_id,
 		action_name,
-		target_peer_id,
+		target_kind,
+		target_id,
+		target_revision,
+		target_fallback_position,
 		action_position,
 		action_id,
 		host_action_timestamp,

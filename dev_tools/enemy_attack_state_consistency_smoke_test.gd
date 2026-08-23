@@ -28,6 +28,8 @@ class RecordingGameplaySession:
 	extends EnemyGameplayGatewayTestSession
 
 	var enemy_actions: Array[Dictionary] = []
+	var enemy_target_actions: Array[Dictionary] = []
+	var enemy_target_presentation_states: Array[Dictionary] = []
 
 
 	func broadcast_enemy_action(
@@ -43,6 +45,40 @@ class RecordingGameplaySession:
 			"direction": direction,
 			"action_position": action_position,
 			"action_id": action_id,
+		})
+
+
+	func broadcast_enemy_target_action(
+		net_id: int,
+		action_name: StringName,
+		target_descriptor: CombatTargetDescriptor,
+		action_position: Vector2,
+		action_id: int
+	) -> void:
+		enemy_target_actions.append({
+			"net_id": net_id,
+			"action_name": action_name,
+			"target_descriptor": target_descriptor.duplicate(),
+			"action_position": action_position,
+			"action_id": action_id,
+		})
+
+
+	func broadcast_enemy_target_presentation_state(
+		net_id: int,
+		phase: int,
+		target_descriptor: CombatTargetDescriptor,
+		duration_seconds: float,
+		action_position: Vector2,
+		state_revision: int
+	) -> void:
+		enemy_target_presentation_states.append({
+			"net_id": net_id,
+			"phase": phase,
+			"target_descriptor": target_descriptor.duplicate(),
+			"duration_seconds": duration_seconds,
+			"action_position": action_position,
+			"state_revision": state_revision,
 		})
 
 
@@ -250,6 +286,7 @@ func _test_sniper_non_player_lock_cancel_contract() -> void:
 		Vector2(2000.0, 0.0),
 		CombatRelationService.PLAYER_ALLIED
 	)
+	faction_target.set_meta(&"net_id", 81)
 	await _settle_physics()
 	_expect(
 		bool(sniper.call("_try_start_lock", faction_target)),
@@ -261,9 +298,10 @@ func _test_sniper_non_player_lock_cancel_contract() -> void:
 		true
 	)
 	sniper.call("_update_lock", 0.0)
-	_expect_non_player_action_pair(
-		session.enemy_actions,
+	_expect_target_action_pair(
+		session.enemy_target_actions,
 		0,
+		81,
 		"A faction change must cancel the dynamic Enemy lock."
 	)
 
@@ -271,27 +309,68 @@ func _test_sniper_non_player_lock_cancel_contract() -> void:
 		Vector2(2000.0, 0.0),
 		CombatRelationService.PLAYER_ALLIED
 	)
+	dead_target.set_meta(&"net_id", 82)
 	await _settle_physics()
 	_expect(bool(sniper.call("_try_start_lock", dead_target)), "Sniper death-cancel lock must start.")
 	dead_target.is_dead = true
 	sniper.call("_update_lock", 0.0)
-	_expect_non_player_action_pair(
-		session.enemy_actions,
+	_expect_target_action_start(
+		session.enemy_target_actions,
 		2,
-		"A dead dynamic Enemy must emit the generic non-player cancel."
+		82,
+		"A dead dynamic Enemy must have emitted a typed target start before death; reliable NONE owns the later clear."
 	)
 
 	var cancelled_target := _spawn_smg(
 		Vector2(2000.0, 0.0),
 		CombatRelationService.PLAYER_ALLIED
 	)
+	cancelled_target.set_meta(&"net_id", 83)
 	await _settle_physics()
 	_expect(bool(sniper.call("_try_start_lock", cancelled_target)), "Sniper explicit-cancel lock must start.")
 	sniper.call("_cancel_lock")
-	_expect_non_player_action_pair(
-		session.enemy_actions,
-		4,
-		"An explicit dynamic Enemy lock cancellation must use the generic action."
+	_expect_target_action_pair(
+		session.enemy_target_actions,
+		3,
+		83,
+		"An explicit dynamic Enemy lock cancellation must retain the same typed target identity."
+	)
+	_expect(
+		session.enemy_actions.is_empty()
+		and session.enemy_target_presentation_states.size() == 6,
+		"Sniper production lock flow must use descriptor target actions plus ACTIVE/NONE reliable state, not legacy positional actions."
+	)
+	for presentation_index in range(
+		0,
+		session.enemy_target_presentation_states.size(),
+		2
+	):
+		var active_state := session.enemy_target_presentation_states[
+			presentation_index
+		]
+		var clear_state := session.enemy_target_presentation_states[
+			presentation_index + 1
+		]
+		var expected_target_id := 81 + floori(
+			float(presentation_index) / 2.0
+		)
+		var active_descriptor := active_state.get(
+			"target_descriptor"
+		) as CombatTargetDescriptor
+		var clear_descriptor := clear_state.get(
+			"target_descriptor"
+		) as CombatTargetDescriptor
+		_expect(
+			int(active_state.get("phase", -1))
+			== Enemy.TargetPresentationPhase.SNIPER_LOCK
+			and active_descriptor != null
+			and active_descriptor.kind == CombatTargetDescriptor.Kind.ENEMY
+			and active_descriptor.id == expected_target_id
+			and int(clear_state.get("phase", -1))
+			== Enemy.TargetPresentationPhase.NONE
+			and clear_descriptor != null
+			and clear_descriptor.kind == CombatTargetDescriptor.Kind.NONE,
+			"Each typed Sniper start must converge through an explicit reliable NONE state."
 	)
 
 	var proxy := SNIPER_SCENE.instantiate() as CapooSniper
@@ -325,8 +404,106 @@ func _test_sniper_non_player_lock_cancel_contract() -> void:
 		not proxy.proxy_plant_lock_active
 		and proxy.sniper_line_warning_handle == 0
 		and proxy.sniper_reticle_warning_handle == 0
-		and not warning_system.is_handle_live(proxy_line_handle),
+		and not warning_system.is_handle_live(proxy_line_handle)
+		and proxy.animated_sprite.animation == SNIPER_CONFIG.move_animation_name,
 		"Client proxy start+cancel must clear every generic non-player warning state."
+	)
+
+	proxy.apply_multiplayer_target_presentation_state(
+		Enemy.TargetPresentationPhase.SNIPER_LOCK,
+		cancelled_target,
+		proxy.global_position,
+		3,
+		0.0,
+		1.0
+	)
+	var presentation_line_handle := proxy.sniper_line_warning_handle
+	var presentation_reticle_handle := proxy.sniper_reticle_warning_handle
+	var elapsed_before_frames := proxy.proxy_lock_elapsed
+	# SceneTree emits process_frame before it dispatches Node._process. The first
+	# await enters the real scheduling window; the next two sample completed
+	# render callbacks without directly invoking the Sniper method.
+	await process_frame
+	await process_frame
+	var elapsed_after_first_frame := proxy.proxy_lock_elapsed
+	await process_frame
+	var elapsed_after_second_frame := proxy.proxy_lock_elapsed
+	_expect(
+		proxy.is_processing()
+		and elapsed_after_first_frame > elapsed_before_frames
+		and elapsed_after_second_frame > elapsed_after_first_frame,
+		"A reliable Sniper lock must remain scheduled across real SceneTree render frames instead of stopping after its first _process call."
+	)
+	proxy.apply_multiplayer_target_presentation_state(
+		Enemy.TargetPresentationPhase.NONE,
+		null,
+		proxy.global_position,
+		4,
+		0.0,
+		0.0
+	)
+	_expect(
+		proxy.proxy_locked_target == null
+		and proxy.sniper_line_warning_handle == 0
+		and proxy.sniper_reticle_warning_handle == 0
+		and not warning_system.is_handle_live(presentation_line_handle)
+		and not warning_system.is_handle_live(presentation_reticle_handle)
+		and not proxy.is_processing()
+		and proxy.animated_sprite.animation == SNIPER_CONFIG.move_animation_name,
+		"A reliable Sniper NONE state must clear the lock, stop its render work, and restore locomotion immediately."
+	)
+
+	proxy.apply_multiplayer_target_presentation_state(
+		Enemy.TargetPresentationPhase.SNIPER_LOCK,
+		cancelled_target,
+		proxy.global_position,
+		5,
+		0.0,
+		0.03
+	)
+	var expiring_line_handle := proxy.sniper_line_warning_handle
+	var expiring_reticle_handle := proxy.sniper_reticle_warning_handle
+	await create_timer(0.08).timeout
+	await process_frame
+	_expect(
+		proxy.proxy_locked_target == null
+		and proxy.sniper_line_warning_handle == 0
+		and proxy.sniper_reticle_warning_handle == 0
+		and not warning_system.is_handle_live(expiring_line_handle)
+		and not warning_system.is_handle_live(expiring_reticle_handle)
+		and not proxy.is_processing()
+		and proxy.animated_sprite.animation == SNIPER_CONFIG.move_animation_name,
+		"A reliable Sniper lock must expire through real SceneTree scheduling and return to locomotion without a cancel edge."
+	)
+	proxy.apply_multiplayer_target_presentation_state(
+		Enemy.TargetPresentationPhase.NONE,
+		null,
+		proxy.global_position,
+		6,
+		0.0,
+		0.0
+	)
+	proxy.play_multiplayer_enemy_target_action(
+		&"sniper_lock_start",
+		cancelled_target,
+		6
+	)
+	_expect(
+		proxy.latest_proxy_target_action_id == 0
+		and proxy.proxy_locked_target == null
+		and proxy.sniper_line_warning_handle == 0
+		and proxy.sniper_reticle_warning_handle == 0,
+		"Sniper NONE must reject an equal-revision delayed start without consuming the later fire edge."
+	)
+	proxy.play_multiplayer_enemy_target_action(
+		&"sniper_lock_fire",
+		cancelled_target,
+		6
+	)
+	_expect(
+		proxy.latest_proxy_presentation_revision == 6
+		and proxy.latest_proxy_target_action_id == 6,
+		"Sniper reliable NONE arriving first must not consume the equal-revision CH7 fire edge."
 	)
 
 	runtime.detach_gameplay_session(session)
@@ -367,17 +544,54 @@ func _test_main_battle_designated_skill2_target_priority() -> void:
 	await _release_nodes([main_battle, designated_player, nearer_player])
 
 
-func _expect_non_player_action_pair(
+func _expect_target_action_pair(
 	actions: Array[Dictionary],
 	start_index: int,
+	expected_target_id: int,
 	message: String
 ) -> void:
+	var start_descriptor := (
+		actions[start_index].get("target_descriptor") as CombatTargetDescriptor
+		if actions.size() > start_index
+		else null
+	)
+	var cancel_descriptor := (
+		actions[start_index + 1].get("target_descriptor") as CombatTargetDescriptor
+		if actions.size() > start_index + 1
+		else null
+	)
 	_expect(
 		actions.size() >= start_index + 2
 		and actions[start_index].get("action_name")
-			== CapooSniper.ACTION_NON_PLAYER_LOCK_START
+			== &"sniper_lock_start"
 		and actions[start_index + 1].get("action_name")
-			== CapooSniper.ACTION_NON_PLAYER_LOCK_CANCEL,
+			== &"sniper_lock_cancel"
+		and start_descriptor != null
+		and start_descriptor.kind == CombatTargetDescriptor.Kind.ENEMY
+		and start_descriptor.id == expected_target_id
+		and cancel_descriptor != null
+		and cancel_descriptor.same_identity(start_descriptor),
+		message
+	)
+
+
+func _expect_target_action_start(
+	actions: Array[Dictionary],
+	start_index: int,
+	expected_target_id: int,
+	message: String
+) -> void:
+	var descriptor := (
+		actions[start_index].get("target_descriptor") as CombatTargetDescriptor
+		if actions.size() > start_index
+		else null
+	)
+	_expect(
+		actions.size() > start_index
+		and actions[start_index].get("action_name") == &"sniper_lock_start"
+		and descriptor != null
+		and descriptor.kind == CombatTargetDescriptor.Kind.ENEMY
+		and descriptor.id == expected_target_id,
 		message
 	)
 

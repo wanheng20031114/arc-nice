@@ -105,7 +105,8 @@ func register_local_projectile(
 	lifetime: float,
 	pierces_enemies: bool = false,
 	target_peer_id: int = 0,
-	target_enemy_net_id: int = 0
+	target_enemy_net_id: int = 0,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> void:
 	if multiplayer_session == null:
 		return
@@ -120,7 +121,8 @@ func register_local_projectile(
 		lifetime,
 		pierces_enemies,
 		target_peer_id,
-		target_enemy_net_id
+		target_enemy_net_id,
+		damage_source_snapshot
 	)
 
 
@@ -404,18 +406,61 @@ func broadcast_enemy_action(
 func broadcast_enemy_target_action(
 	net_id: int,
 	action_name: StringName,
-	target_peer_id: int,
+	target: Node2D,
 	action_position: Vector2,
 	action_id: int
 ) -> void:
-	if multiplayer_session != null:
-		multiplayer_session.broadcast_enemy_target_action(
-			net_id,
-			action_name,
-			target_peer_id,
-			action_position,
-			action_id
+	if multiplayer_session == null or not is_bound():
+		return
+	var target_revision := 0
+	var enemy_target := target as Enemy
+	if enemy_target != null:
+		target_revision = enemy_target.get_faction_revision()
+	var descriptor := runtime.get_combat_query_facade().describe_target(
+		target,
+		target_revision
+	)
+	if descriptor == null:
+		return
+	multiplayer_session.broadcast_enemy_target_action(
+		net_id,
+		action_name,
+		descriptor,
+		action_position,
+		action_id
+	)
+
+
+func broadcast_enemy_target_presentation_state(
+	net_id: int,
+	phase: int,
+	target: Node2D,
+	duration_seconds: float,
+	action_position: Vector2,
+	state_revision: int
+) -> void:
+	if multiplayer_session == null or not is_bound():
+		return
+	var descriptor := CombatTargetDescriptor.create_none()
+	if phase != Enemy.TargetPresentationPhase.NONE:
+		var target_revision := 0
+		var enemy_target := target as Enemy
+		if enemy_target != null:
+			target_revision = enemy_target.get_faction_revision()
+		descriptor = runtime.get_combat_query_facade().describe_target(
+			target,
+			target_revision
 		)
+	if descriptor == null:
+		return
+	multiplayer_session.broadcast_enemy_target_presentation_state(
+		net_id,
+		phase,
+		descriptor,
+		duration_seconds,
+		action_position,
+		state_revision
+	)
 
 
 func broadcast_enemy_lightning_chain(points: PackedVector2Array) -> void:
@@ -456,7 +501,8 @@ func register_local_linglan_skill1_ring(
 	owner_peer_id: int,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot
 ) -> void:
 	if multiplayer_session != null:
 		multiplayer_session.register_local_linglan_skill1_ring(
@@ -466,7 +512,8 @@ func register_local_linglan_skill1_ring(
 			owner_peer_id,
 			damage,
 			speed,
-			lifetime
+			lifetime,
+			damage_source_snapshot
 		)
 
 

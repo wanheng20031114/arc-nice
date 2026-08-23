@@ -67,7 +67,8 @@ class DroneOperatorTestGateway:
 		lifetime: float,
 		_pierces_enemies: bool = false,
 		_target_peer_id: int = 0,
-		_target_enemy_net_id: int = 0
+		_target_enemy_net_id: int = 0,
+		_damage_source_snapshot: DamageSourceSnapshot = null
 	) -> void:
 		registered_projectiles.append({
 			"projectile": projectile,
@@ -798,9 +799,25 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 	test_root.client_view = true
 
 	var projectile_type := "combat_robot_suicide_drone"
+	var deploy_projectile_id := MpProjectileCoordinator.encode_projectile_id(
+		MpProjectileCoordinator.PROJECTILE_ID_FALLBACK_OWNER_PEER_ID,
+		MpProjectileCoordinator.PROJECTILE_ID_HOST_ORIGIN_BIT | 71001
+	)
+	var flight_projectile_id := MpProjectileCoordinator.encode_projectile_id(
+		MpProjectileCoordinator.PROJECTILE_ID_FALLBACK_OWNER_PEER_ID,
+		MpProjectileCoordinator.PROJECTILE_ID_HOST_ORIGIN_BIT | 71002
+	)
+	var explosion_projectile_id := MpProjectileCoordinator.encode_projectile_id(
+		MpProjectileCoordinator.PROJECTILE_ID_FALLBACK_OWNER_PEER_ID,
+		MpProjectileCoordinator.PROJECTILE_ID_HOST_ORIGIN_BIT | 71003
+	)
+	var expired_projectile_id := MpProjectileCoordinator.encode_projectile_id(
+		MpProjectileCoordinator.PROJECTILE_ID_FALLBACK_OWNER_PEER_ID,
+		MpProjectileCoordinator.PROJECTILE_ID_HOST_ORIGIN_BIT | 71004
+	)
 	var now := mp_game.get_test_net_time()
 	mp_game.net_projectile_fired(
-		71001,
+		deploy_projectile_id,
 		projectile_type,
 		0,
 		Vector2(10, 20),
@@ -811,10 +828,15 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		false,
 		0,
 		now - 0.04,
-		0
+		0,
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		0,
+		deploy_projectile_id,
+		projectile_type
 	)
 	var deploy_drone := (
-		projectile_coordinator.get_projectile(71001)
+		projectile_coordinator.get_projectile(deploy_projectile_id)
 		as CombatRobotSuicideDrone
 	)
 	_expect(
@@ -829,7 +851,7 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 	# A duplicate authoritative packet must reconcile the existing identity, not
 	# create a second drone or overwrite its already committed trajectory.
 	mp_game.net_projectile_fired(
-		71001,
+		deploy_projectile_id,
 		projectile_type,
 		0,
 		Vector2(99, 99),
@@ -840,11 +862,16 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		false,
 		0,
 		now,
-		0
+		0,
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		0,
+		deploy_projectile_id,
+		projectile_type
 	)
 	_expect(
 		int(projectile_coordinator.get_state_metrics().get("known_projectiles", -1)) == 1
-		and projectile_coordinator.get_projectile(71001) == deploy_drone
+		and projectile_coordinator.get_projectile(deploy_projectile_id) == deploy_drone
 		and deploy_drone.direction.is_equal_approx(Vector2.RIGHT)
 		and deploy_drone.damage == 50,
 		"Duplicate drone packets must not duplicate or rewrite the committed lease."
@@ -852,7 +879,7 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 
 	now = mp_game.get_test_net_time()
 	mp_game.net_projectile_fired(
-		71002,
+		flight_projectile_id,
 		projectile_type,
 		0,
 		Vector2(20, 30),
@@ -863,10 +890,15 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		false,
 		0,
 		now - 0.40,
-		0
+		0,
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		0,
+		flight_projectile_id,
+		projectile_type
 	)
 	var flight_drone := (
-		projectile_coordinator.get_projectile(71002)
+		projectile_coordinator.get_projectile(flight_projectile_id)
 		as CombatRobotSuicideDrone
 	)
 	_expect(
@@ -881,7 +913,7 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 
 	now = mp_game.get_test_net_time()
 	mp_game.net_projectile_fired(
-		71003,
+		explosion_projectile_id,
 		projectile_type,
 		0,
 		Vector2(30, 40),
@@ -892,10 +924,15 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		false,
 		0,
 		now - 1.30,
-		0
+		0,
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		0,
+		explosion_projectile_id,
+		projectile_type
 	)
 	var explosion_drone := (
-		projectile_coordinator.get_projectile(71003)
+		projectile_coordinator.get_projectile(explosion_projectile_id)
 		as CombatRobotSuicideDrone
 	)
 	_expect(
@@ -916,7 +953,7 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 	)
 	now = mp_game.get_test_net_time()
 	mp_game.net_projectile_fired(
-		71004,
+		expired_projectile_id,
 		projectile_type,
 		0,
 		Vector2(40, 50),
@@ -927,18 +964,23 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		false,
 		0,
 		now - fully_expired_age,
-		0
+		0,
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		0,
+		expired_projectile_id,
+		projectile_type
 	)
 	_expect(
-		not projectile_coordinator.has_projectile(71004)
-		and projectile_coordinator.has_projectile_record(71004),
+		not projectile_coordinator.has_projectile(expired_projectile_id)
+		and projectile_coordinator.has_projectile_record(expired_projectile_id),
 		"A fully expired replicated drone must retire immediately while retaining its dedupe record."
 	)
 	var known_count_before_retry := int(
 		projectile_coordinator.get_state_metrics().get("known_projectiles", -1)
 	)
 	mp_game.net_projectile_fired(
-		71004,
+		expired_projectile_id,
 		projectile_type,
 		0,
 		Vector2.ZERO,
@@ -949,7 +991,12 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		false,
 		0,
 		now,
-		0
+		0,
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		0,
+		expired_projectile_id,
+		projectile_type
 	)
 	_expect(
 		int(projectile_coordinator.get_state_metrics().get("known_projectiles", -1))

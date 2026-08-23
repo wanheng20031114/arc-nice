@@ -100,6 +100,12 @@ func _spawn_frozen_enemies() -> void:
 		enemy.setup(BASIC_CONFIG, game.player, null, game)
 		enemy.current_health = 1000 + enemy_index
 		enemy.velocity = Vector2(float(enemy_index % 7), -float(enemy_index % 5))
+		if enemy_index == 17:
+			enemy.set_combat_faction_id(
+				CombatRelationService.PLAYER_ALLIED,
+				7,
+				true
+			)
 		enemy.set_process(false)
 		enemy.set_physics_process(false)
 		enemy.collision_layer = 0
@@ -125,6 +131,8 @@ func _verify_collection_semantics_and_reuse() -> void:
 			and state.velocity == enemy.velocity
 			and state.locomotion_state == enemy.get_locomotion_state()
 			and state.health == enemy.current_health
+			and state.faction_id == enemy.get_combat_faction_id()
+			and state.faction_revision == enemy.get_faction_revision()
 			and not state.is_dead,
 			"Production collection must preserve child order and every encoded field."
 		)
@@ -132,13 +140,16 @@ func _verify_collection_semantics_and_reuse() -> void:
 	enemies[17].global_position += Vector2(3.0, -5.0)
 	enemies[17].current_health -= 23
 	enemies[17].is_dead = true
+	enemies[17].set_combat_faction_id(3, 8, true)
 	var second := game.collect_enemy_snapshot_states()
 	_expect(
 		second.size() == ENEMY_COUNT
 		and second[17].position == enemies[17].global_position
 		and second[17].health == enemies[17].current_health
+		and second[17].faction_id == 3
+		and second[17].faction_revision == 8
 		and second[17].is_dead,
-		"Cached snapshot states must refresh motion, health and death on every sweep."
+		"Cached snapshot states must refresh motion, health, faction and death on every sweep."
 	)
 	for state_index in range(second.size()):
 		_expect(
@@ -216,6 +227,8 @@ func _legacy_collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState
 			state.health = enemy.current_health
 			state.is_dead = enemy.is_dead
 			state.visual_status_mask = enemy.get_collectible_visual_status_mask()
+			state.faction_id = enemy.get_combat_faction_id()
+			state.faction_revision = enemy.get_faction_revision()
 			legacy_output.append(state)
 	for cached_id_variant in legacy_states_by_net_id.keys():
 		var cached_id := int(cached_id_variant)

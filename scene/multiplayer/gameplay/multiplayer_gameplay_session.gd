@@ -121,7 +121,8 @@ func register_local_projectile(
 	lifetime: float,
 	pierces_enemies: bool = false,
 	target_peer_id: int = 0,
-	target_enemy_net_id: int = 0
+	target_enemy_net_id: int = 0,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> void
 
 
@@ -299,9 +300,20 @@ func broadcast_enemy_action(
 func broadcast_enemy_target_action(
 	net_id: int,
 	action_name: StringName,
-	target_peer_id: int,
+	target_descriptor: CombatTargetDescriptor,
 	action_position: Vector2,
 	action_id: int
+) -> void
+
+
+@abstract
+func broadcast_enemy_target_presentation_state(
+	net_id: int,
+	phase: int,
+	target_descriptor: CombatTargetDescriptor,
+	duration_seconds: float,
+	action_position: Vector2,
+	state_revision: int
 ) -> void
 
 
@@ -331,7 +343,8 @@ func register_local_linglan_skill1_ring(
 	owner_peer_id: int,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot
 ) -> void
 
 

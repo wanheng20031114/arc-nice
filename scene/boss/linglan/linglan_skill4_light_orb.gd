@@ -20,6 +20,7 @@ var damaged_player_ids: Dictionary = {}
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"linglan_skill4_orb"
+var damage_source_snapshot: DamageSourceSnapshot = null
 var gpu_pulse_phase: float = 0.0
 var gpu_pulse_origin_msec: int = 0
 var is_lifetime_despawning: bool = false
@@ -35,6 +36,21 @@ func bind_gameplay_context(
 ) -> void:
 	combat_runtime = runtime_context
 	gameplay_gateway = gateway
+
+
+func set_damage_source_snapshot(source_snapshot: DamageSourceSnapshot) -> bool:
+	damage_source_snapshot = null
+	if has_meta(&"damage_source_snapshot"):
+		remove_meta(&"damage_source_snapshot")
+	if (
+		source_snapshot == null
+		or not source_snapshot.is_valid()
+		or source_snapshot.source_type == &""
+	):
+		return false
+	damage_source_snapshot = source_snapshot.duplicate_snapshot()
+	set_meta(&"damage_source_snapshot", damage_source_snapshot.duplicate_snapshot())
+	return true
 
 
 func _ready() -> void:
@@ -183,7 +199,9 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 		source_type,
 		EnemyConfig.DamageType.MAGIC,
 		_get_source_direction_to_player(player),
-		true
+		true,
+		false,
+		damage_source_snapshot
 	)
 
 
@@ -197,9 +215,13 @@ func _has_explicit_singleplayer_authority() -> bool:
 
 
 func _get_player_damage_context(player: Player) -> Dictionary:
+	var source_id := _get_damage_source_id()
 	return {
 		"is_ranged": true,
 		"source_direction": _get_source_direction_to_player(player),
+		"source_id": source_id,
+		"source_type": source_type,
+		"source_snapshot": _create_event_damage_source_snapshot(source_id),
 	}
 
 
@@ -213,3 +235,22 @@ func _get_damage_source_id() -> int:
 	if projectile_id > 0:
 		return projectile_id
 	return get_instance_id()
+
+
+func _create_event_damage_source_snapshot(
+	event_source_id: int
+) -> DamageSourceSnapshot:
+	if (
+		damage_source_snapshot == null
+		or not damage_source_snapshot.is_valid()
+		or damage_source_snapshot.source_type == &""
+		or event_source_id <= 0
+	):
+		return null
+	return DamageSourceSnapshot.create(
+		damage_source_snapshot.source_faction_id,
+		damage_source_snapshot.credit_peer_id,
+		damage_source_snapshot.instigator_entity_id,
+		event_source_id,
+		source_type if source_type != &"" else damage_source_snapshot.source_type
+	)

@@ -249,8 +249,8 @@ func _test_static_boundary(
 	var rpc_pattern := RegEx.new()
 	rpc_pattern.compile("(?m)^@rpc\\(")
 	_expect(
-		rpc_pattern.search_all(source).size() == 149,
-		"Merchant extraction must preserve all 149 protocol-v94 MpGame RPC facades."
+		rpc_pattern.search_all(source).size() == 151,
+		"Merchant extraction must preserve all 151 protocol-v94 MpGame RPC facades."
 	)
 	for function_name in [
 		"net_luoxi_collectible_offer_requested",

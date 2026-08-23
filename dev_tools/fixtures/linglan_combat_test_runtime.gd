@@ -30,7 +30,8 @@ class LinglanTestGameplayGateway:
 		lifetime: float,
 		pierces_enemies: bool = false,
 		target_peer_id: int = 0,
-		target_enemy_net_id: int = 0
+		target_enemy_net_id: int = 0,
+		damage_source_snapshot: DamageSourceSnapshot = null
 	) -> void:
 		var test_runtime := runtime as LinglanCombatTestRuntime
 		if test_runtime == null:
@@ -46,7 +47,8 @@ class LinglanTestGameplayGateway:
 			lifetime,
 			pierces_enemies,
 			target_peer_id,
-			target_enemy_net_id
+			target_enemy_net_id,
+			damage_source_snapshot
 		)
 
 	func register_local_linglan_skill1_ring(
@@ -56,7 +58,8 @@ class LinglanTestGameplayGateway:
 		owner_peer_id: int,
 		damage: int,
 		speed: float,
-		lifetime: float
+		lifetime: float,
+		damage_source_snapshot: DamageSourceSnapshot
 	) -> void:
 		var test_runtime := runtime as LinglanCombatTestRuntime
 		if test_runtime != null:
@@ -67,7 +70,8 @@ class LinglanTestGameplayGateway:
 				owner_peer_id,
 				damage,
 				speed,
-				lifetime
+				lifetime,
+				damage_source_snapshot
 			)
 
 	func request_player_damage(
@@ -78,7 +82,8 @@ class LinglanTestGameplayGateway:
 		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
 		source_direction: Vector2 = Vector2.ZERO,
 		is_ranged: bool = false,
-		contact_preconsumed: bool = false
+		contact_preconsumed: bool = false,
+		source_snapshot: DamageSourceSnapshot = null
 	) -> bool:
 		var test_runtime := runtime as LinglanCombatTestRuntime
 		return (
@@ -91,7 +96,8 @@ class LinglanTestGameplayGateway:
 				damage_type,
 				source_direction,
 				is_ranged,
-				contact_preconsumed
+				contact_preconsumed,
+				source_snapshot
 			)
 		)
 
@@ -421,7 +427,8 @@ func register_local_projectile(
 	_lifetime: float,
 	_pierces_enemies: bool = false,
 	_target_peer_id: int = 0,
-	_target_enemy_net_id: int = 0
+	_target_enemy_net_id: int = 0,
+	_damage_source_snapshot: DamageSourceSnapshot = null
 ) -> void:
 	pass
 
@@ -433,7 +440,8 @@ func register_local_linglan_skill1_ring(
 	_owner_peer_id: int,
 	_damage: int,
 	_speed: float,
-	_lifetime: float
+	_lifetime: float,
+	_damage_source_snapshot: DamageSourceSnapshot
 ) -> void:
 	pass
 
@@ -446,7 +454,8 @@ func request_multiplayer_player_damage(
 	_damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
 	_source_direction: Vector2 = Vector2.ZERO,
 	_is_ranged: bool = false,
-	_contact_preconsumed: bool = false
+	_contact_preconsumed: bool = false,
+	_source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	return false
 

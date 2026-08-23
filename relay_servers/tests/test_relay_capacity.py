@@ -832,6 +832,7 @@ class RelayCapacityTests(unittest.TestCase):
         )
         self.assertIn("const ENET_MAX_CHANNEL := RELAY_CONTROL_CHANNEL", relay_source)
         self.assertIn("const CHANNEL_COUNT := CH_MEMBERSHIP + 1", relay_source)
+        self.assertNotIn("const PROTOCOL_VERSION := 93", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 92", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 90", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 89", relay_source)

@@ -36,7 +36,8 @@ class CapturingGateway:
 		_lifetime: float,
 		_pierces_enemies: bool = false,
 		_target_peer_id: int = 0,
-		_target_enemy_net_id: int = 0
+		_target_enemy_net_id: int = 0,
+		_damage_source_snapshot: DamageSourceSnapshot = null
 	) -> void:
 		legacy_registration_count += 1
 		var bullet := projectile as CapooAK47Bullet
@@ -59,7 +60,7 @@ class CapturingGateway:
 		damage: int,
 		speed: float,
 		lifetime: float,
-		_damage_source_snapshot: DamageSourceSnapshot = null
+		damage_source_snapshot: DamageSourceSnapshot = null
 	) -> int:
 		if reject_data_registration:
 			return 0
@@ -69,6 +70,15 @@ class CapturingGateway:
 		next_projectile_id += 1
 		# Explicit legacy per-shot registration remains available to regression
 		# probes; production AK DATA uses the batch methods below.
+		var frozen_source := service.get_damage_source_snapshot(handle)
+		if frozen_source == null and damage_source_snapshot != null:
+			frozen_source = DamageSourceSnapshot.create(
+				damage_source_snapshot.source_faction_id,
+				damage_source_snapshot.credit_peer_id,
+				damage_source_snapshot.instigator_entity_id,
+				projectile_id,
+				damage_source_snapshot.source_type
+			)
 		data_payloads.append({
 			"projectile_id": projectile_id,
 			"projectile_type": projectile_type,
@@ -78,6 +88,7 @@ class CapturingGateway:
 			"damage": damage,
 			"speed": speed,
 			"lifetime": lifetime,
+			"damage_source_snapshot": frozen_source,
 			"legacy_rpc": true,
 		})
 		return projectile_id

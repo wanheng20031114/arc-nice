@@ -7,6 +7,9 @@ const MpWorldFlowCoordinator := preload(
 	"res://scene/multiplayer/world_flow/mp_world_flow_coordinator.gd"
 )
 const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
+const TARGET_DESCRIPTOR := preload(
+	"res://scene/combat/targeting/combat_target_descriptor.gd"
+)
 const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
@@ -652,7 +655,7 @@ func _test_snapshot_packet_metrics() -> void:
 
 
 func _test_enemy_snapshot_chunk_codec() -> void:
-	const CHUNK_SIZE := 46
+	const CHUNK_SIZE := 41
 	const ENTITY_COUNT := 300
 	const PACKET_BUDGET := 1200
 	var sender := SnapshotManager.new()
@@ -666,6 +669,8 @@ func _test_enemy_snapshot_chunk_codec() -> void:
 		state.velocity = Vector2.RIGHT
 		state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		state.health = 100
+		state.faction_id = enemy_index % 32
+		state.faction_revision = enemy_index
 		states.append(state)
 		live_ids[state.net_id] = true
 
@@ -681,7 +686,7 @@ func _test_enemy_snapshot_chunk_codec() -> void:
 		)
 		_expect(
 			packet.size() <= PACKET_BUDGET,
-			"A full 46-enemy snapshot chunk must stay below the packet budget."
+			"A full 41-enemy faction snapshot chunk must stay below the packet budget."
 		)
 		var decoded := receiver.decode_enemy_snapshots_with_baseline(packet, false)
 		decoded_total += decoded.size()
@@ -716,7 +721,7 @@ func _test_enemy_snapshot_chunk_codec() -> void:
 		)
 		_expect(
 			packet.size() <= PACKET_BUDGET,
-			"A moving 46-enemy delta chunk must stay below the packet budget."
+			"A moving 41-enemy delta chunk must stay below the packet budget."
 		)
 		var decoded := receiver.decode_enemy_snapshots_with_baseline(packet, false)
 		decoded_total += decoded.size()
@@ -1338,7 +1343,18 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 	state_c.velocity = Vector2.UP
 	state_c.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 	state_c.health = 10
-	var first_chunk := snapshot_mgr.encode_all_enemy_snapshots([state_a])
+	# 协议 94 的非末 chunk 固定为 41 条；补齐只参与 wire roster 的状态，
+	# 保留本测试对“不完整批次不能提前清名册”的原始覆盖。
+	var first_chunk_states: Array[SnapshotManager.EnemyState] = [state_a]
+	for filler_index in range(
+		MpEnemyCoordinator.ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES - 1
+	):
+		var filler_state := SnapshotManager.EnemyState.new()
+		filler_state.net_id = 1000 + filler_index
+		filler_state.position = Vector2(100.0 + filler_index, 120.0)
+		filler_state.health = 1
+		first_chunk_states.append(filler_state)
+	var first_chunk := snapshot_mgr.encode_all_enemy_snapshots(first_chunk_states)
 	var second_chunk := snapshot_mgr.encode_all_enemy_snapshots([state_b, state_c])
 	enemy_coordinator.apply_authoritative_snapshot(
 		0.0,
@@ -1693,7 +1709,13 @@ func _test_projectile_time_compensation() -> void:
 		0,
 		0,
 		0.12,
-		now
+		now,
+		DamageSourceSnapshot.legacy_player_owned(
+			projectile_id,
+			&"player_bullet",
+			2,
+			2
+		)
 	)
 	var projectile := projectile_coordinator.get_projectile(projectile_id) as Bullet
 	_expect(projectile != null, "Projectile compensation test must spawn a bullet.")
@@ -1728,7 +1750,13 @@ func _test_projectile_time_compensation() -> void:
 		0,
 		0,
 		0.1,
-		now
+		now,
+		DamageSourceSnapshot.legacy_player_owned(
+			expired_projectile_id,
+			&"player_bullet",
+			2,
+			2
+		)
 	)
 	_expect(
 		not projectile_coordinator.has_projectile(expired_projectile_id),
@@ -1839,7 +1867,10 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 				"net_enemy_target_action",
 				43,
 				"sniper_lock_start",
+				TARGET_DESCRIPTOR.Kind.PLAYER,
 				2,
+				0,
+				client_game.player.global_position,
 				Vector2(100.0, 100.0),
 				1,
 				9.0
@@ -1867,7 +1898,10 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 				"net_enemy_target_action",
 				43,
 				"sniper_lock_start",
+				TARGET_DESCRIPTOR.Kind.PLAYER,
 				2,
+				0,
+				client_game.player.global_position,
 				Vector2(20.0, 8.0),
 				2,
 				10.0
@@ -4511,6 +4545,16 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 		rocket.set_physics_process(false)
 		var health_before_client_proxy_hit := enemy.current_health
 		rocket.damage = 1
+		_expect(
+			rocket.set_damage_source_snapshot(DamageSourceSnapshot.create(
+				CombatRelationService.PLAYER_ALLIED,
+				1,
+				1,
+				1,
+				&"linglan_skill2_authority_fixture"
+			)),
+			"Linglan skill2 authority fixture must provide an explicit frozen damage source."
+		)
 		rocket.call("_apply_enemy_damage", enemy)
 		_expect(
 			enemy.current_health == health_before_client_proxy_hit,
@@ -4591,6 +4635,7 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 			1
 			)
 		)
+		var sakura_host_fire_timestamp := float(mp_game.call("_get_net_time"))
 		projectile_coordinator.apply_authority_projectile_fired(
 			0,
 			sakura_rocket_projectile_id,
@@ -4603,8 +4648,13 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 			5.0,
 			false,
 			0,
-			-1.0,
-			501
+			sakura_host_fire_timestamp,
+			501,
+			CombatRelationService.PLAYER_ALLIED,
+			2,
+			2,
+			sakura_rocket_projectile_id,
+			"collectible_sakura_rocket"
 		)
 		var spawned_rocket := projectile_coordinator.get_projectile(
 			sakura_rocket_projectile_id

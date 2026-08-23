@@ -5,6 +5,9 @@ const SKILL4_ORB_SCENE := preload("res://scene/boss/linglan/linglan_skill4_light
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const SKILL3_ORB_SCRIPT_PATH := "res://scene/boss/linglan/linglan_skill3_light_orb.gd"
 const SKILL4_ORB_SCRIPT_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.gd"
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const TEST_RUNTIME_SCRIPT := preload(
 	"res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
 )
@@ -23,7 +26,8 @@ class DamageReportHost:
 		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
 		source_direction: Vector2 = Vector2.ZERO,
 		is_ranged: bool = false,
-		_contact_preconsumed: bool = false
+		_contact_preconsumed: bool = false,
+		source_snapshot: DamageSourceSnapshot = null
 	) -> bool:
 		damage_requests.append({
 			"source_id": source_id,
@@ -33,6 +37,7 @@ class DamageReportHost:
 			"damage_type": damage_type,
 			"source_direction": source_direction,
 			"is_ranged": is_ranged,
+			"source_snapshot": source_snapshot,
 		})
 		return true
 
@@ -129,6 +134,9 @@ func _test_query_frequency_contract() -> void:
 func _test_skill3_flying_body_entered_hit() -> void:
 	var player := _spawn_player(test_root, Vector2(100.0, 0.0), 31, 200)
 	var orb := SKILL3_ORB_SCENE.instantiate() as LinglanSkill3LightOrb
+	orb.set_damage_source_snapshot(
+		_make_linglan_source_snapshot(&"linglan_skill3_orb")
+	)
 	test_root.add_child(orb)
 	(test_root as LinglanCombatTestRuntime).bind_linglan_node(orb)
 	orb.global_position = Vector2.ZERO
@@ -159,6 +167,9 @@ func _test_skill3_flying_body_entered_hit() -> void:
 func _test_skill3_expansion_capture_and_lifetime() -> void:
 	var player := _spawn_player(test_root, Vector2(30.0, 0.0), 32, 200)
 	var orb := SKILL3_ORB_SCENE.instantiate() as LinglanSkill3LightOrb
+	orb.set_damage_source_snapshot(
+		_make_linglan_source_snapshot(&"linglan_skill3_orb")
+	)
 	test_root.add_child(orb)
 	(test_root as LinglanCombatTestRuntime).bind_linglan_node(orb)
 	orb.global_position = Vector2.ZERO
@@ -190,6 +201,9 @@ func _test_skill3_expansion_capture_and_lifetime() -> void:
 func _test_skill4_flying_and_spawn_overlap_hits() -> void:
 	var flying_player := _spawn_player(test_root, Vector2(100.0, 0.0), 41, 200)
 	var flying_orb := SKILL4_ORB_SCENE.instantiate() as LinglanSkill4LightOrb
+	flying_orb.set_damage_source_snapshot(
+		_make_linglan_source_snapshot(&"linglan_skill4_orb")
+	)
 	test_root.add_child(flying_orb)
 	(test_root as LinglanCombatTestRuntime).bind_linglan_node(flying_orb)
 	flying_orb.global_position = Vector2.ZERO
@@ -222,6 +236,9 @@ func _test_skill4_flying_and_spawn_overlap_hits() -> void:
 	await physics_frame
 	_set_player_health(spawn_player, 200)
 	var spawn_orb := SKILL4_ORB_SCENE.instantiate() as LinglanSkill4LightOrb
+	spawn_orb.set_damage_source_snapshot(
+		_make_linglan_source_snapshot(&"linglan_skill4_orb")
+	)
 	test_root.add_child(spawn_orb)
 	(test_root as LinglanCombatTestRuntime).bind_linglan_node(spawn_orb)
 	spawn_orb.global_position = Vector2.ZERO
@@ -271,6 +288,16 @@ func _test_multiplayer_proxy_identity_and_deduplication() -> void:
 	host.bind_linglan_node(orb3)
 	orb3.setup(Vector2.RIGHT, 50, 0.0, 2.2)
 	orb3.setup_multiplayer(7300123, 1, &"linglan_skill3_orb")
+	MpProjectileCoordinator._apply_damage_source_snapshot_to_projectile(
+		orb3,
+		DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			7300,
+			7300123,
+			&"linglan_skill3_orb"
+		)
+	)
 	orb3.set_physics_process(false)
 	await process_frame
 	_set_player_health(player3, 200)
@@ -283,6 +310,16 @@ func _test_multiplayer_proxy_identity_and_deduplication() -> void:
 	host.bind_linglan_node(orb4)
 	orb4.setup(Vector2.LEFT, 50, 0.0, 10.0, 8.0, 6.0)
 	orb4.setup_multiplayer(7400456, 1, &"linglan_skill4_orb")
+	MpProjectileCoordinator._apply_damage_source_snapshot_to_projectile(
+		orb4,
+		DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			7400,
+			7400456,
+			&"linglan_skill4_orb"
+		)
+	)
 	orb4.set_physics_process(false)
 	await process_frame
 	_set_player_health(player4, 200)
@@ -311,6 +348,14 @@ func _expect_damage_request(
 	_expect(request.get("source_type") == expected_source_type, "Orb proxy source type changed.")
 	_expect(request.get("damage_type") == EnemyConfig.DamageType.MAGIC, "Orb proxy must report magic damage.")
 	_expect(bool(request.get("is_ranged", false)), "Orb proxy damage must remain ranged.")
+	var source_snapshot := request.get("source_snapshot") as DamageSourceSnapshot
+	_expect(
+		source_snapshot != null
+		and source_snapshot.source_faction_id == CombatRelationService.HOSTILE_WAVE
+		and source_snapshot.event_source_id == expected_source_id
+		and source_snapshot.source_type == expected_source_type,
+		"Orb proxy hit must retain the frozen hostile launch source."
+	)
 
 
 func _spawn_player(parent: Node, position: Vector2, peer_id: int, health: int) -> Player:
@@ -337,6 +382,16 @@ func _set_player_health(player: Player, health: int) -> void:
 	player.damage_reduction_modifiers.clear()
 	if player.health_bar != null:
 		player.health_bar.setup(player.max_health, player.current_health)
+
+
+func _make_linglan_source_snapshot(source_type: StringName) -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		9401,
+		0,
+		source_type
+	)
 
 
 func _free_nodes(nodes: Array) -> void:

@@ -149,13 +149,17 @@ func _run() -> void:
 	)
 	_expect(
 		host_broadcasts.size() == 1
-		and host_broadcasts[0].size() == 12
+		and host_broadcasts[0].size() == 17
 		and int(host_broadcasts[0][0]) == projectile_id
 		and StringName(host_broadcasts[0][1]) == PROJECTILE_TYPE
 		and host_broadcasts[0][3] == SPAWN_POSITION
 		and host_broadcasts[0][4] == DIRECTION
-		and not bool(host_broadcasts[0][8]),
-		"Host DATA registration must reuse the existing 12-field net_projectile_fired payload."
+		and not bool(host_broadcasts[0][8])
+		and int(host_broadcasts[0][12]) == CombatRelationService.HOSTILE_WAVE
+		and int(host_broadcasts[0][14]) == 731
+		and int(host_broadcasts[0][15]) == projectile_id
+		and StringName(host_broadcasts[0][16]) == PROJECTILE_TYPE,
+		"Host DATA registration must publish the protocol-94 projectile payload with frozen attribution."
 	)
 	_expect(
 		host_coordinator.try_consume_fire_sorcerer_fireball_contact(
@@ -182,9 +186,9 @@ func _run() -> void:
 	_expect(
 		late_join_fire_index >= 0
 		and late_join_peer_ids[late_join_fire_index] == 9
-		and late_join_arguments[late_join_fire_index].size() == 12
+		and late_join_arguments[late_join_fire_index].size() == 17
 		and int(late_join_arguments[late_join_fire_index][0]) == projectile_id,
-		"Late-join replay must preserve the original 12-field projectile identity."
+		"Late-join replay must preserve the protocol-94 projectile identity and attribution."
 	)
 
 	var client_net_manager := NetManagerStore.new()
@@ -213,7 +217,12 @@ func _run() -> void:
 		bool(payload[8]),
 		int(payload[9]),
 		float(payload[10]),
-		int(payload[11])
+		int(payload[11]),
+		int(payload[12]),
+		int(payload[13]),
+		int(payload[14]),
+		int(payload[15]),
+		String(payload[16])
 	)
 	var replica_handle := _find_handle(
 		service,
@@ -264,7 +273,12 @@ func _run() -> void:
 		false,
 		0,
 		400.0,
-		0
+		0,
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		732,
+		elite_projectile_id,
+		String(ELITE_PROJECTILE_TYPE)
 	)
 	var elite_replica_handle := _find_handle(
 		service,

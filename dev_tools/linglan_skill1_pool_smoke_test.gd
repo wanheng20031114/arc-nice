@@ -42,7 +42,8 @@ class RecordingGameplaySession:
 		lifetime: float,
 		pierces_enemies: bool = false,
 		target_peer_id: int = 0,
-		target_enemy_net_id: int = 0
+		target_enemy_net_id: int = 0,
+		damage_source_snapshot: DamageSourceSnapshot = null
 	) -> void:
 		local_projectile_records.append({
 			"projectile": projectile,
@@ -56,6 +57,7 @@ class RecordingGameplaySession:
 			"pierces_enemies": pierces_enemies,
 			"target_peer_id": target_peer_id,
 			"target_enemy_net_id": target_enemy_net_id,
+			"damage_source_snapshot": damage_source_snapshot,
 		})
 		if projectile is LinglanSakuraBullet:
 			(projectile as LinglanSakuraBullet).setup_multiplayer(
@@ -71,7 +73,8 @@ class RecordingGameplaySession:
 		owner_peer_id: int,
 		damage: int,
 		speed: float,
-		lifetime: float
+		lifetime: float,
+		damage_source_snapshot: DamageSourceSnapshot
 	) -> void:
 		for index in range(projectiles.size()):
 			register_local_projectile(
@@ -82,7 +85,11 @@ class RecordingGameplaySession:
 				directions[index],
 				damage,
 				speed,
-				lifetime
+				lifetime,
+				false,
+				0,
+				0,
+				damage_source_snapshot
 			)
 
 
@@ -350,6 +357,9 @@ func _test_damage_trajectory_and_hit_effect_semantics() -> void:
 		runtime,
 		runtime.get_multiplayer_gameplay_gateway()
 	)
+	bullet.set_damage_source_snapshot(
+		_make_linglan_source_snapshot(&"linglan_skill1")
+	)
 	bullet.global_position = Vector2(32.0, 20.0)
 	bullet.setup(Vector2.LEFT, 37, 225.0, 1.25)
 	bullet.call("_on_body_entered", player)
@@ -375,6 +385,11 @@ func _test_damage_trajectory_and_hit_effect_semantics() -> void:
 	var expiry_bullet := pool.acquire(SAKURA_BULLET_SCENE) as LinglanSakuraBullet
 	_expect(expiry_bullet != null, "Expiry semantics fixture must reacquire a Sakura bullet.")
 	if expiry_bullet != null:
+		_expect(
+			expiry_bullet.damage_source_snapshot == null
+			and not expiry_bullet.has_meta(&"damage_source_snapshot"),
+			"A reused Skill1 lease must not retain the previous launch source."
+		)
 		expiry_bullet.bind_gameplay_context(
 			runtime,
 			runtime.get_multiplayer_gameplay_gateway()
@@ -441,6 +456,53 @@ func _test_multiplayer_client_spawn_and_cleanup_path() -> void:
 		and is_equal_approx(first.max_lifetime, 1.5),
 		"Client proxy acquisition must use the pool without changing network payload values."
 	)
+	var malformed := pool.acquire(SAKURA_BULLET_SCENE) as LinglanSakuraBullet
+	_expect(malformed != null, "Malformed direct-register fixture must acquire a Sakura bullet.")
+	if malformed != null:
+		malformed.set_meta(
+			&"damage_source_snapshot",
+			DamageSourceSnapshot.create(
+				CombatRelationService.HOSTILE_WAVE,
+				0,
+				999998,
+				0,
+				&""
+			)
+		)
+		var metrics_before := coordinator.get_state_metrics()
+		var malformed_id := coordinator.register_local_projectile(
+			malformed,
+			&"linglan_skill1",
+			999999,
+			41,
+			1.5,
+			false,
+			true,
+			0.0
+		)
+		var metrics_after := coordinator.get_state_metrics()
+		var finished_callable := Callable(coordinator, "_on_network_projectile_finished")
+		_expect(
+			malformed_id == 0
+			and malformed.projectile_id == 0
+			and metrics_after.get("next_sequence") == metrics_before.get("next_sequence")
+			and metrics_after.get("known_projectiles") == metrics_before.get("known_projectiles")
+			and metrics_after.get("projectile_records") == metrics_before.get("projectile_records")
+			and not malformed.is_connected(&"projectile_finished", finished_callable),
+			"Malformed Linglan direct registration must not allocate identity, connect signals, or mutate coordinator state."
+		)
+		malformed.retire()
+		await _wait_for_quarantine()
+	MpProjectileCoordinator._apply_damage_source_snapshot_to_projectile(
+		first,
+		DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			999999,
+			0,
+			&"linglan_skill1"
+		)
+	)
 	var projectile_id := coordinator.register_local_projectile(
 		first,
 		&"linglan_skill1",
@@ -450,6 +512,14 @@ func _test_multiplayer_client_spawn_and_cleanup_path() -> void:
 		false,
 		true,
 		0.0
+	)
+	_expect(
+		projectile_id > 0
+		and first.damage_source_snapshot != null
+		and first.damage_source_snapshot.source_faction_id
+			== CombatRelationService.HOSTILE_WAVE
+		and first.damage_source_snapshot.event_source_id == projectile_id,
+		"Pooled Skill1 projectiles must freeze hostile source ownership at registration."
 	)
 	first.retire()
 	_expect(
@@ -504,6 +574,9 @@ func _test_offscreen_hit_keeps_damage_without_visual_lease() -> void:
 			runtime,
 			runtime.get_multiplayer_gameplay_gateway()
 		)
+		bullet.set_damage_source_snapshot(
+			_make_linglan_source_snapshot(&"linglan_skill1")
+		)
 		bullet.global_position = Vector2(100000.0, 100000.0)
 		bullet.setup(Vector2.RIGHT, 29, 300.0, 2.0)
 		bullet.call("_on_body_entered", player)
@@ -523,7 +596,7 @@ func _test_offscreen_hit_keeps_damage_without_visual_lease() -> void:
 
 func _test_production_runtime_registration_contract() -> void:
 	for runtime_script_path in [
-		"res://scene/combat/runtime/wave_combat_runtime_base.gd",
+		"res://scene/game_modes/standard/prewarm/standard_prewarmer_coordinator.gd",
 		"res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.gd",
 	]:
 		var source := FileAccess.get_file_as_string(runtime_script_path)
@@ -533,6 +606,16 @@ func _test_production_runtime_registration_contract() -> void:
 			"Both production runtimes must register the authored Skill1 pools: %s"
 			% runtime_script_path
 		)
+
+
+func _make_linglan_source_snapshot(source_type: StringName) -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		9101,
+		0,
+		source_type
+	)
 
 
 func _find_active_sakura_bullet() -> LinglanSakuraBullet:

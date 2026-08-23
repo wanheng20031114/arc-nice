@@ -53,16 +53,25 @@ func reset() -> void:
 	_active_is_assigned = false
 
 
-## Applies a host-authored assignment only when its revision is newer. A NONE
-## descriptor with a positive revision is an ordered "clear assignment" event.
-func apply_assignment(next_target: CombatTargetDescriptor) -> bool:
+## Applies a host-authored assignment only when its assignment revision is
+## newer. Descriptor.revision belongs to the target entity (for Enemy targets it
+## is the faction revision) and must never be reused as transport ordering.
+## Omitting next_assignment_revision preserves the pre-v94 local API.
+func apply_assignment(
+	next_target: CombatTargetDescriptor,
+	next_assignment_revision: int = -1
+) -> bool:
+	var resolved_assignment_revision := next_assignment_revision
+	if resolved_assignment_revision < 0 and next_target != null:
+		resolved_assignment_revision = next_target.revision
 	if (
 		next_target == null
 		or not next_target.is_valid()
-		or next_target.revision <= assignment_revision
+		or resolved_assignment_revision < 0
+		or resolved_assignment_revision <= assignment_revision
 	):
 		return false
-	assignment_revision = next_target.revision
+	assignment_revision = resolved_assignment_revision
 	assigned_target = next_target.duplicate()
 	consecutive_unreachable_confirmations = 0
 	negative_cache_until_tick = -1

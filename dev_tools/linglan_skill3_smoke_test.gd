@@ -39,7 +39,8 @@ class Skill3Host:
 		lifetime: float,
 		pierces_enemies: bool = false,
 		target_peer_id: int = 0,
-		_target_enemy_net_id: int = 0
+		_target_enemy_net_id: int = 0,
+		damage_source_snapshot: DamageSourceSnapshot = null
 	) -> void:
 		projectile_records.append({
 			"projectile": projectile,
@@ -52,6 +53,7 @@ class Skill3Host:
 			"lifetime": lifetime,
 			"pierces_enemies": pierces_enemies,
 			"target_peer_id": target_peer_id,
+			"damage_source_snapshot": damage_source_snapshot,
 		})
 
 
@@ -225,6 +227,9 @@ func _test_orb_lifecycle_and_damage() -> void:
 	near_player.magic_defense = 50
 	near_player._base_magic_defense = 50
 	var orb := ORB_SCENE.instantiate() as LinglanSkill3LightOrb
+	orb.set_damage_source_snapshot(
+		_make_linglan_source_snapshot(&"linglan_skill3_orb")
+	)
 	test_root.add_child(orb)
 	(test_root as LinglanCombatTestRuntime).bind_linglan_node(orb)
 	orb.global_position = Vector2.ZERO
@@ -274,6 +279,9 @@ func _test_orb_lifecycle_and_damage() -> void:
 	await _wait_process_and_physics_frames(3)
 
 	var grow_orb := ORB_SCENE.instantiate() as LinglanSkill3LightOrb
+	grow_orb.set_damage_source_snapshot(
+		_make_linglan_source_snapshot(&"linglan_skill3_orb")
+	)
 	test_root.add_child(grow_orb)
 	(test_root as LinglanCombatTestRuntime).bind_linglan_node(grow_orb)
 	grow_orb.global_position = Vector2.ZERO
@@ -382,6 +390,13 @@ func _test_boss_skill3_schedule() -> void:
 		_expect(int(record.get("damage", 0)) == 50, "Skill3 registered wrong orb damage.")
 		_expect(is_equal_approx(float(record.get("speed", 0.0)), 90.0), "Skill3 registered wrong orb speed.")
 		_expect(float(record.get("lifetime", 0.0)) >= 2.2 and float(record.get("lifetime", 0.0)) <= 3.6, "Skill3 registered grow delay outside range.")
+		var source_snapshot := record.get("damage_source_snapshot") as DamageSourceSnapshot
+		_expect(
+			source_snapshot != null
+			and source_snapshot.source_faction_id == CombatRelationService.HOSTILE_WAVE
+			and source_snapshot.source_type == &"linglan_skill3_orb",
+			"Skill3 orb must freeze Linglan's hostile launch source."
+		)
 		_expect(is_equal_approx(direction.length(), 1.0), "Skill3 orb direction must stay normalized.")
 		if direction.x >= 0.0 and direction.y >= 0.0:
 			saw_right_down = true
@@ -454,6 +469,16 @@ func _spawn_player(parent: Node, position: Vector2, peer_id: int, health: int) -
 	if player.health_bar != null:
 		player.health_bar.setup(player.max_health, player.current_health)
 	return player
+
+
+func _make_linglan_source_snapshot(source_type: StringName) -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		9301,
+		0,
+		source_type
+	)
 
 
 func _wait_process_and_physics_frames(frame_count: int) -> void:

@@ -35,11 +35,15 @@ var cast_direction := Vector2.RIGHT
 var cast_target: Node2D = null
 var cast_damage_source_snapshot: DamageSourceSnapshot = null
 var latest_proxy_action_id := 0
+var latest_proxy_terminal_action_id := 0
+var latest_proxy_presentation_revision := 0
+var latest_proxy_presentation_terminal_revision := 0
+var proxy_warning_generation := 0
 var cached_runtime_attack_target: Node2D = null
 var attack_target_refresh_left := 0.0
 var warning_retry_time_left := 0.0
 var warning_retry_sent := false
-var proxy_warning_player: Player = null
+var proxy_warning_target: Node2D = null
 var proxy_warning_plant_position := Vector2.ZERO
 var proxy_warning_duration := 0.0
 var proxy_warning_elapsed := 0.0
@@ -153,6 +157,27 @@ func _is_frozen_source_hostile_target_valid(candidate: Node2D) -> bool:
 	)
 
 
+func _is_live_multiplayer_proxy_target(candidate: Node2D) -> bool:
+	if candidate == null or not is_instance_valid(candidate):
+		return false
+	var player_target := candidate as Player
+	if player_target != null:
+		return not player_target.is_dead and not player_target.is_queued_for_deletion()
+	var plant_target := candidate as PlantDefense
+	if plant_target != null:
+		return (
+			not plant_target.is_dead
+			and not plant_target.is_removing
+			and not plant_target.is_queued_for_deletion()
+		)
+	var enemy_target := candidate as Enemy
+	return (
+		enemy_target != null
+		and not enemy_target.is_dead
+		and not enemy_target.is_queued_for_deletion()
+	)
+
+
 func _physics_process(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
@@ -247,6 +272,10 @@ func _apply_config() -> void:
 	cast_target = null
 	cast_damage_source_snapshot = null
 	latest_proxy_action_id = 0
+	latest_proxy_terminal_action_id = 0
+	latest_proxy_presentation_revision = 0
+	latest_proxy_presentation_terminal_revision = 0
+	proxy_warning_generation = 0
 	cached_runtime_attack_target = null
 	attack_target_refresh_left = 0.0
 	warning_retry_time_left = 0.0
@@ -377,6 +406,11 @@ func _finish_windup_and_strike(lightning_config: LightningConfig) -> void:
 	_clear_target_warning()
 	_play_config_animation(lightning_config.attack_animation_name)
 	_broadcast_enemy_action(&"fire", cast_direction)
+	_broadcast_windup_presentation_state(
+		Enemy.TargetPresentationPhase.NONE,
+		null,
+		0.0
+	)
 	var damage_source_id := cast_damage_source_snapshot.event_source_id
 	var world_path := _resolve_chain_hits(
 		first_target,
@@ -691,18 +725,13 @@ func _get_enemy_warning_presentation_system(
 
 
 func _broadcast_windup_start(target: Node2D, is_retry: bool) -> void:
-	var player_target := target as Player
 	if not is_retry:
-		if player_target != null:
-			_broadcast_enemy_target_action(
-				PLAYER_WINDUP_ACTION,
-				player_target.peer_id
-			)
-		else:
-			_broadcast_enemy_action(
-				PLANT_WINDUP_ACTION,
-				_get_target_warning_world_position(target) - global_position
-			)
+		_broadcast_enemy_target_action(PLAYER_WINDUP_ACTION, target)
+		_broadcast_windup_presentation_state(
+			Enemy.TargetPresentationPhase.LIGHTNING_WINDUP,
+			target,
+			windup_time_left
+		)
 		return
 
 	# Windup starts are transient unreliable-ordered messages. A single retry
@@ -713,22 +742,13 @@ func _broadcast_windup_start(target: Node2D, is_retry: bool) -> void:
 	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return
 	var net_id := int(get_meta("net_id", 0))
-	if player_target != null:
-		gameplay_gateway.broadcast_enemy_target_action(
-			net_id,
-			PLAYER_WINDUP_RETRY_ACTION,
-			player_target.peer_id,
-			global_position,
-			action_sequence
-		)
-	else:
-		gameplay_gateway.broadcast_enemy_action(
-			net_id,
-			PLANT_WINDUP_RETRY_ACTION,
-			_get_target_warning_world_position(target) - global_position,
-			global_position,
-			action_sequence
-		)
+	gameplay_gateway.broadcast_enemy_target_action(
+		net_id,
+		PLAYER_WINDUP_RETRY_ACTION,
+		target,
+		global_position,
+		action_sequence
+	)
 
 
 func _update_windup_warning_retry(delta: float) -> void:
@@ -756,12 +776,34 @@ func _cancel_windup(restore_move_animation := true) -> void:
 		_play_config_animation(lightning_config.move_animation_name)
 	if had_active_windup and not is_dead:
 		_broadcast_enemy_action(&"cancel", cast_direction)
+		_broadcast_windup_presentation_state(
+			Enemy.TargetPresentationPhase.NONE,
+			null,
+			0.0
+		)
 	_reset_ranged_attack_position_state()
+
+
+func _broadcast_windup_presentation_state(
+	phase: int,
+	target: Node2D,
+	duration_seconds: float
+) -> void:
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
+		return
+	gameplay_gateway.broadcast_enemy_target_presentation_state(
+		int(get_meta("net_id", 0)),
+		phase,
+		target,
+		duration_seconds,
+		global_position,
+		action_sequence
+	)
 
 
 func play_multiplayer_enemy_target_action(
 	action_name: StringName,
-	target: Player,
+	target: Node2D,
 	action_id: int
 ) -> void:
 	play_multiplayer_enemy_target_action_with_context(
@@ -775,7 +817,7 @@ func play_multiplayer_enemy_target_action(
 
 func play_multiplayer_enemy_target_action_with_context(
 	action_name: StringName,
-	target: Player,
+	target: Node2D,
 	_action_position: Vector2,
 	action_id: int,
 	action_elapsed: float
@@ -784,8 +826,12 @@ func play_multiplayer_enemy_target_action_with_context(
 		is_dead
 		or target == null
 		or not is_instance_valid(target)
-		or target.is_dead
+		or not _is_live_multiplayer_proxy_target(target)
 		or action_id <= latest_proxy_action_id
+		or (
+			action_name in [PLAYER_WINDUP_ACTION, PLAYER_WINDUP_RETRY_ACTION]
+			and action_id <= latest_proxy_presentation_terminal_revision
+		)
 	):
 		return
 	if (
@@ -803,6 +849,68 @@ func play_multiplayer_enemy_target_action_with_context(
 		action_elapsed
 	)
 	_start_proxy_target_warning(target, Vector2.ZERO, initial_progress, action_id)
+
+
+func apply_multiplayer_target_presentation_state(
+	phase: int,
+	target: Node2D,
+	_action_position: Vector2,
+	state_revision: int,
+	elapsed_seconds: float,
+	remaining_seconds: float
+) -> void:
+	if (
+		state_revision < latest_proxy_presentation_revision
+		or (
+			state_revision == latest_proxy_presentation_revision
+			and phase != Enemy.TargetPresentationPhase.NONE
+		)
+	):
+		return
+	latest_proxy_presentation_revision = state_revision
+	if phase == Enemy.TargetPresentationPhase.NONE:
+		latest_proxy_presentation_terminal_revision = maxi(
+			latest_proxy_presentation_terminal_revision,
+			state_revision
+		)
+	if (
+		phase != Enemy.TargetPresentationPhase.LIGHTNING_WINDUP
+		or is_dead
+		or target == null
+		or not is_instance_valid(target)
+	):
+		_clear_proxy_target_warning()
+		var clear_config := config as LightningConfig
+		if (
+			clear_config != null
+			and animated_sprite.animation == clear_config.windup_animation_name
+		):
+			_play_config_animation(clear_config.move_animation_name)
+		return
+	# CH5 presentation state and CH7 action edges are independent ordered
+	# streams. An equal-revision start may still receive this reliable repair,
+	# but a fire/cancel terminal edge is authoritative and must not be reopened.
+	if state_revision <= latest_proxy_terminal_action_id:
+		return
+	var lightning_config := config as LightningConfig
+	if lightning_config == null:
+		_clear_proxy_target_warning()
+		return
+	var total_duration := maxf(
+		maxf(elapsed_seconds, 0.0) + maxf(remaining_seconds, 0.0),
+		0.01
+	)
+	var initial_progress := clampf(
+		maxf(elapsed_seconds, 0.0) / total_duration,
+		0.0,
+		1.0
+	)
+	_start_proxy_target_warning(
+		target,
+		Vector2.ZERO,
+		initial_progress,
+		state_revision
+	)
 
 
 func play_multiplayer_enemy_action(
@@ -826,7 +934,15 @@ func play_multiplayer_enemy_action_with_context(
 	action_id: int,
 	action_elapsed: float
 ) -> void:
-	if is_dead or action_id <= latest_proxy_action_id:
+	if (
+		is_dead
+		or action_id <= latest_proxy_action_id
+		or action_id < latest_proxy_presentation_terminal_revision
+		or (
+			action_name in [PLANT_WINDUP_ACTION, PLANT_WINDUP_RETRY_ACTION]
+			and action_id <= latest_proxy_presentation_terminal_revision
+		)
+	):
 		return
 	if (
 		action_name == PLANT_WINDUP_ACTION
@@ -851,6 +967,8 @@ func play_multiplayer_enemy_action_with_context(
 		)
 		return
 	latest_proxy_action_id = action_id
+	if action_name == &"fire" or action_name == &"cancel":
+		latest_proxy_terminal_action_id = action_id
 	var lightning_config := config as LightningConfig
 	if lightning_config == null:
 		return
@@ -887,20 +1005,20 @@ func _get_proxy_windup_initial_progress(
 
 
 func _start_proxy_target_warning(
-	target: Player,
+	target: Node2D,
 	plant_world_position: Vector2,
 	initial_progress: float,
-	action_id: int
+	_state_revision: int
 ) -> void:
 	var lightning_config := config as LightningConfig
 	if lightning_config == null:
 		return
-	proxy_warning_player = target
+	proxy_warning_target = target
 	proxy_warning_plant_position = plant_world_position
 	proxy_warning_duration = maxf(lightning_config.windup_duration, 0.01)
 	proxy_warning_elapsed = clampf(initial_progress, 0.0, 1.0) * proxy_warning_duration
 	var warning_position := (
-		target.get_multiplayer_visual_global_position()
+		_get_target_warning_world_position(target)
 		if target != null
 		else plant_world_position
 	)
@@ -923,7 +1041,11 @@ func _start_proxy_target_warning(
 		remaining_duration + 0.15
 	)
 	set_process(true)
-	_schedule_proxy_windup_timeout(action_id, remaining_duration + 0.2)
+	proxy_warning_generation += 1
+	_schedule_proxy_windup_timeout(
+		proxy_warning_generation,
+		remaining_duration + 0.2
+	)
 
 
 func _update_proxy_target_warning(delta: float) -> void:
@@ -931,14 +1053,14 @@ func _update_proxy_target_warning(delta: float) -> void:
 		set_process(false)
 		return
 	var warning_position := proxy_warning_plant_position
-	if proxy_warning_player != null:
+	if proxy_warning_target != null:
 		if (
-			not is_instance_valid(proxy_warning_player)
-			or proxy_warning_player.is_dead
+			not is_instance_valid(proxy_warning_target)
+			or not _is_live_multiplayer_proxy_target(proxy_warning_target)
 		):
 			_clear_proxy_target_warning()
 			return
-		warning_position = proxy_warning_player.get_multiplayer_visual_global_position()
+		warning_position = _get_target_warning_world_position(proxy_warning_target)
 	proxy_warning_elapsed = minf(
 		proxy_warning_elapsed + maxf(delta, 0.0),
 		proxy_warning_duration
@@ -955,7 +1077,8 @@ func _update_proxy_target_warning(delta: float) -> void:
 
 
 func _clear_proxy_target_warning() -> void:
-	proxy_warning_player = null
+	proxy_warning_generation += 1
+	proxy_warning_target = null
 	proxy_warning_plant_position = Vector2.ZERO
 	proxy_warning_duration = 0.0
 	proxy_warning_elapsed = 0.0
@@ -964,16 +1087,16 @@ func _clear_proxy_target_warning() -> void:
 		set_process(false)
 
 
-func _schedule_proxy_windup_timeout(action_id: int, timeout: float) -> void:
+func _schedule_proxy_windup_timeout(generation: int, timeout: float) -> void:
 	if not is_inside_tree():
 		return
 	var timeout_tween := create_tween()
 	timeout_tween.tween_interval(maxf(timeout, 0.01))
-	timeout_tween.tween_callback(_expire_proxy_windup.bind(action_id))
+	timeout_tween.tween_callback(_expire_proxy_windup.bind(generation))
 
 
-func _expire_proxy_windup(action_id: int) -> void:
-	if action_id != latest_proxy_action_id or is_dead or config == null:
+func _expire_proxy_windup(generation: int) -> void:
+	if generation != proxy_warning_generation or is_dead or config == null:
 		return
 	_clear_proxy_target_warning()
 	var lightning_config := config as LightningConfig

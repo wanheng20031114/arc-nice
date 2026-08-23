@@ -68,9 +68,11 @@ var _last_geometry_warning: bool = false
 var _geometry_update_count: int = 0
 var field_id: int = 0
 var source_type: StringName = &"linglan_skill4_laser"
+var damage_source_snapshot: DamageSourceSnapshot = null
 var field_finished: bool = false
 var combat_runtime: CombatRuntimeBase = null
 var gameplay_gateway: MultiplayerGameplayGateway = null
+var _damage_requested: bool = true
 
 
 func bind_gameplay_context(
@@ -85,6 +87,7 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 	_apply_current_geometry()
+	damage_enabled = _damage_requested and _has_valid_damage_source_snapshot()
 	_set_damage_collision_enabled(damage_enabled)
 
 
@@ -108,7 +111,8 @@ func setup(
 	core_width = maxf(initial_core_width, 1.0)
 	shrink_duration = maxf(initial_shrink_duration, 0.01)
 	warning_duration = maxf(initial_warning_duration, 0.0)
-	damage_enabled = initial_damage_enabled
+	_damage_requested = initial_damage_enabled
+	damage_enabled = _damage_requested and _has_valid_damage_source_snapshot()
 	lifetime_duration = maxf(initial_lifetime_duration, 0.0)
 	elapsed = 0.0
 	field_finished = false
@@ -122,8 +126,25 @@ func setup(
 
 
 func setup_multiplayer_visual_only() -> void:
+	_damage_requested = false
 	damage_enabled = false
 	_set_damage_collision_enabled(false)
+
+
+func set_damage_source_snapshot(source_snapshot: DamageSourceSnapshot) -> bool:
+	damage_source_snapshot = (
+		source_snapshot.duplicate_snapshot()
+		if (
+			source_snapshot != null
+			and source_snapshot.is_valid()
+			and source_snapshot.source_type != &""
+		)
+		else null
+	)
+	damage_enabled = _damage_requested and _has_valid_damage_source_snapshot()
+	if is_node_ready():
+		_set_damage_collision_enabled(damage_enabled)
+	return damage_source_snapshot != null
 
 
 func _set_damage_collision_enabled(enabled: bool) -> void:
@@ -320,7 +341,11 @@ func _update_overlapping_player_damage() -> void:
 
 
 func _apply_player_damage(player: Player) -> void:
-	if player == null or player.is_dead:
+	if (
+		player == null
+		or player.is_dead
+		or not _has_valid_damage_source_snapshot()
+	):
 		return
 	var player_id := player.get_instance_id()
 	if player_next_damage_times.get(player_id, 0.0) > elapsed:
@@ -330,13 +355,27 @@ func _apply_player_damage(player: Player) -> void:
 		return
 	if not _has_explicit_singleplayer_authority():
 		return
-	player.apply_damage(damage, EnemyConfig.DamageType.MAGIC)
+	var source_id := _allocate_damage_event_source_id()
+	var event_snapshot := _create_event_damage_source_snapshot(source_id)
+	if event_snapshot == null:
+		return
+	player.apply_damage(
+		damage,
+		EnemyConfig.DamageType.MAGIC,
+		{
+			"source_id": source_id,
+			"source_type": source_type,
+			"source_snapshot": event_snapshot,
+		}
+	)
 	# Preserve the authored contact cadence even when dash/invincibility rejects
 	# this pulse; otherwise an overlapping player would be retried every frame.
 	player_next_damage_times[player_id] = elapsed + maxf(contact_damage_interval, 0.0)
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:
+	if not _has_valid_damage_source_snapshot():
+		return false
 	var source_id := _allocate_damage_event_source_id()
 	if source_id <= 0:
 		return false
@@ -347,7 +386,11 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 		player.peer_id,
 		damage,
 		source_type,
-		EnemyConfig.DamageType.MAGIC
+		EnemyConfig.DamageType.MAGIC,
+		Vector2.ZERO,
+		false,
+		false,
+		damage_source_snapshot
 	)
 
 
@@ -357,6 +400,29 @@ func _has_explicit_singleplayer_authority() -> bool:
 		and is_instance_valid(combat_runtime)
 		and combat_runtime.runtime_mode
 			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
+
+
+func _has_valid_damage_source_snapshot() -> bool:
+	return (
+		damage_source_snapshot != null
+		and damage_source_snapshot.is_valid()
+		and damage_source_snapshot.source_type != &""
+		and source_type != &""
+	)
+
+
+func _create_event_damage_source_snapshot(
+	event_source_id: int
+) -> DamageSourceSnapshot:
+	if not _has_valid_damage_source_snapshot() or event_source_id <= 0:
+		return null
+	return DamageSourceSnapshot.create(
+		damage_source_snapshot.source_faction_id,
+		damage_source_snapshot.credit_peer_id,
+		damage_source_snapshot.instigator_entity_id,
+		event_source_id,
+		source_type
 	)
 
 

@@ -137,6 +137,12 @@ enum AuthoritativeSimulationDriver {
 	DETACHED,
 }
 
+enum TargetPresentationPhase {
+	NONE,
+	SNIPER_LOCK,
+	LIGHTNING_WINDUP,
+}
+
 static var performance_metrics_enabled := false
 static var dynamic_flow_obstacle_lookahead_enabled := true
 static var navigation_render_frame_dedupe_enabled := true
@@ -1195,9 +1201,13 @@ func set_objective_target(target: Node2D) -> void:
 ## This keeps a cached automatic fallback ready while a designated target owns
 ## absolute priority.
 func apply_designated_combat_target(
-	descriptor: CombatTargetDescriptor
+	descriptor: CombatTargetDescriptor,
+	assignment_revision: int = -1
 ) -> bool:
-	if descriptor == null or not targeting_state.apply_assignment(descriptor):
+	if (
+		descriptor == null
+		or not targeting_state.apply_assignment(descriptor, assignment_revision)
+	):
 		return false
 	dynamic_targeting_state_active = true
 	dynamic_target_reachability_next_physics_frame = 0
@@ -1708,6 +1718,20 @@ func resolve_multiplayer_rapid_fire_spawn_position(
 	fallback_position: Vector2
 ) -> Vector2:
 	return fallback_position
+
+
+## Reliable target-presentation state is distinct from CH7 attack edges. Enemy
+## families with a sustained target visual override this typed hook; the base
+## implementation intentionally has no visual fallback or action-name probing.
+func apply_multiplayer_target_presentation_state(
+	_phase: int,
+	_target: Node2D,
+	_action_position: Vector2,
+	_state_revision: int,
+	_elapsed_seconds: float,
+	_remaining_seconds: float
+) -> void:
+	pass
 
 
 func _refresh_projectile_motion_system() -> void:
@@ -4893,7 +4917,7 @@ func _has_player_contact() -> bool:
 
 
 func _has_dynamic_enemy_target_contact() -> bool:
-	var enemy_target := objective_target as Enemy
+	var enemy_target := _get_valid_dynamic_enemy_objective()
 	if enemy_target == null or not can_attack_combat_target(enemy_target):
 		return false
 	if combat_runtime != null and is_instance_valid(combat_runtime):
@@ -4923,6 +4947,15 @@ func _has_dynamic_enemy_target_contact() -> bool:
 		and global_position.distance_squared_to(enemy_target.global_position)
 			<= contact_radius * contact_radius
 	)
+
+
+func _get_valid_dynamic_enemy_objective() -> Enemy:
+	# A queued-for-deletion target can remain in the typed objective slot until
+	# the next targeting decision. Validate the instance before casting: casting
+	# a freed Object is itself a GDScript runtime error.
+	if objective_target == null or not is_instance_valid(objective_target):
+		return null
+	return objective_target as Enemy
 
 
 func _clear_touching_players() -> void:
@@ -5212,7 +5245,7 @@ func _try_deal_touch_damage() -> void:
 			touch_damage_cooldown_left = touch_damage_interval
 			_on_touch_damage_applied(touched_plant, touch_source_snapshot)
 		return
-	var dynamic_enemy_target := objective_target as Enemy
+	var dynamic_enemy_target := _get_valid_dynamic_enemy_objective()
 	if (
 		dynamic_enemy_target != null
 		and _has_dynamic_enemy_target_contact()

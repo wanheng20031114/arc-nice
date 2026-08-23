@@ -22,6 +22,7 @@ const COMPENSATION_AGE := 0.125
 
 var failures: Array[String] = []
 var broadcasts: Array[Array] = []
+var peer_messages: Array[Dictionary] = []
 
 
 func _init() -> void:
@@ -77,6 +78,14 @@ func _run() -> void:
 		func(method_name: StringName, arguments: Array) -> void:
 			if method_name == &"net_projectile_fired":
 				broadcasts.append(arguments)
+	)
+	host_coordinator.rpc_to_peer_requested.connect(
+		func(peer_id: int, method_name: StringName, arguments: Array) -> void:
+			peer_messages.append({
+				"peer_id": peer_id,
+				"method_name": method_name,
+				"arguments": arguments,
+			})
 	)
 
 	var launch_source := DamageSourceSnapshot.create(
@@ -138,13 +147,14 @@ func _run() -> void:
 		and int(host_metrics["known_projectiles"]) == 0
 		and int(host_metrics["known_data_projectiles"]) == 0
 		and int(host_metrics["known_capoo_rpg_data"]) == 1
+		and int(host_metrics["capoo_rpg_late_join_records"]) == 1
 		and int(host_metrics["known_capoo_rpg_replicas"]) == 0
 		and int(host_metrics["projectile_records"]) == 1,
 		"RPG DATA registration must remember one record in its dedicated typed map without a legacy Node or generic backend."
 	)
 	_expect(
 		broadcasts.size() == 1
-		and broadcasts[0].size() == 12
+		and broadcasts[0].size() == 17
 		and int(broadcasts[0][0]) == projectile_id
 		and StringName(broadcasts[0][1]) == PROJECTILE_TYPE
 		and int(broadcasts[0][2]) == 0
@@ -156,8 +166,38 @@ func _run() -> void:
 		and not bool(broadcasts[0][8])
 		and int(broadcasts[0][9]) == 0
 		and is_equal_approx(float(broadcasts[0][10]), HOST_TIME)
-		and int(broadcasts[0][11]) == 0,
-		"Host registration must preserve the existing 12-field net_projectile_fired protocol exactly."
+		and int(broadcasts[0][11]) == 0
+		and int(broadcasts[0][12]) == CombatRelationService.HOSTILE_WAVE
+		and int(broadcasts[0][13]) == 0
+		and int(broadcasts[0][14]) == 731
+		and int(broadcasts[0][15]) == projectile_id
+		and StringName(broadcasts[0][16]) == PROJECTILE_TYPE,
+		"Host registration must append the exact protocol-94 frozen damage source."
+	)
+	var sent_late_join_snapshot := (
+		host_coordinator.send_active_data_visual_snapshot_to_peer(9)
+	)
+	var late_join_payload: Array = []
+	for message in peer_messages:
+		if (
+			int(message["peer_id"]) == 9
+			and StringName(message["method_name"]) == &"net_projectile_fired"
+		):
+			var arguments := message["arguments"] as Array
+			if not arguments.is_empty() and int(arguments[0]) == projectile_id:
+				late_join_payload = arguments
+				break
+	_expect(
+		sent_late_join_snapshot
+		and late_join_payload.size() == 17
+		and int(late_join_payload[0]) == projectile_id
+		and int(late_join_payload[12])
+			== CombatRelationService.HOSTILE_WAVE
+		and int(late_join_payload[13]) == 0
+		and int(late_join_payload[14]) == 731
+		and int(late_join_payload[15]) == projectile_id
+		and StringName(late_join_payload[16]) == PROJECTILE_TYPE,
+		"Late-join repair must replay the live RPG DATA row with its original frozen source."
 	)
 
 	var wrong_type_handle := _spawn_pending(service, launch_source)
@@ -228,7 +268,12 @@ func _run() -> void:
 		bool(payload[8]),
 		int(payload[9]),
 		float(payload[10]),
-		int(payload[11])
+		int(payload[11]),
+		int(payload[12]),
+		int(payload[13]),
+		int(payload[14]),
+		int(payload[15]),
+		String(payload[16])
 	)
 	var replica_handle := _find_handle(
 		service,
@@ -269,7 +314,12 @@ func _run() -> void:
 		bool(payload[8]),
 		int(payload[9]),
 		float(payload[10]),
-		int(payload[11])
+		int(payload[11]),
+		int(payload[12]),
+		int(payload[13]),
+		int(payload[14]),
+		int(payload[15]),
+		String(payload[16])
 	)
 	_expect(
 		_find_handle(
@@ -384,7 +434,12 @@ func _run() -> void:
 		bool(peer_payload[8]),
 		int(peer_payload[9]),
 		float(peer_payload[10]),
-		int(peer_payload[11])
+		int(peer_payload[11]),
+		int(peer_payload[12]),
+		int(peer_payload[13]),
+		int(peer_payload[14]),
+		int(peer_payload[15]),
+		String(peer_payload[16])
 	)
 	var peer_replica_handle := _find_handle(
 		service,
@@ -438,7 +493,12 @@ func _run() -> void:
 		bool(teardown_payload[8]),
 		int(teardown_payload[9]),
 		float(teardown_payload[10]),
-		int(teardown_payload[11])
+		int(teardown_payload[11]),
+		int(teardown_payload[12]),
+		int(teardown_payload[13]),
+		int(teardown_payload[14]),
+		int(teardown_payload[15]),
+		String(teardown_payload[16])
 	)
 	var teardown_replica_handle := _find_handle(
 		service,
@@ -457,6 +517,9 @@ func _run() -> void:
 		not service.is_handle_live(teardown_data_handle)
 		and not service.is_handle_live(teardown_replica_handle)
 		and int(host_coordinator.get_state_metrics()["known_capoo_rpg_data"]) == 0
+		and int(host_coordinator.get_state_metrics()[
+			"capoo_rpg_late_join_records"
+		]) == 0
 		and int(client_coordinator.get_state_metrics()[
 			"known_capoo_rpg_replicas"
 		]) == 0

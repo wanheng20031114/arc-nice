@@ -60,6 +60,7 @@ var enemies_only: bool = false
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"linglan_skill2_rocket"
+var damage_source_snapshot: DamageSourceSnapshot = null
 var combat_runtime: CombatRuntimeBase = null
 var gameplay_gateway: MultiplayerGameplayGateway = null
 var base_sprite_modulate: Color = Color.WHITE
@@ -124,6 +125,9 @@ func on_pool_acquired(_generation: int) -> void:
 	projectile_id = 0
 	owner_peer_id = 0
 	source_type = &"linglan_skill2_rocket"
+	damage_source_snapshot = null
+	if has_meta(&"damage_source_snapshot"):
+		remove_meta(&"damage_source_snapshot")
 	combat_runtime = null
 	gameplay_gateway = null
 	explosion_damaged_ids.clear()
@@ -154,6 +158,9 @@ func on_pool_released(_generation: int) -> void:
 	target_node = null
 	combat_runtime = null
 	gameplay_gateway = null
+	damage_source_snapshot = null
+	if has_meta(&"damage_source_snapshot"):
+		remove_meta(&"damage_source_snapshot")
 	explosion_damaged_ids.clear()
 	set_physics_process(false)
 	set_deferred("monitoring", false)
@@ -232,6 +239,21 @@ func bind_gameplay_context(
 ) -> void:
 	combat_runtime = runtime_context
 	gameplay_gateway = gateway
+
+
+func set_damage_source_snapshot(source_snapshot: DamageSourceSnapshot) -> bool:
+	damage_source_snapshot = null
+	if has_meta(&"damage_source_snapshot"):
+		remove_meta(&"damage_source_snapshot")
+	if (
+		source_snapshot == null
+		or not source_snapshot.is_valid()
+		or source_snapshot.source_type == &""
+	):
+		return false
+	damage_source_snapshot = source_snapshot.duplicate_snapshot()
+	set_meta(&"damage_source_snapshot", damage_source_snapshot.duplicate_snapshot())
+	return true
 
 
 func _physics_process(delta: float) -> void:
@@ -405,7 +427,14 @@ func _apply_enemy_damage(enemy: Enemy) -> void:
 	if impact_direction == Vector2.ZERO:
 		impact_direction = direction
 	if _is_explicit_singleplayer_authority():
-		enemy.apply_damage(damage, impact_direction, damage_type)
+		var source_id := _get_damage_source_id()
+		var event_snapshot := _create_event_damage_source_snapshot(source_id)
+		if event_snapshot == null:
+			return
+		var request := DamageRequest.new(damage, int(damage_type))
+		request.with_source_snapshot(event_snapshot)
+		request.with_directions(impact_direction)
+		enemy.apply_combat_damage(request)
 		return
 	if not _requires_multiplayer_gateway_authority():
 		return
@@ -459,14 +488,20 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 		source_type,
 		damage_type,
 		_get_source_direction_to_player(player),
-		true
+		true,
+		false,
+		damage_source_snapshot
 	)
 
 
 func _get_player_damage_context(player: Player) -> Dictionary:
+	var source_id := _get_damage_source_id()
 	return {
 		"is_ranged": true,
 		"source_direction": _get_source_direction_to_player(player),
+		"source_id": source_id,
+		"source_type": source_type,
+		"source_snapshot": _create_event_damage_source_snapshot(source_id),
 	}
 
 
@@ -524,6 +559,25 @@ func _get_damage_source_id() -> int:
 	if projectile_id > 0:
 		return projectile_id
 	return get_instance_id()
+
+
+func _create_event_damage_source_snapshot(
+	event_source_id: int
+) -> DamageSourceSnapshot:
+	if (
+		damage_source_snapshot == null
+		or not damage_source_snapshot.is_valid()
+		or damage_source_snapshot.source_type == &""
+		or event_source_id <= 0
+	):
+		return null
+	return DamageSourceSnapshot.create(
+		damage_source_snapshot.source_faction_id,
+		damage_source_snapshot.credit_peer_id,
+		damage_source_snapshot.instigator_entity_id,
+		event_source_id,
+		source_type if source_type != &"" else damage_source_snapshot.source_type
+	)
 
 
 func _apply_explosion_radius() -> void:

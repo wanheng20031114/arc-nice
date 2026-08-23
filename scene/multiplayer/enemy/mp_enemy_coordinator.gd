@@ -3,6 +3,12 @@ class_name MpEnemyCoordinator
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const _CombatTargetIndex := preload("res://scene/combat/targeting/combat_target_index.gd")
+const _CombatTargetDescriptor := preload(
+	"res://scene/combat/targeting/combat_target_descriptor.gd"
+)
+const _CombatRelationService := preload(
+	"res://scene/combat/faction/combat_relation_service.gd"
+)
 const RuntimeContentCatalogScript := preload(
 	"res://resources/config/runtime_content_catalog.gd"
 )
@@ -11,8 +17,16 @@ const GAME_RUNTIME_CLIENT_VIEW := 2
 # v26 起使用上一发送状态作为 delta 基线；缺席后回归的 peer 会促使共享 cohort 发 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-# 完整敌人记录为 24 bytes，46 条连同计数仍低于项目 1200-byte 预算。
-const ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES := 46
+# v94 full 敌人记录为 29 bytes，41 条连同计数为 1191 bytes，低于项目
+# 1200-byte 单包预算。
+const ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES := (
+	SnapshotManager.ENEMY_SNAPSHOT_MAX_RECORDS_PER_PACKET
+)
+const ENEMY_SNAPSHOT_MAX_PACKET_BYTES := 1191
+# 压力验收包含 1000 个客户端代理；保留一倍余量，同时给不可信 chunk_count
+# 和未完成批次一个明确的内存上界。
+const ENEMY_SNAPSHOT_MAX_ENTITIES_PER_BATCH := 2048
+const ENEMY_SNAPSHOT_MAX_CHUNKS := 50
 const ENEMY_HIGH_PRESSURE_THRESHOLD := 200
 const ENEMY_HIGH_PRESSURE_SNAPSHOT_HZ := 20
 const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_HZ := 15.0
@@ -29,17 +43,32 @@ const DAMAGE_PRESENTATION_FLAGS_MASK := (
 )
 const CLIENT_PENDING_ENEMY_ACTION_MAX_ENTRIES := 512
 const CLIENT_PENDING_ENEMY_ACTION_MAX_AGE_SECONDS := 5.0
+const CLIENT_PENDING_ENEMY_FACTION_MAX_ENTRIES := 512
+const CLIENT_PENDING_TARGET_PRESENTATION_MAX_ENTRIES := 512
+const TARGET_PRESENTATION_BATCH_MAX_RECORDS := 16
 const CLIENT_TERMINAL_ENEMY_TOMBSTONE_MAX_ENTRIES := 512
 const ENEMY_CONFIG_PATH_WIRE_MAX_LENGTH := 512
 const ENEMY_ACTION_NAME_WIRE_MAX_LENGTH := 128
+const TARGET_PRESENTATION_START_ACTION_NAMES := {
+	&"sniper_lock_start": true,
+	&"sniper_plant_lock_start": true,
+	&"lightning_windup": true,
+	&"lightning_windup_retry": true,
+	&"lightning_plant_windup": true,
+	&"lightning_plant_windup_retry": true,
+}
 const LIGHTNING_SORCERER_CHAIN_MIN_POINTS := 2
 const LIGHTNING_SORCERER_CHAIN_MAX_POINTS := 6
+const ENEMY_SPAWN_TOKEN_EPSILON := 0.000001
 
 const ENEMY_TERMINAL_DEFEATED := CombatTypes.EnemyTerminalReason.DEFEATED
 const ENEMY_TERMINAL_ESCAPED := CombatTypes.EnemyTerminalReason.ESCAPED
 const ENEMY_TERMINAL_REMOVED := CombatTypes.EnemyTerminalReason.REMOVED
 const CLIENT_ENEMY_ACTION_KIND_GENERIC := 0
 const CLIENT_ENEMY_ACTION_KIND_TARGET := 1
+const TARGET_ACTION_RESOLUTION_READY := 0
+const TARGET_ACTION_RESOLUTION_WAITING := 1
+const TARGET_ACTION_RESOLUTION_STALE := 2
 
 signal remote_enemy_spawned(enemy: Enemy)
 signal remote_enemy_escape_requested(net_id: int)
@@ -97,6 +126,37 @@ class SpawnBatch:
 	var config_paths := PackedStringArray()
 	var positions := PackedVector2Array()
 	var spawn_times := PackedFloat64Array()
+	var faction_ids := PackedByteArray()
+	var faction_revisions := PackedInt32Array()
+
+	func is_empty() -> bool:
+		return net_ids.is_empty()
+
+
+class FactionChangeBatch:
+	extends RefCounted
+
+	var net_ids := PackedInt32Array()
+	var faction_ids := PackedByteArray()
+	var faction_revisions := PackedInt32Array()
+
+	func is_empty() -> bool:
+		return net_ids.is_empty()
+
+
+class TargetPresentationBatch:
+	extends RefCounted
+
+	var net_ids := PackedInt32Array()
+	var state_revisions := PackedInt32Array()
+	var phases := PackedByteArray()
+	var target_kinds := PackedByteArray()
+	var target_ids := PackedInt32Array()
+	var target_revisions := PackedInt32Array()
+	var target_fallback_positions := PackedVector2Array()
+	var host_start_times := PackedFloat64Array()
+	var host_end_times := PackedFloat64Array()
+	var action_positions := PackedVector2Array()
 
 	func is_empty() -> bool:
 		return net_ids.is_empty()
@@ -109,13 +169,21 @@ class PreparedClientSpawn:
 	var config_path := ""
 	var spawn_position := Vector2.ZERO
 	var mapped_spawn_time := 0.0
+	var incarnation_token := 0.0
 	var current_time := 0.0
+	var faction_id := _CombatRelationService.HOSTILE_WAVE
+	var faction_revision := 0
 	var enemy_config: EnemyConfig = null
 	var enemy: Enemy = null
 	var previous_enemy: Enemy = null
 	var committed_enemy: Enemy = null
 	var reuses_existing := false
 	var publishes_spawn := false
+	var publishes_incarnation_token := false
+	var had_previous_spawn_snapshot_time := false
+	var previous_spawn_snapshot_time := 0.0
+	var had_previous_incarnation_token := false
+	var previous_incarnation_token := 0.0
 
 	func release() -> void:
 		if enemy == null or not is_instance_valid(enemy):
@@ -125,6 +193,13 @@ class PreparedClientSpawn:
 		# 留到下一帧。
 		enemy.free()
 		enemy = null
+
+
+class TargetActionResolution:
+	extends RefCounted
+
+	var state := TARGET_ACTION_RESOLUTION_WAITING
+	var target: Node2D = null
 
 
 class DamageFeedbackBatch:
@@ -148,8 +223,14 @@ var active_enemy_damage_feedback_context: Dictionary = {}
 var pending_enemy_snapshot_batches: Dictionary = {}
 # 未生成敌人的 CH7 动作共享一个有界 FIFO；同 net-id 只保留最新合法动作。
 var pending_enemy_actions: Dictionary = {}
-# 可靠终结可能越过旧 CH7 动作，墓碑阻止旧动作重新建立等待状态。
+# 可靠阵营变更可能先于出生名册到达；按 net-id 仅保留最高 revision。
+var pending_enemy_faction_changes: Dictionary = {}
+# CH5 持续目标表现独立于 CH7 边沿；目标/来源乱序时按 source net-id 暂存。
+var pending_enemy_target_presentation_states: Dictionary = {}
+# 有界 FIFO 只承担近期终态的表现去重；raw 水位独立保留到同 ID
+# 的严格更新 spawn，否则大波次淘汰表现墓碑后，旧 CH3 会污染新世代。
 var client_terminal_enemy_ids: Dictionary = {}
+var client_terminal_enemy_incarnation_tokens: Dictionary[int, float] = {}
 # Host 仅保留 defeated→removed 的短生命周期配对标记，不形成会话级墓碑。
 var host_terminal_enemy_ids: Dictionary = {}
 
@@ -161,9 +242,13 @@ var _projectile_coordinator: MpProjectileCoordinator = null
 var _damage_presentation_parent: Node2D = null
 var _combat_feedback_flush_time_left: float = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
 var _snapshot_manager := SnapshotManager.new()
+# 映射后的本地时间只用于拒绝旧快照/动作；Host 原始时间令牌独立承担
+# net-id 重用时的 incarnation CAS，避免时钟偏移估计变化制造假重生。
 var enemy_spawn_snapshot_times: Dictionary[int, float] = {}
+var enemy_spawn_incarnation_tokens: Dictionary[int, float] = {}
 var _stale_enemy_interpolator_ids: Array[int] = []
 var _host_snapshot_batch_sequence := 0
+var _host_enemy_spawn_times: Dictionary[int, float] = {}
 var _host_snapshot_live_ids: Dictionary[int, bool] = {}
 var _last_keyframe_time_by_peer: Dictionary[int, float] = {}
 var _snapshot_cohort_peers: Dictionary[int, bool] = {}
@@ -183,11 +268,21 @@ var _pending_enemy_action_previous_ids: Dictionary[int, int] = {}
 var _pending_enemy_action_next_ids: Dictionary[int, int] = {}
 var _pending_enemy_action_oldest_id := 0
 var _pending_enemy_action_newest_id := 0
+var _pending_enemy_faction_order: Array[int] = []
+var _client_enemy_action_revisions: Dictionary[int, int] = {}
+var _pending_target_presentation_order: Array[int] = []
+var _client_target_presentation_revisions: Dictionary[int, int] = {}
+var _client_target_presentation_phases: Dictionary[int, int] = {}
+var _client_target_presentation_terminal_revisions: Dictionary[int, int] = {}
 var _client_terminal_enemy_previous_ids: Dictionary[int, int] = {}
 var _client_terminal_enemy_next_ids: Dictionary[int, int] = {}
 var _client_terminal_enemy_oldest_id := 0
 var _client_terminal_enemy_newest_id := 0
 var _pending_host_spawns: Array[Dictionary] = []
+var _pending_host_faction_changes: Dictionary[int, Dictionary] = {}
+var _host_faction_enemy_by_net_id: Dictionary[int, Enemy] = {}
+var _host_target_presentation_states: Dictionary[int, Dictionary] = {}
+var _pending_host_target_presentation_states: Dictionary[int, Dictionary] = {}
 
 
 func bind_runtime(runtime_instance: CombatRuntimeBase) -> void:
@@ -333,11 +428,22 @@ func _on_gameplay_enemy_spawned(
 ) -> void:
 	if not _is_host_lifecycle_bound() or not is_inside_tree():
 		return
+	_host_target_presentation_states.erase(net_id)
+	_pending_host_target_presentation_states.erase(net_id)
+	# 新 incarnation 可以从 revision 0 重新开始；旧 defeated 配对标记不能吞掉
+	# 它的首个终结事件。运行时保证同 net-id 的 removed 先于再次 spawned。
+	host_terminal_enemy_ids.erase(net_id)
+	var enemy := _runtime.get_network_enemy(net_id)
+	var has_live_enemy := enemy != null and is_instance_valid(enemy)
+	if has_live_enemy:
+		_connect_host_enemy_faction_signal(net_id, enemy)
 	queue_host_spawn(
 		net_id,
 		enemy_config,
 		spawn_position,
-		_get_network_time()
+		_get_network_time(),
+		enemy.get_combat_faction_id() if has_live_enemy else -1,
+		enemy.get_faction_revision() if has_live_enemy else -1
 	)
 
 
@@ -488,12 +594,30 @@ func apply_authoritative_snapshot(
 	batch_id: int,
 	chunk_index: int,
 	chunk_count: int,
-	snapshot_hz: int
+	snapshot_hz: int,
+	raw_host_timestamp: float = -1.0
 ) -> void:
-	if not is_client_view():
+	if not is_client_view() or not is_finite(snapshot_time):
 		return
+	# 负值是仅供旧直调测试/旧协议使用的“无 raw 时间”标记；网络入口会更早
+	# 拒绝非法时间。这里仍拒绝 +INF，避免其被误当成兼容缺省值。
+	if raw_host_timestamp >= 0.0 and not is_finite(raw_host_timestamp):
+		return
+	var has_raw_host_timestamp := (
+		is_finite(raw_host_timestamp) and raw_host_timestamp >= 0.0
+	)
 	var is_chunked_batch := batch_id > 0
-	if is_chunked_batch and (chunk_count <= 0 or chunk_index < 0 or chunk_index >= chunk_count):
+	if data.size() < 2 or data.size() > ENEMY_SNAPSHOT_MAX_PACKET_BYTES:
+		return
+	if (
+		is_chunked_batch
+		and (
+			chunk_count <= 0
+			or chunk_count > ENEMY_SNAPSHOT_MAX_CHUNKS
+			or chunk_index < 0
+			or chunk_index >= chunk_count
+		)
+	):
 		return
 	if is_chunked_batch and batch_id <= _last_completed_snapshot_batch_id:
 		_snapshot_stale_chunk_count += 1
@@ -501,50 +625,139 @@ func apply_authoritative_snapshot(
 	if is_chunked_batch and batch_id < _latest_snapshot_batch_seen:
 		_snapshot_stale_chunk_count += 1
 		return
-	if is_chunked_batch:
-		_latest_snapshot_batch_seen = maxi(_latest_snapshot_batch_seen, batch_id)
-	_update_snapshot_hz(snapshot_hz)
+	# 正式解码会推进共享 baseline。必须先只读扫描 wire ID/结构，再完成
+	# batch 元数据与跨 chunk 重复检查，才能保证无效 chunk 零提交。
+	var packet_enemy_ids: Array[int] = []
+	if not _snapshot_manager.try_collect_decodable_enemy_snapshot_ids(
+		data,
+		packet_enemy_ids
+	):
+		if is_chunked_batch and pending_enemy_snapshot_batches.has(batch_id):
+			pending_enemy_snapshot_batches.erase(batch_id)
+			_prune_snapshot_receive_state_to_active_candidates()
+		return
+	if (
+		is_chunked_batch
+		and (
+			(chunk_count > 1 and packet_enemy_ids.is_empty())
+			or (
+				chunk_index < chunk_count - 1
+				and packet_enemy_ids.size()
+				!= ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES
+			)
+			or packet_enemy_ids.size() > ENEMY_SNAPSHOT_MAX_ENTITIES_PER_BATCH
+		)
+	):
+		if pending_enemy_snapshot_batches.has(batch_id):
+			pending_enemy_snapshot_batches.erase(batch_id)
+			_prune_snapshot_receive_state_to_active_candidates()
+		return
 	var batch: Dictionary = {}
+	var seen_enemy_ids: Dictionary = {}
 	if is_chunked_batch:
-		_prune_old_snapshot_batches(batch_id)
 		batch = pending_enemy_snapshot_batches.get(batch_id, {}) as Dictionary
+		if not batch.is_empty() and (
+			int(batch.get("chunk_count", 0)) != chunk_count
+			or bool(batch.get("has_raw_host_timestamp", false))
+			!= has_raw_host_timestamp
+			or (
+				has_raw_host_timestamp
+				and absf(
+					float(batch.get("raw_host_timestamp", -1.0))
+					- raw_host_timestamp
+				) > ENEMY_SPAWN_TOKEN_EPSILON
+			)
+		):
+			pending_enemy_snapshot_batches.erase(batch_id)
+			_prune_snapshot_receive_state_to_active_candidates()
+			return
+		if not batch.is_empty():
+			var received := batch["received"] as Dictionary
+			if received.has(chunk_index):
+				return
+			seen_enemy_ids = batch["seen"] as Dictionary
+			var invalid_cross_chunk_ids := (
+				seen_enemy_ids.size() + packet_enemy_ids.size()
+				> ENEMY_SNAPSHOT_MAX_ENTITIES_PER_BATCH
+			)
+			if not invalid_cross_chunk_ids:
+				for net_id in packet_enemy_ids:
+					if seen_enemy_ids.has(net_id):
+						invalid_cross_chunk_ids = true
+						break
+			if invalid_cross_chunk_ids:
+				pending_enemy_snapshot_batches.erase(batch_id)
+				_prune_snapshot_receive_state_to_active_candidates()
+				return
+	var states := _snapshot_manager.decode_enemy_snapshots_with_baseline(
+		data,
+		false
+	)
+	var snapshot_has_full_roster := _is_complete_snapshot_chunk(data, states.size())
+	if (
+		not snapshot_has_full_roster
+		or states.size() != packet_enemy_ids.size()
+	):
+		if is_chunked_batch:
+			pending_enemy_snapshot_batches.erase(batch_id)
+			_prune_snapshot_receive_state_to_active_candidates()
+		return
+	for net_id in packet_enemy_ids:
+		seen_enemy_ids[net_id] = true
+	if is_chunked_batch:
+		# 只有 wire 结构和正式语义解码都成功的 chunk 才能建立/推进 batch
+		# 水位；高 batch-id 的非法 faction/health 不能淘汰较老合法批次。
 		if batch.is_empty():
 			batch = {
 				"chunk_count": chunk_count,
 				"received": {},
-				"seen": {},
+				"seen": seen_enemy_ids,
 				"snapshot_time": snapshot_time,
+				"has_raw_host_timestamp": has_raw_host_timestamp,
+				"raw_host_timestamp": raw_host_timestamp,
 			}
 			pending_enemy_snapshot_batches[batch_id] = batch
-		elif int(batch.get("chunk_count", 0)) != chunk_count:
-			pending_enemy_snapshot_batches.erase(batch_id)
-			return
-		var received := batch["received"] as Dictionary
-		if received.has(chunk_index):
-			return
-	var states := _snapshot_manager.decode_enemy_snapshots_with_baseline(
-		data,
-		not is_chunked_batch
-	)
-	var snapshot_has_full_roster := _is_complete_snapshot_chunk(data, states.size())
-	var seen_enemy_ids: Dictionary = {}
-	if is_chunked_batch:
-		seen_enemy_ids = batch["seen"] as Dictionary
+		_latest_snapshot_batch_seen = maxi(_latest_snapshot_batch_seen, batch_id)
+		_prune_old_snapshot_batches(batch_id)
+	_update_snapshot_hz(snapshot_hz)
 	for state in states:
 		var enemy_state := state as SnapshotManager.EnemyState
 		if enemy_state == null or enemy_state.net_id <= 0:
 			continue
-		seen_enemy_ids[enemy_state.net_id] = true
+		if (
+			_is_client_terminal_blocked(enemy_state.net_id)
+			or _is_snapshot_older_than_enemy_incarnation(
+				enemy_state.net_id,
+				snapshot_time,
+				raw_host_timestamp
+			)
+		):
+			# 可靠终态墓碑禁止快照独自复活实体；新 spawn 会事务性清墓碑。
+			# raw Host 时间优先承担 incarnation CAS，mapped 时间仅兼容旧直调。
+			_snapshot_manager.erase_enemy_receive_baseline(enemy_state.net_id)
+			continue
 		if enemy_state.is_dead:
 			var dead_enemy := get_valid_client_enemy(enemy_state.net_id)
 			if dead_enemy != null and is_instance_valid(dead_enemy):
 				dead_enemy.global_position = enemy_state.position
+				_apply_client_enemy_faction_change(
+					dead_enemy,
+					enemy_state.faction_id,
+					enemy_state.faction_revision
+				)
 				apply_network_health(
 					dead_enemy,
 					enemy_state.health,
 					enemy_state.health_revision
 				)
-			remove_client_enemy(enemy_state.net_id, true)
+			mark_client_terminal(enemy_state.net_id, raw_host_timestamp)
+			remove_client_enemy(
+				enemy_state.net_id,
+				true,
+				false,
+				false,
+				true
+			)
 			continue
 		var interpolator := enemy_interpolators.get(
 			enemy_state.net_id
@@ -563,6 +776,11 @@ func apply_authoritative_snapshot(
 		)
 		var enemy_node := get_valid_client_enemy(enemy_state.net_id)
 		if enemy_node != null and is_instance_valid(enemy_node):
+			_apply_client_enemy_faction_change(
+				enemy_node,
+				enemy_state.faction_id,
+				enemy_state.faction_revision
+			)
 			apply_network_health(
 				enemy_node,
 					enemy_state.health,
@@ -571,9 +789,24 @@ func apply_authoritative_snapshot(
 			enemy_node.apply_multiplayer_visual_status_mask(
 				enemy_state.visual_status_mask
 			)
+		else:
+			_cache_pending_enemy_faction_change(
+				enemy_state.net_id,
+				enemy_state.faction_id,
+				enemy_state.faction_revision
+			)
 	if not is_chunked_batch:
 		if snapshot_has_full_roster:
-			reconcile_roster(seen_enemy_ids, snapshot_time)
+			_prune_snapshot_receive_baseline_for_roster(
+				seen_enemy_ids,
+				snapshot_time,
+				raw_host_timestamp
+			)
+			reconcile_roster(
+				seen_enemy_ids,
+				snapshot_time,
+				raw_host_timestamp
+			)
 		return
 	if not snapshot_has_full_roster:
 		return
@@ -581,19 +814,32 @@ func apply_authoritative_snapshot(
 	received[chunk_index] = true
 	if received.size() != chunk_count:
 		return
-	_snapshot_manager.prune_enemy_receive_baseline_to_ids(seen_enemy_ids)
+	var batch_snapshot_time := float(batch.get("snapshot_time", snapshot_time))
+	var batch_raw_host_timestamp := float(
+		batch.get("raw_host_timestamp", raw_host_timestamp)
+	)
+	_prune_snapshot_receive_baseline_for_roster(
+		seen_enemy_ids,
+		batch_snapshot_time,
+		batch_raw_host_timestamp
+	)
 	_snapshot_completed_batch_count += 1
 	_last_completed_snapshot_batch_id = batch_id
 	_discard_snapshot_batches_through(batch_id)
 	reconcile_roster(
 		seen_enemy_ids,
-		float(batch.get("snapshot_time", snapshot_time))
+		batch_snapshot_time,
+		batch_raw_host_timestamp
 	)
 
 
 func interpolate_remote_enemies(current_time: float) -> void:
 	if not is_client_view():
 		return
+	if not pending_enemy_target_presentation_states.is_empty():
+		_replay_ready_pending_target_presentation_states(current_time)
+	if not pending_enemy_actions.is_empty():
+		_replay_ready_pending_enemy_actions(current_time, _runtime)
 	_stale_enemy_interpolator_ids.clear()
 	for net_id_variant in enemy_interpolators:
 		var net_id := int(net_id_variant)
@@ -694,10 +940,19 @@ func build_live_spawn_batches(host_timestamp: float) -> Array[SpawnBatch]:
 				or not enemy.global_position.is_finite()
 			):
 				continue
+			_connect_host_enemy_faction_signal(net_id, enemy)
 			batch.net_ids.append(net_id)
 			batch.config_paths.append(enemy.config.resource_path)
 			batch.positions.append(enemy.global_position)
-			batch.spawn_times.append(host_timestamp)
+			var incarnation_time := float(
+				_host_enemy_spawn_times.get(net_id, -1.0)
+			)
+			if not is_finite(incarnation_time) or incarnation_time < 0.0:
+				incarnation_time = host_timestamp
+				_host_enemy_spawn_times[net_id] = incarnation_time
+			batch.spawn_times.append(incarnation_time)
+			batch.faction_ids.append(enemy.get_combat_faction_id())
+			batch.faction_revisions.append(enemy.get_faction_revision())
 		if not batch.is_empty():
 			batches.append(batch)
 	return batches
@@ -718,8 +973,17 @@ func send_live_spawn_roster_to_peer(peer_id: int) -> void:
 				batch.config_paths,
 				batch.positions,
 				batch.spawn_times,
+				batch.faction_ids,
+				batch.faction_revisions,
 			]
 		)
+	# 同一可靠信道上先生成 roster、后持续表现状态；客户端解析 ACTIVE 时
+	# source 已存在，NONE 也会显式清掉断线前遗留的锁定/预警视觉。
+	_expire_host_target_presentation_states(host_timestamp)
+	for batch in _build_target_presentation_batches(
+		_host_target_presentation_states
+	):
+		_emit_target_presentation_batch_to_peer(peer_id, batch)
 
 
 func receive_enemy_spawn_packet(
@@ -729,13 +993,22 @@ func receive_enemy_spawn_packet(
 	host_spawn_timestamp: float,
 	local_net_time: float,
 	has_host_time_offset: bool,
-	host_to_client_time_offset: float
+	host_to_client_time_offset: float,
+	faction_id: int = -1,
+	faction_revision: int = -1,
+	strict_v94: bool = false
 ) -> void:
-	if not _is_valid_spawn_record(
-		net_id,
-		config_path,
-		spawn_position,
-		host_spawn_timestamp
+	if (
+		not _is_valid_spawn_record(
+			net_id,
+			config_path,
+			spawn_position,
+			host_spawn_timestamp
+		)
+		or (
+			strict_v94
+			and not _is_valid_faction_state(faction_id, faction_revision)
+		)
 	):
 		return
 	var mapped_spawn_time := _map_remote_timestamp(
@@ -751,7 +1024,10 @@ func receive_enemy_spawn_packet(
 		config_path,
 		spawn_position,
 		mapped_spawn_time,
-		local_net_time
+		local_net_time,
+		faction_id,
+		faction_revision,
+		host_spawn_timestamp
 	)
 
 
@@ -762,16 +1038,28 @@ func receive_enemy_spawn_batch(
 	spawn_times: PackedFloat64Array,
 	local_net_time: float,
 	has_host_time_offset: bool,
-	host_to_client_time_offset: float
+	host_to_client_time_offset: float,
+	faction_ids: PackedByteArray = PackedByteArray(),
+	faction_revisions: PackedInt32Array = PackedInt32Array(),
+	strict_v94: bool = false
 ) -> void:
 	if (
 		not is_client_view()
 		or not is_finite(local_net_time)
+		or (
+			strict_v94
+			and (
+				faction_ids.is_empty()
+				or faction_revisions.is_empty()
+			)
+		)
 		or not _is_valid_spawn_batch_payload(
-		net_ids,
-		config_paths,
-		positions,
-		spawn_times
+			net_ids,
+			config_paths,
+			positions,
+			spawn_times,
+			faction_ids,
+			faction_revisions
 		)
 	):
 		return
@@ -791,7 +1079,18 @@ func receive_enemy_spawn_batch(
 			config_paths[record_index],
 			positions[record_index],
 			mapped_spawn_time,
-			local_net_time
+			local_net_time,
+			(
+				int(faction_ids[record_index])
+				if not faction_ids.is_empty()
+				else -1
+			),
+			(
+				faction_revisions[record_index]
+				if not faction_revisions.is_empty()
+				else -1
+			),
+			spawn_times[record_index]
 		)
 		if prepared == null:
 			_release_prepared_client_spawns(prepared_spawns)
@@ -805,18 +1104,427 @@ func receive_enemy_spawn(
 	config_path: String,
 	spawn_position: Vector2,
 	mapped_spawn_time: float,
-	current_time: float
+	current_time: float,
+	faction_id: int = -1,
+	faction_revision: int = -1,
+	incarnation_token: float = NAN
 ) -> void:
+	var resolved_incarnation_token := (
+		incarnation_token if is_finite(incarnation_token) else mapped_spawn_time
+	)
 	var prepared := _prepare_client_spawn(
 		net_id,
 		config_path,
 		spawn_position,
 		mapped_spawn_time,
-		current_time
+		current_time,
+		faction_id,
+		faction_revision,
+		resolved_incarnation_token
 	)
 	if prepared == null:
 		return
 	_commit_prepared_client_spawns([prepared])
+
+
+func receive_enemy_faction_changed_batch(
+	net_ids: PackedInt32Array,
+	faction_ids: PackedByteArray,
+	faction_revisions: PackedInt32Array
+) -> void:
+	if (
+		not is_client_view()
+		or not _is_valid_faction_change_batch_payload(
+			net_ids,
+			faction_ids,
+			faction_revisions
+		)
+	):
+		return
+	for record_index in range(net_ids.size()):
+		var net_id := net_ids[record_index]
+		var faction_id := int(faction_ids[record_index])
+		var faction_revision := faction_revisions[record_index]
+		if _is_client_terminal_blocked(net_id):
+			continue
+		var enemy := get_valid_client_enemy(net_id)
+		if enemy == null or not is_instance_valid(enemy):
+			_cache_pending_enemy_faction_change(
+				net_id,
+				faction_id,
+				faction_revision
+			)
+			continue
+		_apply_client_enemy_faction_change(
+			enemy,
+			faction_id,
+			faction_revision
+		)
+
+
+func receive_enemy_target_presentation_state_batch_packet(
+	net_ids: PackedInt32Array,
+	state_revisions: PackedInt32Array,
+	phases: PackedByteArray,
+	target_kinds: PackedByteArray,
+	target_ids: PackedInt32Array,
+	target_revisions: PackedInt32Array,
+	target_fallback_positions: PackedVector2Array,
+	host_start_times: PackedFloat64Array,
+	host_end_times: PackedFloat64Array,
+	action_positions: PackedVector2Array,
+	local_net_time: float,
+	has_host_time_offset: bool,
+	host_to_client_time_offset: float
+) -> void:
+	if (
+		not is_client_view()
+		or not is_finite(local_net_time)
+		or not _is_valid_target_presentation_batch_payload(
+			net_ids,
+			state_revisions,
+			phases,
+			target_kinds,
+			target_ids,
+			target_revisions,
+			target_fallback_positions,
+			host_start_times,
+			host_end_times,
+			action_positions
+		)
+	):
+		return
+	var records: Array[Dictionary] = []
+	for record_index in range(net_ids.size()):
+		var host_start_time := host_start_times[record_index]
+		var host_end_time := host_end_times[record_index]
+		var mapped_start_time := local_net_time
+		var mapped_end_time := local_net_time + (host_end_time - host_start_time)
+		if has_host_time_offset:
+			mapped_start_time = _map_remote_timestamp(
+				host_start_time,
+				local_net_time,
+				true,
+				host_to_client_time_offset
+			)
+			mapped_end_time = _map_remote_timestamp(
+				host_end_time,
+				local_net_time,
+				true,
+				host_to_client_time_offset
+			)
+		if (
+			not is_finite(mapped_start_time)
+			or not is_finite(mapped_end_time)
+			or mapped_end_time < mapped_start_time
+		):
+			return
+		records.append({
+			"net_id": net_ids[record_index],
+			"state_revision": state_revisions[record_index],
+			"phase": int(phases[record_index]),
+			"target_kind": int(target_kinds[record_index]),
+			"target_id": target_ids[record_index],
+			"target_revision": target_revisions[record_index],
+			"target_fallback_position": target_fallback_positions[record_index],
+			"start_time": mapped_start_time,
+			"end_time": mapped_end_time,
+			"host_reference_timestamp": host_start_time,
+			"action_position": action_positions[record_index],
+		})
+	receive_enemy_target_presentation_states(records, local_net_time)
+
+
+func receive_enemy_target_presentation_states(
+	records: Array[Dictionary],
+	current_time: float
+) -> void:
+	if not is_client_view() or not is_finite(current_time):
+		return
+	for record in records:
+		if not _is_valid_target_presentation_record(record):
+			return
+	for record in records:
+		_receive_target_presentation_record(record, current_time)
+
+
+func _receive_target_presentation_record(
+	record: Dictionary,
+	current_time: float
+) -> void:
+	var net_id := int(record.get("net_id", 0))
+	var state_revision := int(record.get("state_revision", 0))
+	var phase := int(record.get("phase", Enemy.TargetPresentationPhase.NONE))
+	if (
+		_is_client_terminal_blocked(net_id)
+		or _is_record_older_than_enemy_incarnation(
+			record,
+			net_id,
+			"host_reference_timestamp"
+		)
+		or (
+			enemy_spawn_snapshot_times.has(net_id)
+			and float(record.get("start_time", -INF))
+			< float(enemy_spawn_snapshot_times.get(net_id, -INF))
+		)
+		or not _accept_client_target_presentation_revision(
+			net_id,
+			state_revision,
+			phase
+		)
+	):
+		return
+	_commit_client_target_presentation_watermarks(record)
+	_erase_pending_target_presentation_state(net_id)
+	var apply_state := _apply_client_target_presentation_record(
+		record,
+		current_time
+	)
+	if apply_state == TARGET_ACTION_RESOLUTION_WAITING:
+		_cache_pending_target_presentation_state(record)
+
+
+func _accept_client_target_presentation_revision(
+	net_id: int,
+	state_revision: int,
+	phase: int
+) -> bool:
+	var action_revision := int(_client_enemy_action_revisions.get(net_id, 0))
+	# CH7 的 fire/cancel 边沿可能先于 CH5 可靠持续态到达。旧 ACTIVE 一旦
+	# 落后于动作水位就必须拒绝，否则已结束的锁定会被重新打开。
+	if state_revision < action_revision:
+		return false
+	var current_revision := int(
+		_client_target_presentation_revisions.get(net_id, 0)
+	)
+	if state_revision > current_revision:
+		# state_revision == action_revision 时仍允许：这正是同一 start 边沿的
+		# 可靠修复；只有严格落后于 CH7 水位才代表过期状态。
+		return true
+	return (
+		state_revision == current_revision
+		and phase == Enemy.TargetPresentationPhase.NONE
+		and int(_client_target_presentation_phases.get(
+			net_id,
+			Enemy.TargetPresentationPhase.NONE
+		)) != Enemy.TargetPresentationPhase.NONE
+	)
+
+
+func _apply_client_target_presentation_record(
+	record: Dictionary,
+	current_time: float
+) -> int:
+	var net_id := int(record.get("net_id", 0))
+	var state_revision := int(record.get("state_revision", 0))
+	var phase := int(record.get("phase", Enemy.TargetPresentationPhase.NONE))
+	var effective_record := record
+	if (
+		phase != Enemy.TargetPresentationPhase.NONE
+		and current_time >= float(record.get("end_time", -INF))
+	):
+		effective_record = _make_target_presentation_clear_record(record)
+		phase = Enemy.TargetPresentationPhase.NONE
+		_commit_client_target_presentation_watermarks(effective_record)
+	var source_enemy := get_valid_client_enemy(net_id)
+	if source_enemy == null or not is_instance_valid(source_enemy):
+		if effective_record != record:
+			record.clear()
+			record.merge(effective_record, true)
+		return TARGET_ACTION_RESOLUTION_WAITING
+	var target: Node2D = null
+	if phase != Enemy.TargetPresentationPhase.NONE:
+		var resolution := _resolve_target_action(effective_record, _runtime)
+		if resolution.state == TARGET_ACTION_RESOLUTION_WAITING:
+			return TARGET_ACTION_RESOLUTION_WAITING
+		if resolution.state == TARGET_ACTION_RESOLUTION_STALE:
+			effective_record = _make_target_presentation_clear_record(
+				effective_record
+			)
+			phase = Enemy.TargetPresentationPhase.NONE
+			_commit_client_target_presentation_watermarks(effective_record)
+		else:
+			target = resolution.target
+	var start_time := float(effective_record.get("start_time", current_time))
+	var end_time := float(effective_record.get("end_time", current_time))
+	var elapsed_seconds := maxf(current_time - start_time, 0.0)
+	var remaining_seconds := maxf(end_time - current_time, 0.0)
+	source_enemy.apply_multiplayer_target_presentation_state(
+		phase,
+		target,
+		effective_record.get("action_position", Vector2.ZERO) as Vector2,
+		state_revision,
+		elapsed_seconds,
+		remaining_seconds
+	)
+	return TARGET_ACTION_RESOLUTION_READY
+
+
+func _make_target_presentation_clear_record(record: Dictionary) -> Dictionary:
+	var clear_record := record.duplicate(true)
+	var end_time := float(record.get("end_time", 0.0))
+	clear_record["phase"] = Enemy.TargetPresentationPhase.NONE
+	clear_record["target_kind"] = _CombatTargetDescriptor.Kind.NONE
+	clear_record["target_id"] = 0
+	clear_record["target_revision"] = 0
+	clear_record["target_fallback_position"] = Vector2.ZERO
+	clear_record["start_time"] = end_time
+	clear_record["end_time"] = end_time
+	return clear_record
+
+
+func _cache_pending_target_presentation_state(record: Dictionary) -> bool:
+	var net_id := int(record.get("net_id", 0))
+	if (
+		net_id <= 0
+		or _is_client_terminal_blocked(net_id)
+		or _is_record_older_than_enemy_incarnation(
+			record,
+			net_id,
+			"host_reference_timestamp"
+		)
+		or (
+			enemy_spawn_snapshot_times.has(net_id)
+			and float(record.get("start_time", -INF))
+			< float(enemy_spawn_snapshot_times.get(net_id, -INF))
+		)
+	):
+		return false
+	if pending_enemy_target_presentation_states.has(net_id):
+		_erase_pending_target_presentation_state(net_id)
+	while (
+		pending_enemy_target_presentation_states.size()
+		>= CLIENT_PENDING_TARGET_PRESENTATION_MAX_ENTRIES
+		and not _pending_target_presentation_order.is_empty()
+	):
+		var evicted_id: int = _pending_target_presentation_order.pop_front()
+		pending_enemy_target_presentation_states.erase(evicted_id)
+	pending_enemy_target_presentation_states[net_id] = record.duplicate(true)
+	_pending_target_presentation_order.append(net_id)
+	return true
+
+
+func _erase_pending_target_presentation_state(net_id: int) -> bool:
+	if not pending_enemy_target_presentation_states.erase(net_id):
+		return false
+	_pending_target_presentation_order.erase(net_id)
+	return true
+
+
+func _replay_ready_pending_target_presentation_states(
+	current_time: float
+) -> int:
+	if not is_finite(current_time):
+		return 0
+	var ordered_ids: Array[int] = _pending_target_presentation_order.duplicate()
+	var replayed_count := 0
+	for net_id in ordered_ids:
+		var record := pending_enemy_target_presentation_states.get(
+			net_id,
+			{}
+		) as Dictionary
+		if record.is_empty():
+			continue
+		if _is_record_older_than_enemy_incarnation(
+			record,
+			net_id,
+			"host_reference_timestamp"
+		):
+			_erase_pending_target_presentation_state(net_id)
+			continue
+		if int(record.get("state_revision", 0)) < int(
+			_client_enemy_action_revisions.get(net_id, 0)
+		):
+			# 等待目标期间 CH7 可能已交付更新的 fire/cancel。此时旧 ACTIVE
+			# 不得绕过接收 CAS，在目标晚生成后重新打开已结束的表现。
+			_erase_pending_target_presentation_state(net_id)
+			continue
+		_seed_client_target_presentation_watermarks(record)
+		var apply_state := _apply_client_target_presentation_record(
+			record,
+			current_time
+		)
+		if apply_state == TARGET_ACTION_RESOLUTION_WAITING:
+			continue
+		_erase_pending_target_presentation_state(net_id)
+		replayed_count += 1
+	return replayed_count
+
+
+func _consume_pending_target_presentation_state(
+	net_id: int,
+	current_time: float
+) -> bool:
+	var record := pending_enemy_target_presentation_states.get(net_id, {}) as Dictionary
+	if record.is_empty():
+		return false
+	if _is_record_older_than_enemy_incarnation(
+		record,
+		net_id,
+		"host_reference_timestamp"
+	):
+		_erase_pending_target_presentation_state(net_id)
+		return false
+	if int(record.get("state_revision", 0)) < int(
+		_client_enemy_action_revisions.get(net_id, 0)
+	):
+		_erase_pending_target_presentation_state(net_id)
+		return false
+	_seed_client_target_presentation_watermarks(record)
+	var apply_state := _apply_client_target_presentation_record(
+		record,
+		current_time
+	)
+	if apply_state == TARGET_ACTION_RESOLUTION_WAITING:
+		return false
+	_erase_pending_target_presentation_state(net_id)
+	return true
+
+
+func _seed_client_target_presentation_watermarks(record: Dictionary) -> void:
+	_commit_client_target_presentation_watermarks(record)
+
+
+func _commit_client_target_presentation_watermarks(record: Dictionary) -> void:
+	var net_id := int(record.get("net_id", 0))
+	var state_revision := int(record.get("state_revision", 0))
+	if net_id <= 0 or state_revision <= 0:
+		return
+	var phase := int(record.get(
+		"phase",
+		Enemy.TargetPresentationPhase.NONE
+	))
+	_client_target_presentation_revisions[net_id] = state_revision
+	_client_target_presentation_phases[net_id] = phase
+	if phase != Enemy.TargetPresentationPhase.NONE:
+		return
+	_client_target_presentation_terminal_revisions[net_id] = maxi(
+		int(_client_target_presentation_terminal_revisions.get(net_id, 0)),
+		state_revision
+	)
+	var pending := pending_enemy_actions.get(net_id, {}) as Dictionary
+	if _is_action_blocked_by_target_presentation_terminal(pending):
+		erase_pending_enemy_action(net_id)
+
+
+func _is_action_blocked_by_target_presentation_terminal(
+	record: Dictionary
+) -> bool:
+	if record.is_empty():
+		return false
+	var net_id := int(record.get("net_id", 0))
+	var action_id := int(record.get("action_id", 0))
+	if net_id <= 0 or action_id <= 0:
+		return false
+	var terminal_revision := int(
+		_client_target_presentation_terminal_revisions.get(net_id, 0)
+	)
+	if action_id < terminal_revision:
+		return true
+	if action_id > terminal_revision:
+		return false
+	var action_name := StringName(record.get("action_name", &""))
+	return TARGET_PRESENTATION_START_ACTION_NAMES.has(action_name)
 
 
 func _prepare_client_spawn(
@@ -824,7 +1532,10 @@ func _prepare_client_spawn(
 	config_path: String,
 	spawn_position: Vector2,
 	mapped_spawn_time: float,
-	current_time: float
+	current_time: float,
+	faction_id: int = -1,
+	faction_revision: int = -1,
+	incarnation_token: float = NAN
 ) -> PreparedClientSpawn:
 	if (
 		not is_client_view()
@@ -835,10 +1546,14 @@ func _prepare_client_spawn(
 			mapped_spawn_time
 		)
 		or not is_finite(current_time)
+		or not is_finite(incarnation_token)
+		or incarnation_token < 0.0
 		or _runtime.enemy_container == null
 		or not is_instance_valid(_runtime.enemy_container)
 		or _runtime.enemy_container.is_queued_for_deletion()
 	):
+		return null
+	if _is_spawn_blocked_by_terminal_incarnation(net_id, incarnation_token):
 		return null
 	# 调用方路径只用于精确查表；资源加载器永远不接收网络字符串。
 	var runtime: CombatRuntimeBase = _runtime
@@ -848,18 +1563,47 @@ func _prepare_client_spawn(
 	)
 	if enemy_config == null:
 		return null
+	var resolved_faction_id := faction_id
+	var resolved_faction_revision := faction_revision
+	if resolved_faction_id < 0 and resolved_faction_revision < 0:
+		resolved_faction_id = enemy_config.default_combat_faction_id
+		resolved_faction_revision = 0
+	if not _is_valid_faction_state(
+		resolved_faction_id,
+		resolved_faction_revision
+	):
+		return null
 	var prepared := PreparedClientSpawn.new()
 	prepared.net_id = net_id
 	prepared.config_path = config_path
 	prepared.spawn_position = spawn_position
 	prepared.mapped_spawn_time = mapped_spawn_time
+	prepared.incarnation_token = incarnation_token
 	prepared.current_time = current_time
+	prepared.faction_id = resolved_faction_id
+	prepared.faction_revision = resolved_faction_revision
 	prepared.enemy_config = enemy_config
 	prepared.previous_enemy = runtime.get_network_enemy(net_id)
+	var has_known_incarnation := enemy_spawn_incarnation_tokens.has(net_id)
+	var known_incarnation_token := float(
+		enemy_spawn_incarnation_tokens.get(net_id, -INF)
+	)
+	if (
+		has_known_incarnation
+		and incarnation_token
+		< known_incarnation_token - ENEMY_SPAWN_TOKEN_EPSILON
+	):
+		return null
+	var matches_known_incarnation := (
+		not has_known_incarnation
+		or absf(incarnation_token - known_incarnation_token)
+		<= ENEMY_SPAWN_TOKEN_EPSILON
+	)
 	if _can_reuse_existing_client_enemy(
 		prepared.previous_enemy,
 		config_path,
-		enemy_container
+		enemy_container,
+		matches_known_incarnation
 	):
 		# 幂等记录在这里短路，不实例化场景、不触发入树回调，也不分配导航相位。
 		prepared.reuses_existing = true
@@ -880,10 +1624,12 @@ func _prepare_client_spawn(
 func _can_reuse_existing_client_enemy(
 	enemy: Enemy,
 	config_path: String,
-	enemy_container: Node
+	enemy_container: Node,
+	matches_known_incarnation: bool
 ) -> bool:
 	return (
-		enemy != null
+		matches_known_incarnation
+		and enemy != null
 		and is_instance_valid(enemy)
 		and not enemy.is_queued_for_deletion()
 		and enemy.get_parent() == enemy_container
@@ -891,6 +1637,127 @@ func _can_reuse_existing_client_enemy(
 		and enemy.config != null
 		and enemy.config.resource_path == config_path
 	)
+
+
+func _apply_spawn_faction_state(
+	enemy: Enemy,
+	faction_id: int,
+	faction_revision: int,
+	is_unregistered_candidate: bool
+) -> bool:
+	if (
+		enemy == null
+		or not is_instance_valid(enemy)
+		or not _is_valid_faction_state(faction_id, faction_revision)
+	):
+		return false
+	if is_unregistered_candidate:
+		# 候选尚未进入 runtime 注册表与 CombatTargetIndex；在公开前直接写入
+		# 权威初值，避免把“revision 0 的非默认阵营”误判成一次陈旧变更。
+		enemy.combat_faction_id = faction_id
+		enemy.faction_revision = faction_revision
+		return true
+	var current_revision := enemy.get_faction_revision()
+	if faction_revision < current_revision:
+		return true
+	if faction_revision == current_revision:
+		return enemy.get_combat_faction_id() == faction_id
+	return enemy.apply_network_combat_faction(faction_id, faction_revision)
+
+
+func _can_accept_spawn_faction_state(
+	enemy: Enemy,
+	faction_id: int,
+	faction_revision: int
+) -> bool:
+	if (
+		enemy == null
+		or not is_instance_valid(enemy)
+		or not _is_valid_faction_state(faction_id, faction_revision)
+	):
+		return false
+	if faction_revision != enemy.get_faction_revision():
+		return true
+	return enemy.get_combat_faction_id() == faction_id
+
+
+func _apply_client_enemy_faction_change(
+	enemy: Enemy,
+	faction_id: int,
+	faction_revision: int
+) -> bool:
+	if (
+		enemy == null
+		or not is_instance_valid(enemy)
+		or not _is_valid_faction_state(faction_id, faction_revision)
+	):
+		return false
+	var current_revision := enemy.get_faction_revision()
+	if faction_revision <= current_revision:
+		return (
+			faction_revision == current_revision
+			and enemy.get_combat_faction_id() == faction_id
+		)
+	return enemy.apply_network_combat_faction(faction_id, faction_revision)
+
+
+func _cache_pending_enemy_faction_change(
+	net_id: int,
+	faction_id: int,
+	faction_revision: int
+) -> bool:
+	if (
+		net_id <= 0
+		or _is_client_terminal_blocked(net_id)
+		or not _is_valid_faction_state(faction_id, faction_revision)
+	):
+		return false
+	var current := pending_enemy_faction_changes.get(net_id, {}) as Dictionary
+	if not current.is_empty():
+		var current_revision := int(current.get("faction_revision", -1))
+		if faction_revision <= current_revision:
+			return false
+	else:
+		while (
+			pending_enemy_faction_changes.size()
+			>= CLIENT_PENDING_ENEMY_FACTION_MAX_ENTRIES
+			and not _pending_enemy_faction_order.is_empty()
+		):
+			var evicted_id: int = _pending_enemy_faction_order.pop_front()
+			pending_enemy_faction_changes.erase(evicted_id)
+		_pending_enemy_faction_order.append(net_id)
+	pending_enemy_faction_changes[net_id] = {
+		"faction_id": faction_id,
+		"faction_revision": faction_revision,
+	}
+	return true
+
+
+func _consume_pending_enemy_faction_change(
+	net_id: int,
+	enemy: Enemy
+) -> bool:
+	var pending := pending_enemy_faction_changes.get(net_id, {}) as Dictionary
+	if pending.is_empty():
+		return false
+	_erase_pending_enemy_faction_change(net_id)
+	return _apply_client_enemy_faction_change(
+		enemy,
+		int(pending.get("faction_id", -1)),
+		int(pending.get("faction_revision", -1))
+	)
+
+
+func _erase_pending_enemy_faction_change(net_id: int) -> bool:
+	if not pending_enemy_faction_changes.erase(net_id):
+		return false
+	_pending_enemy_faction_order.erase(net_id)
+	return true
+
+
+func clear_pending_enemy_faction_changes() -> void:
+	pending_enemy_faction_changes.clear()
+	_pending_enemy_faction_order.clear()
 
 
 func _commit_prepared_client_spawns(
@@ -927,8 +1794,33 @@ func _commit_prepared_client_spawns(
 	):
 		_release_prepared_client_spawns(prepared_spawns)
 		return
+	# 复用记录在整批注册事务成功前只做只读校验，避免后续记录失败时
+	# 提前改变既有敌人的阵营。此处无公开回调，预检后的 CAS 必然可提交。
+	for prepared in prepared_spawns:
+		if not prepared.reuses_existing:
+			continue
+		var faction_applied := _apply_spawn_faction_state(
+			prepared.committed_enemy,
+			prepared.faction_id,
+			prepared.faction_revision,
+			false
+		)
+		assert(faction_applied, "MpEnemyCoordinator 生成事务阵营预检与提交不一致。")
+		if not faction_applied:
+			_clear_committed_client_spawn_batch(runtime, prepared_spawns)
+			return
 	for prepared in prepared_spawns:
 		clear_client_terminal_marker(prepared.net_id)
+		clear_client_terminal_incarnation_token(prepared.net_id)
+		if prepared.publishes_spawn:
+			_client_enemy_action_revisions.erase(prepared.net_id)
+			_client_target_presentation_revisions.erase(prepared.net_id)
+			_client_target_presentation_phases.erase(prepared.net_id)
+			_client_target_presentation_terminal_revisions.erase(prepared.net_id)
+		_consume_pending_enemy_faction_change(
+			prepared.net_id,
+			prepared.committed_enemy
+		)
 
 	# 第三阶段：全部记录均可查询后才发布回调与表现；冻结的运行时保证回调解绑安全。
 	_publish_prepared_client_spawns(
@@ -955,13 +1847,21 @@ func _stage_prepared_client_spawn(
 		return false
 	if prepared.reuses_existing:
 		var existing_enemy := prepared.committed_enemy
-		return (
+		var existing_is_valid := (
 			existing_enemy != null
 			and is_instance_valid(existing_enemy)
 			and not existing_enemy.is_queued_for_deletion()
 			and existing_enemy.get_parent() == enemy_container
 			and runtime.get_network_enemy(prepared.net_id) == existing_enemy
 			and _runtime == runtime
+		)
+		return (
+			existing_is_valid
+			and _can_accept_spawn_faction_state(
+				existing_enemy,
+				prepared.faction_id,
+				prepared.faction_revision
+			)
 		)
 	if (
 		prepared.enemy == null
@@ -989,6 +1889,13 @@ func _stage_prepared_client_spawn(
 		runtime
 	)
 	if not is_instance_valid(enemy) or enemy.is_queued_for_deletion():
+		return false
+	if not _apply_spawn_faction_state(
+		enemy,
+		prepared.faction_id,
+		prepared.faction_revision,
+		true
+	):
 		return false
 	enemy.configure_multiplayer_proxy()
 	return (
@@ -1031,16 +1938,46 @@ func _swap_prepared_client_spawn_registry(
 	for prepared in prepared_spawns:
 		if prepared.publishes_spawn:
 			prepared.enemy = null
+			_snapshot_manager.erase_enemy_receive_baseline(prepared.net_id)
+			_capture_prepared_spawn_time_rollback(prepared)
 			enemy_spawn_snapshot_times[prepared.net_id] = (
 				prepared.mapped_spawn_time
 			)
+			enemy_spawn_incarnation_tokens[prepared.net_id] = (
+				prepared.incarnation_token
+			)
+			prepared.publishes_incarnation_token = true
 			_offscreen_interpolation_slots.erase(prepared.net_id)
 			var previous_enemy := prepared.previous_enemy
 			if previous_enemy != null and is_instance_valid(previous_enemy):
 				previous_enemy.queue_free()
 		else:
+			if not enemy_spawn_incarnation_tokens.has(prepared.net_id):
+				_capture_prepared_spawn_time_rollback(prepared)
+				enemy_spawn_snapshot_times[prepared.net_id] = (
+					prepared.mapped_spawn_time
+				)
+				enemy_spawn_incarnation_tokens[prepared.net_id] = (
+					prepared.incarnation_token
+				)
+				prepared.publishes_incarnation_token = true
 			prepared.release()
 	return true
+
+
+func _capture_prepared_spawn_time_rollback(prepared: PreparedClientSpawn) -> void:
+	prepared.had_previous_spawn_snapshot_time = (
+		enemy_spawn_snapshot_times.has(prepared.net_id)
+	)
+	prepared.previous_spawn_snapshot_time = float(
+		enemy_spawn_snapshot_times.get(prepared.net_id, 0.0)
+	)
+	prepared.had_previous_incarnation_token = (
+		enemy_spawn_incarnation_tokens.has(prepared.net_id)
+	)
+	prepared.previous_incarnation_token = float(
+		enemy_spawn_incarnation_tokens.get(prepared.net_id, 0.0)
+	)
 
 
 func _rollback_prepared_client_spawn_registry(
@@ -1075,10 +2012,48 @@ func _take_live_pending_enemy_action(
 	net_id: int,
 	current_time: float
 ) -> Dictionary:
-	var pending := take_pending_enemy_action(net_id)
-	if pending.is_empty() or _is_pending_enemy_action_expired(pending, current_time):
+	var pending := pending_enemy_actions.get(net_id, {}) as Dictionary
+	if pending.is_empty():
+		return {}
+	if _is_pending_enemy_action_expired(pending, current_time):
+		erase_pending_enemy_action(net_id)
+		return {}
+	if _is_record_older_than_enemy_incarnation(
+		pending,
+		net_id,
+		"host_action_timestamp"
+	):
+		erase_pending_enemy_action(net_id)
+		return {}
+	if (
+		enemy_spawn_snapshot_times.has(net_id)
+		and float(pending.get("action_time", -INF))
+		< float(enemy_spawn_snapshot_times.get(net_id, -INF))
+	):
+		erase_pending_enemy_action(net_id)
 		return {}
 	return pending
+
+
+func _is_record_older_than_enemy_incarnation(
+	record: Dictionary,
+	net_id: int,
+	host_timestamp_key: String
+) -> bool:
+	if net_id <= 0 or not enemy_spawn_incarnation_tokens.has(net_id):
+		return false
+	var host_timestamp := float(record.get(host_timestamp_key, -1.0))
+	if not is_finite(host_timestamp) or host_timestamp < 0.0:
+		# 本地与旧协议兼容记录没有 raw Host 时间，只能继续使用既有的
+		# mapped-time/faction revision CAS。
+		return false
+	var incarnation_token := float(
+		enemy_spawn_incarnation_tokens.get(net_id, -INF)
+	)
+	return (
+		is_finite(incarnation_token)
+		and host_timestamp + ENEMY_SPAWN_TOKEN_EPSILON < incarnation_token
+	)
 
 
 func _publish_prepared_client_spawns(
@@ -1104,18 +2079,24 @@ func _publish_prepared_client_spawns(
 			):
 				_clear_committed_client_spawn_batch(runtime, prepared_spawns)
 				return
+		_consume_pending_target_presentation_state(
+			prepared.net_id,
+			prepared.current_time
+		)
 		# 等到本条即将交付时才从 FIFO 取动作；较早回调若中止，后续记录保持原样。
 		var pending_action := _take_live_pending_enemy_action(
 			prepared.net_id,
 			prepared.current_time
 		)
 		if not pending_action.is_empty():
-			_deliver_action_record(
+			var delivery_state := _deliver_action_record(
 				pending_action,
 				enemy,
 				prepared.current_time,
 				runtime
 			)
+			if delivery_state != TARGET_ACTION_RESOLUTION_WAITING:
+				erase_pending_enemy_action(prepared.net_id)
 			if not _is_prepared_client_spawn_registry_intact(
 				runtime,
 				enemy_container,
@@ -1125,6 +2106,18 @@ func _publish_prepared_client_spawns(
 				return
 		if prepared.publishes_spawn:
 			runtime.play_remote_enemy_spawn_effect(prepared.spawn_position)
+	if _is_prepared_client_spawn_registry_intact(
+		runtime,
+		enemy_container,
+		prepared_spawns
+	):
+		_replay_ready_pending_target_presentation_states(
+			prepared_spawns[0].current_time
+		)
+		_replay_ready_pending_enemy_actions(
+			prepared_spawns[0].current_time,
+			runtime
+		)
 
 
 func _is_prepared_client_spawn_registry_intact(
@@ -1160,8 +2153,26 @@ func _clear_committed_client_spawn_batch(
 	if runtime == null or not is_instance_valid(runtime):
 		return
 	for prepared in prepared_spawns:
+		if prepared.publishes_incarnation_token:
+			if prepared.had_previous_spawn_snapshot_time:
+				enemy_spawn_snapshot_times[prepared.net_id] = (
+					prepared.previous_spawn_snapshot_time
+				)
+			else:
+				enemy_spawn_snapshot_times.erase(prepared.net_id)
+			if prepared.had_previous_incarnation_token:
+				enemy_spawn_incarnation_tokens[prepared.net_id] = (
+					prepared.previous_incarnation_token
+				)
+			else:
+				enemy_spawn_incarnation_tokens.erase(prepared.net_id)
 		if not prepared.publishes_spawn:
 			continue
+		_erase_pending_target_presentation_state(prepared.net_id)
+		_erase_pending_actions_targeting_enemy(prepared.net_id)
+		_client_target_presentation_revisions.erase(prepared.net_id)
+		_client_target_presentation_phases.erase(prepared.net_id)
+		_client_target_presentation_terminal_revisions.erase(prepared.net_id)
 		var enemy := prepared.committed_enemy
 		if (
 			enemy != null
@@ -1171,7 +2182,6 @@ func _clear_committed_client_spawn_batch(
 			runtime.unregister_network_enemy(prepared.net_id, enemy)
 		if enemy != null and is_instance_valid(enemy):
 			enemy.queue_free()
-		enemy_spawn_snapshot_times.erase(prepared.net_id)
 		enemy_interpolators.erase(prepared.net_id)
 		_offscreen_interpolation_slots.erase(prepared.net_id)
 
@@ -1194,6 +2204,8 @@ func register_client_enemy(
 	if not _register_client_enemy(net_id, enemy):
 		return false
 	clear_client_terminal_marker(net_id)
+	clear_client_terminal_incarnation_token(net_id)
+	_consume_pending_target_presentation_state(net_id, current_time)
 	consume_pending_enemy_action(net_id, current_time)
 	return true
 
@@ -1202,8 +2214,19 @@ func queue_host_spawn(
 	net_id: int,
 	enemy_config: EnemyConfig,
 	spawn_position: Vector2,
-	spawn_time: float
+	spawn_time: float,
+	faction_id: int = -1,
+	faction_revision: int = -1
 ) -> void:
+	var resolved_faction_id := faction_id
+	var resolved_faction_revision := faction_revision
+	if (
+		resolved_faction_id < 0
+		and resolved_faction_revision < 0
+		and enemy_config != null
+	):
+		resolved_faction_id = enemy_config.default_combat_faction_id
+		resolved_faction_revision = 0
 	if (
 		not is_bound()
 		or enemy_config == null
@@ -1213,13 +2236,21 @@ func queue_host_spawn(
 			spawn_position,
 			spawn_time
 		)
+		or not _is_valid_faction_state(
+			resolved_faction_id,
+			resolved_faction_revision
+		)
 	):
 		return
+	_snapshot_manager.erase_enemy_send_baseline(net_id)
+	_host_enemy_spawn_times[net_id] = spawn_time
 	_pending_host_spawns.append({
 		"net_id": net_id,
 		"config_path": enemy_config.resource_path,
 		"position": spawn_position,
 		"spawn_time": spawn_time,
+		"faction_id": resolved_faction_id,
+		"faction_revision": resolved_faction_revision,
 	})
 
 
@@ -1241,14 +2272,280 @@ func drain_host_spawn_batches() -> Array[SpawnBatch]:
 			batch.config_paths.append(String(record.get("config_path", "")))
 			batch.positions.append(record.get("position", Vector2.ZERO) as Vector2)
 			batch.spawn_times.append(float(record.get("spawn_time", 0.0)))
+			batch.faction_ids.append(int(record.get(
+				"faction_id",
+				_CombatRelationService.HOSTILE_WAVE
+			)))
+			batch.faction_revisions.append(int(record.get(
+				"faction_revision",
+				0
+			)))
 		if not batch.is_empty():
 			batches.append(batch)
 	return batches
 
 
+func _erase_pending_host_spawn(net_id: int) -> void:
+	for record_index in range(_pending_host_spawns.size() - 1, -1, -1):
+		var record := _pending_host_spawns[record_index] as Dictionary
+		if int(record.get("net_id", 0)) == net_id:
+			_pending_host_spawns.remove_at(record_index)
+
+
+func drain_host_faction_change_batches() -> Array[FactionChangeBatch]:
+	var batches: Array[FactionChangeBatch] = []
+	if _pending_host_faction_changes.is_empty():
+		return batches
+	var sorted_ids: Array[int] = []
+	for net_id_variant in _pending_host_faction_changes.keys():
+		sorted_ids.append(int(net_id_variant))
+	sorted_ids.sort()
+	for chunk_start in range(0, sorted_ids.size(), ENEMY_SPAWN_BATCH_MAX_RECORDS):
+		var batch := FactionChangeBatch.new()
+		var chunk_end := mini(
+			chunk_start + ENEMY_SPAWN_BATCH_MAX_RECORDS,
+			sorted_ids.size()
+		)
+		for record_index in range(chunk_start, chunk_end):
+			var net_id := sorted_ids[record_index]
+			var record := _pending_host_faction_changes.get(net_id, {}) as Dictionary
+			if record.is_empty():
+				continue
+			batch.net_ids.append(net_id)
+			batch.faction_ids.append(int(record.get("faction_id", 0)))
+			batch.faction_revisions.append(int(record.get("faction_revision", 0)))
+		if not batch.is_empty():
+			batches.append(batch)
+	_pending_host_faction_changes.clear()
+	return batches
+
+
+func set_host_enemy_target_presentation_state(
+	net_id: int,
+	phase: int,
+	target_descriptor: CombatTargetDescriptor,
+	duration_seconds: float,
+	action_position: Vector2,
+	state_revision: int
+) -> bool:
+	if (
+		not _is_host_lifecycle_bound()
+		or net_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(net_id)
+		or _runtime.get_network_enemy(net_id) == null
+		or not _is_valid_target_presentation_phase(phase)
+		or not _is_valid_target_presentation_descriptor(
+			phase,
+			target_descriptor
+		)
+		or state_revision <= 0
+		or not _NetConstants.is_valid_network_combat_value(state_revision)
+		or not is_finite(duration_seconds)
+		or duration_seconds < 0.0
+		or (
+			phase != Enemy.TargetPresentationPhase.NONE
+			and duration_seconds <= 0.0
+		)
+		or not action_position.is_finite()
+	):
+		return false
+	var current := _host_target_presentation_states.get(net_id, {}) as Dictionary
+	if (
+		not current.is_empty()
+		and state_revision <= int(current.get("state_revision", 0))
+	):
+		return false
+	var host_start_time := _get_network_time()
+	if host_start_time < 0.0 or not is_finite(host_start_time):
+		return false
+	var host_end_time := host_start_time
+	if phase != Enemy.TargetPresentationPhase.NONE:
+		host_end_time += duration_seconds
+	if not is_finite(host_end_time):
+		return false
+	var record := {
+		"net_id": net_id,
+		"state_revision": state_revision,
+		"phase": phase,
+		"target_kind": target_descriptor.kind,
+		"target_id": target_descriptor.id,
+		"target_revision": target_descriptor.revision,
+		"target_fallback_position": target_descriptor.fallback_position,
+		"start_time": host_start_time,
+		"end_time": host_end_time,
+		"action_position": action_position,
+	}
+	_host_target_presentation_states[net_id] = record
+	_pending_host_target_presentation_states[net_id] = record
+	return true
+
+
+func _expire_host_target_presentation_states(host_time: float) -> void:
+	if not is_finite(host_time) or host_time < 0.0:
+		return
+	for net_id_variant in _host_target_presentation_states.keys():
+		var net_id := int(net_id_variant)
+		var record := _host_target_presentation_states.get(net_id, {}) as Dictionary
+		if (
+			record.is_empty()
+			or int(record.get("phase", Enemy.TargetPresentationPhase.NONE))
+			== Enemy.TargetPresentationPhase.NONE
+			or float(record.get("end_time", INF)) > host_time
+		):
+			continue
+		var clear_record := record.duplicate(true)
+		var authoritative_end := float(record.get("end_time", host_time))
+		clear_record["phase"] = Enemy.TargetPresentationPhase.NONE
+		clear_record["target_kind"] = _CombatTargetDescriptor.Kind.NONE
+		clear_record["target_id"] = 0
+		clear_record["target_revision"] = 0
+		clear_record["target_fallback_position"] = Vector2.ZERO
+		clear_record["start_time"] = authoritative_end
+		clear_record["end_time"] = authoritative_end
+		_host_target_presentation_states[net_id] = clear_record
+		_pending_host_target_presentation_states[net_id] = clear_record
+
+
+func _clear_host_target_presentation_states_for_target(
+	target_kind: int,
+	target_id: int,
+	host_time: float
+) -> int:
+	if (
+		target_id <= 0
+		or target_kind not in [
+			_CombatTargetDescriptor.Kind.PLAYER,
+			_CombatTargetDescriptor.Kind.ENEMY,
+		]
+		or not is_finite(host_time)
+		or host_time < 0.0
+	):
+		return 0
+	var cleared_count := 0
+	for source_net_id_variant in _host_target_presentation_states.keys():
+		var source_net_id := int(source_net_id_variant)
+		var record := _host_target_presentation_states.get(
+			source_net_id,
+			{}
+		) as Dictionary
+		if (
+			record.is_empty()
+			or int(record.get("phase", Enemy.TargetPresentationPhase.NONE))
+			== Enemy.TargetPresentationPhase.NONE
+			or int(record.get("target_kind", -1)) != target_kind
+			or int(record.get("target_id", 0)) != target_id
+		):
+			continue
+		var clear_record := record.duplicate(true)
+		clear_record["phase"] = Enemy.TargetPresentationPhase.NONE
+		clear_record["target_kind"] = _CombatTargetDescriptor.Kind.NONE
+		clear_record["target_id"] = 0
+		clear_record["target_revision"] = 0
+		clear_record["target_fallback_position"] = Vector2.ZERO
+		clear_record["start_time"] = host_time
+		clear_record["end_time"] = host_time
+		_host_target_presentation_states[source_net_id] = clear_record
+		_pending_host_target_presentation_states[source_net_id] = clear_record
+		cleared_count += 1
+	return cleared_count
+
+
+func _build_target_presentation_batches(
+	records: Dictionary
+) -> Array[TargetPresentationBatch]:
+	var batches: Array[TargetPresentationBatch] = []
+	if records.is_empty():
+		return batches
+	var sorted_ids: Array[int] = []
+	for net_id_variant in records.keys():
+		sorted_ids.append(int(net_id_variant))
+	sorted_ids.sort()
+	for chunk_start in range(
+		0,
+		sorted_ids.size(),
+		TARGET_PRESENTATION_BATCH_MAX_RECORDS
+	):
+		var batch := TargetPresentationBatch.new()
+		var chunk_end := mini(
+			chunk_start + TARGET_PRESENTATION_BATCH_MAX_RECORDS,
+			sorted_ids.size()
+		)
+		for record_index in range(chunk_start, chunk_end):
+			var net_id := sorted_ids[record_index]
+			var record := records.get(net_id, {}) as Dictionary
+			if not _is_valid_target_presentation_record(record):
+				continue
+			batch.net_ids.append(net_id)
+			batch.state_revisions.append(int(record.get("state_revision", 0)))
+			batch.phases.append(int(record.get("phase", 0)))
+			batch.target_kinds.append(int(record.get("target_kind", 0)))
+			batch.target_ids.append(int(record.get("target_id", 0)))
+			batch.target_revisions.append(int(record.get("target_revision", 0)))
+			batch.target_fallback_positions.append(
+				record.get("target_fallback_position", Vector2.ZERO) as Vector2
+			)
+			batch.host_start_times.append(float(record.get("start_time", 0.0)))
+			batch.host_end_times.append(float(record.get("end_time", 0.0)))
+			batch.action_positions.append(
+				record.get("action_position", Vector2.ZERO) as Vector2
+			)
+		if not batch.is_empty():
+			batches.append(batch)
+	return batches
+
+
+func drain_host_target_presentation_batches() -> Array[TargetPresentationBatch]:
+	var records := _pending_host_target_presentation_states.duplicate(true)
+	_pending_host_target_presentation_states.clear()
+	return _build_target_presentation_batches(records)
+
+
+func _emit_target_presentation_batch_to_peer(
+	peer_id: int,
+	batch: TargetPresentationBatch
+) -> void:
+	lifecycle_rpc_to_peer_requested.emit(
+		peer_id,
+		&"net_enemy_target_presentation_state_batch",
+		[
+			batch.net_ids,
+			batch.state_revisions,
+			batch.phases,
+			batch.target_kinds,
+			batch.target_ids,
+			batch.target_revisions,
+			batch.target_fallback_positions,
+			batch.host_start_times,
+			batch.host_end_times,
+			batch.action_positions,
+		]
+	)
+
+
+func _emit_target_presentation_batch_broadcast(
+	batch: TargetPresentationBatch
+) -> void:
+	lifecycle_rpc_broadcast_requested.emit(
+		&"net_enemy_target_presentation_state_batch",
+		[
+			batch.net_ids,
+			batch.state_revisions,
+			batch.phases,
+			batch.target_kinds,
+			batch.target_ids,
+			batch.target_revisions,
+			batch.target_fallback_positions,
+			batch.host_start_times,
+			batch.host_end_times,
+			batch.action_positions,
+		]
+	)
+
+
 func update_host() -> void:
 	if not _is_host_lifecycle_bound():
 		return
+	_expire_host_target_presentation_states(_get_network_time())
 	for batch in drain_host_spawn_batches():
 		lifecycle_rpc_broadcast_requested.emit(
 			&"net_enemy_spawned_batch",
@@ -1257,8 +2554,114 @@ func update_host() -> void:
 				batch.config_paths,
 				batch.positions,
 				batch.spawn_times,
+				batch.faction_ids,
+				batch.faction_revisions,
 			]
 		)
+	for batch in drain_host_faction_change_batches():
+		lifecycle_rpc_broadcast_requested.emit(
+			&"net_enemy_faction_changed_batch",
+			[
+				batch.net_ids,
+				batch.faction_ids,
+				batch.faction_revisions,
+			]
+		)
+	for batch in drain_host_target_presentation_batches():
+		_emit_target_presentation_batch_broadcast(batch)
+
+
+func queue_host_faction_change(
+	net_id: int,
+	faction_id: int,
+	faction_revision: int
+) -> bool:
+	if (
+		not _is_host_lifecycle_bound()
+		or net_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(net_id)
+		or not _is_valid_faction_state(faction_id, faction_revision)
+	):
+		return false
+	var current := _pending_host_faction_changes.get(net_id, {}) as Dictionary
+	if (
+		not current.is_empty()
+		and int(current.get("faction_revision", -1)) >= faction_revision
+	):
+		return false
+	_pending_host_faction_changes[net_id] = {
+		"faction_id": faction_id,
+		"faction_revision": faction_revision,
+	}
+	return true
+
+
+func _connect_host_enemy_faction_signal(net_id: int, enemy: Enemy) -> void:
+	if (
+		net_id <= 0
+		or enemy == null
+		or not is_instance_valid(enemy)
+		or enemy.is_queued_for_deletion()
+	):
+		return
+	var previous_variant: Variant = _host_faction_enemy_by_net_id.get(net_id)
+	var previous: Enemy = null
+	if is_instance_valid(previous_variant):
+		previous = previous_variant as Enemy
+	if previous == enemy:
+		return
+	_disconnect_host_enemy_faction_signal(net_id)
+	var callback := Callable(
+		self,
+		"_on_host_enemy_combat_faction_changed"
+	).bind(net_id)
+	if not enemy.combat_faction_changed.is_connected(callback):
+		enemy.combat_faction_changed.connect(callback)
+	_host_faction_enemy_by_net_id[net_id] = enemy
+
+
+func _disconnect_host_enemy_faction_signal(net_id: int) -> void:
+	var enemy_variant: Variant = _host_faction_enemy_by_net_id.get(net_id)
+	_host_faction_enemy_by_net_id.erase(net_id)
+	if not is_instance_valid(enemy_variant):
+		return
+	var enemy := enemy_variant as Enemy
+	if enemy == null:
+		return
+	var callback := Callable(
+		self,
+		"_on_host_enemy_combat_faction_changed"
+	).bind(net_id)
+	if enemy.combat_faction_changed.is_connected(callback):
+		enemy.combat_faction_changed.disconnect(callback)
+
+
+func _disconnect_all_host_enemy_faction_signals() -> void:
+	var net_ids: Array[int] = []
+	for net_id_variant in _host_faction_enemy_by_net_id.keys():
+		net_ids.append(int(net_id_variant))
+	for net_id in net_ids:
+		_disconnect_host_enemy_faction_signal(net_id)
+
+
+func _on_host_enemy_combat_faction_changed(
+	enemy: Enemy,
+	_previous_faction_id: int,
+	current_faction_id: int,
+	faction_revision: int,
+	net_id: int
+) -> void:
+	if (
+		enemy == null
+		or not is_instance_valid(enemy)
+		or _host_faction_enemy_by_net_id.get(net_id) != enemy
+		or not is_bound()
+		or _runtime.get_network_enemy(net_id) != enemy
+		or enemy.get_combat_faction_id() != current_faction_id
+		or enemy.get_faction_revision() != faction_revision
+	):
+		return
+	queue_host_faction_change(net_id, current_faction_id, faction_revision)
 
 
 func build_host_terminal_event(
@@ -1273,6 +2676,18 @@ func build_host_terminal_event(
 		or not _is_valid_terminal_reason(reason)
 	):
 		return {}
+	_clear_host_target_presentation_states_for_target(
+		_CombatTargetDescriptor.Kind.ENEMY,
+		net_id,
+		_get_network_time()
+	)
+	_erase_pending_host_spawn(net_id)
+	_snapshot_manager.erase_enemy_send_baseline(net_id)
+	_host_enemy_spawn_times.erase(net_id)
+	_disconnect_host_enemy_faction_signal(net_id)
+	_pending_host_faction_changes.erase(net_id)
+	_host_target_presentation_states.erase(net_id)
+	_pending_host_target_presentation_states.erase(net_id)
 	if reason == ENEMY_TERMINAL_DEFEATED and host_terminal_enemy_ids.has(net_id):
 		return {}
 	if reason == ENEMY_TERMINAL_REMOVED and host_terminal_enemy_ids.erase(net_id):
@@ -1323,6 +2738,10 @@ func broadcast_host_terminal(
 	var terminal := build_host_terminal_event(net_id, reason, event_position)
 	if terminal.is_empty():
 		return
+	# 目标终结产生的 NONE 与 terminal 同属可靠 CH5；先广播清理态，避免
+	# terminal 后 repair/跨信道晚包短暂重建对已死亡目标的锁定表现。
+	for batch in drain_host_target_presentation_batches():
+		_emit_target_presentation_batch_broadcast(batch)
 	lifecycle_rpc_broadcast_requested.emit(
 		&"net_enemy_terminal",
 		[
@@ -1387,12 +2806,12 @@ func receive_enemy_terminal(
 							impact_direction,
 							safe_presentation_flags
 						)
-			remove_client_enemy(net_id, true)
+			remove_client_enemy(net_id, true, false, false, true)
 		ENEMY_TERMINAL_ESCAPED:
 			remote_enemy_escape_requested.emit(net_id)
-			remove_client_enemy(net_id, false)
+			remove_client_enemy(net_id, false, false, false, true)
 		_:
-			remove_client_enemy(net_id, false)
+			remove_client_enemy(net_id, false, false, false, true)
 
 
 func receive_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
@@ -1407,7 +2826,7 @@ func receive_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
 	var enemy := get_valid_client_enemy(net_id)
 	if enemy != null and is_instance_valid(enemy):
 		enemy.global_position = defeat_position
-	remove_client_enemy(net_id, true)
+	remove_client_enemy(net_id, true, false, false, true)
 
 
 func receive_enemy_removed(net_id: int) -> void:
@@ -1418,7 +2837,7 @@ func receive_enemy_removed(net_id: int) -> void:
 	):
 		return
 	mark_client_terminal(net_id)
-	remove_client_enemy(net_id, true)
+	remove_client_enemy(net_id, true, false, false, true)
 
 
 func receive_enemy_escaped(net_id: int) -> void:
@@ -1430,7 +2849,7 @@ func receive_enemy_escaped(net_id: int) -> void:
 		return
 	mark_client_terminal(net_id)
 	remote_enemy_escape_requested.emit(net_id)
-	remove_client_enemy(net_id, false)
+	remove_client_enemy(net_id, false, false, false, true)
 
 
 func broadcast_enemy_action(
@@ -1471,20 +2890,37 @@ func broadcast_enemy_action(
 func broadcast_enemy_target_action(
 	net_id: int,
 	action_name: StringName,
-	target_peer_id: int,
+	target_descriptor: CombatTargetDescriptor,
 	action_position: Vector2,
-	action_id: int
+	assignment_revision: int
 ) -> void:
-	if not _is_host_lifecycle_bound():
+	if (
+		not _is_host_lifecycle_bound()
+		or not _is_valid_network_target_descriptor(target_descriptor)
+	):
 		return
 	var host_action_time := _get_network_time()
 	var record := {
 		"kind": CLIENT_ENEMY_ACTION_KIND_TARGET,
 		"net_id": net_id,
 		"action_name": action_name,
-		"target_peer_id": target_peer_id,
+		"target_kind": (
+			target_descriptor.kind
+			if target_descriptor != null
+			else _CombatTargetDescriptor.Kind.NONE
+		),
+		"target_id": target_descriptor.id if target_descriptor != null else 0,
+		"target_revision": (
+			target_descriptor.revision if target_descriptor != null else 0
+		),
+		"target_fallback_position": (
+			target_descriptor.fallback_position
+			if target_descriptor != null
+			else Vector2.ZERO
+		),
 		"action_position": action_position,
-		"action_id": action_id,
+		"action_id": assignment_revision,
+		"assignment_revision": assignment_revision,
 		"action_time": host_action_time,
 		"host_action_timestamp": host_action_time,
 	}
@@ -1495,9 +2931,12 @@ func broadcast_enemy_target_action(
 		[
 			net_id,
 			String(action_name),
-			target_peer_id,
+			target_descriptor.kind,
+			target_descriptor.id,
+			target_descriptor.revision,
+			target_descriptor.fallback_position,
 			action_position,
-			action_id,
+			assignment_revision,
 			host_action_time,
 		]
 	)
@@ -1546,9 +2985,12 @@ func receive_enemy_action_packet(
 func receive_enemy_target_action_packet(
 	net_id: int,
 	action_name: String,
-	target_peer_id: int,
+	target_kind: int,
+	target_id: int,
+	target_revision: int,
+	target_fallback_position: Vector2,
 	action_position: Vector2,
-	action_id: int,
+	assignment_revision: int,
 	host_action_timestamp: float,
 	local_net_time: float,
 	has_host_time_offset: bool,
@@ -1562,12 +3004,20 @@ func receive_enemy_target_action_packet(
 	)
 	if not is_finite(mapped_action_time):
 		return
+	var target_descriptor := _CombatTargetDescriptor.create(
+		target_kind,
+		target_id,
+		target_revision,
+		target_fallback_position
+	)
+	if target_descriptor == null:
+		return
 	receive_enemy_target_action(
 		net_id,
 		StringName(action_name),
-		target_peer_id,
+		target_descriptor,
 		action_position,
-		action_id,
+		assignment_revision,
 		mapped_action_time,
 		local_net_time,
 		host_action_timestamp
@@ -1643,15 +3093,21 @@ func _is_valid_spawn_batch_payload(
 	net_ids: PackedInt32Array,
 	config_paths: PackedStringArray,
 	positions: PackedVector2Array,
-	spawn_times: PackedFloat64Array
+	spawn_times: PackedFloat64Array,
+	faction_ids: PackedByteArray = PackedByteArray(),
+	faction_revisions: PackedInt32Array = PackedInt32Array()
 ) -> bool:
 	var record_count := net_ids.size()
+	var has_faction_roster := not faction_ids.is_empty()
 	if (
 		record_count <= 0
 		or record_count > ENEMY_SPAWN_BATCH_MAX_RECORDS
 		or config_paths.size() != record_count
 		or positions.size() != record_count
 		or spawn_times.size() != record_count
+		or has_faction_roster != (not faction_revisions.is_empty())
+		or (has_faction_roster and faction_ids.size() != record_count)
+		or (has_faction_roster and faction_revisions.size() != record_count)
 	):
 		return false
 	var seen_net_ids: Dictionary[int, bool] = {}
@@ -1666,6 +3122,149 @@ func _is_valid_spawn_batch_payload(
 			positions[record_index],
 			spawn_times[record_index]
 		):
+			return false
+		if (
+			has_faction_roster
+			and not _is_valid_faction_state(
+				int(faction_ids[record_index]),
+				faction_revisions[record_index]
+			)
+		):
+			return false
+	return true
+
+
+func _is_valid_faction_change_batch_payload(
+	net_ids: PackedInt32Array,
+	faction_ids: PackedByteArray,
+	faction_revisions: PackedInt32Array
+) -> bool:
+	var record_count := net_ids.size()
+	if (
+		record_count <= 0
+		or record_count > ENEMY_SPAWN_BATCH_MAX_RECORDS
+		or faction_ids.size() != record_count
+		or faction_revisions.size() != record_count
+	):
+		return false
+	var seen_net_ids: Dictionary[int, bool] = {}
+	for record_index in range(record_count):
+		var net_id := net_ids[record_index]
+		if (
+			net_id <= 0
+			or seen_net_ids.has(net_id)
+			or not _NetConstants.is_valid_network_combat_value(net_id)
+			or not _is_valid_faction_state(
+				int(faction_ids[record_index]),
+				faction_revisions[record_index]
+			)
+		):
+			return false
+		seen_net_ids[net_id] = true
+	return true
+
+
+func _is_valid_faction_state(faction_id: int, faction_revision: int) -> bool:
+	return (
+		_CombatRelationService.is_valid_faction_id(faction_id)
+		and faction_revision >= 0
+		and _NetConstants.is_valid_network_combat_value(faction_revision)
+	)
+
+
+func _is_valid_target_presentation_phase(phase: int) -> bool:
+	return phase in [
+		Enemy.TargetPresentationPhase.NONE,
+		Enemy.TargetPresentationPhase.SNIPER_LOCK,
+		Enemy.TargetPresentationPhase.LIGHTNING_WINDUP,
+	]
+
+
+func _is_valid_target_presentation_descriptor(
+	phase: int,
+	descriptor: CombatTargetDescriptor
+) -> bool:
+	if descriptor == null or not descriptor.is_valid():
+		return false
+	if phase == Enemy.TargetPresentationPhase.NONE:
+		return descriptor.kind == _CombatTargetDescriptor.Kind.NONE
+	return _is_valid_network_target_descriptor(descriptor)
+
+
+func _is_valid_target_presentation_record(record: Dictionary) -> bool:
+	var net_id := int(record.get("net_id", 0))
+	var state_revision := int(record.get("state_revision", 0))
+	var phase := int(record.get("phase", -1))
+	var start_time := float(record.get("start_time", -1.0))
+	var end_time := float(record.get("end_time", -1.0))
+	var descriptor := _target_descriptor_from_action_record(record)
+	return (
+		net_id > 0
+		and _NetConstants.is_valid_network_combat_value(net_id)
+		and state_revision > 0
+		and _NetConstants.is_valid_network_combat_value(state_revision)
+		and _is_valid_target_presentation_phase(phase)
+		and _is_valid_target_presentation_descriptor(phase, descriptor)
+		and is_finite(start_time)
+		and start_time >= 0.0
+		and is_finite(end_time)
+		and end_time >= start_time
+		and (
+			(phase == Enemy.TargetPresentationPhase.NONE and end_time == start_time)
+			or (
+				phase != Enemy.TargetPresentationPhase.NONE
+				and end_time > start_time
+			)
+		)
+		and (record.get("action_position", Vector2.INF) as Vector2).is_finite()
+	)
+
+
+func _is_valid_target_presentation_batch_payload(
+	net_ids: PackedInt32Array,
+	state_revisions: PackedInt32Array,
+	phases: PackedByteArray,
+	target_kinds: PackedByteArray,
+	target_ids: PackedInt32Array,
+	target_revisions: PackedInt32Array,
+	target_fallback_positions: PackedVector2Array,
+	host_start_times: PackedFloat64Array,
+	host_end_times: PackedFloat64Array,
+	action_positions: PackedVector2Array
+) -> bool:
+	var record_count := net_ids.size()
+	if (
+		record_count <= 0
+		or record_count > TARGET_PRESENTATION_BATCH_MAX_RECORDS
+		or state_revisions.size() != record_count
+		or phases.size() != record_count
+		or target_kinds.size() != record_count
+		or target_ids.size() != record_count
+		or target_revisions.size() != record_count
+		or target_fallback_positions.size() != record_count
+		or host_start_times.size() != record_count
+		or host_end_times.size() != record_count
+		or action_positions.size() != record_count
+	):
+		return false
+	var seen_ids: Dictionary[int, bool] = {}
+	for record_index in range(record_count):
+		var net_id := net_ids[record_index]
+		if seen_ids.has(net_id):
+			return false
+		seen_ids[net_id] = true
+		if not _is_valid_target_presentation_record({
+			"net_id": net_id,
+			"state_revision": state_revisions[record_index],
+			"phase": int(phases[record_index]),
+			"target_kind": int(target_kinds[record_index]),
+			"target_id": target_ids[record_index],
+			"target_revision": target_revisions[record_index],
+			"target_fallback_position": target_fallback_positions[record_index],
+			"start_time": host_start_times[record_index],
+			"end_time": host_end_times[record_index],
+			"action_position": action_positions[record_index],
+		}):
 			return false
 	return true
 
@@ -1724,24 +3323,85 @@ func receive_enemy_action(
 func receive_enemy_target_action(
 	net_id: int,
 	action_name: StringName,
-	target_peer_id: int,
+	target_descriptor_or_peer_id: Variant,
 	action_position: Vector2,
-	action_id: int,
+	assignment_revision: int,
 	mapped_action_time: float,
 	received_at: float,
 	host_action_timestamp: float = -1.0
 ) -> void:
+	var target_descriptor: CombatTargetDescriptor = null
+	if target_descriptor_or_peer_id is CombatTargetDescriptor:
+		target_descriptor = (
+			target_descriptor_or_peer_id as CombatTargetDescriptor
+		)
+	elif target_descriptor_or_peer_id is int:
+		# v93/local callers passed only a player peer ID. Normalize that legacy
+		# boundary immediately; all validation, pending and replay paths below use
+		# the v94 descriptor record.
+		target_descriptor = _CombatTargetDescriptor.create_player(
+			int(target_descriptor_or_peer_id),
+			0,
+			action_position
+		)
+	if target_descriptor == null:
+		return
 	_receive_action_record({
 		"kind": CLIENT_ENEMY_ACTION_KIND_TARGET,
 		"net_id": net_id,
 		"action_name": action_name,
-		"target_peer_id": target_peer_id,
+		"target_kind": (
+			target_descriptor.kind
+			if target_descriptor != null
+			else _CombatTargetDescriptor.Kind.NONE
+		),
+		"target_id": target_descriptor.id if target_descriptor != null else 0,
+		"target_revision": (
+			target_descriptor.revision if target_descriptor != null else 0
+		),
+		"target_fallback_position": (
+			target_descriptor.fallback_position
+			if target_descriptor != null
+			else Vector2.ZERO
+		),
 		"action_position": action_position,
-		"action_id": action_id,
+		"action_id": assignment_revision,
+		"assignment_revision": assignment_revision,
 		"action_time": mapped_action_time,
 		"host_action_timestamp": host_action_timestamp,
 		"received_at": received_at,
 	}, received_at)
+
+
+## Protocol-v93/local test compatibility. The legacy peer-only entry is kept at
+## the boundary, while every internal record uses the generic descriptor shape.
+func receive_enemy_player_target_action_legacy(
+	net_id: int,
+	action_name: StringName,
+	target_peer_id: int,
+	action_position: Vector2,
+	assignment_revision: int,
+	mapped_action_time: float,
+	received_at: float,
+	host_action_timestamp: float = -1.0
+) -> void:
+	var descriptor := _CombatTargetDescriptor.create_player(
+		target_peer_id,
+		0,
+		action_position
+	)
+	if descriptor == null:
+		return
+	receive_enemy_target_action(
+		net_id,
+		action_name,
+		descriptor,
+		action_position,
+		assignment_revision,
+		mapped_action_time,
+		received_at,
+		host_action_timestamp
+	)
 
 
 func receive_enemy_hit_report(
@@ -2443,6 +4103,7 @@ func get_valid_client_enemy(enemy_net_id: int) -> Enemy:
 	var enemy := _runtime.get_network_enemy(enemy_net_id)
 	if enemy == null:
 		enemy_spawn_snapshot_times.erase(enemy_net_id)
+		enemy_spawn_incarnation_tokens.erase(enemy_net_id)
 		enemy_interpolators.erase(enemy_net_id)
 		_offscreen_interpolation_slots.erase(enemy_net_id)
 		return null
@@ -2538,7 +4199,8 @@ func query_client_combat_targets_into(
 func remove_enemies_missing_from_manifest(live_enemy_ids: Dictionary) -> void:
 	for net_id in get_remote_enemy_ids():
 		if not live_enemy_ids.has(net_id):
-			remove_client_enemy(net_id, false)
+			mark_client_terminal(net_id)
+			remove_client_enemy(net_id, false, false, false, true)
 
 
 func apply_network_health(
@@ -2566,23 +4228,83 @@ func get_buffered_enemy_position(
 	return interpolator.get_interpolated_position(current_time)
 
 
-func reconcile_roster(seen_enemy_ids: Dictionary, snapshot_time: float) -> void:
+func reconcile_roster(
+	seen_enemy_ids: Dictionary,
+	snapshot_time: float,
+	raw_host_timestamp: float = -1.0
+) -> void:
 	var stale_ids: Array[int] = []
 	for net_id in get_remote_enemy_ids():
 		if seen_enemy_ids.has(net_id):
 			continue
-		if float(enemy_spawn_snapshot_times.get(net_id, -INF)) > snapshot_time:
+		if _is_snapshot_older_than_enemy_incarnation(
+			net_id,
+			snapshot_time,
+			raw_host_timestamp
+		):
 			continue
 		stale_ids.append(net_id)
 	for net_id in stale_ids:
-		remove_client_enemy(net_id, false)
+		# Full roster absence is an authoritative terminal fact for the current
+		# incarnation. Keep a tombstone so delayed CH7 actions cannot repopulate
+		# pending state; a later authoritative spawn clears it transactionally.
+		mark_client_terminal(net_id, raw_host_timestamp)
+		remove_client_enemy(net_id, false, false, false, true)
+
+
+func _is_snapshot_older_than_enemy_incarnation(
+	net_id: int,
+	snapshot_time: float,
+	raw_host_timestamp: float
+) -> bool:
+	if net_id <= 0:
+		return false
+	if (
+		is_finite(raw_host_timestamp)
+		and raw_host_timestamp >= 0.0
+		and enemy_spawn_incarnation_tokens.has(net_id)
+	):
+		var incarnation_token := float(
+			enemy_spawn_incarnation_tokens.get(net_id, -INF)
+		)
+		return (
+			is_finite(incarnation_token)
+			and raw_host_timestamp + ENEMY_SPAWN_TOKEN_EPSILON
+			< incarnation_token
+		)
+	# 旧直调/旧协议没有 raw Host 时间；保留原 mapped-time CAS，但不能在
+	# raw 时间存在时叠加它，否则 offset 漂移会把正确的新快照误判为旧。
+	return (
+		enemy_spawn_snapshot_times.has(net_id)
+		and snapshot_time
+		< float(enemy_spawn_snapshot_times.get(net_id, -INF))
+	)
+
+
+func _prune_snapshot_receive_baseline_for_roster(
+	seen_enemy_ids: Dictionary,
+	snapshot_time: float,
+	raw_host_timestamp: float
+) -> void:
+	var live_baseline_ids := seen_enemy_ids.duplicate()
+	# 旧 full roster 缺少 spawn 后的新 incarnation 时，实体和其新 baseline
+	# 必须一起保留；否则虽然代理未被误删，下一条 delta 仍会因基线丢失中断。
+	for net_id in get_remote_enemy_ids():
+		if _is_snapshot_older_than_enemy_incarnation(
+			net_id,
+			snapshot_time,
+			raw_host_timestamp
+		):
+			live_baseline_ids[net_id] = true
+	_snapshot_manager.prune_enemy_receive_baseline_to_ids(live_baseline_ids)
 
 
 func remove_client_enemy(
 	net_id: int,
 	play_death_sequence: bool,
 	preserve_interpolator: bool = false,
-	preserve_pending_action: bool = false
+	preserve_pending_action: bool = false,
+	preserve_terminal_marker: bool = false
 ) -> void:
 	var enemy := get_valid_client_enemy(net_id)
 	if enemy != null and is_instance_valid(enemy):
@@ -2592,7 +4314,18 @@ func remove_client_enemy(
 			enemy.queue_free()
 	if not preserve_pending_action:
 		erase_pending_enemy_action(net_id)
+	_erase_pending_enemy_faction_change(net_id)
+	_erase_pending_target_presentation_state(net_id)
+	_erase_pending_actions_targeting_enemy(net_id)
+	_client_enemy_action_revisions.erase(net_id)
+	_client_target_presentation_revisions.erase(net_id)
+	_client_target_presentation_phases.erase(net_id)
+	_client_target_presentation_terminal_revisions.erase(net_id)
+	if not preserve_terminal_marker:
+		clear_client_terminal_marker(net_id)
+		clear_client_terminal_incarnation_token(net_id)
 	enemy_spawn_snapshot_times.erase(net_id)
+	enemy_spawn_incarnation_tokens.erase(net_id)
 	if is_bound():
 		_runtime.unregister_network_enemy(net_id, enemy)
 	if not preserve_interpolator:
@@ -2600,14 +4333,64 @@ func remove_client_enemy(
 	_offscreen_interpolation_slots.erase(net_id)
 
 
+func _replay_ready_pending_enemy_actions(
+	current_time: float,
+	runtime: CombatRuntimeBase
+) -> int:
+	if (
+		not is_finite(current_time)
+		or runtime == null
+		or not is_instance_valid(runtime)
+	):
+		return 0
+	var ordered_ids: Array[int] = []
+	var cursor := _pending_enemy_action_oldest_id
+	while cursor > 0 and ordered_ids.size() < pending_enemy_actions.size():
+		ordered_ids.append(cursor)
+		cursor = int(_pending_enemy_action_next_ids.get(cursor, 0))
+	var replayed_count := 0
+	for net_id in ordered_ids:
+		var pending := pending_enemy_actions.get(net_id, {}) as Dictionary
+		if pending.is_empty():
+			continue
+		if _is_pending_enemy_action_expired(pending, current_time):
+			erase_pending_enemy_action(net_id)
+			continue
+		var enemy := get_valid_client_enemy(net_id)
+		if enemy == null or not is_instance_valid(enemy):
+			continue
+		var delivery_state := _deliver_action_record(
+			pending,
+			enemy,
+			current_time,
+			runtime
+		)
+		if delivery_state == TARGET_ACTION_RESOLUTION_WAITING:
+			continue
+		erase_pending_enemy_action(net_id)
+		replayed_count += 1
+	return replayed_count
+
+
 func consume_pending_enemy_action(net_id: int, current_time: float) -> bool:
-	var pending := take_pending_enemy_action(net_id)
-	if pending.is_empty() or _is_pending_enemy_action_expired(pending, current_time):
+	var pending := pending_enemy_actions.get(net_id, {}) as Dictionary
+	if pending.is_empty():
+		return false
+	if _is_pending_enemy_action_expired(pending, current_time):
+		erase_pending_enemy_action(net_id)
 		return false
 	var enemy := get_valid_client_enemy(net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return false
-	_deliver_action_record(pending, enemy, current_time, _runtime)
+	var delivery_state := _deliver_action_record(
+		pending,
+		enemy,
+		current_time,
+		_runtime
+	)
+	if delivery_state == TARGET_ACTION_RESOLUTION_WAITING:
+		return false
+	erase_pending_enemy_action(net_id)
 	return true
 
 
@@ -2646,10 +4429,25 @@ func clear_pending_enemy_actions() -> void:
 	_pending_enemy_action_newest_id = 0
 
 
-func mark_client_terminal(net_id: int) -> void:
+func mark_client_terminal(net_id: int, raw_terminal_token: float = NAN) -> void:
 	if net_id <= 0:
 		return
+	var retained_token := float(
+		client_terminal_enemy_incarnation_tokens.get(net_id, -INF)
+	)
+	var incarnation_token := float(
+		enemy_spawn_incarnation_tokens.get(net_id, -INF)
+	)
+	if is_finite(incarnation_token) and incarnation_token >= 0.0:
+		retained_token = maxf(retained_token, incarnation_token)
+	if is_finite(raw_terminal_token) and raw_terminal_token >= 0.0:
+		retained_token = maxf(retained_token, raw_terminal_token)
+	if is_finite(retained_token) and retained_token >= 0.0:
+		client_terminal_enemy_incarnation_tokens[net_id] = retained_token
 	erase_pending_enemy_action(net_id)
+	_erase_pending_enemy_faction_change(net_id)
+	_erase_pending_target_presentation_state(net_id)
+	_erase_pending_actions_targeting_enemy(net_id)
 	clear_client_terminal_marker(net_id)
 	while client_terminal_enemy_ids.size() >= CLIENT_TERMINAL_ENEMY_TOMBSTONE_MAX_ENTRIES:
 		clear_client_terminal_marker(_client_terminal_enemy_oldest_id)
@@ -2683,17 +4481,122 @@ func clear_client_terminal_marker(net_id: int) -> bool:
 	return true
 
 
+func clear_client_terminal_incarnation_token(net_id: int) -> bool:
+	return client_terminal_enemy_incarnation_tokens.erase(net_id)
+
+
+func _is_client_terminal_blocked(net_id: int) -> bool:
+	return (
+		net_id > 0
+		and (
+			client_terminal_enemy_ids.has(net_id)
+			or client_terminal_enemy_incarnation_tokens.has(net_id)
+		)
+	)
+
+
+func _is_spawn_blocked_by_terminal_incarnation(
+	net_id: int,
+	incarnation_token: float
+) -> bool:
+	if (
+		net_id <= 0
+		or not is_finite(incarnation_token)
+		or not client_terminal_enemy_incarnation_tokens.has(net_id)
+	):
+		return false
+	var terminal_token := float(
+		client_terminal_enemy_incarnation_tokens.get(net_id, -INF)
+	)
+	return (
+		is_finite(terminal_token)
+		and terminal_token >= 0.0
+		and incarnation_token
+		<= terminal_token + ENEMY_SPAWN_TOKEN_EPSILON
+	)
+
+
 func clear_client_terminal_markers() -> void:
 	client_terminal_enemy_ids.clear()
+	client_terminal_enemy_incarnation_tokens.clear()
 	_client_terminal_enemy_previous_ids.clear()
 	_client_terminal_enemy_next_ids.clear()
 	_client_terminal_enemy_oldest_id = 0
 	_client_terminal_enemy_newest_id = 0
 
 
+func _erase_pending_actions_targeting_enemy(target_net_id: int) -> void:
+	var stale_source_ids: Array[int] = []
+	for source_net_id_variant in pending_enemy_actions.keys():
+		var source_net_id := int(source_net_id_variant)
+		var record := pending_enemy_actions.get(source_net_id, {}) as Dictionary
+		if (
+			int(record.get("kind", -1)) == CLIENT_ENEMY_ACTION_KIND_TARGET
+			and int(record.get("target_kind", -1))
+			== _CombatTargetDescriptor.Kind.ENEMY
+			and int(record.get("target_id", 0)) == target_net_id
+		):
+			stale_source_ids.append(source_net_id)
+	for source_net_id in stale_source_ids:
+		erase_pending_enemy_action(source_net_id)
+	_clear_pending_target_presentation_states_for_target(
+		_CombatTargetDescriptor.Kind.ENEMY,
+		target_net_id
+	)
+
+
+func _clear_pending_target_presentation_states_for_target(
+	target_kind: int,
+	target_id: int
+) -> void:
+	var source_ids: Array[int] = []
+	for source_net_id_variant in pending_enemy_target_presentation_states.keys():
+		var source_net_id := int(source_net_id_variant)
+		var record := pending_enemy_target_presentation_states.get(
+			source_net_id,
+			{}
+		) as Dictionary
+		if (
+			int(record.get("phase", Enemy.TargetPresentationPhase.NONE))
+			!= Enemy.TargetPresentationPhase.NONE
+			and int(record.get("target_kind", -1)) == target_kind
+			and int(record.get("target_id", 0)) == target_id
+		):
+			source_ids.append(source_net_id)
+	for source_net_id in source_ids:
+		var record := pending_enemy_target_presentation_states.get(
+			source_net_id,
+			{}
+		) as Dictionary
+		var clear_record := _make_target_presentation_clear_record(record)
+		_commit_client_target_presentation_watermarks(clear_record)
+		var source_enemy := get_valid_client_enemy(source_net_id)
+		if source_enemy == null or not is_instance_valid(source_enemy):
+			pending_enemy_target_presentation_states[source_net_id] = clear_record
+			continue
+		source_enemy.apply_multiplayer_target_presentation_state(
+			Enemy.TargetPresentationPhase.NONE,
+			null,
+			clear_record.get("action_position", Vector2.ZERO) as Vector2,
+			int(clear_record.get("state_revision", 0)),
+			0.0,
+			0.0
+		)
+		_erase_pending_target_presentation_state(source_net_id)
+
+
 func clear_peer(peer_id: int) -> void:
 	if peer_id <= 0:
 		return
+	if _is_host_lifecycle_bound():
+		_clear_host_target_presentation_states_for_target(
+			_CombatTargetDescriptor.Kind.PLAYER,
+			peer_id,
+			_get_network_time()
+		)
+		if is_inside_tree():
+			for batch in drain_host_target_presentation_batches():
+				_emit_target_presentation_batch_broadcast(batch)
 	_snapshot_manager.clear_peer_delta_cache(peer_id)
 	_snapshot_cohort_peers.erase(peer_id)
 	_last_keyframe_time_by_peer.erase(peer_id)
@@ -2703,16 +4606,23 @@ func clear_peer(peer_id: int) -> void:
 		var record := pending_enemy_actions.get(net_id, {}) as Dictionary
 		if (
 			int(record.get("kind", -1)) == CLIENT_ENEMY_ACTION_KIND_TARGET
-			and int(record.get("target_peer_id", 0)) == peer_id
+			and int(record.get("target_kind", -1))
+			== _CombatTargetDescriptor.Kind.PLAYER
+			and int(record.get("target_id", 0)) == peer_id
 		):
 			pending_target_action_ids.append(net_id)
 	for net_id in pending_target_action_ids:
 		erase_pending_enemy_action(net_id)
+	_clear_pending_target_presentation_states_for_target(
+		_CombatTargetDescriptor.Kind.PLAYER,
+		peer_id
+	)
 	if _snapshot_cohort_peers.is_empty():
 		_snapshot_manager.clear_enemy_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
 
 
 func reset_session_state() -> void:
+	_disconnect_all_host_enemy_faction_signals()
 	_snapshot_manager.reset_delta_cache()
 	if is_bound():
 		if is_client_view():
@@ -2721,6 +4631,8 @@ func reset_session_state() -> void:
 		_runtime.clear_network_enemy_registry()
 	enemy_interpolators.clear()
 	enemy_spawn_snapshot_times.clear()
+	enemy_spawn_incarnation_tokens.clear()
+	_host_enemy_spawn_times.clear()
 	_host_snapshot_live_ids.clear()
 	_last_keyframe_time_by_peer.clear()
 	_snapshot_cohort_peers.clear()
@@ -2728,9 +4640,19 @@ func reset_session_state() -> void:
 	pending_enemy_damage_feedback.clear()
 	active_enemy_damage_feedback_context.clear()
 	clear_pending_enemy_actions()
+	clear_pending_enemy_faction_changes()
+	pending_enemy_target_presentation_states.clear()
+	_pending_target_presentation_order.clear()
+	_client_enemy_action_revisions.clear()
+	_client_target_presentation_revisions.clear()
+	_client_target_presentation_phases.clear()
+	_client_target_presentation_terminal_revisions.clear()
 	clear_client_terminal_markers()
 	host_terminal_enemy_ids.clear()
 	_pending_host_spawns.clear()
+	_pending_host_faction_changes.clear()
+	_host_target_presentation_states.clear()
+	_pending_host_target_presentation_states.clear()
 	_offscreen_interpolation_slots.clear()
 	_host_snapshot_batch_sequence = 0
 	_snapshot_chunk_encode_count = 0
@@ -2807,11 +4729,40 @@ func _update_snapshot_hz(snapshot_hz: int) -> void:
 
 
 func _prune_old_snapshot_batches(current_batch_id: int) -> void:
+	var evicted_any := false
 	for pending_batch_id_variant in pending_enemy_snapshot_batches.keys():
 		var pending_batch_id := int(pending_batch_id_variant)
 		if pending_batch_id < current_batch_id - 2:
 			_snapshot_incomplete_batch_evict_count += 1
 			pending_enemy_snapshot_batches.erase(pending_batch_id)
+			evicted_any = true
+	if evicted_any:
+		_prune_snapshot_receive_state_to_active_candidates()
+
+
+func _prune_snapshot_receive_state_to_active_candidates() -> void:
+	var live_ids: Dictionary = {}
+	for net_id in get_remote_enemy_ids():
+		if net_id > 0:
+			live_ids[net_id] = true
+	for pending_batch_variant in pending_enemy_snapshot_batches.values():
+		var pending_batch := pending_batch_variant as Dictionary
+		if pending_batch == null:
+			continue
+		var seen := pending_batch.get("seen", {}) as Dictionary
+		for net_id_variant in seen.keys():
+			var net_id := int(net_id_variant)
+			if net_id > 0:
+				live_ids[net_id] = true
+	_snapshot_manager.prune_enemy_receive_baseline_to_ids(live_ids)
+	var stale_interpolator_ids: Array[int] = []
+	for net_id_variant in enemy_interpolators.keys():
+		var net_id := int(net_id_variant)
+		if not live_ids.has(net_id):
+			stale_interpolator_ids.append(net_id)
+	for net_id in stale_interpolator_ids:
+		enemy_interpolators.erase(net_id)
+		_offscreen_interpolation_slots.erase(net_id)
 
 
 func _discard_snapshot_batches_through(completed_batch_id: int) -> void:
@@ -2828,7 +4779,10 @@ func _is_complete_snapshot_chunk(data: PackedByteArray, decoded_count: int) -> b
 		return false
 	var stream := StreamPeerBuffer.new()
 	stream.data_array = data
-	return decoded_count == stream.get_u16()
+	var declared_count := stream.get_u16()
+	if declared_count == 0:
+		return decoded_count == 0 and data.size() == 2
+	return decoded_count == declared_count
 
 
 func _create_interpolator() -> NetInterpolator:
@@ -2919,12 +4873,18 @@ func _on_client_enemy_tree_exited(net_id: int, exiting_enemy: Enemy) -> void:
 	var indexed_enemy := (
 		_runtime.get_network_enemy(net_id) if is_bound() else null
 	)
-	if indexed_enemy == null:
-		return
 	if is_instance_valid(indexed_enemy) and indexed_enemy != exiting_enemy:
 		return
 	erase_pending_enemy_action(net_id)
+	_erase_pending_enemy_faction_change(net_id)
+	_erase_pending_target_presentation_state(net_id)
+	_erase_pending_actions_targeting_enemy(net_id)
+	_client_enemy_action_revisions.erase(net_id)
+	_client_target_presentation_revisions.erase(net_id)
+	_client_target_presentation_phases.erase(net_id)
+	_client_target_presentation_terminal_revisions.erase(net_id)
 	enemy_spawn_snapshot_times.erase(net_id)
+	enemy_spawn_incarnation_tokens.erase(net_id)
 	enemy_interpolators.erase(net_id)
 	_offscreen_interpolation_slots.erase(net_id)
 	if is_bound():
@@ -2935,12 +4895,35 @@ func _receive_action_record(record: Dictionary, current_time: float) -> void:
 	if not is_client_view() or not _is_valid_action_record(record):
 		return
 	var net_id := int(record.get("net_id", 0))
+	var action_id := int(record.get("action_id", 0))
+	if (
+		_is_client_terminal_blocked(net_id)
+		or _is_record_older_than_enemy_incarnation(
+			record,
+			net_id,
+			"host_action_timestamp"
+		)
+		or action_id <= int(_client_enemy_action_revisions.get(net_id, 0))
+		or _is_action_blocked_by_target_presentation_terminal(record)
+		or (
+			enemy_spawn_snapshot_times.has(net_id)
+			and float(record.get("action_time", current_time))
+			< float(enemy_spawn_snapshot_times.get(net_id, -INF))
+		)
+	):
+		return
 	var enemy := get_valid_client_enemy(net_id)
 	if enemy == null or not is_instance_valid(enemy):
-		if not client_terminal_enemy_ids.has(net_id):
-			_cache_pending_enemy_action(record)
+		_cache_pending_enemy_action(record)
 		return
-	_deliver_action_record(record, enemy, current_time, _runtime)
+	var delivery_state := _deliver_action_record(
+		record,
+		enemy,
+		current_time,
+		_runtime
+	)
+	if delivery_state == TARGET_ACTION_RESOLUTION_WAITING:
+		_cache_pending_enemy_action(record)
 
 
 func _is_valid_action_record(record: Dictionary) -> bool:
@@ -2971,13 +4954,41 @@ func _is_valid_action_record(record: Dictionary) -> bool:
 		CLIENT_ENEMY_ACTION_KIND_GENERIC:
 			return (record.get("direction", Vector2.ZERO) as Vector2).is_finite()
 		CLIENT_ENEMY_ACTION_KIND_TARGET:
-			var target_peer_id := int(record.get("target_peer_id", 0))
 			return (
-				target_peer_id > 0
-				and _NetConstants.is_valid_network_combat_value(target_peer_id)
+				int(record.get("assignment_revision", -1)) == action_id
+				and _is_valid_network_target_descriptor(
+					_target_descriptor_from_action_record(record)
+				)
 			)
 		_:
 			return false
+
+
+func _target_descriptor_from_action_record(
+	record: Dictionary
+) -> CombatTargetDescriptor:
+	return _CombatTargetDescriptor.create(
+		int(record.get("target_kind", _CombatTargetDescriptor.Kind.NONE)),
+		int(record.get("target_id", 0)),
+		int(record.get("target_revision", -1)),
+		record.get("target_fallback_position", Vector2.INF) as Vector2
+	)
+
+
+func _is_valid_network_target_descriptor(
+	descriptor: CombatTargetDescriptor
+) -> bool:
+	return (
+		descriptor != null
+		and descriptor.is_valid()
+		and descriptor.kind in [
+			_CombatTargetDescriptor.Kind.PLAYER,
+			_CombatTargetDescriptor.Kind.PLANT,
+			_CombatTargetDescriptor.Kind.ENEMY,
+		]
+		and _NetConstants.is_valid_network_combat_value(descriptor.id)
+		and _NetConstants.is_valid_network_combat_value(descriptor.revision)
+	)
 
 
 func _deliver_action_record(
@@ -2985,15 +4996,34 @@ func _deliver_action_record(
 	enemy: Enemy,
 	current_time: float,
 	runtime: CombatRuntimeBase
-) -> void:
+) -> int:
 	if (
 		enemy == null
 		or not is_instance_valid(enemy)
 		or runtime == null
 		or not is_instance_valid(runtime)
 	):
-		return
+		return TARGET_ACTION_RESOLUTION_WAITING
 	var net_id := int(record.get("net_id", 0))
+	var action_id := int(record.get("action_id", 0))
+	if _is_record_older_than_enemy_incarnation(
+		record,
+		net_id,
+		"host_action_timestamp"
+	):
+		return TARGET_ACTION_RESOLUTION_STALE
+	if action_id <= int(_client_enemy_action_revisions.get(net_id, 0)):
+		return TARGET_ACTION_RESOLUTION_STALE
+	if _is_action_blocked_by_target_presentation_terminal(record):
+		return TARGET_ACTION_RESOLUTION_STALE
+	var target: Node2D = null
+	if int(record.get("kind", -1)) == CLIENT_ENEMY_ACTION_KIND_TARGET:
+		var target_resolution := _resolve_target_action(record, runtime)
+		if target_resolution.state != TARGET_ACTION_RESOLUTION_READY:
+			if target_resolution.state == TARGET_ACTION_RESOLUTION_STALE:
+				_client_enemy_action_revisions[net_id] = action_id
+			return target_resolution.state
+		target = target_resolution.target
 	var action_position := record.get("action_position", Vector2.ZERO) as Vector2
 	var action_sample := _push_action_interpolator_sample(
 		net_id,
@@ -3008,7 +5038,6 @@ func _deliver_action_record(
 	)
 	action_elapsed = maxf(action_elapsed, 0.0)
 	var action_name := StringName(record.get("action_name", &""))
-	var action_id := int(record.get("action_id", 0))
 	match int(record.get("kind", -1)):
 		CLIENT_ENEMY_ACTION_KIND_GENERIC:
 			var direction := record.get("direction", Vector2.ZERO) as Vector2
@@ -3029,9 +5058,6 @@ func _deliver_action_record(
 					action_id
 				)
 		CLIENT_ENEMY_ACTION_KIND_TARGET:
-			var target := runtime.get_player_for_peer(
-				int(record.get("target_peer_id", 0))
-			)
 			if enemy.has_method("play_multiplayer_enemy_target_action_with_context"):
 				enemy.call(
 					"play_multiplayer_enemy_target_action_with_context",
@@ -3048,13 +5074,72 @@ func _deliver_action_record(
 					target,
 					action_id
 				)
+	_client_enemy_action_revisions[net_id] = action_id
+	return TARGET_ACTION_RESOLUTION_READY
+
+
+func _resolve_target_action(
+	record: Dictionary,
+	runtime: CombatRuntimeBase
+) -> TargetActionResolution:
+	var resolution := TargetActionResolution.new()
+	var descriptor := _target_descriptor_from_action_record(record)
+	if not _is_valid_network_target_descriptor(descriptor):
+		resolution.state = TARGET_ACTION_RESOLUTION_STALE
+		return resolution
+	if (
+		descriptor.kind == _CombatTargetDescriptor.Kind.ENEMY
+		and (
+			_is_client_terminal_blocked(descriptor.id)
+			or _is_record_older_than_enemy_incarnation(
+				record,
+				descriptor.id,
+				(
+					"host_reference_timestamp"
+					if record.has("host_reference_timestamp")
+					else "host_action_timestamp"
+				)
+			)
+		)
+	):
+		resolution.state = TARGET_ACTION_RESOLUTION_STALE
+		return resolution
+	var target := runtime.get_combat_query_facade().resolve_target(descriptor)
+	if target == null or not is_instance_valid(target):
+		return resolution
+	var target_enemy := target as Enemy
+	if target_enemy != null:
+		var current_revision := target_enemy.get_faction_revision()
+		if current_revision < descriptor.revision:
+			return resolution
+		if current_revision > descriptor.revision:
+			resolution.state = TARGET_ACTION_RESOLUTION_STALE
+			return resolution
+	resolution.state = TARGET_ACTION_RESOLUTION_READY
+	resolution.target = target
+	return resolution
 
 
 func _cache_pending_enemy_action(record: Dictionary) -> bool:
 	var net_id := int(record.get("net_id", 0))
-	if net_id <= 0 or client_terminal_enemy_ids.has(net_id):
-		return false
 	var action_id := int(record.get("action_id", 0))
+	if (
+		net_id <= 0
+		or _is_client_terminal_blocked(net_id)
+		or _is_record_older_than_enemy_incarnation(
+			record,
+			net_id,
+			"host_action_timestamp"
+		)
+		or action_id <= int(_client_enemy_action_revisions.get(net_id, 0))
+		or _is_action_blocked_by_target_presentation_terminal(record)
+		or (
+			enemy_spawn_snapshot_times.has(net_id)
+			and float(record.get("action_time", -INF))
+			< float(enemy_spawn_snapshot_times.get(net_id, -INF))
+		)
+	):
+		return false
 	if pending_enemy_actions.has(net_id):
 		var current := pending_enemy_actions[net_id] as Dictionary
 		var current_action_id := int(current.get("action_id", 0))

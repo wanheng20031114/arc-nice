@@ -127,6 +127,7 @@ var peer_rpc_peer_ids: Array[int] = []
 var peer_rpc_methods: Array[StringName] = []
 var peer_rpc_arguments: Array[Array] = []
 var rapid_fire_action_records: Array[Dictionary] = []
+var host_request_argument_counts: Array[int] = []
 
 
 func _init() -> void:
@@ -243,6 +244,11 @@ func _run() -> void:
 	range_coordinator.reset_session_state()
 	range_coordinator.unbind_runtime(runtime)
 	range_coordinator.free()
+	_expect(
+		MpProjectileCoordinatorScript.sanitize_client_projectile_target_peer_id(99)
+		== 0,
+		"Client 伪造的 player target peer 必须在 Host 准入边界归零。"
+	)
 	var coordinator_source := FileAccess.get_file_as_string(
 		PROJECTILE_COORDINATOR_SCRIPT_PATH
 	)
@@ -299,9 +305,10 @@ func _run() -> void:
 	)
 	_expect(
 		broadcast_methods == [&"net_projectile_fired"]
-		and broadcast_argument_counts == [12],
-		"Host 本地弹体必须由协调器登记，并请求根节点广播既有 12 字段载荷。"
+		and broadcast_argument_counts == [17],
+		"Host 本地弹体必须广播 12 字段弹体数据及尾部 5 字段冻结来源。"
 	)
+	var host_projectile_payload := broadcast_arguments[0] as Array
 	var frozen_source := coordinator.get_projectile_damage_source_snapshot(
 		host_projectile.projectile_id
 	)
@@ -313,6 +320,14 @@ func _run() -> void:
 		and frozen_source.event_source_id == host_projectile.projectile_id
 		and frozen_source.source_type == &"probe_source",
 		"Host 弹体记录必须冻结注册时来源，并以分配后的 projectile_id 补齐事件ID。"
+	)
+	_expect(
+		int(host_projectile_payload[12]) == 3
+		and int(host_projectile_payload[13]) == 7
+		and int(host_projectile_payload[14]) == 99
+		and int(host_projectile_payload[15]) == host_projectile.projectile_id
+		and String(host_projectile_payload[16]) == "probe_source",
+		"Host 广播尾部必须逐字段复用权威记录中的冻结来源。"
 	)
 
 	player_coordinator.observe_tango_charge_sequence(2, 1)
@@ -346,6 +361,13 @@ func _run() -> void:
 		linglan_projectiles.append(ProbeProjectile.new())
 		linglan_positions.append(Vector2(projectile_index, 0.0))
 		linglan_directions.append(Vector2.RIGHT)
+	var linglan_source_snapshot := DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		901,
+		0,
+		&"linglan_skill1"
+	)
 	coordinator.submit_local_linglan_skill1_ring(
 		linglan_projectiles,
 		linglan_positions,
@@ -353,15 +375,16 @@ func _run() -> void:
 		9,
 		17,
 		180.0,
-		2.0
+		2.0,
+		linglan_source_snapshot
 	)
 	_expect(
 		broadcast_methods.size() == 4
 		and broadcast_methods[2] == &"net_linglan_skill1_ring_batch"
 		and broadcast_methods[3] == &"net_linglan_skill1_ring_batch"
-		and broadcast_argument_counts[2] == 8
-		and broadcast_argument_counts[3] == 8,
-		"灵兰弹环超过单包上限时必须由协调器按既有 32 颗边界分批。"
+		and broadcast_argument_counts[2] == 12
+		and broadcast_argument_counts[3] == 12,
+		"灵岚弹环超过单包上限时必须分批，并携带共享的冻结敌对来源。"
 	)
 
 	net_manager.net_role = NetManagerStore.NetRole.CLIENT
@@ -380,24 +403,29 @@ func _run() -> void:
 		host_request_methods == [&"_rpc_projectile_fired_from_client"],
 		"Client 本地预测弹体必须由协调器请求根节点发往 Host。"
 	)
+	_expect(
+		host_request_argument_counts == [12],
+		"Client 上行请求必须保持 12 字段，不能携带可伪造的阵营或奖励归属。"
+	)
 	net_manager.net_role = NetManagerStore.NetRole.HOST
 
 	var data_service := RapidFireSimulationServiceScript.new()
 	data_service.reserve_projectile_capacity(3)
-	var data_handle := _register_data_projectile_handle(
-		data_service,
-		Vector2(12.0, 34.0)
-	)
-	var data_broadcast_count_before := broadcast_methods.size()
-	var data_record_count_before := int(
-		coordinator.get_state_metrics().get("projectile_records", -1)
-	)
 	var data_damage_source_snapshot := DamageSourceSnapshot.create(
 		CombatRelationService.HOSTILE_WAVE,
 		37,
 		4201,
 		99,
 		&"capoo_ak47_data"
+	)
+	var data_handle := _register_data_projectile_handle(
+		data_service,
+		Vector2(12.0, 34.0),
+		data_damage_source_snapshot
+	)
+	var data_broadcast_count_before := broadcast_methods.size()
+	var data_record_count_before := int(
+		coordinator.get_state_metrics().get("projectile_records", -1)
 	)
 	var data_projectile_id := coordinator.register_local_data_projectile(
 		data_service,
@@ -415,6 +443,7 @@ func _run() -> void:
 	var data_frozen_source := (
 		coordinator.get_projectile_damage_source_snapshot(data_projectile_id)
 	)
+	var data_body_source := data_service.get_damage_source_snapshot(data_handle)
 	_expect(
 		data_projectile_id > 0
 		and MpProjectileCoordinatorScript.is_projectile_id_valid_for_host_owner(
@@ -442,10 +471,22 @@ func _run() -> void:
 		"Host data projectile record 必须冻结敌军阵营与 credit，并把事件ID绑定到分配后的 projectile ID。"
 	)
 	_expect(
+		data_body_source != null
+		and data_frozen_source != null
+		and data_body_source.source_faction_id
+		== data_frozen_source.source_faction_id
+		and data_body_source.credit_peer_id == data_frozen_source.credit_peer_id
+		and data_body_source.instigator_entity_id
+		== data_frozen_source.instigator_entity_id
+		and data_body_source.event_source_id == data_projectile_id
+		and data_body_source.source_type == data_frozen_source.source_type,
+		"Host data 模拟槽与网络 record 必须持有同一份冻结来源值。"
+	)
+	_expect(
 		broadcast_methods.size() == data_broadcast_count_before + 1
 		and broadcast_methods.back() == &"net_projectile_fired"
-		and broadcast_argument_counts.back() == 12
-		and data_payload.size() == 12
+		and broadcast_argument_counts.back() == 17
+		and data_payload.size() == 17
 		and int(data_payload[0]) == data_projectile_id
 		and String(data_payload[1]) == "capoo_ak47_bullet"
 		and int(data_payload[2]) == 0
@@ -456,8 +497,13 @@ func _run() -> void:
 		and is_equal_approx(float(data_payload[7]), 1.25)
 		and not bool(data_payload[8])
 		and int(data_payload[9]) == 0
-		and int(data_payload[11]) == 0,
-		"Data handle 必须复用既有 net_projectile_fired 12 字段载荷。"
+		and int(data_payload[11]) == 0
+		and int(data_payload[12]) == CombatRelationService.HOSTILE_WAVE
+		and int(data_payload[13]) == 37
+		and int(data_payload[14]) == 4201
+		and int(data_payload[15]) == data_projectile_id
+		and String(data_payload[16]) == "capoo_ak47_data",
+		"Data handle 广播必须追加与模拟槽一致的冻结来源载荷。"
 	)
 	var client_visual_coordinator := (
 		PROJECTILE_COORDINATOR_SCENE.instantiate() as MpProjectileCoordinatorScript
@@ -474,9 +520,10 @@ func _run() -> void:
 		_on_enemy_rapid_fire_action_requested
 	)
 	net_manager.net_role = NetManagerStore.NetRole.CLIENT
-	client_visual_coordinator.receive_projectile_fired(
+	client_visual_coordinator.apply_authority_projectile_fired(
+		1,
 		data_projectile_id,
-		&"capoo_ak47_bullet",
+		"capoo_ak47_bullet",
 		0,
 		Vector2(12.0, 34.0),
 		Vector2.RIGHT,
@@ -485,17 +532,126 @@ func _run() -> void:
 		1.25,
 		false,
 		0,
+		400.0,
 		0,
-		0.0,
-		400.0
+		CombatRelationService.HOSTILE_WAVE,
+		37,
+		4201,
+		data_projectile_id,
+		"capoo_ak47_data"
 	)
 	var client_visual_proxy := client_visual_coordinator.get_projectile(
 		data_projectile_id
 	)
+	var client_visual_bullet := client_visual_proxy as CapooAK47Bullet
+	var client_visual_source := (
+		client_visual_bullet.damage_source_snapshot
+		if client_visual_bullet != null
+		else null
+	)
 	_expect(
 		client_visual_proxy is CapooAK47Bullet
-		and not client_visual_coordinator.has_data_projectile(data_projectile_id),
-		"Client 收到既有广播后必须继续实例化旧 CapooAK47Bullet 视觉代理。"
+		and not client_visual_coordinator.has_data_projectile(data_projectile_id)
+		and client_visual_source != null
+		and client_visual_source.source_faction_id
+		== CombatRelationService.HOSTILE_WAVE
+		and client_visual_source.credit_peer_id == 37
+		and client_visual_source.instigator_entity_id == 4201
+		and client_visual_source.event_source_id == data_projectile_id
+		and client_visual_source.source_type == &"capoo_ak47_data",
+		"Client 必须从 Host 标量载荷重建快照并传给网络视觉弹体。"
+	)
+	client_visual_coordinator.apply_authority_projectile_fired(
+		1,
+		data_projectile_id,
+		"capoo_ak47_bullet",
+		0,
+		Vector2(99.0, 99.0),
+		Vector2.LEFT,
+		99,
+		99.0,
+		9.0,
+		false,
+		0,
+		399.0,
+		0,
+		3,
+		999,
+		999,
+		999,
+		"stale_source"
+	)
+	var source_after_stale_packet := (
+		client_visual_coordinator.get_projectile_damage_source_snapshot(
+			data_projectile_id
+		)
+	)
+	_expect(
+		source_after_stale_packet != null
+		and source_after_stale_packet.source_faction_id
+		== CombatRelationService.HOSTILE_WAVE
+		and source_after_stale_packet.credit_peer_id == 37
+		and source_after_stale_packet.source_type == &"capoo_ak47_data",
+		"重复或乱序的 authority 包不得覆盖首次确认的冻结来源。"
+	)
+	var invalid_faction_id := MpProjectileCoordinatorScript.encode_projectile_id(
+		MpProjectileCoordinatorScript.PROJECTILE_ID_FALLBACK_OWNER_PEER_ID,
+		MpProjectileCoordinatorScript.PROJECTILE_ID_HOST_ORIGIN_BIT | 701
+	)
+	client_visual_coordinator.apply_authority_projectile_fired(
+		1,
+		invalid_faction_id,
+		"capoo_ak47_bullet",
+		0,
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		5,
+		100.0,
+		1.0,
+		false,
+		0,
+		400.0,
+		0,
+		CombatRelationService.MAX,
+		0,
+		0,
+		invalid_faction_id,
+		"invalid_faction"
+	)
+	var negative_credit_id := MpProjectileCoordinatorScript.encode_projectile_id(
+		MpProjectileCoordinatorScript.PROJECTILE_ID_FALLBACK_OWNER_PEER_ID,
+		MpProjectileCoordinatorScript.PROJECTILE_ID_HOST_ORIGIN_BIT | 702
+	)
+	client_visual_coordinator.apply_authority_projectile_fired(
+		1,
+		negative_credit_id,
+		"capoo_ak47_bullet",
+		0,
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		5,
+		100.0,
+		1.0,
+		false,
+		0,
+		400.0,
+		0,
+		CombatRelationService.HOSTILE_WAVE,
+		-2,
+		0,
+		negative_credit_id,
+		"negative_credit"
+	)
+	_expect(
+		not client_visual_coordinator.has_projectile(invalid_faction_id)
+		and not client_visual_coordinator.has_projectile_record(
+			invalid_faction_id
+		)
+		and not client_visual_coordinator.has_projectile(negative_credit_id)
+		and not client_visual_coordinator.has_projectile_record(
+			negative_credit_id
+		),
+		"非法阵营或负来源 ID 的 authority 载荷必须在实例化前拒绝。"
 	)
 	client_visual_coordinator.notify_projectile_finished(
 		data_projectile_id,
@@ -836,6 +992,158 @@ func _run() -> void:
 			)) == 0,
 			"空 repair 快照必须可靠清空上一套视觉 rows。"
 		)
+	var missing_source_id := MpProjectileCoordinatorScript.encode_projectile_id(
+		4,
+		MpProjectileCoordinatorScript.PROJECTILE_ID_HOST_ORIGIN_BIT | 703
+	)
+	client_visual_coordinator.apply_authority_projectile_fired(
+		1,
+		missing_source_id,
+		"capoo_ak47_bullet",
+		4,
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		5,
+		100.0,
+		1.0,
+		false,
+		0,
+		400.0,
+		0,
+		-1,
+		-1,
+		-1,
+		-1,
+		""
+	)
+	_expect(
+		not client_visual_coordinator.has_projectile(missing_source_id)
+		and not client_visual_coordinator.has_projectile_record(
+			missing_source_id
+		),
+		"v94 Host 下行缺少全部 5 个来源字段时必须拒绝，不能回退为玩家归属。"
+	)
+	var invalid_motion_payloads: Array[Dictionary] = [
+		{"spawn": Vector2(NAN, 0.0), "direction": Vector2.RIGHT, "speed": 100.0, "lifetime": 1.0, "time": 400.0},
+		{"spawn": Vector2.ZERO, "direction": Vector2.ZERO, "speed": 100.0, "lifetime": 1.0, "time": 400.0},
+		{"spawn": Vector2.ZERO, "direction": Vector2.RIGHT, "speed": NAN, "lifetime": 1.0, "time": 400.0},
+		{"spawn": Vector2.ZERO, "direction": Vector2.RIGHT, "speed": 0.0, "lifetime": 1.0, "time": 400.0},
+		{"spawn": Vector2.ZERO, "direction": Vector2.RIGHT, "speed": 100.0, "lifetime": INF, "time": 400.0},
+		{"spawn": Vector2.ZERO, "direction": Vector2.RIGHT, "speed": 100.0, "lifetime": 0.0, "time": 400.0},
+		{"spawn": Vector2.ZERO, "direction": Vector2.RIGHT, "speed": 100.0, "lifetime": 1.0, "time": NAN},
+	]
+	for payload_index in range(invalid_motion_payloads.size()):
+		var invalid_payload := invalid_motion_payloads[payload_index]
+		var invalid_motion_id := MpProjectileCoordinatorScript.encode_projectile_id(
+			4,
+			MpProjectileCoordinatorScript.PROJECTILE_ID_HOST_ORIGIN_BIT
+				| (800 + payload_index)
+		)
+		client_visual_coordinator.apply_authority_projectile_fired(
+			1,
+			invalid_motion_id,
+			"capoo_ak47_bullet",
+			4,
+			invalid_payload.get("spawn", Vector2.ZERO) as Vector2,
+			invalid_payload.get("direction", Vector2.RIGHT) as Vector2,
+			5,
+			float(invalid_payload.get("speed", 100.0)),
+			float(invalid_payload.get("lifetime", 1.0)),
+			false,
+			0,
+			float(invalid_payload.get("time", 400.0)),
+			0,
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			900,
+			invalid_motion_id,
+			"invalid_motion"
+		)
+		_expect(
+			not client_visual_coordinator.has_projectile(invalid_motion_id)
+			and not client_visual_coordinator.has_projectile_record(
+				invalid_motion_id
+			),
+			"非法 authority 运动字段必须在实例化和登记前拒绝。"
+		)
+	var wrong_owner_lane_id := MpProjectileCoordinatorScript.encode_projectile_id(
+		5,
+		MpProjectileCoordinatorScript.PROJECTILE_ID_HOST_ORIGIN_BIT | 900
+	)
+	client_visual_coordinator.apply_authority_projectile_fired(
+		1,
+		wrong_owner_lane_id,
+		"capoo_ak47_bullet",
+		4,
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		5,
+		100.0,
+		1.0,
+		false,
+		0,
+		400.0,
+		0,
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		900,
+		wrong_owner_lane_id,
+		"wrong_owner_lane"
+	)
+	_expect(
+		not client_visual_coordinator.has_projectile(wrong_owner_lane_id)
+		and not client_visual_coordinator.has_projectile_record(wrong_owner_lane_id),
+		"projectile ID 与 owner lane 不一致时必须 fail closed。"
+	)
+	var explicit_local_id := MpProjectileCoordinatorScript.encode_projectile_id(
+		4,
+		MpProjectileCoordinatorScript.PROJECTILE_ID_HOST_ORIGIN_BIT | 704
+	)
+	var explicit_local_source := DamageSourceSnapshot.legacy_player_owned(
+		explicit_local_id,
+		&"capoo_ak47_bullet",
+		4,
+		4
+	)
+	client_visual_coordinator.receive_projectile_fired(
+		explicit_local_id,
+		&"capoo_ak47_bullet",
+		4,
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		5,
+		100.0,
+		1.0,
+		false,
+		0,
+		0,
+		0.0,
+		400.0,
+		explicit_local_source
+	)
+	var explicit_received_source := (
+		client_visual_coordinator.get_projectile_damage_source_snapshot(
+			explicit_local_id
+		)
+	)
+	_expect(
+		explicit_received_source != null
+		and explicit_received_source.source_faction_id
+		== CombatRelationService.PLAYER_ALLIED
+		and explicit_received_source.credit_peer_id == 4
+		and explicit_received_source.instigator_entity_id == 4
+		and explicit_received_source.event_source_id == explicit_local_id,
+		"本地直接 receive 调用必须显式携带合法的冻结来源。"
+	)
+	var explicit_local_proxy := client_visual_coordinator.get_projectile(
+		explicit_local_id
+	)
+	client_visual_coordinator.notify_projectile_finished(
+		explicit_local_id,
+		explicit_local_proxy
+	)
+	if explicit_local_proxy != null and is_instance_valid(explicit_local_proxy):
+		explicit_local_proxy.free()
 	client_visual_coordinator.reset_session_state()
 	client_visual_coordinator.unbind_runtime(runtime)
 	client_visual_coordinator.free()
@@ -954,7 +1262,8 @@ func _run() -> void:
 		0,
 		0,
 		0.0,
-		400.0
+		400.0,
+		data_frozen_source
 	)
 	_expect(
 		coordinator.has_data_projectile(data_projectile_id)
@@ -1163,8 +1472,134 @@ func _run() -> void:
 		),
 		"令牌桶经过时间推进后必须按既有速率恢复准入。"
 	)
+	var replay_peer_id := 8
+	var replay_sequence_500 := MpProjectileCoordinatorScript.encode_projectile_id(
+		replay_peer_id,
+		500
+	)
+	var replay_sequence_501 := MpProjectileCoordinatorScript.encode_projectile_id(
+		replay_peer_id,
+		501
+	)
+	var replay_sequence_502 := MpProjectileCoordinatorScript.encode_projectile_id(
+		replay_peer_id,
+		502
+	)
+	_expect(
+		coordinator.accept_client_projectile_request_identity(
+			replay_peer_id,
+			replay_sequence_500,
+			replay_peer_id,
+			false,
+			210.0
+		)
+		and coordinator.accept_client_projectile_request_identity(
+			replay_peer_id,
+			replay_sequence_502,
+			replay_peer_id,
+			false,
+			210.0
+		)
+		and coordinator.accept_client_projectile_request_identity(
+			replay_peer_id,
+			replay_sequence_501,
+			replay_peer_id,
+			false,
+			210.0
+		)
+		and not coordinator.accept_client_projectile_request_identity(
+			replay_peer_id,
+			replay_sequence_501,
+			replay_peer_id,
+			false,
+			210.0
+		),
+		"客户端弹体序列窗口必须允许窗口内乱序一次，并拒绝已准入 ID 的即时重放。"
+	)
+	var stale_unseen_sequence := 503
+	var replay_window_advance_sequence := (
+		stale_unseen_sequence
+		+ MpProjectileCoordinatorScript.CLIENT_PROJECTILE_REPLAY_WINDOW_SIZE
+	)
+	_expect(
+		coordinator.accept_client_projectile_request_identity(
+			replay_peer_id,
+			MpProjectileCoordinatorScript.encode_projectile_id(
+				replay_peer_id,
+				replay_window_advance_sequence
+			),
+			replay_peer_id,
+			false,
+			210.0
+		)
+		and not coordinator.accept_client_projectile_request_identity(
+			replay_peer_id,
+			MpProjectileCoordinatorScript.encode_projectile_id(
+				replay_peer_id,
+				stale_unseen_sequence
+			),
+			replay_peer_id,
+			false,
+			210.0
+		),
+		"窗口外的陈旧序列即使从未见过，也不得在 Host 上重新获得准入。"
+	)
+	var wrap_peer_id := 9
+	var max_client_sequence := (
+		MpProjectileCoordinatorScript.PROJECTILE_ID_SEQUENCE_COUNTER_MASK
+	)
+	_expect(
+		coordinator.accept_client_projectile_request_identity(
+			wrap_peer_id,
+			MpProjectileCoordinatorScript.encode_projectile_id(
+				wrap_peer_id,
+				max_client_sequence - 1
+			),
+			wrap_peer_id,
+			false,
+			220.0
+		)
+		and coordinator.accept_client_projectile_request_identity(
+			wrap_peer_id,
+			MpProjectileCoordinatorScript.encode_projectile_id(
+				wrap_peer_id,
+				max_client_sequence
+			),
+			wrap_peer_id,
+			false,
+			220.0
+		)
+		and coordinator.accept_client_projectile_request_identity(
+			wrap_peer_id,
+			MpProjectileCoordinatorScript.encode_projectile_id(wrap_peer_id, 1),
+			wrap_peer_id,
+			false,
+			220.0
+		)
+		and not coordinator.accept_client_projectile_request_identity(
+			wrap_peer_id,
+			MpProjectileCoordinatorScript.encode_projectile_id(
+				wrap_peer_id,
+				max_client_sequence
+			),
+			wrap_peer_id,
+			false,
+			220.0
+		),
+		"客户端序列窗口必须兼容 31 位计数器回绕，并在回绕后继续拒绝旧序列。"
+	)
 
 	var expiring_id := MpProjectileCoordinatorScript.encode_projectile_id(5, 99)
+	_expect(
+		coordinator.accept_client_projectile_request_identity(
+			5,
+			expiring_id,
+			5,
+			false,
+			10.0
+		),
+		"过期重放用例的客户端弹体 ID 首次必须能够准入。"
+	)
 	coordinator.remember_projectile_record(
 		expiring_id,
 		5,
@@ -1181,8 +1616,57 @@ func _run() -> void:
 	)
 	coordinator.prune_records(16.0)
 	_expect(
-		not coordinator.has_projectile_record(expiring_id),
-		"弹体记录必须在保留窗边界按原语义清理。"
+		not coordinator.has_projectile_record(expiring_id)
+		and not coordinator.accept_client_projectile_request_identity(
+			5,
+			expiring_id,
+			5,
+			false,
+			16.0
+		),
+		"弹体 record 到期清理后，逐 peer 序列窗口仍必须拒绝同一 ID 重放。"
+	)
+	var peer_reconnect_id := MpProjectileCoordinatorScript.encode_projectile_id(6, 33)
+	_expect(
+		coordinator.accept_client_projectile_request_identity(
+			6,
+			peer_reconnect_id,
+			6,
+			false,
+			230.0
+		),
+		"peer 清理用例的客户端 ID 首次必须准入。"
+	)
+	coordinator.remember_projectile_record(
+		peer_reconnect_id,
+		6,
+		&"player_bullet",
+		12,
+		1.0,
+		false,
+		230.0
+	)
+	coordinator.clear_projectile_records_for_peer(6)
+	_expect(
+		not coordinator.accept_client_projectile_request_identity(
+			6,
+			peer_reconnect_id,
+			6,
+			false,
+			236.0
+		),
+		"仅清理短期 record 不得清除 peer 的防重放序列状态。"
+	)
+	coordinator.clear_peer(6)
+	_expect(
+		coordinator.accept_client_projectile_request_identity(
+			6,
+			peer_reconnect_id,
+			6,
+			false,
+			237.0
+		),
+		"peer 离开清理必须释放其序列窗口，使重连后的新会话可从原序列开始。"
 	)
 
 	var peer_two_projectile := ProbeProjectile.new()
@@ -1270,7 +1754,11 @@ func _run() -> void:
 			"known_data_projectiles",
 			-1
 		)) == 0
-		and int(coordinator.get_state_metrics().get("projectile_records", -1)) == 0,
+		and int(coordinator.get_state_metrics().get("projectile_records", -1)) == 0
+		and int(coordinator.get_state_metrics().get(
+			"request_replay_windows",
+			-1
+		)) == 0,
 		"会话重置必须回收存活 Node/data 弹体并清空身份、记录和序号状态。"
 	)
 	coordinator.unbind_runtime(runtime)
@@ -1317,7 +1805,8 @@ func _run() -> void:
 
 func _register_data_projectile_handle(
 	service: RapidFireSimulationServiceScript,
-	position: Vector2
+	position: Vector2,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> int:
 	return service.register_projectile(
 		RapidFireSimulationServiceScript.Mode.DATA,
@@ -1330,7 +1819,8 @@ func _register_data_projectile_handle(
 		500,
 		0,
 		2,
-		0
+		0,
+		damage_source_snapshot
 	)
 
 
@@ -1487,9 +1977,10 @@ func _on_rpc_broadcast_requested(
 
 func _on_rpc_to_host_requested(
 	method_name: StringName,
-	_arguments: Array
+	arguments: Array
 ) -> void:
 	host_request_methods.append(method_name)
+	host_request_argument_counts.append(arguments.size())
 
 
 func _on_rpc_to_peer_requested(

@@ -1368,6 +1368,8 @@ func _append_enemy_snapshot_states_from_container(container: Node) -> void:
 		state.health_revision = enemy.health_revision
 		state.is_dead = enemy.is_dead
 		state.visual_status_mask = enemy.get_collectible_visual_status_mask()
+		state.faction_id = enemy.get_combat_faction_id()
+		state.faction_revision = enemy.get_faction_revision()
 		_enemy_snapshot_output.append(state)
 
 

@@ -76,7 +76,8 @@ class Skill4Host:
 		lifetime: float,
 		pierces_enemies: bool = false,
 		target_peer_id: int = 0,
-		_target_enemy_net_id: int = 0
+		_target_enemy_net_id: int = 0,
+		damage_source_snapshot: DamageSourceSnapshot = null
 	) -> void:
 		projectile_records.append({
 			"projectile": projectile,
@@ -89,6 +90,7 @@ class Skill4Host:
 			"lifetime": lifetime,
 			"pierces_enemies": pierces_enemies,
 			"target_peer_id": target_peer_id,
+			"damage_source_snapshot": damage_source_snapshot,
 		})
 
 	func broadcast_enemy_action(
@@ -120,7 +122,8 @@ class LaserDamageReportHost:
 		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
 		_source_direction: Vector2 = Vector2.ZERO,
 		_is_ranged: bool = false,
-		_contact_preconsumed: bool = false
+		_contact_preconsumed: bool = false,
+		source_snapshot: DamageSourceSnapshot = null
 	) -> bool:
 		damage_reports.append({
 			"source_id": source_id,
@@ -128,6 +131,7 @@ class LaserDamageReportHost:
 			"damage": damage,
 			"source_type": source_type,
 			"damage_type": damage_type,
+			"source_snapshot": source_snapshot,
 		})
 		return true
 
@@ -281,6 +285,9 @@ func _test_skill4_scene_contract() -> void:
 	_expect(field != null, "Skill4 laser field scene must instantiate.")
 	if field == null:
 		return
+	field.set_damage_source_snapshot(
+		_make_linglan_source_snapshot(&"linglan_skill4_laser")
+	)
 	test_root.add_child(field)
 	(test_root as LinglanCombatTestRuntime).bind_linglan_node(field)
 	field.setup(
@@ -445,6 +452,9 @@ func _test_laser_and_orb_damage() -> void:
 	laser_player.magic_defense = 50
 	laser_player._base_magic_defense = 50
 	var field := LASER_FIELD_SCENE.instantiate() as LASER_FIELD_SCRIPT
+	field.set_damage_source_snapshot(
+		_make_linglan_source_snapshot(&"linglan_skill4_laser")
+	)
 	test_root.add_child(field)
 	(test_root as LinglanCombatTestRuntime).bind_linglan_node(field)
 	field.setup(
@@ -499,6 +509,9 @@ func _test_laser_and_orb_damage() -> void:
 	invulnerable_player.magic_defense = 0
 	invulnerable_player._base_magic_defense = 0
 	var retry_field := LASER_FIELD_SCENE.instantiate() as LASER_FIELD_SCRIPT
+	retry_field.set_damage_source_snapshot(
+		_make_linglan_source_snapshot(&"linglan_skill4_laser")
+	)
 	test_root.add_child(retry_field)
 	(test_root as LinglanCombatTestRuntime).bind_linglan_node(retry_field)
 	retry_field.set_physics_process(false)
@@ -529,6 +542,9 @@ func _test_laser_and_orb_damage() -> void:
 	orb_player._base_magic_defense = 50
 	await physics_frame
 	var orb := ORB_SCENE.instantiate() as ORB_SCRIPT
+	orb.set_damage_source_snapshot(
+		_make_linglan_source_snapshot(&"linglan_skill4_orb")
+	)
 	test_root.add_child(orb)
 	(test_root as LinglanCombatTestRuntime).bind_linglan_node(orb)
 	orb.global_position = Vector2.ZERO
@@ -560,6 +576,15 @@ func _test_laser_overlap_tracking_and_multiplayer_event_ids() -> void:
 	root.add_child(report_host)
 
 	var field := LASER_FIELD_SCENE.instantiate() as LASER_FIELD_SCRIPT
+	field.set_damage_source_snapshot(
+		DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			4400,
+			0,
+			&"linglan_skill4_laser"
+		)
+	)
 	report_host.add_child(field)
 	report_host.bind_linglan_node(field)
 	field.setup(
@@ -570,6 +595,12 @@ func _test_laser_overlap_tracking_and_multiplayer_event_ids() -> void:
 		50,
 		6.0,
 		3.0
+	)
+	_expect(
+		field.damage_source_snapshot != null
+		and field.damage_source_snapshot.source_faction_id
+			== CombatRelationService.HOSTILE_WAVE,
+		"Skill4 laser fixture must retain its configured frozen cast source."
 	)
 	field.set_physics_process(false)
 
@@ -609,11 +640,59 @@ func _test_laser_overlap_tracking_and_multiplayer_event_ids() -> void:
 			and report_host.damage_reports[1]["source_type"] == &"linglan_skill4_laser",
 			"Skill4 laser event IDs must not change the authored damage source type."
 		)
+		for report in report_host.damage_reports:
+			var source_snapshot := report.get("source_snapshot") as DamageSourceSnapshot
+			var source_details := "null"
+			if source_snapshot != null:
+				source_details = "faction=%d type=%s" % [
+					source_snapshot.source_faction_id,
+					source_snapshot.source_type,
+				]
+			_expect(
+				source_snapshot != null
+				and source_snapshot.source_faction_id
+					== CombatRelationService.HOSTILE_WAVE
+				and source_snapshot.source_type == &"linglan_skill4_laser",
+				"Skill4 laser pulses must retain the frozen hostile cast source: %s report=%s."
+				% [source_details, report]
+			)
 	field.call("_on_body_exited", player)
 	field.call("_physics_process", field.contact_damage_interval + 0.1)
 	_expect(
 		report_host.damage_reports.size() == 2,
 		"Skill4 laser must stop repeated damage as soon as the player exits."
+	)
+
+	var malformed_field := LASER_FIELD_SCENE.instantiate() as LASER_FIELD_SCRIPT
+	var malformed_source_accepted := malformed_field.set_damage_source_snapshot(
+		DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			4401,
+			0,
+			&""
+		)
+	)
+	report_host.add_child(malformed_field)
+	report_host.bind_linglan_node(malformed_field)
+	malformed_field.setup(
+		Vector2(-48.0, -16.0),
+		Vector2(288.0, 256.0),
+		Vector2(32.0, 64.0),
+		Vector2(208.0, 176.0),
+		50,
+		6.0,
+		3.0
+	)
+	malformed_field.set_physics_process(false)
+	malformed_field.call("_on_body_entered", player)
+	_expect(
+		not malformed_source_accepted
+		and not malformed_field.damage_enabled
+		and malformed_field.collision_layer == 0
+		and malformed_field.collision_mask == 0
+		and report_host.damage_reports.size() == 2,
+		"Skill4 laser must fail closed and emit zero requests for an empty source type."
 	)
 
 	report_host.queue_free()
@@ -791,6 +870,13 @@ func _test_boss_skill4_schedule() -> void:
 		_expect(int(record.get("damage", 0)) == 50, "Skill4 registered wrong orb damage.")
 		_expect(is_equal_approx(float(record.get("speed", 0.0)), 40.0), "Skill4 registered wrong orb speed.")
 		_expect(is_equal_approx(float(record.get("lifetime", 0.0)), 12.0), "Skill4 registered wrong orb active lifetime.")
+		var source_snapshot := record.get("damage_source_snapshot") as DamageSourceSnapshot
+		_expect(
+			source_snapshot != null
+			and source_snapshot.source_faction_id == CombatRelationService.HOSTILE_WAVE
+			and source_snapshot.source_type == &"linglan_skill4_orb",
+			"Skill4 orb must freeze Linglan's hostile launch source."
+		)
 
 	host.queue_free()
 	await process_frame
@@ -869,6 +955,16 @@ func _spawn_player(parent: Node, position: Vector2, peer_id: int, health: int) -
 	if player.health_bar != null:
 		player.health_bar.setup(player.max_health, player.current_health)
 	return player
+
+
+func _make_linglan_source_snapshot(source_type: StringName) -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		9401,
+		0,
+		source_type
+	)
 
 
 func _count_skill4_laser_fields(parent: Node) -> int:

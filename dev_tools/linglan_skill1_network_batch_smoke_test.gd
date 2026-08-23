@@ -48,6 +48,7 @@ class PoolRuntime:
 	var ring_damage: int = 0
 	var ring_speed: float = 0.0
 	var ring_lifetime: float = 0.0
+	var ring_damage_source_snapshot: DamageSourceSnapshot = null
 
 	func install_pool() -> void:
 		pool = session_object_pool
@@ -68,7 +69,8 @@ class PoolRuntime:
 		owner_peer_id: int,
 		damage: int,
 		speed: float,
-		lifetime: float
+		lifetime: float,
+		damage_source_snapshot: DamageSourceSnapshot
 	) -> void:
 		ring_batch_call_count += 1
 		ring_projectiles.assign(projectiles)
@@ -78,6 +80,7 @@ class PoolRuntime:
 		ring_damage = damage
 		ring_speed = speed
 		ring_lifetime = lifetime
+		ring_damage_source_snapshot = damage_source_snapshot
 
 
 var failures: Array[String] = []
@@ -128,10 +131,25 @@ func _run() -> void:
 	_verify_ring_geometry(runtime, boss.global_position, boss.skill1_config.projectile_spawn_distance)
 
 	var host_mp := RecordingMpGame.new()
-	var host_net := HostNetManagerStub.new()
+	var host_net := NetManagerStore.new()
+	host_net.net_role = NetManagerStore.NetRole.HOST
+	host_net.connection_state = NetManagerStore.ConnectionState.IN_GAME
+	var host_player_coordinator := MpPlayerCoordinator.new()
+	host_player_coordinator.bind_runtime(runtime)
 	host_mp.add_child(host_net)
+	host_mp.add_child(host_player_coordinator)
 	host_mp.set("net_manager", host_net)
 	host_mp.projectile_coordinator.bind_runtime(runtime)
+	host_mp.projectile_coordinator.bind_network_facade_dependencies(
+		host_net,
+		host_player_coordinator,
+		func() -> float: return Time.get_ticks_usec() / 1000000.0,
+		func(_host_timestamp: float) -> float: return 0.0,
+		func(_peer_id: int) -> bool: return false
+	)
+	host_mp.projectile_coordinator.rpc_broadcast_requested.connect(
+		host_mp._rpc_to_connected_clients
+	)
 	# Cross the old decimal namespace boundary inside the real PackedInt64 ring
 	# path. IDs must remain owned by the same peer on both sides of 1,000,000.
 	host_mp.projectile_coordinator.set("_next_projectile_sequence", 999999)
@@ -143,7 +161,8 @@ func _run() -> void:
 		runtime.ring_owner_peer_id,
 		runtime.ring_damage,
 		runtime.ring_speed,
-		runtime.ring_lifetime
+		runtime.ring_lifetime,
+		runtime.ring_damage_source_snapshot
 	)
 	_expect(
 		host_mp.sent_methods == [&"net_linglan_skill1_ring_batch"]
@@ -164,6 +183,10 @@ func _run() -> void:
 	var speed := float(payload[5])
 	var lifetime := float(payload[6])
 	var host_fire_timestamp := float(payload[7])
+	var source_faction_id := int(payload[8])
+	var source_credit_peer_id := int(payload[9])
+	var source_instigator_entity_id := int(payload[10])
+	var source_type := String(payload[11])
 	_expect(
 		projectile_ids.size() == direction_count
 		and spawn_positions == runtime.ring_spawn_positions
@@ -172,8 +195,11 @@ func _run() -> void:
 		and damage == runtime.ring_damage
 		and is_equal_approx(speed, runtime.ring_speed)
 		and is_equal_approx(lifetime, runtime.ring_lifetime)
-		and host_fire_timestamp >= 0.0,
-		"Packed Host payload must preserve every projectile's position, direction, and shared start time."
+		and host_fire_timestamp >= 0.0
+		and source_faction_id == CombatRelationService.HOSTILE_WAVE
+		and source_credit_peer_id == 0
+		and source_type == "linglan_skill1",
+		"Packed Host payload must preserve geometry, time, and the frozen hostile source."
 	)
 	_verify_strictly_increasing_ids(projectile_ids)
 	_expect(
@@ -204,12 +230,27 @@ func _run() -> void:
 	)
 
 	var client_mp := RecordingMpGame.new()
+	var client_net := NetManagerStore.new()
+	client_net.net_role = NetManagerStore.NetRole.CLIENT
+	client_net.connection_state = NetManagerStore.ConnectionState.IN_GAME
+	var client_player_coordinator := MpPlayerCoordinator.new()
+	client_player_coordinator.bind_runtime(runtime)
+	client_mp.add_child(client_net)
+	client_mp.add_child(client_player_coordinator)
+	client_mp.set("net_manager", client_net)
 	client_mp.set("game", runtime)
 	client_mp.projectile_coordinator.bind_runtime(runtime)
+	client_mp.projectile_coordinator.bind_network_facade_dependencies(
+		client_net,
+		client_player_coordinator,
+		func() -> float: return Time.get_ticks_usec() / 1000000.0,
+		func(_host_timestamp: float) -> float: return 0.0,
+		func(_peer_id: int) -> bool: return false
+	)
 	client_mp.set("_has_host_time_offset", true)
 	client_mp.set("_host_to_client_time_offset", 0.0)
-	client_mp.call(
-		"net_linglan_skill1_ring_batch",
+	_apply_client_linglan_ring(
+		client_mp,
 		projectile_ids,
 		spawn_positions,
 		directions,
@@ -217,7 +258,11 @@ func _run() -> void:
 		damage,
 		speed,
 		lifetime,
-		host_fire_timestamp
+		host_fire_timestamp,
+		source_faction_id,
+		source_credit_peer_id,
+		source_instigator_entity_id,
+		source_type
 	)
 	var client_known := _get_projectile_map(
 		client_mp.projectile_coordinator,
@@ -230,6 +275,21 @@ func _run() -> void:
 		)) == direction_count,
 		"Client batch playback must create and track all 20 proxy projectiles."
 	)
+	for projectile_id in projectile_ids:
+		var frozen_source := (
+			client_mp.projectile_coordinator.get_projectile_damage_source_snapshot(
+				int(projectile_id)
+			)
+		)
+		_expect(
+			frozen_source != null
+			and frozen_source.source_faction_id
+			== CombatRelationService.HOSTILE_WAVE
+			and frozen_source.instigator_entity_id == source_instigator_entity_id
+			and frozen_source.event_source_id == int(projectile_id)
+			and frozen_source.source_type == &"linglan_skill1",
+			"Every Client ring projectile must retain its per-projectile frozen hostile source."
+		)
 	_verify_client_proxy_payload(
 		client_known,
 		projectile_ids,
@@ -243,8 +303,8 @@ func _run() -> void:
 	var created_before_duplicate := int(
 		runtime.pool.get_metrics(SAKURA_BULLET_SCENE.resource_path).get("created", 0)
 	)
-	client_mp.call(
-		"net_linglan_skill1_ring_batch",
+	_apply_client_linglan_ring(
+		client_mp,
 		projectile_ids,
 		spawn_positions,
 		directions,
@@ -252,7 +312,11 @@ func _run() -> void:
 		damage,
 		speed,
 		lifetime,
-		host_fire_timestamp
+		host_fire_timestamp,
+		source_faction_id,
+		source_credit_peer_id,
+		source_instigator_entity_id,
+		source_type
 	)
 	_expect(
 		client_known.size() == direction_count
@@ -357,6 +421,38 @@ func _retire_projectiles(projectiles: Dictionary) -> void:
 			active_projectiles.append(projectile)
 	for projectile in active_projectiles:
 		projectile.call("retire")
+
+
+func _apply_client_linglan_ring(
+	client_mp: RecordingMpGame,
+	projectile_ids: PackedInt64Array,
+	spawn_positions: PackedVector2Array,
+	directions: PackedVector2Array,
+	owner_peer_id: int,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	host_fire_timestamp: float,
+	source_faction_id: int,
+	credit_peer_id: int,
+	instigator_entity_id: int,
+	source_type: String
+) -> void:
+	client_mp.projectile_coordinator.apply_authority_linglan_skill1_ring(
+		client_mp.net_manager.get_host_peer_id(),
+		projectile_ids,
+		spawn_positions,
+		directions,
+		owner_peer_id,
+		damage,
+		speed,
+		lifetime,
+		host_fire_timestamp,
+		source_faction_id,
+		credit_peer_id,
+		instigator_entity_id,
+		source_type
+	)
 
 
 func _get_projectile_map(

@@ -3519,7 +3519,8 @@ func _register_multiplayer_projectile(
 	projectile_lifetime: float,
 	pierces_enemies: bool = false,
 	target_peer_id: int = 0,
-	target_enemy_net_id: int = 0
+	target_enemy_net_id: int = 0,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> void:
 	if projectile == null:
 		return
@@ -3536,7 +3537,8 @@ func _register_multiplayer_projectile(
 		projectile_lifetime,
 		pierces_enemies,
 		target_peer_id,
-		target_enemy_net_id
+		target_enemy_net_id,
+		damage_source_snapshot
 	)
 
 
@@ -5038,8 +5040,13 @@ func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -
 		rocket = rocket_scene.instantiate() as LinglanSkill2SakuraRocket
 	if rocket == null:
 		return false
+	var launch_source_snapshot := create_damage_source_snapshot(
+		0,
+		&"collectible_sakura_rocket"
+	)
 	rocket.top_level = true
 	rocket.bind_gameplay_context(combat_runtime, gameplay_gateway)
+	rocket.set_damage_source_snapshot(launch_source_snapshot)
 	var rocket_speed := rocket.speed
 	var rocket_lifetime := rocket.max_lifetime
 	var rocket_explosion_radius := rocket.explosion_radius
@@ -5073,7 +5080,8 @@ func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -
 		float(rocket.get("max_lifetime")),
 		false,
 		0,
-		target_enemy_net_id
+		target_enemy_net_id,
+		launch_source_snapshot
 	)
 	return true
 

@@ -19,7 +19,7 @@ const MP_GAME_SOURCE_PATH := "res://scene/multiplayer/mp_game.gd"
 const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 const EXPECTED_STANDARD_SCENE_UID := "uid://dcqarxlpbdh8y"
 const EXPECTED_ADAPTER_SCENE_UID := "uid://dgn1s7k5oav2c"
-const EXPECTED_MP_GAME_RPC_COUNT := 149
+const EXPECTED_MP_GAME_RPC_COUNT := 151
 
 var failures: Array[String] = []
 var test_root: Node2D = null
@@ -124,7 +124,7 @@ func _test_static_boundaries() -> void:
 	if mp_game_script != null:
 		_expect(
 			mp_game_script.get_rpc_config().size() == EXPECTED_MP_GAME_RPC_COUNT,
-			"MpGame 有效 RPC 数量必须保持 149。"
+			"MpGame 有效 RPC 数量必须保持 151。"
 		)
 
 

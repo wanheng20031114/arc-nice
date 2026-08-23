@@ -11,9 +11,8 @@ const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 const AIM_LINE_START_DISTANCE := 10.0
 const AIM_LINE_TARGET_PADDING := 10.0
 const AIM_LINE_MIN_LENGTH := 8.0
-# Dynamic enemies and plants share the existing positional wire actions. This
-# keeps protocol-v93 peers compatible while making the semantics non-player
-# rather than plant-specific inside the authoritative state machine.
+# Local compatibility names for old positional visual tests. Protocol v94
+# production broadcasts every live combat target through the descriptor path.
 const ACTION_NON_PLAYER_LOCK_START := &"sniper_plant_lock_start"
 const ACTION_NON_PLAYER_LOCK_CANCEL := &"sniper_plant_lock_cancel"
 const ACTION_NON_PLAYER_LOCK_FIRE := &"sniper_plant_lock_fire"
@@ -39,6 +38,11 @@ var sniper_reticle_target_id: int = 0
 var _warning_presentation_system: EnemyWarningPresentationSystemScript = null
 var latest_proxy_target_action_id: int = 0
 var latest_proxy_action_id: int = 0
+var latest_proxy_target_terminal_action_id: int = 0
+var latest_proxy_terminal_action_id: int = 0
+var latest_proxy_presentation_revision: int = 0
+var latest_proxy_presentation_terminal_revision: int = 0
+var proxy_locked_target: Node2D = null
 var proxy_locked_player: Player = null
 var proxy_plant_lock_active := false
 var proxy_locked_plant_position := Vector2.ZERO
@@ -101,6 +105,19 @@ func _process(delta: float) -> void:
 		_update_proxy_lock_visual(delta)
 
 
+func _status_requires_render_process() -> bool:
+	return (
+		is_multiplayer_proxy
+		and (
+			proxy_plant_lock_active
+			or (
+				proxy_locked_target != null
+				and is_instance_valid(proxy_locked_target)
+			)
+		)
+	) or super._status_requires_render_process()
+
+
 func configure_multiplayer_proxy() -> void:
 	super.configure_multiplayer_proxy()
 	set_process(true)
@@ -116,6 +133,12 @@ func _apply_config() -> void:
 	locked_non_player_target = false
 	locked_non_player_target_offset = Vector2.ZERO
 	lock_damage_source_snapshot = null
+	latest_proxy_target_action_id = 0
+	latest_proxy_action_id = 0
+	latest_proxy_target_terminal_action_id = 0
+	latest_proxy_terminal_action_id = 0
+	latest_proxy_presentation_revision = 0
+	latest_proxy_presentation_terminal_revision = 0
 	_reset_ranged_attack_position_state()
 	_clear_proxy_lock_visual()
 	var sniper_config := config as SniperConfig
@@ -181,13 +204,12 @@ func _try_start_lock(candidate_target: Node2D = null) -> bool:
 	_update_facing(lock_direction)
 	_play_config_animation(sniper_config.aim_animation_name)
 	_start_lock_warning(locked_target, locked_target.global_position)
-	if locked_player != null:
-		_broadcast_enemy_target_action(&"sniper_lock_start", locked_player.peer_id)
-	else:
-		_broadcast_enemy_action(
-			ACTION_NON_PLAYER_LOCK_START,
-			locked_non_player_target_offset
-		)
+	_broadcast_enemy_target_action(&"sniper_lock_start", locked_target)
+	_broadcast_lock_presentation_state(
+		Enemy.TargetPresentationPhase.SNIPER_LOCK,
+		locked_target,
+		lock_time_left
+	)
 	return true
 
 
@@ -287,13 +309,12 @@ func _fire_locked_shot(direction: Vector2) -> void:
 	if sniper_config.attack_audio_stream != null:
 		attack_audio.pitch_scale = random_generator.randf_range(0.96, 1.03)
 		ENEMY_ATTACK_AUDIO_LIMITER.play_heavy_attack(attack_audio)
-	if locked_player != null:
-		_broadcast_enemy_target_action(&"sniper_lock_fire", locked_player.peer_id)
-	else:
-		_broadcast_enemy_action(
-			ACTION_NON_PLAYER_LOCK_FIRE,
-			locked_non_player_target_offset
-		)
+	_broadcast_enemy_target_action(&"sniper_lock_fire", locked_target)
+	_broadcast_lock_presentation_state(
+		Enemy.TargetPresentationPhase.NONE,
+		null,
+		0.0
+	)
 	_clear_lock_warning()
 	locked_target = null
 	locked_player = null
@@ -305,12 +326,19 @@ func _fire_locked_shot(direction: Vector2) -> void:
 
 
 func _cancel_lock() -> void:
-	if locked_player != null and is_instance_valid(locked_player):
-		_broadcast_enemy_target_action(&"sniper_lock_cancel", locked_player.peer_id)
-	elif locked_non_player_target:
-		_broadcast_enemy_action(
-			ACTION_NON_PLAYER_LOCK_CANCEL,
-			locked_non_player_target_offset
+	var had_active_lock := combat_state == CombatState.LOCK
+	if locked_target != null and is_instance_valid(locked_target):
+		_broadcast_enemy_target_action(&"sniper_lock_cancel", locked_target)
+	elif had_active_lock:
+		# The target can disappear before the cancel edge can carry a descriptor.
+		# Reserve the next sequence revision so reliable NONE still orders after
+		# the ACTIVE state without inventing an action-name fallback.
+		action_sequence += 1
+	if had_active_lock:
+		_broadcast_lock_presentation_state(
+			Enemy.TargetPresentationPhase.NONE,
+			null,
+			0.0
 		)
 	combat_state = CombatState.CHASE
 	lock_time_left = 0.0
@@ -324,6 +352,23 @@ func _cancel_lock() -> void:
 	var sniper_config := config as SniperConfig
 	if sniper_config != null:
 		_play_config_animation(sniper_config.move_animation_name)
+
+
+func _broadcast_lock_presentation_state(
+	phase: int,
+	target: Node2D,
+	duration_seconds: float
+) -> void:
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
+		return
+	gameplay_gateway.broadcast_enemy_target_presentation_state(
+		int(get_meta("net_id", 0)),
+		phase,
+		target,
+		duration_seconds,
+		global_position,
+		action_sequence
+	)
 
 
 func _make_lock_damage_request(
@@ -342,23 +387,94 @@ func _make_lock_damage_request(
 
 func play_multiplayer_enemy_target_action(
 	action_name: StringName,
-	target: Player,
+	target: Node2D,
 	action_id: int
 ) -> void:
-	if action_id <= latest_proxy_target_action_id:
+	if (
+		action_id <= latest_proxy_target_action_id
+		or action_id < latest_proxy_presentation_terminal_revision
+		or (
+			action_name == &"sniper_lock_start"
+			and action_id <= latest_proxy_presentation_terminal_revision
+		)
+	):
 		return
 	latest_proxy_target_action_id = action_id
+	if action_name == &"sniper_lock_fire" or action_name == &"sniper_lock_cancel":
+		latest_proxy_target_terminal_action_id = action_id
 	var sniper_config := config as SniperConfig
 	if action_name == &"sniper_lock_start":
 		if sniper_config != null:
 			_play_multiplayer_proxy_action_animation(sniper_config.aim_animation_name, sniper_config.lock_duration + 0.15)
 			if target != null and is_instance_valid(target):
-				proxy_locked_player = target
+				proxy_locked_target = target
+				proxy_locked_player = target as Player
+				proxy_plant_lock_active = false
 				proxy_lock_duration = maxf(sniper_config.lock_duration, 0.01)
 				proxy_lock_elapsed = 0.0
 				_start_lock_warning(target, target.global_position)
+				set_process(true)
 	elif action_name == &"sniper_lock_cancel" or action_name == &"sniper_lock_fire":
-		_clear_proxy_lock_visual()
+		_clear_proxy_lock_visual(true)
+
+
+func apply_multiplayer_target_presentation_state(
+	phase: int,
+	target: Node2D,
+	_action_position: Vector2,
+	state_revision: int,
+	elapsed_seconds: float,
+	remaining_seconds: float
+) -> void:
+	if (
+		state_revision < latest_proxy_presentation_revision
+		or (
+			state_revision == latest_proxy_presentation_revision
+			and phase != Enemy.TargetPresentationPhase.NONE
+		)
+	):
+		return
+	latest_proxy_presentation_revision = state_revision
+	if phase == Enemy.TargetPresentationPhase.NONE:
+		latest_proxy_presentation_terminal_revision = maxi(
+			latest_proxy_presentation_terminal_revision,
+			state_revision
+		)
+	if (
+		phase != Enemy.TargetPresentationPhase.SNIPER_LOCK
+		or is_dead
+		or target == null
+		or not is_instance_valid(target)
+	):
+		_clear_proxy_lock_visual(true)
+		return
+	if state_revision <= maxi(
+		latest_proxy_target_terminal_action_id,
+		latest_proxy_terminal_action_id
+	):
+		return
+	var sniper_config := config as SniperConfig
+	if sniper_config == null:
+		_clear_proxy_lock_visual(true)
+		return
+	var total_duration := maxf(
+		maxf(elapsed_seconds, 0.0) + maxf(remaining_seconds, 0.0),
+		0.01
+	)
+	proxy_locked_target = target
+	proxy_locked_player = target as Player
+	proxy_plant_lock_active = false
+	proxy_locked_plant_position = Vector2.ZERO
+	proxy_lock_duration = total_duration
+	proxy_lock_elapsed = clampf(elapsed_seconds, 0.0, total_duration)
+	var progress := clampf(proxy_lock_elapsed / total_duration, 0.0, 1.0)
+	_start_lock_warning(target, target.global_position)
+	_update_lock_warning(target.global_position, progress)
+	_play_multiplayer_proxy_action_animation(
+		sniper_config.aim_animation_name,
+		maxf(remaining_seconds, 0.01) + 0.15
+	)
+	set_process(true)
 
 
 func play_multiplayer_enemy_action(
@@ -366,13 +482,26 @@ func play_multiplayer_enemy_action(
 	target_offset: Vector2,
 	action_id: int
 ) -> void:
-	if action_id <= latest_proxy_action_id:
+	if (
+		action_id <= latest_proxy_action_id
+		or action_id < latest_proxy_presentation_terminal_revision
+		or (
+			action_name == ACTION_NON_PLAYER_LOCK_START
+			and action_id <= latest_proxy_presentation_terminal_revision
+		)
+	):
 		return
 	latest_proxy_action_id = action_id
+	if (
+		action_name == ACTION_NON_PLAYER_LOCK_CANCEL
+		or action_name == ACTION_NON_PLAYER_LOCK_FIRE
+	):
+		latest_proxy_terminal_action_id = action_id
 	if action_name == ACTION_NON_PLAYER_LOCK_START:
 		var sniper_config := config as SniperConfig
 		if sniper_config == null:
 			return
+		proxy_locked_target = null
 		proxy_locked_player = null
 		proxy_plant_lock_active = true
 		proxy_locked_plant_position = global_position + target_offset
@@ -390,25 +519,26 @@ func play_multiplayer_enemy_action(
 			null,
 			proxy_locked_plant_position
 		)
+		set_process(true)
 	elif (
 		action_name == ACTION_NON_PLAYER_LOCK_CANCEL
 		or action_name == ACTION_NON_PLAYER_LOCK_FIRE
 	):
-		_clear_proxy_lock_visual()
+		_clear_proxy_lock_visual(true)
 
 
 func _update_proxy_lock_visual(delta: float) -> void:
 	var target_position := Vector2.ZERO
-	if proxy_locked_player != null and is_instance_valid(proxy_locked_player):
-		target_position = proxy_locked_player.global_position
+	if proxy_locked_target != null and is_instance_valid(proxy_locked_target):
+		target_position = proxy_locked_target.global_position
 	elif proxy_plant_lock_active:
 		target_position = proxy_locked_plant_position
 	else:
-		_clear_proxy_lock_visual()
+		_clear_proxy_lock_visual(true)
 		return
 	var sniper_config := config as SniperConfig
 	if sniper_config == null:
-		_clear_proxy_lock_visual()
+		_clear_proxy_lock_visual(true)
 		return
 	proxy_lock_duration = maxf(proxy_lock_duration, 0.01)
 	proxy_lock_elapsed = minf(proxy_lock_elapsed + maxf(delta, 0.0), proxy_lock_duration)
@@ -418,15 +548,36 @@ func _update_proxy_lock_visual(delta: float) -> void:
 		direction = Vector2.RIGHT
 	_update_facing(direction)
 	_update_lock_warning(target_position, progress)
+	if proxy_lock_elapsed >= proxy_lock_duration:
+		_clear_proxy_lock_visual(true)
 
 
-func _clear_proxy_lock_visual() -> void:
+func _clear_proxy_lock_visual(restore_locomotion_animation := false) -> void:
+	if restore_locomotion_animation:
+		_restore_proxy_locomotion_after_lock()
+	proxy_locked_target = null
 	proxy_locked_player = null
 	proxy_plant_lock_active = false
 	proxy_locked_plant_position = Vector2.ZERO
 	proxy_lock_duration = 0.0
 	proxy_lock_elapsed = 0.0
 	_clear_lock_warning()
+	if is_multiplayer_proxy:
+		set_process(super._status_requires_render_process())
+
+
+func _restore_proxy_locomotion_after_lock() -> void:
+	if not is_multiplayer_proxy or is_dead:
+		return
+	var sniper_config := config as SniperConfig
+	if sniper_config == null or animated_sprite == null:
+		return
+	if animated_sprite.animation != sniper_config.aim_animation_name:
+		return
+	_restore_multiplayer_proxy_move_animation(
+		proxy_action_restore_token,
+		sniper_config.aim_animation_name
+	)
 
 
 func _start_lock_warning(

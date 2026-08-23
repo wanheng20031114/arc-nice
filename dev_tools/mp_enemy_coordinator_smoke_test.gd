@@ -4,6 +4,12 @@ const ENEMY_COORDINATOR_SCENE := preload(
 	"res://scene/multiplayer/enemy/mp_enemy_coordinator.tscn"
 )
 const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
+const TARGET_DESCRIPTOR := preload(
+	"res://scene/combat/targeting/combat_target_descriptor.gd"
+)
+const COMBAT_RELATIONS := preload(
+	"res://scene/combat/faction/combat_relation_service.gd"
+)
 const PROJECTILE_COORDINATOR_SCENE := preload(
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.tscn"
 )
@@ -26,6 +32,7 @@ class ProbeRuntime:
 	var lightning_chain_replay_count := 0
 	var enemy_snapshot_states: Array[SnapshotManager.EnemyState] = []
 	var enemy_spawn_effect_positions: Array[Vector2] = []
+	var probe_plants: Dictionary[int, PlantDefense] = {}
 
 	func configure_multiplayer(
 		_mode: int,
@@ -60,6 +67,23 @@ class ProbeRuntime:
 		lightning_chain_replay_count += 1
 		return true
 
+	func resolve_probe_plant(net_id: int) -> PlantDefense:
+		return probe_plants.get(net_id) as PlantDefense
+
+	func query_probe_plants_into(
+		_center: Vector2,
+		_radius: float,
+		result: Array[PlantDefense]
+	) -> void:
+		result.clear()
+
+	func get_probe_plant_id(plant: PlantDefense) -> int:
+		for net_id_variant in probe_plants.keys():
+			var net_id := int(net_id_variant)
+			if probe_plants.get(net_id) == plant:
+				return net_id
+		return 0
+
 
 class ProbeNetManager:
 	extends NetManagerStore
@@ -86,6 +110,62 @@ class FeedbackProbeEnemy:
 		feedback_count += 1
 		last_feedback_flags = feedback_flags
 		last_impact_direction = impact_direction
+
+
+class TargetActionProbeEnemy:
+	extends Enemy
+	var target_action_count := 0
+	var last_target: Node2D = null
+	var last_target_action_id := 0
+	var presentation_state_count := 0
+	var last_presentation_phase := Enemy.TargetPresentationPhase.NONE
+	var last_presentation_target: Node2D = null
+	var last_presentation_revision := 0
+	var last_presentation_elapsed := 0.0
+	var last_presentation_remaining := 0.0
+	var generic_action_count := 0
+	var last_generic_action_id := 0
+
+	func play_multiplayer_enemy_target_action_with_context(
+		_action_name: StringName,
+		target: Node2D,
+		_action_position: Vector2,
+		action_id: int,
+		_action_elapsed: float
+	) -> void:
+		target_action_count += 1
+		last_target = target
+		last_target_action_id = action_id
+
+	func play_multiplayer_enemy_action_with_context(
+		action_name: StringName,
+		_direction: Vector2,
+		_action_position: Vector2,
+		action_id: int,
+		_action_elapsed: float
+	) -> void:
+		generic_action_count += 1
+		last_generic_action_id = action_id
+		# 模拟 Sniper/Lightning 在 fire/cancel CH7 边沿立刻清视觉，便于
+		# 验证随后到达的旧 CH5 ACTIVE 不会把表现重新打开。
+		if action_name == &"presentation_clear":
+			last_presentation_phase = Enemy.TargetPresentationPhase.NONE
+			last_presentation_target = null
+
+	func apply_multiplayer_target_presentation_state(
+		phase: int,
+		target: Node2D,
+		_action_position: Vector2,
+		state_revision: int,
+		elapsed_seconds: float,
+		remaining_seconds: float
+	) -> void:
+		presentation_state_count += 1
+		last_presentation_phase = phase
+		last_presentation_target = target
+		last_presentation_revision = state_revision
+		last_presentation_elapsed = elapsed_seconds
+		last_presentation_remaining = remaining_seconds
 
 
 var failures: Array[String] = []
@@ -122,6 +202,12 @@ func _run() -> void:
 		"EnemyCoordinator 未绑定时必须返回显式 Array[int] 空集合。"
 	)
 	coordinator.bind_runtime(runtime)
+	runtime.get_combat_query_facade().bind_plant_query_port(
+		Callable(runtime, &"resolve_probe_plant"),
+		Callable(runtime, &"query_probe_plants_into"),
+		Callable(),
+		Callable(runtime, &"get_probe_plant_id")
+	)
 	_expect(coordinator.is_bound(), "EnemyCoordinator 必须强类型绑定战斗运行时。")
 	var projectile_coordinator := (
 		PROJECTILE_COORDINATOR_SCENE.instantiate() as MpProjectileCoordinator
@@ -169,8 +255,69 @@ func _run() -> void:
 		_expect(
 			_lifecycle_broadcasts.size() == 1
 			and StringName(_lifecycle_broadcasts[0].get("method", &""))
-			== &"net_enemy_spawned_batch",
-			"Host Gateway 生成事件必须汇入一次有界批广播。"
+			== &"net_enemy_spawned_batch"
+			and (_lifecycle_broadcasts[0].get("arguments", []) as Array).size() == 6,
+			"Host Gateway 生成事件必须汇入一次携带阵营状态的有界批广播。"
+		)
+		var old_incarnation_send_state := SnapshotManager.EnemyState.new()
+		old_incarnation_send_state.net_id = 704
+		old_incarnation_send_state.position = Vector2(10.0, 12.0)
+		old_incarnation_send_state.health = 90
+		old_incarnation_send_state.health_revision = 8
+		var incarnation_states: Array[SnapshotManager.EnemyState] = [
+			old_incarnation_send_state
+		]
+		coordinator._snapshot_manager.encode_enemy_snapshot_range_for_cohort(
+			MpEnemyCoordinator.SHARED_SNAPSHOT_COHORT_ID,
+			incarnation_states,
+			0,
+			1,
+			true
+		)
+		coordinator.queue_host_spawn(
+			704,
+			enemy_config,
+			Vector2(20.0, 24.0),
+			2.0
+		)
+		var new_incarnation_send_state := SnapshotManager.EnemyState.new()
+		new_incarnation_send_state.net_id = 704
+		new_incarnation_send_state.position = Vector2(20.0, 24.0)
+		new_incarnation_send_state.health = 120
+		new_incarnation_send_state.health_revision = 0
+		var new_incarnation_states: Array[SnapshotManager.EnemyState] = [
+			new_incarnation_send_state
+		]
+		var first_new_incarnation_packet := (
+			coordinator._snapshot_manager.encode_enemy_snapshot_range_for_cohort(
+				MpEnemyCoordinator.SHARED_SNAPSHOT_COHORT_ID,
+				new_incarnation_states,
+				0,
+				1,
+				false
+			)
+		)
+		var fresh_incarnation_receiver := SnapshotManager.new()
+		var first_new_incarnation_states := (
+			fresh_incarnation_receiver.decode_enemy_snapshots_with_baseline(
+				first_new_incarnation_packet
+			)
+		)
+		_expect(
+			first_new_incarnation_states.size() == 1
+			and first_new_incarnation_states[0].health == 120
+			and first_new_incarnation_states[0].health_revision == 0,
+			"Host 发布同 net-id 新 incarnation 时必须清发送基线，使首个普通快照仍为可独立解码的 full。"
+		)
+		var terminal_before_spawn_flush := coordinator.build_host_terminal_event(
+			704,
+			MpEnemyCoordinator.ENEMY_TERMINAL_REMOVED,
+			Vector2(20.0, 24.0)
+		)
+		_expect(
+			not terminal_before_spawn_flush.is_empty()
+			and coordinator._pending_host_spawns.is_empty(),
+			"Host 敌人在 spawn flush 前终结时必须撤销陈旧 spawn，不能在 terminal 后复活代理。"
 		)
 		var live_enemy := Enemy.new()
 		live_enemy.config = enemy_config
@@ -184,12 +331,35 @@ func _run() -> void:
 			"EnemyCoordinator 绑定后必须返回保留内容的显式 Array[int]。"
 		)
 		coordinator.send_live_spawn_roster_to_peer(8)
+		var live_roster_arguments: Array = (
+			_lifecycle_peer_sends[0].get("arguments", []) as Array
+			if not _lifecycle_peer_sends.is_empty()
+			else []
+		)
 		_expect(
 			_lifecycle_peer_sends.size() == 1
 			and int(_lifecycle_peer_sends[0].get("peer_id", 0)) == 8
 			and StringName(_lifecycle_peer_sends[0].get("method", &""))
-			== &"net_enemy_spawned_batch",
-			"迟加入修复必须定向发送当前 live enemy roster。"
+			== &"net_enemy_spawned_batch"
+			and live_roster_arguments.size() == 6
+			and live_roster_arguments[4] == PackedByteArray([
+				COMBAT_RELATIONS.HOSTILE_WAVE
+			])
+			and live_roster_arguments[5] == PackedInt32Array([0]),
+			"迟加入修复必须定向发送含 faction/revision 的当前 live enemy roster。"
+		)
+		var first_live_spawn_token := float(live_roster_arguments[3][0])
+		var repair_batches := coordinator.build_live_spawn_batches(
+			_probe_get_net_time() + 10.0
+		)
+		_expect(
+			repair_batches.size() == 1
+			and repair_batches[0].spawn_times.size() == 1
+			and is_equal_approx(
+				repair_batches[0].spawn_times[0],
+				first_live_spawn_token
+			),
+			"迟加入 roster 必须复用实体原始出生令牌，不能把每次 repair 时间伪装成新 incarnation。"
 		)
 		runtime.unregister_network_enemy(900, live_enemy)
 		live_enemy.free()
@@ -204,12 +374,17 @@ func _run() -> void:
 	coordinator.broadcast_enemy_target_action(
 		701,
 		&"target_attack",
-		2,
+		TARGET_DESCRIPTOR.create_player(2, 0, Vector2(72.0, 64.0)),
 		Vector2(48.0, 64.0),
 		2
 	)
 	coordinator.broadcast_enemy_lightning_chain(
 		PackedVector2Array([Vector2.ZERO, Vector2(16.0, 8.0)])
+	)
+	var target_action_arguments: Array = (
+		_lifecycle_broadcasts[2].get("arguments", []) as Array
+		if _lifecycle_broadcasts.size() > 2
+		else []
 	)
 	_expect(
 		_lifecycle_broadcasts.size() == 4
@@ -218,9 +393,231 @@ func _run() -> void:
 		and StringName(_lifecycle_broadcasts[2].get("method", &""))
 		== &"net_enemy_target_action"
 		and StringName(_lifecycle_broadcasts[3].get("method", &""))
-		== &"net_enemy_lightning_chain",
-		"敌人普通动作、目标动作与闪电链必须由协调器统一广播。"
+		== &"net_enemy_lightning_chain"
+		and target_action_arguments.size() == 9
+		and int(target_action_arguments[2]) == TARGET_DESCRIPTOR.Kind.PLAYER
+		and int(target_action_arguments[3]) == 2
+		and int(target_action_arguments[4]) == 0
+		and target_action_arguments[5] == Vector2(72.0, 64.0),
+		"敌人目标动作必须按 kind/id/entity revision/fallback 展开后统一广播。"
 	)
+	var broadcast_count_before_null_descriptor := _lifecycle_broadcasts.size()
+	coordinator.broadcast_enemy_target_action(
+		701,
+		&"invalid_target",
+		null,
+		Vector2.ZERO,
+		3
+	)
+	_expect(
+		_lifecycle_broadcasts.size() == broadcast_count_before_null_descriptor,
+		"Host 必须在读取字段前拒绝 null 目标描述符。"
+	)
+	if enemy_config != null:
+		var presentation_host_enemy := Enemy.new()
+		presentation_host_enemy.config = enemy_config
+		runtime.register_network_enemy(902, presentation_host_enemy)
+		var presentation_broadcast_base := _lifecycle_broadcasts.size()
+		_expect(
+			coordinator.set_host_enemy_target_presentation_state(
+				902,
+				Enemy.TargetPresentationPhase.SNIPER_LOCK,
+				TARGET_DESCRIPTOR.create_player(2, 0, Vector2(72.0, 64.0)),
+				2.0,
+				Vector2(96.0, 112.0),
+				1
+			),
+			"Host 必须接受带通用 descriptor 的 ACTIVE 持续目标表现。"
+		)
+		coordinator.update_host()
+		var active_presentation_broadcast := (
+			_lifecycle_broadcasts.back() as Dictionary
+		)
+		var active_presentation_arguments := (
+			active_presentation_broadcast.get("arguments", []) as Array
+		)
+		_expect(
+			_lifecycle_broadcasts.size() == presentation_broadcast_base + 1
+			and StringName(active_presentation_broadcast.get("method", &""))
+			== &"net_enemy_target_presentation_state_batch"
+			and active_presentation_arguments.size() == 10
+			and active_presentation_arguments[0] == PackedInt32Array([902])
+			and active_presentation_arguments[1] == PackedInt32Array([1])
+			and active_presentation_arguments[2] == PackedByteArray([
+				Enemy.TargetPresentationPhase.SNIPER_LOCK
+			])
+			and active_presentation_arguments[3] == PackedByteArray([
+				TARGET_DESCRIPTOR.Kind.PLAYER
+			]),
+			"Host ACTIVE 必须按稳定 net-id 和 state revision 可靠批播。"
+		)
+		_expect(
+			coordinator.set_host_enemy_target_presentation_state(
+				902,
+				Enemy.TargetPresentationPhase.NONE,
+				TARGET_DESCRIPTOR.create_none(),
+				0.0,
+				Vector2(96.0, 112.0),
+				2
+			),
+			"Host 必须缓存并可靠广播显式 NONE 收敛态。"
+		)
+		coordinator.update_host()
+		var clear_presentation_broadcast := (
+			_lifecycle_broadcasts.back() as Dictionary
+		)
+		var clear_presentation_arguments := (
+			clear_presentation_broadcast.get("arguments", []) as Array
+		)
+		_expect(
+			StringName(clear_presentation_broadcast.get("method", &""))
+			== &"net_enemy_target_presentation_state_batch"
+			and clear_presentation_arguments[1] == PackedInt32Array([2])
+			and clear_presentation_arguments[2] == PackedByteArray([
+				Enemy.TargetPresentationPhase.NONE
+			])
+			and clear_presentation_arguments[3] == PackedByteArray([
+				TARGET_DESCRIPTOR.Kind.NONE
+			]),
+			"fire/cancel 后的 NONE 必须以新 revision 覆盖 ACTIVE。"
+		)
+		var peer_send_base := _lifecycle_peer_sends.size()
+		coordinator.send_live_spawn_roster_to_peer(9)
+		_expect(
+			_lifecycle_peer_sends.size() == peer_send_base + 2
+			and StringName(_lifecycle_peer_sends[peer_send_base].get(
+				"method",
+				&""
+			)) == &"net_enemy_spawned_batch"
+			and StringName(_lifecycle_peer_sends[peer_send_base + 1].get(
+				"method",
+				&""
+			)) == &"net_enemy_target_presentation_state_batch"
+			and ((_lifecycle_peer_sends[peer_send_base + 1].get(
+				"arguments",
+				[]
+			) as Array)[1]) == PackedInt32Array([2])
+			and ((_lifecycle_peer_sends[peer_send_base + 1].get(
+				"arguments",
+				[]
+			) as Array)[2]) == PackedByteArray([
+				Enemy.TargetPresentationPhase.NONE
+			]),
+			"迟加入 roster 后必须定向重放包含 NONE 的持续表现缓存。"
+		)
+		coordinator.build_host_terminal_event(
+			902,
+			MpEnemyCoordinator.ENEMY_TERMINAL_REMOVED,
+			Vector2.ZERO
+		)
+		_expect(
+			not coordinator._host_target_presentation_states.has(902)
+			and not coordinator._pending_host_target_presentation_states.has(902),
+			"Host 终态必须清除 ACTIVE/NONE 持续表现缓存。"
+		)
+		runtime.unregister_network_enemy(902, presentation_host_enemy)
+		presentation_host_enemy.free()
+		var target_cache_source := Enemy.new()
+		target_cache_source.config = enemy_config
+		var target_cache_enemy := Enemy.new()
+		target_cache_enemy.config = enemy_config
+		runtime.register_network_enemy(903, target_cache_source)
+		runtime.register_network_enemy(904, target_cache_enemy)
+		coordinator.set_host_enemy_target_presentation_state(
+			903,
+			Enemy.TargetPresentationPhase.SNIPER_LOCK,
+			TARGET_DESCRIPTOR.create_enemy(904, 0, Vector2(120.0, 80.0)),
+			2.0,
+			Vector2(100.0, 80.0),
+			7
+		)
+		coordinator.build_host_terminal_event(
+			904,
+			MpEnemyCoordinator.ENEMY_TERMINAL_REMOVED,
+			Vector2(120.0, 80.0)
+		)
+		var cleared_enemy_target_cache := (
+			coordinator._host_target_presentation_states.get(903, {})
+			as Dictionary
+		)
+		var pending_enemy_target_cache := (
+			coordinator._pending_host_target_presentation_states.get(903, {})
+			as Dictionary
+		)
+		_expect(
+			int(cleared_enemy_target_cache.get("phase", -1))
+			== Enemy.TargetPresentationPhase.NONE
+			and int(cleared_enemy_target_cache.get("state_revision", 0)) == 7
+			and int(pending_enemy_target_cache.get("phase", -1))
+			== Enemy.TargetPresentationPhase.NONE,
+			"Host 目标敌人终结时必须把所有引用它的 ACTIVE cache 以同 revision 收敛为 NONE。"
+		)
+		coordinator.drain_host_target_presentation_batches()
+		var player_cache_source := Enemy.new()
+		player_cache_source.config = enemy_config
+		runtime.register_network_enemy(905, player_cache_source)
+		coordinator.set_host_enemy_target_presentation_state(
+			905,
+			Enemy.TargetPresentationPhase.LIGHTNING_WINDUP,
+			TARGET_DESCRIPTOR.create_player(2, 0, Vector2(140.0, 80.0)),
+			2.0,
+			Vector2(110.0, 80.0),
+			8
+		)
+		coordinator.clear_peer(2)
+		var cleared_player_target_cache := (
+			coordinator._host_target_presentation_states.get(905, {})
+			as Dictionary
+		)
+		_expect(
+			int(cleared_player_target_cache.get("phase", -1))
+			== Enemy.TargetPresentationPhase.NONE
+			and int(cleared_player_target_cache.get("state_revision", 0)) == 8,
+			"玩家断连时 Host 必须可靠清除所有引用该 peer 的持续目标表现。"
+		)
+		coordinator.build_host_terminal_event(
+			903,
+			MpEnemyCoordinator.ENEMY_TERMINAL_REMOVED,
+			Vector2.ZERO
+		)
+		coordinator.build_host_terminal_event(
+			905,
+			MpEnemyCoordinator.ENEMY_TERMINAL_REMOVED,
+			Vector2.ZERO
+		)
+		runtime.unregister_network_enemy(903, target_cache_source)
+		runtime.unregister_network_enemy(904, target_cache_enemy)
+		runtime.unregister_network_enemy(905, player_cache_source)
+		target_cache_source.free()
+		target_cache_enemy.free()
+		player_cache_source.free()
+	if enemy_config != null:
+		var faction_host_enemy := Enemy.new()
+		faction_host_enemy.config = enemy_config
+		runtime.register_network_enemy(901, faction_host_enemy)
+		coordinator.build_live_spawn_batches(_probe_get_net_time())
+		faction_host_enemy.set_combat_faction_id(
+			COMBAT_RELATIONS.PLAYER_ALLIED,
+			1,
+			true
+		)
+		coordinator.update_host()
+		var faction_broadcast := _lifecycle_broadcasts.back() as Dictionary
+		var faction_arguments := faction_broadcast.get("arguments", []) as Array
+		_expect(
+			StringName(faction_broadcast.get("method", &""))
+			== &"net_enemy_faction_changed_batch"
+			and faction_arguments.size() == 3
+			and faction_arguments[0] == PackedInt32Array([901])
+			and faction_arguments[1] == PackedByteArray([
+				COMBAT_RELATIONS.PLAYER_ALLIED
+			])
+			and faction_arguments[2] == PackedInt32Array([1]),
+			"Host 必须按 net-id 稳定顺序可靠批播运行时阵营 revision。"
+		)
+		gameplay_gateway.enemy_removed.emit(901)
+		runtime.unregister_network_enemy(901, faction_host_enemy)
+		faction_host_enemy.free()
 	gameplay_gateway.enemy_defeated.emit(701, Vector2(48.0, 64.0))
 	gameplay_gateway.enemy_removed.emit(701)
 	gameplay_gateway.enemy_removed.emit(702)
@@ -230,8 +627,8 @@ func _run() -> void:
 		if StringName(record.get("method", &"")) == &"net_enemy_terminal":
 			terminal_broadcast_count += 1
 	_expect(
-		terminal_broadcast_count == 3,
-		"defeated 后的配对 removed 必须去重，独立 removed/escaped 仍各广播一次。"
+		terminal_broadcast_count == 4,
+		"defeated 后的配对 removed 必须去重，独立 removed/escaped 与阵营实体终态仍各广播一次。"
 	)
 
 	var states: Array[SnapshotManager.EnemyState] = []
@@ -268,7 +665,7 @@ func _run() -> void:
 		)
 		_expect(
 			decoded.size() == MpEnemyCoordinator.ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES,
-			"首个快照块必须保持既有 46 实体 MTU 上限。"
+			"首个 v94 快照块必须保持 41 实体/1191-byte MTU 上限。"
 		)
 
 	coordinator.queue_damage_feedback(
@@ -448,6 +845,774 @@ func _run() -> void:
 		"enemy_scene 根节点类型错误时必须释放候选并保留旧 net-id 实体。"
 	)
 	enemy_config.enemy_scene = original_enemy_scene
+	coordinator.receive_enemy_spawn_packet(
+		978,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(18.0, 19.0),
+		1.0,
+		1.0,
+		false,
+		0.0,
+		-1,
+		-1,
+		true
+	)
+	coordinator.receive_enemy_spawn_batch(
+		PackedInt32Array([979]),
+		PackedStringArray([TEST_ENEMY_CONFIG_PATH]),
+		PackedVector2Array([Vector2(19.0, 20.0)]),
+		PackedFloat64Array([1.0]),
+		1.0,
+		false,
+		0.0,
+		PackedByteArray(),
+		PackedInt32Array(),
+		true
+	)
+	_expect(
+		not runtime.has_network_enemy(978)
+		and not runtime.has_network_enemy(979),
+		"v94 RPC 严格入口必须拒绝 single=-1 与缺失 faction arrays，不能回退配置默认。"
+	)
+	coordinator.receive_enemy_faction_changed_batch(
+		PackedInt32Array([981]),
+		PackedByteArray([COMBAT_RELATIONS.PLAYER_ALLIED]),
+		PackedInt32Array([4])
+	)
+	_expect(
+		coordinator.pending_enemy_faction_changes.has(981),
+		"可靠阵营变更先于出生时必须按 net-id 暂存。"
+	)
+	coordinator.receive_enemy_spawn(
+		981,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(21.0, 22.0),
+		1.0,
+		1.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0
+	)
+	var faction_spawn_enemy := runtime.get_network_enemy(981)
+	_expect(
+		faction_spawn_enemy != null
+		and faction_spawn_enemy.get_combat_faction_id()
+		== COMBAT_RELATIONS.PLAYER_ALLIED
+		and faction_spawn_enemy.get_faction_revision() == 4
+		and not coordinator.pending_enemy_faction_changes.has(981),
+		"出生事务必须先应用 roster 初值，再消费更高 revision 的 pending 阵营。"
+	)
+	coordinator.receive_enemy_faction_changed_batch(
+		PackedInt32Array([981]),
+		PackedByteArray([COMBAT_RELATIONS.HOSTILE_WAVE]),
+		PackedInt32Array([3])
+	)
+	coordinator.receive_enemy_faction_changed_batch(
+		PackedInt32Array([981]),
+		PackedByteArray([COMBAT_RELATIONS.HOSTILE_WAVE]),
+		PackedInt32Array([5])
+	)
+	_expect(
+		faction_spawn_enemy.get_combat_faction_id()
+		== COMBAT_RELATIONS.HOSTILE_WAVE
+		and faction_spawn_enemy.get_faction_revision() == 5,
+		"客户端阵营同步必须拒绝 stale revision 并接纳严格更新。"
+	)
+	coordinator.receive_enemy_spawn(
+		982,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(22.0, 23.0),
+		1.0,
+		1.0,
+		COMBAT_RELATIONS.PLAYER_ALLIED,
+		5,
+		10.0
+	)
+	var first_same_config_incarnation := runtime.get_network_enemy(982)
+	coordinator._client_enemy_action_revisions[982] = 9
+	coordinator._client_target_presentation_revisions[982] = 9
+	coordinator.receive_enemy_spawn(
+		982,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(24.0, 25.0),
+		2.0,
+		2.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0,
+		11.0
+	)
+	var second_same_config_incarnation := runtime.get_network_enemy(982)
+	_expect(
+		first_same_config_incarnation != null
+		and second_same_config_incarnation != null
+		and second_same_config_incarnation != first_same_config_incarnation
+		and second_same_config_incarnation.get_faction_revision() == 0
+		and second_same_config_incarnation.get_combat_faction_id()
+		== COMBAT_RELATIONS.HOSTILE_WAVE
+		and not coordinator._client_enemy_action_revisions.has(982)
+		and not coordinator._client_target_presentation_revisions.has(982)
+		and is_equal_approx(
+			float(coordinator.enemy_spawn_incarnation_tokens.get(982, -1.0)),
+			11.0
+		),
+		"同 net-id、同配置但出生令牌更新时必须替换代理，并清空上一 incarnation 的阵营与动作水位。"
+	)
+	coordinator.receive_enemy_action(
+		982,
+		&"old_incarnation_high_revision",
+		Vector2.RIGHT,
+		Vector2(24.0, 25.0),
+		99,
+		50.0,
+		50.0,
+		10.5
+	)
+	_expect(
+		not coordinator._client_enemy_action_revisions.has(982)
+		and not coordinator.pending_enemy_actions.has(982),
+		"旧 source incarnation 的高 action-id 必须按 raw Host 时间拒绝，不能污染新实体水位。"
+	)
+	coordinator.remove_client_enemy(982, false)
+	coordinator.receive_enemy_action(
+		981,
+		&"revision_probe",
+		Vector2.RIGHT,
+		faction_spawn_enemy.global_position,
+		1,
+		1.1,
+		1.1,
+		10.1
+	)
+	coordinator.receive_enemy_target_action(
+		981,
+		&"pending_target_probe",
+		TARGET_DESCRIPTOR.create_enemy(1999, 0, Vector2(40.0, 40.0)),
+		faction_spawn_enemy.global_position,
+		2,
+		1.2,
+		1.2,
+		10.2
+	)
+	_expect(
+		coordinator.pending_enemy_actions.has(981)
+		and int(coordinator._client_enemy_action_revisions.get(981, 0)) == 1,
+		"移除前夹具必须同时建立 target pending 与已交付 assignment revision。"
+	)
+	coordinator.remove_client_enemy(981, false)
+	_expect(
+		not coordinator.pending_enemy_actions.has(981)
+		and not coordinator.pending_enemy_faction_changes.has(981)
+		and not coordinator._client_enemy_action_revisions.has(981)
+		and not coordinator.client_terminal_enemy_ids.has(981),
+		"通用名册移除必须清理 faction/target pending、assignment revision 与旧终态。"
+	)
+	await process_frame
+	coordinator.receive_enemy_spawn(
+		981,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(23.0, 24.0),
+		2.0,
+		2.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0
+	)
+	var respawned_faction_enemy := runtime.get_network_enemy(981)
+	_expect(
+		respawned_faction_enemy != null
+		and respawned_faction_enemy.get_faction_revision() == 0
+		and respawned_faction_enemy.get_combat_faction_id()
+		== COMBAT_RELATIONS.HOSTILE_WAVE,
+		"名册淘汰后同 net-id 重生必须从新出生 revision 开始，不能继承旧阵营状态。"
+	)
+	var old_incarnation_state := SnapshotManager.EnemyState.new()
+	old_incarnation_state.net_id = 981
+	old_incarnation_state.position = Vector2(999.0, 999.0)
+	old_incarnation_state.health = 0
+	old_incarnation_state.health_revision = 99
+	old_incarnation_state.is_dead = true
+	old_incarnation_state.faction_id = COMBAT_RELATIONS.PLAYER_ALLIED
+	old_incarnation_state.faction_revision = 99
+	var preserved_roster_state := SnapshotManager.EnemyState.new()
+	preserved_roster_state.net_id = 970
+	preserved_roster_state.position = preserved_enemy.global_position
+	preserved_roster_state.health = preserved_enemy.current_health
+	preserved_roster_state.health_revision = preserved_enemy.health_revision
+	preserved_roster_state.faction_id = preserved_enemy.get_combat_faction_id()
+	preserved_roster_state.faction_revision = preserved_enemy.get_faction_revision()
+	var old_incarnation_codec := SnapshotManager.new()
+	var old_incarnation_states: Array[SnapshotManager.EnemyState] = [
+		old_incarnation_state,
+		preserved_roster_state,
+	]
+	coordinator.apply_authoritative_snapshot(
+		1.5,
+		old_incarnation_codec.encode_all_enemy_snapshots(
+			old_incarnation_states
+		),
+		0,
+		0,
+		1,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ
+	)
+	_expect(
+		runtime.get_network_enemy(981) == respawned_faction_enemy
+		and respawned_faction_enemy.get_faction_revision() == 0
+		and respawned_faction_enemy.get_combat_faction_id()
+		== COMBAT_RELATIONS.HOSTILE_WAVE
+		and not respawned_faction_enemy.is_dead
+		and not coordinator.client_terminal_enemy_ids.has(981),
+		"旧 incarnation 快照即使携带更高 revision/is_dead，也不得污染或删除 spawn 后同 net-id 新实体。"
+	)
+	var new_incarnation_state := SnapshotManager.EnemyState.new()
+	new_incarnation_state.net_id = 981
+	new_incarnation_state.position = Vector2(24.0, 25.0)
+	new_incarnation_state.health = 130
+	new_incarnation_state.health_revision = 1
+	new_incarnation_state.faction_id = COMBAT_RELATIONS.PLAYER_ALLIED
+	new_incarnation_state.faction_revision = 1
+	var new_incarnation_sender := SnapshotManager.new()
+	var new_incarnation_states: Array[SnapshotManager.EnemyState] = [
+		new_incarnation_state,
+		preserved_roster_state,
+	]
+	coordinator.apply_authoritative_snapshot(
+		2.1,
+		new_incarnation_sender.encode_enemy_snapshots_for_peer(
+			77,
+			new_incarnation_states,
+			true
+		),
+		0,
+		0,
+		1,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ
+	)
+	new_incarnation_state.health = 120
+	new_incarnation_state.health_revision = 2
+	new_incarnation_state.faction_id = COMBAT_RELATIONS.HOSTILE_WAVE
+	new_incarnation_state.faction_revision = 2
+	# 普通敌人 delta 不携带阵营字段；实时变化先由 reliable CH5 收敛，
+	# 后续 full keyframe 再负责重连修复。这里保持生产协议顺序，只让 delta
+	# 验证旧 incarnation baseline 已被清除后仍可继续恢复生命修订。
+	coordinator.receive_enemy_faction_changed_batch(
+		PackedInt32Array([981]),
+		PackedByteArray([COMBAT_RELATIONS.HOSTILE_WAVE]),
+		PackedInt32Array([2])
+	)
+	coordinator.apply_authoritative_snapshot(
+		2.2,
+		new_incarnation_sender.encode_enemy_snapshots_for_peer(
+			77,
+			new_incarnation_states,
+			false
+		),
+		0,
+		0,
+		1,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ
+	)
+	var recovered_incarnation_baseline := (
+		coordinator._snapshot_manager.enemy_receive_baselines.get(981)
+		as SnapshotManager.EnemyState
+	)
+	_expect(
+		respawned_faction_enemy.current_health == 120
+		and respawned_faction_enemy.health_revision == 2
+		and respawned_faction_enemy.get_combat_faction_id()
+		== COMBAT_RELATIONS.HOSTILE_WAVE
+		and respawned_faction_enemy.get_faction_revision() == 2
+		and recovered_incarnation_baseline != null
+		and recovered_incarnation_baseline.health == 120
+		and recovered_incarnation_baseline.health_revision == 2,
+		"拒绝旧 incarnation 后必须清空接收基线，并允许新 keyframe/delta 正常重建。"
+	)
+	var malformed_empty_roster := PackedByteArray([0, 0, 123])
+	coordinator.apply_authoritative_snapshot(
+		2.3,
+		malformed_empty_roster,
+		0,
+		0,
+		1,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ
+	)
+	_expect(
+		runtime.get_network_enemy(981) == respawned_faction_enemy
+		and runtime.get_network_enemy(970) == preserved_enemy,
+		"count=0 且携带 trailing bytes 的非法空 roster 不得被误认完整快照并清场。"
+	)
+	coordinator.remove_client_enemy(981, false)
+	coordinator.receive_enemy_faction_changed_batch(
+		PackedInt32Array([982]),
+		PackedByteArray([COMBAT_RELATIONS.PLAYER_ALLIED]),
+		PackedInt32Array([7])
+	)
+	coordinator.receive_enemy_terminal(
+		982,
+		MpEnemyCoordinator.ENEMY_TERMINAL_REMOVED,
+		Vector2.ZERO,
+		0,
+		0,
+		0,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.PHYSICAL,
+		0
+	)
+	_expect(
+		not coordinator.pending_enemy_faction_changes.has(982)
+		and coordinator.client_terminal_enemy_ids.has(982),
+		"可靠终态必须清理 spawn 前阵营 pending 并建立墓碑。"
+	)
+	coordinator.receive_enemy_spawn(
+		982,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(25.0, 26.0),
+		3.0,
+		3.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0
+	)
+	_expect(
+		runtime.get_network_enemy(982) != null
+		and not coordinator.client_terminal_enemy_ids.has(982),
+		"同 net-id 权威重生必须在实体公开前清掉上一 incarnation 的终态墓碑。"
+	)
+	coordinator.remove_client_enemy(982, false)
+
+	# 使用独立客户端运行时验证 raw Host 时间的 incarnation/roster CAS，避免
+	# offset 重估让迟到快照在 mapped 时间轴上反而显得比可靠 spawn 更新。
+	var snapshot_cas_coordinator := (
+		ENEMY_COORDINATOR_SCENE.instantiate() as MpEnemyCoordinator
+	)
+	var snapshot_cas_runtime := ProbeRuntime.new()
+	var snapshot_cas_container := Node2D.new()
+	get_root().add_child(snapshot_cas_coordinator)
+	get_root().add_child(snapshot_cas_container)
+	snapshot_cas_runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	snapshot_cas_runtime.enemy_container = snapshot_cas_container
+	snapshot_cas_coordinator.bind_runtime(snapshot_cas_runtime)
+	snapshot_cas_coordinator.receive_enemy_spawn(
+		983,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(30.0, 31.0),
+		100.0,
+		100.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0,
+		100.0
+	)
+	var no_offset_spawn_enemy := snapshot_cas_runtime.get_network_enemy(983)
+	var empty_full_roster := PackedByteArray([0, 0])
+	snapshot_cas_coordinator.apply_authoritative_snapshot(
+		99.0,
+		empty_full_roster,
+		0,
+		0,
+		1,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ,
+		99.0
+	)
+	_expect(
+		no_offset_spawn_enemy != null
+		and snapshot_cas_runtime.get_network_enemy(983) == no_offset_spawn_enemy
+		and not snapshot_cas_coordinator.client_terminal_enemy_ids.has(983),
+		"无 offset 时，spawn 前的旧 full roster 不得删除可靠名册刚建立的新 incarnation。"
+	)
+	snapshot_cas_coordinator.receive_enemy_spawn(
+		984,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(32.0, 33.0),
+		200.0,
+		200.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0,
+		200.0
+	)
+	var drift_spawn_enemy := snapshot_cas_runtime.get_network_enemy(984)
+	var drift_seed_state := SnapshotManager.EnemyState.new()
+	drift_seed_state.net_id = 984
+	drift_seed_state.position = Vector2(32.0, 33.0)
+	drift_seed_state.health = drift_spawn_enemy.current_health
+	drift_seed_state.health_revision = drift_spawn_enemy.health_revision
+	var drift_seed_states: Array[SnapshotManager.EnemyState] = [drift_seed_state]
+	var drift_seed_codec := SnapshotManager.new()
+	snapshot_cas_coordinator.apply_authoritative_snapshot(
+		200.0,
+		drift_seed_codec.encode_all_enemy_snapshots(drift_seed_states),
+		0,
+		0,
+		1,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ,
+		200.0
+	)
+	var drift_seed_baseline := (
+		snapshot_cas_coordinator._snapshot_manager.enemy_receive_baselines.get(984)
+		as SnapshotManager.EnemyState
+	)
+	snapshot_cas_coordinator.apply_authoritative_snapshot(
+		1200.0,
+		empty_full_roster,
+		0,
+		0,
+		1,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ,
+		199.0
+	)
+	var drift_preserved_baseline := (
+		snapshot_cas_coordinator._snapshot_manager.enemy_receive_baselines.get(984)
+		as SnapshotManager.EnemyState
+	)
+	_expect(
+		drift_spawn_enemy != null
+		and snapshot_cas_runtime.get_network_enemy(984) == drift_spawn_enemy
+		and drift_seed_baseline != null
+		and drift_preserved_baseline != null
+		and drift_preserved_baseline.health_revision
+		== drift_seed_baseline.health_revision
+		and not snapshot_cas_coordinator.client_terminal_enemy_ids.has(984),
+		"offset 漂移即使令旧 roster 的 mapped 时间更晚，也必须按 raw spawn token 同时保留实体与新基线。"
+	)
+
+	snapshot_cas_coordinator.receive_enemy_spawn(
+		985,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(34.0, 35.0),
+		300.0,
+		300.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0,
+		300.0
+	)
+	snapshot_cas_coordinator.receive_enemy_terminal(
+		985,
+		MpEnemyCoordinator.ENEMY_TERMINAL_REMOVED,
+		Vector2(34.0, 35.0),
+		0,
+		1,
+		0,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.PHYSICAL,
+		0
+	)
+	var terminal_old_state := SnapshotManager.EnemyState.new()
+	terminal_old_state.net_id = 985
+	terminal_old_state.position = Vector2(999.0, 999.0)
+	terminal_old_state.health = 999
+	terminal_old_state.health_revision = 99
+	terminal_old_state.faction_id = COMBAT_RELATIONS.PLAYER_ALLIED
+	terminal_old_state.faction_revision = 99
+	var terminal_old_states: Array[SnapshotManager.EnemyState] = [
+		terminal_old_state,
+	]
+	var terminal_old_codec := SnapshotManager.new()
+	var terminal_old_packet := terminal_old_codec.encode_all_enemy_snapshots(
+		terminal_old_states
+	)
+	snapshot_cas_coordinator.apply_authoritative_snapshot(
+		5000.0,
+		terminal_old_packet,
+		0,
+		0,
+		1,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ,
+		299.0
+	)
+	_expect(
+		not snapshot_cas_runtime.has_network_enemy(985)
+		and snapshot_cas_coordinator.client_terminal_enemy_ids.has(985)
+		and not snapshot_cas_coordinator.enemy_interpolators.has(985)
+		and not snapshot_cas_coordinator.pending_enemy_faction_changes.has(985)
+		and not snapshot_cas_coordinator._snapshot_manager.enemy_receive_baselines.has(985),
+		"terminal 墓碑必须拒绝迟到 alive 快照，不能重建插值器、阵营 pending 或接收基线。"
+	)
+	snapshot_cas_coordinator.receive_enemy_spawn(
+		985,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(36.0, 37.0),
+		301.0,
+		301.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0,
+		301.0
+	)
+	var terminal_respawn_enemy := snapshot_cas_runtime.get_network_enemy(985)
+	snapshot_cas_coordinator.apply_authoritative_snapshot(
+		6000.0,
+		terminal_old_packet,
+		0,
+		0,
+		1,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ,
+		299.0
+	)
+	_expect(
+		terminal_respawn_enemy != null
+		and snapshot_cas_runtime.get_network_enemy(985) == terminal_respawn_enemy
+		and terminal_respawn_enemy.get_combat_faction_id()
+		== COMBAT_RELATIONS.HOSTILE_WAVE
+		and terminal_respawn_enemy.get_faction_revision() == 0
+		and not terminal_respawn_enemy.is_dead
+		and not snapshot_cas_coordinator.client_terminal_enemy_ids.has(985)
+		and not snapshot_cas_coordinator._snapshot_manager.enemy_receive_baselines.has(985),
+		"同 ID 新 spawn 清墓碑后，上一 incarnation 的高 revision 快照仍必须按 raw token 拒绝。"
+	)
+
+	# 表现墓碑只保留有限条目，但 incarnation raw 水位必须持续阻断同 ID 的
+	# 旧 CH3。否则墓碑淘汰后的 alive 快照会提前建立插值器并缓存高 revision
+	# 阵营，随后真正的新 spawn 会继承上一 incarnation 的位置/阵营。
+	snapshot_cas_coordinator.reset_session_state()
+	var evicted_terminal_id := 986
+	snapshot_cas_coordinator.receive_enemy_spawn(
+		evicted_terminal_id,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(38.0, 39.0),
+		800.0,
+		800.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0,
+		800.0
+	)
+	snapshot_cas_coordinator.receive_enemy_terminal(
+		evicted_terminal_id,
+		MpEnemyCoordinator.ENEMY_TERMINAL_REMOVED,
+		Vector2(38.0, 39.0),
+		0,
+		1,
+		0,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.PHYSICAL,
+		0
+	)
+	for tombstone_index in range(
+		MpEnemyCoordinator.CLIENT_TERMINAL_ENEMY_TOMBSTONE_MAX_ENTRIES
+	):
+		snapshot_cas_coordinator.mark_client_terminal(20000 + tombstone_index)
+	var evicted_terminal_raw_token := float(
+		snapshot_cas_coordinator.client_terminal_enemy_incarnation_tokens.get(
+			evicted_terminal_id,
+			-1.0
+		)
+	)
+	_expect(
+		not snapshot_cas_coordinator.client_terminal_enemy_ids.has(
+			evicted_terminal_id
+		)
+		and snapshot_cas_coordinator.client_terminal_enemy_incarnation_tokens.has(
+			evicted_terminal_id
+		)
+		and is_equal_approx(evicted_terminal_raw_token, 800.0)
+		and not snapshot_cas_runtime.has_network_enemy(evicted_terminal_id),
+		"有限表现墓碑淘汰后必须保留终态 incarnation raw 水位。"
+	)
+	var evicted_terminal_old_state := SnapshotManager.EnemyState.new()
+	evicted_terminal_old_state.net_id = evicted_terminal_id
+	evicted_terminal_old_state.position = Vector2(999.0, 999.0)
+	evicted_terminal_old_state.health = 999
+	evicted_terminal_old_state.health_revision = 99
+	evicted_terminal_old_state.faction_id = COMBAT_RELATIONS.PLAYER_ALLIED
+	evicted_terminal_old_state.faction_revision = 99
+	var evicted_terminal_old_states: Array[SnapshotManager.EnemyState] = [
+		evicted_terminal_old_state,
+	]
+	var evicted_terminal_codec := SnapshotManager.new()
+	var evicted_terminal_old_packet := (
+		evicted_terminal_codec.encode_all_enemy_snapshots(
+			evicted_terminal_old_states
+		)
+	)
+	snapshot_cas_coordinator.apply_authoritative_snapshot(
+		805.0,
+		evicted_terminal_old_packet,
+		0,
+		0,
+		1,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ,
+		805.0
+	)
+	var evicted_terminal_has_baseline := (
+		snapshot_cas_coordinator._snapshot_manager.enemy_receive_baselines.has(
+			evicted_terminal_id
+		)
+	)
+	_expect(
+		not snapshot_cas_runtime.has_network_enemy(evicted_terminal_id)
+		and not snapshot_cas_coordinator.enemy_interpolators.has(
+			evicted_terminal_id
+		)
+		and not snapshot_cas_coordinator.pending_enemy_faction_changes.has(
+			evicted_terminal_id
+		)
+		and not evicted_terminal_has_baseline,
+		"墓碑淘汰后的旧 CH3 仍必须由 raw 水位拒绝，不能污染插值器、阵营 pending 或接收基线。"
+	)
+	snapshot_cas_coordinator.receive_enemy_spawn(
+		evicted_terminal_id,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(40.0, 41.0),
+		806.0,
+		806.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0,
+		800.0
+	)
+	_expect(
+		not snapshot_cas_runtime.has_network_enemy(evicted_terminal_id)
+		and snapshot_cas_coordinator.client_terminal_enemy_incarnation_tokens.has(
+			evicted_terminal_id
+		),
+		"表现墓碑淘汰后，同 raw token 的迟到 spawn 仍不能伪造新 incarnation。"
+	)
+	var evicted_terminal_respawn_position := Vector2(42.0, 43.0)
+	snapshot_cas_coordinator.receive_enemy_spawn(
+		evicted_terminal_id,
+		TEST_ENEMY_CONFIG_PATH,
+		evicted_terminal_respawn_position,
+		810.0,
+		810.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0,
+		810.0
+	)
+	var evicted_terminal_respawn := (
+		snapshot_cas_runtime.get_network_enemy(evicted_terminal_id)
+	)
+	_expect(
+		evicted_terminal_respawn != null
+		and evicted_terminal_respawn.global_position
+		== evicted_terminal_respawn_position
+		and evicted_terminal_respawn.get_combat_faction_id()
+		== COMBAT_RELATIONS.HOSTILE_WAVE
+		and evicted_terminal_respawn.get_faction_revision() == 0
+		and not snapshot_cas_coordinator.client_terminal_enemy_ids.has(
+			evicted_terminal_id
+		)
+		and not snapshot_cas_coordinator.client_terminal_enemy_incarnation_tokens.has(
+			evicted_terminal_id
+		)
+		and not snapshot_cas_coordinator.pending_enemy_faction_changes.has(
+			evicted_terminal_id
+		),
+		"只有严格更新的 spawn token 才能提交同 ID 新 incarnation，并在消费 pending 前清 raw 水位。"
+	)
+
+	# 非末 chunk 固定 41 条。第二 chunk 故意重复第一块的实体并携带更高
+	# revision；跨块 ID 预扫应在正式 decode 前终止，不能污染已提交 baseline。
+	snapshot_cas_coordinator.reset_session_state()
+	snapshot_cas_coordinator.receive_enemy_spawn(
+		10000,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(40.0, 41.0),
+		650.0,
+		650.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0,
+		650.0
+	)
+	var duplicate_chunk_states: Array[SnapshotManager.EnemyState] = []
+	for state_offset in range(
+		MpEnemyCoordinator.ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES
+	):
+		var chunk_state := SnapshotManager.EnemyState.new()
+		chunk_state.net_id = 10000 + state_offset
+		chunk_state.position = Vector2(40.0 + state_offset, 41.0)
+		chunk_state.health = 80
+		chunk_state.health_revision = 1
+		duplicate_chunk_states.append(chunk_state)
+	var duplicate_chunk_sender := SnapshotManager.new()
+	var first_duplicate_batch_chunk := (
+		duplicate_chunk_sender.encode_enemy_snapshots_for_peer(
+			91,
+			duplicate_chunk_states,
+			true
+		)
+	)
+	snapshot_cas_coordinator.apply_authoritative_snapshot(
+		700.0,
+		first_duplicate_batch_chunk,
+		700,
+		0,
+		2,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ,
+		700.0
+	)
+	var poison_state := SnapshotManager.EnemyState.new()
+	poison_state.net_id = 10000
+	poison_state.position = Vector2(777.0, 777.0)
+	poison_state.health = 777
+	poison_state.health_revision = 77
+	poison_state.faction_id = COMBAT_RELATIONS.PLAYER_ALLIED
+	poison_state.faction_revision = 77
+	var poison_states: Array[SnapshotManager.EnemyState] = [poison_state]
+	var poison_codec := SnapshotManager.new()
+	snapshot_cas_coordinator.apply_authoritative_snapshot(
+		700.0,
+		poison_codec.encode_all_enemy_snapshots(poison_states),
+		700,
+		1,
+		2,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ,
+		700.0
+	)
+	var baseline_after_duplicate_rejection := (
+		snapshot_cas_coordinator._snapshot_manager.enemy_receive_baselines.get(10000)
+		as SnapshotManager.EnemyState
+	)
+	_expect(
+		baseline_after_duplicate_rejection != null
+		and baseline_after_duplicate_rejection.health == 80
+		and baseline_after_duplicate_rejection.health_revision == 1
+		and baseline_after_duplicate_rejection.faction_id
+		== COMBAT_RELATIONS.HOSTILE_WAVE
+		and not snapshot_cas_coordinator.pending_enemy_snapshot_batches.has(700),
+		"跨 chunk 重复实体必须整块拒绝，不能先把恶意高 revision 写入 decode baseline。"
+	)
+	var continuation_sender := SnapshotManager.new()
+	var continuation_state := SnapshotManager.EnemyState.new()
+	continuation_state.net_id = 10000
+	continuation_state.position = Vector2(40.0, 41.0)
+	continuation_state.health = 80
+	continuation_state.health_revision = 1
+	var continuation_states: Array[SnapshotManager.EnemyState] = [
+		continuation_state,
+	]
+	continuation_sender.encode_enemy_snapshots_for_peer(
+		92,
+		continuation_states,
+		true
+	)
+	continuation_state.health = 70
+	continuation_state.health_revision = 2
+	snapshot_cas_coordinator.apply_authoritative_snapshot(
+		701.0,
+		continuation_sender.encode_enemy_snapshots_for_peer(
+			92,
+			continuation_states,
+			false
+		),
+		0,
+		0,
+		1,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ,
+		701.0
+	)
+	var recovered_duplicate_baseline := (
+		snapshot_cas_coordinator._snapshot_manager.enemy_receive_baselines.get(10000)
+		as SnapshotManager.EnemyState
+	)
+	var duplicate_probe_enemy := snapshot_cas_runtime.get_network_enemy(10000)
+	_expect(
+		recovered_duplicate_baseline != null
+		and recovered_duplicate_baseline.health == 70
+		and recovered_duplicate_baseline.health_revision == 2
+		and duplicate_probe_enemy != null
+		and duplicate_probe_enemy.current_health == 70
+		and duplicate_probe_enemy.health_revision == 2,
+		"拒绝重复块后，合法后续 delta 必须沿未污染 baseline 正常收敛。"
+	)
+	snapshot_cas_coordinator.reset_session_state()
+	snapshot_cas_coordinator.unbind_runtime(snapshot_cas_runtime)
+	snapshot_cas_container.free()
+	snapshot_cas_runtime.free()
+	snapshot_cas_coordinator.free()
+	await process_frame
 	var outside_enemy_config := ResourceLoader.load(
 		OUTSIDE_ENEMY_PATH
 	) as EnemyConfig
@@ -533,7 +1698,12 @@ func _run() -> void:
 		PackedFloat64Array([1.0, 1.0]),
 		1.0,
 		false,
-		0.0
+		0.0,
+		PackedByteArray([
+			COMBAT_RELATIONS.PLAYER_ALLIED,
+			COMBAT_RELATIONS.HOSTILE_WAVE,
+		]),
+		PackedInt32Array([3, 0])
 	)
 	_expect(
 		not runtime.has_network_enemy(953)
@@ -559,7 +1729,12 @@ func _run() -> void:
 		PackedFloat64Array([1.0, 1.0]),
 		1.0,
 		false,
-		0.0
+		0.0,
+		PackedByteArray([
+			COMBAT_RELATIONS.PLAYER_ALLIED,
+			COMBAT_RELATIONS.HOSTILE_WAVE,
+		]),
+		PackedInt32Array([3, 0])
 	)
 	coordinator.remote_enemy_spawned.disconnect(_on_atomic_spawn_probe)
 	_expect(
@@ -567,6 +1742,9 @@ func _run() -> void:
 		and _atomic_spawn_first_callback_saw_full_registry
 		and runtime.get_network_enemy(974) != null
 		and runtime.get_network_enemy(975) != null
+		and runtime.get_network_enemy(974).get_combat_faction_id()
+		== COMBAT_RELATIONS.PLAYER_ALLIED
+		and runtime.get_network_enemy(974).get_faction_revision() == 3
 		and runtime.enemy_spawn_effect_positions.size()
 		== spawn_effect_count_before_atomic_batch + 2,
 		"首个公开生成回调前，完整 batch 必须已配置、注册并可统一发布。"
@@ -757,6 +1935,51 @@ func _run() -> void:
 		and feedback_probe.feedback_count == 1,
 		"血量快照必须原子更新状态/版本并拒绝 stale/equal revision，且不得重放命中闪红。"
 	)
+	var faction_snapshot_state := SnapshotManager.EnemyState.new()
+	faction_snapshot_state.net_id = 951
+	faction_snapshot_state.position = Vector2(18.0, 24.0)
+	faction_snapshot_state.health = 75
+	faction_snapshot_state.health_revision = 3
+	faction_snapshot_state.faction_id = COMBAT_RELATIONS.PLAYER_ALLIED
+	faction_snapshot_state.faction_revision = 5
+	var faction_snapshot_codec := SnapshotManager.new()
+	var faction_snapshot_states: Array[SnapshotManager.EnemyState] = [
+		faction_snapshot_state
+	]
+	var faction_snapshot_data := faction_snapshot_codec.encode_all_enemy_snapshots(
+		faction_snapshot_states
+	)
+	coordinator.apply_authoritative_snapshot(
+		30.0,
+		faction_snapshot_data,
+		0,
+		0,
+		1,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ
+	)
+	_expect(
+		feedback_probe.get_combat_faction_id() == COMBAT_RELATIONS.PLAYER_ALLIED
+		and feedback_probe.get_faction_revision() == 5,
+		"full keyframe 必须修复客户端敌人阵营与 entity revision。"
+	)
+	coordinator.receive_enemy_faction_changed_batch(
+		PackedInt32Array([951]),
+		PackedByteArray([COMBAT_RELATIONS.HOSTILE_WAVE]),
+		PackedInt32Array([6])
+	)
+	coordinator.apply_authoritative_snapshot(
+		30.1,
+		faction_snapshot_data,
+		0,
+		0,
+		1,
+		NET_CONSTANTS.ENEMY_SNAPSHOT_HZ
+	)
+	_expect(
+		feedback_probe.get_combat_faction_id() == COMBAT_RELATIONS.HOSTILE_WAVE
+		and feedback_probe.get_faction_revision() == 6,
+		"较旧 full keyframe 必须服从 faction revision CAS，不能覆盖较新的可靠变更。"
+	)
 	runtime.unregister_network_enemy(951, feedback_probe)
 	feedback_probe.free()
 	coordinator.receive_enemy_lightning_chain(
@@ -766,10 +1989,742 @@ func _run() -> void:
 		runtime.lightning_chain_replay_count == 1,
 		"客户端只应重放合法闪电链表现。"
 	)
+	var target_action_source := TargetActionProbeEnemy.new()
+	coordinator.register_client_enemy(1101, target_action_source, 40.0)
+	var late_enemy_descriptor := TARGET_DESCRIPTOR.create_enemy(
+		1102,
+		2,
+		Vector2(80.0, 24.0)
+	)
+	coordinator.receive_enemy_target_action(
+		1101,
+		&"late_enemy_target",
+		late_enemy_descriptor,
+		Vector2(32.0, 24.0),
+		1,
+		40.1,
+		40.1,
+		200.1
+	)
+	_expect(
+		coordinator.pending_enemy_actions.has(1101)
+		and target_action_source.target_action_count == 0,
+		"动作源已存在但动态目标尚未生成时，必须保留通用目标动作而非只用 fallback。"
+	)
+	var late_enemy_target := Enemy.new()
+	late_enemy_target.set_combat_faction_id(
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		2,
+		true
+	)
+	coordinator.register_client_enemy(1102, late_enemy_target, 40.2)
+	coordinator.interpolate_remote_enemies(40.2)
+	_expect(
+		target_action_source.target_action_count == 1
+		and target_action_source.last_target == late_enemy_target
+		and target_action_source.last_target_action_id == 1
+		and not coordinator.pending_enemy_actions.has(1101),
+		"Enemy 目标进入稳定 net-id 注册表后，pending 动作必须按原 assignment revision 重放。"
+	)
+	coordinator.receive_enemy_target_action(
+		1101,
+		&"stale_entity_revision",
+		TARGET_DESCRIPTOR.create_enemy(1102, 1, late_enemy_target.global_position),
+		Vector2(33.0, 24.0),
+		2,
+		40.3,
+		40.3,
+		200.2
+	)
+	coordinator.receive_enemy_target_action(
+		1101,
+		&"current_enemy_revision",
+		late_enemy_descriptor,
+		Vector2(34.0, 24.0),
+		3,
+		40.4,
+		40.4,
+		200.3
+	)
+	_expect(
+		target_action_source.target_action_count == 2
+		and target_action_source.last_target_action_id == 3,
+		"旧 entity revision 的动作必须丢弃，但更新 assignment revision 仍可稳定解析同一 Enemy。"
+	)
+	var player_target := Player.new()
+	runtime.peer_players[2] = player_target
+	var no_offset_active_source := TargetActionProbeEnemy.new()
+	var no_offset_none_source := TargetActionProbeEnemy.new()
+	coordinator.register_client_enemy(1127, no_offset_active_source, 40.5)
+	coordinator.register_client_enemy(1128, no_offset_none_source, 40.5)
+	coordinator.receive_enemy_target_presentation_state_batch_packet(
+		PackedInt32Array([1127, 1128]),
+		PackedInt32Array([1, 1]),
+		PackedByteArray([
+			Enemy.TargetPresentationPhase.SNIPER_LOCK,
+			Enemy.TargetPresentationPhase.NONE,
+		]),
+		PackedByteArray([
+			TARGET_DESCRIPTOR.Kind.PLAYER,
+			TARGET_DESCRIPTOR.Kind.NONE,
+		]),
+		PackedInt32Array([2, 0]),
+		PackedInt32Array([0, 0]),
+		PackedVector2Array([player_target.global_position, Vector2.ZERO]),
+		PackedFloat64Array([100.0, 102.0]),
+		PackedFloat64Array([103.0, 102.0]),
+		PackedVector2Array([Vector2(35.0, 24.0), Vector2(36.0, 24.0)]),
+		40.5,
+		false,
+		0.0
+	)
+	_expect(
+		no_offset_active_source.presentation_state_count == 1
+		and no_offset_active_source.last_presentation_phase
+		== Enemy.TargetPresentationPhase.SNIPER_LOCK
+		and no_offset_active_source.last_presentation_target == player_target
+		and is_equal_approx(no_offset_active_source.last_presentation_remaining, 3.0)
+		and no_offset_none_source.presentation_state_count == 1
+		and no_offset_none_source.last_presentation_phase
+		== Enemy.TargetPresentationPhase.NONE,
+		"Host 时钟偏移尚未建立时，混合 ACTIVE/NONE 批次必须保留 Host 持续时长并原子应用。"
+	)
+	coordinator.receive_enemy_target_action(
+		1101,
+		&"player_target",
+		TARGET_DESCRIPTOR.create_player(2, 0, player_target.global_position),
+		Vector2(35.0, 24.0),
+		4,
+		40.5,
+		40.5,
+		200.4
+	)
+	var plant_target := PlantDefense.new()
+	runtime.probe_plants[77] = plant_target
+	coordinator.receive_enemy_target_action(
+		1101,
+		&"plant_target",
+		TARGET_DESCRIPTOR.create_plant(77, 0, plant_target.global_position),
+		Vector2(36.0, 24.0),
+		5,
+		40.6,
+		40.6,
+		200.5
+	)
+	_expect(
+		target_action_source.target_action_count == 4
+		and target_action_source.last_target == plant_target
+		and target_action_source.last_target_action_id == 5,
+		"通用目标动作必须按稳定 ID 解析 Player 与 Plant，而不是继续假设 peer-only。"
+	)
+	coordinator.receive_enemy_target_action(
+		1101,
+		&"future_enemy_revision",
+		TARGET_DESCRIPTOR.create_enemy(1102, 3, late_enemy_target.global_position),
+		Vector2(37.0, 24.0),
+		6,
+		40.7,
+		40.7,
+		200.6
+	)
+	coordinator.receive_enemy_faction_changed_batch(
+		PackedInt32Array([1102]),
+		PackedByteArray([COMBAT_RELATIONS.PLAYER_ALLIED]),
+		PackedInt32Array([3])
+	)
+	coordinator.interpolate_remote_enemies(40.8)
+	_expect(
+		target_action_source.target_action_count == 5
+		and target_action_source.last_target == late_enemy_target
+		and target_action_source.last_target_action_id == 6,
+		"目标 faction revision 尚未收敛时必须等待，可靠阵营状态到达后再重放。"
+	)
+	var start_repair_source := TargetActionProbeEnemy.new()
+	coordinator.register_client_enemy(1120, start_repair_source, 40.8)
+	coordinator.receive_enemy_target_action(
+		1120,
+		&"presentation_start",
+		TARGET_DESCRIPTOR.create_enemy(
+			1102,
+			3,
+			late_enemy_target.global_position
+		),
+		Vector2(40.0, 24.0),
+		10,
+		40.81,
+		40.81,
+		200.71
+	)
+	_receive_target_presentation_state(
+		coordinator,
+		_make_target_presentation_record(
+			1120,
+			10,
+			Enemy.TargetPresentationPhase.SNIPER_LOCK,
+			TARGET_DESCRIPTOR.create_enemy(
+				1102,
+				3,
+				late_enemy_target.global_position
+			),
+			40.81,
+			42.81,
+			Vector2(40.0, 24.0)
+		),
+		40.9
+	)
+	_expect(
+		start_repair_source.target_action_count == 1
+		and start_repair_source.presentation_state_count == 1
+		and start_repair_source.last_presentation_phase
+		== Enemy.TargetPresentationPhase.SNIPER_LOCK
+		and start_repair_source.last_presentation_target == late_enemy_target
+		and start_repair_source.last_presentation_revision == 10,
+		"CH7 start rev10 先到时，同 revision 的 CH5 ACTIVE 仍必须可靠修复持续表现。"
+	)
+	_receive_target_presentation_state(
+		coordinator,
+		_make_target_presentation_record(
+			1120,
+			10,
+			Enemy.TargetPresentationPhase.NONE,
+			TARGET_DESCRIPTOR.create_none(),
+			42.81,
+			42.81,
+			Vector2(40.0, 24.0)
+		),
+		41.0
+	)
+	_expect(
+		start_repair_source.presentation_state_count == 2
+		and start_repair_source.last_presentation_phase
+		== Enemy.TargetPresentationPhase.NONE
+		and start_repair_source.last_presentation_revision == 10,
+		"Host 超时生成的同 revision NONE 必须能覆盖 ACTIVE 并可靠清理视觉。"
+	)
+	var fire_before_active_source := TargetActionProbeEnemy.new()
+	coordinator.register_client_enemy(1121, fire_before_active_source, 40.8)
+	coordinator.receive_enemy_action(
+		1121,
+		&"presentation_clear",
+		Vector2.RIGHT,
+		Vector2(41.0, 24.0),
+		11,
+		40.91,
+		40.91,
+		200.72
+	)
+	_receive_target_presentation_state(
+		coordinator,
+		_make_target_presentation_record(
+			1121,
+			10,
+			Enemy.TargetPresentationPhase.SNIPER_LOCK,
+			TARGET_DESCRIPTOR.create_enemy(
+				1102,
+				3,
+				late_enemy_target.global_position
+			),
+			40.8,
+			42.8,
+			Vector2(41.0, 24.0)
+		),
+		41.0
+	)
+	_expect(
+		fire_before_active_source.presentation_state_count == 0
+		and fire_before_active_source.last_presentation_phase
+		== Enemy.TargetPresentationPhase.NONE
+		and not coordinator.pending_enemy_target_presentation_states.has(1121),
+		"CH7 fire/cancel rev11 先到后，CH5 ACTIVE rev10 必须被跨信道水位拒绝且绝不重开。"
+	)
+	var clear_before_active_source := TargetActionProbeEnemy.new()
+	coordinator.register_client_enemy(1122, clear_before_active_source, 41.0)
+	_receive_target_presentation_state(
+		coordinator,
+		_make_target_presentation_record(
+			1122,
+			11,
+			Enemy.TargetPresentationPhase.NONE,
+			TARGET_DESCRIPTOR.create_none(),
+			41.0,
+			41.0,
+			Vector2(42.0, 24.0)
+		),
+		41.0
+	)
+	coordinator.receive_enemy_action(
+		1122,
+		&"presentation_clear",
+		Vector2.LEFT,
+		Vector2(42.0, 24.0),
+		10,
+		41.005,
+		41.005,
+		200.7205
+	)
+	coordinator.receive_enemy_action(
+		1122,
+		&"presentation_clear",
+		Vector2.RIGHT,
+		Vector2(42.0, 24.0),
+		11,
+		41.01,
+		41.01,
+		200.721
+	)
+	_receive_target_presentation_state(
+		coordinator,
+		_make_target_presentation_record(
+			1122,
+			10,
+			Enemy.TargetPresentationPhase.LIGHTNING_WINDUP,
+			TARGET_DESCRIPTOR.create_player(
+				2,
+				0,
+				player_target.global_position
+			),
+			40.0,
+			42.0,
+			Vector2(42.0, 24.0)
+		),
+		41.0
+	)
+	_expect(
+		clear_before_active_source.presentation_state_count == 1
+		and clear_before_active_source.generic_action_count == 1
+		and clear_before_active_source.last_generic_action_id == 11
+		and clear_before_active_source.last_presentation_phase
+		== Enemy.TargetPresentationPhase.NONE
+		and clear_before_active_source.last_presentation_revision == 11,
+		"可靠 NONE rev11 不得吞掉同 revision CH7 fire/cancel；随后乱序 ACTIVE rev10 仍不得复活旧预警。"
+	)
+	var pending_presentation_source := TargetActionProbeEnemy.new()
+	coordinator.register_client_enemy(1123, pending_presentation_source, 41.0)
+	_receive_target_presentation_state(
+		coordinator,
+		_make_target_presentation_record(
+			1123,
+			1,
+			Enemy.TargetPresentationPhase.LIGHTNING_WINDUP,
+			TARGET_DESCRIPTOR.create_enemy(1190, 2, Vector2(90.0, 40.0)),
+			41.0,
+			44.0,
+			Vector2(43.0, 24.0)
+		),
+		41.1
+	)
+	_expect(
+		pending_presentation_source.presentation_state_count == 0
+		and coordinator.pending_enemy_target_presentation_states.has(1123),
+		"持续表现的 Enemy 目标未生成或 revision 未到时必须独立 pending。"
+	)
+	var pending_presentation_target := Enemy.new()
+	pending_presentation_target.set_combat_faction_id(
+		COMBAT_RELATIONS.PLAYER_ALLIED,
+		2,
+		true
+	)
+	coordinator.register_client_enemy(1190, pending_presentation_target, 41.2)
+	coordinator.interpolate_remote_enemies(41.2)
+	_expect(
+		pending_presentation_source.presentation_state_count == 1
+		and pending_presentation_source.last_presentation_phase
+		== Enemy.TargetPresentationPhase.LIGHTNING_WINDUP
+		and pending_presentation_source.last_presentation_target
+		== pending_presentation_target
+		and not coordinator.pending_enemy_target_presentation_states.has(1123),
+		"目标进入稳定注册表且 entity revision 收敛后，持续表现必须按原 revision 重放。"
+	)
+	var source_late_presentation_record := _make_target_presentation_record(
+		1124,
+		1,
+		Enemy.TargetPresentationPhase.SNIPER_LOCK,
+		TARGET_DESCRIPTOR.create_player(2, 0, player_target.global_position),
+		41.1,
+		43.1,
+		Vector2(44.0, 24.0)
+	)
+	_receive_target_presentation_state(
+		coordinator,
+		source_late_presentation_record,
+		41.2
+	)
+	var source_late_presentation_enemy := TargetActionProbeEnemy.new()
+	coordinator.register_client_enemy(1124, source_late_presentation_enemy, 41.3)
+	_expect(
+		source_late_presentation_enemy.presentation_state_count == 1
+		and source_late_presentation_enemy.last_presentation_target == player_target
+		and source_late_presentation_enemy.last_presentation_remaining > 0.0,
+		"持续表现来源晚生成时必须 replay，并按当前时间恢复 elapsed/remaining。"
+	)
+	var expired_presentation_source := TargetActionProbeEnemy.new()
+	coordinator.register_client_enemy(1125, expired_presentation_source, 41.0)
+	_receive_target_presentation_state(
+		coordinator,
+		_make_target_presentation_record(
+			1125,
+			1,
+			Enemy.TargetPresentationPhase.SNIPER_LOCK,
+			TARGET_DESCRIPTOR.create_player(2, 0, player_target.global_position),
+			38.0,
+			40.0,
+			Vector2(45.0, 24.0)
+		),
+		41.0
+	)
+	_expect(
+		expired_presentation_source.presentation_state_count == 1
+		and expired_presentation_source.last_presentation_phase
+		== Enemy.TargetPresentationPhase.NONE
+		and expired_presentation_source.last_presentation_revision == 1
+		and not coordinator.pending_enemy_target_presentation_states.has(1125),
+		"迟加入收到已过期 ACTIVE 时必须按同 revision 直接清理，不能闪现旧锁定。"
+	)
+	var pending_then_fire_source := TargetActionProbeEnemy.new()
+	coordinator.register_client_enemy(1126, pending_then_fire_source, 41.0)
+	_receive_target_presentation_state(
+		coordinator,
+		_make_target_presentation_record(
+			1126,
+			10,
+			Enemy.TargetPresentationPhase.LIGHTNING_WINDUP,
+			TARGET_DESCRIPTOR.create_enemy(1191, 1, Vector2(92.0, 40.0)),
+			41.0,
+			44.0,
+			Vector2(46.0, 24.0)
+		),
+		41.1
+	)
+	coordinator.receive_enemy_action(
+		1126,
+		&"presentation_clear",
+		Vector2.RIGHT,
+		Vector2(46.0, 24.0),
+		11,
+		41.2,
+		41.2,
+		200.73
+	)
+	var pending_then_fire_target := Enemy.new()
+	pending_then_fire_target.set_combat_faction_id(
+		COMBAT_RELATIONS.PLAYER_ALLIED,
+		1,
+		true
+	)
+	coordinator.register_client_enemy(1191, pending_then_fire_target, 41.3)
+	coordinator.interpolate_remote_enemies(41.3)
+	_expect(
+		pending_then_fire_source.presentation_state_count == 0
+		and pending_then_fire_source.last_presentation_phase
+		== Enemy.TargetPresentationPhase.NONE
+		and not coordinator.pending_enemy_target_presentation_states.has(1126),
+		"ACTIVE 等待目标期间若 CH7 已推进到 fire/cancel，晚生成目标不得绕过 CAS 复活状态。"
+	)
+	var pending_start_then_none_source := TargetActionProbeEnemy.new()
+	coordinator.register_client_enemy(1129, pending_start_then_none_source, 41.3)
+	coordinator.receive_enemy_target_action(
+		1129,
+		&"lightning_windup",
+		TARGET_DESCRIPTOR.create_enemy(1192, 1, Vector2(94.0, 40.0)),
+		Vector2(47.0, 24.0),
+		10,
+		41.31,
+		41.31,
+		200.74
+	)
+	_expect(
+		coordinator.pending_enemy_actions.has(1129),
+		"目标尚未生成时，CH7 start 必须先进入有界 pending。"
+	)
+	_receive_target_presentation_state(
+		coordinator,
+		_make_target_presentation_record(
+			1129,
+			10,
+			Enemy.TargetPresentationPhase.NONE,
+			TARGET_DESCRIPTOR.create_none(),
+			41.32,
+			41.32,
+			Vector2(47.0, 24.0)
+		),
+		41.32
+	)
+	_expect(
+		not coordinator.pending_enemy_actions.has(1129)
+		and pending_start_then_none_source.presentation_state_count == 1
+		and pending_start_then_none_source.last_presentation_phase
+		== Enemy.TargetPresentationPhase.NONE
+		and int(coordinator._client_target_presentation_terminal_revisions.get(
+			1129,
+			0
+		)) == 10,
+		"可靠 NONE 必须只淘汰不晚于其 revision 的表现 start pending，不能等待目标后复活。"
+	)
+	var pending_start_then_none_target := Enemy.new()
+	pending_start_then_none_target.set_combat_faction_id(
+		COMBAT_RELATIONS.PLAYER_ALLIED,
+		1,
+		true
+	)
+	coordinator.register_client_enemy(1192, pending_start_then_none_target, 41.4)
+	coordinator.interpolate_remote_enemies(41.4)
+	_expect(
+		pending_start_then_none_source.target_action_count == 0,
+		"NONE 后目标/阵营再收敛时，已终结的 start 不得重新交付。"
+	)
+	var presentation_net_ids: Array[int] = [
+		1120,
+		1121,
+		1122,
+		1123,
+		1124,
+		1125,
+		1126,
+		1127,
+		1128,
+		1129,
+		1190,
+		1191,
+		1192,
+	]
+	for presentation_net_id in presentation_net_ids:
+		coordinator.remove_client_enemy(presentation_net_id, false)
+	coordinator.receive_enemy_target_action(
+		1101,
+		&"terminal_target",
+		TARGET_DESCRIPTOR.create_enemy(1200, 0, Vector2(90.0, 24.0)),
+		Vector2(38.0, 24.0),
+		7,
+		40.9,
+		40.9,
+		200.7
+	)
+	coordinator.receive_enemy_terminal(
+		1200,
+		MpEnemyCoordinator.ENEMY_TERMINAL_REMOVED,
+		Vector2.ZERO,
+		0,
+		0,
+		0,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.PHYSICAL,
+		0
+	)
+	_expect(
+		not coordinator.pending_enemy_actions.has(1101),
+		"动态目标终结必须清掉所有引用该稳定 Enemy ID 的 pending 动作。"
+	)
+	var source_late_descriptor := TARGET_DESCRIPTOR.create_player(
+		2,
+		0,
+		player_target.global_position
+	)
+	coordinator.receive_enemy_target_action(
+		1103,
+		&"source_late",
+		source_late_descriptor,
+		Vector2(39.0, 24.0),
+		1,
+		41.0,
+		41.0,
+		201.0
+	)
+	var late_action_source := TargetActionProbeEnemy.new()
+	coordinator.register_client_enemy(1103, late_action_source, 41.1)
+	_expect(
+		late_action_source.target_action_count == 1
+		and late_action_source.last_target == player_target,
+		"动作源晚生成时也必须通过同一 descriptor 解析与 replay 路径交付。"
+	)
+	coordinator.receive_enemy_target_action(
+		1103,
+		&"legacy_player_target",
+		2,
+		Vector2(39.5, 24.0),
+		2,
+		41.2,
+		41.2,
+		201.1
+	)
+	_expect(
+		late_action_source.target_action_count == 2
+		and late_action_source.last_target == player_target
+		and late_action_source.last_target_action_id == 2,
+		"旧 peer-id 入口必须在边界转换为 Player descriptor，并复用通用交付路径。"
+	)
+	coordinator.remove_client_enemy(1101, false)
+	coordinator.remove_client_enemy(1102, false)
+	coordinator.remove_client_enemy(1103, false)
+	runtime.peer_players.erase(2)
+	runtime.probe_plants.erase(77)
+	player_target.free()
+	plant_target.free()
+	await process_frame
+	var exited_target_source := TargetActionProbeEnemy.new()
+	coordinator.register_client_enemy(1110, exited_target_source, 44.0)
+	coordinator.receive_enemy_spawn(
+		1111,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(50.0, 24.0),
+		44.0,
+		44.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0
+	)
+	var externally_exited_target := runtime.get_network_enemy(1111)
+	coordinator.receive_enemy_target_action(
+		1110,
+		&"future_revision_before_target_exit",
+		TARGET_DESCRIPTOR.create_enemy(1111, 1, Vector2(50.0, 24.0)),
+		Vector2(49.0, 24.0),
+		1,
+		44.1,
+		44.1,
+		203.0
+	)
+	_expect(
+		coordinator.pending_enemy_actions.has(1110),
+		"目标退出夹具必须先建立等待其 entity revision 的 pending 动作。"
+	)
+	if externally_exited_target != null:
+		externally_exited_target.queue_free()
+	await process_frame
+	_expect(
+		not coordinator.pending_enemy_actions.has(1110)
+		and not runtime.has_network_enemy(1111),
+		"Enemy tree-exit 必须清理所有引用该稳定 ID 的 pending descriptor。"
+	)
+	coordinator.receive_enemy_spawn(
+		1111,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(52.0, 24.0),
+		45.0,
+		45.0,
+		COMBAT_RELATIONS.PLAYER_ALLIED,
+		1,
+		45.0
+	)
+	var replacement_target := runtime.get_network_enemy(1111)
+	coordinator.receive_enemy_target_action(
+		1110,
+		&"late_old_target_incarnation",
+		TARGET_DESCRIPTOR.create_enemy(1111, 1, Vector2(52.0, 24.0)),
+		Vector2(51.0, 24.0),
+		2,
+		46.0,
+		46.0,
+		44.5
+	)
+	coordinator.interpolate_remote_enemies(45.1)
+	_expect(
+		exited_target_source.target_action_count == 0
+		and not coordinator.pending_enemy_actions.has(1110),
+		"旧 descriptor 不得在同 net-id 目标重生后绑定到新 incarnation。"
+	)
+	coordinator.receive_enemy_target_action(
+		1110,
+		&"current_target_incarnation",
+		TARGET_DESCRIPTOR.create_enemy(1111, 1, Vector2(52.0, 24.0)),
+		Vector2(51.0, 24.0),
+		3,
+		46.1,
+		46.1,
+		45.1
+	)
+	var stale_target_presentation := _make_target_presentation_record(
+		1110,
+		4,
+		Enemy.TargetPresentationPhase.SNIPER_LOCK,
+		TARGET_DESCRIPTOR.create_enemy(1111, 1, Vector2(52.0, 24.0)),
+		46.2,
+		47.2,
+		Vector2(51.0, 24.0)
+	)
+	stale_target_presentation["host_reference_timestamp"] = 44.5
+	_receive_target_presentation_state(
+		coordinator,
+		stale_target_presentation,
+		46.2
+	)
+	var current_target_presentation := _make_target_presentation_record(
+		1110,
+		5,
+		Enemy.TargetPresentationPhase.SNIPER_LOCK,
+		TARGET_DESCRIPTOR.create_enemy(1111, 1, Vector2(52.0, 24.0)),
+		46.3,
+		47.3,
+		Vector2(51.0, 24.0)
+	)
+	current_target_presentation["host_reference_timestamp"] = 45.1
+	_receive_target_presentation_state(
+		coordinator,
+		current_target_presentation,
+		46.3
+	)
+	_expect(
+		replacement_target != null
+		and exited_target_source.target_action_count == 1
+		and exited_target_source.last_target == replacement_target
+		and exited_target_source.last_target_action_id == 3
+		and exited_target_source.presentation_state_count == 2
+		and exited_target_source.last_presentation_phase
+		== Enemy.TargetPresentationPhase.SNIPER_LOCK
+		and exited_target_source.last_presentation_target == replacement_target,
+		"raw Host 时间必须让旧 CH7/CH5 目标记录收敛为 stale，同时允许新 incarnation 记录正常绑定。"
+	)
+	coordinator.remove_client_enemy(1110, false)
+	coordinator.remove_client_enemy(1111, false)
+	await process_frame
+	var manifest_removed_source := TargetActionProbeEnemy.new()
+	coordinator.register_client_enemy(1104, manifest_removed_source, 42.0)
+	coordinator.receive_enemy_target_action(
+		1104,
+		&"manifest_pending_target",
+		TARGET_DESCRIPTOR.create_enemy(1998, 0, Vector2(60.0, 60.0)),
+		Vector2(40.0, 24.0),
+		1,
+		42.1,
+		42.1,
+		202.0
+	)
+	coordinator.reconcile_roster({}, 42.2)
+	coordinator.receive_enemy_action(
+		1104,
+		&"late_after_manifest",
+		Vector2.RIGHT,
+		Vector2(41.0, 24.0),
+		2,
+		42.15,
+		42.2,
+		202.1
+	)
+	_expect(
+		coordinator.client_terminal_enemy_ids.has(1104)
+		and not coordinator.pending_enemy_actions.has(1104)
+		and not runtime.has_network_enemy(1104),
+		"full roster 缺失必须形成 incarnation 墓碑，并阻止跨 CH7 的旧动作重建 pending。"
+	)
+	await process_frame
+	coordinator.receive_enemy_spawn(
+		1104,
+		TEST_ENEMY_CONFIG_PATH,
+		Vector2(42.0, 24.0),
+		43.0,
+		43.0,
+		COMBAT_RELATIONS.HOSTILE_WAVE,
+		0
+	)
+	_expect(
+		runtime.has_network_enemy(1104)
+		and not coordinator.client_terminal_enemy_ids.has(1104),
+		"同 net-id 后续权威 spawn 必须清除 manifest 墓碑并公开新 incarnation。"
+	)
+	coordinator.remove_client_enemy(1104, false)
+	await process_frame
 	coordinator.receive_enemy_target_action(
 		401,
 		&"windup",
-		2,
+		TARGET_DESCRIPTOR.create_player(2, 0, Vector2(10.0, 20.0)),
 		Vector2(10.0, 20.0),
 		9,
 		20.1,
@@ -779,7 +2734,7 @@ func _run() -> void:
 	coordinator.receive_enemy_target_action(
 		401,
 		&"windup_retry",
-		2,
+		TARGET_DESCRIPTOR.create_player(2, 0, Vector2(11.0, 21.0)),
 		Vector2(11.0, 21.0),
 		9,
 		20.15,
@@ -789,7 +2744,7 @@ func _run() -> void:
 	coordinator.receive_enemy_target_action(
 		401,
 		&"stale_retry",
-		2,
+		TARGET_DESCRIPTOR.create_player(2, 0, Vector2(12.0, 22.0)),
 		Vector2(12.0, 22.0),
 		9,
 		20.05,
@@ -832,12 +2787,19 @@ func _run() -> void:
 	coordinator.reset_session_state()
 	_expect(
 		coordinator.pending_enemy_actions.is_empty()
+		and coordinator.pending_enemy_faction_changes.is_empty()
+		and coordinator.pending_enemy_target_presentation_states.is_empty()
+		and coordinator._client_enemy_action_revisions.is_empty()
+		and coordinator._client_target_presentation_revisions.is_empty()
+		and coordinator._host_target_presentation_states.is_empty()
+		and coordinator.enemy_spawn_incarnation_tokens.is_empty()
+		and coordinator._host_enemy_spawn_times.is_empty()
 		and coordinator.client_terminal_enemy_ids.is_empty()
 		and int(coordinator.get_snapshot_metrics().get(
 			"enemy_snapshot_chunk_encode_count",
 			-1
 		)) == 0,
-		"会话重置必须同时释放敌人动作、终结墓碑和快照计数。"
+		"会话重置必须同时释放敌人动作、持续表现、终结墓碑和快照计数。"
 	)
 	coordinator.unbind_runtime(runtime)
 	_expect(
@@ -861,6 +2823,38 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _make_target_presentation_record(
+	net_id: int,
+	state_revision: int,
+	phase: int,
+	descriptor: CombatTargetDescriptor,
+	start_time: float,
+	end_time: float,
+	action_position: Vector2
+) -> Dictionary:
+	return {
+		"net_id": net_id,
+		"state_revision": state_revision,
+		"phase": phase,
+		"target_kind": descriptor.kind,
+		"target_id": descriptor.id,
+		"target_revision": descriptor.revision,
+		"target_fallback_position": descriptor.fallback_position,
+		"start_time": start_time,
+		"end_time": end_time,
+		"action_position": action_position,
+	}
+
+
+func _receive_target_presentation_state(
+	coordinator: MpEnemyCoordinator,
+	record: Dictionary,
+	current_time: float
+) -> void:
+	var records: Array[Dictionary] = [record]
+	coordinator.receive_enemy_target_presentation_states(records, current_time)
 
 
 func _expect(condition: bool, message: String) -> void:

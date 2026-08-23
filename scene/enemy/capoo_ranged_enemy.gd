@@ -96,13 +96,13 @@ func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> voi
 		)
 
 
-func _broadcast_enemy_target_action(action_name: StringName, target_peer_id: int) -> void:
+func _broadcast_enemy_target_action(action_name: StringName, target: Node2D) -> void:
 	action_sequence += 1
 	if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
 		gameplay_gateway.broadcast_enemy_target_action(
 			int(get_meta("net_id", 0)),
 			action_name,
-			target_peer_id,
+			target,
 			global_position,
 			action_sequence
 		)

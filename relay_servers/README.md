@@ -35,15 +35,17 @@ relay_servers/
 
 当前网络基线为协议 v94。应用层使用 CH0..CH8 共 9 条逻辑信道；公网 Relay
 的认证感知包装层另使用可靠 CH9 依次发布拓扑并承载 Relay 服务控制，因此公网
-ENet 最大信道索引为 9。v94 将敌人高频连发压缩为 CH4 单次 burst，并通过
-reliable CH5 收敛命中/取消结果及分块恢复迟加入客户端的活跃视觉弹体；其 RPC 表面和描述符合同与
-v93 不同，不能安全混联。v93 扩展玩家快照以逐帧绝对复制最终开火间隔和临时
-表现状态，并把天依 High Noon 目标列表迁入 reliable CH5。v92 将拾取 spawn、原子 collected 终端
+ENet 最大信道索引为 9。v94 为敌人出生/快照追加阵营与修订，以 reliable CH5
+同步阵营变化，并扩展通用目标动作与 Host 投射物来源载荷；敌人高频连发同时
+压缩为 CH4 单次 burst，通过 reliable CH5 收敛命中/取消并分块恢复迟加入客户端
+的活跃视觉弹体。v93 的敌人快照长度、RPC 表面和 rapid-fire 描述符合同均不同，
+不能与 v94 安全混联。v93 扩展玩家快照以逐帧绝对复制最终开火间隔和临时表现
+状态，并把天依 High Noon 目标列表迁入 reliable CH5。v92 将拾取 spawn、原子 collected 终端
 与普通 remove 统一放在 reliable CH5，旧 v91 的 collected 仍在 CH6。
 v91 关闭 `SceneMultiplayer.server_relay` 的私有 mesh，
 只为已验票 transport 发布逻辑拓扑并显式转发数据包。v90 把公网成员的完整
 注册元组并入原生认证 envelope，当时把成员发现、身份查询、注册回执/拒绝和大厅名单
-统一放在 reliable CH8。v91 确立且 v93 保留的布局是：注册回执/拒绝与大厅名单等应用成员消息保留在 CH8；
+统一放在 reliable CH8。v91 确立且 v94 保留的布局是：注册回执/拒绝与大厅名单等应用成员消息保留在 CH8；
 ADD/REMOVE 逻辑 peer 拓扑与注册转发、身份查询/结果、踢人等 Relay 专用 RPC 都走 CH9。
 这三类消息都不与 Godot 引擎硬编码在 CH0 的 auth/peer-discovery 系统包共用应用队列。
 v90 及更旧客户端缺少 v91 的帧协议与
@@ -348,7 +350,7 @@ Relay 重启还会轮换房间 secret，旧进程签发的短票不能跨世代�
 `peer_authenticating` 中向 server peer 1 发送 UTF-8 JSON：
 
 ```json
-{"v":1,"ticket":"ra1....","player_name":"...","character_id":"weishidaier","character_confirmed":true,"protocol_version":92,"reconnect_token":"<32 lowercase hex>","content_manifest_schema":1,"content_digest":"<64 lowercase hex>"}
+{"v":1,"ticket":"ra1....","player_name":"...","character_id":"weishidaier","character_confirmed":true,"protocol_version":94,"reconnect_token":"<32 lowercase hex>","content_manifest_schema":1,"content_digest":"<64 lowercase hex>"}
 ```
 
 Relay 验票成功后先用 `send_auth` 返回 ack，再调用 `complete_auth(peer_id)`：

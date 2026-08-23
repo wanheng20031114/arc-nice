@@ -22,7 +22,7 @@ const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 const EXPECTED_TOWER_SCENE_UID := "uid://dy51i4e27gaoi"
 const EXPECTED_ADAPTER_SCENE_UID := "uid://crap4mx7t2k6r"
-const EXPECTED_MP_GAME_RPC_COUNT := 149
+const EXPECTED_MP_GAME_RPC_COUNT := 151
 
 var failures: Array[String] = []
 var test_root: Node2D = null
@@ -128,7 +128,7 @@ func _test_static_contract() -> void:
 	if mp_game_script != null:
 		_expect(
 			mp_game_script.get_rpc_config().size() == EXPECTED_MP_GAME_RPC_COUNT,
-			"MpGame 有效 RPC 数量必须保持 149。"
+			"MpGame 有效 RPC 数量必须保持 151。"
 		)
 	var mp_game_source := FileAccess.get_file_as_string(MP_GAME_SOURCE_PATH)
 	_expect(

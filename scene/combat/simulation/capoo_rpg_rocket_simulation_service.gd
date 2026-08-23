@@ -212,14 +212,25 @@ func spawn_replica(
 	speed: float,
 	lifetime: float,
 	explosion_radius: float,
-	visual_age: float
+	visual_age: float,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> int:
-	var replica_source := DamageSourceSnapshot.create(
-		CombatRelationService.HOSTILE_WAVE,
-		0,
-		0,
-		projectile_id,
-		&"capoo_rpg_rocket"
+	var replica_source := (
+		DamageSourceSnapshot.create(
+			damage_source_snapshot.source_faction_id,
+			damage_source_snapshot.credit_peer_id,
+			damage_source_snapshot.instigator_entity_id,
+			projectile_id,
+			damage_source_snapshot.source_type
+		)
+		if damage_source_snapshot != null
+		else DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			0,
+			projectile_id,
+			&"capoo_rpg_rocket"
+		)
 	)
 	return _spawn_record(
 		Mode.REPLICA,

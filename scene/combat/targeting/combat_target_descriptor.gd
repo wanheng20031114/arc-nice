@@ -14,6 +14,9 @@ const NETWORK_KEY_REVISION := "revision"
 const NETWORK_KEY_FALLBACK_POSITION := "fallback_position"
 var kind: int = Kind.NONE
 var id: int = 0
+# Version of the described entity, not the assignment/action sequence. Enemy
+# descriptors currently carry faction_revision here; transport ordering travels
+# as a separate assignment_revision.
 var revision: int = 0
 var fallback_position := Vector2.ZERO
 

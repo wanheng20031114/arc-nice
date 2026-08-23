@@ -204,10 +204,15 @@ func net_projectile_fired(
 	damage: int,
 	speed: float,
 	lifetime: float,
-	pierces_enemies: bool = false,
-	target_peer_id: int = 0,
-	host_fire_timestamp: float = -1.0,
-	target_enemy_net_id: int = 0
+	pierces_enemies: bool,
+	target_peer_id: int,
+	host_fire_timestamp: float,
+	target_enemy_net_id: int,
+	source_faction_id: int,
+	credit_peer_id: int,
+	instigator_entity_id: int,
+	event_source_id: int,
+	source_type_text: String
 ) -> void:
 	pass
 
@@ -267,7 +272,11 @@ func net_linglan_skill1_ring_batch(
 	damage: int,
 	speed: float,
 	lifetime: float,
-	host_fire_timestamp: float
+	host_fire_timestamp: float,
+	source_faction_id: int,
+	credit_peer_id: int,
+	instigator_entity_id: int,
+	source_type_text: String
 ) -> void:
 	pass
 
@@ -577,7 +586,9 @@ func net_enemy_spawned(
 	config_path: String,
 	pos_x: float,
 	pos_y: float,
-	host_spawn_timestamp: float
+	host_spawn_timestamp: float,
+	faction_id: int,
+	faction_revision: int
 ) -> void:
 	pass
 
@@ -586,7 +597,32 @@ func net_enemy_spawned_batch(
 	net_ids: PackedInt32Array,
 	config_paths: PackedStringArray,
 	positions: PackedVector2Array,
-	spawn_times: PackedFloat64Array
+	spawn_times: PackedFloat64Array,
+	faction_ids: PackedByteArray,
+	faction_revisions: PackedInt32Array
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_enemy_faction_changed_batch(
+	net_ids: PackedInt32Array,
+	faction_ids: PackedByteArray,
+	faction_revisions: PackedInt32Array
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_enemy_target_presentation_state_batch(
+	net_ids: PackedInt32Array,
+	state_revisions: PackedInt32Array,
+	phases: PackedByteArray,
+	target_kinds: PackedByteArray,
+	target_ids: PackedInt32Array,
+	target_revisions: PackedInt32Array,
+	target_fallback_positions: PackedVector2Array,
+	host_start_times: PackedFloat64Array,
+	host_end_times: PackedFloat64Array,
+	action_positions: PackedVector2Array
 ) -> void:
 	pass
 
@@ -840,7 +876,10 @@ func net_enemy_action(
 func net_enemy_target_action(
 	net_id: int,
 	action_name: String,
-	target_peer_id: int,
+	target_kind: int,
+	target_id: int,
+	target_revision: int,
+	target_fallback_position: Vector2,
 	action_position: Vector2,
 	action_id: int,
 	host_action_timestamp: float = -1.0

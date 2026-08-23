@@ -1679,9 +1679,8 @@ func _broadcast_target_or_action(
 	target: Node2D,
 	direction: Vector2
 ) -> void:
-	var player := target as Player
-	if player != null and player.peer_id > 0:
-		_broadcast_target_action(action_name, player.peer_id)
+	if target != null and is_instance_valid(target):
+		_broadcast_target_action(action_name, target)
 		return
 	_broadcast_action(action_name, direction)
 
@@ -1698,13 +1697,13 @@ func _broadcast_action(action_name: StringName, direction: Vector2) -> void:
 		)
 
 
-func _broadcast_target_action(action_name: StringName, target_peer_id: int) -> void:
+func _broadcast_target_action(action_name: StringName, target: Node2D) -> void:
 	action_sequence += 1
 	if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
 		gameplay_gateway.broadcast_enemy_target_action(
 			int(get_meta("net_id", 0)),
 			action_name,
-			target_peer_id,
+			target,
 			global_position,
 			action_sequence
 		)

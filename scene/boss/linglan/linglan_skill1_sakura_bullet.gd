@@ -23,6 +23,7 @@ var has_hit: bool = false
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"linglan_skill1"
+var damage_source_snapshot: DamageSourceSnapshot = null
 var pool_active: bool = true
 var is_lifetime_despawning: bool = false
 var lifetime_despawn_time_left: float = 0.0
@@ -49,6 +50,21 @@ func bind_gameplay_context(
 ) -> void:
 	combat_runtime = runtime_context
 	gameplay_gateway = gateway
+
+
+func set_damage_source_snapshot(source_snapshot: DamageSourceSnapshot) -> bool:
+	damage_source_snapshot = null
+	if has_meta(&"damage_source_snapshot"):
+		remove_meta(&"damage_source_snapshot")
+	if (
+		source_snapshot == null
+		or not source_snapshot.is_valid()
+		or source_snapshot.source_type == &""
+	):
+		return false
+	damage_source_snapshot = source_snapshot.duplicate_snapshot()
+	set_meta(&"damage_source_snapshot", damage_source_snapshot.duplicate_snapshot())
+	return true
 
 
 func _ready() -> void:
@@ -94,6 +110,9 @@ func on_pool_acquired(_generation: int) -> void:
 	projectile_id = 0
 	owner_peer_id = 0
 	source_type = &"linglan_skill1"
+	damage_source_snapshot = null
+	if has_meta(&"damage_source_snapshot"):
+		remove_meta(&"damage_source_snapshot")
 	position = Vector2.ZERO
 	rotation = 0.0
 	scale = _authored_scale
@@ -120,6 +139,9 @@ func on_pool_acquired(_generation: int) -> void:
 func on_pool_released(_generation: int) -> void:
 	combat_runtime = null
 	gameplay_gateway = null
+	damage_source_snapshot = null
+	if has_meta(&"damage_source_snapshot"):
+		remove_meta(&"damage_source_snapshot")
 	pool_active = false
 	has_hit = true
 	is_lifetime_despawning = false
@@ -260,10 +282,7 @@ func _on_body_entered(body: Node2D) -> void:
 			hit_registered = player.apply_damage(
 				damage,
 				EnemyConfig.DamageType.PHYSICAL,
-				{
-					"is_ranged": true,
-					"source_direction": -direction,
-				}
+				_get_player_damage_context()
 			)
 		if hit_registered:
 			_spawn_hit_effect()
@@ -339,7 +358,9 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 		source_type,
 		EnemyConfig.DamageType.PHYSICAL,
 		-direction,
-		true
+		true,
+		false,
+		damage_source_snapshot
 	)
 
 
@@ -349,4 +370,38 @@ func _has_explicit_singleplayer_authority() -> bool:
 		and is_instance_valid(combat_runtime)
 		and combat_runtime.runtime_mode
 			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
+
+
+func _get_player_damage_context() -> Dictionary:
+	var source_id := _get_damage_source_id()
+	return {
+		"is_ranged": true,
+		"source_direction": -direction,
+		"source_id": source_id,
+		"source_type": source_type,
+		"source_snapshot": _create_event_damage_source_snapshot(source_id),
+	}
+
+
+func _get_damage_source_id() -> int:
+	return projectile_id if projectile_id > 0 else get_instance_id()
+
+
+func _create_event_damage_source_snapshot(
+	event_source_id: int
+) -> DamageSourceSnapshot:
+	if (
+		damage_source_snapshot == null
+		or not damage_source_snapshot.is_valid()
+		or damage_source_snapshot.source_type == &""
+		or event_source_id <= 0
+	):
+		return null
+	return DamageSourceSnapshot.create(
+		damage_source_snapshot.source_faction_id,
+		damage_source_snapshot.credit_peer_id,
+		damage_source_snapshot.instigator_entity_id,
+		event_source_id,
+		source_type if source_type != &"" else damage_source_snapshot.source_type
 	)

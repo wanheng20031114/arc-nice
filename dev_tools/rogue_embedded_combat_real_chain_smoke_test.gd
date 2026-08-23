@@ -450,7 +450,12 @@ func _test_embedded_client_view_damage_authority() -> void:
 		false,
 		CLIENT_PEER_ID,
 		-1.0,
-		0
+		0,
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		0,
+		CLIENT_GUNNER_PROJECTILE_ID,
+		"combat_robot_gunner_bullet"
 	)
 	net_manager.net_role = previous_net_role
 	var gunner_bullet := (
@@ -494,7 +499,12 @@ func _test_embedded_client_view_damage_authority() -> void:
 		false,
 		CLIENT_PEER_ID,
 		-1.0,
-		0
+		0,
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		0,
+		CLIENT_DRONE_PROJECTILE_ID,
+		"combat_robot_suicide_drone"
 	)
 	net_manager.net_role = previous_net_role
 	var drone := (

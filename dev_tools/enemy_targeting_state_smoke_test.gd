@@ -16,6 +16,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_assignment_revision_ordering()
+	_test_entity_and_assignment_revisions_are_independent()
 	_test_automatic_target_hysteresis()
 	_test_priority_and_prepared_fallback()
 	_test_unreachable_confirmation_cache_and_recovery()
@@ -54,6 +55,34 @@ func _test_assignment_revision_ordering() -> void:
 		and not state.has_active_target()
 		and state.assignment_revision == 2,
 		"带正 revision 的 NONE 必须按序清除指定目标。"
+	)
+
+
+func _test_entity_and_assignment_revisions_are_independent() -> void:
+	var state := TargetingState.new()
+	var faction_revision_seven := Descriptor.create_enemy(
+		501,
+		7,
+		Vector2(12.0, 8.0)
+	)
+	var same_entity_revision_new_position := Descriptor.create_enemy(
+		501,
+		7,
+		Vector2(18.0, 8.0)
+	)
+	var newer_entity_revision := Descriptor.create_enemy(
+		501,
+		8,
+		Vector2(24.0, 8.0)
+	)
+	_expect(
+		state.apply_assignment(faction_revision_seven, 20)
+		and state.apply_assignment(same_entity_revision_new_position, 21)
+		and state.assignment_revision == 21
+		and state.assigned_target.revision == 7
+		and state.assigned_target.fallback_position == Vector2(18.0, 8.0)
+		and not state.apply_assignment(newer_entity_revision, 20),
+		"entity revision 必须随描述符保存，assignment revision 必须独立执行乱序 CAS。"
 	)
 
 

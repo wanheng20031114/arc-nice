@@ -126,6 +126,14 @@ func _run() -> void:
 		and runtime.combat_target_index.get_enemy(103) == fallback,
 		"动态目标跨越多个 96px 空间格后，稳定 ID 解析和索引成员必须保持一致。"
 	)
+	var removed_target := _spawn_enemy(runtime, 104, source.global_position)
+	source.set_objective_target(removed_target)
+	removed_target.free()
+	_expect(
+		not source._has_dynamic_enemy_target_contact(),
+		"动态 Enemy 目标同步释放后，接触热路径必须安全失效，不能强转已释放对象。"
+	)
+	source._update_touch_damage(1.0 / 60.0)
 	_test_unreachable_automatic_target_bypasses_hysteresis(runtime)
 
 	coordinator.set_mode(EnemySimulationPolicy.Mode.LEGACY)

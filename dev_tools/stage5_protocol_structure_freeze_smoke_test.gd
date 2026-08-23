@@ -14,20 +14,21 @@ const ROGUE_COMBAT_COORDINATOR_SOURCE_PATH := (
 
 const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 
-## v94 adds encoded rapid-fire burst, reliable finish/repair and visual snapshot RPCs.
-const EXPECTED_MP_GAME_RPC_COUNT := 149
+## v94 adds enemy faction/target/source replication plus encoded rapid-fire
+## burst, reliable finish/repair and visual snapshot RPCs.
+const EXPECTED_MP_GAME_RPC_COUNT := 151
 const EXPECTED_MP_GAME_RPC_NAME_HASH := (
-	"0d6980acbbb095c74b928249604d9cf7dd1209f05f511fef93b29dd938ed6586"
+	"16a78c4b385d1b831f2efbb3034ebec87f68c386003e2bee4d69c511ac030279"
 )
 const EXPECTED_MP_GAME_RPC_SIGNATURE_HASH := (
-	"4384eb6b80eff09e7d9936bb67a599c9c05905d5004cc2a5d293394bfe779b0e"
+	"6ddcd595385e4282b9fa0f24320124a8b9182dd83e9fd994ad43ee1df92b662a"
 )
 const EXPECTED_MP_GAME_RPC_ANNOTATION_HASH := (
-	"c10bfaed2b75bc272db9da4ef41eb1c5b9d097a7e119348b86bd9cfbeaabdc5a"
+	"5d39ed0cc706cce4832f71861d393eacc89c07edfe36d5cd80bbb700d00c22b6"
 )
 
 ## v91 移除了已被认证拓扑帧取代的 relay registration completed RPC；旧冻结
-## 基线遗漏同步，当前协议按现有 16 个生产 RPC 锁定。
+## 基线遗漏同步，v94 在本次协议审计中按当前 16 个生产 RPC 重新锁定。
 const EXPECTED_NET_MANAGER_RPC_COUNT := 16
 const EXPECTED_NET_MANAGER_RPC_NAME_HASH := (
 	"09b646cdc8650e8e8271a303e4538cd2b3a2d53f4e4e791c87b913c4a7182dac"

@@ -9,6 +9,9 @@ const LIGHTNING_SORCERER_SCENE := preload(
 const LIGHTNING_SORCERER_CONFIG := preload(
 	"res://resources/config/enemies/lightning_sorcerer.tres"
 )
+const TARGET_DESCRIPTOR := preload(
+	"res://scene/combat/targeting/combat_target_descriptor.gd"
+)
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
@@ -216,32 +219,43 @@ func _test_host_broadcast_contract() -> void:
 	mp_game.set("game", runtime)
 	_attach_enemy_coordinator(mp_game, runtime, net_manager)
 	var enemy_position := Vector2(12.0, 18.0)
-	var plant_offset := Vector2(44.0, -8.0)
+	var player_fallback_position := Vector2(44.0, -8.0)
+	var plant_fallback_position := Vector2(96.0, 72.0)
+	var player_descriptor := TARGET_DESCRIPTOR.create_player(
+		7,
+		0,
+		player_fallback_position
+	)
+	var plant_descriptor := TARGET_DESCRIPTOR.create_plant(
+		91,
+		0,
+		plant_fallback_position
+	)
 	mp_game.broadcast_enemy_target_action(
 		73,
 		&"lightning_windup",
-		7,
+		player_descriptor,
 		enemy_position,
 		10
 	)
 	mp_game.broadcast_enemy_target_action(
 		73,
 		&"lightning_windup_retry",
-		7,
+		player_descriptor,
 		enemy_position,
 		10
 	)
-	mp_game.broadcast_enemy_action(
+	mp_game.broadcast_enemy_target_action(
 		73,
-		&"lightning_plant_windup",
-		plant_offset,
+		&"lightning_windup",
+		plant_descriptor,
 		enemy_position,
 		11
 	)
-	mp_game.broadcast_enemy_action(
+	mp_game.broadcast_enemy_target_action(
 		73,
-		&"lightning_plant_windup_retry",
-		plant_offset,
+		&"lightning_windup_retry",
+		plant_descriptor,
 		enemy_position,
 		11
 	)
@@ -263,36 +277,48 @@ func _test_host_broadcast_contract() -> void:
 		mp_game.sent_methods == [
 			&"net_enemy_target_action",
 			&"net_enemy_target_action",
-			&"net_enemy_action",
-			&"net_enemy_action",
+			&"net_enemy_target_action",
+			&"net_enemy_target_action",
 			&"net_enemy_action",
 			&"net_enemy_action",
 		]
-		and mp_game.sent_arguments[0].slice(0, 5) == [
+		and mp_game.sent_arguments[0].slice(0, 8) == [
 			73,
 			"lightning_windup",
+			TARGET_DESCRIPTOR.Kind.PLAYER,
 			7,
+			0,
+			player_fallback_position,
 			enemy_position,
 			10,
 		]
-		and mp_game.sent_arguments[1].slice(0, 5) == [
+		and mp_game.sent_arguments[1].slice(0, 8) == [
 			73,
 			"lightning_windup_retry",
+			TARGET_DESCRIPTOR.Kind.PLAYER,
 			7,
+			0,
+			player_fallback_position,
 			enemy_position,
 			10,
 		]
-		and mp_game.sent_arguments[2].slice(0, 5) == [
+		and mp_game.sent_arguments[2].slice(0, 8) == [
 			73,
-			"lightning_plant_windup",
-			plant_offset,
+			"lightning_windup",
+			TARGET_DESCRIPTOR.Kind.PLANT,
+			91,
+			0,
+			plant_fallback_position,
 			enemy_position,
 			11,
 		]
-		and mp_game.sent_arguments[3].slice(0, 5) == [
+		and mp_game.sent_arguments[3].slice(0, 8) == [
 			73,
-			"lightning_plant_windup_retry",
-			plant_offset,
+			"lightning_windup_retry",
+			TARGET_DESCRIPTOR.Kind.PLANT,
+			91,
+			0,
+			plant_fallback_position,
 			enemy_position,
 			11,
 		]
@@ -300,7 +326,7 @@ func _test_host_broadcast_contract() -> void:
 		and mp_game.sent_arguments[4][4] == 12
 		and mp_game.sent_arguments[5][1] == "cancel"
 		and mp_game.sent_arguments[5][4] == 13,
-		"Lightning warning must reuse target-action for players and offset action for stationary plants, including one same-id retry."
+		"Lightning warnings must serialize player and plant targets through the same descriptor action, including one same-id retry."
 	)
 	var valid_points := PackedVector2Array([
 		Vector2(10.0, 20.0),
@@ -395,14 +421,17 @@ func _test_target_warning_proxy_contract() -> void:
 	mp_game.net_enemy_target_action(
 		73,
 		"lightning_windup",
+		TARGET_DESCRIPTOR.Kind.PLAYER,
 		player.peer_id,
+		0,
+		player.global_position,
 		lightning.global_position,
 		10
 	)
 	var warning_handle := lightning.target_warning_handle
 	_expect(
 		warning_system.is_handle_live(warning_handle)
-		and lightning.proxy_warning_player == player
+		and lightning.proxy_warning_target == player
 		and lightning.latest_proxy_action_id == 10,
 		"Player target-action must acquire a shared warning for the resolved player."
 	)
@@ -418,14 +447,17 @@ func _test_target_warning_proxy_contract() -> void:
 	player.global_position = Vector2(132.0, 91.0)
 	await process_frame
 	_expect(
-		lightning.proxy_warning_player == player
+		lightning.proxy_warning_target == player
 		and warning_system.is_handle_live(warning_handle),
 		"Player warning must follow the player's multiplayer visual position."
 	)
 	mp_game.net_enemy_target_action(
 		73,
 		"lightning_windup_retry",
+		TARGET_DESCRIPTOR.Kind.PLAYER,
 		player.peer_id,
+		0,
+		player.global_position,
 		lightning.global_position,
 		10
 	)
@@ -465,7 +497,10 @@ func _test_target_warning_proxy_contract() -> void:
 	mp_game.net_enemy_target_action(
 		73,
 		"lightning_windup",
+		TARGET_DESCRIPTOR.Kind.PLAYER,
 		player.peer_id,
+		0,
+		player.global_position,
 		lightning.global_position,
 		10
 	)
@@ -509,17 +544,19 @@ func _test_target_warning_proxy_contract() -> void:
 		"Generic cancel must clear a retry-recovered player warning."
 	)
 
-	var plant_offset := Vector2(38.0, -14.0)
+	# Protocol v94 no longer emits this positional plant form. Keep one local
+	# playback fixture so old recorded visuals remain explicitly supported.
+	var legacy_plant_offset := Vector2(38.0, -14.0)
 	var authoritative_plant_caster_position := (
 		lightning.global_position + Vector2(23.0, -9.0)
 	)
 	var expected_plant_position := (
-		authoritative_plant_caster_position + plant_offset
+		authoritative_plant_caster_position + legacy_plant_offset
 	).round()
 	mp_game.net_enemy_action(
 		73,
 		"lightning_plant_windup",
-		plant_offset,
+		legacy_plant_offset,
 		authoritative_plant_caster_position,
 		14
 	)
@@ -529,7 +566,7 @@ func _test_target_warning_proxy_contract() -> void:
 			expected_plant_position
 		)
 		and lightning.latest_proxy_action_id == 14,
-		"Plant warning must decode the generic action direction as a world-space offset."
+		"Legacy plant warning playback must still decode the generic direction as a world-space offset."
 	)
 	lightning.call("_process", 0.18)
 	var plant_progress_before_retry := (
@@ -538,7 +575,7 @@ func _test_target_warning_proxy_contract() -> void:
 	mp_game.net_enemy_action(
 		73,
 		"lightning_plant_windup_retry",
-		plant_offset,
+		legacy_plant_offset,
 		authoritative_plant_caster_position,
 		14
 	)
@@ -546,7 +583,7 @@ func _test_target_warning_proxy_contract() -> void:
 		lightning.proxy_warning_elapsed / lightning.proxy_warning_duration
 			>= plant_progress_before_retry
 		and lightning.latest_proxy_action_id == 14,
-		"Same-id plant retry must share ordering with player and generic actions without resetting progress."
+		"Legacy same-id plant retry must share ordering with descriptor and generic actions without resetting progress."
 	)
 	mp_game.net_enemy_action(
 		73,
@@ -563,11 +600,17 @@ func _test_target_warning_proxy_contract() -> void:
 	mp_game.net_enemy_target_action(
 		73,
 		"lightning_windup",
+		TARGET_DESCRIPTOR.Kind.PLAYER,
 		player.peer_id,
+		0,
+		player.global_position,
 		lightning.global_position,
 		16
 	)
-	lightning.call("_expire_proxy_windup", 16)
+	lightning.call(
+		"_expire_proxy_windup",
+		lightning.proxy_warning_generation
+	)
 	_expect(
 		lightning.target_warning_handle == 0
 		and not lightning.is_processing()
@@ -583,11 +626,49 @@ func _test_target_warning_proxy_contract() -> void:
 		lightning.target_warning_handle == 0,
 		"A same-id retry arriving after timeout must not revive an expired warning."
 	)
+	lightning.apply_multiplayer_target_presentation_state(
+		Enemy.TargetPresentationPhase.LIGHTNING_WINDUP,
+		player,
+		lightning.global_position,
+		17,
+		0.0,
+		LIGHTNING_SORCERER_CONFIG.windup_duration
+	)
+	lightning.apply_multiplayer_target_presentation_state(
+		Enemy.TargetPresentationPhase.NONE,
+		null,
+		lightning.global_position,
+		17,
+		0.0,
+		0.0
+	)
+	lightning.play_multiplayer_enemy_target_action(
+		&"lightning_windup",
+		player,
+		17
+	)
+	_expect(
+		lightning.target_warning_handle == 0
+		and lightning.latest_proxy_action_id == 16,
+		"Lightning NONE must reject an equal-revision delayed start without consuming the later fire edge."
+	)
+	lightning.play_multiplayer_enemy_action(
+		&"fire",
+		Vector2.RIGHT,
+		17
+	)
+	_expect(
+		lightning.latest_proxy_presentation_revision == 17
+		and lightning.latest_proxy_action_id == 17
+		and lightning.animated_sprite.animation
+			== LIGHTNING_SORCERER_CONFIG.attack_animation_name,
+		"Lightning reliable NONE arriving first must not consume the equal-revision CH7 fire animation."
+	)
 
 	lightning.play_multiplayer_enemy_action(
 		&"lightning_plant_windup",
-		plant_offset,
-		17
+		legacy_plant_offset,
+		18
 	)
 	var death_warning_handle := lightning.target_warning_handle
 	_expect(
@@ -691,7 +772,10 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	mp_game.net_enemy_target_action(
 		retry_net_id,
 		"lightning_windup",
+		TARGET_DESCRIPTOR.Kind.PLAYER,
 		player.peer_id,
+		0,
+		player.global_position,
 		Vector2(20.0, 30.0),
 		20,
 		synchronized_host_time - 0.08
@@ -699,18 +783,29 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	mp_game.net_enemy_target_action(
 		retry_net_id,
 		"lightning_windup_retry",
+		TARGET_DESCRIPTOR.Kind.PLAYER,
 		player.peer_id,
+		0,
+		player.global_position,
 		Vector2(24.0, 34.0),
 		20,
 		synchronized_host_time - 0.02
 	)
 	var pending_actions := enemy_coordinator.pending_enemy_actions
 	var retry_record := pending_actions.get(retry_net_id, {}) as Dictionary
+	var retry_fallback_position := (
+		retry_record.get("target_fallback_position", Vector2.INF) as Vector2
+	)
 	_expect(
 		pending_actions.size() == 1
 		and StringName(retry_record.get("action_name", &""))
 			== &"lightning_windup_retry"
-		and int(retry_record.get("action_id", 0)) == 20,
+		and int(retry_record.get("action_id", 0)) == 20
+		and int(retry_record.get("target_kind", -1))
+			== TARGET_DESCRIPTOR.Kind.PLAYER
+		and int(retry_record.get("target_id", 0)) == player.peer_id
+		and int(retry_record.get("target_revision", -1)) == 0
+		and retry_fallback_position.is_equal_approx(player.global_position),
 		"A same-id pre-spawn retry with the later Host timestamp must replace the start in O(1) storage."
 	)
 	var retry_lightning := _register_lightning_proxy(
@@ -742,7 +837,10 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	mp_game.net_enemy_target_action(
 		cancel_net_id,
 		"lightning_windup",
+		TARGET_DESCRIPTOR.Kind.PLAYER,
 		player.peer_id,
+		0,
+		player.global_position,
 		Vector2.ZERO,
 		30,
 		synchronized_host_time
@@ -802,7 +900,10 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		mp_game.net_enemy_target_action(
 			retry_net_id,
 			"lightning_windup",
+			TARGET_DESCRIPTOR.Kind.PLAYER,
 			player.peer_id,
+			0,
+			player.global_position,
 			Vector2(600.0, 500.0),
 			22,
 			synchronized_host_time
@@ -830,7 +931,10 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	mp_game.net_enemy_target_action(
 		expired_net_id,
 		"lightning_windup",
+		TARGET_DESCRIPTOR.Kind.PLAYER,
 		player.peer_id,
+		0,
+		player.global_position,
 		Vector2.ZERO,
 		40,
 		-1.0
@@ -860,7 +964,10 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	mp_game.net_enemy_target_action(
 		terminal_net_id,
 		"lightning_windup",
+		TARGET_DESCRIPTOR.Kind.PLAYER,
 		player.peer_id,
+		0,
+		player.global_position,
 		Vector2.ZERO,
 		50,
 		synchronized_host_time
@@ -873,7 +980,10 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	mp_game.net_enemy_target_action(
 		terminal_net_id,
 		"lightning_windup_retry",
+		TARGET_DESCRIPTOR.Kind.PLAYER,
 		player.peer_id,
+		0,
+		player.global_position,
 		Vector2.ZERO,
 		50,
 		synchronized_host_time + 0.1
@@ -950,8 +1060,28 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	mp_game.net_enemy_action(0, "cancel", Vector2.RIGHT, Vector2.ZERO, 1, -1.0)
 	mp_game.net_enemy_action(1, "cancel", Vector2(INF, 0.0), Vector2.ZERO, 1, -1.0)
 	mp_game.net_enemy_action(2, "cancel", Vector2.RIGHT, Vector2(NAN, 0.0), 1, -1.0)
-	mp_game.net_enemy_target_action(3, "lightning_windup", 0, Vector2.ZERO, 1, -1.0)
-	mp_game.net_enemy_target_action(4, "lightning_windup", 17, Vector2.ZERO, 1, NAN)
+	mp_game.net_enemy_target_action(
+		3,
+		"lightning_windup",
+		TARGET_DESCRIPTOR.Kind.PLAYER,
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		1,
+		-1.0
+	)
+	mp_game.net_enemy_target_action(
+		4,
+		"lightning_windup",
+		TARGET_DESCRIPTOR.Kind.PLAYER,
+		17,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		1,
+		NAN
+	)
 	_expect(
 		pending_actions.is_empty(),
 		"Malformed and non-finite fault-injection payloads must not enter the bounded buffer."
@@ -1106,6 +1236,10 @@ func _test_client_validation_and_visual_only_contract() -> void:
 		lightning_source,
 		"func play_multiplayer_enemy_action_with_context("
 	)
+	var windup_broadcast_body := _extract_function_body(
+		lightning_source,
+		"func _broadcast_windup_start("
+	)
 	var client_visual_bodies := (
 		target_action_body
 		+ generic_action_body
@@ -1132,10 +1266,15 @@ func _test_client_validation_and_visual_only_contract() -> void:
 	)
 	_expect(
 		not source.contains("net_enemy_lightning_target_warning")
-		and lightning_source.contains("_broadcast_enemy_target_action(")
-		and lightning_source.contains("PLANT_WINDUP_ACTION")
+		and not windup_broadcast_body.is_empty()
+		and windup_broadcast_body.contains("_broadcast_enemy_target_action(")
+		and windup_broadcast_body.contains(
+			"gameplay_gateway.broadcast_enemy_target_action("
+		)
+		and not windup_broadcast_body.contains("PLANT_WINDUP_ACTION")
+		and proxy_generic_context_body.contains("PLANT_WINDUP_ACTION")
 		and lightning_source.contains("_broadcast_enemy_action("),
-		"Lightning target warnings must reuse the existing target/generic action protocol instead of adding an RPC surface."
+		"Production target warnings must use one descriptor action for every live combat target; the generic plant offset path remains playback-only compatibility."
 	)
 	mp_game.free()
 	runtime.free()

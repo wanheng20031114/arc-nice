@@ -88,6 +88,18 @@ func _test_sakura_bullet_scene_contract() -> void:
 	player.current_health = 100
 	player.health_bar.setup(player.max_health, player.current_health)
 	bullet.setup(Vector2.RIGHT, 50, 300.0, 2.0)
+	_expect(
+		bullet.set_damage_source_snapshot(
+			DamageSourceSnapshot.create(
+				CombatRelationService.HOSTILE_WAVE,
+				0,
+				1,
+				0,
+				&"linglan_skill1"
+			)
+		),
+		"Sakura bullet fixture must bind an explicit hostile launch source."
+	)
 	bullet.call("_on_body_entered", player)
 	_expect(player.current_health == 50, "Sakura bullet must deal 50 damage on hit.")
 	_expect(_count_sakura_hit_effects() == 1, "Sakura bullet must spawn one lightweight pink hit effect on a valid player hit.")

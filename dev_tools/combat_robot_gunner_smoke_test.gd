@@ -52,6 +52,8 @@ class GunnerTestGateway:
 
 	var enemy_actions: Array[Dictionary] = []
 	var registered_projectiles: Array[Dictionary] = []
+	var burst_descriptors: Array[PackedByteArray] = []
+	var released_reservations := PackedInt64Array()
 	var next_projectile_id := 12001
 	var reject_next_data_registration := false
 
@@ -81,7 +83,8 @@ class GunnerTestGateway:
 		lifetime: float,
 		_pierces_enemies: bool = false,
 		_target_peer_id: int = 0,
-		_target_enemy_net_id: int = 0
+		_target_enemy_net_id: int = 0,
+		_damage_source_snapshot: DamageSourceSnapshot = null
 	) -> void:
 		registered_projectiles.append({
 			"projectile": projectile,
@@ -105,7 +108,8 @@ class GunnerTestGateway:
 		direction: Vector2,
 		damage: int,
 		speed: float,
-		lifetime: float
+		lifetime: float,
+		_damage_source_snapshot: DamageSourceSnapshot = null
 	) -> int:
 		if reject_next_data_registration:
 			reject_next_data_registration = false
@@ -129,6 +133,61 @@ class GunnerTestGateway:
 		return projectile_id
 
 
+	func reserve_enemy_rapid_fire_projectile_ids(
+		count: int
+	) -> PackedInt64Array:
+		var ids := PackedInt64Array()
+		for _shot_index in range(count):
+			ids.append(next_projectile_id)
+			next_projectile_id += 1
+		return ids
+
+
+	func release_enemy_rapid_fire_projectile_ids(
+		projectile_ids: PackedInt64Array
+	) -> bool:
+		released_reservations.append_array(projectile_ids)
+		return true
+
+
+	func attach_reserved_enemy_rapid_fire_projectile(
+		service: RapidFireSimulationService,
+		handle: int,
+		projectile_id: int,
+		projectile_type: StringName,
+		_owner_peer_id: int,
+		damage: int,
+		lifetime: float,
+		damage_source_snapshot: DamageSourceSnapshot = null
+	) -> bool:
+		if reject_next_data_registration:
+			reject_next_data_registration = false
+			return false
+		if not service.assign_projectile_identity(handle, projectile_id):
+			return false
+		registered_projectiles.append({
+			"projectile": null,
+			"service": service,
+			"handle": handle,
+			"projectile_id": projectile_id,
+			"projectile_type": projectile_type,
+			"spawn_position": service.get_position(handle),
+			"direction": service.get_direction(handle),
+			"damage": damage,
+			"speed": service.get_speed(handle),
+			"lifetime": lifetime,
+			"damage_source_snapshot": damage_source_snapshot,
+		})
+		return true
+
+
+	func broadcast_enemy_rapid_fire_burst(
+		descriptor: PackedByteArray
+	) -> bool:
+		burst_descriptors.append(descriptor)
+		return true
+
+
 class GunnerTestRoot:
 	extends PlayerTestCombatRuntime
 
@@ -139,6 +198,9 @@ class GunnerTestRoot:
 	var registered_projectiles: Array[Dictionary]:
 		get:
 			return recording_gateway.registered_projectiles
+	var burst_descriptors: Array[PackedByteArray]:
+		get:
+			return recording_gateway.burst_descriptors
 
 
 	func _init() -> void:
@@ -435,13 +497,23 @@ func _test_successful_burst_scheduler_and_spread() -> void:
 				"Caught-up shots must use the current shooter position without historical interpolation."
 			)
 	_expect(saw_distinct_spread, "Independent Host spread samples must not all be identical.")
-	_expect(test_root.enemy_actions.size() == 12, "Every successful shot must broadcast one action.")
-	for action_index in range(test_root.enemy_actions.size()):
-		var action := test_root.enemy_actions[action_index]
-		_expect(action.net_id == 77, "Fire actions must preserve the enemy net id.")
-		_expect(action.action_name == CombatRobotGunner.ACTION_FIRE, "Fire action name mismatch.")
-		_expect((action.direction as Vector2).is_equal_approx(Vector2.RIGHT), "Action aim must carry the fixed base direction.")
-		_expect(action.action_id == action_index + 1, "Fire action ids must be monotonic.")
+	_expect(
+		test_root.enemy_actions.is_empty()
+		and test_root.burst_descriptors.size() == 1,
+		"A successful DATA burst must replace per-shot actions with one compact descriptor."
+	)
+	var decoded_descriptor := (
+		EnemyRapidFireNetworkCodec.decode_burst(test_root.burst_descriptors[0])
+		if test_root.burst_descriptors.size() == 1
+		else {}
+	)
+	_expect(
+		bool(decoded_descriptor.get("valid", false))
+		and int(decoded_descriptor.get("count", 0)) == 12
+		and int(decoded_descriptor.get("source_enemy_id", 0)) == 77
+		and int(decoded_descriptor.get("action_id", 0)) == 1,
+		"The compact burst descriptor must preserve count, source net id and action revision."
+	)
 	var audio_metrics := EnemyAttackAudioLimiter.get_metrics()
 	_expect(audio_metrics.rapid_requests == 6, "A 12-shot burst must use the AK rapid-fire limiter cadence.")
 
@@ -571,6 +643,7 @@ func _test_muzzle_world_clamp_and_water_ignore() -> void:
 	_cleanup_registered_projectiles()
 	var player := _spawn_player(Vector2(60.0, 0.0))
 	var gunner := _spawn_gunner(Vector2.ZERO, player, direct_pathfinder)
+	gunner.set_meta(&"net_id", 79)
 	gunner.set_objective_target(null)
 	var world_wall := _spawn_wall(
 		Vector2(8.0, 0.0),
@@ -619,6 +692,7 @@ func _test_death_cancels_remaining_burst() -> void:
 	test_root.enemy_actions.clear()
 	var player := _spawn_player(Vector2(60.0, 0.0))
 	var gunner := _spawn_gunner(Vector2.ZERO, player, direct_pathfinder)
+	gunner.set_meta(&"net_id", 80)
 	gunner.set_objective_target(null)
 	_expect(bool(gunner.call("_try_start_burst", player)), "Death fixture failed to commit.")
 	gunner.call("_update_burst", 0.0)
@@ -812,6 +886,7 @@ func _cleanup_registered_projectiles() -> void:
 		if service != null and service.is_handle_live(handle):
 			service.release_projectile(handle)
 	test_root.registered_projectiles.clear()
+	test_root.burst_descriptors.clear()
 	test_root.recording_gateway.reject_next_data_registration = false
 
 

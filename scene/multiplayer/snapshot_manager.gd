@@ -2,6 +2,9 @@ extends RefCounted
 class_name SnapshotManager
 
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
+const CombatRelationServiceScript := preload(
+	"res://scene/combat/faction/combat_relation_service.gd"
+)
 
 ## 快照管理器：负责在 Host 端构建快照数据；
 ## 以及在 Client 端解析收到的快照。
@@ -33,11 +36,17 @@ const PLAYER_SNAPSHOT_HEADER_BYTES := 9
 ## 否则一次丢包就可能让客户端沿用旧射速直到下一次 keyframe。
 const PLAYER_REALTIME_STATUS_BYTES := 4
 const ENEMY_SNAPSHOT_HEADER_BYTES := 5
+## 协议 94 的敌人快照由 MpEnemyCoordinator 固定分块。解码端同样执行该
+## wire 上限，避免伪造的 uint16 count 扩张长期复用的 staging pool。
+const ENEMY_SNAPSHOT_MAX_RECORDS_PER_PACKET := 41
 const PACKED_VECTOR2_I16_BYTES := 4
 const PACKED_VECTOR2_I32_BYTES := 8
 const PACKED_U8_BYTES := 1
 const PACKED_U16_BYTES := 2
 const PACKED_U32_BYTES := 4
+## 阵营随敌人 full keyframe 绝对发送：faction_id:u8 + faction_revision:u32。
+## 普通 delta 不占用既有掩码位；可靠阵营事件负责实时变化，keyframe 负责重连修复。
+const ENEMY_FACTION_KEYFRAME_BYTES := PACKED_U8_BYTES + PACKED_U32_BYTES
 const PLAYER_META_BYTES := 46
 const MOVE_MULTIPLIER_SCALE := 1000.0
 const FIRE_INTERVAL_SCALE := 1000.0
@@ -138,6 +147,10 @@ var enemy_receive_baselines: Dictionary = {}
 ## 接收解码结果按实体复用。调用方应在下一次同类解码前消费返回值，勿长期持有引用。
 var player_receive_output_states: Dictionary = {}
 var enemy_receive_output_states: Dictionary = {}
+## 敌人整包原子解码的临时对象按“包内记录序号”复用。不能按网络 net-id
+## 建池，否则攻击者可以用不断变化的 ID 扩张字典；序号池只会增长到单包实际
+## 通过长度校验的记录数，生产分块上限为 41。
+var enemy_receive_staging_states: Array[EnemyState] = []
 
 
 ## 构建玩家快照的二进制数据包
@@ -372,6 +385,9 @@ class EnemyState:
 	## 场景互斥的敌人专用状态。盾兵以两位编码盾态，v45 忍者以 bit5 编码
 	## 短时加速态；伤害、耐久和实际速度仍只由 Host 结算。
 	var visual_status_mask: int = 0
+	## 只附加在 full keyframe 尾部，不改变既有 24-byte 字段顺序。
+	var faction_id: int = CombatRelationServiceScript.HOSTILE_WAVE
+	var faction_revision: int = 0
 
 
 ## 构建敌人快照二进制数据
@@ -400,6 +416,8 @@ static func is_enemy_snapshot_state_serializable(state: EnemyState) -> bool:
 		and state.velocity.is_finite()
 		and NetConstants.is_valid_network_combat_value(state.health)
 		and NetConstants.is_valid_network_combat_value(state.health_revision)
+		and CombatRelationServiceScript.is_valid_faction_id(state.faction_id)
+		and NetConstants.is_valid_network_combat_value(state.faction_revision)
 	)
 
 
@@ -474,6 +492,9 @@ static func _write_enemy_snapshot(
 		buf.put_u8(1 if current.is_dead else 0)
 	if mask & MASK_ENEMY_VISUAL_STATUS:
 		buf.put_u8(clampi(current.visual_status_mask, 0, 255))
+	if _is_full_enemy_mask(mask):
+		buf.put_u8(current.faction_id)
+		buf.put_u32(current.faction_revision)
 
 
 ## 解码敌人快照
@@ -482,14 +503,27 @@ static func decode_enemy_snapshot(
 	offset: int,
 	target: EnemyState,
 ) -> int:
+	if target == null:
+		return offset
 	var snapshot_size := _get_enemy_snapshot_size(data, offset)
 	if snapshot_size < 0 or offset + snapshot_size > data.size():
 		return offset
+	# 单条解码同样采用临时对象：delta 需要先继承调用方基线，但只有完整
+	# 重建状态通过网络边界校验后才允许写回，避免非法包部分污染 target。
+	var restored := EnemyState.new()
+	_copy_enemy_state_into(target, restored)
 	var buf := StreamPeerBuffer.new()
 	buf.data_array = data
 	buf.seek(offset)
-	_read_enemy_snapshot(buf, target)
-	return buf.get_position()
+	_read_enemy_snapshot(buf, restored)
+	var next_offset := buf.get_position()
+	if (
+		next_offset != offset + snapshot_size
+		or not _is_received_enemy_state_valid(restored)
+	):
+		return offset
+	_copy_enemy_state_into(restored, target)
+	return next_offset
 
 
 static func _read_enemy_snapshot(buf: StreamPeerBuffer, target: EnemyState) -> void:
@@ -511,12 +545,17 @@ static func _read_enemy_snapshot(buf: StreamPeerBuffer, target: EnemyState) -> v
 		target.is_dead = buf.get_u8() != 0
 	if mask & MASK_ENEMY_VISUAL_STATUS:
 		target.visual_status_mask = buf.get_u8()
+	if _is_full_enemy_mask(mask):
+		target.faction_id = buf.get_u8()
+		target.faction_revision = buf.get_u32()
 
 
 static func _get_enemy_snapshot_size(data: PackedByteArray, offset: int) -> int:
 	if offset < 0 or offset + ENEMY_SNAPSHOT_HEADER_BYTES > data.size():
 		return -1
 	var mask := int(data[offset + ENEMY_SNAPSHOT_HEADER_BYTES - 1])
+	if not _is_valid_enemy_snapshot_mask(mask):
+		return -1
 	var size := ENEMY_SNAPSHOT_HEADER_BYTES
 	if mask & MASK_POSITION:
 		size += PACKED_VECTOR2_I16_BYTES
@@ -530,6 +569,8 @@ static func _get_enemy_snapshot_size(data: PackedByteArray, offset: int) -> int:
 		size += PACKED_U8_BYTES
 	if mask & MASK_ENEMY_VISUAL_STATUS:
 		size += PACKED_U8_BYTES
+	if _is_full_enemy_mask(mask):
+		size += ENEMY_FACTION_KEYFRAME_BYTES
 	return size
 
 
@@ -642,6 +683,23 @@ static func _copy_enemy_state_into(source: EnemyState, target: EnemyState) -> vo
 	target.health_revision = source.health_revision
 	target.is_dead = source.is_dead
 	target.visual_status_mask = source.visual_status_mask
+	target.faction_id = source.faction_id
+	target.faction_revision = source.faction_revision
+
+
+static func _reset_enemy_state(target: EnemyState) -> void:
+	if target == null:
+		return
+	target.net_id = 0
+	target.position = Vector2.ZERO
+	target.velocity = Vector2.ZERO
+	target.locomotion_state = ENEMY_LOCOMOTION_IDLE
+	target.health = 0
+	target.health_revision = 0
+	target.is_dead = false
+	target.visual_status_mask = 0
+	target.faction_id = CombatRelationServiceScript.HOSTILE_WAVE
+	target.faction_revision = 0
 
 
 static func _apply_player_delta(target: PlayerState, delta: PlayerState, mask: int) -> void:
@@ -695,6 +753,9 @@ static func _apply_enemy_delta(target: EnemyState, delta: EnemyState, mask: int)
 		target.is_dead = delta.is_dead
 	if mask & MASK_ENEMY_VISUAL_STATUS:
 		target.visual_status_mask = delta.visual_status_mask
+	if _is_full_enemy_mask(mask):
+		target.faction_id = delta.faction_id
+		target.faction_revision = delta.faction_revision
 
 
 static func _is_full_player_mask(mask: int) -> bool:
@@ -703,6 +764,24 @@ static func _is_full_player_mask(mask: int) -> bool:
 
 static func _is_full_enemy_mask(mask: int) -> bool:
 	return (mask & FULL_ENEMY_MASK) == FULL_ENEMY_MASK
+
+
+static func _is_valid_enemy_snapshot_mask(mask: int) -> bool:
+	return mask >= 0 and mask <= 0xFF and (mask & FULL_ENEMY_MASK) == mask
+
+
+static func _is_received_enemy_state_valid(state: EnemyState) -> bool:
+	return (
+		state != null
+		and state.net_id > 0
+		and NetConstants.is_valid_network_combat_value(state.net_id)
+		and state.position.is_finite()
+		and state.velocity.is_finite()
+		and NetConstants.is_valid_network_combat_value(state.health)
+		and NetConstants.is_valid_network_combat_value(state.health_revision)
+		and CombatRelationServiceScript.is_valid_faction_id(state.faction_id)
+		and NetConstants.is_valid_network_combat_value(state.faction_revision)
+	)
 
 
 static func _get_player_snapshot_mask(data: PackedByteArray, offset: int) -> int:
@@ -872,11 +951,14 @@ func decode_player_snapshots_with_baseline(data: PackedByteArray) -> Array[Playe
 
 ## 编码一批敌人快照
 func encode_all_enemy_snapshots(enemies: Array[EnemyState]) -> PackedByteArray:
+	if enemies.size() > ENEMY_SNAPSHOT_MAX_RECORDS_PER_PACKET:
+		push_error("SnapshotManager: 单个敌人快照包超过协议 94 的 41 实体上限。")
+		return PackedByteArray()
 	if not are_enemy_snapshot_states_serializable(enemies):
 		push_error("SnapshotManager: 拒绝序列化包含非法状态的敌人快照批次。")
 		return PackedByteArray()
 	var stream := StreamPeerBuffer.new()
-	# 敌人数量用 uint16 表示（最多 65535）
+	# wire 保留 uint16；协议 94 的实际分块上限由常量约束为 41。
 	stream.put_u16(enemies.size())
 	for enemy_state: EnemyState in enemies:
 		_write_enemy_snapshot(stream, enemy_state, null)
@@ -946,6 +1028,9 @@ func _encode_enemy_snapshot_range_for_peer(
 ) -> PackedByteArray:
 	var resolved_start := clampi(start_index, 0, enemies.size())
 	var resolved_count := clampi(entity_count, 0, enemies.size() - resolved_start)
+	if resolved_count > ENEMY_SNAPSHOT_MAX_RECORDS_PER_PACKET:
+		push_error("SnapshotManager: 单个敌人 delta 包超过协议 94 的 41 实体上限。")
+		return PackedByteArray()
 	for state_index in range(resolved_start, resolved_start + resolved_count):
 		if not is_enemy_snapshot_state_serializable(enemies[state_index]):
 			push_error(
@@ -985,8 +1070,14 @@ static func decode_all_enemy_snapshots(data: PackedByteArray) -> Array[EnemyStat
 	var stream := StreamPeerBuffer.new()
 	stream.data_array = data
 	var count: int = stream.get_u16()
+	if count > ENEMY_SNAPSHOT_MAX_RECORDS_PER_PACKET:
+		return result
 	var offset := 2
+	var seen_net_ids: Dictionary[int, bool] = {}
 	for _i in range(count):
+		var mask := _get_enemy_snapshot_mask(data, offset)
+		if not _is_valid_enemy_snapshot_mask(mask) or not _is_full_enemy_mask(mask):
+			break
 		var snapshot_size := _get_enemy_snapshot_size(data, offset)
 		if snapshot_size < 0 or offset + snapshot_size > data.size():
 			break
@@ -994,11 +1085,65 @@ static func decode_all_enemy_snapshots(data: PackedByteArray) -> Array[EnemyStat
 		stream.seek(offset)
 		_read_enemy_snapshot(stream, state)
 		var next_offset := stream.get_position()
-		if next_offset <= offset or next_offset > data.size():
+		if (
+			next_offset != offset + snapshot_size
+			or not _is_received_enemy_state_valid(state)
+			or seen_net_ids.has(state.net_id)
+		):
 			break
 		offset = next_offset
+		seen_net_ids[state.net_id] = true
 		result.append(state)
 	return result
+
+
+## 只读预扫整包 wire 结构并收集实体 ID，不推进任何接收基线。协调器在
+## chunk 级重复/元数据检查前调用它，保证被判无效的后续 chunk 不会先把
+## 同一实体的 delta/full 写进共享 baseline。缺少接收基线的 delta 也视为
+## 整包不可解码，避免正式解码器“跳过一条、提交其余条”的部分提交语义。
+func try_collect_decodable_enemy_snapshot_ids(
+	data: PackedByteArray,
+	result: Array[int]
+) -> bool:
+	result.clear()
+	if data.size() < 2:
+		return false
+	var stream := StreamPeerBuffer.new()
+	stream.data_array = data
+	var count := stream.get_u16()
+	if count > ENEMY_SNAPSHOT_MAX_RECORDS_PER_PACKET:
+		return false
+	var offset := 2
+	var seen_net_ids: Dictionary[int, bool] = {}
+	for _record_index in range(count):
+		var mask := _get_enemy_snapshot_mask(data, offset)
+		if not _is_valid_enemy_snapshot_mask(mask):
+			result.clear()
+			return false
+		var snapshot_size := _get_enemy_snapshot_size(data, offset)
+		if snapshot_size < 0 or offset + snapshot_size > data.size():
+			result.clear()
+			return false
+		stream.seek(offset)
+		var net_id := stream.get_32()
+		if (
+			net_id <= 0
+			or not NetConstants.is_valid_network_combat_value(net_id)
+			or seen_net_ids.has(net_id)
+			or (
+				not _is_full_enemy_mask(mask)
+				and not enemy_receive_baselines.has(net_id)
+			)
+		):
+			result.clear()
+			return false
+		seen_net_ids[net_id] = true
+		result.append(net_id)
+		offset += snapshot_size
+	if offset != data.size():
+		result.clear()
+		return false
+	return true
 
 
 ## 使用接收端基线解码 delta 敌人快照；缺失基线的 delta 实体会被跳过。
@@ -1013,46 +1158,76 @@ func decode_enemy_snapshots_with_baseline(
 	var stream := StreamPeerBuffer.new()
 	stream.data_array = data
 	var count: int = stream.get_u16()
+	if count > ENEMY_SNAPSHOT_MAX_RECORDS_PER_PACKET:
+		return result
 	var offset := 2
 	var live_ids: Dictionary = {}
 	var can_prune := true
-	for _i in range(count):
+	var seen_net_ids: Dictionary[int, bool] = {}
+	var staged_states: Array[EnemyState] = []
+	for record_index in range(count):
+		var mask := _get_enemy_snapshot_mask(data, offset)
+		if not _is_valid_enemy_snapshot_mask(mask):
+			return result
 		var snapshot_size := _get_enemy_snapshot_size(data, offset)
 		if snapshot_size < 0 or offset + snapshot_size > data.size():
-			can_prune = false
-			break
-		var mask := _get_enemy_snapshot_mask(data, offset)
+			return result
 		stream.seek(offset)
 		var net_id := stream.get_32()
+		if (
+			net_id <= 0
+			or not NetConstants.is_valid_network_combat_value(net_id)
+			or seen_net_ids.has(net_id)
+		):
+			return result
+		seen_net_ids[net_id] = true
 		var previous := enemy_receive_baselines.get(net_id) as EnemyState
-		if previous == null and not _is_full_enemy_mask(mask):
-			can_prune = false
-			offset += snapshot_size
-			continue
-
-		var restored := enemy_receive_output_states.get(net_id) as EnemyState
-		if restored == null or previous == null:
-			restored = EnemyState.new()
-			enemy_receive_output_states[net_id] = restored
+		var restored: EnemyState = null
+		if record_index < enemy_receive_staging_states.size():
+			restored = enemy_receive_staging_states[record_index]
 		else:
+			restored = EnemyState.new()
+			enemy_receive_staging_states.append(restored)
+		if previous != null:
 			_copy_enemy_state_into(previous, restored)
+		else:
+			_reset_enemy_state(restored)
 		stream.seek(offset)
 		_read_enemy_snapshot(stream, restored)
 		var next_offset := stream.get_position()
-		if next_offset <= offset or next_offset > data.size():
-			can_prune = false
-			break
+		if (
+			next_offset != offset + snapshot_size
+			or not _is_received_enemy_state_valid(restored)
+		):
+			return result
 		offset = next_offset
+		if previous == null and not _is_full_enemy_mask(mask):
+			can_prune = false
+			continue
+		live_ids[restored.net_id] = true
+		staged_states.append(restored)
 
-		var stored := previous
+	# The receive dictionaries are shared across packets and their output objects
+	# are reused by hot callers. Commit only after every declared record and all
+	# trailing bytes have been validated, so a malformed later record cannot leave
+	# an earlier entity partially advanced or poison its monotonic revisions.
+	if offset != data.size():
+		return result
+	for staged_state in staged_states:
+		var stored := enemy_receive_baselines.get(staged_state.net_id) as EnemyState
 		if stored == null:
 			stored = EnemyState.new()
-			enemy_receive_baselines[restored.net_id] = stored
-		_copy_enemy_state_into(restored, stored)
-		live_ids[restored.net_id] = true
-		result.append(restored)
-
-	if prune_baseline and can_prune and offset == data.size():
+			enemy_receive_baselines[staged_state.net_id] = stored
+		_copy_enemy_state_into(staged_state, stored)
+		var output := enemy_receive_output_states.get(
+			staged_state.net_id
+		) as EnemyState
+		if output == null:
+			output = EnemyState.new()
+			enemy_receive_output_states[staged_state.net_id] = output
+		_copy_enemy_state_into(staged_state, output)
+		result.append(output)
+	if prune_baseline and can_prune:
 		_prune_dictionary_to_ids(enemy_receive_baselines, live_ids)
 		_prune_dictionary_to_ids(enemy_receive_output_states, live_ids)
 	return result
@@ -1075,9 +1250,33 @@ func clear_enemy_send_baseline(receiver_or_cohort_id: int) -> void:
 	enemy_send_baselines_by_peer.erase(receiver_or_cohort_id)
 
 
+## 同一 net_id 发布新 incarnation 前，清掉所有发送 cohort 中的旧实体基线。
+## 否则首个非强制关键帧会只发送旧实体到新实体的 partial delta，而接收端已按
+## spawn 清空基线，只能等下一次周期关键帧自愈。
+func erase_enemy_send_baseline(net_id: int) -> void:
+	if net_id <= 0:
+		return
+	for receiver_or_cohort_id in enemy_send_baselines_by_peer.keys():
+		var baseline := enemy_send_baselines_by_peer.get(
+			receiver_or_cohort_id,
+			{}
+		) as Dictionary
+		baseline.erase(net_id)
+
+
 func prune_enemy_receive_baseline_to_ids(live_ids: Dictionary) -> void:
 	_prune_dictionary_to_ids(enemy_receive_baselines, live_ids)
 	_prune_dictionary_to_ids(enemy_receive_output_states, live_ids)
+
+
+## 丢弃单个网络敌人的接收基线与复用输出。
+## 同一 net_id 发布新 incarnation 或拒绝旧 incarnation 快照时调用，避免旧高 revision
+## 留在增量解码基线中，继而污染新实体的后续 keyframe/delta。
+func erase_enemy_receive_baseline(net_id: int) -> void:
+	if net_id <= 0:
+		return
+	enemy_receive_baselines.erase(net_id)
+	enemy_receive_output_states.erase(net_id)
 
 
 func clear_peer_delta_cache(peer_id: int) -> void:
@@ -1099,3 +1298,4 @@ func reset_delta_cache() -> void:
 	enemy_receive_baselines.clear()
 	player_receive_output_states.clear()
 	enemy_receive_output_states.clear()
+	enemy_receive_staging_states.clear()
