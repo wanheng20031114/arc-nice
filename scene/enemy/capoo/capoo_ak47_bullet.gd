@@ -53,6 +53,8 @@ var world_collision_query := PhysicsRayQueryParameters2D.create(
 	Vector2.ZERO,
 	WORLD_COLLISION_MASK
 )
+var shadow_simulation_service: RapidFireSimulationService = null
+var shadow_simulation_handle: int = RapidFireSimulationService.INVALID_HANDLE
 
 
 func _ready() -> void:
@@ -74,6 +76,7 @@ func _enter_tree() -> void:
 
 
 func on_pool_acquired(_generation: int) -> void:
+	_release_shadow_simulation()
 	combat_runtime = null
 	gameplay_gateway = null
 	_detach_batched_motion_system()
@@ -105,6 +108,7 @@ func on_pool_acquired(_generation: int) -> void:
 
 
 func on_pool_released(_generation: int) -> void:
+	_release_shadow_simulation()
 	_detach_batched_motion_system()
 	_reset_world_collision_schedule()
 	pool_active = false
@@ -125,6 +129,25 @@ func bind_gameplay_context(
 ) -> void:
 	combat_runtime = runtime_context
 	gameplay_gateway = gateway
+
+
+func bind_shadow_simulation(
+	service: RapidFireSimulationService,
+	handle: int
+) -> bool:
+	_release_shadow_simulation()
+	if (
+		service == null
+		or not is_instance_valid(service)
+		or handle <= RapidFireSimulationService.INVALID_HANDLE
+		or not service.is_handle_live(handle)
+		or service.get_slot_mode(handle)
+			!= RapidFireSimulationService.Mode.SHADOW
+	):
+		return false
+	shadow_simulation_service = service
+	shadow_simulation_handle = handle
+	return true
 
 
 func setup(
@@ -206,6 +229,7 @@ func _advance_projectile(delta: float) -> void:
 		if _will_hit_world(world_collision_anchor, next_position):
 			global_position = last_world_collision_position
 			world_collision_anchor = last_world_collision_position
+			_record_shadow_observation()
 			_consume(true)
 			return
 		world_collision_anchor = next_position
@@ -213,7 +237,10 @@ func _advance_projectile(delta: float) -> void:
 	global_position = next_position
 	remaining_lifetime = remaining_after_step
 	if remaining_lifetime <= 0.0:
+		_record_shadow_observation()
 		_consume(false)
+		return
+	_record_shadow_observation()
 
 
 func _will_hit_world(from_position: Vector2, to_position: Vector2) -> bool:
@@ -351,6 +378,7 @@ func _consume(play_hit_effect: bool = true) -> void:
 	if has_hit or not pool_active:
 		return
 	_detach_batched_motion_system()
+	_release_shadow_simulation()
 	has_hit = true
 	pool_active = false
 	set_physics_process(false)
@@ -370,6 +398,36 @@ func retire(play_hit_effect: bool = false) -> void:
 
 func _exit_tree() -> void:
 	_detach_batched_motion_system()
+	_release_shadow_simulation()
+
+
+func _record_shadow_observation() -> void:
+	if (
+		shadow_simulation_service == null
+		or not is_instance_valid(shadow_simulation_service)
+		or shadow_simulation_handle
+			<= RapidFireSimulationService.INVALID_HANDLE
+	):
+		return
+	shadow_simulation_service.record_shadow_observation(
+		shadow_simulation_handle,
+		global_position,
+		maxf(remaining_lifetime, 0.0)
+	)
+
+
+func _release_shadow_simulation() -> void:
+	var service := shadow_simulation_service
+	var handle := shadow_simulation_handle
+	shadow_simulation_service = null
+	shadow_simulation_handle = RapidFireSimulationService.INVALID_HANDLE
+	if (
+		service != null
+		and is_instance_valid(service)
+		and handle > RapidFireSimulationService.INVALID_HANDLE
+		and service.is_handle_live(handle)
+	):
+		service.release_projectile(handle)
 
 
 func _detach_batched_motion_system() -> void:

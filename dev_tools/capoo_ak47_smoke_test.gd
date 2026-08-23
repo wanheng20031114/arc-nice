@@ -8,6 +8,9 @@ const CAPOO_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
 const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
 const WAVE_06 := preload("res://resources/config/waves/wave_06.tres")
 const WAVE_07 := preload("res://resources/config/waves/wave_07.tres")
+const ENEMY_SIMULATION_COORDINATOR_SCENE := preload(
+	"res://scene/combat/simulation/enemy_simulation_coordinator.tscn"
+)
 
 var failures: Array[String] = []
 var test_root: PlayerTestCombatRuntime
@@ -25,7 +28,13 @@ func _run() -> void:
 	motion_placeholder.free()
 	var motion_system := CapooProjectileMotionSystem.new()
 	motion_system.name = "CapooProjectileMotionSystem"
+	motion_system.process_physics_priority = 5
 	test_root.add_child(motion_system)
+	var simulation_coordinator := (
+		ENEMY_SIMULATION_COORDINATOR_SCENE.instantiate()
+		as EnemySimulationCoordinator
+	)
+	test_root.add_child(simulation_coordinator)
 	test_root.name = "CapooAK47SmokeTest"
 	root.add_child(test_root)
 	current_scene = test_root

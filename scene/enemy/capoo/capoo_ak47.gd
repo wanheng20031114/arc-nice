@@ -12,6 +12,17 @@ const ATTACK_PHASE_OFFSETS_PHYSICS_FRAMES: Array[int] = [0, -1, 1, -2, 2]
 
 static var attack_phase_stagger_enabled := true
 
+enum ProjectileBackend {
+	LEGACY,
+	SHADOW,
+	DATA,
+}
+
+# The rollout stays in SHADOW until the fixed-seed behaviour certificate has
+# covered the production scenes. This is a process-wide migration switch, not
+# per-enemy state, so a cohort can never mix authority backends accidentally.
+static var projectile_backend: ProjectileBackend = ProjectileBackend.SHADOW
+
 enum CombatState {
 	CHASE,
 	WINDUP,
@@ -37,6 +48,8 @@ var latest_proxy_action_id: int = 0
 var attack_target: Node2D = null
 var committed_attack_phase_offset_seconds: float = 0.0
 var committed_windup_duration_seconds: float = 0.0
+var local_data_projectile_sequence: int = 0
+var shadow_registration_failures: int = 0
 
 
 func _ready() -> void:
@@ -137,6 +150,8 @@ func _apply_config() -> void:
 	burst_fire_time_left = 0.0
 	burst_audio_step = 0
 	attack_target = null
+	local_data_projectile_sequence = 0
+	shadow_registration_failures = 0
 	_clear_committed_attack_timing()
 	_reset_ranged_attack_position_state()
 
@@ -304,6 +319,39 @@ func _fire_locked_bullet() -> bool:
 		or not is_instance_valid(gameplay_gateway)
 	):
 		return false
+	# Client enemies only replay the action. Their legacy projectile proxy is
+	# created by MpProjectileCoordinator from the Host's existing 12-field RPC.
+	if combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+		return false
+
+	var fired := false
+	match CapooAK47.projectile_backend:
+		ProjectileBackend.LEGACY:
+			fired = _fire_legacy_projectile(capoo_config, false)
+		ProjectileBackend.SHADOW:
+			fired = _fire_legacy_projectile(capoo_config, true)
+		ProjectileBackend.DATA:
+			fired = _fire_data_projectile(capoo_config)
+	if not fired:
+		return false
+
+	# Keep the authored RNG and audio cadence after successful registration in
+	# every backend. Backend migration therefore cannot perturb later spread or
+	# pitch draws in the burst.
+	if burst_audio_step % 2 == 0:
+		attack_audio.pitch_scale = random_generator.randf_range(0.98, 1.03)
+		ENEMY_ATTACK_AUDIO_LIMITER.play_rapid_fire(attack_audio)
+	burst_audio_step += 1
+	return true
+
+
+func _fire_legacy_projectile(
+	capoo_config: CapooConfig,
+	register_shadow: bool
+) -> bool:
+	var rapid_fire_service: RapidFireSimulationService = null
+	if register_shadow:
+		rapid_fire_service = _get_rapid_fire_simulation_service()
 	var spawn_parent: Node = combat_runtime
 	var projectile: CapooAK47Bullet = null
 	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
@@ -320,7 +368,9 @@ func _fire_locked_bullet() -> bool:
 		push_warning("AK 猫猫虫子弹场景必须实例化 CapooAK47Bullet。")
 		return false
 
-	var outgoing_damage := get_effective_attack_damage(capoo_config.attack_damage)
+	var outgoing_damage := get_effective_attack_damage(
+		capoo_config.attack_damage
+	)
 	projectile.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	projectile.top_level = true
 	if projectile.get_parent() == null:
@@ -347,11 +397,127 @@ func _fire_locked_bullet() -> bool:
 		capoo_config.projectile_speed,
 		capoo_config.projectile_lifetime
 	)
-	if burst_audio_step % 2 == 0:
-		attack_audio.pitch_scale = random_generator.randf_range(0.98, 1.03)
-		ENEMY_ATTACK_AUDIO_LIMITER.play_rapid_fire(attack_audio)
-	burst_audio_step += 1
+	if register_shadow and rapid_fire_service != null:
+		var shadow_projectile_id := projectile.projectile_id
+		var shadow_phase_identity := (
+			shadow_projectile_id
+			if shadow_projectile_id > 0
+			else int(projectile.get_instance_id())
+		)
+		var shadow_handle := rapid_fire_service.register_projectile(
+			RapidFireSimulationService.Mode.SHADOW,
+			RapidFireSimulationService.Profile.AK,
+			projectile.global_position,
+			burst_shot_direction,
+			capoo_config.projectile_speed,
+			capoo_config.projectile_lifetime,
+			outgoing_damage,
+			_get_stable_source_enemy_id(),
+			shadow_projectile_id,
+			CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES,
+			posmod(
+				shadow_phase_identity,
+				CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES
+			)
+		)
+		if (
+			shadow_handle <= RapidFireSimulationService.INVALID_HANDLE
+			or not projectile.bind_shadow_simulation(
+				rapid_fire_service,
+				shadow_handle
+			)
+		):
+			if rapid_fire_service.is_handle_live(shadow_handle):
+				rapid_fire_service.release_projectile(shadow_handle)
+			shadow_registration_failures += 1
+	elif register_shadow:
+		shadow_registration_failures += 1
 	return true
+
+
+func _fire_data_projectile(capoo_config: CapooConfig) -> bool:
+	var rapid_fire_service := _get_rapid_fire_simulation_service()
+	if rapid_fire_service == null:
+		return false
+
+	var safe_direction := (
+		burst_shot_direction.normalized()
+		if burst_shot_direction != Vector2.ZERO
+		else Vector2.RIGHT
+	)
+	var spawn_position := (
+		global_position
+		+ safe_direction * capoo_config.projectile_spawn_distance
+	)
+	var outgoing_damage := get_effective_attack_damage(
+		capoo_config.attack_damage
+	)
+	var phase_identity := _next_local_data_phase_identity()
+	var handle := rapid_fire_service.register_projectile(
+		RapidFireSimulationService.Mode.DATA,
+		RapidFireSimulationService.Profile.AK,
+		spawn_position,
+		safe_direction,
+		capoo_config.projectile_speed,
+		capoo_config.projectile_lifetime,
+		outgoing_damage,
+		_get_stable_source_enemy_id(),
+		0,
+		CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES,
+		posmod(
+			phase_identity,
+			CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES
+		)
+	)
+	if handle <= RapidFireSimulationService.INVALID_HANDLE:
+		return false
+
+	var projectile_id := 0
+	if (
+		combat_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		projectile_id = gameplay_gateway.register_local_data_projectile(
+			rapid_fire_service,
+			handle,
+			&"capoo_ak47_bullet",
+			0,
+			spawn_position,
+			safe_direction,
+			outgoing_damage,
+			capoo_config.projectile_speed,
+			capoo_config.projectile_lifetime
+		)
+		# Identity assignment and network record creation are one operation in
+		# the gateway. Failure releases the inert handle and never falls back to
+		# an Area2D authority backend.
+		if projectile_id <= 0:
+			rapid_fire_service.release_projectile(handle)
+			return false
+
+	return true
+
+
+func _get_rapid_fire_simulation_service() -> RapidFireSimulationService:
+	var combat_services := combat_runtime.get_enemy_combat_services()
+	if combat_services == null:
+		return null
+	return combat_services.get_rapid_fire_simulation_service()
+
+
+func _get_stable_source_enemy_id() -> int:
+	var network_enemy_id := int(get_meta(&"net_id", 0))
+	if network_enemy_id > 0:
+		return network_enemy_id
+	return int(get_instance_id())
+
+
+func _next_local_data_phase_identity() -> int:
+	local_data_projectile_sequence += 1
+	# Singleplayer previously derived the two-tick world-query phase from the
+	# projectile Node instance id. DATA has no Node, so a stable per-enemy
+	# monotonic identity preserves the same alternating cohort distribution.
+	return int(get_instance_id()) + local_data_projectile_sequence
 
 
 func _finish_burst() -> void:
