@@ -45,8 +45,8 @@ func _test_static_authored_multimesh_contract() -> void:
 		return
 	var multimesh_nodes := _collect_multimesh_nodes(presenter)
 	_expect(
-		multimesh_nodes.size() == 2,
-		"Presenter scene must author projectile and hit MultiMeshInstance2D batches."
+		multimesh_nodes.size() == 4,
+		"Presenter scene must author three projectile batches and one hit batch."
 	)
 	var multimesh_instance := presenter.get_multimesh_instance()
 	_expect(
@@ -89,9 +89,32 @@ func _test_static_authored_multimesh_contract() -> void:
 		)
 		var shader_material := multimesh_instance.material as ShaderMaterial
 		_expect(
-			shader_material != null and shader_material.shader != null,
-			"The static MultiMesh must author its animation material."
+			shader_material != null
+			and shader_material.shader != null
+			and is_equal_approx(
+				float(shader_material.get_shader_parameter("frame_count")),
+				3.0
+			)
+			and is_equal_approx(
+				float(shader_material.get_shader_parameter("animation_fps")),
+				16.0
+			),
+			"The AK batch must author a three-frame 16 FPS material."
 		)
+	_expect_projectile_batch(
+		presenter.get_gunner_multimesh_instance(),
+		&"GunnerProjectileMultiMesh",
+		Vector2(36.0, 8.0),
+		Vector2(12.0, 8.0),
+		25.0
+	)
+	_expect_projectile_batch(
+		presenter.get_gunner_elite_multimesh_instance(),
+		&"GunnerEliteProjectileMultiMesh",
+		Vector2(36.0, 8.0),
+		Vector2(12.0, 8.0),
+		25.0
+	)
 	var hit_multimesh_instance := presenter.get_hit_multimesh_instance()
 	_expect(
 		hit_multimesh_instance != null
@@ -110,9 +133,9 @@ func _test_static_authored_multimesh_contract() -> void:
 	_expect(
 		shader_source.contains("render_mode unshaded")
 		and shader_source.contains("INSTANCE_CUSTOM.r")
-		and shader_source.contains("* 16.0")
-		and shader_source.contains("/ 3.0"),
-		"Shader must use INSTANCE_CUSTOM to select three AK frames at 16 FPS."
+		and shader_source.contains("uniform float frame_count")
+		and shader_source.contains("uniform float animation_fps"),
+		"Shader must use INSTANCE_CUSTOM and per-material atlas cadence uniforms."
 	)
 	var hit_shader_source := FileAccess.get_file_as_string(
 		HIT_PRESENTER_SHADER_PATH
@@ -131,7 +154,13 @@ func _test_static_authored_multimesh_contract() -> void:
 		and presenter_source.contains("func _process(delta: float)")
 		and presenter_source.contains("viewport.get_canvas_transform()")
 		and presenter_source.contains(
-			"multimesh.instance_count = FIXED_INSTANCE_CAPACITY"
+			"ak_multimesh.instance_count = FIXED_INSTANCE_CAPACITY"
+		)
+		and presenter_source.contains(
+			"gunner_multimesh.instance_count = GUNNER_FIXED_INSTANCE_CAPACITY"
+		)
+		and presenter_source.contains(
+			"gunner_elite_multimesh.instance_count"
 		),
 		"Presenter must render-sync from the viewport transform without dynamic nodes."
 	)
@@ -167,6 +196,21 @@ func _test_direction_transforms_and_animation_frames() -> void:
 		and PresenterScript.calculate_animation_frame(3.0 / 16.0) == 0,
 		"Animation frame oracle must advance at 16 FPS and wrap across three frames."
 	)
+	_expect(
+		PresenterScript.calculate_animation_frame_for_profile(
+			0.0399,
+			RapidFireSimulationServiceScript.Profile.GUNNER
+		) == 0
+		and PresenterScript.calculate_animation_frame_for_profile(
+			1.0 / 25.0,
+			RapidFireSimulationServiceScript.Profile.GUNNER
+		) == 1
+		and PresenterScript.calculate_animation_frame_for_profile(
+			3.0 / 25.0,
+			RapidFireSimulationServiceScript.Profile.GUNNER_ELITE
+		) == 0,
+		"Both gunner families must advance their three-frame atlases at 25 FPS."
+	)
 
 
 func _test_offscreen_compaction_and_capacity_do_not_mutate_simulation() -> void:
@@ -193,6 +237,30 @@ func _test_offscreen_compaction_and_capacity_do_not_mutate_simulation() -> void:
 		9_999,
 		RapidFireSimulationServiceScript.Mode.SHADOW
 	)
+	_register_projectile(
+		culling_service,
+		Vector2(1.0, 1.0),
+		Vector2.LEFT,
+		10_001,
+		RapidFireSimulationServiceScript.Mode.DATA,
+		RapidFireSimulationServiceScript.Profile.GUNNER
+	)
+	_register_projectile(
+		culling_service,
+		Vector2(500.0, 1.0),
+		Vector2.LEFT,
+		10_002,
+		RapidFireSimulationServiceScript.Mode.DATA,
+		RapidFireSimulationServiceScript.Profile.GUNNER
+	)
+	_register_projectile(
+		culling_service,
+		Vector2(-1.0, 1.0),
+		Vector2.UP,
+		10_003,
+		RapidFireSimulationServiceScript.Mode.DATA,
+		RapidFireSimulationServiceScript.Profile.GUNNER_ELITE
+	)
 	var culling_active_before := culling_service.get_active_slot_count()
 	var compact_visible_count := PresenterScript.count_presentable_projectiles_for_view(
 		culling_service,
@@ -205,6 +273,21 @@ func _test_offscreen_compaction_and_capacity_do_not_mutate_simulation() -> void:
 			"Two offscreen DATA records and one visible SHADOW record must be skipped "
 			+ "while visible DATA records compact to the prefix."
 		)
+	)
+	_expect(
+		PresenterScript.count_presentable_projectiles_for_profile_and_view(
+			culling_service,
+			RapidFireSimulationServiceScript.Profile.GUNNER,
+			TEST_VIEW_RECT,
+			PresenterScript.GUNNER_FIXED_INSTANCE_CAPACITY
+		) == 1
+		and PresenterScript.count_presentable_projectiles_for_profile_and_view(
+			culling_service,
+			RapidFireSimulationServiceScript.Profile.GUNNER_ELITE,
+			TEST_VIEW_RECT,
+			PresenterScript.GUNNER_ELITE_FIXED_INSTANCE_CAPACITY
+		) == 1,
+		"Profile selection must independently compact normal and elite gunner data."
 	)
 	_expect(
 		culling_service.get_active_slot_count() == culling_active_before,
@@ -259,6 +342,10 @@ func _test_headless_sync_clear_and_teardown() -> void:
 	root.add_child(presenter)
 	await process_frame
 	var multimesh_instance := presenter.get_multimesh_instance()
+	var gunner_multimesh_instance := presenter.get_gunner_multimesh_instance()
+	var gunner_elite_multimesh_instance := (
+		presenter.get_gunner_elite_multimesh_instance()
+	)
 	var hit_multimesh_instance := presenter.get_hit_multimesh_instance()
 	var before_sync_metrics := presenter.get_metrics()
 	var active_before_sync := service.get_active_slot_count()
@@ -268,6 +355,17 @@ func _test_headless_sync_clear_and_teardown() -> void:
 		and multimesh_instance.multimesh.instance_count == 0
 		and multimesh_instance.multimesh.visible_instance_count == 0,
 		"Headless ready must release every authored MultiMesh instance."
+	)
+	_expect(
+		gunner_multimesh_instance != null
+		and gunner_multimesh_instance.multimesh != null
+		and gunner_multimesh_instance.multimesh.instance_count == 0
+		and gunner_multimesh_instance.multimesh.visible_instance_count == 0
+		and gunner_elite_multimesh_instance != null
+		and gunner_elite_multimesh_instance.multimesh != null
+		and gunner_elite_multimesh_instance.multimesh.instance_count == 0
+		and gunner_elite_multimesh_instance.multimesh.visible_instance_count == 0,
+		"Headless ready must release both gunner projectile batches."
 	)
 	_expect(
 		hit_multimesh_instance != null
@@ -333,7 +431,7 @@ func _test_headless_sync_clear_and_teardown() -> void:
 func _test_display_sync_hidden_and_teardown() -> void:
 	var presenter := PRESENTER_SCENE.instantiate() as PresenterScript
 	var service := RapidFireSimulationServiceScript.new()
-	service.reserve_projectile_capacity(4)
+	service.reserve_projectile_capacity(6)
 	_register_projectile(service, Vector2(-10.0, 0.0), Vector2.RIGHT, 30_001)
 	_register_projectile(service, Vector2(500.0, 0.0), Vector2.LEFT, 30_002)
 	_register_projectile(service, Vector2(0.0, 10.0), Vector2.DOWN, 30_003)
@@ -344,23 +442,51 @@ func _test_display_sync_hidden_and_teardown() -> void:
 		30_004,
 		RapidFireSimulationServiceScript.Mode.SHADOW
 	)
+	_register_projectile(
+		service,
+		Vector2(5.0, 5.0),
+		Vector2.LEFT,
+		30_005,
+		RapidFireSimulationServiceScript.Mode.DATA,
+		RapidFireSimulationServiceScript.Profile.GUNNER
+	)
+	_register_projectile(
+		service,
+		Vector2(-5.0, 5.0),
+		Vector2.UP,
+		30_006,
+		RapidFireSimulationServiceScript.Mode.DATA,
+		RapidFireSimulationServiceScript.Profile.GUNNER_ELITE
+	)
 	root.add_child(presenter)
 	await process_frame
 	var multimesh_instance := presenter.get_multimesh_instance()
 	var multimesh := multimesh_instance.multimesh
+	var gunner_multimesh := presenter.get_gunner_multimesh_instance().multimesh
+	var gunner_elite_multimesh := (
+		presenter.get_gunner_elite_multimesh_instance().multimesh
+	)
 	var hit_multimesh := presenter.get_hit_multimesh_instance().multimesh
 	_expect(
 		multimesh.instance_count == PresenterScript.FIXED_INSTANCE_CAPACITY
 		and multimesh.visible_instance_count == 0
+		and gunner_multimesh.instance_count
+		== PresenterScript.GUNNER_FIXED_INSTANCE_CAPACITY
+		and gunner_multimesh.visible_instance_count == 0
+		and gunner_elite_multimesh.instance_count
+		== PresenterScript.GUNNER_ELITE_FIXED_INSTANCE_CAPACITY
+		and gunner_elite_multimesh.visible_instance_count == 0
 		and hit_multimesh.instance_count == PresenterScript.HIT_INSTANCE_CAPACITY
 		and hit_multimesh.visible_instance_count == 0,
 		"Display ready must allocate exactly the fixed instance capacity."
 	)
 	var active_before_sync := service.get_active_slot_count()
 	_expect(
-		presenter.sync_from_service(service, TEST_VIEW_RECT) == 2
-		and multimesh.visible_instance_count == 2,
-		"Display sync must compact only visible DATA projectiles into the prefix."
+		presenter.sync_from_service(service, TEST_VIEW_RECT) == 4
+		and multimesh.visible_instance_count == 2
+		and gunner_multimesh.visible_instance_count == 1
+		and gunner_elite_multimesh.visible_instance_count == 1,
+		"Display sync must route visible DATA records into three family prefixes."
 	)
 	var first_transform := multimesh.get_instance_transform_2d(0)
 	var second_transform := multimesh.get_instance_transform_2d(1)
@@ -425,6 +551,10 @@ func _test_display_sync_hidden_and_teardown() -> void:
 	_expect(
 		multimesh.instance_count == 0
 		and multimesh.visible_instance_count == 0
+		and gunner_multimesh.instance_count == 0
+		and gunner_multimesh.visible_instance_count == 0
+		and gunner_elite_multimesh.instance_count == 0
+		and gunner_elite_multimesh.visible_instance_count == 0
 		and hit_multimesh.instance_count == 0
 		and hit_multimesh.visible_instance_count == 0
 		and int(presenter.get_metrics()["teardown_count"]) == 1,
@@ -443,11 +573,14 @@ func _register_projectile(
 	projectile_id: int,
 	mode: RapidFireSimulationServiceScript.Mode = (
 		RapidFireSimulationServiceScript.Mode.DATA
+	),
+	profile: RapidFireSimulationServiceScript.Profile = (
+		RapidFireSimulationServiceScript.Profile.AK
 	)
 ) -> int:
 	return service.register_projectile(
 		mode,
-		RapidFireSimulationServiceScript.Profile.AK,
+		profile,
 		position,
 		direction,
 		120.0,
@@ -457,6 +590,52 @@ func _register_projectile(
 		projectile_id,
 		2,
 		projectile_id & 1
+	)
+
+
+func _expect_projectile_batch(
+	multimesh_instance: MultiMeshInstance2D,
+	expected_name: StringName,
+	expected_texture_size: Vector2,
+	expected_quad_size: Vector2,
+	expected_fps: float
+) -> void:
+	var valid := (
+		multimesh_instance != null
+		and multimesh_instance.name == expected_name
+		and multimesh_instance.multimesh != null
+	)
+	_expect(valid, "%s must be a static authored MultiMesh batch." % expected_name)
+	if not valid:
+		return
+	var multimesh := multimesh_instance.multimesh
+	var quad := multimesh.mesh as QuadMesh
+	var material := multimesh_instance.material as ShaderMaterial
+	_expect(
+		multimesh.resource_local_to_scene
+		and multimesh.transform_format == MultiMesh.TRANSFORM_2D
+		and multimesh.use_custom_data
+		and multimesh.instance_count == 0
+		and multimesh.visible_instance_count == 0
+		and quad != null
+		and quad.size.is_equal_approx(expected_quad_size)
+		and multimesh_instance.texture != null
+		and multimesh_instance.texture.get_size().is_equal_approx(
+			expected_texture_size
+		)
+		and multimesh_instance.texture_filter
+		== CanvasItem.TEXTURE_FILTER_NEAREST
+		and material != null
+		and material.shader != null
+		and is_equal_approx(
+			float(material.get_shader_parameter("frame_count")),
+			3.0
+		)
+		and is_equal_approx(
+			float(material.get_shader_parameter("animation_fps")),
+			expected_fps
+		),
+		"%s must preserve its atlas, frame size, and cadence." % expected_name
 	)
 
 

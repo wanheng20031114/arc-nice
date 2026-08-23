@@ -6,13 +6,23 @@ const RapidFireSimulationServiceScript := preload(
 )
 
 const FIXED_INSTANCE_CAPACITY := 4096
+const GUNNER_FIXED_INSTANCE_CAPACITY := 4096
+const GUNNER_ELITE_FIXED_INSTANCE_CAPACITY := 4096
 const HIT_INSTANCE_CAPACITY := 256
 const AK_FRAME_COUNT := 3
 const AK_ANIMATION_FPS := 16.0
+const GUNNER_FRAME_COUNT := 3
+const GUNNER_ANIMATION_FPS := 25.0
 const VIEW_CULL_MARGIN := 8.0
 const HIT_LIFETIME_SECONDS := 0.18
 
 @onready var projectile_multimesh: MultiMeshInstance2D = $ProjectileMultiMesh
+@onready var gunner_projectile_multimesh: MultiMeshInstance2D = (
+	$GunnerProjectileMultiMesh
+)
+@onready var gunner_elite_projectile_multimesh: MultiMeshInstance2D = (
+	$GunnerEliteProjectileMultiMesh
+)
 @onready var hit_multimesh: MultiMeshInstance2D = $HitMultiMesh
 
 var _rapid_fire_service: RapidFireSimulationServiceScript = null
@@ -26,6 +36,12 @@ var _last_scanned_count := 0
 var _last_visible_count := 0
 var _last_culled_count := 0
 var _last_capacity_truncated_count := 0
+var _last_ak_visible_count := 0
+var _last_gunner_visible_count := 0
+var _last_gunner_elite_visible_count := 0
+var _last_ak_capacity_truncated_count := 0
+var _last_gunner_capacity_truncated_count := 0
+var _last_gunner_elite_capacity_truncated_count := 0
 var _hit_positions := PackedVector2Array()
 var _hit_directions := PackedVector2Array()
 var _hit_ages := PackedFloat32Array()
@@ -53,25 +69,29 @@ func _ready() -> void:
 		_disable_multimesh_for_headless()
 		set_process(false)
 		return
-	var multimesh := _get_projectile_multimesh()
+	var ak_multimesh := _get_projectile_multimesh()
+	var gunner_multimesh := _get_gunner_projectile_multimesh()
+	var gunner_elite_multimesh := _get_gunner_elite_projectile_multimesh()
 	var authored_hit_multimesh := _get_hit_multimesh()
-	if multimesh == null:
-		push_error("RapidProjectilePresenter requires its authored MultiMesh.")
-		return
 	if (
-		multimesh.transform_format != MultiMesh.TRANSFORM_2D
-		or not multimesh.use_custom_data
+		not _is_valid_authored_multimesh(ak_multimesh)
+		or not _is_valid_authored_multimesh(gunner_multimesh)
+		or not _is_valid_authored_multimesh(gunner_elite_multimesh)
 		or authored_hit_multimesh == null
 		or authored_hit_multimesh.transform_format != MultiMesh.TRANSFORM_2D
 		or not authored_hit_multimesh.use_custom_data
 	):
 		push_error("RapidProjectilePresenter authored MultiMesh contracts are invalid.")
-		multimesh.visible_instance_count = 0
+		_clear_projectile_multimesh_prefixes()
 		if authored_hit_multimesh != null:
 			authored_hit_multimesh.visible_instance_count = 0
 		return
-	multimesh.instance_count = FIXED_INSTANCE_CAPACITY
-	multimesh.visible_instance_count = 0
+	ak_multimesh.instance_count = FIXED_INSTANCE_CAPACITY
+	ak_multimesh.visible_instance_count = 0
+	gunner_multimesh.instance_count = GUNNER_FIXED_INSTANCE_CAPACITY
+	gunner_multimesh.visible_instance_count = 0
+	gunner_elite_multimesh.instance_count = GUNNER_ELITE_FIXED_INSTANCE_CAPACITY
+	gunner_elite_multimesh.visible_instance_count = 0
 	authored_hit_multimesh.instance_count = HIT_INSTANCE_CAPACITY
 	authored_hit_multimesh.visible_instance_count = 0
 	visibility_changed.connect(_on_visibility_changed)
@@ -140,10 +160,17 @@ func sync_from_service(
 	if not is_inside_tree() or not is_visible_in_tree():
 		clear()
 		return 0
-	var multimesh := _get_projectile_multimesh()
+	var ak_multimesh := _get_projectile_multimesh()
+	var gunner_multimesh := _get_gunner_projectile_multimesh()
+	var gunner_elite_multimesh := _get_gunner_elite_projectile_multimesh()
 	if (
-		multimesh == null
-		or multimesh.instance_count != FIXED_INSTANCE_CAPACITY
+		ak_multimesh == null
+		or ak_multimesh.instance_count != FIXED_INSTANCE_CAPACITY
+		or gunner_multimesh == null
+		or gunner_multimesh.instance_count != GUNNER_FIXED_INSTANCE_CAPACITY
+		or gunner_elite_multimesh == null
+		or gunner_elite_multimesh.instance_count
+		!= GUNNER_ELITE_FIXED_INSTANCE_CAPACITY
 		or not world_view_rect.has_area()
 	):
 		clear()
@@ -154,6 +181,12 @@ func sync_from_service(
 	_last_visible_count = 0
 	_last_culled_count = 0
 	_last_capacity_truncated_count = 0
+	_last_ak_visible_count = 0
+	_last_gunner_visible_count = 0
+	_last_gunner_elite_visible_count = 0
+	_last_ak_capacity_truncated_count = 0
+	_last_gunner_capacity_truncated_count = 0
+	_last_gunner_elite_capacity_truncated_count = 0
 	var expanded_view_rect := world_view_rect.grow(VIEW_CULL_MARGIN)
 	var stable_record_count := service.get_dense_record_count()
 	var physics_frame := Engine.get_physics_frames()
@@ -167,19 +200,18 @@ func sync_from_service(
 			continue
 		_last_scanned_count += 1
 		if (
-			service.get_slot_profile(handle)
-			!= RapidFireSimulationServiceScript.Profile.AK
-			or service.get_slot_mode(handle)
+			service.get_slot_mode(handle)
 			!= RapidFireSimulationServiceScript.Mode.DATA
 		):
+			_last_culled_count += 1
+			continue
+		var profile := service.get_slot_profile(handle)
+		if not _is_supported_profile(profile):
 			_last_culled_count += 1
 			continue
 		var world_position := service.get_position(handle)
 		if not is_world_position_visible(world_position, expanded_view_rect):
 			_last_culled_count += 1
-			continue
-		if _last_visible_count >= FIXED_INSTANCE_CAPACITY:
-			_last_capacity_truncated_count += 1
 			continue
 		var direction := service.get_direction(handle)
 		if not direction.is_finite() or direction.length_squared() <= 0.0:
@@ -187,16 +219,51 @@ func sync_from_service(
 			continue
 		var local_position := to_local(world_position)
 		var local_direction := direction.rotated(-global_rotation).normalized()
-		multimesh.set_instance_transform_2d(
-			_last_visible_count,
+		var target_multimesh: MultiMesh = null
+		var write_index := 0
+		match profile:
+			RapidFireSimulationServiceScript.Profile.AK:
+				if _last_ak_visible_count >= FIXED_INSTANCE_CAPACITY:
+					_last_ak_capacity_truncated_count += 1
+					_last_capacity_truncated_count += 1
+					continue
+				target_multimesh = ak_multimesh
+				write_index = _last_ak_visible_count
+				_last_ak_visible_count += 1
+			RapidFireSimulationServiceScript.Profile.GUNNER:
+				if (
+					_last_gunner_visible_count
+					>= GUNNER_FIXED_INSTANCE_CAPACITY
+				):
+					_last_gunner_capacity_truncated_count += 1
+					_last_capacity_truncated_count += 1
+					continue
+				target_multimesh = gunner_multimesh
+				write_index = _last_gunner_visible_count
+				_last_gunner_visible_count += 1
+			RapidFireSimulationServiceScript.Profile.GUNNER_ELITE:
+				if (
+					_last_gunner_elite_visible_count
+					>= GUNNER_ELITE_FIXED_INSTANCE_CAPACITY
+				):
+					_last_gunner_elite_capacity_truncated_count += 1
+					_last_capacity_truncated_count += 1
+					continue
+				target_multimesh = gunner_elite_multimesh
+				write_index = _last_gunner_elite_visible_count
+				_last_gunner_elite_visible_count += 1
+			_:
+				continue
+		target_multimesh.set_instance_transform_2d(
+			write_index,
 			build_instance_transform(local_position, local_direction)
 		)
 		var age_physics_frames := maxi(
 			physics_frame - service.get_spawn_physics_frame(handle),
 			0
 		)
-		multimesh.set_instance_custom_data(
-			_last_visible_count,
+		target_multimesh.set_instance_custom_data(
+			write_index,
 			Color(
 				float(age_physics_frames) / physics_ticks_per_second,
 				0.0,
@@ -205,14 +272,16 @@ func sync_from_service(
 			)
 		)
 		_last_visible_count += 1
-	multimesh.visible_instance_count = _last_visible_count
+	ak_multimesh.visible_instance_count = _last_ak_visible_count
+	gunner_multimesh.visible_instance_count = _last_gunner_visible_count
+	gunner_elite_multimesh.visible_instance_count = (
+		_last_gunner_elite_visible_count
+	)
 	return _last_visible_count
 
 
 func clear() -> void:
-	var multimesh := _get_projectile_multimesh()
-	if multimesh != null:
-		multimesh.visible_instance_count = 0
+	_clear_projectile_multimesh_prefixes()
 	var authored_hit_multimesh := _get_hit_multimesh()
 	if authored_hit_multimesh != null:
 		authored_hit_multimesh.visible_instance_count = 0
@@ -220,6 +289,12 @@ func clear() -> void:
 	_last_visible_count = 0
 	_last_culled_count = 0
 	_last_capacity_truncated_count = 0
+	_last_ak_visible_count = 0
+	_last_gunner_visible_count = 0
+	_last_gunner_elite_visible_count = 0
+	_last_ak_capacity_truncated_count = 0
+	_last_gunner_capacity_truncated_count = 0
+	_last_gunner_elite_capacity_truncated_count = 0
 	_last_hit_scanned_count = 0
 	_last_visible_hit_count = 0
 	_active_hit_count = 0
@@ -238,7 +313,7 @@ func queue_completion_hit(
 		_is_headless_display()
 		or _teardown_prepared
 		or mode != RapidFireSimulationServiceScript.Mode.DATA
-		or profile == RapidFireSimulationServiceScript.Profile.INVALID
+		or not _is_supported_profile(profile)
 		or (
 			reason != RapidFireSimulationServiceScript.CompletionReason.WORLD
 			and reason != RapidFireSimulationServiceScript.CompletionReason.TARGET
@@ -271,24 +346,66 @@ func prepare_for_runtime_teardown() -> void:
 	clear()
 	set_process(false)
 	_rapid_fire_service = null
-	var multimesh := _get_projectile_multimesh()
-	if multimesh != null:
-		multimesh.instance_count = 0
+	_release_projectile_multimeshes()
 	var authored_hit_multimesh := _get_hit_multimesh()
 	if authored_hit_multimesh != null:
 		authored_hit_multimesh.instance_count = 0
 
 
 func get_metrics() -> Dictionary:
-	var multimesh := _get_projectile_multimesh()
+	var ak_multimesh := _get_projectile_multimesh()
+	var gunner_multimesh := _get_gunner_projectile_multimesh()
+	var gunner_elite_multimesh := _get_gunner_elite_projectile_multimesh()
 	var authored_hit_multimesh := _get_hit_multimesh()
+	var allocated_ak_instances := (
+		ak_multimesh.instance_count if ak_multimesh != null else 0
+	)
+	var allocated_gunner_instances := (
+		gunner_multimesh.instance_count if gunner_multimesh != null else 0
+	)
+	var allocated_gunner_elite_instances := (
+		gunner_elite_multimesh.instance_count
+		if gunner_elite_multimesh != null
+		else 0
+	)
 	return {
 		"fixed_capacity": FIXED_INSTANCE_CAPACITY,
-		"hit_fixed_capacity": HIT_INSTANCE_CAPACITY,
-		"allocated_instances": multimesh.instance_count if multimesh != null else 0,
-		"visible_instances": (
-			multimesh.visible_instance_count if multimesh != null else 0
+		"ak_fixed_capacity": FIXED_INSTANCE_CAPACITY,
+		"gunner_fixed_capacity": GUNNER_FIXED_INSTANCE_CAPACITY,
+		"gunner_elite_fixed_capacity": GUNNER_ELITE_FIXED_INSTANCE_CAPACITY,
+		"total_fixed_capacity": (
+			FIXED_INSTANCE_CAPACITY
+			+ GUNNER_FIXED_INSTANCE_CAPACITY
+			+ GUNNER_ELITE_FIXED_INSTANCE_CAPACITY
 		),
+		"hit_fixed_capacity": HIT_INSTANCE_CAPACITY,
+		# These two legacy keys continue to describe the AK batch.
+		"allocated_instances": allocated_ak_instances,
+		"visible_instances": (
+			ak_multimesh.visible_instance_count if ak_multimesh != null else 0
+		),
+		"allocated_ak_instances": allocated_ak_instances,
+		"allocated_gunner_instances": allocated_gunner_instances,
+		"allocated_gunner_elite_instances": allocated_gunner_elite_instances,
+		"allocated_projectile_instances": (
+			allocated_ak_instances
+			+ allocated_gunner_instances
+			+ allocated_gunner_elite_instances
+		),
+		"visible_ak_instances": (
+			ak_multimesh.visible_instance_count if ak_multimesh != null else 0
+		),
+		"visible_gunner_instances": (
+			gunner_multimesh.visible_instance_count
+			if gunner_multimesh != null
+			else 0
+		),
+		"visible_gunner_elite_instances": (
+			gunner_elite_multimesh.visible_instance_count
+			if gunner_elite_multimesh != null
+			else 0
+		),
+		"visible_projectile_instances": _last_visible_count,
 		"allocated_hit_instances": (
 			authored_hit_multimesh.instance_count
 			if authored_hit_multimesh != null
@@ -313,6 +430,18 @@ func get_metrics() -> Dictionary:
 		"last_visible_count": _last_visible_count,
 		"last_culled_count": _last_culled_count,
 		"last_capacity_truncated_count": _last_capacity_truncated_count,
+		"last_ak_visible_count": _last_ak_visible_count,
+		"last_gunner_visible_count": _last_gunner_visible_count,
+		"last_gunner_elite_visible_count": _last_gunner_elite_visible_count,
+		"last_ak_capacity_truncated_count": (
+			_last_ak_capacity_truncated_count
+		),
+		"last_gunner_capacity_truncated_count": (
+			_last_gunner_capacity_truncated_count
+		),
+		"last_gunner_elite_capacity_truncated_count": (
+			_last_gunner_elite_capacity_truncated_count
+		),
 		"active_hit_count": _active_hit_count,
 		"last_hit_scanned_count": _last_hit_scanned_count,
 		"last_visible_hit_count": _last_visible_hit_count,
@@ -324,6 +453,17 @@ func get_metrics() -> Dictionary:
 
 func get_multimesh_instance() -> MultiMeshInstance2D:
 	return get_node_or_null("ProjectileMultiMesh") as MultiMeshInstance2D
+
+
+func get_gunner_multimesh_instance() -> MultiMeshInstance2D:
+	return get_node_or_null("GunnerProjectileMultiMesh") as MultiMeshInstance2D
+
+
+func get_gunner_elite_multimesh_instance() -> MultiMeshInstance2D:
+	return (
+		get_node_or_null("GunnerEliteProjectileMultiMesh")
+		as MultiMeshInstance2D
+	)
 
 
 func get_hit_multimesh_instance() -> MultiMeshInstance2D:
@@ -351,11 +491,31 @@ static func is_world_position_visible(
 
 
 static func calculate_animation_frame(age_seconds: float) -> int:
+	return calculate_animation_frame_for_profile(
+		age_seconds,
+		RapidFireSimulationServiceScript.Profile.AK
+	)
+
+
+static func calculate_animation_frame_for_profile(
+	age_seconds: float,
+	profile: RapidFireSimulationServiceScript.Profile
+) -> int:
 	if not is_finite(age_seconds) or age_seconds <= 0.0:
 		return 0
+	var animation_fps := AK_ANIMATION_FPS
+	var frame_count := AK_FRAME_COUNT
+	match profile:
+		RapidFireSimulationServiceScript.Profile.GUNNER, RapidFireSimulationServiceScript.Profile.GUNNER_ELITE:
+			animation_fps = GUNNER_ANIMATION_FPS
+			frame_count = GUNNER_FRAME_COUNT
+		RapidFireSimulationServiceScript.Profile.AK:
+			pass
+		_:
+			return 0
 	return posmod(
-		int(floor(age_seconds * AK_ANIMATION_FPS)),
-		AK_FRAME_COUNT
+		int(floor(age_seconds * animation_fps)),
+		frame_count
 	)
 
 
@@ -364,9 +524,24 @@ static func count_presentable_projectiles_for_view(
 	world_view_rect: Rect2,
 	presentation_capacity: int = FIXED_INSTANCE_CAPACITY
 ) -> int:
+	return count_presentable_projectiles_for_profile_and_view(
+		service,
+		RapidFireSimulationServiceScript.Profile.AK,
+		world_view_rect,
+		presentation_capacity
+	)
+
+
+static func count_presentable_projectiles_for_profile_and_view(
+	service: RapidFireSimulationServiceScript,
+	profile: RapidFireSimulationServiceScript.Profile,
+	world_view_rect: Rect2,
+	presentation_capacity: int
+) -> int:
 	if (
 		service == null
 		or not is_instance_valid(service)
+		or not _is_supported_profile(profile)
 		or not world_view_rect.has_area()
 		or presentation_capacity <= 0
 	):
@@ -378,7 +553,7 @@ static func count_presentable_projectiles_for_view(
 		if (
 			handle <= RapidFireSimulationServiceScript.INVALID_HANDLE
 			or service.get_slot_profile(handle)
-			!= RapidFireSimulationServiceScript.Profile.AK
+			!= profile
 			or service.get_slot_mode(handle)
 			!= RapidFireSimulationServiceScript.Mode.DATA
 			or not is_world_position_visible(
@@ -498,20 +673,70 @@ func _get_projectile_multimesh() -> MultiMesh:
 	return multimesh_instance.multimesh if multimesh_instance != null else null
 
 
+func _get_gunner_projectile_multimesh() -> MultiMesh:
+	var multimesh_instance := get_gunner_multimesh_instance()
+	return multimesh_instance.multimesh if multimesh_instance != null else null
+
+
+func _get_gunner_elite_projectile_multimesh() -> MultiMesh:
+	var multimesh_instance := get_gunner_elite_multimesh_instance()
+	return multimesh_instance.multimesh if multimesh_instance != null else null
+
+
 func _get_hit_multimesh() -> MultiMesh:
 	var multimesh_instance := get_hit_multimesh_instance()
 	return multimesh_instance.multimesh if multimesh_instance != null else null
 
 
 func _disable_multimesh_for_headless() -> void:
-	var multimesh := _get_projectile_multimesh()
-	if multimesh != null:
-		multimesh.visible_instance_count = 0
-		multimesh.instance_count = 0
+	_release_projectile_multimeshes()
 	var authored_hit_multimesh := _get_hit_multimesh()
 	if authored_hit_multimesh != null:
 		authored_hit_multimesh.visible_instance_count = 0
 		authored_hit_multimesh.instance_count = 0
+
+
+func _clear_projectile_multimesh_prefixes() -> void:
+	var ak_multimesh := _get_projectile_multimesh()
+	if ak_multimesh != null:
+		ak_multimesh.visible_instance_count = 0
+	var gunner_multimesh := _get_gunner_projectile_multimesh()
+	if gunner_multimesh != null:
+		gunner_multimesh.visible_instance_count = 0
+	var gunner_elite_multimesh := _get_gunner_elite_projectile_multimesh()
+	if gunner_elite_multimesh != null:
+		gunner_elite_multimesh.visible_instance_count = 0
+
+
+func _release_projectile_multimeshes() -> void:
+	_clear_projectile_multimesh_prefixes()
+	var ak_multimesh := _get_projectile_multimesh()
+	if ak_multimesh != null:
+		ak_multimesh.instance_count = 0
+	var gunner_multimesh := _get_gunner_projectile_multimesh()
+	if gunner_multimesh != null:
+		gunner_multimesh.instance_count = 0
+	var gunner_elite_multimesh := _get_gunner_elite_projectile_multimesh()
+	if gunner_elite_multimesh != null:
+		gunner_elite_multimesh.instance_count = 0
+
+
+static func _is_valid_authored_multimesh(multimesh: MultiMesh) -> bool:
+	return (
+		multimesh != null
+		and multimesh.transform_format == MultiMesh.TRANSFORM_2D
+		and multimesh.use_custom_data
+	)
+
+
+static func _is_supported_profile(
+	profile: RapidFireSimulationServiceScript.Profile
+) -> bool:
+	return (
+		profile == RapidFireSimulationServiceScript.Profile.AK
+		or profile == RapidFireSimulationServiceScript.Profile.GUNNER
+		or profile == RapidFireSimulationServiceScript.Profile.GUNNER_ELITE
+	)
 
 
 func _on_visibility_changed() -> void:

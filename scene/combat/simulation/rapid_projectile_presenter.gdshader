@@ -1,9 +1,10 @@
 shader_type canvas_item;
 render_mode unshaded;
 
-// INSTANCE_CUSTOM.r is authoritative projectile age in seconds. The presenter
-// updates it together with the transform; the shader selects the original
-// three-frame 24x8 AK atlas at the authored 16 FPS rate.
+// INSTANCE_CUSTOM.r is authoritative projectile age in seconds. Static
+// materials configure each family's authored atlas cadence.
+uniform float frame_count : hint_range(1.0, 16.0, 1.0) = 3.0;
+uniform float animation_fps : hint_range(0.0, 60.0, 0.1) = 16.0;
 varying float projectile_age_seconds;
 
 void vertex() {
@@ -11,7 +12,14 @@ void vertex() {
 }
 
 void fragment() {
-	float frame_index = mod(floor(projectile_age_seconds * 16.0), 3.0);
-	vec2 atlas_uv = vec2((UV.x + frame_index) / 3.0, UV.y);
+	float safe_frame_count = max(frame_count, 1.0);
+	float frame_index = mod(
+		floor(projectile_age_seconds * animation_fps),
+		safe_frame_count
+	);
+	vec2 atlas_uv = vec2(
+		(UV.x + frame_index) / safe_frame_count,
+		UV.y
+	);
 	COLOR = texture(TEXTURE, atlas_uv) * COLOR;
 }

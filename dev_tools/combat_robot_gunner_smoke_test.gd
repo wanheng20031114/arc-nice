@@ -21,6 +21,9 @@ const AGAVE_CONFIG := preload(
 const AK_FIRE_AUDIO := preload(
 	"res://resources/audio/capoo_ak47_fire.wav"
 )
+const ENEMY_SIMULATION_COORDINATOR_SCENE := preload(
+	"res://scene/combat/simulation/enemy_simulation_coordinator.tscn"
+)
 const WORLD_COLLISION_LAYER := 1
 const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 const EPSILON := 0.001
@@ -49,6 +52,8 @@ class GunnerTestGateway:
 
 	var enemy_actions: Array[Dictionary] = []
 	var registered_projectiles: Array[Dictionary] = []
+	var next_projectile_id := 12001
+	var reject_next_data_registration := false
 
 	func broadcast_enemy_action(
 		net_id: int,
@@ -80,6 +85,8 @@ class GunnerTestGateway:
 	) -> void:
 		registered_projectiles.append({
 			"projectile": projectile,
+			"service": null,
+			"handle": RapidFireSimulationService.INVALID_HANDLE,
 			"projectile_type": projectile_type,
 			"spawn_position": spawn_position,
 			"direction": direction,
@@ -89,10 +96,42 @@ class GunnerTestGateway:
 		})
 
 
+	func register_local_data_projectile(
+		service: RapidFireSimulationService,
+		handle: int,
+		projectile_type: StringName,
+		_owner_peer_id: int,
+		spawn_position: Vector2,
+		direction: Vector2,
+		damage: int,
+		speed: float,
+		lifetime: float
+	) -> int:
+		if reject_next_data_registration:
+			reject_next_data_registration = false
+			return 0
+		var projectile_id := next_projectile_id
+		if not service.assign_projectile_identity(handle, projectile_id):
+			return 0
+		next_projectile_id += 1
+		registered_projectiles.append({
+			"projectile": null,
+			"service": service,
+			"handle": handle,
+			"projectile_id": projectile_id,
+			"projectile_type": projectile_type,
+			"spawn_position": spawn_position,
+			"direction": direction,
+			"damage": damage,
+			"speed": speed,
+			"lifetime": lifetime,
+		})
+		return projectile_id
+
+
 class GunnerTestRoot:
 	extends PlayerTestCombatRuntime
 
-	var force_next_pool_failure := false
 	var recording_gateway: GunnerTestGateway = null
 	var enemy_actions: Array[Dictionary]:
 		get:
@@ -104,6 +143,7 @@ class GunnerTestRoot:
 
 	func _init() -> void:
 		super()
+		runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 		var motion_placeholder := get_node("CapooProjectileMotionSystem")
 		remove_child(motion_placeholder)
 		motion_placeholder.free()
@@ -117,17 +157,7 @@ class GunnerTestRoot:
 		recording_gateway = GunnerTestGateway.new()
 		recording_gateway.name = "MultiplayerGameplayGateway"
 		add_child(recording_gateway)
-
-
-	func has_session_object_pool_scene(scene: PackedScene) -> bool:
-		return force_next_pool_failure or super(scene)
-
-
-	func acquire_session_object(scene: PackedScene, strict: bool = false) -> Node:
-		if force_next_pool_failure:
-			force_next_pool_failure = false
-			return null
-		return super(scene, strict)
+		add_child(ENEMY_SIMULATION_COORDINATOR_SCENE.instantiate())
 
 
 var failures: Array[String] = []
@@ -140,6 +170,11 @@ func _init() -> void:
 
 
 func _run() -> void:
+	_expect(
+		CombatRobotGunner.projectile_backend
+		== CombatRobotGunner.ProjectileBackend.DATA,
+		"Production gunner backend must default to DATA."
+	)
 	test_root = GunnerTestRoot.new()
 	test_root.name = "CombatRobotGunnerSmokeTest"
 	root.add_child(test_root)
@@ -335,13 +370,13 @@ func _test_successful_burst_scheduler_and_spread() -> void:
 		"Entering BURST must inherit the move leg phase."
 	)
 
-	test_root.force_next_pool_failure = true
+	test_root.recording_gateway.reject_next_data_registration = true
 	gunner.call("_update_burst", 0.0)
 	_expect(
 		gunner.burst_shots_fired == 0
 		and is_zero_approx(gunner.burst_fire_time_left)
 		and test_root.registered_projectiles.is_empty(),
-		"A failed projectile acquisition must stay pending without consuming a shot."
+		"A rejected DATA identity must stay pending without consuming a shot."
 	)
 
 	gunner.call("_update_burst", 0.0)
@@ -502,6 +537,8 @@ func _test_locked_target_tracking_and_movement() -> void:
 
 
 func _test_touch_damage_during_burst() -> void:
+	var previous_runtime_mode := test_root.runtime_mode
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var player := _spawn_player(Vector2(60.0, 0.0))
 	player.invincibility_duration = 0.0
 	player.invincibility_time_left = 0.0
@@ -526,6 +563,7 @@ func _test_touch_damage_during_burst() -> void:
 	)
 	gunner.queue_free()
 	player.queue_free()
+	test_root.runtime_mode = previous_runtime_mode
 	await process_frame
 
 
@@ -601,9 +639,14 @@ func _test_death_cancels_remaining_burst() -> void:
 		"Death must prevent every future scheduled projectile and fire action."
 	)
 	for record in test_root.registered_projectiles:
+		var service := record.get("service") as RapidFireSimulationService
+		var handle := int(record.get(
+			"handle",
+			RapidFireSimulationService.INVALID_HANDLE
+		))
 		_expect(
-			is_instance_valid(record.projectile as Node),
-			"Projectiles fired before shooter death must remain alive."
+			service != null and service.is_handle_live(handle),
+			"DATA handles fired before shooter death must remain live."
 		)
 	gunner.queue_free()
 	player.queue_free()
@@ -758,11 +801,18 @@ func _wait_for_speed(
 
 func _cleanup_registered_projectiles() -> void:
 	for record in test_root.registered_projectiles:
-		var projectile := record.projectile as Node
+		var projectile := record.get("projectile") as Node
 		if projectile != null and is_instance_valid(projectile):
 			projectile.queue_free()
+		var service := record.get("service") as RapidFireSimulationService
+		var handle := int(record.get(
+			"handle",
+			RapidFireSimulationService.INVALID_HANDLE
+		))
+		if service != null and service.is_handle_live(handle):
+			service.release_projectile(handle)
 	test_root.registered_projectiles.clear()
-	test_root.force_next_pool_failure = false
+	test_root.recording_gateway.reject_next_data_registration = false
 
 
 func _expect(condition: bool, message: String) -> void:

@@ -26,11 +26,11 @@ enum ProjectileBackend {
 	DATA,
 }
 
-# Ordinary and elite gunners share one process-wide migration cohort. SHADOW
-# keeps the authored Area2D authoritative while the data kernel records an
-# inert comparison; DATA can then be certified without mixing backends inside
-# one live burst.
-static var projectile_backend: ProjectileBackend = ProjectileBackend.SHADOW
+# Fixed-seed parity, authored collision probes and the production SHADOW stage
+# certify the shared kernel for both ordinary and elite profiles. The explicit
+# switch remains available to deterministic rollback tests, while production
+# authority is node-free DATA for the whole process-wide gunner cohort.
+static var projectile_backend: ProjectileBackend = ProjectileBackend.DATA
 
 enum CombatState {
 	TRACKING_READY,

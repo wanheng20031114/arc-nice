@@ -131,7 +131,7 @@ class CapturingGateway:
 
 
 var failures := PackedStringArray()
-var saved_projectile_backend := CombatRobotGunner.ProjectileBackend.SHADOW
+var saved_projectile_backend := CombatRobotGunner.ProjectileBackend.DATA
 
 
 func _init() -> void:
@@ -142,8 +142,8 @@ func _run() -> void:
 	saved_projectile_backend = CombatRobotGunner.projectile_backend
 	_expect(
 		CombatRobotGunner.projectile_backend
-		== CombatRobotGunner.ProjectileBackend.SHADOW,
-		"Gunner production migration must default to SHADOW."
+		== CombatRobotGunner.ProjectileBackend.DATA,
+		"Certified gunner production must default to node-free DATA authority."
 	)
 	await _test_fixed_seed_backend_parity(
 		GUNNER_SCENE,

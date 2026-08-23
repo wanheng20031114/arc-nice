@@ -18,6 +18,9 @@ const P1B_GAME := preload(
 const GUNNER_CONFIG := preload(
 	"res://resources/config/enemies/combat_robot_gunner.tres"
 )
+const GUNNER_ELITE_CONFIG := preload(
+	"res://resources/config/enemies/combat_robot_gunner_elite.tres"
+)
 const AK_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
 const SMG_CONFIG := preload("res://resources/config/enemies/capoo_smg.tres")
 
@@ -79,9 +82,20 @@ func _test_rogue_runtime(
 			pool,
 			motion_system,
 			pathfinder,
-			label
+			GUNNER_CONFIG,
+			RapidFireSimulationService.Profile.GUNNER,
+			label + "普通持枪机器人"
 		)
 		if test_capoo_paths:
+			await _test_gunner_authoritative_fire(
+				runtime,
+				pool,
+				motion_system,
+				pathfinder,
+				GUNNER_ELITE_CONFIG,
+				RapidFireSimulationService.Profile.GUNNER_ELITE,
+				label + "精英持枪机器人"
+			)
 			await _test_ak_authoritative_fire(
 				runtime,
 				pool,
@@ -106,69 +120,143 @@ func _test_gunner_authoritative_fire(
 	pool: SessionObjectPool,
 	motion_system: CapooProjectileMotionSystem,
 	pathfinder: GridPathfinder,
+	gunner_config: CombatRobotGunnerConfig,
+	expected_profile: RapidFireSimulationService.Profile,
 	label: String
 ) -> void:
+	_expect(
+		CombatRobotGunner.projectile_backend
+		== CombatRobotGunner.ProjectileBackend.DATA,
+		"%s生产默认必须使用DATA权威弹体后端。" % label
+	)
 	var combat_services := runtime.get_enemy_combat_services()
 	var rapid_fire_service := (
 		combat_services.get_rapid_fire_simulation_service()
 		if combat_services != null
 		else null
 	) as RapidFireSimulationService
-	_expect(
-		CombatRobotGunner.projectile_backend
-		== CombatRobotGunner.ProjectileBackend.SHADOW,
-		"%s的持枪机器人生产默认必须处于SHADOW迁移阶段。" % label
+	_expect(rapid_fire_service != null, "%s必须接入共享连发弹体服务。" % label)
+	if rapid_fire_service == null:
+		return
+	var pool_metrics_before := pool.get_metrics(
+		gunner_config.projectile_scene.resource_path
 	)
-	_expect(
-		rapid_fire_service != null,
-		"%s的持枪机器人必须接入共享连发弹体服务。" % label
-	)
-	var rapid_active_before := (
-		rapid_fire_service.get_active_slot_count()
-		if rapid_fire_service != null
-		else 0
-	)
-	var gunner := GUNNER_CONFIG.enemy_scene.instantiate() as CombatRobotGunner
+	var pool_in_use_before := int(pool_metrics_before.get("in_use", 0))
+	var pool_pending_before := int(pool_metrics_before.get("pending_release", 0))
+	var motion_count_before := motion_system.get_active_projectile_count()
+	var service_metrics_before := rapid_fire_service.get_metrics()
+	var active_slots_before := rapid_fire_service.get_active_slot_count()
+	var data_slots_before := int(service_metrics_before.get("data_slots", 0))
+	var advances_before := int(service_metrics_before.get("advances", 0))
+
+	var gunner := gunner_config.enemy_scene.instantiate() as CombatRobotGunner
 	runtime.enemy_container.add_child(gunner)
 	gunner.global_position = Vector2(145.0, 127.0)
-	gunner.setup(GUNNER_CONFIG, runtime.player, pathfinder, runtime)
+	gunner.setup(gunner_config, runtime.player, pathfinder, runtime)
 	gunner.set_process(false)
 	gunner.set_physics_process(false)
 	gunner.locked_fire_direction = Vector2.RIGHT
 	var fired := bool(gunner.call("_fire_locked_bullet"))
-	_expect(fired, "%s的持枪机器人必须通过权威生产路径成功开火。" % label)
-	var shadow_handle := (
-		_find_live_rapid_handle_for_source(
-			rapid_fire_service,
-			int(gunner.get_instance_id()),
-			RapidFireSimulationService.Mode.SHADOW,
-			RapidFireSimulationService.Profile.GUNNER
+	_expect(fired, "%s必须通过权威生产路径成功开火。" % label)
+	var data_handle := _find_live_rapid_handle_for_source(
+		rapid_fire_service,
+		int(gunner.get_instance_id()),
+		RapidFireSimulationService.Mode.DATA,
+		expected_profile
+	)
+	_expect(
+		data_handle > RapidFireSimulationService.INVALID_HANDLE,
+		"%s开火必须生成对应Profile的DATA句柄。" % label
+	)
+	_expect(
+		rapid_fire_service.get_active_slot_count() == active_slots_before + 1
+		and int(rapid_fire_service.get_metrics().get("data_slots", 0))
+		== data_slots_before + 1,
+		"%s开火必须只增加一个DATA权威记录。" % label
+	)
+	_expect(
+		_find_active_pooled_bullet(
+			runtime,
+			gunner_config.projectile_scene
+		) == null
+		and motion_system.get_active_projectile_count() == motion_count_before,
+		"%s DATA开火不得创建或注册权威Bullet Node/Area。" % label
+	)
+	var pool_metrics_after_fire := pool.get_metrics(
+		gunner_config.projectile_scene.resource_path
+	)
+	_expect(
+		int(pool_metrics_after_fire.get("in_use", 0)) == pool_in_use_before
+		and int(pool_metrics_after_fire.get("pending_release", 0))
+		== pool_pending_before,
+		"%s DATA开火不得增加旧对象池占用。" % label
+	)
+
+	var start_position := rapid_fire_service.get_position(data_handle)
+	var maximum_flight_distance := 0.0
+	var maximum_pool_in_use := pool_in_use_before
+	for _frame_index in range(SAMPLE_PHYSICS_FRAMES):
+		await physics_frame
+		maximum_pool_in_use = maxi(
+			maximum_pool_in_use,
+			int(
+				pool.get_metrics(
+					gunner_config.projectile_scene.resource_path
+				).get("in_use", 0)
+			)
 		)
-		if rapid_fire_service != null
-		else RapidFireSimulationService.INVALID_HANDLE
+		if rapid_fire_service.is_handle_live(data_handle):
+			maximum_flight_distance = maxf(
+				maximum_flight_distance,
+				rapid_fire_service.get_position(data_handle).distance_to(
+					start_position
+				)
+			)
+	_expect(
+		maximum_flight_distance > MINIMUM_FLIGHT_DISTANCE
+		and int(rapid_fire_service.get_metrics().get("advances", 0))
+		> advances_before,
+		"%s DATA句柄经过%d个物理帧必须推进，实测%.3f像素。"
+		% [label, SAMPLE_PHYSICS_FRAMES, maximum_flight_distance]
+	)
+
+	for _frame_index in range(MAX_RECYCLE_PHYSICS_FRAMES):
+		if not rapid_fire_service.is_handle_live(data_handle):
+			break
+		await physics_frame
+		maximum_pool_in_use = maxi(
+			maximum_pool_in_use,
+			int(
+				pool.get_metrics(
+					gunner_config.projectile_scene.resource_path
+				).get("in_use", 0)
+			)
+		)
+	await physics_frame
+	var final_service_metrics := rapid_fire_service.get_metrics()
+	var final_pool_metrics := pool.get_metrics(
+		gunner_config.projectile_scene.resource_path
 	)
 	_expect(
-		shadow_handle > RapidFireSimulationService.INVALID_HANDLE
-		and rapid_fire_service.get_active_slot_count() == rapid_active_before + 1,
-		"%s的持枪机器人SHADOW开火必须配对一个普通枪手观察句柄。" % label
-	)
-	var bullet := _find_active_pooled_bullet(
-		runtime,
-		GUNNER_CONFIG.projectile_scene
-	)
-	await _assert_registered_flight_and_recycle(
-		bullet,
-		GUNNER_CONFIG.projectile_scene,
-		pool,
-		motion_system,
-		SAMPLE_PHYSICS_FRAMES,
-		label + "持枪机器人"
+		not rapid_fire_service.is_handle_live(data_handle)
+		and rapid_fire_service.get_active_slot_count() == active_slots_before
+		and int(final_service_metrics.get("data_slots", 0)) == data_slots_before,
+		"%s DATA弹体完成后必须失效句柄并回收活跃槽。" % label
 	)
 	_expect(
-		rapid_fire_service != null
-		and not rapid_fire_service.is_handle_live(shadow_handle)
-		and rapid_fire_service.get_active_slot_count() == rapid_active_before,
-		"%s的持枪机器人弹丸回池时必须同步释放SHADOW观察句柄。" % label
+		maximum_pool_in_use == pool_in_use_before
+		and int(final_pool_metrics.get("in_use", 0)) == pool_in_use_before
+		and int(final_pool_metrics.get("pending_release", 0))
+		== pool_pending_before,
+		"%s DATA弹体整个生命周期不得增加旧对象池in_use。" % label
+	)
+	_expect(
+		_find_active_pooled_bullet(
+			runtime,
+			gunner_config.projectile_scene
+		) == null
+		and motion_system.get_active_projectile_count() == motion_count_before,
+		"%s DATA完成后不得遗留权威Bullet Node/Area或运动记录。" % label
 	)
 	gunner.queue_free()
 	await process_frame

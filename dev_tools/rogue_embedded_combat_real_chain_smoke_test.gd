@@ -219,11 +219,25 @@ func _test_authoritative_real_combat_and_teardown() -> void:
 
 
 func _test_real_gunner_projectile_damage(
-	route_shell: Node,
+	_route_shell: Node,
 	battle: RogueCombatGame,
 	player: AmmoRangedPlayer
 ) -> void:
 	_reset_player_for_damage_test(player)
+	_expect(
+		CombatRobotGunner.projectile_backend
+		== CombatRobotGunner.ProjectileBackend.DATA,
+		"持枪战斗机器人正式链路必须使用DATA权威弹体。"
+	)
+	var combat_services := battle.get_enemy_combat_services()
+	var rapid_fire_service := (
+		combat_services.get_rapid_fire_simulation_service()
+		if combat_services != null
+		else null
+	) as RapidFireSimulationService
+	_expect(rapid_fire_service != null, "真实战场必须提供共享连发弹体服务。")
+	if rapid_fire_service == null:
+		return
 	var gunner := (
 		COMBAT_ROBOT_GUNNER_SCENE.instantiate() as CombatRobotGunner
 	)
@@ -240,32 +254,31 @@ func _test_real_gunner_projectile_damage(
 	)
 	gunner.random_generator.seed = AUTHORITATIVE_SEED
 	gunner.set_physics_process(false)
+	var health_before := player.current_health
+	var expected_damage := gunner.get_effective_attack_damage(
+		COMBAT_ROBOT_GUNNER_CONFIG.attack_damage
+	)
 	var burst_started := bool(gunner.call("_try_start_burst", player))
 	gunner.call("_update_burst", 0.0)
-	var gunner_bullet := _find_active_gunner_bullet(route_shell)
-	_expect(
-		burst_started and gunner_bullet != null,
-		"持枪战斗机器人必须通过真实 burst 管线发射枪弹。"
+	var data_handle := _find_gunner_data_handle(
+		rapid_fire_service,
+		int(gunner.get_instance_id())
 	)
-	if gunner_bullet != null:
-		_expect(
-			gunner_bullet.get_parent() == battle,
-			(
-				"内嵌肉鸽中的机器人枪弹必须归属战场运行时，"
-				+ "不得挂到外层路线场景。"
-			)
-		)
-		gunner_bullet.set_physics_process(false)
-		var health_before := player.current_health
-		var expected_damage := gunner.get_effective_attack_damage(
-			COMBAT_ROBOT_GUNNER_CONFIG.attack_damage
-		)
-		gunner_bullet.call("_on_body_entered", player)
-		_expect(
-			health_before - player.current_health == expected_damage
-			and gunner_bullet.has_hit,
-			"真实机器人枪弹必须命中玩家、结算权威伤害并消费弹体。"
-		)
+	_expect(
+		burst_started
+		and data_handle > RapidFireSimulationService.INVALID_HANDLE
+		and _find_active_gunner_bullet(battle) == null,
+		"持枪战斗机器人必须通过真实burst管线生成DATA句柄且不创建权威Node。"
+	)
+	for _physics_index in range(90):
+		if player.current_health < health_before:
+			break
+		await physics_frame
+	_expect(
+		health_before - player.current_health == expected_damage
+		and not rapid_fire_service.is_handle_live(data_handle),
+		"真实机器人DATA枪弹必须命中玩家、结算权威伤害并回收句柄。"
+	)
 	gunner.queue_free()
 	await process_frame
 
@@ -626,6 +639,24 @@ func _find_active_gunner_bullet(root_node: Node) -> CombatRobotGunnerBullet:
 		):
 			return bullet
 	return null
+
+
+func _find_gunner_data_handle(
+	rapid_fire_service: RapidFireSimulationService,
+	source_enemy_id: int
+) -> int:
+	for stable_index in range(rapid_fire_service.get_dense_record_count()):
+		var handle := rapid_fire_service.get_handle_at_stable_index(stable_index)
+		if (
+			handle > RapidFireSimulationService.INVALID_HANDLE
+			and rapid_fire_service.get_slot_mode(handle)
+			== RapidFireSimulationService.Mode.DATA
+			and rapid_fire_service.get_slot_profile(handle)
+			== RapidFireSimulationService.Profile.GUNNER
+			and rapid_fire_service.get_source_enemy_id(handle) == source_enemy_id
+		):
+			return handle
+	return RapidFireSimulationService.INVALID_HANDLE
 
 
 func _collect_projectiles(root_node: Node) -> Array[Node]:
