@@ -15,7 +15,7 @@ extends SceneTree
 # tower-defense scene, authored enemy scenes, shared GridPathfinder, production
 # retargeting, projectile/effect pools, camera, player collision and audio/VFX
 # budgets. Timings are diagnostic; semantic/lifecycle invariants are the gates.
-const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
+const TOWER_SCENE_PATH := "res://scene/game_modes/tower_defense/tower_defense_game.tscn"
 const TELEMETRY_SCRIPT := preload("res://scene/combat/diagnostics/runtime_performance_telemetry.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
@@ -63,6 +63,15 @@ const COUNT_SAMPLE_INTERVAL_FRAMES := 15
 const CLEANUP_FRAMES := 10
 const FRAME_BUDGET_60_FPS_MS := 1000.0 / 60.0
 const FRAME_BUDGET_30_FPS_MS := 1000.0 / 30.0
+const PROBE_RESULT_SCHEMA_VERSION := 1
+const FORMAL_GATE_MINIMUM_WARMUP_FRAMES := 120
+const FORMAL_GATE_MINIMUM_SAMPLE_FRAMES := 1200
+const QUICK_GATE_MINIMUM_WARMUP_FRAMES := 60
+const QUICK_GATE_MINIMUM_SAMPLE_FRAMES := 240
+const CPU60_DEFAULT_OVER_33_RATIO_BUDGET := 0.005
+const WINDOW60_DEFAULT_WALL_P95_BUDGET_MS := 18.0
+const WINDOW60_DEFAULT_OVER_18_RATIO_BUDGET := 0.05
+const FORMAL_WINDOW_SIZE := Vector2i(1280, 720)
 
 enum ProbePhase {
 	APPROACH,
@@ -71,7 +80,15 @@ enum ProbePhase {
 	BOSS,
 }
 
+enum GateProfile {
+	DIAGNOSTIC,
+	CPU60,
+	WINDOW60,
+	WAVE60,
+}
+
 var failures: Array[String] = []
+var tower_scene: PackedScene = null
 var game: TowerDefenseGame = null
 var pathfinder: GridPathfinder = null
 var telemetry: RuntimePerformanceTelemetry = null
@@ -100,6 +117,13 @@ var requested_corn_count := 0
 var requested_agave_count := 0
 var requested_max_fps := 60
 var requested_window_size := Vector2i.ZERO
+var requested_gate_profile := GateProfile.DIAGNOSTIC
+var requested_quick_validation := false
+var requested_wall_p95_budget_ms := FRAME_BUDGET_60_FPS_MS
+var requested_wall_p99_budget_ms := FRAME_BUDGET_30_FPS_MS
+var requested_over_18_ratio_budget := WINDOW60_DEFAULT_OVER_18_RATIO_BUDGET
+var requested_over_33_ratio_budget := CPU60_DEFAULT_OVER_33_RATIO_BUDGET
+var requested_vsync_mode := "project"
 var requested_navigation_interval := 0
 var requested_navigation_render_dedupe := true
 var requested_navigation_refresh_budget := true
@@ -180,6 +204,42 @@ func _parse_user_arguments() -> void:
 			requested_agave_count = maxi(int(argument.get_slice("=", 1)), 0)
 		elif argument.begins_with("--max-fps="):
 			requested_max_fps = maxi(int(argument.get_slice("=", 1)), 0)
+		elif argument.begins_with("--gate-profile="):
+			requested_gate_profile = _parse_gate_profile(argument.get_slice("=", 1))
+			if requested_gate_profile in [GateProfile.WINDOW60, GateProfile.WAVE60]:
+				requested_wall_p95_budget_ms = WINDOW60_DEFAULT_WALL_P95_BUDGET_MS
+		elif argument.begins_with("--quick-validation="):
+			requested_quick_validation = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--wall-p95-budget-ms="):
+			requested_wall_p95_budget_ms = maxf(
+				float(argument.get_slice("=", 1)),
+				0.0
+			)
+		elif argument.begins_with("--wall-p99-budget-ms="):
+			requested_wall_p99_budget_ms = maxf(
+				float(argument.get_slice("=", 1)),
+				0.0
+			)
+		elif argument.begins_with("--over-18-ratio-budget="):
+			requested_over_18_ratio_budget = clampf(
+				float(argument.get_slice("=", 1)),
+				0.0,
+				1.0
+			)
+		elif argument.begins_with("--over-33-ratio-budget="):
+			requested_over_33_ratio_budget = clampf(
+				float(argument.get_slice("=", 1)),
+				0.0,
+				1.0
+			)
+		elif argument.begins_with("--vsync-mode="):
+			requested_vsync_mode = argument.get_slice("=", 1).to_lower()
+			if requested_vsync_mode not in ["project", "disabled", "enabled"]:
+				failures.append(
+					"Unknown cohort VSync mode: %s" % requested_vsync_mode
+				)
 		elif argument.begins_with("--window-size="):
 			var components := argument.get_slice("=", 1).to_lower().split("x", false)
 			if components.size() == 2:
@@ -299,6 +359,21 @@ func _parse_phase(value: String) -> ProbePhase:
 			return ProbePhase.APPROACH
 
 
+func _parse_gate_profile(value: String) -> GateProfile:
+	match value.to_lower():
+		"diagnostic":
+			return GateProfile.DIAGNOSTIC
+		"cpu60":
+			return GateProfile.CPU60
+		"window60":
+			return GateProfile.WINDOW60
+		"wave60":
+			return GateProfile.WAVE60
+		_:
+			failures.append("Unknown cohort gate profile: %s" % value)
+			return GateProfile.DIAGNOSTIC
+
+
 func _run() -> void:
 	original_max_fps = Engine.max_fps
 	original_navigation_render_dedupe = Enemy.navigation_render_frame_dedupe_enabled
@@ -356,9 +431,14 @@ func _run() -> void:
 		requested_pooled_mage_impact_effect
 	)
 	Engine.max_fps = requested_max_fps
-	if requested_max_fps == 0:
+	if requested_max_fps == 0 or requested_vsync_mode != "project":
 		original_vsync_mode = DisplayServer.window_get_vsync_mode()
-		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+		var effective_vsync_mode := (
+			DisplayServer.VSYNC_ENABLED
+			if requested_vsync_mode == "enabled" and requested_max_fps != 0
+			else DisplayServer.VSYNC_DISABLED
+		)
+		DisplayServer.window_set_vsync_mode(effective_vsync_mode)
 		vsync_overridden = true
 	seed(fixed_seed)
 
@@ -388,7 +468,12 @@ func _run() -> void:
 		_disable_smg_projectiles_in_cohort()
 
 	var runtime_setup_started_usec := Time.get_ticks_usec()
-	game = TOWER_SCENE.instantiate() as TowerDefenseGame
+	tower_scene = load(TOWER_SCENE_PATH) as PackedScene
+	_expect(tower_scene != null, "Enemy cohort probe must load TowerDefenseGame scene.")
+	if tower_scene == null:
+		await _finish()
+		return
+	game = tower_scene.instantiate() as TowerDefenseGame
 	_expect(game != null, "Enemy cohort probe must instantiate TowerDefenseGame.")
 	if game == null:
 		await _finish()
@@ -1411,7 +1496,8 @@ func _measure_sample_window(
 		guardian_aura_system.collect_overlap_query_metrics = false
 		guardian_aura_metrics = guardian_aura_system.get_runtime_performance_metrics()
 	var final_counts := telemetry.sample_runtime_counts(game)
-	peak_projectiles = maxi(peak_projectiles, telemetry.peak_active_projectiles)
+	if requested_runtime_count_scans:
+		peak_projectiles = maxi(peak_projectiles, telemetry.peak_active_projectiles)
 	minimum_alive = mini(minimum_alive, int(final_counts["active_enemies"]))
 	var pool_after := _aggregate_pool_metrics()
 	var pool_buckets_after := _get_pool_bucket_metrics()
@@ -1438,6 +1524,7 @@ func _measure_sample_window(
 	)
 
 	var result := {
+		"schema_version": PROBE_RESULT_SCHEMA_VERSION,
 		"scope": (
 			"out_of_campaign_boss_diagnostic"
 			if phase == ProbePhase.BOSS
@@ -1449,6 +1536,9 @@ func _measure_sample_window(
 		"display_name": _get_cohort_display_name(),
 		"composition": _get_cohort_composition(),
 		"phase": _phase_name(),
+		"gate_profile": _gate_profile_name(),
+		"quick_validation": requested_quick_validation,
+		"seed": fixed_seed,
 		"requested_enemies": requested_enemy_count,
 		"requested_simple_fences": requested_simple_fence_count,
 		"simple_fences": simple_fences.size(),
@@ -1583,7 +1673,10 @@ func _measure_sample_window(
 			float(Engine.get_physics_frames() - physics_frames_before)
 			/ float(maxi(Engine.physics_ticks_per_second, 1))
 		),
-		"peak_projectiles": peak_projectiles,
+		"peak_projectiles": (
+			peak_projectiles if requested_runtime_count_scans else null
+		),
+		"peak_projectiles_supported": requested_runtime_count_scans,
 		"corn_target_locks": _get_corn_target_lock_count() - corn_locks_before,
 		"corn_hitscan_rays": _get_corn_hitscan_ray_count() - corn_rays_before,
 		"boss_phase_observations": boss_phase_observations,
@@ -1609,6 +1702,19 @@ func _measure_sample_window(
 		"renderer": RenderingServer.get_current_rendering_method(),
 		"render_driver": RenderingServer.get_current_rendering_driver_name(),
 		"gpu": RenderingServer.get_video_adapter_name(),
+		"runtime_environment": {
+			"godot": Engine.get_version_info(),
+			"os": {
+				"name": OS.get_name(),
+				"version": OS.get_version(),
+			},
+			"cpu": {
+				"name": OS.get_processor_name(),
+				"logical_processor_count": OS.get_processor_count(),
+			},
+		},
+		"requested_vsync_mode": requested_vsync_mode,
+		"vsync_mode": int(DisplayServer.window_get_vsync_mode()),
 		"requested_window_size": [requested_window_size.x, requested_window_size.y],
 		"window_size": [DisplayServer.window_get_size().x, DisplayServer.window_get_size().y],
 		"viewport_size": [
@@ -1657,7 +1763,227 @@ func _measure_sample_window(
 			float((result["render_gpu_ms"] as Dictionary)["p50"]) > 0.0,
 			"A real-window cohort run must expose GPU timing."
 		)
+	var gate_result := _evaluate_gate(result)
+	result["gate"] = gate_result
+	result["valid"] = bool(gate_result.get("valid", false))
+	result["verdict"] = str(gate_result.get("status", "invalid"))
+	result["violations"] = gate_result.get("violations", [])
 	return result
+
+
+func _evaluate_gate(result: Dictionary) -> Dictionary:
+	var semantic_failures := failures.duplicate()
+	var invalid_reasons: Array[String] = []
+	var budget_violations: Array[Dictionary] = []
+	var violations: Array[Dictionary] = []
+	var budgets := {
+		"wall_p95_ms": requested_wall_p95_budget_ms,
+		"wall_p99_ms": requested_wall_p99_budget_ms,
+		"over_18_ratio": requested_over_18_ratio_budget,
+		"over_33_333_ratio": requested_over_33_ratio_budget,
+	}
+	for semantic_failure in semantic_failures:
+		violations.append({
+			"code": "semantic_failure",
+			"message": semantic_failure,
+		})
+	if requested_gate_profile == GateProfile.DIAGNOSTIC:
+		return {
+			"profile": _gate_profile_name(),
+			"measurement_scope": "diagnostic",
+			"status": "diagnostic",
+			"valid": semantic_failures.is_empty(),
+			"passed": false,
+			"quick_validation": false,
+			"budgets": budgets,
+			"invalid_reasons": invalid_reasons,
+			"budget_violations": budget_violations,
+			"semantic_failures": semantic_failures,
+			"violations": violations,
+		}
+
+	var profile_name := _gate_profile_name()
+	var window_profile := requested_gate_profile in [
+		GateProfile.WINDOW60,
+		GateProfile.WAVE60,
+	]
+	if requested_gate_profile == GateProfile.CPU60:
+		if DisplayServer.get_name().to_lower() != "headless":
+			invalid_reasons.append("cpu60 requires the headless display driver")
+		if requested_max_fps != 0:
+			invalid_reasons.append("cpu60 requires max_fps=0")
+	elif window_profile:
+		if DisplayServer.get_name().to_lower() == "headless":
+			invalid_reasons.append("%s requires a real window" % profile_name)
+		if requested_max_fps != 60:
+			invalid_reasons.append("%s requires max_fps=60" % profile_name)
+		if requested_window_size != FORMAL_WINDOW_SIZE:
+			invalid_reasons.append(
+				"%s requires a requested 1280x720 window" % profile_name
+			)
+		if requested_vsync_mode != "disabled":
+			invalid_reasons.append("%s requires vsync-mode=disabled" % profile_name)
+		if DisplayServer.window_get_vsync_mode() != DisplayServer.VSYNC_DISABLED:
+			invalid_reasons.append("%s did not apply disabled VSync" % profile_name)
+		if requested_gate_profile == GateProfile.WINDOW60 and not wave_config_path.is_empty():
+			invalid_reasons.append("window60 requires a single EnemyConfig source")
+		if requested_gate_profile == GateProfile.WAVE60 and wave_config_path.is_empty():
+			invalid_reasons.append("wave60 requires a WaveConfig source")
+	if phase != ProbePhase.ENGAGEMENT:
+		invalid_reasons.append("%s requires phase=engagement" % profile_name)
+	if requested_enemy_count != DEFAULT_ENEMY_COUNT:
+		invalid_reasons.append("%s requires exactly 300 requested enemies" % profile_name)
+	var minimum_warmup_frames := (
+		QUICK_GATE_MINIMUM_WARMUP_FRAMES
+		if requested_quick_validation
+		else FORMAL_GATE_MINIMUM_WARMUP_FRAMES
+	)
+	var minimum_sample_frames := (
+		QUICK_GATE_MINIMUM_SAMPLE_FRAMES
+		if requested_quick_validation
+		else FORMAL_GATE_MINIMUM_SAMPLE_FRAMES
+	)
+	if warmup_frames < minimum_warmup_frames:
+		invalid_reasons.append(
+			"%s requires at least %d warmup frames"
+			% [profile_name, minimum_warmup_frames]
+		)
+	if sample_frames < minimum_sample_frames:
+		invalid_reasons.append(
+			"%s requires at least %d sample frames"
+			% [profile_name, minimum_sample_frames]
+		)
+	if (
+		requested_enemy_hot_metrics
+		or requested_projectile_hot_metrics
+		or requested_guardian_overlap_metrics
+		or requested_runtime_count_scans
+		or requested_simple_fence_ab_metrics
+	):
+		invalid_reasons.append(
+			"%s forbids intrusive hot-path/count instrumentation" % profile_name
+		)
+
+	var alive_start := int(result.get("alive_start", -1))
+	var alive_min := int(result.get("alive_min", -1))
+	var alive_end := int(result.get("alive_end", -1))
+	if (
+		alive_start != DEFAULT_ENEMY_COUNT
+		or alive_min != DEFAULT_ENEMY_COUNT
+		or alive_end != DEFAULT_ENEMY_COUNT
+	):
+		invalid_reasons.append(
+			"%s requires a stable 300-enemy cohort, observed %d/%d/%d"
+			% [profile_name, alive_start, alive_min, alive_end]
+		)
+
+	var minimum_physics_frames := floori(float(sample_frames) * 0.95)
+	var physics_frames_elapsed := int(result.get("physics_frames_elapsed", 0))
+	if physics_frames_elapsed < minimum_physics_frames:
+		invalid_reasons.append(
+			"%s sampled only %d physics frames; requires at least %d"
+			% [profile_name, physics_frames_elapsed, minimum_physics_frames]
+		)
+	var minimum_simulation_seconds := (
+		float(sample_frames)
+		/ float(maxi(Engine.physics_ticks_per_second, 1))
+		* 0.95
+	)
+	var simulation_seconds := float(result.get("simulation_seconds_elapsed", 0.0))
+	if simulation_seconds < minimum_simulation_seconds:
+		invalid_reasons.append(
+			"%s covered only %.3f simulation seconds; requires at least %.3f"
+			% [profile_name, simulation_seconds, minimum_simulation_seconds]
+		)
+
+	var wall_summary := result.get("wall_ms", {}) as Dictionary
+	var frame_budget := result.get("frame_budget", {}) as Dictionary
+	var wall_p95 := float(wall_summary.get("p95", 0.0))
+	var wall_p99 := float(wall_summary.get("p99", 0.0))
+	var over_18_ratio := float(frame_budget.get("over_18_ratio", 0.0))
+	var over_33_ratio := float(frame_budget.get("over_33_333_ratio", 0.0))
+	if (
+		is_nan(wall_p95)
+		or is_inf(wall_p95)
+		or is_nan(wall_p99)
+		or is_inf(wall_p99)
+		or wall_p95 <= 0.0
+		or wall_p99 <= 0.0
+	):
+		invalid_reasons.append(
+			"%s requires finite positive wall p95/p99 samples" % profile_name
+		)
+	else:
+		if wall_p95 > requested_wall_p95_budget_ms:
+			budget_violations.append({
+				"code": "wall_p95_budget",
+				"actual": wall_p95,
+				"limit": requested_wall_p95_budget_ms,
+			})
+		if wall_p99 > requested_wall_p99_budget_ms:
+			budget_violations.append({
+				"code": "wall_p99_budget",
+				"actual": wall_p99,
+				"limit": requested_wall_p99_budget_ms,
+			})
+	if window_profile and over_18_ratio > requested_over_18_ratio_budget:
+		budget_violations.append({
+			"code": "over_18_ratio_budget",
+			"actual": over_18_ratio,
+			"limit": requested_over_18_ratio_budget,
+		})
+	if over_33_ratio > requested_over_33_ratio_budget:
+		budget_violations.append({
+			"code": "over_33_333_ratio_budget",
+			"actual": over_33_ratio,
+			"limit": requested_over_33_ratio_budget,
+		})
+
+	for reason in invalid_reasons:
+		violations.append({
+			"code": "invalid_configuration_or_workload",
+			"message": reason,
+		})
+	for budget_violation in budget_violations:
+		violations.append(budget_violation)
+
+	var valid := semantic_failures.is_empty() and invalid_reasons.is_empty()
+	var successful := valid and budget_violations.is_empty()
+	var passed := successful and not requested_quick_validation
+	var status := (
+		("smoke_passed" if requested_quick_validation else "passed")
+		if successful
+		else ("failed" if valid else "invalid")
+	)
+	for reason in invalid_reasons:
+		failures.append("%s gate invalid: %s" % [profile_name, reason])
+	for violation in budget_violations:
+		failures.append(
+			"%s gate failed: %s actual=%s limit=%s"
+			% [
+				profile_name,
+				str(violation.get("code", "unknown")),
+				str(violation.get("actual", 0.0)),
+				str(violation.get("limit", 0.0)),
+			]
+		)
+	return {
+		"profile": _gate_profile_name(),
+		"measurement_scope": (
+			"headless_unpaced_cpu"
+			if requested_gate_profile == GateProfile.CPU60
+			else "paced_window_60hz"
+		),
+		"status": status,
+		"valid": valid,
+		"passed": passed,
+		"quick_validation": requested_quick_validation,
+		"budgets": budgets,
+		"invalid_reasons": invalid_reasons,
+		"budget_violations": budget_violations,
+		"semantic_failures": semantic_failures,
+		"violations": violations,
+	}
 
 
 func _sample_boss_runtime(
@@ -2070,6 +2396,10 @@ func _phase_name() -> String:
 	return ProbePhase.keys()[int(phase)].to_lower()
 
 
+func _gate_profile_name() -> String:
+	return GateProfile.keys()[int(requested_gate_profile)].to_lower()
+
+
 func _finish() -> void:
 	_release_movement_input()
 	Enemy.performance_metrics_enabled = false
@@ -2106,6 +2436,11 @@ func _finish() -> void:
 	Engine.max_fps = original_max_fps
 	if vsync_overridden:
 		DisplayServer.window_set_vsync_mode(original_vsync_mode)
+	# Match the real return-to-lobby teardown transaction before SceneTree starts
+	# recursively deleting enemies. This lets the simulation coordinator release
+	# registrations while the enemy nodes and runtime ledgers are still valid.
+	if game != null and is_instance_valid(game):
+		game.prepare_for_scene_teardown()
 	current_scene = null
 	if game != null:
 		game.queue_free()
@@ -2114,8 +2449,23 @@ func _finish() -> void:
 	for _cleanup_index in range(CLEANUP_FRAMES):
 		await process_frame
 		await physics_frame
+	# A PackedScene preloaded by a SceneTree main script remains rooted until the
+	# engine destroys that main script, which is later than ResourceCache cleanup
+	# on affected Windows Godot builds. Drop the runtime reference before quit.
+	tower_scene = null
 	if failures.is_empty():
-		print("TOWER_DEFENSE_ENEMY_COHORT_PERFORMANCE_PROBE_OK")
+		if requested_gate_profile == GateProfile.DIAGNOSTIC:
+			print("TOWER_DEFENSE_ENEMY_COHORT_DIAGNOSTIC_COMPLETE")
+		elif requested_quick_validation:
+			print(
+				"TOWER_DEFENSE_ENEMY_COHORT_%s_GATE_SMOKE_OK"
+				% _gate_profile_name().to_upper()
+			)
+		else:
+			print(
+				"TOWER_DEFENSE_ENEMY_COHORT_%s_GATE_OK"
+				% _gate_profile_name().to_upper()
+			)
 		quit(0)
 		return
 	for failure in failures:
