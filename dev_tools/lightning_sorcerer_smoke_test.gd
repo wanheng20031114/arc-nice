@@ -77,6 +77,19 @@ class TargetRuntime:
 		return nearest
 
 
+	func find_nearest_hostile_enemy_attack_target_world(
+		from_position: Vector2,
+		max_distance: float,
+		_source_faction_id: int,
+		excluded_instance_ids: Dictionary = {}
+	) -> Node2D:
+		return find_nearest_enemy_attack_target_world(
+			from_position,
+			max_distance,
+			excluded_instance_ids
+		)
+
+
 var failures: Array[String] = []
 var fixture: Node2D = null
 
@@ -204,8 +217,9 @@ func _test_resource_and_scene_contract() -> void:
 	_expect(
 		not enemy_source.contains("projectile_scene")
 		and not enemy_source.contains("intersect_shape")
-		and enemy_source.contains("_try_request_player_damage"),
-		"Lightning must resolve direct authoritative damage without a projectile or AOE query."
+		and enemy_source.contains("request_player_damage")
+		and enemy_source.contains("apply_combat_damage"),
+		"Lightning must resolve typed direct authoritative damage without a projectile or AOE query."
 	)
 
 

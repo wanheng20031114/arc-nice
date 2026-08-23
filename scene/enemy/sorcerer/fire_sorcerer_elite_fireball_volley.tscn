@@ -21,7 +21,7 @@ ball_source_type_c = &"fire_sorcerer_elite_fireball_c"
 [node name="FireballA" type="Area2D" parent="."]
 position = Vector2(24, 1)
 collision_layer = 128
-collision_mask = 515
+collision_mask = 519
 
 [node name="VisualRoot" type="Node2D" parent="FireballA"]
 
@@ -49,7 +49,7 @@ shape = SubResource("CircleShape2D_fireball")
 [node name="FireballB" type="Area2D" parent="."]
 position = Vector2(15, -5)
 collision_layer = 128
-collision_mask = 515
+collision_mask = 519
 
 [node name="VisualRoot" type="Node2D" parent="FireballB"]
 
@@ -77,7 +77,7 @@ shape = SubResource("CircleShape2D_fireball")
 [node name="FireballC" type="Area2D" parent="."]
 position = Vector2(23, 13)
 collision_layer = 128
-collision_mask = 515
+collision_mask = 519
 
 [node name="VisualRoot" type="Node2D" parent="FireballC"]
 

@@ -365,7 +365,8 @@ func _spawn_fireball_volley(fire_config: FireConfig) -> bool:
 		fire_config.homing_turn_rate,
 		combat_runtime,
 		fire_config.burn_duration,
-		fire_config.burn_level
+		fire_config.burn_level,
+		create_damage_source_snapshot(0, _get_fireball_projectile_type())
 	)
 	if volley.get_parent() == null:
 		spawn_parent.add_child(volley)
@@ -384,6 +385,10 @@ func _spawn_fireball_volley(fire_config: FireConfig) -> bool:
 		var plant_target := summon_target as PlantDefense
 		if plant_target != null:
 			target_plant_net_id = int(plant_target.get_meta(&"net_id", 0))
+		else:
+			var enemy_target := summon_target as Enemy
+			if enemy_target != null:
+				target_plant_net_id = int(enemy_target.get_meta(&"net_id", 0))
 	gameplay_gateway.register_local_projectile(
 		volley,
 		_get_fireball_projectile_type(),

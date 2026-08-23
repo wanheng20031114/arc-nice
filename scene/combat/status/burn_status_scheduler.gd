@@ -9,7 +9,8 @@ func apply_burn(
 	source_family: StringName,
 	duration: float,
 	tick_damage: int,
-	state_callback: Callable = Callable()
+	state_callback: Callable = Callable(),
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	return apply_periodic_status(
 		target,
@@ -19,7 +20,8 @@ func apply_burn(
 		tick_damage,
 		BURN_TICK_INTERVAL_SECONDS,
 		TickPolicy.STRONGEST_SOURCE,
-		state_callback
+		state_callback,
+		source_snapshot
 	)
 
 

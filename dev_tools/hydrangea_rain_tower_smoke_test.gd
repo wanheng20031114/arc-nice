@@ -1159,13 +1159,13 @@ func _test_one_authoritative_rain_tick() -> void:
 	tower.effect_active = true
 	tower.rain_target_global_position = target_position
 	tower.effect_started_at_seconds = float(tower.call("_now_seconds"))
-	var effect_source_id := int(tower.call("_get_effect_source_id"))
+	var damage_source_id := int(tower.call("_get_plant_stable_id", tower))
 	var damage_count_before := fixture.damage_call_count
 	var player_heal_count_before := fixture.player_heal_call_count
 	tower.call("_apply_authoritative_rain_tick", 0)
 	_expect(
 		fixture.damage_call_count == damage_count_before + 1
-		and fixture.last_damage_source_id == effect_source_id
+		and fixture.last_damage_source_id == damage_source_id
 		and fixture.last_damage_amounts == PackedInt64Array([EXPECTED_MAGIC_DAMAGE])
 		and fixture.last_damage_hit_counts == PackedInt32Array([1])
 		and fixture.last_damage_type == EnemyConfig.DamageType.MAGIC

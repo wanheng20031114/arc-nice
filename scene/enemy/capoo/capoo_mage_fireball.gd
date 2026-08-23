@@ -7,7 +7,7 @@ const IMPACT_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball_impac
 const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/combat/physics/complete_shape_query_2d.gd")
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/combat/feedback/world_effect_visibility.gd")
 const WORLD_COLLISION_MASK := 1
-const DAMAGEABLE_COLLISION_MASK := 2 | 512
+const DAMAGEABLE_COLLISION_MASK := 2 | 4 | 512
 const EXPLOSION_QUERY_BATCH_SIZE := 64
 const DAMAGE_TYPE := EnemyConfig.DamageType.MAGIC
 
@@ -35,6 +35,7 @@ var has_exploded: bool = false
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"capoo_mage_fireball"
+var damage_source_snapshot: DamageSourceSnapshot = null
 var pool_active: bool = true
 var combat_runtime: CombatRuntimeBase = null
 var gameplay_gateway: MultiplayerGameplayGateway = null
@@ -79,6 +80,7 @@ func _ready() -> void:
 
 
 func on_pool_acquired(_generation: int) -> void:
+	remove_meta(&"damage_source_snapshot")
 	combat_runtime = null
 	gameplay_gateway = null
 	pool_active = true
@@ -94,6 +96,7 @@ func on_pool_acquired(_generation: int) -> void:
 	projectile_id = 0
 	owner_peer_id = 0
 	source_type = &"capoo_mage_fireball"
+	damage_source_snapshot = null
 	explosion_damaged_bodies.clear()
 	rotation = 0.0
 	collision_layer = _authored_collision_layer
@@ -113,12 +116,14 @@ func on_pool_acquired(_generation: int) -> void:
 
 
 func on_pool_released(_generation: int) -> void:
+	remove_meta(&"damage_source_snapshot")
 	pool_active = false
 	has_exploded = true
 	target_player = null
 	explosion_damaged_bodies.clear()
 	combat_runtime = null
 	gameplay_gateway = null
+	damage_source_snapshot = null
 	set_physics_process(false)
 	set_deferred("monitoring", false)
 	set_deferred("monitorable", false)
@@ -156,7 +161,8 @@ func setup(
 	initial_lifetime: float,
 	initial_radius: float = 10.5,
 	initial_target_player: Node2D = null,
-	initial_homing_turn_rate: float = 0.65
+	initial_homing_turn_rate: float = 0.65,
+	initial_damage_source_snapshot: DamageSourceSnapshot = null
 ) -> void:
 	pool_active = true
 	has_exploded = false
@@ -170,6 +176,18 @@ func setup(
 	fireball_radius = maxf(initial_radius, 1.0)
 	target_player = initial_target_player
 	homing_turn_rate = maxf(initial_homing_turn_rate, 0.0)
+	damage_source_snapshot = (
+		initial_damage_source_snapshot.duplicate_snapshot()
+		if initial_damage_source_snapshot != null
+		else null
+	)
+	if damage_source_snapshot != null:
+		set_meta(
+			&"damage_source_snapshot",
+			damage_source_snapshot.duplicate_snapshot()
+		)
+	else:
+		remove_meta(&"damage_source_snapshot")
 	_apply_radius()
 
 
@@ -181,6 +199,23 @@ func setup_multiplayer(
 	projectile_id = maxi(new_projectile_id, 0)
 	owner_peer_id = new_owner_peer_id
 	source_type = new_source_type
+	_rebind_damage_source_snapshot_to_projectile_id()
+
+
+func _rebind_damage_source_snapshot_to_projectile_id() -> void:
+	if damage_source_snapshot == null or projectile_id <= 0:
+		return
+	damage_source_snapshot = DamageSourceSnapshot.create(
+		damage_source_snapshot.source_faction_id,
+		damage_source_snapshot.credit_peer_id,
+		damage_source_snapshot.instigator_entity_id,
+		projectile_id,
+		damage_source_snapshot.source_type
+	)
+	set_meta(
+		&"damage_source_snapshot",
+		damage_source_snapshot.duplicate_snapshot()
+	)
 
 
 func _physics_process(delta: float) -> void:
@@ -223,7 +258,10 @@ func _is_homing_target_alive() -> bool:
 	if player != null:
 		return not player.is_dead
 	var plant := target_player as PlantDefense
-	return plant != null and not plant.is_dead and not plant.is_removing
+	if plant != null:
+		return not plant.is_dead and not plant.is_removing
+	var enemy := target_player as Enemy
+	return enemy != null and not enemy.is_dead
 
 
 func _get_world_hit(from_position: Vector2, to_position: Vector2) -> Dictionary:
@@ -233,6 +271,8 @@ func _get_world_hit(from_position: Vector2, to_position: Vector2) -> Dictionary:
 
 
 func _on_body_entered(body: Node2D) -> void:
+	if not _is_direct_hit_admitted(body):
+		return
 	_explode(body)
 
 
@@ -257,6 +297,8 @@ func _retire() -> void:
 	pool_active = false
 	set_physics_process(false)
 	projectile_finished.emit(projectile_id, self)
+	remove_meta(&"damage_source_snapshot")
+	damage_source_snapshot = null
 	if SessionObjectPool.release_to_owner(self):
 		return
 	queue_free()
@@ -290,30 +332,44 @@ func _apply_explosion_damage_to_body(body: Node2D, damaged_bodies: Dictionary) -
 		return
 	var player := body as Player
 	if player != null:
-		damaged_bodies[body_id] = true
-		if (
-			not player.is_dead
-			and not _try_report_multiplayer_player_hit(player)
-			and _has_explicit_singleplayer_authority()
-		):
-			player.apply_damage(
-				damage,
-				DAMAGE_TYPE,
-				_get_player_damage_context(player)
-			)
+		if player.is_dead:
+			return
+		var player_request := _make_damage_request(
+			global_position.direction_to(player.global_position)
+		)
+		if not _is_request_admitted(player_request, player):
+			return
+		if _try_report_multiplayer_player_hit(player):
+			damaged_bodies[body_id] = true
+		elif _has_explicit_singleplayer_authority():
+			var player_result := player.apply_combat_damage(player_request)
+			if player_result.accepted:
+				damaged_bodies[body_id] = true
 		return
 	var plant := body as PlantDefense
-	if plant == null:
+	if plant != null:
+		if plant.is_dead or plant.is_removing:
+			return
+		var plant_request := _make_damage_request(
+			global_position.direction_to(plant.global_position)
+		)
+		if not _is_request_admitted(plant_request, plant):
+			return
+		var plant_result := plant.apply_combat_damage(plant_request)
+		if plant_result.accepted:
+			damaged_bodies[body_id] = true
 		return
-	if plant.is_dead or plant.is_removing:
+	var enemy := body as Enemy
+	if enemy == null or enemy.is_dead:
 		return
-	damaged_bodies[body_id] = true
-	plant.receive_damage(
-		damage,
-		self,
-		global_position.direction_to(plant.global_position),
-		DAMAGE_TYPE
+	var enemy_request := _make_damage_request(
+		global_position.direction_to(enemy.global_position)
 	)
+	if not _is_request_admitted(enemy_request, enemy):
+		return
+	var enemy_result := enemy.apply_combat_damage(enemy_request)
+	if enemy_result.accepted:
+		damaged_bodies[body_id] = true
 
 
 func _spawn_impact_effect() -> void:
@@ -361,8 +417,41 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 		source_type,
 		DAMAGE_TYPE,
 		_get_source_direction_to_player(player),
-		true
+		true,
+		false,
+		damage_source_snapshot
 	)
+
+
+func _make_damage_request(impact_direction: Vector2) -> DamageRequest:
+	var request := DamageRequest.new(damage, DAMAGE_TYPE)
+	if damage_source_snapshot != null:
+		request.with_source_snapshot(damage_source_snapshot)
+	else:
+		request.with_source(self, projectile_id, source_type)
+	request.with_directions(impact_direction, -impact_direction)
+	request.with_flag(CombatTypes.DamageFlag.RANGED, true)
+	return request
+
+
+func _is_request_admitted(request: DamageRequest, target: Node) -> bool:
+	if target == null or not target.has_method(&"get_combat_faction_id"):
+		return false
+	return CombatDamageAdmission.is_admitted(
+		request,
+		int(target.call(&"get_combat_faction_id")),
+		combat_runtime.get_combat_relation_service()
+			if combat_runtime != null and is_instance_valid(combat_runtime)
+			else null
+	)
+
+
+func _is_direct_hit_admitted(body: Node2D) -> bool:
+	if not _has_authoritative_runtime():
+		return true
+	if body is Player or body is PlantDefense or body is Enemy:
+		return _is_request_admitted(_make_damage_request(direction), body)
+	return true
 
 
 func _has_authoritative_runtime() -> bool:

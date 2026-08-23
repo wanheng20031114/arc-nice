@@ -843,7 +843,21 @@ func _spawn_projectile(position: Vector2, direction: Vector2) -> CapooAK47Bullet
 		test_root,
 		test_root.get_multiplayer_gameplay_gateway()
 	)
-	projectile.setup(direction, 1, CAPOO_CONFIG.projectile_speed, CAPOO_CONFIG.projectile_lifetime)
+	projectile.setup(
+		direction,
+		1,
+		CAPOO_CONFIG.projectile_speed,
+		CAPOO_CONFIG.projectile_lifetime,
+		null,
+		null,
+		DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			0,
+			0,
+			RapidFireSimulationService.AK_SOURCE_TYPE
+		)
+	)
 	return projectile
 
 

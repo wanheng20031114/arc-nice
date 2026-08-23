@@ -6,6 +6,8 @@ const CapooConfig := preload("res://resources/config/enemies/capoo_ak47_config.g
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
+
+
 # Center-first ordering keeps every complete five-agent group at zero mean while
 # spreading the five-physics-tick authored burst cadence across all five phases.
 const ATTACK_PHASE_OFFSETS_PHYSICS_FRAMES: Array[int] = [0, -1, 1, -2, 2]
@@ -50,6 +52,10 @@ var committed_attack_phase_offset_seconds: float = 0.0
 var committed_windup_duration_seconds: float = 0.0
 var local_data_projectile_sequence: int = 0
 var shadow_registration_failures: int = 0
+
+
+func supports_dynamic_enemy_targeting() -> bool:
+	return true
 
 
 func _ready() -> void:
@@ -371,6 +377,10 @@ func _fire_legacy_projectile(
 	var outgoing_damage := get_effective_attack_damage(
 		capoo_config.attack_damage
 	)
+	var launch_source_snapshot := create_damage_source_snapshot(
+		0,
+		RapidFireSimulationService.AK_SOURCE_TYPE
+	)
 	projectile.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	projectile.top_level = true
 	if projectile.get_parent() == null:
@@ -383,7 +393,8 @@ func _fire_legacy_projectile(
 		capoo_config.projectile_speed,
 		capoo_config.projectile_lifetime,
 		pathfinder as GridPathfinder,
-		projectile_motion_system
+		projectile_motion_system,
+		launch_source_snapshot
 	)
 	projectile.global_position = global_position + burst_shot_direction * capoo_config.projectile_spawn_distance
 	projectile.reset_physics_interpolation()
@@ -418,6 +429,10 @@ func _fire_legacy_projectile(
 			posmod(
 				shadow_phase_identity,
 				CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES
+			),
+			create_damage_source_snapshot(
+				shadow_projectile_id,
+				RapidFireSimulationService.AK_SOURCE_TYPE
 			)
 		)
 		if (
@@ -452,6 +467,10 @@ func _fire_data_projectile(capoo_config: CapooConfig) -> bool:
 	var outgoing_damage := get_effective_attack_damage(
 		capoo_config.attack_damage
 	)
+	var launch_source_snapshot := create_damage_source_snapshot(
+		0,
+		RapidFireSimulationService.AK_SOURCE_TYPE
+	)
 	var phase_identity := _next_local_data_phase_identity()
 	var handle := rapid_fire_service.register_projectile(
 		RapidFireSimulationService.Mode.DATA,
@@ -467,7 +486,8 @@ func _fire_data_projectile(capoo_config: CapooConfig) -> bool:
 		posmod(
 			phase_identity,
 			CapooAK47Bullet.WORLD_COLLISION_CHECK_INTERVAL_FRAMES
-		)
+		),
+		launch_source_snapshot
 	)
 	if handle <= RapidFireSimulationService.INVALID_HANDLE:
 		return false
@@ -486,7 +506,8 @@ func _fire_data_projectile(capoo_config: CapooConfig) -> bool:
 			safe_direction,
 			outgoing_damage,
 			capoo_config.projectile_speed,
-			capoo_config.projectile_lifetime
+			capoo_config.projectile_lifetime,
+			launch_source_snapshot
 		)
 		# Identity assignment and network record creation are one operation in
 		# the gateway. Failure releases the inert handle and never falls back to

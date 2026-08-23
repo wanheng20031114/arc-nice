@@ -9,8 +9,15 @@ const RESOLVER_SCENE := preload(
 const RUNTIME_SCENE := preload(
 	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
 )
+const PLAYER_SCENE := preload(
+	"res://scene/player/weishidaier/player_weishidaier.tscn"
+)
+const SMG_SCENE := preload("res://scene/enemy/capoo/capoo_smg.tscn")
+const SMG_CONFIG := preload("res://resources/config/enemies/capoo_smg.tres")
 
 const DAMAGEABLE_MASK := 512
+const PLAYER_MASK := 2
+const ENEMY_MASK := 4
 const WORLD_MASK := 1
 const RAY_MASK := WORLD_MASK | DAMAGEABLE_MASK
 const RAY_FROM := Vector2.ZERO
@@ -20,6 +27,35 @@ var failures: Array[String] = []
 var runtime: EnemyGameplayGatewayTestRuntime = null
 var resolver: ImmediateHitscanResolverScript = null
 var target: PlantDefense = null
+
+
+class RecordingTypedSession:
+	extends EnemyGameplayGatewayTestSession
+
+	var typed_request_count := 0
+	var last_typed_snapshot: DamageSourceSnapshot = null
+
+
+	func request_multiplayer_player_damage_with_source_snapshot(
+		source_snapshot: DamageSourceSnapshot,
+		target_peer_id: int,
+		damage: int,
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		source_direction: Vector2 = Vector2.ZERO,
+		is_ranged: bool = false,
+		contact_preconsumed: bool = false
+	) -> bool:
+		typed_request_count += 1
+		last_typed_snapshot = source_snapshot.duplicate_snapshot()
+		return super.request_multiplayer_player_damage_with_source_snapshot(
+			source_snapshot,
+			target_peer_id,
+			damage,
+			damage_type,
+			source_direction,
+			is_ranged,
+			contact_preconsumed
+		)
 
 
 func _init() -> void:
@@ -35,6 +71,8 @@ func _run() -> void:
 	await _test_world_blocking()
 	_test_client_visual_only()
 	_test_host_same_tick_damage()
+	await _test_host_player_uses_typed_gateway()
+	await _test_enemy_faction_transparency_and_snapshot()
 	_test_query_object_reuse()
 	_test_rng_isolation()
 	_test_binding_and_teardown_lifecycle()
@@ -89,6 +127,8 @@ func _test_singleplayer_same_tick_damage() -> void:
 		and result.source_enemy_id == 41
 		and result.source_projectile_id == 9001
 		and result.source_type == &"immediate_hitscan_smoke"
+		and result.source_faction_id == CombatRelationService.HOSTILE_WAVE
+		and result.query_count == 1
 		and result.damage_type == EnemyConfig.DamageType.MAGIC,
 		"Single-player resolution must return the immediately adjudicated plant hit."
 	)
@@ -103,6 +143,9 @@ func _test_singleplayer_same_tick_damage() -> void:
 		and request.source_enemy_id == 41
 		and request.source_projectile_id == 9001
 		and request.source_type == &"immediate_hitscan_smoke"
+		and request.source_snapshot_is_explicit
+		and request.get_or_create_source_snapshot().source_faction_id
+			== CombatRelationService.HOSTILE_WAVE
 		and request.damage_type == EnemyConfig.DamageType.MAGIC
 		and request.has_flag(CombatTypes.DamageFlag.RANGED),
 		"Authoritative damage must preserve every stable source and damage input."
@@ -189,6 +232,117 @@ func _test_host_same_tick_damage() -> void:
 		and target.current_health == health_before - 35,
 		"Host authority must apply plant damage before the resolver returns."
 	)
+
+
+func _test_host_player_uses_typed_gateway() -> void:
+	var session := RecordingTypedSession.new()
+	runtime.attach_gameplay_session(session)
+	var player := PLAYER_SCENE.instantiate() as Player
+	runtime.add_child(player)
+	player.global_position = Vector2(100.0, 80.0)
+	player.collision_layer = PLAYER_MASK
+	player.peer_id = 77
+	player.bind_combat_runtime(runtime)
+	player.set_physics_process(false)
+	await physics_frame
+	var health_before := player.current_health
+	var source_snapshot := DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		50,
+		9010,
+		&"typed_host_hitscan"
+	)
+	var result := resolver.resolve_immediate_hitscan(
+		Vector2(0.0, 80.0),
+		Vector2(160.0, 80.0),
+		PLAYER_MASK,
+		20,
+		50,
+		9010,
+		&"typed_host_hitscan",
+		EnemyConfig.DamageType.PHYSICAL,
+		source_snapshot
+	)
+	_expect(
+		result.hit
+		and result.hit_kind == ImmediateHitscanResolverScript.HitKind.PLAYER
+		and result.damage_applied
+		and result.query_count == 1
+		and session.typed_request_count == 1
+		and session.last_typed_snapshot != null
+		and session.last_typed_snapshot.source_faction_id
+			== CombatRelationService.HOSTILE_WAVE
+		and session.last_typed_snapshot.event_source_id == 9010
+		and player.current_health == health_before,
+		"HOST player hits must use the typed frozen-snapshot gateway without mutating the local proxy directly."
+	)
+	runtime.detach_gameplay_session(session)
+	player.queue_free()
+	session.free()
+	await process_frame
+	await physics_frame
+
+
+func _test_enemy_faction_transparency_and_snapshot() -> void:
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	var friendly_enemy := _create_enemy_target(
+		Vector2(50.0, 120.0),
+		CombatRelationService.PLAYER_ALLIED
+	)
+	var hostile_enemy := _create_enemy_target(
+		Vector2(100.0, 120.0),
+		CombatRelationService.HOSTILE_WAVE
+	)
+	await physics_frame
+	await physics_frame
+	var friendly_health := friendly_enemy.current_health
+	var hostile_health := hostile_enemy.current_health
+	var source_snapshot := DamageSourceSnapshot.create(
+		CombatRelationService.PLAYER_ALLIED,
+		88,
+		51,
+		9011,
+		&"frozen_enemy_hitscan"
+	)
+	var result := resolver.resolve_immediate_hitscan(
+		Vector2(0.0, 120.0),
+		Vector2(160.0, 120.0),
+		ENEMY_MASK,
+		20,
+		51,
+		9011,
+		&"frozen_enemy_hitscan",
+		EnemyConfig.DamageType.PHYSICAL,
+		source_snapshot
+	)
+	source_snapshot.source_faction_id = CombatRelationService.HOSTILE_WAVE
+	var request := (
+		hostile_enemy.last_damage_result.request
+		if hostile_enemy.last_damage_result != null
+		else null
+	)
+	_expect(
+		result.hit
+		and result.hit_kind == ImmediateHitscanResolverScript.HitKind.ENEMY
+		and result.collider == hostile_enemy
+		and result.damage_applied
+		and result.query_count == 2
+		and result.transparent_hit_count == 1
+		and friendly_enemy.current_health == friendly_health
+		and hostile_enemy.current_health < hostile_health
+		and request != null
+		and request.source_enemy_id == 51
+		and request.source_projectile_id == 9011
+		and request.get_or_create_source_snapshot().source_faction_id
+			== CombatRelationService.PLAYER_ALLIED
+		and request.get_or_create_source_snapshot().credit_peer_id == 88,
+		"The shared resolver must skip a friendly Enemy, damage the hostile Enemy behind it, and retain a frozen source snapshot."
+	)
+	friendly_enemy.queue_free()
+	hostile_enemy.queue_free()
+	await process_frame
+	await physics_frame
 
 
 func _test_query_object_reuse() -> void:
@@ -360,6 +514,16 @@ func _create_world_blocker(position: Vector2) -> StaticBody2D:
 	runtime.add_child(wall)
 	wall.global_position = position
 	return wall
+
+
+func _create_enemy_target(position: Vector2, faction_id: int) -> CapooSMG:
+	var enemy := SMG_SCENE.instantiate() as CapooSMG
+	runtime.get_node("EnemyContainer").add_child(enemy)
+	enemy.global_position = position
+	enemy.setup(SMG_CONFIG, null, null, runtime)
+	enemy.set_physics_process(false)
+	enemy.set_combat_faction_id(faction_id, -1, true)
+	return enemy
 
 
 func _finish() -> void:

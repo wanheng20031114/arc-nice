@@ -9,6 +9,13 @@ const MpProjectileCoordinatorScript := preload(
 const PROJECTILE_COORDINATOR_SCRIPT_PATH := (
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
 )
+const GAMEPLAY_GATEWAY_SCRIPT_PATH := (
+	"res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.gd"
+)
+const GAMEPLAY_SESSION_SCRIPT_PATH := (
+	"res://scene/multiplayer/gameplay/multiplayer_gameplay_session.gd"
+)
+const MP_GAME_SCRIPT_PATH := "res://scene/multiplayer/mp_game.gd"
 const RapidFireSimulationServiceScript := preload(
 	"res://scene/combat/simulation/rapid_fire_simulation_service.gd"
 )
@@ -128,8 +135,37 @@ func _run() -> void:
 		),
 		"Data backend 必须使用 id→service/id→handle 平行存储，不得逐发分配对象。"
 	)
+	var gateway_data_registration_source := _get_data_registration_source(
+		GAMEPLAY_GATEWAY_SCRIPT_PATH
+	)
+	var session_data_registration_source := _get_data_registration_source(
+		GAMEPLAY_SESSION_SCRIPT_PATH
+	)
+	var mp_game_data_registration_source := _get_data_registration_source(
+		MP_GAME_SCRIPT_PATH
+	)
+	var coordinator_data_registration_source := _get_data_registration_source(
+		PROJECTILE_COORDINATOR_SCRIPT_PATH
+	)
+	_expect(
+		gateway_data_registration_source.count("damage_source_snapshot") == 2
+		and session_data_registration_source.count(
+			"damage_source_snapshot"
+		) == 1
+		and mp_game_data_registration_source.count(
+			"damage_source_snapshot"
+		) == 2
+		and coordinator_data_registration_source.contains(
+			"damage_source_snapshot: DamageSourceSnapshot = null"
+		),
+		"Data projectile 的可选来源快照必须贯穿 gateway、session、MpGame 与 coordinator。"
+	)
 
 	var host_projectile := ProbeProjectile.new()
+	host_projectile.set_meta(
+		&"damage_source_snapshot",
+		DamageSourceSnapshot.create(3, 7, 99, 0, &"probe_source")
+	)
 	coordinator.submit_local_projectile(
 		host_projectile,
 		&"probe",
@@ -144,6 +180,18 @@ func _run() -> void:
 		broadcast_methods == [&"net_projectile_fired"]
 		and broadcast_argument_counts == [12],
 		"Host 本地弹体必须由协调器登记，并请求根节点广播既有 12 字段载荷。"
+	)
+	var frozen_source := coordinator.get_projectile_damage_source_snapshot(
+		host_projectile.projectile_id
+	)
+	_expect(
+		frozen_source != null
+		and frozen_source.source_faction_id == 3
+		and frozen_source.credit_peer_id == 7
+		and frozen_source.instigator_entity_id == 99
+		and frozen_source.event_source_id == host_projectile.projectile_id
+		and frozen_source.source_type == &"probe_source",
+		"Host 弹体记录必须冻结注册时来源，并以分配后的 projectile_id 补齐事件ID。"
 	)
 
 	player_coordinator.observe_tango_charge_sequence(2, 1)
@@ -223,6 +271,13 @@ func _run() -> void:
 	var data_record_count_before := int(
 		coordinator.get_state_metrics().get("projectile_records", -1)
 	)
+	var data_damage_source_snapshot := DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		37,
+		4201,
+		99,
+		&"capoo_ak47_data"
+	)
 	var data_projectile_id := coordinator.register_local_data_projectile(
 		data_service,
 		data_handle,
@@ -232,9 +287,13 @@ func _run() -> void:
 		Vector2.RIGHT,
 		23,
 		160.0,
-		1.25
+		1.25,
+		data_damage_source_snapshot
 	)
 	var data_payload := broadcast_arguments.back() as Array
+	var data_frozen_source := (
+		coordinator.get_projectile_damage_source_snapshot(data_projectile_id)
+	)
 	_expect(
 		data_projectile_id > 0
 		and MpProjectileCoordinatorScript.is_projectile_id_valid_for_host_owner(
@@ -250,6 +309,16 @@ func _run() -> void:
 			-1
 		)) == 1,
 		"Host data handle 必须获得现有 projectile ID、record 与唯一 data backend。"
+	)
+	_expect(
+		data_frozen_source != null
+		and data_frozen_source.source_faction_id
+		== CombatRelationService.HOSTILE_WAVE
+		and data_frozen_source.credit_peer_id == 37
+		and data_frozen_source.instigator_entity_id == 4201
+		and data_frozen_source.event_source_id == data_projectile_id
+		and data_frozen_source.source_type == &"capoo_ak47_data",
+		"Host data projectile record 必须冻结敌军阵营与 credit，并把事件ID绑定到分配后的 projectile ID。"
 	)
 	_expect(
 		broadcast_methods.size() == data_broadcast_count_before + 1
@@ -694,6 +763,20 @@ func _register_data_projectile_handle(
 		2,
 		0
 	)
+
+
+func _get_data_registration_source(script_path: String) -> String:
+	var source := FileAccess.get_file_as_string(script_path)
+	var function_start := source.find("func register_local_data_projectile(")
+	if function_start < 0:
+		return ""
+	var function_end := source.find("\nfunc ", function_start + 1)
+	var next_abstract := source.find("\n@abstract", function_start + 1)
+	if function_end < 0:
+		function_end = source.length()
+	if next_abstract >= 0:
+		function_end = mini(function_end, next_abstract)
+	return source.substr(function_start, function_end - function_start)
 
 
 func _expect(condition: bool, message: String) -> void:

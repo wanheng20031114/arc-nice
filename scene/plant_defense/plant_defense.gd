@@ -223,6 +223,28 @@ func receive_damage(
 	return apply_combat_damage(request).accepted
 
 
+func get_combat_faction_id() -> int:
+	return CombatRelationService.PLAYER_ALLIED
+
+
+func create_damage_source_snapshot(
+	event_source_id: int = 0,
+	source_type: StringName = &"plant"
+) -> DamageSourceSnapshot:
+	var credit_peer_id := (
+		maxi(owner_player.peer_id, 0)
+		if owner_player != null and is_instance_valid(owner_player)
+		else 0
+	)
+	return DamageSourceSnapshot.create(
+		get_combat_faction_id(),
+		credit_peer_id,
+		maxi(int(get_meta(&"net_id", get_instance_id())), 0),
+		maxi(event_source_id, 0),
+		source_type if source_type != &"" else &"plant"
+	)
+
+
 ## Unified authoritative sink for plants and production buildings. Multiplayer
 ## replicas reject the request explicitly instead of silently sharing a formula
 ## with the Host.
@@ -247,6 +269,18 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 			request,
 			CombatTypes.DamageRejectionReason.TARGET_UNAVAILABLE
 		)
+	if request.amount <= 0:
+		return _reject_combat_damage(
+			request,
+			CombatTypes.DamageRejectionReason.INVALID_AMOUNT
+		)
+	var admission_reason := CombatDamageAdmission.get_rejection_reason(
+		request,
+		get_combat_faction_id(),
+		_get_damage_relation_service()
+	)
+	if admission_reason != CombatTypes.DamageRejectionReason.NONE:
+		return _reject_combat_damage(request, admission_reason)
 
 	var result := DamageResolver.resolve(
 		request,
@@ -280,10 +314,17 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 	return result
 
 
+func _get_damage_relation_service() -> CombatRelationService:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
+		return null
+	return combat_runtime.get_combat_relation_service()
+
+
 func apply_burn_status(
 	source_family: StringName,
 	duration: float,
-	tick_damage: int
+	tick_damage: int,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	if (
 		is_multiplayer_proxy
@@ -306,7 +347,8 @@ func apply_burn_status(
 		source_family,
 		duration,
 		tick_damage,
-		Callable(self, "_on_burn_status_active_changed")
+		Callable(self, "_on_burn_status_active_changed"),
+		_get_incoming_status_source_snapshot(source_snapshot, source_family)
 	))
 
 
@@ -322,7 +364,8 @@ func apply_bleed_status(
 	source_family: StringName,
 	duration: float,
 	tick_damage: int,
-	tick_interval: float = DEFAULT_BLEED_TICK_INTERVAL_SECONDS
+	tick_interval: float = DEFAULT_BLEED_TICK_INTERVAL_SECONDS,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	if (
 		is_multiplayer_proxy
@@ -347,8 +390,27 @@ func apply_bleed_status(
 		duration,
 		tick_damage,
 		tick_interval,
-		Callable(self, "_on_bleed_status_active_changed")
+		Callable(self, "_on_bleed_status_active_changed"),
+		_get_incoming_status_source_snapshot(source_snapshot, source_family)
 	))
+
+
+func _get_incoming_status_source_snapshot(
+	source_snapshot: DamageSourceSnapshot,
+	source_family: StringName
+) -> DamageSourceSnapshot:
+	if source_snapshot != null:
+		return source_snapshot.duplicate_snapshot()
+	# Plant status entry points historically mean an incoming enemy effect.
+	# Keep that legacy meaning at the wrapper instead of weakening the generic
+	# DamageRequest admission default.
+	return DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		0,
+		0,
+		source_family if source_family != &"" else &"legacy_enemy_status"
+	)
 
 
 func clear_bleed_status() -> void:
@@ -510,26 +572,47 @@ func _set_damage_status_overlay_strength(
 
 func _receive_incoming_burn_tick(
 	_source_family: StringName,
-	tick_damage: int
+	tick_damage: int,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
-	return receive_damage(
+	return _receive_incoming_periodic_damage(
 		tick_damage,
-		null,
-		Vector2.ZERO,
-		EnemyConfig.DamageType.MAGIC
+		EnemyConfig.DamageType.MAGIC,
+		source_snapshot
 	)
 
 
 func _receive_incoming_bleed_tick(
 	_source_family: StringName,
-	tick_damage: int
+	tick_damage: int,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
-	return receive_damage(
+	return _receive_incoming_periodic_damage(
 		tick_damage,
-		null,
-		Vector2.ZERO,
-		EnemyConfig.DamageType.PHYSICAL
+		EnemyConfig.DamageType.PHYSICAL,
+		source_snapshot
 	)
+
+
+func _receive_incoming_periodic_damage(
+	tick_damage: int,
+	damage_type: EnemyConfig.DamageType,
+	source_snapshot: DamageSourceSnapshot
+) -> bool:
+	var request := DamageRequest.new(tick_damage, int(damage_type))
+	request.with_source_snapshot(
+		source_snapshot
+		if source_snapshot != null
+		else DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			0,
+			0,
+			&"legacy_external_periodic_damage"
+		)
+	)
+	request.with_flag(CombatTypes.DamageFlag.PERIODIC)
+	return apply_combat_damage(request).accepted
 
 
 ## Applies damage without physical or magic mitigation while preserving the
@@ -541,6 +624,9 @@ func receive_unmitigated_damage(amount: int, source: Node = null) -> bool:
 	)
 	request.with_source(source)
 	request.with_flag(CombatTypes.DamageFlag.BYPASS_MITIGATION)
+	# This explicit administrative path powers sell/remove/destruction rules;
+	# those authored friendly actions opt out of ordinary faction admission.
+	request.with_flag(CombatTypes.DamageFlag.BYPASS_FACTION_FILTER)
 	return apply_combat_damage(request).accepted
 
 

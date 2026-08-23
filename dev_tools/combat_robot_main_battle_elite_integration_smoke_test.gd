@@ -46,6 +46,7 @@ const EXPECTED_DIRECT_CONFIG_REFERENCES := [
 	"res://resources/config/campaigns/tower_defense/formal/wave_11.tres",
 	"res://resources/config/campaigns/tower_defense/formal/wave_12.tres",
 	"res://resources/config/encyclopedia/enemies/combat_robot_main_battle_elite.tres",
+	"res://resources/config/runtime_content_catalog.gd",
 ]
 const AUDIO_STREAM_FIELDS := {
 	&"move_stomp_audio_stream_a": ["combat_robot_main_battle_elite_stomp_a.wav", 0.25],
@@ -328,7 +329,7 @@ func _test_approved_direct_references() -> void:
 	_expect(
 		references == EXPECTED_DIRECT_CONFIG_REFERENCES,
 		(
-			"主战机器人只可由P1E、正式塔防获批波次与图鉴直引；"
+			"主战机器人只可由运行时信任目录、P1E、正式塔防获批波次与图鉴直引；"
 			+ "其他配置不得复制引用清单：%s。"
 		)
 		% [references]

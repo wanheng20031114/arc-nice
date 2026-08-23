@@ -9,6 +9,9 @@ const AGAVE_SCENE := preload(
 const BASIC_ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
 )
+const TEST_RUNTIME_SCENE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
 
 const BURN_VISUAL_MASK := 1
 const BLEED_VISUAL_MASK := 2
@@ -16,7 +19,7 @@ const CHILL_VISUAL_MASK := 4
 const MARK_VISUAL_MASK := 8
 
 var failures: Array[String] = []
-var fixture: Node2D = null
+var fixture: EnemyGameplayGatewayTestRuntime = null
 var burn_scheduler: Node = null
 var bleed_scheduler: Node = null
 var enemy_status_scheduler: Node = null
@@ -27,8 +30,12 @@ func _init() -> void:
 
 
 func _run() -> void:
-	fixture = Node2D.new()
+	fixture = (
+		TEST_RUNTIME_SCENE.instantiate()
+		as EnemyGameplayGatewayTestRuntime
+	)
 	fixture.name = "DamageOverTimeStatusTargetsSmokeTest"
+	fixture.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	root.add_child(fixture)
 	current_scene = fixture
 
@@ -107,11 +114,30 @@ func _test_player_damage_type_and_independent_visual_lifecycle() -> void:
 		"Player burn and bleed must own independent active state and overlays."
 	)
 
+	var bleed_source_snapshot := bleed_scheduler.call(
+		"get_source_snapshot",
+		player,
+		&"target_test_bleed"
+	) as Dictionary
 	bleed_scheduler.call("_advance_active_statuses", 0.5)
+	var rejection_reason := (
+		player.last_damage_result.rejection_reason
+		if player.last_damage_result != null
+		else -1
+	)
 	_expect(
 		player.current_health == health_before_tick - 6
 		and player.last_damage_taken == 6,
-		"Player bleed must deal PHYSICAL damage through current physical defense."
+		(
+			"Player bleed must deal PHYSICAL damage through current physical defense; "
+			+ "health_before=%d health_after=%d last_damage=%d rejection=%d snapshot=%s."
+		) % [
+			health_before_tick,
+			player.current_health,
+			player.last_damage_taken,
+			rejection_reason,
+			str(bleed_source_snapshot),
+		]
 	)
 	bleed_scheduler.call("_advance_active_statuses", 0.26)
 	_expect(
@@ -383,6 +409,7 @@ func _test_enemy_shared_timeline_and_scoped_clear() -> void:
 func _spawn_player() -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
 	fixture.add_child(player)
+	fixture.bind_player_runtime_context(player)
 	player.set_physics_process(false)
 	player.set_process(false)
 	player.peer_id = 0

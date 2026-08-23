@@ -55,6 +55,13 @@ func supports_layered_area_authoritative_simulation() -> bool:
 	return false
 
 
+# The current aura attack contract is Player-only. Keep target capability
+# independent from simulation policy, and opt this family out explicitly until
+# its attack resolver is migrated to the common dynamic-target pipeline.
+func supports_dynamic_enemy_targeting() -> bool:
+	return false
+
+
 func _apply_config() -> void:
 	super._apply_config()
 
@@ -366,13 +373,14 @@ func _try_deal_aura_damage() -> void:
 	if aura_config == null:
 		return
 
-	_apply_multiplayer_player_damage(
+	var damage_handled := _apply_multiplayer_player_damage(
 		aura_touched_player,
 		get_effective_attack_damage(config.attack_damage),
 		_get_multiplayer_damage_source_id(int(Time.get_ticks_msec())),
 		&"yuanshi_aura"
 	)
-	aura_damage_cooldown_left = aura_config.aura_damage_interval
+	if damage_handled:
+		aura_damage_cooldown_left = aura_config.aura_damage_interval
 
 
 func _die() -> void:

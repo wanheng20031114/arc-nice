@@ -25,22 +25,29 @@ func _get_multiplayer_touch_source_type() -> StringName:
 			return &"enemy_touch"
 
 
-func _on_touch_damage_applied(target: Node) -> void:
+func _on_touch_damage_applied(
+	target: Node,
+	source_snapshot: DamageSourceSnapshot
+) -> void:
 	match _get_slime_variant():
 		SlimeConfig.Variant.FIRE:
-			_apply_fire_status(target)
+			_apply_fire_status(target, source_snapshot)
 		SlimeConfig.Variant.FROST:
 			_apply_frost_status(target)
 
 
-func _apply_fire_status(target: Node) -> void:
+func _apply_fire_status(
+	target: Node,
+	source_snapshot: DamageSourceSnapshot
+) -> void:
 	var player := target as Player
 	if player != null:
 		if not player.is_dead:
 			player.apply_burn_status(
 				FIRE_TOUCH_SOURCE_FAMILY,
 				CombatAttackRegistry.get_burn_duration(FIRE_TOUCH_SOURCE_FAMILY),
-				CombatAttackRegistry.get_burn_tick_damage(FIRE_TOUCH_SOURCE_FAMILY)
+				CombatAttackRegistry.get_burn_tick_damage(FIRE_TOUCH_SOURCE_FAMILY),
+				source_snapshot
 			)
 		return
 	var plant := target as PlantDefense
@@ -48,7 +55,17 @@ func _apply_fire_status(target: Node) -> void:
 		plant.apply_burn_status(
 			FIRE_TOUCH_SOURCE_FAMILY,
 			CombatAttackRegistry.get_burn_duration(FIRE_TOUCH_SOURCE_FAMILY),
-			CombatAttackRegistry.get_burn_tick_damage(FIRE_TOUCH_SOURCE_FAMILY)
+			CombatAttackRegistry.get_burn_tick_damage(FIRE_TOUCH_SOURCE_FAMILY),
+			source_snapshot
+		)
+		return
+	var enemy := target as Enemy
+	if enemy != null and not enemy.is_dead:
+		enemy.apply_burn_status(
+			FIRE_TOUCH_SOURCE_FAMILY,
+			CombatAttackRegistry.get_burn_duration(FIRE_TOUCH_SOURCE_FAMILY),
+			CombatAttackRegistry.get_burn_tick_damage(FIRE_TOUCH_SOURCE_FAMILY),
+			source_snapshot
 		)
 
 
@@ -56,6 +73,10 @@ func _apply_frost_status(target: Node) -> void:
 	var player := target as Player
 	if player != null and not player.is_dead:
 		player.apply_cold_status()
+		return
+	var enemy := target as Enemy
+	if enemy != null and not enemy.is_dead:
+		enemy.apply_cold_status()
 	# Plants receive the direct magic damage, but movement frost has no useful
 	# meaning for an immobile building and PlantDefense has no cold runtime.
 

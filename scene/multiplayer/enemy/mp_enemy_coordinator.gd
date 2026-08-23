@@ -1782,13 +1782,18 @@ func apply_tiyi_high_noon_damage(
 	var impact_direction := -owner_player.global_position.direction_to(
 		enemy.global_position
 	)
+	var source_snapshot := owner_player.create_damage_source_snapshot(
+		enemy_net_id,
+		&"tiyi_high_noon"
+	)
 	apply_confirmed_enemy_damage(
 		enemy_net_id,
 		enemy,
 		resolved_damage,
 		impact_direction,
 		EnemyConfig.DamageType.MAGIC,
-		false
+		false,
+		source_snapshot
 	)
 
 
@@ -1844,6 +1849,13 @@ func apply_host_enemy_hit_report(
 		return
 	var projectile_type: StringName = admission.projectile_type
 	var authoritative_damage: int = admission.authoritative_damage
+	var source_snapshot := (
+		_projectile_coordinator.get_projectile_damage_source_snapshot(
+			projectile_id
+		)
+	)
+	if source_snapshot == null:
+		return
 	var enemy := get_host_enemy(enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return
@@ -1867,7 +1879,9 @@ func apply_host_enemy_hit_report(
 		enemy,
 		authoritative_damage,
 		impact_direction,
-		get_player_projectile_damage_type(projectile_type)
+		get_player_projectile_damage_type(projectile_type),
+		true,
+		source_snapshot
 	):
 		return
 	_projectile_coordinator.commit_enemy_hit(
@@ -1967,11 +1981,14 @@ func apply_confirmed_enemy_damage(
 	damage: int,
 	impact_direction: Vector2,
 	damage_type: EnemyConfig.DamageType,
-	show_hit_particles: bool = true
+	show_hit_particles: bool = true,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	if enemy_net_id <= 0 or enemy == null or not is_instance_valid(enemy):
 		return false
 	var request := DamageRequest.new(damage, int(damage_type))
+	if source_snapshot != null:
+		request.with_source_snapshot(source_snapshot)
 	request.with_directions(impact_direction)
 	request.with_flag(
 		CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES,

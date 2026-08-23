@@ -368,6 +368,10 @@ func has_active_enemy(enemy_id: int) -> bool:
 	return _campaign_coordinator.is_wave_enemy_active(enemy_id)
 
 
+func has_registered_enemy(enemy_id: int) -> bool:
+	return _campaign_coordinator.has_wave_enemy_record(enemy_id)
+
+
 func clear_active_enemies() -> void:
 	_campaign_coordinator.clear_wave_enemy_entities()
 

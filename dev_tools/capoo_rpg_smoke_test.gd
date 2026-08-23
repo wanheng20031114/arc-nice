@@ -14,7 +14,7 @@ const COMBAT_RUNTIME_FIXTURE_SCENE := preload(
 )
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: EnemyGameplayGatewayTestRuntime
 var spawned_rockets: Array[CapooRPGRocket] = []
 var spawned_explosions: Array[CapooRPGExplosion] = []
 
@@ -24,8 +24,11 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
-	test_root.name = "CapooRPGSmokeTest"
+	test_root = (
+		COMBAT_RUNTIME_FIXTURE_SCENE.instantiate()
+		as EnemyGameplayGatewayTestRuntime
+	)
+	test_root.name = "CapooRPGSmokeTestRuntime"
 	root.add_child(test_root)
 	current_scene = test_root
 	test_root.child_entered_tree.connect(_on_child_entered_tree)
@@ -39,6 +42,7 @@ func _run() -> void:
 	await _test_proxy_action_visuals()
 	_test_multiplayer_projectile_registry()
 
+	test_root.prepare_for_scene_teardown()
 	test_root.queue_free()
 	await process_frame
 	await physics_frame
@@ -318,7 +322,7 @@ func _spawn_capoo(position: Vector2, player: Player) -> CapooRPG:
 	var enemy := CAPOO_SCENE.instantiate() as CapooRPG
 	test_root.add_child(enemy)
 	enemy.global_position = position
-	enemy.setup(CAPOO_CONFIG, player)
+	enemy.setup(CAPOO_CONFIG, player, null, test_root)
 	return enemy
 
 
@@ -330,9 +334,26 @@ func _spawn_rocket(
 	lifetime: float
 ) -> CapooRPGRocket:
 	var rocket := ROCKET_SCENE.instantiate() as CapooRPGRocket
+	rocket.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
+	rocket.setup(
+		direction,
+		damage,
+		speed,
+		lifetime,
+		CAPOO_CONFIG.explosion_radius,
+		DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			700,
+			0,
+			&"capoo_rpg_rocket"
+		)
+	)
 	test_root.add_child(rocket)
 	rocket.global_position = position
-	rocket.setup(direction, damage, speed, lifetime, CAPOO_CONFIG.explosion_radius)
 	return rocket
 
 

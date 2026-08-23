@@ -74,6 +74,19 @@ class TargetRuntime:
 		return nearest_target
 
 
+	func find_nearest_hostile_enemy_attack_target_world(
+		from_position: Vector2,
+		max_distance: float,
+		_source_faction_id: int,
+		excluded_instance_ids: Dictionary = {}
+	) -> Node2D:
+		return find_nearest_enemy_attack_target_world(
+			from_position,
+			max_distance,
+			excluded_instance_ids
+		)
+
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -1070,7 +1083,16 @@ func _spawn_volley(
 		lifetime,
 		target,
 		turn_rate,
-		runtime
+		runtime,
+		-1.0,
+		-1,
+		DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			0,
+			0,
+			&"fire_sorcerer_fireball_volley"
+		)
 	)
 	volley.set_physics_process(false)
 	return volley

@@ -7,6 +7,8 @@ const GunnerConfig := preload(
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
+
+
 const ACTION_FIRE: StringName = &"combat_robot_gunner_fire"
 const WORLD_COLLISION_MASK := 1
 const MUZZLE_RIGHT_POSITION := Vector2(14.0, 1.0)
@@ -41,6 +43,10 @@ var fire_leg_phase: float = 0.0
 var fire_visual_time_left: float = 0.0
 var action_sequence: int = 0
 var latest_proxy_action_id: int = 0
+
+
+func supports_dynamic_enemy_targeting() -> bool:
+	return true
 var gunner_config_cache: GunnerConfig = null
 
 var proxy_fire_visual_time_left: float = 0.0
@@ -407,7 +413,8 @@ func _fire_locked_bullet() -> bool:
 		gunner_config_cache.projectile_speed,
 		gunner_config_cache.projectile_lifetime,
 		pathfinder as GridPathfinder,
-		projectile_motion_system
+		projectile_motion_system,
+		create_damage_source_snapshot(0, gunner_bullet.authored_source_type)
 	)
 	projectile.global_position = projectile_spawn_position
 	projectile.reset_physics_interpolation()

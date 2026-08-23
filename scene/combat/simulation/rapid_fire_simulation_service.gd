@@ -35,6 +35,7 @@ enum TargetKind {
 	WORLD,
 	PLAYER,
 	PLANT,
+	ENEMY,
 }
 
 const PROFILE_AK := &"ak"
@@ -43,6 +44,7 @@ const AK_WORLD_COLLISION_MASK := 1
 const AK_WORLD_CHECK_INTERVAL := 2
 const AK_COLLISION_SIZE := Vector2(5.0, 2.0)
 const AK_COLLISION_CENTER_FORWARD_OFFSET := 0.5
+const BROAD_PHASE_CLOSED_BOUNDARY_EPSILON := 0.001
 const INVALID_HANDLE := 0
 const INVALID_SLOT := -1
 const HANDLE_SLOT_BITS := 32
@@ -53,6 +55,8 @@ const MIN_GROWTH_CAPACITY := 64
 var _combat_runtime: CombatRuntimeBase = null
 var _enemy_simulation_coordinator: EnemySimulationCoordinator = null
 var _enemy_damageable_spatial_index: EnemyDamageableSpatialIndex = null
+var _combat_target_index: CombatTargetIndex = null
+var _combat_relation_service: CombatRelationService = null
 var _grid_pathfinder: GridPathfinder = null
 var _teardown_prepared := false
 var _teardown_count := 0
@@ -69,6 +73,7 @@ var _world_ray_query := PhysicsRayQueryParameters2D.create(
 	AK_WORLD_COLLISION_MASK
 )
 var _plant_query_results: Array = []
+var _enemy_query_results: Array[Enemy] = []
 var _endpoint_target: Node2D = null
 var _endpoint_target_kind := TargetKind.NONE
 var _endpoint_target_id := 0
@@ -83,6 +88,11 @@ var _remaining_lifetimes := PackedFloat64Array()
 var _damages := PackedInt32Array()
 var _source_enemy_ids := PackedInt64Array()
 var _projectile_ids := PackedInt64Array()
+var _source_faction_ids := PackedInt32Array()
+var _source_credit_peer_ids := PackedInt64Array()
+var _source_instigator_entity_ids := PackedInt64Array()
+var _source_event_ids := PackedInt64Array()
+var _source_types := PackedStringArray()
 var _spawn_physics_frames := PackedInt64Array()
 var _states := PackedInt32Array()
 var _record_generations := PackedInt32Array()
@@ -159,6 +169,8 @@ var _metric_world_certificates := 0
 var _metric_plant_broad_queries := 0
 var _metric_plant_exact_queries := 0
 var _metric_player_exact_queries := 0
+var _metric_enemy_broad_queries := 0
+var _metric_enemy_exact_queries := 0
 var _metric_damage_applications := 0
 var _metric_compactions := 0
 var _metric_compacted_tombstones := 0
@@ -205,10 +217,19 @@ func bind_context(
 		if combat_services != null
 		else null
 	)
-	if _enemy_damageable_spatial_index == null:
+	_combat_target_index = combat_runtime.combat_target_index
+	_combat_relation_service = combat_runtime.get_combat_relation_service()
+	if (
+		_enemy_damageable_spatial_index == null
+		or _combat_target_index == null
+		or _combat_relation_service == null
+	):
 		_combat_runtime = null
 		_enemy_simulation_coordinator = null
 		_grid_pathfinder = null
+		_enemy_damageable_spatial_index = null
+		_combat_target_index = null
+		_combat_relation_service = null
 		return false
 	return true
 
@@ -256,7 +277,8 @@ func register_projectile(
 	source_enemy_id: int,
 	projectile_id: int,
 	world_check_interval: int,
-	world_check_phase: int
+	world_check_phase: int,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> int:
 	if not _is_valid_registration(
 		mode,
@@ -269,7 +291,8 @@ func register_projectile(
 		source_enemy_id,
 		projectile_id,
 		world_check_interval,
-		world_check_phase
+		world_check_phase,
+		damage_source_snapshot
 	):
 		_metric_registration_rejections += 1
 		return INVALID_HANDLE
@@ -291,6 +314,13 @@ func register_projectile(
 	_damages[dense_slot] = damage
 	_source_enemy_ids[dense_slot] = source_enemy_id
 	_projectile_ids[dense_slot] = projectile_id
+	_write_damage_source_snapshot(
+		dense_slot,
+		profile,
+		source_enemy_id,
+		projectile_id,
+		damage_source_snapshot
+	)
 	_spawn_physics_frames[dense_slot] = Engine.get_physics_frames()
 	_states[dense_slot] = SlotState.PENDING_ACTIVATION
 	_record_generations[dense_slot] = generation
@@ -334,11 +364,13 @@ func assign_projectile_identity(handle: int, projectile_id: int) -> bool:
 	if current_projectile_id > 0:
 		if current_projectile_id != projectile_id:
 			return false
+		_source_event_ids[dense_slot] = projectile_id
 		_world_check_phases[dense_slot] = (
 			projectile_id % AK_WORLD_CHECK_INTERVAL
 		)
 		return true
 	_projectile_ids[dense_slot] = projectile_id
+	_source_event_ids[dense_slot] = projectile_id
 	_world_check_phases[dense_slot] = projectile_id % AK_WORLD_CHECK_INTERVAL
 	return true
 
@@ -439,6 +471,15 @@ func get_source_enemy_id(handle: int) -> int:
 func get_damage(handle: int) -> int:
 	var dense_slot := _resolve_dense_slot(handle)
 	return int(_damages[dense_slot]) if dense_slot >= 0 else 0
+
+
+func get_damage_source_snapshot(handle: int) -> DamageSourceSnapshot:
+	var dense_slot := _resolve_dense_slot(handle)
+	return (
+		_make_damage_source_snapshot(dense_slot)
+		if dense_slot >= 0
+		else null
+	)
 
 
 func get_spawn_physics_frame(handle: int) -> int:
@@ -687,6 +728,8 @@ func prepare_for_runtime_teardown() -> void:
 	_teardown_count += 1
 	clear()
 	_enemy_damageable_spatial_index = null
+	_combat_target_index = null
+	_combat_relation_service = null
 	_grid_pathfinder = null
 	_combat_runtime = null
 	_enemy_simulation_coordinator = null
@@ -701,6 +744,11 @@ func clear() -> void:
 	_damages.resize(0)
 	_source_enemy_ids.resize(0)
 	_projectile_ids.resize(0)
+	_source_faction_ids.resize(0)
+	_source_credit_peer_ids.resize(0)
+	_source_instigator_entity_ids.resize(0)
+	_source_event_ids.resize(0)
+	_source_types.resize(0)
 	_spawn_physics_frames.resize(0)
 	_states.resize(0)
 	_record_generations.resize(0)
@@ -752,6 +800,7 @@ func clear() -> void:
 	_difference_capacity = 0
 	_difference_count = 0
 	_plant_query_results.clear()
+	_enemy_query_results.clear()
 	_endpoint_target = null
 	_endpoint_target_kind = TargetKind.NONE
 	_endpoint_target_id = 0
@@ -790,6 +839,8 @@ func get_metrics() -> Dictionary:
 		"plant_broad_queries": _metric_plant_broad_queries,
 		"plant_exact_queries": _metric_plant_exact_queries,
 		"player_exact_queries": _metric_player_exact_queries,
+		"enemy_broad_queries": _metric_enemy_broad_queries,
+		"enemy_exact_queries": _metric_enemy_exact_queries,
 		"damage_applications": _metric_damage_applications,
 		"compactions": _metric_compactions,
 		"compacted_tombstones": _metric_compacted_tombstones,
@@ -832,6 +883,7 @@ func _physics_process(delta: float) -> void:
 			# Legacy Area2D can consume an overlap on its first live frame before
 			# its first motion step. This is still endpoint-only: no path is swept.
 			if resolve_contacts and _find_endpoint_target(
+				dense_slot,
 				_positions[dense_slot],
 				_directions[dense_slot]
 			):
@@ -901,6 +953,7 @@ func _physics_process(delta: float) -> void:
 			continue
 
 		if resolve_contacts and _find_endpoint_target(
+			dense_slot,
 			endpoint,
 			_directions[dense_slot]
 		):
@@ -938,7 +991,11 @@ func _resolve_world_contact(from_position: Vector2, to_position: Vector2) -> boo
 	return true
 
 
-func _find_endpoint_target(endpoint: Vector2, direction: Vector2) -> bool:
+func _find_endpoint_target(
+	dense_slot: int,
+	endpoint: Vector2,
+	direction: Vector2
+) -> bool:
 	_endpoint_target = null
 	_endpoint_target_kind = TargetKind.NONE
 	_endpoint_target_id = 0
@@ -946,9 +1003,11 @@ func _find_endpoint_target(endpoint: Vector2, direction: Vector2) -> bool:
 		direction.angle(),
 		endpoint + direction * AK_COLLISION_CENTER_FORWARD_OFFSET
 	)
-	if _find_endpoint_player(projectile_transform):
+	if _find_endpoint_player(dense_slot, projectile_transform):
 		return true
-	return _find_endpoint_plant(projectile_transform, direction)
+	if _find_endpoint_plant(dense_slot, projectile_transform, direction):
+		return true
+	return _find_endpoint_enemy(dense_slot, projectile_transform, direction)
 
 
 func _cache_pending_target(dense_slot: int, endpoint: Vector2) -> void:
@@ -1001,10 +1060,32 @@ func _resolve_pending_target_contact(dense_slot: int) -> bool:
 			_clear_pending_target(dense_slot)
 			return false
 	elif target_kind == TargetKind.PLAYER:
-		if target == null or not is_instance_valid(target):
+		var player := target as Player
+		if (
+			player == null
+			or not is_instance_valid(player)
+			or player.is_queued_for_deletion()
+			or player.is_dead
+		):
+			_clear_pending_target(dense_slot)
+			return false
+	elif target_kind == TargetKind.ENEMY:
+		var enemy := target as Enemy
+		if (
+			enemy == null
+			or not is_instance_valid(enemy)
+			or enemy.is_queued_for_deletion()
+			or enemy.is_dead
+		):
 			_clear_pending_target(dense_slot)
 			return false
 	else:
+		_clear_pending_target(dense_slot)
+		return false
+	if not _is_target_hostile_for_slot(dense_slot, target):
+		# Legacy Area2D contacts also leave a non-hostile projectile live. Recheck
+		# after the one-tick delivery delay because the target may have changed
+		# faction since the endpoint overlap was cached.
 		_clear_pending_target(dense_slot)
 		return false
 
@@ -1023,9 +1104,13 @@ func _clear_pending_target(dense_slot: int) -> void:
 	_pending_target_positions[dense_slot] = Vector2.ZERO
 
 
-func _find_endpoint_player(projectile_transform: Transform2D) -> bool:
+func _find_endpoint_player(
+	dense_slot: int,
+	projectile_transform: Transform2D
+) -> bool:
 	var local_player := _combat_runtime.player
 	_consider_endpoint_player(
+		dense_slot,
 		local_player,
 		_get_player_stable_id(local_player, _combat_runtime.multiplayer_local_peer_id),
 		projectile_transform
@@ -1035,6 +1120,7 @@ func _find_endpoint_player(projectile_transform: Transform2D) -> bool:
 		if player == local_player:
 			continue
 		_consider_endpoint_player(
+			dense_slot,
 			player,
 			_get_player_stable_id(player, int(peer_id_variant)),
 			projectile_transform
@@ -1043,6 +1129,7 @@ func _find_endpoint_player(projectile_transform: Transform2D) -> bool:
 
 
 func _consider_endpoint_player(
+	dense_slot: int,
 	player: Player,
 	stable_id: int,
 	projectile_transform: Transform2D
@@ -1051,6 +1138,8 @@ func _consider_endpoint_player(
 		player == null
 		or not is_instance_valid(player)
 		or player.is_queued_for_deletion()
+		or player.is_dead
+		or not _is_target_hostile_for_slot(dense_slot, player)
 		or player.collision_shape == null
 		or player.collision_shape.disabled
 		or player.collision_shape.shape == null
@@ -1080,6 +1169,7 @@ func _consider_endpoint_player(
 
 
 func _find_endpoint_plant(
+	dense_slot: int,
 	projectile_transform: Transform2D,
 	direction: Vector2
 ) -> bool:
@@ -1103,6 +1193,7 @@ func _find_endpoint_plant(
 			or plant.is_queued_for_deletion()
 			or plant.is_dead
 			or plant.is_removing
+			or not _is_target_hostile_for_slot(dense_slot, plant)
 		):
 			continue
 		_metric_plant_exact_queries += 1
@@ -1129,6 +1220,153 @@ func _find_endpoint_plant(
 			_endpoint_target_id = stable_id
 			selected_instance_id = instance_id
 	return _endpoint_target != null
+
+
+func _find_endpoint_enemy(
+	dense_slot: int,
+	projectile_transform: Transform2D,
+	direction: Vector2
+) -> bool:
+	if _combat_target_index == null:
+		return false
+	var half_size := AK_COLLISION_SIZE * 0.5
+	var world_extents := Vector2(
+		absf(direction.x) * half_size.x + absf(direction.y) * half_size.y,
+		absf(direction.y) * half_size.x + absf(direction.x) * half_size.y
+	)
+	var center := projectile_transform.origin
+	var maximum_target_extent := (
+		_combat_target_index.get_maximum_body_collision_extent_radius()
+	)
+	var query_aabb := Rect2(
+		center - world_extents,
+		world_extents * 2.0
+	).grow(maximum_target_extent + BROAD_PHASE_CLOSED_BOUNDARY_EPSILON)
+	var source_enemy := _get_indexed_source_enemy(dense_slot)
+	_metric_enemy_broad_queries += 1
+	_combat_target_index.query_hostile_world_aabb_unordered_into(
+		query_aabb,
+		int(_source_faction_ids[dense_slot]),
+		_enemy_query_results,
+		source_enemy,
+		_combat_relation_service
+	)
+	var selected_instance_id := 0
+	for enemy in _enemy_query_results:
+		if (
+			enemy == null
+			or not is_instance_valid(enemy)
+			or enemy.is_queued_for_deletion()
+			or enemy.is_dead
+			or _is_source_enemy_for_slot(dense_slot, enemy)
+			or not _is_target_hostile_for_slot(dense_slot, enemy)
+		):
+			continue
+		_metric_enemy_exact_queries += 1
+		if not _enemy_body_overlaps_projectile(enemy, projectile_transform):
+			continue
+		var stable_id := _get_enemy_stable_id(enemy)
+		var instance_id := int(enemy.get_instance_id())
+		if (
+			_endpoint_target == null
+			or stable_id < _endpoint_target_id
+			or (
+				stable_id == _endpoint_target_id
+				and instance_id < selected_instance_id
+			)
+		):
+			_endpoint_target = enemy
+			_endpoint_target_kind = TargetKind.ENEMY
+			_endpoint_target_id = stable_id
+			selected_instance_id = instance_id
+	return _endpoint_target != null
+
+
+func _enemy_body_overlaps_projectile(
+	enemy: Enemy,
+	projectile_transform: Transform2D
+) -> bool:
+	for shape_node in enemy.body_collision_shapes:
+		if (
+			shape_node == null
+			or not is_instance_valid(shape_node)
+			or shape_node.disabled
+			or shape_node.shape == null
+		):
+			continue
+		if _ak_collision_shape.collide(
+			projectile_transform,
+			shape_node.shape,
+			shape_node.global_transform
+		):
+			return true
+	return false
+
+
+func _get_indexed_source_enemy(dense_slot: int) -> Enemy:
+	if _combat_target_index == null:
+		return null
+	var source_enemy_id := int(_source_enemy_ids[dense_slot])
+	return (
+		_combat_target_index.get_enemy(source_enemy_id)
+		if source_enemy_id > 0
+		else null
+	)
+
+
+func _is_source_enemy_for_slot(dense_slot: int, enemy: Enemy) -> bool:
+	if enemy == null:
+		return false
+	var source_enemy_id := int(_source_enemy_ids[dense_slot])
+	if source_enemy_id <= 0:
+		return false
+	return (
+		_get_enemy_stable_id(enemy) == source_enemy_id
+		or int(enemy.get_instance_id()) == source_enemy_id
+	)
+
+
+func _get_enemy_stable_id(enemy: Enemy) -> int:
+	if enemy == null:
+		return 0
+	var stable_id := enemy.combat_target_index_net_id
+	if stable_id <= 0:
+		stable_id = int(enemy.get_meta(&"net_id", 0))
+	if stable_id <= 0:
+		stable_id = int(enemy.get_instance_id())
+	return stable_id
+
+
+func _is_target_hostile_for_slot(
+	dense_slot: int,
+	target: Node
+) -> bool:
+	if (
+		dense_slot < 0
+		or dense_slot >= _record_count
+		or target == null
+		or not is_instance_valid(target)
+		or not target.has_method(&"get_combat_faction_id")
+	):
+		return false
+	var source_faction_id := int(_source_faction_ids[dense_slot])
+	var target_faction_id := int(target.call(&"get_combat_faction_id"))
+	if (
+		not CombatRelationService.is_valid_faction_id(source_faction_id)
+		or not CombatRelationService.is_valid_faction_id(target_faction_id)
+	):
+		return false
+	return (
+		_combat_relation_service.is_hostile(
+			source_faction_id,
+			target_faction_id
+		)
+		if _combat_relation_service != null
+		else CombatRelationService.is_default_hostile(
+			source_faction_id,
+			target_faction_id
+		)
+	)
 
 
 func _get_player_stable_id(player: Player, roster_peer_id: int) -> int:
@@ -1175,6 +1413,15 @@ func _apply_authoritative_damage(dense_slot: int) -> bool:
 				_make_damage_request(dense_slot)
 			).accepted
 		)
+	if _endpoint_target_kind == TargetKind.ENEMY:
+		var enemy := _endpoint_target as Enemy
+		return (
+			enemy != null
+			and not enemy.is_dead
+			and enemy.apply_combat_damage(
+				_make_damage_request(dense_slot)
+			).accepted
+		)
 	if _endpoint_target_kind == TargetKind.PLAYER:
 		var player := _endpoint_target as Player
 		if player == null or player.is_dead:
@@ -1187,6 +1434,8 @@ func _apply_authoritative_damage(dense_slot: int) -> bool:
 				_make_damage_request(dense_slot)
 			).accepted
 		var projectile_id := int(_projectile_ids[dense_slot])
+		var source_type := StringName(_source_types[dense_slot])
+		var source_snapshot := _make_damage_source_snapshot(dense_slot)
 		var gateway := _combat_runtime.get_multiplayer_gameplay_gateway()
 		return (
 			projectile_id > 0
@@ -1197,16 +1446,19 @@ func _apply_authoritative_damage(dense_slot: int) -> bool:
 				projectile_id,
 				player.peer_id,
 				int(_damages[dense_slot]),
-				AK_SOURCE_TYPE,
+				source_type,
 				EnemyConfig.DamageType.PHYSICAL,
 				-_directions[dense_slot],
-				true
+				true,
+				false,
+				source_snapshot
 			)
 		)
 	return false
 
 
 func _make_damage_request(dense_slot: int) -> DamageRequest:
+	var source_type := StringName(_source_types[dense_slot])
 	return (
 		DamageRequest.new(
 			int(_damages[dense_slot]),
@@ -1215,13 +1467,65 @@ func _make_damage_request(dense_slot: int) -> DamageRequest:
 		.with_stable_source(
 			int(_source_enemy_ids[dense_slot]),
 			int(_projectile_ids[dense_slot]),
-			AK_SOURCE_TYPE
+			source_type,
+			_make_damage_source_snapshot(dense_slot)
 		)
 		.with_directions(
 			_directions[dense_slot],
 			-_directions[dense_slot]
 		)
 		.with_flag(CombatTypes.DamageFlag.RANGED)
+	)
+
+
+func _make_damage_source_snapshot(dense_slot: int) -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		int(_source_faction_ids[dense_slot]),
+		int(_source_credit_peer_ids[dense_slot]),
+		int(_source_instigator_entity_ids[dense_slot]),
+		int(_source_event_ids[dense_slot]),
+		StringName(_source_types[dense_slot])
+	)
+
+
+func _write_damage_source_snapshot(
+	dense_slot: int,
+	profile: int,
+	source_enemy_id: int,
+	projectile_id: int,
+	damage_source_snapshot: DamageSourceSnapshot
+) -> void:
+	if damage_source_snapshot != null:
+		_source_faction_ids[dense_slot] = (
+			damage_source_snapshot.source_faction_id
+		)
+		_source_credit_peer_ids[dense_slot] = (
+			damage_source_snapshot.credit_peer_id
+		)
+		_source_instigator_entity_ids[dense_slot] = (
+			damage_source_snapshot.instigator_entity_id
+		)
+		_source_event_ids[dense_slot] = (
+			projectile_id
+			if projectile_id > 0
+			else damage_source_snapshot.event_source_id
+		)
+		_source_types[dense_slot] = String(
+			damage_source_snapshot.source_type
+			if damage_source_snapshot.source_type != &""
+			else AK_SOURCE_TYPE
+		)
+		return
+
+	# Optional snapshots keep old fixtures source-compatible. AK's fallback is
+	# nevertheless explicit and hostile, so a data record can never inherit the
+	# legacy player-owned default merely because it has no live projectile Node.
+	_source_faction_ids[dense_slot] = CombatRelationService.HOSTILE_WAVE
+	_source_credit_peer_ids[dense_slot] = 0
+	_source_instigator_entity_ids[dense_slot] = source_enemy_id
+	_source_event_ids[dense_slot] = projectile_id
+	_source_types[dense_slot] = String(
+		AK_SOURCE_TYPE if profile == Profile.AK else &"enemy_projectile"
 	)
 
 
@@ -1236,7 +1540,8 @@ func _is_valid_registration(
 	source_enemy_id: int,
 	projectile_id: int,
 	world_check_interval: int,
-	world_check_phase: int
+	world_check_phase: int,
+	damage_source_snapshot: DamageSourceSnapshot
 ) -> bool:
 	return (
 		not _teardown_prepared
@@ -1255,6 +1560,10 @@ func _is_valid_registration(
 		and world_check_interval == AK_WORLD_CHECK_INTERVAL
 		and world_check_phase >= 0
 		and world_check_phase < world_check_interval
+		and (
+			damage_source_snapshot == null
+			or damage_source_snapshot.is_valid()
+		)
 	)
 
 
@@ -1276,6 +1585,11 @@ func _resize_record_storage(new_capacity: int) -> void:
 	_damages.resize(new_capacity)
 	_source_enemy_ids.resize(new_capacity)
 	_projectile_ids.resize(new_capacity)
+	_source_faction_ids.resize(new_capacity)
+	_source_credit_peer_ids.resize(new_capacity)
+	_source_instigator_entity_ids.resize(new_capacity)
+	_source_event_ids.resize(new_capacity)
+	_source_types.resize(new_capacity)
 	_spawn_physics_frames.resize(new_capacity)
 	_states.resize(new_capacity)
 	_record_generations.resize(new_capacity)
@@ -1469,6 +1783,13 @@ func _copy_record(from_slot: int, to_slot: int) -> void:
 	_damages[to_slot] = _damages[from_slot]
 	_source_enemy_ids[to_slot] = _source_enemy_ids[from_slot]
 	_projectile_ids[to_slot] = _projectile_ids[from_slot]
+	_source_faction_ids[to_slot] = _source_faction_ids[from_slot]
+	_source_credit_peer_ids[to_slot] = _source_credit_peer_ids[from_slot]
+	_source_instigator_entity_ids[to_slot] = (
+		_source_instigator_entity_ids[from_slot]
+	)
+	_source_event_ids[to_slot] = _source_event_ids[from_slot]
+	_source_types[to_slot] = _source_types[from_slot]
 	_spawn_physics_frames[to_slot] = _spawn_physics_frames[from_slot]
 	_states[to_slot] = _states[from_slot]
 	_record_generations[to_slot] = _record_generations[from_slot]
@@ -1496,6 +1817,11 @@ func _clear_record_row(dense_slot: int) -> void:
 	_damages[dense_slot] = 0
 	_source_enemy_ids[dense_slot] = 0
 	_projectile_ids[dense_slot] = 0
+	_source_faction_ids[dense_slot] = CombatRelationService.NEUTRAL
+	_source_credit_peer_ids[dense_slot] = 0
+	_source_instigator_entity_ids[dense_slot] = 0
+	_source_event_ids[dense_slot] = 0
+	_source_types[dense_slot] = ""
 	_spawn_physics_frames[dense_slot] = 0
 	_states[dense_slot] = SlotState.EMPTY
 	_record_generations[dense_slot] = 0
@@ -1531,6 +1857,8 @@ func _reset_kernel_metrics() -> void:
 	_metric_plant_broad_queries = 0
 	_metric_plant_exact_queries = 0
 	_metric_player_exact_queries = 0
+	_metric_enemy_broad_queries = 0
+	_metric_enemy_exact_queries = 0
 	_metric_damage_applications = 0
 	_metric_compactions = 0
 	_metric_compacted_tombstones = 0

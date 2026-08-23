@@ -11,7 +11,8 @@ func apply_bleed(
 	duration: float,
 	tick_damage: int,
 	tick_interval: float = DEFAULT_BLEED_TICK_INTERVAL_SECONDS,
-	state_callback: Callable = Callable()
+	state_callback: Callable = Callable(),
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	return apply_periodic_status(
 		target,
@@ -21,7 +22,8 @@ func apply_bleed(
 		tick_damage,
 		maxf(tick_interval, MIN_BLEED_TICK_INTERVAL_SECONDS),
 		TickPolicy.ALL_SOURCES,
-		state_callback
+		state_callback,
+		source_snapshot
 	)
 
 

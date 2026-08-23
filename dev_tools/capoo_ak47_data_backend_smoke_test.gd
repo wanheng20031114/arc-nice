@@ -53,7 +53,8 @@ class CapturingGateway:
 		direction: Vector2,
 		damage: int,
 		speed: float,
-		lifetime: float
+		lifetime: float,
+		_damage_source_snapshot: DamageSourceSnapshot = null
 	) -> int:
 		if reject_data_registration:
 			return 0

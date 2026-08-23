@@ -399,7 +399,22 @@ func _test_fireball_impact_damage_and_release() -> void:
 		test_root,
 		test_root.get_multiplayer_gameplay_gateway()
 	)
-	fireball.setup(Vector2.RIGHT, MAGE_CONFIG.attack_damage, 0.0, 3.0, MAGE_CONFIG.fireball_radius)
+	fireball.setup(
+		Vector2.RIGHT,
+		MAGE_CONFIG.attack_damage,
+		0.0,
+		3.0,
+		MAGE_CONFIG.fireball_radius,
+		null,
+		MAGE_CONFIG.fireball_homing_turn_rate,
+		DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			1,
+			0,
+			&"capoo_mage_fireball"
+		)
+	)
 	fireball.call("_explode")
 	await process_frame
 

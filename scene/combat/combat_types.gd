@@ -17,6 +17,7 @@ enum DamageFlag {
 	NO_HIT_INVINCIBILITY = 1 << 5,
 	SUPPRESS_HIT_PARTICLES = 1 << 6,
 	SUPPRESS_HIT_FLASH = 1 << 7,
+	BYPASS_FACTION_FILTER = 1 << 8,
 }
 
 ## Compact wire/presentation flags emitted only after authoritative damage is
@@ -45,6 +46,7 @@ enum DamageRejectionReason {
 	DODGED = 7,
 	DUPLICATE_EVENT = 8,
 	UNTRUSTED_SOURCE = 9,
+	NON_HOSTILE = 10,
 }
 
 ## 敌人终结原因会直接进入多人协议；已有值不可重排或复用。

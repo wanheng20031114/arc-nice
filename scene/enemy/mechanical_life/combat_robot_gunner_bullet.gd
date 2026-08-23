@@ -117,6 +117,8 @@ func _on_body_entered(body: Node2D) -> void:
 
 	var player := body as Player
 	if player != null:
+		if not _is_damage_admitted(player):
+			return
 		if projectile_id > 0 and _request_player_damage_via_gateway(player):
 			_consume(true)
 			return
@@ -125,10 +127,8 @@ func _on_body_entered(body: Node2D) -> void:
 			# explicitly bound single-player runtime may mutate health locally.
 			_consume(true)
 			return
-		player.apply_damage(
-			damage,
-			EnemyConfig.DamageType.PHYSICAL,
-			_get_player_damage_context()
+		player.apply_combat_damage(
+			_make_damage_request(direction, -direction)
 		)
 		_consume(true)
 		return
@@ -157,7 +157,9 @@ func _request_player_damage_via_gateway(player: Player) -> bool:
 		source_type,
 		EnemyConfig.DamageType.PHYSICAL,
 		-direction,
-		true
+		true,
+		false,
+		damage_source_snapshot
 	)
 
 

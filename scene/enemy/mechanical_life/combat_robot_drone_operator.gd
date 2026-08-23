@@ -40,12 +40,19 @@ var latest_proxy_action_id := 0
 # sensed cohort. Only the nearest configured candidates can issue World rays.
 var nearest_target_buffer: Array[Node2D] = []
 var nearest_distance_buffer: Array[float] = []
+var nearest_kind_buffer: Array[int] = []
 var nearest_id_buffer: Array[int] = []
 var stale_target_id_buffer: Array[int] = []
 
 
+func supports_dynamic_enemy_targeting() -> bool:
+	return true
+
+
 func _ready() -> void:
 	super._ready()
+	if not objective_target_changed.is_connected(_on_objective_target_changed):
+		objective_target_changed.connect(_on_objective_target_changed)
 	_refresh_drone_motion_system()
 
 
@@ -80,6 +87,7 @@ func _apply_config() -> void:
 	sensed_targets.clear()
 	nearest_target_buffer.clear()
 	nearest_distance_buffer.clear()
+	nearest_kind_buffer.clear()
 	nearest_id_buffer.clear()
 	stale_target_id_buffer.clear()
 	_stop_operator_timers()
@@ -141,7 +149,21 @@ func _on_attack_sense_area_body_exited(body: Node2D) -> void:
 	if body != null:
 		sensed_targets.erase(body.get_instance_id())
 	if combat_state == CombatState.TRACKING_READY and sensed_targets.is_empty():
-		blocked_retry_timer.stop()
+		if not _has_in_range_attackable_objective():
+			blocked_retry_timer.stop()
+
+
+func _on_objective_target_changed(
+	_enemy: Enemy,
+	_current_target: Node2D
+) -> void:
+	if (
+		is_dead
+		or is_multiplayer_proxy
+		or combat_state != CombatState.TRACKING_READY
+	):
+		return
+	_try_select_and_begin_deploy()
 
 
 func _on_deploy_timer_timeout() -> void:
@@ -193,6 +215,19 @@ func _try_select_and_begin_deploy() -> bool:
 		or operator_config_cache == null
 	):
 		return false
+	var designated_target := _get_active_designated_attack_target()
+	if designated_target != null:
+		if not _is_target_within_attack_range(designated_target):
+			blocked_retry_timer.stop()
+			return false
+		if _is_world_segment_clear(
+			designated_target.global_position,
+			WORLD_COLLISION_MASK
+		) and _begin_deploy(designated_target):
+			blocked_retry_timer.stop()
+			return true
+		_arm_blocked_retry_if_needed(true)
+		return false
 
 	_collect_nearest_attack_candidates()
 	for candidate_target in nearest_target_buffer:
@@ -212,6 +247,7 @@ func _try_select_and_begin_deploy() -> bool:
 func _collect_nearest_attack_candidates() -> void:
 	nearest_target_buffer.clear()
 	nearest_distance_buffer.clear()
+	nearest_kind_buffer.clear()
 	nearest_id_buffer.clear()
 	stale_target_id_buffer.clear()
 	if operator_config_cache == null:
@@ -220,23 +256,22 @@ func _collect_nearest_attack_candidates() -> void:
 	var attack_range := maxf(operator_config_cache.attack_range, 0.0)
 	var attack_range_squared := attack_range * attack_range
 	var check_limit := maxi(operator_config_cache.visible_target_check_limit, 1)
+	var proactive_target := get_attackable_objective()
+	if proactive_target != null:
+		_insert_attack_candidate_if_in_range(
+			proactive_target,
+			attack_range_squared,
+			check_limit
+		)
 	for target_id_variant in sensed_targets:
 		var target_id := int(target_id_variant)
 		var target := sensed_targets.get(target_id) as Node2D
 		if not _is_ranged_combat_target_valid(target):
 			stale_target_id_buffer.append(target_id)
 			continue
-		var distance_squared := global_position.distance_squared_to(
-			target.global_position
-		)
-		# Area2D overlap includes the target body's own radius. The explicit center
-		# check preserves the authored 80-pixel targeting boundary.
-		if distance_squared > attack_range_squared:
-			continue
-		_insert_nearest_candidate(
+		_insert_attack_candidate_if_in_range(
 			target,
-			distance_squared,
-			target_id,
+			attack_range_squared,
 			check_limit
 		)
 
@@ -244,21 +279,55 @@ func _collect_nearest_attack_candidates() -> void:
 		sensed_targets.erase(stale_target_id)
 
 
+func _insert_attack_candidate_if_in_range(
+	target: Node2D,
+	attack_range_squared: float,
+	check_limit: int
+) -> void:
+	if not _is_ranged_combat_target_valid(target):
+		return
+	for existing_target in nearest_target_buffer:
+		if existing_target == target:
+			return
+	var distance_squared := global_position.distance_squared_to(
+		target.global_position
+	)
+	# Area2D overlap includes the target body's own radius. The explicit center
+	# check preserves the authored 80-pixel targeting boundary.
+	if distance_squared > attack_range_squared:
+		return
+	_insert_nearest_candidate(
+		target,
+		distance_squared,
+		_get_target_stable_kind(target),
+		_get_target_stable_id(target),
+		check_limit
+	)
+
+
 func _insert_nearest_candidate(
 	target: Node2D,
 	distance_squared: float,
+	target_kind: int,
 	target_id: int,
 	check_limit: int
 ) -> void:
 	var insert_index := nearest_target_buffer.size()
 	for candidate_index in range(nearest_target_buffer.size()):
 		var existing_distance := nearest_distance_buffer[candidate_index]
+		var existing_kind := nearest_kind_buffer[candidate_index]
 		var existing_id := nearest_id_buffer[candidate_index]
 		if (
 			distance_squared < existing_distance
 			or (
 				distance_squared == existing_distance
-				and target_id < existing_id
+				and (
+					target_kind < existing_kind
+					or (
+						target_kind == existing_kind
+						and target_id < existing_id
+					)
+				)
 			)
 		):
 			insert_index = candidate_index
@@ -268,12 +337,59 @@ func _insert_nearest_candidate(
 		return
 	nearest_target_buffer.insert(insert_index, target)
 	nearest_distance_buffer.insert(insert_index, distance_squared)
+	nearest_kind_buffer.insert(insert_index, target_kind)
 	nearest_id_buffer.insert(insert_index, target_id)
 	if nearest_target_buffer.size() <= check_limit:
 		return
 	nearest_target_buffer.pop_back()
 	nearest_distance_buffer.pop_back()
+	nearest_kind_buffer.pop_back()
 	nearest_id_buffer.pop_back()
+
+
+func _get_active_designated_attack_target() -> Node2D:
+	if not targeting_state.is_active_target_assigned():
+		return null
+	return get_attackable_objective()
+
+
+func _has_in_range_attackable_objective() -> bool:
+	var target := get_attackable_objective()
+	return target != null and _is_target_within_attack_range(target)
+
+
+func _is_target_within_attack_range(target: Node2D) -> bool:
+	if operator_config_cache == null or not _is_ranged_combat_target_valid(target):
+		return false
+	var attack_range := maxf(operator_config_cache.attack_range, 0.0)
+	return global_position.distance_squared_to(target.global_position) <= (
+		attack_range * attack_range
+	)
+
+
+func _get_target_stable_kind(target: Node2D) -> int:
+	if target is Player:
+		return CombatTargetDescriptor.Kind.PLAYER
+	if target is PlantDefense:
+		return CombatTargetDescriptor.Kind.PLANT
+	if target is Enemy:
+		return CombatTargetDescriptor.Kind.ENEMY
+	return CombatTargetDescriptor.Kind.NONE
+
+
+func _get_target_stable_id(target: Node2D) -> int:
+	var player_target := target as Player
+	if player_target != null and player_target.peer_id > 0:
+		return player_target.peer_id
+	var enemy_target := target as Enemy
+	if enemy_target != null:
+		if enemy_target.combat_target_index_net_id > 0:
+			return enemy_target.combat_target_index_net_id
+		var enemy_net_id := int(enemy_target.get_meta(&"net_id", 0))
+		if enemy_net_id > 0:
+			return enemy_net_id
+	var metadata_id := int(target.get_meta(&"net_id", 0))
+	return metadata_id if metadata_id > 0 else target.get_instance_id()
 
 
 func _begin_deploy(target: Node2D) -> bool:
@@ -372,7 +488,11 @@ func _spawn_committed_drone(
 		drone_speed,
 		flight_duration,
 		maxf(operator_config_cache.explosion_radius, 0.0),
-		drone_motion_system
+		drone_motion_system,
+		create_damage_source_snapshot(
+			0,
+			operator_config_cache.projectile_type
+		)
 	)
 	if not drone.begin_deployment():
 		drone.retire()
@@ -399,11 +519,15 @@ func _release_failed_drone_node(node: Node) -> void:
 	node.queue_free()
 
 
-func _arm_blocked_retry_if_needed() -> void:
+func _arm_blocked_retry_if_needed(force_retry: bool = false) -> void:
 	if (
 		operator_config_cache == null
 		or combat_state != CombatState.TRACKING_READY
-		or sensed_targets.is_empty()
+		or (
+			not force_retry
+			and sensed_targets.is_empty()
+			and not _has_in_range_attackable_objective()
+		)
 	):
 		blocked_retry_timer.stop()
 		return
@@ -508,6 +632,7 @@ func _cancel_operator_state(
 	sensed_targets.clear()
 	nearest_target_buffer.clear()
 	nearest_distance_buffer.clear()
+	nearest_kind_buffer.clear()
 	nearest_id_buffer.clear()
 	stale_target_id_buffer.clear()
 	_reset_ranged_attack_position_state()

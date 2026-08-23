@@ -7,6 +7,7 @@ const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
 
+
 enum CombatState {
 	CHASE,
 	WINDUP,
@@ -28,6 +29,10 @@ var fire_direction := Vector2.RIGHT
 var action_sequence: int = 0
 var latest_proxy_action_id: int = 0
 var committed_attack_target: Node2D = null
+
+
+func supports_dynamic_enemy_targeting() -> bool:
+	return true
 
 
 func _ready() -> void:
@@ -240,7 +245,8 @@ func _fire_rocket() -> bool:
 		outgoing_damage,
 		rpg_config.projectile_speed,
 		rpg_config.projectile_lifetime,
-		rpg_config.explosion_radius
+		rpg_config.explosion_radius,
+		create_damage_source_snapshot(0, &"capoo_rpg_rocket")
 	)
 	if rocket.get_parent() == null:
 		spawn_parent.add_child(rocket)

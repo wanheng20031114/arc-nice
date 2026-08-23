@@ -9,6 +9,7 @@ const PLANT_CONFIG := preload(
 const TEST_SESSION_SCRIPT := preload(
 	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_session.gd"
 )
+const BASE_ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const RapidFireService := preload(
 	"res://scene/combat/simulation/rapid_fire_simulation_service.gd"
 )
@@ -17,6 +18,8 @@ const TEST_SPEED := 600.0
 const FAR_POSITION := Vector2(10000.0, 10000.0)
 const PLANT_ID := 301
 const PLAYER_ID := 7
+const LOW_ENEMY_ID := 801
+const HIGH_ENEMY_ID := 802
 
 var failures: Array[String] = []
 var fixture: EnemyGameplayGatewayTestRuntime = null
@@ -27,6 +30,8 @@ var plant: PlantDefense = null
 var player: Player = null
 var wall: StaticBody2D = null
 var session: EnemyGameplayGatewayTestSession = null
+var low_enemy: Enemy = null
+var high_enemy: Enemy = null
 
 
 func _init() -> void:
@@ -42,8 +47,11 @@ func _run() -> void:
 		await _test_world_cadence_and_lifetime_ordering()
 		await _test_world_target_precedence()
 		await _test_moved_and_dead_plant_pending_contacts()
+		await _test_enemy_contact_and_friendly_transparency()
+		await _test_pending_enemy_faction_change_and_stable_order()
 		await _test_player_authority_modes()
 		await _test_host_plant_and_stable_spawn_order()
+		await _test_enemy_defeat_source_snapshot_attribution()
 	await _cleanup_fixture()
 	_finish()
 
@@ -99,6 +107,7 @@ func _mount_fixture() -> void:
 		return
 	service = services.get_rapid_fire_simulation_service()
 	damageable_index = services.get_enemy_damageable_spatial_index()
+	_mount_enemy_targets()
 	_expect(
 		service != null and service.is_bound(),
 		"Rapid-fire service must bind through authored combat services."
@@ -108,6 +117,35 @@ func _mount_fixture() -> void:
 		"PlantSystem lifecycle must register the authored plant in the shared index."
 	)
 	await _reset_context()
+
+
+func _mount_enemy_targets() -> void:
+	var enemy_container := fixture.get_node_or_null("EnemyContainer") as Node2D
+	_expect(enemy_container != null, "Rapid-fire fixture must author EnemyContainer.")
+	if enemy_container == null:
+		return
+	high_enemy = BASE_ENEMY_SCENE.instantiate() as Enemy
+	low_enemy = BASE_ENEMY_SCENE.instantiate() as Enemy
+	var mounted_enemies: Array[Enemy] = [high_enemy, low_enemy]
+	for enemy in mounted_enemies:
+		if enemy == null:
+			continue
+		enemy.process_mode = Node.PROCESS_MODE_DISABLED
+		enemy.visible = false
+		enemy_container.add_child(enemy)
+		enemy.bind_combat_runtime(fixture)
+		enemy.current_health = 100
+		enemy.global_position = FAR_POSITION
+	var mounted := high_enemy != null and low_enemy != null
+	_expect(mounted, "Rapid-fire fixture enemy targets must instantiate.")
+	if not mounted:
+		return
+	high_enemy.set_meta(&"net_id", HIGH_ENEMY_ID)
+	low_enemy.set_meta(&"net_id", LOW_ENEMY_ID)
+	# Register in reverse stable-ID order so the projectile resolver must select
+	# by stable identity rather than bucket insertion order.
+	fixture.register_combat_target(HIGH_ENEMY_ID, high_enemy)
+	fixture.register_combat_target(LOW_ENEMY_ID, low_enemy)
 
 
 func _test_authored_contract() -> void:
@@ -162,8 +200,15 @@ func _test_next_frame_endpoint_delay_and_stable_damage() -> void:
 		and plant.last_damage_result.request.source_enemy_id == 700
 		and plant.last_damage_result.request.source_projectile_id == 101
 		and plant.last_damage_result.request.source_type
-		== RapidFireService.AK_SOURCE_TYPE,
-		"Authoritative Plant damage must retain stable enemy/projectile/type identity."
+		== RapidFireService.AK_SOURCE_TYPE
+		and plant.last_damage_result.request.source_snapshot_is_explicit
+		and plant.last_damage_result.request.source_snapshot.source_faction_id
+		== CombatRelationService.HOSTILE_WAVE
+		and plant.last_damage_result.request.source_snapshot.instigator_entity_id
+		== 700
+		and plant.last_damage_result.request.source_snapshot.event_source_id
+		== 101,
+		"Authoritative Plant damage must rebuild the frozen hostile source while retaining stable enemy/projectile/type identity."
 	)
 
 
@@ -341,6 +386,184 @@ func _test_moved_and_dead_plant_pending_contacts() -> void:
 	)
 
 
+func _test_enemy_contact_and_friendly_transparency() -> void:
+	await _reset_context(Vector2(12.0, 0.0), Vector2(12.0, 0.0))
+	low_enemy.global_position = Vector2(20.0, 0.0)
+	var plant_health := plant.current_health
+	var player_health := player.current_health
+	var enemy_health := low_enemy.current_health
+	var allied_source := DamageSourceSnapshot.create(
+		CombatRelationService.PLAYER_ALLIED,
+		17,
+		700,
+		901,
+		RapidFireService.AK_SOURCE_TYPE
+	)
+	_register_projectile(
+		RapidFireService.Mode.DATA,
+		901,
+		1.0,
+		1,
+		allied_source
+	)
+	await _next_manual_step()
+	await _next_manual_step()
+	_expect_completion(
+		RapidFireService.CompletionReason.TARGET,
+		RapidFireService.TargetKind.ENEMY,
+		LOW_ENEMY_ID,
+		Vector2(10.0, 0.0),
+		"A DATA AK round must pass through allied Player/Plant bodies and hit the hostile indexed Enemy whose root lies outside the raw projectile AABB."
+	)
+	_expect(
+		plant.current_health == plant_health
+		and player.current_health == player_health
+		and low_enemy.current_health < enemy_health
+		and service.get_completion_damage_applied(0),
+		"Friendly Player/Plant candidates must be transparent while hostile Enemy damage remains authoritative."
+	)
+
+	await _reset_context(Vector2(12.0, 0.0))
+	low_enemy.global_position = Vector2(20.0, 0.0)
+	var hostile_plant_health := plant.current_health
+	var friendly_enemy_health := low_enemy.current_health
+	_register_projectile(RapidFireService.Mode.DATA, 902, 1.0, 1)
+	await _next_manual_step()
+	await _next_manual_step()
+	_expect(
+		service.get_completion_target_kind(0)
+		== RapidFireService.TargetKind.PLANT
+		and plant.current_health < hostile_plant_health
+		and low_enemy.current_health == friendly_enemy_health,
+		"A wave-hostile DATA round must ignore its same-faction Enemy body and retain the legacy hostile Plant contact."
+	)
+
+
+func _test_pending_enemy_faction_change_and_stable_order() -> void:
+	await _reset_context()
+	low_enemy.global_position = Vector2(20.0, 0.0)
+	var allied_source := DamageSourceSnapshot.create(
+		CombatRelationService.PLAYER_ALLIED,
+		19,
+		700,
+		903,
+		RapidFireService.AK_SOURCE_TYPE
+	)
+	var pending_handle := _register_projectile(
+		RapidFireService.Mode.DATA,
+		903,
+		1.0,
+		1,
+		allied_source
+	)
+	await _next_manual_step()
+	_expect(
+		service.get_completion_count() == 0,
+		"A hostile Enemy endpoint must retain the existing one-tick contact delivery delay."
+	)
+	low_enemy.set_combat_faction_id(
+		CombatRelationService.PLAYER_ALLIED,
+		-1,
+		true
+	)
+	var health_before_resolution := low_enemy.current_health
+	await _next_manual_step()
+	_expect(
+		service.get_completion_count() == 0
+		and service.is_handle_live(pending_handle)
+		and service.get_position(pending_handle).is_equal_approx(
+			Vector2(20.0, 0.0)
+		)
+		and low_enemy.current_health == health_before_resolution,
+		"An Enemy that becomes friendly while contact is pending must become transparent without consuming the projectile."
+	)
+
+	await _reset_context()
+	low_enemy.global_position = Vector2(20.0, 0.0)
+	high_enemy.global_position = Vector2(20.0, 0.0)
+	var low_health := low_enemy.current_health
+	var high_health := high_enemy.current_health
+	var stable_source := DamageSourceSnapshot.create(
+		CombatRelationService.PLAYER_ALLIED,
+		21,
+		700,
+		904,
+		RapidFireService.AK_SOURCE_TYPE
+	)
+	_register_projectile(
+		RapidFireService.Mode.DATA,
+		904,
+		1.0,
+		1,
+		stable_source
+	)
+	await _next_manual_step()
+	await _next_manual_step()
+	_expect(
+		service.get_completion_target_kind(0)
+		== RapidFireService.TargetKind.ENEMY
+		and service.get_completion_target_id(0) == LOW_ENEMY_ID
+		and low_enemy.current_health < low_health
+		and high_enemy.current_health == high_health,
+		"Overlapping hostile Enemy candidates must resolve by stable net ID rather than reverse registration order."
+	)
+
+
+func _test_enemy_defeat_source_snapshot_attribution() -> void:
+	await _reset_context()
+	low_enemy.global_position = Vector2(20.0, 0.0)
+	low_enemy.current_health = 10
+	var allied_source := DamageSourceSnapshot.create(
+		CombatRelationService.PLAYER_ALLIED,
+		23,
+		700,
+		905,
+		RapidFireService.AK_SOURCE_TYPE
+	)
+	_register_projectile(
+		RapidFireService.Mode.DATA,
+		905,
+		1.0,
+		1,
+		allied_source
+	)
+	await _next_manual_step()
+	await _next_manual_step()
+	_expect(
+		low_enemy.is_dead
+		and low_enemy.defeat_context != null
+		and low_enemy.defeat_context.is_player_reward_eligible()
+		and low_enemy.defeat_context.source_snapshot.source_faction_id
+		== CombatRelationService.PLAYER_ALLIED
+		and low_enemy.defeat_context.source_snapshot.credit_peer_id == 23
+		and low_enemy.defeat_context.source_snapshot.instigator_entity_id == 700
+		and low_enemy.defeat_context.source_snapshot.event_source_id == 905,
+		"A player-allied DATA Enemy kill must retain launch faction, credit, instigator, and projectile event identity for reward settlement."
+	)
+
+	service.clear()
+	service.reserve_projectile_capacity(8)
+	service.set_physics_process(false)
+	high_enemy.set_combat_faction_id(
+		CombatRelationService.PLAYER_ALLIED,
+		-1,
+		true
+	)
+	high_enemy.current_health = 10
+	high_enemy.global_position = Vector2(20.0, 0.0)
+	_register_projectile(RapidFireService.Mode.DATA, 906, 1.0, 1)
+	await _next_manual_step()
+	await _next_manual_step()
+	_expect(
+		high_enemy.is_dead
+		and high_enemy.defeat_context != null
+		and not high_enemy.defeat_context.is_player_reward_eligible()
+		and high_enemy.defeat_context.source_snapshot.source_faction_id
+		== CombatRelationService.HOSTILE_WAVE,
+		"A wave-hostile Enemy kill must not be reinterpreted as player-owned reward credit."
+	)
+
+
 func _test_player_authority_modes() -> void:
 	await _reset_context(FAR_POSITION, Vector2(12.0, 0.0))
 	var single_health := player.current_health
@@ -469,6 +692,19 @@ func _reset_context(
 	player.invincibility_time_left = 0.0
 	player.last_damage_result = null
 	player.global_position = player_position
+	var target_enemies: Array[Enemy] = [low_enemy, high_enemy]
+	for enemy in target_enemies:
+		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+			continue
+		enemy.set_combat_faction_id(
+			CombatRelationService.HOSTILE_WAVE,
+			-1,
+			true
+		)
+		enemy.current_health = 100
+		enemy.last_damage_result = null
+		enemy.defeat_context = null
+		enemy.global_position = FAR_POSITION
 	wall.global_position = wall_position
 	await physics_frame
 
@@ -477,7 +713,8 @@ func _register_projectile(
 	mode: int,
 	projectile_id: int,
 	lifetime: float,
-	phase: int
+	phase: int,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> int:
 	var handle := service.register_projectile(
 		mode as RapidFireService.Mode,
@@ -490,7 +727,8 @@ func _register_projectile(
 		700,
 		projectile_id,
 		RapidFireService.AK_WORLD_CHECK_INTERVAL,
-		phase
+		phase,
+		damage_source_snapshot
 	)
 	service.set_physics_process(false)
 	_expect(handle > 0, "Semantic projectile registration must succeed.")

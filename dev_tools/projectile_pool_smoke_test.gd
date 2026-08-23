@@ -46,6 +46,9 @@ const COLLECTIBLE_SAKURA_EXPLOSION_SCENE := preload(
 )
 const BULLET_HIT_EFFECT_SCENE := preload("res://scene/combat/projectiles/bullet_hit_effect.tscn")
 const ENEMY_HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
+const COMBAT_RUNTIME_FIXTURE_SCENE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
 
 var failures: Array[String] = []
 var fixture: Node2D = null
@@ -273,7 +276,14 @@ func _verify_real_reused_query_semantics() -> void:
 		var rocket_instance_id := rocket.get_instance_id()
 		var retained_explosion_query := rocket.explosion_query
 		rocket.global_position = first_explosion_position
-		rocket.setup(Vector2.RIGHT, 17, 0.0, 1.0, 32.0)
+		rocket.setup(
+			Vector2.RIGHT,
+			17,
+			0.0,
+			1.0,
+			32.0,
+			_make_hostile_projectile_snapshot(&"capoo_rpg_rocket")
+		)
 		var health_before_first_hit := target.current_health
 		rocket.call("_apply_explosion_damage", target)
 		_expect(
@@ -308,7 +318,14 @@ func _verify_real_reused_query_semantics() -> void:
 				"The second explosion lease must begin without stale hit de-dup entries."
 			)
 			reused_rocket.global_position = second_explosion_position
-			reused_rocket.setup(Vector2.RIGHT, 17, 0.0, 1.0, 32.0)
+			reused_rocket.setup(
+				Vector2.RIGHT,
+				17,
+				0.0,
+				1.0,
+				32.0,
+				_make_hostile_projectile_snapshot(&"capoo_rpg_rocket")
+			)
 			var health_before_second_hit := target.current_health
 			reused_rocket.call("_apply_explosion_damage")
 			_expect(
@@ -451,7 +468,8 @@ func _verify_tango_laser_bullet_reuse() -> void:
 		and not reused.monitoring
 		and not reused.monitorable
 		and not reused.sweep_cast.enabled
-		and reused.sweep_cast.collision_mask == 5,
+		and reused.sweep_cast.collision_mask
+			== TangoLaserBullet.WORLD_ENEMY_AND_PROJECTILE_SHIELD_MASK,
 		"Tango laser reuse must preserve the ShapeCast-only collision profile."
 	)
 	_expect(
@@ -818,6 +836,13 @@ func _verify_linglan_skill1_reuse() -> void:
 
 
 func _verify_extended_projectile_reuse() -> void:
+	# `target_runtime` is deliberately strongly typed. Use a real runtime object
+	# to contaminate the pooled lease instead of assigning the generic Node2D
+	# scene fixture and tripping the type checker before reset can be verified.
+	var dirty_target_runtime := (
+		COMBAT_RUNTIME_FIXTURE_SCENE.instantiate()
+		as EnemyGameplayGatewayTestRuntime
+	)
 	var scenes: Array[PackedScene] = [
 		RPG_ROCKET_SCENE,
 		MAGE_FIREBALL_SCENE,
@@ -878,7 +903,7 @@ func _verify_extended_projectile_reuse() -> void:
 			dirty_volley.visible_effect_mask = (
 				FireSorcererFireballVolley.ALL_BALLS_ACTIVE_MASK
 			)
-			dirty_volley.target_runtime = fixture
+			dirty_volley.target_runtime = dirty_target_runtime
 			dirty_volley.target_refresh_left = 9.0
 			for ball_index in range(
 				FireSorcererFireballVolley.BALL_COUNT
@@ -1106,6 +1131,20 @@ func _verify_extended_projectile_reuse() -> void:
 			)
 		_expect(pool.release(reused), "%s reused lease must release." % projectile_scene.resource_path)
 		await _wait_for_quarantine()
+	dirty_target_runtime.free()
+
+
+func _make_hostile_projectile_snapshot(
+	source_type: StringName
+) -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		0,
+		0,
+		source_type
+	)
+
 
 func _verify_strict_hit_effect_budget() -> void:
 	var first := pool.try_acquire(BULLET_HIT_EFFECT_SCENE) as BulletHitEffect

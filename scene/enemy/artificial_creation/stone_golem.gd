@@ -2,9 +2,12 @@ extends CapooKnight
 class_name StoneGolem
 
 const SLAM_PLAYER_COLLISION_MASK := 1 << 1
+const SLAM_ENEMY_COLLISION_MASK := 1 << 2
 const SLAM_PLANT_COLLISION_MASK := 1 << 9
 const SLAM_COLLISION_MASK := (
-	SLAM_PLAYER_COLLISION_MASK | SLAM_PLANT_COLLISION_MASK
+	SLAM_PLAYER_COLLISION_MASK
+	| SLAM_ENEMY_COLLISION_MASK
+	| SLAM_PLANT_COLLISION_MASK
 )
 const WARNING_BASE_RADIUS := 44.0
 const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/combat/physics/complete_shape_query_2d.gd")
@@ -107,6 +110,11 @@ func _apply_slash_damage() -> void:
 	var golem_config := config as StoneGolemConfigScript
 	if golem_config == null:
 		return
+	if slash_damage_source_snapshot == null:
+		slash_damage_source_snapshot = create_damage_source_snapshot(
+			_get_multiplayer_damage_source_id(action_sequence),
+			_get_slash_damage_source_type()
+		)
 
 	_start_slam_impact_visual(golem_config)
 	slam_query.transform = Transform2D(0.0, global_position)
@@ -140,34 +148,29 @@ func _apply_slash_damage() -> void:
 		var hit_target := result.get("collider") as Node2D
 		if not _is_ranged_combat_target_valid(hit_target):
 			continue
-		var player := hit_target as Player
-		var plant := hit_target as PlantDefense
-		if player == null and plant == null:
+		if (
+			not (hit_target is Player)
+			and not (hit_target is PlantDefense)
+			and not (hit_target is Enemy)
+		):
 			continue
 		var target_id := hit_target.get_instance_id()
 		if slam_hit_target_ids.has(target_id):
 			continue
-		slam_hit_target_ids[target_id] = true
 		var impact_direction := global_position.direction_to(
 			hit_target.global_position
 		)
 		if impact_direction == Vector2.ZERO:
 			impact_direction = slash_direction
+		if not _dispatch_slash_damage(
+			hit_target,
+			outgoing_damage,
+			impact_direction,
+			golem_config.slam_damage_type
+		):
+			continue
+		slam_hit_target_ids[target_id] = true
 		damage_dispatches += 1
-		if player != null:
-			_apply_multiplayer_player_damage(
-				player,
-				outgoing_damage,
-				_get_multiplayer_damage_source_id(action_sequence),
-				_get_slam_damage_source_type()
-			)
-		else:
-			plant.receive_damage(
-				outgoing_damage,
-				self,
-				impact_direction,
-				golem_config.slam_damage_type
-			)
 
 	if metrics_enabled:
 		StoneGolem._slam_performance_metrics["slam_query_calls"] = (
@@ -208,6 +211,10 @@ func _play_slash_effect(_direction: Vector2) -> void:
 
 func _get_slam_damage_source_type() -> StringName:
 	return &"stone_golem_slam"
+
+
+func _get_slash_damage_source_type() -> StringName:
+	return _get_slam_damage_source_type()
 
 
 func play_multiplayer_enemy_action(

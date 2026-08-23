@@ -8,6 +8,12 @@ const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 const AIM_LINE_START_DISTANCE := 10.0
 const AIM_LINE_TARGET_PADDING := 10.0
 const AIM_LINE_MIN_LENGTH := 8.0
+# Dynamic enemies and plants share the existing positional wire actions. This
+# keeps protocol-v93 peers compatible while making the semantics non-player
+# rather than plant-specific inside the authoritative state machine.
+const ACTION_NON_PLAYER_LOCK_START := &"sniper_plant_lock_start"
+const ACTION_NON_PLAYER_LOCK_CANCEL := &"sniper_plant_lock_cancel"
+const ACTION_NON_PLAYER_LOCK_FIRE := &"sniper_plant_lock_fire"
 
 enum CombatState {
 	CHASE,
@@ -22,6 +28,9 @@ var attack_cooldown_left: float = 0.0
 var lock_time_left: float = 0.0
 var locked_target: Node2D = null
 var locked_player: Player = null
+var locked_non_player_target := false
+var locked_non_player_target_offset := Vector2.ZERO
+var lock_damage_source_snapshot: DamageSourceSnapshot = null
 var lock_reticle: CapooSniperLockReticle = null
 var latest_proxy_target_action_id: int = 0
 var latest_proxy_action_id: int = 0
@@ -100,6 +109,9 @@ func _apply_config() -> void:
 	lock_time_left = 0.0
 	locked_target = null
 	locked_player = null
+	locked_non_player_target = false
+	locked_non_player_target_offset = Vector2.ZERO
+	lock_damage_source_snapshot = null
 	_reset_ranged_attack_position_state()
 	_clear_lock_reticle()
 	_clear_proxy_lock_visual()
@@ -149,6 +161,16 @@ func _try_start_lock(candidate_target: Node2D = null) -> bool:
 	combat_state = CombatState.LOCK
 	locked_target = candidate_target
 	locked_player = candidate_target as Player
+	locked_non_player_target = locked_player == null
+	locked_non_player_target_offset = (
+		locked_target.global_position - global_position
+		if locked_non_player_target
+		else Vector2.ZERO
+	)
+	lock_damage_source_snapshot = create_damage_source_snapshot(
+		_get_multiplayer_damage_source_id(action_sequence + 1),
+		&"capoo_sniper_lock"
+	)
 	lock_time_left = maxf(sniper_config.lock_duration, 0.01)
 	velocity = Vector2.ZERO
 	_set_ranged_attack_position_held(true)
@@ -161,8 +183,8 @@ func _try_start_lock(candidate_target: Node2D = null) -> bool:
 		_broadcast_enemy_target_action(&"sniper_lock_start", locked_player.peer_id)
 	else:
 		_broadcast_enemy_action(
-			&"sniper_plant_lock_start",
-			locked_target.global_position - global_position
+			ACTION_NON_PLAYER_LOCK_START,
+			locked_non_player_target_offset
 		)
 	return true
 
@@ -178,6 +200,10 @@ func _update_lock(delta: float) -> void:
 
 	velocity = Vector2.ZERO
 	var direction := global_position.direction_to(locked_target.global_position)
+	if locked_non_player_target:
+		locked_non_player_target_offset = (
+			locked_target.global_position - global_position
+		)
 	if direction == Vector2.ZERO:
 		direction = Vector2.RIGHT
 	_update_facing(direction)
@@ -221,31 +247,42 @@ func _fire_locked_shot(direction: Vector2) -> void:
 	var outgoing_damage := get_effective_attack_damage(sniper_config.attack_damage)
 	var locked_plant := locked_target as PlantDefense
 	if locked_plant != null:
-		locked_plant.receive_damage(
-			outgoing_damage,
-			self,
-			-direction,
-			EnemyConfig.DamageType.PHYSICAL
+		locked_plant.apply_combat_damage(
+			_make_lock_damage_request(outgoing_damage, -direction)
 		)
 	elif locked_player != null:
-		var hit_source_id := _get_multiplayer_damage_source_id(Time.get_ticks_msec() % 1000000)
-		var reported := _try_request_player_damage(
-			hit_source_id,
-			locked_player.peer_id,
+		var player_request := _make_lock_damage_request(
 			outgoing_damage,
-			&"capoo_sniper_lock",
-			EnemyConfig.DamageType.PHYSICAL,
-			-direction,
-			true
+			direction
 		)
+		var reported := false
+		if CombatDamageAdmission.is_admitted(
+			player_request,
+			locked_player.get_combat_faction_id(),
+			combat_relation_service
+		):
+			reported = (
+				gameplay_gateway != null
+				and is_instance_valid(gameplay_gateway)
+				and gameplay_gateway.request_player_damage(
+					lock_damage_source_snapshot.event_source_id,
+					locked_player.peer_id,
+					outgoing_damage,
+					&"capoo_sniper_lock",
+					EnemyConfig.DamageType.PHYSICAL,
+					-direction,
+					true,
+					false,
+					lock_damage_source_snapshot
+				)
+			)
 		if not reported and _has_explicit_singleplayer_authority():
-			locked_player.apply_damage(
-				outgoing_damage,
-				EnemyConfig.DamageType.PHYSICAL,
-				{
-					"is_ranged": true,
-					"source_direction": -direction,
-				}
+			locked_player.apply_combat_damage(player_request)
+	else:
+		var locked_enemy := locked_target as Enemy
+		if locked_enemy != null:
+			locked_enemy.apply_combat_damage(
+				_make_lock_damage_request(outgoing_damage, direction)
 			)
 	if sniper_config.attack_audio_stream != null:
 		attack_audio.pitch_scale = random_generator.randf_range(0.96, 1.03)
@@ -254,12 +291,15 @@ func _fire_locked_shot(direction: Vector2) -> void:
 		_broadcast_enemy_target_action(&"sniper_lock_fire", locked_player.peer_id)
 	else:
 		_broadcast_enemy_action(
-			&"sniper_plant_lock_fire",
-			locked_target.global_position - global_position
+			ACTION_NON_PLAYER_LOCK_FIRE,
+			locked_non_player_target_offset
 		)
 	_clear_lock_reticle()
 	locked_target = null
 	locked_player = null
+	locked_non_player_target = false
+	locked_non_player_target_offset = Vector2.ZERO
+	lock_damage_source_snapshot = null
 	combat_state = CombatState.CHASE
 	_set_aim_glow(0.0, global_position + direction)
 	_play_config_animation(sniper_config.move_animation_name)
@@ -268,21 +308,38 @@ func _fire_locked_shot(direction: Vector2) -> void:
 func _cancel_lock() -> void:
 	if locked_player != null and is_instance_valid(locked_player):
 		_broadcast_enemy_target_action(&"sniper_lock_cancel", locked_player.peer_id)
-	elif locked_target is PlantDefense and is_instance_valid(locked_target):
+	elif locked_non_player_target:
 		_broadcast_enemy_action(
-			&"sniper_plant_lock_cancel",
-			locked_target.global_position - global_position
+			ACTION_NON_PLAYER_LOCK_CANCEL,
+			locked_non_player_target_offset
 		)
 	combat_state = CombatState.CHASE
 	lock_time_left = 0.0
 	locked_target = null
 	locked_player = null
+	locked_non_player_target = false
+	locked_non_player_target_offset = Vector2.ZERO
+	lock_damage_source_snapshot = null
 	_clear_lock_reticle()
 	_set_aim_glow(0.0, global_position + Vector2.RIGHT)
 	_reset_ranged_attack_position_state()
 	var sniper_config := config as SniperConfig
 	if sniper_config != null:
 		_play_config_animation(sniper_config.move_animation_name)
+
+
+func _make_lock_damage_request(
+	outgoing_damage: int,
+	direction: Vector2
+) -> DamageRequest:
+	var request := DamageRequest.new(
+		outgoing_damage,
+		EnemyConfig.DamageType.PHYSICAL
+	)
+	request.with_source_snapshot(lock_damage_source_snapshot)
+	request.with_directions(direction, -direction)
+	request.with_flag(CombatTypes.DamageFlag.RANGED, true)
+	return request
 
 
 func _show_lock_reticle(target: Node2D, duration: float) -> void:
@@ -341,7 +398,7 @@ func play_multiplayer_enemy_action(
 	if action_id <= latest_proxy_action_id:
 		return
 	latest_proxy_action_id = action_id
-	if action_name == &"sniper_plant_lock_start":
+	if action_name == ACTION_NON_PLAYER_LOCK_START:
 		var sniper_config := config as SniperConfig
 		if sniper_config == null:
 			return
@@ -360,8 +417,8 @@ func play_multiplayer_enemy_action(
 		_update_facing(direction)
 		_set_aim_glow(0.35, proxy_locked_plant_position)
 	elif (
-		action_name == &"sniper_plant_lock_cancel"
-		or action_name == &"sniper_plant_lock_fire"
+		action_name == ACTION_NON_PLAYER_LOCK_CANCEL
+		or action_name == ACTION_NON_PLAYER_LOCK_FIRE
 	):
 		_clear_proxy_lock_visual()
 

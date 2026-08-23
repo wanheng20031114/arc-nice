@@ -34,12 +34,83 @@ class TestMpGame:
 	var last_reported_damage_flags := 0
 	var sent_methods: Array[StringName] = []
 	var sent_arguments: Array[Array] = []
+	var _test_mode_adapter: MultiplayerModeAdapter = null
+	var _processed_player_hit_ids: Dictionary = {}
 
 	func _init() -> void:
-		var coordinator := MpProjectileCoordinator.new()
-		coordinator.name = "ProjectileCoordinator"
-		add_child(coordinator)
-		projectile_coordinator = coordinator
+		var projectile := MpProjectileCoordinator.new()
+		projectile.name = "ProjectileCoordinator"
+		add_child(projectile)
+		projectile_coordinator = projectile
+		var player := MpPlayerCoordinator.new()
+		player.name = "PlayerCoordinator"
+		add_child(player)
+		player_coordinator = player
+		_test_mode_adapter = MultiplayerModeAdapter.new()
+		_test_mode_adapter.name = "ModeAdapter"
+		add_child(_test_mode_adapter)
+		_processed_player_hit_ids = (
+			player_coordinator.get("_processed_player_hit_ids") as Dictionary
+		)
+		player_coordinator.life_rpc_broadcast_requested.connect(
+			_on_player_life_rpc_broadcast_requested
+		)
+
+	func configure_damage_dependencies(
+		runtime_instance: CombatRuntimeBase,
+		net_manager_instance: NetManagerStore
+	) -> void:
+		game = runtime_instance
+		net_manager = net_manager_instance
+		_test_mode_adapter.bind_runtime(runtime_instance)
+		player_coordinator.bind_runtime(runtime_instance)
+		player_coordinator.bind_life_dependencies(
+			net_manager_instance,
+			_test_mode_adapter,
+			projectile_coordinator,
+			Callable(self, "_get_test_net_time"),
+			Callable(self, "_noop_life_transition"),
+			Callable(self, "_noop_life_transition"),
+			Callable(self, "_noop_life_transition"),
+			Callable(self, "_get_test_revive_anchor"),
+			Callable(self, "_commit_test_revive_position")
+		)
+
+	func _get_multiplayer_player_hit_key(
+		source_id: int,
+		target_peer_id: int,
+		source_type: StringName
+	) -> String:
+		return String(player_coordinator.call(
+			"_get_multiplayer_player_hit_key",
+			source_id,
+			target_peer_id,
+			source_type
+		))
+
+	func _is_fire_sorcerer_fireball_contact_consumed(
+		projectile_id: int,
+		source_type: StringName
+	) -> bool:
+		return projectile_coordinator.is_fire_sorcerer_fireball_contact_consumed(
+			projectile_id,
+			source_type
+		)
+
+	func _get_test_net_time() -> float:
+		return 0.0
+
+	func _noop_life_transition(_peer_id: int = 0) -> void:
+		pass
+
+	func _get_test_revive_anchor(_peer_id: int) -> Vector2:
+		return Vector2.ZERO
+
+	func _commit_test_revive_position(
+		_peer_id: int,
+		_position: Vector2
+	) -> bool:
+		return true
 
 	func request_player_hit_report(
 		source_id: int,
@@ -63,11 +134,10 @@ class TestMpGame:
 
 
 class TestNetManager:
-	extends Node
+	extends NetManagerStore
 
 	var host_mode := true
 	var local_peer_id := 1
-	var connected_players: Dictionary = {}
 
 	func is_host() -> bool:
 		return host_mode
@@ -107,6 +177,7 @@ func _run() -> void:
 	_test_elite_projectile_instantiation_contract()
 	_test_elite_volley_source_family_and_first_contact()
 	_test_host_successful_hits_register_burn_statuses()
+	_test_host_non_hostile_contact_is_not_consumed()
 	_test_host_invincible_first_contact_is_consumed()
 	_test_client_invincible_first_contact_reports_zero()
 	_test_volley_player_plant_and_world_first_contact()
@@ -429,8 +500,7 @@ func _test_host_successful_hits_register_burn_statuses() -> void:
 	elite_player.set("_base_physical_defense", 999)
 	game.peer_players[20] = normal_player
 	game.peer_players[21] = elite_player
-	mp_game.set("net_manager", net_manager)
-	mp_game.set("game", game)
+	mp_game.configure_damage_dependencies(game, net_manager)
 
 	var normal_projectile_id := 81020
 	var elite_projectile_id := 81021
@@ -535,8 +605,7 @@ func _test_host_invincible_first_contact_is_consumed() -> void:
 	var second_player := _spawn_player(Vector2(-500.0, -400.0), 3)
 	game.peer_players[2] = invincible_player
 	game.peer_players[3] = second_player
-	mp_game.set("net_manager", net_manager)
-	mp_game.set("game", game)
+	mp_game.configure_damage_dependencies(game, net_manager)
 	var projectile_id := 81002
 	_remember_projectile_record_for_test(
 		mp_game,
@@ -600,6 +669,63 @@ func _test_host_invincible_first_contact_is_consumed() -> void:
 	net_manager.free()
 
 
+func _test_host_non_hostile_contact_is_not_consumed() -> void:
+	var mp_game := TestMpGame.new()
+	var net_manager := TestNetManager.new()
+	var game := test_scene
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	var player := _spawn_player(Vector2(-450.0, -450.0), 23)
+	game.peer_players[23] = player
+	mp_game.configure_damage_dependencies(game, net_manager)
+	var projectile_id := 81023
+	_remember_projectile_record_for_test(
+		mp_game,
+		projectile_id,
+		1,
+		FIREBALL_TYPE,
+		FIREBALL_DAMAGE,
+		7.0
+	)
+	var source_type := &"fire_sorcerer_fireball_a"
+	var non_hostile_snapshot := DamageSourceSnapshot.create(
+		CombatRelationService.PLAYER_ALLIED,
+		1,
+		99,
+		projectile_id,
+		source_type
+	)
+	var handled := mp_game.request_multiplayer_player_damage_with_source_snapshot(
+		non_hostile_snapshot,
+		player.peer_id,
+		FIREBALL_DAMAGE,
+		EnemyConfig.DamageType.MAGIC,
+		Vector2.RIGHT,
+		true
+	)
+	var hit_key := String(mp_game.call(
+		"_get_multiplayer_player_hit_key",
+		projectile_id,
+		player.peer_id,
+		source_type
+	))
+	var processed_hits := mp_game.get("_processed_player_hit_ids") as Dictionary
+	_expect(
+		not handled
+		and player.current_health == TEST_HEALTH
+		and not bool(mp_game.call(
+			"_is_fire_sorcerer_fireball_contact_consumed",
+			projectile_id,
+			source_type
+		))
+		and not processed_hits.has(hit_key),
+		"同阵营火球必须在接触提交前被拒绝，并保持弹体与命中去重记录未消费。"
+	)
+	game.peer_players.clear()
+	mp_game.free()
+	net_manager.free()
+	player.queue_free()
+
+
 func _test_client_invincible_first_contact_reports_zero() -> void:
 	var burn_scheduler := root.get_node("BurnStatusScheduler")
 	burn_scheduler.call("clear_all")
@@ -613,8 +739,7 @@ func _test_client_invincible_first_contact_reports_zero() -> void:
 	var second_player := _spawn_player(Vector2(-500.0, -500.0), 5)
 	game.peer_players[4] = invincible_player
 	game.peer_players[5] = second_player
-	mp_game.set("net_manager", net_manager)
-	mp_game.set("game", game)
+	mp_game.configure_damage_dependencies(game, net_manager)
 	var projectile_id := 81003
 	_remember_projectile_record_for_test(
 		mp_game,
@@ -965,7 +1090,11 @@ func _spawn_volley(
 		100.0,
 		7.0,
 		null,
-		0.0
+		0.0,
+		null,
+		-1.0,
+		-1,
+		_make_hostile_projectile_snapshot(FIREBALL_TYPE)
 	)
 	volley.setup_multiplayer(projectile_id, 1, FIREBALL_TYPE)
 	volley.set_physics_process(false)
@@ -992,11 +1121,27 @@ func _spawn_elite_volley(
 		115.0,
 		7.0,
 		null,
-		0.0
+		0.0,
+		null,
+		-1.0,
+		-1,
+		_make_hostile_projectile_snapshot(ELITE_FIREBALL_TYPE)
 	)
 	volley.setup_multiplayer(projectile_id, 1, ELITE_FIREBALL_TYPE)
 	volley.set_physics_process(false)
 	return volley
+
+
+func _make_hostile_projectile_snapshot(
+	source_type: StringName
+) -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		1,
+		0,
+		source_type
+	)
 
 
 func _every_recorded_request_was_preconsumed() -> bool:

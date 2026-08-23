@@ -182,7 +182,8 @@ func _try_fire_ranged_projectile() -> bool:
 		shoot_direction,
 		outgoing_damage,
 		fire_config.projectile_speed,
-		fire_config.projectile_lifetime
+		fire_config.projectile_lifetime,
+		create_damage_source_snapshot(0, &"yuanshi_fire_projectile")
 	)
 	if projectile.get_parent() == null:
 		spawn_parent.add_child(projectile)

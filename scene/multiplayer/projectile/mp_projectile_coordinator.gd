@@ -84,6 +84,7 @@ const LINGLAN_SKILL4_ORB_SCENE_PATH := (
 )
 
 const PROJECTILE_RECORD_RETENTION_SECONDS := 5.0
+const DAMAGE_SOURCE_SNAPSHOT_META := &"damage_source_snapshot"
 const PROJECTILE_ID_SEQUENCE_BITS := 32
 const PROJECTILE_ID_SEQUENCE_MASK: int = 0xFFFFFFFF
 const PROJECTILE_ID_HOST_ORIGIN_BIT: int = 0x80000000
@@ -287,7 +288,8 @@ func register_local_data_projectile(
 	direction: Vector2,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> int:
 	if (
 		service == null
@@ -305,6 +307,10 @@ func register_local_data_projectile(
 		or speed <= 0.0
 		or not is_finite(lifetime)
 		or lifetime <= 0.0
+		or (
+			damage_source_snapshot != null
+			and not damage_source_snapshot.is_valid()
+		)
 		or service.get_slot_mode(handle) != RapidFireSimulationService.Mode.DATA
 	):
 		return 0
@@ -316,6 +322,25 @@ func register_local_data_projectile(
 		return 0
 	if not service.assign_projectile_identity(handle, projectile_id):
 		return 0
+	var registered_source_snapshot: DamageSourceSnapshot = null
+	if damage_source_snapshot != null:
+		registered_source_snapshot = DamageSourceSnapshot.create(
+			damage_source_snapshot.source_faction_id,
+			damage_source_snapshot.credit_peer_id,
+			damage_source_snapshot.instigator_entity_id,
+			projectile_id,
+			(
+				damage_source_snapshot.source_type
+				if damage_source_snapshot.source_type != &""
+				else projectile_type
+			)
+		)
+	else:
+		# The data service owns the authoritative launch-time fallback for its
+		# enemy-only profile. Reuse that frozen value so the parallel multiplayer
+		# record cannot silently become legacy player-owned when an older caller
+		# omits the optional argument.
+		registered_source_snapshot = service.get_damage_source_snapshot(handle)
 	_known_data_projectile_services[projectile_id] = service
 	_known_data_projectile_handles[projectile_id] = handle
 	remember_projectile_record(
@@ -325,7 +350,8 @@ func register_local_data_projectile(
 		damage,
 		lifetime,
 		false,
-		_get_net_time()
+		_get_net_time(),
+		registered_source_snapshot
 	)
 	var host_fire_timestamp := _get_net_time()
 	rpc_broadcast_requested.emit(
@@ -817,6 +843,16 @@ func register_local_projectile(
 		projectile_type
 	)
 	_known_projectiles[projectile_id] = projectile
+	var source_snapshot_variant: Variant = (
+		projectile.get_meta(DAMAGE_SOURCE_SNAPSHOT_META)
+		if projectile.has_meta(DAMAGE_SOURCE_SNAPSHOT_META)
+		else null
+	)
+	var source_snapshot := (
+		source_snapshot_variant as DamageSourceSnapshot
+		if source_snapshot_variant is DamageSourceSnapshot
+		else null
+	)
 	remember_projectile_record(
 		projectile_id,
 		owner_peer_id,
@@ -824,7 +860,8 @@ func register_local_projectile(
 		damage,
 		lifetime,
 		pierces_enemies,
-		now
+		now,
+		source_snapshot
 	)
 	return projectile_id
 
@@ -1338,6 +1375,28 @@ func commit_enemy_hit(
 func get_projectile_record(projectile_id: int) -> Dictionary:
 	var record_variant: Variant = _projectile_records.get(projectile_id)
 	return record_variant as Dictionary if record_variant is Dictionary else {}
+
+
+func get_projectile_damage_source_snapshot(
+	projectile_id: int
+) -> DamageSourceSnapshot:
+	var record := get_projectile_record(projectile_id)
+	if record.is_empty():
+		return null
+	var snapshot := DamageSourceSnapshot.create(
+		int(record.get(
+			"source_faction_id",
+			CombatRelationService.PLAYER_ALLIED
+		)),
+		int(record.get("source_credit_peer_id", 0)),
+		int(record.get("source_instigator_entity_id", 0)),
+		int(record.get("source_event_id", projectile_id)),
+		StringName(record.get(
+			"source_type",
+			record.get("projectile_type", &"")
+		))
+	)
+	return snapshot if snapshot.is_valid() else null
 
 
 func get_authoritative_projectile_damage(
@@ -1922,7 +1981,20 @@ func instantiate_projectile(
 			if not _prepare_enemy_network_projectile(fireball):
 				_release_projectile(fireball)
 				return null
-			fireball.setup(direction, damage, speed, lifetime)
+			var fireball_target: Node2D = null
+			if target_peer_id > 0:
+				fireball_target = _get_player(target_peer_id)
+			elif target_enemy_net_id > 0:
+				fireball_target = _resolve_mode_world_target(target_enemy_net_id)
+			fireball.setup(
+				direction,
+				damage,
+				speed,
+				lifetime,
+				fireball.fireball_radius,
+				fireball_target,
+				fireball.homing_turn_rate
+			)
 			return fireball
 		FIRE_SORCERER_FIREBALL_VOLLEY_TYPE, \
 		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE:
@@ -2620,13 +2692,41 @@ func remember_projectile_record(
 	damage: int,
 	lifetime: float,
 	pierces_enemies: bool,
-	now: float
+	now: float,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> void:
 	if projectile_id <= 0:
 		return
+	var frozen_source := (
+		source_snapshot.duplicate_snapshot()
+		if source_snapshot != null and source_snapshot.is_valid()
+		else DamageSourceSnapshot.create(
+			CombatRelationService.PLAYER_ALLIED,
+			maxi(owner_peer_id, 0),
+			maxi(owner_peer_id, 0),
+			projectile_id,
+			projectile_type
+		)
+	)
+	var frozen_event_id := (
+		frozen_source.event_source_id
+		if frozen_source.event_source_id > 0
+		else projectile_id
+	)
 	var record := {
 		"owner_peer_id": owner_peer_id,
 		"projectile_type": projectile_type,
+		# Player projectiles freeze attribution at launch. These value fields are
+		# retained in the Host record instead of consulting the owner at impact.
+		"source_faction_id": frozen_source.source_faction_id,
+		"source_credit_peer_id": frozen_source.credit_peer_id,
+		"source_instigator_entity_id": frozen_source.instigator_entity_id,
+		"source_event_id": frozen_event_id,
+		"source_type": (
+			frozen_source.source_type
+			if frozen_source.source_type != &""
+			else projectile_type
+		),
 		"damage": maxi(damage, 0),
 		"pierces_enemies": pierces_enemies,
 		"confirmed_hit_consumed": false,

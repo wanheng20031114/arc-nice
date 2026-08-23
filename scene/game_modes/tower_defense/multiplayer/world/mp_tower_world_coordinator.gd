@@ -442,7 +442,7 @@ func queue_corn_machine_gun_burst_visual(
 
 
 func apply_authoritative_plant_enemy_damage(
-	_damage_source_id: int,
+	damage_source_id: int,
 	enemy: Enemy,
 	damage: int,
 	impact_direction: Vector2,
@@ -454,6 +454,10 @@ func apply_authoritative_plant_enemy_damage(
 		impact_direction if impact_direction.is_finite() else Vector2.ZERO
 	)
 	var request := DamageRequest.new(damage, int(damage_type))
+	request.with_source_snapshot(_create_plant_damage_source_snapshot(
+		damage_source_id,
+		&"plant_attack"
+	))
 	request.with_directions(safe_direction)
 	return _apply_authoritative_plant_damage_request(
 		enemy,
@@ -464,7 +468,7 @@ func apply_authoritative_plant_enemy_damage(
 
 
 func apply_authoritative_plant_enemy_damage_batch(
-	_damage_source_id: int,
+	damage_source_id: int,
 	enemy: Enemy,
 	damage_amounts: PackedInt64Array,
 	hit_counts: PackedInt32Array,
@@ -485,6 +489,10 @@ func apply_authoritative_plant_enemy_damage_batch(
 		hit_counts,
 		int(damage_type)
 	)
+	request.with_source_snapshot(_create_plant_damage_source_snapshot(
+		damage_source_id,
+		&"plant_damage_batch"
+	))
 	request.with_directions(safe_direction)
 	return _apply_authoritative_plant_damage_request(
 		enemy,
@@ -2232,6 +2240,25 @@ func _apply_authoritative_plant_damage_request(
 			presentation_flags
 		)
 	return true
+
+
+func _create_plant_damage_source_snapshot(
+	damage_source_id: int,
+	source_type: StringName
+) -> DamageSourceSnapshot:
+	var source_plant := get_plant(damage_source_id)
+	if source_plant != null and is_instance_valid(source_plant):
+		return source_plant.create_damage_source_snapshot(
+			damage_source_id,
+			source_type
+		)
+	return DamageSourceSnapshot.create(
+		CombatRelationService.PLAYER_ALLIED,
+		0,
+		maxi(damage_source_id, 0),
+		maxi(damage_source_id, 0),
+		source_type
+	)
 
 
 func _flush_bamboo_mortar_visuals() -> void:

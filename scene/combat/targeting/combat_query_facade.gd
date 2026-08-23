@@ -146,11 +146,36 @@ func resolve_target(descriptor: CombatTargetDescriptor) -> Node2D:
 
 
 func get_target_faction_id(target: Node2D) -> int:
-	if target is Player or target is PlantDefense:
-		return Relations.PLAYER_ALLIED
+	if target == null or not is_instance_valid(target):
+		return Relations.NEUTRAL
+	# Known combat families stay on typed calls in the hot query path. The
+	# contract fallback keeps future Node2D combatants extensible without
+	# hardcoding their faction value in this facade.
 	var enemy := target as Enemy
 	if enemy != null:
-		return enemy.get_combat_faction_id()
+		return Relations.normalize_faction_id(
+			enemy.get_combat_faction_id(),
+			Relations.NEUTRAL
+		)
+	var player := target as Player
+	if player != null:
+		return Relations.normalize_faction_id(
+			player.get_combat_faction_id(),
+			Relations.NEUTRAL
+		)
+	var plant := target as PlantDefense
+	if plant != null:
+		return Relations.normalize_faction_id(
+			plant.get_combat_faction_id(),
+			Relations.NEUTRAL
+		)
+	if target.has_method(&"get_combat_faction_id"):
+		var faction_variant: Variant = target.call(&"get_combat_faction_id")
+		if faction_variant is int:
+			return Relations.normalize_faction_id(
+				int(faction_variant),
+				Relations.NEUTRAL
+			)
 	return Relations.NEUTRAL
 
 

@@ -16,7 +16,7 @@ radius = 10.5
 [node name="CapooMageFireball" type="Area2D" unique_id=2042061065]
 z_index = 3
 collision_layer = 128
-collision_mask = 515
+collision_mask = 519
 script = ExtResource("1_script")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=671962693]

@@ -3894,7 +3894,8 @@ func register_local_data_projectile(
 	direction: Vector2,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> int:
 	return projectile_coordinator.register_local_data_projectile(
 		service,
@@ -3905,7 +3906,8 @@ func register_local_data_projectile(
 		direction,
 		damage,
 		speed,
-		lifetime
+		lifetime,
+		damage_source_snapshot
 	)
 
 
@@ -4365,6 +4367,26 @@ func request_multiplayer_player_damage(
 	)
 
 
+func request_multiplayer_player_damage_with_source_snapshot(
+	source_snapshot: DamageSourceSnapshot,
+	target_peer_id: int,
+	damage: int,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	source_direction: Vector2 = Vector2.ZERO,
+	is_ranged: bool = false,
+	contact_preconsumed: bool = false
+) -> bool:
+	return player_coordinator.request_multiplayer_player_damage_with_source_snapshot(
+		source_snapshot,
+		target_peer_id,
+		damage,
+		damage_type,
+		source_direction,
+		is_ranged,
+		contact_preconsumed
+	)
+
+
 
 func request_multiplayer_player_burn_tick(
 	player_peer_id: int,
@@ -4382,13 +4404,15 @@ func request_multiplayer_player_damage_over_time_tick(
 	player_peer_id: int,
 	status_id: StringName,
 	source_family: StringName,
-	tick_damage: int
+	tick_damage: int,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	return player_coordinator.request_multiplayer_player_damage_over_time_tick(
 		player_peer_id,
 		status_id,
 		source_family,
-		tick_damage
+		tick_damage,
+		source_snapshot
 	)
 
 

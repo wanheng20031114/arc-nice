@@ -142,6 +142,7 @@ func _run() -> void:
 	_test_adaptive_radius_queries()
 	_test_whole_ring_nearest_cutoff()
 	_test_strict_nearest_total_order()
+	_test_body_collision_extent_maintenance()
 
 	var target_index: Variant = TargetIndexScript.new()
 	var near_enemy := Enemy.new()
@@ -431,6 +432,63 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_body_collision_extent_maintenance() -> void:
+	var extent_index := CombatTargetIndex.new()
+	var small_enemy := Enemy.new()
+	var large_enemy := Enemy.new()
+	small_enemy.body_collision_extent_radius = 12.0
+	large_enemy.body_collision_extent_radius = 40.0
+	large_enemy.scale = Vector2(2.0, 0.5)
+	extent_index.register_enemy(8_001, small_enemy)
+	extent_index.register_enemy(8_002, large_enemy)
+	_expect(
+		is_equal_approx(
+			extent_index.get_maximum_body_collision_extent_radius(),
+			80.0
+		)
+		and is_equal_approx(
+			float(extent_index.body_collision_extent_by_net_id.get(8_001, -1.0)),
+			12.0
+		),
+		"The point index must retain one world-scaled body extent per enemy and expose the conservative maximum."
+	)
+
+	large_enemy.body_collision_extent_radius = 6.0
+	_expect(
+		extent_index.update_body_collision_extent(large_enemy)
+		and is_equal_approx(
+			extent_index.get_maximum_body_collision_extent_radius(),
+			12.0
+		),
+		"Shrinking the unique maximum must lazily recompute the surviving extent without a registration scan on every update."
+	)
+	small_enemy.body_collision_extent_radius = 55.0
+	_expect(
+		extent_index.update_body_collision_extent(small_enemy)
+		and is_equal_approx(
+			extent_index.get_maximum_body_collision_extent_radius(),
+			55.0
+		),
+		"Growing one registered body must publish the new maximum in O(1)."
+	)
+	extent_index.unregister_enemy(8_001, small_enemy)
+	_expect(
+		is_equal_approx(
+			extent_index.get_maximum_body_collision_extent_radius(),
+			12.0
+		),
+		"Removing the maximum body must lazily converge to the remaining registered extent."
+	)
+	extent_index.clear()
+	_expect(
+		is_zero_approx(extent_index.get_maximum_body_collision_extent_radius())
+		and extent_index.body_collision_extent_by_net_id.is_empty(),
+		"Target-index teardown must clear body-extent metadata together with spatial membership."
+	)
+	small_enemy.free()
+	large_enemy.free()
 
 
 func _test_random_target_selection() -> void:

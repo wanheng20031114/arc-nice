@@ -1150,11 +1150,31 @@ func apply_authoritative_plant_enemy_damage(
 	):
 		return false
 	if tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
-		return enemy.apply_damage(
-			damage,
-			impact_direction if impact_direction.is_finite() else Vector2.ZERO,
-			damage_type
+		var request := DamageRequest.new(damage, int(damage_type))
+		var source_plant := (
+			_plant_runtime_coordinator.get_multiplayer_plant(damage_source_id)
+			if _plant_runtime_coordinator != null
+			else null
 		)
+		var source_snapshot := (
+			source_plant.create_damage_source_snapshot(
+				damage_source_id,
+				&"plant_attack"
+			)
+			if source_plant != null and is_instance_valid(source_plant)
+			else DamageSourceSnapshot.create(
+				CombatRelationService.PLAYER_ALLIED,
+				0,
+				maxi(damage_source_id, 0),
+				maxi(damage_source_id, 0),
+				&"plant_attack"
+			)
+		)
+		request.with_source_snapshot(source_snapshot)
+		request.with_directions(
+			impact_direction if impact_direction.is_finite() else Vector2.ZERO
+		)
+		return enemy.apply_combat_damage(request).accepted
 	return (
 		has_multiplayer_session()
 		and multiplayer_session.apply_authoritative_plant_enemy_damage(

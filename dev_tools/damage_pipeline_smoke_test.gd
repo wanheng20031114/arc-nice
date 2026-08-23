@@ -32,9 +32,12 @@ const EXECUTE_COLLECTIBLES := [
 	preload("res://resources/config/collectibles/collectible_kingslayer_blade.tres"),
 	preload("res://resources/config/collectibles/collectible_void_crown.tres"),
 ]
+const TEST_RUNTIME_SCENE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: EnemyGameplayGatewayTestRuntime
 
 
 func _init() -> void:
@@ -42,8 +45,12 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = (
+		TEST_RUNTIME_SCENE.instantiate()
+		as EnemyGameplayGatewayTestRuntime
+	)
 	test_root.name = "DamagePipelineSmokeTest"
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	root.add_child(test_root)
 	current_scene = test_root
 
@@ -111,6 +118,7 @@ func _test_legacy_wrapper_equivalence() -> void:
 		13,
 		CombatTypes.DamageType.PHYSICAL
 	)
+	_with_hostile_source(player_request)
 	player_request.with_flag(CombatTypes.DamageFlag.RANGED)
 	player_request.with_directions(Vector2.LEFT, Vector2.RIGHT)
 	var player_result := request_player.apply_combat_damage(player_request)
@@ -124,9 +132,10 @@ func _test_legacy_wrapper_equivalence() -> void:
 
 	var legacy_plant := _spawn_agave()
 	var request_plant := _spawn_agave()
+	var hostile_plant_source := _spawn_enemy(_make_enemy_config(10, 0, 0))
 	var legacy_plant_accepted := legacy_plant.receive_damage(
 		19,
-		null,
+		hostile_plant_source,
 		Vector2.DOWN,
 		EnemyConfig.DamageType.MAGIC
 	)
@@ -134,6 +143,7 @@ func _test_legacy_wrapper_equivalence() -> void:
 		19,
 		CombatTypes.DamageType.MAGIC
 	)
+	_with_hostile_source(plant_request)
 	plant_request.with_directions(Vector2.DOWN)
 	var plant_result := request_plant.apply_combat_damage(plant_request)
 	_expect(
@@ -150,6 +160,7 @@ func _test_legacy_wrapper_equivalence() -> void:
 		request_player,
 		legacy_plant,
 		request_plant,
+		hostile_plant_source,
 	])
 	await process_frame
 
@@ -195,15 +206,15 @@ func _test_player_numeric_and_periodic_contract() -> void:
 	var player := await _spawn_player()
 	_prepare_player(player, 100, 2, 100)
 
-	var physical_minimum := player.apply_combat_damage(DamageRequest.new(
+	var physical_minimum := player.apply_combat_damage(_with_hostile_source(DamageRequest.new(
 		2,
 		CombatTypes.DamageType.PHYSICAL
-	))
+	)))
 	_prepare_player(player, 100, 0, 100)
-	var magic_minimum := player.apply_combat_damage(DamageRequest.new(
+	var magic_minimum := player.apply_combat_damage(_with_hostile_source(DamageRequest.new(
 		100,
 		CombatTypes.DamageType.MAGIC
-	))
+	)))
 	_expect(
 		physical_minimum.applied_damage == 1
 		and magic_minimum.applied_damage == 1,
@@ -213,10 +224,10 @@ func _test_player_numeric_and_periodic_contract() -> void:
 
 	_prepare_player(player, 100, 0, 0)
 	player.add_damage_reduction_modifier(92001, 0.25)
-	var reduction_result := player.apply_combat_damage(DamageRequest.new(
+	var reduction_result := player.apply_combat_damage(_with_hostile_source(DamageRequest.new(
 		7,
 		CombatTypes.DamageType.PHYSICAL
-	))
+	)))
 	_expect(
 		reduction_result.mitigated_damage == 7
 		and reduction_result.resolved_damage == 5
@@ -229,6 +240,7 @@ func _test_player_numeric_and_periodic_contract() -> void:
 	player.facing_suffix = &"right"
 	player.collectible_ranged_front_damage_multiplier = 0.5
 	var ranged_request := DamageRequest.new(14, CombatTypes.DamageType.PHYSICAL)
+	_with_hostile_source(ranged_request)
 	ranged_request.with_flag(CombatTypes.DamageFlag.RANGED)
 	ranged_request.with_directions(Vector2.LEFT, Vector2.RIGHT)
 	var ranged_result := player.apply_combat_damage(ranged_request)
@@ -248,6 +260,7 @@ func _test_player_numeric_and_periodic_contract() -> void:
 		10,
 		CombatTypes.DamageType.PHYSICAL
 	)
+	_with_hostile_source(periodic_request)
 	periodic_request.flags = (
 		CombatTypes.DamageFlag.PERIODIC
 		| CombatTypes.DamageFlag.BYPASS_INVULNERABILITY
@@ -279,7 +292,9 @@ func _test_player_numeric_and_periodic_contract() -> void:
 
 	var health_before_invulnerable_probe := player.current_health
 	player.invincibility_time_left = 1.0
-	var invulnerable_result := player.apply_combat_damage(DamageRequest.new(5))
+	var invulnerable_result := player.apply_combat_damage(
+		_with_hostile_source(DamageRequest.new(5))
+	)
 	_expect(
 		invulnerable_result.is_rejected_for(
 			CombatTypes.DamageRejectionReason.INVULNERABLE
@@ -298,20 +313,21 @@ func _test_plant_authority_revision_and_bypass_contract() -> void:
 	plant.physical_defense = 10
 	plant.magic_defense = 20
 	var initial_revision := plant.health_revision
-	var physical_result := plant.apply_combat_damage(DamageRequest.new(
+	var physical_result := plant.apply_combat_damage(_with_hostile_source(DamageRequest.new(
 		15,
 		CombatTypes.DamageType.PHYSICAL
-	))
+	)))
 	var revision_after_physical := plant.health_revision
-	var magic_result := plant.apply_combat_damage(DamageRequest.new(
+	var magic_result := plant.apply_combat_damage(_with_hostile_source(DamageRequest.new(
 		10,
 		CombatTypes.DamageType.MAGIC
-	))
+	)))
 	var revision_after_magic := plant.health_revision
 	var bypass_request := DamageRequest.new(
 		100,
 		CombatTypes.DamageType.PHYSICAL
 	)
+	_with_hostile_source(bypass_request)
 	bypass_request.with_flag(CombatTypes.DamageFlag.BYPASS_MITIGATION)
 	var bypass_result := plant.apply_combat_damage(bypass_request)
 	_expect(
@@ -383,8 +399,12 @@ func _test_overkill_and_single_lethal_contract() -> void:
 	player.died.connect(func() -> void:
 		player_deaths.append(true)
 	)
-	var player_lethal := player.apply_combat_damage(DamageRequest.new(99))
-	var player_repeat := player.apply_combat_damage(DamageRequest.new(99))
+	var player_lethal := player.apply_combat_damage(
+		_with_hostile_source(DamageRequest.new(99))
+	)
+	var player_repeat := player.apply_combat_damage(
+		_with_hostile_source(DamageRequest.new(99))
+	)
 	_expect(
 		player_lethal.applied_damage == 4
 		and player_lethal.lethal
@@ -403,8 +423,12 @@ func _test_overkill_and_single_lethal_contract() -> void:
 	plant.died.connect(func() -> void:
 		plant_deaths.append(true)
 	)
-	var plant_lethal := plant.apply_combat_damage(DamageRequest.new(99))
-	var plant_repeat := plant.apply_combat_damage(DamageRequest.new(99))
+	var plant_lethal := plant.apply_combat_damage(
+		_with_hostile_source(DamageRequest.new(99))
+	)
+	var plant_repeat := plant.apply_combat_damage(
+		_with_hostile_source(DamageRequest.new(99))
+	)
 	_expect(
 		plant_lethal.applied_damage == 5
 		and plant_lethal.lethal
@@ -433,10 +457,10 @@ func _test_linglan_health_signal_contract() -> void:
 	linglan.health_changed.connect(func(current: int, maximum: int) -> void:
 		observations.append(Vector2i(current, maximum))
 	)
-	var result := linglan.apply_combat_damage(DamageRequest.new(
+	var result := linglan.apply_combat_damage(_with_player_allied_source(DamageRequest.new(
 		125,
 		CombatTypes.DamageType.PHYSICAL
-	))
+	)))
 	_expect(
 		result.accepted
 		and result.applied_damage == 95
@@ -551,6 +575,7 @@ func _spawn_enemy(config: EnemyConfig) -> Enemy:
 func _spawn_player() -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(player)
+	test_root.bind_player_runtime_context(player)
 	await process_frame
 	player.set_process(false)
 	player.set_physics_process(false)
@@ -592,6 +617,28 @@ func _free_fixtures(fixtures: Array) -> void:
 	for fixture in fixtures:
 		if fixture != null and is_instance_valid(fixture):
 			(fixture as Node).queue_free()
+
+
+func _with_player_allied_source(request: DamageRequest) -> DamageRequest:
+	request.with_source_snapshot(DamageSourceSnapshot.create(
+		CombatRelationService.PLAYER_ALLIED,
+		1,
+		1,
+		1,
+		&"damage_pipeline_player_probe"
+	))
+	return request
+
+
+func _with_hostile_source(request: DamageRequest) -> DamageRequest:
+	request.with_source_snapshot(DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		2,
+		2,
+		&"damage_pipeline_enemy_probe"
+	))
+	return request
 
 
 func _expect(condition: bool, message: String) -> void:

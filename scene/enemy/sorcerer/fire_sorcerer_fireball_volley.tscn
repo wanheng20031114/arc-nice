@@ -15,7 +15,7 @@ script = ExtResource("1_script")
 [node name="FireballA" type="Area2D" parent="." unique_id=453683478]
 position = Vector2(24, 1)
 collision_layer = 128
-collision_mask = 515
+collision_mask = 519
 
 [node name="VisualRoot" type="Node2D" parent="FireballA" unique_id=2066707868]
 
@@ -43,7 +43,7 @@ shape = SubResource("CircleShape2D_fireball")
 [node name="FireballB" type="Area2D" parent="." unique_id=228945852]
 position = Vector2(15, -5)
 collision_layer = 128
-collision_mask = 515
+collision_mask = 519
 
 [node name="VisualRoot" type="Node2D" parent="FireballB" unique_id=1852525953]
 
@@ -71,7 +71,7 @@ shape = SubResource("CircleShape2D_fireball")
 [node name="FireballC" type="Area2D" parent="." unique_id=90245098]
 position = Vector2(23, 13)
 collision_layer = 128
-collision_mask = 515
+collision_mask = 519
 
 [node name="VisualRoot" type="Node2D" parent="FireballC" unique_id=1657727625]
 

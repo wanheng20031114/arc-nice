@@ -371,6 +371,17 @@ func is_wave_enemy_active(enemy_id: int) -> bool:
 	return wave_enemy_terminal_ledger.is_enemy_active(enemy_id)
 
 
+func has_wave_enemy_record(enemy_id: int) -> bool:
+	return wave_enemy_terminal_ledger.has_enemy(enemy_id)
+
+
+func is_wave_enemy_defeat_committed(enemy_id: int) -> bool:
+	return (
+		wave_enemy_terminal_ledger.get_terminal_reason(enemy_id)
+		== CombatTypes.EnemyTerminalReason.DEFEATED
+	)
+
+
 func get_attached_wave_enemy_ids(role_filter: int = -1) -> Dictionary:
 	return wave_enemy_terminal_ledger.get_attached_enemy_ids(role_filter)
 

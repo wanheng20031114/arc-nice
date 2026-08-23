@@ -30,6 +30,13 @@ var bucket_slot_by_net_id: Dictionary[int, int] = {}
 var faction_by_net_id: Dictionary[int, int] = {}
 var faction_buckets: Dictionary[int, Dictionary] = {}
 var faction_bucket_slot_by_net_id: Dictionary[int, int] = {}
+# Root positions remain the only bucket key. Body extents are one scalar per
+# registered enemy so point-index clients can conservatively grow an AABB before
+# doing their own exact Shape2D narrow phase without mixing geometry into this
+# index.
+var body_collision_extent_by_net_id: Dictionary[int, float] = {}
+var _maximum_body_collision_extent_radius := 0.0
+var _maximum_body_collision_extent_dirty := false
 var safety_audit_net_ids: Array[int] = []
 var safety_audit_slot_by_net_id: Dictionary[int, int] = {}
 var safety_audit_cursor := 0
@@ -65,6 +72,12 @@ func register_enemy(net_id: int, enemy: Enemy) -> void:
 		enemy.get_combat_faction_id(),
 		COMBAT_RELATIONS.HOSTILE_WAVE
 	)
+	var body_extent := _get_enemy_body_collision_extent(enemy)
+	body_collision_extent_by_net_id[net_id] = body_extent
+	_maximum_body_collision_extent_radius = maxf(
+		_maximum_body_collision_extent_radius,
+		body_extent
+	)
 	_add_net_id_to_bucket(net_id, _to_bucket(world_position))
 	_add_net_id_to_safety_audit(net_id)
 	# Binding happens after the initial slot exists. A spawner may assign the final
@@ -96,6 +109,7 @@ func update_enemy_bucket(
 	var next_cell := known_bucket
 	if next_cell == Vector2i.MAX:
 		next_cell = _to_bucket(world_position)
+	_update_body_collision_extent_for_net_id(net_id, registered_enemy)
 	var previous_cell: Vector2i = bucket_by_net_id.get(net_id, Vector2i.MAX)
 	if previous_cell == next_cell:
 		return true
@@ -138,6 +152,35 @@ func update_faction(
 	faction_by_net_id[net_id] = safe_new_faction_id
 	_add_net_id_to_faction_bucket(net_id, safe_new_faction_id, cell)
 	return true
+
+
+func update_body_collision_extent(enemy: Enemy) -> bool:
+	if enemy == null or not is_instance_valid(enemy):
+		return false
+	var net_id := enemy.combat_target_index_net_id
+	if net_id <= 0 or enemies_by_net_id.get(net_id) != enemy:
+		return false
+	return _update_body_collision_extent_for_net_id(net_id, enemy)
+
+
+func _update_body_collision_extent_for_net_id(
+	net_id: int,
+	enemy: Enemy
+) -> bool:
+	var previous_extent := float(body_collision_extent_by_net_id.get(net_id, 0.0))
+	var next_extent := _get_enemy_body_collision_extent(enemy)
+	body_collision_extent_by_net_id[net_id] = next_extent
+	if next_extent >= _maximum_body_collision_extent_radius:
+		_maximum_body_collision_extent_radius = next_extent
+		_maximum_body_collision_extent_dirty = false
+	elif previous_extent >= _maximum_body_collision_extent_radius:
+		_maximum_body_collision_extent_dirty = true
+	return true
+
+
+func get_maximum_body_collision_extent_radius() -> float:
+	_refresh_maximum_body_collision_extent_if_dirty()
+	return _maximum_body_collision_extent_radius
 
 
 func unregister_enemy(net_id: int, expected_enemy: Enemy = null) -> void:
@@ -799,6 +842,9 @@ func clear() -> void:
 	faction_by_net_id.clear()
 	faction_buckets.clear()
 	faction_bucket_slot_by_net_id.clear()
+	body_collision_extent_by_net_id.clear()
+	_maximum_body_collision_extent_radius = 0.0
+	_maximum_body_collision_extent_dirty = false
 	safety_audit_net_ids.clear()
 	safety_audit_slot_by_net_id.clear()
 	safety_audit_cursor = 0
@@ -1363,6 +1409,9 @@ func _remove_net_id_from_faction_bucket(
 
 
 func _remove_enemy_entry(net_id: int) -> void:
+	var removed_body_extent := float(
+		body_collision_extent_by_net_id.get(net_id, 0.0)
+	)
 	var enemy_variant: Variant = enemies_by_net_id.get(net_id)
 	if enemy_variant != null and is_instance_valid(enemy_variant):
 		var enemy := enemy_variant as Enemy
@@ -1372,7 +1421,43 @@ func _remove_enemy_entry(net_id: int) -> void:
 	_remove_net_id_from_safety_audit(net_id)
 	faction_by_net_id.erase(net_id)
 	faction_bucket_slot_by_net_id.erase(net_id)
+	body_collision_extent_by_net_id.erase(net_id)
+	if removed_body_extent >= _maximum_body_collision_extent_radius:
+		_maximum_body_collision_extent_dirty = true
 	enemies_by_net_id.erase(net_id)
+
+
+func _refresh_maximum_body_collision_extent_if_dirty() -> void:
+	if not _maximum_body_collision_extent_dirty:
+		return
+	_maximum_body_collision_extent_radius = 0.0
+	for net_id_variant in body_collision_extent_by_net_id:
+		var extent_variant: Variant = body_collision_extent_by_net_id.get(
+			int(net_id_variant),
+			0.0
+		)
+		_maximum_body_collision_extent_radius = maxf(
+			_maximum_body_collision_extent_radius,
+			maxf(float(extent_variant), 0.0)
+		)
+	_maximum_body_collision_extent_dirty = false
+
+
+func _get_enemy_body_collision_extent(enemy: Enemy) -> float:
+	if enemy == null or not is_instance_valid(enemy):
+		return 0.0
+	var extent := enemy.body_collision_extent_radius
+	var world_transform := enemy.global_transform
+	var maximum_world_scale_squared := maxf(
+		world_transform.x.length_squared(),
+		world_transform.y.length_squared()
+	)
+	if not is_finite(extent) or not is_finite(maximum_world_scale_squared):
+		return 0.0
+	return (
+		maxf(extent, 0.0)
+		* sqrt(maxf(maximum_world_scale_squared, 0.0))
+	)
 
 
 func _add_net_id_to_safety_audit(net_id: int) -> void:

@@ -132,7 +132,8 @@ func register_local_data_projectile(
 	direction: Vector2,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> int
 
 
@@ -165,6 +166,32 @@ func request_multiplayer_player_damage(
 	is_ranged: bool = false,
 	contact_preconsumed: bool = false
 ) -> bool
+
+
+## Local typed bridge for authoritative enemy damage. RefCounted attribution is
+## never serialized; production sessions override this and test fixtures may
+## inherit the compatibility forwarding implementation.
+func request_multiplayer_player_damage_with_source_snapshot(
+	source_snapshot: DamageSourceSnapshot,
+	target_peer_id: int,
+	damage: int,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	source_direction: Vector2 = Vector2.ZERO,
+	is_ranged: bool = false,
+	contact_preconsumed: bool = false
+) -> bool:
+	if source_snapshot == null or not source_snapshot.is_valid():
+		return false
+	return request_multiplayer_player_damage(
+		source_snapshot.event_source_id,
+		target_peer_id,
+		damage,
+		source_snapshot.source_type,
+		damage_type,
+		source_direction,
+		is_ranged,
+		contact_preconsumed
+	)
 
 
 @abstract
@@ -229,7 +256,8 @@ func request_multiplayer_player_damage_over_time_tick(
 	player_peer_id: int,
 	status_id: StringName,
 	source_family: StringName,
-	tick_damage: int
+	tick_damage: int,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool
 
 

@@ -34,6 +34,7 @@ var initial_attack_stagger_left := 0.0
 var windup_time_left := 0.0
 var cast_direction := Vector2.RIGHT
 var cast_target: Node2D = null
+var cast_damage_source_snapshot: DamageSourceSnapshot = null
 var latest_proxy_action_id := 0
 var cached_runtime_attack_target: Node2D = null
 var attack_target_refresh_left := 0.0
@@ -91,12 +92,60 @@ func _query_runtime_attack_target(
 ) -> Node2D:
 	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return null
-	var target := combat_runtime.find_nearest_enemy_attack_target_world(
+	var target := combat_runtime.find_nearest_hostile_enemy_attack_target_world(
 		from_position,
 		max_distance,
+		_get_frozen_attack_source_faction_id(),
 		excluded_instance_ids
 	)
-	return target if _is_ranged_combat_target_valid(target) else null
+	return target if _is_frozen_source_hostile_target_valid(target) else null
+
+
+func _get_frozen_attack_source_faction_id() -> int:
+	if cast_damage_source_snapshot != null:
+		return cast_damage_source_snapshot.source_faction_id
+	return get_combat_faction_id()
+
+
+func _is_frozen_source_hostile_target_valid(candidate: Node2D) -> bool:
+	if candidate == null or not is_instance_valid(candidate) or candidate == self:
+		return false
+	var player_target := candidate as Player
+	var target_faction_id := CombatRelationService.NEUTRAL
+	if player_target != null:
+		if player_target.is_dead or player_target.is_queued_for_deletion():
+			return false
+		target_faction_id = player_target.get_combat_faction_id()
+	var plant_target := candidate as PlantDefense
+	if plant_target != null:
+		if (
+			plant_target.is_dead
+			or plant_target.is_removing
+			or plant_target.is_queued_for_deletion()
+		):
+			return false
+		target_faction_id = plant_target.get_combat_faction_id()
+	var enemy_target := candidate as Enemy
+	if enemy_target != null:
+		if enemy_target.is_dead or enemy_target.is_queued_for_deletion():
+			return false
+		target_faction_id = enemy_target.get_combat_faction_id()
+	elif player_target == null and plant_target == null:
+		return false
+	var relation_service := (
+		combat_runtime.get_combat_relation_service()
+		if combat_runtime != null and is_instance_valid(combat_runtime)
+		else combat_relation_service
+	)
+	if relation_service != null:
+		return relation_service.is_hostile(
+			_get_frozen_attack_source_faction_id(),
+			target_faction_id
+		)
+	return CombatRelationService.is_default_hostile(
+		_get_frozen_attack_source_faction_id(),
+		target_faction_id
+	)
 
 
 func _physics_process(delta: float) -> void:
@@ -193,6 +242,7 @@ func _apply_config() -> void:
 	windup_time_left = 0.0
 	cast_direction = Vector2.RIGHT
 	cast_target = null
+	cast_damage_source_snapshot = null
 	latest_proxy_action_id = 0
 	cached_runtime_attack_target = null
 	attack_target_refresh_left = 0.0
@@ -250,6 +300,10 @@ func _try_start_windup(
 
 	combat_state = CombatState.WINDUP
 	cast_target = attack_target
+	cast_damage_source_snapshot = create_damage_source_snapshot(
+		_get_multiplayer_damage_source_id(action_sequence + 1),
+		DAMAGE_SOURCE_TYPE
+	)
 	windup_time_left = maxf(lightning_config.windup_duration, 0.01)
 	cast_direction = global_position.direction_to(attack_target.global_position)
 	if cast_direction == Vector2.ZERO:
@@ -277,13 +331,14 @@ func _update_windup(delta: float) -> void:
 	var lightning_config := config as LightningConfig
 	if (
 		lightning_config == null
-		or not _is_ranged_combat_target_valid(cast_target)
+		or not _is_frozen_source_hostile_target_valid(cast_target)
 	):
 		_cancel_windup()
 		return
-	if not _is_ranged_combat_target_in_range(
-		cast_target,
-		lightning_config.attack_range
+	var safe_attack_range := maxf(lightning_config.attack_range, 0.0)
+	if (
+		global_position.distance_squared_to(cast_target.global_position)
+		> safe_attack_range * safe_attack_range
 	):
 		_cancel_windup()
 		return
@@ -310,11 +365,16 @@ func _update_windup(delta: float) -> void:
 
 
 func _finish_windup_and_strike(lightning_config: LightningConfig) -> void:
+	if cast_damage_source_snapshot == null:
+		cast_damage_source_snapshot = create_damage_source_snapshot(
+			_get_multiplayer_damage_source_id(action_sequence),
+			DAMAGE_SOURCE_TYPE
+		)
 	var first_target := cast_target
 	_clear_target_warning()
 	_play_config_animation(lightning_config.attack_animation_name)
 	_broadcast_enemy_action(&"fire", cast_direction)
-	var damage_source_id := _get_multiplayer_damage_source_id(action_sequence)
+	var damage_source_id := cast_damage_source_snapshot.event_source_id
 	var world_path := _resolve_chain_hits(
 		first_target,
 		lightning_config,
@@ -331,6 +391,7 @@ func _finish_windup_and_strike(lightning_config: LightningConfig) -> void:
 	warning_retry_time_left = 0.0
 	warning_retry_sent = false
 	cast_target = null
+	cast_damage_source_snapshot = null
 
 
 func _resolve_chain_hits(
@@ -338,6 +399,11 @@ func _resolve_chain_hits(
 	lightning_config: LightningConfig,
 	damage_source_id: int
 ) -> PackedVector2Array:
+	if cast_damage_source_snapshot == null:
+		cast_damage_source_snapshot = create_damage_source_snapshot(
+			damage_source_id,
+			DAMAGE_SOURCE_TYPE
+		)
 	var world_path := PackedVector2Array([staff_tip.global_position])
 	var excluded_instance_ids: Dictionary = {}
 	var current_target := first_target
@@ -347,7 +413,7 @@ func _resolve_chain_hits(
 		lightning_config.attack_damage
 	)
 	for _hit_index in range(maximum_hits):
-		if not _is_ranged_combat_target_valid(current_target):
+		if not _is_frozen_source_hostile_target_valid(current_target):
 			break
 		var hit_position := current_target.global_position
 		var target_instance_id := int(current_target.get_instance_id())
@@ -388,41 +454,69 @@ func _apply_chain_damage(
 		var source_direction := player_target.global_position.direction_to(
 			source_position
 		)
-		if _try_request_player_damage(
-			damage_source_id,
-			player_target.peer_id,
+		var player_request := _make_chain_damage_request(
 			damage,
-			DAMAGE_SOURCE_TYPE,
-			EnemyConfig.DamageType.MAGIC,
-			source_direction,
-			true
+			source_position,
+			player_target.global_position
+		)
+		if not CombatDamageAdmission.is_admitted(
+			player_request,
+			player_target.get_combat_faction_id(),
+			combat_relation_service
+		):
+			return false
+		if (
+			gameplay_gateway != null
+			and is_instance_valid(gameplay_gateway)
+			and gameplay_gateway.request_player_damage(
+				damage_source_id,
+				player_target.peer_id,
+				damage,
+				DAMAGE_SOURCE_TYPE,
+				EnemyConfig.DamageType.MAGIC,
+				source_direction,
+				true,
+				false,
+				cast_damage_source_snapshot
+			)
 		):
 			return true
 		if not _has_explicit_singleplayer_authority():
 			return false
-		return player_target.apply_damage(
-			damage,
-			EnemyConfig.DamageType.MAGIC,
-			{
-				"is_ranged": true,
-				"source_direction": source_direction,
-			}
-		)
+		return player_target.apply_combat_damage(player_request).accepted
 
 	var plant_target := target as PlantDefense
-	if (
-		not _has_authoritative_runtime()
-		or plant_target == null
-		or plant_target.is_dead
-		or plant_target.is_removing
-	):
+	if not _has_authoritative_runtime():
 		return false
-	return plant_target.receive_damage(
+	var target_request := _make_chain_damage_request(
 		damage,
-		self,
-		source_position.direction_to(plant_target.global_position),
+		source_position,
+		target.global_position
+	)
+	if plant_target != null:
+		if plant_target.is_dead or plant_target.is_removing:
+			return false
+		return plant_target.apply_combat_damage(target_request).accepted
+	var enemy_target := target as Enemy
+	if enemy_target == null or enemy_target.is_dead:
+		return false
+	return enemy_target.apply_combat_damage(target_request).accepted
+
+
+func _make_chain_damage_request(
+	damage_amount: int,
+	source_position: Vector2,
+	target_position: Vector2
+) -> DamageRequest:
+	var impact_direction := source_position.direction_to(target_position)
+	var request := DamageRequest.new(
+		damage_amount,
 		EnemyConfig.DamageType.MAGIC
 	)
+	request.with_source_snapshot(cast_damage_source_snapshot)
+	request.with_directions(impact_direction, -impact_direction)
+	request.with_flag(CombatTypes.DamageFlag.RANGED, true)
+	return request
 
 
 func _on_animated_sprite_animation_finished() -> void:
@@ -536,6 +630,7 @@ func _cancel_windup(restore_move_animation := true) -> void:
 	warning_retry_sent = false
 	_clear_target_warning()
 	cast_target = null
+	cast_damage_source_snapshot = null
 	var lightning_config := config as LightningConfig
 	if restore_move_animation and lightning_config != null:
 		_play_config_animation(lightning_config.move_animation_name)

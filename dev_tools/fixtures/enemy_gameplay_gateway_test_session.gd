@@ -61,3 +61,36 @@ func notify_data_projectile_finished(
 		"handle": handle,
 	})
 	super.notify_data_projectile_finished(projectile_id, service, handle)
+
+
+func request_multiplayer_player_damage_with_source_snapshot(
+	source_snapshot: DamageSourceSnapshot,
+	target_peer_id: int,
+	damage: int,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	source_direction: Vector2 = Vector2.ZERO,
+	is_ranged: bool = false,
+	contact_preconsumed: bool = false
+) -> bool:
+	if source_snapshot == null or not source_snapshot.is_valid():
+		return false
+	return request_multiplayer_player_damage(
+		source_snapshot.event_source_id,
+		target_peer_id,
+		damage,
+		source_snapshot.source_type,
+		damage_type,
+		source_direction,
+		is_ranged,
+		contact_preconsumed
+	)
+
+
+func _is_fire_sorcerer_fireball_contact_consumed(
+	projectile_id: int,
+	source_type: StringName
+) -> bool:
+	return projectile_coordinator.is_fire_sorcerer_fireball_contact_consumed(
+		projectile_id,
+		source_type
+	)

@@ -35,7 +35,7 @@ func supports_layered_area_authoritative_simulation() -> bool:
 
 
 func supports_dynamic_enemy_targeting() -> bool:
-	return supports_layered_area_authoritative_simulation()
+	return true
 
 
 func get_layered_area_decision_interval_frames() -> int:
@@ -195,19 +195,47 @@ func _apply_multiplayer_player_damage(
 	hit_player: Player,
 	damage_amount: int,
 	source_id: int,
-	source_type: StringName
-) -> void:
-	if hit_player == null or damage_amount <= 0:
-		return
+	source_type: StringName,
+	source_snapshot: DamageSourceSnapshot = null
+) -> bool:
+	if hit_player == null or hit_player.is_dead or damage_amount <= 0:
+		return false
+	var frozen_source_snapshot := (
+		source_snapshot
+		if source_snapshot != null
+		else create_damage_source_snapshot(source_id, source_type)
+	)
+	var impact_direction := global_position.direction_to(
+		hit_player.global_position
+	)
+	var request := DamageRequest.new(
+		damage_amount,
+		EnemyConfig.DamageType.PHYSICAL
+	)
+	request.with_source_snapshot(frozen_source_snapshot)
+	request.with_directions(impact_direction, -impact_direction)
+	if not CombatDamageAdmission.is_admitted(
+		request,
+		hit_player.get_combat_faction_id(),
+		_get_damage_relation_service()
+	):
+		return false
 	if _try_request_player_damage(
 			source_id,
 			hit_player.peer_id,
 			damage_amount,
-			source_type
+			source_type,
+			EnemyConfig.DamageType.PHYSICAL,
+			-impact_direction,
+			false,
+			false,
+			frozen_source_snapshot
 		):
-		return
+		return true
 	if _has_explicit_singleplayer_authority():
-		hit_player.apply_damage(damage_amount)
+		hit_player.apply_combat_damage(request)
+		return true
+	return false
 
 
 func _get_multiplayer_damage_source_id(source_suffix: int) -> int:

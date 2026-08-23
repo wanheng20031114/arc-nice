@@ -4,7 +4,7 @@ class_name CapooAK47Bullet
 signal projectile_finished(projectile_id: int, projectile: Node)
 
 const WORLD_COLLISION_MASK := 1
-const DAMAGEABLE_COLLISION_MASK := 2 | 512
+const DAMAGEABLE_COLLISION_MASK := 2 | 4 | 512
 const WORLD_COLLISION_CHECK_INTERVAL_FRAMES := 2
 const HIT_EFFECT_SCENE := preload("res://scene/combat/projectiles/bullet_hit_effect.tscn")
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/combat/feedback/world_effect_visibility.gd")
@@ -32,6 +32,7 @@ var has_hit: bool = false
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"capoo_ak47_bullet"
+var damage_source_snapshot: DamageSourceSnapshot = null
 var pool_active: bool = true
 var combat_runtime: CombatRuntimeBase = null
 var gameplay_gateway: MultiplayerGameplayGateway = null
@@ -77,6 +78,7 @@ func _enter_tree() -> void:
 
 func on_pool_acquired(_generation: int) -> void:
 	_release_shadow_simulation()
+	remove_meta(&"damage_source_snapshot")
 	combat_runtime = null
 	gameplay_gateway = null
 	_detach_batched_motion_system()
@@ -91,6 +93,7 @@ func on_pool_acquired(_generation: int) -> void:
 	projectile_id = 0
 	owner_peer_id = 0
 	source_type = &"capoo_ak47_bullet"
+	damage_source_snapshot = null
 	world_collision_pathfinder = null
 	batched_activation_physics_frame = -1
 	rotation = 0.0
@@ -109,6 +112,7 @@ func on_pool_acquired(_generation: int) -> void:
 
 func on_pool_released(_generation: int) -> void:
 	_release_shadow_simulation()
+	remove_meta(&"damage_source_snapshot")
 	_detach_batched_motion_system()
 	_reset_world_collision_schedule()
 	pool_active = false
@@ -116,6 +120,7 @@ func on_pool_released(_generation: int) -> void:
 	world_collision_pathfinder = null
 	combat_runtime = null
 	gameplay_gateway = null
+	damage_source_snapshot = null
 	set_physics_process(false)
 	set_deferred("monitoring", false)
 	set_deferred("monitorable", false)
@@ -156,7 +161,8 @@ func setup(
 	initial_speed: float,
 	initial_lifetime: float,
 	shared_pathfinder: GridPathfinder = null,
-	shared_motion_system: Node = null
+	shared_motion_system: Node = null,
+	initial_damage_source_snapshot: DamageSourceSnapshot = null
 ) -> void:
 	_detach_batched_motion_system()
 	_reset_world_collision_schedule()
@@ -167,6 +173,18 @@ func setup(
 	speed = maxf(initial_speed, 0.0)
 	max_lifetime = maxf(initial_lifetime, 0.01)
 	remaining_lifetime = max_lifetime
+	damage_source_snapshot = (
+		initial_damage_source_snapshot.duplicate_snapshot()
+		if initial_damage_source_snapshot != null
+		else null
+	)
+	if damage_source_snapshot != null:
+		set_meta(
+			&"damage_source_snapshot",
+			damage_source_snapshot.duplicate_snapshot()
+		)
+	else:
+		remove_meta(&"damage_source_snapshot")
 	world_collision_pathfinder = shared_pathfinder
 	if (
 		CapooAK47Bullet.batched_motion_enabled
@@ -188,11 +206,28 @@ func setup_multiplayer(
 	projectile_id = maxi(new_projectile_id, 0)
 	owner_peer_id = new_owner_peer_id
 	source_type = new_source_type
+	_rebind_damage_source_snapshot_to_projectile_id()
 	if projectile_id > 0:
 		world_collision_check_phase = posmod(
 			projectile_id,
 			WORLD_COLLISION_CHECK_INTERVAL_FRAMES
 		)
+
+
+func _rebind_damage_source_snapshot_to_projectile_id() -> void:
+	if damage_source_snapshot == null or projectile_id <= 0:
+		return
+	damage_source_snapshot = DamageSourceSnapshot.create(
+		damage_source_snapshot.source_faction_id,
+		damage_source_snapshot.credit_peer_id,
+		damage_source_snapshot.instigator_entity_id,
+		projectile_id,
+		damage_source_snapshot.source_type
+	)
+	set_meta(
+		&"damage_source_snapshot",
+		damage_source_snapshot.duplicate_snapshot()
+	)
 
 
 func _physics_process(delta: float) -> void:
@@ -320,27 +355,74 @@ func _on_body_entered(body: Node2D) -> void:
 
 	var player := body as Player
 	if player != null:
+		if not _is_damage_admitted(player):
+			return
 		if (
 			not _try_report_multiplayer_player_hit(player)
 			and _has_explicit_singleplayer_authority()
 		):
-			player.apply_damage(
-				damage,
-				EnemyConfig.DamageType.PHYSICAL,
-				_get_player_damage_context()
+			var player_result := player.apply_combat_damage(
+				_make_damage_request(direction, -direction)
 			)
-	else:
-		var plant := body as PlantDefense
-		if plant != null and _has_authoritative_runtime():
-			if plant.is_dead or plant.is_removing:
+			if _should_ignore_non_hostile_result(player_result):
 				return
-			plant.receive_damage(
-				damage,
-				self,
-				direction,
-				EnemyConfig.DamageType.PHYSICAL
-			)
+		_consume(true)
+		return
+
+	var plant := body as PlantDefense
+	if plant != null:
+		if plant.is_dead or plant.is_removing:
+			return
+		if not _has_authoritative_runtime():
+			_consume(true)
+			return
+		var plant_result := plant.apply_combat_damage(
+			_make_damage_request(direction, -direction)
+		)
+		if _should_ignore_non_hostile_result(plant_result):
+			return
+		_consume(true)
+		return
+
+	var enemy := body as Enemy
+	if enemy != null:
+		if enemy.is_dead or not _has_authoritative_runtime():
+			return
+		var enemy_result := enemy.apply_combat_damage(
+			_make_damage_request(direction, -direction)
+		)
+		if _should_ignore_non_hostile_result(enemy_result):
+			return
+		_consume(true)
+		return
+
 	_consume(true)
+
+
+func _make_damage_request(
+	impact_direction: Vector2,
+	source_direction: Vector2
+) -> DamageRequest:
+	var request := DamageRequest.new(
+		damage,
+		EnemyConfig.DamageType.PHYSICAL
+	)
+	if damage_source_snapshot != null:
+		request.with_source_snapshot(damage_source_snapshot)
+	else:
+		request.with_source(self, projectile_id, source_type)
+	request.with_directions(impact_direction, source_direction)
+	request.with_flag(CombatTypes.DamageFlag.RANGED, true)
+	return request
+
+
+func _should_ignore_non_hostile_result(result: DamageResult) -> bool:
+	return (
+		result != null
+		and result.is_rejected_for(
+			CombatTypes.DamageRejectionReason.NON_HOSTILE
+		)
+	)
 
 
 func _reset_world_collision_schedule() -> void:
@@ -387,6 +469,8 @@ func _consume(play_hit_effect: bool = true) -> void:
 	if play_hit_effect:
 		_spawn_hit_effect()
 	projectile_finished.emit(projectile_id, self)
+	remove_meta(&"damage_source_snapshot")
+	damage_source_snapshot = null
 	if SessionObjectPool.release_to_owner(self):
 		return
 	queue_free()
@@ -498,7 +582,21 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 		source_type,
 		EnemyConfig.DamageType.PHYSICAL,
 		-direction,
-		true
+		true,
+		false,
+		damage_source_snapshot
+	)
+
+
+func _is_damage_admitted(target: Node) -> bool:
+	if not _has_authoritative_runtime():
+		return true
+	if target == null or not target.has_method(&"get_combat_faction_id"):
+		return false
+	return CombatDamageAdmission.is_admitted(
+		_make_damage_request(direction, -direction),
+		int(target.call(&"get_combat_faction_id")),
+		combat_runtime.get_combat_relation_service()
 	)
 
 

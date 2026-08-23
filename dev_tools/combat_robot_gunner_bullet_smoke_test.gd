@@ -359,7 +359,21 @@ func _spawn_stationary_test_bullet(fixture: Node2D) -> CombatRobotGunnerBullet:
 	var bullet := BULLET_SCENE.instantiate() as CombatRobotGunnerBullet
 	fixture.add_child(bullet)
 	bullet.global_position = Vector2.ZERO
-	bullet.setup(Vector2.RIGHT, 35, TEST_SPEED, 1.4)
+	bullet.setup(
+		Vector2.RIGHT,
+		35,
+		TEST_SPEED,
+		1.4,
+		null,
+		null,
+		DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			0,
+			0,
+			bullet.authored_source_type
+		)
+	)
 	bullet.set_physics_process(false)
 	await physics_frame
 	return bullet

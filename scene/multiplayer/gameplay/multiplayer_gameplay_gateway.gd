@@ -129,7 +129,8 @@ func register_local_data_projectile(
 	direction: Vector2,
 	damage: int,
 	speed: float,
-	lifetime: float
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> int:
 	if multiplayer_session == null:
 		return 0
@@ -142,7 +143,8 @@ func register_local_data_projectile(
 		direction,
 		damage,
 		speed,
-		lifetime
+		lifetime,
+		damage_source_snapshot
 	)
 
 
@@ -187,10 +189,34 @@ func request_player_damage(
 	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
 	source_direction: Vector2 = Vector2.ZERO,
 	is_ranged: bool = false,
-	contact_preconsumed: bool = false
+	contact_preconsumed: bool = false,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	if multiplayer_session == null:
 		return false
+	if source_snapshot != null:
+		if source_id <= 0:
+			return false
+		# The projectile/action owns the frozen faction and credit, while this
+		# concrete contact owns its event id and attack subtype (for example one
+		# ball in a fire volley). Bind both before the typed local bridge so the
+		# Host dedupe key and status registry never collapse sibling contacts.
+		var event_snapshot := DamageSourceSnapshot.create(
+			source_snapshot.source_faction_id,
+			source_snapshot.credit_peer_id,
+			source_snapshot.instigator_entity_id,
+			source_id,
+			source_type if source_type != &"" else source_snapshot.source_type
+		)
+		return multiplayer_session.request_multiplayer_player_damage_with_source_snapshot(
+			event_snapshot,
+			target_peer_id,
+			damage,
+			damage_type,
+			source_direction,
+			is_ranged,
+			contact_preconsumed
+		)
 	return multiplayer_session.request_multiplayer_player_damage(
 		source_id,
 		target_peer_id,
@@ -306,7 +332,8 @@ func request_player_damage_over_time_tick(
 	player_peer_id: int,
 	status_id: StringName,
 	source_family: StringName,
-	tick_damage: int
+	tick_damage: int,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	return (
 		multiplayer_session != null
@@ -314,7 +341,8 @@ func request_player_damage_over_time_tick(
 			player_peer_id,
 			status_id,
 			source_family,
-			tick_damage
+			tick_damage,
+			source_snapshot
 		)
 	)
 

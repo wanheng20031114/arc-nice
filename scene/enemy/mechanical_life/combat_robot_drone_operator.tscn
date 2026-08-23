@@ -67,7 +67,7 @@ shape = SubResource("RectangleShape2D_xo45x")
 
 [node name="AttackSenseArea" type="Area2D" parent="." index="5" unique_id=56005700]
 collision_layer = 0
-collision_mask = 514
+collision_mask = 518
 monitorable = false
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="AttackSenseArea" index="0" unique_id=1157301697]

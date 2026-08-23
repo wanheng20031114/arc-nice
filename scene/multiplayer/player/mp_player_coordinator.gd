@@ -2970,7 +2970,8 @@ func request_multiplayer_player_damage(
 	damage_type_or_source_direction: Variant = EnemyConfig.DamageType.PHYSICAL,
 	source_direction_or_is_ranged: Variant = Vector2.ZERO,
 	is_ranged: bool = false,
-	contact_preconsumed: bool = false
+	contact_preconsumed: bool = false,
+	trusted_source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	if (
 		not has_life_dependencies()
@@ -3024,6 +3025,24 @@ func request_multiplayer_player_damage(
 		return false
 	if _is_recent_player_hit_cached(hit_key, now):
 		return true
+	if _net_manager.is_host():
+		var preflight_request := _build_player_damage_request(
+			damage,
+			int(resolved_damage_type),
+			source_id,
+			source_type,
+			impact_direction,
+			resolved_is_ranged,
+			trusted_source_snapshot
+		)
+		if CombatDamageAdmission.get_rejection_reason(
+			preflight_request,
+			player_node.get_combat_faction_id(),
+			_runtime.get_combat_relation_service()
+		) != CombatTypes.DamageRejectionReason.NONE:
+			# Contact and dedupe records are commit-side state. A friendly or
+			# otherwise inadmissible projectile must remain live.
+			return false
 	var fire_source_bit := _get_fire_sorcerer_fireball_source_bit(source_type)
 	var contact_was_consumed := false
 	if fire_source_bit != 0:
@@ -3064,7 +3083,7 @@ func request_multiplayer_player_damage(
 	if _net_manager.is_host():
 		if player_node.is_dead:
 			return true
-		apply_player_hit_report(
+		var host_result := apply_player_hit_report(
 			source_id,
 			target_peer_id,
 			damage,
@@ -3072,10 +3091,39 @@ func request_multiplayer_player_damage(
 			impact_direction,
 			resolved_damage_type,
 			CombatTypes.DamageFlag.RANGED if resolved_is_ranged else 0,
-			contact_was_consumed
+			contact_was_consumed,
+			trusted_source_snapshot
 		)
-		return true
+		# Invulnerability/dodge still consume an otherwise hostile hit, matching
+		# legacy behavior. Friendly projectiles remain live and may continue.
+		return not host_result.is_rejected_for(
+			CombatTypes.DamageRejectionReason.NON_HOSTILE
+		)
 	return false
+
+
+func request_multiplayer_player_damage_with_source_snapshot(
+	source_snapshot: DamageSourceSnapshot,
+	target_peer_id: int,
+	damage: int,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	source_direction: Vector2 = Vector2.ZERO,
+	is_ranged: bool = false,
+	contact_preconsumed: bool = false
+) -> bool:
+	if source_snapshot == null or not source_snapshot.is_valid():
+		return false
+	return request_multiplayer_player_damage(
+		source_snapshot.event_source_id,
+		target_peer_id,
+		damage,
+		source_snapshot.source_type,
+		damage_type,
+		source_direction,
+		is_ranged,
+		contact_preconsumed,
+		source_snapshot
+	)
 
 
 func request_multiplayer_player_burn_tick(
@@ -3100,7 +3148,8 @@ func request_multiplayer_player_damage_over_time_tick(
 	player_peer_id: int,
 	status_id: StringName,
 	source_family: StringName,
-	tick_damage: int
+	tick_damage: int,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	if (
 		not has_life_dependencies()
@@ -3108,6 +3157,7 @@ func request_multiplayer_player_damage_over_time_tick(
 		or player_peer_id <= 0
 		or source_family == &""
 		or tick_damage <= 0
+		or (source_snapshot != null and not source_snapshot.is_valid())
 	):
 		return false
 	var damage_type := EnemyConfig.DamageType.PHYSICAL
@@ -3136,7 +3186,17 @@ func request_multiplayer_player_damage_over_time_tick(
 	):
 		return false
 	var request := DamageRequest.new(tick_damage, int(damage_type))
-	request.with_source(null, 0, source_family)
+	request.with_source_snapshot(
+		source_snapshot
+		if source_snapshot != null
+		else DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			0,
+			0,
+			source_family
+		)
+	)
 	request.flags = (
 		CombatTypes.DamageFlag.PERIODIC
 		| CombatTypes.DamageFlag.BYPASS_INVULNERABILITY
@@ -3269,7 +3329,8 @@ func apply_player_hit_report(
 	impact_direction: Vector2,
 	damage_type: EnemyConfig.DamageType,
 	damage_flags: int,
-	contact_preconsumed: bool = false
+	contact_preconsumed: bool = false,
+	trusted_source_snapshot: DamageSourceSnapshot = null
 ) -> DamageResult:
 	var request := _build_player_damage_request(
 		damage,
@@ -3277,7 +3338,8 @@ func apply_player_hit_report(
 		source_id,
 		source_type,
 		impact_direction,
-		CombatTypes.has_flag(damage_flags, CombatTypes.DamageFlag.RANGED)
+		CombatTypes.has_flag(damage_flags, CombatTypes.DamageFlag.RANGED),
+		trusted_source_snapshot
 	)
 	if (
 		_net_manager == null
@@ -3303,6 +3365,17 @@ func apply_player_hit_report(
 		return DamageResult.rejected(
 			request,
 			CombatTypes.DamageRejectionReason.INVALID_AMOUNT,
+			player_node.current_health
+		)
+	var admission_reason := CombatDamageAdmission.get_rejection_reason(
+		request,
+		player_node.get_combat_faction_id(),
+		_runtime.get_combat_relation_service()
+	)
+	if admission_reason != CombatTypes.DamageRejectionReason.NONE:
+		return DamageResult.rejected(
+			request,
+			admission_reason,
 			player_node.current_health
 		)
 	var is_fire_sorcerer_fireball := (
@@ -3406,7 +3479,8 @@ func apply_player_hit_report(
 			var burn_applied := player_node.apply_burn_status(
 				burn_family,
 				CombatAttackRegistry.get_burn_duration(burn_family),
-				burn_level
+				burn_level,
+				request.get_source_snapshot_copy()
 			)
 			if (
 				burn_applied
@@ -4231,10 +4305,22 @@ func _build_player_damage_request(
 	source_id: int,
 	source_type: StringName,
 	impact_direction: Vector2,
-	is_ranged: bool
+	is_ranged: bool,
+	trusted_source_snapshot: DamageSourceSnapshot = null
 ) -> DamageRequest:
 	var request := DamageRequest.new(damage, damage_type)
-	request.with_source(null, source_id, source_type)
+	var source_snapshot := trusted_source_snapshot
+	if source_snapshot == null:
+		# Compatibility-only entry points historically mean an enemy-originated
+		# Host hit. Migrated production attacks pass their frozen snapshot.
+		source_snapshot = DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			0,
+			maxi(source_id, 0),
+			source_type
+		)
+	request.with_source_snapshot(source_snapshot)
 	request.with_directions(impact_direction, -impact_direction)
 	request.with_flag(CombatTypes.DamageFlag.RANGED, is_ranged)
 	return request

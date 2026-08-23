@@ -44,6 +44,7 @@ var gameplay_gateway: MultiplayerGameplayGateway = null
 var pierces_enemies: bool = false
 var hit_enemy_instance_ids: Dictionary = {}
 var collectible_owner: Player = null
+var damage_source_snapshot: DamageSourceSnapshot = null
 var homing_target: Enemy = null
 var is_homing: bool = false
 var pool_active: bool = true
@@ -87,6 +88,9 @@ func on_pool_acquired(_generation: int) -> void:
 	pierces_enemies = false
 	hit_enemy_instance_ids.clear()
 	collectible_owner = null
+	damage_source_snapshot = null
+	if has_meta(&"damage_source_snapshot"):
+		remove_meta(&"damage_source_snapshot")
 	homing_target = null
 	is_homing = false
 	rotation = 0.0
@@ -105,6 +109,9 @@ func on_pool_released(_generation: int) -> void:
 	set_deferred("monitorable", false)
 	hit_enemy_instance_ids.clear()
 	collectible_owner = null
+	damage_source_snapshot = null
+	if has_meta(&"damage_source_snapshot"):
+		remove_meta(&"damage_source_snapshot")
 	homing_target = null
 	is_homing = false
 	combat_runtime = null
@@ -160,10 +167,44 @@ func setup_multiplayer(
 	projectile_id = maxi(new_projectile_id, 0)
 	owner_peer_id = new_owner_peer_id
 	source_type = new_source_type
+	if damage_source_snapshot != null:
+		damage_source_snapshot = DamageSourceSnapshot.create(
+			damage_source_snapshot.source_faction_id,
+			damage_source_snapshot.credit_peer_id,
+			damage_source_snapshot.instigator_entity_id,
+			projectile_id,
+			source_type
+		)
+	else:
+		damage_source_snapshot = DamageSourceSnapshot.create(
+			CombatRelationService.PLAYER_ALLIED,
+			maxi(owner_peer_id, 0),
+			maxi(owner_peer_id, 0),
+			projectile_id,
+			source_type
+		)
+	_store_damage_source_snapshot_meta()
 
 
 func setup_collectible_owner(owner_player: Player) -> void:
 	collectible_owner = owner_player
+	damage_source_snapshot = (
+		owner_player.create_damage_source_snapshot(projectile_id, source_type)
+		if owner_player != null and is_instance_valid(owner_player)
+		else null
+	)
+	_store_damage_source_snapshot_meta()
+
+
+func _store_damage_source_snapshot_meta() -> void:
+	if damage_source_snapshot == null:
+		if has_meta(&"damage_source_snapshot"):
+			remove_meta(&"damage_source_snapshot")
+		return
+	set_meta(
+		&"damage_source_snapshot",
+		damage_source_snapshot.duplicate_snapshot()
+	)
 
 
 func get_damage_type() -> EnemyConfig.DamageType:
@@ -321,11 +362,14 @@ func try_hit_enemy(enemy: Enemy) -> bool:
 		resolved_damage = collectible_owner.resolve_attack_damage_against_enemy(damage, enemy)
 	if _is_explicit_singleplayer_authority():
 		var request := DamageRequest.new(resolved_damage, int(get_damage_type()))
-		request.with_source(
-			collectible_owner if collectible_owner != null else self,
-			projectile_id,
-			source_type
-		)
+		if damage_source_snapshot != null:
+			request.with_source_snapshot(damage_source_snapshot)
+		else:
+			request.with_source(
+				collectible_owner if collectible_owner != null else self,
+				projectile_id,
+				source_type
+			)
 		request.with_directions(-direction)
 		hit_registered = enemy.apply_combat_damage(request).accepted
 	elif _requires_multiplayer_gateway_authority():

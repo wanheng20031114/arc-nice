@@ -23,6 +23,7 @@ func _init() -> void:
 func _run() -> void:
 	await _test_same_frame_activation_and_final_lifetime_step()
 	_test_stale_handle_and_generation_reuse()
+	_test_frozen_damage_source_storage_and_compaction()
 	await _test_stable_tombstone_compaction_and_completion_order()
 	await _test_shadow_difference_read_model_and_teardown()
 	await _test_fixed_seed_hundred_thousand_projectiles()
@@ -209,6 +210,134 @@ func _test_stale_handle_and_generation_reuse() -> void:
 		service.get_dense_record_count() == 1
 		and service.get_handle_at_stable_index(0) == replacement_handle,
 		"Frame-end compaction must update indirection for the replacement handle."
+	)
+	service.prepare_for_runtime_teardown()
+	service.free()
+
+
+func _test_frozen_damage_source_storage_and_compaction() -> void:
+	var service := RapidFireSimulationServiceScript.new()
+	service.reserve_projectile_capacity(3)
+	var launch_snapshot := DamageSourceSnapshot.create(
+		6,
+		17,
+		901,
+		44,
+		&"frozen_ak_probe"
+	)
+	var first_handle := service.register_projectile(
+		RapidFireSimulationServiceScript.Mode.DATA,
+		RapidFireSimulationServiceScript.Profile.AK,
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		60.0,
+		1.0,
+		10,
+		901,
+		0,
+		2,
+		0,
+		launch_snapshot
+	)
+	launch_snapshot.source_faction_id = CombatRelationService.PLAYER_ALLIED
+	launch_snapshot.credit_peer_id = 99
+	launch_snapshot.instigator_entity_id = 999
+	launch_snapshot.event_source_id = 999
+	launch_snapshot.source_type = &"mutated_after_registration"
+	var frozen_snapshot := service.get_damage_source_snapshot(first_handle)
+	_expect(
+		frozen_snapshot != null
+		and frozen_snapshot.source_faction_id == 6
+		and frozen_snapshot.credit_peer_id == 17
+		and frozen_snapshot.instigator_entity_id == 901
+		and frozen_snapshot.event_source_id == 44
+		and frozen_snapshot.source_type == &"frozen_ak_probe",
+		"Registration must copy every DamageSourceSnapshot value instead of retaining the caller object."
+	)
+	_expect(
+		service.assign_projectile_identity(first_handle, 7001)
+		and service.get_damage_source_snapshot(first_handle).event_source_id == 7001,
+		"Pending multiplayer identity assignment must rebind the frozen event source id."
+	)
+
+	var survivor_snapshot := DamageSourceSnapshot.create(
+		9,
+		23,
+		902,
+		7002,
+		&"compacted_ak_probe"
+	)
+	var survivor_handle := service.register_projectile(
+		RapidFireSimulationServiceScript.Mode.SHADOW,
+		RapidFireSimulationServiceScript.Profile.AK,
+		Vector2.ONE,
+		Vector2.RIGHT,
+		60.0,
+		1.0,
+		11,
+		902,
+		7002,
+		2,
+		1,
+		survivor_snapshot
+	)
+	service.release_projectile(first_handle)
+	service._physics_process(TEST_DELTA)
+	var compacted_snapshot := service.get_damage_source_snapshot(survivor_handle)
+	_expect(
+		compacted_snapshot != null
+		and compacted_snapshot.source_faction_id == 9
+		and compacted_snapshot.credit_peer_id == 23
+		and compacted_snapshot.instigator_entity_id == 902
+		and compacted_snapshot.event_source_id == 7002
+		and compacted_snapshot.source_type == &"compacted_ak_probe",
+		"Stable compaction must move the complete packed damage-source record."
+	)
+
+	service.release_projectile(survivor_handle)
+	service._physics_process(TEST_DELTA)
+	var default_handle := service.register_projectile(
+		RapidFireSimulationServiceScript.Mode.DATA,
+		RapidFireSimulationServiceScript.Profile.AK,
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		60.0,
+		1.0,
+		12,
+		903,
+		7003,
+		2,
+		1
+	)
+	var default_snapshot := service.get_damage_source_snapshot(default_handle)
+	_expect(
+		default_snapshot != null
+		and default_snapshot.source_faction_id
+		== CombatRelationService.HOSTILE_WAVE
+		and default_snapshot.credit_peer_id == 0
+		and default_snapshot.instigator_entity_id == 903
+		and default_snapshot.event_source_id == 7003
+		and default_snapshot.source_type
+		== RapidFireSimulationServiceScript.AK_SOURCE_TYPE,
+		"An omitted AK snapshot must produce the explicit hostile fallback without leaking a recycled row."
+	)
+	var invalid_snapshot := DamageSourceSnapshot.create(99)
+	_expect(
+		service.register_projectile(
+			RapidFireSimulationServiceScript.Mode.DATA,
+			RapidFireSimulationServiceScript.Profile.AK,
+			Vector2.ZERO,
+			Vector2.RIGHT,
+			60.0,
+			1.0,
+			12,
+			904,
+			7004,
+			2,
+			0,
+			invalid_snapshot
+		) == RapidFireSimulationServiceScript.INVALID_HANDLE,
+		"An explicitly invalid damage-source snapshot must reject registration."
 	)
 	service.prepare_for_runtime_teardown()
 	service.free()

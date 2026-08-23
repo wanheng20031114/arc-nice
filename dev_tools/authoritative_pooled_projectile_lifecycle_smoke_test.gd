@@ -178,6 +178,21 @@ func _test_ak_authoritative_fire(
 		data_handle > RapidFireSimulationService.INVALID_HANDLE,
 		"AK猫猫开火必须生成可追踪的DATA弹体句柄。"
 	)
+	var launch_source_snapshot := rapid_fire_service.get_damage_source_snapshot(
+		data_handle
+	)
+	_expect(
+		launch_source_snapshot != null
+		and launch_source_snapshot.source_faction_id
+		== enemy.get_combat_faction_id()
+		and launch_source_snapshot.instigator_entity_id
+		== int(enemy.get_instance_id())
+		and launch_source_snapshot.event_source_id
+		== rapid_fire_service.get_projectile_id(data_handle)
+		and launch_source_snapshot.source_type
+		== RapidFireSimulationService.AK_SOURCE_TYPE,
+		"AK猫猫DATA注册必须显式冻结发射阵营、实例归属、弹体事件与来源类型。"
+	)
 	_expect(
 		rapid_fire_service.get_active_slot_count() == active_slots_before + 1
 		and int(rapid_fire_service.get_metrics().get("data_slots", 0))

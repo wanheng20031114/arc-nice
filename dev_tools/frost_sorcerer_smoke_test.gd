@@ -22,7 +22,7 @@ const PLAYER_SCENE := preload(
 const TEST_HEALTH := 1000
 const CHARACTER_FRAME_SIZE := Vector2(40.0, 40.0)
 const ICE_SPIKE_FRAME_SIZE := Vector2(32.0, 32.0)
-const EXPECTED_PROJECTILE_MASK := 1 | 2 | 512
+const EXPECTED_PROJECTILE_MASK := 1 | 2 | 4 | 512
 const FROST_MOVE_TEXTURE_PATH := (
 	"res://resources/texture/enemy/sorcerer/frost_sorcerer_move.png"
 )
@@ -286,7 +286,13 @@ func _test_straight_one_hundred_pixels_per_second() -> void:
 	fixture.add_child(spike)
 	_bind_spike_context(spike)
 	spike.global_position = Vector2(5000.0, 5000.0)
-	spike.setup(Vector2.RIGHT, 20, 100.0, 7.0)
+	spike.setup(
+		Vector2.RIGHT,
+		20,
+		100.0,
+		7.0,
+		_make_hostile_spike_source()
+	)
 	spike.set_physics_process(false)
 	var initial_direction := spike.direction
 	var initial_rotation := spike.rotation
@@ -334,7 +340,13 @@ func _test_compensated_shape_sweep_graze() -> void:
 	fixture.add_child(spike)
 	_bind_spike_context(spike)
 	spike.global_position = start
-	spike.setup(Vector2.RIGHT, 20, 100.0, 7.0)
+	spike.setup(
+		Vector2.RIGHT,
+		20,
+		100.0,
+		7.0,
+		_make_hostile_spike_source()
+	)
 	spike.set_physics_process(false)
 	await physics_frame
 	var center_ray := PhysicsRayQueryParameters2D.create(
@@ -366,7 +378,13 @@ func _test_native_area_contact_on_ordinary_steps() -> void:
 	fixture.add_child(spike)
 	_bind_spike_context(spike)
 	spike.global_position = Vector2(2000.0, 2000.0)
-	spike.setup(Vector2.RIGHT, 20, 100.0, 7.0)
+	spike.setup(
+		Vector2.RIGHT,
+		20,
+		100.0,
+		7.0,
+		_make_hostile_spike_source()
+	)
 
 	for _frame_index in range(30):
 		await physics_frame
@@ -483,7 +501,13 @@ func _test_pool_reuse_resets_all_lease_state() -> void:
 		return
 	var first_instance_id := first.get_instance_id()
 	_bind_spike_context(first)
-	first.setup(Vector2.DOWN, 77, 321.0, 0.25)
+	first.setup(
+		Vector2.DOWN,
+		77,
+		321.0,
+		0.25,
+		_make_hostile_spike_source()
+	)
 	first.setup_multiplayer(701, 9, &"dirty_frost_projectile")
 	first.has_hit = true
 	first.effect_time_left = 0.2
@@ -523,8 +547,10 @@ func _test_pool_reuse_resets_all_lease_state() -> void:
 			and reused.monitorable
 			and not reused.collision_shape.disabled
 			and reused.combat_runtime == null
-			and reused.gameplay_gateway == null,
-			"Reacquisition must clear network identity and restore collision monitoring."
+			and reused.gameplay_gateway == null
+			and reused.damage_source_snapshot == null
+			and not reused.has_meta(&"damage_source_snapshot"),
+			"Reacquisition must clear network/source identity and restore collision monitoring."
 		)
 		pool.release(reused)
 	await physics_frame
@@ -558,7 +584,8 @@ func _spawn_spike(position: Vector2) -> FrostSorcererIceSpike:
 		Vector2.RIGHT,
 		FROST_SORCERER_CONFIG.attack_damage,
 		0.0,
-		FROST_SORCERER_CONFIG.projectile_lifetime
+		FROST_SORCERER_CONFIG.projectile_lifetime,
+		_make_hostile_spike_source()
 	)
 	spike.set_physics_process(false)
 	return spike
@@ -568,6 +595,16 @@ func _bind_spike_context(spike: FrostSorcererIceSpike) -> void:
 	spike.bind_gameplay_context(
 		fixture,
 		fixture.get_multiplayer_gameplay_gateway()
+	)
+
+
+func _make_hostile_spike_source() -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		1,
+		0,
+		FrostSorcererIceSpike.PROJECTILE_TYPE
 	)
 
 

@@ -335,7 +335,12 @@ func _test_direct_xirang_kill_reward() -> void:
 		await process_frame
 		return
 	runtime.enemy_container.add_child(enemy)
-	enemy.setup(BASIC_ENEMY_CONFIG, runtime.player, runtime.grid_pathfinder)
+	enemy.setup(
+		BASIC_ENEMY_CONFIG,
+		runtime.player,
+		runtime.grid_pathfinder,
+		runtime
+	)
 	enemy.set_process(false)
 	enemy.set_physics_process(false)
 	var xirang_before := runtime.player.current_xirang
@@ -356,7 +361,12 @@ func _test_direct_xirang_kill_reward() -> void:
 	_expect(zero_reward_enemy != null, "Zero-reward override fixture must instantiate an enemy.")
 	if zero_reward_enemy != null:
 		runtime.enemy_container.add_child(zero_reward_enemy)
-		zero_reward_enemy.setup(BASIC_ENEMY_CONFIG, runtime.player, runtime.grid_pathfinder)
+		zero_reward_enemy.setup(
+			BASIC_ENEMY_CONFIG,
+			runtime.player,
+			runtime.grid_pathfinder,
+			runtime
+		)
 		zero_reward_enemy.set_xirang_kill_reward_override(0)
 		zero_reward_enemy.call("_die")
 		await process_frame
@@ -370,7 +380,12 @@ func _test_direct_xirang_kill_reward() -> void:
 	_expect(overridden_enemy != null, "Positive-reward override fixture must instantiate an enemy.")
 	if overridden_enemy != null:
 		runtime.enemy_container.add_child(overridden_enemy)
-		overridden_enemy.setup(BASIC_ENEMY_CONFIG, runtime.player, runtime.grid_pathfinder)
+		overridden_enemy.setup(
+			BASIC_ENEMY_CONFIG,
+			runtime.player,
+			runtime.grid_pathfinder,
+			runtime
+		)
 		overridden_enemy.set_xirang_kill_reward_override(OVERRIDDEN_REWARD)
 		overridden_enemy.call("_die")
 		await process_frame
@@ -385,7 +400,12 @@ func _test_direct_xirang_kill_reward() -> void:
 	_expect(boss != null, "Linglan reward regression requires the configured boss scene.")
 	if boss != null:
 		runtime.get_node("BossContainer").add_child(boss)
-		boss.setup(LINGLAN_ENEMY_CONFIG, runtime.player, runtime.grid_pathfinder)
+		boss.setup(
+			LINGLAN_ENEMY_CONFIG,
+			runtime.player,
+			runtime.grid_pathfinder,
+			runtime
+		)
 		boss.call("_die")
 		await process_frame
 		_expect(
@@ -416,12 +436,11 @@ func _test_multiplayer_forwarding_contract() -> void:
 	)
 	var enemy_source := FileAccess.get_file_as_string("res://scene/enemy/enemy.gd")
 	_expect(
-		enemy_source.contains("func _get_owning_game_runtime() -> CombatRuntimeBase:")
-		and enemy_source.contains(
-			"game_runtime.grant_xirang_kill_reward(reward_amount)"
+		enemy_source.contains(
+			"combat_runtime.grant_xirang_kill_reward_for_defeat("
 		)
 		and enemy_source.contains(
-			"not game_runtime.allows_enemy_pickup_drops()"
+			"not gameplay_gateway.allows_enemy_pickup_drops()"
 		)
 		and not enemy_source.contains(
 			'current_scene.call("grant_xirang_kill_reward", reward_amount)'
@@ -464,13 +483,16 @@ func _test_multiplayer_forwarding_contract() -> void:
 	)
 	for compatibility_rpc_signature in [
 		"func net_xirang_orb_spawned(orb_id: int, amount: int, spawn_position: Vector2) -> void:\n\tpass",
-		"func _rpc_xirang_orb_collected(orb_id: int) -> void:\n\tpass",
+		(
+			"func _rpc_xirang_orb_collected(orb_id: int) -> void:\n"
+			+ "\tvar _sender_id := _get_rpc_sender_id()\n\tpass"
+		),
 		"func net_xirang_granted_all(orb_id: int, amount: int, revision: int) -> void:\n\tpass",
 		"func net_xirang_orb_removed(orb_id: int) -> void:\n\tpass",
 	]:
 		_expect(
 			mp_game_source.contains(compatibility_rpc_signature),
-			"Protocol-v8 Xirang RPC compatibility shells must remain inert: %s"
+			"Protocol-v25 Xirang RPC compatibility shells must remain inert: %s"
 			% compatibility_rpc_signature.get_slice("(", 0)
 		)
 

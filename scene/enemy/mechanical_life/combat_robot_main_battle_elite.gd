@@ -7,6 +7,8 @@ const MainBattleConfig := preload(
 const COMPLETE_SHAPE_QUERY_2D := preload(
 	"res://scene/combat/physics/complete_shape_query_2d.gd"
 )
+
+
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
@@ -17,8 +19,11 @@ const EXPECTED_RUNTIME_SPRITE_FRAMES_PATH := (
 	"res://resources/animation/combat_robot_main_battle_elite.tres"
 )
 const PLAYER_COLLISION_MASK := 1 << 1
+const ENEMY_COLLISION_MASK := 1 << 2
 const PLANT_COLLISION_MASK := 1 << 9
-const TARGET_COLLISION_MASK := PLAYER_COLLISION_MASK | PLANT_COLLISION_MASK
+const TARGET_COLLISION_MASK := (
+	PLAYER_COLLISION_MASK | ENEMY_COLLISION_MASK | PLANT_COLLISION_MASK
+)
 const AIRBORNE_VISUAL_STATUS_MASK := 1 << 5
 const BASE_VISUAL_STATUS_MASK := 0x1f
 const ANGLE_EPSILON_RADIANS := 0.000001
@@ -99,6 +104,11 @@ var attack_cooldown_left := 0.0
 var skill1_cooldown_left := 0.0
 var skill2_cooldown_left := 0.0
 var committed_target: Node2D = null
+var action_damage_source_snapshot: DamageSourceSnapshot = null
+
+
+func supports_dynamic_enemy_targeting() -> bool:
+	return true
 var locked_direction := Vector2.RIGHT
 var skill1_locked_position := Vector2.ZERO
 var skill2_last_target_position := Vector2.ZERO
@@ -205,6 +215,7 @@ func _apply_config() -> void:
 		else 0.0
 	)
 	committed_target = null
+	action_damage_source_snapshot = null
 	locked_direction = Vector2.RIGHT
 	skill1_locked_position = global_position
 	skill2_last_target_position = global_position
@@ -245,9 +256,7 @@ func _try_start_ready_action() -> bool:
 	if main_config == null:
 		return false
 	if skill2_cooldown_left <= 0.0:
-		var skill2_target := _find_nearest_target_in_range(
-			main_config.skill2_trigger_range
-		)
+		var skill2_target := _get_skill2_priority_target()
 		if skill2_target != null:
 			_start_skill2_takeoff(skill2_target)
 			return true
@@ -276,6 +285,10 @@ func _try_start_ready_action() -> bool:
 
 func _start_attack_windup(target: Node2D) -> void:
 	committed_target = target
+	action_damage_source_snapshot = create_damage_source_snapshot(
+		_get_multiplayer_damage_source_id(action_sequence + 1),
+		&"combat_robot_main_battle_elite_attack"
+	)
 	combat_state = CombatState.ATTACK_WINDUP
 	state_time_left = maxf(main_config.attack_windup, 0.0)
 	locked_direction = _direction_to_target(target)
@@ -339,6 +352,10 @@ func _update_attack_slash(delta: float) -> void:
 
 func _start_skill1_windup(target: Node2D) -> void:
 	committed_target = target
+	action_damage_source_snapshot = create_damage_source_snapshot(
+		_get_multiplayer_damage_source_id(action_sequence + 1),
+		CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SKILL1
+	)
 	combat_state = CombatState.SKILL1_WINDUP
 	state_time_left = maxf(main_config.skill1_windup, 0.0)
 	locked_direction = _direction_to_target(target)
@@ -415,6 +432,10 @@ func _finish_skill1_dash() -> void:
 
 func _start_skill2_takeoff(target: Node2D) -> void:
 	committed_target = target
+	action_damage_source_snapshot = create_damage_source_snapshot(
+		_get_multiplayer_damage_source_id(action_sequence + 1),
+		CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SKILL2
+	)
 	skill2_last_target_position = target.global_position
 	skill2_last_tracking_direction = _direction_to_target(target)
 	locked_direction = skill2_last_tracking_direction
@@ -585,15 +606,16 @@ func _apply_shape_damage(
 				> half_angle + ANGLE_EPSILON_RADIANS
 		):
 			continue
-		hit_target_ids[target_id] = true
-		_dispatch_target_damage(
+		if not _dispatch_target_damage(
 			target,
 			damage,
 			source_type,
 			offset.normalized() if offset != Vector2.ZERO else locked_direction,
 			apply_burn,
 			apply_slow
-		)
+		):
+			continue
+		hit_target_ids[target_id] = true
 
 
 func _dispatch_target_damage(
@@ -606,28 +628,46 @@ func _dispatch_target_damage(
 ) -> bool:
 	var player := target as Player
 	if player != null:
-		var source_id := _get_multiplayer_damage_source_id(action_sequence)
-		if _try_request_player_damage(
-			source_id,
-			player.peer_id,
-			damage,
-			source_type,
-			EnemyConfig.DamageType.PHYSICAL,
-			-impact_direction
+		var player_request := _make_action_damage_request(damage, impact_direction)
+		if not CombatDamageAdmission.is_admitted(
+			player_request,
+			player.get_combat_faction_id(),
+			combat_relation_service
 		):
-			return true
+			return false
+		if (
+			gameplay_gateway != null
+			and is_instance_valid(gameplay_gateway)
+		):
+			var previous_result := player.last_damage_result
+			var routed := gameplay_gateway.request_player_damage(
+				action_damage_source_snapshot.event_source_id,
+				player.peer_id,
+				damage,
+				source_type,
+				EnemyConfig.DamageType.PHYSICAL,
+				-impact_direction,
+				false,
+				false,
+				action_damage_source_snapshot
+			)
+			if routed:
+				var routed_result := player.last_damage_result
+				return (
+					routed_result != null
+					and routed_result != previous_result
+					and routed_result.accepted
+				)
 		if not _has_explicit_singleplayer_authority():
 			return false
-		var accepted := player.apply_damage(
-			damage,
-			EnemyConfig.DamageType.PHYSICAL
-		)
-		if accepted and player.last_damage_taken > 0 and not player.is_dead:
+		var result := player.apply_combat_damage(player_request)
+		if result.accepted and result.applied_damage > 0 and not player.is_dead:
 			if apply_burn:
 				player.apply_burn_status(
 					CombatAttackRegistry.get_burn_family(source_type),
 					CombatAttackRegistry.get_burn_duration(source_type),
-					CombatAttackRegistry.get_burn_tick_damage(source_type)
+					CombatAttackRegistry.get_burn_tick_damage(source_type),
+					action_damage_source_snapshot
 				)
 			if apply_slow:
 				player.apply_timed_move_slow(
@@ -635,23 +675,50 @@ func _dispatch_target_damage(
 					CombatAttackRegistry.get_timed_move_slow_duration(source_type),
 					CombatAttackRegistry.get_timed_move_slow_multiplier(source_type)
 				)
-		return accepted
+		return result != null and result.accepted
 	var plant := target as PlantDefense
-	if plant == null:
-		return false
-	var accepted := plant.receive_damage(
-		damage,
-		self,
-		impact_direction,
+	var target_request := _make_action_damage_request(damage, impact_direction)
+	var result: DamageResult = null
+	if plant != null:
+		result = plant.apply_combat_damage(target_request)
+		if result.accepted and not plant.is_dead and not plant.is_removing and apply_burn:
+			plant.apply_burn_status(
+				CombatAttackRegistry.get_burn_family(source_type),
+				CombatAttackRegistry.get_burn_duration(source_type),
+				CombatAttackRegistry.get_burn_tick_damage(source_type),
+				action_damage_source_snapshot
+			)
+	else:
+		var enemy := target as Enemy
+		if enemy == null:
+			return false
+		result = enemy.apply_combat_damage(target_request)
+		if result.accepted and not enemy.is_dead and apply_burn:
+			enemy.apply_burn_status(
+				CombatAttackRegistry.get_burn_family(source_type),
+				CombatAttackRegistry.get_burn_duration(source_type),
+				CombatAttackRegistry.get_burn_tick_damage(source_type),
+				action_damage_source_snapshot
+			)
+	return result != null and result.accepted
+
+
+func _make_action_damage_request(
+	damage_amount: int,
+	impact_direction: Vector2
+) -> DamageRequest:
+	if action_damage_source_snapshot == null:
+		action_damage_source_snapshot = create_damage_source_snapshot(
+			_get_multiplayer_damage_source_id(action_sequence),
+			&"combat_robot_main_battle_elite_attack"
+		)
+	var request := DamageRequest.new(
+		damage_amount,
 		EnemyConfig.DamageType.PHYSICAL
 	)
-	if accepted and not plant.is_dead and not plant.is_removing and apply_burn:
-		plant.apply_burn_status(
-			CombatAttackRegistry.get_burn_family(source_type),
-			CombatAttackRegistry.get_burn_duration(source_type),
-			CombatAttackRegistry.get_burn_tick_damage(source_type)
-		)
-	return accepted
+	request.with_source_snapshot(action_damage_source_snapshot)
+	request.with_directions(impact_direction, -impact_direction)
+	return request
 
 
 func _finish_to_chase() -> void:
@@ -661,6 +728,7 @@ func _finish_to_chase() -> void:
 	combat_state = CombatState.CHASE
 	state_time_left = 0.0
 	committed_target = null
+	action_damage_source_snapshot = null
 	action_damage_done = false
 	velocity = Vector2.ZERO
 	_hide_all_action_indicators()
@@ -678,6 +746,7 @@ func _cancel_to_chase() -> void:
 func _die() -> void:
 	if is_dead:
 		return
+	action_damage_source_snapshot = null
 	airborne = false
 	latest_proxy_action_id += 1
 	_stop_all_presentation_audio(false)
@@ -1679,6 +1748,18 @@ func _find_nearest_target_in_range(radius: float) -> Node2D:
 			nearest_distance_squared = distance_squared
 			nearest_instance_id = instance_id
 	return nearest
+
+
+func _get_skill2_priority_target() -> Node2D:
+	if (
+		targeting_state.is_active_target_assigned()
+		and _is_ranged_combat_target_in_range(
+			objective_target,
+			main_config.skill2_trigger_range
+		)
+	):
+		return objective_target
+	return _find_nearest_target_in_range(main_config.skill2_trigger_range)
 
 
 func _restart_scene_animation(animation_name: StringName) -> bool:

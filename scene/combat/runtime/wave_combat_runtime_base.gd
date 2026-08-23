@@ -189,6 +189,18 @@ func try_resolve_active_wave_enemy_defeat(enemy_id: int) -> bool:
 	)
 
 
+func can_settle_enemy_defeat_rewards(enemy_id: int) -> bool:
+	# Only enemies registered as members of this wave are ledger-gated. Sandbox,
+	# merchant and fixture enemies may share the runtime without belonging to the
+	# wave lifecycle and retain their historical reward path.
+	if not wave_enemy_terminal_ledger.has_enemy(enemy_id):
+		return true
+	return (
+		wave_enemy_terminal_ledger.get_terminal_reason(enemy_id)
+		== CombatTypes.EnemyTerminalReason.DEFEATED
+	)
+
+
 ## 只供无真实实体的边界测试构造完整领域状态。
 func replace_wave_terminal_state_for_fixture(
 	total: int,

@@ -29,7 +29,7 @@ class RecordingMpGame:
 
 
 class TestNetManager:
-	extends Node
+	extends NetManagerStore
 
 	var host_mode := false
 
@@ -186,8 +186,11 @@ func _run() -> void:
 func _test_host_broadcast_contract() -> void:
 	var mp_game := RecordingMpGame.new()
 	var net_manager := TestNetManager.new()
+	var runtime := LightningVfxRuntime.new()
 	net_manager.host_mode = true
 	mp_game.set("net_manager", net_manager)
+	mp_game.set("game", runtime)
+	_attach_enemy_coordinator(mp_game, runtime, net_manager)
 	var enemy_position := Vector2(12.0, 18.0)
 	var plant_offset := Vector2(44.0, -8.0)
 	mp_game.broadcast_enemy_target_action(
@@ -298,6 +301,7 @@ func _test_host_broadcast_contract() -> void:
 		"Host must drop incomplete, oversized, and non-finite lightning visual payloads."
 	)
 	mp_game.free()
+	runtime.free()
 	net_manager.free()
 
 
@@ -312,7 +316,11 @@ func _test_target_warning_proxy_contract() -> void:
 	var mp_game := MP_GAME_SCRIPT.new()
 	mp_game.set("net_manager", net_manager)
 	mp_game.set("game", runtime)
-	var enemy_coordinator := _attach_enemy_coordinator(mp_game, runtime)
+	var enemy_coordinator := _attach_enemy_coordinator(
+		mp_game,
+		runtime,
+		net_manager
+	)
 
 	var player := PLAYER_SCENE.instantiate() as Player
 	_expect(player != null, "Player warning fixture must instantiate a typed player.")
@@ -342,7 +350,11 @@ func _test_target_warning_proxy_contract() -> void:
 	lightning.setup(LIGHTNING_SORCERER_CONFIG, player)
 	lightning.configure_multiplayer_proxy()
 	lightning.set_meta("net_id", 73)
-	enemy_coordinator.register_client_enemy(73, lightning, 0.0)
+	enemy_coordinator.register_client_enemy(
+		73,
+		lightning,
+		float(mp_game.call("_get_net_time"))
+	)
 
 	var target_warning := lightning.get_node_or_null("TargetWarning") as Node2D
 	_expect(
@@ -579,14 +591,35 @@ func _test_target_warning_proxy_contract() -> void:
 
 func _attach_enemy_coordinator(
 	mp_game: Node,
-	runtime: CombatRuntimeBase
+	runtime: CombatRuntimeBase,
+	net_manager: NetManagerStore
 ) -> MpEnemyCoordinator:
+	var session_coordinator := MpSessionCoordinator.new()
+	session_coordinator.name = "SessionCoordinator"
+	mp_game.add_child(session_coordinator)
+	mp_game.set("session_coordinator", session_coordinator)
+	session_coordinator.bind_transport_dependencies(net_manager)
+	session_coordinator.bind_runtime(runtime)
+
+	var gameplay_gateway := MultiplayerGameplayGateway.new()
+	gameplay_gateway.name = "MultiplayerGameplayGateway"
+	runtime.add_child(gameplay_gateway)
+	gameplay_gateway.bind_runtime(runtime)
+
 	var coordinator := MpEnemyCoordinator.new()
 	coordinator.name = "EnemyCoordinator"
 	mp_game.add_child(coordinator)
 	mp_game.set("enemy_coordinator", coordinator)
 	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	coordinator.bind_runtime(runtime)
+	coordinator.bind_lifecycle_dependencies(
+		net_manager,
+		gameplay_gateway,
+		Callable(mp_game, "_get_net_time")
+	)
+	coordinator.lifecycle_rpc_broadcast_requested.connect(
+		Callable(mp_game, "_on_enemy_lifecycle_rpc_broadcast_requested")
+	)
 	return coordinator
 
 
@@ -601,7 +634,11 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	var mp_game := MP_GAME_SCRIPT.new()
 	mp_game.set("net_manager", net_manager)
 	mp_game.set("game", runtime)
-	var enemy_coordinator := _attach_enemy_coordinator(mp_game, runtime)
+	var enemy_coordinator := _attach_enemy_coordinator(
+		mp_game,
+		runtime,
+		net_manager
+	)
 	var player := PLAYER_SCENE.instantiate() as Player
 	_expect(player != null, "Pending-action fixture must instantiate a player.")
 	if player == null:
@@ -656,14 +693,9 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	)
 	_expect(retry_lightning != null, "Retry fixture must register a lightning proxy.")
 	if retry_lightning != null:
-		var consumed := enemy_coordinator.consume_pending_enemy_action(
-			retry_net_id,
-			float(mp_game.call("_get_net_time"))
-		)
 		var retry_warning := retry_lightning.get_node("TargetWarning") as Node2D
 		_expect(
-			consumed
-			and pending_actions.is_empty()
+			pending_actions.is_empty()
 			and retry_lightning.latest_proxy_action_id == 20
 			and retry_warning.visible
 			and float(retry_warning.call("get_warning_progress"))
@@ -704,10 +736,6 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		cancel_net_id
 	)
 	if cancel_lightning != null:
-		enemy_coordinator.consume_pending_enemy_action(
-			cancel_net_id,
-			float(mp_game.call("_get_net_time"))
-		)
 		var cancel_warning := cancel_lightning.get_node("TargetWarning") as Node2D
 		_expect(
 			cancel_lightning.latest_proxy_action_id == 31
@@ -783,14 +811,9 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		expired_net_id
 	)
 	if expired_lightning != null:
-		var expired_consumed := enemy_coordinator.consume_pending_enemy_action(
-			expired_net_id,
-			float(mp_game.call("_get_net_time"))
-		)
 		var expired_warning := expired_lightning.get_node("TargetWarning") as Node2D
 		_expect(
-			not expired_consumed
-			and not pending_actions.has(expired_net_id)
+			not pending_actions.has(expired_net_id)
 			and expired_lightning.latest_proxy_action_id == 0
 			and not expired_warning.visible,
 			"Expired pre-spawn actions must be consumed as cleanup only and never resurrect a warning."
@@ -901,9 +924,15 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		"res://scene/multiplayer/enemy/mp_enemy_coordinator.gd"
 	)
 	var spawn_body := _extract_function_body(source, "func receive_enemy_spawn(")
+	var publish_body := _extract_function_body(
+		source,
+		"func _publish_prepared_client_spawns("
+	)
 	var boss_body := _extract_function_body(source, "func register_client_enemy(")
 	_expect(
-		spawn_body.contains("consume_pending_enemy_action(net_id, current_time)")
+		spawn_body.contains("_commit_prepared_client_spawns([prepared])")
+		and publish_body.contains("_take_live_pending_enemy_action(")
+		and publish_body.contains("_deliver_action_record(")
 		and boss_body.contains("consume_pending_enemy_action(net_id, current_time)"),
 		"Normal enemies and bosses must both consume pending actions immediately after proxy registration."
 	)
@@ -930,7 +959,11 @@ func _register_lightning_proxy(
 	lightning.configure_multiplayer_proxy()
 	lightning.set_meta("net_id", net_id)
 	var enemy_coordinator := mp_game.get("enemy_coordinator") as MpEnemyCoordinator
-	enemy_coordinator.register_client_enemy(net_id, lightning, 0.0)
+	enemy_coordinator.register_client_enemy(
+		net_id,
+		lightning,
+		float(mp_game.call("_get_net_time"))
+	)
 	return lightning
 
 
@@ -940,16 +973,22 @@ func _test_client_validation_and_visual_only_contract() -> void:
 	var runtime := LightningVfxRuntime.new()
 	mp_game.set("net_manager", net_manager)
 	mp_game.set("game", runtime)
+	_attach_enemy_coordinator(mp_game, runtime, net_manager)
 	var synchronized_host_time := float(mp_game.call("_get_net_time"))
 	mp_game.call(
 		"_map_host_timestamp_to_client_time",
 		synchronized_host_time,
 		true
 	)
-	var measured_action_age := float(mp_game.call(
-		"_get_received_enemy_action_elapsed",
-		synchronized_host_time - 0.12
+	var mapped_action_time := float(mp_game.call(
+		"_map_host_timestamp_to_client_time",
+		synchronized_host_time - 0.12,
+		false
 	))
+	var measured_action_age := maxf(
+		float(mp_game.call("_get_net_time")) - mapped_action_time,
+		0.0
+	)
 	_expect(
 		measured_action_age >= 0.1 and measured_action_age <= 0.25,
 		"Enemy action context must convert the synchronized host timestamp into client-side elapsed time."
@@ -981,13 +1020,22 @@ func _test_client_validation_and_visual_only_contract() -> void:
 		source,
 		"func net_enemy_lightning_chain("
 	)
+	var enemy_coordinator_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/enemy/mp_enemy_coordinator.gd"
+	)
+	var lightning_receiver_body := _extract_function_body(
+		enemy_coordinator_source,
+		"func receive_enemy_lightning_chain("
+	)
+	var lightning_receive_path := rpc_body + lightning_receiver_body
 	_expect(
 		not rpc_body.is_empty()
-		and rpc_body.contains("play_lightning_sorcerer_chain_vfx")
-		and not rpc_body.contains("find_nearest")
-		and not rpc_body.contains("take_damage")
-		and not rpc_body.contains("request_multiplayer")
-		and not rpc_body.contains("apply_authoritative"),
+		and rpc_body.contains("enemy_coordinator.receive_enemy_lightning_chain(points)")
+		and lightning_receiver_body.contains("play_lightning_sorcerer_chain_vfx")
+		and not lightning_receive_path.contains("find_nearest")
+		and not lightning_receive_path.contains("take_damage")
+		and not lightning_receive_path.contains("request_multiplayer")
+		and not lightning_receive_path.contains("apply_authoritative"),
 		"Client RPC must replay pure VFX without target selection or damage execution."
 	)
 

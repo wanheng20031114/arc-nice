@@ -13,6 +13,7 @@ var current_base_health := 100
 var base_health_revision := 0
 var has_received_remote_base_health_snapshot := false
 var resolved_home_enemy_ids: Dictionary = {}
+var last_base_damage_result: DamageResult = null
 
 var _runtime: CombatRuntimeBase
 var _run_state: RunStateStore
@@ -107,6 +108,23 @@ func get_base_health_snapshot() -> Dictionary:
 	}
 
 
+func get_combat_faction_id() -> int:
+	return CombatRelationService.PLAYER_ALLIED
+
+
+func create_damage_source_snapshot(
+	event_source_id: int = 0,
+	source_type: StringName = &"home"
+) -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		get_combat_faction_id(),
+		0,
+		maxi(int(get_instance_id()), 0),
+		maxi(event_source_id, 0),
+		source_type if source_type != &"" else &"home"
+	)
+
+
 func apply_remote_base_health(
 	new_current_health: int,
 	new_maximum_health: int,
@@ -156,17 +174,61 @@ func apply_remote_enemy_escape(net_id: int) -> bool:
 
 
 func apply_base_damage(amount: int) -> int:
-	if amount <= 0 or current_base_health <= 0:
-		return 0
-	var previous_health := current_base_health
 	var request := DamageRequest.new(amount, CombatTypes.DamageType.PHYSICAL)
 	request.with_flag(CombatTypes.DamageFlag.BYPASS_MITIGATION)
+	request.with_flag(CombatTypes.DamageFlag.BYPASS_FACTION_FILTER)
+	return apply_base_combat_damage(request).applied_damage
+
+
+func apply_base_combat_damage(request: DamageRequest) -> DamageResult:
+	if request == null:
+		last_base_damage_result = DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.INVALID_REQUEST,
+			current_base_health
+		)
+		return last_base_damage_result
+	if _runtime != null and _runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+		last_base_damage_result = DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.NOT_AUTHORITY,
+			current_base_health
+		)
+		return last_base_damage_result
+	if current_base_health <= 0:
+		last_base_damage_result = DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.TARGET_DEAD,
+			current_base_health
+		)
+		return last_base_damage_result
+	if request.amount <= 0:
+		last_base_damage_result = DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.INVALID_AMOUNT,
+			current_base_health
+		)
+		return last_base_damage_result
+	var admission_reason := CombatDamageAdmission.get_rejection_reason(
+		request,
+		get_combat_faction_id(),
+		_get_damage_relation_service()
+	)
+	if admission_reason != CombatTypes.DamageRejectionReason.NONE:
+		last_base_damage_result = DamageResult.rejected(
+			request,
+			admission_reason,
+			current_base_health
+		)
+		return last_base_damage_result
+	var previous_health := current_base_health
 	var result := DamageResolver.resolve(
 		request,
 		DamageTargetProfile.new(current_base_health)
 	)
+	last_base_damage_result = result
 	if not result.accepted:
-		return 0
+		return result
 	current_base_health = result.health_after
 	if (
 		_run_state != null
@@ -174,7 +236,7 @@ func apply_base_damage(amount: int) -> int:
 	):
 		if not _run_state.set_party_core_health(current_base_health, maximum_base_health):
 			push_error("HomeDefenseCoordinator: 无法回写本局共享核心生命。")
-			return 0
+			return result
 		current_base_health = _run_state.get_party_core_health()
 		maximum_base_health = _run_state.get_party_core_maximum_health()
 	base_health_revision += 1
@@ -182,7 +244,14 @@ func apply_base_damage(amount: int) -> int:
 	base_health_changed.emit(current_base_health, maximum_base_health, base_health_revision)
 	if current_base_health <= 0:
 		base_defeated.emit()
-	return previous_health - current_base_health
+	result.applied_damage = previous_health - current_base_health
+	return result
+
+
+func _get_damage_relation_service() -> CombatRelationService:
+	if _runtime == null or not is_instance_valid(_runtime):
+		return null
+	return _runtime.get_combat_relation_service()
 
 
 func set_authoritative_base_health(
@@ -223,8 +292,13 @@ func on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
 	var enemy_id := enemy.get_instance_id()
 	if resolved_home_enemy_ids.has(enemy_id):
 		return
-	resolved_home_enemy_ids[enemy_id] = true
+	var is_registered := _enemy_coordinator.has_registered_enemy(enemy_id)
 	var is_registered_active := _enemy_coordinator.has_active_enemy(enemy_id)
+	# A terminal record can remain attached until the death/escape presentation
+	# removes its node. It is not an untracked enemy and must never enter Home a
+	# second time through the no-ledger compatibility path.
+	if is_registered and not is_registered_active:
+		return
 	var resolves_active_wave := (
 		flow_state == CombatFlowState.State.WAVE_ACTIVE
 		and is_registered_active
@@ -235,24 +309,42 @@ func on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
 		and enemy == active_boss
 		and is_registered_active
 	)
-	# 所有已登记实体都必须先提交唯一 ESCAPED 原因；是否推进普通波次或
-	# Boss 步骤是另一层策略，Boss 召唤物也不能绕过实体终结账本。
-	if is_registered_active:
-		var recorded_escape := _enemy_coordinator.try_resolve_active_enemy_escape(
-			enemy_id
-		)
-		resolves_active_wave = resolves_active_wave and recorded_escape
-		resolves_boss_step = resolves_boss_step and recorded_escape
-	_enemy_coordinator.remove_hud_alive_enemy(enemy_id)
-	_enemy_coordinator.emit_multiplayer_enemy_escaped(enemy)
-	enemy.remove_for_home_escape()
-	enemy_escaped.emit(enemy, resolves_active_wave, resolves_boss_step)
 	var home_damage := (
 		current_base_health
 		if resolves_boss_step
 		else enemy.config.home_damage if enemy.config != null else 1
 	)
-	apply_base_damage(maxi(home_damage, 1))
+	var home_damage_request := DamageRequest.new(
+		maxi(home_damage, 1),
+		CombatTypes.DamageType.PHYSICAL
+	)
+	home_damage_request.with_source_snapshot(enemy.create_damage_source_snapshot(
+		enemy_id,
+		&"enemy_home_escape"
+	))
+	home_damage_request.with_flag(CombatTypes.DamageFlag.BYPASS_MITIGATION)
+	if not CombatDamageAdmission.is_admitted(
+		home_damage_request,
+		get_combat_faction_id(),
+		_get_damage_relation_service()
+	):
+		return
+	# 所有已登记实体都必须先提交唯一 ESCAPED 原因；是否推进普通波次或
+	# Boss 步骤是另一层策略，Boss 召唤物也不能绕过实体终结账本。
+	if is_registered:
+		var recorded_escape := _enemy_coordinator.try_resolve_active_enemy_escape(
+			enemy_id
+		)
+		# A rejected terminal transaction must not leak any later side effect:
+		# no local dedupe, network escape, entity removal or base damage.
+		if not recorded_escape:
+			return
+	resolved_home_enemy_ids[enemy_id] = true
+	_enemy_coordinator.remove_hud_alive_enemy(enemy_id)
+	_enemy_coordinator.emit_multiplayer_enemy_escaped(enemy)
+	enemy.remove_for_home_escape()
+	enemy_escaped.emit(enemy, resolves_active_wave, resolves_boss_step)
+	apply_base_combat_damage(home_damage_request)
 	if resolves_active_wave:
 		wave_escape_finished.emit()
 	if (

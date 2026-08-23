@@ -218,6 +218,7 @@ var health_revision: int = 0
 var runtime_max_health_multiplier: float = 1.0
 var is_dead: bool = false
 var last_damage_result: DamageResult = null
+var defeat_context: EnemyDefeatContext = null
 var combat_faction_id: int = COMBAT_RELATION_SERVICE.HOSTILE_WAVE
 var faction_revision: int = 0
 var touch_damage_cooldown_left: float = 0.0
@@ -324,6 +325,7 @@ var combat_target_index_bucket := Vector2i.MAX
 var combat_target_index_bucket_size := 0.0
 var combat_target_index_bucket_minimum := Vector2.ZERO
 var combat_target_index_bucket_maximum := Vector2.ZERO
+var combat_target_index_body_world_scale_squared := 1.0
 var enemy_simulation_coordinator: EnemySimulationCoordinator = null
 var enemy_simulation_token := 0
 var simulation_id := 0
@@ -468,10 +470,21 @@ func _notification(what: int) -> void:
 	):
 		return
 	# Transform notifications still occur on every physics movement. Keep the hot
-	# path entirely local: four comparisons against the current bucket bounds.
-	# Shared dictionaries are touched only when the body really crosses a 96 px
-	# bucket boundary or teleports beyond it.
+	# path local: squared basis lengths plus four bucket-bound comparisons. Shared
+	# dictionaries are touched only when scale changes or the body crosses a 96 px
+	# bucket boundary/teleports beyond it.
 	var current_position := global_position
+	var current_body_world_scale_squared := (
+		_get_body_collision_world_scale_squared()
+	)
+	if not is_equal_approx(
+		current_body_world_scale_squared,
+		combat_target_index_body_world_scale_squared
+	):
+		combat_target_index_body_world_scale_squared = (
+			current_body_world_scale_squared
+		)
+		combat_target_index_binding.update_body_collision_extent(self)
 	if (
 		current_position.x >= combat_target_index_bucket_minimum.x
 		and current_position.x < combat_target_index_bucket_maximum.x
@@ -549,6 +562,7 @@ func unbind_combat_target_index(index: CombatTargetIndex, net_id: int) -> void:
 	combat_target_index_bucket_size = 0.0
 	combat_target_index_bucket_minimum = Vector2.ZERO
 	combat_target_index_bucket_maximum = Vector2.ZERO
+	combat_target_index_body_world_scale_squared = 1.0
 	set_notify_local_transform(false)
 
 
@@ -563,6 +577,18 @@ func _cache_combat_target_index_bucket(
 	combat_target_index_bucket_maximum = (
 		combat_target_index_bucket_minimum + Vector2.ONE * safe_bucket_size
 	)
+	combat_target_index_body_world_scale_squared = (
+		_get_body_collision_world_scale_squared()
+	)
+
+
+func _get_body_collision_world_scale_squared() -> float:
+	var world_transform := global_transform
+	var maximum_scale_squared := maxf(
+		world_transform.x.length_squared(),
+		world_transform.y.length_squared()
+	)
+	return maximum_scale_squared if is_finite(maximum_scale_squared) else 0.0
 
 
 func _apply_terrain_collision_profile() -> void:
@@ -630,6 +656,7 @@ func setup(
 	clear_cold_status()
 	clear_collectible_statuses()
 	clear_electric_surge_state()
+	defeat_context = null
 	runtime_max_health_multiplier = 1.0
 	_xirang_kill_reward_override = -1
 	config = enemy_config
@@ -680,6 +707,19 @@ func is_boss_enemy() -> bool:
 
 func get_combat_faction_id() -> int:
 	return combat_faction_id
+
+
+func create_damage_source_snapshot(
+	event_source_id: int = 0,
+	source_type: StringName = &"enemy"
+) -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		get_combat_faction_id(),
+		maxi(int(get_meta(&"owner_peer_id", 0)), 0),
+		maxi(int(get_meta(&"net_id", get_instance_id())), 0),
+		maxi(event_source_id, 0),
+		source_type if source_type != &"" else &"enemy"
+	)
 
 
 func get_faction_revision() -> int:
@@ -824,7 +864,18 @@ func get_contact_shape_revision() -> int:
 ## point and radius edits; the coordinator also compares resource identity and
 ## transform basis before each contact snapshot.
 func mark_contact_shape_geometry_changed() -> void:
+	body_collision_extent_radius = _get_collision_shapes_extent_radius(
+		body_collision_shapes
+	)
+	touch_damage_extent_radius = _get_collision_shapes_extent_radius(
+		touch_damage_shapes
+	)
+	body_collision_half_extents = _get_collision_shapes_half_extents(
+		body_collision_shapes
+	)
 	contact_shape_revision += 1
+	if combat_target_index_binding != null:
+		combat_target_index_binding.update_body_collision_extent(self)
 
 
 func get_layered_area_directed_safe_motion_fraction(target: Enemy) -> float:
@@ -1822,6 +1873,13 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 			current_health
 		)
 		return last_damage_result
+	if request.amount <= 0:
+		last_damage_result = DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.INVALID_AMOUNT,
+			current_health
+		)
+		return last_damage_result
 	if (
 		is_temporarily_direct_damage_immune()
 		and not request.has_flag(CombatTypes.DamageFlag.PERIODIC)
@@ -1829,6 +1887,18 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 		last_damage_result = DamageResult.rejected(
 			request,
 			CombatTypes.DamageRejectionReason.INVULNERABLE,
+			current_health
+		)
+		return last_damage_result
+	var admission_reason := CombatDamageAdmission.get_rejection_reason(
+		request,
+		get_combat_faction_id(),
+		_get_damage_relation_service()
+	)
+	if admission_reason != CombatTypes.DamageRejectionReason.NONE:
+		last_damage_result = DamageResult.rejected(
+			request,
+			admission_reason,
 			current_health
 		)
 		return last_damage_result
@@ -1855,11 +1925,20 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 	_on_combat_damage_applied(result)
 
 	if result.lethal:
+		defeat_context = EnemyDefeatContext.from_damage_result(result)
 		_die()
 		return result
 
 	AUDIO_LIMITER.play_enemy_hit(hit_audio)
 	return result
+
+
+func _get_damage_relation_service() -> CombatRelationService:
+	if combat_relation_service != null:
+		return combat_relation_service
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
+		return null
+	return combat_runtime.get_combat_relation_service()
 
 
 func apply_damage_batch(
@@ -2519,7 +2598,8 @@ func has_collectible_status(status_id: StringName) -> bool:
 func apply_burn_status(
 	source_family: StringName,
 	duration: float,
-	tick_damage: int
+	tick_damage: int,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	return _apply_external_damage_over_time_status(
 		BURN_STATUS_ID,
@@ -2527,7 +2607,8 @@ func apply_burn_status(
 		duration,
 		tick_damage,
 		BURN_STATUS_TICK_INTERVAL,
-		EnemyConfig.DamageType.MAGIC
+		EnemyConfig.DamageType.MAGIC,
+		source_snapshot
 	)
 
 
@@ -2535,7 +2616,8 @@ func apply_bleed_status(
 	source_family: StringName,
 	duration: float,
 	tick_damage: int,
-	tick_interval: float = DEFAULT_BLEED_TICK_INTERVAL_SECONDS
+	tick_interval: float = DEFAULT_BLEED_TICK_INTERVAL_SECONDS,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	return _apply_external_damage_over_time_status(
 		BLEED_STATUS_ID,
@@ -2543,7 +2625,8 @@ func apply_bleed_status(
 		duration,
 		tick_damage,
 		tick_interval,
-		EnemyConfig.DamageType.PHYSICAL
+		EnemyConfig.DamageType.PHYSICAL,
+		source_snapshot
 	)
 
 
@@ -2553,7 +2636,8 @@ func _apply_external_damage_over_time_status(
 	duration: float,
 	tick_damage: int,
 	tick_interval: float,
-	damage_type: EnemyConfig.DamageType
+	damage_type: EnemyConfig.DamageType,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	if (
 		is_dead
@@ -2573,7 +2657,19 @@ func _apply_external_damage_over_time_status(
 		duration,
 		tick_damage,
 		tick_interval,
-		damage_type
+		damage_type,
+		1.0,
+		0,
+		1.0,
+		1.0,
+		(
+			source_snapshot
+			if source_snapshot != null
+			else DamageSourceSnapshot.legacy_player_owned(
+				0,
+				source_family
+			)
+		)
 	)
 	return _has_collectible_status(status_id)
 
@@ -2806,7 +2902,8 @@ func apply_collectible_status(
 	slow_multiplier: float = 1.0,
 	physical_defense_modifier: int = 0,
 	damage_taken_multiplier: float = 1.0,
-	outgoing_attack_damage_multiplier: float = 1.0
+	outgoing_attack_damage_multiplier: float = 1.0,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> void:
 	if (
 		is_dead
@@ -2853,6 +2950,14 @@ func apply_collectible_status(
 			else 0.0
 		),
 		"damage_type": int(damage_type),
+		"source_snapshot": (
+			source_snapshot.duplicate_snapshot()
+			if source_snapshot != null
+			else DamageSourceSnapshot.legacy_player_owned(
+				maxi(source_id, 0),
+				&"legacy_collectible_status"
+			)
+		),
 		"slow_source_id": 0,
 		"physical_defense_source_id": 0,
 		"damage_multiplier_source_id": 0,
@@ -2990,11 +3095,21 @@ func _advance_collectible_status_effects_to(target_time: float) -> void:
 				tick_damage,
 				int(tick_damage_type)
 			)
-			tick_request.with_source(
-				null,
-				int(status.get("source_id", 0)),
-				&"periodic_status"
+			var source_snapshot_variant: Variant = status.get(
+				"source_snapshot",
+				null
 			)
+			if source_snapshot_variant is DamageSourceSnapshot:
+				tick_request.with_source_snapshot(
+					source_snapshot_variant as DamageSourceSnapshot
+				)
+			else:
+				tick_request.with_source_snapshot(
+					DamageSourceSnapshot.legacy_player_owned(
+						maxi(int(status.get("source_id", 0)), 0),
+						&"periodic_status"
+					)
+				)
 			tick_request.flags = (
 				CombatTypes.DamageFlag.PERIODIC
 				| CombatTypes.DamageFlag.BYPASS_INVULNERABILITY
@@ -4990,10 +5105,12 @@ func _on_touched_plant_removal_started(_mode: int, plant: PlantDefense) -> void:
 
 
 func _update_touch_damage(delta: float) -> void:
+	var has_dynamic_enemy_contact := _has_dynamic_enemy_target_contact()
 	if (
 		touch_damage_cooldown_left <= 0.0
 		and touching_plants.is_empty()
 		and touching_players.is_empty()
+		and not has_dynamic_enemy_contact
 	):
 		touched_plant = null
 		touched_player = null
@@ -5013,13 +5130,22 @@ func _update_touch_damage(delta: float) -> void:
 func _update_touch_damage_unprofiled(delta: float) -> void:
 	if touch_damage_cooldown_left > 0.0:
 		touch_damage_cooldown_left = maxf(touch_damage_cooldown_left - delta, 0.0)
-	if touching_plants.is_empty() and touching_players.is_empty():
+	var has_dynamic_enemy_contact := _has_dynamic_enemy_target_contact()
+	if (
+		touching_plants.is_empty()
+		and touching_players.is_empty()
+		and not has_dynamic_enemy_contact
+	):
 		touched_plant = null
 		touched_player = null
 		return
 
 	touched_plant = _select_touching_plant()
 	if touched_plant != null:
+		if touch_damage_cooldown_left <= 0.0:
+			_try_deal_touch_damage()
+		return
+	if has_dynamic_enemy_contact:
 		if touch_damage_cooldown_left <= 0.0:
 			_try_deal_touch_damage()
 		return
@@ -5049,40 +5175,83 @@ func _try_deal_touch_damage() -> void:
 		return
 	var touch_damage_type := _get_touch_damage_type()
 	var outgoing_damage := get_effective_attack_damage(config.attack_damage)
+	var touch_source_id := _get_multiplayer_touch_source_id()
+	var touch_source_type := _get_multiplayer_touch_source_type()
+	# One direct contact is one combat event. Direct settlement, multiplayer
+	# forwarding and any accepted-hit status hook all retain copies of this same
+	# launch-time attribution instead of minting different timestamp IDs.
+	var touch_source_snapshot := create_damage_source_snapshot(
+		touch_source_id,
+		touch_source_type
+	)
 	if (
 		touched_plant != null
 		and can_attack_combat_target(touched_plant)
 	):
 		var impact_direction := global_position.direction_to(touched_plant.global_position)
-		if touched_plant.receive_damage(
+		var plant_request := DamageRequest.new(
 			outgoing_damage,
-			self,
-			impact_direction,
-			touch_damage_type
-		):
+			int(touch_damage_type)
+		)
+		plant_request.with_source(self, touch_source_id, touch_source_type)
+		plant_request.with_source_snapshot(touch_source_snapshot)
+		plant_request.with_directions(impact_direction)
+		if touched_plant.apply_combat_damage(plant_request).accepted:
 			touch_damage_cooldown_left = touch_damage_interval
-			_on_touch_damage_applied(touched_plant)
+			_on_touch_damage_applied(touched_plant, touch_source_snapshot)
+		return
+	var dynamic_enemy_target := objective_target as Enemy
+	if (
+		dynamic_enemy_target != null
+		and _has_dynamic_enemy_target_contact()
+	):
+		var enemy_impact_direction := global_position.direction_to(
+			dynamic_enemy_target.global_position
+		)
+		var enemy_request := DamageRequest.new(
+			outgoing_damage,
+			int(touch_damage_type)
+		)
+		enemy_request.with_source_snapshot(touch_source_snapshot)
+		enemy_request.with_directions(enemy_impact_direction)
+		var enemy_result := dynamic_enemy_target.apply_combat_damage(enemy_request)
+		if enemy_result.accepted:
+			touch_damage_cooldown_left = touch_damage_interval
+			_on_touch_damage_applied(
+				dynamic_enemy_target,
+				touch_source_snapshot
+			)
 		return
 	if touched_player == null or not can_attack_combat_target(touched_player):
 		return
 
 	if _try_request_player_damage(
-			_get_multiplayer_touch_source_id(),
-			touched_player.peer_id,
-			outgoing_damage,
-			_get_multiplayer_touch_source_type(),
-			touch_damage_type
-		):
+		touch_source_id,
+		touched_player.peer_id,
+		outgoing_damage,
+		touch_source_type,
+		touch_damage_type,
+		Vector2.ZERO,
+		false,
+		false,
+		touch_source_snapshot
+	):
 		touch_damage_cooldown_left = touch_damage_interval
 		return
 	if not _has_explicit_singleplayer_authority():
 		return
 	var damage_was_applied := touched_player.apply_damage(
 		outgoing_damage,
-		touch_damage_type
+		touch_damage_type,
+		{
+			"source_snapshot": touch_source_snapshot,
+			"source_direction": global_position.direction_to(
+				touched_player.global_position
+			),
+		}
 	)
 	if damage_was_applied:
-		_on_touch_damage_applied(touched_player)
+		_on_touch_damage_applied(touched_player, touch_source_snapshot)
 	touch_damage_cooldown_left = touch_damage_interval
 
 
@@ -5101,7 +5270,10 @@ func _get_multiplayer_touch_source_type() -> StringName:
 ## Variant enemies can add a status only after the direct touch damage was
 ## accepted. Multiplayer player hits apply their status in MPGame's host
 ## confirmation path instead of this local hook.
-func _on_touch_damage_applied(_target: Node) -> void:
+func _on_touch_damage_applied(
+	_target: Node,
+	_source_snapshot: DamageSourceSnapshot
+) -> void:
 	pass
 
 
@@ -5119,7 +5291,8 @@ func _try_request_player_damage(
 	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
 	source_direction: Vector2 = Vector2.ZERO,
 	is_ranged: bool = false,
-	contact_preconsumed: bool = false
+	contact_preconsumed: bool = false,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	return (
 		gameplay_gateway != null
@@ -5132,7 +5305,12 @@ func _try_request_player_damage(
 			damage_type,
 			source_direction,
 			is_ranged,
-			contact_preconsumed
+			contact_preconsumed,
+			(
+				source_snapshot
+				if source_snapshot != null
+				else create_damage_source_snapshot(source_id, source_type)
+			)
 		)
 	)
 
@@ -5189,15 +5367,17 @@ func _die() -> void:
 	if is_dead:
 		return
 
-	# Mark the death before rewards or drop resolution so any future callback
-	# that re-enters _die cannot enqueue the same side effects twice.
+	# Mark the death before publishing the domain event so reentrant callbacks
+	# cannot settle it twice. Ledger-owning runtimes synchronously commit
+	# DEFEATED from this signal; rewards and drops are admitted only afterwards.
 	is_dead = true
 	clear_cold_status()
 	clear_collectible_statuses()
 	clear_electric_surge_state()
-	_queue_configured_xirang_kill_reward()
-	_queue_configured_pickup_drops()
 	defeated.emit(self)
+	if _can_settle_defeat_rewards():
+		_queue_configured_xirang_kill_reward()
+		_queue_configured_pickup_drops()
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals()
 	set_process(false)
@@ -5214,17 +5394,35 @@ func _die() -> void:
 	_start_death_sequence()
 
 
+func _can_settle_defeat_rewards() -> bool:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
+		return true
+	return combat_runtime.can_settle_enemy_defeat_rewards(get_instance_id())
+
+
 func _queue_configured_xirang_kill_reward() -> void:
 	var reward_amount := get_effective_xirang_kill_reward()
-	if is_multiplayer_proxy or reward_amount <= 0:
+	if (
+		is_multiplayer_proxy
+		or reward_amount <= 0
+		or not _is_defeat_reward_eligible()
+	):
 		return
 	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return
-	combat_runtime.grant_xirang_kill_reward(reward_amount)
+	combat_runtime.grant_xirang_kill_reward_for_defeat(
+		reward_amount,
+		defeat_context
+	)
 
 
 func _queue_configured_pickup_drops() -> void:
-	if is_multiplayer_proxy or config == null or config.drop_table == null:
+	if (
+		is_multiplayer_proxy
+		or config == null
+		or config.drop_table == null
+		or not _is_defeat_reward_eligible()
+	):
 		return
 	if gameplay_gateway == null or not gameplay_gateway.allows_enemy_pickup_drops():
 		return
@@ -5235,6 +5433,15 @@ func _queue_configured_pickup_drops() -> void:
 	if drop_configs.is_empty():
 		return
 	call_deferred("_spawn_dropped_pickups", drop_configs, global_position)
+
+
+func _is_defeat_reward_eligible() -> bool:
+	# Direct legacy deaths predate DamageRequest attribution and retain their
+	# historical player reward. Every lethal resolver path freezes a context.
+	return (
+		defeat_context == null
+		or defeat_context.is_player_reward_eligible()
+	)
 
 
 func _spawn_dropped_pickups(

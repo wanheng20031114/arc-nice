@@ -38,6 +38,7 @@ class CombatRuntimeStub:
 	var query_count := 0
 	var batch_call_count := 0
 	var batch_confirmed_damage := 0
+	var batch_source_ids: Array[int] = []
 
 	func query_combat_targets_unordered_into(
 		center: Vector2,
@@ -51,7 +52,7 @@ class CombatRuntimeStub:
 		return target_index.get_all_alive()
 
 	func apply_authoritative_plant_enemy_damage_batch(
-		_source_id: int,
+		source_id: int,
 		enemy: Enemy,
 		damage_amounts: PackedInt64Array,
 		hit_counts: PackedInt32Array,
@@ -59,6 +60,7 @@ class CombatRuntimeStub:
 		damage_type: EnemyConfig.DamageType
 	) -> bool:
 		batch_call_count += 1
+		batch_source_ids.append(source_id)
 		var applied := enemy.apply_damage_batch(
 			damage_amounts,
 			hit_counts,
@@ -137,6 +139,7 @@ func _run() -> void:
 		else:
 			_test_budgeted_cached_targeting()
 			await _test_dense_explosion_batch()
+			await _test_distinct_source_batch_attribution()
 			await _test_sparse_explosion_boundaries()
 			await _test_dense_explosion_boundaries()
 			await _test_shared_enemy_position_geometry()
@@ -320,6 +323,33 @@ func _test_dense_explosion_batch() -> void:
 		== 1
 		and int(metrics_after.get("pending_explosions", -1)) == 0,
 		"同落点100次逻辑命中必须聚合为单个敌人批伤调用，并完整清空爆炸队列。"
+	)
+
+
+func _test_distinct_source_batch_attribution() -> void:
+	await _clear_enemies()
+	var test_config := ARMORED_ENEMY_CONFIG.duplicate(true) as EnemyConfig
+	test_config.max_health = 10000
+	test_config.physical_defense = 0
+	var target := _spawn_configured_enemy(Vector2.ZERO, test_config)
+	if target == null:
+		return
+	var source_count_before := runtime.batch_source_ids.size()
+	combat_system.queue_explosion(
+		Vector2.ZERO, 16.0, 32.0, 40, 20, 9301
+	)
+	combat_system.queue_explosion(
+		Vector2.ZERO, 16.0, 32.0, 60, 30, 9302
+	)
+	combat_system.call("_physics_process", 1.0 / 60.0)
+	var new_source_ids := runtime.batch_source_ids.slice(source_count_before)
+	_expect(
+		target.current_health == test_config.max_health - 100
+		and new_source_ids == [9301, 9302],
+		(
+			"同帧命中同一敌人的不同竹炮必须按来源拆成独立批伤，"
+			+ "并保持确定性来源顺序。"
+		)
 	)
 
 
@@ -674,6 +704,7 @@ func _test_research_concussion_semantics() -> void:
 	combat_system.set_research_concussion_effect(0.75, 3.0)
 	var accepted := bool(combat_system.call(
 		"_apply_enemy_damage_batch",
+		0,
 		durable,
 		PackedInt64Array([20]),
 		PackedInt32Array([1]),
@@ -727,6 +758,7 @@ func _test_research_concussion_semantics() -> void:
 	if lethal != null:
 		var lethal_accepted := bool(combat_system.call(
 			"_apply_enemy_damage_batch",
+			0,
 			lethal,
 			PackedInt64Array([20]),
 			PackedInt32Array([1]),

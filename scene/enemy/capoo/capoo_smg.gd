@@ -5,7 +5,7 @@ const SMGConfig := preload("res://resources/config/enemies/capoo_smg_config.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
-const HITSCAN_COLLISION_MASK := 1 | 2 | 512
+const HITSCAN_COLLISION_MASK := 1 | 2 | 4 | 512
 
 static var short_range_targeting_enabled := true
 static var hitscan_attack_enabled := true
@@ -295,7 +295,8 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 		smg_config_cache.projectile_speed,
 		smg_config_cache.projectile_lifetime,
 		pathfinder as GridPathfinder,
-		projectile_motion_system
+		projectile_motion_system,
+		create_damage_source_snapshot(0, &"capoo_smg_bullet")
 	)
 	projectile.global_position = (
 		global_position
@@ -340,6 +341,10 @@ func _fire_hitscan(shoot_direction: Vector2) -> bool:
 	var source_projectile_id := _get_multiplayer_damage_source_id(
 		action_sequence + 1
 	)
+	var source_snapshot := create_damage_source_snapshot(
+		source_projectile_id,
+		&"capoo_smg_hitscan"
+	)
 	immediate_hitscan_resolver.resolve_immediate_hitscan(
 		global_position,
 		global_position + safe_direction * travel_distance,
@@ -348,7 +353,9 @@ func _fire_hitscan(shoot_direction: Vector2) -> bool:
 		source_enemy_id,
 		source_projectile_id,
 		&"capoo_smg_hitscan",
-		EnemyConfig.DamageType.PHYSICAL
+		EnemyConfig.DamageType.PHYSICAL,
+		source_snapshot,
+		self
 	)
 	return true
 

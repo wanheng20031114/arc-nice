@@ -533,6 +533,7 @@ func _apply_authoritative_rain_tick(tick_index: int) -> void:
 		enemy_candidates
 	)
 	var effect_source_id := _get_effect_source_id()
+	var damage_source_id := _get_plant_stable_id(self)
 	var deals_magic_damage := (
 		float(tick_index) * rain_config.rain_tick_interval_seconds
 		< _get_rain_impact_window_seconds() - 0.0001
@@ -551,7 +552,7 @@ func _apply_authoritative_rain_tick(tick_index: int) -> void:
 			and is_instance_valid(tower_multiplayer_mode_adapter)
 		):
 			tower_multiplayer_mode_adapter.apply_authoritative_plant_enemy_damage_batch(
-				effect_source_id,
+				damage_source_id,
 				enemy,
 				damage_amounts,
 				damage_hit_counts,

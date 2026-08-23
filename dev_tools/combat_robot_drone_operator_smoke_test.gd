@@ -3,6 +3,7 @@ extends SceneTree
 const MpProjectileCoordinator := preload(
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
 )
+const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const OPERATOR_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_drone_operator.tscn"
 )
@@ -48,16 +49,12 @@ class DirectPathfinder:
 		}
 
 
-class DroneOperatorTestRoot:
-	extends Node2D
+class DroneOperatorTestGateway:
+	extends MultiplayerGameplayGateway
 
 	var registered_projectiles: Array[Dictionary] = []
 	var enemy_actions: Array[Dictionary] = []
-	var client_view := false
 	var multiplayer_damage_requests: Array[Dictionary] = []
-
-	func has_session_object_pool_scene(_scene: PackedScene) -> bool:
-		return false
 
 	func register_local_projectile(
 		projectile: Node,
@@ -67,7 +64,10 @@ class DroneOperatorTestRoot:
 		direction: Vector2,
 		damage: int,
 		speed: float,
-		lifetime: float
+		lifetime: float,
+		_pierces_enemies: bool = false,
+		_target_peer_id: int = 0,
+		_target_enemy_net_id: int = 0
 	) -> void:
 		registered_projectiles.append({
 			"projectile": projectile,
@@ -94,53 +94,87 @@ class DroneOperatorTestRoot:
 			"action_id": action_id,
 		})
 
-	func is_client_view_runtime() -> bool:
-		return client_view
-
-	func request_multiplayer_player_damage(
-		projectile_id: int,
+	func request_player_damage(
+		source_id: int,
 		target_peer_id: int,
 		damage: int,
 		source_type: StringName,
-		damage_type_or_source_direction: Variant = EnemyConfig.DamageType.PHYSICAL,
-		source_direction_or_is_ranged: Variant = Vector2.ZERO,
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		source_direction: Vector2 = Vector2.ZERO,
 		is_ranged: bool = false,
-		_contact_preconsumed: bool = false
+		_contact_preconsumed: bool = false,
+		source_snapshot: DamageSourceSnapshot = null
 	) -> bool:
-		var damage_type := EnemyConfig.DamageType.PHYSICAL
-		var source_direction := Vector2.ZERO
-		if damage_type_or_source_direction is int:
-			damage_type = int(damage_type_or_source_direction) as EnemyConfig.DamageType
-		if source_direction_or_is_ranged is Vector2:
-			source_direction = source_direction_or_is_ranged as Vector2
-		elif source_direction_or_is_ranged is bool:
-			is_ranged = bool(source_direction_or_is_ranged)
 		multiplayer_damage_requests.append({
-			"projectile_id": projectile_id,
+			"source_id": source_id,
 			"target_peer_id": target_peer_id,
 			"damage": damage,
 			"source_type": source_type,
 			"damage_type": damage_type,
 			"source_direction": source_direction,
 			"is_ranged": is_ranged,
+			"source_snapshot": source_snapshot,
 		})
-		for child in get_children():
-			var player := child as Player
-			if player == null or player.peer_id != target_peer_id:
-				continue
-			return player.apply_damage(
-				damage,
-				damage_type,
-				{
-					"is_ranged": is_ranged,
-					"source_direction": source_direction,
-				}
-			)
 		return false
+
+
+class DroneOperatorTestRoot:
+	extends PlayerTestCombatRuntime
+
+	var recording_gateway: DroneOperatorTestGateway = null
+	var registered_projectiles: Array[Dictionary]:
+		get:
+			return recording_gateway.registered_projectiles
+	var enemy_actions: Array[Dictionary]:
+		get:
+			return recording_gateway.enemy_actions
+	var multiplayer_damage_requests: Array[Dictionary]:
+		get:
+			return recording_gateway.multiplayer_damage_requests
+	var client_view: bool:
+		get:
+			return runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		set(value):
+			runtime_mode = (
+				CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+				if value
+				else CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+			)
+
+
+	func _init() -> void:
+		super()
+		var gateway_placeholder := get_node("MultiplayerGameplayGateway")
+		remove_child(gateway_placeholder)
+		gateway_placeholder.free()
+		recording_gateway = DroneOperatorTestGateway.new()
+		recording_gateway.name = "MultiplayerGameplayGateway"
+		add_child(recording_gateway)
+
+
+class HostNetManagerStub:
+	extends NetManagerStore
+
+	func is_multiplayer_active() -> bool:
+		return true
+
+	func is_host() -> bool:
+		return true
+
+	func is_client() -> bool:
+		return false
+
+	func get_local_peer_id() -> int:
+		return 1
+
+	func get_host_peer_id() -> int:
+		return 1
 
 
 class MpGameProjectileHarness:
 	extends "res://scene/multiplayer/mp_game.gd"
+
+	var test_net_time := 1000.0
 
 	# The focused fixture drives only the replicated-projectile pipeline. Avoid
 	# booting a complete multiplayer session while retaining MpGame's real
@@ -148,8 +182,25 @@ class MpGameProjectileHarness:
 	func _ready() -> void:
 		pass
 
+	func _process(_delta: float) -> void:
+		pass
+
+	func _physics_process(_delta: float) -> void:
+		pass
+
 	func _exit_tree() -> void:
 		pass
+
+	func get_test_net_time() -> float:
+		return test_net_time
+
+	func get_test_host_event_age(host_event_timestamp: float) -> float:
+		if host_event_timestamp < 0.0:
+			return 0.0
+		return maxf(test_net_time - host_event_timestamp, 0.0)
+
+	func is_test_embedded_participant_suspended(_peer_id: int) -> bool:
+		return false
 
 
 var failures: Array[String] = []
@@ -168,11 +219,9 @@ func _run() -> void:
 	root.add_child(test_root)
 	current_scene = test_root
 	direct_pathfinder = DirectPathfinder.new()
-	direct_pathfinder.name = "GridPathfinder"
+	direct_pathfinder.name = "DirectPathfinder"
 	test_root.add_child(direct_pathfinder)
-	motion_system = CombatRobotDroneMotionSystem.new()
-	motion_system.name = "CombatRobotDroneMotionSystem"
-	test_root.add_child(motion_system)
+	motion_system = test_root.combat_robot_drone_motion_system
 
 	_test_resource_and_scene_contract()
 	_test_animation_and_marker_contract()
@@ -186,6 +235,7 @@ func _run() -> void:
 
 	_cleanup_projectiles()
 	current_scene = null
+	test_root.prepare_for_scene_teardown()
 	test_root.queue_free()
 	await process_frame
 	await physics_frame
@@ -264,11 +314,11 @@ func _test_resource_and_scene_contract() -> void:
 	)
 	_expect(
 		sense_area.collision_layer == 0
-		and sense_area.collision_mask == 514
+		and sense_area.collision_mask == 518
 		and not sense_area.monitorable
 		and sense_shape.shape is CircleShape2D
 		and is_equal_approx((sense_shape.shape as CircleShape2D).radius, 80.0),
-		"AttackSenseArea must be an authored Player/Plant 80-pixel sensor."
+		"AttackSenseArea must be an authored Player/Plant/Enemy 80-pixel sensor."
 	)
 	for timer_name in [&"DeployTimer", &"CooldownTimer", &"BlockedRetryTimer"]:
 		var timer := operator.get_node(String(timer_name)) as Timer
@@ -702,39 +752,53 @@ func _test_proxy_elapsed_and_action_ordering() -> void:
 
 
 func _test_mp_game_drone_projectile_pipeline() -> void:
-	var mp_game := MpGameProjectileHarness.new()
+	var mp_game_node := MP_GAME_SCENE.instantiate()
+	mp_game_node.set_script(MpGameProjectileHarness)
+	var mp_game := mp_game_node as MpGameProjectileHarness
+	_expect(
+		mp_game != null,
+		"Drone projectile pipeline must use the authored MpGame coordinator scene."
+	)
+	if mp_game == null:
+		mp_game_node.free()
+		return
 	mp_game.name = "MpGameDroneProjectileHarness"
-	var keepalive_request := HTTPRequest.new()
-	keepalive_request.name = "PublicRoomKeepaliveRequest"
-	mp_game.add_child(keepalive_request)
-	var mp_motion_system := CombatRobotDroneMotionSystem.new()
-	mp_motion_system.name = "CombatRobotDroneMotionSystem"
-	mp_game.add_child(mp_motion_system)
-	var projectile_coordinator := MpProjectileCoordinator.new()
-	projectile_coordinator.name = "ProjectileCoordinator"
-	mp_game.add_child(projectile_coordinator)
-
-	# MpGame requires a typed CombatRuntimeBase reference only to resolve the shared
-	# motion system and client-view authority. Keeping this fixture off-tree avoids
-	# constructing unrelated gameplay nodes.
-	var runtime_stub := StandardGame.new()
-	runtime_stub.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-	runtime_stub.combat_robot_drone_motion_system = mp_motion_system
-	var gameplay_gateway := MultiplayerGameplayGateway.new()
-	gameplay_gateway.name = "MultiplayerGameplayGateway"
-	runtime_stub.add_child(gameplay_gateway)
-	gameplay_gateway.bind_runtime(runtime_stub)
-	mp_game.game = runtime_stub
-	mp_game.projectile_coordinator = projectile_coordinator
-	projectile_coordinator.bind_runtime(runtime_stub)
 	test_root.add_child(mp_game)
 	await process_frame
+	var projectile_coordinator := (
+		mp_game.get_node("ProjectileCoordinator") as MpProjectileCoordinator
+	)
+	var player_coordinator := (
+		mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
+	)
+	var net_manager_stub := HostNetManagerStub.new()
+	_expect(
+		projectile_coordinator != null and player_coordinator != null,
+		"Authored MpGame must provide projectile and player coordinators."
+	)
+	if projectile_coordinator == null or player_coordinator == null:
+		mp_game.queue_free()
+		net_manager_stub.free()
+		await process_frame
+		return
+	var gameplay_gateway := test_root.get_multiplayer_gameplay_gateway()
+	mp_game.game = test_root
+	mp_game.net_manager = net_manager_stub
+	mp_game._gameplay_gateway = gameplay_gateway
+	player_coordinator.bind_runtime(test_root)
+	projectile_coordinator.bind_runtime(test_root)
+	projectile_coordinator.bind_network_facade_dependencies(
+		net_manager_stub,
+		player_coordinator,
+		Callable(mp_game, "get_test_net_time"),
+		Callable(mp_game, "get_test_host_event_age"),
+		Callable(mp_game, "is_test_embedded_participant_suspended")
+	)
+	gameplay_gateway.attach_multiplayer_session(mp_game)
 	test_root.client_view = true
-	mp_game.set("_has_host_time_offset", true)
-	mp_game.set("_host_to_client_time_offset", 0.0)
 
 	var projectile_type := "combat_robot_suicide_drone"
-	var now := float(mp_game.call("_get_net_time"))
+	var now := mp_game.get_test_net_time()
 	mp_game.net_projectile_fired(
 		71001,
 		projectile_type,
@@ -786,7 +850,7 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		"Duplicate drone packets must not duplicate or rewrite the committed lease."
 	)
 
-	now = float(mp_game.call("_get_net_time"))
+	now = mp_game.get_test_net_time()
 	mp_game.net_projectile_fired(
 		71002,
 		projectile_type,
@@ -815,7 +879,7 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		"MpGame elapsed compensation must seek a drone into its fixed flight segment."
 	)
 
-	now = float(mp_game.call("_get_net_time"))
+	now = mp_game.get_test_net_time()
 	mp_game.net_projectile_fired(
 		71003,
 		projectile_type,
@@ -850,7 +914,7 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		+ CombatRobotSuicideDrone.EXPLOSION_DURATION
 		+ 0.5
 	)
-	now = float(mp_game.call("_get_net_time"))
+	now = mp_game.get_test_net_time()
 	mp_game.net_projectile_fired(
 		71004,
 		projectile_type,
@@ -898,10 +962,12 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 			drone.retire()
 	await process_frame
 	test_root.client_view = false
-	projectile_coordinator.unbind_runtime(runtime_stub)
+	gameplay_gateway.detach_multiplayer_session(mp_game)
+	projectile_coordinator.unbind_runtime(test_root)
+	player_coordinator.unbind_runtime(test_root)
 	mp_game.game = null
 	mp_game.queue_free()
-	runtime_stub.free()
+	net_manager_stub.free()
 	await process_frame
 
 
@@ -946,11 +1012,15 @@ func _test_multiplayer_and_runtime_source_contract() -> void:
 	var loading_source := FileAccess.get_file_as_string(
 		"res://scene/loading/game_load_coordinator.gd"
 	)
+	var catalog_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/game_mode_catalog.gd"
+	)
 	_expect(
-		loading_source.contains(
+		loading_source.contains("GameModeCatalog.get_preload_resource_paths")
+		and catalog_source.contains(
 			"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
 		),
-		"GameLoadCoordinator must stage-load the suicide drone."
+		"GameLoadCoordinator must stage-load the catalogued suicide drone."
 	)
 	var registry_source := FileAccess.get_file_as_string(
 		"res://scene/combat/combat_attack_registry.gd"
@@ -968,7 +1038,7 @@ func _spawn_operator(
 	var operator := OPERATOR_SCENE.instantiate() as CombatRobotDroneOperator
 	test_root.add_child(operator)
 	operator.global_position = spawn_position
-	operator.setup(OPERATOR_CONFIG, player, direct_pathfinder)
+	operator.setup(OPERATOR_CONFIG, player, direct_pathfinder, test_root)
 	operator.set_physics_process(false)
 	return operator
 
@@ -980,9 +1050,27 @@ func _spawn_drone(
 	flight_duration: float
 ) -> CombatRobotSuicideDrone:
 	var drone := DRONE_SCENE.instantiate() as CombatRobotSuicideDrone
+	drone.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	test_root.add_child(drone)
 	drone.global_position = spawn_position
-	drone.setup(direction, damage, 60.0, flight_duration, 28.0, motion_system)
+	drone.setup(
+		direction,
+		damage,
+		60.0,
+		flight_duration,
+		28.0,
+		motion_system,
+		DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			540,
+			0,
+			OPERATOR_CONFIG.projectile_type
+		)
+	)
 	return drone
 
 

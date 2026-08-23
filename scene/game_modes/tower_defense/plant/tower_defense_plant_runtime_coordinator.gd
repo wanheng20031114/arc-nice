@@ -1344,7 +1344,22 @@ func apply_authoritative_enemy_damage_batch(
 	var request := DamageBatchRequest.new(
 		damage_amounts, hit_counts, int(damage_type)
 	)
-	request.with_source(null, damage_source_id, &"plant_damage_batch")
+	var source_plant := get_multiplayer_plant(damage_source_id)
+	var source_snapshot := (
+		source_plant.create_damage_source_snapshot(
+			damage_source_id,
+			&"plant_damage_batch"
+		)
+		if source_plant != null and is_instance_valid(source_plant)
+		else DamageSourceSnapshot.create(
+			CombatRelationService.PLAYER_ALLIED,
+			0,
+			maxi(damage_source_id, 0),
+			maxi(damage_source_id, 0),
+			&"plant_damage_batch"
+		)
+	)
+	request.with_source_snapshot(source_snapshot)
 	request.with_directions(safe_direction)
 	return enemy.apply_combat_damage(request).accepted
 

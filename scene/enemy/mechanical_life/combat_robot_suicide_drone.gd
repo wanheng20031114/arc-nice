@@ -12,7 +12,7 @@ const SPATIAL_AUDIO_VOICE_LIMITER := preload(
 )
 
 const SOURCE_TYPE: StringName = &"combat_robot_suicide_drone"
-const DAMAGEABLE_COLLISION_MASK := 2 | 512
+const DAMAGEABLE_COLLISION_MASK := 2 | 4 | 512
 const EXPLOSION_QUERY_BATCH_SIZE := 64
 const DEPLOY_DELAY := 0.10
 const DRONE_FRAME_COUNT := 4
@@ -47,6 +47,7 @@ var explosion_radius: float = DEFAULT_EXPLOSION_RADIUS
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = SOURCE_TYPE
+var damage_source_snapshot: DamageSourceSnapshot = null
 var pool_active := true
 var authoritative_damage := true
 var combat_runtime: CombatRuntimeBase = null
@@ -85,6 +86,7 @@ func _ready() -> void:
 
 
 func on_pool_acquired(_generation: int) -> void:
+	remove_meta(&"damage_source_snapshot")
 	# A pooled projectile must never retain the previous session/runtime lease.
 	# Its creator binds the new context immediately after acquisition.
 	combat_runtime = null
@@ -99,6 +101,7 @@ func on_pool_acquired(_generation: int) -> void:
 	projectile_id = 0
 	owner_peer_id = 0
 	source_type = authored_source_type
+	damage_source_snapshot = null
 	authoritative_damage = true
 	deployment_started = false
 	flight_started = false
@@ -123,6 +126,7 @@ func on_pool_acquired(_generation: int) -> void:
 
 
 func on_pool_released(_generation: int) -> void:
+	remove_meta(&"damage_source_snapshot")
 	pool_active = false
 	deployment_started = false
 	flight_started = false
@@ -136,6 +140,7 @@ func on_pool_released(_generation: int) -> void:
 	combat_runtime = null
 	gameplay_gateway = null
 	source_type = authored_source_type
+	damage_source_snapshot = null
 	_unregister_from_motion_system()
 	_stop_audio()
 	_reset_visuals()
@@ -157,7 +162,8 @@ func setup(
 	initial_speed: float,
 	initial_flight_duration: float,
 	initial_explosion_radius: float,
-	motion_system: Node
+	motion_system: Node,
+	initial_damage_source_snapshot: DamageSourceSnapshot = null
 ) -> void:
 	pool_active = true
 	direction = (
@@ -172,6 +178,18 @@ func setup(
 	explosion_radius = maxf(initial_explosion_radius, 0.0)
 	batched_motion_system = motion_system
 	authoritative_damage = true
+	damage_source_snapshot = (
+		initial_damage_source_snapshot.duplicate_snapshot()
+		if initial_damage_source_snapshot != null
+		else null
+	)
+	if damage_source_snapshot != null:
+		set_meta(
+			&"damage_source_snapshot",
+			damage_source_snapshot.duplicate_snapshot()
+		)
+	else:
+		remove_meta(&"damage_source_snapshot")
 	_apply_explosion_radius()
 
 
@@ -186,6 +204,23 @@ func setup_multiplayer(
 		new_source_type
 		if new_source_type != &""
 		else authored_source_type
+	)
+	_rebind_damage_source_snapshot_to_projectile_id()
+
+
+func _rebind_damage_source_snapshot_to_projectile_id() -> void:
+	if damage_source_snapshot == null or projectile_id <= 0:
+		return
+	damage_source_snapshot = DamageSourceSnapshot.create(
+		damage_source_snapshot.source_faction_id,
+		damage_source_snapshot.credit_peer_id,
+		damage_source_snapshot.instigator_entity_id,
+		projectile_id,
+		damage_source_snapshot.source_type
+	)
+	set_meta(
+		&"damage_source_snapshot",
+		damage_source_snapshot.duplicate_snapshot()
 	)
 
 
@@ -395,28 +430,43 @@ func _apply_explosion_damage_to_body(body: Node2D) -> void:
 	if player != null:
 		if player.is_dead:
 			return
-		explosion_damaged_bodies[body_id] = true
 		var source_direction := player.global_position.direction_to(target_position)
-		if not _try_report_multiplayer_player_hit(player, source_direction):
-			player.apply_damage(
-				damage,
-				EnemyConfig.DamageType.PHYSICAL,
-				{
-					"is_ranged": true,
-					"source_direction": source_direction,
-				}
-			)
+		var player_request := _make_damage_request(
+			target_position.direction_to(player.global_position)
+		)
+		if not _is_request_admitted(player_request, player):
+			return
+		if _try_report_multiplayer_player_hit(player, source_direction):
+			explosion_damaged_bodies[body_id] = true
+		else:
+			var player_result := player.apply_combat_damage(player_request)
+			if player_result.accepted:
+				explosion_damaged_bodies[body_id] = true
 		return
 	var plant := body as PlantDefense
-	if plant == null or plant.is_dead or plant.is_removing:
+	if plant != null:
+		if plant.is_dead or plant.is_removing:
+			return
+		var plant_request := _make_damage_request(
+			target_position.direction_to(plant.global_position)
+		)
+		if not _is_request_admitted(plant_request, plant):
+			return
+		var plant_result := plant.apply_combat_damage(plant_request)
+		if plant_result.accepted:
+			explosion_damaged_bodies[body_id] = true
 		return
-	explosion_damaged_bodies[body_id] = true
-	plant.receive_damage(
-		damage,
-		self,
-		target_position.direction_to(plant.global_position),
-		EnemyConfig.DamageType.PHYSICAL
+	var enemy := body as Enemy
+	if enemy == null or enemy.is_dead:
+		return
+	var enemy_request := _make_damage_request(
+		target_position.direction_to(enemy.global_position)
 	)
+	if not _is_request_admitted(enemy_request, enemy):
+		return
+	var enemy_result := enemy.apply_combat_damage(enemy_request)
+	if enemy_result.accepted:
+		explosion_damaged_bodies[body_id] = true
 
 
 func _try_report_multiplayer_player_hit(
@@ -436,7 +486,35 @@ func _try_report_multiplayer_player_hit(
 		source_type,
 		EnemyConfig.DamageType.PHYSICAL,
 		source_direction,
-		true
+		true,
+		false,
+		damage_source_snapshot
+	)
+
+
+func _make_damage_request(impact_direction: Vector2) -> DamageRequest:
+	var request := DamageRequest.new(
+		damage,
+		EnemyConfig.DamageType.PHYSICAL
+	)
+	if damage_source_snapshot != null:
+		request.with_source_snapshot(damage_source_snapshot)
+	else:
+		request.with_source(self, projectile_id, source_type)
+	request.with_directions(impact_direction, -impact_direction)
+	request.with_flag(CombatTypes.DamageFlag.RANGED, true)
+	return request
+
+
+func _is_request_admitted(request: DamageRequest, target: Node) -> bool:
+	if target == null or not target.has_method(&"get_combat_faction_id"):
+		return false
+	return CombatDamageAdmission.is_admitted(
+		request,
+		int(target.call(&"get_combat_faction_id")),
+		combat_runtime.get_combat_relation_service()
+			if combat_runtime != null and is_instance_valid(combat_runtime)
+			else null
 	)
 
 
@@ -522,6 +600,8 @@ func _retire() -> void:
 	deployment_started = false
 	_unregister_from_motion_system()
 	projectile_finished.emit(projectile_id, self)
+	remove_meta(&"damage_source_snapshot")
+	damage_source_snapshot = null
 	if SessionObjectPool.release_to_owner(self):
 		return
 	queue_free()

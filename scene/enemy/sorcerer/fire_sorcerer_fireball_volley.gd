@@ -6,7 +6,7 @@ signal projectile_finished(projectile_id: int, projectile: Node)
 const BALL_COUNT := 3
 const ALL_BALLS_ACTIVE_MASK := (1 << BALL_COUNT) - 1
 const WORLD_COLLISION_MASK := 1
-const DAMAGEABLE_COLLISION_MASK := 2 | 512
+const DAMAGEABLE_COLLISION_MASK := 2 | 4 | 512
 const AUTHORED_COLLISION_LAYER := 128
 const AUTHORED_COLLISION_MASK := WORLD_COLLISION_MASK | DAMAGEABLE_COLLISION_MASK
 const IMPACT_VISUAL_DURATION := 4.0 / 12.0
@@ -72,6 +72,7 @@ var target_refresh_left: float = 0.0
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"fire_sorcerer_fireball_volley"
+var damage_source_snapshot: DamageSourceSnapshot = null
 var pool_active := true
 var combat_runtime: CombatRuntimeBase = null
 var gameplay_gateway: MultiplayerGameplayGateway = null
@@ -137,6 +138,7 @@ func _ready() -> void:
 
 
 func on_pool_acquired(_generation: int) -> void:
+	remove_meta(&"damage_source_snapshot")
 	combat_runtime = null
 	gameplay_gateway = null
 	pool_active = true
@@ -154,6 +156,7 @@ func on_pool_acquired(_generation: int) -> void:
 	projectile_id = 0
 	owner_peer_id = 0
 	source_type = _get_default_projectile_source_type()
+	damage_source_snapshot = null
 	_pending_setup = false
 	rotation = 0.0
 	_activate_balls()
@@ -161,11 +164,13 @@ func on_pool_acquired(_generation: int) -> void:
 
 
 func on_pool_released(_generation: int) -> void:
+	remove_meta(&"damage_source_snapshot")
 	pool_active = false
 	target = null
 	target_runtime = null
 	combat_runtime = null
 	gameplay_gateway = null
+	damage_source_snapshot = null
 	target_refresh_left = 0.0
 	active_ball_mask = 0
 	visible_effect_mask = 0
@@ -191,7 +196,8 @@ func setup(
 	initial_homing_turn_rate: float = 6.0,
 	initial_target_runtime: CombatRuntimeBase = null,
 	initial_burn_duration: float = -1.0,
-	initial_burn_level: int = -1
+	initial_burn_level: int = -1,
+	initial_damage_source_snapshot: DamageSourceSnapshot = null
 ) -> void:
 	pool_active = true
 	direction = (
@@ -211,6 +217,18 @@ func setup(
 		burn_duration = maxf(initial_burn_duration, 0.0)
 	if initial_burn_level >= 0:
 		burn_level = maxi(initial_burn_level, 0)
+	damage_source_snapshot = (
+		initial_damage_source_snapshot.duplicate_snapshot()
+		if initial_damage_source_snapshot != null
+		else null
+	)
+	if damage_source_snapshot != null:
+		set_meta(
+			&"damage_source_snapshot",
+			damage_source_snapshot.duplicate_snapshot()
+		)
+	else:
+		remove_meta(&"damage_source_snapshot")
 	rotation = direction.angle()
 	_pending_setup = true
 	if is_node_ready():
@@ -227,6 +245,23 @@ func setup_multiplayer(
 	projectile_id = maxi(new_projectile_id, 0)
 	owner_peer_id = new_owner_peer_id
 	source_type = new_source_type
+	_rebind_damage_source_snapshot_to_projectile_id()
+
+
+func _rebind_damage_source_snapshot_to_projectile_id() -> void:
+	if damage_source_snapshot == null or projectile_id <= 0:
+		return
+	damage_source_snapshot = DamageSourceSnapshot.create(
+		damage_source_snapshot.source_faction_id,
+		damage_source_snapshot.credit_peer_id,
+		damage_source_snapshot.instigator_entity_id,
+		projectile_id,
+		damage_source_snapshot.source_type
+	)
+	set_meta(
+		&"damage_source_snapshot",
+		damage_source_snapshot.duplicate_snapshot()
+	)
 
 
 func _physics_process(delta: float) -> void:
@@ -284,9 +319,10 @@ func _update_homing_target(delta: float) -> void:
 	target_refresh_left = TARGET_REFRESH_INTERVAL
 	var query_position := _get_active_ball_center()
 	var reachable_distance := maxf(speed * remaining_lifetime, 0.0)
-	var refreshed_target := target_runtime.find_nearest_enemy_attack_target_world(
+	var refreshed_target := target_runtime.find_nearest_hostile_enemy_attack_target_world(
 		query_position,
-		reachable_distance
+		reachable_distance,
+		_get_frozen_source_faction_id()
 	)
 	if _is_damage_target_alive(refreshed_target):
 		target = refreshed_target
@@ -434,8 +470,23 @@ func _update_effects(delta: float) -> void:
 func _on_ball_body_entered(body: Node2D, ball_index: int) -> void:
 	if not pool_active or not _is_ball_active(ball_index):
 		return
-	var contact_consumed := _try_consume_multiplayer_contact(ball_index)
 	var player := body as Player
+	var plant := body as PlantDefense
+	var enemy := body as Enemy
+	if player == null and plant == null and enemy == null:
+		# 世界接触不造成伤害，但仍要提交共享的首次接触账本，确保同一
+		# 网络弹体的其他副本不能在穿墙后继续命中目标。
+		_try_consume_multiplayer_contact(ball_index)
+		_begin_ball_effect(ball_index, &"expire", EXPIRE_VISUAL_DURATION)
+		return
+	var request := _make_ball_damage_request(body, ball_index)
+	if (
+		_has_authoritative_runtime()
+		and not _is_request_admitted(request, body)
+	):
+		# Friendly bodies neither consume the ball nor enter its hit ledger.
+		return
+	var contact_consumed := _try_consume_multiplayer_contact(ball_index)
 	if player != null:
 		if contact_consumed and not player.is_dead:
 			var handled_by_multiplayer := (
@@ -449,27 +500,18 @@ func _on_ball_body_entered(body: Node2D, ball_index: int) -> void:
 				not handled_by_multiplayer
 				and _has_explicit_singleplayer_authority()
 			):
-				var damage_was_applied := player.apply_damage(
-					damage,
-					EnemyConfig.DamageType.MAGIC,
-					{
-						"is_ranged": true,
-						"source_direction": (
-							player.global_position.direction_to(
-								ball_areas[ball_index].global_position
-							)
-						),
-					}
+				var damage_was_applied := (
+					player.apply_combat_damage(request).accepted
 				)
 				if damage_was_applied and not player.is_dead:
 					player.apply_burn_status(
-						source_type,
+						_get_ball_burn_family(ball_index),
 						burn_duration,
-						burn_level
+						burn_level,
+						request.get_source_snapshot_copy()
 					)
 		_begin_ball_effect(ball_index, &"impact", IMPACT_VISUAL_DURATION)
 		return
-	var plant := body as PlantDefense
 	if plant != null:
 		if (
 			contact_consumed
@@ -477,24 +519,31 @@ func _on_ball_body_entered(body: Node2D, ball_index: int) -> void:
 			and not plant.is_dead
 			and not plant.is_removing
 		):
-			var damage_was_applied := plant.receive_damage(
-				damage,
-				self,
-				ball_areas[ball_index].global_position.direction_to(
-					plant.global_position
-				),
-				EnemyConfig.DamageType.MAGIC
+			var damage_was_applied := (
+				plant.apply_combat_damage(request).accepted
 			)
 			if damage_was_applied and not plant.is_dead and not plant.is_removing:
 				plant.apply_burn_status(
-					source_type,
+					_get_ball_burn_family(ball_index),
 					burn_duration,
-					burn_level
+					burn_level,
+					request.get_source_snapshot_copy()
 				)
 		_begin_ball_effect(ball_index, &"impact", IMPACT_VISUAL_DURATION)
 		return
-	# 世界碰撞只熄灭当前火球，不产生范围查询或伤害。
-	_begin_ball_effect(ball_index, &"expire", EXPIRE_VISUAL_DURATION)
+	if enemy != null:
+		if contact_consumed and _has_authoritative_runtime() and not enemy.is_dead:
+			var damage_was_applied := (
+				enemy.apply_combat_damage(request).accepted
+			)
+			if damage_was_applied and not enemy.is_dead:
+				enemy.apply_burn_status(
+					_get_ball_burn_family(ball_index),
+					burn_duration,
+					burn_level,
+					request.get_source_snapshot_copy()
+				)
+		_begin_ball_effect(ball_index, &"impact", IMPACT_VISUAL_DURATION)
 
 
 func _begin_ball_effect(
@@ -603,9 +652,63 @@ func _is_damage_target_alive(candidate: Node2D) -> bool:
 		return false
 	var player := candidate as Player
 	if player != null:
-		return not player.is_dead
+		return (
+			not player.is_dead
+			and not player.is_queued_for_deletion()
+			and _is_frozen_source_hostile_to(candidate)
+		)
 	var plant := candidate as PlantDefense
-	return plant != null and not plant.is_dead and not plant.is_removing
+	if plant != null:
+		return (
+			not plant.is_dead
+			and not plant.is_removing
+			and not plant.is_queued_for_deletion()
+			and _is_frozen_source_hostile_to(candidate)
+		)
+	var enemy := candidate as Enemy
+	return (
+		enemy != null
+		and not enemy.is_dead
+		and not enemy.is_queued_for_deletion()
+		and _is_frozen_source_hostile_to(candidate)
+	)
+
+
+func _get_frozen_source_faction_id() -> int:
+	if damage_source_snapshot != null:
+		return damage_source_snapshot.source_faction_id
+	# Compatibility for locally-authored/projectile tests created before source
+	# snapshots were mandatory. Production enemy volleys always carry a frozen
+	# snapshot from FireSorcerer at launch.
+	return CombatRelationService.HOSTILE_WAVE
+
+
+func _is_frozen_source_hostile_to(candidate: Node2D) -> bool:
+	var runtime := target_runtime
+	if runtime == null or not is_instance_valid(runtime):
+		runtime = combat_runtime
+	if runtime != null and is_instance_valid(runtime):
+		return runtime.get_combat_query_facade().is_target_hostile(
+			_get_frozen_source_faction_id(),
+			candidate,
+			runtime.get_combat_relation_service()
+		)
+	var target_faction_id := CombatRelationService.NEUTRAL
+	var player_target := candidate as Player
+	if player_target != null:
+		target_faction_id = player_target.get_combat_faction_id()
+	else:
+		var plant_target := candidate as PlantDefense
+		if plant_target != null:
+			target_faction_id = plant_target.get_combat_faction_id()
+		else:
+			var enemy_target := candidate as Enemy
+			if enemy_target != null:
+				target_faction_id = enemy_target.get_combat_faction_id()
+	return CombatRelationService.is_default_hostile(
+		_get_frozen_source_faction_id(),
+		target_faction_id
+	)
 
 
 func _try_report_multiplayer_player_hit(
@@ -629,7 +732,58 @@ func _try_report_multiplayer_player_hit(
 			ball_areas[ball_index].global_position
 		),
 		true,
-		contact_preconsumed
+		contact_preconsumed,
+		_make_ball_source_snapshot(ball_index)
+	)
+
+
+func _make_ball_damage_request(
+	target_body: Node2D,
+	ball_index: int
+) -> DamageRequest:
+	var impact_direction := ball_areas[ball_index].global_position.direction_to(
+		target_body.global_position
+	)
+	var request := DamageRequest.new(damage, EnemyConfig.DamageType.MAGIC)
+	if damage_source_snapshot != null:
+		request.with_source_snapshot(_make_ball_source_snapshot(ball_index))
+	else:
+		request.with_source(self, projectile_id, _get_ball_source_type(ball_index))
+	request.with_directions(impact_direction, -impact_direction)
+	request.with_flag(CombatTypes.DamageFlag.RANGED, true)
+	return request
+
+
+func _make_ball_source_snapshot(
+	ball_index: int
+) -> DamageSourceSnapshot:
+	if damage_source_snapshot == null:
+		return null
+	return DamageSourceSnapshot.create(
+		damage_source_snapshot.source_faction_id,
+		damage_source_snapshot.credit_peer_id,
+		damage_source_snapshot.instigator_entity_id,
+		damage_source_snapshot.event_source_id,
+		_get_ball_source_type(ball_index)
+	)
+
+
+func _get_ball_burn_family(_ball_index: int) -> StringName:
+	# `source_type` is the authored volley family; A/B/C are contact subtypes.
+	# Keep status refresh grouping on the family without importing the global
+	# attack registry here (it preloads this projectile scene).
+	return source_type
+
+
+func _is_request_admitted(request: DamageRequest, target_body: Node) -> bool:
+	if target_body == null or not target_body.has_method(&"get_combat_faction_id"):
+		return false
+	return CombatDamageAdmission.is_admitted(
+		request,
+		int(target_body.call(&"get_combat_faction_id")),
+		combat_runtime.get_combat_relation_service()
+			if combat_runtime != null and is_instance_valid(combat_runtime)
+			else null
 	)
 
 
@@ -683,6 +837,8 @@ func _retire() -> void:
 	pool_active = false
 	set_physics_process(false)
 	projectile_finished.emit(projectile_id, self)
+	remove_meta(&"damage_source_snapshot")
+	damage_source_snapshot = null
 	if SessionObjectPool.release_to_owner(self):
 		return
 	queue_free()

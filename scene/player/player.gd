@@ -1143,6 +1143,27 @@ func play_world_inventory_pickup_feedback(config: PickupConfig) -> void:
 func _apply_character_pickup(_config: PickupConfig, _buff_duration: float) -> bool:
 	return false
 	
+func get_combat_faction_id() -> int:
+	return CombatRelationService.PLAYER_ALLIED
+
+
+func create_damage_source_snapshot(
+	event_source_id: int = 0,
+	source_type: StringName = &"player"
+) -> DamageSourceSnapshot:
+	var stable_entity_id := maxi(
+		int(get_meta(&"net_id", get_instance_id())),
+		0
+	)
+	return DamageSourceSnapshot.create(
+		get_combat_faction_id(),
+		maxi(peer_id, 0),
+		stable_entity_id,
+		maxi(event_source_id, 0),
+		source_type if source_type != &"" else &"player"
+	)
+
+
 # 敌人或其他伤害来源统一通过这个入口让玩家受伤。
 func apply_damage(
 	amount: int,
@@ -1150,6 +1171,38 @@ func apply_damage(
 	damage_context: Dictionary = {}
 ) -> bool:
 	var request := DamageRequest.new(amount, int(damage_type))
+	var source_snapshot_variant: Variant = damage_context.get(
+		"source_snapshot",
+		null
+	)
+	if source_snapshot_variant is DamageSourceSnapshot:
+		request.with_source_snapshot(
+			source_snapshot_variant as DamageSourceSnapshot
+		)
+	elif damage_context.has("source_snapshot"):
+		# A caller opting into the typed field must not silently fall back to a
+		# trusted enemy identity when its payload is malformed.
+		request.with_source_snapshot(DamageSourceSnapshot.create(
+			-1,
+			0,
+			0,
+			0,
+			&"invalid_source_snapshot"
+		))
+	else:
+		# Historical callers use this wrapper exclusively for incoming enemy
+		# damage. Keep that compatibility at the edge; a raw unattributed
+		# DamageRequest remains player-owned and is rejected by this sink.
+		request.with_source_snapshot(DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			0,
+			maxi(int(damage_context.get("source_id", 0)), 0),
+			StringName(damage_context.get(
+				"source_type",
+				&"legacy_external_enemy_damage"
+			))
+		))
 	var is_ranged := bool(damage_context.get("is_ranged", false))
 	request.with_flag(CombatTypes.DamageFlag.RANGED, is_ranged)
 	var source_direction := Vector2.ZERO
@@ -1210,6 +1263,13 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 			request,
 			CombatTypes.DamageRejectionReason.INVALID_AMOUNT
 		)
+	var admission_reason := CombatDamageAdmission.get_rejection_reason(
+		request,
+		get_combat_faction_id(),
+		_get_damage_relation_service()
+	)
+	if admission_reason != CombatTypes.DamageRejectionReason.NONE:
+		return _reject_combat_damage(request, admission_reason)
 	if (
 		not request.has_flag(CombatTypes.DamageFlag.BYPASS_INVULNERABILITY)
 		and (is_dash_invulnerable() or invincibility_time_left > 0.0)
@@ -1269,14 +1329,32 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 	return result
 
 
+func _get_damage_relation_service() -> CombatRelationService:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
+		return null
+	return combat_runtime.get_combat_relation_service()
+
+
 ## Applies an already-established periodic effect. It still respects the
 ## matching defense and damage-reduction rules, but intentionally cannot be
 ## dodged and neither consumes nor grants ordinary hit invincibility.
 func apply_periodic_damage(
 	amount: int,
-	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.MAGIC
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.MAGIC,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	var request := DamageRequest.new(amount, int(damage_type))
+	request.with_source_snapshot(
+		source_snapshot
+		if source_snapshot != null
+		else DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			0,
+			0,
+			&"legacy_external_periodic_damage"
+		)
+	)
 	request.flags = (
 		CombatTypes.DamageFlag.PERIODIC
 		| CombatTypes.DamageFlag.BYPASS_INVULNERABILITY
@@ -1289,7 +1367,8 @@ func apply_periodic_damage(
 func apply_burn_status(
 	source_family: StringName,
 	duration: float,
-	tick_damage: int
+	tick_damage: int,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	if (
 		is_dead
@@ -1310,7 +1389,8 @@ func apply_burn_status(
 		source_family,
 		duration,
 		tick_damage,
-		Callable(self, "_on_burn_status_active_changed")
+		Callable(self, "_on_burn_status_active_changed"),
+		_get_incoming_status_source_snapshot(source_snapshot, source_family)
 	))
 
 
@@ -1327,7 +1407,8 @@ func apply_bleed_status(
 	source_family: StringName,
 	duration: float,
 	tick_damage: int,
-	tick_interval: float = DEFAULT_BLEED_TICK_INTERVAL_SECONDS
+	tick_interval: float = DEFAULT_BLEED_TICK_INTERVAL_SECONDS,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	if (
 		is_dead
@@ -1350,8 +1431,24 @@ func apply_bleed_status(
 		duration,
 		tick_damage,
 		tick_interval,
-		Callable(self, "_on_bleed_status_active_changed")
+		Callable(self, "_on_bleed_status_active_changed"),
+		_get_incoming_status_source_snapshot(source_snapshot, source_family)
 	))
+
+
+func _get_incoming_status_source_snapshot(
+	source_snapshot: DamageSourceSnapshot,
+	source_family: StringName
+) -> DamageSourceSnapshot:
+	if source_snapshot != null:
+		return source_snapshot.duplicate_snapshot()
+	return DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		0,
+		0,
+		source_family if source_family != &"" else &"legacy_enemy_status"
+	)
 
 
 func clear_bleed_status() -> void:
@@ -1522,25 +1619,29 @@ func _apply_timed_move_slow_runtime_state(multiplier: float) -> void:
 
 func _receive_incoming_burn_tick(
 	source_family: StringName,
-	tick_damage: int
+	tick_damage: int,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	return _receive_incoming_damage_over_time_tick(
 		BURN_STATUS_ID,
 		source_family,
 		tick_damage,
-		EnemyConfig.DamageType.MAGIC
+		EnemyConfig.DamageType.MAGIC,
+		source_snapshot
 	)
 
 
 func _receive_incoming_bleed_tick(
 	source_family: StringName,
-	tick_damage: int
+	tick_damage: int,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	return _receive_incoming_damage_over_time_tick(
 		BLEED_STATUS_ID,
 		source_family,
 		tick_damage,
-		EnemyConfig.DamageType.PHYSICAL
+		EnemyConfig.DamageType.PHYSICAL,
+		source_snapshot
 	)
 
 
@@ -1548,12 +1649,17 @@ func _receive_incoming_damage_over_time_tick(
 	status_id: StringName,
 	source_family: StringName,
 	tick_damage: int,
-	damage_type: EnemyConfig.DamageType
+	damage_type: EnemyConfig.DamageType,
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	if is_dead:
 		return false
 	if _is_explicit_singleplayer_authority():
-		return apply_periodic_damage(tick_damage, damage_type)
+		return apply_periodic_damage(
+			tick_damage,
+			damage_type,
+			source_snapshot
+		)
 	if (
 		peer_id <= 0
 		or not _requires_multiplayer_gameplay_gateway()
@@ -1564,7 +1670,8 @@ func _receive_incoming_damage_over_time_tick(
 		peer_id,
 		status_id,
 		source_family,
-		tick_damage
+		tick_damage,
+		source_snapshot
 	)
 
 

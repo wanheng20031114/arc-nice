@@ -2,8 +2,13 @@ extends Enemy
 class_name CapooKnight
 
 const PLAYER_COLLISION_MASK := 2
+const ENEMY_COLLISION_MASK := 4
 const PLANT_COLLISION_MASK := 1 << 9
-const SLASH_COLLISION_MASK := PLAYER_COLLISION_MASK | PLANT_COLLISION_MASK
+const SLASH_COLLISION_MASK := (
+	PLAYER_COLLISION_MASK | ENEMY_COLLISION_MASK | PLANT_COLLISION_MASK
+)
+
+
 const WORLD_COLLISION_MASK := 1
 const CapooKnightConfigScript := preload("res://resources/config/enemies/capoo_knight_config.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
@@ -38,6 +43,11 @@ var slash_query_shape := CircleShape2D.new()
 var slash_query := PhysicsShapeQueryParameters2D.new()
 var slash_hit_target_ids: Dictionary[int, bool] = {}
 var committed_attack_target: Node2D = null
+var slash_damage_source_snapshot: DamageSourceSnapshot = null
+
+
+func supports_dynamic_enemy_targeting() -> bool:
+	return true
 
 
 func _ready() -> void:
@@ -100,6 +110,7 @@ func _apply_config() -> void:
 	slash_damage_time_left = 0.0
 	slash_damage_done = false
 	committed_attack_target = null
+	slash_damage_source_snapshot = null
 
 	var knight_config := config as CapooKnightConfigScript
 	if knight_config != null:
@@ -162,6 +173,10 @@ func _try_start_windup(candidate_target: Node2D = null) -> bool:
 	_update_facing(slash_direction)
 	_play_config_animation(knight_config.windup_animation_name)
 	_set_windup_warning(0.25, slash_direction)
+	slash_damage_source_snapshot = create_damage_source_snapshot(
+		_get_multiplayer_damage_source_id(action_sequence + 1),
+		_get_slash_damage_source_type()
+	)
 	_broadcast_enemy_action(&"windup", slash_direction)
 	return true
 
@@ -254,6 +269,11 @@ func _apply_slash_damage() -> void:
 	var knight_config := config as CapooKnightConfigScript
 	if knight_config == null:
 		return
+	if slash_damage_source_snapshot == null:
+		slash_damage_source_snapshot = create_damage_source_snapshot(
+			_get_multiplayer_damage_source_id(action_sequence),
+			_get_slash_damage_source_type()
+		)
 
 	slash_query.transform = Transform2D(0.0, global_position)
 	var results := get_world_2d().direct_space_state.intersect_shape(slash_query, 16)
@@ -264,9 +284,11 @@ func _apply_slash_damage() -> void:
 		var hit_target := result.get("collider") as Node2D
 		if not _is_ranged_combat_target_valid(hit_target):
 			continue
-		var player := hit_target as Player
-		var plant := hit_target as PlantDefense
-		if player == null and plant == null:
+		if (
+			not (hit_target is Player)
+			and not (hit_target is PlantDefense)
+			and not (hit_target is Enemy)
+		):
 			continue
 		var target_id := hit_target.get_instance_id()
 		if slash_hit_target_ids.has(target_id):
@@ -286,26 +308,19 @@ func _apply_slash_damage() -> void:
 				> half_angle + SLASH_ANGLE_EPSILON_RADIANS
 		):
 			continue
+		if not _dispatch_slash_damage(
+			hit_target,
+			outgoing_damage,
+			offset.normalized()
+		):
+			continue
 		slash_hit_target_ids[target_id] = true
-		if player != null:
-			_apply_multiplayer_player_damage(
-				player,
-				outgoing_damage,
-				_get_multiplayer_damage_source_id(action_sequence),
-				_get_slash_damage_source_type()
-			)
-		elif plant != null:
-			plant.receive_damage(
-				outgoing_damage,
-				self,
-				offset.normalized(),
-				EnemyConfig.DamageType.PHYSICAL
-			)
 
 
 func _finish_slash() -> void:
 	combat_state = CombatState.CHASE
 	committed_attack_target = null
+	slash_damage_source_snapshot = null
 	slash_time_left = 0.0
 	slash_damage_time_left = 0.0
 	slash_damage_done = false
@@ -318,6 +333,7 @@ func _finish_slash() -> void:
 func _cancel_attack() -> void:
 	combat_state = CombatState.CHASE
 	committed_attack_target = null
+	slash_damage_source_snapshot = null
 	slash_time_left = 0.0
 	slash_damage_time_left = 0.0
 	slash_damage_done = false
@@ -423,19 +439,102 @@ func _apply_multiplayer_player_damage(
 	hit_player: Player,
 	damage_amount: int,
 	source_id: int,
-	source_type: StringName
-) -> void:
+	source_type: StringName,
+	damage_type: int = EnemyConfig.DamageType.PHYSICAL,
+	impact_direction: Vector2 = Vector2.ZERO
+) -> bool:
 	if hit_player == null or damage_amount <= 0:
-		return
-	if _try_request_player_damage(
+		return false
+	var resolved_impact_direction := (
+		impact_direction.normalized()
+		if impact_direction != Vector2.ZERO
+		else slash_direction
+	)
+	var request := _make_slash_damage_request(
+		damage_amount,
+		resolved_impact_direction,
+		damage_type
+	)
+	if not CombatDamageAdmission.is_admitted(
+		request,
+		hit_player.get_combat_faction_id(),
+		combat_relation_service
+	):
+		return false
+	if (
+		gameplay_gateway != null
+		and is_instance_valid(gameplay_gateway)
+	):
+		var previous_result := hit_player.last_damage_result
+		var routed := gameplay_gateway.request_player_damage(
 			source_id,
 			hit_player.peer_id,
 			damage_amount,
-			source_type
-		):
-		return
+			source_type,
+			damage_type as EnemyConfig.DamageType,
+			-resolved_impact_direction,
+			false,
+			false,
+			slash_damage_source_snapshot
+		)
+		if routed:
+			var routed_result := hit_player.last_damage_result
+			return (
+				routed_result != null
+				and routed_result != previous_result
+				and routed_result.accepted
+			)
 	if _has_explicit_singleplayer_authority():
-		hit_player.apply_damage(damage_amount)
+		var result := hit_player.apply_combat_damage(request)
+		return result != null and result.accepted
+	return false
+
+
+func _dispatch_slash_damage(
+	hit_target: Node2D,
+	damage_amount: int,
+	impact_direction: Vector2,
+	damage_type: int = EnemyConfig.DamageType.PHYSICAL
+) -> bool:
+	var player := hit_target as Player
+	if player != null:
+		return _apply_multiplayer_player_damage(
+			player,
+			damage_amount,
+			slash_damage_source_snapshot.event_source_id,
+			_get_slash_damage_source_type(),
+			damage_type,
+			impact_direction
+		)
+	var request := _make_slash_damage_request(
+		damage_amount,
+		impact_direction,
+		damage_type
+	)
+	var result: DamageResult = null
+	var plant := hit_target as PlantDefense
+	if plant != null:
+		result = plant.apply_combat_damage(request)
+	else:
+		var enemy := hit_target as Enemy
+		if enemy == null:
+			return false
+		result = enemy.apply_combat_damage(request)
+	return result != null and result.accepted
+
+
+func _make_slash_damage_request(
+	damage_amount: int,
+	impact_direction: Vector2,
+	damage_type: int = EnemyConfig.DamageType.PHYSICAL
+) -> DamageRequest:
+	var request := DamageRequest.new(
+		damage_amount,
+		damage_type
+	)
+	request.with_source_snapshot(slash_damage_source_snapshot)
+	request.with_directions(impact_direction, -impact_direction)
+	return request
 
 
 func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:

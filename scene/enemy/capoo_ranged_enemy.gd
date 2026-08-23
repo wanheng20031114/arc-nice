@@ -17,6 +17,10 @@ func can_target_water_plant_objectives() -> bool:
 	return true
 
 
+func supports_dynamic_enemy_targeting() -> bool:
+	return true
+
+
 # These families commit damage through their authored weapon state machines.
 # Contact overlap remains active for target resolution and movement stopping,
 # but must not add a second invisible touch hit.

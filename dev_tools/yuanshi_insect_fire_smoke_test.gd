@@ -437,7 +437,8 @@ func _test_projectile_runtime_authority_boundary() -> void:
 		Vector2.RIGHT,
 		FIRE_CONFIG.attack_damage,
 		FIRE_CONFIG.projectile_speed,
-		2.0
+		2.0,
+		_make_hostile_projectile_snapshot(9101)
 	)
 	test_root.add_child(host_projectile)
 	host_projectile.setup_multiplayer(9101, 1, &"yuanshi_fire_projectile")
@@ -464,7 +465,8 @@ func _test_projectile_runtime_authority_boundary() -> void:
 		Vector2.RIGHT,
 		FIRE_CONFIG.attack_damage,
 		FIRE_CONFIG.projectile_speed,
-		2.0
+		2.0,
+		_make_hostile_projectile_snapshot(9102)
 	)
 	test_root.add_child(client_projectile)
 	client_projectile.setup_multiplayer(9102, 1, &"yuanshi_fire_projectile")
@@ -522,10 +524,28 @@ func _spawn_projectile(position: Vector2, direction: Vector2) -> YuanshiInsectFi
 		test_root,
 		test_root.get_multiplayer_gameplay_gateway()
 	)
-	projectile.setup(direction, FIRE_CONFIG.attack_damage, FIRE_CONFIG.projectile_speed, 2.0)
+	projectile.setup(
+		direction,
+		FIRE_CONFIG.attack_damage,
+		FIRE_CONFIG.projectile_speed,
+		2.0,
+		_make_hostile_projectile_snapshot()
+	)
 	test_root.add_child(projectile)
 	projectile.global_position = position
 	return projectile
+
+
+func _make_hostile_projectile_snapshot(
+	event_source_id: int = 0
+) -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		0,
+		maxi(event_source_id, 0),
+		&"yuanshi_fire_projectile"
+	)
 
 
 func _spawn_wall(position: Vector2, size: Vector2) -> StaticBody2D:

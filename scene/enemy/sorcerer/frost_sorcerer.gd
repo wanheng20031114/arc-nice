@@ -58,9 +58,10 @@ func _select_nearest_attack_target(
 		attack_target_refresh_left = ATTACK_TARGET_REFRESH_INTERVAL
 		if combat_runtime != null and is_instance_valid(combat_runtime):
 			cached_runtime_attack_target = (
-				combat_runtime.find_nearest_enemy_attack_target_world(
+				combat_runtime.find_nearest_hostile_enemy_attack_target_world(
 					global_position,
-					frost_config.attack_range
+					frost_config.attack_range,
+					get_combat_faction_id()
 				)
 			)
 			if not _is_ranged_combat_target_valid(
@@ -345,7 +346,8 @@ func _spawn_ice_spike(frost_config: FrostConfig) -> bool:
 		summon_direction,
 		outgoing_damage,
 		frost_config.projectile_speed,
-		frost_config.projectile_lifetime
+		frost_config.projectile_lifetime,
+		create_damage_source_snapshot(0, &"frost_sorcerer_ice_spike")
 	)
 	if ice_spike.get_parent() == null:
 		spawn_parent.add_child(ice_spike)
@@ -362,6 +364,10 @@ func _spawn_ice_spike(frost_config: FrostConfig) -> bool:
 		var plant_target := summon_target as PlantDefense
 		if plant_target != null:
 			target_plant_net_id = int(plant_target.get_meta(&"net_id", 0))
+		else:
+			var enemy_target := summon_target as Enemy
+			if enemy_target != null:
+				target_plant_net_id = int(enemy_target.get_meta(&"net_id", 0))
 	gameplay_gateway.register_local_projectile(
 		ice_spike,
 		_get_ice_spike_projectile_type(),

@@ -26,6 +26,10 @@ class SourceState:
 	var tick_damage := 0
 	var tick_time_left := DEFAULT_TICK_INTERVAL_SECONDS
 	var tick_interval := DEFAULT_TICK_INTERVAL_SECONDS
+	## Frozen when the status is applied/refreshed. The scheduler never retains
+	## live instigator Objects, so delayed ticks survive faction changes and
+	## source teardown without changing admission or defeat credit.
+	var damage_source_snapshot: DamageSourceSnapshot = null
 
 
 class TargetState:
@@ -81,7 +85,8 @@ func apply_periodic_status(
 	tick_damage: int,
 	tick_interval: float,
 	tick_policy: int,
-	state_callback: Callable = Callable()
+	state_callback: Callable = Callable(),
+	source_snapshot: DamageSourceSnapshot = null
 ) -> bool:
 	if (
 		target == null
@@ -189,6 +194,14 @@ func apply_periodic_status(
 	source_state.tick_damage = maxi(tick_damage, 1)
 	source_state.tick_interval = maxf(tick_interval, 0.05)
 	source_state.tick_time_left = source_state.tick_interval
+	# A same-family refresh intentionally transfers future tick attribution to
+	# the latest accepted application, matching the existing damage/duration
+	# refresh semantics for this shared SourceState.
+	source_state.damage_source_snapshot = (
+		source_snapshot.duplicate_snapshot()
+		if source_snapshot != null
+		else null
+	)
 
 	_schedule_target_state(target_state)
 	set_physics_process(true)
@@ -226,6 +239,7 @@ func clear_all() -> void:
 	_event_heap.clear()
 	set_physics_process(false)
 	for target_state in states_to_clear:
+		_release_target_source_snapshots(target_state)
 		_notify_state_cleared_if_not_replaced(target_state)
 
 
@@ -286,6 +300,11 @@ func get_source_snapshot(
 			"tick_damage": source_state.tick_damage,
 			"tick_interval": source_state.tick_interval,
 			"tick_time_left": maxf(tick_time_left, 0.0),
+			"damage_source_snapshot": (
+				source_state.damage_source_snapshot.duplicate_snapshot()
+				if source_state.damage_source_snapshot != null
+				else null
+			),
 		}
 	return {}
 
@@ -562,6 +581,7 @@ func _advance_target_status(
 		if source_state.time_left <= MIN_EVENT_DELAY_SECONDS:
 			if source_state == strongest_state:
 				strongest_source_survived = false
+			source_state.damage_source_snapshot = null
 			target_state.sources.remove_at(source_index)
 	if target_state.sources.is_empty():
 		_remove_target_state(target_state)
@@ -579,10 +599,7 @@ func _advance_target_status(
 			break
 		var previous_callback_event_clock := _callback_event_clock
 		_callback_event_clock = target_state.last_advance_clock
-		target_state.tick_callback.call(
-			strongest_state.source_family,
-			strongest_state.tick_damage
-		)
+		_call_damage_tick(target_state, strongest_state)
 		_callback_event_clock = previous_callback_event_clock
 		_increment_metric("damage_ticks")
 		if not target_state.active:
@@ -604,6 +621,7 @@ func _advance_all_sources_status(
 		var source_state := target_state.sources[source_index]
 		source_state.time_left -= delta
 		if source_state.time_left <= MIN_EVENT_DELAY_SECONDS:
+			source_state.damage_source_snapshot = null
 			target_state.sources.remove_at(source_index)
 			continue
 		source_state.tick_time_left -= delta
@@ -625,10 +643,7 @@ func _advance_all_sources_status(
 				return
 			var previous_callback_event_clock := _callback_event_clock
 			_callback_event_clock = target_state.last_advance_clock
-			target_state.tick_callback.call(
-				source_state.source_family,
-				source_state.tick_damage
-			)
+			_call_damage_tick(target_state, source_state)
 			_callback_event_clock = previous_callback_event_clock
 			_increment_metric("damage_ticks")
 			if not target_state.active:
@@ -651,6 +666,31 @@ func _find_strongest_source(
 		):
 			strongest_state = source_state
 	return strongest_state
+
+
+func _call_damage_tick(
+	target_state: TargetState,
+	source_state: SourceState
+) -> void:
+	var source_snapshot := (
+		source_state.damage_source_snapshot.duplicate_snapshot()
+		if source_state.damage_source_snapshot != null
+		else null
+	)
+	# Two-argument callbacks are a compatibility seam for deterministic probes
+	# and old presentation-only consumers. All authoritative targets use the
+	# typed third argument and build their DamageRequest from that frozen copy.
+	if target_state.tick_callback.get_argument_count() >= 3:
+		target_state.tick_callback.call(
+			source_state.source_family,
+			source_state.tick_damage,
+			source_snapshot
+		)
+	else:
+		target_state.tick_callback.call(
+			source_state.source_family,
+			source_state.tick_damage
+		)
 
 
 func _schedule_target_state(target_state: TargetState) -> void:
@@ -712,9 +752,15 @@ func _remove_target_state(target_state: TargetState) -> void:
 		target_state.heap_index = -1
 	else:
 		_remove_heap_at(target_state.heap_index)
+	_release_target_source_snapshots(target_state)
 	if _event_heap.is_empty() and _due_event_count == 0:
 		set_physics_process(false)
 	_notify_state_cleared_if_not_replaced(target_state)
+
+
+func _release_target_source_snapshots(target_state: TargetState) -> void:
+	for source_state in target_state.sources:
+		source_state.damage_source_snapshot = null
 
 
 func _notify_state_cleared_if_not_replaced(

@@ -26,3 +26,16 @@ func find_nearest_enemy_attack_target_world(
 		max_distance,
 		excluded_instance_ids
 	)
+
+
+func find_nearest_hostile_enemy_attack_target_world(
+	from_position: Vector2,
+	max_distance: float,
+	_source_faction_id: int,
+	excluded_instance_ids: Dictionary = {}
+) -> Node2D:
+	return find_nearest_enemy_attack_target_world(
+		from_position,
+		max_distance,
+		excluded_instance_ids
+	)

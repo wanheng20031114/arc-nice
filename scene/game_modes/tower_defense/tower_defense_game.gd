@@ -1015,6 +1015,14 @@ func grant_xirang_kill_reward(amount: int) -> bool:
 	return accepted
 
 
+func can_settle_enemy_defeat_rewards(enemy_id: int) -> bool:
+	if campaign_coordinator == null:
+		return true
+	if not campaign_coordinator.has_wave_enemy_record(enemy_id):
+		return true
+	return campaign_coordinator.is_wave_enemy_defeat_committed(enemy_id)
+
+
 func get_progression_metrics_snapshot() -> Dictionary:
 	return campaign_coordinator.get_progression_metrics_snapshot()
 

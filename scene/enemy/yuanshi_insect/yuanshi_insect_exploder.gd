@@ -19,6 +19,7 @@ const EXPLOSION_QUERY_BATCH_SIZE := 64
 
 var explosion_damage_done := false
 var outgoing_explosion_damage_snapshot := 0
+var outgoing_explosion_source_snapshot: DamageSourceSnapshot = null
 
 
 func supports_layered_area_authoritative_simulation() -> bool:
@@ -28,6 +29,7 @@ func supports_layered_area_authoritative_simulation() -> bool:
 func _apply_config() -> void:
 	super._apply_config()
 	outgoing_explosion_damage_snapshot = 0
+	outgoing_explosion_source_snapshot = null
 
 	if config == null:
 		return
@@ -42,6 +44,10 @@ func _die() -> void:
 		get_effective_attack_damage(config.explosion_damage)
 		if config != null
 		else 0
+	)
+	outgoing_explosion_source_snapshot = create_damage_source_snapshot(
+		_get_multiplayer_damage_source_id(900000),
+		&"yuanshi_explosion"
 	)
 	super._die()
 
@@ -115,6 +121,11 @@ func _try_apply_explosion_damage() -> void:
 		outgoing_explosion_damage_snapshot = get_effective_attack_damage(
 			config.explosion_damage
 		)
+	if outgoing_explosion_source_snapshot == null:
+		outgoing_explosion_source_snapshot = create_damage_source_snapshot(
+			_get_multiplayer_damage_source_id(900000),
+			&"yuanshi_explosion"
+		)
 
 	var space_state := get_world_2d().direct_space_state
 	if space_state == null:
@@ -148,18 +159,40 @@ func _try_apply_explosion_damage() -> void:
 		var collider_id := collider.get_instance_id()
 		if damaged_collider_ids.has(collider_id):
 			continue
-		damaged_collider_ids[collider_id] = true
-
 		var hit_player := collider as Player
 		if hit_player != null:
-			_apply_multiplayer_player_damage(
+			if _apply_multiplayer_player_damage(
 				hit_player,
 				outgoing_explosion_damage_snapshot,
 				_get_multiplayer_damage_source_id(900000),
-				&"yuanshi_explosion"
-			)
+				&"yuanshi_explosion",
+				outgoing_explosion_source_snapshot
+			):
+				damaged_collider_ids[collider_id] = true
 			continue
 
 		var hit_enemy := collider as Enemy
-		if hit_enemy != null:
-			hit_enemy.apply_damage(outgoing_explosion_damage_snapshot)
+		if _try_apply_explosion_damage_to_enemy(hit_enemy):
+			damaged_collider_ids[collider_id] = true
+
+
+func _try_apply_explosion_damage_to_enemy(hit_enemy: Enemy) -> bool:
+	if hit_enemy == null or hit_enemy.is_dead:
+		return false
+	var impact_direction := global_position.direction_to(
+		hit_enemy.global_position
+	)
+	var enemy_request := DamageRequest.new(
+		outgoing_explosion_damage_snapshot,
+		EnemyConfig.DamageType.PHYSICAL
+	)
+	enemy_request.with_source_snapshot(outgoing_explosion_source_snapshot)
+	enemy_request.with_directions(impact_direction, -impact_direction)
+	if not CombatDamageAdmission.is_admitted(
+		enemy_request,
+		hit_enemy.get_combat_faction_id(),
+		_get_damage_relation_service()
+	):
+		return false
+	var result := hit_enemy.apply_combat_damage(enemy_request)
+	return result.accepted

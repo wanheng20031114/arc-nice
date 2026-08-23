@@ -132,6 +132,10 @@ var combat_target_index = CombatTargetIndexScript.new()
 var combat_relation_service: CombatRelationService = CombatRelationService.new()
 var combat_query_facade: CombatQueryFacade = null
 var _enemy_combat_services: EnemyCombatServicesScript = null
+## Shared storage for secondary enemy-attack queries. Lightning chains and
+## homing projectiles execute on the authoritative physics thread, so one
+## runtime-owned buffer avoids allocating an Array for every bounce/reacquire.
+var _enemy_attack_target_query_scratch: Array[Node2D] = []
 var _singleplayer_combat_target_index_enabled := false
 var _singleplayer_combat_target_index_force_local_queries := false
 var _enemy_snapshot_states_by_net_id: Dictionary = {}
@@ -221,6 +225,14 @@ func get_enemy_contact_service() -> EnemyContactService:
 
 func get_combat_relation_service() -> CombatRelationService:
 	return combat_relation_service
+
+
+## Reward/drop settlement is deliberately downstream of the synchronous
+## `Enemy.defeated` domain signal. Runtimes owning a terminal ledger override
+## this and only approve a committed DEFEATED record; sandbox runtimes without
+## a ledger preserve their historical immediate settlement.
+func can_settle_enemy_defeat_rewards(_enemy_id: int) -> bool:
+	return true
 
 
 func get_combat_query_facade() -> CombatQueryFacade:
@@ -806,6 +818,41 @@ func find_nearest_enemy_attack_target_world(
 	return nearest_player
 
 
+## Faction-aware successor to the legacy Player/Plant-only attack query. The
+## query facade preserves the independent player, plant and enemy stores, then
+## orders their combined candidates by distance, target kind and stable ID.
+## Callers pass the faction frozen into their attack/projectile snapshot; target
+## factions are deliberately read live by CombatQueryFacade on every query.
+func find_nearest_hostile_enemy_attack_target_world(
+	from_position: Vector2,
+	max_distance: float,
+	source_faction_id: int,
+	excluded_instance_ids: Dictionary = {}
+) -> Node2D:
+	_enemy_attack_target_query_scratch.clear()
+	if (
+		not from_position.is_finite()
+		or not is_finite(max_distance)
+		or max_distance < 0.0
+		or not CombatRelationService.is_valid_faction_id(source_faction_id)
+	):
+		return null
+	get_combat_query_facade().query_hostile_radius_into(
+		from_position,
+		max_distance,
+		source_faction_id,
+		_enemy_attack_target_query_scratch,
+		null,
+		0,
+		combat_relation_service
+	)
+	for candidate in _enemy_attack_target_query_scratch:
+		if excluded_instance_ids.has(candidate.get_instance_id()):
+			continue
+		return candidate
+	return null
+
+
 ## Fills caller-owned storage with every living allied player in an exact
 ## world-space circle. Plant auras use this facade in both solo and Host modes
 ## without rebuilding the scene tree or allocating a temporary player list.
@@ -1379,6 +1426,20 @@ func grant_xirang_kill_reward(amount: int) -> bool:
 		_xirang_kill_reward_flush_queued = true
 		call_deferred("_flush_xirang_kill_rewards")
 	return true
+
+
+func grant_xirang_kill_reward_for_defeat(
+	amount: int,
+	defeat_context: EnemyDefeatContext
+) -> bool:
+	if (
+		defeat_context != null
+		and not defeat_context.is_player_reward_eligible()
+	):
+		return false
+	# Keep the existing virtual reward hook intact so Tower Defense fate
+	# multipliers and campaign accounting still execute after attribution passed.
+	return grant_xirang_kill_reward(amount)
 
 
 ## Canonical shared combat feedback entry point. Concrete game scenes with a

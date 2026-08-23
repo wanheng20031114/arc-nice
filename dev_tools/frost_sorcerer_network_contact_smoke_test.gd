@@ -29,12 +29,92 @@ class TestMpGame:
 	var last_reported_damage_flags := 0
 	var sent_methods: Array[StringName] = []
 	var sent_arguments: Array[Array] = []
+	var _test_mode_adapter: MultiplayerModeAdapter = null
+	var _processed_player_hit_ids: Dictionary = {}
 
 	func _init() -> void:
-		var coordinator := MpProjectileCoordinator.new()
-		coordinator.name = "ProjectileCoordinator"
-		add_child(coordinator)
-		projectile_coordinator = coordinator
+		var projectile := MpProjectileCoordinator.new()
+		projectile.name = "ProjectileCoordinator"
+		add_child(projectile)
+		projectile_coordinator = projectile
+		var player := MpPlayerCoordinator.new()
+		player.name = "PlayerCoordinator"
+		add_child(player)
+		player_coordinator = player
+		_test_mode_adapter = MultiplayerModeAdapter.new()
+		_test_mode_adapter.name = "ModeAdapter"
+		add_child(_test_mode_adapter)
+		_processed_player_hit_ids = (
+			player_coordinator.get("_processed_player_hit_ids") as Dictionary
+		)
+		player_coordinator.life_rpc_broadcast_requested.connect(
+			_on_player_life_rpc_broadcast_requested
+		)
+
+	func configure_damage_dependencies(
+		runtime_instance: CombatRuntimeBase,
+		net_manager_instance: NetManagerStore
+	) -> void:
+		game = runtime_instance
+		net_manager = net_manager_instance
+		_test_mode_adapter.bind_runtime(runtime_instance)
+		player_coordinator.bind_runtime(runtime_instance)
+		player_coordinator.bind_life_dependencies(
+			net_manager_instance,
+			_test_mode_adapter,
+			projectile_coordinator,
+			Callable(self, "_get_test_net_time"),
+			Callable(self, "_noop_life_transition"),
+			Callable(self, "_noop_life_transition"),
+			Callable(self, "_noop_life_transition"),
+			Callable(self, "_get_test_revive_anchor"),
+			Callable(self, "_commit_test_revive_position")
+		)
+
+	func _get_multiplayer_player_hit_key(
+		source_id: int,
+		target_peer_id: int,
+		source_type: StringName
+	) -> String:
+		return String(player_coordinator.call(
+			"_get_multiplayer_player_hit_key",
+			source_id,
+			target_peer_id,
+			source_type
+		))
+
+	func _get_frost_ice_spike_record_damage(
+		projectile_id: int,
+		source_type: StringName
+	) -> int:
+		return projectile_coordinator.get_frost_ice_spike_record_damage(
+			projectile_id,
+			source_type
+		)
+
+	func _is_frost_ice_spike_contact_consumed(
+		projectile_id: int,
+		source_type: StringName
+	) -> bool:
+		return projectile_coordinator.is_frost_ice_spike_contact_consumed(
+			projectile_id,
+			source_type
+		)
+
+	func _get_test_net_time() -> float:
+		return 0.0
+
+	func _noop_life_transition(_peer_id: int = 0) -> void:
+		pass
+
+	func _get_test_revive_anchor(_peer_id: int) -> Vector2:
+		return Vector2.ZERO
+
+	func _commit_test_revive_position(
+		_peer_id: int,
+		_position: Vector2
+	) -> bool:
+		return true
 
 	func request_player_hit_report(
 		source_id: int,
@@ -58,11 +138,10 @@ class TestMpGame:
 
 
 class TestNetManager:
-	extends Node
+	extends NetManagerStore
 
 	var host_mode := true
 	var local_peer_id := 1
-	var connected_players: Dictionary = {}
 
 	func is_host() -> bool:
 		return host_mode
@@ -303,9 +382,8 @@ func _test_terminal_record_consumption() -> void:
 func _test_network_instantiation_and_lifetime_compensation() -> void:
 	var mp_game := TestMpGame.new()
 	var net_manager := TestNetManager.new()
-	mp_game.set("net_manager", net_manager)
 	test_scene.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	mp_game.set("game", test_scene)
+	mp_game.configure_damage_dependencies(test_scene, net_manager)
 	mp_game.projectile_coordinator.bind_runtime(test_scene)
 	var projectile := mp_game.projectile_coordinator.instantiate_projectile(
 		ICE_SPIKE_TYPE,
@@ -388,8 +466,7 @@ func _test_host_authoritative_damage_and_cold_guards() -> void:
 	var net_manager := TestNetManager.new()
 	var game := test_scene
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	mp_game.set("net_manager", net_manager)
-	mp_game.set("game", game)
+	mp_game.configure_damage_dependencies(game, net_manager)
 
 	var hit_player := _spawn_player(Vector2(-800.0, -400.0), 10)
 	var blocked_second_player := _spawn_player(
@@ -419,7 +496,8 @@ func _test_host_authoritative_damage_and_cold_guards() -> void:
 	_remember_ice_spike_record(mp_game, hit_projectile_id)
 	mp_game.sent_methods.clear()
 	mp_game.sent_arguments.clear()
-	var hit_was_handled := mp_game.request_multiplayer_player_damage(
+	var hit_was_handled := _request_frost_player_damage(
+		mp_game,
 		hit_projectile_id,
 		hit_player.peer_id,
 		999,
@@ -454,7 +532,8 @@ func _test_host_authoritative_damage_and_cold_guards() -> void:
 	)
 
 	var sent_count_after_first_target := mp_game.sent_methods.size()
-	mp_game.request_multiplayer_player_damage(
+	_request_frost_player_damage(
+		mp_game,
 		hit_projectile_id,
 		blocked_second_player.peer_id,
 		ICE_SPIKE_DAMAGE,
@@ -473,7 +552,8 @@ func _test_host_authoritative_damage_and_cold_guards() -> void:
 	var dodge_projectile_id := 82011
 	_remember_ice_spike_record(mp_game, dodge_projectile_id)
 	dodge_player.dodge_chance = 1.0
-	mp_game.request_multiplayer_player_damage(
+	_request_frost_player_damage(
+		mp_game,
 		dodge_projectile_id,
 		dodge_player.peer_id,
 		ICE_SPIKE_DAMAGE,
@@ -495,7 +575,8 @@ func _test_host_authoritative_damage_and_cold_guards() -> void:
 	var invincible_projectile_id := 82012
 	_remember_ice_spike_record(mp_game, invincible_projectile_id)
 	invincible_player.invincibility_time_left = 1.0
-	mp_game.request_multiplayer_player_damage(
+	_request_frost_player_damage(
+		mp_game,
 		invincible_projectile_id,
 		invincible_player.peer_id,
 		ICE_SPIKE_DAMAGE,
@@ -516,8 +597,8 @@ func _test_host_authoritative_damage_and_cold_guards() -> void:
 	_remember_ice_spike_record(mp_game, lethal_projectile_id)
 	lethal_player.current_health = 10
 	lethal_player.health_bar.set_health(10, TEST_HEALTH)
-	game.wave_state = CombatFlowState.State.VICTORY
-	mp_game.request_multiplayer_player_damage(
+	_request_frost_player_damage(
+		mp_game,
 		lethal_projectile_id,
 		lethal_player.peer_id,
 		ICE_SPIKE_DAMAGE,
@@ -556,14 +637,14 @@ func _test_client_confirmation_and_revision_deduplication() -> void:
 	player.magic_defense = 20
 	player.set("_base_magic_defense", 20)
 	game.peer_players[player.peer_id] = player
-	mp_game.set("net_manager", net_manager)
-	mp_game.set("game", game)
+	mp_game.configure_damage_dependencies(game, net_manager)
 
 	var projectile_id := 82020
 	_remember_ice_spike_record(mp_game, projectile_id)
 	player.current_health = 10
 	player.health_bar.set_health(10, TEST_HEALTH)
-	var request_was_handled := mp_game.request_multiplayer_player_damage(
+	var request_was_handled := _request_frost_player_damage(
+		mp_game,
 		projectile_id,
 		player.peer_id,
 		999,
@@ -691,6 +772,27 @@ func _remember_ice_spike_record(
 	)
 
 
+func _request_frost_player_damage(
+	mp_game: TestMpGame,
+	projectile_id: int,
+	target_peer_id: int,
+	damage: int,
+	source_type: StringName,
+	damage_type: EnemyConfig.DamageType,
+	source_direction: Vector2,
+	is_ranged: bool
+) -> bool:
+	return mp_game.request_multiplayer_player_damage_with_source_snapshot(
+		_make_hostile_projectile_snapshot(source_type, projectile_id),
+		target_peer_id,
+		damage,
+		damage_type,
+		source_direction,
+		is_ranged,
+		false
+	)
+
+
 func _spawn_player(position: Vector2, peer_id: int) -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_scene.add_child(player)
@@ -728,13 +830,27 @@ func _spawn_bound_ice_spike(
 		Vector2.RIGHT,
 		ICE_SPIKE_DAMAGE,
 		ICE_SPIKE_SPEED,
-		ICE_SPIKE_LIFETIME
+		ICE_SPIKE_LIFETIME,
+		_make_hostile_projectile_snapshot(ICE_SPIKE_TYPE, projectile_id)
 	)
 	test_scene.add_child(projectile)
 	if projectile_id > 0:
 		projectile.setup_multiplayer(projectile_id, 1, ICE_SPIKE_TYPE)
 	projectile.set_physics_process(false)
 	return projectile
+
+
+func _make_hostile_projectile_snapshot(
+	source_type: StringName,
+	event_source_id: int = 0
+) -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		1,
+		event_source_id,
+		source_type
+	)
 
 
 func _get_cold_scheduler() -> Node:

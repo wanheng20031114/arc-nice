@@ -519,31 +519,36 @@ func _process_explosion_batch() -> void:
 			)
 	for enemy_id_variant in accumulated_hits:
 		var enemy_id := int(enemy_id_variant)
-		var hit_record := accumulated_hits[enemy_id] as Dictionary
-		var enemy := hit_record.get("enemy") as Enemy
-		if (
-			enemy == null
-			or not is_instance_valid(enemy)
-			or not enemy.is_inside_tree()
-			or enemy.is_dead
-		):
-			continue
-		var direction_sum := hit_record.get(
-			"direction_sum",
-			Vector2.ZERO
-		) as Vector2
-		var impact_direction := (
-			direction_sum.normalized()
-			if direction_sum.length_squared() > 0.0001
-			else Vector2.UP
-		)
-		_apply_enemy_damage_batch(
-			enemy,
-			hit_record.get("damage_amounts") as PackedInt64Array,
-			hit_record.get("hit_counts") as PackedInt32Array,
-			impact_direction
-		)
-		explosion_enemy_batch_calls_total += 1
+		var source_records := accumulated_hits[enemy_id] as Dictionary
+		for damage_source_id_variant in source_records:
+			var hit_record := (
+				source_records[damage_source_id_variant] as Dictionary
+			)
+			var enemy := hit_record.get("enemy") as Enemy
+			if (
+				enemy == null
+				or not is_instance_valid(enemy)
+				or not enemy.is_inside_tree()
+				or enemy.is_dead
+			):
+				continue
+			var direction_sum := hit_record.get(
+				"direction_sum",
+				Vector2.ZERO
+			) as Vector2
+			var impact_direction := (
+				direction_sum.normalized()
+				if direction_sum.length_squared() > 0.0001
+				else Vector2.UP
+			)
+			_apply_enemy_damage_batch(
+				int(damage_source_id_variant),
+				enemy,
+				hit_record.get("damage_amounts") as PackedInt64Array,
+				hit_record.get("hit_counts") as PackedInt32Array,
+				impact_direction
+			)
+			explosion_enemy_batch_calls_total += 1
 	last_explosion_processing_usec = int(
 		Time.get_ticks_usec() - started_usec
 	)
@@ -568,6 +573,7 @@ func _apply_single_dense_group_exact(group: Dictionary) -> void:
 	var inner_damage := maxi(int(group.get("inner_damage", 0)), 0)
 	var outer_damage := maxi(int(group.get("outer_damage", 0)), 0)
 	var hit_count := maxi(int(group.get("count", 1)), 1)
+	var damage_source_id := maxi(int(group.get("damage_source_id", 0)), 0)
 	var candidates: Array[Enemy] = []
 	_combat_runtime.query_combat_targets_unordered_into(
 		position,
@@ -618,6 +624,7 @@ func _apply_single_dense_group_exact(group: Dictionary) -> void:
 			else Vector2.UP
 		)
 		_apply_enemy_damage_batch(
+			damage_source_id,
 			enemy,
 			damage_amounts,
 			shared_hit_counts,
@@ -635,6 +642,7 @@ func _try_apply_single_cluster_profile_exact(
 	var landing_groups := (
 		profile.get("groups", []) as Array[Dictionary]
 	)
+	var damage_source_id := maxi(int(profile.get("damage_source_id", 0)), 0)
 	if landing_groups.size() <= 1:
 		return false
 	var landing_positions := PackedVector2Array()
@@ -820,6 +828,7 @@ func _try_apply_single_cluster_profile_exact(
 			else Vector2.UP
 		)
 		_apply_enemy_damage_batch(
+			damage_source_id,
 			enemy,
 			damage_amounts,
 			shared_hit_counts,
@@ -883,6 +892,8 @@ func _has_same_explosion_profile(
 		== int(b.get("inner_damage", 0))
 		and int(a.get("outer_damage", 0))
 		== int(b.get("outer_damage", 0))
+		and int(a.get("damage_source_id", 0))
+		== int(b.get("damage_source_id", 0))
 	)
 
 
@@ -902,6 +913,7 @@ func _group_landing_groups_by_profile(
 				"outer_radius": group.get("outer_radius", 0.0),
 				"inner_damage": group.get("inner_damage", 0),
 				"outer_damage": group.get("outer_damage", 0),
+				"damage_source_id": group.get("damage_source_id", 0),
 				"groups": [] as Array[Dictionary],
 			}
 			profiles.append(matched_profile)
@@ -1125,6 +1137,7 @@ func _accumulate_profile_hits(
 	var outer_radius_squared := outer_radius * outer_radius
 	var inner_damage := maxi(int(profile.get("inner_damage", 0)), 0)
 	var outer_damage := maxi(int(profile.get("outer_damage", 0)), 0)
+	var damage_source_id := maxi(int(profile.get("damage_source_id", 0)), 0)
 	var position_count := indexed_positions.size()
 	if position_count <= 0:
 		return
@@ -1459,6 +1472,7 @@ func _accumulate_profile_hits(
 			# 几何结果，生命/防御仍逐个独立结算。
 			if position_members.is_empty():
 				_apply_enemy_damage_batch(
+					damage_source_id,
 					indexed_enemies[enemy_index],
 					damage_amounts,
 					shared_hit_counts,
@@ -1472,6 +1486,7 @@ func _accumulate_profile_hits(
 				)
 				for member_index in members:
 					_apply_enemy_damage_batch(
+						damage_source_id,
 						indexed_enemies[member_index],
 						damage_amounts,
 						shared_hit_counts,
@@ -1495,6 +1510,7 @@ func _accumulate_profile_hits(
 				_append_accumulated_hit(
 					accumulated_hits,
 					indexed_enemies[member_index],
+					damage_source_id,
 					inner_damage,
 					inner_hit_count,
 					member_direction_sum
@@ -1504,6 +1520,7 @@ func _accumulate_profile_hits(
 				_append_accumulated_hit(
 					accumulated_hits,
 					indexed_enemies[member_index],
+					damage_source_id,
 					outer_damage,
 					outer_hit_count,
 					member_direction_sum
@@ -1537,10 +1554,12 @@ func _accumulate_group_hits_from_shared_index(
 	var inner_damage := maxi(int(group.get("inner_damage", 0)), 0)
 	var outer_damage := maxi(int(group.get("outer_damage", 0)), 0)
 	var hit_count := maxi(int(group.get("count", 1)), 1)
+	var damage_source_id := maxi(int(group.get("damage_source_id", 0)), 0)
 	for enemy in candidates:
 		_accumulate_enemy_hit(
 			accumulated_hits,
 			enemy,
+			damage_source_id,
 			position,
 			inner_radius_squared,
 			outer_radius_squared,
@@ -1553,6 +1572,7 @@ func _accumulate_group_hits_from_shared_index(
 func _accumulate_enemy_hit(
 	accumulated_hits: Dictionary[int, Dictionary],
 	enemy: Enemy,
+	damage_source_id: int,
 	position: Vector2,
 	inner_radius_squared: float,
 	outer_radius_squared: float,
@@ -1582,6 +1602,7 @@ func _accumulate_enemy_hit(
 	_append_accumulated_hit(
 		accumulated_hits,
 		enemy,
+		damage_source_id,
 		damage,
 		hit_count,
 		direction_delta * float(hit_count)
@@ -1591,12 +1612,15 @@ func _accumulate_enemy_hit(
 func _append_accumulated_hit(
 	accumulated_hits: Dictionary[int, Dictionary],
 	enemy: Enemy,
+	damage_source_id: int,
 	damage: int,
 	hit_count: int,
 	direction_contribution: Vector2
 ) -> void:
 	var enemy_id := enemy.get_instance_id()
-	var record := accumulated_hits.get(enemy_id, {}) as Dictionary
+	var safe_damage_source_id := maxi(damage_source_id, 0)
+	var source_records := accumulated_hits.get(enemy_id, {}) as Dictionary
+	var record := source_records.get(safe_damage_source_id, {}) as Dictionary
 	if record.is_empty():
 		record = {
 			"enemy": enemy,
@@ -1619,10 +1643,12 @@ func _append_accumulated_hit(
 	record["direction_sum"] = (
 		record.get("direction_sum", Vector2.ZERO) as Vector2
 	) + direction_contribution
-	accumulated_hits[enemy_id] = record
+	source_records[safe_damage_source_id] = record
+	accumulated_hits[enemy_id] = source_records
 
 
 func _apply_enemy_damage_batch(
+	damage_source_id: int,
 	enemy: Enemy,
 	damage_amounts: PackedInt64Array,
 	hit_counts: PackedInt32Array,
@@ -1634,7 +1660,7 @@ func _apply_enemy_damage_batch(
 	):
 		return false
 	var accepted := _tower_multiplayer_mode_adapter.apply_authoritative_plant_enemy_damage_batch(
-		0,
+		maxi(damage_source_id, 0),
 		enemy,
 		damage_amounts,
 		hit_counts,

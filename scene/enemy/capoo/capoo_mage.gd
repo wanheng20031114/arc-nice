@@ -252,7 +252,8 @@ func _fire_fireball() -> bool:
 		mage_config.projectile_lifetime,
 		mage_config.fireball_radius,
 		attack_target,
-		mage_config.fireball_homing_turn_rate
+		mage_config.fireball_homing_turn_rate,
+		create_damage_source_snapshot(0, &"capoo_mage_fireball")
 	)
 	if fireball.get_parent() == null:
 		spawn_parent.add_child(fireball)
@@ -260,6 +261,13 @@ func _fire_fireball() -> bool:
 		fireball.reparent(spawn_parent)
 	fireball.global_position = global_position + fire_direction * mage_config.projectile_spawn_distance
 	fireball.reset_physics_interpolation()
+	var target_peer_id := 0
+	var target_world_net_id := 0
+	var player_target := attack_target as Player
+	if player_target != null:
+		target_peer_id = player_target.peer_id
+	else:
+		target_world_net_id = int(attack_target.get_meta(&"net_id", 0))
 	gameplay_gateway.register_local_projectile(
 		fireball,
 		&"capoo_mage_fireball",
@@ -268,7 +276,10 @@ func _fire_fireball() -> bool:
 		fire_direction,
 		outgoing_damage,
 		mage_config.projectile_speed,
-		mage_config.projectile_lifetime
+		mage_config.projectile_lifetime,
+		false,
+		target_peer_id,
+		target_world_net_id
 	)
 	return true
 
