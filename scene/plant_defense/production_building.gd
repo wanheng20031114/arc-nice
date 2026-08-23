@@ -12,7 +12,6 @@ signal production_duration_multiplier_changed(
 
 const RUNTIME_STATE_SCHEMA := 5
 const INTERACTION_GROUP := PlantDefense.BUILDING_INTERACTION_GROUP
-const INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
 const VISUAL_PROJECTION_WINDOW_SECONDS := 1.0
 const MULTIPLAYER_PRODUCTION_REQUEST_TIMEOUT_SECONDS := 4.0
 const MAX_BUFFERED_OUTPUT_PATH_LENGTH := 512
@@ -61,7 +60,6 @@ var multiplayer_production_pending_request_id := 0
 var next_multiplayer_production_request_id := 1
 var production_duration_multiplier_modifiers: Dictionary[int, float] = {}
 var cached_production_duration_multiplier := 1.0
-var interaction_selection_refresh_left := 0.0
 var prompt_rest_position := Vector2.ZERO
 var output_bubble_rest_position := Vector2.ZERO
 var prompt_tween: Tween = null
@@ -87,19 +85,6 @@ func _ready() -> void:
 	)
 	production_state_changed.connect(_refresh_production_output_bubble)
 	_refresh_production_output_bubble()
-
-
-func _process(delta: float) -> void:
-	if nearby_player == null or not is_instance_valid(nearby_player):
-		nearby_player = null
-		_set_interaction_target(false)
-		set_process(false)
-		return
-	interaction_selection_refresh_left -= delta
-	if interaction_selection_refresh_left > 0.0:
-		return
-	interaction_selection_refresh_left = INTERACTION_SELECTION_REFRESH_SECONDS
-	_refresh_interaction_selection(nearby_player)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -164,7 +149,7 @@ func _on_removal_started(_mode: RemovalMode) -> void:
 	_set_interaction_target(false)
 	close_production_panel()
 	_refresh_production_output_bubble()
-	_refresh_interaction_selection(interaction_player)
+	_unregister_local_building_interaction_overlap(interaction_player)
 
 
 func set_production_coordinator(coordinator: ProductionCoordinator) -> void:
@@ -1087,7 +1072,7 @@ func on_shared_production_panel_opened(panel: ProductionBuildingPanel) -> void:
 	if panel != production_panel or not _has_bound_production_panel():
 		return
 	_set_interaction_target(false)
-	_refresh_interaction_selection(nearby_player)
+	_request_local_building_interaction_refresh(nearby_player)
 	modal_ui_visibility_changed.emit(true)
 
 
@@ -1095,7 +1080,7 @@ func on_shared_production_panel_closed(panel: ProductionBuildingPanel) -> void:
 	if panel != production_panel:
 		return
 	if nearby_player != null:
-		_refresh_interaction_selection(nearby_player)
+		_request_local_building_interaction_refresh(nearby_player)
 	else:
 		_set_interaction_target(false)
 	modal_ui_visibility_changed.emit(false)
@@ -1201,9 +1186,7 @@ func _on_interaction_area_body_entered(body: Node2D) -> void:
 	if player == null or not player.uses_local_input or player.is_dead:
 		return
 	nearby_player = player
-	interaction_selection_refresh_left = 0.0
-	set_process(true)
-	_refresh_interaction_selection(player)
+	_register_local_building_interaction_overlap(player)
 
 
 func _on_interaction_area_body_exited(body: Node2D) -> void:
@@ -1211,53 +1194,9 @@ func _on_interaction_area_body_exited(body: Node2D) -> void:
 		return
 	var exiting_player := nearby_player
 	nearby_player = null
-	set_process(false)
 	_set_interaction_target(false)
 	close_production_panel()
-	_refresh_interaction_selection(exiting_player)
-
-
-func _refresh_interaction_selection(player: Player) -> void:
-	if player == null or not is_instance_valid(player) or get_tree() == null:
-		return
-	var nearby_buildings: Array[PlantDefense] = []
-	var nearest_building: PlantDefense = null
-	var nearest_distance_squared := INF
-	var building_panel_is_open := false
-	for node in get_tree().get_nodes_in_group(INTERACTION_GROUP):
-		var building := node as PlantDefense
-		if (
-			building == null
-			or not is_instance_valid(building)
-			or building.is_queued_for_deletion()
-			or building.get_interaction_player() != player
-		):
-			continue
-		nearby_buildings.append(building)
-		if building.is_modal_ui_open():
-			building_panel_is_open = true
-		if building.is_dead or building.is_removing or building.is_modal_ui_open():
-			continue
-		var distance_squared := player.global_position.distance_squared_to(
-			building.global_position
-		)
-		if PlantDefense.is_interaction_candidate_preferred(
-			building,
-			distance_squared,
-			nearest_building,
-			nearest_distance_squared
-		):
-			nearest_building = building
-			nearest_distance_squared = distance_squared
-	var can_select := (
-		not building_panel_is_open
-		and not player.is_dead
-		and not player.controls_locked
-	)
-	for building in nearby_buildings:
-		building.set_interaction_target_selected(
-			can_select and building == nearest_building
-		)
+	_unregister_local_building_interaction_overlap(exiting_player)
 
 
 func _set_interaction_target(should_be_target: bool) -> void:

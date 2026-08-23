@@ -55,6 +55,10 @@ var config: PlantDefenseConfig = null
 var owner_player: Player = null
 var combat_runtime: CombatRuntimeBase = null
 var tower_multiplayer_mode_adapter: TowerPlantGameplayPort = null
+var building_interaction_selection_host: Node = null
+var _building_interaction_overlap_register := Callable()
+var _building_interaction_overlap_unregister := Callable()
+var _building_interaction_state_refresh := Callable()
 var footprint_cells: Array[Vector2i] = []
 var current_health: int = 0
 var max_health: int = 0
@@ -95,6 +99,52 @@ func bind_gameplay_context(
 ) -> void:
 	combat_runtime = runtime_instance
 	tower_multiplayer_mode_adapter = mode_adapter
+
+
+## PlantSystem owns local building interaction arbitration. Interactive
+## buildings only report exact Area2D overlap changes; they never scan the
+## scene-wide interaction group themselves.
+func bind_building_interaction_selection_host(host: Node) -> void:
+	building_interaction_selection_host = host
+	_building_interaction_overlap_register = (
+		Callable(host, &"register_local_interaction_overlap")
+		if host != null
+		else Callable()
+	)
+	_building_interaction_overlap_unregister = (
+		Callable(host, &"unregister_local_interaction_overlap")
+		if host != null
+		else Callable()
+	)
+	_building_interaction_state_refresh = (
+		Callable(host, &"notify_local_interaction_state_changed")
+		if host != null
+		else Callable()
+	)
+
+
+func _register_local_building_interaction_overlap(player: Player) -> void:
+	if not _building_interaction_overlap_register.is_valid():
+		return
+	_building_interaction_overlap_register.call(
+		self,
+		player
+	)
+
+
+func _unregister_local_building_interaction_overlap(player: Player) -> void:
+	if not _building_interaction_overlap_unregister.is_valid():
+		return
+	_building_interaction_overlap_unregister.call(
+		self,
+		player
+	)
+
+
+func _request_local_building_interaction_refresh(player: Player) -> void:
+	if not _building_interaction_state_refresh.is_valid():
+		return
+	_building_interaction_state_refresh.call(player)
 
 
 func _ready() -> void:

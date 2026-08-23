@@ -77,6 +77,8 @@ func _run() -> void:
 
 	var fixture := Node2D.new()
 	root.add_child(fixture)
+	var interaction_selector := PlantSystem.new()
+	fixture.add_child(interaction_selector)
 	var player := PLAYER_SCENE.instantiate() as Player
 	fixture.add_child(player)
 	player.set_physics_process(false)
@@ -84,6 +86,7 @@ func _run() -> void:
 	storage_panel.visible = false
 	fixture.add_child(storage_panel)
 	var warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
+	warehouse.bind_building_interaction_selection_host(interaction_selector)
 	fixture.add_child(warehouse)
 	warehouse.set_shared_storage_panel(storage_panel)
 	var config := PlantDefenseRegistry.get_config(&"oak_warehouse")
@@ -101,7 +104,7 @@ func _run() -> void:
 		if not inventory_only:
 			_test_config_and_scene(config, warehouse)
 			await _test_plant_health_bar(warehouse)
-			_test_interaction_lock(player, warehouse)
+			await _test_interaction_lock(player, warehouse)
 		_test_detail_layout(warehouse.storage_panel)
 		_test_quick_use_presentation(run_state, warehouse)
 		run_state.begin_new_run(&"weishidaier", false)
@@ -491,6 +494,7 @@ func _assert_action_button_layout(
 
 func _test_interaction_lock(player: Player, warehouse: OakWarehouse) -> void:
 	warehouse.call("_on_interaction_area_body_entered", player)
+	await process_frame
 	_expect(warehouse.interaction_prompt.visible, "玩家靠近后必须显示按F打开提示。")
 	var interact_event := InputEventKey.new()
 	interact_event.physical_keycode = KEY_F
@@ -502,6 +506,7 @@ func _test_interaction_lock(player: Player, warehouse: OakWarehouse) -> void:
 	warehouse.storage_panel._input(interact_event)
 	_expect(not warehouse.storage_panel.is_open(), "仓库打开后再次按F必须关闭界面。")
 	_expect(not player.controls_locked, "按F关闭仓库后必须解除玩家操作锁。")
+	await process_frame
 
 	warehouse._unhandled_input(interact_event)
 	_expect(warehouse.storage_panel.is_open(), "仓库关闭后必须能再次打开。")
@@ -512,6 +517,7 @@ func _test_interaction_lock(player: Player, warehouse: OakWarehouse) -> void:
 	warehouse.storage_panel._input(joypad_y)
 	_expect(not warehouse.storage_panel.is_open(), "仓库打开后按手柄Y必须关闭界面。")
 	_expect(not player.controls_locked, "按手柄Y关闭仓库后必须解除玩家操作锁。")
+	await process_frame
 
 
 func _test_plant_health_bar(warehouse: OakWarehouse) -> void:
@@ -537,6 +543,9 @@ func _test_unique_nearest_interaction(
 ) -> void:
 	var second_warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
 	second_warehouse.position = Vector2(32, 0)
+	second_warehouse.bind_building_interaction_selection_host(
+		first_warehouse.building_interaction_selection_host
+	)
 	fixture.add_child(second_warehouse)
 	second_warehouse.set_shared_storage_panel(first_warehouse.storage_panel)
 	second_warehouse.setup(
@@ -548,7 +557,7 @@ func _test_unique_nearest_interaction(
 
 	player.global_position = first_warehouse.global_position
 	second_warehouse.call("_on_interaction_area_body_entered", player)
-	first_warehouse.call("_refresh_interaction_selection", player)
+	await process_frame
 	_expect(
 		first_warehouse.is_interaction_target
 		and first_warehouse.interaction_prompt.visible

@@ -42,6 +42,7 @@ const CARDINAL_NEIGHBOR_OFFSETS := [
 # Cardinal topology bits: up=1, right=2, down=4, left=8.
 const CARDINAL_NEIGHBOR_BITS := [1, 2, 4, 8]
 const WATER_COLLECTOR_RESEARCH_MODIFIER_SOURCE_ID := -10001
+const LOCAL_INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
 
 @export_range(0, 64, 1) var max_placement_manhattan_distance: int = (
 	MAX_PLACEMENT_MANHATTAN_DISTANCE
@@ -97,6 +98,37 @@ var _last_cardinal_connection_refresh_metrics := {
 	"plants_updated": 0,
 	"masks_changed": 0,
 }
+var _local_interaction_players: Dictionary[int, Player] = {}
+var _local_interaction_candidates_by_player: Dictionary[int, Dictionary] = {}
+var _local_interaction_selected_by_player: Dictionary[int, PlantDefense] = {}
+var _dirty_local_interaction_player_ids: Dictionary[int, bool] = {}
+var _local_interaction_selection_refresh_left := 0.0
+var _local_interaction_selection_flush_scheduled := false
+var _local_interaction_selection_flush_count := 0
+var _local_interaction_selection_dirty_request_count := 0
+var _last_local_interaction_selection_metrics := {
+	"players_refreshed": 0,
+	"candidates_visited": 0,
+	"selection_changes": 0,
+}
+
+
+func _ready() -> void:
+	set_process(false)
+
+
+func _process(delta: float) -> void:
+	if _local_interaction_candidates_by_player.is_empty():
+		set_process(false)
+		return
+	_local_interaction_selection_refresh_left -= delta
+	if _local_interaction_selection_refresh_left > 0.0:
+		return
+	_local_interaction_selection_refresh_left = (
+		LOCAL_INTERACTION_SELECTION_REFRESH_SECONDS
+	)
+	for player_id in _local_interaction_candidates_by_player:
+		_mark_local_interaction_player_dirty(int(player_id))
 
 
 func setup(
@@ -109,6 +141,7 @@ func setup(
 	new_tower_multiplayer_mode_adapter: TowerPlantGameplayPort = null
 ) -> void:
 	_disconnect_terrain_changed_signal()
+	_clear_local_interaction_selection_state()
 	ground_tile_map = new_ground_tile_map
 	terrain_map = new_terrain_map
 	owner_player = new_owner_player
@@ -123,6 +156,7 @@ func setup(
 
 func _exit_tree() -> void:
 	_disconnect_terrain_changed_signal()
+	_clear_local_interaction_selection_state()
 	terrain_map = null
 	_unsupported_terrain_plants.clear()
 	_terrain_support_plants_by_cell.clear()
@@ -369,6 +403,7 @@ func _instantiate_registered_plant(
 		combat_runtime,
 		tower_multiplayer_mode_adapter
 	)
+	plant.bind_building_interaction_selection_host(self)
 	plant_container.add_child(plant)
 	plant.global_position = get_anchor_world_position(top_left_cell, config)
 	if net_id > 0:
@@ -882,6 +917,291 @@ func query_living_plants_in_world_radius_into(
 		if center.distance_squared_to(plant.global_position) > radius_squared:
 			continue
 		result.append(plant)
+
+
+## Registers one exact local Area2D overlap. Many buildings can report changes
+## in the same physics frame; selection is dirtied here and resolved once by the
+## deferred batch, rather than recursively asking every building to rescan all
+## interaction nodes.
+func register_local_interaction_overlap(
+	building: PlantDefense,
+	player: Player
+) -> void:
+	if (
+		building == null
+		or not is_instance_valid(building)
+		or player == null
+		or not is_instance_valid(player)
+		or not player.uses_local_input
+	):
+		return
+	var player_id := int(player.get_instance_id())
+	var candidates := _local_interaction_candidates_by_player.get(
+		player_id,
+		{}
+	) as Dictionary
+	candidates[int(building.get_instance_id())] = building
+	_local_interaction_candidates_by_player[player_id] = candidates
+	_local_interaction_players[player_id] = player
+	_mark_local_interaction_player_dirty(player_id)
+	_refresh_local_interaction_process_state()
+
+
+func unregister_local_interaction_overlap(
+	building: PlantDefense,
+	player: Player
+) -> void:
+	if building == null or player == null:
+		return
+	var player_id := int(player.get_instance_id())
+	_remove_local_interaction_candidate(player_id, building)
+
+
+## Plant removal/tree-exit is driven by PlantSystem itself, so this path removes
+## a stale candidate from every local-player set in O(local players) without
+## relying on a final Area2D body_exited signal.
+func unregister_local_interaction_building(building: PlantDefense) -> void:
+	if building == null:
+		return
+	var player_ids := _local_interaction_candidates_by_player.keys()
+	for player_id_variant in player_ids:
+		_remove_local_interaction_candidate(int(player_id_variant), building)
+
+
+## Modal-panel and control-lock transitions do not change Area2D overlap, but do
+## affect whether a prompt may be selected. They share the same coalesced dirty
+## batch as enter/exit events.
+func notify_local_interaction_state_changed(player: Player) -> void:
+	if player == null or not is_instance_valid(player):
+		return
+	var player_id := int(player.get_instance_id())
+	if not _local_interaction_candidates_by_player.has(player_id):
+		return
+	# Opening a modal or acquiring another control lock must hide the current
+	# prompt synchronously. Clear only the one selected pointer here; choosing a
+	# replacement remains deferred and coalesced with every other event this frame.
+	var selected := _local_interaction_selected_by_player.get(
+		player_id
+	) as PlantDefense
+	if (
+		selected != null
+		and is_instance_valid(selected)
+		and (
+			player.is_dead
+			or player.controls_locked
+			or selected.is_modal_ui_open()
+		)
+	):
+		selected.set_interaction_target_selected(false)
+		_local_interaction_selected_by_player.erase(player_id)
+	_mark_local_interaction_player_dirty(player_id)
+
+
+func get_local_interaction_selection_metrics() -> Dictionary:
+	var metrics := _last_local_interaction_selection_metrics.duplicate(true)
+	metrics["flush_count"] = _local_interaction_selection_flush_count
+	metrics["dirty_request_count"] = (
+		_local_interaction_selection_dirty_request_count
+	)
+	metrics["tracked_player_count"] = (
+		_local_interaction_candidates_by_player.size()
+	)
+	return metrics
+
+
+func reset_local_interaction_selection_metrics() -> void:
+	_local_interaction_selection_flush_count = 0
+	_local_interaction_selection_dirty_request_count = 0
+	_last_local_interaction_selection_metrics = {
+		"players_refreshed": 0,
+		"candidates_visited": 0,
+		"selection_changes": 0,
+	}
+
+
+func _remove_local_interaction_candidate(
+	player_id: int,
+	building: PlantDefense
+) -> void:
+	var candidates := _local_interaction_candidates_by_player.get(
+		player_id,
+		{}
+	) as Dictionary
+	if candidates.is_empty():
+		return
+	var building_id := int(building.get_instance_id())
+	if not candidates.erase(building_id):
+		return
+	var selected := _local_interaction_selected_by_player.get(
+		player_id
+	) as PlantDefense
+	if selected == building:
+		_local_interaction_selected_by_player.erase(player_id)
+		if is_instance_valid(building):
+			building.set_interaction_target_selected(false)
+	if candidates.is_empty():
+		_local_interaction_candidates_by_player.erase(player_id)
+		_local_interaction_players.erase(player_id)
+		_dirty_local_interaction_player_ids.erase(player_id)
+	else:
+		_local_interaction_candidates_by_player[player_id] = candidates
+		_mark_local_interaction_player_dirty(player_id)
+	_refresh_local_interaction_process_state()
+
+
+func _mark_local_interaction_player_dirty(player_id: int) -> void:
+	if player_id <= 0:
+		return
+	_local_interaction_selection_dirty_request_count += 1
+	_dirty_local_interaction_player_ids[player_id] = true
+	if _local_interaction_selection_flush_scheduled:
+		return
+	_local_interaction_selection_flush_scheduled = true
+	call_deferred(&"_flush_dirty_local_interaction_selection")
+
+
+func _flush_dirty_local_interaction_selection() -> void:
+	_local_interaction_selection_flush_scheduled = false
+	if _dirty_local_interaction_player_ids.is_empty():
+		return
+	var dirty_player_ids := _dirty_local_interaction_player_ids.keys()
+	dirty_player_ids.sort()
+	_dirty_local_interaction_player_ids.clear()
+	var players_refreshed := 0
+	var candidates_visited := 0
+	var selection_changes := 0
+	for player_id_variant in dirty_player_ids:
+		var result := _refresh_local_interaction_selection(
+			int(player_id_variant)
+		)
+		players_refreshed += int(result.get("players_refreshed", 0))
+		candidates_visited += int(result.get("candidates_visited", 0))
+		selection_changes += int(result.get("selection_changes", 0))
+	_local_interaction_selection_flush_count += 1
+	_last_local_interaction_selection_metrics = {
+		"players_refreshed": players_refreshed,
+		"candidates_visited": candidates_visited,
+		"selection_changes": selection_changes,
+	}
+
+
+func _refresh_local_interaction_selection(player_id: int) -> Dictionary:
+	var player := _local_interaction_players.get(player_id) as Player
+	var candidates := _local_interaction_candidates_by_player.get(
+		player_id,
+		{}
+	) as Dictionary
+	if player == null or not is_instance_valid(player) or candidates.is_empty():
+		_clear_local_interaction_player_state(player_id)
+		return {
+			"players_refreshed": 0,
+			"candidates_visited": 0,
+			"selection_changes": 0,
+		}
+
+	var nearest_building: PlantDefense = null
+	var nearest_distance_squared := INF
+	var building_panel_is_open := false
+	var candidates_visited := 0
+	var stale_candidate_ids: Array[int] = []
+	for candidate_id_variant in candidates:
+		var candidate_id := int(candidate_id_variant)
+		var building := candidates[candidate_id_variant] as PlantDefense
+		candidates_visited += 1
+		if (
+			building == null
+			or not is_instance_valid(building)
+			or building.is_queued_for_deletion()
+			or building.get_interaction_player() != player
+		):
+			stale_candidate_ids.append(candidate_id)
+			continue
+		if building.is_modal_ui_open():
+			building_panel_is_open = true
+		if (
+			not PlantDefense.is_operational_interaction_candidate(building)
+			or building.is_modal_ui_open()
+		):
+			continue
+		var distance_squared := player.global_position.distance_squared_to(
+			building.global_position
+		)
+		if PlantDefense.is_interaction_candidate_preferred(
+			building,
+			distance_squared,
+			nearest_building,
+			nearest_distance_squared
+		):
+			nearest_building = building
+			nearest_distance_squared = distance_squared
+	for stale_candidate_id in stale_candidate_ids:
+		candidates.erase(stale_candidate_id)
+
+	var can_select := (
+		not building_panel_is_open
+		and not player.is_dead
+		and not player.controls_locked
+	)
+	var next_selected := nearest_building if can_select else null
+	var previous_selected := _local_interaction_selected_by_player.get(
+		player_id
+	) as PlantDefense
+	var selection_changes := 0
+	if previous_selected != next_selected:
+		if previous_selected != null and is_instance_valid(previous_selected):
+			previous_selected.set_interaction_target_selected(false)
+		if next_selected != null:
+			next_selected.set_interaction_target_selected(true)
+			_local_interaction_selected_by_player[player_id] = next_selected
+		else:
+			_local_interaction_selected_by_player.erase(player_id)
+		selection_changes = 1
+
+	if candidates.is_empty():
+		_clear_local_interaction_player_state(player_id)
+	else:
+		_local_interaction_candidates_by_player[player_id] = candidates
+	return {
+		"players_refreshed": 1,
+		"candidates_visited": candidates_visited,
+		"selection_changes": selection_changes,
+	}
+
+
+func _clear_local_interaction_player_state(player_id: int) -> void:
+	var selected := _local_interaction_selected_by_player.get(
+		player_id
+	) as PlantDefense
+	if selected != null and is_instance_valid(selected):
+		selected.set_interaction_target_selected(false)
+	_local_interaction_selected_by_player.erase(player_id)
+	_local_interaction_candidates_by_player.erase(player_id)
+	_local_interaction_players.erase(player_id)
+	_dirty_local_interaction_player_ids.erase(player_id)
+	_refresh_local_interaction_process_state()
+
+
+func _clear_local_interaction_selection_state() -> void:
+	for selected_variant in _local_interaction_selected_by_player.values():
+		var selected := selected_variant as PlantDefense
+		if selected != null and is_instance_valid(selected):
+			selected.set_interaction_target_selected(false)
+	_local_interaction_players.clear()
+	_local_interaction_candidates_by_player.clear()
+	_local_interaction_selected_by_player.clear()
+	_dirty_local_interaction_player_ids.clear()
+	_local_interaction_selection_refresh_left = 0.0
+	_local_interaction_selection_flush_scheduled = false
+	set_process(false)
+
+
+func _refresh_local_interaction_process_state() -> void:
+	var should_process := not _local_interaction_candidates_by_player.is_empty()
+	set_process(should_process)
+	if should_process and _local_interaction_selection_refresh_left <= 0.0:
+		_local_interaction_selection_refresh_left = (
+			LOCAL_INTERACTION_SELECTION_REFRESH_SECONDS
+		)
 
 
 ## Exact nearest-building query for authoritative multiplayer interaction.
@@ -1593,6 +1913,7 @@ func _release_plant_footprint(plant: PlantDefense) -> void:
 	if plant == null or not plant_footprints.has(plant):
 		return
 
+	unregister_local_interaction_building(plant)
 	var cells: Array = plant_footprints[plant]
 	var config := _registered_plant_configs.get(plant) as PlantDefenseConfig
 	if config == null:
