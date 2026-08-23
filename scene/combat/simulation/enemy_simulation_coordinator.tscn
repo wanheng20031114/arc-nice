@@ -1,7 +1,10 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scene/combat/simulation/enemy_simulation_coordinator.gd" id="1_coordinator"]
+[ext_resource type="PackedScene" path="res://scene/combat/simulation/enemy_combat_services.tscn" id="2_combat_services"]
 
 [node name="EnemySimulationCoordinator" type="Node"]
 process_physics_priority = 0
 script = ExtResource("1_coordinator")
+
+[node name="EnemyCombatServices" parent="." instance=ExtResource("2_combat_services")]

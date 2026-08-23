@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/combat/simulation/rapid_fire_simulation_service.gd" id="1_rapid_fire"]
+
+[node name="RapidFireSimulationService" type="Node"]
+script = ExtResource("1_rapid_fire")

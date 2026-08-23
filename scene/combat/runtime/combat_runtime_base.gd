@@ -4,6 +4,9 @@ class_name CombatRuntimeBase
 
 const CombatTargetIndexScript := preload("res://scene/combat/targeting/combat_target_index.gd")
 const EnemySpawnEffectBudgetScript := preload("res://scene/combat/feedback/enemy_spawn_effect_budget.gd")
+const EnemyCombatServicesScript := preload(
+	"res://scene/combat/simulation/enemy_combat_services.gd"
+)
 const ENEMY_SPAWN_EFFECT_SCENE := preload(
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_spawn_effect.tscn"
 )
@@ -154,6 +157,19 @@ func get_enemy_simulation_coordinator() -> EnemySimulationCoordinator:
 	return get_node_or_null(
 		"EnemySimulationCoordinator"
 	) as EnemySimulationCoordinator
+
+
+func get_enemy_combat_services() -> EnemyCombatServicesScript:
+	var coordinator := get_enemy_simulation_coordinator()
+	if coordinator == null:
+		return null
+	var combat_services := coordinator.get_combat_services()
+	if (
+		combat_services == null
+		or not combat_services.bind_context(self, coordinator)
+	):
+		return null
+	return combat_services
 
 
 func get_multiplayer_mode_adapter() -> MultiplayerModeAdapter:
@@ -1234,6 +1250,9 @@ func prepare_for_scene_teardown() -> void:
 	runtime_activation_deferred = false
 	runtime_activated = false
 	process_mode = Node.PROCESS_MODE_DISABLED
+	var enemy_simulation_coordinator := get_enemy_simulation_coordinator()
+	if enemy_simulation_coordinator != null:
+		enemy_simulation_coordinator.prepare_combat_services_for_runtime_teardown()
 	_on_scene_teardown_prepared()
 	_prepare_nested_combat_runtimes_for_scene_teardown(self)
 	# 会话正在整体销毁；本地索引只需静默释放，不能再发布逐实体终结包。

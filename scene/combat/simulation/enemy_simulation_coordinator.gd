@@ -1,6 +1,10 @@
 extends Node
 class_name EnemySimulationCoordinator
 
+const EnemyCombatServicesScript := preload(
+	"res://scene/combat/simulation/enemy_combat_services.gd"
+)
+
 ## Stable, authority-agnostic owner for the staged enemy simulation handoff.
 ## The caller owns runtime authority checks and the atomic transition of an
 ## Enemy's per-node physics callback. This coordinator only owns registrations
@@ -75,6 +79,7 @@ var _metric_cleared_registration_count := 0
 
 
 func _ready() -> void:
+	_bind_combat_services()
 	var requested_mode := EnemySimulationPolicy.resolve_mode_from_arguments(
 		OS.get_cmdline_args(),
 		_mode
@@ -84,6 +89,23 @@ func _ready() -> void:
 		_mode == EnemySimulationPolicy.Mode.COMPAT_60
 		and _registered_count > 0
 	)
+
+
+func get_combat_services() -> EnemyCombatServicesScript:
+	return get_node_or_null("EnemyCombatServices") as EnemyCombatServicesScript
+
+
+func prepare_combat_services_for_runtime_teardown() -> void:
+	var combat_services := get_combat_services()
+	if combat_services != null:
+		combat_services.prepare_for_runtime_teardown()
+
+
+func _bind_combat_services() -> void:
+	var combat_services := get_combat_services()
+	var combat_runtime := get_parent() as CombatRuntimeBase
+	if combat_services != null and combat_runtime != null:
+		combat_services.bind_context(combat_runtime, self)
 
 
 func set_mode(new_mode: int) -> void:
@@ -484,4 +506,5 @@ func _reset_cumulative_metrics() -> void:
 
 
 func _exit_tree() -> void:
+	prepare_combat_services_for_runtime_teardown()
 	clear(false)
