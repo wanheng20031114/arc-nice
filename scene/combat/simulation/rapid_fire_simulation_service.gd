@@ -123,11 +123,14 @@ var _next_spawn_sequence := 1
 var _completion_handles := PackedInt64Array()
 var _completion_projectile_ids := PackedInt64Array()
 var _completion_positions := PackedVector2Array()
+var _completion_directions := PackedVector2Array()
 var _completion_spawn_sequences := PackedInt64Array()
 var _completion_reasons := PackedInt32Array()
 var _completion_target_kinds := PackedInt32Array()
 var _completion_target_ids := PackedInt64Array()
 var _completion_damage_applied_states := PackedByteArray()
+var _completion_modes := PackedInt32Array()
+var _completion_profiles := PackedInt32Array()
 var _completion_capacity := 0
 var _completion_count := 0
 
@@ -535,6 +538,14 @@ func get_completion_position(index: int) -> Vector2:
 	)
 
 
+func get_completion_direction(index: int) -> Vector2:
+	return (
+		_completion_directions[index]
+		if index >= 0 and index < _completion_count
+		else Vector2.ZERO
+	)
+
+
 func get_completion_spawn_sequence(index: int) -> int:
 	return (
 		int(_completion_spawn_sequences[index])
@@ -572,6 +583,22 @@ func get_completion_damage_applied(index: int) -> bool:
 		_completion_damage_applied_states[index] != 0
 		if index >= 0 and index < _completion_count
 		else false
+	)
+
+
+func get_completion_mode(index: int) -> Mode:
+	return (
+		int(_completion_modes[index]) as Mode
+		if index >= 0 and index < _completion_count
+		else Mode.DISABLED
+	)
+
+
+func get_completion_profile(index: int) -> Profile:
+	return (
+		int(_completion_profiles[index]) as Profile
+		if index >= 0 and index < _completion_count
+		else Profile.INVALID
 	)
 
 
@@ -697,11 +724,14 @@ func clear() -> void:
 	_completion_handles.resize(0)
 	_completion_projectile_ids.resize(0)
 	_completion_positions.resize(0)
+	_completion_directions.resize(0)
 	_completion_spawn_sequences.resize(0)
 	_completion_reasons.resize(0)
 	_completion_target_kinds.resize(0)
 	_completion_target_ids.resize(0)
 	_completion_damage_applied_states.resize(0)
+	_completion_modes.resize(0)
+	_completion_profiles.resize(0)
 	_difference_handles.resize(0)
 	_difference_projectile_ids.resize(0)
 	_difference_position_deltas.resize(0)
@@ -1285,11 +1315,14 @@ func _resize_completion_storage(new_capacity: int) -> void:
 	_completion_handles.resize(new_capacity)
 	_completion_projectile_ids.resize(new_capacity)
 	_completion_positions.resize(new_capacity)
+	_completion_directions.resize(new_capacity)
 	_completion_spawn_sequences.resize(new_capacity)
 	_completion_reasons.resize(new_capacity)
 	_completion_target_kinds.resize(new_capacity)
 	_completion_target_ids.resize(new_capacity)
 	_completion_damage_applied_states.resize(new_capacity)
+	_completion_modes.resize(new_capacity)
+	_completion_profiles.resize(new_capacity)
 	_completion_capacity = new_capacity
 
 
@@ -1368,11 +1401,14 @@ func _append_completion(
 	)
 	_completion_projectile_ids[completion_index] = _projectile_ids[dense_slot]
 	_completion_positions[completion_index] = position
+	_completion_directions[completion_index] = _directions[dense_slot]
 	_completion_spawn_sequences[completion_index] = _spawn_sequences[dense_slot]
 	_completion_reasons[completion_index] = reason
 	_completion_target_kinds[completion_index] = target_kind
 	_completion_target_ids[completion_index] = target_id
 	_completion_damage_applied_states[completion_index] = int(damage_applied)
+	_completion_modes[completion_index] = _modes[dense_slot]
+	_completion_profiles[completion_index] = _profiles[dense_slot]
 
 
 func _mark_tombstone(dense_slot: int) -> void:

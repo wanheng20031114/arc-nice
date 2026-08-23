@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://scene/combat/simulation/rapid_projectile_presenter.tscn" id="5_presenter"]
 
 [node name="EnemyCombatServices" type="Node"]
+process_physics_priority = 6
 script = ExtResource("1_services")
 
 [node name="RapidFireSimulationService" parent="." instance=ExtResource("2_rapid_fire")]

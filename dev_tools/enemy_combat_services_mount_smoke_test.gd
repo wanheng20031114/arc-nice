@@ -97,6 +97,10 @@ func _test_authored_coordinator_service_tree_defaults_to_idle() -> void:
 		"The authored coordinator must contain EnemyCombatServices."
 	)
 	if combat_services != null:
+		_expect(
+			combat_services.process_physics_priority == 6,
+			"EnemyCombatServices must consume priority-4 completions at authored priority 6."
+		)
 		var rapid_fire_service := (
 			combat_services.get_rapid_fire_simulation_service()
 		)
@@ -240,9 +244,16 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 			"EnemyCombatServices must bind to its authored runtime and coordinator."
 		)
 		_expect(
+			runtime.get_enemy_combat_services() == combat_services
+			and combat_services.is_physics_processing(),
+			"CombatRuntimeBase must cache the bound typed services and enable its completion consumer."
+		)
+		_expect(
 			rapid_fire_service != null
-			and rapid_fire_service.is_bound_to(runtime, coordinator),
-			"RapidFireSimulationService must inherit the same bound context."
+			and rapid_fire_service.is_bound_to(runtime, coordinator)
+			and rapid_fire_service.get_reserved_capacity()
+			>= combat_services.RAPID_PROJECTILE_RESERVED_CAPACITY,
+			"Rapid-fire binding must follow the damageable index and reserve 4096 records."
 		)
 		_expect(
 			damageable_spatial_index != null
@@ -255,8 +266,9 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 			"ImmediateHitscanResolver must bind to the same combat runtime."
 		)
 		_expect(
-			rapid_projectile_presenter != null,
-			"The bound service tree must expose RapidProjectilePresenter."
+			rapid_projectile_presenter != null
+			and rapid_projectile_presenter.is_bound_to(rapid_fire_service),
+			"The bound service tree must bind RapidProjectilePresenter to the data kernel."
 		)
 		if rapid_projectile_presenter != null:
 			var mounted_presenter_metrics := rapid_projectile_presenter.get_metrics()

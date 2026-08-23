@@ -11,6 +11,7 @@ const MpProjectileCoordinator := preload(
 
 var accept_player_damage_requests := true
 var player_damage_requests: Array[Dictionary] = []
+var data_projectile_finish_notifications: Array[Dictionary] = []
 
 
 func _init() -> void:
@@ -47,3 +48,16 @@ func request_multiplayer_player_damage(
 		"contact_preconsumed": contact_preconsumed,
 	})
 	return accept_player_damage_requests
+
+
+func notify_data_projectile_finished(
+	projectile_id: int,
+	service: RapidFireSimulationService,
+	handle: int
+) -> void:
+	data_projectile_finish_notifications.append({
+		"projectile_id": projectile_id,
+		"service": service,
+		"handle": handle,
+	})
+	super.notify_data_projectile_finished(projectile_id, service, handle)

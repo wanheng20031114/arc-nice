@@ -83,8 +83,13 @@ func _test_same_frame_activation_and_final_lifetime_step() -> void:
 		and service.get_completion_reason(0)
 		== RapidFireSimulationServiceScript.CompletionReason.LIFETIME
 		and service.get_completion_target_kind(0)
-		== RapidFireSimulationServiceScript.TargetKind.NONE,
-		"Completion output must preserve the exact handle and projectile ID."
+		== RapidFireSimulationServiceScript.TargetKind.NONE
+		and service.get_completion_mode(0)
+		== RapidFireSimulationServiceScript.Mode.DATA
+		and service.get_completion_profile(0)
+		== RapidFireSimulationServiceScript.Profile.AK
+		and service.get_completion_direction(0).is_equal_approx(Vector2.RIGHT),
+		"Completion output must preserve exact identity, mode, profile, and direction."
 	)
 	var expected_final_position := (
 		Vector2(10.0, 20.0) + Vector2.RIGHT * 120.0 * TEST_DELTA

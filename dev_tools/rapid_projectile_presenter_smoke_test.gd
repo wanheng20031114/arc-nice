@@ -15,6 +15,9 @@ const PRESENTER_SCRIPT_PATH := (
 const PRESENTER_SHADER_PATH := (
 	"res://scene/combat/simulation/rapid_projectile_presenter.gdshader"
 )
+const HIT_PRESENTER_SHADER_PATH := (
+	"res://scene/combat/simulation/rapid_projectile_hit_presenter.gdshader"
+)
 const TEST_VIEW_RECT := Rect2(-32.0, -32.0, 64.0, 64.0)
 
 var failures: Array[String] = []
@@ -42,8 +45,8 @@ func _test_static_authored_multimesh_contract() -> void:
 		return
 	var multimesh_nodes := _collect_multimesh_nodes(presenter)
 	_expect(
-		multimesh_nodes.size() == 1,
-		"Presenter scene must author exactly one MultiMeshInstance2D."
+		multimesh_nodes.size() == 2,
+		"Presenter scene must author projectile and hit MultiMeshInstance2D batches."
 	)
 	var multimesh_instance := presenter.get_multimesh_instance()
 	_expect(
@@ -89,6 +92,19 @@ func _test_static_authored_multimesh_contract() -> void:
 			shader_material != null and shader_material.shader != null,
 			"The static MultiMesh must author its animation material."
 		)
+	var hit_multimesh_instance := presenter.get_hit_multimesh_instance()
+	_expect(
+		hit_multimesh_instance != null
+		and hit_multimesh_instance.name == &"HitMultiMesh"
+		and hit_multimesh_instance.multimesh != null
+		and hit_multimesh_instance.multimesh.resource_local_to_scene
+		and hit_multimesh_instance.multimesh.transform_format
+		== MultiMesh.TRANSFORM_2D
+		and hit_multimesh_instance.multimesh.use_custom_data
+		and hit_multimesh_instance.multimesh.instance_count == 0
+		and hit_multimesh_instance.multimesh.visible_instance_count == 0,
+		"Hit presentation must be one authored, empty, scene-local MultiMesh."
+	)
 
 	var shader_source := FileAccess.get_file_as_string(PRESENTER_SHADER_PATH)
 	_expect(
@@ -98,16 +114,35 @@ func _test_static_authored_multimesh_contract() -> void:
 		and shader_source.contains("/ 3.0"),
 		"Shader must use INSTANCE_CUSTOM to select three AK frames at 16 FPS."
 	)
+	var hit_shader_source := FileAccess.get_file_as_string(
+		HIT_PRESENTER_SHADER_PATH
+	)
+	_expect(
+		hit_shader_source.contains("render_mode unshaded, blend_add")
+		and hit_shader_source.contains("INSTANCE_CUSTOM.r"),
+		"Hit batch shader must animate a procedural unshaded flash from custom data."
+	)
 	var presenter_source := FileAccess.get_file_as_string(PRESENTER_SCRIPT_PATH)
 	_expect(
 		not presenter_source.contains("MultiMesh.new()")
 		and not presenter_source.contains("MultiMeshInstance2D.new()")
 		and not presenter_source.contains("QuadMesh.new()")
 		and not presenter_source.contains("add_child(")
+		and presenter_source.contains("func _process(delta: float)")
+		and presenter_source.contains("viewport.get_canvas_transform()")
 		and presenter_source.contains(
 			"multimesh.instance_count = FIXED_INSTANCE_CAPACITY"
 		),
-		"Presenter must retain its authored nodes and resources without dynamic construction."
+		"Presenter must render-sync from the viewport transform without dynamic nodes."
+	)
+	var transformed_world_rect := PresenterScript.calculate_world_aabb(
+		Rect2(Vector2.ZERO, Vector2(1280.0, 720.0)),
+		Transform2D(0.0, Vector2(2.0, 2.0), 0.0, Vector2(100.0, 40.0))
+	)
+	_expect(
+		transformed_world_rect.position.is_equal_approx(Vector2(-50.0, -20.0))
+		and transformed_world_rect.size.is_equal_approx(Vector2(640.0, 360.0)),
+		"Viewport canvas inversion must derive the complete world-space view AABB."
 	)
 	presenter.free()
 
@@ -224,6 +259,7 @@ func _test_headless_sync_clear_and_teardown() -> void:
 	root.add_child(presenter)
 	await process_frame
 	var multimesh_instance := presenter.get_multimesh_instance()
+	var hit_multimesh_instance := presenter.get_hit_multimesh_instance()
 	var before_sync_metrics := presenter.get_metrics()
 	var active_before_sync := service.get_active_slot_count()
 	_expect(
@@ -233,6 +269,13 @@ func _test_headless_sync_clear_and_teardown() -> void:
 		and multimesh_instance.multimesh.visible_instance_count == 0,
 		"Headless ready must release every authored MultiMesh instance."
 	)
+	_expect(
+		hit_multimesh_instance != null
+		and hit_multimesh_instance.multimesh != null
+		and hit_multimesh_instance.multimesh.instance_count == 0
+		and hit_multimesh_instance.multimesh.visible_instance_count == 0,
+		"Headless ready must keep the hit batch fully unallocated."
+	)
 	var synced_count := presenter.sync_from_service(service, TEST_VIEW_RECT)
 	var after_sync_metrics := presenter.get_metrics()
 	_expect(
@@ -241,6 +284,17 @@ func _test_headless_sync_clear_and_teardown() -> void:
 		and int(after_sync_metrics["sync_executions"]) == 0
 		and int(after_sync_metrics["last_scanned_count"]) == 0,
 		"Headless sync must return before scanning or uploading simulation records."
+	)
+	_expect(
+		not presenter.queue_completion_hit(
+			RapidFireSimulationServiceScript.Mode.DATA,
+			RapidFireSimulationServiceScript.Profile.AK,
+			RapidFireSimulationServiceScript.CompletionReason.TARGET,
+			Vector2.ZERO,
+			Vector2.RIGHT
+		)
+		and int(presenter.get_metrics()["last_hit_scanned_count"]) == 0,
+		"Headless hit presentation must reject before allocating or scanning."
 	)
 	_expect(
 		service.get_active_slot_count() == active_before_sync,
@@ -294,9 +348,12 @@ func _test_display_sync_hidden_and_teardown() -> void:
 	await process_frame
 	var multimesh_instance := presenter.get_multimesh_instance()
 	var multimesh := multimesh_instance.multimesh
+	var hit_multimesh := presenter.get_hit_multimesh_instance().multimesh
 	_expect(
 		multimesh.instance_count == PresenterScript.FIXED_INSTANCE_CAPACITY
-		and multimesh.visible_instance_count == 0,
+		and multimesh.visible_instance_count == 0
+		and hit_multimesh.instance_count == PresenterScript.HIT_INSTANCE_CAPACITY
+		and hit_multimesh.visible_instance_count == 0,
 		"Display ready must allocate exactly the fixed instance capacity."
 	)
 	var active_before_sync := service.get_active_slot_count()
@@ -318,6 +375,42 @@ func _test_display_sync_hidden_and_teardown() -> void:
 		service.get_active_slot_count() == active_before_sync,
 		"Display uploads and view culling must not alter simulation slots."
 	)
+	_expect(
+		presenter.queue_completion_hit(
+			RapidFireSimulationServiceScript.Mode.DATA,
+			RapidFireSimulationServiceScript.Profile.AK,
+			RapidFireSimulationServiceScript.CompletionReason.TARGET,
+			Vector2.ZERO,
+			Vector2.RIGHT
+		)
+		and not presenter.queue_completion_hit(
+			RapidFireSimulationServiceScript.Mode.DATA,
+			RapidFireSimulationServiceScript.Profile.AK,
+			RapidFireSimulationServiceScript.CompletionReason.LIFETIME,
+			Vector2.ZERO,
+			Vector2.RIGHT
+		)
+		and not presenter.queue_completion_hit(
+			RapidFireSimulationServiceScript.Mode.SHADOW,
+			RapidFireSimulationServiceScript.Profile.AK,
+			RapidFireSimulationServiceScript.CompletionReason.WORLD,
+			Vector2.ZERO,
+			Vector2.RIGHT
+		),
+		"Only DATA world/target completions may enter the fixed hit batch."
+	)
+	presenter._sync_hits(0.01, TEST_VIEW_RECT)
+	_expect(
+		hit_multimesh.visible_instance_count == 1
+		and int(presenter.get_metrics()["active_hit_count"]) == 1,
+		"One accepted completion must render as one batched hit instance."
+	)
+	presenter._sync_hits(PresenterScript.HIT_LIFETIME_SECONDS, TEST_VIEW_RECT)
+	_expect(
+		hit_multimesh.visible_instance_count == 0
+		and int(presenter.get_metrics()["active_hit_count"]) == 0,
+		"Batched hits must expire in-place without creating or freeing nodes."
+	)
 	presenter.visible = false
 	var executions_before_hidden_sync := int(presenter.get_metrics()["sync_executions"])
 	_expect(
@@ -332,6 +425,8 @@ func _test_display_sync_hidden_and_teardown() -> void:
 	_expect(
 		multimesh.instance_count == 0
 		and multimesh.visible_instance_count == 0
+		and hit_multimesh.instance_count == 0
+		and hit_multimesh.visible_instance_count == 0
 		and int(presenter.get_metrics()["teardown_count"]) == 1,
 		"Display teardown must be idempotent and release its fixed batch."
 	)

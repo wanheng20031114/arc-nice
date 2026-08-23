@@ -131,6 +131,7 @@ var combat_target_index = CombatTargetIndexScript.new()
 ## enemy, coordinator and multiplayer projection observes the same live rules.
 var combat_relation_service: CombatRelationService = CombatRelationService.new()
 var combat_query_facade: CombatQueryFacade = null
+var _enemy_combat_services: EnemyCombatServicesScript = null
 var _singleplayer_combat_target_index_enabled := false
 var _singleplayer_combat_target_index_force_local_queries := false
 var _enemy_snapshot_states_by_net_id: Dictionary = {}
@@ -164,6 +165,17 @@ func get_enemy_simulation_coordinator() -> EnemySimulationCoordinator:
 
 
 func get_enemy_combat_services() -> EnemyCombatServicesScript:
+	if (
+		_enemy_combat_services != null
+		and is_instance_valid(_enemy_combat_services)
+	):
+		var cached_coordinator := get_enemy_simulation_coordinator()
+		if (
+			cached_coordinator != null
+			and _enemy_combat_services.is_bound_to(self, cached_coordinator)
+		):
+			return _enemy_combat_services
+	_enemy_combat_services = null
 	var coordinator := get_enemy_simulation_coordinator()
 	if coordinator == null:
 		return null
@@ -173,7 +185,34 @@ func get_enemy_combat_services() -> EnemyCombatServicesScript:
 		or not combat_services.bind_context(self, coordinator)
 	):
 		return null
-	return combat_services
+	_enemy_combat_services = combat_services
+	return _enemy_combat_services
+
+
+func cache_enemy_combat_services(
+	combat_services: EnemyCombatServicesScript
+) -> bool:
+	if (
+		_scene_teardown_prepared
+		or combat_services == null
+		or not is_instance_valid(combat_services)
+	):
+		return false
+	var coordinator := get_enemy_simulation_coordinator()
+	if (
+		coordinator == null
+		or combat_services.get_parent() != coordinator
+		or coordinator.get_parent() != self
+	):
+		return false
+	if (
+		_enemy_combat_services != null
+		and is_instance_valid(_enemy_combat_services)
+		and _enemy_combat_services != combat_services
+	):
+		return false
+	_enemy_combat_services = combat_services
+	return true
 
 
 func get_enemy_contact_service() -> EnemyContactService:
@@ -1273,6 +1312,7 @@ func prepare_for_scene_teardown() -> void:
 	var enemy_simulation_coordinator := get_enemy_simulation_coordinator()
 	if enemy_simulation_coordinator != null:
 		enemy_simulation_coordinator.prepare_combat_services_for_runtime_teardown()
+	_enemy_combat_services = null
 	_on_scene_teardown_prepared()
 	_prepare_nested_combat_runtimes_for_scene_teardown(self)
 	# 会话正在整体销毁；本地索引只需静默释放，不能再发布逐实体终结包。
