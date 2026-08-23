@@ -55,6 +55,7 @@ var enemy_retarget_sweep_remaining := 0
 var enemy_retarget_cursor := 0
 var _home_objective_targets: Array[Node2D] = []
 var _scene_teardown_prepared := false
+var _plant_objective_enemy_index := PlantObjectiveEnemyIndex.new()
 
 var _random_generator: RandomNumberGenerator
 
@@ -77,6 +78,7 @@ func setup(
 	session_object_pool: SessionObjectPool,
 	enemy_spawn_effect_scene: PackedScene
 ) -> void:
+	_plant_objective_enemy_index.clear()
 	assert(runtime != null, "EnemyCoordinator 缺少 CombatRuntimeBase 运行时。")
 	assert(campaign_coordinator != null, "EnemyCoordinator 缺少 CampaignCoordinator。")
 	assert(player_roster_coordinator != null, "EnemyCoordinator 缺少 PlayerRosterCoordinator。")
@@ -342,7 +344,12 @@ func register_external_enemy(
 ) -> bool:
 	if _scene_teardown_prepared or enemy == null or not is_instance_valid(enemy):
 		return false
-	return _campaign_coordinator.register_wave_enemy(enemy.get_instance_id(), role)
+	var registered := _campaign_coordinator.register_wave_enemy(
+		enemy.get_instance_id(), role
+	)
+	if registered:
+		_plant_objective_enemy_index.track(enemy)
+	return registered
 
 
 func has_active_enemy(enemy_id: int) -> bool:
@@ -363,6 +370,7 @@ func prepare_for_scene_teardown() -> void:
 	if _campaign_coordinator != null:
 		for enemy_id_variant in _campaign_coordinator.get_attached_wave_enemy_ids():
 			_campaign_coordinator.detach_wave_enemy(int(enemy_id_variant))
+	_plant_objective_enemy_index.clear()
 	# 退场期间不再刷新 HUD；只释放本地集合，网络索引由运行时统一静默清理。
 	clear_hud_enemies()
 
@@ -634,6 +642,7 @@ func collect_snapshot_states() -> Array[SnapshotManager.EnemyState]:
 
 
 func handle_wave_enemy_tree_exited(enemy_id: int) -> void:
+	_plant_objective_enemy_index.untrack(enemy_id)
 	var result := _campaign_coordinator.detach_wave_enemy(enemy_id)
 	if not result.accepted:
 		if not result.known:
@@ -832,6 +841,7 @@ func _process_retarget_budget() -> void:
 func assign_enemy_targets(enemy: Enemy, from_position: Vector2) -> void:
 	if enemy == null or enemy.is_dead:
 		return
+	_plant_objective_enemy_index.track(enemy)
 	enemy.set_near_moving_target_direct_distance(
 		PLAYER_NEAR_MOVING_DIRECT_DISTANCE
 	)
@@ -959,10 +969,19 @@ func request_retarget() -> void:
 func clear_removed_plant_objective(plant: PlantDefense) -> void:
 	if plant == null:
 		return
-	for container in [_enemy_container, _boss_container]:
-		if container == null:
-			continue
-		for child in container.get_children():
-			var enemy := child as Enemy
-			if enemy != null and enemy.objective_target == plant:
-				enemy.set_objective_target(null)
+	for enemy in _plant_objective_enemy_index.take_enemies_targeting_plant(plant):
+		# The bucket is detached before iteration, so this signal-driven target
+		# change cannot mutate the collection currently being traversed.
+		if enemy.objective_target == plant:
+			enemy.set_objective_target(null)
+
+
+func get_plant_objective_index_metrics() -> Dictionary:
+	return {
+		"tracked_enemies": _plant_objective_enemy_index.get_tracked_enemy_count(),
+		"plant_memberships": _plant_objective_enemy_index.get_plant_membership_count(),
+		"plant_buckets": _plant_objective_enemy_index.get_plant_bucket_count(),
+		"last_take_candidate_visits": (
+			_plant_objective_enemy_index.get_last_take_candidate_visits()
+		),
+	}

@@ -2,6 +2,7 @@ extends CharacterBody2D
 class_name Enemy
 
 signal defeated(enemy: Enemy)
+signal objective_target_changed(enemy: Enemy, current_target: Node2D)
 
 const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
 const BURN_OVERLAY_STRENGTH_SHADER_PARAMETER := &"burn_overlay_strength"
@@ -170,7 +171,12 @@ static var _performance_metrics := {
 @onready var death_audio: AudioStreamPlayer2D = $DeathAudio
 
 var target_player: Player = null
-var objective_target: Node2D = null
+var objective_target: Node2D = null:
+	set(value):
+		if objective_target == value:
+			return
+		objective_target = value
+		objective_target_changed.emit(self, objective_target)
 var pathfinder: Node = null
 var combat_runtime: CombatRuntimeBase = null
 var gameplay_gateway: MultiplayerGameplayGateway = null
