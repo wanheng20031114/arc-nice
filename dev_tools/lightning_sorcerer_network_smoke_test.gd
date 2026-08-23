@@ -12,6 +12,9 @@ const LIGHTNING_SORCERER_CONFIG := preload(
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
+const ENEMY_SIMULATION_COORDINATOR_SCENE := preload(
+	"res://scene/combat/simulation/enemy_simulation_coordinator.tscn"
+)
 
 
 class RecordingMpGame:
@@ -41,10 +44,14 @@ class TestNetManager:
 
 
 class LightningVfxRuntime:
-	extends CombatRuntimeBase
+	extends PlayerTestCombatRuntime
 
 	var played_chains: Array[PackedVector2Array] = []
 	var players_by_peer_id: Dictionary = {}
+
+	func _init() -> void:
+		super._init()
+		add_child(ENEMY_SIMULATION_COORDINATOR_SCENE.instantiate())
 
 	func configure_multiplayer(
 		_mode: int,
@@ -59,6 +66,23 @@ class LightningVfxRuntime:
 
 	func get_enemy_for_net_id(_net_id: int) -> Enemy:
 		return null
+
+	func query_hostile_enemy_attack_targets_world_into(
+		from_position: Vector2,
+		max_distance: float,
+		source_faction_id: int,
+		result: Array[Node2D],
+		excluded_target: Node2D = null,
+		max_count: int = 0
+	) -> void:
+		super.query_hostile_enemy_attack_targets_world_into(
+			from_position,
+			max_distance,
+			source_faction_id,
+			result,
+			excluded_target,
+			max_count
+		)
 
 	func get_pickup_for_net_id(_net_id: int) -> Pickup:
 		return null
@@ -321,6 +345,7 @@ func _test_target_warning_proxy_contract() -> void:
 		runtime,
 		net_manager
 	)
+	fixture_root.add_child(runtime)
 
 	var player := PLAYER_SCENE.instantiate() as Player
 	_expect(player != null, "Player warning fixture must instantiate a typed player.")
@@ -345,9 +370,9 @@ func _test_target_warning_proxy_contract() -> void:
 		current_scene = null
 		fixture_root.free()
 		return
-	fixture_root.add_child(lightning)
+	runtime.add_child(lightning)
 	lightning.global_position = Vector2(16.0, 24.0)
-	lightning.setup(LIGHTNING_SORCERER_CONFIG, player)
+	lightning.setup(LIGHTNING_SORCERER_CONFIG, player, null, runtime)
 	lightning.configure_multiplayer_proxy()
 	lightning.set_meta("net_id", 73)
 	enemy_coordinator.register_client_enemy(
@@ -356,21 +381,15 @@ func _test_target_warning_proxy_contract() -> void:
 		float(mp_game.call("_get_net_time"))
 	)
 
-	var target_warning := lightning.get_node_or_null("TargetWarning") as Node2D
-	_expect(
-		target_warning != null
-		and target_warning.top_level
-		and not target_warning.visible,
-		"Lightning proxy must own one hidden, top-level, scene-authored target warning."
+	var warning_system := (
+		runtime.get_enemy_combat_services()
+		.get_enemy_warning_presentation_system()
 	)
-	if target_warning == null:
-		mp_game.free()
-		runtime.free()
-		net_manager.free()
-		current_scene = null
-		fixture_root.free()
-		return
-	var warning_instance_id := target_warning.get_instance_id()
+	_expect(
+		lightning.get_node_or_null("TargetWarning") == null
+		and lightning.target_warning_handle == 0,
+		"Lightning proxy must start without a per-enemy warning node or live handle."
+	)
 	var authored_child_count := lightning.get_child_count()
 
 	mp_game.net_enemy_target_action(
@@ -380,19 +399,17 @@ func _test_target_warning_proxy_contract() -> void:
 		lightning.global_position,
 		10
 	)
+	var warning_handle := lightning.target_warning_handle
 	_expect(
-		target_warning.visible
-		and bool(target_warning.call("is_warning_active"))
-		and target_warning.global_position.is_equal_approx(
-			player.get_multiplayer_visual_global_position().round()
-		)
+		warning_system.is_handle_live(warning_handle)
+		and lightning.proxy_warning_player == player
 		and lightning.latest_proxy_action_id == 10,
-		"Player target-action must show the prebuilt warning on the resolved player."
+		"Player target-action must acquire a shared warning for the resolved player."
 	)
 	await process_frame
 	await process_frame
-	var progressed_before_retry := float(
-		target_warning.call("get_warning_progress")
+	var progressed_before_retry := (
+		lightning.proxy_warning_elapsed / lightning.proxy_warning_duration
 	)
 	_expect(
 		lightning.is_processing() and progressed_before_retry > 0.0,
@@ -401,9 +418,8 @@ func _test_target_warning_proxy_contract() -> void:
 	player.global_position = Vector2(132.0, 91.0)
 	await process_frame
 	_expect(
-		target_warning.global_position.is_equal_approx(
-			player.get_multiplayer_visual_global_position().round()
-		),
+		lightning.proxy_warning_player == player
+		and warning_system.is_handle_live(warning_handle),
 		"Player warning must follow the player's multiplayer visual position."
 	)
 	mp_game.net_enemy_target_action(
@@ -415,8 +431,9 @@ func _test_target_warning_proxy_contract() -> void:
 	)
 	_expect(
 		lightning.latest_proxy_action_id == 10
-		and float(target_warning.call("get_warning_progress"))
-			>= progressed_before_retry,
+		and lightning.proxy_warning_elapsed / lightning.proxy_warning_duration
+			>= progressed_before_retry
+		and lightning.target_warning_handle == warning_handle,
 		"Same-id warning retry must be ignored after the start arrived and must not reset progress."
 	)
 	lightning.play_multiplayer_enemy_action(
@@ -426,9 +443,9 @@ func _test_target_warning_proxy_contract() -> void:
 	)
 	_expect(
 		lightning.latest_proxy_action_id == 10
-		and target_warning.visible
+		and warning_system.is_handle_live(warning_handle)
 		and lightning.get_child_count() == authored_child_count
-		and target_warning.get_instance_id() == warning_instance_id,
+		and lightning.target_warning_handle == warning_handle,
 		"A stale cross-channel start must not replace the active warning or allocate another marker."
 	)
 
@@ -441,8 +458,8 @@ func _test_target_warning_proxy_contract() -> void:
 	)
 	_expect(
 		lightning.latest_proxy_action_id == 11
-		and not target_warning.visible
-		and not bool(target_warning.call("is_warning_active")),
+		and lightning.target_warning_handle == 0
+		and not warning_system.is_handle_live(warning_handle),
 		"Generic fire must clear the player target warning."
 	)
 	mp_game.net_enemy_target_action(
@@ -453,7 +470,8 @@ func _test_target_warning_proxy_contract() -> void:
 		10
 	)
 	_expect(
-		not target_warning.visible and lightning.latest_proxy_action_id == 11,
+		lightning.target_warning_handle == 0
+		and lightning.latest_proxy_action_id == 11,
 		"A start arriving after newer fire must not resurrect the warning."
 	)
 
@@ -471,9 +489,9 @@ func _test_target_warning_proxy_contract() -> void:
 		1.0
 	)
 	_expect(
-		target_warning.visible
+		warning_system.is_handle_live(lightning.target_warning_handle)
 		and is_equal_approx(
-			float(target_warning.call("get_warning_progress")),
+			lightning.proxy_warning_elapsed / lightning.proxy_warning_duration,
 			expected_retry_progress
 		),
 		"Retry must recover a dropped player start including measured network age."
@@ -486,7 +504,8 @@ func _test_target_warning_proxy_contract() -> void:
 		13
 	)
 	_expect(
-		not target_warning.visible and lightning.latest_proxy_action_id == 13,
+		lightning.target_warning_handle == 0
+		and lightning.latest_proxy_action_id == 13,
 		"Generic cancel must clear a retry-recovered player warning."
 	)
 
@@ -505,16 +524,16 @@ func _test_target_warning_proxy_contract() -> void:
 		14
 	)
 	_expect(
-		target_warning.visible
-		and target_warning.global_position.is_equal_approx(
+		warning_system.is_handle_live(lightning.target_warning_handle)
+		and lightning.proxy_warning_plant_position.is_equal_approx(
 			expected_plant_position
 		)
 		and lightning.latest_proxy_action_id == 14,
 		"Plant warning must decode the generic action direction as a world-space offset."
 	)
 	lightning.call("_process", 0.18)
-	var plant_progress_before_retry := float(
-		target_warning.call("get_warning_progress")
+	var plant_progress_before_retry := (
+		lightning.proxy_warning_elapsed / lightning.proxy_warning_duration
 	)
 	mp_game.net_enemy_action(
 		73,
@@ -524,7 +543,7 @@ func _test_target_warning_proxy_contract() -> void:
 		14
 	)
 	_expect(
-		float(target_warning.call("get_warning_progress"))
+		lightning.proxy_warning_elapsed / lightning.proxy_warning_duration
 			>= plant_progress_before_retry
 		and lightning.latest_proxy_action_id == 14,
 		"Same-id plant retry must share ordering with player and generic actions without resetting progress."
@@ -536,7 +555,10 @@ func _test_target_warning_proxy_contract() -> void:
 		lightning.global_position,
 		15
 	)
-	_expect(not target_warning.visible, "Generic cancel must clear a plant warning.")
+	_expect(
+		lightning.target_warning_handle == 0,
+		"Generic cancel must clear a plant warning."
+	)
 
 	mp_game.net_enemy_target_action(
 		73,
@@ -547,7 +569,7 @@ func _test_target_warning_proxy_contract() -> void:
 	)
 	lightning.call("_expire_proxy_windup", 16)
 	_expect(
-		not target_warning.visible
+		lightning.target_warning_handle == 0
 		and not lightning.is_processing()
 		and lightning.latest_proxy_action_id == 16,
 		"Proxy timeout must clear the warning and return the dormant marker path without rewinding ordering."
@@ -558,7 +580,7 @@ func _test_target_warning_proxy_contract() -> void:
 		16
 	)
 	_expect(
-		not target_warning.visible,
+		lightning.target_warning_handle == 0,
 		"A same-id retry arriving after timeout must not revive an expired warning."
 	)
 
@@ -567,7 +589,11 @@ func _test_target_warning_proxy_contract() -> void:
 		plant_offset,
 		17
 	)
-	_expect(target_warning.visible, "Death cleanup fixture must start a warning first.")
+	var death_warning_handle := lightning.target_warning_handle
+	_expect(
+		warning_system.is_handle_live(death_warning_handle),
+		"Death cleanup fixture must start a warning first."
+	)
 	lightning.play_multiplayer_death_sequence()
 	var ordering_after_death := lightning.latest_proxy_action_id
 	lightning.play_multiplayer_enemy_target_action(
@@ -577,7 +603,8 @@ func _test_target_warning_proxy_contract() -> void:
 	)
 	_expect(
 		lightning.is_dead
-		and not target_warning.visible
+		and lightning.target_warning_handle == 0
+		and not warning_system.is_handle_live(death_warning_handle)
 		and lightning.latest_proxy_action_id == ordering_after_death,
 		"Proxy death must clear the marker and reject even newer late starts."
 	)
@@ -601,9 +628,9 @@ func _attach_enemy_coordinator(
 	session_coordinator.bind_transport_dependencies(net_manager)
 	session_coordinator.bind_runtime(runtime)
 
-	var gameplay_gateway := MultiplayerGameplayGateway.new()
-	gameplay_gateway.name = "MultiplayerGameplayGateway"
-	runtime.add_child(gameplay_gateway)
+	var gameplay_gateway := runtime.get_node(
+		"MultiplayerGameplayGateway"
+	) as MultiplayerGameplayGateway
 	gameplay_gateway.bind_runtime(runtime)
 
 	var coordinator := MpEnemyCoordinator.new()
@@ -639,6 +666,7 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		runtime,
 		net_manager
 	)
+	fixture_root.add_child(runtime)
 	var player := PLAYER_SCENE.instantiate() as Player
 	_expect(player != null, "Pending-action fixture must instantiate a player.")
 	if player == null:
@@ -693,12 +721,18 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	)
 	_expect(retry_lightning != null, "Retry fixture must register a lightning proxy.")
 	if retry_lightning != null:
-		var retry_warning := retry_lightning.get_node("TargetWarning") as Node2D
+		var retry_warning_system := (
+			runtime.get_enemy_combat_services()
+			.get_enemy_warning_presentation_system()
+		)
 		_expect(
 			pending_actions.is_empty()
 			and retry_lightning.latest_proxy_action_id == 20
-			and retry_warning.visible
-			and float(retry_warning.call("get_warning_progress"))
+			and retry_warning_system.is_handle_live(
+				retry_lightning.target_warning_handle
+			)
+			and retry_lightning.proxy_warning_elapsed
+				/ retry_lightning.proxy_warning_duration
 				>= LightningSorcerer.TARGET_WARNING_RETRY_DELAY
 					/ LIGHTNING_SORCERER_CONFIG.windup_duration,
 			"Proxy registration must consume the newest retry and preserve its elapsed warning progress."
@@ -736,10 +770,9 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		cancel_net_id
 	)
 	if cancel_lightning != null:
-		var cancel_warning := cancel_lightning.get_node("TargetWarning") as Node2D
 		_expect(
 			cancel_lightning.latest_proxy_action_id == 31
-			and not cancel_warning.visible,
+			and cancel_lightning.target_warning_handle == 0,
 			"A buffered generic cancel must not replay the older target warning after spawn."
 		)
 
@@ -774,10 +807,15 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 			22,
 			synchronized_host_time
 		)
-		var reordered_warning := retry_lightning.get_node("TargetWarning") as Node2D
+		var reordered_warning_system := (
+			runtime.get_enemy_combat_services()
+			.get_enemy_warning_presentation_system()
+		)
 		_expect(
 			retry_lightning.latest_proxy_action_id == 22
-			and reordered_warning.visible
+			and reordered_warning_system.is_handle_live(
+				retry_lightning.target_warning_handle
+			)
 			and retry_lightning.global_position.is_equal_approx(
 				proxy_position_before_action
 			)
@@ -811,11 +849,10 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		expired_net_id
 	)
 	if expired_lightning != null:
-		var expired_warning := expired_lightning.get_node("TargetWarning") as Node2D
 		_expect(
 			not pending_actions.has(expired_net_id)
 			and expired_lightning.latest_proxy_action_id == 0
-			and not expired_warning.visible,
+			and expired_lightning.target_warning_handle == 0,
 			"Expired pre-spawn actions must be consumed as cleanup only and never resurrect a warning."
 		)
 
@@ -945,7 +982,7 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 
 
 func _register_lightning_proxy(
-	fixture_root: Node2D,
+	_fixture_root: Node2D,
 	mp_game: Node,
 	player: Player,
 	net_id: int
@@ -953,9 +990,12 @@ func _register_lightning_proxy(
 	var lightning := LIGHTNING_SORCERER_SCENE.instantiate() as LightningSorcerer
 	if lightning == null:
 		return null
-	fixture_root.add_child(lightning)
+	var runtime := mp_game.get("game") as LightningVfxRuntime
+	if runtime == null:
+		return null
+	runtime.add_child(lightning)
 	lightning.global_position = Vector2(16.0, 24.0)
-	lightning.setup(LIGHTNING_SORCERER_CONFIG, player)
+	lightning.setup(LIGHTNING_SORCERER_CONFIG, player, null, runtime)
 	lightning.configure_multiplayer_proxy()
 	lightning.set_meta("net_id", net_id)
 	var enemy_coordinator := mp_game.get("enemy_coordinator") as MpEnemyCoordinator

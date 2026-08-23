@@ -15,8 +15,8 @@ const BASE_SCENE := preload(
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
-const TargetWarningScript := preload(
-	"res://scene/enemy/sorcerer/lightning_sorcerer_target_warning.gd"
+const ENEMY_SIMULATION_COORDINATOR_SCENE := preload(
+	"res://scene/combat/simulation/enemy_simulation_coordinator.tscn"
 )
 
 const BASE_TEXTURE_PATH := "res://resources/texture/enemy/sorcerer/lightning_sorcerer.png"
@@ -60,7 +60,7 @@ const VIOLET_PALETTE_RGB_KEY_MAP := {
 
 
 class TargetRuntime:
-	extends Node2D
+	extends PlayerTestCombatRuntime
 
 	var candidates: Array[Node2D] = []
 	var query_count := 0
@@ -104,6 +104,58 @@ class TargetRuntime:
 				nearest_distance_squared = distance_squared
 				nearest_instance_id = instance_id
 		return nearest
+
+
+	func find_nearest_hostile_enemy_attack_target_world(
+		from_position: Vector2,
+		max_distance: float,
+		_source_faction_id: int,
+		excluded_instance_ids: Dictionary = {}
+	) -> Node2D:
+		return find_nearest_enemy_attack_target_world(
+			from_position,
+			max_distance,
+			excluded_instance_ids
+		)
+
+
+	func query_hostile_enemy_attack_targets_world_into(
+		from_position: Vector2,
+		max_distance: float,
+		_source_faction_id: int,
+		result: Array[Node2D],
+		excluded_target: Node2D = null,
+		max_count: int = 0
+	) -> void:
+		query_count += 1
+		result.clear()
+		var maximum_distance_squared := max_distance * max_distance
+		for candidate in candidates:
+			var player := candidate as Player
+			if (
+				player == null
+				or not is_instance_valid(player)
+				or player == excluded_target
+				or player.is_dead
+				or from_position.distance_squared_to(player.global_position)
+					> maximum_distance_squared
+			):
+				continue
+			result.append(player)
+		result.sort_custom(
+			func(a: Node2D, b: Node2D) -> bool:
+				var a_distance := from_position.distance_squared_to(a.global_position)
+				var b_distance := from_position.distance_squared_to(b.global_position)
+				return (
+					a_distance < b_distance
+					or (
+						is_equal_approx(a_distance, b_distance)
+						and a.get_instance_id() < b.get_instance_id()
+					)
+				)
+		)
+		if max_count > 0 and result.size() > max_count:
+			result.resize(max_count)
 
 
 var failures: Array[String] = []
@@ -264,6 +316,11 @@ func _test_scene_and_animation_contract() -> void:
 		and staff_tip.position == Vector2(24.0, 1.0),
 		"Elite staff endpoint must remain base-identical."
 	)
+	_expect(
+		enemy.get_node_or_null("TargetWarning") == null
+		and base_enemy.get_node_or_null("TargetWarning") == null,
+		"Base and elite scenes must not instantiate per-enemy warning nodes."
+	)
 
 	enemy.free()
 	base_enemy.free()
@@ -309,9 +366,10 @@ func _test_five_target_chain() -> void:
 			"A target exactly four cells away must remain chainable."
 		)
 	_expect(
-		runtime.query_count == 4,
-		"One completed elite chain must perform exactly four follow-up queries."
+		runtime.query_count == 1,
+		"One completed elite chain must perform one reusable broad candidate query."
 	)
+	_prepare_runtime_teardown(runtime)
 	runtime.queue_free()
 	await process_frame
 
@@ -321,7 +379,10 @@ func _test_windup_and_cooldown() -> void:
 	var target := _spawn_player(runtime, Vector2(100.0, 0.0))
 	runtime.candidates.append(target)
 	var enemy := _spawn_enemy(runtime, target)
-	var target_warning := enemy.get_node("TargetWarning") as TargetWarningScript
+	var warning_system := (
+		runtime.get_enemy_combat_services()
+		.get_enemy_warning_presentation_system()
+	)
 	enemy.initial_attack_stagger_left = 0.0
 	_expect(
 		bool(enemy.call("_try_start_windup", target, ELITE_CONFIG)),
@@ -330,12 +391,12 @@ func _test_windup_and_cooldown() -> void:
 	_expect(
 		is_equal_approx(enemy.windup_time_left, 0.6)
 		and target.current_health == TEST_HEALTH
-		and target_warning.is_warning_active()
+		and warning_system.is_handle_live(enemy.target_warning_handle)
 		and is_equal_approx(
-			target_warning.get_chain_danger_radius(),
+			enemy.target_warning_chain_radius,
 			EXPECTED_CHAIN_RANGE
 		),
-		"Elite windup must warn for 0.6 seconds with a four-cell chain radius."
+		"Elite windup must acquire a shared 0.6-second four-cell warning."
 	)
 	enemy.call("_update_windup", 0.59)
 	_expect(
@@ -346,9 +407,11 @@ func _test_windup_and_cooldown() -> void:
 	_expect(
 		target.current_health == TEST_HEALTH - 80
 		and enemy.combat_state == LightningSorcerer.CombatState.CHASE
+		and enemy.target_warning_handle == 0
 		and is_equal_approx(enemy.attack_cooldown_left, 2.0),
-		"Elite strike must deal 80 damage and begin its two-second cooldown."
+		"Elite strike must release its warning, deal 80 damage and begin cooldown."
 	)
+	_prepare_runtime_teardown(runtime)
 	runtime.queue_free()
 	await process_frame
 
@@ -551,11 +614,15 @@ func _capsule_matches(
 func _create_runtime(runtime_name: String) -> TargetRuntime:
 	var runtime := TargetRuntime.new()
 	runtime.name = runtime_name
+	runtime.add_child(ENEMY_SIMULATION_COORDINATOR_SCENE.instantiate())
 	fixture.add_child(runtime)
-	var pathfinder := Node.new()
-	pathfinder.name = "GridPathfinder"
-	runtime.add_child(pathfinder)
 	return runtime
+
+
+func _prepare_runtime_teardown(runtime: TargetRuntime) -> void:
+	var coordinator := runtime.get_enemy_simulation_coordinator()
+	if coordinator != null:
+		coordinator.prepare_combat_services_for_runtime_teardown()
 
 
 func _spawn_enemy(
@@ -565,7 +632,12 @@ func _spawn_enemy(
 	var enemy := ELITE_SCENE.instantiate() as LightningSorcerer
 	runtime.add_child(enemy)
 	enemy.global_position = Vector2.ZERO
-	enemy.setup(ELITE_CONFIG, target, runtime.get_node("GridPathfinder"))
+	enemy.setup(
+		ELITE_CONFIG,
+		target,
+		runtime.get_node("GridPathfinder"),
+		runtime
+	)
 	enemy.set_physics_process(false)
 	return enemy
 

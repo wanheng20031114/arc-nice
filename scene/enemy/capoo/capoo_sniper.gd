@@ -2,6 +2,9 @@ extends "res://scene/enemy/capoo_ranged_enemy.gd"
 class_name CapooSniper
 
 const SniperConfig := preload("res://resources/config/enemies/capoo_sniper_config.gd")
+const EnemyWarningPresentationSystemScript := preload(
+	"res://scene/combat/presentation/enemy_warning_presentation_system.gd"
+)
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
@@ -20,7 +23,6 @@ enum CombatState {
 	LOCK,
 }
 
-@onready var aim_glow: Polygon2D = $AimGlow
 @onready var attack_audio: AudioStreamPlayer2D = $AttackAudio
 
 var combat_state: CombatState = CombatState.CHASE
@@ -31,7 +33,10 @@ var locked_player: Player = null
 var locked_non_player_target := false
 var locked_non_player_target_offset := Vector2.ZERO
 var lock_damage_source_snapshot: DamageSourceSnapshot = null
-var lock_reticle: CapooSniperLockReticle = null
+var sniper_line_warning_handle: int = 0
+var sniper_reticle_warning_handle: int = 0
+var sniper_reticle_target_id: int = 0
+var _warning_presentation_system: EnemyWarningPresentationSystemScript = null
 var latest_proxy_target_action_id: int = 0
 var latest_proxy_action_id: int = 0
 var proxy_locked_player: Player = null
@@ -43,7 +48,6 @@ var proxy_lock_elapsed: float = 0.0
 
 func _ready() -> void:
 	super._ready()
-	_set_aim_glow(0.0, global_position + Vector2.RIGHT)
 
 
 func _physics_process(delta: float) -> void:
@@ -113,7 +117,6 @@ func _apply_config() -> void:
 	locked_non_player_target_offset = Vector2.ZERO
 	lock_damage_source_snapshot = null
 	_reset_ranged_attack_position_state()
-	_clear_lock_reticle()
 	_clear_proxy_lock_visual()
 	var sniper_config := config as SniperConfig
 	if sniper_config != null:
@@ -137,7 +140,7 @@ func _update_attack_cooldown(delta: float) -> void:
 
 func _try_start_lock(candidate_target: Node2D = null) -> bool:
 	var sniper_config := config as SniperConfig
-	if sniper_config == null or sniper_config.lock_reticle_scene == null:
+	if sniper_config == null:
 		return false
 	if attack_cooldown_left > 0.0:
 		return false
@@ -177,8 +180,7 @@ func _try_start_lock(candidate_target: Node2D = null) -> bool:
 	var lock_direction := global_position.direction_to(locked_target.global_position)
 	_update_facing(lock_direction)
 	_play_config_animation(sniper_config.aim_animation_name)
-	_show_lock_reticle(locked_target, sniper_config.lock_duration)
-	_set_aim_glow(0.35, locked_target.global_position)
+	_start_lock_warning(locked_target, locked_target.global_position)
 	if locked_player != null:
 		_broadcast_enemy_target_action(&"sniper_lock_start", locked_player.peer_id)
 	else:
@@ -209,9 +211,7 @@ func _update_lock(delta: float) -> void:
 	_update_facing(direction)
 	lock_time_left = maxf(lock_time_left - delta, 0.0)
 	var progress := 1.0 - lock_time_left / maxf(sniper_config.lock_duration, 0.01)
-	_set_aim_glow(progress, locked_target.global_position)
-	if lock_reticle != null and is_instance_valid(lock_reticle):
-		lock_reticle.set_progress(progress)
+	_update_lock_warning(locked_target.global_position, progress)
 
 	if lock_time_left > 0.0:
 		return
@@ -294,14 +294,13 @@ func _fire_locked_shot(direction: Vector2) -> void:
 			ACTION_NON_PLAYER_LOCK_FIRE,
 			locked_non_player_target_offset
 		)
-	_clear_lock_reticle()
+	_clear_lock_warning()
 	locked_target = null
 	locked_player = null
 	locked_non_player_target = false
 	locked_non_player_target_offset = Vector2.ZERO
 	lock_damage_source_snapshot = null
 	combat_state = CombatState.CHASE
-	_set_aim_glow(0.0, global_position + direction)
 	_play_config_animation(sniper_config.move_animation_name)
 
 
@@ -320,8 +319,7 @@ func _cancel_lock() -> void:
 	locked_non_player_target = false
 	locked_non_player_target_offset = Vector2.ZERO
 	lock_damage_source_snapshot = null
-	_clear_lock_reticle()
-	_set_aim_glow(0.0, global_position + Vector2.RIGHT)
+	_clear_lock_warning()
 	_reset_ranged_attack_position_state()
 	var sniper_config := config as SniperConfig
 	if sniper_config != null:
@@ -342,32 +340,6 @@ func _make_lock_damage_request(
 	return request
 
 
-func _show_lock_reticle(target: Node2D, duration: float) -> void:
-	_clear_lock_reticle()
-	var sniper_config := config as SniperConfig
-	if sniper_config == null or sniper_config.lock_reticle_scene == null:
-		return
-	var reticle := sniper_config.lock_reticle_scene.instantiate() as CapooSniperLockReticle
-	if reticle == null:
-		return
-	target.add_child(reticle)
-	reticle.position = Vector2.ZERO
-	# The authoritative sniper physics tick and multiplayer proxy render tick
-	# already provide the exact lock progress. Keep the reticle passive so it
-	# cannot advance and refresh the target a second time on its own.
-	reticle.start(duration, false)
-	lock_reticle = reticle
-
-
-func _clear_lock_reticle() -> void:
-	if lock_reticle != null and is_instance_valid(lock_reticle):
-		var reticle_parent := lock_reticle.get_parent()
-		if reticle_parent != null:
-			reticle_parent.remove_child(lock_reticle)
-		lock_reticle.free()
-	lock_reticle = null
-
-
 func play_multiplayer_enemy_target_action(
 	action_name: StringName,
 	target: Player,
@@ -384,8 +356,7 @@ func play_multiplayer_enemy_target_action(
 				proxy_locked_player = target
 				proxy_lock_duration = maxf(sniper_config.lock_duration, 0.01)
 				proxy_lock_elapsed = 0.0
-				_show_lock_reticle(target, sniper_config.lock_duration)
-				_set_aim_glow(0.35, target.global_position)
+				_start_lock_warning(target, target.global_position)
 	elif action_name == &"sniper_lock_cancel" or action_name == &"sniper_lock_fire":
 		_clear_proxy_lock_visual()
 
@@ -415,7 +386,10 @@ func play_multiplayer_enemy_action(
 		if direction == Vector2.ZERO:
 			direction = Vector2.RIGHT
 		_update_facing(direction)
-		_set_aim_glow(0.35, proxy_locked_plant_position)
+		_start_lock_warning(
+			null,
+			proxy_locked_plant_position
+		)
 	elif (
 		action_name == ACTION_NON_PLAYER_LOCK_CANCEL
 		or action_name == ACTION_NON_PLAYER_LOCK_FIRE
@@ -443,9 +417,7 @@ func _update_proxy_lock_visual(delta: float) -> void:
 	if direction == Vector2.ZERO:
 		direction = Vector2.RIGHT
 	_update_facing(direction)
-	_set_aim_glow(progress, target_position)
-	if lock_reticle != null and is_instance_valid(lock_reticle):
-		lock_reticle.set_progress(progress)
+	_update_lock_warning(target_position, progress)
 
 
 func _clear_proxy_lock_visual() -> void:
@@ -454,32 +426,143 @@ func _clear_proxy_lock_visual() -> void:
 	proxy_locked_plant_position = Vector2.ZERO
 	proxy_lock_duration = 0.0
 	proxy_lock_elapsed = 0.0
-	_clear_lock_reticle()
-	_set_aim_glow(0.0, global_position + Vector2.RIGHT)
+	_clear_lock_warning()
 
 
-func _set_aim_glow(progress: float, target_global_position: Vector2) -> void:
-	var clamped_progress := clampf(progress, 0.0, 1.0)
-	aim_glow.visible = clamped_progress > 0.0
-	if not aim_glow.visible:
+func _start_lock_warning(
+	target: Node2D,
+	target_world_position: Vector2,
+	target_id: int = 0
+) -> void:
+	_clear_lock_warning()
+	var resolved_target_id := target_id
+	if resolved_target_id <= 0 and target != null:
+		resolved_target_id = _get_warning_target_id(target)
+	_acquire_lock_warning(resolved_target_id)
+	_update_lock_warning_channels(target_world_position, 0.35, 0.0)
+
+
+func _update_lock_warning(
+	target_world_position: Vector2,
+	progress: float
+) -> void:
+	_update_lock_warning_channels(
+		target_world_position,
+		progress,
+		progress
+	)
+
+
+func _acquire_lock_warning(target_id: int) -> void:
+	sniper_reticle_target_id = target_id
+	var warning_system := _get_warning_system()
+	if warning_system == null:
 		return
-	var target_local_position := to_local(target_global_position)
-	var target_distance := target_local_position.length()
-	if target_distance <= AIM_LINE_MIN_LENGTH:
-		target_local_position = Vector2.RIGHT * AIM_LINE_MIN_LENGTH
+	var owner_id := _get_warning_owner_id()
+	sniper_line_warning_handle = warning_system.acquire_sniper_line(owner_id)
+	if target_id > 0:
+		sniper_reticle_warning_handle = warning_system.acquire_sniper_reticle(
+			owner_id,
+			target_id
+		)
+
+
+func _update_lock_warning_channels(
+	target_world_position: Vector2,
+	line_progress: float,
+	reticle_progress: float
+) -> void:
+	var warning_system := _get_warning_system()
+	if warning_system == null:
+		return
+	if not warning_system.is_handle_live(sniper_line_warning_handle):
+		sniper_line_warning_handle = warning_system.acquire_sniper_line(
+			_get_warning_owner_id()
+		)
+	if (
+		sniper_reticle_target_id > 0
+		and not warning_system.is_handle_live(sniper_reticle_warning_handle)
+	):
+		sniper_reticle_warning_handle = warning_system.acquire_sniper_reticle(
+			_get_warning_owner_id(),
+			sniper_reticle_target_id
+		)
+	var warning_direction := global_position.direction_to(target_world_position)
+	var target_distance := global_position.distance_to(target_world_position)
+	if warning_direction == Vector2.ZERO:
+		warning_direction = Vector2.RIGHT
 		target_distance = AIM_LINE_MIN_LENGTH
-	var safe_direction := target_local_position / target_distance
-	var start_position := safe_direction * minf(AIM_LINE_START_DISTANCE, target_distance * 0.35)
-	var end_position := target_local_position - safe_direction * minf(AIM_LINE_TARGET_PADDING, target_distance * 0.25)
-	var half_width := lerpf(0.45, 0.9, clamped_progress)
-	var perpendicular := safe_direction.orthogonal() * half_width
-	aim_glow.position = Vector2.ZERO
-	aim_glow.rotation = 0.0
-	aim_glow.scale = Vector2.ONE
-	aim_glow.polygon = PackedVector2Array([
-		start_position + perpendicular,
-		end_position + perpendicular,
-		end_position - perpendicular,
-		start_position - perpendicular,
-	])
-	aim_glow.color = Color(1.0, 0.05, 0.03, lerpf(0.14, 0.38, clamped_progress))
+	var line_start := global_position + warning_direction * minf(
+		AIM_LINE_START_DISTANCE,
+		target_distance * 0.35
+	)
+	var line_end := target_world_position - warning_direction * minf(
+		AIM_LINE_TARGET_PADDING,
+		target_distance * 0.25
+	)
+	if warning_system.is_handle_live(sniper_line_warning_handle):
+		warning_system.update_sniper_line(
+			sniper_line_warning_handle,
+			line_start,
+			line_end,
+			clampf(line_progress, 0.0, 1.0)
+		)
+	if warning_system.is_handle_live(sniper_reticle_warning_handle):
+		warning_system.update_sniper_reticle(
+			sniper_reticle_warning_handle,
+			target_world_position,
+			clampf(reticle_progress, 0.0, 1.0)
+		)
+
+
+func _clear_lock_warning() -> void:
+	var warning_system := _warning_presentation_system
+	if warning_system != null and is_instance_valid(warning_system):
+		if warning_system.is_handle_live(sniper_line_warning_handle):
+			warning_system.release_warning(sniper_line_warning_handle)
+		if warning_system.is_handle_live(sniper_reticle_warning_handle):
+			warning_system.release_warning(sniper_reticle_warning_handle)
+	sniper_line_warning_handle = 0
+	sniper_reticle_warning_handle = 0
+	sniper_reticle_target_id = 0
+
+
+func _get_warning_system() -> EnemyWarningPresentationSystemScript:
+	if (
+		_warning_presentation_system != null
+		and is_instance_valid(_warning_presentation_system)
+	):
+		return _warning_presentation_system
+	_warning_presentation_system = null
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
+		return null
+	var combat_services := combat_runtime.get_enemy_combat_services()
+	if combat_services == null:
+		return null
+	_warning_presentation_system = (
+		combat_services.get_enemy_warning_presentation_system()
+	)
+	return _warning_presentation_system
+
+
+func _get_warning_owner_id() -> int:
+	if combat_target_index_net_id > 0:
+		return combat_target_index_net_id
+	var authored_net_id := int(get_meta(&"net_id", 0))
+	if authored_net_id > 0:
+		return authored_net_id
+	return int(get_instance_id())
+
+
+func _get_warning_target_id(target: Node2D) -> int:
+	# Reticle arbitration is local presentation scoped to the exact target node.
+	# Network ids from players, plants, and enemies occupy different domains and
+	# may collide numerically, while every sniper on this client observes the
+	# same target ObjectID.
+	return int(target.get_instance_id())
+
+
+func _exit_tree() -> void:
+	_clear_lock_warning()
+	_warning_presentation_system = null
+	super._exit_tree()

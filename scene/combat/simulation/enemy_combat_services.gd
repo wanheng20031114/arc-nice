@@ -19,6 +19,9 @@ const FireSorcererVolleySimulationServiceScript := preload(
 const FireSorcererVolleyPresenterScript := preload(
 	"res://scene/combat/simulation/fire_sorcerer_volley_presenter.gd"
 )
+const EnemyWarningPresentationSystemScript := preload(
+	"res://scene/combat/presentation/enemy_warning_presentation_system.gd"
+)
 const RAPID_PROJECTILE_RESERVED_CAPACITY := 4096
 const FIRE_SORCERER_VOLLEY_RESERVED_CAPACITY := 2048
 
@@ -77,6 +80,7 @@ func bind_context(
 	var fire_sorcerer_volley_presenter := (
 		get_fire_sorcerer_volley_presenter()
 	)
+	var warning_presentation_system := get_enemy_warning_presentation_system()
 	if (
 		rapid_fire_service == null
 		or damageable_spatial_index == null
@@ -84,6 +88,7 @@ func bind_context(
 		or rapid_projectile_presenter == null
 		or fire_sorcerer_volley_service == null
 		or fire_sorcerer_volley_presenter == null
+		or warning_presentation_system == null
 		or not damageable_spatial_index.bind_context(combat_runtime, coordinator)
 		or not rapid_fire_service.bind_context(combat_runtime, coordinator)
 		or not rapid_fire_service.reserve_projectile_capacity(
@@ -101,6 +106,10 @@ func bind_context(
 		or not rapid_projectile_presenter.bind_service(rapid_fire_service)
 		or not fire_sorcerer_volley_presenter.bind_service(
 			fire_sorcerer_volley_service
+		)
+		or not warning_presentation_system.bind_context(
+			combat_runtime,
+			coordinator
 		)
 	):
 		return false
@@ -135,6 +144,9 @@ func _physics_process(_delta: float) -> void:
 		fire_sorcerer_volley_service,
 		gateway
 	)
+	var warning_presentation_system := get_enemy_warning_presentation_system()
+	if warning_presentation_system != null:
+		warning_presentation_system.flush_presenter()
 
 
 func _consume_rapid_fire_completions(
@@ -290,12 +302,21 @@ func get_fire_sorcerer_volley_presenter() -> FireSorcererVolleyPresenterScript:
 	) as FireSorcererVolleyPresenterScript
 
 
+func get_enemy_warning_presentation_system() -> EnemyWarningPresentationSystemScript:
+	return get_node_or_null(
+		"EnemyWarningPresentationSystem"
+	) as EnemyWarningPresentationSystemScript
+
+
 func prepare_for_runtime_teardown() -> void:
 	if _teardown_prepared:
 		return
 	_teardown_prepared = true
 	_teardown_count += 1
 	set_physics_process(false)
+	var warning_presentation_system := get_enemy_warning_presentation_system()
+	if warning_presentation_system != null:
+		warning_presentation_system.prepare_for_runtime_teardown()
 	var fire_sorcerer_volley_presenter := (
 		get_fire_sorcerer_volley_presenter()
 	)
@@ -333,6 +354,7 @@ func get_metrics() -> Dictionary:
 	var fire_sorcerer_volley_presenter := (
 		get_fire_sorcerer_volley_presenter()
 	)
+	var warning_presentation_system := get_enemy_warning_presentation_system()
 	return {
 		"bound": is_bound(),
 		"teardown_prepared": _teardown_prepared,
@@ -375,6 +397,11 @@ func get_metrics() -> Dictionary:
 		"fire_sorcerer_volley_presenter": (
 			fire_sorcerer_volley_presenter.get_metrics()
 			if fire_sorcerer_volley_presenter != null
+			else {}
+		),
+		"enemy_warning_presentation_system": (
+			warning_presentation_system.get_metrics()
+			if warning_presentation_system != null
 			else {}
 		),
 	}

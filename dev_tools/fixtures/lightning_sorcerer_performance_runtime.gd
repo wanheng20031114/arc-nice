@@ -7,6 +7,7 @@ class_name LightningSorcererPerformanceRuntime
 
 var plant_system: PlantSystem = null
 var attack_target_query_count := 0
+var broad_attack_target_query_count := 0
 
 
 func find_nearest_enemy_attack_target_world(
@@ -38,4 +39,23 @@ func find_nearest_hostile_enemy_attack_target_world(
 		from_position,
 		max_distance,
 		excluded_instance_ids
+	)
+
+
+func query_hostile_enemy_attack_targets_world_into(
+	from_position: Vector2,
+	max_distance: float,
+	source_faction_id: int,
+	result: Array[Node2D],
+	excluded_target: Node2D = null,
+	max_count: int = 0
+) -> void:
+	broad_attack_target_query_count += 1
+	super.query_hostile_enemy_attack_targets_world_into(
+		from_position,
+		max_distance,
+		source_faction_id,
+		result,
+		excluded_target,
+		max_count
 	)

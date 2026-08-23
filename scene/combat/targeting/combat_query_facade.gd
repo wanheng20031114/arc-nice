@@ -193,6 +193,23 @@ func is_target_hostile(
 	)
 
 
+## Public deterministic ordering seam for data-oriented attack services that
+## enumerate one reusable broad candidate buffer and select around several
+## changing centers. This is the same distance/kind/stable-id order used by
+## query_hostile_radius_into(), without allocating descriptors or resorting the
+## caller-owned buffer for every chain hop.
+func is_radius_candidate_before(
+	candidate: Node2D,
+	current_best: Node2D,
+	center: Vector2
+) -> bool:
+	if candidate == null or not is_instance_valid(candidate):
+		return false
+	if current_best == null or not is_instance_valid(current_best):
+		return true
+	return _is_radius_candidate_before(candidate, current_best, center)
+
+
 ## Unified exact-radius query. The three stores remain independent; only the
 ## caller-owned result is combined and deterministically ordered by distance,
 ## kind and stable ID. Player count stays a compact direct traversal, plants use

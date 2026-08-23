@@ -4,7 +4,6 @@
 [ext_resource type="Script" path="res://scene/enemy/sorcerer/lightning_sorcerer.gd" id="2_script"]
 [ext_resource type="Shader" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="3_shader"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/lightning_sorcerer_elite.tres" id="4_frames"]
-[ext_resource type="PackedScene" path="res://scene/enemy/sorcerer/lightning_sorcerer_target_warning.tscn" id="5_target_warning"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_lightning_sorcerer_elite"]
 shader = ExtResource("3_shader")
@@ -72,5 +71,3 @@ position = Vector2(0, -6)
 
 [node name="StaffTip" type="Marker2D" parent="CastPivot" index="0"]
 position = Vector2(24, 1)
-
-[node name="TargetWarning" parent="." instance=ExtResource("5_target_warning")]

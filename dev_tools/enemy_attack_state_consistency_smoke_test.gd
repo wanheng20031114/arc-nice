@@ -305,10 +305,16 @@ func _test_sniper_non_player_lock_cancel_contract() -> void:
 		Vector2(100.0, 0.0),
 		1
 	)
-	var proxy_aim := proxy.get_node("AimGlow") as Polygon2D
+	var warning_system := (
+		runtime.get_enemy_combat_services().get_enemy_warning_presentation_system()
+	)
+	var proxy_line_handle := proxy.sniper_line_warning_handle
 	_expect(
-		proxy.proxy_plant_lock_active and proxy_aim.visible,
-		"Client proxy must show the generic non-player lock warning."
+		proxy.proxy_plant_lock_active
+		and proxy.get_node_or_null("AimGlow") == null
+		and warning_system.is_handle_live(proxy_line_handle)
+		and proxy.sniper_reticle_warning_handle == 0,
+		"Client proxy must use a shared line-only non-player lock warning."
 	)
 	proxy.play_multiplayer_enemy_action(
 		CapooSniper.ACTION_NON_PLAYER_LOCK_CANCEL,
@@ -317,8 +323,9 @@ func _test_sniper_non_player_lock_cancel_contract() -> void:
 	)
 	_expect(
 		not proxy.proxy_plant_lock_active
-		and not proxy_aim.visible
-		and proxy.lock_reticle == null,
+		and proxy.sniper_line_warning_handle == 0
+		and proxy.sniper_reticle_warning_handle == 0
+		and not warning_system.is_handle_live(proxy_line_handle),
 		"Client proxy start+cancel must clear every generic non-player warning state."
 	)
 

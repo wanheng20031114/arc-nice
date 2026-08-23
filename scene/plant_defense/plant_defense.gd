@@ -91,6 +91,7 @@ var _pending_healing_number_amount: int = 0
 var _pending_physical_damage_number_direction := Vector2.ZERO
 var _pending_magic_damage_number_direction := Vector2.ZERO
 var _combat_number_flush_queued := false
+var _damage_target_profile := DamageTargetProfile.new()
 
 
 func bind_gameplay_context(
@@ -282,14 +283,20 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 	if admission_reason != CombatTypes.DamageRejectionReason.NONE:
 		return _reject_combat_damage(request, admission_reason)
 
-	var result := DamageResolver.resolve(
-		request,
-		DamageTargetProfile.new(
-			current_health,
-			get_effective_physical_defense(),
-			get_effective_magic_defense()
-		)
+	# DamageResolver consumes this profile synchronously and never retains it.
+	# Reusing the plant-owned value avoids one RefCounted allocation for every
+	# projectile or chain hit while preserving a distinct DamageResult per hit.
+	_damage_target_profile.current_health = maxi(current_health, 0)
+	_damage_target_profile.physical_defense = maxi(
+		get_effective_physical_defense(),
+		0
 	)
+	_damage_target_profile.magic_defense = clampi(
+		get_effective_magic_defense(),
+		0,
+		100
+	)
+	var result := DamageResolver.resolve(request, _damage_target_profile)
 	last_damage_result = result
 	if not result.accepted:
 		return result
@@ -967,9 +974,9 @@ func _report_damage_applied(
 ) -> void:
 	if applied_damage <= 0:
 		return
-	var safe_impact_direction := Vector2.ZERO
-	if impact_direction.is_finite() and impact_direction.length_squared() > 0.001:
-		safe_impact_direction = impact_direction.normalized()
+	# The only caller passes DamageRequest.get_safe_impact_direction(), so this
+	# value is already finite and normalized (or exactly zero).
+	var safe_impact_direction := impact_direction
 	var safe_damage_type := (
 		EnemyConfig.DamageType.MAGIC
 		if damage_type == EnemyConfig.DamageType.MAGIC

@@ -54,12 +54,6 @@ scale = Vector2(1.2307693, 1)
 [node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
 shape = SubResource("CapsuleShape2D_wc5ww")
 
-[node name="AimGlow" type="Polygon2D" parent="." index="7" unique_id=799485220]
-visible = false
-z_index = 3
-color = Color(1, 0.05, 0.03, 0.24)
-polygon = PackedVector2Array(0, -0.75, 24, -0.75, 24, 0.75, 0, 0.75)
-
 [node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="8" unique_id=1685502790]
 bus = &"SFX"
 volume_db = -8.0

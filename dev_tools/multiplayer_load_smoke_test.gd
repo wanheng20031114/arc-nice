@@ -1822,14 +1822,18 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 		_expect(sniper != null, "Enemy target action timeline test must instantiate a sniper.")
 		if sniper != null:
 			client_game.enemy_container.add_child(sniper)
-			sniper.setup(SNIPER_CONFIG, client_game.player, client_game.grid_pathfinder)
+			sniper.setup(
+				SNIPER_CONFIG,
+				client_game.player,
+				client_game.grid_pathfinder,
+				client_game
+			)
 			sniper.configure_multiplayer_proxy()
 			sniper.set_meta("net_id", 43)
 			sniper.global_position = Vector2(12.0, 8.0)
 			var sniper_interp := NetInterpolator.new(0.05, 0.0)
 			sniper_interp.push_snapshot(9.5, sniper.global_position, Vector2.ZERO)
 			mp_game.enemy_coordinator.enemy_interpolators[43] = sniper_interp
-			var aim_glow := sniper.get_node_or_null("AimGlow") as Polygon2D
 			mp_game.enemy_coordinator.register_client_enemy(43, sniper, 0.0)
 			mp_game.call(
 				"net_enemy_target_action",
@@ -1844,10 +1848,18 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 				sniper.global_position.is_equal_approx(Vector2(12.0, 8.0)),
 				"Stale enemy target action events must not pull proxy position off the snapshot timeline."
 			)
+			var warning_system := (
+				client_game.get_enemy_combat_services(
+				).get_enemy_warning_presentation_system()
+			)
 			_expect(
-				sniper.lock_reticle != null
-				and aim_glow != null
-				and aim_glow.visible
+				sniper.get_node_or_null("AimGlow") == null
+				and warning_system.is_handle_live(
+					sniper.sniper_line_warning_handle
+				)
+				and warning_system.is_handle_live(
+					sniper.sniper_reticle_warning_handle
+				)
 				and sniper.latest_proxy_target_action_id == 1,
 				"A transform-stale enemy target action must leave snapshot position untouched while its newer action id still advances target-lock visuals."
 			)
@@ -1861,7 +1873,12 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 				10.0
 			)
 			_expect(
-				sniper.lock_reticle != null and aim_glow != null and aim_glow.visible,
+				warning_system.is_handle_live(
+					sniper.sniper_line_warning_handle
+				)
+				and warning_system.is_handle_live(
+					sniper.sniper_reticle_warning_handle
+				),
 				"Fresh enemy target action events must still start target lock visuals."
 			)
 

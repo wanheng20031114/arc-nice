@@ -853,6 +853,29 @@ func find_nearest_hostile_enemy_attack_target_world(
 	return null
 
 
+## Fills caller-owned storage with the deterministic hostile attack-target
+## candidates for one world-space radius. Chain attacks can enumerate this
+## broad candidate set around several hop centers without allocating or
+## repeating the player/plant/enemy store query for every hop.
+func query_hostile_enemy_attack_targets_world_into(
+	from_position: Vector2,
+	max_distance: float,
+	source_faction_id: int,
+	result: Array[Node2D],
+	excluded_target: Node2D = null,
+	max_count: int = 0
+) -> void:
+	get_combat_query_facade().query_hostile_radius_into(
+		from_position,
+		max_distance,
+		source_faction_id,
+		result,
+		excluded_target,
+		max_count,
+		combat_relation_service
+	)
+
+
 ## Fills caller-owned storage with every living allied player in an exact
 ## world-space circle. Plant auras use this facade in both solo and Host modes
 ## without rebuilding the scene tree or allocating a temporary player list.

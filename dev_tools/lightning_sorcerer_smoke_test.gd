@@ -6,15 +6,14 @@ const LIGHTNING_SCENE := preload(
 const LIGHTNING_CONFIG := preload(
 	"res://resources/config/enemies/lightning_sorcerer.tres"
 )
-const FIRE_SCENE := preload("res://scene/enemy/sorcerer/fire_sorcerer.tscn")
 const FROST_CONFIG := preload(
 	"res://resources/config/enemies/frost_sorcerer.tres"
 )
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
-const TargetWarningScript := preload(
-	"res://scene/enemy/sorcerer/lightning_sorcerer_target_warning.gd"
+const ENEMY_SIMULATION_COORDINATOR_SCENE := preload(
+	"res://scene/combat/simulation/enemy_simulation_coordinator.tscn"
 )
 
 const TEST_HEALTH := 1000
@@ -90,6 +89,53 @@ class TargetRuntime:
 		)
 
 
+	func query_hostile_enemy_attack_targets_world_into(
+		from_position: Vector2,
+		max_distance: float,
+		_source_faction_id: int,
+		result: Array[Node2D],
+		excluded_target: Node2D = null,
+		max_count: int = 0
+	) -> void:
+		query_count += 1
+		result.clear()
+		var maximum_distance_squared := max_distance * max_distance
+		for candidate in candidates:
+			if (
+				candidate == null
+				or not is_instance_valid(candidate)
+				or candidate == excluded_target
+			):
+				continue
+			var player := candidate as Player
+			if player != null and player.is_dead:
+				continue
+			var plant := candidate as PlantDefense
+			if plant != null and (plant.is_dead or plant.is_removing):
+				continue
+			if player == null and plant == null:
+				continue
+			if (
+				from_position.distance_squared_to(candidate.global_position)
+				<= maximum_distance_squared
+			):
+				result.append(candidate)
+		result.sort_custom(
+			func(a: Node2D, b: Node2D) -> bool:
+				var a_distance := from_position.distance_squared_to(a.global_position)
+				var b_distance := from_position.distance_squared_to(b.global_position)
+				return (
+					a_distance < b_distance
+					or (
+						is_equal_approx(a_distance, b_distance)
+						and a.get_instance_id() < b.get_instance_id()
+					)
+				)
+		)
+		if max_count > 0 and result.size() > max_count:
+			result.resize(max_count)
+
+
 var failures: Array[String] = []
 var fixture: Node2D = null
 
@@ -155,25 +201,18 @@ func _test_resource_and_scene_contract() -> void:
 	)
 
 	var enemy := LIGHTNING_SCENE.instantiate() as LightningSorcerer
-	var fire_enemy := FIRE_SCENE.instantiate() as Node2D
 	_expect(enemy != null, "Lightning scene must instantiate LightningSorcerer.")
 	if enemy != null:
 		var sprite := enemy.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 		var pivot := enemy.get_node_or_null("CastPivot") as Node2D
 		var marker := enemy.get_node_or_null("CastPivot/StaffTip") as Marker2D
-		var target_warning := enemy.get_node_or_null(
-			"TargetWarning"
-		) as TargetWarningScript
 		_expect(
 			sprite != null and pivot != null and marker != null,
 			"Lightning scene must author its sprite, cast pivot, and staff marker."
 		)
 		_expect(
-			target_warning != null
-			and not target_warning.visible
-			and not target_warning.is_processing()
-			and not target_warning.is_warning_active(),
-			"Lightning scene must prebuild one hidden, idle target warning."
+			enemy.get_node_or_null("TargetWarning") == null,
+			"Lightning scene must not instantiate a per-enemy TargetWarning."
 		)
 		if sprite != null:
 			_expect(
@@ -193,23 +232,18 @@ func _test_resource_and_scene_contract() -> void:
 				and marker.position == Vector2(24.0, 1.0),
 				"Lightning must start at the authored Sorcerer staff endpoint."
 			)
-		if fire_enemy != null:
-			for path in [
-				NodePath("AnimatedSprite2D"),
-				NodePath("CollisionShape2D"),
-				NodePath("TouchDamageArea/CollisionShape2D"),
-			]:
-				var lightning_node := enemy.get_node_or_null(path) as Node2D
-				var fire_node := fire_enemy.get_node_or_null(path) as Node2D
-				_expect(
-					lightning_node != null
-					and fire_node != null
-					and lightning_node.transform.is_equal_approx(fire_node.transform),
-					"Lightning Sorcerer geometry must match Fire Sorcerer at %s." % path
-				)
+		for path in [
+			NodePath("CollisionShape2D"),
+			NodePath("TouchDamageArea/CollisionShape2D"),
+		]:
+			var collision := enemy.get_node_or_null(path) as CollisionShape2D
+			_expect(
+				collision != null
+				and collision.shape is CapsuleShape2D
+				and collision.transform.is_equal_approx(Transform2D.IDENTITY),
+				"Lightning Sorcerer must preserve its authored capsule at %s." % path
+			)
 		enemy.free()
-	if fire_enemy != null:
-		fire_enemy.free()
 
 	var enemy_source := FileAccess.get_file_as_string(
 		"res://scene/enemy/sorcerer/lightning_sorcerer.gd"
@@ -217,6 +251,10 @@ func _test_resource_and_scene_contract() -> void:
 	_expect(
 		not enemy_source.contains("projectile_scene")
 		and not enemy_source.contains("intersect_shape")
+		and not enemy_source.contains("TargetWarningScript")
+		and enemy_source.contains("acquire_lightning_warning")
+		and enemy_source.contains("update_lightning_warning")
+		and enemy_source.contains("release_warning")
 		and enemy_source.contains("request_player_damage")
 		and enemy_source.contains("apply_combat_damage"),
 		"Lightning must resolve typed direct authoritative damage without a projectile or AOE query."
@@ -276,9 +314,10 @@ func _test_five_target_chain_and_exact_boundary() -> void:
 		"The sixth candidate must remain untouched after the fourth bounce."
 	)
 	_expect(
-		runtime.query_count == 4,
-		"One completed five-target chain must perform exactly four local follow-up queries."
+		runtime.query_count == 1,
+		"One completed five-target chain must perform one reusable broad candidate query."
 	)
+	_prepare_runtime_teardown(runtime)
 	runtime.queue_free()
 	await process_frame
 
@@ -301,6 +340,7 @@ func _test_chain_stops_past_three_cells() -> void:
 		and too_far.current_health == TEST_HEALTH,
 		"A target even slightly beyond three cells must stop the chain."
 	)
+	_prepare_runtime_teardown(runtime)
 	runtime.queue_free()
 	await process_frame
 
@@ -310,13 +350,11 @@ func _test_windup_direct_hit_and_cooldown() -> void:
 	var primary := _spawn_player(runtime, Vector2(100.0, 0.0))
 	runtime.candidates.append(primary)
 	var enemy := _spawn_enemy(runtime, primary)
-	var target_warning := enemy.get_node_or_null(
-		"TargetWarning"
-	) as TargetWarningScript
-	var authored_child_count := enemy.get_child_count()
-	var warning_instance_id := (
-		int(target_warning.get_instance_id()) if target_warning != null else 0
+	var warning_system := (
+		runtime.get_enemy_combat_services()
+		.get_enemy_warning_presentation_system()
 	)
+	var authored_child_count := enemy.get_child_count()
 	enemy.initial_attack_stagger_left = 0.0
 	var projectiles_before := get_nodes_in_group(&"runtime_projectiles").size()
 	_expect(
@@ -328,27 +366,19 @@ func _test_windup_direct_hit_and_cooldown() -> void:
 		"Starting the warning must not deal damage before the windup completes."
 	)
 	_expect(
-		target_warning != null
-		and target_warning.visible
-		and not target_warning.is_processing()
-		and target_warning.is_warning_active()
-		and is_zero_approx(target_warning.get_progress_ratio())
-		and is_equal_approx(
-			target_warning.get_chain_danger_radius(),
-			EXPECTED_CHAIN_RANGE
-		)
-		and target_warning.global_position.is_equal_approx(primary.global_position),
-		"Windup start must show a zero-progress warning with the configured first-hop radius and no per-node process loop."
+		enemy.target_warning_handle > 0
+		and warning_system.is_handle_live(enemy.target_warning_handle)
+		and enemy.get_node_or_null("TargetWarning") == null,
+		"Windup start must acquire one shared warning handle without adding a node."
 	)
+	var first_warning_handle := enemy.target_warning_handle
 
 	primary.global_position = Vector2(104.0, 8.0)
 	enemy.call("_update_windup", 0.2)
 	_expect(
-		target_warning != null
-		and target_warning.get_progress_ratio() > 0.0
-		and target_warning.get_progress_ratio() < 1.0
-		and target_warning.global_position.is_equal_approx(primary.global_position),
-		"The active warning must advance and follow a moving target."
+		enemy.target_warning_handle == first_warning_handle
+		and warning_system.is_handle_live(first_warning_handle),
+		"The active shared warning handle must survive target-follow updates."
 	)
 
 	primary.global_position = Vector2(EXPECTED_ATTACK_RANGE + 0.25, 0.0)
@@ -359,11 +389,9 @@ func _test_windup_direct_hit_and_cooldown() -> void:
 		"Leaving the seven-cell range during windup must cancel without damage."
 	)
 	_expect(
-		target_warning != null
-		and not target_warning.visible
-		and not target_warning.is_processing()
-		and not target_warning.is_warning_active(),
-		"A cancelled windup must clear and idle the target warning immediately."
+		enemy.target_warning_handle == 0
+		and not warning_system.is_handle_live(first_warning_handle),
+		"A cancelled windup must release the shared warning immediately."
 	)
 
 	primary.global_position = Vector2(100.0, 0.0)
@@ -373,21 +401,20 @@ func _test_windup_direct_hit_and_cooldown() -> void:
 	)
 	_expect(
 		enemy.get_child_count() == authored_child_count
-		and target_warning != null
-		and int(target_warning.get_instance_id()) == warning_instance_id,
-		"Repeated attacks must reuse the authored warning instead of adding nodes."
+		and enemy.get_node_or_null("TargetWarning") == null
+		and warning_system.is_handle_live(enemy.target_warning_handle),
+		"Repeated attacks must reacquire shared data without adding nodes."
 	)
+	var strike_warning_handle := enemy.target_warning_handle
 	enemy.call("_update_windup", LIGHTNING_CONFIG.windup_duration + 0.01)
 	_expect(
 		primary.current_health == TEST_HEALTH - 50,
 		"Completing the windup must directly apply one full magic hit."
 	)
 	_expect(
-		target_warning != null
-		and not target_warning.visible
-		and not target_warning.is_processing()
-		and not target_warning.is_warning_active(),
-		"The warning must clear in the same frame that the direct hit commits."
+		enemy.target_warning_handle == 0
+		and not warning_system.is_handle_live(strike_warning_handle),
+		"The warning handle must release in the same frame as direct-hit commit."
 	)
 	_expect(
 		enemy.combat_state == LightningSorcerer.CombatState.CHASE
@@ -405,25 +432,23 @@ func _test_windup_direct_hit_and_cooldown() -> void:
 	enemy.attack_cooldown_left = 0.0
 	_expect(
 		bool(enemy.call("_try_start_windup", primary, LIGHTNING_CONFIG))
-		and target_warning != null
-		and target_warning.is_warning_active(),
-		"The authored warning must remain reusable after a completed strike."
+		and warning_system.is_handle_live(enemy.target_warning_handle),
+		"The shared warning family must remain reusable after a completed strike."
 	)
+	var death_warning_handle := enemy.target_warning_handle
 	enemy.call("_die")
 	_expect(
 		enemy.is_dead
-		and target_warning != null
-		and not target_warning.visible
-		and not target_warning.is_processing()
-		and not target_warning.is_warning_active(),
-		"Death during windup must clear and idle the target warning."
+		and enemy.target_warning_handle == 0
+		and not warning_system.is_handle_live(death_warning_handle),
+		"Death during windup must release the shared warning handle."
 	)
 	_expect(
 		enemy.get_child_count() == authored_child_count
-		and target_warning != null
-		and int(target_warning.get_instance_id()) == warning_instance_id,
-		"Cancel, strike, and death paths must never replace the authored warning."
+		and enemy.get_node_or_null("TargetWarning") == null,
+		"Cancel, strike, and death paths must never add warning nodes."
 	)
+	_prepare_runtime_teardown(runtime)
 	runtime.queue_free()
 	await process_frame
 
@@ -431,8 +456,15 @@ func _test_windup_direct_hit_and_cooldown() -> void:
 func _create_runtime(runtime_name: String) -> TargetRuntime:
 	var runtime := TargetRuntime.new()
 	runtime.name = runtime_name
+	runtime.add_child(ENEMY_SIMULATION_COORDINATOR_SCENE.instantiate())
 	fixture.add_child(runtime)
 	return runtime
+
+
+func _prepare_runtime_teardown(runtime: TargetRuntime) -> void:
+	var coordinator := runtime.get_enemy_simulation_coordinator()
+	if coordinator != null:
+		coordinator.prepare_combat_services_for_runtime_teardown()
 
 
 func _spawn_enemy(runtime: TargetRuntime, target: Player) -> LightningSorcerer:

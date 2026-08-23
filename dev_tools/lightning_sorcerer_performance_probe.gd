@@ -30,6 +30,8 @@ const LOCAL_TARGET_COUNT := 5
 const FAR_PLANT_COUNT := 1024
 const CHAIN_WARMUP_SWEEPS := 6
 const CHAIN_SAMPLE_SWEEPS := 40
+const CHAIN_DIAGNOSTIC_WARMUP_SWEEPS := 4
+const CHAIN_DIAGNOSTIC_SAMPLE_SWEEPS := 40
 const DENSE_GRID_HALF_EXTENT := 9
 const MEDIUM_DENSE_MIN_CELL := -4
 const MEDIUM_DENSE_MAX_CELL_EXCLUSIVE := 4
@@ -105,6 +107,18 @@ class ProbePlantSystem:
 			registry_query_count += 1
 		return nearest
 
+	func query_living_plants_in_world_radius_into(
+		center: Vector2,
+		radius: float,
+		result: Array[PlantDefense]
+	) -> void:
+		super.query_living_plants_in_world_radius_into(center, radius, result)
+		spatial_query_count += 1
+		spatial_candidate_visits += result.size()
+
+	func resolve_probe_plant(_net_id: int) -> PlantDefense:
+		return null
+
 
 var failures: Array[String] = []
 var budget_violations: Array[String] = []
@@ -118,6 +132,7 @@ var flash_pool: NightVfxFlashPool = null
 var enemies: Array[LightningSorcerer] = []
 var local_targets: Array[PlantDefense] = []
 var pool_registration_ms := 0.0
+var chain_cost_diagnostics: Dictionary = {}
 
 
 func _init() -> void:
@@ -132,6 +147,7 @@ func _run() -> void:
 	_spawn_enemies()
 	await process_frame
 	await physics_frame
+	chain_cost_diagnostics = await _measure_chain_cost_diagnostics()
 
 	var local_candidate_count_before := plant_system.get_candidate_count(
 		Vector2i.ZERO,
@@ -230,6 +246,10 @@ func _build_fixture() -> void:
 	)
 	plant_system.set_enemy_target_query_metrics_enabled(true)
 	runtime.plant_system = plant_system
+	runtime.get_combat_query_facade().bind_plant_query_port(
+		Callable(plant_system, &"resolve_probe_plant"),
+		Callable(plant_system, &"query_living_plants_in_world_radius_into")
+	)
 
 	pathfinder = runtime.get_node_or_null("GridPathfinder")
 
@@ -323,6 +343,8 @@ func _measure_chain_case() -> Dictionary:
 	var samples_ms: Array[float] = []
 	var minimum_queries := 1_000_000
 	var maximum_queries := 0
+	var minimum_broad_queries := 1_000_000
+	var maximum_broad_queries := 0
 	var minimum_candidate_visits := 1_000_000
 	var maximum_candidate_visits := 0
 	var minimum_hits := 1_000_000
@@ -333,6 +355,14 @@ func _measure_chain_case() -> Dictionary:
 		samples_ms.append(float(sample["elapsed_ms"]))
 		minimum_queries = mini(minimum_queries, int(sample["queries"]))
 		maximum_queries = maxi(maximum_queries, int(sample["queries"]))
+		minimum_broad_queries = mini(
+			minimum_broad_queries,
+			int(sample["broad_queries"])
+		)
+		maximum_broad_queries = maxi(
+			maximum_broad_queries,
+			int(sample["broad_queries"])
+		)
 		minimum_candidate_visits = mini(
 			minimum_candidate_visits,
 			int(sample["candidate_visits"])
@@ -352,6 +382,8 @@ func _measure_chain_case() -> Dictionary:
 		"timing": _summarize(samples_ms),
 		"minimum_queries": minimum_queries,
 		"maximum_queries": maximum_queries,
+		"minimum_broad_queries": minimum_broad_queries,
+		"maximum_broad_queries": maximum_broad_queries,
 		"minimum_candidate_visits": minimum_candidate_visits,
 		"maximum_candidate_visits": maximum_candidate_visits,
 		"minimum_hits": minimum_hits,
@@ -360,8 +392,166 @@ func _measure_chain_case() -> Dictionary:
 	}
 
 
+func _measure_chain_cost_diagnostics() -> Dictionary:
+	for enemy in enemies:
+		enemy.cast_damage_source_snapshot = enemy.create_damage_source_snapshot(
+			int(enemy.get_instance_id()),
+			LightningSorcerer.DAMAGE_SOURCE_TYPE
+		)
+
+	for _warmup_index in range(CHAIN_DIAGNOSTIC_WARMUP_SWEEPS):
+		_run_chain_selection_only_sweep()
+	var selection_samples_ms: Array[float] = []
+	var selection_hits := 0
+	for _sample_index in range(CHAIN_DIAGNOSTIC_SAMPLE_SWEEPS):
+		var selection_sample := _run_chain_selection_only_sweep()
+		selection_samples_ms.append(float(selection_sample["elapsed_ms"]))
+		selection_hits = int(selection_sample["hits"])
+
+	for _warmup_index in range(CHAIN_DIAGNOSTIC_WARMUP_SWEEPS):
+		_run_damage_request_admission_only_sweep()
+	var request_samples_ms: Array[float] = []
+	var admitted_requests := 0
+	for _sample_index in range(CHAIN_DIAGNOSTIC_SAMPLE_SWEEPS):
+		var request_sample := _run_damage_request_admission_only_sweep()
+		request_samples_ms.append(float(request_sample["elapsed_ms"]))
+		admitted_requests = int(request_sample["admitted"])
+
+	var sink_requests: Array[DamageRequest] = []
+	var sink_targets: Array[PlantDefense] = []
+	_build_damage_sink_diagnostic_inputs(sink_requests, sink_targets)
+	for _warmup_index in range(CHAIN_DIAGNOSTIC_WARMUP_SWEEPS):
+		_run_plant_damage_sink_only_sweep(sink_requests, sink_targets)
+		await process_frame
+	var sink_samples_ms: Array[float] = []
+	var accepted_sink_calls := 0
+	for _sample_index in range(CHAIN_DIAGNOSTIC_SAMPLE_SWEEPS):
+		var sink_sample := _run_plant_damage_sink_only_sweep(
+			sink_requests,
+			sink_targets
+		)
+		sink_samples_ms.append(float(sink_sample["elapsed_ms"]))
+		accepted_sink_calls = int(sink_sample["accepted"])
+		await process_frame
+
+	return {
+		"sample_count": CHAIN_DIAGNOSTIC_SAMPLE_SWEEPS,
+		"calls_per_sample": ENEMY_COUNT * LOCAL_TARGET_COUNT,
+		"selection_only": {
+			"hits": selection_hits,
+			"total_ms": _sum_samples_ms(selection_samples_ms),
+			"timing": _summarize(selection_samples_ms),
+		},
+		"request_and_admission_only": {
+			"admitted": admitted_requests,
+			"total_ms": _sum_samples_ms(request_samples_ms),
+			"timing": _summarize(request_samples_ms),
+		},
+		"plant_apply_only": {
+			"accepted": accepted_sink_calls,
+			"total_ms": _sum_samples_ms(sink_samples_ms),
+			"timing": _summarize(sink_samples_ms),
+		},
+	}
+
+
+func _run_chain_selection_only_sweep() -> Dictionary:
+	var selected_hits := 0
+	var started_usec := Time.get_ticks_usec()
+	for enemy in enemies:
+		var current_target := runtime.find_nearest_enemy_attack_target_world(
+			enemy.global_position,
+			LIGHTNING_CONFIG.attack_range
+		)
+		if current_target == null:
+			continue
+		enemy.call(
+			"_collect_chain_candidates",
+			current_target,
+			LIGHTNING_CONFIG,
+			LOCAL_TARGET_COUNT
+		)
+		enemy._chain_excluded_instance_ids.clear()
+		for hit_index in range(LOCAL_TARGET_COUNT):
+			if current_target == null or not is_instance_valid(current_target):
+				break
+			enemy._chain_excluded_instance_ids[current_target.get_instance_id()] = true
+			selected_hits += 1
+			if hit_index + 1 >= LOCAL_TARGET_COUNT:
+				break
+			current_target = enemy.call(
+				"_find_next_chain_target",
+				current_target.global_position,
+				LIGHTNING_CONFIG.chain_range
+			) as Node2D
+	return {
+		"elapsed_ms": float(Time.get_ticks_usec() - started_usec) / 1000.0,
+		"hits": selected_hits,
+	}
+
+
+func _run_damage_request_admission_only_sweep() -> Dictionary:
+	var admitted := 0
+	var started_usec := Time.get_ticks_usec()
+	for enemy in enemies:
+		var source_position := enemy.staff_tip.global_position
+		for target in local_targets:
+			var request := enemy.call(
+				"_make_chain_damage_request",
+				LIGHTNING_CONFIG.attack_damage,
+				source_position,
+				target.global_position
+			) as DamageRequest
+			if CombatDamageAdmission.is_admitted(
+				request,
+				target.get_combat_faction_id(),
+				enemy.combat_relation_service
+			):
+				admitted += 1
+	return {
+		"elapsed_ms": float(Time.get_ticks_usec() - started_usec) / 1000.0,
+		"admitted": admitted,
+	}
+
+
+func _build_damage_sink_diagnostic_inputs(
+	requests: Array[DamageRequest],
+	targets: Array[PlantDefense]
+) -> void:
+	requests.clear()
+	targets.clear()
+	for enemy in enemies:
+		var source_position := enemy.staff_tip.global_position
+		for target in local_targets:
+			requests.append(enemy.call(
+				"_make_chain_damage_request",
+				LIGHTNING_CONFIG.attack_damage,
+				source_position,
+				target.global_position
+			) as DamageRequest)
+			targets.append(target)
+
+
+func _run_plant_damage_sink_only_sweep(
+	requests: Array[DamageRequest],
+	targets: Array[PlantDefense]
+) -> Dictionary:
+	var accepted := 0
+	var started_usec := Time.get_ticks_usec()
+	for request_index in range(requests.size()):
+		if targets[request_index].apply_combat_damage(
+			requests[request_index]
+		).accepted:
+			accepted += 1
+	return {
+		"elapsed_ms": float(Time.get_ticks_usec() - started_usec) / 1000.0,
+		"accepted": accepted,
+	}
+
+
 func _run_chain_sweep() -> Dictionary:
 	runtime.attack_target_query_count = 0
+	runtime.broad_attack_target_query_count = 0
 	plant_system.reset_query_metrics()
 	var total_hits := 0
 	var started_usec := Time.get_ticks_usec()
@@ -383,6 +573,7 @@ func _run_chain_sweep() -> Dictionary:
 	return {
 		"elapsed_ms": elapsed_ms,
 		"queries": runtime.attack_target_query_count,
+		"broad_queries": runtime.broad_attack_target_query_count,
 		"candidate_visits": plant_system.spatial_candidate_visits,
 		"registry_queries": plant_system.registry_query_count,
 		"hits": total_hits,
@@ -460,51 +651,118 @@ func _run_query_only_sweep(center_world: Vector2) -> Dictionary:
 
 
 func _measure_warning_pressure() -> Dictionary:
-	var started_usec := Time.get_ticks_usec()
+	var warning_system := (
+		runtime.get_enemy_combat_services()
+		.get_enemy_warning_presentation_system()
+	)
+	var draw_family_count_before := _count_multimesh_families(warning_system)
+
+	# Keep one production WINDUP pass as a workload/lifecycle assertion, but do
+	# not charge target selection, LOS, animation, or combat-state work to the
+	# shared warning presentation CPU gates.
 	var started_count := 0
 	for enemy in enemies:
 		if bool(enemy.call("_try_start_windup", local_targets[0], LIGHTNING_CONFIG)):
 			started_count += 1
-	var start_ms := float(Time.get_ticks_usec() - started_usec) / 1000.0
-
 	var active_count := 0
-	var visible_count := 0
-	var processing_count := 0
 	for enemy in enemies:
-		if enemy.target_warning.is_warning_active():
+		if warning_system.is_handle_live(enemy.target_warning_handle):
 			active_count += 1
-		if enemy.target_warning.visible:
-			visible_count += 1
-		if enemy.target_warning.is_processing():
-			processing_count += 1
-
-	var samples_ms: Array[float] = []
 	for _frame_index in range(WARNING_MANUAL_FRAME_COUNT):
-		started_usec = Time.get_ticks_usec()
 		for enemy in enemies:
 			enemy.call("_update_windup", TEST_DELTA)
-		samples_ms.append(
-			float(Time.get_ticks_usec() - started_usec) / 1000.0
-		)
 
 	var windup_count := 0
 	var progressed_count := 0
 	for enemy in enemies:
 		if enemy.combat_state == LightningSorcerer.CombatState.WINDUP:
 			windup_count += 1
-		if enemy.target_warning.get_warning_progress() > 0.0:
+		if enemy.windup_time_left < LIGHTNING_CONFIG.windup_duration:
 			progressed_count += 1
 		enemy.call("_cancel_windup", false)
+	var real_workload_release_metrics := warning_system.get_metrics()
+	_expect(
+		int(real_workload_release_metrics["live_warnings"]) == 0,
+		"The untimed real WINDUP workload must release every shared warning."
+	)
+
+	# Time only the shared presentation contract used by every caster. The
+	# start gate covers acquire plus the initial warning write, while each p95
+	# sample covers one update for all live warnings. Releases remain part of
+	# the same measured lifecycle/metric boundary without unrelated enemy work.
+	var metrics_before := warning_system.get_metrics()
+	var warning_handles := PackedInt64Array()
+	warning_handles.resize(ENEMY_COUNT)
+	var warning_position := local_targets[0].global_position
+	var chain_radius := maxf(LIGHTNING_CONFIG.chain_range, 0.0)
+	var started_usec := Time.get_ticks_usec()
+	for enemy_index in range(ENEMY_COUNT):
+		var handle := warning_system.acquire_lightning_warning(
+			int(enemies[enemy_index].get_instance_id())
+		)
+		warning_handles[enemy_index] = handle
+		warning_system.update_lightning_warning(
+			handle,
+			warning_position,
+			0.0,
+			chain_radius
+		)
+	var start_ms := float(Time.get_ticks_usec() - started_usec) / 1000.0
+	var metrics_after_start := warning_system.get_metrics()
+
+	var samples_ms: Array[float] = []
+	for frame_index in range(WARNING_MANUAL_FRAME_COUNT):
+		var progress := float(frame_index + 1) / float(WARNING_MANUAL_FRAME_COUNT)
+		started_usec = Time.get_ticks_usec()
+		for handle in warning_handles:
+			warning_system.update_lightning_warning(
+				handle,
+				warning_position,
+				progress,
+				chain_radius
+			)
+		samples_ms.append(
+			float(Time.get_ticks_usec() - started_usec) / 1000.0
+		)
+	for handle in warning_handles:
+		warning_system.release_warning(handle)
+	var metrics_after_release := warning_system.get_metrics()
+	var draw_family_count_after := _count_multimesh_families(warning_system)
 	return {
 		"start_ms": start_ms,
 		"started_count": started_count,
 		"active_count": active_count,
-		"visible_count": visible_count,
-		"processing_count": processing_count,
 		"windup_count": windup_count,
 		"progressed_count": progressed_count,
+		"acquisition_delta": (
+			int(metrics_after_start["acquisitions"])
+			- int(metrics_before["acquisitions"])
+		),
+		"update_delta": (
+			int(metrics_after_release["updates"])
+			- int(metrics_before["updates"])
+		),
+		"release_delta": (
+			int(metrics_after_release["releases"])
+			- int(metrics_before["releases"])
+		),
+		"live_after_release": int(metrics_after_release["live_warnings"]),
+		"draw_family_count_before": draw_family_count_before,
+		"draw_family_count_after": draw_family_count_after,
+		"lightning_visual_capacity": int(
+			metrics_after_release["lightning_visual_capacity"]
+		),
 		"timing": _summarize(samples_ms),
 	}
+
+
+func _count_multimesh_families(parent: Node) -> int:
+	var count := 0
+	for child in parent.get_children():
+		if child is MultiMeshInstance2D:
+			count += 1
+		count += _count_multimesh_families(child)
+	return count
 
 
 func _measure_vfx_pressure() -> Dictionary:
@@ -666,18 +924,46 @@ func _print_results(
 	var offscreen_before := vfx_result["offscreen_before"] as Dictionary
 	var offscreen_after := vfx_result["offscreen_after"] as Dictionary
 	var warning_timing := warning_result["timing"] as Dictionary
+	var selection_diagnostic := (
+		chain_cost_diagnostics["selection_only"] as Dictionary
+	)
+	var request_diagnostic := (
+		chain_cost_diagnostics["request_and_admission_only"] as Dictionary
+	)
+	var sink_diagnostic := chain_cost_diagnostics["plant_apply_only"] as Dictionary
+	print(
+		(
+			"LIGHTNING_SORCERER_CHAIN_COST_DIAGNOSTICS calls=%d samples=%d "
+			+ "selection_ms=%s total=%.3f request_admission_ms=%s total=%.3f "
+			+ "plant_apply_ms=%s total=%.3f"
+		)
+		% [
+			int(chain_cost_diagnostics["calls_per_sample"]),
+			int(chain_cost_diagnostics["sample_count"]),
+			_format_summary(selection_diagnostic["timing"] as Dictionary),
+			float(selection_diagnostic["total_ms"]),
+			_format_summary(request_diagnostic["timing"] as Dictionary),
+			float(request_diagnostic["total_ms"]),
+			_format_summary(sink_diagnostic["timing"] as Dictionary),
+			float(sink_diagnostic["total_ms"]),
+		]
+	)
 	print(
 		(
 			"LIGHTNING_SORCERER_WARNING_PERFORMANCE enemies=%d started=%d "
-			+ "active=%d visible=%d node_process=%d start_ms=%.3f "
-			+ "frames=%d update_ms=%s progressed=%d"
+			+ "active=%d acquisitions=%d updates=%d releases=%d "
+			+ "draw_families=%d/%d start_ms=%.3f frames=%d "
+			+ "update_ms=%s progressed=%d"
 		)
 		% [
 			ENEMY_COUNT,
 			int(warning_result["started_count"]),
 			int(warning_result["active_count"]),
-			int(warning_result["visible_count"]),
-			int(warning_result["processing_count"]),
+			int(warning_result["acquisition_delta"]),
+			int(warning_result["update_delta"]),
+			int(warning_result["release_delta"]),
+			int(warning_result["draw_family_count_before"]),
+			int(warning_result["draw_family_count_after"]),
 			float(warning_result["start_ms"]),
 			WARNING_MANUAL_FRAME_COUNT,
 			_format_summary(warning_timing),
@@ -687,7 +973,7 @@ func _print_results(
 	print(
 		(
 			"LIGHTNING_SORCERER_CHAIN_PERFORMANCE enemies=%d hits_per_sweep=%d "
-			+ "queries_per_sweep=%d initial_queries=%d bounce_queries=%d "
+			+ "initial_queries_per_sweep=%d broad_queries_per_sweep=%d "
 			+ "samples=%d local_plants=%d far_plants=%d "
 			+ "local_candidates=%d/%d local_ms=%s distant_ms=%s "
 			+ "distant_p50_ratio=%.3f candidate_visits=%d/%d registry_queries=%d/%d"
@@ -696,8 +982,7 @@ func _print_results(
 			ENEMY_COUNT,
 			int(local_result["minimum_hits"]),
 			int(local_result["minimum_queries"]),
-			ENEMY_COUNT,
-			ENEMY_COUNT * (LOCAL_TARGET_COUNT - 1),
+			int(local_result["minimum_broad_queries"]),
 			CHAIN_SAMPLE_SWEEPS,
 			LOCAL_TARGET_COUNT,
 			FAR_PLANT_COUNT,
@@ -797,6 +1082,7 @@ func _print_results(
 			"local": local_result,
 			"distant": distant_result,
 		},
+		"chain_cost_diagnostics": chain_cost_diagnostics,
 		"density": density_result,
 		"warning": warning_result,
 		"vfx": vfx_result,
@@ -819,13 +1105,28 @@ func _validate_results(
 	local_candidate_count_before: int,
 	local_candidate_count_after: int
 ) -> void:
-	var expected_queries := ENEMY_COUNT * LOCAL_TARGET_COUNT
+	var expected_queries := ENEMY_COUNT
 	var expected_hits := ENEMY_COUNT * LOCAL_TARGET_COUNT
+	var selection_diagnostic := (
+		chain_cost_diagnostics["selection_only"] as Dictionary
+	)
+	var request_diagnostic := (
+		chain_cost_diagnostics["request_and_admission_only"] as Dictionary
+	)
+	var sink_diagnostic := chain_cost_diagnostics["plant_apply_only"] as Dictionary
+	_expect(
+		int(selection_diagnostic["hits"]) == expected_hits
+		and int(request_diagnostic["admitted"]) == expected_hits
+		and int(sink_diagnostic["accepted"]) == expected_hits,
+		"Chain cost diagnostics must execute all 1500 isolated operations."
+	)
 	for result in [local_result, distant_result]:
 		_expect(
 			int(result["minimum_queries"]) == expected_queries
-			and int(result["maximum_queries"]) == expected_queries,
-			"Every 300-enemy sweep must perform one initial plus four chain queries per caster."
+			and int(result["maximum_queries"]) == expected_queries
+			and int(result["minimum_broad_queries"]) == ENEMY_COUNT
+			and int(result["maximum_broad_queries"]) == ENEMY_COUNT,
+			"Every 300-enemy sweep must perform one initial and one reusable broad query per caster."
 		)
 		_expect(
 			int(result["minimum_hits"]) == expected_hits
@@ -895,11 +1196,17 @@ func _validate_results(
 	_expect(
 		int(warning_result["started_count"]) == ENEMY_COUNT
 		and int(warning_result["active_count"]) == ENEMY_COUNT
-		and int(warning_result["visible_count"]) == ENEMY_COUNT
-		and int(warning_result["processing_count"]) == 0
 		and int(warning_result["windup_count"]) == ENEMY_COUNT
-		and int(warning_result["progressed_count"]) == ENEMY_COUNT,
-		"The pressure case must drive 300 authored warnings through real WINDUP without per-node processing."
+		and int(warning_result["progressed_count"]) == ENEMY_COUNT
+		and int(warning_result["acquisition_delta"]) == ENEMY_COUNT
+		and int(warning_result["update_delta"])
+			>= ENEMY_COUNT * (WARNING_MANUAL_FRAME_COUNT + 1)
+		and int(warning_result["release_delta"]) == ENEMY_COUNT
+		and int(warning_result["live_after_release"]) == 0
+		and int(warning_result["draw_family_count_before"]) == 3
+		and int(warning_result["draw_family_count_after"]) == 3
+		and int(warning_result["lightning_visual_capacity"]) == 512,
+		"The pressure case must drive 300 shared warnings while keeping three fixed draw families."
 	)
 	_expect_budget(
 		float(warning_result["start_ms"]) <= WARNING_START_LIMIT_MS
@@ -992,6 +1299,13 @@ func _summarize(samples: Array[float]) -> Dictionary:
 		"p99": _percentile(sorted, 0.99),
 		"max": sorted.back(),
 	}
+
+
+func _sum_samples_ms(samples: Array[float]) -> float:
+	var total := 0.0
+	for sample in samples:
+		total += sample
+	return total
 
 
 func _percentile(sorted: Array[float], ratio: float) -> float:

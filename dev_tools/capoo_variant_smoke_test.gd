@@ -12,6 +12,9 @@ const RETICLE_SCENE := preload("res://scene/enemy/capoo/capoo_sniper_lock_reticl
 const RETICLE_COORDINATOR_SCRIPT := preload(
 	"res://scene/enemy/capoo/capoo_sniper_lock_visual_coordinator.gd"
 )
+const EnemyWarningPresentationSystemScript := preload(
+	"res://scene/combat/presentation/enemy_warning_presentation_system.gd"
+)
 const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const MAGE_CONFIG := preload("res://resources/config/enemies/capoo_mage.tres")
@@ -32,6 +35,7 @@ var spawned_fireballs: Array[CapooMageFireball] = []
 var spawned_smg_bullets: Array[CapooAK47Bullet] = []
 var spawned_smg_bullet_directions := PackedVector2Array()
 var reticle_coordinator: CapooSniperLockVisualCoordinator = null
+var warning_system: EnemyWarningPresentationSystemScript = null
 
 
 func _init() -> void:
@@ -46,6 +50,16 @@ func _run() -> void:
 	test_root.name = "CapooVariantSmokeTest"
 	root.add_child(test_root)
 	test_root.child_entered_tree.connect(_on_child_entered_tree)
+	var combat_services := test_root.get_enemy_combat_services()
+	warning_system = (
+		combat_services.get_enemy_warning_presentation_system()
+		if combat_services != null
+		else null
+	)
+	_expect(
+		warning_system != null,
+		"Capoo fixture must mount the shared enemy warning presentation system."
+	)
 	_expect(
 		test_root.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER,
 		"Capoo local combat fixture must declare explicit SINGLEPLAYER authority."
@@ -55,6 +69,7 @@ func _run() -> void:
 	test_root.add_child(reticle_coordinator)
 
 	_test_resource_contract()
+	_test_shared_sniper_warning_arbitration()
 	await _test_reticle_highest_progress_priority()
 	await _test_reticle_coordinator_runtime_scope()
 	await _test_mage_windup_fireball_and_obstruction()
@@ -65,6 +80,11 @@ func _run() -> void:
 	await _test_proxy_action_visuals()
 	_test_multiplayer_projectile_registry()
 	_test_wave_entries()
+	if warning_system != null:
+		_expect(
+			int(warning_system.get_metrics()["live_warnings"]) == 0,
+			"Capoo smoke teardown must leave zero shared warning handles."
+		)
 
 	test_root.queue_free()
 	await process_frame
@@ -91,7 +111,7 @@ func _test_resource_contract() -> void:
 	_expect(SNIPER_CONFIG.enemy_scene == SNIPER_SCENE, "Sniper Capoo must use its own scene.")
 	_expect(SMG_CONFIG.enemy_scene == SMG_SCENE, "SMG Capoo must use its own scene.")
 	_expect(MAGE_CONFIG.projectile_scene == FIREBALL_SCENE, "Mage Capoo must use the generated fireball scene.")
-	_expect(SNIPER_CONFIG.lock_reticle_scene == RETICLE_SCENE, "Sniper Capoo must use the generated reticle scene.")
+	_expect(SNIPER_CONFIG.lock_reticle_scene == RETICLE_SCENE, "Legacy sniper reticle regression resource must remain available.")
 	_expect(SMG_CONFIG.projectile_scene == SMG_BULLET_SCENE, "SMG Capoo must use its short-lived bullet scene.")
 	_expect(
 		_resource_path(MAGE_CONFIG.attack_audio_stream).ends_with("capoo_mage_fireball_cast.wav"),
@@ -151,6 +171,39 @@ func _test_resource_contract() -> void:
 	_expect(_sprite_frames_count("res://resources/animation/capoo_smg_bullet.tres", &"fly") == 3, "SMG bullet frame count mismatch.")
 	_expect(_has_reticle_scene_contract(), "Sniper reticle scene contract failed.")
 	_test_reticle_coordinator_scene_installation()
+
+
+func _test_shared_sniper_warning_arbitration() -> void:
+	if warning_system == null:
+		return
+	var live_before := int(warning_system.get_metrics()["live_warnings"])
+	var lower_owner: int = warning_system.acquire_sniper_reticle(4101, 9201)
+	var higher_owner: int = warning_system.acquire_sniper_reticle(4102, 9201)
+	_expect(
+		warning_system.update_sniper_reticle(
+			lower_owner,
+			Vector2(120.0, 80.0),
+			0.8
+		)
+		and warning_system.update_sniper_reticle(
+			higher_owner,
+			Vector2(120.0, 80.0),
+			0.6
+		)
+		and warning_system.get_sniper_reticle_winner_handle(9201) == lower_owner,
+		"Shared sniper reticle arbitration must prefer the highest progress."
+	)
+	warning_system.update_sniper_reticle(higher_owner, Vector2(120.0, 80.0), 0.8000001)
+	_expect(
+		warning_system.get_sniper_reticle_winner_handle(9201) == higher_owner,
+		"Approximately equal reticle progress must prefer the larger owner id."
+	)
+	warning_system.release_warning(lower_owner)
+	warning_system.release_warning(higher_owner)
+	_expect(
+		int(warning_system.get_metrics()["live_warnings"]) == live_before,
+		"Shared sniper arbitration fixture leaked warning handles."
+	)
 
 
 func _test_reticle_coordinator_scene_installation() -> void:
@@ -520,14 +573,15 @@ func _test_sniper_lock_cancel_and_damage() -> void:
 	var sniper := _spawn_sniper(Vector2.ZERO, blocked_player)
 	await _wait_physics_frames(8)
 	_expect(sniper.combat_state == CapooSniper.CombatState.LOCK, "Sniper Capoo did not enter lock state.")
-	_expect(_count_reticles(blocked_player) == 1, "Sniper lock did not attach one reticle to the player.")
 	_expect(
-		sniper.lock_reticle != null
-		and not sniper.lock_reticle.auto_progress
-		and not sniper.lock_reticle.is_processing(),
-		"Authoritative sniper must be the sole driver of lock-reticle progress."
+		_count_reticles(blocked_player) == 0
+		and sniper.get_node_or_null("AimGlow") == null,
+		"Production sniper lock must not create a reticle node or retain AimGlow."
 	)
-	_expect(_has_sniper_aim_line(sniper), "Sniper lock must show a thin source-to-target aim line.")
+	_expect(
+		_sniper_warning_handles_live(sniper, true),
+		"Sniper lock must acquire shared line and reticle handles."
+	)
 	var lock_start_metrics := Enemy.get_performance_metrics()
 	var lock_start_los_calls := int(lock_start_metrics["ranged_los_calls"])
 	_expect(
@@ -538,8 +592,9 @@ func _test_sniper_lock_cancel_and_damage() -> void:
 	await _wait_physics_frames(6)
 	_expect(
 		sniper.combat_state == CapooSniper.CombatState.LOCK
-		and _count_reticles(blocked_player) == 1,
-		"Sniper lock must not perform a World ray every physics frame."
+		and _count_reticles(blocked_player) == 0
+		and _sniper_warning_handles_live(sniper, true),
+		"Sniper lock must keep shared warnings without per-frame World rays."
 	)
 	var mid_lock_metrics := Enemy.get_performance_metrics()
 	_expect(
@@ -555,8 +610,10 @@ func _test_sniper_lock_cancel_and_damage() -> void:
 	)
 	_expect(
 		_count_reticles(blocked_player) == 0
+		and sniper.sniper_line_warning_handle == 0
+		and sniper.sniper_reticle_warning_handle == 0
 		and blocked_player.current_health == blocked_health_before,
-		"A blocked sniper pre-fire recheck must remove the reticle without damage."
+		"A blocked sniper pre-fire recheck must release warnings without damage."
 	)
 	var blocked_commit_metrics := Enemy.get_performance_metrics()
 	_expect(
@@ -580,12 +637,10 @@ func _test_sniper_lock_cancel_and_damage() -> void:
 	await _wait_physics_frames(8)
 	_expect(firing_sniper.combat_state == CapooSniper.CombatState.LOCK, "Sniper Capoo did not lock before damage test.")
 	_expect(
-		firing_sniper.lock_reticle != null
-		and not firing_sniper.lock_reticle.auto_progress
-		and not firing_sniper.lock_reticle.is_processing(),
-		"Damage-test sniper reticle unexpectedly retained its duplicate process driver."
+		_count_reticles(player) == 0
+		and _sniper_warning_handles_live(firing_sniper, true),
+		"Damage-test sniper must use shared warning handles without reticle nodes."
 	)
-	_expect(_has_sniper_aim_line(firing_sniper), "Sniper damage lock must show a thin source-to-target aim line.")
 	var sniper_guard_frames := 0
 	while player.current_health != expected_health_after_shot and sniper_guard_frames < 230:
 		await physics_frame
@@ -604,7 +659,12 @@ func _test_sniper_lock_cancel_and_damage() -> void:
 	)
 	await process_frame
 	await physics_frame
-	_expect(_count_reticles(player) == 0, "Sniper reticle remained after firing.")
+	_expect(
+		_count_reticles(player) == 0
+		and firing_sniper.sniper_line_warning_handle == 0
+		and firing_sniper.sniper_reticle_warning_handle == 0,
+		"Sniper warning handles remained after firing."
+	)
 	firing_sniper.queue_free()
 	player.queue_free()
 	await physics_frame
@@ -800,39 +860,94 @@ func _test_proxy_action_visuals() -> void:
 	sniper.configure_multiplayer_proxy()
 	sniper.play_multiplayer_enemy_target_action(&"sniper_lock_start", sniper_player, 1)
 	sniper.call("_process", 0.2)
-	_expect(sniper.lock_reticle != null, "Proxy sniper lock start must attach a reticle.")
-	_expect(_count_reticles(sniper_player) == 1, "Proxy sniper lock start must add exactly one player reticle.")
 	_expect(
-		not sniper.lock_reticle.auto_progress and not sniper.lock_reticle.is_processing(),
-		"Proxy sniper must be the sole driver of lock-reticle progress."
+		_count_reticles(sniper_player) == 0
+		and sniper.get_node_or_null("AimGlow") == null
+		and _sniper_warning_handles_live(sniper, true),
+		"Proxy sniper lock must use shared handles without per-target visual nodes."
 	)
-	_expect(_has_sniper_aim_line(sniper), "Proxy sniper lock start must show an aim line.")
 
+	var updates_before_follow := int(warning_system.get_metrics()["updates"])
 	sniper_player.global_position = Vector2(120.0, 180.0)
 	sniper.call("_process", 0.2)
 	_expect(
-		_sniper_aim_line_points_toward(sniper, sniper_player.global_position),
-		"Proxy sniper aim line must keep following a moving target player."
+		int(warning_system.get_metrics()["updates"]) >= updates_before_follow + 2,
+		"Proxy sniper shared line and reticle must follow a moving target player."
 	)
 	sniper.play_multiplayer_enemy_target_action(&"sniper_lock_cancel", sniper_player, 2)
 	await process_frame
-	_expect(sniper.lock_reticle == null, "Proxy sniper cancel must clear the lock reticle.")
-	_expect(_count_reticles(sniper_player) == 0, "Proxy sniper cancel must remove the player reticle.")
-	var aim_glow := sniper.get_node_or_null("AimGlow") as Polygon2D
-	_expect(aim_glow == null or not aim_glow.visible, "Proxy sniper cancel must hide the aim line.")
+	_expect(
+		_count_reticles(sniper_player) == 0
+		and sniper.sniper_line_warning_handle == 0
+		and sniper.sniper_reticle_warning_handle == 0,
+		"Proxy sniper cancel must release both shared warning handles."
+	)
+
+	sniper.play_multiplayer_enemy_action(
+		&"sniper_plant_lock_start",
+		Vector2(180.0, 24.0),
+		1
+	)
+	sniper.call("_process", 0.2)
+	_expect(
+		_count_reticles(sniper_player) == 0
+		and _sniper_warning_handles_live(sniper, false),
+		"Positional proxy lock must preserve its line-only warning semantics."
+	)
+	sniper.play_multiplayer_enemy_action(
+		&"sniper_plant_lock_cancel",
+		Vector2.ZERO,
+		2
+	)
+	_expect(
+		sniper.sniper_line_warning_handle == 0
+		and sniper.sniper_reticle_warning_handle == 0,
+		"Positional proxy cancel must release its shared line handle."
+	)
 
 	sniper.play_multiplayer_enemy_target_action(&"sniper_lock_start", sniper_player, 3)
 	sniper.call("_process", 0.2)
-	_expect(_count_reticles(sniper_player) == 1, "Proxy sniper death cleanup test must attach a reticle first.")
+	_expect(
+		_count_reticles(sniper_player) == 0
+		and _sniper_warning_handles_live(sniper, true),
+		"Proxy sniper death cleanup test must start shared warnings first."
+	)
 	sniper.play_multiplayer_death_sequence()
 	await process_frame
-	_expect(sniper.lock_reticle == null, "Proxy sniper death must clear the lock reticle.")
-	_expect(_count_reticles(sniper_player) == 0, "Proxy sniper death must remove the player reticle.")
-	aim_glow = sniper.get_node_or_null("AimGlow") as Polygon2D
-	_expect(aim_glow == null or not aim_glow.visible, "Proxy sniper death must hide the aim line.")
+	_expect(
+		_count_reticles(sniper_player) == 0
+		and sniper.sniper_line_warning_handle == 0
+		and sniper.sniper_reticle_warning_handle == 0,
+		"Proxy sniper death must release shared warning handles."
+	)
 	if is_instance_valid(sniper):
 		sniper.queue_free()
 	sniper_player.queue_free()
+	await physics_frame
+
+	var teardown_player := _spawn_player(Vector2(210.0, 0.0), 200)
+	var teardown_sniper := _spawn_sniper(Vector2.ZERO, teardown_player)
+	teardown_sniper.configure_multiplayer_proxy()
+	teardown_sniper.play_multiplayer_enemy_target_action(
+		&"sniper_lock_start",
+		teardown_player,
+		1
+	)
+	var teardown_line_handle := teardown_sniper.sniper_line_warning_handle
+	var teardown_reticle_handle := teardown_sniper.sniper_reticle_warning_handle
+	_expect(
+		warning_system.is_handle_live(teardown_line_handle)
+		and warning_system.is_handle_live(teardown_reticle_handle),
+		"Proxy sniper exit-tree cleanup fixture must acquire both warnings first."
+	)
+	teardown_sniper.queue_free()
+	await process_frame
+	_expect(
+		not warning_system.is_handle_live(teardown_line_handle)
+		and not warning_system.is_handle_live(teardown_reticle_handle),
+		"Removing a sniper from the tree must release both shared warnings."
+	)
+	teardown_player.queue_free()
 	await physics_frame
 
 
@@ -988,41 +1103,19 @@ func _has_smg_visual_alignment() -> bool:
 	return ok
 
 
-func _has_sniper_aim_line(sniper: CapooSniper) -> bool:
-	var aim_line := sniper.get_node_or_null("AimGlow") as Polygon2D
-	if aim_line == null or not aim_line.visible:
+func _sniper_warning_handles_live(
+	sniper: CapooSniper,
+	expect_reticle: bool
+) -> bool:
+	if warning_system == null:
 		return false
-	var points := aim_line.polygon
-	if points.size() != 4:
+	if not warning_system.is_handle_live(sniper.sniper_line_warning_handle):
 		return false
-	var min_x := points[0].x
-	var max_x := points[0].x
-	var min_y := points[0].y
-	var max_y := points[0].y
-	for point in points:
-		min_x = minf(min_x, point.x)
-		max_x = maxf(max_x, point.x)
-		min_y = minf(min_y, point.y)
-		max_y = maxf(max_y, point.y)
-	var width := max_x - min_x
-	var height := max_y - min_y
-	return width >= 220.0 and height <= 4.0 and aim_line.color.a > 0.1 and aim_line.color.a < 0.5
-
-
-func _sniper_aim_line_points_toward(sniper: CapooSniper, target_global_position: Vector2) -> bool:
-	var aim_line := sniper.get_node_or_null("AimGlow") as Polygon2D
-	if aim_line == null or not aim_line.visible:
-		return false
-	var points := aim_line.polygon
-	if points.size() != 4:
-		return false
-	var target_local := sniper.to_local(target_global_position)
-	if target_local.length() <= 0.01:
-		return false
-	var end_center := (points[1] + points[2]) * 0.5
-	if end_center.length() <= 0.01:
-		return false
-	return end_center.normalized().dot(target_local.normalized()) > 0.98
+	return (
+		warning_system.is_handle_live(sniper.sniper_reticle_warning_handle)
+		if expect_reticle
+		else sniper.sniper_reticle_warning_handle == 0
+	)
 
 
 func _has_mage_original_alpha_regions() -> bool:

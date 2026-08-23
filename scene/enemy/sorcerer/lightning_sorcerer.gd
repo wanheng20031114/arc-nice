@@ -7,8 +7,8 @@ const LightningConfig := preload(
 const LightningVfx := preload(
 	"res://scene/enemy/sorcerer/lightning_sorcerer_lightning_vfx.gd"
 )
-const TargetWarningScript := preload(
-	"res://scene/enemy/sorcerer/lightning_sorcerer_target_warning.gd"
+const EnemyWarningPresentationSystemScript := preload(
+	"res://scene/combat/presentation/enemy_warning_presentation_system.gd"
 )
 const ATTACK_TARGET_REFRESH_INTERVAL := 0.35
 const ATTACK_TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target_world"
@@ -26,7 +26,6 @@ enum CombatState {
 
 @onready var cast_pivot: Node2D = $CastPivot
 @onready var staff_tip: Marker2D = $CastPivot/StaffTip
-@onready var target_warning: TargetWarningScript = $TargetWarning
 
 var combat_state: CombatState = CombatState.CHASE
 var attack_cooldown_left := 0.0
@@ -44,6 +43,12 @@ var proxy_warning_player: Player = null
 var proxy_warning_plant_position := Vector2.ZERO
 var proxy_warning_duration := 0.0
 var proxy_warning_elapsed := 0.0
+var target_warning_handle := 0
+var target_warning_chain_radius := 0.0
+var _warning_presentation_system: EnemyWarningPresentationSystemScript = null
+var _chain_candidates: Array[Node2D] = []
+var _chain_excluded_instance_ids: Dictionary = {}
+var _chain_world_path := PackedVector2Array()
 
 
 func _get_touch_damage_type() -> EnemyConfig.DamageType:
@@ -216,9 +221,7 @@ func _process(delta: float) -> void:
 func _status_requires_render_process() -> bool:
 	return (
 		is_multiplayer_proxy
-		and target_warning != null
-		and is_instance_valid(target_warning)
-		and target_warning.is_warning_active()
+		and proxy_warning_duration > 0.0
 	) or super._status_requires_render_process()
 
 
@@ -404,21 +407,31 @@ func _resolve_chain_hits(
 			damage_source_id,
 			DAMAGE_SOURCE_TYPE
 		)
-	var world_path := PackedVector2Array([staff_tip.global_position])
-	var excluded_instance_ids: Dictionary = {}
+	_chain_world_path.clear()
+	_chain_world_path.append(staff_tip.global_position)
+	_chain_excluded_instance_ids.clear()
 	var current_target := first_target
+	var current_target_was_prevalidated := false
 	var previous_hit_position := staff_tip.global_position
 	var maximum_hits := 1 + clampi(lightning_config.max_chain_bounces, 0, 4)
+	_collect_chain_candidates(first_target, lightning_config, maximum_hits)
 	var outgoing_damage := get_effective_attack_damage(
 		lightning_config.attack_damage
 	)
 	for _hit_index in range(maximum_hits):
-		if not _is_frozen_source_hostile_target_valid(current_target):
+		if (
+			current_target == null
+			or not is_instance_valid(current_target)
+			or (
+				not current_target_was_prevalidated
+				and not _is_frozen_source_hostile_target_valid(current_target)
+			)
+		):
 			break
 		var hit_position := current_target.global_position
 		var target_instance_id := int(current_target.get_instance_id())
-		excluded_instance_ids[target_instance_id] = true
-		world_path.append(hit_position)
+		_chain_excluded_instance_ids[target_instance_id] = true
+		_chain_world_path.append(hit_position)
 		# Chaining follows the authoritative contact sequence, not whether this
 		# particular damage submission changed health. Invulnerability, multiplayer
 		# de-duplication or another ability policy must not silently stop traversal.
@@ -429,14 +442,80 @@ func _resolve_chain_hits(
 			previous_hit_position
 		)
 		previous_hit_position = hit_position
-		if world_path.size() >= maximum_hits + 1:
+		if _chain_world_path.size() >= maximum_hits + 1:
 			break
-		current_target = _query_runtime_attack_target(
+		current_target = _find_next_chain_target(
 			hit_position,
-			lightning_config.chain_range,
-			excluded_instance_ids
+			lightning_config.chain_range
 		)
-	return world_path
+		current_target_was_prevalidated = true
+	return _chain_world_path
+
+
+func _collect_chain_candidates(
+	first_target: Node2D,
+	lightning_config: LightningConfig,
+	maximum_hits: int
+) -> void:
+	_chain_candidates.clear()
+	if (
+		combat_runtime == null
+		or not is_instance_valid(combat_runtime)
+		or first_target == null
+		or not is_instance_valid(first_target)
+		or maximum_hits <= 1
+	):
+		return
+	var maximum_chain_reach := (
+		maxf(lightning_config.chain_range, 0.0)
+		* float(maximum_hits - 1)
+	)
+	combat_runtime.query_hostile_enemy_attack_targets_world_into(
+		first_target.global_position,
+		maximum_chain_reach,
+		_get_frozen_attack_source_faction_id(),
+		_chain_candidates,
+		self,
+		0
+	)
+
+
+func _find_next_chain_target(
+	from_position: Vector2,
+	chain_range: float
+) -> Node2D:
+	var safe_chain_range := maxf(chain_range, 0.0)
+	var maximum_distance_squared := safe_chain_range * safe_chain_range
+	var best: Node2D = null
+	var best_distance_squared := INF
+	var query_facade := combat_runtime.get_combat_query_facade()
+	for candidate in _chain_candidates:
+		var candidate_distance_squared := from_position.distance_squared_to(
+			candidate.global_position
+		) if candidate != null and is_instance_valid(candidate) else INF
+		if (
+			candidate == null
+			or not is_instance_valid(candidate)
+			or _chain_excluded_instance_ids.has(candidate.get_instance_id())
+			or not _is_frozen_source_hostile_target_valid(candidate)
+			or candidate_distance_squared > maximum_distance_squared
+		):
+			continue
+		if (
+			best == null
+			or candidate_distance_squared < best_distance_squared
+			or (
+				candidate_distance_squared == best_distance_squared
+				and query_facade.is_radius_candidate_before(
+					candidate,
+					best,
+					from_position
+				)
+			)
+		):
+			best = candidate
+			best_distance_squared = candidate_distance_squared
+	return best
 
 
 func _apply_chain_damage(
@@ -544,30 +623,71 @@ func _get_target_warning_world_position(target: Node2D) -> Vector2:
 
 func _start_target_warning(
 	target: Node2D,
-	duration: float,
+	_duration: float,
 	chain_danger_radius: float
 ) -> void:
-	if target_warning == null or not is_instance_valid(target_warning):
-		return
-	target_warning.start_warning(
+	target_warning_chain_radius = maxf(chain_danger_radius, 0.0)
+	_write_target_warning(
 		_get_target_warning_world_position(target),
-		duration,
-		chain_danger_radius
+		0.0
 	)
 
 
 func _update_target_warning(target: Node2D, progress: float) -> void:
-	if target_warning == null or not is_instance_valid(target_warning):
-		return
-	target_warning.update_warning(
+	_write_target_warning(
 		_get_target_warning_world_position(target),
 		progress
 	)
 
 
 func _clear_target_warning() -> void:
-	if target_warning != null and is_instance_valid(target_warning):
-		target_warning.clear_warning()
+	var warning_system := _warning_presentation_system
+	if (
+		warning_system != null
+		and is_instance_valid(warning_system)
+		and warning_system.is_handle_live(target_warning_handle)
+	):
+		warning_system.release_warning(target_warning_handle)
+	target_warning_handle = 0
+	target_warning_chain_radius = 0.0
+
+
+func _write_target_warning(world_position: Vector2, progress: float) -> bool:
+	var warning_system := _get_enemy_warning_presentation_system()
+	if warning_system == null:
+		return false
+	if not warning_system.is_handle_live(target_warning_handle):
+		target_warning_handle = warning_system.acquire_lightning_warning(
+			int(get_instance_id())
+		)
+	if not warning_system.is_handle_live(target_warning_handle):
+		target_warning_handle = 0
+		return false
+	return warning_system.update_lightning_warning(
+		target_warning_handle,
+		world_position,
+		clampf(progress, 0.0, 1.0),
+		target_warning_chain_radius
+	)
+
+
+func _get_enemy_warning_presentation_system(
+) -> EnemyWarningPresentationSystemScript:
+	if (
+		_warning_presentation_system != null
+		and is_instance_valid(_warning_presentation_system)
+	):
+		return _warning_presentation_system
+	_warning_presentation_system = null
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
+		return null
+	var combat_services := combat_runtime.get_enemy_combat_services()
+	if combat_services == null:
+		return null
+	_warning_presentation_system = (
+		combat_services.get_enemy_warning_presentation_system()
+	)
+	return _warning_presentation_system
 
 
 func _broadcast_windup_start(target: Node2D, is_retry: bool) -> void:
@@ -784,12 +904,8 @@ func _start_proxy_target_warning(
 		if target != null
 		else plant_world_position
 	)
-	target_warning.start_warning(
-		warning_position,
-		proxy_warning_duration,
-		lightning_config.chain_range
-	)
-	target_warning.update_warning(
+	target_warning_chain_radius = maxf(lightning_config.chain_range, 0.0)
+	_write_target_warning(
 		warning_position,
 		proxy_warning_elapsed / proxy_warning_duration
 	)
@@ -811,7 +927,7 @@ func _start_proxy_target_warning(
 
 
 func _update_proxy_target_warning(delta: float) -> void:
-	if not target_warning.is_warning_active():
+	if proxy_warning_duration <= 0.0:
 		set_process(false)
 		return
 	var warning_position := proxy_warning_plant_position
@@ -827,7 +943,7 @@ func _update_proxy_target_warning(delta: float) -> void:
 		proxy_warning_elapsed + maxf(delta, 0.0),
 		proxy_warning_duration
 	)
-	target_warning.update_warning(
+	_write_target_warning(
 		warning_position,
 		proxy_warning_elapsed / maxf(proxy_warning_duration, 0.01)
 	)
@@ -866,3 +982,9 @@ func _expire_proxy_windup(action_id: int) -> void:
 		and animated_sprite.animation == lightning_config.windup_animation_name
 	):
 		_play_config_animation(lightning_config.move_animation_name)
+
+
+func _exit_tree() -> void:
+	_clear_target_warning()
+	_warning_presentation_system = null
+	super._exit_tree()
