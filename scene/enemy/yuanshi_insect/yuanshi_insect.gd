@@ -11,6 +11,26 @@ class_name YuanshiInsect
 @export var direct_chase_extra_distance: float = 2.0
 
 func _physics_process(delta: float) -> void:
+	if not _should_run_individual_authoritative_physics():
+		return
+	_run_authoritative_physics_step(delta)
+
+
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func simulate_authoritative_physics_step(
+	delta: float,
+	_simulation_tick: int,
+	token: int
+) -> void:
+	if not _accept_scheduled_authoritative_step(token):
+		return
+	_run_authoritative_physics_step(delta)
+
+
+func _run_authoritative_physics_step(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
 		return

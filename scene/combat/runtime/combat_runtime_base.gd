@@ -150,6 +150,12 @@ func get_multiplayer_gameplay_gateway() -> MultiplayerGameplayGateway:
 	return gateway
 
 
+func get_enemy_simulation_coordinator() -> EnemySimulationCoordinator:
+	return get_node_or_null(
+		"EnemySimulationCoordinator"
+	) as EnemySimulationCoordinator
+
+
 func get_multiplayer_mode_adapter() -> MultiplayerModeAdapter:
 	var adapter := multiplayer_mode_adapter
 	if adapter == null:

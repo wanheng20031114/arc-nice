@@ -372,7 +372,7 @@ func _finish_airdrop_sniper_spawn(
 	)
 	enemy_instance.velocity = Vector2.ZERO
 	enemy_instance.set_process(false)
-	enemy_instance.set_physics_process(false)
+	enemy_instance.set_authoritative_simulation_enabled(false)
 	_set_collision_shapes_disabled_recursive(enemy_instance, true)
 	var tween := enemy_instance.create_tween()
 	tween.set_trans(Tween.TRANS_CUBIC)
@@ -393,7 +393,7 @@ func _finish_airdrop_sniper_spawn(
 		return
 	enemy_instance.global_position = landing_position
 	enemy_instance.set_process(true)
-	enemy_instance.set_physics_process(true)
+	enemy_instance.set_authoritative_simulation_enabled(true)
 	_set_collision_shapes_disabled_recursive(enemy_instance, false)
 	runtime._register_multiplayer_enemy_instance(
 		enemy_instance,

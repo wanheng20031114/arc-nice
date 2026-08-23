@@ -6,9 +6,12 @@ const GREEN_SHELL_CONFIG := preload(
 )
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const AURA_SCRIPT := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_aura.gd")
+const RUNTIME_SCENE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: EnemyGameplayGatewayTestRuntime
 
 
 func _init() -> void:
@@ -16,7 +19,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = RUNTIME_SCENE.instantiate() as EnemyGameplayGatewayTestRuntime
 	test_root.name = "YuanshiInsectGreenShellSmokeTest"
 	root.add_child(test_root)
 	current_scene = test_root
@@ -292,7 +295,7 @@ func _spawn_enemy(
 	var enemy := enemy_config.enemy_scene.instantiate() as YuanshiInsect
 	enemy.global_position = position
 	test_root.add_child(enemy)
-	enemy.setup(enemy_config, player)
+	enemy.setup(enemy_config, player, null, test_root)
 	return enemy
 
 

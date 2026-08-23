@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/combat/simulation/enemy_simulation_coordinator.gd" id="1_coordinator"]
+
+[node name="EnemySimulationCoordinator" type="Node"]
+process_physics_priority = 0
+script = ExtResource("1_coordinator")

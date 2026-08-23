@@ -1,6 +1,7 @@
 [gd_scene format=4 uid="uid://dcqarxlpbdh8y"]
 
 [ext_resource type="Script" uid="uid://7lyj58pu4nvs" path="res://scene/game_modes/standard/standard_game.gd" id="1_17rxn"]
+[ext_resource type="PackedScene" path="res://scene/combat/simulation/enemy_simulation_coordinator.tscn" id="enemy_simulation"]
 [ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="1_80nbo"]
 [ext_resource type="Texture2D" uid="uid://ciwwo78eluybc" path="res://resources/texture/动态瓦片.png" id="2_e2o6t"]
 [ext_resource type="PackedScene" uid="uid://c3l67vm8hu25t" path="res://scene/combat/pickups/pickup.tscn" id="4_qpk70"]
@@ -269,6 +270,8 @@ position = Vector2(2, 0)
 [node name="CollisionShape2D" type="CollisionShape2D" parent="WorldBounds/RightBoundary" unique_id=1011082334]
 scale = Vector2(0.3, 0.3)
 shape = SubResource("SegmentShape2D_ryrav")
+
+[node name="EnemySimulationCoordinator" parent="." instance=ExtResource("enemy_simulation")]
 
 [node name="EnemyContainer" type="Node2D" parent="." unique_id=1663148247]
 

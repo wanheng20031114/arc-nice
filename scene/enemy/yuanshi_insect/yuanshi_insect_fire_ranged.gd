@@ -32,6 +32,10 @@ func can_target_water_plant_objectives() -> bool:
 	return true
 
 
+func supports_centralized_authoritative_simulation() -> bool:
+	return false
+
+
 func _physics_process(delta: float) -> void:
 	_update_attack_cooldown(delta)
 

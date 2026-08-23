@@ -123,6 +123,13 @@ enum LocomotionState {
 	MOVING,
 }
 
+enum AuthoritativeSimulationDriver {
+	INDIVIDUAL,
+	SCHEDULED_ACTIVE,
+	SCHEDULED_SUSPENDED,
+	DETACHED,
+}
+
 static var performance_metrics_enabled := false
 static var dynamic_flow_obstacle_lookahead_enabled := true
 static var navigation_render_frame_dedupe_enabled := true
@@ -302,6 +309,13 @@ var combat_target_index_bucket := Vector2i.MAX
 var combat_target_index_bucket_size := 0.0
 var combat_target_index_bucket_minimum := Vector2.ZERO
 var combat_target_index_bucket_maximum := Vector2.ZERO
+var enemy_simulation_coordinator: EnemySimulationCoordinator = null
+var enemy_simulation_token := 0
+var simulation_id := 0
+var authoritative_simulation_driver := AuthoritativeSimulationDriver.INDIVIDUAL
+var scheduled_authoritative_step_count := 0
+var suppressed_direct_authoritative_step_count := 0
+var individual_simulation_activation_physics_frame := -1
 
 
 func bind_combat_runtime(runtime_instance: CombatRuntimeBase) -> void:
@@ -579,6 +593,9 @@ func setup(
 	shared_pathfinder: Node = null,
 	runtime_context: CombatRuntimeBase = null
 ) -> void:
+	_release_authoritative_simulation_driver(
+		AuthoritativeSimulationDriver.INDIVIDUAL
+	)
 	_clear_direct_hit_flash()
 	if runtime_context != null:
 		bind_combat_runtime(runtime_context)
@@ -608,6 +625,7 @@ func setup(
 	if navigation_flow_context != null:
 		navigation_flow_context.invalidate()
 	_apply_config()
+	_try_register_with_enemy_simulation_coordinator()
 
 
 func set_xirang_kill_reward_override(amount: int) -> void:
@@ -699,6 +717,209 @@ func _reset_combat_faction_from_config() -> void:
 			previous_faction_id,
 			combat_faction_id
 		)
+
+
+func supports_centralized_authoritative_simulation() -> bool:
+	return false
+
+
+func simulate_authoritative_physics_step(
+	_delta: float,
+	_simulation_tick: int,
+	token: int
+) -> void:
+	# Subclasses that opt in must validate through the same ownership helper
+	# before mutating gameplay state. The base implementation deliberately does
+	# no work so an accidentally registered unsupported family fails closed.
+	_accept_scheduled_authoritative_step(token)
+
+
+func _accept_scheduled_authoritative_step(token: int) -> bool:
+	if (
+		authoritative_simulation_driver
+		!= AuthoritativeSimulationDriver.SCHEDULED_ACTIVE
+		or token <= 0
+		or token != enemy_simulation_token
+		or enemy_simulation_coordinator == null
+		or not is_instance_valid(enemy_simulation_coordinator)
+		or not enemy_simulation_coordinator.owns_enemy(self, token)
+	):
+		return false
+	scheduled_authoritative_step_count += 1
+	return true
+
+
+func _should_run_individual_authoritative_physics() -> bool:
+	if authoritative_simulation_driver == AuthoritativeSimulationDriver.INDIVIDUAL:
+		if (
+			Engine.get_physics_frames()
+			<= individual_simulation_activation_physics_frame
+		):
+			suppressed_direct_authoritative_step_count += 1
+			return false
+		return true
+	suppressed_direct_authoritative_step_count += 1
+	return false
+
+
+func _try_register_with_enemy_simulation_coordinator() -> bool:
+	if (
+		not supports_centralized_authoritative_simulation()
+		or is_dead
+		or is_multiplayer_proxy
+		or combat_runtime == null
+		or not is_instance_valid(combat_runtime)
+		or combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	):
+		return false
+	var coordinator := combat_runtime.get_enemy_simulation_coordinator()
+	if coordinator == null or not is_instance_valid(coordinator):
+		return false
+	return try_attach_to_enemy_simulation_coordinator(coordinator)
+
+
+func try_attach_to_enemy_simulation_coordinator(
+	coordinator: EnemySimulationCoordinator
+) -> bool:
+	if (
+		coordinator == null
+		or not is_instance_valid(coordinator)
+		or not supports_centralized_authoritative_simulation()
+		or is_dead
+		or is_multiplayer_proxy
+		or authoritative_simulation_driver
+		!= AuthoritativeSimulationDriver.INDIVIDUAL
+		or combat_runtime == null
+		or not is_instance_valid(combat_runtime)
+		or combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		or combat_runtime.get_enemy_simulation_coordinator() != coordinator
+	):
+		return false
+	var resume_scheduled_processing := is_physics_processing()
+	var token := coordinator.try_register_enemy(self)
+	if token <= 0:
+		return false
+	var assigned_simulation_id := coordinator.get_simulation_id(self, token)
+	if assigned_simulation_id <= 0:
+		coordinator.unregister_enemy(self, token)
+		return false
+	enemy_simulation_coordinator = coordinator
+	enemy_simulation_token = token
+	simulation_id = assigned_simulation_id
+	authoritative_simulation_driver = (
+		AuthoritativeSimulationDriver.SCHEDULED_ACTIVE
+	)
+	if (
+		not resume_scheduled_processing
+		and coordinator.suspend_enemy(self, token)
+	):
+		authoritative_simulation_driver = (
+			AuthoritativeSimulationDriver.SCHEDULED_SUSPENDED
+		)
+	scheduled_authoritative_step_count = 0
+	suppressed_direct_authoritative_step_count = 0
+	set_physics_process(false)
+	return true
+
+
+func set_authoritative_simulation_enabled(enabled: bool) -> void:
+	if (
+		enemy_simulation_coordinator == null
+		or not is_instance_valid(enemy_simulation_coordinator)
+		or enemy_simulation_token <= 0
+	):
+		if authoritative_simulation_driver == AuthoritativeSimulationDriver.INDIVIDUAL:
+			set_physics_process(enabled)
+		return
+	if enabled:
+		if (
+			authoritative_simulation_driver
+			== AuthoritativeSimulationDriver.SCHEDULED_SUSPENDED
+			and enemy_simulation_coordinator.resume_enemy(
+				self,
+				enemy_simulation_token
+			)
+		):
+			authoritative_simulation_driver = (
+				AuthoritativeSimulationDriver.SCHEDULED_ACTIVE
+			)
+		set_physics_process(false)
+		return
+	if (
+		authoritative_simulation_driver
+		== AuthoritativeSimulationDriver.SCHEDULED_ACTIVE
+		and enemy_simulation_coordinator.suspend_enemy(
+			self,
+			enemy_simulation_token
+		)
+	):
+		authoritative_simulation_driver = (
+			AuthoritativeSimulationDriver.SCHEDULED_SUSPENDED
+		)
+	set_physics_process(false)
+
+
+func is_centrally_simulated() -> bool:
+	return authoritative_simulation_driver in [
+		AuthoritativeSimulationDriver.SCHEDULED_ACTIVE,
+		AuthoritativeSimulationDriver.SCHEDULED_SUSPENDED,
+	]
+
+
+func on_enemy_simulation_coordinator_released(
+	releasing_coordinator: EnemySimulationCoordinator,
+	token: int,
+	resume_individual_processing: bool
+) -> bool:
+	if (
+		releasing_coordinator == null
+		or releasing_coordinator != enemy_simulation_coordinator
+		or token <= 0
+		or token != enemy_simulation_token
+		or not is_centrally_simulated()
+	):
+		return false
+	enemy_simulation_coordinator = null
+	enemy_simulation_token = 0
+	simulation_id = 0
+	authoritative_simulation_driver = (
+		AuthoritativeSimulationDriver.INDIVIDUAL
+	)
+	individual_simulation_activation_physics_frame = Engine.get_physics_frames()
+	set_physics_process(
+		resume_individual_processing
+		and not is_dead
+		and not is_multiplayer_proxy
+	)
+	return true
+
+
+func _release_authoritative_simulation_driver(
+	next_driver: int = AuthoritativeSimulationDriver.DETACHED
+) -> void:
+	var previous_driver := authoritative_simulation_driver
+	if (
+		enemy_simulation_coordinator != null
+		and is_instance_valid(enemy_simulation_coordinator)
+		and enemy_simulation_token > 0
+	):
+		enemy_simulation_coordinator.unregister_enemy(
+			self,
+			enemy_simulation_token
+		)
+	enemy_simulation_coordinator = null
+	enemy_simulation_token = 0
+	simulation_id = 0
+	authoritative_simulation_driver = next_driver
+	if (
+		next_driver == AuthoritativeSimulationDriver.INDIVIDUAL
+		and previous_driver
+		== AuthoritativeSimulationDriver.SCHEDULED_ACTIVE
+	):
+		individual_simulation_activation_physics_frame = (
+			Engine.get_physics_frames()
+		)
+		set_physics_process(not is_dead and not is_multiplayer_proxy)
 
 
 func set_target_player(player: Player) -> void:
@@ -1044,6 +1265,9 @@ func configure_multiplayer_proxy() -> void:
 	touch_damage_cooldown_left = 0.0
 	proxy_action_animation_name_in_use = &""
 	_update_movement_status_visuals()
+	_release_authoritative_simulation_driver(
+		AuthoritativeSimulationDriver.DETACHED
+	)
 	set_physics_process(false)
 	set_process(false)
 	collision_layer = 4
@@ -1068,6 +1292,9 @@ func remove_for_home_escape() -> bool:
 	clear_electric_surge_state()
 	velocity = Vector2.ZERO
 	set_process(false)
+	_release_authoritative_simulation_driver(
+		AuthoritativeSimulationDriver.DETACHED
+	)
 	set_physics_process(false)
 	_clear_touching_players()
 	objective_target = null
@@ -1381,6 +1608,9 @@ func play_multiplayer_death_sequence() -> void:
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals()
 	set_process(false)
+	_release_authoritative_simulation_driver(
+		AuthoritativeSimulationDriver.DETACHED
+	)
 	set_physics_process(false)
 	_clear_touching_players()
 	proxy_action_animation_name_in_use = &""
@@ -1822,6 +2052,9 @@ func _release_speed_trail_effect() -> void:
 
 
 func _exit_tree() -> void:
+	_release_authoritative_simulation_driver(
+		AuthoritativeSimulationDriver.DETACHED
+	)
 	var hit_flash_scheduler := _get_hit_flash_scheduler()
 	if hit_flash_scheduler != null:
 		hit_flash_scheduler.call("clear_target", self, false)
@@ -4527,6 +4760,9 @@ func _die() -> void:
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals()
 	set_process(false)
+	_release_authoritative_simulation_driver(
+		AuthoritativeSimulationDriver.DETACHED
+	)
 	set_physics_process(false)
 	_clear_touching_players()
 	_set_collision_shapes_disabled(body_collision_shapes, true)

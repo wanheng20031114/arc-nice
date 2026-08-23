@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://dqoagjefvymvr"]
 
 [ext_resource type="Script" uid="uid://ctfnnphhg0fm" path="res://scene/game_modes/rogue/combat/rogue_combat_game.gd" id="1_game"]
+[ext_resource type="PackedScene" path="res://scene/combat/simulation/enemy_simulation_coordinator.tscn" id="enemy_simulation"]
 [ext_resource type="PackedScene" uid="uid://b2h7qgwej5n3a" path="res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn" id="2_gateway"]
 [ext_resource type="PackedScene" uid="uid://bwy4m8w6x0rae" path="res://scene/game_modes/rogue/multiplayer/rogue_multiplayer_mode_adapter.tscn" id="3_adapter"]
 [ext_resource type="PackedScene" uid="uid://cx8r7t2j4p5ma" path="res://scene/game_modes/rogue/combat/player/rogue_player_roster_coordinator.tscn" id="4_roster"]
@@ -128,6 +129,8 @@ script = ExtResource("18_session_pool")
 [node name="CombatRobotDroneMotionSystem" parent="." unique_id=1265495419 instance=ExtResource("20_drone_motion")]
 
 [node name="BossContainer" type="Node2D" parent="." unique_id=1020752974]
+
+[node name="EnemySimulationCoordinator" parent="." instance=ExtResource("enemy_simulation")]
 
 [node name="EnemyContainer" type="Node2D" parent="." unique_id=1807524198]
 

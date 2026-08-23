@@ -47,6 +47,10 @@ func _physics_process(delta: float) -> void:
 	super._physics_process(delta)
 
 
+func supports_centralized_authoritative_simulation() -> bool:
+	return false
+
+
 func _apply_config() -> void:
 	super._apply_config()
 
