@@ -834,6 +834,16 @@ func notify_plant_removed(net_id: int) -> void:
 	_pending_production_state_updates.erase(net_id)
 	if _removed_plant_ids.has(net_id):
 		return
+	if (
+		_is_host_bound()
+		and not SharedWarehouseLedgerBridge.remove_from_ledger(
+			_run_state, net_id
+		)
+	):
+		push_warning(
+			"MpTowerEconomyCoordinator: 无法移除共享仓库 %d 的持久快照。"
+			% net_id
+		)
 	while (
 		_removed_plant_ids.size() >= CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES
 		and not _removed_plant_id_order.is_empty()

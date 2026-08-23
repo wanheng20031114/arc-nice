@@ -2,8 +2,8 @@ extends RefCounted
 class_name SharedWarehouseLedgerBridge
 
 ## OakWarehouse 实体与 RunState 跨场景账本之间的唯一桥接层。
-## 单人战斗和联机房主都必须复用这里的解码、替换与排序规则，避免两套
-## 持久化逻辑在仓库 revision 或槽位 wire 格式变化后发生漂移。
+## 单人战斗和联机房主都复用同一单仓增量事务；离场捕获仍通过批量替换
+## 一次原子提交，避免两套持久化逻辑在 revision 或槽位格式变化后漂移。
 
 
 static func bind_identity(
@@ -35,22 +35,9 @@ static func persist_to_ledger(
 ) -> bool:
 	if run_state == null or not bind_identity(warehouse, warehouse_net_id):
 		return false
-	var ledger := run_state.export_shared_warehouse_ledger()
-	var snapshots := (ledger.get("warehouses", []) as Array).duplicate(true)
-	var replacement := warehouse.export_storage_snapshot()
-	var replaced := false
-	for index in snapshots.size():
-		var current := snapshots[index] as Dictionary
-		if int(current.get("warehouse_net_id", 0)) == warehouse_net_id:
-			snapshots[index] = replacement
-			replaced = true
-			break
-	if not replaced:
-		snapshots.append(replacement)
-	snapshots.sort_custom(_sort_snapshots_by_warehouse_id)
-	return run_state.replace_shared_warehouse_snapshots(
-		snapshots,
-		int(ledger.get("revision", -1))
+	return run_state.upsert_shared_warehouse_snapshot(
+		warehouse.export_storage_snapshot(),
+		run_state.get_shared_warehouse_ledger_revision()
 	)
 
 
@@ -60,20 +47,9 @@ static func remove_from_ledger(
 ) -> bool:
 	if run_state == null or warehouse_net_id <= 0:
 		return false
-	var ledger := run_state.export_shared_warehouse_ledger()
-	var snapshots: Array = []
-	var found := false
-	for raw_snapshot in ledger.get("warehouses", []) as Array:
-		var snapshot := raw_snapshot as Dictionary
-		if int(snapshot.get("warehouse_net_id", 0)) == warehouse_net_id:
-			found = true
-			continue
-		snapshots.append(snapshot.duplicate(true))
-	if not found:
-		return true
-	return run_state.replace_shared_warehouse_snapshots(
-		snapshots,
-		int(ledger.get("revision", -1))
+	return run_state.remove_shared_warehouse_snapshot(
+		warehouse_net_id,
+		run_state.get_shared_warehouse_ledger_revision()
 	)
 
 
@@ -110,10 +86,4 @@ static func capture_warehouses(
 	return run_state.replace_shared_warehouse_snapshots(
 		snapshots,
 		run_state.get_shared_warehouse_ledger_revision()
-	)
-
-
-static func _sort_snapshots_by_warehouse_id(left: Variant, right: Variant) -> bool:
-	return int((left as Dictionary).get("warehouse_net_id", 0)) < int(
-		(right as Dictionary).get("warehouse_net_id", 0)
 	)

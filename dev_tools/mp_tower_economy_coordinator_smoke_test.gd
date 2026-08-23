@@ -134,6 +134,30 @@ func _test_static_boundary(coordinator: MpTowerEconomyCoordinator) -> void:
 		and not coordinator_source.contains(".call("),
 		"TowerEconomyCoordinator must use typed dependencies without dynamic guessing."
 	)
+	var host_storage_changed_source := _extract_function_source(
+		coordinator_source, "_on_authoritative_warehouse_storage_changed"
+	)
+	_expect(
+		host_storage_changed_source.contains(
+			"_pending_authoritative_warehouse_snapshots"
+		)
+		and host_storage_changed_source.contains(
+			"_persist_authoritative_warehouse_snapshot"
+		)
+		and host_storage_changed_source.contains(
+			"_schedule_shared_production_state_flush"
+		),
+		"Host storage_changed must persist the RunState delta and retain network batch replication."
+	)
+	var plant_removed_source := _extract_function_source(
+		coordinator_source, "notify_plant_removed"
+	)
+	_expect(
+		plant_removed_source.contains(
+			"SharedWarehouseLedgerBridge.remove_from_ledger"
+		),
+		"Host plant removal must clear a matching persisted warehouse through the incremental bridge."
+	)
 
 
 func _test_warehouse_pending_snapshot(
@@ -342,6 +366,17 @@ func _rpc_entry_uses_shared_admission_before_economy(
 	)
 	var delegate_offset := body.find("tower_economy_coordinator.handle_authoritative_")
 	return admission_offset >= 0 and delegate_offset > admission_offset
+
+
+func _extract_function_source(source: String, function_name: String) -> String:
+	var function_offset := source.find("func %s" % function_name)
+	if function_offset < 0:
+		return ""
+	var next_function := source.find("\nfunc ", function_offset + 1)
+	return source.substr(
+		function_offset,
+		(next_function if next_function >= 0 else source.length()) - function_offset
+	)
 
 
 func _expect(condition: bool, message: String) -> void:

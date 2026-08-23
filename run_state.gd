@@ -19,6 +19,14 @@ signal upgrade_changed
 signal player_upgrade_ledger_changed(snapshot: Dictionary)
 signal selected_character_changed(character_id: StringName)
 signal shared_warehouse_ledger_changed(snapshot: Dictionary)
+## 单仓热更新只发布有界 delta；需要完整账本的冷路径订阅者应监听
+## shared_warehouse_ledger_changed，或在收到 delta 后显式请求完整导出。
+signal shared_warehouse_snapshot_changed(
+	warehouse_net_id: int,
+	snapshot: Dictionary,
+	removed: bool,
+	ledger_revision: int
+)
 signal party_xirang_ledger_changed(snapshot: Dictionary)
 signal party_light_stone_ledger_changed(snapshot: Dictionary)
 signal party_status_ledger_changed(snapshot: Dictionary)
@@ -2804,6 +2812,64 @@ func get_item_count_for_peer(peer_id: int, slot_index: int) -> int:
 
 func get_shared_warehouse_ledger_revision() -> int:
 	return shared_warehouse_ledger_revision
+
+
+## storage_changed 热路径只校验并提交一个仓库；不导出、排序或解码其他仓库。
+## 每次成功 upsert 都代表一个已提交的权威存储事件，因此即使 payload 与旧值
+## 相同，也会把全局账本 revision 严格推进一步。
+func upsert_shared_warehouse_snapshot(
+	snapshot: Dictionary,
+	expected_ledger_revision: int = -1,
+	emit_delta_signal: bool = true
+) -> bool:
+	ensure_run_started()
+	if (
+		expected_ledger_revision >= 0
+		and expected_ledger_revision != shared_warehouse_ledger_revision
+	):
+		return false
+	var decoded := _decode_shared_warehouse_snapshot(snapshot)
+	if decoded.is_empty():
+		return false
+	var warehouse_net_id := int(decoded["warehouse_net_id"])
+	shared_warehouse_snapshots[warehouse_net_id] = decoded
+	shared_warehouse_ledger_revision += 1
+	if emit_delta_signal:
+		shared_warehouse_snapshot_changed.emit(
+			warehouse_net_id,
+			decoded.duplicate(true),
+			false,
+			shared_warehouse_ledger_revision
+		)
+	return true
+
+
+## 删除同样是单仓事务。缺失 ID 是幂等成功，不推进 revision，也不发布信号。
+func remove_shared_warehouse_snapshot(
+	warehouse_net_id: int,
+	expected_ledger_revision: int = -1,
+	emit_delta_signal: bool = true
+) -> bool:
+	ensure_run_started()
+	if warehouse_net_id <= 0:
+		return false
+	if not shared_warehouse_snapshots.has(warehouse_net_id):
+		return true
+	if (
+		expected_ledger_revision >= 0
+		and expected_ledger_revision != shared_warehouse_ledger_revision
+	):
+		return false
+	shared_warehouse_snapshots.erase(warehouse_net_id)
+	shared_warehouse_ledger_revision += 1
+	if emit_delta_signal:
+		shared_warehouse_snapshot_changed.emit(
+			warehouse_net_id,
+			{},
+			true,
+			shared_warehouse_ledger_revision
+		)
+	return true
 
 
 ## 用场景中 OakWarehouse.export_storage_snapshot() 的结果刷新持久账本。
