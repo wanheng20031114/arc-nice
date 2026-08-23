@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/combat/simulation/fire_sorcerer_volley_simulation_service.gd" id="1_service"]
+
+[node name="FireSorcererVolleySimulationService" type="Node"]
+process_physics_priority = 4
+script = ExtResource("1_service")

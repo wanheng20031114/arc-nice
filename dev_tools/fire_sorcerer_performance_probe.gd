@@ -74,6 +74,10 @@ func _init() -> void:
 
 
 func _run() -> void:
+	# This retained probe is the explicit LEGACY baseline. DATA acceptance lives
+	# in fire_sorcerer_data_performance_probe.gd and must never consume this
+	# Area2D/object-pool result as a migrated-path pass.
+	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.LEGACY
 	fixture = PoolRuntimeFixture.new()
 	fixture.name = "FireSorcererPerformanceProbe"
 	root.add_child(fixture)
@@ -209,6 +213,7 @@ func _run() -> void:
 	)
 
 	FireSorcererFireballVolley.set_performance_metrics_enabled(false)
+	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.DATA
 	current_scene = null
 	fixture.queue_free()
 	await process_frame
@@ -216,7 +221,7 @@ func _run() -> void:
 	for _cleanup_frame in range(6):
 		await process_frame
 	if failures.is_empty():
-		print("FIRE_SORCERER_PERFORMANCE_PROBE_OK")
+		print("FIRE_SORCERER_LEGACY_PERFORMANCE_BASELINE_OK")
 		quit(0)
 		return
 	for failure in failures:

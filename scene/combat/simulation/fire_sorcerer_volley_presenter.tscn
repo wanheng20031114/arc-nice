@@ -1,0 +1,41 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scene/combat/simulation/fire_sorcerer_volley_presenter.gd" id="1_presenter"]
+[ext_resource type="Texture2D" path="res://resources/texture/enemy/sorcerer/fire_sorcerer_fireball.png" id="2_normal_texture"]
+[ext_resource type="Material" path="res://scene/combat/simulation/fire_sorcerer_volley_normal_presenter_material.tres" id="3_normal_material"]
+[ext_resource type="Texture2D" path="res://resources/texture/enemy/sorcerer/fire_sorcerer_elite_fireball.png" id="4_elite_texture"]
+[ext_resource type="Material" path="res://scene/combat/simulation/fire_sorcerer_volley_elite_presenter_material.tres" id="5_elite_material"]
+
+[sub_resource type="QuadMesh" id="QuadMesh_fireball_frame"]
+size = Vector2(32, 32)
+
+[sub_resource type="MultiMesh" id="MultiMesh_normal_fireballs"]
+resource_local_to_scene = true
+transform_format = 0
+use_custom_data = true
+visible_instance_count = 0
+mesh = SubResource("QuadMesh_fireball_frame")
+
+[sub_resource type="MultiMesh" id="MultiMesh_elite_fireballs"]
+resource_local_to_scene = true
+transform_format = 0
+use_custom_data = true
+visible_instance_count = 0
+mesh = SubResource("QuadMesh_fireball_frame")
+
+[node name="FireSorcererVolleyPresenter" type="Node2D"]
+script = ExtResource("1_presenter")
+
+[node name="NormalVolleyMultiMesh" type="MultiMeshInstance2D" parent="."]
+z_index = 3
+texture_filter = 1
+material = ExtResource("3_normal_material")
+texture = ExtResource("2_normal_texture")
+multimesh = SubResource("MultiMesh_normal_fireballs")
+
+[node name="EliteVolleyMultiMesh" type="MultiMeshInstance2D" parent="."]
+z_index = 3
+texture_filter = 1
+material = ExtResource("5_elite_material")
+texture = ExtResource("4_elite_texture")
+multimesh = SubResource("MultiMesh_elite_fireballs")

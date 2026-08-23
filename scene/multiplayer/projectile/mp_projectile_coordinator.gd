@@ -123,6 +123,15 @@ const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE: StringName = (
 const FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY: StringName = (
 	&"fire_sorcerer_consumed_source_mask"
 )
+const FIRE_SORCERER_VOLLEY_LOCAL_OFFSETS: Array[Vector2] = [
+	Vector2(24.0, 1.0),
+	Vector2(15.0, -5.0),
+	Vector2(23.0, 13.0),
+]
+const FIRE_SORCERER_VOLLEY_HOMING_TURN_RATE := 6.0
+const FIRE_SORCERER_VOLLEY_BURN_DURATION := 5.0
+const FIRE_SORCERER_NORMAL_BURN_LEVEL := 5
+const FIRE_SORCERER_ELITE_BURN_LEVEL := 10
 const FROST_SORCERER_ICE_SPIKE_TYPE: StringName = &"frost_sorcerer_ice_spike"
 const COMBAT_ROBOT_SUICIDE_DRONE_TYPE: StringName = &"combat_robot_suicide_drone"
 const COMBAT_ROBOT_SUICIDE_DRONE_ELITE_TYPE: StringName = (
@@ -181,6 +190,11 @@ var _known_data_projectile_types: Dictionary[int, StringName] = {}
 var _known_data_projectile_owner_peer_ids: Dictionary[int, int] = {}
 var _known_data_projectile_damages: Dictionary[int, int] = {}
 var _known_data_projectile_lifetimes: Dictionary[int, float] = {}
+var _known_fire_sorcerer_volley_services: Dictionary[int, FireSorcererVolleySimulationService] = {}
+var _known_fire_sorcerer_volley_handles: Dictionary[int, int] = {}
+var _known_fire_sorcerer_volley_metadata: Dictionary[int, Dictionary] = {}
+var _known_replica_fire_sorcerer_volley_services: Dictionary[int, FireSorcererVolleySimulationService] = {}
+var _known_replica_fire_sorcerer_volley_handles: Dictionary[int, int] = {}
 var _reserved_host_projectile_ids: Dictionary[int, int] = {}
 var _active_enemy_rapid_fire_bursts: Dictionary[int, Dictionary] = {}
 var _active_enemy_rapid_fire_base_by_reserved_id: Dictionary[int, int] = {}
@@ -435,6 +449,135 @@ func register_local_data_projectile(
 	return projectile_id
 
 
+func register_local_fire_sorcerer_volley_data(
+	service: FireSorcererVolleySimulationService,
+	handle: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	spawn_position: Vector2,
+	direction: Vector2,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	target_peer_id: int,
+	target_enemy_net_id: int,
+	damage_source_snapshot: DamageSourceSnapshot
+) -> int:
+	var profile := _get_fire_sorcerer_volley_profile(projectile_type)
+	if (
+		service == null
+		or not is_instance_valid(service)
+		or handle <= FireSorcererVolleySimulationService.INVALID_HANDLE
+		or profile == FireSorcererVolleySimulationService.Profile.INVALID
+		or not has_network_facade_dependencies()
+		or not _net_manager.is_multiplayer_active()
+		or not _net_manager.is_host()
+		or not _NetConstants.is_valid_network_combat_value(damage)
+		or not _is_finite_vector2(spawn_position)
+		or not _is_finite_vector2(direction)
+		or direction.length_squared() <= 0.001
+		or not is_finite(speed)
+		or speed <= 0.0
+		or not is_finite(lifetime)
+		or lifetime <= 0.0
+		or target_peer_id < 0
+		or target_enemy_net_id < 0
+		or damage_source_snapshot == null
+		or not damage_source_snapshot.is_valid()
+		or damage_source_snapshot.source_faction_id
+			!= CombatRelationService.HOSTILE_WAVE
+		or service.get_slot_mode(handle)
+			!= FireSorcererVolleySimulationService.Mode.DATA
+		or service.get_slot_profile(handle) != profile
+	):
+		return 0
+	var projectile_namespace := owner_peer_id
+	if projectile_namespace <= 0:
+		projectile_namespace = PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
+	var projectile_id := allocate_projectile_id(projectile_namespace, true)
+	if projectile_id <= 0:
+		return 0
+	if not service.assign_projectile_identity(handle, projectile_id):
+		return 0
+	var frozen_source := DamageSourceSnapshot.create(
+		damage_source_snapshot.source_faction_id,
+		damage_source_snapshot.credit_peer_id,
+		damage_source_snapshot.instigator_entity_id,
+		projectile_id,
+		(
+			damage_source_snapshot.source_type
+			if damage_source_snapshot.source_type != &""
+			else projectile_type
+		)
+	)
+	var host_fire_timestamp := _get_net_time()
+	_known_fire_sorcerer_volley_services[projectile_id] = service
+	_known_fire_sorcerer_volley_handles[projectile_id] = handle
+	_known_fire_sorcerer_volley_metadata[projectile_id] = {
+		"projectile_type": projectile_type,
+		"owner_peer_id": owner_peer_id,
+		"spawn_position": spawn_position,
+		"direction": direction.normalized(),
+		"damage": damage,
+		"speed": speed,
+		"lifetime": lifetime,
+		"target_peer_id": target_peer_id,
+		"target_enemy_net_id": target_enemy_net_id,
+		"host_fire_timestamp": host_fire_timestamp,
+	}
+	remember_projectile_record(
+		projectile_id,
+		owner_peer_id,
+		projectile_type,
+		damage,
+		lifetime,
+		false,
+		host_fire_timestamp,
+		frozen_source
+	)
+	rpc_broadcast_requested.emit(
+		&"net_projectile_fired",
+		[
+			projectile_id,
+			String(projectile_type),
+			owner_peer_id,
+			spawn_position,
+			direction.normalized(),
+			damage,
+			speed,
+			lifetime,
+			false,
+			target_peer_id,
+			host_fire_timestamp,
+			target_enemy_net_id,
+		]
+	)
+	return projectile_id
+
+
+func notify_fire_sorcerer_volley_finished(
+	projectile_id: int,
+	service: FireSorcererVolleySimulationService,
+	handle: int
+) -> void:
+	if (
+		_known_fire_sorcerer_volley_services.get(projectile_id) == service
+		and int(_known_fire_sorcerer_volley_handles.get(
+			projectile_id,
+			FireSorcererVolleySimulationService.INVALID_HANDLE
+		)) == handle
+	):
+		_erase_fire_sorcerer_volley_backend(projectile_id)
+	if (
+		_known_replica_fire_sorcerer_volley_services.get(projectile_id) == service
+		and int(_known_replica_fire_sorcerer_volley_handles.get(
+			projectile_id,
+			FireSorcererVolleySimulationService.INVALID_HANDLE
+		)) == handle
+	):
+		_erase_replica_fire_sorcerer_volley_backend(projectile_id)
+
+
 ## Reserves one contiguous Host-origin identity interval without attaching any
 ## simulation records. A range never wraps and never skips a collision: callers
 ## either receive the whole interval or an empty result with the sequence cursor
@@ -475,6 +618,8 @@ func reserve_host_projectile_id_range(
 			or _known_projectiles.has(projectile_id)
 			or _known_data_projectile_services.has(projectile_id)
 			or _known_replica_projectile_services.has(projectile_id)
+			or _known_fire_sorcerer_volley_services.has(projectile_id)
+			or _known_replica_fire_sorcerer_volley_services.has(projectile_id)
 			or _projectile_records.has(projectile_id)
 			or _reserved_host_projectile_ids.has(projectile_id)
 		):
@@ -620,6 +765,8 @@ func attach_reserved_local_data_projectile(
 		or _known_projectiles.has(projectile_id)
 		or _known_data_projectile_services.has(projectile_id)
 		or _known_replica_projectile_services.has(projectile_id)
+		or _known_fire_sorcerer_volley_services.has(projectile_id)
+		or _known_replica_fire_sorcerer_volley_services.has(projectile_id)
 		or _projectile_records.has(projectile_id)
 	):
 		return false
@@ -874,7 +1021,7 @@ func send_active_data_visual_snapshot_to_peer(peer_id: int) -> bool:
 				PackedByteArray(),
 			]
 		)
-		return true
+		return _send_active_fire_sorcerer_volleys_to_peer(peer_id)
 	var descriptors: Array[PackedByteArray] = []
 	for chunk_start in range(
 		0,
@@ -917,6 +1064,42 @@ func send_active_data_visual_snapshot_to_peer(peer_id: int) -> bool:
 				descriptors.size(),
 				host_snapshot_timestamp,
 				descriptors[chunk_index],
+			]
+		)
+	return _send_active_fire_sorcerer_volleys_to_peer(peer_id)
+
+
+func _send_active_fire_sorcerer_volleys_to_peer(peer_id: int) -> bool:
+	var projectile_ids: Array[int] = []
+	for projectile_id_variant in _known_fire_sorcerer_volley_services.keys():
+		projectile_ids.append(int(projectile_id_variant))
+	projectile_ids.sort()
+	for projectile_id in projectile_ids:
+		if not has_fire_sorcerer_volley_data(projectile_id):
+			continue
+		var metadata := _known_fire_sorcerer_volley_metadata.get(
+			projectile_id,
+			{}
+		) as Dictionary
+		if metadata.is_empty():
+			_erase_fire_sorcerer_volley_backend(projectile_id)
+			continue
+		rpc_to_peer_requested.emit(
+			peer_id,
+			&"net_projectile_fired",
+			[
+				projectile_id,
+				String(metadata["projectile_type"]),
+				int(metadata["owner_peer_id"]),
+				metadata["spawn_position"] as Vector2,
+				metadata["direction"] as Vector2,
+				int(metadata["damage"]),
+				float(metadata["speed"]),
+				float(metadata["lifetime"]),
+				false,
+				int(metadata["target_peer_id"]),
+				float(metadata["host_fire_timestamp"]),
+				int(metadata["target_enemy_net_id"]),
 			]
 		)
 	return true
@@ -1015,6 +1198,55 @@ func _erase_data_projectile_backend(projectile_id: int) -> void:
 	_known_data_projectile_owner_peer_ids.erase(projectile_id)
 	_known_data_projectile_damages.erase(projectile_id)
 	_known_data_projectile_lifetimes.erase(projectile_id)
+
+
+func _erase_fire_sorcerer_volley_backend(projectile_id: int) -> void:
+	_known_fire_sorcerer_volley_services.erase(projectile_id)
+	_known_fire_sorcerer_volley_handles.erase(projectile_id)
+	_known_fire_sorcerer_volley_metadata.erase(projectile_id)
+
+
+func _erase_replica_fire_sorcerer_volley_backend(projectile_id: int) -> void:
+	_known_replica_fire_sorcerer_volley_services.erase(projectile_id)
+	_known_replica_fire_sorcerer_volley_handles.erase(projectile_id)
+
+
+func _release_and_erase_fire_sorcerer_volley_backend(projectile_id: int) -> void:
+	var service: FireSorcererVolleySimulationService = (
+		_known_fire_sorcerer_volley_services.get(projectile_id)
+	)
+	var handle := int(_known_fire_sorcerer_volley_handles.get(
+		projectile_id,
+		FireSorcererVolleySimulationService.INVALID_HANDLE
+	))
+	if (
+		service != null
+		and is_instance_valid(service)
+		and handle > FireSorcererVolleySimulationService.INVALID_HANDLE
+		and service.is_handle_live(handle)
+	):
+		service.release_volley(handle)
+	_erase_fire_sorcerer_volley_backend(projectile_id)
+
+
+func _release_and_erase_replica_fire_sorcerer_volley_backend(
+	projectile_id: int
+) -> void:
+	var service: FireSorcererVolleySimulationService = (
+		_known_replica_fire_sorcerer_volley_services.get(projectile_id)
+	)
+	var handle := int(_known_replica_fire_sorcerer_volley_handles.get(
+		projectile_id,
+		FireSorcererVolleySimulationService.INVALID_HANDLE
+	))
+	if (
+		service != null
+		and is_instance_valid(service)
+		and handle > FireSorcererVolleySimulationService.INVALID_HANDLE
+		and service.is_handle_live(handle)
+	):
+		service.release_volley(handle)
+	_erase_replica_fire_sorcerer_volley_backend(projectile_id)
 
 
 func _remember_data_projectile_metadata(
@@ -1210,6 +1442,37 @@ func _get_rapid_fire_simulation_service() -> RapidFireSimulationService:
 	if combat_services == null:
 		return null
 	return combat_services.get_rapid_fire_simulation_service()
+
+
+func _get_fire_sorcerer_volley_simulation_service() -> FireSorcererVolleySimulationService:
+	if not is_bound():
+		return null
+	var combat_services := _runtime.get_enemy_combat_services()
+	if combat_services == null:
+		return null
+	return combat_services.get_fire_sorcerer_volley_simulation_service()
+
+
+static func _get_fire_sorcerer_volley_profile(
+	projectile_type: StringName
+) -> FireSorcererVolleySimulationService.Profile:
+	match projectile_type:
+		FIRE_SORCERER_FIREBALL_VOLLEY_TYPE:
+			return FireSorcererVolleySimulationService.Profile.NORMAL
+		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE:
+			return FireSorcererVolleySimulationService.Profile.ELITE
+		_:
+			return FireSorcererVolleySimulationService.Profile.INVALID
+
+
+static func _get_fire_sorcerer_volley_burn_level(
+	profile: FireSorcererVolleySimulationService.Profile
+) -> int:
+	return (
+		FIRE_SORCERER_ELITE_BURN_LEVEL
+		if profile == FireSorcererVolleySimulationService.Profile.ELITE
+		else FIRE_SORCERER_NORMAL_BURN_LEVEL
+	)
 
 
 static func _is_supported_enemy_rapid_fire_profile(profile: int) -> bool:
@@ -2292,6 +2555,8 @@ func allocate_projectile_id(owner_peer_id: int, host_origin: bool) -> int:
 			and not _known_projectiles.has(projectile_id)
 			and not _known_data_projectile_services.has(projectile_id)
 			and not _known_replica_projectile_services.has(projectile_id)
+			and not _known_fire_sorcerer_volley_services.has(projectile_id)
+			and not _known_replica_fire_sorcerer_volley_services.has(projectile_id)
 			and not _projectile_records.has(projectile_id)
 			and not _reserved_host_projectile_ids.has(projectile_id)
 		):
@@ -2314,6 +2579,8 @@ func accept_client_projectile_request_identity(
 		or is_suspended
 		or _known_projectiles.has(projectile_id)
 		or _known_data_projectile_services.has(projectile_id)
+		or _known_fire_sorcerer_volley_services.has(projectile_id)
+		or _known_replica_fire_sorcerer_volley_services.has(projectile_id)
 		or _projectile_records.has(projectile_id)
 		or not is_projectile_id_valid_for_client_owner(
 			projectile_id,
@@ -2343,6 +2610,48 @@ func has_data_projectile(projectile_id: int) -> bool:
 		or not _known_data_projectile_handles.has(projectile_id)
 	):
 		_erase_data_projectile_backend(projectile_id)
+		return false
+	return true
+
+
+func has_fire_sorcerer_volley_data(projectile_id: int) -> bool:
+	var service: FireSorcererVolleySimulationService = (
+		_known_fire_sorcerer_volley_services.get(projectile_id)
+	)
+	var handle := int(_known_fire_sorcerer_volley_handles.get(
+		projectile_id,
+		FireSorcererVolleySimulationService.INVALID_HANDLE
+	))
+	if (
+		service == null
+		or not is_instance_valid(service)
+		or handle <= FireSorcererVolleySimulationService.INVALID_HANDLE
+		or not service.is_handle_live(handle)
+		or service.get_slot_mode(handle)
+			!= FireSorcererVolleySimulationService.Mode.DATA
+	):
+		_erase_fire_sorcerer_volley_backend(projectile_id)
+		return false
+	return true
+
+
+func has_fire_sorcerer_volley_replica(projectile_id: int) -> bool:
+	var service: FireSorcererVolleySimulationService = (
+		_known_replica_fire_sorcerer_volley_services.get(projectile_id)
+	)
+	var handle := int(_known_replica_fire_sorcerer_volley_handles.get(
+		projectile_id,
+		FireSorcererVolleySimulationService.INVALID_HANDLE
+	))
+	if (
+		service == null
+		or not is_instance_valid(service)
+		or handle <= FireSorcererVolleySimulationService.INVALID_HANDLE
+		or not service.is_handle_live(handle)
+		or service.get_slot_mode(handle)
+			!= FireSorcererVolleySimulationService.Mode.REPLICA
+	):
+		_erase_replica_fire_sorcerer_volley_backend(projectile_id)
 		return false
 	return true
 
@@ -2441,6 +2750,22 @@ func receive_projectile_fired(
 ) -> void:
 	if not _NetConstants.is_valid_network_combat_value(damage):
 		return
+	if _is_fire_sorcerer_volley_type(projectile_type):
+		_receive_fire_sorcerer_volley_replica(
+			projectile_id,
+			projectile_type,
+			owner_peer_id,
+			spawn_position,
+			direction,
+			damage,
+			speed,
+			lifetime,
+			target_peer_id,
+			target_enemy_net_id,
+			compensation_age,
+			now
+		)
+		return
 	if has_data_projectile(projectile_id):
 		return
 	if _known_projectiles.has(projectile_id):
@@ -2473,6 +2798,113 @@ func receive_projectile_fired(
 		target_enemy_net_id,
 		compensation_age,
 		now
+	)
+
+
+func _receive_fire_sorcerer_volley_replica(
+	projectile_id: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	spawn_position: Vector2,
+	direction: Vector2,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	target_peer_id: int,
+	target_enemy_net_id: int,
+	compensation_age: float,
+	now: float
+) -> void:
+	var projectile_namespace := owner_peer_id
+	if projectile_namespace <= 0:
+		projectile_namespace = PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
+	var profile := _get_fire_sorcerer_volley_profile(projectile_type)
+	if (
+		profile == FireSorcererVolleySimulationService.Profile.INVALID
+		or not is_projectile_id_valid_for_host_owner(
+			projectile_id,
+			projectile_namespace
+		)
+		or has_fire_sorcerer_volley_data(projectile_id)
+		or has_fire_sorcerer_volley_replica(projectile_id)
+		or _known_projectiles.has(projectile_id)
+		or _projectile_records.has(projectile_id)
+		or not _is_finite_vector2(spawn_position)
+		or not _is_finite_vector2(direction)
+		or direction.length_squared() <= 0.001
+		or not is_finite(speed)
+		or speed <= 0.0
+		or not is_finite(lifetime)
+		or lifetime <= 0.0
+		or not is_finite(compensation_age)
+		or compensation_age < 0.0
+		or target_peer_id < 0
+		or target_enemy_net_id < 0
+	):
+		return
+	var service := _get_fire_sorcerer_volley_simulation_service()
+	if service == null:
+		return
+	var locked_direction := direction.normalized()
+	var ball_positions := PackedVector2Array()
+	var ball_directions := PackedVector2Array()
+	ball_positions.resize(FireSorcererVolleySimulationService.BALL_COUNT)
+	ball_directions.resize(FireSorcererVolleySimulationService.BALL_COUNT)
+	for ball_index in range(FireSorcererVolleySimulationService.BALL_COUNT):
+		ball_positions[ball_index] = spawn_position + (
+			FIRE_SORCERER_VOLLEY_LOCAL_OFFSETS[ball_index].rotated(
+				locked_direction.angle()
+			)
+		)
+		ball_directions[ball_index] = locked_direction
+	var target: Node2D = null
+	if target_peer_id > 0:
+		target = _get_player(target_peer_id)
+	elif target_enemy_net_id > 0:
+		target = _resolve_mode_world_target(target_enemy_net_id)
+	var frozen_source := DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		maxi(owner_peer_id, 0),
+		0,
+		projectile_id,
+		projectile_type
+	)
+	var compensated_lifetime := maxf(lifetime - compensation_age, 0.01)
+	var handle := service.register_volley(
+		FireSorcererVolleySimulationService.Mode.REPLICA,
+		profile,
+		ball_positions,
+		ball_directions,
+		speed,
+		compensated_lifetime,
+		FIRE_SORCERER_VOLLEY_HOMING_TURN_RATE,
+		damage,
+		0,
+		projectile_id,
+		target,
+		FIRE_SORCERER_VOLLEY_BURN_DURATION,
+		_get_fire_sorcerer_volley_burn_level(profile),
+		frozen_source
+	)
+	if handle <= FireSorcererVolleySimulationService.INVALID_HANDLE:
+		return
+	if compensation_age > 0.0 and not service.advance_compensated(
+		handle,
+		compensation_age
+	):
+		service.release_volley(handle)
+		return
+	_known_replica_fire_sorcerer_volley_services[projectile_id] = service
+	_known_replica_fire_sorcerer_volley_handles[projectile_id] = handle
+	remember_projectile_record(
+		projectile_id,
+		owner_peer_id,
+		projectile_type,
+		damage,
+		lifetime,
+		false,
+		now,
+		frozen_source
 	)
 
 
@@ -2828,6 +3260,16 @@ func prune_records(now: float) -> void:
 	for hit_key in expired_hit_keys:
 		_processed_enemy_hit_ids.erase(hit_key)
 	_prune_replica_projectile_backends(now)
+	_prune_fire_sorcerer_volley_backends()
+
+
+func _prune_fire_sorcerer_volley_backends() -> void:
+	for projectile_id_variant in _known_fire_sorcerer_volley_services.keys():
+		has_fire_sorcerer_volley_data(int(projectile_id_variant))
+	for projectile_id_variant in (
+		_known_replica_fire_sorcerer_volley_services.keys()
+	):
+		has_fire_sorcerer_volley_replica(int(projectile_id_variant))
 
 
 func clear_peer(peer_id: int) -> void:
@@ -2839,6 +3281,7 @@ func clear_peer(peer_id: int) -> void:
 			_reserved_host_projectile_ids.erase(projectile_id)
 	clear_projectiles_for_peer(peer_id)
 	clear_data_projectiles_for_peer(peer_id)
+	clear_fire_sorcerer_volleys_for_peer(peer_id)
 	clear_projectile_records_for_peer(peer_id)
 
 
@@ -2878,6 +3321,27 @@ func clear_data_projectiles_for_peer(peer_id: int) -> void:
 		_release_and_erase_data_projectile_backend(projectile_id)
 
 
+func clear_fire_sorcerer_volleys_for_peer(peer_id: int) -> void:
+	var data_projectile_ids: Array[int] = []
+	for projectile_id_variant in _known_fire_sorcerer_volley_services.keys():
+		var projectile_id := int(projectile_id_variant)
+		var record := get_projectile_record(projectile_id)
+		if int(record.get("owner_peer_id", 0)) == peer_id:
+			data_projectile_ids.append(projectile_id)
+	for projectile_id in data_projectile_ids:
+		_release_and_erase_fire_sorcerer_volley_backend(projectile_id)
+	var replica_projectile_ids: Array[int] = []
+	for projectile_id_variant in (
+		_known_replica_fire_sorcerer_volley_services.keys()
+	):
+		var projectile_id := int(projectile_id_variant)
+		var record := get_projectile_record(projectile_id)
+		if int(record.get("owner_peer_id", 0)) == peer_id:
+			replica_projectile_ids.append(projectile_id)
+	for projectile_id in replica_projectile_ids:
+		_release_and_erase_replica_fire_sorcerer_volley_backend(projectile_id)
+
+
 func clear_projectile_records_for_peer(peer_id: int) -> void:
 	var projectile_ids: Array[int] = []
 	for projectile_id_variant in _projectile_records.keys():
@@ -2907,6 +3371,19 @@ func reset_session_state() -> void:
 	_known_data_projectile_owner_peer_ids.clear()
 	_known_data_projectile_damages.clear()
 	_known_data_projectile_lifetimes.clear()
+	for projectile_id in _known_fire_sorcerer_volley_services.keys():
+		_release_and_erase_fire_sorcerer_volley_backend(int(projectile_id))
+	_known_fire_sorcerer_volley_services.clear()
+	_known_fire_sorcerer_volley_handles.clear()
+	_known_fire_sorcerer_volley_metadata.clear()
+	for projectile_id in (
+		_known_replica_fire_sorcerer_volley_services.keys()
+	):
+		_release_and_erase_replica_fire_sorcerer_volley_backend(
+			int(projectile_id)
+		)
+	_known_replica_fire_sorcerer_volley_services.clear()
+	_known_replica_fire_sorcerer_volley_handles.clear()
 	_reserved_host_projectile_ids.clear()
 	_active_enemy_rapid_fire_bursts.clear()
 	_active_enemy_rapid_fire_base_by_reserved_id.clear()
@@ -2942,6 +3419,15 @@ func get_state_metrics() -> Dictionary:
 		"next_sequence": _next_projectile_sequence,
 		"known_projectiles": _known_projectiles.size(),
 		"known_data_projectiles": _known_data_projectile_services.size(),
+		"known_fire_sorcerer_volley_data": (
+			_known_fire_sorcerer_volley_services.size()
+		),
+		"known_fire_sorcerer_volley_replicas": (
+			_known_replica_fire_sorcerer_volley_services.size()
+		),
+		"fire_sorcerer_volley_late_join_records": (
+			_known_fire_sorcerer_volley_metadata.size()
+		),
 		"reserved_host_projectile_ids": _reserved_host_projectile_ids.size(),
 		"active_enemy_rapid_fire_bursts": _active_enemy_rapid_fire_bursts.size(),
 		"pending_enemy_rapid_fire_finishes": (
@@ -3927,6 +4413,8 @@ func _spawn_network_projectile(
 		projectile_id <= 0
 		or _known_projectiles.has(projectile_id)
 		or has_data_projectile(projectile_id)
+		or has_fire_sorcerer_volley_data(projectile_id)
+		or has_fire_sorcerer_volley_replica(projectile_id)
 		or _projectile_records.has(projectile_id)
 	):
 		return

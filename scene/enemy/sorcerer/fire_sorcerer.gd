@@ -9,6 +9,19 @@ const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 )
 const ATTACK_TARGET_REFRESH_INTERVAL := 0.35
 const ATTACK_TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target_world"
+const NORMAL_PROJECTILE_SOURCE_TYPE := &"fire_sorcerer_fireball_volley"
+const ELITE_PROJECTILE_SOURCE_TYPE := &"fire_sorcerer_elite_fireball_volley"
+
+enum ProjectileBackend {
+	LEGACY,
+	SHADOW,
+	DATA,
+}
+
+# The three-ball kernel keeps every authored ball independent and preserves the
+# original one-physics-tick activation boundary. Production authority is DATA;
+# this explicit process-wide switch remains available for parity probes.
+static var projectile_backend: ProjectileBackend = ProjectileBackend.DATA
 
 enum CombatState {
 	CHASE,
@@ -17,7 +30,7 @@ enum CombatState {
 
 @export_group("投射物身份")
 @export var projectile_source_type: StringName = (
-	&"fire_sorcerer_fireball_volley"
+	NORMAL_PROJECTILE_SOURCE_TYPE
 )
 
 @onready var summon_pivot: Node2D = $SummonPivot
@@ -43,6 +56,7 @@ var summon_target: Node2D = null
 var latest_proxy_action_id: int = 0
 var cached_runtime_attack_target: Node2D = null
 var attack_target_refresh_left: float = 0.0
+var shadow_registration_failures: int = 0
 
 
 func _ready() -> void:
@@ -129,7 +143,10 @@ func _physics_process(delta: float) -> void:
 	if (
 		combat_target != null
 		and fire_config != null
-		and fire_config.volley_scene != null
+		and (
+			FireSorcerer.projectile_backend != ProjectileBackend.LEGACY
+			or fire_config.volley_scene != null
+		)
 		and _try_hold_ranged_attack_position(
 			combat_target,
 			fire_config.attack_range,
@@ -187,6 +204,7 @@ func _apply_config() -> void:
 	latest_proxy_action_id = 0
 	cached_runtime_attack_target = null
 	attack_target_refresh_left = 0.0
+	shadow_registration_failures = 0
 	_reset_ranged_attack_position_state()
 	if is_node_ready():
 		_hide_summon_previews()
@@ -328,15 +346,40 @@ func _on_animated_sprite_animation_finished() -> void:
 
 
 func _spawn_fireball_volley(fire_config: FireConfig) -> bool:
-	if fire_config.volley_scene == null:
-		return false
 	if (
 		combat_runtime == null
 		or not is_instance_valid(combat_runtime)
+	):
+		return false
+	# Client enemies only replay the Host action. The projectile coordinator
+	# rebuilds visual-only REPLICA rows from the Host registration.
+	if combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+		return false
+	match FireSorcerer.projectile_backend:
+		ProjectileBackend.LEGACY:
+			return _spawn_legacy_fireball_volley(fire_config, false)
+		ProjectileBackend.SHADOW:
+			return _spawn_legacy_fireball_volley(fire_config, true)
+		ProjectileBackend.DATA:
+			return _spawn_data_fireball_volley(fire_config)
+	return false
+
+
+func _spawn_legacy_fireball_volley(
+	fire_config: FireConfig,
+	register_shadow: bool
+) -> bool:
+	if (
+		fire_config.volley_scene == null
 		or gameplay_gateway == null
 		or not is_instance_valid(gameplay_gateway)
 	):
 		return false
+	var fire_sorcerer_service: FireSorcererVolleySimulationService = null
+	if register_shadow:
+		fire_sorcerer_service = (
+			_get_fire_sorcerer_volley_simulation_service()
+		)
 	var spawn_parent: Node = combat_runtime
 	var volley: FireSorcererFireballVolley = null
 	if combat_runtime.has_session_object_pool_scene(fire_config.volley_scene):
@@ -402,7 +445,157 @@ func _spawn_fireball_volley(fire_config: FireConfig) -> bool:
 		target_peer_id,
 		target_plant_net_id
 	)
+	if register_shadow and fire_sorcerer_service != null:
+		var shadow_handle := fire_sorcerer_service.register_volley(
+			FireSorcererVolleySimulationService.Mode.SHADOW,
+			_get_fire_sorcerer_volley_profile(),
+			_get_authored_volley_positions(),
+			_get_authored_volley_directions(),
+			fire_config.projectile_speed,
+			fire_config.projectile_lifetime,
+			fire_config.homing_turn_rate,
+			0,
+			_get_stable_source_enemy_id(),
+			0,
+			summon_target,
+			0.0,
+			0,
+			null
+		)
+		if shadow_handle <= FireSorcererVolleySimulationService.INVALID_HANDLE:
+			shadow_registration_failures += 1
+	elif register_shadow:
+		# SHADOW is comparison-only. Missing infrastructure cannot replace or
+		# cancel the already registered legacy authority volley.
+		shadow_registration_failures += 1
 	return true
+
+
+func _spawn_data_fireball_volley(fire_config: FireConfig) -> bool:
+	var fire_sorcerer_service := (
+		_get_fire_sorcerer_volley_simulation_service()
+	)
+	if fire_sorcerer_service == null:
+		return false
+	var profile := _get_fire_sorcerer_volley_profile()
+	if profile == FireSorcererVolleySimulationService.Profile.INVALID:
+		return false
+	var outgoing_damage := get_effective_attack_damage(
+		fire_config.attack_damage
+	)
+	var launch_source_snapshot := create_damage_source_snapshot(
+		0,
+		_get_fireball_projectile_type()
+	)
+	var handle := fire_sorcerer_service.register_volley(
+		FireSorcererVolleySimulationService.Mode.DATA,
+		profile,
+		_get_authored_volley_positions(),
+		_get_authored_volley_directions(),
+		fire_config.projectile_speed,
+		fire_config.projectile_lifetime,
+		fire_config.homing_turn_rate,
+		outgoing_damage,
+		_get_stable_source_enemy_id(),
+		0,
+		summon_target,
+		fire_config.burn_duration,
+		fire_config.burn_level,
+		launch_source_snapshot
+	)
+	if handle <= FireSorcererVolleySimulationService.INVALID_HANDLE:
+		return false
+
+	if (
+		combat_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
+			fire_sorcerer_service.release_volley(handle)
+			return false
+		var target_peer_id := 0
+		var target_enemy_net_id := 0
+		var player_target := summon_target as Player
+		if player_target != null:
+			target_peer_id = player_target.peer_id
+		else:
+			var plant_target := summon_target as PlantDefense
+			if plant_target != null:
+				target_enemy_net_id = int(
+					plant_target.get_meta(&"net_id", 0)
+				)
+			else:
+				var enemy_target := summon_target as Enemy
+				if enemy_target != null:
+					target_enemy_net_id = int(
+						enemy_target.get_meta(&"net_id", 0)
+					)
+		var projectile_id := (
+			gameplay_gateway.register_local_fire_sorcerer_volley_data(
+				fire_sorcerer_service,
+				handle,
+				_get_fireball_projectile_type(),
+				0,
+				summon_pivot.global_position,
+				summon_direction,
+				outgoing_damage,
+				fire_config.projectile_speed,
+				fire_config.projectile_lifetime,
+				target_peer_id,
+				target_enemy_net_id,
+				launch_source_snapshot
+			)
+		)
+		if projectile_id <= 0:
+			# Host identity registration and the pending service row are one
+			# operation. Failure releases the row and never falls back to a Node.
+			fire_sorcerer_service.release_volley(handle)
+			return false
+	return true
+
+
+func _get_authored_volley_positions() -> PackedVector2Array:
+	var positions := PackedVector2Array()
+	positions.resize(FireSorcererVolleySimulationService.BALL_COUNT)
+	for ball_index in range(FireSorcererVolleySimulationService.BALL_COUNT):
+		positions[ball_index] = summon_markers[ball_index].global_position
+	return positions
+
+
+func _get_authored_volley_directions() -> PackedVector2Array:
+	var safe_direction := (
+		summon_direction.normalized()
+		if summon_direction != Vector2.ZERO
+		else Vector2.RIGHT
+	)
+	var directions := PackedVector2Array()
+	directions.resize(FireSorcererVolleySimulationService.BALL_COUNT)
+	directions.fill(safe_direction)
+	return directions
+
+
+func _get_fire_sorcerer_volley_profile(
+) -> FireSorcererVolleySimulationService.Profile:
+	return (
+		FireSorcererVolleySimulationService.Profile.ELITE
+		if projectile_source_type == ELITE_PROJECTILE_SOURCE_TYPE
+		else FireSorcererVolleySimulationService.Profile.NORMAL
+	)
+
+
+func _get_fire_sorcerer_volley_simulation_service(
+) -> FireSorcererVolleySimulationService:
+	var combat_services := combat_runtime.get_enemy_combat_services()
+	if combat_services == null:
+		return null
+	return combat_services.get_fire_sorcerer_volley_simulation_service()
+
+
+func _get_stable_source_enemy_id() -> int:
+	var network_enemy_id := int(get_meta(&"net_id", 0))
+	if network_enemy_id > 0:
+		return network_enemy_id
+	return int(get_instance_id())
 
 
 func _get_fireball_projectile_type() -> StringName:

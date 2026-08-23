@@ -24,6 +24,12 @@ const ImmediateHitscanResolverScript := preload(
 const RapidProjectilePresenterScript := preload(
 	"res://scene/combat/simulation/rapid_projectile_presenter.gd"
 )
+const FireSorcererVolleySimulationServiceScript := preload(
+	"res://scene/combat/simulation/fire_sorcerer_volley_simulation_service.gd"
+)
+const FireSorcererVolleyPresenterScript := preload(
+	"res://scene/combat/simulation/fire_sorcerer_volley_presenter.gd"
+)
 const FIXTURE_SCENE := preload(
 	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
 )
@@ -113,6 +119,12 @@ func _test_authored_coordinator_service_tree_defaults_to_idle() -> void:
 		var rapid_projectile_presenter: RapidProjectilePresenterScript = (
 			combat_services.get_rapid_projectile_presenter()
 		)
+		var fire_sorcerer_volley_service: FireSorcererVolleySimulationServiceScript = (
+			combat_services.get_fire_sorcerer_volley_simulation_service()
+		)
+		var fire_sorcerer_volley_presenter: FireSorcererVolleyPresenterScript = (
+			combat_services.get_fire_sorcerer_volley_presenter()
+		)
 		_expect(
 			rapid_fire_service != null,
 			"EnemyCombatServices must author RapidFireSimulationService."
@@ -175,6 +187,36 @@ func _test_authored_coordinator_service_tree_defaults_to_idle() -> void:
 				and int(presenter_metrics["sync_executions"]) == 0
 				and not rapid_projectile_presenter.is_physics_processing(),
 				"The authored presenter must start unallocated and idle."
+			)
+		_expect(
+			fire_sorcerer_volley_service != null,
+			"EnemyCombatServices must author FireSorcererVolleySimulationService."
+		)
+		if fire_sorcerer_volley_service != null:
+			var volley_metrics := fire_sorcerer_volley_service.get_metrics()
+			_expect(
+				int(volley_metrics["dense_records"]) == 0
+				and int(volley_metrics["active_slots"]) == 0
+				and not bool(volley_metrics["bound"])
+				and not fire_sorcerer_volley_service.is_physics_processing(),
+				"The authored fire-sorcerer volley service must start empty and idle."
+			)
+		_expect(
+			fire_sorcerer_volley_presenter != null,
+			"EnemyCombatServices must author FireSorcererVolleyPresenter."
+		)
+		if fire_sorcerer_volley_presenter != null:
+			var volley_presenter_metrics := (
+				fire_sorcerer_volley_presenter.get_metrics()
+			)
+			_expect(
+				int(volley_presenter_metrics["fixed_capacity_per_family"])
+				== FireSorcererVolleyPresenterScript.FIXED_INSTANCE_CAPACITY
+				and int(volley_presenter_metrics["allocated_normal_instances"]) == 0
+				and int(volley_presenter_metrics["allocated_elite_instances"]) == 0
+				and int(volley_presenter_metrics["last_visible_count"]) == 0
+				and not fire_sorcerer_volley_presenter.is_processing(),
+				"The authored fire-sorcerer volley presenter must start unallocated and idle."
 			)
 	coordinator.free()
 
@@ -239,6 +281,12 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 		var rapid_projectile_presenter: RapidProjectilePresenterScript = (
 			combat_services.get_rapid_projectile_presenter()
 		)
+		var fire_sorcerer_volley_service: FireSorcererVolleySimulationServiceScript = (
+			combat_services.get_fire_sorcerer_volley_simulation_service()
+		)
+		var fire_sorcerer_volley_presenter: FireSorcererVolleyPresenterScript = (
+			combat_services.get_fire_sorcerer_volley_presenter()
+		)
 		_expect(
 			combat_services.is_bound_to(runtime, coordinator),
 			"EnemyCombatServices must bind to its authored runtime and coordinator."
@@ -270,6 +318,20 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 			and rapid_projectile_presenter.is_bound_to(rapid_fire_service),
 			"The bound service tree must bind RapidProjectilePresenter to the data kernel."
 		)
+		_expect(
+			fire_sorcerer_volley_service != null
+			and fire_sorcerer_volley_service.is_bound()
+			and fire_sorcerer_volley_service.get_reserved_capacity()
+			>= combat_services.FIRE_SORCERER_VOLLEY_RESERVED_CAPACITY,
+			"Fire-sorcerer volley binding must share the damageable index and reserve 2048 volleys."
+		)
+		_expect(
+			fire_sorcerer_volley_presenter != null
+			and fire_sorcerer_volley_presenter.is_bound_to(
+				fire_sorcerer_volley_service
+			),
+			"The bound service tree must bind FireSorcererVolleyPresenter to its data kernel."
+		)
 		if rapid_projectile_presenter != null:
 			var mounted_presenter_metrics := rapid_projectile_presenter.get_metrics()
 			_expect(
@@ -279,6 +341,21 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 				and int(mounted_presenter_metrics["sync_executions"]) == 0
 				and int(mounted_presenter_metrics["last_scanned_count"]) == 0,
 				"A mounted headless presenter must allocate, scan, and upload nothing."
+			)
+		if fire_sorcerer_volley_presenter != null:
+			var mounted_volley_presenter_metrics := (
+				fire_sorcerer_volley_presenter.get_metrics()
+			)
+			_expect(
+				bool(mounted_volley_presenter_metrics["headless_disabled"])
+				and int(mounted_volley_presenter_metrics["allocated_normal_instances"]) == 0
+				and int(mounted_volley_presenter_metrics["allocated_elite_instances"]) == 0
+				and int(mounted_volley_presenter_metrics["visible_normal_instances"]) == 0
+				and int(mounted_volley_presenter_metrics["visible_elite_instances"]) == 0
+				and int(mounted_volley_presenter_metrics["sync_executions"]) == 0
+				and int(mounted_volley_presenter_metrics["render_sync_executions"]) == 0
+				and int(mounted_volley_presenter_metrics["last_scanned_record_count"]) == 0,
+				"A mounted headless fire-sorcerer volley presenter must allocate, scan, and upload nothing."
 			)
 		if damageable_spatial_index != null:
 			var initial_index_metrics := damageable_spatial_index.get_metrics()
@@ -298,6 +375,10 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 		)
 		var presenter_metrics: Dictionary = (
 			service_metrics["rapid_projectile_presenter"]
+		)
+		var volley_metrics: Dictionary = service_metrics["fire_sorcerer_volley"]
+		var volley_presenter_metrics: Dictionary = (
+			service_metrics["fire_sorcerer_volley_presenter"]
 		)
 		_expect(
 			int(service_metrics["teardown_count"]) == 1,
@@ -320,10 +401,20 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 			"RapidProjectilePresenter teardown must be idempotent."
 		)
 		_expect(
+			int(volley_metrics["teardown_count"]) == 1,
+			"FireSorcererVolleySimulationService teardown must be idempotent."
+		)
+		_expect(
+			int(volley_presenter_metrics["teardown_count"]) == 1,
+			"FireSorcererVolleyPresenter teardown must be idempotent."
+		)
+		_expect(
 			not bool(service_metrics["bound"])
 			and not bool(rapid_fire_metrics["bound"])
 			and not bool(damageable_index_metrics["bound"])
-			and not bool(hitscan_metrics["bound"]),
+			and not bool(hitscan_metrics["bound"])
+			and not bool(volley_metrics["bound"])
+			and not bool(volley_presenter_metrics["bound"]),
 			"Teardown must release all runtime and coordinator references."
 		)
 		_expect(
@@ -342,6 +433,23 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 			and int(presenter_metrics["sync_executions"]) == 0
 			and int(presenter_metrics["last_scanned_count"]) == 0,
 			"Teardown must retain the headless presenter's zero-work state."
+		)
+		_expect(
+			int(volley_metrics["dense_records"]) == 0
+			and int(volley_metrics["active_slots"]) == 0
+			and int(volley_metrics["tombstones"]) == 0
+			and int(volley_metrics["completion_records"]) == 0
+			and int(volley_metrics["terminal_records"]) == 0
+			and not bool(volley_metrics["physics_processing"]),
+			"Teardown must leave zero live fire-sorcerer volleys and physics disabled."
+		)
+		_expect(
+			int(volley_presenter_metrics["allocated_normal_instances"]) == 0
+			and int(volley_presenter_metrics["allocated_elite_instances"]) == 0
+			and int(volley_presenter_metrics["visible_normal_instances"]) == 0
+			and int(volley_presenter_metrics["visible_elite_instances"]) == 0
+			and int(volley_presenter_metrics["last_visible_count"]) == 0,
+			"Teardown must leave the fire-sorcerer volley presenter with zero live instances."
 		)
 		_expect(
 			contact_service != null
@@ -371,6 +479,22 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 			_expect(
 				not immediate_hitscan_resolver.bind_combat_runtime(runtime),
 				"ImmediateHitscanResolver must reject rebind after teardown."
+			)
+		if fire_sorcerer_volley_service != null:
+			_expect(
+				not fire_sorcerer_volley_service.bind_context(
+					runtime,
+					coordinator,
+					damageable_spatial_index
+				),
+				"FireSorcererVolleySimulationService must reject rebind after teardown."
+			)
+		if fire_sorcerer_volley_presenter != null:
+			_expect(
+				not fire_sorcerer_volley_presenter.bind_service(
+					fire_sorcerer_volley_service
+				),
+				"FireSorcererVolleyPresenter must reject rebind after teardown."
 			)
 
 	runtime.queue_free()

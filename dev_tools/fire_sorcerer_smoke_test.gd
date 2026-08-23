@@ -92,6 +92,9 @@ func _init() -> void:
 
 
 func _run() -> void:
+	# This suite certifies the authored legacy Area2D behavior. The dedicated
+	# data-backend smoke covers the production node-free path.
+	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.LEGACY
 	test_root = PlayerTestCombatRuntime.new()
 	test_root.name = "FireSorcererSmokeTest"
 	root.add_child(test_root)
@@ -116,6 +119,7 @@ func _run() -> void:
 	await physics_frame
 	for _cleanup_frame in range(4):
 		await process_frame
+	FireSorcerer.projectile_backend = FireSorcerer.ProjectileBackend.DATA
 
 	if failures.is_empty():
 		print("FIRE_SORCERER_SMOKE_TEST_OK")

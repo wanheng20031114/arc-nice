@@ -138,6 +138,31 @@ func register_local_data_projectile(
 
 
 @abstract
+func register_local_fire_sorcerer_volley_data(
+	service: FireSorcererVolleySimulationService,
+	handle: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	spawn_position: Vector2,
+	direction: Vector2,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	target_peer_id: int,
+	target_enemy_net_id: int,
+	damage_source_snapshot: DamageSourceSnapshot
+) -> int
+
+
+@abstract
+func notify_fire_sorcerer_volley_finished(
+	projectile_id: int,
+	service: FireSorcererVolleySimulationService,
+	handle: int
+) -> void
+
+
+@abstract
 func reserve_enemy_rapid_fire_projectile_ids(
 	count: int
 ) -> PackedInt64Array

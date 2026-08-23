@@ -24,6 +24,9 @@ const PLAYER_SCENE := preload(
 const PLAYER_CONFIG := preload(
 	"res://resources/config/players/player_weishidaier.tres"
 )
+const COMBAT_RUNTIME_FIXTURE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
 
 const BASE_CHARACTER_TEXTURE_PATH := (
 	"res://resources/texture/enemy/sorcerer/fire_sorcerer.png"
@@ -395,7 +398,8 @@ func _test_volley_scene_and_magic_damage() -> void:
 					Vector2(23.0, 13.0),
 				][ball_index]
 			and area.collision_layer == 128
-			and area.collision_mask == 515
+			and area.collision_mask
+				== FireSorcererFireballVolley.AUTHORED_COLLISION_MASK
 			and collision != null
 			and is_equal_approx(collision.radius, 3.5)
 			and volley.ball_collision_shapes[ball_index].position
@@ -419,7 +423,75 @@ func _test_volley_scene_and_magic_damage() -> void:
 			"Elite fireball %d source identity mismatch." % ball_index
 		)
 
-	volley.call("_on_ball_body_entered", primary, 0)
+	# Damage migrated to the shared data kernel. Keep the legacy scene assertions
+	# above as an authored-asset baseline, then exercise the production ELITE row
+	# through the statically mounted combat service instead of invoking a stale
+	# Area2D callback without an explicit authority/faction context.
+	var runtime := (
+		COMBAT_RUNTIME_FIXTURE.instantiate()
+		as EnemyGameplayGatewayTestRuntime
+	)
+	test_root.add_child(runtime)
+	await process_frame
+	var combat_services := runtime.get_enemy_combat_services()
+	var service := (
+		combat_services.get_fire_sorcerer_volley_simulation_service()
+		if combat_services != null
+		else null
+	)
+	_expect(
+		service != null and service.is_bound(),
+		"Elite damage regression must use the bound shared volley service."
+	)
+	if service == null:
+		volley.queue_free()
+		primary.queue_free()
+		bystander.queue_free()
+		runtime.queue_free()
+		await process_frame
+		return
+	runtime.player = primary
+	runtime.peer_players[2] = bystander
+	primary.peer_id = 1
+	bystander.peer_id = 2
+	primary.bind_combat_runtime(runtime)
+	bystander.bind_combat_runtime(runtime)
+	var direction := Vector2.RIGHT
+	var first_step := 0.001
+	var collision_center_offset := (
+		FireSorcererVolleySimulationService.BALL_COLLISION_FORWARD_OFFSET
+		+ ELITE_CONFIG.projectile_speed * first_step
+	)
+	var data_handle := service.register_volley(
+		FireSorcererVolleySimulationService.Mode.DATA,
+		FireSorcererVolleySimulationService.Profile.ELITE,
+		PackedVector2Array([
+			primary.global_position - direction * collision_center_offset,
+			primary.global_position + Vector2(0.0, 80.0),
+			primary.global_position + Vector2(0.0, 120.0),
+		]),
+		PackedVector2Array([direction, direction, direction]),
+		ELITE_CONFIG.projectile_speed,
+		ELITE_CONFIG.projectile_lifetime,
+		ELITE_CONFIG.homing_turn_rate,
+		ELITE_CONFIG.attack_damage,
+		731,
+		0,
+		null,
+		ELITE_CONFIG.burn_duration,
+		ELITE_CONFIG.burn_level,
+		DamageSourceSnapshot.create(
+			CombatRelationService.HOSTILE_WAVE,
+			0,
+			731,
+			0,
+			&"fire_sorcerer_elite_fireball_volley"
+		)
+	)
+	service.set_physics_process(false)
+	await physics_frame
+	service.advance_authoritative(first_step)
+	service.set_physics_process(false)
 	_expect(
 		primary.current_health == TEST_HEALTH - 56
 		and primary.last_damage_taken == 56,
@@ -440,7 +512,8 @@ func _test_volley_scene_and_magic_damage() -> void:
 		"Elite blue fireball must remain first-contact only without AOE."
 	)
 	primary.invincibility_time_left = 0.0
-	volley.call("_on_ball_body_entered", primary, 0)
+	service.advance_authoritative(first_step)
+	service.set_physics_process(false)
 	_expect(
 		primary.current_health == TEST_HEALTH - 56,
 		"One elite fireball must never damage twice."
@@ -452,9 +525,13 @@ func _test_volley_scene_and_magic_damage() -> void:
 		"Level-10 burn must tick as 8 magic damage against 20 magic defense."
 	)
 
+	service.release_volley(data_handle)
+	service.advance_authoritative(0.0)
 	volley.queue_free()
 	primary.queue_free()
 	bystander.queue_free()
+	runtime.prepare_for_scene_teardown()
+	runtime.queue_free()
 	await process_frame
 	await physics_frame
 

@@ -1,10 +1,12 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scene/combat/simulation/enemy_combat_services.gd" id="1_services"]
 [ext_resource type="PackedScene" path="res://scene/combat/simulation/rapid_fire_simulation_service.tscn" id="2_rapid_fire"]
 [ext_resource type="PackedScene" path="res://scene/combat/targeting/enemy_damageable_spatial_index.tscn" id="3_damageable_index"]
 [ext_resource type="PackedScene" path="res://scene/combat/simulation/immediate_hitscan_resolver.tscn" id="4_hitscan"]
 [ext_resource type="PackedScene" path="res://scene/combat/simulation/rapid_projectile_presenter.tscn" id="5_presenter"]
+[ext_resource type="PackedScene" path="res://scene/combat/simulation/fire_sorcerer_volley_simulation_service.tscn" id="6_fire_volley"]
+[ext_resource type="PackedScene" path="res://scene/combat/simulation/fire_sorcerer_volley_presenter.tscn" id="7_fire_volley_presenter"]
 
 [node name="EnemyCombatServices" type="Node"]
 process_physics_priority = 6
@@ -14,6 +16,10 @@ script = ExtResource("1_services")
 
 [node name="EnemyDamageableSpatialIndex" parent="." instance=ExtResource("3_damageable_index")]
 
+[node name="FireSorcererVolleySimulationService" parent="." instance=ExtResource("6_fire_volley")]
+
 [node name="ImmediateHitscanResolver" parent="." instance=ExtResource("4_hitscan")]
 
 [node name="RapidProjectilePresenter" parent="." instance=ExtResource("5_presenter")]
+
+[node name="FireSorcererVolleyPresenter" parent="." instance=ExtResource("7_fire_volley_presenter")]
