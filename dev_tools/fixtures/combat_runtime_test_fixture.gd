@@ -1,8 +1,23 @@
 extends CombatRuntimeBase
 class_name CombatRuntimeTestFixture
 
+const ENEMY_SIMULATION_COORDINATOR_SCENE := preload(
+	"res://scene/combat/simulation/enemy_simulation_coordinator.tscn"
+)
+const ENEMY_CONTACT_SERVICE_SCENE := preload(
+	"res://scene/combat/contact/enemy_contact_service.tscn"
+)
+
 
 func install_base_runtime_nodes() -> void:
+	_add_fixture_child(
+		ENEMY_SIMULATION_COORDINATOR_SCENE.instantiate(),
+		"EnemySimulationCoordinator"
+	)
+	_add_fixture_child(
+		ENEMY_CONTACT_SERVICE_SCENE.instantiate(),
+		"EnemyContactService"
+	)
 	_add_fixture_child(Node2D.new(), "EnemyContainer")
 	_add_fixture_child(Node.new(), "GridPathfinder")
 	_add_fixture_child(Node.new(), "CapooProjectileMotionSystem")

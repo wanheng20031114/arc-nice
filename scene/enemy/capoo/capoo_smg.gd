@@ -31,18 +31,32 @@ var proxy_visual_direction := Vector2.RIGHT
 var proxy_visual_timer_action_count := 0
 var proxy_visual_tween_action_count := 0
 var proxy_visual_token := 0
-var hitscan_query := PhysicsRayQueryParameters2D.create(
-	Vector2.ZERO,
-	Vector2.ZERO,
-	HITSCAN_COLLISION_MASK
-)
+var cached_combat_target: Node2D = null
+var combat_target_cache_initialized := false
+var combat_target_refresh_count := 0
+var combat_target_last_refresh_physics_frame := -1
+var immediate_hitscan_resolver: ImmediateHitscanResolver = null
 
 
 func _ready() -> void:
 	super._ready()
-	hitscan_query.collide_with_bodies = true
-	hitscan_query.collide_with_areas = false
 	_set_muzzle_flash(0.0, Vector2.RIGHT)
+	_refresh_immediate_hitscan_resolver()
+
+
+func bind_combat_runtime(runtime_instance: CombatRuntimeBase) -> void:
+	super.bind_combat_runtime(runtime_instance)
+	_refresh_immediate_hitscan_resolver()
+
+
+func set_target_player(player: Player) -> void:
+	super.set_target_player(player)
+	_invalidate_combat_target_cache()
+
+
+func set_objective_target(target: Node2D) -> void:
+	super.set_objective_target(target)
+	_invalidate_combat_target_cache()
 
 
 func _physics_process(delta: float) -> void:
@@ -58,7 +72,7 @@ func _physics_process(delta: float) -> void:
 	elif muzzle_flash.visible:
 		_set_muzzle_flash(0.0, last_move_direction)
 
-	var combat_target := _get_preferred_ranged_combat_target()
+	var combat_target := _get_cached_combat_target()
 	if _has_player_contact():
 		velocity = Vector2.ZERO
 		if fire_time_left <= 0.0:
@@ -136,6 +150,10 @@ func _apply_config() -> void:
 	proxy_visual_timer_action_count = 0
 	proxy_visual_tween_action_count = 0
 	proxy_visual_token = 0
+	cached_combat_target = null
+	combat_target_cache_initialized = false
+	combat_target_refresh_count = 0
+	combat_target_last_refresh_physics_frame = -1
 	smg_config_cache = config as SMGConfig
 	if smg_config_cache != null:
 		attack_audio.stream = smg_config_cache.attack_audio_stream
@@ -194,7 +212,7 @@ func _try_fire_scatter(
 	):
 		return false
 	if attack_target == null:
-		attack_target = _get_preferred_ranged_combat_target()
+		attack_target = _get_cached_combat_target()
 		if attack_target == null:
 			return false
 
@@ -237,8 +255,7 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 	if smg_config_cache == null:
 		return false
 	if CapooSMG.hitscan_attack_enabled:
-		_fire_hitscan(shoot_direction)
-		return true
+		return _fire_hitscan(shoot_direction)
 	if smg_config_cache.projectile_scene == null:
 		return false
 	if (
@@ -298,7 +315,11 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 	return true
 
 
-func _fire_hitscan(shoot_direction: Vector2) -> void:
+func _fire_hitscan(shoot_direction: Vector2) -> bool:
+	if immediate_hitscan_resolver == null:
+		_refresh_immediate_hitscan_resolver()
+	if immediate_hitscan_resolver == null:
+		return false
 	var safe_direction := (
 		shoot_direction.normalized()
 		if shoot_direction != Vector2.ZERO
@@ -309,63 +330,63 @@ func _fire_hitscan(shoot_direction: Vector2) -> void:
 		+ smg_config_cache.projectile_speed * smg_config_cache.projectile_lifetime,
 		0.0
 	)
-	hitscan_query.from = global_position
-	hitscan_query.to = global_position + safe_direction * travel_distance
-	var hit := get_world_2d().direct_space_state.intersect_ray(hitscan_query)
 	hitscan_shots_fired += 1
-	if hit.is_empty():
-		return
-	var collider := hit.get("collider") as Node
-	var hit_player := collider as Player
 	var outgoing_damage := get_effective_attack_damage(
 		smg_config_cache.attack_damage
 	)
-	if hit_player != null:
-		if hit_player.is_dead:
-			return
-		_apply_hitscan_player_damage(
-			hit_player,
-			safe_direction,
-			outgoing_damage
-		)
-		return
-	var hit_plant := collider as PlantDefense
-	if hit_plant == null or hit_plant.is_dead or hit_plant.is_removing:
-		return
-	hit_plant.receive_damage(
+	var source_enemy_id := int(get_meta(&"net_id", 0))
+	if source_enemy_id <= 0:
+		source_enemy_id = int(get_instance_id())
+	var source_projectile_id := _get_multiplayer_damage_source_id(
+		action_sequence + 1
+	)
+	immediate_hitscan_resolver.resolve_immediate_hitscan(
+		global_position,
+		global_position + safe_direction * travel_distance,
+		HITSCAN_COLLISION_MASK,
 		outgoing_damage,
-		self,
-		safe_direction,
+		source_enemy_id,
+		source_projectile_id,
+		&"capoo_smg_hitscan",
 		EnemyConfig.DamageType.PHYSICAL
 	)
+	return true
 
 
-func _apply_hitscan_player_damage(
-	hit_player: Player,
-	shoot_direction: Vector2,
-	outgoing_damage: int
-) -> void:
-	var source_id := _get_multiplayer_damage_source_id(action_sequence + 1)
-	if _try_request_player_damage(
-		source_id,
-		hit_player.peer_id,
-		outgoing_damage,
-		&"capoo_smg_hitscan",
-		EnemyConfig.DamageType.PHYSICAL,
-		-shoot_direction,
-		true
-	):
-		return
-	if not _has_explicit_singleplayer_authority():
-		return
-	hit_player.apply_damage(
-		outgoing_damage,
-		EnemyConfig.DamageType.PHYSICAL,
-		{
-			"is_ranged": true,
-			"source_direction": -shoot_direction,
-		}
+func _get_cached_combat_target() -> Node2D:
+	var physics_frame := Engine.get_physics_frames()
+	var refresh_due := (
+		not combat_target_cache_initialized
+		or (
+			physics_frame != combat_target_last_refresh_physics_frame
+			and _is_combat_sense_refresh_due()
+		)
 	)
+	if refresh_due:
+		cached_combat_target = _get_preferred_ranged_combat_target()
+		combat_target_cache_initialized = true
+		combat_target_refresh_count += 1
+		combat_target_last_refresh_physics_frame = physics_frame
+	elif not _is_ranged_combat_target_valid(cached_combat_target):
+		cached_combat_target = null
+	return cached_combat_target
+
+
+func _invalidate_combat_target_cache() -> void:
+	cached_combat_target = null
+	combat_target_cache_initialized = false
+	combat_target_last_refresh_physics_frame = -1
+
+
+func _refresh_immediate_hitscan_resolver() -> void:
+	immediate_hitscan_resolver = null
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
+		return
+	var combat_services := combat_runtime.get_enemy_combat_services()
+	if combat_services != null:
+		immediate_hitscan_resolver = (
+			combat_services.get_immediate_hitscan_resolver()
+		)
 
 
 func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, action_id: int) -> void:

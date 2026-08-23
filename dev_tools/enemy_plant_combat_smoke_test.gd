@@ -136,6 +136,10 @@ func _verify_ranged_enemy_target_contract() -> void:
 	await physics_frame
 	if smg.touching_players.has(player.get_instance_id()):
 		smg.call("_on_touch_damage_area_body_exited", player)
+	var hitscan_resolver := (
+		test_root.get_enemy_combat_services().get_immediate_hitscan_resolver()
+	)
+	var hitscan_query_count_before := hitscan_resolver.get_query_count()
 	var plant_health_before_smg := plant.current_health
 	_expect(
 		bool(smg.call("_try_fire_scatter", Vector2.ZERO)),
@@ -143,14 +147,34 @@ func _verify_ranged_enemy_target_contract() -> void:
 	)
 	_expect(
 		plant.current_health < plant_health_before_smg
-		and smg.hitscan_shots_fired == 1,
-		"SMG close-range hitscan must damage its determined plant target without spawning a bullet."
+		and smg.hitscan_shots_fired == 1
+		and smg.immediate_hitscan_resolver == hitscan_resolver
+		and hitscan_resolver.get_query_count() == hitscan_query_count_before + 1
+		and smg.combat_target_refresh_count == 1,
+		"SMG close-range hitscan must resolve once through the shared service and refresh targeting once."
+	)
+	var smg_damage_request := (
+		plant.last_damage_result.request
+		if plant.last_damage_result != null
+		else null
+	)
+	_expect(
+		smg_damage_request != null
+		and smg_damage_request.source_enemy_id == smg.get_instance_id()
+		and smg_damage_request.source_projectile_id > 0
+		and smg_damage_request.source_type == &"capoo_smg_hitscan"
+		and smg_damage_request.has_flag(CombatTypes.DamageFlag.RANGED),
+		"SMG shared hitscan must preserve the stable source contract without a fake projectile Node."
 	)
 	smg.fire_time_left = 0.0
 	plant.global_position = Vector2(100.0, 0.0)
 	_expect(
 		not bool(smg.call("_try_fire_scatter", Vector2.RIGHT)),
 		"SMG Capoo must not fire when its plant target leaves close range."
+	)
+	_expect(
+		smg.combat_target_refresh_count == 1,
+		"Repeated SMG fire checks in one 20 Hz sensing window must reuse the cached target."
 	)
 	plant.begin_removal(PlantDefense.RemovalMode.ANIMATED)
 	_expect(
