@@ -1,6 +1,10 @@
 extends RefCounted
 class_name CombatTargetIndex
 
+const COMBAT_RELATIONS := preload(
+	"res://scene/combat/faction/combat_relation_service.gd"
+)
+
 const DEFAULT_BUCKET_SIZE := 96.0
 const SAFETY_AUDIT_ENTRIES_PER_PHYSICS_FRAME := 16
 # Interleaved 300-caster/five-hit probes put the direct/ring crossover between
@@ -20,6 +24,12 @@ var enemies_by_net_id: Dictionary[int, Enemy] = {}
 var buckets: Dictionary[Vector2i, Array] = {}
 var bucket_by_net_id: Dictionary[int, Vector2i] = {}
 var bucket_slot_by_net_id: Dictionary[int, int] = {}
+# Faction partitions share the same authoritative enemy registry and spatial
+# cell math. They avoid scanning friendly occupants while retaining the legacy
+# all-enemy buckets for player/tower callers that have not migrated yet.
+var faction_by_net_id: Dictionary[int, int] = {}
+var faction_buckets: Dictionary[int, Dictionary] = {}
+var faction_bucket_slot_by_net_id: Dictionary[int, int] = {}
 var safety_audit_net_ids: Array[int] = []
 var safety_audit_slot_by_net_id: Dictionary[int, int] = {}
 var safety_audit_cursor := 0
@@ -51,6 +61,10 @@ func register_enemy(net_id: int, enemy: Enemy) -> void:
 	if enemies_by_net_id.has(net_id):
 		_remove_enemy_entry(net_id)
 	enemies_by_net_id[net_id] = enemy
+	faction_by_net_id[net_id] = COMBAT_RELATIONS.normalize_faction_id(
+		enemy.get_combat_faction_id(),
+		COMBAT_RELATIONS.HOSTILE_WAVE
+	)
 	_add_net_id_to_bucket(net_id, _to_bucket(world_position))
 	_add_net_id_to_safety_audit(net_id)
 	# Binding happens after the initial slot exists. A spawner may assign the final
@@ -88,6 +102,41 @@ func update_enemy_bucket(
 	_remove_net_id_from_bucket(net_id)
 	_add_net_id_to_bucket(net_id, next_cell)
 	event_bucket_migrations_total += 1
+	return true
+
+
+func update_faction(
+	enemy: Enemy,
+	old_faction_id: int,
+	new_faction_id: int
+) -> bool:
+	if enemy == null or not is_instance_valid(enemy):
+		return false
+	var net_id := enemy.combat_target_index_net_id
+	if net_id <= 0 or enemies_by_net_id.get(net_id) != enemy:
+		return false
+	var current_faction_id := int(
+		faction_by_net_id.get(net_id, COMBAT_RELATIONS.HOSTILE_WAVE)
+	)
+	if (
+		COMBAT_RELATIONS.is_valid_faction_id(old_faction_id)
+		and current_faction_id != old_faction_id
+	):
+		# The index state is authoritative for migration. A stale caller hint must
+		# not strand the entry in two partitions.
+		old_faction_id = current_faction_id
+	var safe_new_faction_id := COMBAT_RELATIONS.normalize_faction_id(
+		new_faction_id,
+		current_faction_id
+	)
+	if current_faction_id == safe_new_faction_id:
+		return true
+	var cell: Vector2i = bucket_by_net_id.get(net_id, Vector2i.MAX)
+	if cell == Vector2i.MAX:
+		return false
+	_remove_net_id_from_faction_bucket(net_id, current_faction_id, cell)
+	faction_by_net_id[net_id] = safe_new_faction_id
+	_add_net_id_to_faction_bucket(net_id, safe_new_faction_id, cell)
 	return true
 
 
@@ -228,6 +277,248 @@ func query_radius(center: Vector2, radius: float, max_count: int = 0) -> Array[E
 	var result: Array[Enemy] = []
 	query_radius_into(center, radius, result, max_count)
 	return result
+
+
+func query_hostile_radius_into(
+	center: Vector2,
+	radius: float,
+	source_faction_id: int,
+	result: Array[Enemy],
+	max_count: int = 0,
+	excluded_enemy: Enemy = null,
+	relation_service: CombatRelationService = null
+) -> void:
+	result.clear()
+	if (
+		not center.is_finite()
+		or not is_finite(radius)
+		or radius < 0.0
+		or not COMBAT_RELATIONS.is_valid_faction_id(source_faction_id)
+	):
+		return
+	_advance_safety_audit_once_per_physics_frame()
+	var radius_squared := radius * radius
+	var radius_vector := Vector2.ONE * radius
+	var minimum := center - radius_vector
+	var maximum := center + radius_vector
+	if radius == 0.0 or _should_scan_radius_registry(minimum, maximum):
+		_append_hostile_in_radius_registry(
+			center,
+			radius_squared,
+			source_faction_id,
+			result,
+			excluded_enemy,
+			relation_service
+		)
+	else:
+		_append_hostile_in_radius_buckets(
+			center,
+			radius_squared,
+			_to_bucket(minimum),
+			_to_bucket(maximum),
+			source_faction_id,
+			result,
+			excluded_enemy,
+			relation_service
+		)
+	_sort_hostile_candidates_by_distance(result, center)
+	_limit_result(result, max_count)
+
+
+func find_nearest_hostile(
+	center: Vector2,
+	radius: float,
+	source_faction_id: int,
+	excluded_enemy: Enemy = null,
+	relation_service: CombatRelationService = null
+) -> Enemy:
+	var result: Array[Enemy] = []
+	query_hostile_radius_into(
+		center,
+		radius,
+		source_faction_id,
+		result,
+		1,
+		excluded_enemy,
+		relation_service
+	)
+	return result[0] if not result.is_empty() else null
+
+
+func query_world_aabb_into(
+	world_aabb: Rect2,
+	result: Array[Enemy],
+	max_count: int = 0
+) -> void:
+	result.clear()
+	if (
+		not world_aabb.position.is_finite()
+		or not world_aabb.size.is_finite()
+	):
+		return
+	var normalized_aabb := world_aabb.abs()
+	if normalized_aabb.size.x <= 0.0 or normalized_aabb.size.y <= 0.0:
+		return
+	var minimum := normalized_aabb.position
+	var maximum := normalized_aabb.end
+	_advance_safety_audit_once_per_physics_frame()
+	_stale_enemy_net_ids.clear()
+	if _should_scan_radius_registry(minimum, maximum):
+		for net_id_variant in enemies_by_net_id:
+			var net_id := int(net_id_variant)
+			var enemy_variant: Variant = enemies_by_net_id.get(net_id)
+			if enemy_variant == null or not is_instance_valid(enemy_variant):
+				_stale_enemy_net_ids.append(net_id)
+				continue
+			var enemy := enemy_variant as Enemy
+			if not is_enemy_queryable(enemy):
+				_stale_enemy_net_ids.append(net_id)
+				continue
+			if normalized_aabb.has_point(enemy.global_position):
+				result.append(enemy)
+	else:
+		var minimum_cell := _to_bucket(minimum)
+		var maximum_cell := _to_bucket(maximum)
+		for cell_y in range(minimum_cell.y, maximum_cell.y + 1):
+			for cell_x in range(minimum_cell.x, maximum_cell.x + 1):
+				var cell := Vector2i(cell_x, cell_y)
+				if not buckets.has(cell):
+					continue
+				for net_id_variant in buckets[cell] as Array:
+					var net_id := int(net_id_variant)
+					var enemy_variant: Variant = enemies_by_net_id.get(net_id)
+					if enemy_variant == null or not is_instance_valid(enemy_variant):
+						_stale_enemy_net_ids.append(net_id)
+						continue
+					var enemy := enemy_variant as Enemy
+					if not is_enemy_queryable(enemy):
+						_stale_enemy_net_ids.append(net_id)
+						continue
+					if normalized_aabb.has_point(enemy.global_position):
+						result.append(enemy)
+	for stale_net_id in _stale_enemy_net_ids:
+		_remove_enemy_entry(stale_net_id)
+	_sort_candidates_by_stable_net_id(result)
+	_limit_result(result, max_count)
+
+
+func _append_hostile_in_radius_registry(
+	center: Vector2,
+	radius_squared: float,
+	source_faction_id: int,
+	result: Array[Enemy],
+	excluded_enemy: Enemy,
+	relation_service: CombatRelationService
+) -> void:
+	_stale_enemy_net_ids.clear()
+	for net_id_variant in enemies_by_net_id:
+		var net_id := int(net_id_variant)
+		var enemy_variant: Variant = enemies_by_net_id.get(net_id)
+		if enemy_variant == null or not is_instance_valid(enemy_variant):
+			_stale_enemy_net_ids.append(net_id)
+			continue
+		var enemy := enemy_variant as Enemy
+		if not is_enemy_queryable(enemy):
+			_stale_enemy_net_ids.append(net_id)
+			continue
+		if enemy == excluded_enemy:
+			continue
+		var target_faction_id := int(faction_by_net_id.get(net_id, -1))
+		if not _is_hostile_relation(
+			source_faction_id,
+			target_faction_id,
+			relation_service
+		):
+			continue
+		if center.distance_squared_to(enemy.global_position) <= radius_squared:
+			result.append(enemy)
+	for stale_net_id in _stale_enemy_net_ids:
+		_remove_enemy_entry(stale_net_id)
+
+
+func _append_hostile_in_radius_buckets(
+	center: Vector2,
+	radius_squared: float,
+	minimum_cell: Vector2i,
+	maximum_cell: Vector2i,
+	source_faction_id: int,
+	result: Array[Enemy],
+	excluded_enemy: Enemy,
+	relation_service: CombatRelationService
+) -> void:
+	_stale_enemy_net_ids.clear()
+	for target_faction_id in range(COMBAT_RELATIONS.MAX_FACTION_COUNT):
+		if not _is_hostile_relation(
+			source_faction_id,
+			target_faction_id,
+			relation_service
+		):
+			continue
+		var faction_cells_variant: Variant = faction_buckets.get(target_faction_id)
+		if faction_cells_variant == null:
+			continue
+		var faction_cells := faction_cells_variant as Dictionary
+		for cell_y in range(minimum_cell.y, maximum_cell.y + 1):
+			for cell_x in range(minimum_cell.x, maximum_cell.x + 1):
+				var cell := Vector2i(cell_x, cell_y)
+				if not faction_cells.has(cell):
+					continue
+				for net_id_variant in faction_cells[cell] as Array:
+					var net_id := int(net_id_variant)
+					var enemy_variant: Variant = enemies_by_net_id.get(net_id)
+					if enemy_variant == null or not is_instance_valid(enemy_variant):
+						_stale_enemy_net_ids.append(net_id)
+						continue
+					var enemy := enemy_variant as Enemy
+					if not is_enemy_queryable(enemy):
+						_stale_enemy_net_ids.append(net_id)
+						continue
+					if enemy == excluded_enemy:
+						continue
+					if center.distance_squared_to(enemy.global_position) <= radius_squared:
+						result.append(enemy)
+	for stale_net_id in _stale_enemy_net_ids:
+		_remove_enemy_entry(stale_net_id)
+
+
+func _is_hostile_relation(
+	source_faction_id: int,
+	target_faction_id: int,
+	relation_service: CombatRelationService
+) -> bool:
+	if relation_service != null:
+		return relation_service.is_hostile(source_faction_id, target_faction_id)
+	return COMBAT_RELATIONS.is_default_hostile(
+		source_faction_id,
+		target_faction_id
+	)
+
+
+func _sort_hostile_candidates_by_distance(
+	candidates: Array[Enemy],
+	center: Vector2
+) -> void:
+	candidates.sort_custom(
+		func(a: Enemy, b: Enemy) -> bool:
+			var a_distance := center.distance_squared_to(a.global_position)
+			var b_distance := center.distance_squared_to(b.global_position)
+			if a_distance != b_distance:
+				return a_distance < b_distance
+			return _get_stable_enemy_id(a) < _get_stable_enemy_id(b)
+	)
+
+
+func _sort_candidates_by_stable_net_id(candidates: Array[Enemy]) -> void:
+	candidates.sort_custom(
+		func(a: Enemy, b: Enemy) -> bool:
+			return _get_stable_enemy_id(a) < _get_stable_enemy_id(b)
+	)
+
+
+func _get_stable_enemy_id(enemy: Enemy) -> int:
+	if enemy != null and enemy.combat_target_index_net_id > 0:
+		return enemy.combat_target_index_net_id
+	return enemy.get_instance_id() if enemy != null else 0
 
 
 ## Returns the nearest live target without allocating a candidate array.
@@ -423,6 +714,9 @@ func clear() -> void:
 	buckets.clear()
 	bucket_by_net_id.clear()
 	bucket_slot_by_net_id.clear()
+	faction_by_net_id.clear()
+	faction_buckets.clear()
+	faction_bucket_slot_by_net_id.clear()
 	safety_audit_net_ids.clear()
 	safety_audit_slot_by_net_id.clear()
 	safety_audit_cursor = 0
@@ -906,6 +1200,10 @@ func _add_net_id_to_bucket(net_id: int, cell: Vector2i) -> void:
 		buckets[cell] = [net_id]
 		bucket_slot_by_net_id[net_id] = 0
 	bucket_by_net_id[net_id] = cell
+	var faction_id := int(
+		faction_by_net_id.get(net_id, COMBAT_RELATIONS.HOSTILE_WAVE)
+	)
+	_add_net_id_to_faction_bucket(net_id, faction_id, cell)
 
 
 func _remove_net_id_from_bucket(net_id: int) -> void:
@@ -913,6 +1211,10 @@ func _remove_net_id_from_bucket(net_id: int) -> void:
 		return
 	var cell: Vector2i = bucket_by_net_id[net_id]
 	var slot := int(bucket_slot_by_net_id[net_id])
+	var faction_id := int(
+		faction_by_net_id.get(net_id, COMBAT_RELATIONS.HOSTILE_WAVE)
+	)
+	_remove_net_id_from_faction_bucket(net_id, faction_id, cell)
 	bucket_by_net_id.erase(net_id)
 	bucket_slot_by_net_id.erase(net_id)
 	if not buckets.has(cell):
@@ -928,6 +1230,56 @@ func _remove_net_id_from_bucket(net_id: int) -> void:
 		buckets.erase(cell)
 
 
+func _add_net_id_to_faction_bucket(
+	net_id: int,
+	faction_id: int,
+	cell: Vector2i
+) -> void:
+	var faction_cells: Dictionary = faction_buckets.get(faction_id, {})
+	if faction_cells.has(cell):
+		var bucket := faction_cells[cell] as Array
+		faction_bucket_slot_by_net_id[net_id] = bucket.size()
+		bucket.append(net_id)
+	else:
+		faction_cells[cell] = [net_id]
+		faction_bucket_slot_by_net_id[net_id] = 0
+	faction_buckets[faction_id] = faction_cells
+
+
+func _remove_net_id_from_faction_bucket(
+	net_id: int,
+	faction_id: int,
+	cell: Vector2i
+) -> void:
+	if not faction_bucket_slot_by_net_id.has(net_id):
+		return
+	var faction_cells_variant: Variant = faction_buckets.get(faction_id)
+	if faction_cells_variant == null:
+		faction_bucket_slot_by_net_id.erase(net_id)
+		return
+	var faction_cells := faction_cells_variant as Dictionary
+	if not faction_cells.has(cell):
+		faction_bucket_slot_by_net_id.erase(net_id)
+		return
+	var bucket := faction_cells[cell] as Array
+	var slot := int(faction_bucket_slot_by_net_id[net_id])
+	var last_slot := bucket.size() - 1
+	faction_bucket_slot_by_net_id.erase(net_id)
+	if slot < 0 or slot > last_slot:
+		return
+	if slot != last_slot:
+		var moved_net_id := int(bucket[last_slot])
+		bucket[slot] = moved_net_id
+		faction_bucket_slot_by_net_id[moved_net_id] = slot
+	bucket.pop_back()
+	if bucket.is_empty():
+		faction_cells.erase(cell)
+	if faction_cells.is_empty():
+		faction_buckets.erase(faction_id)
+	else:
+		faction_buckets[faction_id] = faction_cells
+
+
 func _remove_enemy_entry(net_id: int) -> void:
 	var enemy_variant: Variant = enemies_by_net_id.get(net_id)
 	if enemy_variant != null and is_instance_valid(enemy_variant):
@@ -936,6 +1288,8 @@ func _remove_enemy_entry(net_id: int) -> void:
 			enemy.unbind_combat_target_index(self, net_id)
 	_remove_net_id_from_bucket(net_id)
 	_remove_net_id_from_safety_audit(net_id)
+	faction_by_net_id.erase(net_id)
+	faction_bucket_slot_by_net_id.erase(net_id)
 	enemies_by_net_id.erase(net_id)
 
 

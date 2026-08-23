@@ -3,6 +3,16 @@ class_name Enemy
 
 signal defeated(enemy: Enemy)
 signal objective_target_changed(enemy: Enemy, current_target: Node2D)
+signal combat_faction_changed(
+	enemy: Enemy,
+	previous_faction_id: int,
+	current_faction_id: int,
+	revision: int
+)
+
+const COMBAT_RELATION_SERVICE := preload(
+	"res://scene/combat/faction/combat_relation_service.gd"
+)
 
 const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
 const BURN_OVERLAY_STRENGTH_SHADER_PARAMETER := &"burn_overlay_strength"
@@ -187,6 +197,8 @@ var health_revision: int = 0
 var runtime_max_health_multiplier: float = 1.0
 var is_dead: bool = false
 var last_damage_result: DamageResult = null
+var combat_faction_id: int = COMBAT_RELATION_SERVICE.HOSTILE_WAVE
+var faction_revision: int = 0
 var touch_damage_cooldown_left: float = 0.0
 var touched_player: Player = null
 var touching_players: Dictionary[int, Player] = {}
@@ -576,6 +588,7 @@ func setup(
 	runtime_max_health_multiplier = 1.0
 	_xirang_kill_reward_override = -1
 	config = enemy_config
+	_reset_combat_faction_from_config()
 	target_player = player
 	objective_target = player
 	pathfinder = shared_pathfinder
@@ -613,6 +626,79 @@ func get_effective_xirang_kill_reward() -> int:
 
 func is_boss_enemy() -> bool:
 	return config != null and config.is_boss
+
+
+func get_combat_faction_id() -> int:
+	return combat_faction_id
+
+
+func get_faction_revision() -> int:
+	return faction_revision
+
+
+func can_change_combat_faction() -> bool:
+	return config == null or config.can_change_faction_at_runtime()
+
+
+func set_combat_faction_id(
+	new_faction_id: int,
+	new_revision: int = -1,
+	force: bool = false
+) -> bool:
+	if not COMBAT_RELATION_SERVICE.is_valid_faction_id(new_faction_id):
+		return false
+	if not force and not can_change_combat_faction():
+		return false
+	if new_revision >= 0 and new_revision <= faction_revision:
+		return false
+	if combat_faction_id == new_faction_id:
+		if new_revision > faction_revision:
+			faction_revision = new_revision
+		return true
+	var previous_faction_id := combat_faction_id
+	combat_faction_id = new_faction_id
+	faction_revision = new_revision if new_revision >= 0 else faction_revision + 1
+	if combat_target_index_binding != null:
+		combat_target_index_binding.update_faction(
+			self,
+			previous_faction_id,
+			combat_faction_id
+		)
+	combat_faction_changed.emit(
+		self,
+		previous_faction_id,
+		combat_faction_id,
+		faction_revision
+	)
+	return true
+
+
+func apply_network_combat_faction(
+	new_faction_id: int,
+	new_revision: int
+) -> bool:
+	return set_combat_faction_id(new_faction_id, new_revision, true)
+
+
+func _reset_combat_faction_from_config() -> void:
+	var configured_faction := COMBAT_RELATION_SERVICE.HOSTILE_WAVE
+	if config != null:
+		configured_faction = config.default_combat_faction_id
+	var previous_faction_id := combat_faction_id
+	combat_faction_id = COMBAT_RELATION_SERVICE.normalize_faction_id(
+		configured_faction,
+		COMBAT_RELATION_SERVICE.HOSTILE_WAVE
+	)
+	faction_revision = 0
+	if (
+		combat_target_index_binding != null
+		and previous_faction_id != combat_faction_id
+	):
+		combat_target_index_binding.update_faction(
+			self,
+			previous_faction_id,
+			combat_faction_id
+		)
 
 
 func set_target_player(player: Player) -> void:

@@ -4,6 +4,9 @@ class_name EnemyConfig
 const ContentValidationContextResource := preload(
 	"res://resources/config/content_validation_context.gd"
 )
+const CombatRelationServiceResource := preload(
+	"res://scene/combat/faction/combat_relation_service.gd"
+)
 
 const CATEGORY_YUANSHI_INSECT: StringName = &"yuanshi_insect"
 const CATEGORY_CAPOO: StringName = &"capoo"
@@ -27,6 +30,14 @@ enum DamageType {
 @export var category_tags: PackedStringArray = PackedStringArray()
 # 当前敌人的完整场景，包含碰撞体积、接触伤害体积和本体动画。
 @export var enemy_scene: PackedScene
+
+@export_group("阵营")
+# Enemy instances own their runtime faction. Config only supplies the spawn
+# default so temporary conversion never mutates a shared resource.
+@export_range(0, 31, 1) var default_combat_faction_id: int = (
+	CombatRelationServiceResource.HOSTILE_WAVE
+)
+@export var allow_runtime_faction_change := true
 
 @export_group("基础数值")
 # 最大生命值，敌人生成时可用它初始化当前生命值。
@@ -78,6 +89,12 @@ func has_category_tag(category: StringName) -> bool:
 	return String(category) in category_tags
 
 
+func can_change_faction_at_runtime() -> bool:
+	# Bosses are valid combat targets but remain faction-locked unless a future
+	# dedicated boss mechanic explicitly introduces a separate override path.
+	return allow_runtime_faction_change and not is_boss
+
+
 ## 这里校验所有通用敌人运行时会直接消费的基础契约。
 func append_validation_errors(
 	context: ContentValidationContextResource,
@@ -93,6 +110,8 @@ func append_validation_errors(
 		context.add_error(path, "缺少 enemy_scene。")
 	elif not enemy_scene.can_instantiate():
 		context.add_error(path, "enemy_scene 无法实例化。")
+	if not CombatRelationServiceResource.is_valid_faction_id(default_combat_faction_id):
+		context.add_error(path, "default_combat_faction_id 必须位于 0 到 31。")
 	if max_health < 1:
 		context.add_error(path, "max_health 必须至少为 1。")
 	if attack_damage < 0:

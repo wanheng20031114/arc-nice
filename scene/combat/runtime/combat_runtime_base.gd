@@ -977,6 +977,52 @@ func query_combat_targets_unordered_into(
 	combat_target_index.query_radius_unordered_into(center, radius, result)
 
 
+## Faction-aware dynamic-target facade. Plant and player candidates keep their
+## dedicated lifecycle stores; callers combine them after this enemy query.
+func query_hostile_combat_targets_into(
+	center: Vector2,
+	radius: float,
+	source_faction_id: int,
+	result: Array[Enemy],
+	max_count: int = 0,
+	excluded_enemy: Enemy = null,
+	relation_service: CombatRelationService = null
+) -> void:
+	combat_target_index.query_hostile_radius_into(
+		center,
+		radius,
+		source_faction_id,
+		result,
+		max_count,
+		excluded_enemy,
+		relation_service
+	)
+
+
+func find_nearest_hostile_combat_target(
+	center: Vector2,
+	radius: float,
+	source_faction_id: int,
+	excluded_enemy: Enemy = null,
+	relation_service: CombatRelationService = null
+) -> Enemy:
+	return combat_target_index.find_nearest_hostile(
+		center,
+		radius,
+		source_faction_id,
+		excluded_enemy,
+		relation_service
+	)
+
+
+func query_combat_targets_in_world_aabb_into(
+	world_aabb: Rect2,
+	result: Array[Enemy],
+	max_count: int = 0
+) -> void:
+	combat_target_index.query_world_aabb_into(world_aabb, result, max_count)
+
+
 func _should_use_singleplayer_combat_target_index(
 	radius: float,
 	max_count: int,
