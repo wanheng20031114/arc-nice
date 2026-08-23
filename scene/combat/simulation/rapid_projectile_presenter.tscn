@@ -1,0 +1,25 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scene/combat/simulation/rapid_projectile_presenter.gd" id="1_presenter"]
+[ext_resource type="Texture2D" uid="uid://bymwhsc0iap5p" path="res://resources/texture/enemy/capoo/capoo_ak47_bullet.png" id="2_ak_texture"]
+[ext_resource type="Material" path="res://scene/combat/simulation/rapid_projectile_presenter_material.tres" id="3_material"]
+
+[sub_resource type="QuadMesh" id="QuadMesh_ak_frame"]
+size = Vector2(8, 8)
+
+[sub_resource type="MultiMesh" id="MultiMesh_ak_projectiles"]
+resource_local_to_scene = true
+transform_format = 0
+use_custom_data = true
+visible_instance_count = 0
+mesh = SubResource("QuadMesh_ak_frame")
+
+[node name="RapidProjectilePresenter" type="Node2D"]
+script = ExtResource("1_presenter")
+
+[node name="ProjectileMultiMesh" type="MultiMeshInstance2D" parent="."]
+z_index = 3
+texture_filter = 1
+material = ExtResource("3_material")
+texture = ExtResource("2_ak_texture")
+multimesh = SubResource("MultiMesh_ak_projectiles")
