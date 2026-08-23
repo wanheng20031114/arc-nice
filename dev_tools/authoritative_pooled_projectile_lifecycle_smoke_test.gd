@@ -139,6 +139,28 @@ func _test_ak_authoritative_fire(
 	motion_system: CapooProjectileMotionSystem,
 	pathfinder: GridPathfinder
 ) -> void:
+	_expect(
+		CapooAK47.projectile_backend == CapooAK47.ProjectileBackend.DATA,
+		"AK猫猫生产默认必须使用DATA权威弹体后端。"
+	)
+	var combat_services := runtime.get_enemy_combat_services()
+	var rapid_fire_service := (
+		combat_services.get_rapid_fire_simulation_service()
+		if combat_services != null
+		else null
+	) as RapidFireSimulationService
+	_expect(rapid_fire_service != null, "AK猫猫测试需要共享连发弹体服务。")
+	if rapid_fire_service == null:
+		return
+	var pool_metrics_before := pool.get_metrics(AK_CONFIG.projectile_scene.resource_path)
+	var pool_in_use_before := int(pool_metrics_before.get("in_use", 0))
+	var pool_pending_before := int(pool_metrics_before.get("pending_release", 0))
+	var motion_count_before := motion_system.get_active_projectile_count()
+	var service_metrics_before := rapid_fire_service.get_metrics()
+	var active_slots_before := rapid_fire_service.get_active_slot_count()
+	var data_slots_before := int(service_metrics_before.get("data_slots", 0))
+	var advances_before := int(service_metrics_before.get("advances", 0))
+
 	var enemy := AK_CONFIG.enemy_scene.instantiate() as CapooAK47
 	runtime.enemy_container.add_child(enemy)
 	enemy.global_position = Vector2(145.0, 159.0)
@@ -148,17 +170,120 @@ func _test_ak_authoritative_fire(
 	enemy.burst_shot_direction = Vector2.RIGHT
 	var fired := bool(enemy.call("_fire_locked_bullet"))
 	_expect(fired, "AK猫猫虫必须通过权威生产路径成功开火。")
-	var bullet := _find_active_pooled_bullet(runtime, AK_CONFIG.projectile_scene)
-	await _assert_registered_flight_and_recycle(
-		bullet,
-		AK_CONFIG.projectile_scene,
-		pool,
-		motion_system,
-		SAMPLE_PHYSICS_FRAMES,
-		"AK猫猫虫"
+	var data_handle := _find_live_ak_data_handle(
+		rapid_fire_service,
+		int(enemy.get_instance_id())
+	)
+	_expect(
+		data_handle > RapidFireSimulationService.INVALID_HANDLE,
+		"AK猫猫开火必须生成可追踪的DATA弹体句柄。"
+	)
+	_expect(
+		rapid_fire_service.get_active_slot_count() == active_slots_before + 1
+		and int(rapid_fire_service.get_metrics().get("data_slots", 0))
+		== data_slots_before + 1,
+		"AK猫猫开火必须只增加一个DATA权威记录。"
+	)
+	_expect(
+		_find_active_pooled_bullet(runtime, AK_CONFIG.projectile_scene) == null
+		and motion_system.get_active_projectile_count() == motion_count_before,
+		"AK猫猫DATA开火不得创建或注册权威Bullet Node/Area。"
+	)
+	var pool_metrics_after_fire := pool.get_metrics(
+		AK_CONFIG.projectile_scene.resource_path
+	)
+	_expect(
+		int(pool_metrics_after_fire.get("in_use", 0)) == pool_in_use_before
+		and int(pool_metrics_after_fire.get("pending_release", 0))
+		== pool_pending_before,
+		"AK猫猫DATA开火不得增加对象池in_use或pending_release。"
+	)
+
+	var start_position := rapid_fire_service.get_position(data_handle)
+	var maximum_flight_distance := 0.0
+	var maximum_pool_in_use := pool_in_use_before
+	for _frame_index in range(SAMPLE_PHYSICS_FRAMES):
+		await physics_frame
+		maximum_pool_in_use = maxi(
+			maximum_pool_in_use,
+			int(
+				pool.get_metrics(AK_CONFIG.projectile_scene.resource_path).get(
+					"in_use",
+					0
+				)
+			)
+		)
+		if rapid_fire_service.is_handle_live(data_handle):
+			maximum_flight_distance = maxf(
+				maximum_flight_distance,
+				rapid_fire_service.get_position(data_handle).distance_to(
+					start_position
+				)
+			)
+	_expect(
+		maximum_flight_distance > MINIMUM_FLIGHT_DISTANCE
+		and int(rapid_fire_service.get_metrics().get("advances", 0))
+		> advances_before,
+		"AK猫猫DATA句柄经过%d个物理帧必须由共享内核推进，实测%.3f像素。"
+		% [SAMPLE_PHYSICS_FRAMES, maximum_flight_distance]
+	)
+
+	for _frame_index in range(MAX_RECYCLE_PHYSICS_FRAMES):
+		if not rapid_fire_service.is_handle_live(data_handle):
+			break
+		await physics_frame
+		maximum_pool_in_use = maxi(
+			maximum_pool_in_use,
+			int(
+				pool.get_metrics(AK_CONFIG.projectile_scene.resource_path).get(
+					"in_use",
+					0
+				)
+			)
+		)
+	# Give frame-end stable compaction one physics turn after the handle retires.
+	await physics_frame
+	var final_service_metrics := rapid_fire_service.get_metrics()
+	var final_pool_metrics := pool.get_metrics(
+		AK_CONFIG.projectile_scene.resource_path
+	)
+	_expect(
+		not rapid_fire_service.is_handle_live(data_handle)
+		and rapid_fire_service.get_active_slot_count() == active_slots_before
+		and int(final_service_metrics.get("data_slots", 0)) == data_slots_before,
+		"AK猫猫DATA弹体完成后必须使句柄失效并回收活跃槽。"
+	)
+	_expect(
+		maximum_pool_in_use == pool_in_use_before
+		and int(final_pool_metrics.get("in_use", 0)) == pool_in_use_before
+		and int(final_pool_metrics.get("pending_release", 0)) == pool_pending_before,
+		"AK猫猫DATA弹体整个生命周期不得占用旧对象池。"
+	)
+	_expect(
+		_find_active_pooled_bullet(runtime, AK_CONFIG.projectile_scene) == null
+		and motion_system.get_active_projectile_count() == motion_count_before,
+		"AK猫猫DATA弹体完成后不得遗留权威Bullet Node/Area或运动系统记录。"
 	)
 	enemy.queue_free()
 	await process_frame
+
+
+func _find_live_ak_data_handle(
+	rapid_fire_service: RapidFireSimulationService,
+	source_enemy_id: int
+) -> int:
+	for stable_index in range(rapid_fire_service.get_dense_record_count()):
+		var handle := rapid_fire_service.get_handle_at_stable_index(stable_index)
+		if (
+			handle > RapidFireSimulationService.INVALID_HANDLE
+			and rapid_fire_service.get_slot_mode(handle)
+			== RapidFireSimulationService.Mode.DATA
+			and rapid_fire_service.get_slot_profile(handle)
+			== RapidFireSimulationService.Profile.AK
+			and rapid_fire_service.get_source_enemy_id(handle) == source_enemy_id
+		):
+			return handle
+	return RapidFireSimulationService.INVALID_HANDLE
 
 
 func _test_smg_projectile_fallback(

@@ -497,6 +497,12 @@ func _test_attack_timing_lock_cleanup() -> void:
 
 func _test_windup_and_locked_burst() -> void:
 	spawned_projectiles.clear()
+	var rapid_fire_service := (
+		test_root.get_enemy_combat_services().get_rapid_fire_simulation_service()
+	)
+	var registration_count_before := int(
+		rapid_fire_service.get_metrics().get("registrations", 0)
+	)
 	var player := _spawn_player(Vector2(120.0, 0.0))
 	var enemy := _spawn_capoo(Vector2.ZERO, player)
 	await _wait_physics_frames(8)
@@ -511,12 +517,29 @@ func _test_windup_and_locked_burst() -> void:
 	player.global_position = Vector2(120.0, 80.0)
 	await _wait_physics_frames(70)
 
-	_expect(spawned_projectiles.size() == CAPOO_CONFIG.burst_count, "AK Capoo did not fire exactly 10 bullets.")
-	if not spawned_projectiles.is_empty() and is_instance_valid(spawned_projectiles[0]):
+	var registration_count_after := int(
+		rapid_fire_service.get_metrics().get("registrations", 0)
+	)
+	_expect(
+		registration_count_after - registration_count_before
+		== CAPOO_CONFIG.burst_count,
+		"AK Capoo did not register exactly 10 DATA projectiles."
+	)
+	_expect(
+		spawned_projectiles.is_empty(),
+		"Authoritative AK DATA fire must not create CapooAK47Bullet Nodes."
+	)
+	var first_handle := rapid_fire_service.get_handle_at_stable_index(0)
+	if first_handle > RapidFireSimulationService.INVALID_HANDLE:
 		_expect(
-			spawned_projectiles[0].direction.dot(Vector2.RIGHT) > 0.99,
+			rapid_fire_service.get_direction(first_handle).dot(Vector2.RIGHT) > 0.99,
 			"AK Capoo burst did not lock the windup-finished direction."
 		)
+	else:
+		_expect(false, "AK Capoo DATA burst did not expose its first stable handle.")
+
+	_release_all_data_projectiles(rapid_fire_service)
+	await physics_frame
 
 	enemy.queue_free()
 	player.queue_free()
@@ -713,6 +736,12 @@ func _test_ranged_standoff_cache_and_fallback() -> void:
 
 func _test_death_interrupts_attack() -> void:
 	spawned_projectiles.clear()
+	var rapid_fire_service := (
+		test_root.get_enemy_combat_services().get_rapid_fire_simulation_service()
+	)
+	var registration_count_before := int(
+		rapid_fire_service.get_metrics().get("registrations", 0)
+	)
 	var player := _spawn_player(Vector2(120.0, 0.0))
 	var enemy := _spawn_capoo(Vector2.ZERO, player)
 	await _wait_physics_frames(8)
@@ -720,7 +749,12 @@ func _test_death_interrupts_attack() -> void:
 	_expect(enemy.combat_state == CapooAK47.CombatState.WINDUP, "Death test enemy did not enter windup.")
 	enemy.apply_damage(CAPOO_CONFIG.max_health + 10)
 	await _wait_physics_frames(120)
-	_expect(spawned_projectiles.is_empty(), "Dead AK Capoo fired after attack interruption.")
+	_expect(
+		spawned_projectiles.is_empty()
+		and int(rapid_fire_service.get_metrics().get("registrations", 0))
+			== registration_count_before,
+		"Dead AK Capoo fired after attack interruption."
+	)
 
 	if is_instance_valid(enemy):
 		enemy.queue_free()
@@ -732,6 +766,12 @@ func _test_proxy_action_visuals() -> void:
 	var player := _spawn_player(Vector2(120.0, 0.0))
 	var enemy := _spawn_capoo(Vector2.ZERO, player)
 	var projectile_count_before := spawned_projectiles.size()
+	var rapid_fire_service := (
+		test_root.get_enemy_combat_services().get_rapid_fire_simulation_service()
+	)
+	var data_registration_count_before := int(
+		rapid_fire_service.get_metrics().get("registrations", 0)
+	)
 	enemy.configure_multiplayer_proxy()
 	enemy.play_multiplayer_enemy_action(&"windup", Vector2.RIGHT, 1)
 	await process_frame
@@ -746,8 +786,10 @@ func _test_proxy_action_visuals() -> void:
 	await physics_frame
 	_expect(
 		spawned_projectiles.size() == projectile_count_before
+		and int(rapid_fire_service.get_metrics().get("registrations", 0))
+			== data_registration_count_before
 		and not enemy.is_physics_processing(),
-		"A multiplayer proxy must remain presentation-only and never emit authoritative bullets."
+		"A multiplayer proxy must remain presentation-only and never emit authoritative projectiles."
 	)
 	enemy.play_multiplayer_death_sequence()
 	await process_frame
@@ -838,6 +880,15 @@ func _on_child_entered_tree(child: Node) -> void:
 	var projectile := child as CapooAK47Bullet
 	if projectile != null:
 		spawned_projectiles.append(projectile)
+
+
+func _release_all_data_projectiles(
+	service: RapidFireSimulationService
+) -> void:
+	for stable_index in range(service.get_dense_record_count()):
+		var handle := service.get_handle_at_stable_index(stable_index)
+		if handle > RapidFireSimulationService.INVALID_HANDLE:
+			service.release_projectile(handle)
 
 
 func _wait_physics_frames(frame_count: int) -> void:

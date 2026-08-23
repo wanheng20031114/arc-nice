@@ -89,7 +89,7 @@ class CapturingGateway:
 
 
 var failures := PackedStringArray()
-var saved_projectile_backend := CapooAK47.ProjectileBackend.SHADOW
+var saved_projectile_backend := CapooAK47.ProjectileBackend.DATA
 
 
 func _init() -> void:
@@ -100,8 +100,8 @@ func _run() -> void:
 	saved_projectile_backend = CapooAK47.projectile_backend
 	_expect(
 		CapooAK47.projectile_backend
-		== CapooAK47.ProjectileBackend.SHADOW,
-		"AK migration must remain SHADOW by default."
+		== CapooAK47.ProjectileBackend.DATA,
+		"Certified AK production must default to the node-free DATA backend."
 	)
 	await _test_singleplayer_data_burst()
 	await _test_host_data_identity_and_payload()

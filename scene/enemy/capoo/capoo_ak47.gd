@@ -18,10 +18,10 @@ enum ProjectileBackend {
 	DATA,
 }
 
-# The rollout stays in SHADOW until the fixed-seed behaviour certificate has
-# covered the production scenes. This is a process-wide migration switch, not
-# per-enemy state, so a cohort can never mix authority backends accidentally.
-static var projectile_backend: ProjectileBackend = ProjectileBackend.SHADOW
+# The fixed-seed kernel, authored collision fixture and production SHADOW path
+# certify the DATA backend. The process-wide switch remains explicit for
+# deterministic regression probes; a live cohort never mixes authority paths.
+static var projectile_backend: ProjectileBackend = ProjectileBackend.DATA
 
 enum CombatState {
 	CHASE,
