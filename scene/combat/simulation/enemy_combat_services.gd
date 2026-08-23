@@ -22,8 +22,21 @@ const FireSorcererVolleyPresenterScript := preload(
 const EnemyWarningPresentationSystemScript := preload(
 	"res://scene/combat/presentation/enemy_warning_presentation_system.gd"
 )
+const CapooRPGRocketSimulationServiceScript := preload(
+	"res://scene/combat/simulation/capoo_rpg_rocket_simulation_service.gd"
+)
+const ExplosionResolutionServiceScript := preload(
+	"res://scene/combat/simulation/explosion_resolution_service.gd"
+)
+const CapooRPGRocketPresenterScript := preload(
+	"res://scene/combat/presentation/capoo_rpg_rocket_presenter.gd"
+)
+const ExplosionPresentationServiceScript := preload(
+	"res://scene/combat/presentation/explosion_presentation_service.gd"
+)
 const RAPID_PROJECTILE_RESERVED_CAPACITY := 4096
 const FIRE_SORCERER_VOLLEY_RESERVED_CAPACITY := 2048
+const CAPOO_RPG_ROCKET_RESERVED_CAPACITY := 2048
 
 ## Authored service boundary owned by EnemySimulationCoordinator. These inert
 ## rapid-fire, hitscan, and presentation seams do not replace existing combat
@@ -41,6 +54,11 @@ var _metric_fire_completion_batches := 0
 var _metric_fire_ball_completions := 0
 var _metric_fire_terminal_completions := 0
 var _metric_fire_network_finish_notifications := 0
+var _metric_rpg_completion_batches := 0
+var _metric_rpg_completions := 0
+var _metric_rpg_damage_accepts := 0
+var _metric_rpg_presentation_requests := 0
+var _metric_rpg_backend_finish_notifications := 0
 
 
 func _init() -> void:
@@ -81,6 +99,10 @@ func bind_context(
 		get_fire_sorcerer_volley_presenter()
 	)
 	var warning_presentation_system := get_enemy_warning_presentation_system()
+	var rpg_rocket_service := get_capoo_rpg_rocket_simulation_service()
+	var explosion_resolution_service := get_explosion_resolution_service()
+	var rpg_rocket_presenter := get_capoo_rpg_rocket_presenter()
+	var explosion_presentation_service := get_explosion_presentation_service()
 	if (
 		rapid_fire_service == null
 		or damageable_spatial_index == null
@@ -89,6 +111,10 @@ func bind_context(
 		or fire_sorcerer_volley_service == null
 		or fire_sorcerer_volley_presenter == null
 		or warning_presentation_system == null
+		or rpg_rocket_service == null
+		or explosion_resolution_service == null
+		or rpg_rocket_presenter == null
+		or explosion_presentation_service == null
 		or not damageable_spatial_index.bind_context(combat_runtime, coordinator)
 		or not rapid_fire_service.bind_context(combat_runtime, coordinator)
 		or not rapid_fire_service.reserve_projectile_capacity(
@@ -111,6 +137,17 @@ func bind_context(
 			combat_runtime,
 			coordinator
 		)
+		or not rpg_rocket_service.bind_context(combat_runtime, coordinator)
+		or not rpg_rocket_service.reserve(CAPOO_RPG_ROCKET_RESERVED_CAPACITY)
+		or not explosion_resolution_service.bind_context(
+			combat_runtime,
+			coordinator
+		)
+		or not rpg_rocket_presenter.bind_simulation_service(rpg_rocket_service)
+		or not explosion_presentation_service.bind_context(
+			combat_runtime,
+			coordinator
+		)
 	):
 		return false
 	_combat_runtime = combat_runtime
@@ -123,12 +160,17 @@ func bind_context(
 	return true
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	var rapid_fire_service := get_rapid_fire_simulation_service()
 	var fire_sorcerer_volley_service := (
 		get_fire_sorcerer_volley_simulation_service()
 	)
-	if rapid_fire_service == null and fire_sorcerer_volley_service == null:
+	var rpg_rocket_service := get_capoo_rpg_rocket_simulation_service()
+	if (
+		rapid_fire_service == null
+		and fire_sorcerer_volley_service == null
+		and rpg_rocket_service == null
+	):
 		set_physics_process(false)
 		return
 	var gateway := (
@@ -144,6 +186,13 @@ func _physics_process(_delta: float) -> void:
 		fire_sorcerer_volley_service,
 		gateway
 	)
+	_consume_capoo_rpg_rocket_completions(rpg_rocket_service, gateway)
+	var rpg_rocket_presenter := get_capoo_rpg_rocket_presenter()
+	if rpg_rocket_presenter != null:
+		rpg_rocket_presenter.flush_presenter()
+	var explosion_presentation_service := get_explosion_presentation_service()
+	if explosion_presentation_service != null:
+		explosion_presentation_service.flush_presenter(delta)
 	var warning_presentation_system := get_enemy_warning_presentation_system()
 	if warning_presentation_system != null:
 		warning_presentation_system.flush_presenter()
@@ -246,6 +295,68 @@ func _consume_fire_sorcerer_volley_completions(
 	service.clear_completion_records()
 
 
+func _consume_capoo_rpg_rocket_completions(
+	service: CapooRPGRocketSimulationServiceScript,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	if service == null:
+		return
+	var completion_count := service.get_completion_count()
+	if completion_count <= 0:
+		return
+	_metric_rpg_completion_batches += 1
+	var resolver := get_explosion_resolution_service()
+	var presentation := get_explosion_presentation_service()
+	for completion_index in range(completion_count):
+		_metric_rpg_completions += 1
+		var mode := service.get_completion_mode(completion_index)
+		var snapshot := service.get_completion_damage_source_snapshot(
+			completion_index
+		)
+		var source_enemy_id := (
+			snapshot.instigator_entity_id if snapshot != null else 0
+		)
+		var source_type := (
+			snapshot.source_type
+			if snapshot != null and snapshot.source_type != &""
+			else &"capoo_rpg_rocket"
+		)
+		if (
+			mode == CapooRPGRocketSimulationServiceScript.Mode.DATA
+			and resolver != null
+		):
+			_metric_rpg_damage_accepts += resolver.resolve_hostile_explosion(
+				service.get_completion_position(completion_index),
+				service.get_completion_radius(completion_index),
+				service.get_completion_damage(completion_index),
+				service.get_completion_direct_hit(completion_index),
+				snapshot,
+				source_enemy_id,
+				service.get_completion_projectile_id(completion_index),
+				source_type,
+				EnemyConfig.DamageType.PHYSICAL
+			)
+		if (
+			presentation != null
+			and presentation.queue_explosion(
+				ExplosionPresentationServiceScript.Profile.CAPOO_RPG,
+				service.get_completion_position(completion_index)
+			)
+		):
+			_metric_rpg_presentation_requests += 1
+		var projectile_id := service.get_completion_projectile_id(
+			completion_index
+		)
+		if projectile_id > 0 and gateway != null:
+			gateway.notify_capoo_rpg_data_finished(
+				projectile_id,
+				service,
+				service.get_completion_handle(completion_index)
+			)
+			_metric_rpg_backend_finish_notifications += 1
+	service.clear_completion_records()
+
+
 func is_bound() -> bool:
 	return (
 		_combat_runtime != null
@@ -308,12 +419,42 @@ func get_enemy_warning_presentation_system() -> EnemyWarningPresentationSystemSc
 	) as EnemyWarningPresentationSystemScript
 
 
+func get_capoo_rpg_rocket_simulation_service() -> CapooRPGRocketSimulationServiceScript:
+	return get_node_or_null(
+		"CapooRPGRocketSimulationService"
+	) as CapooRPGRocketSimulationServiceScript
+
+
+func get_explosion_resolution_service() -> ExplosionResolutionServiceScript:
+	return get_node_or_null(
+		"ExplosionResolutionService"
+	) as ExplosionResolutionServiceScript
+
+
+func get_capoo_rpg_rocket_presenter() -> CapooRPGRocketPresenterScript:
+	return get_node_or_null(
+		"CapooRPGRocketPresenter"
+	) as CapooRPGRocketPresenterScript
+
+
+func get_explosion_presentation_service() -> ExplosionPresentationServiceScript:
+	return get_node_or_null(
+		"ExplosionPresentationService"
+	) as ExplosionPresentationServiceScript
+
+
 func prepare_for_runtime_teardown() -> void:
 	if _teardown_prepared:
 		return
 	_teardown_prepared = true
 	_teardown_count += 1
 	set_physics_process(false)
+	var explosion_presentation_service := get_explosion_presentation_service()
+	if explosion_presentation_service != null:
+		explosion_presentation_service.prepare_for_runtime_teardown()
+	var rpg_rocket_presenter := get_capoo_rpg_rocket_presenter()
+	if rpg_rocket_presenter != null:
+		rpg_rocket_presenter.prepare_for_runtime_teardown()
 	var warning_presentation_system := get_enemy_warning_presentation_system()
 	if warning_presentation_system != null:
 		warning_presentation_system.prepare_for_runtime_teardown()
@@ -336,6 +477,12 @@ func prepare_for_runtime_teardown() -> void:
 	var rapid_fire_service := get_rapid_fire_simulation_service()
 	if rapid_fire_service != null:
 		rapid_fire_service.prepare_for_runtime_teardown()
+	var rpg_rocket_service := get_capoo_rpg_rocket_simulation_service()
+	if rpg_rocket_service != null:
+		rpg_rocket_service.teardown()
+	var explosion_resolution_service := get_explosion_resolution_service()
+	if explosion_resolution_service != null:
+		explosion_resolution_service.prepare_for_runtime_teardown()
 	var damageable_spatial_index := get_enemy_damageable_spatial_index()
 	if damageable_spatial_index != null:
 		damageable_spatial_index.prepare_for_runtime_teardown()
@@ -355,6 +502,10 @@ func get_metrics() -> Dictionary:
 		get_fire_sorcerer_volley_presenter()
 	)
 	var warning_presentation_system := get_enemy_warning_presentation_system()
+	var rpg_rocket_service := get_capoo_rpg_rocket_simulation_service()
+	var explosion_resolution_service := get_explosion_resolution_service()
+	var rpg_rocket_presenter := get_capoo_rpg_rocket_presenter()
+	var explosion_presentation_service := get_explosion_presentation_service()
 	return {
 		"bound": is_bound(),
 		"teardown_prepared": _teardown_prepared,
@@ -368,6 +519,13 @@ func get_metrics() -> Dictionary:
 		"fire_terminal_completions": _metric_fire_terminal_completions,
 		"fire_network_finish_notifications": (
 			_metric_fire_network_finish_notifications
+		),
+		"rpg_completion_batches": _metric_rpg_completion_batches,
+		"rpg_completions": _metric_rpg_completions,
+		"rpg_damage_accepts": _metric_rpg_damage_accepts,
+		"rpg_presentation_requests": _metric_rpg_presentation_requests,
+		"rpg_backend_finish_notifications": (
+			_metric_rpg_backend_finish_notifications
 		),
 		"rapid_fire": (
 			rapid_fire_service.get_metrics()
@@ -402,6 +560,26 @@ func get_metrics() -> Dictionary:
 		"enemy_warning_presentation_system": (
 			warning_presentation_system.get_metrics()
 			if warning_presentation_system != null
+			else {}
+		),
+		"capoo_rpg_rocket_simulation": (
+			rpg_rocket_service.get_metrics()
+			if rpg_rocket_service != null
+			else {}
+		),
+		"explosion_resolution": (
+			explosion_resolution_service.get_metrics()
+			if explosion_resolution_service != null
+			else {}
+		),
+		"capoo_rpg_rocket_presenter": (
+			rpg_rocket_presenter.get_metrics()
+			if rpg_rocket_presenter != null
+			else {}
+		),
+		"explosion_presentation": (
+			explosion_presentation_service.get_metrics()
+			if explosion_presentation_service != null
 			else {}
 		),
 	}

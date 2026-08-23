@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scene/combat/simulation/enemy_combat_services.gd" id="1_services"]
 [ext_resource type="PackedScene" path="res://scene/combat/simulation/rapid_fire_simulation_service.tscn" id="2_rapid_fire"]
@@ -8,6 +8,10 @@
 [ext_resource type="PackedScene" path="res://scene/combat/simulation/fire_sorcerer_volley_simulation_service.tscn" id="6_fire_volley"]
 [ext_resource type="PackedScene" path="res://scene/combat/simulation/fire_sorcerer_volley_presenter.tscn" id="7_fire_volley_presenter"]
 [ext_resource type="PackedScene" path="res://scene/combat/presentation/enemy_warning_presentation_system.tscn" id="8_warning_system"]
+[ext_resource type="PackedScene" path="res://scene/combat/simulation/capoo_rpg_rocket_simulation_service.tscn" id="9_rpg_simulation"]
+[ext_resource type="PackedScene" path="res://scene/combat/simulation/explosion_resolution_service.tscn" id="10_explosion_resolution"]
+[ext_resource type="PackedScene" path="res://scene/combat/presentation/capoo_rpg_rocket_presenter.tscn" id="11_rpg_presenter"]
+[ext_resource type="PackedScene" path="res://scene/combat/presentation/explosion_presentation_service.tscn" id="12_explosion_presentation"]
 
 [node name="EnemyCombatServices" type="Node"]
 process_physics_priority = 6
@@ -26,3 +30,11 @@ script = ExtResource("1_services")
 [node name="FireSorcererVolleyPresenter" parent="." instance=ExtResource("7_fire_volley_presenter")]
 
 [node name="EnemyWarningPresentationSystem" parent="." instance=ExtResource("8_warning_system")]
+
+[node name="CapooRPGRocketSimulationService" parent="." instance=ExtResource("9_rpg_simulation")]
+
+[node name="ExplosionResolutionService" parent="." instance=ExtResource("10_explosion_resolution")]
+
+[node name="CapooRPGRocketPresenter" parent="." instance=ExtResource("11_rpg_presenter")]
+
+[node name="ExplosionPresentationService" parent="." instance=ExtResource("12_explosion_presentation")]

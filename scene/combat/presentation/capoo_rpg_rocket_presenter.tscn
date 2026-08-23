@@ -1,0 +1,54 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://scene/combat/presentation/capoo_rpg_rocket_presenter.gd" id="1_script"]
+[ext_resource type="Material" path="res://scene/combat/presentation/capoo_rpg_rocket_base_material.tres" id="2_base"]
+[ext_resource type="Material" path="res://scene/combat/presentation/capoo_rpg_rocket_emission_material.tres" id="3_emission"]
+[ext_resource type="Material" path="res://scene/combat/presentation/capoo_rpg_rocket_halo_material.tres" id="4_halo"]
+
+[sub_resource type="QuadMesh" id="QuadMesh_base"]
+size = Vector2(32, 32)
+
+[sub_resource type="MultiMesh" id="MultiMesh_base"]
+resource_local_to_scene = true
+transform_format = 0
+use_custom_data = true
+visible_instance_count = 0
+mesh = SubResource("QuadMesh_base")
+
+[sub_resource type="QuadMesh" id="QuadMesh_emission"]
+size = Vector2(32, 32)
+
+[sub_resource type="MultiMesh" id="MultiMesh_emission"]
+resource_local_to_scene = true
+transform_format = 0
+use_custom_data = true
+visible_instance_count = 0
+mesh = SubResource("QuadMesh_emission")
+
+[sub_resource type="QuadMesh" id="QuadMesh_halo"]
+size = Vector2(32, 32)
+
+[sub_resource type="MultiMesh" id="MultiMesh_halo"]
+resource_local_to_scene = true
+transform_format = 0
+use_custom_data = true
+visible_instance_count = 0
+mesh = SubResource("QuadMesh_halo")
+
+[node name="CapooRPGRocketPresenter" type="Node2D"]
+z_index = 3
+script = ExtResource("1_script")
+
+[node name="RocketHalo" type="MultiMeshInstance2D" parent="."]
+show_behind_parent = true
+z_index = -1
+material = ExtResource("4_halo")
+multimesh = SubResource("MultiMesh_halo")
+
+[node name="RocketBase" type="MultiMeshInstance2D" parent="."]
+material = ExtResource("2_base")
+multimesh = SubResource("MultiMesh_base")
+
+[node name="RocketEmission" type="MultiMeshInstance2D" parent="."]
+material = ExtResource("3_emission")
+multimesh = SubResource("MultiMesh_emission")

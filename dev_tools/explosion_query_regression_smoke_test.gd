@@ -10,12 +10,42 @@ const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_firebal
 const AGAVE_CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
+const COMBAT_RUNTIME_FIXTURE_SCENE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
 
 const DENSE_COLLIDER_COUNT := 145
 const TEST_HEALTH := 1000
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: EnemyGameplayGatewayTestRuntime
+
+
+class AuthorityPlantPort:
+	extends TowerPlantGameplayTestPort
+
+	var accepted_damage_count := 0
+
+
+	func apply_authoritative_plant_enemy_damage(
+		_damage_source_id: int,
+		enemy_node: Node2D,
+		damage: int,
+		impact_direction: Vector2,
+		damage_type: int
+	) -> bool:
+		var enemy := enemy_node as Enemy
+		if enemy == null:
+			return false
+		var accepted := enemy.apply_damage(
+			damage,
+			impact_direction,
+			damage_type,
+			false
+		)
+		if accepted:
+			accepted_damage_count += 1
+		return accepted
 
 
 func _init() -> void:
@@ -23,16 +53,31 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = (
+		COMBAT_RUNTIME_FIXTURE_SCENE.instantiate()
+		as EnemyGameplayGatewayTestRuntime
+	)
+	_expect(test_root != null, "Authority combat runtime fixture must instantiate.")
+	if test_root == null:
+		quit(1)
+		return
 	test_root.name = "ExplosionQueryRegressionSmokeTest"
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	root.add_child(test_root)
 	current_scene = test_root
+	_expect(
+		test_root.get_combat_relation_service() != null
+		and test_root.get_enemy_simulation_coordinator() != null
+		and test_root.get_enemy_combat_services() != null,
+		"Regression fixture must expose an explicit authoritative combat context."
+	)
 
 	_test_sakura_rocket_resource_isolation()
 	_test_enemy_projectile_resource_isolation()
 	await _test_complete_shape_query_pagination()
 	await _test_direct_collision_target_inclusion()
 
+	test_root.prepare_for_scene_teardown()
 	test_root.queue_free()
 	await process_frame
 	await physics_frame
@@ -234,15 +279,27 @@ func _test_complete_shape_query_pagination() -> void:
 func _test_direct_collision_target_inclusion() -> void:
 	var player := _spawn_player(Vector2(500.0, 0.0))
 	await physics_frame
+	var gateway := test_root.get_multiplayer_gameplay_gateway()
+	var hostile_source_serial := 91000
 
 	var rpg := RPG_ROCKET_SCENE.instantiate() as CapooRPGRocket
 	test_root.add_child(rpg)
 	rpg.global_position = Vector2.ZERO
-	rpg.setup(Vector2.RIGHT, 20, 0.0, 1.0, 44.0)
+	rpg.bind_gameplay_context(test_root, gateway)
+	hostile_source_serial += 1
+	rpg.setup(
+		Vector2.RIGHT,
+		20,
+		0.0,
+		1.0,
+		44.0,
+		_hostile_snapshot(hostile_source_serial, &"rpg_direct_outside")
+	)
 	var health_before := player.current_health
 	rpg.call("_apply_explosion_damage", player)
 	_expect(
-		player.current_health < health_before,
+		rpg.global_position.distance_to(player.global_position) > 44.0
+		and player.current_health < health_before,
 		"RPG direct collision target must be damaged even outside the follow-up Shape query."
 	)
 	rpg.queue_free()
@@ -251,11 +308,23 @@ func _test_direct_collision_target_inclusion() -> void:
 	var fireball := MAGE_FIREBALL_SCENE.instantiate() as CapooMageFireball
 	test_root.add_child(fireball)
 	fireball.global_position = Vector2.ZERO
-	fireball.setup(Vector2.RIGHT, 20, 0.0, 1.0, 10.5)
+	fireball.bind_gameplay_context(test_root, gateway)
+	hostile_source_serial += 1
+	fireball.setup(
+		Vector2.RIGHT,
+		20,
+		0.0,
+		1.0,
+		10.5,
+		null,
+		0.65,
+		_hostile_snapshot(hostile_source_serial, &"mage_direct_outside")
+	)
 	health_before = player.current_health
 	fireball.call("_apply_explosion_damage", player)
 	_expect(
-		player.current_health < health_before,
+		fireball.global_position.distance_to(player.global_position) > 10.5
+		and player.current_health < health_before,
 		"Mage fireball direct collision target must be damaged outside its Shape query."
 	)
 	fireball.queue_free()
@@ -264,11 +333,13 @@ func _test_direct_collision_target_inclusion() -> void:
 	var boss_rocket := BOSS_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
 	test_root.add_child(boss_rocket)
 	boss_rocket.global_position = Vector2.ZERO
+	boss_rocket.bind_gameplay_context(test_root, gateway)
 	boss_rocket.setup(Vector2.RIGHT, 20, 0.0, 1.0, 78.0)
 	health_before = player.current_health
 	boss_rocket.call("_apply_explosion_damage", player)
 	_expect(
-		player.current_health < health_before,
+		boss_rocket.global_position.distance_to(player.global_position) > 78.0
+		and player.current_health < health_before,
 		"Boss Sakura rocket direct collision target must be damaged outside its Shape query."
 	)
 	boss_rocket.queue_free()
@@ -276,7 +347,7 @@ func _test_direct_collision_target_inclusion() -> void:
 	var enemy := ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
 	test_root.add_child(enemy)
 	enemy.global_position = Vector2(500.0, 100.0)
-	enemy.setup(ENEMY_CONFIG, player)
+	enemy.setup(ENEMY_CONFIG, player, null, test_root)
 	enemy.current_health = TEST_HEALTH
 	enemy.set_physics_process(false)
 	enemy.hit_audio.stream = null
@@ -285,6 +356,7 @@ func _test_direct_collision_target_inclusion() -> void:
 	var collectible_rocket := COLLECTIBLE_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
 	test_root.add_child(collectible_rocket)
 	collectible_rocket.global_position = Vector2.ZERO
+	collectible_rocket.bind_gameplay_context(test_root, gateway)
 	collectible_rocket.setup(
 		Vector2.RIGHT,
 		20,
@@ -300,22 +372,29 @@ func _test_direct_collision_target_inclusion() -> void:
 	var enemy_health_before := enemy.current_health
 	collectible_rocket.call("_apply_explosion_damage", enemy)
 	_expect(
-		enemy.current_health < enemy_health_before,
+		collectible_rocket.global_position.distance_to(enemy.global_position) > 47.0
+		and enemy.current_health < enemy_health_before,
 		"Collectible Sakura rocket direct enemy must be included outside its Shape query."
 	)
 	collectible_rocket.queue_free()
 
 	var cannonball := AGAVE_CANNONBALL_SCENE.instantiate() as AgaveCannonball
+	var plant_port := AuthorityPlantPort.new()
+	test_root.add_child(plant_port)
 	test_root.add_child(cannonball)
 	cannonball.global_position = Vector2.ZERO
-	cannonball.setup(Vector2.RIGHT, 20, 0.0, 18.0, 1.0)
+	cannonball.bind_gameplay_context(test_root, plant_port)
+	cannonball.setup(Vector2.RIGHT, 20, 0.0, 18.0, 1.0, true, 91005)
 	enemy_health_before = enemy.current_health
 	cannonball.call("_apply_explosion_damage", enemy)
 	_expect(
-		enemy.current_health < enemy_health_before,
+		cannonball.global_position.distance_to(enemy.global_position) > 18.0
+		and enemy.current_health < enemy_health_before
+		and plant_port.accepted_damage_count == 1,
 		"Agave direct enemy must be included outside its explosion Shape query."
 	)
 	cannonball.queue_free()
+	plant_port.queue_free()
 	enemy.queue_free()
 	player.queue_free()
 	await physics_frame
@@ -332,8 +411,22 @@ func _spawn_player(position: Vector2) -> Player:
 	player.max_health = TEST_HEALTH
 	player.current_health = TEST_HEALTH
 	player.health_bar.setup(TEST_HEALTH, TEST_HEALTH)
+	player.bind_combat_runtime(test_root)
 	player.set_physics_process(false)
 	return player
+
+
+func _hostile_snapshot(
+	event_source_id: int,
+	source_type: StringName
+) -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		91000,
+		event_source_id,
+		source_type
+	)
 
 
 func _free_if_valid(node: Node) -> void:

@@ -3,12 +3,10 @@
 [ext_resource type="Script" uid="uid://be7g6by0cqgwy" path="res://resources/config/enemies/capoo_rpg_config.gd" id="1_script"]
 [ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_c5c3k"]
 [ext_resource type="PackedScene" path="res://scene/enemy/stone_eroded/stone_eroded_capoo_rpg.tscn" id="2_scene"]
-[ext_resource type="PackedScene" uid="uid://dnt5crchqe16v" path="res://scene/enemy/capoo/capoo_rpg_rocket.tscn" id="3_rocket"]
 [ext_resource type="AudioStream" uid="uid://312idcw43nv8" path="res://resources/audio/capoo_rpg_launch.wav" id="5_audio"]
 
 [resource]
 script = ExtResource("1_script")
-projectile_scene = ExtResource("3_rocket")
 attack_audio_stream = ExtResource("5_audio")
 display_name = "被石头侵蚀的RPG猫猫虫"
 category_tags = PackedStringArray("capoo", "stone_eroded")

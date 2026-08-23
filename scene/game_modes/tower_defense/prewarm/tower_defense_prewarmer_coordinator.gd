@@ -17,9 +17,6 @@ const COMBAT_ROBOT_SUICIDE_DRONE_ELITE_POOL_SCENE := preload(
 const CAPOO_SMG_BULLET_POOL_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn"
 )
-const CAPOO_RPG_ROCKET_POOL_SCENE := preload(
-	"res://scene/enemy/capoo/capoo_rpg_rocket.tscn"
-)
 const CAPOO_MAGE_FIREBALL_POOL_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_mage_fireball.tscn"
 )
@@ -193,7 +190,6 @@ func register_runtime_object_pools(expanded_projectile_prewarm: bool) -> void:
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_ELITE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
-	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 24, 192)
 	session_object_pool.register_scene(
 		CAPOO_MAGE_FIREBALL_POOL_SCENE,
 		(

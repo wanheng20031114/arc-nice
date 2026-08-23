@@ -1,6 +1,10 @@
 extends Node
 class_name MultiplayerGameplayGateway
 
+const CapooRPGRocketSimulationServiceScript := preload(
+	"res://scene/combat/simulation/capoo_rpg_rocket_simulation_service.gd"
+)
+
 ## Neutral runtime-to-session boundary. Entity code receives this object
 ## explicitly; it must never discover networking through SceneTree.current_scene.
 signal enemy_spawned(
@@ -145,6 +149,48 @@ func register_local_data_projectile(
 		speed,
 		lifetime,
 		damage_source_snapshot
+	)
+
+
+func register_local_capoo_rpg_data(
+	service: CapooRPGRocketSimulationServiceScript,
+	handle: int,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	spawn_position: Vector2,
+	direction: Vector2,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	damage_source_snapshot: DamageSourceSnapshot
+) -> int:
+	if multiplayer_session == null:
+		return 0
+	return multiplayer_session.register_local_capoo_rpg_data(
+		service,
+		handle,
+		projectile_type,
+		owner_peer_id,
+		spawn_position,
+		direction,
+		damage,
+		speed,
+		lifetime,
+		damage_source_snapshot
+	)
+
+
+func notify_capoo_rpg_data_finished(
+	projectile_id: int,
+	service: CapooRPGRocketSimulationServiceScript,
+	handle: int
+) -> void:
+	if multiplayer_session == null:
+		return
+	multiplayer_session.notify_capoo_rpg_data_finished(
+		projectile_id,
+		service,
+		handle
 	)
 
 

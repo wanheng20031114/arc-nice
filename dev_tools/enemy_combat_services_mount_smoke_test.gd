@@ -30,6 +30,9 @@ const FireSorcererVolleySimulationServiceScript := preload(
 const FireSorcererVolleyPresenterScript := preload(
 	"res://scene/combat/simulation/fire_sorcerer_volley_presenter.gd"
 )
+const CapooRPGRocketSimulationServiceScript := preload(
+	"res://scene/combat/simulation/capoo_rpg_rocket_simulation_service.gd"
+)
 const FIXTURE_SCENE := preload(
 	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
 )
@@ -125,6 +128,14 @@ func _test_authored_coordinator_service_tree_defaults_to_idle() -> void:
 		var fire_sorcerer_volley_presenter: FireSorcererVolleyPresenterScript = (
 			combat_services.get_fire_sorcerer_volley_presenter()
 		)
+		var rpg_rocket_service: CapooRPGRocketSimulationServiceScript = (
+			combat_services.get_capoo_rpg_rocket_simulation_service()
+		)
+		var explosion_resolution := combat_services.get_explosion_resolution_service()
+		var rpg_presenter := combat_services.get_capoo_rpg_rocket_presenter()
+		var explosion_presentation := (
+			combat_services.get_explosion_presentation_service()
+		)
 		_expect(
 			rapid_fire_service != null,
 			"EnemyCombatServices must author RapidFireSimulationService."
@@ -218,6 +229,21 @@ func _test_authored_coordinator_service_tree_defaults_to_idle() -> void:
 				and not fire_sorcerer_volley_presenter.is_processing(),
 				"The authored fire-sorcerer volley presenter must start unallocated and idle."
 			)
+		_expect(
+			rpg_rocket_service != null
+			and explosion_resolution != null
+			and rpg_presenter != null
+			and explosion_presentation != null,
+			"EnemyCombatServices must statically author all four RPG runtime services."
+		)
+		if rpg_rocket_service != null:
+			var rpg_metrics := rpg_rocket_service.get_metrics()
+			_expect(
+				int(rpg_metrics["live_count"]) == 0
+				and not bool(rpg_metrics["bound"])
+				and not rpg_rocket_service.is_physics_processing(),
+				"The authored RPG data kernel must start empty and idle."
+			)
 	coordinator.free()
 
 
@@ -287,6 +313,14 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 		var fire_sorcerer_volley_presenter: FireSorcererVolleyPresenterScript = (
 			combat_services.get_fire_sorcerer_volley_presenter()
 		)
+		var rpg_rocket_service: CapooRPGRocketSimulationServiceScript = (
+			combat_services.get_capoo_rpg_rocket_simulation_service()
+		)
+		var explosion_resolution := combat_services.get_explosion_resolution_service()
+		var rpg_presenter := combat_services.get_capoo_rpg_rocket_presenter()
+		var explosion_presentation := (
+			combat_services.get_explosion_presentation_service()
+		)
 		_expect(
 			combat_services.is_bound_to(runtime, coordinator),
 			"EnemyCombatServices must bind to its authored runtime and coordinator."
@@ -331,6 +365,22 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 				fire_sorcerer_volley_service
 			),
 			"The bound service tree must bind FireSorcererVolleyPresenter to its data kernel."
+		)
+		_expect(
+			rpg_rocket_service != null
+			and rpg_rocket_service.is_bound()
+			and int(rpg_rocket_service.get_metrics()["reserved_capacity"])
+				>= combat_services.CAPOO_RPG_ROCKET_RESERVED_CAPACITY,
+			"The RPG data kernel must bind and reserve its fixed shared capacity."
+		)
+		_expect(
+			explosion_resolution != null
+			and explosion_resolution.is_bound_to(runtime, coordinator)
+			and rpg_presenter != null
+			and rpg_presenter.is_bound()
+			and explosion_presentation != null
+			and explosion_presentation.is_bound(),
+			"RPG resolution and both presentation systems must share the authored runtime context."
 		)
 		if rapid_projectile_presenter != null:
 			var mounted_presenter_metrics := rapid_projectile_presenter.get_metrics()
@@ -380,6 +430,16 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 		var volley_presenter_metrics: Dictionary = (
 			service_metrics["fire_sorcerer_volley_presenter"]
 		)
+		var rpg_metrics: Dictionary = service_metrics["capoo_rpg_rocket_simulation"]
+		var explosion_resolution_metrics: Dictionary = (
+			service_metrics["explosion_resolution"]
+		)
+		var rpg_presenter_metrics: Dictionary = (
+			service_metrics["capoo_rpg_rocket_presenter"]
+		)
+		var explosion_presentation_metrics: Dictionary = (
+			service_metrics["explosion_presentation"]
+		)
 		_expect(
 			int(service_metrics["teardown_count"]) == 1,
 			"EnemyCombatServices teardown must be idempotent."
@@ -407,6 +467,14 @@ func _test_fixture_binding_and_idempotent_teardown() -> void:
 		_expect(
 			int(volley_presenter_metrics["teardown_count"]) == 1,
 			"FireSorcererVolleyPresenter teardown must be idempotent."
+		)
+		_expect(
+			int(rpg_metrics["teardowns"]) == 1
+			and int(rpg_metrics["live_count"]) == 0
+			and int(explosion_resolution_metrics["teardown_count"]) == 1
+			and int(rpg_presenter_metrics["teardown_count"]) == 1
+			and int(explosion_presentation_metrics["teardown_count"]) == 1,
+			"All RPG shared services must teardown exactly once with no live handles."
 		)
 		_expect(
 			not bool(service_metrics["bound"])

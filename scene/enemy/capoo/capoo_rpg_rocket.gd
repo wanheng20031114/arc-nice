@@ -3,8 +3,10 @@ class_name CapooRPGRocket
 
 signal projectile_finished(projectile_id: int, projectile: Node)
 
-const EXPLOSION_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_explosion.tscn")
 const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/combat/physics/complete_shape_query_2d.gd")
+const ExplosionPresentationServiceScript := preload(
+	"res://scene/combat/presentation/explosion_presentation_service.gd"
+)
 const WORLD_COLLISION_MASK := 1
 const DAMAGEABLE_COLLISION_MASK := 2 | 4 | 512
 const EXPLOSION_QUERY_BATCH_SIZE := 64
@@ -323,13 +325,15 @@ func _apply_explosion_damage_to_body(body: Node2D, damaged_bodies: Dictionary) -
 func _spawn_explosion_effect() -> void:
 	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return
-
-	var explosion := EXPLOSION_SCENE.instantiate() as Node2D
-	if explosion == null:
+	var combat_services := combat_runtime.get_enemy_combat_services()
+	if combat_services == null:
 		return
-	explosion.top_level = true
-	combat_runtime.add_child(explosion)
-	explosion.global_position = global_position
+	var presentation := combat_services.get_explosion_presentation_service()
+	if presentation != null:
+		presentation.queue_explosion(
+			ExplosionPresentationServiceScript.Profile.CAPOO_RPG,
+			global_position
+		)
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:

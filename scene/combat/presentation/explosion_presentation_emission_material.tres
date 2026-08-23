@@ -1,0 +1,10 @@
+[gd_resource type="ShaderMaterial" load_steps=3 format=3]
+
+[ext_resource type="Shader" path="res://scene/combat/presentation/explosion_presentation_emission.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" path="res://resources/texture/enemy/capoo/capoo_rpg_explosion.png" id="2_texture"]
+
+[resource]
+shader = ExtResource("1_shader")
+shader_parameter/explosion_atlas = ExtResource("2_texture")
+shader_parameter/emission_tint = Color(1.08, 0.78, 0.46, 0.62)
+shader_parameter/emission_strength = 0.78

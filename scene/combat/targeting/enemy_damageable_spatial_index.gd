@@ -71,6 +71,7 @@ var _unregistrations_total := 0
 var _rejected_operations_total := 0
 var _queries_total := 0
 var _exact_shape_queries_total := 0
+var _geometry_revision := 1
 
 
 func _init() -> void:
@@ -150,6 +151,7 @@ func register_damageable(damageable: StaticBody2D) -> bool:
 	_entries_by_instance_id[instance_id] = entry
 	_add_entry_to_buckets(instance_id, entry.bucket_cells)
 	_registrations_total += 1
+	_geometry_revision += 1
 	return true
 
 
@@ -189,6 +191,7 @@ func unregister_damageable(damageable: StaticBody2D) -> bool:
 	entry.root_shapes.clear()
 	entry.root_shape_world_transforms.clear()
 	_unregistrations_total += 1
+	_geometry_revision += 1
 	return true
 
 
@@ -295,6 +298,12 @@ func get_registered_world_aabb(damageable: StaticBody2D) -> Rect2:
 	return entry.world_aabb
 
 
+## Monotonic invalidation token for consumers caching broad/exact results.
+## Authoritative movement and shape owners already update this index explicitly.
+func get_geometry_revision() -> int:
+	return _geometry_revision
+
+
 ## Computes the union of enabled root collision shapes in world space. Nested
 ## PlayerCoreBody/interaction shapes are deliberately excluded because they are
 ## not the PlantDefense root body hit by enemy projectiles.
@@ -351,6 +360,7 @@ func clear() -> void:
 	_query_visit_generation_by_instance_id.clear()
 	_query_generation = 0
 	_membership_count = 0
+	_geometry_revision += 1
 
 
 func prepare_for_runtime_teardown() -> void:
@@ -378,6 +388,7 @@ func get_metrics() -> Dictionary:
 		"rejected_operations_total": _rejected_operations_total,
 		"queries_total": _queries_total,
 		"exact_shape_queries_total": _exact_shape_queries_total,
+		"geometry_revision": _geometry_revision,
 	}
 
 
@@ -407,6 +418,7 @@ func _update_entry(
 	_add_entry_to_buckets(instance_id, entry.bucket_cells)
 	if count_update:
 		_updates_total += 1
+	_geometry_revision += 1
 	return true
 
 

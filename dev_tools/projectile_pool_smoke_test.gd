@@ -18,7 +18,6 @@ const ELITE_SUICIDE_DRONE_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn"
 )
 const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
-const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
 const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
 const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
 	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
@@ -76,7 +75,6 @@ func _run() -> void:
 	pool.register_scene(SUICIDE_DRONE_SCENE, 1, 2)
 	pool.register_scene(ELITE_SUICIDE_DRONE_SCENE, 1, 2)
 	pool.register_scene(SMG_BULLET_SCENE, 1, 2)
-	pool.register_scene(RPG_ROCKET_SCENE, 1, 2)
 	pool.register_scene(MAGE_FIREBALL_SCENE, 1, 2)
 	pool.register_scene(FIRE_SORCERER_FIREBALL_VOLLEY_SCENE, 1, 2)
 	pool.register_scene(
@@ -117,7 +115,7 @@ func _run() -> void:
 
 
 func _verify_world_collision_query_reuse() -> void:
-	var projectile_scenes: Array[PackedScene] = [RPG_ROCKET_SCENE, MAGE_FIREBALL_SCENE]
+	var projectile_scenes: Array[PackedScene] = [MAGE_FIREBALL_SCENE]
 	for projectile_scene in projectile_scenes:
 		var projectile: Node = projectile_scene.instantiate()
 		fixture.add_child(projectile)
@@ -250,100 +248,7 @@ func _verify_real_reused_query_semantics() -> void:
 			_expect(pool.release(reused_ray_bullet), "The second real ray-query lease must release.")
 			await _wait_for_quarantine()
 
-	var target := PlantDefense.new()
-	target.name = "ExplosionDamageProbePlant"
-	target.collision_layer = CapooRPGRocket.DAMAGEABLE_COLLISION_MASK & 512
-	target.collision_mask = 0
-	target.max_health = 200
-	target.current_health = target.max_health
-	target.physical_defense = 0
-	target.magic_defense = 0
-	var target_collision := CollisionShape2D.new()
-	var target_shape := RectangleShape2D.new()
-	target_shape.size = Vector2(16.0, 16.0)
-	target_collision.shape = target_shape
-	target.add_child(target_collision)
-	fixture.add_child(target)
-
-	var first_explosion_position := Vector2(800.0, 160.0)
-	var second_explosion_position := Vector2(800.0, 256.0)
-	target.global_position = first_explosion_position
-	await physics_frame
-
-	var rocket := pool.acquire(RPG_ROCKET_SCENE) as CapooRPGRocket
-	_expect(rocket != null, "Real explosion-query fixture must acquire a pooled RPG rocket.")
-	if rocket != null:
-		var rocket_instance_id := rocket.get_instance_id()
-		var retained_explosion_query := rocket.explosion_query
-		rocket.global_position = first_explosion_position
-		rocket.setup(
-			Vector2.RIGHT,
-			17,
-			0.0,
-			1.0,
-			32.0,
-			_make_hostile_projectile_snapshot(&"capoo_rpg_rocket")
-		)
-		var health_before_first_hit := target.current_health
-		rocket.call("_apply_explosion_damage", target)
-		_expect(
-			target.current_health == health_before_first_hit - 17,
-			"Direct-hit plus overlap results must damage a target exactly once per explosion."
-		)
-		_expect(
-			rocket.explosion_damaged_bodies.size() == 1
-			and rocket.explosion_damaged_bodies.has(target.get_instance_id()),
-			"The first explosion lease must de-duplicate its direct and overlap hit."
-		)
-		_expect(
-			retained_explosion_query.transform.origin == first_explosion_position
-			and retained_explosion_query.collision_mask == CapooRPGRocket.DAMAGEABLE_COLLISION_MASK,
-			"The first explosion lease must apply its current transform and damageable mask."
-		)
-		_expect(pool.release(rocket), "The first real explosion-query lease must release.")
-		await _wait_for_quarantine()
-
-		target.global_position = second_explosion_position
-		await physics_frame
-		var reused_rocket := pool.acquire(RPG_ROCKET_SCENE) as CapooRPGRocket
-		_expect(
-			reused_rocket != null
-			and reused_rocket.get_instance_id() == rocket_instance_id
-			and is_same(reused_rocket.explosion_query, retained_explosion_query),
-			"The second explosion lease must reuse the same rocket and shape query."
-		)
-		if reused_rocket != null:
-			_expect(
-				reused_rocket.explosion_damaged_bodies.is_empty(),
-				"The second explosion lease must begin without stale hit de-dup entries."
-			)
-			reused_rocket.global_position = second_explosion_position
-			reused_rocket.setup(
-				Vector2.RIGHT,
-				17,
-				0.0,
-				1.0,
-				32.0,
-				_make_hostile_projectile_snapshot(&"capoo_rpg_rocket")
-			)
-			var health_before_second_hit := target.current_health
-			reused_rocket.call("_apply_explosion_damage")
-			_expect(
-				target.current_health == health_before_second_hit - 17,
-				"A reused explosion query must find and damage the target at its new position once."
-			)
-			_expect(
-				retained_explosion_query.transform.origin == second_explosion_position
-				and retained_explosion_query.collision_mask == CapooRPGRocket.DAMAGEABLE_COLLISION_MASK
-				and reused_rocket.explosion_damaged_bodies.size() == 1
-				and reused_rocket.explosion_damaged_bodies.has(target.get_instance_id()),
-				"The reused explosion query must overwrite its transform, keep its mask, and rebuild de-dup state."
-			)
-			_expect(pool.release(reused_rocket), "The second real explosion-query lease must release.")
-			await _wait_for_quarantine()
-
 	wall.queue_free()
-	target.queue_free()
 	await physics_frame
 
 
@@ -844,7 +749,6 @@ func _verify_extended_projectile_reuse() -> void:
 		as EnemyGameplayGatewayTestRuntime
 	)
 	var scenes: Array[PackedScene] = [
-		RPG_ROCKET_SCENE,
 		MAGE_FIREBALL_SCENE,
 		FIRE_SORCERER_FIREBALL_VOLLEY_SCENE,
 		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE,
@@ -870,7 +774,7 @@ func _verify_extended_projectile_reuse() -> void:
 		projectile.set("direction", Vector2.DOWN)
 		projectile.set("damage", 99)
 		projectile.set("remaining_lifetime", 0.125)
-		if projectile_scene in [RPG_ROCKET_SCENE, MAGE_FIREBALL_SCENE, AGAVE_CANNONBALL_SCENE, COLLECTIBLE_SAKURA_ROCKET_SCENE]:
+		if projectile_scene in [MAGE_FIREBALL_SCENE, AGAVE_CANNONBALL_SCENE, COLLECTIBLE_SAKURA_ROCKET_SCENE]:
 			retained_explosion_query = projectile.get("explosion_query") as PhysicsShapeQueryParameters2D
 			var target_property := (
 				"explosion_targets"

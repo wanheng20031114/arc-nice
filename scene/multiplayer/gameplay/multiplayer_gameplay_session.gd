@@ -5,6 +5,9 @@ class_name MultiplayerGameplaySession
 const MultiplayerReconnectTypesScript := preload(
 	"res://scene/multiplayer/reconnect/multiplayer_reconnect_types.gd"
 )
+const CapooRPGRocketSimulationServiceScript := preload(
+	"res://scene/combat/simulation/capoo_rpg_rocket_simulation_service.gd"
+)
 
 ## 保留既有公开名称，实际枚举由重连领域统一定义，避免 NetManager 与各游戏
 ## 运行时各自维护一套数值契约。
@@ -135,6 +138,31 @@ func register_local_data_projectile(
 	lifetime: float,
 	damage_source_snapshot: DamageSourceSnapshot = null
 ) -> int
+
+
+## RPG DATA integration is optional for specialized test/session subclasses.
+## Production MpGame overrides this bridge; legacy sessions safely reject it.
+func register_local_capoo_rpg_data(
+	_service: CapooRPGRocketSimulationServiceScript,
+	_handle: int,
+	_projectile_type: StringName,
+	_owner_peer_id: int,
+	_spawn_position: Vector2,
+	_direction: Vector2,
+	_damage: int,
+	_speed: float,
+	_lifetime: float,
+	_damage_source_snapshot: DamageSourceSnapshot
+) -> int:
+	return 0
+
+
+func notify_capoo_rpg_data_finished(
+	_projectile_id: int,
+	_service: CapooRPGRocketSimulationServiceScript,
+	_handle: int
+) -> void:
+	pass
 
 
 @abstract

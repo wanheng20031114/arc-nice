@@ -879,6 +879,28 @@ func query_hostile_enemy_attack_targets_world_into(
 ## Fills caller-owned storage with every living allied player in an exact
 ## world-space circle. Plant auras use this facade in both solo and Host modes
 ## without rebuilding the scene tree or allocating a temporary player list.
+func query_living_players_into(result: Array[Player]) -> void:
+	result.clear()
+	if (
+		player != null
+		and is_instance_valid(player)
+		and not player.is_dead
+		and not player.is_queued_for_deletion()
+	):
+		result.append(player)
+	for peer_id_variant in peer_players:
+		var candidate := peer_players[peer_id_variant] as Player
+		if (
+			candidate == null
+			or candidate == player
+			or not is_instance_valid(candidate)
+			or candidate.is_dead
+			or candidate.is_queued_for_deletion()
+		):
+			continue
+		result.append(candidate)
+
+
 func query_living_players_in_radius_into(
 	center: Vector2,
 	radius: float,

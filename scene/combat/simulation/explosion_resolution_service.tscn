@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/combat/simulation/explosion_resolution_service.gd" id="1_service"]
+
+[node name="ExplosionResolutionService" type="Node2D"]
+process_mode = 4
+script = ExtResource("1_service")

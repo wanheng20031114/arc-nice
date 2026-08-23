@@ -6,6 +6,9 @@ const CapooRPGConfigScript := preload("res://resources/config/enemies/capoo_rpg_
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
+const CapooRPGRocketSimulationServiceScript := preload(
+	"res://scene/combat/simulation/capoo_rpg_rocket_simulation_service.gd"
+)
 
 
 enum CombatState {
@@ -126,8 +129,6 @@ func _try_start_windup(candidate_target: Node2D = null) -> bool:
 		candidate_target = _get_preferred_ranged_combat_target()
 	if not _is_ranged_combat_target_valid(candidate_target):
 		return false
-	if rpg_config.projectile_scene == null:
-		return false
 	if not _is_ranged_combat_target_in_range(
 		candidate_target,
 		rpg_config.attack_range
@@ -214,57 +215,75 @@ func _update_fire(delta: float) -> void:
 
 func _fire_rocket() -> bool:
 	var rpg_config := config as CapooRPGConfigScript
-	if rpg_config == null or rpg_config.projectile_scene == null:
+	if rpg_config == null:
 		return false
 
 	if (
 		combat_runtime == null
 		or not is_instance_valid(combat_runtime)
-		or gameplay_gateway == null
-		or not is_instance_valid(gameplay_gateway)
 	):
 		return false
-	var spawn_parent: Node = combat_runtime
-	var rocket: CapooRPGRocket = null
-	if combat_runtime.has_session_object_pool_scene(rpg_config.projectile_scene):
-		rocket = combat_runtime.acquire_session_object(
-			rpg_config.projectile_scene,
-			false
-		) as CapooRPGRocket
-	else:
-		rocket = rpg_config.projectile_scene.instantiate() as CapooRPGRocket
-	if rocket == null:
-		push_warning("Capoo RPG projectile scene must instantiate CapooRPGRocket.")
+	var rocket_service := _get_capoo_rpg_rocket_simulation_service()
+	if rocket_service == null:
 		return false
 
 	var outgoing_damage := get_effective_attack_damage(rpg_config.attack_damage)
-	rocket.bind_gameplay_context(combat_runtime, gameplay_gateway)
-	rocket.top_level = true
-	rocket.setup(
-		fire_direction,
+	var safe_direction := (
+		fire_direction.normalized()
+		if fire_direction != Vector2.ZERO
+		else Vector2.RIGHT
+	)
+	var spawn_position := (
+		global_position + safe_direction * rpg_config.projectile_spawn_distance
+	)
+	var source_snapshot := create_damage_source_snapshot(
+		0,
+		&"capoo_rpg_rocket"
+	)
+	var handle := rocket_service.spawn_authoritative(
+		0,
+		spawn_position,
+		safe_direction,
 		outgoing_damage,
 		rpg_config.projectile_speed,
 		rpg_config.projectile_lifetime,
 		rpg_config.explosion_radius,
-		create_damage_source_snapshot(0, &"capoo_rpg_rocket")
+		source_snapshot
 	)
-	if rocket.get_parent() == null:
-		spawn_parent.add_child(rocket)
-	elif rocket.get_parent() != spawn_parent:
-		rocket.reparent(spawn_parent)
-	rocket.global_position = global_position + fire_direction * rpg_config.projectile_spawn_distance
-	rocket.reset_physics_interpolation()
-	gameplay_gateway.register_local_projectile(
-		rocket,
-		&"capoo_rpg_rocket",
-		0,
-		rocket.global_position,
-		fire_direction,
-		outgoing_damage,
-		rpg_config.projectile_speed,
-		rpg_config.projectile_lifetime
-	)
+	if handle <= CapooRPGRocketSimulationServiceScript.INVALID_HANDLE:
+		return false
+	if (
+		combat_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
+			rocket_service.release(handle)
+			return false
+		var projectile_id := gameplay_gateway.register_local_capoo_rpg_data(
+			rocket_service,
+			handle,
+			&"capoo_rpg_rocket",
+			0,
+			spawn_position,
+			safe_direction,
+			outgoing_damage,
+			rpg_config.projectile_speed,
+			rpg_config.projectile_lifetime,
+			source_snapshot
+		)
+		if projectile_id <= 0:
+			rocket_service.release(handle)
+			return false
 	return true
+
+
+func _get_capoo_rpg_rocket_simulation_service() -> CapooRPGRocketSimulationServiceScript:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
+		return null
+	var combat_services := combat_runtime.get_enemy_combat_services()
+	if combat_services == null:
+		return null
+	return combat_services.get_capoo_rpg_rocket_simulation_service()
 
 
 func _finish_fire() -> void:

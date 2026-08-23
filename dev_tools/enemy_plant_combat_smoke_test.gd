@@ -272,7 +272,13 @@ func _verify_water_building_enemy_engagement_contract() -> void:
 		test_root,
 		test_root.get_multiplayer_gameplay_gateway()
 	)
-	projectile.setup(Vector2.RIGHT, 50, 100.0, 1.0)
+	projectile.setup(
+		Vector2.RIGHT,
+		50,
+		100.0,
+		1.0,
+		_hostile_source_snapshot(89999, &"enemy_plant_water_projectile")
+	)
 	projectile.call("_on_body_entered", water_plant)
 	_expect(
 		water_plant.current_health < water_health_before,
@@ -416,11 +422,34 @@ func _verify_projectile_plant_damage_contract() -> void:
 		var projectile := projectile_scene.instantiate() as Area2D
 		test_root.add_child(projectile)
 		projectile.call(
-			"bind_gameplay_context",
+			&"bind_gameplay_context",
 			test_root,
 			test_root.get_multiplayer_gameplay_gateway()
 		)
-		projectile.call("setup", Vector2.RIGHT, 50, 100.0, 1.0)
+		var source_snapshot := _hostile_source_snapshot(
+			90000 + projectile_index,
+			&"enemy_plant_direct_projectile"
+		)
+		if projectile is CapooAK47Bullet:
+			projectile.call(
+				&"setup",
+				Vector2.RIGHT,
+				50,
+				100.0,
+				1.0,
+				null,
+				null,
+				source_snapshot
+			)
+		else:
+			projectile.call(
+				&"setup",
+				Vector2.RIGHT,
+				50,
+				100.0,
+				1.0,
+				source_snapshot
+			)
 		_expect(
 			(projectile.collision_mask & 512) != 0,
 			"Enemy projectile must monitor the PlantDefense collision layer: %s" % projectile_scene.resource_path
@@ -446,7 +475,15 @@ func _verify_projectile_plant_damage_contract() -> void:
 		test_root,
 		test_root.get_multiplayer_gameplay_gateway()
 	)
-	ghost_bullet.setup(Vector2.RIGHT, 50, 100.0, 1.0)
+	ghost_bullet.setup(
+		Vector2.RIGHT,
+		50,
+		100.0,
+		1.0,
+		null,
+		null,
+		_hostile_source_snapshot(90010, &"enemy_plant_removing_projectile")
+	)
 	removing_plant.begin_removal(PlantDefense.RemovalMode.ANIMATED)
 	ghost_bullet.call("_on_body_entered", removing_plant)
 	_expect(
@@ -461,9 +498,20 @@ func _verify_projectile_plant_damage_contract() -> void:
 	var rocket_health_before := rocket_plant.current_health
 	var rocket := RPG_ROCKET_SCENE.instantiate() as CapooRPGRocket
 	test_root.add_child(rocket)
+	rocket.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	rocket.monitoring = false
 	rocket.global_position = rocket_plant.global_position
-	rocket.setup(Vector2.RIGHT, 50, 0.0, 1.0, 44.0)
+	rocket.setup(
+		Vector2.RIGHT,
+		50,
+		0.0,
+		1.0,
+		44.0,
+		_hostile_source_snapshot(90020, &"enemy_plant_rpg")
+	)
 	await physics_frame
 	rocket.call("_apply_explosion_damage")
 	_expect(
@@ -483,9 +531,22 @@ func _verify_projectile_plant_damage_contract() -> void:
 	var fireball_health_before := fireball_plant.current_health
 	var fireball := MAGE_FIREBALL_SCENE.instantiate() as CapooMageFireball
 	test_root.add_child(fireball)
+	fireball.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	fireball.monitoring = false
 	fireball.global_position = fireball_plant.global_position
-	fireball.setup(Vector2.RIGHT, 50, 0.0, 1.0, 16.0, fireball_plant, 0.65)
+	fireball.setup(
+		Vector2.RIGHT,
+		50,
+		0.0,
+		1.0,
+		16.0,
+		fireball_plant,
+		0.65,
+		_hostile_source_snapshot(90030, &"enemy_plant_mage")
+	)
 	await physics_frame
 	_expect(fireball.target_player == fireball_plant, "Mage fireball must retain a plant homing target.")
 	fireball.call("_apply_explosion_damage")
@@ -504,6 +565,10 @@ func _verify_projectile_plant_damage_contract() -> void:
 	var removing_fireball_health := removing_fireball_plant.current_health
 	var removing_fireball := MAGE_FIREBALL_SCENE.instantiate() as CapooMageFireball
 	test_root.add_child(removing_fireball)
+	removing_fireball.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	removing_fireball.monitoring = false
 	removing_fireball.global_position = removing_fireball_plant.global_position
 	removing_fireball.setup(
@@ -513,7 +578,8 @@ func _verify_projectile_plant_damage_contract() -> void:
 		1.0,
 		16.0,
 		removing_fireball_plant,
-		0.65
+		0.65,
+		_hostile_source_snapshot(90031, &"enemy_plant_removing_mage")
 	)
 	removing_fireball_plant.begin_removal(PlantDefense.RemovalMode.ANIMATED)
 	_expect(
@@ -548,7 +614,7 @@ func _verify_sniper_plant_damage_contract() -> void:
 
 	var proxy_sniper := SNIPER_CONFIG.enemy_scene.instantiate() as CapooSniper
 	test_root.add_child(proxy_sniper)
-	proxy_sniper.setup(SNIPER_CONFIG, player)
+	proxy_sniper.setup(SNIPER_CONFIG, player, null, test_root)
 	proxy_sniper.configure_multiplayer_proxy()
 	proxy_sniper.play_multiplayer_enemy_action(
 		&"sniper_plant_lock_start",
@@ -556,8 +622,16 @@ func _verify_sniper_plant_damage_contract() -> void:
 		1
 	)
 	await process_frame
+	var warning_system := (
+		test_root.get_enemy_combat_services()
+		.get_enemy_warning_presentation_system()
+	)
 	_expect(
-		proxy_sniper.proxy_plant_lock_active and proxy_sniper.aim_glow.visible,
+		proxy_sniper.proxy_plant_lock_active
+		and warning_system != null
+		and warning_system.is_handle_live(
+			proxy_sniper.sniper_line_warning_handle
+		),
 		"Client-view sniper proxy must render a plant lock through generic enemy actions."
 	)
 	proxy_sniper.play_multiplayer_enemy_action(
@@ -573,6 +647,19 @@ func _verify_sniper_plant_damage_contract() -> void:
 	plant.begin_removal(PlantDefense.RemovalMode.SILENT)
 	player.queue_free()
 	await physics_frame
+
+
+func _hostile_source_snapshot(
+	event_source_id: int,
+	source_type: StringName
+) -> DamageSourceSnapshot:
+	return DamageSourceSnapshot.create(
+		CombatRelationService.HOSTILE_WAVE,
+		0,
+		700,
+		event_source_id,
+		source_type
+	)
 
 
 func _spawn_enemy(enemy_config: EnemyConfig, player: Player) -> Enemy:
