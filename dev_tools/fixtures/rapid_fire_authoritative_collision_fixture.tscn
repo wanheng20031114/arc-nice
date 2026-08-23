@@ -1,0 +1,41 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="PackedScene" path="res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn" id="1_runtime"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/plant/runtime/plant_system.gd" id="2_plant_system"]
+[ext_resource type="Script" path="res://scene/plant_defense/plant_defense.gd" id="3_plant"]
+[ext_resource type="PackedScene" path="res://scene/player/weishidaier/player_weishidaier.tscn" id="4_player"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_plant"]
+size = Vector2(4, 8)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wall"]
+size = Vector2(0.5, 20)
+
+[node name="RapidFireAuthoritativeCollisionFixture" instance=ExtResource("1_runtime")]
+
+[node name="PlantSystem" type="Node" parent="."]
+script = ExtResource("2_plant_system")
+
+[node name="PlantContainer" type="Node2D" parent="."]
+
+[node name="TargetPlant" type="StaticBody2D" parent="PlantContainer"]
+position = Vector2(10000, 10000)
+collision_layer = 512
+collision_mask = 0
+script = ExtResource("3_plant")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlantContainer/TargetPlant"]
+shape = SubResource("RectangleShape2D_plant")
+
+[node name="ThinWorldWall" type="StaticBody2D" parent="."]
+position = Vector2(10000, 10000)
+collision_layer = 1
+collision_mask = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ThinWorldWall"]
+shape = SubResource("RectangleShape2D_wall")
+
+[node name="TargetPlayer" parent="." instance=ExtResource("4_player")]
+process_mode = 4
+visible = false
+position = Vector2(10000, 10000)

@@ -1,10 +1,9 @@
 extends Node
 class_name RapidFireSimulationService
 
-## Data-oriented simulation boundary for high-volume rapid-fire projectiles.
-## The kernel owns only scalar simulation state. It does not discover or retain
-## projectile Nodes and does not write damage, networking, presentation, or pool
-## outcomes. Production AK routing remains outside this phase.
+## Data-oriented simulation and authoritative contact boundary for high-volume
+## rapid-fire projectiles. Production AK routing remains deliberately outside
+## this service: callers register scalar records and consume completion records.
 
 enum Mode {
 	DISABLED,
@@ -24,7 +23,26 @@ enum SlotState {
 	TOMBSTONE,
 }
 
+enum CompletionReason {
+	NONE,
+	LIFETIME,
+	WORLD,
+	TARGET,
+}
+
+enum TargetKind {
+	NONE,
+	WORLD,
+	PLAYER,
+	PLANT,
+}
+
 const PROFILE_AK := &"ak"
+const AK_SOURCE_TYPE := &"capoo_ak47_bullet"
+const AK_WORLD_COLLISION_MASK := 1
+const AK_WORLD_CHECK_INTERVAL := 2
+const AK_COLLISION_SIZE := Vector2(5.0, 2.0)
+const AK_COLLISION_CENTER_FORWARD_OFFSET := 0.5
 const INVALID_HANDLE := 0
 const INVALID_SLOT := -1
 const HANDLE_SLOT_BITS := 32
@@ -34,8 +52,27 @@ const MIN_GROWTH_CAPACITY := 64
 
 var _combat_runtime: CombatRuntimeBase = null
 var _enemy_simulation_coordinator: EnemySimulationCoordinator = null
+var _enemy_damageable_spatial_index: EnemyDamageableSpatialIndex = null
+var _grid_pathfinder: GridPathfinder = null
 var _teardown_prepared := false
 var _teardown_count := 0
+
+## Disabled by default, matching the legacy projectile. When enabled, only a
+## positive GridPathfinder certificate suppresses the native ray query;
+## unavailable or uncertain certificates always fall back to PhysicsServer2D.
+static var world_collision_certificate_enabled := false
+
+var _ak_collision_shape := RectangleShape2D.new()
+var _world_ray_query := PhysicsRayQueryParameters2D.create(
+	Vector2.ZERO,
+	Vector2.ZERO,
+	AK_WORLD_COLLISION_MASK
+)
+var _plant_query_results: Array = []
+var _endpoint_target: Node2D = null
+var _endpoint_target_kind := TargetKind.NONE
+var _endpoint_target_id := 0
+var _world_hit_position := Vector2.ZERO
 
 # Dense simulation records. `_record_count` is the initialized prefix; storage
 # is resized ahead of use so the physics loop never grows a container.
@@ -54,6 +91,11 @@ var _world_check_intervals := PackedInt32Array()
 var _world_check_phases := PackedInt32Array()
 var _world_step_indices := PackedInt32Array()
 var _world_query_due_states := PackedByteArray()
+var _world_collision_anchors := PackedVector2Array()
+var _pending_target_instance_ids := PackedInt64Array()
+var _pending_target_kinds := PackedInt32Array()
+var _pending_target_ids := PackedInt64Array()
+var _pending_target_positions := PackedVector2Array()
 var _modes := PackedInt32Array()
 var _handle_slots := PackedInt32Array()
 var _simulation_ticks := PackedInt32Array()
@@ -82,6 +124,10 @@ var _completion_handles := PackedInt64Array()
 var _completion_projectile_ids := PackedInt64Array()
 var _completion_positions := PackedVector2Array()
 var _completion_spawn_sequences := PackedInt64Array()
+var _completion_reasons := PackedInt32Array()
+var _completion_target_kinds := PackedInt32Array()
+var _completion_target_ids := PackedInt64Array()
+var _completion_damage_applied_states := PackedByteArray()
 var _completion_capacity := 0
 var _completion_count := 0
 
@@ -103,6 +149,14 @@ var _metric_activation_skips := 0
 var _metric_activations := 0
 var _metric_advances := 0
 var _metric_lifetime_completions := 0
+var _metric_world_completions := 0
+var _metric_target_completions := 0
+var _metric_world_queries := 0
+var _metric_world_certificates := 0
+var _metric_plant_broad_queries := 0
+var _metric_plant_exact_queries := 0
+var _metric_player_exact_queries := 0
+var _metric_damage_applications := 0
 var _metric_compactions := 0
 var _metric_compacted_tombstones := 0
 var _metric_difference_records := 0
@@ -110,6 +164,9 @@ var _metric_difference_records := 0
 
 func _init() -> void:
 	set_physics_process(false)
+	_ak_collision_shape.size = AK_COLLISION_SIZE
+	_world_ray_query.collide_with_bodies = true
+	_world_ray_query.collide_with_areas = false
 
 
 func bind_context(
@@ -136,6 +193,20 @@ func bind_context(
 		return false
 	_combat_runtime = combat_runtime
 	_enemy_simulation_coordinator = coordinator
+	_grid_pathfinder = combat_runtime.get_node_or_null(
+		"GridPathfinder"
+	) as GridPathfinder
+	var combat_services := get_parent() as EnemyCombatServices
+	_enemy_damageable_spatial_index = (
+		combat_services.get_enemy_damageable_spatial_index()
+		if combat_services != null
+		else null
+	)
+	if _enemy_damageable_spatial_index == null:
+		_combat_runtime = null
+		_enemy_simulation_coordinator = null
+		_grid_pathfinder = null
+		return false
 	return true
 
 
@@ -225,6 +296,11 @@ func register_projectile(
 	_world_check_phases[dense_slot] = world_check_phase
 	_world_step_indices[dense_slot] = 0
 	_world_query_due_states[dense_slot] = 0
+	_world_collision_anchors[dense_slot] = position
+	_pending_target_instance_ids[dense_slot] = 0
+	_pending_target_kinds[dense_slot] = TargetKind.NONE
+	_pending_target_ids[dense_slot] = 0
+	_pending_target_positions[dense_slot] = Vector2.ZERO
 	_modes[dense_slot] = mode
 	_handle_slots[dense_slot] = handle_slot
 	_simulation_ticks[dense_slot] = 0
@@ -241,6 +317,27 @@ func register_projectile(
 	_metric_registrations += 1
 	set_physics_process(true)
 	return _encode_handle(handle_slot, generation)
+
+
+## Multiplayer identity is assigned while the record is still inert. The
+## write is atomic with the AK phase derivation and never rewinds cadence.
+func assign_projectile_identity(handle: int, projectile_id: int) -> bool:
+	if projectile_id <= 0:
+		return false
+	var dense_slot := _resolve_dense_slot(handle)
+	if dense_slot < 0 or _states[dense_slot] != SlotState.PENDING_ACTIVATION:
+		return false
+	var current_projectile_id := int(_projectile_ids[dense_slot])
+	if current_projectile_id > 0:
+		if current_projectile_id != projectile_id:
+			return false
+		_world_check_phases[dense_slot] = (
+			projectile_id % AK_WORLD_CHECK_INTERVAL
+		)
+		return true
+	_projectile_ids[dense_slot] = projectile_id
+	_world_check_phases[dense_slot] = projectile_id % AK_WORLD_CHECK_INTERVAL
+	return true
 
 
 func release_projectile(handle: int) -> bool:
@@ -398,6 +495,14 @@ func get_spawn_sequence(handle: int) -> int:
 	return int(_spawn_sequences[dense_slot]) if dense_slot >= 0 else 0
 
 
+func get_ak_collision_size() -> Vector2:
+	return _ak_collision_shape.size
+
+
+func get_ak_collision_center_forward_offset() -> float:
+	return AK_COLLISION_CENTER_FORWARD_OFFSET
+
+
 func clear_completion_records() -> void:
 	_completion_count = 0
 
@@ -435,6 +540,38 @@ func get_completion_spawn_sequence(index: int) -> int:
 		int(_completion_spawn_sequences[index])
 		if index >= 0 and index < _completion_count
 		else 0
+	)
+
+
+func get_completion_reason(index: int) -> CompletionReason:
+	return (
+		int(_completion_reasons[index]) as CompletionReason
+		if index >= 0 and index < _completion_count
+		else CompletionReason.NONE
+	)
+
+
+func get_completion_target_kind(index: int) -> TargetKind:
+	return (
+		int(_completion_target_kinds[index]) as TargetKind
+		if index >= 0 and index < _completion_count
+		else TargetKind.NONE
+	)
+
+
+func get_completion_target_id(index: int) -> int:
+	return (
+		int(_completion_target_ids[index])
+		if index >= 0 and index < _completion_count
+		else 0
+	)
+
+
+func get_completion_damage_applied(index: int) -> bool:
+	return (
+		_completion_damage_applied_states[index] != 0
+		if index >= 0 and index < _completion_count
+		else false
 	)
 
 
@@ -522,6 +659,8 @@ func prepare_for_runtime_teardown() -> void:
 	_teardown_prepared = true
 	_teardown_count += 1
 	clear()
+	_enemy_damageable_spatial_index = null
+	_grid_pathfinder = null
 	_combat_runtime = null
 	_enemy_simulation_coordinator = null
 
@@ -543,6 +682,11 @@ func clear() -> void:
 	_world_check_phases.resize(0)
 	_world_step_indices.resize(0)
 	_world_query_due_states.resize(0)
+	_world_collision_anchors.resize(0)
+	_pending_target_instance_ids.resize(0)
+	_pending_target_kinds.resize(0)
+	_pending_target_ids.resize(0)
+	_pending_target_positions.resize(0)
 	_modes.resize(0)
 	_handle_slots.resize(0)
 	_simulation_ticks.resize(0)
@@ -554,6 +698,10 @@ func clear() -> void:
 	_completion_projectile_ids.resize(0)
 	_completion_positions.resize(0)
 	_completion_spawn_sequences.resize(0)
+	_completion_reasons.resize(0)
+	_completion_target_kinds.resize(0)
+	_completion_target_ids.resize(0)
+	_completion_damage_applied_states.resize(0)
 	_difference_handles.resize(0)
 	_difference_projectile_ids.resize(0)
 	_difference_position_deltas.resize(0)
@@ -573,6 +721,10 @@ func clear() -> void:
 	_completion_count = 0
 	_difference_capacity = 0
 	_difference_count = 0
+	_plant_query_results.clear()
+	_endpoint_target = null
+	_endpoint_target_kind = TargetKind.NONE
+	_endpoint_target_id = 0
 	_reset_kernel_metrics()
 
 
@@ -601,6 +753,14 @@ func get_metrics() -> Dictionary:
 		"activations": _metric_activations,
 		"advances": _metric_advances,
 		"lifetime_completions": _metric_lifetime_completions,
+		"world_completions": _metric_world_completions,
+		"target_completions": _metric_target_completions,
+		"world_queries": _metric_world_queries,
+		"world_certificates": _metric_world_certificates,
+		"plant_broad_queries": _metric_plant_broad_queries,
+		"plant_exact_queries": _metric_plant_exact_queries,
+		"player_exact_queries": _metric_player_exact_queries,
+		"damage_applications": _metric_damage_applications,
 		"compactions": _metric_compactions,
 		"compacted_tombstones": _metric_compacted_tombstones,
 		"recorded_differences": _metric_difference_records,
@@ -609,12 +769,22 @@ func get_metrics() -> Dictionary:
 
 func _physics_process(delta: float) -> void:
 	_completion_count = 0
+	# SHADOW observations belong to the immediately preceding physics result.
+	# Priority 4 clears them before advancing; the priority 5 legacy batch then
+	# writes the current frame's comparison set for post-physics consumers.
+	_difference_count = 0
 	if _record_count <= 0:
 		set_physics_process(false)
 		return
 	var valid_delta := is_finite(delta) and delta > 0.0
 	var physics_frame := Engine.get_physics_frames()
 	var initial_record_count := _record_count
+	var resolve_contacts := (
+		is_bound()
+		and _combat_runtime.is_inside_tree()
+		and _enemy_damageable_spatial_index != null
+		and is_instance_valid(_enemy_damageable_spatial_index)
+	)
 	_metric_physics_ticks += 1
 	for dense_slot in range(initial_record_count):
 		var state := int(_states[dense_slot])
@@ -629,6 +799,20 @@ func _physics_process(delta: float) -> void:
 			_states[dense_slot] = SlotState.ACTIVE
 			_pending_activation_count = maxi(_pending_activation_count - 1, 0)
 			_metric_activations += 1
+			# Legacy Area2D can consume an overlap on its first live frame before
+			# its first motion step. This is still endpoint-only: no path is swept.
+			if resolve_contacts and _find_endpoint_target(
+				_positions[dense_slot],
+				_directions[dense_slot]
+			):
+				_complete_target_contact(dense_slot, _positions[dense_slot])
+				continue
+		if (
+			resolve_contacts
+			and _pending_target_kinds[dense_slot] != TargetKind.NONE
+			and _resolve_pending_target_contact(dense_slot)
+		):
+			continue
 		var current_check_phase := int(_world_step_indices[dense_slot])
 		var world_check_interval := int(_world_check_intervals[dense_slot])
 		_world_step_indices[dense_slot] = (
@@ -638,24 +822,377 @@ func _physics_process(delta: float) -> void:
 			current_check_phase == int(_world_check_phases[dense_slot])
 		)
 		var remaining_after_step := _remaining_lifetimes[dense_slot] - delta
-		_positions[dense_slot] += (
+		var endpoint := _positions[dense_slot] + (
 			_directions[dense_slot]
 			* _speeds[dense_slot]
 			* delta
 		)
+		_positions[dense_slot] = endpoint
 		_remaining_lifetimes[dense_slot] = maxf(
 			remaining_after_step,
 			0.0
 		)
 		_simulation_ticks[dense_slot] += 1
 		_metric_advances += 1
+
+		var must_validate_world := (
+			_world_query_due_states[dense_slot] != 0
+			or remaining_after_step <= 0.0
+		)
+		if resolve_contacts and must_validate_world:
+			if _resolve_world_contact(
+				_world_collision_anchors[dense_slot],
+				endpoint
+			):
+				_positions[dense_slot] = _world_hit_position
+				_append_completion(
+					dense_slot,
+					CompletionReason.WORLD,
+					TargetKind.WORLD,
+					0,
+					_world_hit_position,
+					false
+				)
+				_mark_tombstone(dense_slot)
+				_metric_world_completions += 1
+				continue
+			_world_collision_anchors[dense_slot] = endpoint
 		if remaining_after_step <= 0.0:
-			_append_completion(dense_slot)
+			_append_completion(
+				dense_slot,
+				CompletionReason.LIFETIME,
+				TargetKind.NONE,
+				0,
+				endpoint,
+				false
+			)
 			_mark_tombstone(dense_slot)
 			_metric_lifetime_completions += 1
+			continue
+
+		if resolve_contacts and _find_endpoint_target(
+			endpoint,
+			_directions[dense_slot]
+		):
+			_cache_pending_target(dense_slot, endpoint)
+
 	if _tombstone_count > 0:
 		_stable_compact_tombstones()
 	set_physics_process(_record_count > 0)
+
+
+func _resolve_world_contact(from_position: Vector2, to_position: Vector2) -> bool:
+	_world_hit_position = to_position
+	if from_position.is_equal_approx(to_position):
+		return false
+	if (
+		world_collision_certificate_enabled
+		and _grid_pathfinder != null
+		and is_instance_valid(_grid_pathfinder)
+		and _grid_pathfinder.is_world_collision_segment_certified_clear(
+			from_position,
+			to_position
+		)
+	):
+		_metric_world_certificates += 1
+		return false
+	_world_ray_query.from = from_position
+	_world_ray_query.to = to_position
+	_metric_world_queries += 1
+	var hit := _combat_runtime.get_world_2d().direct_space_state.intersect_ray(
+		_world_ray_query
+	)
+	if hit.is_empty():
+		return false
+	_world_hit_position = hit.get(&"position", to_position) as Vector2
+	return true
+
+
+func _find_endpoint_target(endpoint: Vector2, direction: Vector2) -> bool:
+	_endpoint_target = null
+	_endpoint_target_kind = TargetKind.NONE
+	_endpoint_target_id = 0
+	var projectile_transform := Transform2D(
+		direction.angle(),
+		endpoint + direction * AK_COLLISION_CENTER_FORWARD_OFFSET
+	)
+	if _find_endpoint_player(projectile_transform):
+		return true
+	return _find_endpoint_plant(projectile_transform, direction)
+
+
+func _cache_pending_target(dense_slot: int, endpoint: Vector2) -> void:
+	_pending_target_instance_ids[dense_slot] = (
+		_endpoint_target.get_instance_id()
+		if _endpoint_target != null
+		else 0
+	)
+	_pending_target_kinds[dense_slot] = _endpoint_target_kind
+	_pending_target_ids[dense_slot] = _endpoint_target_id
+	_pending_target_positions[dense_slot] = endpoint
+
+
+func _resolve_pending_target_contact(dense_slot: int) -> bool:
+	var target_position := _pending_target_positions[dense_slot]
+	# This reproduces Area2D's one-physics-flush delivery: the endpoint was
+	# observed last tick, but the unchecked world suffix is adjudicated now.
+	if _resolve_world_contact(
+		_world_collision_anchors[dense_slot],
+		target_position
+	):
+		_positions[dense_slot] = _world_hit_position
+		_append_completion(
+			dense_slot,
+			CompletionReason.WORLD,
+			TargetKind.WORLD,
+			0,
+			_world_hit_position,
+			false
+		)
+		_clear_pending_target(dense_slot)
+		_mark_tombstone(dense_slot)
+		_metric_world_completions += 1
+		return true
+	_world_collision_anchors[dense_slot] = target_position
+
+	var target_kind := int(_pending_target_kinds[dense_slot])
+	var target := instance_from_id(
+		int(_pending_target_instance_ids[dense_slot])
+	) as Node2D
+	if target_kind == TargetKind.PLANT:
+		var plant := target as PlantDefense
+		if (
+			plant == null
+			or not is_instance_valid(plant)
+			or plant.is_queued_for_deletion()
+			or plant.is_dead
+			or plant.is_removing
+		):
+			_clear_pending_target(dense_slot)
+			return false
+	elif target_kind == TargetKind.PLAYER:
+		if target == null or not is_instance_valid(target):
+			_clear_pending_target(dense_slot)
+			return false
+	else:
+		_clear_pending_target(dense_slot)
+		return false
+
+	_endpoint_target = target
+	_endpoint_target_kind = target_kind
+	_endpoint_target_id = int(_pending_target_ids[dense_slot])
+	_clear_pending_target(dense_slot)
+	_complete_target_contact(dense_slot, target_position)
+	return true
+
+
+func _clear_pending_target(dense_slot: int) -> void:
+	_pending_target_instance_ids[dense_slot] = 0
+	_pending_target_kinds[dense_slot] = TargetKind.NONE
+	_pending_target_ids[dense_slot] = 0
+	_pending_target_positions[dense_slot] = Vector2.ZERO
+
+
+func _find_endpoint_player(projectile_transform: Transform2D) -> bool:
+	var local_player := _combat_runtime.player
+	_consider_endpoint_player(
+		local_player,
+		_get_player_stable_id(local_player, _combat_runtime.multiplayer_local_peer_id),
+		projectile_transform
+	)
+	for peer_id_variant in _combat_runtime.peer_players:
+		var player := _combat_runtime.peer_players.get(peer_id_variant) as Player
+		if player == local_player:
+			continue
+		_consider_endpoint_player(
+			player,
+			_get_player_stable_id(player, int(peer_id_variant)),
+			projectile_transform
+		)
+	return _endpoint_target != null
+
+
+func _consider_endpoint_player(
+	player: Player,
+	stable_id: int,
+	projectile_transform: Transform2D
+) -> void:
+	if (
+		player == null
+		or not is_instance_valid(player)
+		or player.is_queued_for_deletion()
+		or player.collision_shape == null
+		or player.collision_shape.disabled
+		or player.collision_shape.shape == null
+	):
+		return
+	_metric_player_exact_queries += 1
+	if not _ak_collision_shape.collide(
+		projectile_transform,
+		player.collision_shape.shape,
+		player.collision_shape.global_transform
+	):
+		return
+	var resolved_stable_id := stable_id
+	if resolved_stable_id <= 0:
+		resolved_stable_id = int(player.get_instance_id())
+	if (
+		_endpoint_target == null
+		or resolved_stable_id < _endpoint_target_id
+		or (
+			resolved_stable_id == _endpoint_target_id
+			and player.get_instance_id() < _endpoint_target.get_instance_id()
+		)
+	):
+		_endpoint_target = player
+		_endpoint_target_kind = TargetKind.PLAYER
+		_endpoint_target_id = resolved_stable_id
+
+
+func _find_endpoint_plant(
+	projectile_transform: Transform2D,
+	direction: Vector2
+) -> bool:
+	var half_size := AK_COLLISION_SIZE * 0.5
+	var world_extents := Vector2(
+		absf(direction.x) * half_size.x + absf(direction.y) * half_size.y,
+		absf(direction.y) * half_size.x + absf(direction.x) * half_size.y
+	)
+	var center := projectile_transform.origin
+	_metric_plant_broad_queries += 1
+	_enemy_damageable_spatial_index.query_world_aabb_into(
+		Rect2(center - world_extents, world_extents * 2.0),
+		_plant_query_results
+	)
+	var selected_instance_id := 0
+	for candidate_variant in _plant_query_results:
+		var plant := candidate_variant as PlantDefense
+		if (
+			plant == null
+			or not is_instance_valid(plant)
+			or plant.is_queued_for_deletion()
+			or plant.is_dead
+			or plant.is_removing
+		):
+			continue
+		_metric_plant_exact_queries += 1
+		if not _enemy_damageable_spatial_index.damageable_overlaps_shape(
+			plant,
+			_ak_collision_shape,
+			projectile_transform
+		):
+			continue
+		var stable_id := int(plant.get_meta(&"net_id", 0))
+		if stable_id <= 0:
+			stable_id = int(plant.get_instance_id())
+		var instance_id := int(plant.get_instance_id())
+		if (
+			_endpoint_target == null
+			or stable_id < _endpoint_target_id
+			or (
+				stable_id == _endpoint_target_id
+				and instance_id < selected_instance_id
+			)
+		):
+			_endpoint_target = plant
+			_endpoint_target_kind = TargetKind.PLANT
+			_endpoint_target_id = stable_id
+			selected_instance_id = instance_id
+	return _endpoint_target != null
+
+
+func _get_player_stable_id(player: Player, roster_peer_id: int) -> int:
+	if roster_peer_id > 0:
+		return roster_peer_id
+	if player != null and player.peer_id > 0:
+		return player.peer_id
+	if player == _combat_runtime.player:
+		return 1
+	return 0
+
+
+func _complete_target_contact(dense_slot: int, position: Vector2) -> void:
+	var damage_applied := false
+	if (
+		_modes[dense_slot] == Mode.DATA
+		and _combat_runtime.runtime_mode
+			!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		and _damages[dense_slot] > 0
+	):
+		damage_applied = _apply_authoritative_damage(dense_slot)
+		if damage_applied:
+			_metric_damage_applications += 1
+	_append_completion(
+		dense_slot,
+		CompletionReason.TARGET,
+		_endpoint_target_kind,
+		_endpoint_target_id,
+		position,
+		damage_applied
+	)
+	_mark_tombstone(dense_slot)
+	_metric_target_completions += 1
+
+
+func _apply_authoritative_damage(dense_slot: int) -> bool:
+	if _endpoint_target_kind == TargetKind.PLANT:
+		var plant := _endpoint_target as PlantDefense
+		return (
+			plant != null
+			and not plant.is_dead
+			and not plant.is_removing
+			and plant.apply_combat_damage(
+				_make_damage_request(dense_slot)
+			).accepted
+		)
+	if _endpoint_target_kind == TargetKind.PLAYER:
+		var player := _endpoint_target as Player
+		if player == null or player.is_dead:
+			return false
+		if (
+			_combat_runtime.runtime_mode
+			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+		):
+			return player.apply_combat_damage(
+				_make_damage_request(dense_slot)
+			).accepted
+		var projectile_id := int(_projectile_ids[dense_slot])
+		var gateway := _combat_runtime.get_multiplayer_gameplay_gateway()
+		return (
+			projectile_id > 0
+			and player.peer_id > 0
+			and gateway != null
+			and is_instance_valid(gateway)
+			and gateway.request_player_damage(
+				projectile_id,
+				player.peer_id,
+				int(_damages[dense_slot]),
+				AK_SOURCE_TYPE,
+				EnemyConfig.DamageType.PHYSICAL,
+				-_directions[dense_slot],
+				true
+			)
+		)
+	return false
+
+
+func _make_damage_request(dense_slot: int) -> DamageRequest:
+	return (
+		DamageRequest.new(
+			int(_damages[dense_slot]),
+			CombatTypes.DamageType.PHYSICAL
+		)
+		.with_stable_source(
+			int(_source_enemy_ids[dense_slot]),
+			int(_projectile_ids[dense_slot]),
+			AK_SOURCE_TYPE
+		)
+		.with_directions(
+			_directions[dense_slot],
+			-_directions[dense_slot]
+		)
+		.with_flag(CombatTypes.DamageFlag.RANGED)
+	)
 
 
 func _is_valid_registration(
@@ -685,7 +1222,7 @@ func _is_valid_registration(
 		and damage >= 0
 		and source_enemy_id >= 0
 		and projectile_id >= 0
-		and world_check_interval > 0
+		and world_check_interval == AK_WORLD_CHECK_INTERVAL
 		and world_check_phase >= 0
 		and world_check_phase < world_check_interval
 	)
@@ -717,6 +1254,11 @@ func _resize_record_storage(new_capacity: int) -> void:
 	_world_check_phases.resize(new_capacity)
 	_world_step_indices.resize(new_capacity)
 	_world_query_due_states.resize(new_capacity)
+	_world_collision_anchors.resize(new_capacity)
+	_pending_target_instance_ids.resize(new_capacity)
+	_pending_target_kinds.resize(new_capacity)
+	_pending_target_ids.resize(new_capacity)
+	_pending_target_positions.resize(new_capacity)
 	_modes.resize(new_capacity)
 	_handle_slots.resize(new_capacity)
 	_simulation_ticks.resize(new_capacity)
@@ -744,6 +1286,10 @@ func _resize_completion_storage(new_capacity: int) -> void:
 	_completion_projectile_ids.resize(new_capacity)
 	_completion_positions.resize(new_capacity)
 	_completion_spawn_sequences.resize(new_capacity)
+	_completion_reasons.resize(new_capacity)
+	_completion_target_kinds.resize(new_capacity)
+	_completion_target_ids.resize(new_capacity)
+	_completion_damage_applied_states.resize(new_capacity)
 	_completion_capacity = new_capacity
 
 
@@ -803,7 +1349,14 @@ func _resolve_dense_slot(handle: int) -> int:
 	return dense_slot
 
 
-func _append_completion(dense_slot: int) -> void:
+func _append_completion(
+	dense_slot: int,
+	reason: CompletionReason,
+	target_kind: TargetKind,
+	target_id: int,
+	position: Vector2,
+	damage_applied: bool
+) -> void:
 	if _completion_count >= _completion_capacity:
 		push_error("RapidFireSimulationService completion storage invariant failed.")
 		return
@@ -814,8 +1367,12 @@ func _append_completion(dense_slot: int) -> void:
 		int(_record_generations[dense_slot])
 	)
 	_completion_projectile_ids[completion_index] = _projectile_ids[dense_slot]
-	_completion_positions[completion_index] = _positions[dense_slot]
+	_completion_positions[completion_index] = position
 	_completion_spawn_sequences[completion_index] = _spawn_sequences[dense_slot]
+	_completion_reasons[completion_index] = reason
+	_completion_target_kinds[completion_index] = target_kind
+	_completion_target_ids[completion_index] = target_id
+	_completion_damage_applied_states[completion_index] = int(damage_applied)
 
 
 func _mark_tombstone(dense_slot: int) -> void:
@@ -884,6 +1441,11 @@ func _copy_record(from_slot: int, to_slot: int) -> void:
 	_world_check_phases[to_slot] = _world_check_phases[from_slot]
 	_world_step_indices[to_slot] = _world_step_indices[from_slot]
 	_world_query_due_states[to_slot] = _world_query_due_states[from_slot]
+	_world_collision_anchors[to_slot] = _world_collision_anchors[from_slot]
+	_pending_target_instance_ids[to_slot] = _pending_target_instance_ids[from_slot]
+	_pending_target_kinds[to_slot] = _pending_target_kinds[from_slot]
+	_pending_target_ids[to_slot] = _pending_target_ids[from_slot]
+	_pending_target_positions[to_slot] = _pending_target_positions[from_slot]
 	_modes[to_slot] = _modes[from_slot]
 	_handle_slots[to_slot] = _handle_slots[from_slot]
 	_simulation_ticks[to_slot] = _simulation_ticks[from_slot]
@@ -906,6 +1468,11 @@ func _clear_record_row(dense_slot: int) -> void:
 	_world_check_phases[dense_slot] = 0
 	_world_step_indices[dense_slot] = 0
 	_world_query_due_states[dense_slot] = 0
+	_world_collision_anchors[dense_slot] = Vector2.ZERO
+	_pending_target_instance_ids[dense_slot] = 0
+	_pending_target_kinds[dense_slot] = TargetKind.NONE
+	_pending_target_ids[dense_slot] = 0
+	_pending_target_positions[dense_slot] = Vector2.ZERO
 	_modes[dense_slot] = Mode.DISABLED
 	_handle_slots[dense_slot] = INVALID_SLOT
 	_simulation_ticks[dense_slot] = 0
@@ -921,6 +1488,14 @@ func _reset_kernel_metrics() -> void:
 	_metric_activations = 0
 	_metric_advances = 0
 	_metric_lifetime_completions = 0
+	_metric_world_completions = 0
+	_metric_target_completions = 0
+	_metric_world_queries = 0
+	_metric_world_certificates = 0
+	_metric_plant_broad_queries = 0
+	_metric_plant_exact_queries = 0
+	_metric_player_exact_queries = 0
+	_metric_damage_applications = 0
 	_metric_compactions = 0
 	_metric_compacted_tombstones = 0
 	_metric_difference_records = 0

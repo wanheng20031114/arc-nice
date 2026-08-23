@@ -79,7 +79,11 @@ func _test_same_frame_activation_and_final_lifetime_step() -> void:
 	)
 	_expect(
 		service.get_completion_handle(0) == handle
-		and service.get_completion_projectile_id(0) == 1001,
+		and service.get_completion_projectile_id(0) == 1001
+		and service.get_completion_reason(0)
+		== RapidFireSimulationServiceScript.CompletionReason.LIFETIME
+		and service.get_completion_target_kind(0)
+		== RapidFireSimulationServiceScript.TargetKind.NONE,
 		"Completion output must preserve the exact handle and projectile ID."
 	)
 	var expected_final_position := (
@@ -101,6 +105,62 @@ func _test_same_frame_activation_and_final_lifetime_step() -> void:
 	)
 	service.prepare_for_runtime_teardown()
 	service.free()
+
+	var identity_service := RapidFireSimulationServiceScript.new()
+	identity_service.reserve_projectile_capacity(2)
+	var identity_handle := identity_service.register_projectile(
+		RapidFireSimulationServiceScript.Mode.DATA,
+		RapidFireSimulationServiceScript.Profile.AK,
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		60.0,
+		1.0,
+		10,
+		55,
+		0,
+		2,
+		0
+	)
+	_expect(
+		identity_service.assign_projectile_identity(identity_handle, 2001)
+		and identity_service.assign_projectile_identity(identity_handle, 2001)
+		and not identity_service.assign_projectile_identity(
+			identity_handle, 2002
+		)
+		and identity_service.get_projectile_id(identity_handle) == 2001
+		and identity_service.get_world_check_phase(identity_handle) == 1
+		and identity_service.get_world_step_index(identity_handle) == 0,
+		"Pending identity assignment must be atomic, idempotent, and derive phase without rewinding cadence."
+	)
+	var preidentified_handle := identity_service.register_projectile(
+		RapidFireSimulationServiceScript.Mode.DATA,
+		RapidFireSimulationServiceScript.Profile.AK,
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		60.0,
+		1.0,
+		10,
+		55,
+		2002,
+		2,
+		1
+	)
+	_expect(
+		identity_service.assign_projectile_identity(
+			preidentified_handle, 2002
+		)
+		and identity_service.get_world_check_phase(preidentified_handle) == 0
+		and identity_service.get_world_step_index(preidentified_handle) == 0,
+		"An idempotent pending identity write must converge its phase without resetting the step index."
+	)
+	await physics_frame
+	identity_service._physics_process(TEST_DELTA)
+	_expect(
+		not identity_service.assign_projectile_identity(identity_handle, 2001),
+		"An active projectile must reject even an idempotent identity write."
+	)
+	identity_service.prepare_for_runtime_teardown()
+	identity_service.free()
 
 
 func _test_stale_handle_and_generation_reuse() -> void:
@@ -267,6 +327,12 @@ func _test_shadow_difference_read_model_and_teardown() -> void:
 		and is_equal_approx(service.get_difference_lifetime_delta(0), 0.125),
 		"Difference getters must expose immutable scalar deltas."
 	)
+	await physics_frame
+	service._physics_process(TEST_DELTA)
+	_expect(
+		service.get_difference_count() == 0,
+		"Frame-local SHADOW differences must expire before the next priority-4 simulation tick."
+	)
 	service.clear_difference_records()
 	_expect(
 		service.get_difference_count() == 0,
@@ -334,11 +400,8 @@ func _test_fixed_seed_hundred_thousand_projectiles() -> void:
 			if projectile_index % 2 == 0
 			else RapidFireSimulationServiceScript.Mode.DATA
 		)
-		var world_check_interval := 1 + random.randi_range(0, 2)
-		var world_check_phase := random.randi_range(
-			0,
-			world_check_interval - 1
-		)
+		var world_check_interval := 2
+		var world_check_phase := random.randi_range(0, 1)
 		var handle := service.register_projectile(
 			mode,
 			RapidFireSimulationServiceScript.Profile.AK,
