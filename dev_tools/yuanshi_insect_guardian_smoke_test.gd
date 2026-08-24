@@ -737,7 +737,11 @@ func _test_green_shell_keeps_player_area_contract() -> void:
 	await _wait_physics_frames(3)
 
 	_expect(green_shell.aura_active, "Green-shell player aura did not start.")
-	_expect(green_shell.aura_area.collision_mask == 2, "Green-shell aura must still monitor players.")
+	_expect(
+		green_shell.aura_area.collision_mask
+		== YuanshiInsectAura.AURA_DAMAGE_COLLISION_MASK,
+		"Green-shell aura must monitor Player and directional Enemy targets."
+	)
 	_expect(green_shell.aura_area.monitoring, "Green-shell aura monitoring was disabled with guardian aura.")
 	_expect(green_shell.aura_area.monitorable, "Green-shell aura must remain monitorable after startup.")
 	_expect(not green_shell.aura_area_shape.disabled, "Green-shell aura shape must remain enabled.")

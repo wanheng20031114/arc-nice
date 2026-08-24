@@ -12,6 +12,9 @@ const ELITE_SCENE := preload(
 const BASE_SCENE := preload(
 	"res://scene/enemy/sorcerer/frost_sorcerer.tscn"
 )
+const COMBAT_RUNTIME_FIXTURE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
 
 const BASE_TEXTURE_PATH := "res://resources/texture/enemy/sorcerer/frost_sorcerer.png"
 const ELITE_TEXTURE_PATH := (
@@ -38,7 +41,7 @@ const CYAN_PALETTE_MAP := {
 }
 
 var failures: Array[String] = []
-var test_root: Node2D = null
+var test_root: EnemyGameplayGatewayTestRuntime = null
 
 
 func _init() -> void:
@@ -46,7 +49,10 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = (
+		COMBAT_RUNTIME_FIXTURE.instantiate()
+		as EnemyGameplayGatewayTestRuntime
+	)
 	test_root.name = "FrostSorcererEliteSmokeTest"
 	root.add_child(test_root)
 	current_scene = test_root
@@ -55,6 +61,7 @@ func _run() -> void:
 	await _test_scene_and_projectile_values()
 	_test_pixel_contract()
 
+	test_root.prepare_for_scene_teardown()
 	current_scene = null
 	test_root.queue_free()
 	await process_frame
@@ -206,7 +213,7 @@ func _test_scene_and_projectile_values() -> void:
 	)
 
 	test_root.add_child(enemy)
-	enemy.setup(ELITE_CONFIG, null, null)
+	enemy.setup(ELITE_CONFIG, null, null, test_root)
 	enemy.set_physics_process(false)
 	var summon_target := Node2D.new()
 	summon_target.name = "EliteSummonTarget"

@@ -290,9 +290,13 @@ func clear_active_target(expected: CombatTargetDescriptor = null) -> bool:
 func _begin_negative_cache(current_tick: int, cache_ticks: int) -> void:
 	_negative_cache_armed = true
 	negative_cache_until_tick = current_tick + maxi(cache_ticks, 1)
-	if _active_is_assigned:
-		_restore_automatic_target_or_clear()
-		_active_is_assigned = false
+	# Eligibility validation may already have cleared an invalid assigned active
+	# descriptor before it asks this state object to suppress the assignment.
+	# Entering the negative cache is the authoritative hand-off point, so always
+	# restore the prepared automatic fallback instead of depending on that stale
+	# presentation bit.
+	_restore_automatic_target_or_clear()
+	_active_is_assigned = false
 
 
 func _restore_automatic_target_or_clear() -> void:

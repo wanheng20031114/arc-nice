@@ -1,4 +1,4 @@
-extends Enemy
+extends "res://scene/enemy/simple_chase_layered_enemy.gd"
 class_name CapooRangedEnemy
 
 const WORLD_COLLISION_MASK := 1
@@ -11,6 +11,22 @@ const NO_PATHFINDER_DIRECT_CHASE_DISTANCE_SQUARED := (
 @export var direct_chase_extra_distance: float = 2.0
 
 var action_sequence: int = 0
+
+
+## Capoo ranged families keep their authored LEGACY/COMPAT state machines until
+## each concrete family explicitly migrates and passes layered semantic parity.
+## SimpleChaseLayeredEnemy is inherited only to share the phase implementation;
+## inheritance must never become an implicit capability grant.
+func supports_centralized_authoritative_simulation() -> bool:
+	return false
+
+
+func supports_layered_area_authoritative_simulation() -> bool:
+	return false
+
+
+func supports_indexed_touch_authority() -> bool:
+	return false
 
 
 func can_target_water_plant_objectives() -> bool:

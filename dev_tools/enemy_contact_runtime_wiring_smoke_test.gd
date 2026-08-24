@@ -12,8 +12,17 @@ const RUNTIME_SCENE := preload(
 const FAST_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_fast.tres"
 )
+const PLAYER_SCENE := preload(
+	"res://scene/player/weishidaier/player_weishidaier.tscn"
+)
 const PREDICTIVE_HARNESS_SCENE := preload(
 	"res://dev_tools/fixtures/predictive_contact_yuanshi_harness.tscn"
+)
+const COMPAT_HANDOFF_HARNESS_SCENE := preload(
+	"res://dev_tools/fixtures/compat_handoff_capoo_ak47_harness.tscn"
+)
+const CAPOO_AK47_CONFIG := preload(
+	"res://resources/config/enemies/capoo_ak47.tres"
 )
 
 const PRODUCTION_SCENES: Array[String] = [
@@ -35,6 +44,11 @@ func _init() -> void:
 func _run() -> void:
 	_test_authored_scene_contracts()
 	await _test_runtime_ownership_contact_phase_and_rollback()
+	await _test_indexed_player_exit_invalidates_nonempty_snapshot()
+	_test_freed_indexed_contact_records_cleanup_by_instance_id()
+	await _test_indexed_plant_and_relation_dirty_invalidation()
+	await _test_in_tick_compat_fallback_preserves_individual_tick()
+	await _test_initial_contact_proxy_failure_falls_back()
 	await _test_high_speed_opposing_motion_clips_before_crossing()
 	await _test_same_direction_pursuit_closes_without_false_stop()
 	await _test_third_enemy_objective_remains_shadow_and_reaches_contact()
@@ -89,11 +103,11 @@ func _test_runtime_ownership_contact_phase_and_rollback() -> void:
 		coordinator.mode == POLICY.Mode.LEGACY
 		and service.mode == EnemyContactService.Mode.DISABLED
 		and not service.automatic_physics_step,
-		"LEGACY must leave the explicitly scheduled contact service disabled."
+		"The stable LEGACY default must leave shared contact takeover disabled."
 	)
 
 	runtime.enable_singleplayer_combat_target_index(true)
-	coordinator.set_mode(POLICY.Mode.LAYERED_AREA)
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
 	var attacker := FAST_CONFIG.enemy_scene.instantiate() as YuanshiInsect
 	var target := FAST_CONFIG.enemy_scene.instantiate() as YuanshiInsect
 	attacker.global_position = Vector2.ZERO
@@ -129,12 +143,54 @@ func _test_runtime_ownership_contact_phase_and_rollback() -> void:
 		and int(coordinator_metrics["contact_phases"]) > 0
 		and int(service_metrics["hybrid_enemy_contact_ticks"]) > 0
 		and int(service_metrics["predicted_event_stream_skips_total"]) > 0,
-		"Contact must step exactly inside LAYERED_AREA between event and decision phases."
+		"Contact must step exactly inside LAYERED_CONTACT between event and decision phases."
 	)
 	_expect(
 		service.has_directed_contact(attacker, target)
 		and service.has_directed_contact(target, attacker),
 		"Runtime hostile AABB wiring must expose overlapping enemy-enemy contact."
+	)
+	_expect(
+		attacker.is_indexed_touch_authority_enabled()
+		and target.is_indexed_touch_authority_enabled()
+		and attacker.is_touch_damage_shape_authored_enabled(
+			attacker.touch_damage_shape
+		)
+		and attacker.touch_damage_shape.disabled
+		and target.touch_damage_shape.disabled
+		and not attacker.collision_shape.disabled
+		and not target.collision_shape.disabled
+		and not attacker.touch_damage_area.monitoring
+		and not target.touch_damage_area.monitoring
+		and attacker.touch_damage_area.collision_layer == 0
+		and attacker.touch_damage_area.collision_mask == 0
+		and attacker.collision_layer == 4,
+		"Indexed authority must disable only TouchDamageArea physics shapes while preserving the enabled layer-4 hit body."
+	)
+
+	# EnemyContactService must consume its cached proxy/local transform rather
+	# than depending on the now-disabled TouchDamageArea physics shape.
+	target.global_position = Vector2(1024.0, 0.0)
+	target.reset_physics_interpolation()
+	await physics_frame
+	await physics_frame
+	_expect(
+		not service.has_directed_contact(attacker, target)
+		and not service.has_directed_contact(target, attacker)
+		and attacker.touch_damage_shape.disabled
+		and target.touch_damage_shape.disabled,
+		"Cached contact geometry must publish EXIT while authored touch shapes remain physically disabled."
+	)
+	target.global_position = attacker.global_position
+	target.reset_physics_interpolation()
+	await physics_frame
+	await physics_frame
+	_expect(
+		service.has_directed_contact(attacker, target)
+		and service.has_directed_contact(target, attacker)
+		and attacker.touch_damage_shape.disabled
+		and target.touch_damage_shape.disabled,
+		"Cached contact geometry must publish ENTER without re-enabling TouchDamageArea shapes."
 	)
 
 	coordinator.set_mode(POLICY.Mode.LEGACY)
@@ -147,9 +203,420 @@ func _test_runtime_ownership_contact_phase_and_rollback() -> void:
 	)
 	_expect(
 		not attacker.is_centrally_simulated()
-		and not target.is_centrally_simulated(),
+		and not target.is_centrally_simulated()
+		and not attacker.is_indexed_touch_authority_enabled()
+		and not target.is_indexed_touch_authority_enabled(),
 		"Contact rollback must not interfere with legacy enemy callback restoration."
 	)
+	await physics_frame
+	_expect(
+		attacker.touch_damage_area.monitoring
+		and not attacker.touch_damage_shape.disabled
+		and not attacker.collision_shape.disabled
+		and attacker.touch_damage_area.collision_layer == 8
+		and attacker.touch_damage_area.collision_mask == 514,
+		"LEGACY rollback must restore the authored TouchDamageArea contract."
+	)
+
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
+	await physics_frame
+	await physics_frame
+	_expect(
+		attacker.is_indexed_touch_authority_enabled(),
+		"Reclaimed LAYERED_CONTACT ownership must re-enable indexed touch."
+	)
+	coordinator.clear(true)
+	await physics_frame
+	_expect(
+		not attacker.is_centrally_simulated()
+		and attacker.is_physics_processing()
+		and not attacker.is_indexed_touch_authority_enabled()
+		and not attacker.touch_damage_shape.disabled
+		and not attacker.collision_shape.disabled
+		and attacker.touch_damage_area.monitoring
+		and attacker.touch_damage_area.collision_layer == 8
+		and attacker.touch_damage_area.collision_mask == 514,
+		"Direct clear(true) must atomically restore individual callbacks and authored contact."
+	)
+
+	_expect(
+		attacker.try_attach_to_enemy_simulation_coordinator(coordinator)
+		and target.try_attach_to_enemy_simulation_coordinator(coordinator),
+		"Live enemies must be reclaimable after a direct clear."
+	)
+	await physics_frame
+	await physics_frame
+	_expect(
+		attacker.is_indexed_touch_authority_enabled(),
+		"Reattached enemies must pass contact admission again."
+	)
+	coordinator.clear(false)
+	await physics_frame
+	_expect(
+		not attacker.is_centrally_simulated()
+		and not attacker.is_physics_processing()
+		and not attacker.is_indexed_touch_authority_enabled()
+		and not attacker.touch_damage_shape.disabled
+		and not attacker.collision_shape.disabled
+		and attacker.touch_damage_area.monitoring
+		and attacker.touch_damage_area.collision_layer == 8
+		and attacker.touch_damage_area.collision_mask == 514,
+		"Direct clear(false) must release ownership and contact without resuming callbacks."
+	)
+
+	var authored_touch_shape_disabled := attacker.touch_damage_shape.disabled
+	attacker.set_indexed_touch_authority(true)
+	attacker.set_indexed_touch_authority(false)
+	await process_frame
+	_expect(
+		attacker.touch_damage_shape.disabled
+			== authored_touch_shape_disabled
+		and attacker.touch_damage_area.monitoring,
+		"A same-frame authority round trip must restore the captured authored shape state; stale deferred commits must be inert."
+	)
+	attacker.set_indexed_touch_authority(true)
+	attacker.set_indexed_touch_authority(false)
+	attacker.configure_multiplayer_proxy()
+	await process_frame
+	_expect(
+		not attacker.touch_damage_area.monitoring
+		and not attacker.touch_damage_area.monitorable
+		and attacker.touch_damage_shape.disabled
+		and not attacker.collision_shape.disabled
+		and attacker.collision_layer == 4
+		and attacker.touch_damage_area.collision_layer == 0
+		and attacker.touch_damage_area.collision_mask == 0,
+		"A stale deferred Area restore must not overwrite a same-frame proxy transition or disable the layer-4 hit body."
+	)
+	runtime.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_indexed_player_exit_invalidates_nonempty_snapshot() -> void:
+	var runtime := RUNTIME_SCENE.instantiate() as EnemyGameplayGatewayTestRuntime
+	root.add_child(runtime)
+	await process_frame
+	runtime.enable_singleplayer_combat_target_index(true)
+	var coordinator := runtime.get_enemy_simulation_coordinator()
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
+
+	var player := PLAYER_SCENE.instantiate() as Player
+	player.peer_id = 1
+	runtime.add_child(player)
+	runtime.bind_player_runtime_context(player)
+	runtime.peer_players[player.peer_id] = player
+	player.global_position = Vector2.ZERO
+	player.reset_physics_interpolation()
+
+	var stationary_config := FAST_CONFIG.duplicate(true) as YuanshiInsectConfig
+	stationary_config.move_speed = 0.0
+	var enemy := stationary_config.enemy_scene.instantiate() as YuanshiInsect
+	enemy.global_position = Vector2.ZERO
+	runtime.enemy_container.add_child(enemy)
+	enemy.setup(stationary_config, player, runtime.grid_pathfinder, runtime)
+	for _settle_tick in range(4):
+		await physics_frame
+	_expect(
+		enemy.is_indexed_touch_authority_enabled()
+		and enemy.touch_damage_shape.disabled
+		and not enemy.collision_shape.disabled
+		and enemy.touching_players.has(player.get_instance_id())
+		and not enemy.indexed_touch_player_snapshot_is_empty(),
+		"Indexed touch must first publish the real overlapping player snapshot."
+	)
+
+	# No enemy Transform, plant geometry, relation or faction changes here. Moving
+	# only the player outside the broad phase reproduces the complete-snapshot fast
+	# path that previously retained a stale touching_players entry forever.
+	player.global_position = Vector2(4096.0, 0.0)
+	player.reset_physics_interpolation()
+	for _exit_tick in range(3):
+		await physics_frame
+	_expect(
+		not enemy.touching_players.has(player.get_instance_id())
+		and enemy.indexed_touch_player_snapshot_is_empty(),
+		"A player leaving broad phase must publish EXIT and clear indexed touch state."
+	)
+	var before_corridor_metrics: Dictionary = coordinator.get_metrics()
+	# Move both endpoints while they remain thousands of pixels apart. A Player
+	# geometry change must invalidate only its swept neighborhood; it must not turn
+	# every moving enemy's Transform notification into a full exact resync.
+	player.global_position = Vector2(4080.0, 0.0)
+	player.reset_physics_interpolation()
+	enemy.global_position = Vector2(1.0, 0.0)
+	await physics_frame
+	await physics_frame
+	var after_corridor_metrics: Dictionary = coordinator.get_metrics()
+	_expect(
+		int(after_corridor_metrics["indexed_touch_dirty_drains"])
+			== int(before_corridor_metrics["indexed_touch_dirty_drains"])
+		and int(after_corridor_metrics["indexed_touch_empty_corridor_skips"])
+			> int(before_corridor_metrics["indexed_touch_empty_corridor_skips"]),
+		"A far Player sweep and enemy motion must retain the local empty certificate without an exact resync."
+	)
+
+	# CombatTargetIndex and indexed contact independently own root Transform
+	# notifications. Unbinding the spatial index must not silence contact dirties.
+	runtime.unregister_combat_target(enemy.get_instance_id())
+	_expect(
+		enemy.combat_target_index_binding == null
+		and enemy.indexed_touch_transform_notifications_required,
+		"Contact authority must retain Transform notifications after target-index unbind."
+	)
+	var before_unbound_move_metrics: Dictionary = coordinator.get_metrics()
+	# The broad phase is expressed in CollisionShape2D world space. A local shape
+	# offset must therefore still meet the moved-enemy relative-sweep path even
+	# after this enemy has been removed from CombatTargetIndex.
+	player.collision_shape.position += Vector2(96.0, 0.0)
+	enemy.global_position = player.collision_shape.global_position
+	for _unbound_enter_tick in range(2):
+		await physics_frame
+	var after_unbound_move_metrics: Dictionary = coordinator.get_metrics()
+	_expect(
+		enemy.touching_players.has(player.get_instance_id())
+		and int(after_unbound_move_metrics["indexed_touch_dirty_drains"])
+			> int(before_unbound_move_metrics["indexed_touch_dirty_drains"]),
+		"An unindexed enemy must publish Player ENTER from the relative Transform sweep queue."
+	)
+
+	coordinator.set_mode(POLICY.Mode.LEGACY)
+	runtime.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_freed_indexed_contact_records_cleanup_by_instance_id() -> void:
+	var enemy := Enemy.new()
+	enemy.indexed_touch_authority_enabled = true
+	var player := Player.new()
+	player.peer_id = 1
+	var plant := PlantDefense.new()
+	enemy._track_touching_player(player, false)
+	enemy._track_touching_plant(plant)
+	enemy.touched_player = player
+	var player_id := player.get_instance_id()
+	var plant_id := plant.get_instance_id()
+	_expect(
+		enemy.touching_players.has(player_id)
+		and enemy.touching_player_death_callbacks.has(player_id)
+		and enemy.touching_plants.has(plant_id)
+		and enemy.touching_plant_entry_distances.has(plant_id)
+		and enemy.touching_plant_removal_callbacks.has(plant_id),
+		"Freed-record regression must begin with complete Player and Plant contact bookkeeping."
+	)
+
+	player.free()
+	plant.free()
+	enemy.cached_navigation_move_direction = Vector2.ONE
+	enemy.layered_area_decision_urgent = false
+	var empty_players: Array[Player] = []
+	var empty_plants: Array = []
+	var synchronized := enemy.synchronize_indexed_touch_contacts(
+		empty_players,
+		empty_plants
+	)
+	_expect(
+		synchronized
+		and enemy.touching_players.is_empty()
+		and enemy.touching_player_death_callbacks.is_empty()
+		and enemy.touched_player == null
+		and enemy.touching_plants.is_empty()
+		and enemy.touching_plant_entry_distances.is_empty()
+		and enemy.touching_plant_removal_callbacks.is_empty()
+		and enemy.touched_plant == null,
+		"A freed Player or Plant must be removed by instance ID without "
+			+ "casting the stale Object, including every callback and distance record."
+	)
+	_expect(
+		enemy.cached_navigation_move_direction == Vector2.ZERO
+		and enemy.layered_area_decision_urgent,
+		"Removing stale contact records must invalidate navigation and wake the layered decision lane."
+	)
+	enemy.free()
+
+
+func _test_indexed_plant_and_relation_dirty_invalidation() -> void:
+	var runtime := RUNTIME_SCENE.instantiate() as EnemyGameplayGatewayTestRuntime
+	root.add_child(runtime)
+	await process_frame
+	runtime.enable_singleplayer_combat_target_index(true)
+	var coordinator := runtime.get_enemy_simulation_coordinator()
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
+	var stationary_config := FAST_CONFIG.duplicate(true) as YuanshiInsectConfig
+	stationary_config.move_speed = 0.0
+	var enemy := stationary_config.enemy_scene.instantiate() as YuanshiInsect
+	enemy.global_position = Vector2.ZERO
+	runtime.enemy_container.add_child(enemy)
+	enemy.setup(stationary_config, null, runtime.grid_pathfinder, runtime)
+	for _admission_tick in range(3):
+		await physics_frame
+
+	var plant := PlantDefense.new()
+	plant.max_health = 100
+	plant.current_health = 100
+	var plant_shape_node := CollisionShape2D.new()
+	var plant_shape := CircleShape2D.new()
+	plant_shape.radius = 8.0
+	plant_shape_node.shape = plant_shape
+	plant.add_child(plant_shape_node)
+	runtime.add_child(plant)
+	plant.global_position = Vector2.ZERO
+	var damageable_index := (
+		coordinator.get_combat_services().get_enemy_damageable_spatial_index()
+	)
+	_expect(
+		damageable_index != null
+		and damageable_index.register_damageable(plant),
+		"The dirty-scheduler plant fixture must register in the production damageable index."
+	)
+	for _plant_enter_tick in range(2):
+		await physics_frame
+	_expect(
+		enemy.touching_plants.has(plant.get_instance_id())
+		and enemy.touch_damage_shape.disabled
+		and not enemy.collision_shape.disabled,
+		"A plant geometry revision introducing an overlap must enqueue and publish Plant ENTER."
+	)
+
+	plant.global_position = Vector2(1024.0, 0.0)
+	_expect(
+		damageable_index.update_damageable(plant),
+		"Moving the indexed plant must advance its geometry revision."
+	)
+	for _plant_exit_tick in range(2):
+		await physics_frame
+	_expect(
+		not enemy.touching_plants.has(plant.get_instance_id()),
+		"A plant geometry revision removing an overlap must enqueue and publish Plant EXIT."
+	)
+
+	var before_relation_metrics: Dictionary = coordinator.get_metrics()
+	var relations := runtime.get_combat_relation_service()
+	_expect(
+		relations.set_hostile(3, 4, true),
+		"The relation dirty fixture must accept a directed relation mutation."
+	)
+	await physics_frame
+	var after_relation_metrics: Dictionary = coordinator.get_metrics()
+	_expect(
+		int(after_relation_metrics["indexed_touch_dirty_drains"])
+			> int(before_relation_metrics["indexed_touch_dirty_drains"]),
+		"A relation revision must invalidate stationary indexed-contact certificates."
+	)
+
+	var before_faction_metrics: Dictionary = coordinator.get_metrics()
+	_expect(
+		enemy.set_combat_faction_id(RELATIONS.PLAYER_ALLIED),
+		"The faction dirty fixture must accept a runtime faction mutation."
+	)
+	await physics_frame
+	var after_faction_metrics: Dictionary = coordinator.get_metrics()
+	_expect(
+		int(after_faction_metrics["indexed_touch_dirty_drains"])
+			> int(before_faction_metrics["indexed_touch_dirty_drains"]),
+		"A faction mutation must enqueue the exact enemy without a cohort scan."
+	)
+
+	damageable_index.unregister_damageable(plant)
+	coordinator.set_mode(POLICY.Mode.LEGACY)
+	runtime.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_in_tick_compat_fallback_preserves_individual_tick() -> void:
+	var runtime := RUNTIME_SCENE.instantiate() as EnemyGameplayGatewayTestRuntime
+	root.add_child(runtime)
+	await process_frame
+	var coordinator := runtime.get_enemy_simulation_coordinator()
+	coordinator.set_mode(POLICY.Mode.LAYERED_AREA)
+
+	var requester := (
+		PREDICTIVE_HARNESS_SCENE.instantiate()
+		as PredictiveContactYuanshiHarness
+	)
+	runtime.enemy_container.add_child(requester)
+	requester.setup(FAST_CONFIG, null, runtime.grid_pathfinder, runtime)
+	# Keep this fixture access dynamic: a fresh checkout has not populated the
+	# editor's global class cache for the newly added harness yet.
+	var compat_only = COMPAT_HANDOFF_HARNESS_SCENE.instantiate()
+	runtime.enemy_container.add_child(compat_only)
+	compat_only.setup(CAPOO_AK47_CONFIG, null, runtime.grid_pathfinder, runtime)
+	await physics_frame
+	await process_frame
+	_expect(
+		requester.is_centrally_simulated()
+		and not compat_only.is_centrally_simulated()
+		and compat_only.is_physics_processing(),
+		"LAYERED_AREA must initially leave a COMPAT-only family on its individual callback."
+	)
+
+	compat_only.runner_records.clear()
+	requester.request_compat_mode_on_next_event = true
+	await physics_frame
+	var fallback_physics_frame := Engine.get_physics_frames()
+	await process_frame
+	var old_frame_individual_steps := 0
+	for record in compat_only.runner_records:
+		if (
+			int(record["physics_frame"]) == fallback_physics_frame
+			and not bool(record["centralized"])
+		):
+			old_frame_individual_steps += 1
+	_expect(
+		coordinator.mode == POLICY.Mode.COMPAT_60
+		and old_frame_individual_steps == 1
+		and compat_only.is_centrally_simulated(),
+		"An in-tick COMPAT fallback must let a later individual family finish the old frame before deferred ownership."
+	)
+
+	await physics_frame
+	var first_compat_physics_frame := Engine.get_physics_frames()
+	await process_frame
+	var next_frame_scheduled_steps := 0
+	for record in compat_only.runner_records:
+		if (
+			int(record["physics_frame"]) == first_compat_physics_frame
+			and bool(record["centralized"])
+		):
+			next_frame_scheduled_steps += 1
+	_expect(
+		next_frame_scheduled_steps == 1,
+		"Deferred ownership must dispatch the COMPAT family exactly once on the next 60 Hz tick."
+	)
+
+	coordinator.set_mode(POLICY.Mode.LEGACY)
+	runtime.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_initial_contact_proxy_failure_falls_back() -> void:
+	var runtime := RUNTIME_SCENE.instantiate() as EnemyGameplayGatewayTestRuntime
+	root.add_child(runtime)
+	await process_frame
+	runtime.enable_singleplayer_combat_target_index(true)
+	var coordinator := runtime.get_enemy_simulation_coordinator()
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
+	var enemy := FAST_CONFIG.enemy_scene.instantiate() as YuanshiInsect
+	runtime.enemy_container.add_child(enemy)
+	enemy.setup(FAST_CONFIG, null, runtime.grid_pathfinder, runtime)
+	var authored_shape := enemy.touch_damage_shape.shape
+	enemy.touch_damage_shape.shape = null
+	await physics_frame
+	await physics_frame
+	var metrics: Dictionary = coordinator.get_metrics()
+	_expect(
+		coordinator.mode == POLICY.Mode.COMPAT_60
+		and enemy.is_centrally_simulated()
+		and not enemy.is_indexed_touch_authority_enabled()
+		and enemy.touch_damage_area.monitoring
+		and int(metrics["contact_registration_rejections"]) > 0,
+		"Initial contact-proxy admission failure must preserve Area authority and fall back to COMPAT_60."
+	)
+	enemy.touch_damage_shape.shape = authored_shape
+	coordinator.clear(false)
 	runtime.queue_free()
 	await process_frame
 	await physics_frame
@@ -162,7 +629,7 @@ func _test_high_speed_opposing_motion_clips_before_crossing() -> void:
 	runtime.enable_singleplayer_combat_target_index(true)
 	var coordinator := runtime.get_enemy_simulation_coordinator()
 	var service := runtime.get_enemy_contact_service()
-	coordinator.set_mode(POLICY.Mode.LAYERED_AREA)
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
 	var high_speed_config := FAST_CONFIG.duplicate(true) as YuanshiInsectConfig
 	var left := PREDICTIVE_HARNESS_SCENE.instantiate() as YuanshiInsect
 	var right := PREDICTIVE_HARNESS_SCENE.instantiate() as YuanshiInsect
@@ -225,7 +692,7 @@ func _test_same_direction_pursuit_closes_without_false_stop() -> void:
 	runtime.enable_singleplayer_combat_target_index(true)
 	var coordinator := runtime.get_enemy_simulation_coordinator()
 	var service := runtime.get_enemy_contact_service()
-	coordinator.set_mode(POLICY.Mode.LAYERED_AREA)
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
 	var pursuer := _spawn_harness(runtime, Vector2.ZERO, Vector2.RIGHT, 120.0)
 	var target := _spawn_harness(runtime, Vector2(30.0, 0.0), Vector2.RIGHT, 60.0)
 	target.set_combat_faction_id(RELATIONS.PLAYER_ALLIED)
@@ -282,7 +749,7 @@ func _test_third_enemy_objective_remains_shadow_and_reaches_contact() -> void:
 	runtime.enable_singleplayer_combat_target_index(true)
 	var coordinator := runtime.get_enemy_simulation_coordinator()
 	var service := runtime.get_enemy_contact_service()
-	coordinator.set_mode(POLICY.Mode.LAYERED_AREA)
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
 	var pursuer := _spawn_harness(runtime, Vector2.ZERO, Vector2.RIGHT, 120.0)
 	var middle := _spawn_harness(runtime, Vector2(24.0, 0.0), Vector2.RIGHT, 60.0)
 	var leader := _spawn_harness(runtime, Vector2(100.0, 0.0), Vector2.RIGHT, 60.0)
@@ -323,7 +790,7 @@ func _test_non_mutual_transverse_crossing_is_not_frozen() -> void:
 	runtime.enable_singleplayer_combat_target_index(true)
 	var coordinator := runtime.get_enemy_simulation_coordinator()
 	var service := runtime.get_enemy_contact_service()
-	coordinator.set_mode(POLICY.Mode.LAYERED_AREA)
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
 	var horizontal := _spawn_harness(
 		runtime, Vector2(-20.0, 0.0), Vector2.RIGHT, 2400.0
 	)
@@ -368,7 +835,7 @@ func _test_asymmetric_mutual_shell_converges_without_crossing() -> void:
 	await process_frame
 	runtime.enable_singleplayer_combat_target_index(true)
 	var coordinator := runtime.get_enemy_simulation_coordinator()
-	coordinator.set_mode(POLICY.Mode.LAYERED_AREA)
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
 	var left := _spawn_harness(
 		runtime, Vector2(-20.0, 0.0), Vector2.RIGHT, 2400.0
 	)
@@ -421,7 +888,7 @@ func _test_same_tick_facing_mirror_recaptures_offset_segment() -> void:
 	runtime.enable_singleplayer_combat_target_index(true)
 	var coordinator := runtime.get_enemy_simulation_coordinator()
 	var service := runtime.get_enemy_contact_service()
-	coordinator.set_mode(POLICY.Mode.LAYERED_AREA)
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
 	var turner := PREDICTIVE_HARNESS_SCENE.instantiate() as YuanshiInsect
 	turner.set("forced_move_direction", Vector2.LEFT)
 	turner.set("forced_move_speed", 2400.0)

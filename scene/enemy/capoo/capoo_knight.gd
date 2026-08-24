@@ -1,4 +1,4 @@
-extends Enemy
+extends "res://scene/enemy/simple_chase_layered_enemy.gd"
 class_name CapooKnight
 
 const PLAYER_COLLISION_MASK := 2
@@ -44,6 +44,7 @@ var slash_query := PhysicsShapeQueryParameters2D.new()
 var slash_hit_target_ids: Dictionary[int, bool] = {}
 var committed_attack_target: Node2D = null
 var slash_damage_source_snapshot: DamageSourceSnapshot = null
+var layered_knight_motion_blocked_physics_frame := -1
 
 
 func supports_dynamic_enemy_targeting() -> bool:
@@ -59,7 +60,124 @@ func _ready() -> void:
 	_set_windup_warning(0.0, Vector2.RIGHT)
 
 
-func _physics_process(delta: float) -> void:
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func supports_layered_area_authoritative_simulation() -> bool:
+	return true
+
+
+# Knight's authored body and touch shells are two-shape non-convex unions. The
+# compound proxy preserves each rectangle independently; indexed Player/Plant
+# authority remains fail-closed until multi-shape spatial queries are proven.
+func supports_layered_contact_authoritative_simulation() -> bool:
+	return true
+
+
+func supports_indexed_touch_authority() -> bool:
+	return false
+
+
+func _advances_layered_area_touch_damage_event() -> bool:
+	return false
+
+
+func get_layered_area_decision_interval_frames() -> int:
+	if not Enemy.combat_sense_throttling_enabled:
+		return 1
+	return mini(
+		super.get_layered_area_decision_interval_frames(),
+		maxi(combat_sense_update_interval_frames, 1)
+	)
+
+
+func prepare_layered_area_authoritative_simulation() -> void:
+	super.prepare_layered_area_authoritative_simulation()
+	# This is a layered-only same-tick motion fence. Authored CHASE/WINDUP/SLASH
+	# state, timers, target, snapshot, RNG and action sequence must survive both
+	# forward admission and rollback to LEGACY.
+	layered_knight_motion_blocked_physics_frame = -1
+
+
+func _advance_layered_area_family_event_phase(delta: float) -> void:
+	super._advance_layered_area_family_event_phase(delta)
+	_update_attack_cooldown(delta)
+	if (
+		combat_state != CombatState.CHASE
+		and not (
+			combat_state == CombatState.SLASH
+			and slash_damage_done
+		)
+		and not _is_ranged_combat_target_valid(committed_attack_target)
+	):
+		# The authored runner performs this validation before its state match. A
+		# cancellation here therefore returns to CHASE and may move in this tick.
+		_cancel_attack()
+
+	match combat_state:
+		CombatState.WINDUP:
+			_update_windup(delta)
+			if combat_state == CombatState.CHASE:
+				_block_layered_knight_motion_for_current_physics_frame()
+		CombatState.SLASH:
+			_update_slash(delta)
+			if combat_state == CombatState.CHASE:
+				_block_layered_knight_motion_for_current_physics_frame()
+	_advance_capoo_knight_derived_event_phase(delta)
+
+
+## Derived authored runners append their post-Knight event work here. StoneGolem
+## uses it for the impact ring that historically advanced after super.
+func _advance_capoo_knight_derived_event_phase(_delta: float) -> void:
+	pass
+
+
+func _can_sleep_layered_area_family_event_phase() -> bool:
+	return (
+		super._can_sleep_layered_area_family_event_phase()
+		and combat_state == CombatState.CHASE
+		and attack_cooldown_left <= 0.0
+		and _can_sleep_capoo_knight_derived_event_phase()
+	)
+
+
+func _can_sleep_capoo_knight_derived_event_phase() -> bool:
+	return true
+
+
+func _try_consume_layered_area_family_decision_phase(delta: float) -> bool:
+	if super._try_consume_layered_area_family_decision_phase(delta):
+		return true
+	if combat_state != CombatState.CHASE:
+		return true
+	if not _is_combat_sense_refresh_due():
+		return false
+	var combat_target := _get_preferred_ranged_combat_target()
+	if combat_target == null or not _try_start_windup(combat_target):
+		return false
+	# The event phase may have published an indefinite CHASE sleep certificate
+	# earlier in this tick. Revoke it at the attack commit; the coordinator
+	# reconciles event readiness immediately after the decision phase.
+	layered_area_event_phase_sleeping = false
+	layered_area_event_sleep_until_physics_frame = -1
+	return true
+
+
+func _can_run_layered_area_motion() -> bool:
+	return (
+		combat_state == CombatState.CHASE
+		and layered_knight_motion_blocked_physics_frame
+			!= Engine.get_physics_frames()
+		and super._can_run_layered_area_motion()
+	)
+
+
+func _block_layered_knight_motion_for_current_physics_frame() -> void:
+	layered_knight_motion_blocked_physics_frame = Engine.get_physics_frames()
+
+
+func _run_authoritative_physics_step(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
 		return

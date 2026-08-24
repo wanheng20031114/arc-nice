@@ -229,10 +229,21 @@ var faction_revision: int = 0
 var touch_damage_cooldown_left: float = 0.0
 var touched_player: Player = null
 var touching_players: Dictionary[int, Player] = {}
+var touching_player_death_callbacks: Dictionary[int, Callable] = {}
 var touched_plant: PlantDefense = null
 var touching_plants: Dictionary[int, PlantDefense] = {}
 var touching_plant_entry_distances: Dictionary[int, float] = {}
 var touching_plant_removal_callbacks: Dictionary[int, Callable] = {}
+var indexed_touch_authority_enabled := false
+var indexed_touch_seen_player_ids: Dictionary[int, bool] = {}
+var indexed_touch_seen_plant_ids: Dictionary[int, bool] = {}
+var indexed_touch_stale_ids: Array[int] = []
+var indexed_touch_area_state_revision := 0
+var authored_touch_shape_disabled_states: Dictionary[int, bool] = {}
+var authored_touch_area_monitoring := true
+var authored_touch_area_monitorable := true
+var authored_touch_area_collision_layer := 0
+var authored_touch_area_collision_mask := 0
 var death_sequence_stage: DeathSequenceStage = DeathSequenceStage.NONE
 var death_animation_name_in_use: StringName = &""
 var physical_defense_modifiers: Dictionary = {}
@@ -326,6 +337,7 @@ var speed_trail_effect: Node2D = null
 var speed_trail_owner_pool: SessionObjectPool = null
 var combat_target_index_binding: CombatTargetIndex = null
 var combat_target_index_net_id: int = 0
+var indexed_touch_transform_notifications_required := false
 var combat_target_index_bucket := Vector2i.MAX
 var combat_target_index_bucket_size := 0.0
 var combat_target_index_bucket_minimum := Vector2.ZERO
@@ -337,9 +349,21 @@ var simulation_id := 0
 var authoritative_simulation_driver := AuthoritativeSimulationDriver.INDIVIDUAL
 var scheduled_authoritative_step_count := 0
 var suppressed_direct_authoritative_step_count := 0
+var scheduled_authoritative_admission_tick := -1
+var scheduled_authoritative_admission_token := 0
+var scheduled_authoritative_admission_coordinator: EnemySimulationCoordinator = null
 var individual_simulation_activation_physics_frame := -1
 var layered_area_decision_urgent := true
 var layered_area_last_event_tick := -1
+var layered_area_event_phase_sleeping := false
+## Negative means notification-driven indefinite sleep. Non-negative deadlines
+## let a family skip empty 60 Hz event ticks while still waking on its exact
+## authored physics-frame cadence.
+var layered_area_event_sleep_until_physics_frame := -1
+## Number of authored touch-cooldown subtractions already materialized by the
+## coordinator's sparse timer lane since the last real family event.
+var layered_touch_damage_projected_ticks_since_event := 0
+var layered_area_motion_phase_due := false
 
 
 func bind_combat_runtime(runtime_instance: CombatRuntimeBase) -> void:
@@ -446,6 +470,7 @@ func _ready() -> void:
 	navigation_next_refresh_physics_frame = navigation_zero_direction_retry_frame
 	navigation_scheduled_refresh_interval_frames = initial_navigation_interval
 	_refresh_collision_shape_cache()
+	_capture_authored_touch_shape_disabled_states()
 	_cache_collision_shape_mirror_states()
 	_connect_contact_shape_change_signals()
 	if animated_sprite != null:
@@ -458,6 +483,10 @@ func _ready() -> void:
 		animated_sprite.material = null
 	_apply_sprite_facing()
 	_apply_facing_mirror()
+	authored_touch_area_monitoring = touch_damage_area.monitoring
+	authored_touch_area_monitorable = touch_damage_area.monitorable
+	authored_touch_area_collision_layer = touch_damage_area.collision_layer
+	authored_touch_area_collision_mask = touch_damage_area.collision_mask
 	touch_damage_area.body_entered.connect(_on_touch_damage_area_body_entered)
 	touch_damage_area.body_exited.connect(_on_touch_damage_area_body_exited)
 	animated_sprite.animation_finished.connect(_on_animated_sprite_animation_finished)
@@ -469,6 +498,16 @@ func _ready() -> void:
 func _notification(what: int) -> void:
 	if what != NOTIFICATION_LOCAL_TRANSFORM_CHANGED:
 		return
+	if (
+		indexed_touch_transform_notifications_required
+		and enemy_simulation_coordinator != null
+		and is_instance_valid(enemy_simulation_coordinator)
+		and enemy_simulation_token > 0
+	):
+		enemy_simulation_coordinator.mark_enemy_indexed_touch_transform_dirty(
+			self,
+			enemy_simulation_token
+		)
 	if (
 		combat_target_index_binding == null
 		or combat_target_index_net_id <= 0
@@ -538,7 +577,7 @@ func bind_combat_target_index(index: CombatTargetIndex, net_id: int) -> void:
 	# enabling global notifications as well would dispatch this hot callback twice
 	# for every ordinary move. The bounded round-robin repair audit covers an
 	# unexpected ancestor transform change without a full-cohort scan.
-	set_notify_local_transform(true)
+	_refresh_local_transform_notification_ownership()
 
 
 func sync_combat_target_index_bucket(
@@ -568,7 +607,21 @@ func unbind_combat_target_index(index: CombatTargetIndex, net_id: int) -> void:
 	combat_target_index_bucket_minimum = Vector2.ZERO
 	combat_target_index_bucket_maximum = Vector2.ZERO
 	combat_target_index_body_world_scale_squared = 1.0
-	set_notify_local_transform(false)
+	_refresh_local_transform_notification_ownership()
+
+
+func set_indexed_touch_transform_notifications_required(required: bool) -> void:
+	if indexed_touch_transform_notifications_required == required:
+		return
+	indexed_touch_transform_notifications_required = required
+	_refresh_local_transform_notification_ownership()
+
+
+func _refresh_local_transform_notification_ownership() -> void:
+	set_notify_local_transform(
+		combat_target_index_binding != null
+		or indexed_touch_transform_notifications_required
+	)
 
 
 func _cache_combat_target_index_bucket(
@@ -644,6 +697,16 @@ func _refresh_status_process_enabled() -> void:
 	if is_multiplayer_proxy:
 		return
 	set_process(_status_requires_render_process())
+
+
+## The per-node callback and EnemySimulationCoordinator deliberately converge
+## on one virtual runner. Families migrate by overriding only the runner; the
+## ownership guard remains centralized here so a scheduled enemy cannot execute
+## a second authoritative step if Godot dispatches a stale individual callback.
+func _physics_process(delta: float) -> void:
+	if not _should_run_individual_authoritative_physics():
+		return
+	_run_authoritative_physics_step(delta)
 
 
 func setup(
@@ -800,7 +863,22 @@ func supports_centralized_authoritative_simulation() -> bool:
 	return false
 
 
+## Phase-anchored families keep their authored SceneTree physics position while
+## still transferring authoritative ownership to EnemySimulationCoordinator.
+## They always execute the complete COMPAT runner, including in layered modes.
+func uses_anchored_compat_simulation() -> bool:
+	return false
+
+
 func supports_layered_area_authoritative_simulation() -> bool:
+	return false
+
+
+## Shared enemy-enemy contact is a stricter capability than layered scheduling.
+## Families with composite authored shells or unverified contact-state ordering
+## remain centrally simulated in LAYERED_CONTACT, but retain their authored Area
+## and never publish an EnemyContactService proxy.
+func supports_layered_contact_authoritative_simulation() -> bool:
 	return false
 
 
@@ -808,8 +886,281 @@ func supports_dynamic_enemy_targeting() -> bool:
 	return false
 
 
+## Only families whose complete Player/Plant contact semantics have passed the
+## indexed-contact shadow gate may opt in. This never affects the root layer-4
+## CharacterBody2D used by player, tower and projectile hit detection.
+func supports_indexed_touch_authority() -> bool:
+	return false
+
+
+func is_indexed_touch_authority_enabled() -> bool:
+	return indexed_touch_authority_enabled
+
+
+func indexed_touch_contact_snapshot_is_empty() -> bool:
+	return (
+		touching_players.is_empty()
+		and touching_plants.is_empty()
+		and touched_player == null
+		and touched_plant == null
+	)
+
+
+func indexed_touch_contact_snapshot_matches(
+	players: Array[Player],
+	plants: Array
+) -> bool:
+	if (
+		players.size() != touching_players.size()
+		or plants.size() != touching_plants.size()
+	):
+		return false
+	for player in players:
+		if (
+			player == null
+			or not is_instance_valid(player)
+			or _get_valid_touching_player_record(player.get_instance_id())
+				!= player
+		):
+			return false
+	for plant_variant in plants:
+		if (
+			plant_variant == null
+			or not is_instance_valid(plant_variant)
+		):
+			return false
+		var plant := plant_variant as PlantDefense
+		if (
+			plant == null
+			or _get_valid_touching_plant_record(plant.get_instance_id())
+				!= plant
+		):
+			return false
+	return true
+
+
+func indexed_touch_player_snapshot_matches(players: Array[Player]) -> bool:
+	if players.size() != touching_players.size():
+		return false
+	for player in players:
+		if (
+			player == null
+			or not is_instance_valid(player)
+			or _get_valid_touching_player_record(player.get_instance_id())
+				!= player
+		):
+			return false
+	return true
+
+
+func indexed_touch_player_snapshot_is_empty() -> bool:
+	return touching_players.is_empty() and touched_player == null
+
+
+func refresh_indexed_touch_contact_selection() -> void:
+	var previous_player := touched_player
+	var previous_plant := touched_plant
+	touched_player = _select_touching_player()
+	touched_plant = _select_touching_plant()
+	if touched_player != previous_player or touched_plant != previous_plant:
+		_clear_cached_navigation_move_direction()
+		request_layered_area_urgent_decision()
+
+
+func set_indexed_touch_authority(enabled: bool) -> void:
+	if indexed_touch_authority_enabled == enabled:
+		return
+	indexed_touch_authority_enabled = enabled
+	if not enabled:
+		_clear_touching_players()
+	indexed_touch_area_state_revision += 1
+	call_deferred(
+		&"_commit_indexed_touch_area_state",
+		indexed_touch_area_state_revision
+	)
+
+
+func _commit_indexed_touch_area_state(expected_revision: int) -> void:
+	if (
+		expected_revision != indexed_touch_area_state_revision
+		or touch_damage_area == null
+		or not is_instance_valid(touch_damage_area)
+	):
+		return
+	var must_disable_area := (
+		indexed_touch_authority_enabled
+		or is_dead
+		or is_multiplayer_proxy
+		or is_queued_for_deletion()
+	)
+	_commit_indexed_touch_shape_state(must_disable_area)
+	if must_disable_area:
+		touch_damage_area.monitoring = false
+		touch_damage_area.monitorable = false
+		touch_damage_area.collision_layer = 0
+		touch_damage_area.collision_mask = 0
+		return
+	touch_damage_area.collision_layer = authored_touch_area_collision_layer
+	touch_damage_area.collision_mask = authored_touch_area_collision_mask
+	touch_damage_area.monitorable = authored_touch_area_monitorable
+	touch_damage_area.monitoring = authored_touch_area_monitoring
+
+
+func _capture_authored_touch_shape_disabled_states() -> void:
+	authored_touch_shape_disabled_states.clear()
+	for shape_node in touch_damage_shapes:
+		if shape_node == null or not is_instance_valid(shape_node):
+			continue
+		authored_touch_shape_disabled_states[shape_node.get_instance_id()] = (
+			shape_node.disabled
+		)
+
+
+func is_touch_damage_shape_authored_enabled(
+	shape_node: CollisionShape2D
+) -> bool:
+	if shape_node == null or not is_instance_valid(shape_node):
+		return false
+	var shape_id := shape_node.get_instance_id()
+	return (
+		authored_touch_shape_disabled_states.has(shape_id)
+		and not bool(authored_touch_shape_disabled_states[shape_id])
+	)
+
+
+func _commit_indexed_touch_shape_state(must_disable: bool) -> void:
+	for shape_node in touch_damage_shapes:
+		if shape_node == null or not is_instance_valid(shape_node):
+			continue
+		var authored_disabled := bool(
+			authored_touch_shape_disabled_states.get(
+				shape_node.get_instance_id(),
+				true
+			)
+		)
+		shape_node.disabled = must_disable or authored_disabled
+
+
+## Replaces the signal-maintained current overlap sets as one atomic snapshot.
+## Candidate arrays are caller-owned and reused; this method keeps its own
+## membership dictionaries and stale-ID buffer hot across ticks.
+func synchronize_indexed_touch_contacts(
+	players: Array[Player],
+	plants: Array
+) -> bool:
+	if not indexed_touch_authority_enabled:
+		return false
+	indexed_touch_seen_player_ids.clear()
+	indexed_touch_seen_plant_ids.clear()
+	var contact_changed := false
+	for player in players:
+		if (
+			player == null
+			or not is_instance_valid(player)
+			or player.is_dead
+			or player.is_queued_for_deletion()
+		):
+			continue
+		var player_id := player.get_instance_id()
+		indexed_touch_seen_player_ids[player_id] = true
+		if _get_valid_touching_player_record(player_id) == player:
+			continue
+		_erase_touching_player_record(player_id, false)
+		_track_touching_player(player, false)
+		contact_changed = true
+
+	indexed_touch_stale_ids.clear()
+	for player_id_variant in touching_players:
+		var player_id := int(player_id_variant)
+		if not indexed_touch_seen_player_ids.has(player_id):
+			indexed_touch_stale_ids.append(player_id)
+	for player_id in indexed_touch_stale_ids:
+		contact_changed = (
+			_erase_touching_player_record(player_id, false)
+			or contact_changed
+		)
+
+	for plant_variant in plants:
+		if (
+			plant_variant == null
+			or not is_instance_valid(plant_variant)
+		):
+			continue
+		var plant := plant_variant as PlantDefense
+		if (
+			plant == null
+			or plant.is_dead
+			or plant.is_removing
+			or not can_attack_plant_target(plant)
+		):
+			continue
+		var plant_id := plant.get_instance_id()
+		indexed_touch_seen_plant_ids[plant_id] = true
+		if _get_valid_touching_plant_record(plant_id) == plant:
+			continue
+		_erase_touching_plant_record(plant_id, false)
+		touching_plants[plant_id] = plant
+		touching_plant_entry_distances[plant_id] = (
+			global_position.distance_to(plant.global_position)
+		)
+		var removal_callback := _on_touched_plant_removal_started.bind(plant)
+		touching_plant_removal_callbacks[plant_id] = removal_callback
+		plant.removal_started.connect(removal_callback)
+		contact_changed = true
+
+	indexed_touch_stale_ids.clear()
+	for plant_id_variant in touching_plants:
+		var plant_id := int(plant_id_variant)
+		if not indexed_touch_seen_plant_ids.has(plant_id):
+			indexed_touch_stale_ids.append(plant_id)
+	for plant_id in indexed_touch_stale_ids:
+		contact_changed = (
+			_erase_touching_plant_record(plant_id, false)
+			or contact_changed
+		)
+
+	touched_player = _select_touching_player()
+	touched_plant = _select_touching_plant()
+	if contact_changed:
+		_clear_cached_navigation_move_direction()
+		request_layered_area_urgent_decision()
+	return true
+
+
 func get_layered_area_decision_interval_frames() -> int:
 	return EnemySimulationPolicy.DEFAULT_LAYERED_AREA_DECISION_INTERVAL_FRAMES
+
+
+func uses_layered_area_physics_phase_decisions() -> bool:
+	return false
+
+
+func is_layered_area_decision_due_for_physics_frame(_physics_frame: int) -> bool:
+	return false
+
+
+func get_layered_area_decision_phase_offset() -> int:
+	return 0
+
+
+## Returns the next sparse decision deadline for families whose phase cadence is
+## expressed in physics frames. The base contract is the authored full-decision
+## cadence; layered families may return an earlier independent navigation/event
+## deadline without changing that full state-machine cadence.
+func get_next_layered_area_decision_physics_frame(
+	after_physics_frame: int
+) -> int:
+	var interval := maxi(get_layered_area_decision_interval_frames(), 1)
+	var next_frame := after_physics_frame + 1
+	if interval <= 1:
+		return next_frame
+	var remainder := posmod(
+		next_frame + get_layered_area_decision_phase_offset(),
+		interval
+	)
+	if remainder != 0:
+		next_frame += interval - remainder
+	return next_frame
 
 
 ## Translation-only plan consumed by EnemyContactService between the decision
@@ -878,6 +1229,15 @@ func mark_contact_shape_geometry_changed() -> void:
 		body_collision_shapes
 	)
 	contact_shape_revision += 1
+	if (
+		enemy_simulation_coordinator != null
+		and is_instance_valid(enemy_simulation_coordinator)
+		and enemy_simulation_token > 0
+	):
+		enemy_simulation_coordinator.mark_enemy_contact_geometry_dirty(
+			self,
+			enemy_simulation_token
+		)
 	if combat_target_index_binding != null:
 		combat_target_index_binding.update_body_collision_extent(self)
 
@@ -896,10 +1256,23 @@ func get_layered_area_directed_safe_motion_fraction(target: Enemy) -> float:
 func prepare_layered_area_authoritative_simulation() -> void:
 	layered_area_decision_urgent = true
 	layered_area_last_event_tick = -1
+	layered_area_event_phase_sleeping = false
+	layered_area_event_sleep_until_physics_frame = -1
+	layered_touch_damage_projected_ticks_since_event = 0
+	layered_area_motion_phase_due = false
 
 
 func request_layered_area_urgent_decision() -> void:
 	layered_area_decision_urgent = true
+	if (
+		enemy_simulation_coordinator != null
+		and is_instance_valid(enemy_simulation_coordinator)
+		and enemy_simulation_token > 0
+	):
+		enemy_simulation_coordinator.mark_enemy_layered_decision_urgent(
+			self,
+			enemy_simulation_token
+		)
 
 
 func is_layered_area_decision_urgent() -> bool:
@@ -914,10 +1287,94 @@ func simulate_layered_area_event_phase(
 	return false
 
 
+## Families may acknowledge an otherwise empty 60 Hz event phase without
+## repeating contact/timer work. The coordinator has already refreshed the
+## authoritative contact snapshot before consulting this predicate.
+func can_sleep_layered_area_event_phase() -> bool:
+	return false
+
+
+func acknowledge_sleeping_layered_area_event_phase(
+	simulation_tick: int,
+	token: int
+) -> bool:
+	return _accept_layered_area_event_phase(token, simulation_tick)
+
+
+## Trusted entry points are called only after the coordinator has admitted the
+## exact Registration for the current tick. Families opt in explicitly; the
+## public token-checked entry points remain the fail-closed default.
+func uses_trusted_layered_phase_entrypoints() -> bool:
+	return false
+
+
+func simulate_trusted_layered_area_event_phase(
+	_delta: float,
+	_simulation_tick: int
+) -> bool:
+	return false
+
+
+func acknowledge_trusted_sleeping_layered_area_event_phase(
+	_simulation_tick: int
+) -> bool:
+	return false
+
+
+## Only opted-in layered families enter the sparse raw-timer lane. The base
+## contract stays false so an unmigrated family can never lose event work.
+func should_project_layered_touch_damage_cooldown() -> bool:
+	return false
+
+
+## Materializes exactly one authored 60 Hz cooldown subtraction. Keeping this
+## operation identical to `_update_touch_damage_unprofiled()` preserves the raw
+## public field (including floating-point residue) on every physics tick.
+func project_layered_touch_damage_cooldown_tick(
+	physics_delta: float
+) -> bool:
+	if (
+		physics_delta <= 0.0
+		or not should_project_layered_touch_damage_cooldown()
+	):
+		return false
+	touch_damage_cooldown_left = maxf(
+		touch_damage_cooldown_left - physics_delta,
+		0.0
+	)
+	layered_touch_damage_projected_ticks_since_event += 1
+	return true
+
+
+## A real event advances family timers by its complete elapsed delta, but touch
+## damage must subtract only ticks not already materialized by the sparse lane.
+## Urgent wakes deliberately keep the counter until this consumption point.
+func consume_layered_touch_damage_unprojected_delta(
+	elapsed_ticks: int,
+	physics_delta: float
+) -> float:
+	var safe_elapsed_ticks := maxi(elapsed_ticks, 0)
+	var projected_ticks := mini(
+		layered_touch_damage_projected_ticks_since_event,
+		safe_elapsed_ticks
+	)
+	layered_touch_damage_projected_ticks_since_event = 0
+	return maxf(physics_delta, 0.0) * float(
+		safe_elapsed_ticks - projected_ticks
+	)
+
+
 func simulate_layered_area_decision_phase(
 	_delta: float,
 	_simulation_tick: int,
 	_token: int
+) -> bool:
+	return false
+
+
+func simulate_trusted_layered_area_decision_phase(
+	_delta: float,
+	_simulation_tick: int
 ) -> bool:
 	return false
 
@@ -930,18 +1387,66 @@ func simulate_layered_area_motion_phase(
 	return false
 
 
-func simulate_authoritative_physics_step(
+func simulate_trusted_layered_area_motion_phase(
 	_delta: float,
-	_simulation_tick: int,
+	_simulation_tick: int
+) -> bool:
+	return false
+
+
+## A layered family returns true only when this tick can submit a non-zero
+## Transform. Static/contact/attack states stay out of the motion phase.
+func should_execute_layered_area_motion_phase() -> bool:
+	# Existing/future layered families retain the full motion callback unless they
+	# explicitly publish a stronger no-Transform predicate.
+	return true
+
+
+func simulate_authoritative_physics_step(
+	delta: float,
+	simulation_tick: int,
 	token: int
 ) -> void:
-	# Subclasses that opt in must validate through the same ownership helper
-	# before mutating gameplay state. The base implementation deliberately does
-	# no work so an accidentally registered unsupported family fails closed.
-	_accept_scheduled_authoritative_step(token)
+	if not _accept_scheduled_authoritative_step(token, simulation_tick):
+		return
+	_run_authoritative_physics_step(delta)
 
 
-func _accept_scheduled_authoritative_step(token: int) -> bool:
+## Virtual authoritative 60 Hz family step. Unsupported families still fail
+## closed because supports_centralized_authoritative_simulation() defaults to
+## false; an opted-in family must override this method with its authored logic.
+func _run_authoritative_physics_step(_delta: float) -> void:
+	pass
+
+
+func admit_scheduled_authoritative_tick(
+	coordinator: EnemySimulationCoordinator,
+	token: int,
+	simulation_tick: int
+) -> void:
+	# The coordinator has already validated the stable registration once for this
+	# tick. Cache that admission so the family entry and layered follow-up phases
+	# do not repeat dictionary ownership lookups in the hot path.
+	scheduled_authoritative_admission_coordinator = coordinator
+	scheduled_authoritative_admission_token = token
+	scheduled_authoritative_admission_tick = simulation_tick
+
+
+func _clear_scheduled_authoritative_admission() -> void:
+	scheduled_authoritative_admission_coordinator = null
+	scheduled_authoritative_admission_token = 0
+	scheduled_authoritative_admission_tick = -1
+
+
+func _accept_scheduled_authoritative_step(token: int, simulation_tick: int) -> bool:
+	if (
+		scheduled_authoritative_admission_coordinator
+		== enemy_simulation_coordinator
+		and scheduled_authoritative_admission_token == token
+		and scheduled_authoritative_admission_tick == simulation_tick
+	):
+		scheduled_authoritative_step_count += 1
+		return true
 	if (
 		authoritative_simulation_driver
 		!= AuthoritativeSimulationDriver.SCHEDULED_ACTIVE
@@ -958,11 +1463,26 @@ func _accept_scheduled_authoritative_step(token: int) -> bool:
 
 func _accept_layered_area_event_phase(token: int, simulation_tick: int) -> bool:
 	if (
+		scheduled_authoritative_admission_coordinator
+		== enemy_simulation_coordinator
+		and scheduled_authoritative_admission_token == token
+		and scheduled_authoritative_admission_tick == simulation_tick
+	):
+		scheduled_authoritative_step_count += 1
+		layered_area_last_event_tick = simulation_tick
+		return true
+	if (
 		enemy_simulation_coordinator == null
 		or not is_instance_valid(enemy_simulation_coordinator)
-		or enemy_simulation_coordinator.mode
-		!= EnemySimulationPolicy.Mode.LAYERED_AREA
-		or not _accept_scheduled_authoritative_step(token)
+	):
+		return false
+	var simulation_mode := enemy_simulation_coordinator.mode
+	if (
+		(
+			simulation_mode != EnemySimulationPolicy.Mode.LAYERED_AREA
+			and simulation_mode != EnemySimulationPolicy.Mode.LAYERED_CONTACT
+		)
+		or not _accept_scheduled_authoritative_step(token, simulation_tick)
 	):
 		return false
 	layered_area_last_event_tick = simulation_tick
@@ -972,15 +1492,10 @@ func _accept_layered_area_event_phase(token: int, simulation_tick: int) -> bool:
 func _accept_layered_area_followup_phase(token: int, simulation_tick: int) -> bool:
 	return (
 		layered_area_last_event_tick == simulation_tick
-		and authoritative_simulation_driver
-		== AuthoritativeSimulationDriver.SCHEDULED_ACTIVE
-		and token > 0
-		and token == enemy_simulation_token
-		and enemy_simulation_coordinator != null
-		and is_instance_valid(enemy_simulation_coordinator)
-		and enemy_simulation_coordinator.mode
-		== EnemySimulationPolicy.Mode.LAYERED_AREA
-		and enemy_simulation_coordinator.owns_enemy(self, token)
+		and scheduled_authoritative_admission_coordinator
+		== enemy_simulation_coordinator
+		and scheduled_authoritative_admission_token == token
+		and scheduled_authoritative_admission_tick == simulation_tick
 	)
 
 
@@ -1053,6 +1568,7 @@ func try_attach_to_enemy_simulation_coordinator(
 		)
 	scheduled_authoritative_step_count = 0
 	suppressed_direct_authoritative_step_count = 0
+	_clear_scheduled_authoritative_admission()
 	layered_area_last_event_tick = -1
 	set_physics_process(false)
 	return true
@@ -1115,9 +1631,11 @@ func on_enemy_simulation_coordinator_released(
 		or not is_centrally_simulated()
 	):
 		return false
+	set_indexed_touch_authority(false)
 	enemy_simulation_coordinator = null
 	enemy_simulation_token = 0
 	simulation_id = 0
+	_clear_scheduled_authoritative_admission()
 	authoritative_simulation_driver = (
 		AuthoritativeSimulationDriver.INDIVIDUAL
 	)
@@ -1147,6 +1665,7 @@ func _release_authoritative_simulation_driver(
 	enemy_simulation_coordinator = null
 	enemy_simulation_token = 0
 	simulation_id = 0
+	_clear_scheduled_authoritative_admission()
 	prepare_layered_area_authoritative_simulation()
 	authoritative_simulation_driver = next_driver
 	if (
@@ -1167,6 +1686,7 @@ func set_target_player(player: Player) -> void:
 			_invalidate_ranged_combat_line_cache()
 			_reset_ranged_attack_position_state()
 			_clear_cached_navigation_move_direction()
+			request_layered_area_urgent_decision()
 		return
 
 	var previous_target := target_player
@@ -1178,6 +1698,7 @@ func set_target_player(player: Player) -> void:
 	if objective_target == null or objective_target == previous_target:
 		objective_target = player
 		_clear_cached_navigation_move_direction()
+		request_layered_area_urgent_decision()
 
 
 func set_objective_target(target: Node2D) -> void:
@@ -1192,6 +1713,7 @@ func set_objective_target(target: Node2D) -> void:
 	_invalidate_ranged_combat_line_cache()
 	_reset_ranged_attack_position_state()
 	_clear_cached_navigation_move_direction()
+	request_layered_area_urgent_decision()
 
 
 ## Host-authored assignments and automatic targeting share one ordered state,
@@ -1275,6 +1797,15 @@ func refresh_dynamic_combat_target_decision(simulation_tick: int) -> void:
 		return
 	var current_physics_frame := maxi(simulation_tick, 0)
 	if not targeting_state.has_assigned_target():
+		# Automatic targets are pushed by the host's target coordinator. While the
+		# already-resolved objective remains attackable there is no descriptor,
+		# reachability or state transition to recompute on every navigation tick.
+		if (
+			objective_target != null
+			and is_instance_valid(objective_target)
+			and can_attack_combat_target(objective_target)
+		):
+			return
 		_refresh_targeting_state_objective()
 		return
 	var assigned_target := _resolve_combat_target_descriptor(
@@ -1674,6 +2205,7 @@ func configure_multiplayer_proxy() -> void:
 	clear_collectible_statuses()
 	clear_electric_surge_state()
 	is_multiplayer_proxy = true
+	set_indexed_touch_authority(false)
 	multiplayer_proxy_locomotion_state = LocomotionState.IDLE
 	# Proxy transforms are already interpolated from network snapshots during
 	# render updates. Native physics interpolation here would apply a second,
@@ -1734,6 +2266,7 @@ func remove_for_home_escape() -> bool:
 	if is_dead:
 		return false
 	is_dead = true
+	set_indexed_touch_authority(false)
 	clear_cold_status()
 	clear_collectible_statuses()
 	clear_electric_surge_state()
@@ -4568,12 +5101,14 @@ func _should_update_navigation_direction(target_node: Node2D = objective_target)
 			if Engine.get_physics_frames() < navigation_zero_direction_retry_frame:
 				return false
 		else:
-			var interval := _get_navigation_update_interval_frames(target_node)
+			var current_interval := _get_navigation_update_interval_frames(
+				target_node
+			)
 			if (
-				interval > 1
-				and (
-					Engine.get_physics_frames() + navigation_update_frame_offset
-				) % interval != 0
+				navigation_scheduled_refresh_interval_frames
+					== current_interval
+				and Engine.get_physics_frames()
+					< navigation_next_refresh_physics_frame
 			):
 				return false
 
@@ -4794,6 +5329,12 @@ func _move_until_player_contact(delta: float = -1.0) -> void:
 	if _has_player_contact():
 		velocity = Vector2.ZERO
 		return
+	_move_after_confirmed_no_contact(delta)
+
+
+func _move_after_confirmed_no_contact(delta: float = -1.0) -> void:
+	if velocity == Vector2.ZERO:
+		return
 	if (
 		cached_navigation_tracks_live_target_direction
 		and is_instance_valid(objective_target)
@@ -4887,8 +5428,13 @@ func _has_player_contact() -> bool:
 		return true
 	if _select_touching_player() != null:
 		return true
+	var stale_plant_ids: Array[int] = []
+	var has_plant_contact := false
 	for instance_id in touching_plants:
-		var plant := touching_plants[instance_id] as PlantDefense
+		var plant := _get_valid_touching_plant_record(instance_id)
+		if not can_attack_plant_target(plant):
+			stale_plant_ids.append(instance_id)
+			continue
 		if not can_attack_combat_target(plant):
 			continue
 		var entry_distance := float(
@@ -4901,8 +5447,16 @@ func _has_player_contact() -> bool:
 			minf(entry_distance, 1.0)
 		)
 		if global_position.distance_to(plant.global_position) <= stop_distance:
-			return true
-	return false
+			has_plant_contact = true
+	var stale_record_removed := false
+	for stale_id in stale_plant_ids:
+		stale_record_removed = (
+			_erase_touching_plant_record(stale_id, false)
+			or stale_record_removed
+		)
+	if stale_record_removed:
+		_clear_cached_navigation_move_direction()
+	return has_plant_contact
 
 
 func _has_dynamic_enemy_target_contact() -> bool:
@@ -4947,23 +5501,67 @@ func _get_valid_dynamic_enemy_objective() -> Enemy:
 	return objective_target as Enemy
 
 
+func _get_valid_touching_player_record(player_instance_id: int) -> Player:
+	var player_variant: Variant = touching_players.get(player_instance_id)
+	if player_variant == null or not is_instance_valid(player_variant):
+		return null
+	return player_variant as Player
+
+
+func _get_valid_touching_plant_record(
+	plant_instance_id: int
+) -> PlantDefense:
+	var plant_variant: Variant = touching_plants.get(plant_instance_id)
+	if plant_variant == null or not is_instance_valid(plant_variant):
+		return null
+	return plant_variant as PlantDefense
+
+
 func _clear_touching_players() -> void:
-	var tracked_plant_ids := touching_plant_removal_callbacks.keys()
+	var had_contact_state := (
+		not touching_players.is_empty()
+		or not touching_player_death_callbacks.is_empty()
+		or touched_player != null
+		or not touching_plants.is_empty()
+		or not touching_plant_entry_distances.is_empty()
+		or not touching_plant_removal_callbacks.is_empty()
+		or touched_plant != null
+	)
+	var tracked_player_ids := touching_players.keys()
+	for tracked_id_variant in tracked_player_ids:
+		var tracked_id := int(tracked_id_variant)
+		_erase_touching_player_record(tracked_id, false)
+	# A callback without a matching membership entry is still owned by this
+	# contact snapshot. Erase it by its authoritative instance ID; there is no
+	# Object to disconnect after the tracked node has already been freed.
+	tracked_player_ids = touching_player_death_callbacks.keys()
+	for tracked_id_variant in tracked_player_ids:
+		_erase_touching_player_record(int(tracked_id_variant), false)
+	var tracked_plant_ids := touching_plants.keys()
 	for tracked_id_variant in tracked_plant_ids:
 		var tracked_id := int(tracked_id_variant)
-		var tracked_plant := touching_plants.get(tracked_id) as PlantDefense
-		_disconnect_touching_plant_removal_signal(tracked_plant, tracked_id)
+		_erase_touching_plant_record(tracked_id, false)
+	tracked_plant_ids = touching_plant_removal_callbacks.keys()
+	for tracked_id_variant in tracked_plant_ids:
+		_erase_touching_plant_record(int(tracked_id_variant), false)
+	tracked_plant_ids = touching_plant_entry_distances.keys()
+	for tracked_id_variant in tracked_plant_ids:
+		_erase_touching_plant_record(int(tracked_id_variant), false)
 	touching_players.clear()
+	touching_player_death_callbacks.clear()
 	touched_player = null
 	touching_plants.clear()
 	touching_plant_entry_distances.clear()
 	touching_plant_removal_callbacks.clear()
 	touched_plant = null
+	if had_contact_state:
+		_clear_cached_navigation_move_direction()
 
 
 func _on_touch_damage_area_body_entered(body: Node2D) -> void:
-	if is_dead:
+	if is_dead or indexed_touch_authority_enabled:
 		return
+	request_layered_area_urgent_decision()
 	# A contact changes movement semantics immediately. Never reuse a sweep that
 	# was certified before the body/area overlap began.
 	_clear_cached_navigation_move_direction()
@@ -4980,12 +5578,13 @@ func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 	if player == null:
 		return
 
-	touching_players[player.get_instance_id()] = player
-	touched_player = _select_touching_player()
+	_track_touching_player(player)
 	_try_deal_touch_damage()
 
 
 func _on_touch_damage_area_body_exited(body: Node2D) -> void:
+	if indexed_touch_authority_enabled:
+		return
 	request_layered_area_urgent_decision()
 	var plant := body as PlantDefense
 	if plant != null:
@@ -4995,21 +5594,103 @@ func _on_touch_damage_area_body_exited(body: Node2D) -> void:
 	var player := body as Player
 	if player == null:
 		return
-	touching_players.erase(player.get_instance_id())
-	if player == touched_player:
+	_untrack_touching_player(player)
+
+
+func _track_touching_player(
+	player: Player,
+	refresh_selection: bool = true
+) -> void:
+	if player == null or not is_instance_valid(player) or player.is_dead:
+		return
+	var player_instance_id := player.get_instance_id()
+	if _get_valid_touching_player_record(player_instance_id) != player:
+		_erase_touching_player_record(player_instance_id, false)
+	touching_players[player_instance_id] = player
+	if not touching_player_death_callbacks.has(player_instance_id):
+		var death_callback := _on_touched_player_died.bind(player)
+		touching_player_death_callbacks[player_instance_id] = death_callback
+		player.died.connect(death_callback)
+	if refresh_selection:
 		touched_player = _select_touching_player()
+
+
+func _untrack_touching_player(
+	player: Player,
+	refresh_selection: bool = true
+) -> void:
+	if player == null or not is_instance_valid(player):
+		return
+	var player_instance_id := player.get_instance_id()
+	_erase_touching_player_record(player_instance_id)
+	if refresh_selection:
+		touched_player = _select_touching_player()
+
+
+func _erase_touching_player_record(
+	player_instance_id: int,
+	wake_decision: bool = true
+) -> bool:
+	var player := _get_valid_touching_player_record(player_instance_id)
+	var selected_record_removed := false
+	if touched_player != null:
+		if not is_instance_valid(touched_player):
+			selected_record_removed = true
+			touched_player = null
+		elif touched_player.get_instance_id() == player_instance_id:
+			selected_record_removed = true
+			touched_player = null
+	var had_record := (
+		touching_players.has(player_instance_id)
+		or touching_player_death_callbacks.has(player_instance_id)
+		or selected_record_removed
+	)
+	_disconnect_touching_player_death_signal(player, player_instance_id)
+	touching_players.erase(player_instance_id)
+	if had_record and wake_decision:
+		_clear_cached_navigation_move_direction()
+	return had_record
+
+
+func _disconnect_touching_player_death_signal(
+	player: Player,
+	player_instance_id: int
+) -> void:
+	var death_callback: Callable = touching_player_death_callbacks.get(
+		player_instance_id,
+		Callable()
+	)
+	if (
+		death_callback.is_valid()
+		and player != null
+		and is_instance_valid(player)
+		and player.died.is_connected(death_callback)
+	):
+		player.died.disconnect(death_callback)
+	touching_player_death_callbacks.erase(player_instance_id)
+
+
+func _on_touched_player_died(player: Player) -> void:
+	if player == null:
+		return
+	_untrack_touching_player(player)
+	_clear_cached_navigation_move_direction()
+	request_layered_area_urgent_decision()
 
 
 func _select_touching_player() -> Player:
 	if touching_players.is_empty():
+		if touched_player != null:
+			touched_player = null
+			_clear_cached_navigation_move_direction()
 		return null
 	var best_player: Player = null
 	var best_peer_id := 0
 	var best_instance_id := 0
 	var stale_player_ids: Array[int] = []
 	for instance_id in touching_players:
-		var player := touching_players[instance_id] as Player
-		if player == null or not is_instance_valid(player) or player.is_dead:
+		var player := _get_valid_touching_player_record(instance_id)
+		if player == null or player.is_dead or player.is_queued_for_deletion():
 			stale_player_ids.append(instance_id)
 			continue
 		if not can_attack_combat_target(player):
@@ -5026,13 +5707,22 @@ func _select_touching_player() -> Player:
 			best_player = player
 			best_peer_id = peer_id
 			best_instance_id = instance_id
+	var stale_record_removed := false
 	for stale_id in stale_player_ids:
-		touching_players.erase(stale_id)
+		stale_record_removed = (
+			_erase_touching_player_record(stale_id, false)
+			or stale_record_removed
+		)
+	if stale_record_removed:
+		_clear_cached_navigation_move_direction()
 	return best_player
 
 
 func _select_touching_plant() -> PlantDefense:
 	if touching_plants.is_empty():
+		if touched_plant != null:
+			touched_plant = null
+			_clear_cached_navigation_move_direction()
 		return null
 	var best_plant: PlantDefense = null
 	var best_distance_squared := INF
@@ -5040,7 +5730,7 @@ func _select_touching_plant() -> PlantDefense:
 	var best_instance_id := 0
 	var stale_plant_ids: Array[int] = []
 	for instance_id in touching_plants:
-		var plant := touching_plants[instance_id] as PlantDefense
+		var plant := _get_valid_touching_plant_record(instance_id)
 		if not can_attack_plant_target(plant):
 			stale_plant_ids.append(instance_id)
 			continue
@@ -5071,9 +5761,14 @@ func _select_touching_plant() -> PlantDefense:
 			best_distance_squared = distance_squared
 			best_network_id = network_id
 			best_instance_id = instance_id
+	var stale_record_removed := false
 	for stale_id in stale_plant_ids:
-		var stale_plant := touching_plants.get(stale_id) as PlantDefense
-		_erase_touching_plant_record(stale_plant, stale_id)
+		stale_record_removed = (
+			_erase_touching_plant_record(stale_id, false)
+			or stale_record_removed
+		)
+	if stale_record_removed:
+		_clear_cached_navigation_move_direction()
 	return best_plant
 
 
@@ -5081,6 +5776,8 @@ func _track_touching_plant(plant: PlantDefense) -> void:
 	if not can_attack_plant_target(plant):
 		return
 	var plant_instance_id := plant.get_instance_id()
+	if _get_valid_touching_plant_record(plant_instance_id) != plant:
+		_erase_touching_plant_record(plant_instance_id, false)
 	touching_plants[plant_instance_id] = plant
 	if not touching_plant_entry_distances.has(plant_instance_id):
 		touching_plant_entry_distances[plant_instance_id] = (
@@ -5097,21 +5794,39 @@ func _untrack_touching_plant(
 	plant: PlantDefense,
 	refresh_selection: bool = true
 ) -> void:
-	if plant == null:
+	if plant == null or not is_instance_valid(plant):
 		return
 	var plant_instance_id := plant.get_instance_id()
-	_erase_touching_plant_record(plant, plant_instance_id)
+	_erase_touching_plant_record(plant_instance_id)
 	if refresh_selection:
 		touched_plant = _select_touching_plant()
 
 
 func _erase_touching_plant_record(
-	plant: PlantDefense,
-	plant_instance_id: int
-) -> void:
+	plant_instance_id: int,
+	wake_decision: bool = true
+) -> bool:
+	var plant := _get_valid_touching_plant_record(plant_instance_id)
+	var selected_record_removed := false
+	if touched_plant != null:
+		if not is_instance_valid(touched_plant):
+			selected_record_removed = true
+			touched_plant = null
+		elif touched_plant.get_instance_id() == plant_instance_id:
+			selected_record_removed = true
+			touched_plant = null
+	var had_record := (
+		touching_plants.has(plant_instance_id)
+		or touching_plant_entry_distances.has(plant_instance_id)
+		or touching_plant_removal_callbacks.has(plant_instance_id)
+		or selected_record_removed
+	)
 	_disconnect_touching_plant_removal_signal(plant, plant_instance_id)
 	touching_plants.erase(plant_instance_id)
 	touching_plant_entry_distances.erase(plant_instance_id)
+	if had_record and wake_decision:
+		_clear_cached_navigation_move_direction()
+	return had_record
 
 
 func _disconnect_touching_plant_removal_signal(
@@ -5136,6 +5851,31 @@ func _on_touched_plant_removal_started(_mode: int, plant: PlantDefense) -> void:
 	if plant == null:
 		return
 	_untrack_touching_plant(plant)
+	_clear_cached_navigation_move_direction()
+	request_layered_area_urgent_decision()
+
+
+## A stable Player/Plant overlap may omit empty 60 Hz event ticks only while an
+## accepted touch hit is cooling down. Dynamic Enemy objectives deliberately do
+## not qualify: their moving contact and faction lifetime stay event-driven.
+func _has_sleepable_layered_touch_damage_cooldown() -> bool:
+	if (
+		touch_damage_cooldown_left <= 0.0
+		or _get_valid_dynamic_enemy_objective() != null
+	):
+		return false
+	return (
+		(
+			touched_plant != null
+			and is_instance_valid(touched_plant)
+			and can_attack_combat_target(touched_plant)
+		)
+		or (
+			touched_player != null
+			and is_instance_valid(touched_player)
+			and can_attack_combat_target(touched_player)
+		)
+	)
 
 
 func _update_touch_damage(delta: float) -> void:
@@ -5150,10 +5890,10 @@ func _update_touch_damage(delta: float) -> void:
 		touched_player = null
 		return
 	if not Enemy.performance_metrics_enabled:
-		_update_touch_damage_unprofiled(delta)
+		_update_touch_damage_unprofiled(delta, has_dynamic_enemy_contact)
 		return
 	var started_usec := Time.get_ticks_usec()
-	_update_touch_damage_unprofiled(delta)
+	_update_touch_damage_unprofiled(delta, has_dynamic_enemy_contact)
 	Enemy._record_performance_metric(
 		"touch_damage_calls",
 		"touch_damage_usec",
@@ -5161,10 +5901,12 @@ func _update_touch_damage(delta: float) -> void:
 	)
 
 
-func _update_touch_damage_unprofiled(delta: float) -> void:
+func _update_touch_damage_unprofiled(
+	delta: float,
+	has_dynamic_enemy_contact: bool
+) -> void:
 	if touch_damage_cooldown_left > 0.0:
 		touch_damage_cooldown_left = maxf(touch_damage_cooldown_left - delta, 0.0)
-	var has_dynamic_enemy_contact := _has_dynamic_enemy_target_contact()
 	if (
 		touching_plants.is_empty()
 		and touching_players.is_empty()
@@ -5184,11 +5926,11 @@ func _update_touch_damage_unprofiled(delta: float) -> void:
 			_try_deal_touch_damage()
 		return
 
-	if touched_player == null or not can_attack_combat_target(touched_player):
-		touched_player = _select_touching_player()
-		if touched_player == null:
-			return
-	if not is_instance_valid(touched_player):
+	if (
+		touched_player == null
+		or not is_instance_valid(touched_player)
+		or not can_attack_combat_target(touched_player)
+	):
 		touched_player = _select_touching_player()
 		if touched_player == null:
 			return
@@ -5220,6 +5962,7 @@ func _try_deal_touch_damage() -> void:
 	)
 	if (
 		touched_plant != null
+		and is_instance_valid(touched_plant)
 		and can_attack_combat_target(touched_plant)
 	):
 		var impact_direction := global_position.direction_to(touched_plant.global_position)
@@ -5256,7 +5999,11 @@ func _try_deal_touch_damage() -> void:
 				touch_source_snapshot
 			)
 		return
-	if touched_player == null or not can_attack_combat_target(touched_player):
+	if (
+		touched_player == null
+		or not is_instance_valid(touched_player)
+		or not can_attack_combat_target(touched_player)
+	):
 		return
 
 	if _try_request_player_damage(
@@ -5405,6 +6152,7 @@ func _die() -> void:
 	# cannot settle it twice. Ledger-owning runtimes synchronously commit
 	# DEFEATED from this signal; rewards and drops are admitted only afterwards.
 	is_dead = true
+	set_indexed_touch_authority(false)
 	clear_cold_status()
 	clear_collectible_statuses()
 	clear_electric_surge_state()

@@ -244,8 +244,6 @@ func _verify_attack_family_matrix(case_filter: String = "") -> void:
 				&"summon_duration": 0.05,
 				&"attack_interval": 0.05,
 				&"initial_attack_stagger_window": 0.0,
-				&"projectile_speed": 420.0,
-				&"projectile_lifetime": 1.0,
 			},
 		},
 		{
@@ -334,6 +332,14 @@ func _verify_attack_family_case(case_data: Dictionary, case_index: int) -> void:
 		_expect(false, "%s 必须完整实例化真实玩家、目标、围栏与敌人场景。" % label)
 		await _dispose_fixture(fixture)
 		return
+	var damageable_index := _register_runtime_damageable(
+		fixture,
+		fence,
+		label
+	)
+	if damageable_index == null:
+		await _dispose_fixture(fixture)
+		return
 
 	var expected_inherited_touch := bool(case_data["uses_inherited_touch"])
 	_expect(
@@ -412,6 +418,10 @@ func _verify_attack_family_case(case_data: Dictionary, case_index: int) -> void:
 	_expect(
 		not enemy.touching_plant_removal_callbacks.has(fence_instance_id),
 		"%s 摧毁围栏后必须立即释放 removal_started callback。" % label
+	)
+	_expect(
+		not damageable_index.contains_damageable(fence),
+		"%s 围栏开始移除时必须同步退出生产伤害空间索引。" % label
 	)
 	var resume_origin := enemy.global_position
 	var resumed := false
@@ -863,6 +873,62 @@ func _spawn_fence(
 		[Vector2i(net_id, 0)]
 	)
 	return fence
+
+
+func _register_runtime_damageable(
+	runtime: CombatRuntimeBase,
+	damageable: PlantDefense,
+	label: String
+) -> EnemyDamageableSpatialIndex:
+	var combat_services := runtime.get_enemy_combat_services()
+	var damageable_index := (
+		combat_services.get_enemy_damageable_spatial_index()
+		if combat_services != null
+		else null
+	) as EnemyDamageableSpatialIndex
+	_expect(
+		damageable_index != null and damageable_index.is_bound(),
+		"%s 黑盒运行时必须绑定正式 EnemyDamageableSpatialIndex。" % label
+	)
+	if damageable_index == null or not damageable_index.is_bound():
+		return null
+	_expect(
+		damageable_index.register_damageable(damageable),
+		"%s 围栏必须按 PlantSystem 生产契约注册到伤害空间索引。" % label
+	)
+	_expect(
+		damageable_index.contains_damageable(damageable),
+		"%s 围栏注册后必须能从伤害空间索引读取。" % label
+	)
+	if not damageable_index.contains_damageable(damageable):
+		return null
+	damageable.removal_started.connect(
+		_on_test_damageable_removal_started.bind(
+			damageable_index,
+			damageable
+		),
+		CONNECT_ONE_SHOT
+	)
+	return damageable_index
+
+
+func _on_test_damageable_removal_started(
+	_mode: PlantDefense.RemovalMode,
+	damageable_index: EnemyDamageableSpatialIndex,
+	damageable: PlantDefense
+) -> void:
+	if (
+		damageable_index == null
+		or not is_instance_valid(damageable_index)
+		or damageable == null
+		or not is_instance_valid(damageable)
+		or not damageable_index.contains_damageable(damageable)
+	):
+		return
+	_expect(
+		damageable_index.unregister_damageable(damageable),
+		"围栏 removal_started 必须按 PlantSystem 生产契约注销伤害空间索引。"
+	)
 
 
 func _wait_for_real_fence_contact(

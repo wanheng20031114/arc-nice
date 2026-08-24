@@ -1,4 +1,4 @@
-extends "res://scene/enemy/capoo_ranged_enemy.gd"
+extends "res://scene/enemy/layered_ranged_enemy.gd"
 class_name LightningSorcerer
 
 const LightningConfig := preload(
@@ -53,10 +53,90 @@ var _warning_presentation_system: EnemyWarningPresentationSystemScript = null
 var _chain_candidates: Array[Node2D] = []
 var _chain_excluded_instance_ids: Dictionary = {}
 var _chain_world_path := PackedVector2Array()
+var layered_lightning_event_consumes_tick := false
+var layered_lightning_windup_ready_to_resolve := false
 
 
 func _get_touch_damage_type() -> EnemyConfig.DamageType:
 	return EnemyConfig.DamageType.MAGIC
+
+
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func _supports_layered_ranged_authoritative_simulation() -> bool:
+	return true
+
+
+func _supports_layered_ranged_contact_authority() -> bool:
+	return true
+
+
+func _supports_layered_ranged_indexed_touch_authority() -> bool:
+	# Lightning authors no attack Area on its body. Indexed authority replaces
+	# only TouchDamageArea; lock warning and instant chain damage are data/service
+	# operations independent from that Area2D.
+	return true
+
+
+func get_layered_area_decision_interval_frames() -> int:
+	# CHASE re-evaluates target, range, LOS and ranged hold every physics tick.
+	return 1
+
+
+func _prepare_layered_ranged_authoritative_simulation() -> void:
+	layered_lightning_event_consumes_tick = false
+	layered_lightning_windup_ready_to_resolve = false
+
+
+func _advance_layered_ranged_event_phase(delta: float) -> void:
+	layered_lightning_event_consumes_tick = false
+	layered_lightning_windup_ready_to_resolve = false
+	_update_attack_cooldown(delta)
+	if combat_state != CombatState.WINDUP:
+		return
+	layered_lightning_event_consumes_tick = true
+	if _advance_windup_state(delta):
+		layered_lightning_windup_ready_to_resolve = true
+		request_layered_area_urgent_decision()
+
+
+func _can_sleep_layered_ranged_event_phase() -> bool:
+	# Cooldown, target refresh and warning retry are authored public per-tick
+	# clocks. Keep the event lane active until every clock is settled.
+	return (
+		combat_state == CombatState.CHASE
+		and initial_attack_stagger_left <= 0.0
+		and attack_cooldown_left <= 0.0
+		and attack_target_refresh_left <= 0.0
+	)
+
+
+func _try_consume_layered_ranged_decision_phase(_delta: float) -> bool:
+	if layered_lightning_event_consumes_tick:
+		if layered_lightning_windup_ready_to_resolve:
+			_resolve_expired_windup()
+			layered_lightning_windup_ready_to_resolve = false
+		return true
+	var consumed := _try_consume_lightning_chase_decision()
+	if combat_state == CombatState.WINDUP:
+		# A new lock owns per-tick direction, warning progress and retry clocks.
+		request_layered_area_urgent_decision()
+	return consumed
+
+
+func _layered_ranged_attack_state_allows_motion() -> bool:
+	return (
+		combat_state == CombatState.CHASE
+		and not layered_lightning_event_consumes_tick
+	)
+
+
+func _layered_area_touch_damage_precedes_family_event() -> bool:
+	# Preserve the authored touch -> Lightning clock ordering even though this
+	# ranged family deliberately deals no inherited touch hit.
+	return true
 
 
 func _select_nearest_attack_target(
@@ -178,7 +258,7 @@ func _is_live_multiplayer_proxy_target(candidate: Node2D) -> bool:
 	)
 
 
-func _physics_process(delta: float) -> void:
+func _run_authoritative_physics_step(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
@@ -189,6 +269,23 @@ func _physics_process(delta: float) -> void:
 		_update_windup(delta)
 		return
 
+	if _try_consume_lightning_chase_decision():
+		return
+
+	if not is_instance_valid(objective_target):
+		velocity = Vector2.ZERO
+		_move_until_player_contact()
+		return
+	if _has_player_contact():
+		velocity = Vector2.ZERO
+		return
+	var move_direction := _get_navigation_move_direction(delta)
+	_update_facing(move_direction)
+	velocity = move_direction * _get_move_speed()
+	_move_until_player_contact()
+
+
+func _try_consume_lightning_chase_decision() -> bool:
 	var lightning_config := config as LightningConfig
 	var combat_target := get_resolved_combat_target()
 	if combat_target == null and lightning_config != null:
@@ -212,7 +309,7 @@ func _physics_process(delta: float) -> void:
 			initial_attack_stagger_left <= 0.0
 			and _try_start_windup(combat_target, lightning_config)
 		):
-			return
+			return true
 		if _try_hold_ranged_attack_position(
 			combat_target,
 			lightning_config.attack_range,
@@ -220,21 +317,10 @@ func _physics_process(delta: float) -> void:
 		):
 			velocity = Vector2.ZERO
 			_update_facing(global_position.direction_to(combat_target.global_position))
-			return
+			return true
 	else:
 		_reset_ranged_attack_position_state()
-
-	if not is_instance_valid(objective_target):
-		velocity = Vector2.ZERO
-		_move_until_player_contact()
-		return
-	if _has_player_contact():
-		velocity = Vector2.ZERO
-		return
-	var move_direction := _get_navigation_move_direction(delta)
-	_update_facing(move_direction)
-	velocity = move_direction * _get_move_speed()
-	_move_until_player_contact()
+	return false
 
 
 func _process(delta: float) -> void:
@@ -280,6 +366,8 @@ func _apply_config() -> void:
 	attack_target_refresh_left = 0.0
 	warning_retry_time_left = 0.0
 	warning_retry_sent = false
+	layered_lightning_event_consumes_tick = false
+	layered_lightning_windup_ready_to_resolve = false
 	_clear_target_warning()
 	_clear_proxy_target_warning()
 	_reset_ranged_attack_position_state()
@@ -360,20 +448,26 @@ func _try_start_windup(
 
 
 func _update_windup(delta: float) -> void:
+	if not _advance_windup_state(delta):
+		return
+	_resolve_expired_windup()
+
+
+func _advance_windup_state(delta: float) -> bool:
 	var lightning_config := config as LightningConfig
 	if (
 		lightning_config == null
 		or not _is_frozen_source_hostile_target_valid(cast_target)
 	):
 		_cancel_windup()
-		return
+		return false
 	var safe_attack_range := maxf(lightning_config.attack_range, 0.0)
 	if (
 		global_position.distance_squared_to(cast_target.global_position)
 		> safe_attack_range * safe_attack_range
 	):
 		_cancel_windup()
-		return
+		return false
 
 	velocity = Vector2.ZERO
 	cast_direction = global_position.direction_to(cast_target.global_position)
@@ -389,6 +483,14 @@ func _update_windup(delta: float) -> void:
 	_update_target_warning(cast_target, progress)
 	_update_windup_warning_retry(delta)
 	if windup_time_left > 0.0:
+		return false
+	return true
+
+
+func _resolve_expired_windup() -> void:
+	var lightning_config := config as LightningConfig
+	if lightning_config == null:
+		_cancel_windup()
 		return
 	if not _has_ranged_combat_line(cast_target, WORLD_COLLISION_MASK, true):
 		_cancel_windup()
@@ -758,7 +860,10 @@ func _update_windup_warning_retry(delta: float) -> void:
 	if warning_retry_time_left > 0.0:
 		return
 	warning_retry_sent = true
-	if _is_ranged_combat_target_valid(cast_target):
+	# Retry is presentation repair for an already committed cast. Its relation
+	# authority must match windup validation and damage, which both use the
+	# frozen DamageSourceSnapshot even if the live caster changes faction.
+	if _is_frozen_source_hostile_target_valid(cast_target):
 		_broadcast_windup_start(cast_target, true)
 
 

@@ -1,0 +1,33 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://dev_tools/fixtures/enemy_contact_atomic_rollback_harness.gd" id="1_harness"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_harness"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+size = Vector2(12, 12)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_touch"]
+size = Vector2(18, 18)
+
+[node name="EnemyContactAtomicRollbackHarness" type="CharacterBody2D"]
+collision_layer = 4
+collision_mask = 33
+script = ExtResource("1_harness")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = SubResource("SpriteFrames_harness")
+
+[node name="BodyCollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_body")
+
+[node name="TouchDamageArea" type="Area2D" parent="."]
+collision_layer = 16
+collision_mask = 35
+
+[node name="TouchCollisionShape" type="CollisionShape2D" parent="TouchDamageArea"]
+shape = SubResource("RectangleShape2D_touch")
+
+[node name="HitAudio" type="AudioStreamPlayer2D" parent="."]
+
+[node name="DeathAudio" type="AudioStreamPlayer2D" parent="."]

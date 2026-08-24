@@ -71,6 +71,7 @@ var active_guardian_source_ids := PackedInt64Array()
 var active_guardian_positions := PackedVector2Array()
 var active_guardian_radii := PackedFloat64Array()
 var active_guardian_bonuses := PackedInt32Array()
+var active_guardian_faction_ids := PackedInt32Array()
 var candidate_seen_epoch_by_active_slot := PackedInt32Array()
 var candidate_query_epoch := 0
 var desired_sources_scratch: Dictionary[int, int] = {}
@@ -190,6 +191,7 @@ func _exit_tree() -> void:
 	active_guardian_positions.clear()
 	active_guardian_radii.clear()
 	active_guardian_bonuses.clear()
+	active_guardian_faction_ids.clear()
 	candidate_seen_epoch_by_active_slot.clear()
 	candidate_query_epoch = 0
 	desired_sources_scratch.clear()
@@ -570,6 +572,7 @@ func _rebuild_guardian_grid() -> void:
 	active_guardian_positions.clear()
 	active_guardian_radii.clear()
 	active_guardian_bonuses.clear()
+	active_guardian_faction_ids.clear()
 	if use_snapshot_coverage_grid:
 		_rebuild_guardian_snapshot_coverage_grid()
 		candidate_seen_epoch_by_active_slot.resize(active_guardian_source_ids.size())
@@ -622,6 +625,7 @@ func _rebuild_guardian_snapshot_coverage_grid() -> void:
 		active_guardian_positions.append(aura_center)
 		active_guardian_radii.append(world_radius)
 		active_guardian_bonuses.append(defense_bonus)
+		active_guardian_faction_ids.append(guardian.get_combat_faction_id())
 
 		# Stamp every grid cell touched by the aura AABB. A target queries every
 		# cell touched by its conservative body AABB; any real circle-shape
@@ -741,6 +745,7 @@ func _refresh_guardian_coverage(
 			or enemy == guardian
 			or (enemy.collision_layer & ENEMY_COLLISION_LAYER) == 0
 			or not _has_enabled_body_collision_shape(enemy)
+			or not _guardian_can_buff_enemy(guardian, enemy)
 		):
 			continue
 		var enemy_id := enemy.get_instance_id()
@@ -975,6 +980,11 @@ func _collect_snapshot_guardian_sources(
 				var source_id := int(active_guardian_source_ids[active_slot])
 				if source_id == enemy_id:
 					continue
+				if (
+					active_guardian_faction_ids[active_slot]
+					!= enemy.get_combat_faction_id()
+				):
+					continue
 				if _snapshot_guardian_reaches_enemy(
 					active_slot,
 					enemy,
@@ -1074,12 +1084,27 @@ func _guardian_reaches_enemy(
 	target_center: Vector2,
 	target_extent: float
 ) -> bool:
+	if not _guardian_can_buff_enemy(guardian, enemy):
+		return false
 	return _guardian_circle_reaches_enemy(
 		guardian.global_position,
 		_get_guardian_world_radius(guardian, guardian_config),
 		enemy,
 		target_center,
 		target_extent
+	)
+
+
+func _guardian_can_buff_enemy(guardian: Enemy, enemy: Enemy) -> bool:
+	return (
+		guardian != null
+		and enemy != null
+		and guardian != enemy
+		and is_instance_valid(guardian)
+		and is_instance_valid(enemy)
+		and not guardian.is_dead
+		and not enemy.is_dead
+		and guardian.get_combat_faction_id() == enemy.get_combat_faction_id()
 	)
 
 

@@ -1,4 +1,4 @@
-extends "res://scene/enemy/capoo_ranged_enemy.gd"
+extends "res://scene/enemy/layered_ranged_enemy.gd"
 class_name CapooSMG
 
 const SMGConfig := preload("res://resources/config/enemies/capoo_smg_config.gd")
@@ -7,6 +7,7 @@ const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 )
 const HITSCAN_COLLISION_MASK := 1 | 2 | 4 | 512
 const TARGET_REFRESH_HZ := 20.0
+const LAYERED_FAMILY_SCRIPT_PATH := "res://scene/enemy/capoo/capoo_smg.gd"
 
 @onready var muzzle_flash: Polygon2D = $MuzzleFlash
 @onready var muzzle_halo: Sprite2D = $MuzzleFlash/ProjectileHalo
@@ -31,6 +32,9 @@ var combat_target_cache_initialized := false
 var combat_target_refresh_count := 0
 var combat_target_last_refresh_physics_frame := -1
 var immediate_hitscan_resolver: ImmediateHitscanResolver = null
+var layered_smg_post_motion_fire_pending := false
+var layered_smg_pending_target: Node2D = null
+var layered_smg_pending_base_direction := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -54,7 +58,146 @@ func set_objective_target(target: Node2D) -> void:
 	_invalidate_combat_target_cache()
 
 
-func _physics_process(delta: float) -> void:
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func _supports_layered_ranged_authoritative_simulation() -> bool:
+	return _is_exact_layered_smg_family()
+
+
+func _supports_layered_ranged_contact_authority() -> bool:
+	return _is_exact_layered_smg_family()
+
+
+func _supports_layered_ranged_indexed_touch_authority() -> bool:
+	# Both production scenes author one CapsuleShape2D for body and touch. SMG
+	# adds no inherited touch hit or secondary attack Area, so indexed authority
+	# replaces only Player/Plant overlap bookkeeping while hitscan/projectile
+	# commits remain in the weapon state machine.
+	return _is_exact_layered_smg_family()
+
+
+func _is_exact_layered_smg_family() -> bool:
+	var implementation := get_script() as Script
+	return (
+		implementation != null
+		and implementation.resource_path == LAYERED_FAMILY_SCRIPT_PATH
+	)
+
+
+func get_layered_area_decision_interval_frames() -> int:
+	# The authored runner updates its short-range firing opportunity after every
+	# physics movement. Keep this first migration at exact 60 Hz; the navigation
+	# primitive still reuses its own cached path/direction between refreshes.
+	return 1
+
+
+func _prepare_layered_ranged_authoritative_simulation() -> void:
+	layered_smg_post_motion_fire_pending = false
+	layered_smg_pending_target = null
+	layered_smg_pending_base_direction = Vector2.ZERO
+
+
+func _layered_area_touch_damage_precedes_family_event() -> bool:
+	# Authored order is touch, fire cooldown, muzzle presentation, then decision.
+	return true
+
+
+func _advance_layered_ranged_event_phase(delta: float) -> void:
+	fire_time_left = maxf(fire_time_left - delta, 0.0)
+	if muzzle_flash_time_left > 0.0:
+		muzzle_flash_time_left = maxf(muzzle_flash_time_left - delta, 0.0)
+		_set_muzzle_flash(muzzle_flash_time_left / 0.05, last_move_direction)
+	elif muzzle_flash.visible:
+		_set_muzzle_flash(0.0, last_move_direction)
+
+
+func _can_sleep_layered_ranged_event_phase() -> bool:
+	# These are authored per-tick public/presentation fields. Sleep only after
+	# both countdowns have reached the exact legacy edge and the flash is hidden.
+	return (
+		fire_time_left <= 0.0
+		and muzzle_flash_time_left <= 0.0
+		and not muzzle_flash.visible
+	)
+
+
+func _try_consume_layered_ranged_decision_phase(_delta: float) -> bool:
+	layered_smg_post_motion_fire_pending = false
+	layered_smg_pending_target = null
+	layered_smg_pending_base_direction = Vector2.ZERO
+	var combat_target := _get_cached_combat_target()
+	if _has_player_contact():
+		velocity = Vector2.ZERO
+		if fire_time_left <= 0.0 and combat_target != null:
+			_commit_layered_smg_fire(last_move_direction, combat_target)
+		return true
+	if not is_instance_valid(objective_target):
+		velocity = Vector2.ZERO
+		return false
+	# Legacy commits this attempt after `_move_until_player_contact()`. Defer it
+	# until the cached motion plan has either been submitted or proven empty.
+	layered_smg_post_motion_fire_pending = true
+	layered_smg_pending_target = combat_target
+	return false
+
+
+func _simulate_layered_area_decision_body(delta: float) -> bool:
+	var completed := super._simulate_layered_area_decision_body(delta)
+	if not completed or not layered_smg_post_motion_fire_pending:
+		return completed
+	var move_direction := layered_area_planned_move_direction
+	if move_direction != Vector2.ZERO:
+		last_move_direction = move_direction.normalized()
+	layered_smg_pending_base_direction = (
+		last_move_direction if move_direction != Vector2.ZERO else Vector2.ZERO
+	)
+	if not should_execute_layered_area_motion_phase():
+		# The authored runner assigns `move_direction * speed` before every
+		# attempt. When the plan is zero (or effective speed is zero), clear a
+		# velocity left by the previous tick even though no motion job is queued.
+		velocity = Vector2.ZERO
+		_commit_pending_layered_smg_fire()
+	return completed
+
+
+func _simulate_layered_area_motion_body(delta: float) -> bool:
+	var completed := super._simulate_layered_area_motion_body(delta)
+	if completed:
+		_commit_pending_layered_smg_fire()
+	return completed
+
+
+func _layered_ranged_attack_state_allows_motion() -> bool:
+	# SMG has no windup/recovery state; cooldown never blocks authored movement.
+	return true
+
+
+func _commit_pending_layered_smg_fire() -> void:
+	if not layered_smg_post_motion_fire_pending:
+		return
+	var attack_target := layered_smg_pending_target
+	var base_direction := layered_smg_pending_base_direction
+	layered_smg_post_motion_fire_pending = false
+	layered_smg_pending_target = null
+	layered_smg_pending_base_direction = Vector2.ZERO
+	_commit_layered_smg_fire(base_direction, attack_target)
+
+
+func _commit_layered_smg_fire(
+	base_direction: Vector2,
+	attack_target: Node2D
+) -> bool:
+	var fired := _try_fire_scatter(base_direction, attack_target)
+	if fired:
+		# A sleeping event lane must resume on the following physics tick so both
+		# countdowns reproduce the authored repeated-subtraction sequence.
+		request_layered_area_urgent_decision()
+	return fired
+
+
+func _run_authoritative_physics_step(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
 		return

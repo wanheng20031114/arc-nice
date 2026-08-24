@@ -20,6 +20,7 @@ enum ShapeKind {
 	RECTANGLE,
 	CONVEX_POLYGON,
 	SEGMENT,
+	COMPOUND,
 }
 
 enum SupportStatus {
@@ -50,6 +51,8 @@ var core_radius := 0.0
 var _core_offsets := PackedVector2Array()
 var _minimum_offset := Vector2.ZERO
 var _maximum_offset := Vector2.ZERO
+var _compound_children: Array[CombatContactShapeProxy] = []
+var _compound_child_anchor_offsets := PackedVector2Array()
 
 
 static func create(
@@ -69,6 +72,32 @@ static func from_collision_shape(
 	return create(shape_node.shape, shape_node.global_transform)
 
 
+## Captures a non-convex union around one translation-only root anchor. Child
+## shapes stay independent: gaps between authored shapes never become contact.
+static func create_compound(
+	shapes: Array[Shape2D],
+	world_transforms: Array[Transform2D],
+	anchor_transform: Transform2D = Transform2D.IDENTITY
+) -> CombatContactShapeProxy:
+	var proxy := CombatContactShapeProxy.new()
+	proxy._capture_compound(shapes, world_transforms, anchor_transform)
+	return proxy
+
+
+static func from_collision_shapes(
+	shape_nodes: Array[CollisionShape2D],
+	anchor_transform: Transform2D
+) -> CombatContactShapeProxy:
+	var shapes: Array[Shape2D] = []
+	var world_transforms: Array[Transform2D] = []
+	for shape_node in shape_nodes:
+		if shape_node == null or not is_instance_valid(shape_node):
+			return create(null)
+		shapes.append(shape_node.shape)
+		world_transforms.append(shape_node.global_transform)
+	return create_compound(shapes, world_transforms, anchor_transform)
+
+
 func is_supported() -> bool:
 	return support_status == SupportStatus.SUPPORTED
 
@@ -78,12 +107,30 @@ func get_support_reason() -> StringName:
 
 
 func get_core_point_count() -> int:
+	if shape_kind == ShapeKind.COMPOUND:
+		var point_count := 0
+		for child in _compound_children:
+			point_count += child.get_core_point_count()
+		return point_count
 	return _core_offsets.size()
+
+
+func get_compound_child_count() -> int:
+	return _compound_children.size() if shape_kind == ShapeKind.COMPOUND else 0
 
 
 func get_bounding_radius() -> float:
 	if not is_supported():
 		return 0.0
+	if shape_kind == ShapeKind.COMPOUND:
+		var compound_radius := 0.0
+		for child_index in range(_compound_children.size()):
+			compound_radius = maxf(
+				compound_radius,
+				_compound_child_anchor_offsets[child_index].length()
+					+ _compound_children[child_index].get_bounding_radius()
+			)
+		return compound_radius
 	var maximum_squared := 0.0
 	for point in _core_offsets:
 		maximum_squared = maxf(maximum_squared, point.length_squared())
@@ -138,6 +185,14 @@ func overlaps_at(
 ) -> bool:
 	if not _can_compare(world_position, other, other_world_position):
 		return false
+	if shape_kind == ShapeKind.COMPOUND:
+		return _compound_overlaps_at(world_position, other, other_world_position)
+	if other.shape_kind == ShapeKind.COMPOUND:
+		return other._compound_overlaps_at(
+			other_world_position,
+			self,
+			world_position
+		)
 	var self_core := _translated_core(world_position)
 	var other_core := other._translated_core(other_world_position)
 	return _cores_overlap_with_radius(
@@ -160,6 +215,22 @@ func swept_overlaps(
 		or not other_to_position.is_finite()
 	):
 		return false
+	if shape_kind == ShapeKind.COMPOUND:
+		return _compound_swept_overlaps(
+			from_position,
+			to_position,
+			other,
+			other_from_position,
+			other_to_position
+		)
+	if other.shape_kind == ShapeKind.COMPOUND:
+		return other._compound_swept_overlaps(
+			other_from_position,
+			other_to_position,
+			self,
+			from_position,
+			to_position
+		)
 	# Express both movers in the other's start frame. The first core translates
 	# by the relative displacement while the second remains stationary.
 	var relative_displacement := (
@@ -202,6 +273,15 @@ func get_earliest_swept_overlap_fraction(
 		or not other_to_position.is_finite()
 	):
 		return 1.0
+	if shape_kind == ShapeKind.COMPOUND or other.shape_kind == ShapeKind.COMPOUND:
+		return _compound_earliest_swept_overlap_fraction(
+			from_position,
+			to_position,
+			other,
+			other_from_position,
+			other_to_position,
+			bisection_iterations
+		)
 	if overlaps_at(from_position, other, other_from_position):
 		return 0.0
 	if not swept_overlaps(
@@ -260,6 +340,15 @@ func get_earliest_overlap_fraction_against_swept_envelope(
 		or not other_to_position.is_finite()
 	):
 		return 1.0
+	if shape_kind == ShapeKind.COMPOUND or other.shape_kind == ShapeKind.COMPOUND:
+		return _compound_earliest_overlap_fraction_against_swept_envelope(
+			from_position,
+			to_position,
+			other,
+			other_from_position,
+			other_to_position,
+			bisection_iterations
+		)
 	var other_envelope := other._swept_convex_core(
 		other._translated_core(other_from_position),
 		other_to_position - other_from_position
@@ -342,6 +431,8 @@ func _capture(shape: Shape2D, world_transform: Transform2D) -> void:
 	shape_kind = ShapeKind.UNSUPPORTED
 	support_status = SupportStatus.NULL_SHAPE
 	_core_offsets.clear()
+	_compound_children.clear()
+	_compound_child_anchor_offsets.clear()
 	core_radius = 0.0
 	if shape == null:
 		return
@@ -432,6 +523,41 @@ func _capture(shape: Shape2D, world_transform: Transform2D) -> void:
 	support_status = SupportStatus.SUPPORTED
 
 
+func _capture_compound(
+	shapes: Array[Shape2D],
+	world_transforms: Array[Transform2D],
+	anchor_transform: Transform2D
+) -> void:
+	shape_kind = ShapeKind.UNSUPPORTED
+	support_status = SupportStatus.NULL_SHAPE
+	_core_offsets.clear()
+	_compound_children.clear()
+	_compound_child_anchor_offsets.clear()
+	core_radius = 0.0
+	if shapes.is_empty() or shapes.size() != world_transforms.size():
+		return
+	support_status = _validate_basis(anchor_transform)
+	if support_status != SupportStatus.SUPPORTED:
+		return
+	capture_position = anchor_transform.origin
+	capture_rotation = anchor_transform.get_rotation()
+	capture_scale = anchor_transform.x.length()
+	for child_index in range(shapes.size()):
+		var child := create(shapes[child_index], world_transforms[child_index])
+		if not child.is_supported():
+			support_status = child.support_status
+			_compound_children.clear()
+			_compound_child_anchor_offsets.clear()
+			return
+		_compound_children.append(child)
+		_compound_child_anchor_offsets.append(
+			child.capture_position - capture_position
+		)
+	shape_kind = ShapeKind.COMPOUND
+	_recalculate_compound_bounds()
+	support_status = SupportStatus.SUPPORTED
+
+
 func _validate_basis(world_transform: Transform2D) -> SupportStatus:
 	if (
 		not world_transform.origin.is_finite()
@@ -454,6 +580,139 @@ func _validate_basis(world_transform: Transform2D) -> SupportStatus:
 	if world_transform.determinant() <= 0.0:
 		return SupportStatus.REFLECTED_TRANSFORM
 	return SupportStatus.SUPPORTED
+
+
+func _compound_overlaps_at(
+	world_position: Vector2,
+	other: CombatContactShapeProxy,
+	other_world_position: Vector2
+) -> bool:
+	for self_index in range(_get_union_child_count()):
+		var self_child := _get_union_child(self_index)
+		var self_position := world_position + _get_union_child_offset(self_index)
+		for other_index in range(other._get_union_child_count()):
+			var other_child := other._get_union_child(other_index)
+			var other_position := (
+				other_world_position
+				+ other._get_union_child_offset(other_index)
+			)
+			if self_child.overlaps_at(
+				self_position,
+				other_child,
+				other_position
+			):
+				return true
+	return false
+
+
+func _compound_swept_overlaps(
+	from_position: Vector2,
+	to_position: Vector2,
+	other: CombatContactShapeProxy,
+	other_from_position: Vector2,
+	other_to_position: Vector2
+) -> bool:
+	for self_index in range(_get_union_child_count()):
+		var self_child := _get_union_child(self_index)
+		var self_offset := _get_union_child_offset(self_index)
+		for other_index in range(other._get_union_child_count()):
+			var other_child := other._get_union_child(other_index)
+			var other_offset := other._get_union_child_offset(other_index)
+			if self_child.swept_overlaps(
+				from_position + self_offset,
+				to_position + self_offset,
+				other_child,
+				other_from_position + other_offset,
+				other_to_position + other_offset
+			):
+				return true
+	return false
+
+
+func _compound_earliest_swept_overlap_fraction(
+	from_position: Vector2,
+	to_position: Vector2,
+	other: CombatContactShapeProxy,
+	other_from_position: Vector2,
+	other_to_position: Vector2,
+	bisection_iterations: int
+) -> float:
+	var earliest_fraction := 1.0
+	for self_index in range(_get_union_child_count()):
+		var self_child := _get_union_child(self_index)
+		var self_offset := _get_union_child_offset(self_index)
+		for other_index in range(other._get_union_child_count()):
+			var other_child := other._get_union_child(other_index)
+			var other_offset := other._get_union_child_offset(other_index)
+			var self_from := from_position + self_offset
+			var self_to := to_position + self_offset
+			var other_from := other_from_position + other_offset
+			var other_to := other_to_position + other_offset
+			if not self_child.swept_overlaps(
+				self_from,
+				self_to,
+				other_child,
+				other_from,
+				other_to
+			):
+				continue
+			earliest_fraction = minf(
+				earliest_fraction,
+				self_child.get_earliest_swept_overlap_fraction(
+					self_from,
+					self_to,
+					other_child,
+					other_from,
+					other_to,
+					bisection_iterations
+				)
+			)
+	return earliest_fraction
+
+
+func _compound_earliest_overlap_fraction_against_swept_envelope(
+	from_position: Vector2,
+	to_position: Vector2,
+	other: CombatContactShapeProxy,
+	other_from_position: Vector2,
+	other_to_position: Vector2,
+	bisection_iterations: int
+) -> float:
+	var earliest_fraction := 1.0
+	for self_index in range(_get_union_child_count()):
+		var self_child := _get_union_child(self_index)
+		var self_offset := _get_union_child_offset(self_index)
+		for other_index in range(other._get_union_child_count()):
+			var other_child := other._get_union_child(other_index)
+			var other_offset := other._get_union_child_offset(other_index)
+			earliest_fraction = minf(
+				earliest_fraction,
+				self_child.get_earliest_overlap_fraction_against_swept_envelope(
+					from_position + self_offset,
+					to_position + self_offset,
+					other_child,
+					other_from_position + other_offset,
+					other_to_position + other_offset,
+					bisection_iterations
+				)
+			)
+	return earliest_fraction
+
+
+func _get_union_child_count() -> int:
+	return _compound_children.size() if shape_kind == ShapeKind.COMPOUND else 1
+
+
+func _get_union_child(index: int) -> CombatContactShapeProxy:
+	if shape_kind == ShapeKind.COMPOUND:
+		return _compound_children[index]
+	return self
+
+
+func _get_union_child_offset(index: int) -> Vector2:
+	if shape_kind == ShapeKind.COMPOUND:
+		return _compound_child_anchor_offsets[index]
+	return Vector2.ZERO
 
 
 func _can_compare(
@@ -636,6 +895,24 @@ func _recalculate_bounds() -> void:
 		_minimum_offset.y = minf(_minimum_offset.y, point.y)
 		_maximum_offset.x = maxf(_maximum_offset.x, point.x)
 		_maximum_offset.y = maxf(_maximum_offset.y, point.y)
+
+
+func _recalculate_compound_bounds() -> void:
+	if _compound_children.is_empty():
+		_minimum_offset = Vector2.ZERO
+		_maximum_offset = Vector2.ZERO
+		return
+	var merged_aabb := _compound_children[0].get_world_aabb_at(
+		_compound_child_anchor_offsets[0]
+	)
+	for child_index in range(1, _compound_children.size()):
+		merged_aabb = merged_aabb.merge(
+			_compound_children[child_index].get_world_aabb_at(
+				_compound_child_anchor_offsets[child_index]
+			)
+		)
+	_minimum_offset = merged_aabb.position
+	_maximum_offset = merged_aabb.end
 
 
 static func _remove_closed_hull_duplicate(points: PackedVector2Array) -> void:

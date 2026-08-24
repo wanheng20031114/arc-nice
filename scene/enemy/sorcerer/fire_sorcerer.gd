@@ -1,4 +1,4 @@
-extends "res://scene/enemy/capoo_ranged_enemy.gd"
+extends "res://scene/enemy/layered_ranged_enemy.gd"
 class_name FireSorcerer
 
 const FireConfig := preload(
@@ -45,6 +45,8 @@ var summon_target: Node2D = null
 var latest_proxy_action_id: int = 0
 var cached_runtime_attack_target: Node2D = null
 var attack_target_refresh_left: float = 0.0
+var layered_fire_event_consumes_tick := false
+var layered_fire_summon_ready_to_resolve := false
 
 
 func _ready() -> void:
@@ -54,6 +56,85 @@ func _ready() -> void:
 
 func _get_touch_damage_type() -> EnemyConfig.DamageType:
 	return EnemyConfig.DamageType.MAGIC
+
+
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func _supports_layered_ranged_authoritative_simulation() -> bool:
+	return true
+
+
+func _supports_layered_ranged_contact_authority() -> bool:
+	return true
+
+
+func _supports_layered_ranged_indexed_touch_authority() -> bool:
+	# Fire has no authored attack Area on the enemy body. Indexed authority
+	# replaces only TouchDamageArea; each volley keeps independent DATA
+	# projectile authority.
+	return true
+
+
+func get_layered_area_decision_interval_frames() -> int:
+	# CHASE re-evaluates target, range, LOS and ranged hold every physics tick.
+	return 1
+
+
+func _prepare_layered_ranged_authoritative_simulation() -> void:
+	layered_fire_event_consumes_tick = false
+	layered_fire_summon_ready_to_resolve = false
+
+
+func _advance_layered_ranged_event_phase(delta: float) -> void:
+	layered_fire_event_consumes_tick = false
+	layered_fire_summon_ready_to_resolve = false
+	_update_attack_cooldown(delta)
+	if combat_state != CombatState.SUMMON:
+		return
+	layered_fire_event_consumes_tick = true
+	if _advance_summon_state(delta):
+		layered_fire_summon_ready_to_resolve = true
+		request_layered_area_urgent_decision()
+
+
+func _can_sleep_layered_ranged_event_phase() -> bool:
+	# These authored clocks remain public per-tick state, so no deadline
+	# projection is permitted while any clock is active.
+	return (
+		combat_state == CombatState.CHASE
+		and initial_attack_stagger_left <= 0.0
+		and attack_cooldown_left <= 0.0
+		and attack_target_refresh_left <= 0.0
+	)
+
+
+func _try_consume_layered_ranged_decision_phase(_delta: float) -> bool:
+	if layered_fire_event_consumes_tick:
+		if layered_fire_summon_ready_to_resolve:
+			_resolve_expired_summon()
+			layered_fire_summon_ready_to_resolve = false
+		return true
+	var consumed := _try_consume_fire_chase_decision()
+	if combat_state == CombatState.SUMMON:
+		# Starting a summon makes direction, preview and timer state observable
+		# every tick, so wake the event lane immediately.
+		request_layered_area_urgent_decision()
+	return consumed
+
+
+func _layered_ranged_attack_state_allows_motion() -> bool:
+	return (
+		combat_state == CombatState.CHASE
+		and not layered_fire_event_consumes_tick
+	)
+
+
+func _layered_area_touch_damage_precedes_family_event() -> bool:
+	# Preserve authored touch -> Fire clocks ordering even though this ranged
+	# family intentionally deals no inherited touch hit.
+	return true
 
 
 func _select_nearest_attack_target(
@@ -68,9 +149,10 @@ func _select_nearest_attack_target(
 		attack_target_refresh_left = ATTACK_TARGET_REFRESH_INTERVAL
 		if combat_runtime != null and is_instance_valid(combat_runtime):
 			cached_runtime_attack_target = (
-				combat_runtime.find_nearest_enemy_attack_target_world(
+				combat_runtime.find_nearest_hostile_enemy_attack_target_world(
 					global_position,
-					fire_config.attack_range
+					fire_config.attack_range,
+					get_combat_faction_id()
 				)
 			)
 			if not _is_ranged_combat_target_valid(
@@ -107,7 +189,7 @@ func _select_nearest_attack_target(
 	return fallback_target
 
 
-func _physics_process(delta: float) -> void:
+func _run_authoritative_physics_step(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
@@ -118,6 +200,25 @@ func _physics_process(delta: float) -> void:
 		_update_summon(delta)
 		return
 
+	if _try_consume_fire_chase_decision():
+		return
+
+	if not is_instance_valid(objective_target):
+		velocity = Vector2.ZERO
+		_move_until_player_contact()
+		return
+
+	if _has_player_contact():
+		velocity = Vector2.ZERO
+		return
+
+	var move_direction := _get_navigation_move_direction(delta)
+	_update_facing(move_direction)
+	velocity = move_direction * _get_move_speed()
+	_move_until_player_contact()
+
+
+func _try_consume_fire_chase_decision() -> bool:
 	var fire_config := config as FireConfig
 	var combat_target := get_resolved_combat_target()
 	if combat_target == null and fire_config != null:
@@ -141,7 +242,7 @@ func _physics_process(delta: float) -> void:
 			initial_attack_stagger_left <= 0.0
 			and _try_start_summon(combat_target, fire_config)
 		):
-			return
+			return true
 		# 精确攻击提交可能否定先前缓存的无遮挡结果；同一物理帧再确认一次，
 		# 避免障碍刚出现时仍停在原地。
 		if _try_hold_ranged_attack_position(
@@ -151,23 +252,10 @@ func _physics_process(delta: float) -> void:
 		):
 			velocity = Vector2.ZERO
 			_update_facing(global_position.direction_to(combat_target.global_position))
-			return
+			return true
 	else:
 		_reset_ranged_attack_position_state()
-
-	if not is_instance_valid(objective_target):
-		velocity = Vector2.ZERO
-		_move_until_player_contact()
-		return
-
-	if _has_player_contact():
-		velocity = Vector2.ZERO
-		return
-
-	var move_direction := _get_navigation_move_direction(delta)
-	_update_facing(move_direction)
-	velocity = move_direction * _get_move_speed()
-	_move_until_player_contact()
+	return false
 
 
 func _apply_config() -> void:
@@ -188,6 +276,8 @@ func _apply_config() -> void:
 	latest_proxy_action_id = 0
 	cached_runtime_attack_target = null
 	attack_target_refresh_left = 0.0
+	layered_fire_event_consumes_tick = false
+	layered_fire_summon_ready_to_resolve = false
 	_reset_ranged_attack_position_state()
 	if is_node_ready():
 		_hide_summon_previews()
@@ -266,19 +356,25 @@ func _try_start_summon(
 
 
 func _update_summon(delta: float) -> void:
+	if not _advance_summon_state(delta):
+		return
+	_resolve_expired_summon()
+
+
+func _advance_summon_state(delta: float) -> bool:
 	var fire_config := config as FireConfig
 	if (
 		fire_config == null
 		or not _is_ranged_combat_target_valid(summon_target)
 	):
 		_cancel_summon()
-		return
+		return false
 	if not _is_ranged_combat_target_in_range(
 		summon_target,
 		fire_config.attack_range
 	):
 		_cancel_summon()
-		return
+		return false
 
 	velocity = Vector2.ZERO
 	summon_direction = global_position.direction_to(summon_target.global_position)
@@ -288,6 +384,14 @@ func _update_summon(delta: float) -> void:
 	_update_facing(summon_direction)
 	summon_time_left = maxf(summon_time_left - delta, 0.0)
 	if summon_time_left > 0.0:
+		return false
+	return true
+
+
+func _resolve_expired_summon() -> void:
+	var fire_config := config as FireConfig
+	if fire_config == null:
+		_cancel_summon()
 		return
 	if not _has_ranged_combat_line(
 		summon_target,

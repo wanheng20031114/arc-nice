@@ -46,7 +46,8 @@ class EnemyActionRecorder:
 		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
 		_source_direction: Vector2 = Vector2.ZERO,
 		_is_ranged: bool = false,
-		_contact_preconsumed: bool = false
+		_contact_preconsumed: bool = false,
+		_damage_source_snapshot: DamageSourceSnapshot = null
 	) -> bool:
 		if (
 			damage_target == null

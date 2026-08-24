@@ -1,7 +1,6 @@
-extends Enemy
+extends "res://scene/enemy/layered_ranged_enemy.gd"
 class_name CapooRPG
 
-const WORLD_COLLISION_MASK := 1
 const CapooRPGConfigScript := preload("res://resources/config/enemies/capoo_rpg_config.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
@@ -17,10 +16,6 @@ enum CombatState {
 	FIRE,
 }
 
-@export var path_refresh_interval: float = 0.25
-@export var waypoint_arrival_distance: float = 6.0
-@export var direct_chase_extra_distance: float = 2.0
-
 @onready var muzzle_heat: Polygon2D = $MuzzleHeat
 @onready var attack_audio: AudioStreamPlayer2D = $AttackAudio
 
@@ -29,9 +24,10 @@ var attack_cooldown_left: float = 0.0
 var windup_time_left: float = 0.0
 var fire_time_left: float = 0.0
 var fire_direction := Vector2.RIGHT
-var action_sequence: int = 0
 var latest_proxy_action_id: int = 0
 var committed_attack_target: Node2D = null
+var layered_rpg_event_consumes_tick := false
+var layered_rpg_windup_ready_to_fire := false
 
 
 func supports_dynamic_enemy_targeting() -> bool:
@@ -47,7 +43,86 @@ func can_target_water_plant_objectives() -> bool:
 	return true
 
 
-func _physics_process(delta: float) -> void:
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func _supports_layered_ranged_authoritative_simulation() -> bool:
+	return true
+
+
+func _supports_layered_ranged_contact_authority() -> bool:
+	return true
+
+
+func _supports_layered_ranged_indexed_touch_authority() -> bool:
+	# RPG contact has no inherited touch hit. Indexed authority replaces its only
+	# authored TouchDamageArea, while rockets remain in the data simulation service.
+	return true
+
+
+func get_layered_area_decision_interval_frames() -> int:
+	# Legacy attempts target/range/LOS acquisition on every CHASE physics tick.
+	return 1
+
+
+func _prepare_layered_ranged_authoritative_simulation() -> void:
+	layered_rpg_event_consumes_tick = false
+	layered_rpg_windup_ready_to_fire = false
+
+
+func _advance_layered_ranged_event_phase(delta: float) -> void:
+	layered_rpg_event_consumes_tick = false
+	layered_rpg_windup_ready_to_fire = false
+	_update_attack_cooldown(delta)
+	if (
+		combat_state != CombatState.CHASE
+		and not _is_ranged_combat_target_valid(committed_attack_target)
+	):
+		# The authored runner cancels before its state match, so CHASE decision and
+		# motion remain eligible later in this same tick.
+		_cancel_attack()
+		request_layered_area_urgent_decision()
+	match combat_state:
+		CombatState.WINDUP:
+			layered_rpg_event_consumes_tick = true
+			if _advance_windup_state(delta):
+				layered_rpg_windup_ready_to_fire = true
+				request_layered_area_urgent_decision()
+		CombatState.FIRE:
+			layered_rpg_event_consumes_tick = true
+			_update_fire(delta)
+
+
+func _can_sleep_layered_ranged_event_phase() -> bool:
+	# Cooldown and authored visual timers are public per-tick state.
+	return (
+		combat_state == CombatState.CHASE
+		and attack_cooldown_left <= 0.0
+	)
+
+
+func _try_consume_layered_ranged_decision_phase(_delta: float) -> bool:
+	if layered_rpg_event_consumes_tick:
+		if layered_rpg_windup_ready_to_fire:
+			_resolve_expired_windup()
+			layered_rpg_windup_ready_to_fire = false
+		return true
+	var started := _try_start_chase_attack_decision()
+	if started:
+		# Wake a CHASE event lane that may have been sleeping before the commit.
+		request_layered_area_urgent_decision()
+	return started
+
+
+func _layered_ranged_attack_state_allows_motion() -> bool:
+	return (
+		combat_state == CombatState.CHASE
+		and not layered_rpg_event_consumes_tick
+	)
+
+
+func _run_authoritative_physics_step(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
@@ -68,8 +143,7 @@ func _physics_process(delta: float) -> void:
 			_update_fire(delta)
 			return
 
-	var combat_target := _get_preferred_ranged_combat_target()
-	if combat_target != null and _try_start_windup(combat_target):
+	if _try_start_chase_attack_decision():
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
@@ -85,6 +159,11 @@ func _physics_process(delta: float) -> void:
 	_move_until_player_contact()
 
 
+func _try_start_chase_attack_decision() -> bool:
+	var combat_target := _get_preferred_ranged_combat_target()
+	return combat_target != null and _try_start_windup(combat_target)
+
+
 func _apply_config() -> void:
 	super._apply_config()
 	combat_state = CombatState.CHASE
@@ -92,6 +171,8 @@ func _apply_config() -> void:
 	windup_time_left = 0.0
 	fire_time_left = 0.0
 	committed_attack_target = null
+	layered_rpg_event_consumes_tick = false
+	layered_rpg_windup_ready_to_fire = false
 
 	var rpg_config := config as CapooRPGConfigScript
 	if rpg_config != null:
@@ -134,7 +215,7 @@ func _try_start_windup(candidate_target: Node2D = null) -> bool:
 		rpg_config.attack_range
 	):
 		return false
-	if not _has_clear_world_line_to_target(candidate_target):
+	if not _has_clear_world_line_to_rpg_target(candidate_target):
 		return false
 
 	committed_attack_target = candidate_target
@@ -155,13 +236,19 @@ func _try_start_windup(candidate_target: Node2D = null) -> bool:
 
 
 func _update_windup(delta: float) -> void:
+	if not _advance_windup_state(delta):
+		return
+	_resolve_expired_windup()
+
+
+func _advance_windup_state(delta: float) -> bool:
 	var rpg_config := config as CapooRPGConfigScript
 	if (
 		rpg_config == null
 		or not _is_ranged_combat_target_valid(committed_attack_target)
 	):
 		_cancel_attack()
-		return
+		return false
 
 	velocity = Vector2.ZERO
 	fire_direction = global_position.direction_to(
@@ -175,8 +262,12 @@ func _update_windup(delta: float) -> void:
 	_set_muzzle_heat(progress, fire_direction)
 
 	if windup_time_left > 0.0:
-		return
-	if not _has_clear_world_line_to_target(committed_attack_target):
+		return false
+	return true
+
+
+func _resolve_expired_windup() -> void:
+	if not _has_clear_world_line_to_rpg_target(committed_attack_target):
 		_cancel_attack()
 		return
 
@@ -365,7 +456,7 @@ func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> voi
 		)
 
 
-func _has_clear_world_line_to_target(attack_target: Node2D) -> bool:
+func _has_clear_world_line_to_rpg_target(attack_target: Node2D) -> bool:
 	if not _is_ranged_combat_target_valid(attack_target):
 		return false
 

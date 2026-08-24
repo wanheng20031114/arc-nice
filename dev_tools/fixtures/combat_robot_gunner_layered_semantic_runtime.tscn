@@ -1,0 +1,15 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn" id="1_runtime"]
+[ext_resource type="PackedScene" path="res://dev_tools/fixtures/combat_robot_gunner_layered_semantic_harness.tscn" id="2_source"]
+[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect/yuanshi_insect_basic.tscn" id="3_target"]
+
+[node name="CombatRobotGunnerLayeredSemanticRuntime" instance=ExtResource("1_runtime")]
+
+[node name="GunnerSource" parent="EnemyContainer" instance=ExtResource("2_source")]
+
+[node name="TargetA" parent="EnemyContainer" instance=ExtResource("3_target")]
+position = Vector2(80, 0)
+
+[node name="TargetB" parent="EnemyContainer" instance=ExtResource("3_target")]
+position = Vector2(-80, 0)

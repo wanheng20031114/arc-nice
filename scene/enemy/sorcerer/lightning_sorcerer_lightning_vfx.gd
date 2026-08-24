@@ -95,10 +95,6 @@ static func try_spawn(
 	) as LightningSorcererLightningVfx
 	if effect == null:
 		return false
-	if effect.get_parent() == null:
-		runtime.add_child(effect)
-	elif effect.get_parent() != runtime:
-		effect.reparent(runtime)
 	if effect.play(world_path, elapsed_seconds):
 		return true
 	SessionObjectPool.release_to_owner(effect)

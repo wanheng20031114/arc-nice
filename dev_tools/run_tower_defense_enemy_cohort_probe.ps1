@@ -9,6 +9,25 @@ param(
     [ValidateRange(0, 5000)]
     [int]$EnemyCount = 300,
 
+    [ValidateSet(
+        "custom",
+        "first_night_main",
+        "critical_300",
+        "basic_pursuit_300",
+        "tower_projectile_96",
+        "faction_battle_150v150",
+        "obstacle_water_unreachable",
+        "host_client_proxy_1000"
+    )]
+    [string]$ScenarioId = "custom",
+
+    [ValidateSet("project", "legacy", "compat_60", "layered_area", "layered_contact")]
+    [string]$SimulationMode = "project",
+
+    [bool]$AuthoritativeTickSampling = $false,
+
+    [bool]$DetailedSemanticEvidence = $false,
+
     [ValidateRange(0, 10000)]
     [int]$FenceCount = 0,
 
@@ -100,11 +119,34 @@ param(
     [int]$MinimumExternalSamples = 3,
 
     [ValidateRange(1, 3600)]
-    [int]$TimeoutSeconds = 180
+    [int]$TimeoutSeconds = 180,
+
+    [ValidatePattern('^[A-Za-z0-9_-]*$')]
+    [string]$InvocationToken = ""
 )
 
 $ErrorActionPreference = "Stop"
 $probeScript = "res://dev_tools/tower_defense_enemy_cohort_performance_probe.gd"
+$ScenarioId = $ScenarioId.ToLowerInvariant()
+$SimulationMode = $SimulationMode.ToLowerInvariant()
+$formalScenarioIds = @(
+    "first_night_main",
+    "critical_300",
+    "basic_pursuit_300",
+    "tower_projectile_96",
+    "faction_battle_150v150",
+    "obstacle_water_unreachable",
+    "host_client_proxy_1000"
+)
+$formalScenarioPhaseById = @{
+    first_night_main = "approach"
+    critical_300 = "approach"
+    basic_pursuit_300 = "approach"
+    tower_projectile_96 = "engagement"
+    faction_battle_150v150 = "engagement"
+    obstacle_water_unreachable = "approach"
+    host_client_proxy_1000 = "approach"
+}
 
 function Get-NearestRankValue {
     param(
@@ -137,6 +179,138 @@ function Get-OptionalPropertyValue {
         return $DefaultValue
     }
     return $property.Value
+}
+
+function Test-FormalRandomStateBoundary {
+    param(
+        [object]$Boundary,
+        [int]$ExpectedSeed,
+        [int]$ExpectedEnemyCount,
+        [int]$ExpectedCornCount,
+        [int]$ExpectedAgaveCount
+    )
+
+    if (
+        $null -eq $Boundary -or
+        -not [bool](Get-OptionalPropertyValue `
+            $Boundary `
+            "determinized_after_ready" `
+            $false) -or
+        [int](Get-OptionalPropertyValue $Boundary "requested_seed" -1) -ne
+            $ExpectedSeed
+    ) {
+        return $false
+    }
+    $runtime = Get-OptionalPropertyValue $Boundary "runtime" $null
+    $fate = Get-OptionalPropertyValue $Boundary "fate_coordinator" $null
+    $fateManager = Get-OptionalPropertyValue $Boundary "fate_manager" $null
+    if (
+        [long](Get-OptionalPropertyValue $runtime "seed" ([long]-1)) -ne
+            [long]$ExpectedSeed -or
+        [long](Get-OptionalPropertyValue $fate "seed" ([long]-1)) -ne
+            ([long]$ExpectedSeed + 2000000L) -or
+        [long](Get-OptionalPropertyValue $fateManager "seed" ([long]-1)) -ne
+            ([long]$ExpectedSeed + 2000001L) -or
+        $null -eq (Get-OptionalPropertyValue $runtime "state" $null) -or
+        $null -eq (Get-OptionalPropertyValue $fate "state" $null) -or
+        $null -eq (Get-OptionalPropertyValue $fateManager "state" $null)
+    ) {
+        return $false
+    }
+    $behaviorStates = @(
+        Get-OptionalPropertyValue $Boundary "enemy_behavior_states" @()
+    )
+    $dropStates = @(Get-OptionalPropertyValue $Boundary "enemy_drop_states" @())
+    $cornStates = @(Get-OptionalPropertyValue $Boundary "corn_idle_states" @())
+    $agaveStates = @(Get-OptionalPropertyValue $Boundary "agave_idle_states" @())
+    if (
+        $behaviorStates.Count -ne $ExpectedEnemyCount -or
+        $dropStates.Count -ne $ExpectedEnemyCount -or
+        $cornStates.Count -ne $ExpectedCornCount -or
+        $agaveStates.Count -ne $ExpectedAgaveCount
+    ) {
+        return $false
+    }
+    for ($index = 0; $index -lt $ExpectedEnemyCount; $index += 1) {
+        if (
+            [int](Get-OptionalPropertyValue $behaviorStates[$index] "index" -1) -ne
+                $index -or
+            [long](Get-OptionalPropertyValue $behaviorStates[$index] "seed" ([long]-1)) -ne
+                ([long]$ExpectedSeed + [long]$index * 2L) -or
+            $null -eq (Get-OptionalPropertyValue `
+                $behaviorStates[$index] `
+                "state" `
+                $null) -or
+            [int](Get-OptionalPropertyValue $dropStates[$index] "index" -1) -ne
+                $index -or
+            [long](Get-OptionalPropertyValue $dropStates[$index] "seed" ([long]-1)) -ne
+                ([long]$ExpectedSeed + [long]$index * 2L + 1L) -or
+            $null -eq (Get-OptionalPropertyValue $dropStates[$index] "state" $null)
+        ) {
+            return $false
+        }
+    }
+    for ($index = 0; $index -lt $ExpectedCornCount; $index += 1) {
+        if (
+            [int](Get-OptionalPropertyValue $cornStates[$index] "index" -1) -ne
+                $index -or
+            [long](Get-OptionalPropertyValue $cornStates[$index] "seed" ([long]-1)) -ne
+                ([long]$ExpectedSeed + [long]$index) -or
+            $null -eq (Get-OptionalPropertyValue $cornStates[$index] "state" $null)
+        ) {
+            return $false
+        }
+    }
+    for ($index = 0; $index -lt $ExpectedAgaveCount; $index += 1) {
+        if (
+            [int](Get-OptionalPropertyValue $agaveStates[$index] "index" -1) -ne
+                $index -or
+            [long](Get-OptionalPropertyValue $agaveStates[$index] "seed" ([long]-1)) -ne
+                ([long]$ExpectedSeed + [long]$ExpectedCornCount + [long]$index) -or
+            $null -eq (Get-OptionalPropertyValue $agaveStates[$index] "state" $null)
+        ) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Test-ClientProxyAuthorityBoundary {
+    param([object]$Boundary)
+
+    return (
+        $null -ne $Boundary -and
+        [int](Get-OptionalPropertyValue $Boundary "proxy_count" -1) -eq 1000 -and
+        [int](Get-OptionalPropertyValue $Boundary "network_count" -1) -eq 1000 -and
+        [int](Get-OptionalPropertyValue $Boundary "index_count" -1) -eq 1000 -and
+        [int](Get-OptionalPropertyValue $Boundary "proxy_true_count" -1) -eq 1000 -and
+        [int](Get-OptionalPropertyValue $Boundary "process_disabled_count" -1) -eq 1000 -and
+        [int](Get-OptionalPropertyValue `
+            $Boundary `
+            "physics_process_disabled_count" `
+            -1) -eq 1000 -and
+        [int](Get-OptionalPropertyValue $Boundary "area_count" -1) -gt 0 -and
+        [int](Get-OptionalPropertyValue $Boundary "monitoring_area_count" -1) -eq 0 -and
+        [int](Get-OptionalPropertyValue `
+            $Boundary `
+            "simulation_registered_count" `
+            -1) -eq 0 -and
+        [int](Get-OptionalPropertyValue `
+            $Boundary `
+            "contact_registered_count" `
+            -1) -eq 0 -and
+        [int](Get-OptionalPropertyValue `
+            $Boundary `
+            "authoritative_attack_state_count" `
+            -1) -eq 0 -and
+        [int](Get-OptionalPropertyValue `
+            $Boundary `
+            "authoritative_damage_state_count" `
+            -1) -eq 0 -and
+        [int](Get-OptionalPropertyValue $Boundary "dead_count" -1) -eq 0 -and
+        [int](Get-OptionalPropertyValue $Boundary "pending_reward" -1) -eq 0 -and
+        -not [bool](Get-OptionalPropertyValue $Boundary "reward_flush_queued" $true)
+    )
 }
 
 function New-ProcessPerformanceCounterSet {
@@ -192,6 +366,173 @@ function Get-PerformanceCounterSetTotal {
     return $total
 }
 
+function Get-ProbeProcessIdentity {
+    param([Parameter(Mandatory = $true)]$CimProcess)
+
+    $creationUtc = ([DateTime]$CimProcess.CreationDate).ToUniversalTime()
+    return "$([int]$CimProcess.ProcessId)|$($creationUtc.Ticks)"
+}
+
+function Test-IsGodotProcess {
+    param([Parameter(Mandatory = $true)]$CimProcess)
+
+    return (
+        $CimProcess.Name -ieq "Godot.exe" -or
+        $CimProcess.Name -ieq "Godot_console.exe"
+    )
+}
+
+function Test-IsMarkedProbeGodotProcess {
+    param([Parameter(Mandatory = $true)]$CimProcess)
+
+    if (-not (Test-IsGodotProcess $CimProcess) -or $null -eq $CimProcess.CommandLine) {
+        return $false
+    }
+    $commandLine = [string]$CimProcess.CommandLine
+    $escapedRunToken = [regex]::Escape($runToken)
+    $escapedProbeScript = [regex]::Escape($probeScript)
+    $hasExactToken = [regex]::IsMatch(
+        $commandLine,
+        ('(?:^|\s|")--runner-token={0}(?=\s|"|$)' -f $escapedRunToken)
+    )
+    $hasExactProbe = [regex]::IsMatch(
+        $commandLine,
+        ('(?:^|\s|"){0}(?=\s|"|$)' -f $escapedProbeScript)
+    )
+    # Headless/check-only are the normal automated modes. Formal render A/B is
+    # intentionally windowed, but remains a non-editor --script invocation with
+    # the same unguessable token and exact probe path.
+    $isNonEditorProbe = (
+        [regex]::IsMatch($commandLine, "(?:^|\s)--headless(?:\s|$)") -or
+        [regex]::IsMatch($commandLine, "(?:^|\s)--check-only(?:\s|$)") -or
+        [regex]::IsMatch($commandLine, "(?:^|\s)--script(?:\s|$)")
+    )
+    return $hasExactToken -and $hasExactProbe -and $isNonEditorProbe
+}
+
+function Register-OwnedProbeProcess {
+    param([Parameter(Mandatory = $true)]$CimProcess)
+
+    $processId = [int]$CimProcess.ProcessId
+    if (-not $script:ownedProbeIdentityByPid.ContainsKey($processId)) {
+        $script:ownedProbeIdentityByPid[$processId] = (
+            Get-ProbeProcessIdentity $CimProcess
+        )
+        $script:ownedProbeCreationUtcByPid[$processId] = (
+            ([DateTime]$CimProcess.CreationDate).ToUniversalTime()
+        )
+    }
+}
+
+function Update-OwnedProbeProcessRegistry {
+    $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+    foreach ($process in $snapshot) {
+        if (Test-IsMarkedProbeGodotProcess $process) {
+            Register-OwnedProbeProcess $process
+        }
+    }
+
+    # A console launcher may hand execution to another Godot binary. Track the
+    # complete descendant tree from an already token-proven root without ever
+    # adopting an unrelated editor process.
+    $changed = $true
+    while ($changed) {
+        $changed = $false
+        foreach ($process in $snapshot) {
+            $processId = [int]$process.ProcessId
+            $parentId = [int]$process.ParentProcessId
+            if (
+                $script:ownedProbeIdentityByPid.ContainsKey($processId) -or
+                -not $script:ownedProbeIdentityByPid.ContainsKey($parentId)
+            ) {
+                continue
+            }
+            $creationUtc = ([DateTime]$process.CreationDate).ToUniversalTime()
+            if ($creationUtc -lt $script:ownedProbeCreationUtcByPid[$parentId]) {
+                continue
+            }
+            Register-OwnedProbeProcess $process
+            $changed = $true
+        }
+    }
+    return $snapshot
+}
+
+function Get-LiveOwnedProbeProcesses {
+    $snapshot = @(Update-OwnedProbeProcessRegistry)
+    return @($snapshot | Where-Object {
+        $processId = [int]$_.ProcessId
+        $script:ownedProbeIdentityByPid.ContainsKey($processId) -and
+        $script:ownedProbeIdentityByPid[$processId] -eq (
+            Get-ProbeProcessIdentity $_
+        )
+    })
+}
+
+function Get-LiveMarkedProbeGodotProcesses {
+    return @(Get-LiveOwnedProbeProcesses | Where-Object {
+        Test-IsMarkedProbeGodotProcess $_
+    })
+}
+
+function Stop-OwnedProbeProcessTree {
+    $live = @(Get-LiveOwnedProbeProcesses)
+    if ($live.Count -gt 0) {
+        $parentByPid = @{}
+        foreach ($process in $live) {
+            $parentByPid[[int]$process.ProcessId] = [int]$process.ParentProcessId
+        }
+        $depthByPid = @{}
+        foreach ($process in $live) {
+            $processId = [int]$process.ProcessId
+            $cursor = $processId
+            $depth = 0
+            $visited = @{}
+            while (
+                $parentByPid.ContainsKey($cursor) -and
+                $parentByPid[$cursor] -ne 0 -and
+                -not $visited.ContainsKey($cursor)
+            ) {
+                $visited[$cursor] = $true
+                $cursor = $parentByPid[$cursor]
+                $depth++
+            }
+            $depthByPid[$processId] = $depth
+        }
+        foreach ($process in @($live | Sort-Object {
+            -1 * $depthByPid[[int]$_.ProcessId]
+        })) {
+            Stop-Process `
+                -Id ([int]$process.ProcessId) `
+                -Force `
+                -ErrorAction SilentlyContinue
+        }
+    }
+
+    $cleanupDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $remaining = @(Get-LiveOwnedProbeProcesses)
+        if ($remaining.Count -eq 0) {
+            return
+        }
+        # A console handoff can race the first snapshot. Newly adopted
+        # descendants are still owned by the token-proven tree, so stop them in
+        # the same bounded cleanup transaction before checking again.
+        foreach ($process in @($remaining | Sort-Object ProcessId -Descending)) {
+            Stop-Process `
+                -Id ([int]$process.ProcessId) `
+                -Force `
+                -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $cleanupDeadline)
+
+    $remainingDescriptions = @($remaining | ForEach-Object {
+        "$($_.Name) PID=$($_.ProcessId)"
+    })
+    throw "Probe process cleanup failed: $($remainingDescriptions -join ', ')"
+}
+
 if (-not (Test-Path -LiteralPath $GodotExe -PathType Leaf)) {
     throw "Godot console executable was not found: $GodotExe"
 }
@@ -208,11 +549,19 @@ if ($GateProfile -ne "diagnostic") {
     if ($FixedFps -ne 60) {
         $gateConfigurationFailures.Add("FixedFps must be 60.")
     }
-    if ($Phase -ne "engagement") {
-        $gateConfigurationFailures.Add("Phase must be engagement.")
+    $isFormalAbScenario = $formalScenarioPhaseById.ContainsKey($ScenarioId)
+    $expectedScenarioPhase = if ($isFormalAbScenario) {
+        [string]$formalScenarioPhaseById[$ScenarioId]
+    } else {
+        "engagement"
     }
-    if ($EnemyCount -ne 300) {
-        $gateConfigurationFailures.Add("EnemyCount must be exactly 300.")
+    if ($Phase -ne $expectedScenarioPhase) {
+        $gateConfigurationFailures.Add(
+            "$ScenarioId requires Phase=$expectedScenarioPhase."
+        )
+    }
+    if ($EnemyCount -notin @(200, 300)) {
+        $gateConfigurationFailures.Add("EnemyCount must be exactly 200 or 300.")
     }
     if ($WarmupFrames -lt $minimumWarmupFrames) {
         $gateConfigurationFailures.Add(
@@ -228,11 +577,59 @@ if ($GateProfile -ne "diagnostic") {
         $FenceAbMetrics -or
         $EnemyHotMetrics -or
         $GuardianOverlapMetrics -or
-        $RuntimeCountScans
+        $RuntimeCountScans -or
+        $DetailedSemanticEvidence
     ) {
         $gateConfigurationFailures.Add(
             "Intrusive hot-path/count instrumentation must be disabled."
         )
+    }
+    if ($AuthoritativeTickSampling) {
+        if ($WarmupFrames -ne 300) {
+            $gateConfigurationFailures.Add(
+                "AuthoritativeTickSampling requires WarmupFrames=300."
+            )
+        }
+        if ($SampleFrames -ne 1800) {
+            $gateConfigurationFailures.Add(
+                "AuthoritativeTickSampling requires SampleFrames=1800."
+            )
+        }
+        if ($DetailedSemanticEvidence) {
+            $gateConfigurationFailures.Add(
+                "AuthoritativeTickSampling requires DetailedSemanticEvidence=false."
+            )
+        }
+    }
+    if ($ScenarioId -in @("first_night_main", "critical_300")) {
+        $expectedScenarioEnemyCount = if ($ScenarioId -eq "first_night_main") {
+            200
+        } else {
+            300
+        }
+        if (
+            $WaveConfig -ne
+            "res://resources/config/campaigns/tower_defense/formal/wave_01.tres"
+        ) {
+            $gateConfigurationFailures.Add(
+                "$ScenarioId requires the formal tower-defense wave_01 resource."
+            )
+        }
+        if ($EnemyCount -ne $expectedScenarioEnemyCount) {
+            $gateConfigurationFailures.Add(
+                "$ScenarioId requires EnemyCount=$expectedScenarioEnemyCount."
+            )
+        }
+        if (($FenceCount + $CornCount + $AgaveCount) -ne 100) {
+            $gateConfigurationFailures.Add(
+                "$ScenarioId requires exactly 100 fence/corn/agave buildings."
+            )
+        }
+        if (-not $AuthoritativeTickSampling) {
+            $gateConfigurationFailures.Add(
+                "$ScenarioId requires AuthoritativeTickSampling=true."
+            )
+        }
     }
     if ($GateProfile -eq "cpu60") {
         if (-not $Headless) {
@@ -338,7 +735,13 @@ $over33RatioBudgetText = $Over33RatioBudget.ToString(
     [Globalization.CultureInfo]::InvariantCulture
 )
 $tempStem = "arc_nice_enemy_cohort_{0}" -f ([Guid]::NewGuid().ToString("N"))
-$runToken = [Guid]::NewGuid().ToString("N")
+$runToken = if ([string]::IsNullOrWhiteSpace($InvocationToken)) {
+    [Guid]::NewGuid().ToString("N")
+} else {
+    $InvocationToken
+}
+$script:ownedProbeIdentityByPid = @{}
+$script:ownedProbeCreationUtcByPid = @{}
 $stdoutPath = Join-Path ([IO.Path]::GetTempPath()) ($tempStem + ".out")
 $stderrPath = Join-Path ([IO.Path]::GetTempPath()) ($tempStem + ".err")
 
@@ -362,6 +765,9 @@ $godotArguments += @(
     "--runner-token=$runToken",
     "--phase=$Phase",
     "--enemies=$EnemyCount",
+    "--scenario-id=$ScenarioId",
+    "--authoritative-tick-sampling=$($AuthoritativeTickSampling.ToString().ToLowerInvariant())",
+    "--detailed-semantic-evidence=$($DetailedSemanticEvidence.ToString().ToLowerInvariant())",
     "--fences=$FenceCount",
     "--fence-ab-metrics=$($FenceAbMetrics.ToString().ToLowerInvariant())",
     "--warmup=$WarmupFrames",
@@ -389,6 +795,9 @@ $godotArguments += @(
     "--runtime-count-scans=$($RuntimeCountScans.ToString().ToLowerInvariant())",
     "--enemy-attack-audio-limiter=$($EnemyAttackAudioLimiter.ToString().ToLowerInvariant())"
 )
+if ($SimulationMode -ne "project") {
+    $godotArguments += "--enemy-simulation-mode=$SimulationMode"
+}
 if (-not [string]::IsNullOrWhiteSpace($WindowSize)) {
     if ($WindowSize -notmatch '^\d+x\d+$') {
         throw "WindowSize must use WIDTHxHEIGHT, for example 1920x1080."
@@ -432,13 +841,7 @@ try {
         [Math]::Min(15, $TimeoutSeconds)
     )
     while ([DateTime]::UtcNow -lt $discoveryDeadline -and $enginePid -eq 0) {
-        $engineProcess = Get-CimInstance Win32_Process |
-            Where-Object {
-                $_.Name -eq "Godot.exe" -and
-                $_.ProcessId -ne $PID -and
-                $_.CommandLine -like "*$probeScript*" -and
-                $_.CommandLine -like "*--runner-token=$runToken*"
-            } |
+        $engineProcess = Get-LiveMarkedProbeGodotProcesses |
             Sort-Object ProcessId -Descending |
             Select-Object -First 1
         if ($null -ne $engineProcess) {
@@ -736,6 +1139,302 @@ try {
             "Godot seed '$payloadSeed' did not match '$Seed'."
         )
     }
+    $payloadScenarioId = [string](
+        Get-OptionalPropertyValue $payload "scenario_id" ""
+    )
+    if ($payloadScenarioId -ne $ScenarioId) {
+        $runnerContractViolations.Add(
+            "Godot scenario '$payloadScenarioId' did not match '$ScenarioId'."
+        )
+    }
+    $payloadPhase = [string](Get-OptionalPropertyValue $payload "phase" "")
+    if ($payloadPhase -ne $Phase) {
+        $runnerContractViolations.Add(
+            "Godot phase '$payloadPhase' did not match '$Phase'."
+        )
+    }
+    if ($ScenarioId -in $formalScenarioIds) {
+        $payloadScenarioContract = Get-OptionalPropertyValue `
+            $payload `
+            "scenario_contract" `
+            $null
+        $rngStateEvidence = Get-OptionalPropertyValue `
+            $payload `
+            "rng_state_evidence" `
+            $null
+        $rngStateStart = Get-OptionalPropertyValue `
+            $rngStateEvidence `
+            "start" `
+            $null
+        $rngStateEnd = Get-OptionalPropertyValue `
+            $rngStateEvidence `
+            "end" `
+            $null
+        if (
+            -not (Test-FormalRandomStateBoundary `
+                $rngStateStart `
+                $Seed `
+                $EnemyCount `
+                $CornCount `
+                $AgaveCount) -or
+            -not (Test-FormalRandomStateBoundary `
+                $rngStateEnd `
+                $Seed `
+                $EnemyCount `
+                $CornCount `
+                $AgaveCount)
+        ) {
+            $runnerContractViolations.Add(
+                "Formal scenario omitted or forged its post-ready RNG state evidence."
+            )
+        }
+        $productionRegistration = Get-OptionalPropertyValue `
+            $payload `
+            "production_registration_fingerprint" `
+            $null
+        $registrationBefore = Get-OptionalPropertyValue `
+            $productionRegistration `
+            "before_measurement" `
+            $null
+        $registrationLedger = Get-OptionalPropertyValue `
+            $registrationBefore `
+            "ledger" `
+            $null
+        $registrationLedgerSnapshot = Get-OptionalPropertyValue `
+            $registrationLedger `
+            "snapshot" `
+            $null
+        $registrationPlantIndex = Get-OptionalPropertyValue `
+            $registrationBefore `
+            "plant_objective_index" `
+            $null
+        $registrationNetwork = Get-OptionalPropertyValue `
+            $registrationBefore `
+            "network_registry" `
+            $null
+        $registrationCombatIndex = Get-OptionalPropertyValue `
+            $registrationBefore `
+            "combat_target_index" `
+            $null
+        $registrationCrossStore = Get-OptionalPropertyValue `
+            $registrationBefore `
+            "cross_store" `
+            $null
+        if (
+            $null -eq $productionRegistration -or
+            -not [bool](Get-OptionalPropertyValue `
+                $productionRegistration `
+                "required" `
+                $false) -or
+            [int](Get-OptionalPropertyValue $registrationBefore "runtime_mode" -1) -ne 1 -or
+            [string](Get-OptionalPropertyValue `
+                $registrationBefore `
+                "current_flow_step_path" `
+                "") -ne [string](Get-OptionalPropertyValue `
+                    $payloadScenarioContract `
+                    "flow_step_path" `
+                    "") -or
+            [int](Get-OptionalPropertyValue `
+                $registrationLedgerSnapshot `
+                "total" `
+                -1) -ne $EnemyCount -or
+            [int](Get-OptionalPropertyValue `
+                $registrationLedgerSnapshot `
+                "spawned" `
+                -1) -ne $EnemyCount -or
+            [int](Get-OptionalPropertyValue `
+                $registrationLedger `
+                "active_count" `
+                -1) -ne $EnemyCount -or
+            [int](Get-OptionalPropertyValue `
+                $registrationLedger `
+                "attached_count" `
+                -1) -ne $EnemyCount -or
+            [int](Get-OptionalPropertyValue `
+                $registrationPlantIndex `
+                "tracked_enemies" `
+                -1) -ne $EnemyCount -or
+            [int](Get-OptionalPropertyValue `
+                $registrationNetwork `
+                "registered_count" `
+                -1) -ne $EnemyCount -or
+            -not [bool](Get-OptionalPropertyValue `
+                $registrationNetwork `
+                "continuous_initial_ids" `
+                $false) -or
+            [int](Get-OptionalPropertyValue `
+                $registrationCombatIndex `
+                "registered_count" `
+                -1) -ne $EnemyCount -or
+            [int](Get-OptionalPropertyValue `
+                $registrationCrossStore `
+                "combat_mapping_count" `
+                -1) -ne $EnemyCount -or
+            [int](Get-OptionalPropertyValue `
+                $registrationCrossStore `
+                "ledger_mapping_count" `
+                -1) -ne $EnemyCount -or
+            -not [bool](Get-OptionalPropertyValue `
+                $registrationCrossStore `
+                "network_and_combat_ids_match" `
+                $false)
+        ) {
+            $runnerContractViolations.Add(
+                "Formal scenario omitted or violated its production registration fingerprint."
+            )
+        }
+        if (
+            -not [bool](Get-OptionalPropertyValue `
+                $payloadScenarioContract `
+                "host_configured_before_tree" `
+                $false) -or
+            -not [bool](Get-OptionalPropertyValue `
+                $payloadScenarioContract `
+                "host_authority_verified" `
+                $false)
+        ) {
+            $runnerContractViolations.Add(
+                "Formal runtime did not prove pre-tree production Host configuration."
+            )
+        }
+        if ($ScenarioId -eq "tower_projectile_96") {
+            if (
+                [int](Get-OptionalPropertyValue `
+                    $payloadScenarioContract `
+                    "tower_total_shots" `
+                    -1) -lt 96 -or
+                [int](Get-OptionalPropertyValue `
+                    $payloadScenarioContract `
+                    "tower_agave_projectile_shots" `
+                    -1) -lt 32 -or
+                [int](Get-OptionalPropertyValue `
+                    $payloadScenarioContract `
+                    "tower_peak_concurrent_projectiles" `
+                    -1) -lt 8 -or
+                -not [bool](Get-OptionalPropertyValue `
+                    $payloadScenarioContract `
+                    "projectile_pressure_verified" `
+                    $false)
+            ) {
+                $runnerContractViolations.Add(
+                    "Tower scenario did not sustain its required shot and concurrent-projectile workload."
+                )
+            }
+        }
+        if ($ScenarioId -eq "faction_battle_150v150") {
+            $factionTargetsStart = Get-OptionalPropertyValue `
+                $payloadScenarioContract `
+                "faction_valid_dynamic_targets_start" `
+                $null
+            $factionTargetsEnd = Get-OptionalPropertyValue `
+                $payloadScenarioContract `
+                "faction_valid_dynamic_targets_end" `
+                $null
+            $factionDamage = Get-OptionalPropertyValue `
+                $payloadScenarioContract `
+                "faction_damage_taken" `
+                $null
+            if (
+                [int](Get-OptionalPropertyValue $factionTargetsStart "allied" -1) -ne 150 -or
+                [int](Get-OptionalPropertyValue $factionTargetsStart "hostile" -1) -ne 150 -or
+                [int](Get-OptionalPropertyValue $factionTargetsEnd "allied" -1) -ne 150 -or
+                [int](Get-OptionalPropertyValue $factionTargetsEnd "hostile" -1) -ne 150 -or
+                [long](Get-OptionalPropertyValue `
+                    $factionDamage `
+                    "allied_damage_taken" `
+                    0) -le 0 -or
+                [long](Get-OptionalPropertyValue `
+                    $factionDamage `
+                    "hostile_damage_taken" `
+                    0) -le 0 -or
+                [int](Get-OptionalPropertyValue `
+                    $factionDamage `
+                    "allied_damaged_enemy_count" `
+                    0) -le 0 -or
+                [int](Get-OptionalPropertyValue `
+                    $factionDamage `
+                    "hostile_damaged_enemy_count" `
+                    0) -le 0
+            ) {
+                $runnerContractViolations.Add(
+                    "Faction scenario did not prove persistent 150v150 targets and bidirectional damage."
+                )
+            }
+        }
+        if ($ScenarioId -eq "host_client_proxy_1000") {
+            $clientProxyStart = Get-OptionalPropertyValue `
+                $payloadScenarioContract `
+                "client_proxy_start" `
+                $null
+            $clientProxyEnd = Get-OptionalPropertyValue `
+                $payloadScenarioContract `
+                "client_proxy_end" `
+                $null
+            if (
+                -not (Test-ClientProxyAuthorityBoundary $clientProxyStart) -or
+                -not (Test-ClientProxyAuthorityBoundary $clientProxyEnd) -or
+                [long](Get-OptionalPropertyValue `
+                    $payloadScenarioContract `
+                    "client_authoritative_attack_delta" `
+                    -1) -ne 0 -or
+                [long](Get-OptionalPropertyValue `
+                    $payloadScenarioContract `
+                    "client_authoritative_damage_delta" `
+                    -1) -ne 0 -or
+                [long](Get-OptionalPropertyValue `
+                    $payloadScenarioContract `
+                    "client_authoritative_kill_delta" `
+                    -1) -ne 0 -or
+                [long](Get-OptionalPropertyValue `
+                    $payloadScenarioContract `
+                    "client_authoritative_reward_delta" `
+                    -1) -ne 0
+            ) {
+                $runnerContractViolations.Add(
+                    "Client proxy scenario did not prove 1,000 presentation-only proxies with zero authority deltas."
+                )
+            }
+        }
+    }
+    $payloadSimulation = Get-OptionalPropertyValue `
+        $payload `
+        "enemy_simulation" `
+        $null
+    $payloadActualSimulationMode = [string](
+        Get-OptionalPropertyValue $payloadSimulation "actual_mode" ""
+    )
+    if (
+        $SimulationMode -ne "project" -and
+        $payloadActualSimulationMode -ne $SimulationMode
+    ) {
+        $runnerContractViolations.Add(
+            "Godot simulation mode '$payloadActualSimulationMode' did not match '$SimulationMode'."
+        )
+    }
+    $payloadSamplingContract = Get-OptionalPropertyValue `
+        $payload `
+        "sampling_contract" `
+        $null
+    if (
+        [bool](Get-OptionalPropertyValue `
+            $payloadSamplingContract `
+            "authoritative_tick_sampling" `
+            $false) -ne $AuthoritativeTickSampling
+    ) {
+        $runnerContractViolations.Add(
+            "Godot authoritative_tick_sampling did not match the runner request."
+        )
+    }
+    if (
+        [bool](Get-OptionalPropertyValue `
+            $payloadSamplingContract `
+            "detailed_semantic_evidence" `
+            $true) -ne $DetailedSemanticEvidence
+    ) {
+        $runnerContractViolations.Add(
+            "Godot detailed_semantic_evidence did not match the runner request."
+        )
+    }
     if ($payloadValid -ne $payloadGateValid -or $payloadVerdict -ne $payloadGateStatus) {
         $runnerContractViolations.Add(
             "Godot top-level valid/verdict did not match its nested gate result."
@@ -1007,11 +1706,13 @@ try {
         enemy_hot_metrics = $EnemyHotMetrics
         guardian_overlap_metrics = $GuardianOverlapMetrics
         runtime_count_scans = $RuntimeCountScans
+        detailed_semantic_evidence = $DetailedSemanticEvidence
         any_enabled = (
             $FenceAbMetrics -or
             $EnemyHotMetrics -or
             $GuardianOverlapMetrics -or
-            $RuntimeCountScans
+            $RuntimeCountScans -or
+            $DetailedSemanticEvidence
         )
     }
     $fingerprint = [ordered]@{
@@ -1071,6 +1772,78 @@ try {
             effective_mode_value = $effectiveVsyncModeValue
         }
         seed = $payloadSeed
+        rng_state_evidence = Get-OptionalPropertyValue `
+            $payload `
+            "rng_state_evidence" `
+            $null
+        scenario = [ordered]@{
+            id = $payloadScenarioId
+            phase = [string](Get-OptionalPropertyValue $payload "phase" "")
+            flow_state = [int](
+                Get-OptionalPropertyValue $payload "flow_state" -1
+            )
+            night_factor = [double](
+                Get-OptionalPropertyValue $payload "night_factor" -1.0
+            )
+            is_night = [bool](
+                Get-OptionalPropertyValue $payload "is_night" $false
+            )
+            enemy_count = [int](
+                Get-OptionalPropertyValue $payload "requested_enemies" -1
+            )
+            source_path = [string](
+                Get-OptionalPropertyValue $payload "source_path" ""
+            )
+            enemy_composition = Get-OptionalPropertyValue `
+                $payload `
+                "composition" `
+                $null
+            building_composition = Get-OptionalPropertyValue `
+                $payload `
+                "building_composition" `
+                $null
+            production_registration = Get-OptionalPropertyValue `
+                $payload `
+                "production_registration_fingerprint" `
+                $null
+            scenario_contract = Get-OptionalPropertyValue `
+                $payload `
+                "scenario_contract" `
+                $null
+            deterministic_outcome = [ordered]@{
+                alive_start = [int](
+                    Get-OptionalPropertyValue $payload "alive_start" -1
+                )
+                alive_min = [int](
+                    Get-OptionalPropertyValue $payload "alive_min" -1
+                )
+                alive_end = [int](
+                    Get-OptionalPropertyValue $payload "alive_end" -1
+                )
+                player_damage = [int](
+                    Get-OptionalPropertyValue $payload "player_damage" -1
+                )
+                base_damage = [int](
+                    Get-OptionalPropertyValue $payload "base_damage" -1
+                )
+                corn_target_locks = [int](
+                    Get-OptionalPropertyValue $payload "corn_target_locks" -1
+                )
+                corn_hitscan_rays = [int](
+                    Get-OptionalPropertyValue $payload "corn_hitscan_rays" -1
+                )
+                combat_index_size = [int](
+                    Get-OptionalPropertyValue $payload "combat_index_size" -1
+                )
+            }
+        }
+        simulation = [ordered]@{
+            requested_mode = $SimulationMode
+            actual_mode = $payloadActualSimulationMode
+            authoritative_tick_sampling = $AuthoritativeTickSampling
+            warmup_physics_ticks = $WarmupFrames
+            sample_physics_ticks = $SampleFrames
+        }
         intrusive_flags = $intrusiveFlags
     }
     $combined = [ordered]@{
@@ -1116,6 +1889,7 @@ try {
     }
 }
 finally {
+	$cleanupFailure = $null
 	foreach ($counter in @(
 		$gpuDedicatedCounters +
 		$gpuLocalCounters +
@@ -1124,18 +1898,58 @@ finally {
 	)) {
 		$counter.Dispose()
 	}
-    if ($enginePid -gt 0) {
-        $remainingEngine = Get-Process -Id $enginePid -ErrorAction SilentlyContinue
-        if ($null -ne $remainingEngine) {
-            Stop-Process -Id $enginePid -Force -ErrorAction SilentlyContinue
+    try {
+        # Refresh ownership before stopping so a late console-to-engine handoff
+        # is included. Every adopted root must carry this invocation's token and
+        # exact probe script; ordinary editor windows can never match.
+        $null = Update-OwnedProbeProcessRegistry
+        if ($null -ne $launcher -and -not $launcher.HasExited) {
+            $launcherCim = Get-CimInstance `
+                Win32_Process `
+                -Filter "ProcessId = $($launcher.Id)" `
+                -ErrorAction SilentlyContinue
+            if (
+                $null -ne $launcherCim -and
+                (Test-IsMarkedProbeGodotProcess $launcherCim)
+            ) {
+                Register-OwnedProbeProcess $launcherCim
+            }
+        }
+        Stop-OwnedProbeProcessTree
+		if ($null -ne $launcher -and -not $launcher.HasExited) {
+			# The launcher handle was created by this call. This fallback covers an
+			# executable whose CIM command line disappeared during an exit race.
+			Stop-Process `
+				-Id $launcher.Id `
+				-Force `
+				-ErrorAction SilentlyContinue
+		}
+		# Stopping the console root can race a final engine handoff. Refresh and
+		# drain the owned tree once more before the independent global proof.
+		Stop-OwnedProbeProcessTree
+
+        # Independent post-cleanup proof: do not trust cached process handles or
+        # a successful Stop-Process return value.
+        $remainingMarkedGodot = @(
+            Get-CimInstance Win32_Process -ErrorAction Stop |
+                Where-Object { Test-IsMarkedProbeGodotProcess $_ }
+        )
+        if ($remainingMarkedGodot.Count -gt 0) {
+            $remainingText = @($remainingMarkedGodot | ForEach-Object {
+                "$($_.Name) PID=$($_.ProcessId)"
+            }) -join ", "
+            throw "Marked Godot process remained after cleanup: $remainingText"
         }
     }
-    if ($null -ne $launcher -and -not $launcher.HasExited) {
-        Stop-Process -Id $launcher.Id -Force -ErrorAction SilentlyContinue
+    catch {
+        $cleanupFailure = $_
     }
     foreach ($tempPath in @($stdoutPath, $stderrPath)) {
         if (Test-Path -LiteralPath $tempPath -PathType Leaf) {
             Remove-Item -LiteralPath $tempPath -Force
         }
+    }
+    if ($null -ne $cleanupFailure) {
+        throw $cleanupFailure
     }
 }

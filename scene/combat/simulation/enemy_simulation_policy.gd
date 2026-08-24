@@ -17,7 +17,10 @@ enum MotionMode {
 }
 
 const MODE_ARGUMENT_PREFIX := "--enemy-simulation-mode="
-const DEFAULT_LAYERED_AREA_DECISION_INTERVAL_FRAMES := 2
+# Navigation is already authored at 10 Hz. Keep layered perception/target and
+# path decisions on the same six-physics-tick cadence; urgent state transitions
+# still bypass the deadline immediately.
+const DEFAULT_LAYERED_AREA_DECISION_INTERVAL_FRAMES := 6
 const MODE_NAMES: PackedStringArray = [
 	"LEGACY",
 	"COMPAT_60",

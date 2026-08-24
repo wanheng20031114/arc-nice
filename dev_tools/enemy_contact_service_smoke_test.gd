@@ -30,6 +30,10 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_scene_contract()
+	_test_same_faction_registry_skips_broad_phase()
+	_test_relation_and_faction_cache_invalidations()
+	_test_same_tick_relation_change_refreshes_current_positions()
+	_test_stale_entry_pruned_after_relation_revision()
 	_test_shadow_events_faction_sweep_and_order()
 	_test_directed_attack_shell_uses_target_body()
 	_test_planned_sweep_is_separate_from_current_contact()
@@ -60,6 +64,416 @@ func _test_scene_contract() -> void:
 			"Production HYBRID contact must leave semantic allocation probes opt-in."
 		)
 		node.free()
+
+
+func _test_same_faction_registry_skips_broad_phase() -> void:
+	var service := SERVICE.new()
+	service.automatic_physics_step = false
+	var first := FixtureEnemy.new()
+	var second := FixtureEnemy.new()
+	first.position = Vector2.ZERO
+	second.position = Vector2(4.0, 0.0)
+	fixtures.append(first)
+	fixtures.append(second)
+	var circle := CircleShape2D.new()
+	circle.radius = 3.0
+	var proxy = PROXY.create(circle)
+	_expect(
+		service.register_enemy(
+			first,
+			1,
+			RELATIONS.PLAYER_ALLIED,
+			proxy,
+			proxy
+		)
+		and service.register_enemy(
+			second,
+			2,
+			RELATIONS.PLAYER_ALLIED,
+			proxy,
+			proxy
+		),
+		"Same-faction broad-phase fixtures must register."
+	)
+	var query_counter := {"value": 0}
+	service.set_hostile_aabb_query(
+		func(
+			_world_aabb: Rect2,
+			_source_faction_id: int,
+			excluded_entity: Node2D,
+			result: Array[Node2D]
+		) -> void:
+			query_counter["value"] = int(query_counter["value"]) + 1
+			result.clear()
+			result.append(second if excluded_entity == first else first)
+	)
+	service.request_mode(SERVICE.Mode.HYBRID_ENEMY_CONTACT)
+	service.step(1)
+	service.step_planned(1.0 / 60.0, 1)
+	var metrics := service.get_metrics()
+	_expect(
+		int(query_counter["value"]) == 0
+		and int(metrics["broad_phase_source_skips_total"]) == 2
+		and int(metrics["planned_broad_phase_source_skips_total"]) == 2,
+		"A registry with no hostile faction must skip every current and planned broad-phase query."
+	)
+	var first_stale_scan_count := int(metrics["stale_prune_scans_total"])
+	var first_cache_hit_count := int(metrics["hostile_pair_cache_hits_total"])
+	var first_empty_reuse_count := int(
+		metrics["no_hostile_empty_contact_reuses_total"]
+	)
+	service.step(2)
+	service.step_planned(1.0 / 60.0, 2)
+	metrics = service.get_metrics()
+	_expect(
+		int(metrics["stale_prune_scans_total"]) == first_stale_scan_count
+		and int(metrics["hostile_pair_cache_hits_total"])
+			>= first_cache_hit_count + 2
+		and int(metrics["no_hostile_stale_prune_skips_total"]) >= 3
+		and int(metrics["no_hostile_empty_contact_reuses_total"])
+			== first_empty_reuse_count + 1
+		and int(metrics["current_position_refresh_steps_total"]) == 0
+		and int(metrics["planned_position_refresh_steps_total"]) == 0,
+		"A stable friendly-only registry must reuse the cached false relation without stale or position scans."
+	)
+	_expect(
+		service.update_faction(
+			second,
+			RELATIONS.PLAYER_ALLIED,
+			RELATIONS.HOSTILE_WAVE
+		),
+		"Introducing a hostile faction must update the presence mask."
+	)
+	service.step(3)
+	service.step_planned(1.0 / 60.0, 3)
+	_expect(
+		int(query_counter["value"]) == 4
+		and service.has_directed_contact(first, second)
+		and service.has_directed_contact(second, first),
+		"A runtime hostile faction must immediately restore both directed broad-phase queries."
+	)
+	service.clear()
+	service.free()
+
+
+func _test_relation_and_faction_cache_invalidations() -> void:
+	const FIRST_FACTION := 3
+	const SECOND_FACTION := 4
+	var service := SERVICE.new()
+	service.automatic_physics_step = false
+	var relations := RELATIONS.new()
+	service.set_relation_service(relations)
+	var first := FixtureEnemy.new()
+	var second := FixtureEnemy.new()
+	first.position = Vector2.ZERO
+	second.position = Vector2(2.0, 0.0)
+	fixtures.append(first)
+	fixtures.append(second)
+	observed_by_instance_id[first.get_instance_id()] = []
+	observed_by_instance_id[second.get_instance_id()] = []
+	var circle := CircleShape2D.new()
+	circle.radius = 3.0
+	var proxy = PROXY.create(circle)
+	_expect(
+		service.register_enemy(first, 401, FIRST_FACTION, proxy, proxy)
+		and service.register_enemy(second, 402, SECOND_FACTION, proxy, proxy),
+		"Custom-relation cache fixtures must register."
+	)
+	var query_counter := {"value": 0}
+	service.set_hostile_aabb_query(
+		func(
+			_world_aabb: Rect2,
+			_source_faction_id: int,
+			excluded_entity: Node2D,
+			result: Array[Node2D]
+		) -> void:
+			query_counter["value"] = int(query_counter["value"]) + 1
+			result.clear()
+			result.append(second if excluded_entity == first else first)
+	)
+	service.set_observed_contacts_provider(
+		func(source: Node2D, result: Array) -> void:
+			result.clear()
+			result.append_array(
+				observed_by_instance_id.get(source.get_instance_id(), [])
+			)
+	)
+	service.request_mode(SERVICE.Mode.SHADOW)
+	service.step(1)
+	service.step_planned(1.0 / 60.0, 1)
+	var initial_metrics := service.get_metrics()
+	service.step(2)
+	service.step_planned(1.0 / 60.0, 2)
+	var steady_metrics := service.get_metrics()
+	_expect(
+		int(query_counter["value"]) == 0
+		and int(steady_metrics["stale_prune_scans_total"])
+			== int(initial_metrics["stale_prune_scans_total"])
+		and int(steady_metrics["no_hostile_stale_prune_skips_total"])
+			>= int(initial_metrics["no_hostile_stale_prune_skips_total"]) + 2,
+		"A stable two-faction but non-hostile registry must keep both contact phases on the cached fast path."
+	)
+
+	_expect(
+		relations.set_hostile(FIRST_FACTION, SECOND_FACTION, true)
+		and relations.set_hostile(SECOND_FACTION, FIRST_FACTION, true),
+		"A relation-only mutation must be accepted without re-registering enemies."
+	)
+	_set_observed_pair(first, second, true)
+	service.step(3)
+	service.step_planned(1.0 / 60.0, 3)
+	var relation_enter_events := _event_signatures(
+		service.get_last_predicted_events()
+	)
+	_expect(
+		int(query_counter["value"]) == 4
+		and relation_enter_events == ["401>402:ENTER", "402>401:ENTER"]
+		and service.get_differences().is_empty(),
+		"A CombatRelationService revision must invalidate the false cache and produce ordered SHADOW ENTER events."
+	)
+
+	_expect(
+		relations.set_hostile(FIRST_FACTION, SECOND_FACTION, false)
+		and relations.set_hostile(SECOND_FACTION, FIRST_FACTION, false),
+		"Removing both directed relations must advance the relation revision."
+	)
+	_set_observed_pair(first, second, false)
+	service.step(4)
+	service.step_planned(1.0 / 60.0, 4)
+	_expect(
+		_event_signatures(service.get_last_predicted_events())
+			== ["401>402:EXIT", "402>401:EXIT"]
+		and service.get_differences().is_empty()
+		and not service.has_directed_contact(first, second),
+		"The first no-hostile tick must reuse the persistent empty set while emitting each prior contact EXIT once."
+	)
+	var exit_metrics := service.get_metrics()
+	service.step(5)
+	service.step_planned(1.0 / 60.0, 5)
+	var post_exit_metrics := service.get_metrics()
+	_expect(
+		service.get_last_predicted_events().is_empty()
+		and service.get_last_observed_events().is_empty()
+		and int(post_exit_metrics["stale_prune_scans_total"])
+			== int(exit_metrics["stale_prune_scans_total"])
+		and int(post_exit_metrics["no_hostile_empty_contact_reuses_total"])
+			== int(exit_metrics["no_hostile_empty_contact_reuses_total"]) + 1,
+		"After the one EXIT transition, steady no-hostile ticks must stay allocation-free and event-free."
+	)
+
+	_expect(
+		service.update_faction(
+			first,
+			FIRST_FACTION,
+			RELATIONS.PLAYER_ALLIED
+		)
+		and service.update_faction(
+			second,
+			SECOND_FACTION,
+			RELATIONS.HOSTILE_WAVE
+		),
+		"Runtime faction changes must invalidate cached membership even without relation edits."
+	)
+	_set_observed_pair(first, second, true)
+	service.step(6)
+	service.step_planned(1.0 / 60.0, 6)
+	_expect(
+		service.has_directed_contact(first, second)
+		and service.has_directed_contact(second, first)
+		and service.get_differences().is_empty(),
+		"Moving cached entries into the default hostile factions must restore contact immediately."
+	)
+	_expect(
+		service.update_faction(
+			second,
+			RELATIONS.HOSTILE_WAVE,
+			RELATIONS.PLAYER_ALLIED
+		),
+		"Moving the second entry back to the allied faction must be accepted."
+	)
+	_set_observed_pair(first, second, false)
+	service.step(7)
+	service.step_planned(1.0 / 60.0, 7)
+	_expect(
+		_event_signatures(service.get_last_predicted_events())
+			== ["401>402:EXIT", "402>401:EXIT"]
+		and service.get_differences().is_empty(),
+		"A faction mutation to a friendly-only registry must take the same exact EXIT path."
+	)
+
+	var before_unregister := service.get_metrics()
+	_expect(
+		service.unregister_enemy(second, 402),
+		"Explicit unregistration must invalidate the membership cache."
+	)
+	service.step(8)
+	var after_unregister := service.get_metrics()
+	_expect(
+		int(after_unregister["registered_count"]) == 1
+		and int(after_unregister["hostile_pair_cache_misses_total"])
+			> int(before_unregister["hostile_pair_cache_misses_total"]),
+		"The next step after unregistration must rebuild the cached relation result exactly once."
+	)
+	var replacement := FixtureEnemy.new()
+	replacement.position = Vector2(3.0, 0.0)
+	fixtures.append(replacement)
+	_expect(
+		service.register_enemy(
+			replacement,
+			403,
+			RELATIONS.PLAYER_ALLIED,
+			proxy,
+			proxy
+		),
+		"A same-faction registration must still invalidate membership cache state."
+	)
+	var before_registration_step := service.get_metrics()
+	service.step(9)
+	var after_registration_step := service.get_metrics()
+	_expect(
+		int(after_registration_step["registered_count"]) == 2
+		and int(after_registration_step["hostile_pair_cache_misses_total"])
+			> int(before_registration_step["hostile_pair_cache_misses_total"]),
+		"The next step after registration must refresh the cache even when the presence mask is unchanged."
+	)
+	service.clear()
+	service.free()
+
+
+func _test_same_tick_relation_change_refreshes_current_positions() -> void:
+	const FIRST_FACTION := 3
+	const SECOND_FACTION := 4
+	const PHYSICS_TICK := 17
+	var service := SERVICE.new()
+	service.automatic_physics_step = false
+	var relations := RELATIONS.new()
+	service.set_relation_service(relations)
+	var first := FixtureEnemy.new()
+	var second := FixtureEnemy.new()
+	first.position = Vector2.ZERO
+	second.position = Vector2.ZERO
+	fixtures.append(first)
+	fixtures.append(second)
+	var circle := CircleShape2D.new()
+	circle.radius = 3.0
+	var proxy = PROXY.create(circle)
+	_expect(
+		service.register_enemy(first, 451, FIRST_FACTION, proxy, proxy)
+		and service.register_enemy(second, 452, SECOND_FACTION, proxy, proxy),
+		"Same-tick relation fixtures must register."
+	)
+	service.set_hostile_aabb_query(
+		func(
+			_world_aabb: Rect2,
+			_source_faction_id: int,
+			excluded_entity: Node2D,
+			result: Array[Node2D]
+		) -> void:
+			result.clear()
+			result.append(second if excluded_entity == first else first)
+	)
+	service.request_mode(SERVICE.Mode.HYBRID_ENEMY_CONTACT)
+	service.step(PHYSICS_TICK)
+	var before_relation_metrics := service.get_metrics()
+	_expect(
+		int(before_relation_metrics["current_position_refresh_steps_total"]) == 0,
+		"A no-hostile current step must avoid unnecessary position refresh work."
+	)
+
+	# The pair was overlapping at registration but separates before a relation
+	# mutation in the same physics tick. step_planned() must not sweep from the old
+	# overlap merely because step() already recorded this tick number.
+	second.position = Vector2(100.0, 0.0)
+	_expect(
+		relations.set_hostile(FIRST_FACTION, SECOND_FACTION, true)
+		and relations.set_hostile(SECOND_FACTION, FIRST_FACTION, true),
+		"The same-tick fixture must establish both hostile directions."
+	)
+	service.step_planned(1.0 / 60.0, PHYSICS_TICK)
+	var after_relation_metrics := service.get_metrics()
+	_expect(
+		int(after_relation_metrics["current_position_refresh_steps_total"]) == 1
+		and int(after_relation_metrics["last_current_position_refresh_tick"])
+			== PHYSICS_TICK
+		and not service.has_planned_directed_contact(first, second)
+		and not service.has_planned_directed_contact(second, first)
+		and is_equal_approx(
+			service.get_directed_safe_motion_fraction(first, second),
+			1.0
+		),
+		"A same-tick no-hostile to hostile transition must refresh current positions before TOI."
+	)
+	service.clear()
+	service.free()
+
+
+func _test_stale_entry_pruned_after_relation_revision() -> void:
+	const LIVE_FACTION := 5
+	const STALE_FACTION := 6
+	var service := SERVICE.new()
+	service.automatic_physics_step = false
+	var relations := RELATIONS.new()
+	service.set_relation_service(relations)
+	var live_enemy := FixtureEnemy.new()
+	var stale_enemy := FixtureEnemy.new()
+	fixtures.append(live_enemy)
+	fixtures.append(stale_enemy)
+	var circle := CircleShape2D.new()
+	circle.radius = 2.0
+	var proxy = PROXY.create(circle)
+	_expect(
+		service.register_enemy(
+			live_enemy,
+			501,
+			LIVE_FACTION,
+			proxy,
+			proxy
+		)
+		and service.register_enemy(
+			stale_enemy,
+			502,
+			STALE_FACTION,
+			proxy,
+			proxy
+		),
+		"Stale-cache fixtures must register before the false result is cached."
+	)
+	var query_counter := {"value": 0}
+	service.set_hostile_aabb_query(
+		func(
+			_world_aabb: Rect2,
+			_source_faction_id: int,
+			_excluded_entity: Node2D,
+			result: Array[Node2D]
+		) -> void:
+			query_counter["value"] = int(query_counter["value"]) + 1
+			result.clear()
+	)
+	service.request_mode(SERVICE.Mode.HYBRID_ENEMY_CONTACT)
+	service.step(1)
+	service.step_planned(1.0 / 60.0, 1)
+	var cached_metrics := service.get_metrics()
+	stale_enemy.free()
+	_expect(
+		relations.set_hostile(LIVE_FACTION, STALE_FACTION, true),
+		"Changing a relation after an entry becomes stale must advance the cache key."
+	)
+	service.step(2)
+	service.step_planned(1.0 / 60.0, 2)
+	var pruned_metrics := service.get_metrics()
+	_expect(
+		int(pruned_metrics["registered_count"]) == 1
+		and int(pruned_metrics["stale_pruned_total"]) == 1
+		and int(pruned_metrics["stale_prune_scans_total"])
+			== int(cached_metrics["stale_prune_scans_total"]) + 1
+		and int(pruned_metrics["current_position_refresh_steps_total"]) == 0
+		and int(pruned_metrics["planned_position_refresh_steps_total"]) == 0
+		and int(query_counter["value"]) == 0
+		and not service.has_registered_hostile_pair(),
+		"A relation revision must force one stale prune before re-entering the no-hostile fast path."
+	)
+	service.clear()
+	service.free()
 
 
 func _test_shadow_events_faction_sweep_and_order() -> void:

@@ -11,6 +11,7 @@ func _init() -> void:
 	_test_supported_shape_boundaries()
 	_test_translation_sweeps()
 	_test_earliest_swept_overlap_fraction()
+	_test_non_convex_compound_union()
 	_test_transform_rejections()
 	_test_fixed_seed_circle_sweeps()
 	if failures.is_empty():
@@ -230,6 +231,89 @@ func _test_earliest_swept_overlap_fraction() -> void:
 		) <= 0.00002,
 		"An uncertified target moving away must retain its stationary-start envelope."
 	)
+
+
+func _test_non_convex_compound_union() -> void:
+	var child_shape_a := CircleShape2D.new()
+	child_shape_a.radius = 2.0
+	var child_shape_b := CircleShape2D.new()
+	child_shape_b.radius = 2.0
+	var compound_shapes: Array[Shape2D] = [child_shape_a, child_shape_b]
+	var compound_transforms: Array[Transform2D] = [
+		Transform2D(0.0, Vector2(-10.0, 0.0)),
+		Transform2D(0.0, Vector2(10.0, 0.0)),
+	]
+	var compound = PROXY.create_compound(
+		compound_shapes,
+		compound_transforms,
+		Transform2D.IDENTITY
+	)
+	var target_shape := CircleShape2D.new()
+	target_shape.radius = 1.0
+	var target = PROXY.create(target_shape)
+	_expect(
+		compound.is_supported()
+		and compound.shape_kind == PROXY.ShapeKind.COMPOUND
+		and compound.get_compound_child_count() == 2
+		and compound.get_world_aabb_at(Vector2.ZERO)
+			== Rect2(Vector2(-12.0, -2.0), Vector2(24.0, 4.0)),
+		"Compound capture must preserve both root-relative children and merge their AABBs."
+	)
+	_expect(
+		not compound.overlaps_at(Vector2.ZERO, target, Vector2.ZERO),
+		"Compound contact must remain a non-convex union instead of filling the gap between children."
+	)
+	_expect(
+		compound.overlaps_at(Vector2.ZERO, target, Vector2(-7.0, 0.0)),
+		"Any touching compound child must admit current contact."
+	)
+	var target_compound_shapes: Array[Shape2D] = [target_shape]
+	var target_compound_transforms: Array[Transform2D] = [
+		Transform2D.IDENTITY,
+	]
+	var target_compound = PROXY.create_compound(
+		target_compound_shapes,
+		target_compound_transforms,
+		Transform2D.IDENTITY
+	)
+	var earliest := compound.get_earliest_swept_overlap_fraction(
+		Vector2.ZERO,
+		Vector2(20.0, 0.0),
+		target_compound,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	_expect(
+		compound.swept_overlaps(
+			Vector2.ZERO,
+			Vector2(20.0, 0.0),
+			target_compound,
+			Vector2.ZERO,
+			Vector2.ZERO
+		)
+		and absf(earliest - 0.35) <= 0.00002,
+		"Compound sweep and TOI must select the earliest real child-pair hit."
+	)
+	var unsupported_shapes: Array[Shape2D] = [
+		child_shape_a,
+		WorldBoundaryShape2D.new(),
+	]
+	var unsupported_transforms: Array[Transform2D] = [
+		Transform2D.IDENTITY,
+		Transform2D.IDENTITY,
+	]
+	var unsupported = PROXY.create_compound(
+		unsupported_shapes,
+		unsupported_transforms,
+		Transform2D.IDENTITY
+	)
+	_expect(
+		not unsupported.is_supported()
+		and unsupported.support_status == PROXY.SupportStatus.UNSUPPORTED_SHAPE,
+		"One unsupported compound child must fail the complete capture closed."
+	)
+
+
 func _test_transform_rejections() -> void:
 	var circle := CircleShape2D.new()
 	circle.radius = 4.0

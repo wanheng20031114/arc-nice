@@ -10,6 +10,7 @@ const MAX := 32
 const MAX_FACTION_COUNT := MAX
 
 var _hostile_masks := PackedInt64Array()
+var _revision := 0
 
 
 func _init() -> void:
@@ -23,6 +24,7 @@ func reset_default_relations() -> void:
 	_hostile_masks.fill(0)
 	_hostile_masks[PLAYER_ALLIED] = 1 << HOSTILE_WAVE
 	_hostile_masks[HOSTILE_WAVE] = 1 << PLAYER_ALLIED
+	_revision += 1
 
 
 ## Changes one directed relation. The reverse direction is deliberately left
@@ -40,10 +42,14 @@ func set_hostile(
 	):
 		return false
 	var target_bit := 1 << target_faction
+	var was_hostile := (_hostile_masks[source_faction] & target_bit) != 0
+	if was_hostile == hostile:
+		return true
 	if hostile:
 		_hostile_masks[source_faction] |= target_bit
 	else:
 		_hostile_masks[source_faction] &= ~target_bit
+	_revision += 1
 	return true
 
 
@@ -62,6 +68,10 @@ func get_hostile_mask(source_faction: int) -> int:
 	if not is_valid_faction(source_faction):
 		return 0
 	return _hostile_masks[source_faction]
+
+
+func get_revision() -> int:
+	return _revision
 
 
 static func is_default_hostile(source_faction: int, target_faction: int) -> bool:

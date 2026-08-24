@@ -1,0 +1,8 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn" id="1_runtime"]
+[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect/guardian_aura_system.tscn" id="2_guardian"]
+
+[node name="YuanshiInsectAuraLayeredSemanticRuntime" instance=ExtResource("1_runtime")]
+
+[node name="GuardianAuraSystem" parent="." instance=ExtResource("2_guardian")]

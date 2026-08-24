@@ -1,4 +1,4 @@
-extends "res://scene/enemy/capoo_ranged_enemy.gd"
+extends "res://scene/enemy/layered_ranged_enemy.gd"
 class_name CapooMage
 
 const MageConfig := preload("res://resources/config/enemies/capoo_mage_config.gd")
@@ -25,6 +25,8 @@ var fire_time_left: float = 0.0
 var fire_direction := Vector2.RIGHT
 var latest_proxy_action_id: int = 0
 var attack_target: Node2D = null
+var layered_mage_event_consumes_tick := false
+var layered_mage_windup_ready_to_fire := false
 
 
 func _ready() -> void:
@@ -36,7 +38,84 @@ func _get_touch_damage_type() -> EnemyConfig.DamageType:
 	return EnemyConfig.DamageType.MAGIC
 
 
-func _physics_process(delta: float) -> void:
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func _supports_layered_ranged_authoritative_simulation() -> bool:
+	return true
+
+
+func _supports_layered_ranged_contact_authority() -> bool:
+	return true
+
+
+func _supports_layered_ranged_indexed_touch_authority() -> bool:
+	# Mage contact has no inherited touch damage. LAYERED_CONTACT replaces only
+	# TouchDamageArea's Player/Plant overlap snapshot; windup, hold, LOS and the
+	# fireball state machine do not depend on another authored attack Area2D.
+	return true
+
+
+func get_layered_area_decision_interval_frames() -> int:
+	# The legacy runner re-evaluates hold/range/LOS every physics tick. Retain that
+	# exact observation cadence for moving targets in the first layered slice.
+	return 1
+
+
+func _prepare_layered_ranged_authoritative_simulation() -> void:
+	layered_mage_event_consumes_tick = false
+	layered_mage_windup_ready_to_fire = false
+
+
+func _advance_layered_ranged_event_phase(delta: float) -> void:
+	layered_mage_event_consumes_tick = false
+	layered_mage_windup_ready_to_fire = false
+	_update_attack_cooldown(delta)
+	match combat_state:
+		CombatState.WINDUP:
+			# Legacy returns for the complete tick even when this update cancels.
+			layered_mage_event_consumes_tick = true
+			if _advance_windup_state(delta):
+				layered_mage_windup_ready_to_fire = true
+				request_layered_area_urgent_decision()
+		CombatState.FIRE:
+			# FIRE completion also resumes CHASE on the following tick only.
+			layered_mage_event_consumes_tick = true
+			_update_fire(delta)
+
+
+func _can_sleep_layered_ranged_event_phase() -> bool:
+	# Cooldown and glow countdowns are public physics-tick state. Keep them live
+	# until a dedicated exact projection exists.
+	return (
+		combat_state == CombatState.CHASE
+		and attack_cooldown_left <= 0.0
+	)
+
+
+func _try_consume_layered_ranged_decision_phase(_delta: float) -> bool:
+	if layered_mage_event_consumes_tick:
+		if layered_mage_windup_ready_to_fire:
+			_resolve_expired_windup()
+			layered_mage_windup_ready_to_fire = false
+		return true
+	var previous_state := combat_state
+	var consumed := _try_consume_chase_attack_decision()
+	if previous_state == CombatState.CHASE and combat_state == CombatState.WINDUP:
+		# A prior sparse CHASE event must wake before the first windup countdown.
+		request_layered_area_urgent_decision()
+	return consumed
+
+
+func _layered_ranged_attack_state_allows_motion() -> bool:
+	return (
+		combat_state == CombatState.CHASE
+		and not layered_mage_event_consumes_tick
+	)
+
+
+func _run_authoritative_physics_step(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
@@ -52,27 +131,8 @@ func _physics_process(delta: float) -> void:
 			_update_fire(delta)
 			return
 
-	var mage_config := config as MageConfig
-	var preferred_target := _get_preferred_ranged_combat_target()
-	if (
-		mage_config != null
-		and _try_hold_ranged_attack_position(
-			preferred_target,
-			mage_config.attack_range,
-			WORLD_COLLISION_MASK
-		)
-	):
-		if _try_start_windup(preferred_target):
-			return
-		if _try_hold_ranged_attack_position(
-			preferred_target,
-			mage_config.attack_range,
-			WORLD_COLLISION_MASK
-		):
-			_update_facing(global_position.direction_to(preferred_target.global_position))
-			return
-	else:
-		_reset_ranged_attack_position_state()
+	if _try_consume_chase_attack_decision():
+		return
 
 	if not is_instance_valid(objective_target):
 		velocity = Vector2.ZERO
@@ -85,6 +145,31 @@ func _physics_process(delta: float) -> void:
 	_move_until_player_contact()
 
 
+func _try_consume_chase_attack_decision() -> bool:
+	var mage_config := config as MageConfig
+	var preferred_target := _get_preferred_ranged_combat_target()
+	if (
+		mage_config != null
+		and _try_hold_ranged_attack_position(
+			preferred_target,
+			mage_config.attack_range,
+			WORLD_COLLISION_MASK
+		)
+	):
+		if _try_start_windup(preferred_target):
+			return true
+		if _try_hold_ranged_attack_position(
+			preferred_target,
+			mage_config.attack_range,
+			WORLD_COLLISION_MASK
+		):
+			_update_facing(global_position.direction_to(preferred_target.global_position))
+			return true
+	else:
+		_reset_ranged_attack_position_state()
+	return false
+
+
 func _apply_config() -> void:
 	super._apply_config()
 	combat_state = CombatState.CHASE
@@ -93,6 +178,8 @@ func _apply_config() -> void:
 	fire_time_left = 0.0
 	latest_proxy_action_id = 0
 	attack_target = null
+	layered_mage_event_consumes_tick = false
+	layered_mage_windup_ready_to_fire = false
 	_reset_ranged_attack_position_state()
 	var mage_config := config as MageConfig
 	if mage_config != null:
@@ -157,6 +244,12 @@ func _try_start_windup(candidate_target: Node2D = null) -> bool:
 
 
 func _update_windup(delta: float) -> void:
+	if not _advance_windup_state(delta):
+		return
+	_resolve_expired_windup()
+
+
+func _advance_windup_state(delta: float) -> bool:
 	var mage_config := config as MageConfig
 	if (
 		mage_config == null
@@ -166,7 +259,7 @@ func _update_windup(delta: float) -> void:
 		)
 	):
 		_cancel_attack()
-		return
+		return false
 
 	velocity = Vector2.ZERO
 	fire_direction = global_position.direction_to(attack_target.global_position)
@@ -178,6 +271,20 @@ func _update_windup(delta: float) -> void:
 	_set_spell_glow(progress, fire_direction)
 
 	if windup_time_left > 0.0:
+		return false
+	return true
+
+
+func _resolve_expired_windup() -> void:
+	var mage_config := config as MageConfig
+	if (
+		mage_config == null
+		or not _is_ranged_combat_target_in_range(
+			attack_target,
+			mage_config.attack_range
+		)
+	):
+		_cancel_attack()
 		return
 	if not _has_ranged_combat_line(
 		attack_target,

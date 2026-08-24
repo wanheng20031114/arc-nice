@@ -19,6 +19,29 @@ const RANGED_SOURCE_CONFIG := preload(
 const BOMBER_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_bomber.tres"
 )
+const MELEE_ROBOT_SPECS := [
+	{
+		"label": "战斗机器人",
+		"config": preload(
+			"res://resources/config/enemies/combat_robot.tres"
+		),
+		"dash": true,
+	},
+	{
+		"label": "忍者战斗机器人",
+		"config": preload(
+			"res://resources/config/enemies/combat_robot_ninja.tres"
+		),
+		"dash": false,
+	},
+	{
+		"label": "举盾战斗机器人",
+		"config": preload(
+			"res://resources/config/enemies/combat_robot_shield_bearer.tres"
+		),
+		"dash": false,
+	},
+]
 
 const PROJECTILE_SPECS := [
 	{
@@ -103,10 +126,12 @@ const SOURCE_CONTRACTS := {
 		"action_damage_source_snapshot = create_damage_source_snapshot(",
 	],
 	"res://scene/enemy/capoo/capoo_rpg.gd": [
-		"create_damage_source_snapshot(0, &\"capoo_rpg_rocket\")",
+		"create_damage_source_snapshot(",
+		"&\"capoo_rpg_rocket\"",
 	],
 	"res://scene/enemy/capoo/capoo_mage.gd": [
-		"create_damage_source_snapshot(0, &\"capoo_mage_fireball\")",
+		"create_damage_source_snapshot(",
+		"&\"capoo_mage_fireball\"",
 	],
 	"res://scene/enemy/sorcerer/fire_sorcerer.gd": [
 		"create_damage_source_snapshot(",
@@ -122,7 +147,8 @@ const SOURCE_CONTRACTS := {
 		"source_snapshot: DamageSourceSnapshot",
 	],
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.gd": [
-		"create_damage_source_snapshot(0, &\"yuanshi_fire_projectile\")",
+		"create_damage_source_snapshot(",
+		"&\"yuanshi_fire_projectile\"",
 	],
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_exploder.gd": [
 		"outgoing_explosion_source_snapshot",
@@ -158,6 +184,7 @@ func _run() -> void:
 	await _test_projectile_registration_and_pool_reuse()
 	_test_direct_attack_enemy_targets()
 	await _test_ranged_automatic_targeting()
+	await _test_melee_robot_dynamic_enemy_targets()
 	await _test_yuanshi_explosion_enemy_targets()
 	_test_source_contracts()
 
@@ -606,6 +633,93 @@ func _test_ranged_automatic_targeting() -> void:
 	await process_frame
 
 
+func _test_melee_robot_dynamic_enemy_targets() -> void:
+	var coordinator := TowerDefenseEnemyCoordinator.new()
+	coordinator._runtime = runtime
+	for spec_index in range(MELEE_ROBOT_SPECS.size()):
+		var spec := MELEE_ROBOT_SPECS[spec_index] as Dictionary
+		var label := String(spec["label"])
+		var source_position := Vector2(4000.0 + spec_index * 1000.0, 0.0)
+		var source := _spawn_enemy(
+			spec["config"] as EnemyConfig,
+			source_position
+		)
+		var target := _spawn_enemy(
+			TARGET_CONFIG,
+			source_position + Vector2(80.0, 0.0)
+		)
+		var previous_faction_revision := source.get_faction_revision()
+		var switched_faction := source.set_combat_faction_id(
+			CombatRelationService.PLAYER_ALLIED,
+			-1,
+			true
+		)
+		coordinator.assign_enemy_targets(source, source.global_position)
+		_expect(
+			switched_faction
+			and source.get_faction_revision() > previous_faction_revision
+			and source.supports_dynamic_enemy_targeting()
+			and source.get_automatic_combat_target() == target
+			and source.objective_target == target
+			and source.get_attackable_objective() == target,
+			"%s切换玩家阵营后必须由正式目标协调器选择最近的敌对Enemy。"
+				% label
+		)
+
+		if bool(spec["dash"]):
+			var robot := source as CombatRobot
+			var expected_dash_direction := source.global_position.direction_to(
+				target.global_position
+			)
+			var preferred_target := robot.call(
+				&"_get_preferred_ranged_combat_target"
+			) as Node2D
+			var started_windup := bool(robot.call(&"_try_start_windup"))
+			_expect(
+				preferred_target == target
+				and started_windup
+				and robot.combat_state == CombatRobot.CombatState.WINDUP
+				and robot.dash_direction.dot(expected_dash_direction) > 0.999,
+				"战斗机器人冲刺必须从通用动态目标解析敌对Enemy及其方向。"
+			)
+			robot.call(&"_reset_dash_state", false)
+
+		var contact_radius := (
+			maxf(
+				source.touch_damage_extent_radius,
+				source.body_collision_extent_radius
+			)
+			+ target.body_collision_extent_radius
+		)
+		target.global_position = source.global_position + Vector2(
+			maxf(contact_radius - 0.25, 0.0),
+			0.0
+		)
+		var health_before := target.current_health
+		source.touch_damage_cooldown_left = 0.0
+		source._update_touch_damage(1.0 / 60.0)
+		var applied_snapshot := (
+			target.last_damage_result.request.get_or_create_source_snapshot()
+			if target.last_damage_result != null
+				and target.last_damage_result.request != null
+			else null
+		) as DamageSourceSnapshot
+		_expect(
+			contact_radius > 0.0
+			and target.current_health < health_before
+			and applied_snapshot != null
+			and applied_snapshot.source_faction_id
+				== CombatRelationService.PLAYER_ALLIED,
+			"%s必须沿正式接触伤害链攻击敌对Enemy，并冻结玩家阵营来源。"
+				% label
+		)
+
+		_unregister_and_queue_enemy(source)
+		_unregister_and_queue_enemy(target)
+		await process_frame
+	coordinator.free()
+
+
 func _test_yuanshi_explosion_enemy_targets() -> void:
 	var exploder := _spawn_enemy(
 		BOMBER_CONFIG,
@@ -708,6 +822,15 @@ func _spawn_enemy(config_resource: EnemyConfig, position: Vector2) -> Enemy:
 		"Enemy attack smoke network registration failed."
 	)
 	return enemy
+
+
+func _unregister_and_queue_enemy(enemy: Enemy) -> void:
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	var net_id := int(enemy.get_meta(&"net_id", 0))
+	if net_id > 0:
+		runtime.unregister_network_enemy(net_id, enemy)
+	enemy.queue_free()
 
 
 func _prepare_player(target_player: Player) -> void:

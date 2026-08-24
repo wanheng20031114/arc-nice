@@ -148,8 +148,32 @@ func _verify_chain_playback_and_reuse() -> void:
 		"A visible chain path did not acquire its strict VFX lease."
 	)
 	var effect := _first_active_effect()
-	_expect(effect != null, "The leased chain VFX was not active under SessionObjectPool.")
+	_expect(
+		effect != null,
+		"The leased chain VFX was not active under SessionObjectPool."
+	)
 	if effect != null:
+		var active_metrics := _metrics()
+		_expect(
+			effect.get_parent() == runtime.session_object_pool
+			and int(effect.get_meta(SessionObjectPool.POOL_OWNER_META, 0))
+			== runtime.session_object_pool.get_instance_id()
+			and str(effect.get_meta(SessionObjectPool.POOL_KEY_META, ""))
+			== EFFECT_SCENE.resource_path
+			and bool(effect.get_meta(SessionObjectPool.POOL_ACTIVE_META, false))
+			and effect.pool_active
+			and effect.visible
+			and effect.process_mode == Node.PROCESS_MODE_INHERIT
+			and int(active_metrics.get("in_use", -1)) == 1
+			and int(active_metrics.get("inactive", -1))
+			== EXPECTED_PREWARM_COUNT - 1
+			and int(active_metrics.get("pending_release", -1)) == 0,
+			"A top-level Lightning VFX must remain a visible active lease under its pool owner."
+		)
+		_expect(
+			effect.global_position.is_equal_approx(path[0]),
+			"Keeping the VFX under its pool parent must preserve the authored world-space origin."
+		)
 		_expect(effect.get_path_point_count() == 6, "Chain VFX must retain staff origin plus five hit points.")
 		_expect(effect.get_segment_count() == 5, "Six path points must produce exactly five lightning links.")
 		_expect(effect.get_started_segment_count() == 3, "A 52 ms late join must enter the third 25 ms link trace.")
@@ -189,6 +213,18 @@ func _verify_chain_playback_and_reuse() -> void:
 		int(idle_metrics.get("pending_release", -1)) == 0,
 		"Lightning VFX release quarantine did not drain."
 	)
+	if effect != null:
+		_expect(
+			effect.get_parent() == runtime.session_object_pool
+			and not bool(effect.get_meta(
+				SessionObjectPool.POOL_ACTIVE_META,
+				true
+			))
+			and not effect.pool_active
+			and not effect.visible
+			and effect.process_mode == Node.PROCESS_MODE_DISABLED,
+			"A completed effect must remain a pooled child, hidden and disabled after its release quarantine."
+		)
 	_expect(
 		LightningSorcererLightningVfx.try_spawn(runtime, path),
 		"A returned lightning VFX lease could not be reacquired."
@@ -196,6 +232,19 @@ func _verify_chain_playback_and_reuse() -> void:
 	_expect(
 		int(_metrics().get("created", -1)) == EXPECTED_PREWARM_COUNT,
 		"Reusing lightning VFX unexpectedly created another node."
+	)
+	var reused_effect := _first_active_effect()
+	_expect(
+		reused_effect != null
+		and reused_effect == effect
+		and bool(reused_effect.get_meta(
+			SessionObjectPool.POOL_ACTIVE_META,
+			false
+		))
+		and reused_effect.pool_active
+		and reused_effect.visible
+		and reused_effect.process_mode == Node.PROCESS_MODE_INHERIT,
+		"The returned Lightning VFX instance must be reactivated as the next visible lease."
 	)
 	await _wait_for_pool_idle()
 
@@ -238,9 +287,15 @@ func _metrics() -> Dictionary:
 
 
 func _first_active_effect() -> LightningSorcererLightningVfx:
+	# The authored top-level CanvasItem keeps world coordinates independent from
+	# its transform parent, while the pool retains tree and lease ownership.
 	for child in runtime.session_object_pool.get_children():
 		if (
 			child is LightningSorcererLightningVfx
+			and int(child.get_meta(SessionObjectPool.POOL_OWNER_META, 0))
+			== runtime.session_object_pool.get_instance_id()
+			and str(child.get_meta(SessionObjectPool.POOL_KEY_META, ""))
+			== EFFECT_SCENE.resource_path
 			and bool(child.get_meta(SessionObjectPool.POOL_ACTIVE_META, false))
 		):
 			return child as LightningSorcererLightningVfx

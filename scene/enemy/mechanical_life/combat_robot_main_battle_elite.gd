@@ -39,6 +39,9 @@ const SKILL2_CROSS_DIM_ALPHA := 0.18
 const ATTACK_FAN_VFX_LEAD_SECONDS := 0.08
 const ATTACK_FAN_VFX_LIFETIME_SECONDS := 0.24
 const SKILL2_FAN_VFX_LIFETIME_SECONDS := 0.30
+const LAYERED_FAMILY_SCRIPT_PATH := (
+	"res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.gd"
+)
 
 const ACTION_ATTACK_WINDUP := &"main_battle_attack_windup"
 const ACTION_ATTACK_SLASH := &"main_battle_attack_slash"
@@ -129,6 +132,12 @@ var attack_slash_vfx_started := false
 var skill2_drop_vfx_started := false
 var proxy_skill2_cross_flash_tween: Tween = null
 var proxy_fan_vfx_tween: Tween = null
+var layered_event_start_state := CombatState.CHASE
+var layered_motion_state := CombatState.CHASE
+var layered_motion_due := false
+var layered_chase_gate_cached := false
+var layered_chase_contact_cached := false
+var layered_chase_objective_valid_cached := false
 
 var target_query := PhysicsShapeQueryParameters2D.new()
 var target_query_shape := CircleShape2D.new()
@@ -140,7 +149,146 @@ func _ready() -> void:
 	_hide_all_action_indicators()
 
 
-func _physics_process(delta: float) -> void:
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func supports_layered_area_authoritative_simulation() -> bool:
+	return _is_exact_layered_main_battle_family()
+
+
+## Main-battle movement contains authored dash collision and airborne tracking.
+## It is phase-split below, but its composite attack/contact ordering remains on
+## the production Area path until a dedicated shared-contact shadow gate passes.
+func supports_layered_contact_authoritative_simulation() -> bool:
+	return false
+
+
+func uses_layered_area_physics_phase_decisions() -> bool:
+	return true
+
+
+func get_layered_area_decision_interval_frames() -> int:
+	if not Enemy.combat_sense_throttling_enabled:
+		return 1
+	return maxi(combat_sense_update_interval_frames, 1)
+
+
+func is_layered_area_decision_due_for_physics_frame(
+	physics_frame: int
+) -> bool:
+	var interval := get_layered_area_decision_interval_frames()
+	return (
+		interval <= 1
+		or posmod(physics_frame + navigation_update_frame_offset, interval) == 0
+	)
+
+
+func get_layered_area_decision_phase_offset() -> int:
+	return navigation_update_frame_offset
+
+
+func uses_trusted_layered_phase_entrypoints() -> bool:
+	return true
+
+
+func _is_exact_layered_main_battle_family() -> bool:
+	var implementation := get_script() as Script
+	return (
+		implementation != null
+		and implementation.resource_path == LAYERED_FAMILY_SCRIPT_PATH
+	)
+
+
+func prepare_layered_area_authoritative_simulation() -> void:
+	super.prepare_layered_area_authoritative_simulation()
+	layered_event_start_state = combat_state
+	layered_motion_state = combat_state
+	layered_motion_due = false
+	layered_chase_gate_cached = false
+	layered_chase_contact_cached = false
+	layered_chase_objective_valid_cached = false
+	layered_area_motion_phase_due = false
+
+
+func simulate_layered_area_event_phase(
+	delta: float,
+	simulation_tick: int,
+	token: int
+) -> bool:
+	if not _accept_layered_area_event_phase(token, simulation_tick):
+		return false
+	_advance_layered_event_body(delta)
+	return true
+
+
+func simulate_trusted_layered_area_event_phase(
+	delta: float,
+	simulation_tick: int
+) -> bool:
+	scheduled_authoritative_step_count += 1
+	layered_area_last_event_tick = simulation_tick
+	_advance_layered_event_body(delta)
+	return true
+
+
+func simulate_layered_area_decision_phase(
+	delta: float,
+	simulation_tick: int,
+	token: int
+) -> bool:
+	if not _accept_layered_area_followup_phase(token, simulation_tick):
+		return false
+	_advance_layered_decision_body(delta, true)
+	return true
+
+
+func simulate_trusted_layered_area_decision_phase(
+	delta: float,
+	_simulation_tick: int
+) -> bool:
+	_advance_layered_decision_body(delta, true)
+	return true
+
+
+func simulate_layered_area_motion_phase(
+	delta: float,
+	simulation_tick: int,
+	token: int
+) -> bool:
+	if not _accept_layered_area_followup_phase(token, simulation_tick):
+		return false
+	_advance_layered_motion_body(delta)
+	return true
+
+
+func simulate_trusted_layered_area_motion_phase(
+	delta: float,
+	_simulation_tick: int
+) -> bool:
+	_advance_layered_motion_body(delta)
+	return true
+
+
+func should_execute_layered_area_motion_phase() -> bool:
+	return layered_motion_due and not is_dead
+
+
+func _run_authoritative_physics_step(delta: float) -> void:
+	_advance_layered_event_body(delta)
+	_advance_layered_decision_body(delta, false)
+	if layered_motion_due:
+		_advance_layered_motion_body(delta)
+
+
+func _advance_layered_event_body(delta: float) -> void:
+	layered_event_start_state = combat_state
+	layered_motion_state = combat_state
+	layered_motion_due = false
+	layered_chase_gate_cached = false
+	layered_chase_contact_cached = false
+	layered_chase_objective_valid_cached = false
+	layered_area_motion_phase_due = false
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
@@ -150,43 +298,124 @@ func _physics_process(delta: float) -> void:
 	match combat_state:
 		CombatState.ATTACK_WINDUP:
 			_update_attack_windup(safe_delta)
-			return
 		CombatState.ATTACK_SLASH:
 			_update_attack_slash(safe_delta)
-			return
 		CombatState.SKILL1_WINDUP:
 			_update_skill1_windup(safe_delta)
-			return
 		CombatState.SKILL1_DASH:
-			_update_skill1_dash(safe_delta)
-			return
+			layered_motion_due = true
 		CombatState.SKILL1_CIRCLE:
 			_update_recovery(safe_delta, true)
-			return
 		CombatState.SKILL2_TAKEOFF:
 			_update_skill2_takeoff(safe_delta)
-			return
 		CombatState.SKILL2_TRACK:
-			_update_skill2_tracking(safe_delta)
-			return
+			layered_motion_due = true
 		CombatState.SKILL2_DROP:
 			_update_skill2_drop(safe_delta)
-			return
 		CombatState.SKILL2_RECOVERY:
 			_update_recovery(safe_delta, false)
-			return
+		CombatState.CHASE:
+			_update_touch_damage(safe_delta)
+			# The authored runner tries an action before the side-effectful contact
+			# selector on sensing/urgent ticks. Defer that gate to motion so a
+			# successful action keeps the exact early-return ordering. Off-cadence
+			# ticks may certify a stationary result here and skip the motion lane.
+			var action_decision_precedes_contact := (
+				_is_combat_sense_refresh_due()
+				or layered_area_decision_urgent
+			)
+			layered_motion_due = (
+				true
+				if action_decision_precedes_contact
+				else _cache_layered_chase_motion_gate()
+			)
+	layered_area_motion_phase_due = layered_motion_due
 
-	_update_touch_damage(safe_delta)
-	if _is_combat_sense_refresh_due() and _try_start_ready_action():
+
+func _advance_layered_decision_body(
+	_delta: float,
+	refresh_dynamic_target: bool
+) -> void:
+	if is_dead:
+		layered_motion_due = false
+		layered_area_motion_phase_due = false
+		layered_area_decision_urgent = false
 		return
-	if _has_player_contact():
-		velocity = Vector2.ZERO
-		actual_motion_since_last_stomp = false
+	# An event transition into CHASE or a movement state consumes the authored
+	# tick. The new state's decision/motion begins on the following tick, exactly
+	# as the old early-return runner did.
+	if layered_event_start_state != CombatState.CHASE:
+		layered_area_decision_urgent = false
 		return
-	if not is_instance_valid(objective_target):
+	if combat_state != CombatState.CHASE:
+		layered_motion_due = false
+		layered_area_motion_phase_due = false
+		layered_area_decision_urgent = false
+		return
+	var sense_due := _is_combat_sense_refresh_due()
+	var urgent_due := refresh_dynamic_target and layered_area_decision_urgent
+	if sense_due or urgent_due:
+		if refresh_dynamic_target:
+			refresh_dynamic_combat_target_decision(Engine.get_physics_frames())
+		if _try_start_ready_action():
+			layered_motion_due = false
+			layered_area_motion_phase_due = false
+			layered_area_decision_urgent = false
+			return
+	layered_motion_state = CombatState.CHASE
+	# A due refresh may replace the objective, while an urgent COMPAT marker may
+	# have deliberately deferred the authored contact selector. Re-evaluate in
+	# motion unless this off-cadence event already certified the exact gate.
+	layered_motion_due = (
+		(
+			layered_chase_objective_valid_cached
+			and not layered_chase_contact_cached
+		)
+		if layered_chase_gate_cached
+		else true
+	)
+	layered_area_motion_phase_due = layered_motion_due
+	layered_area_decision_urgent = false
+
+
+func _advance_layered_motion_body(delta: float) -> void:
+	if is_dead or not layered_motion_due:
 		velocity = Vector2.ZERO
-		actual_motion_since_last_stomp = false
-		_move_until_player_contact_with_audio_tracking()
+		layered_motion_due = false
+		layered_area_motion_phase_due = false
+		return
+	match layered_motion_state:
+		CombatState.SKILL1_DASH:
+			if combat_state == CombatState.SKILL1_DASH:
+				_update_skill1_dash(maxf(delta, 0.0))
+		CombatState.SKILL2_TRACK:
+			if combat_state == CombatState.SKILL2_TRACK:
+				_update_skill2_tracking(maxf(delta, 0.0))
+		CombatState.CHASE:
+			_advance_layered_chase_motion(maxf(delta, 0.0))
+		_:
+			velocity = Vector2.ZERO
+	layered_motion_due = false
+	if combat_state == layered_motion_state:
+		match layered_motion_state:
+			CombatState.CHASE:
+				layered_motion_due = (
+					layered_chase_gate_cached
+					and layered_chase_objective_valid_cached
+					and not layered_chase_contact_cached
+				)
+			CombatState.SKILL1_DASH, CombatState.SKILL2_TRACK:
+				layered_motion_due = true
+	layered_area_motion_phase_due = layered_motion_due
+
+
+func _advance_layered_chase_motion(delta: float) -> void:
+	if not layered_chase_gate_cached:
+		_cache_layered_chase_motion_gate()
+	if (
+		layered_chase_contact_cached
+		or not layered_chase_objective_valid_cached
+	):
 		return
 	var move_direction := _get_safe_navigation_move_direction(
 		objective_target,
@@ -198,10 +427,35 @@ func _physics_process(delta: float) -> void:
 	_move_until_player_contact_with_audio_tracking()
 
 
+func _cache_layered_chase_motion_gate() -> bool:
+	layered_chase_contact_cached = _has_player_contact()
+	layered_chase_objective_valid_cached = is_instance_valid(objective_target)
+	layered_chase_gate_cached = true
+	var can_move := (
+		layered_chase_objective_valid_cached
+		and not layered_chase_contact_cached
+	)
+	if can_move:
+		return true
+	velocity = Vector2.ZERO
+	actual_motion_since_last_stomp = false
+	if not layered_chase_objective_valid_cached:
+		# Preserve the old no-target call boundary without submitting a Transform.
+		_move_until_player_contact_with_audio_tracking()
+	return false
+
+
 func _apply_config() -> void:
 	super._apply_config()
 	main_config = config as MainBattleConfig
 	combat_state = CombatState.CHASE
+	layered_event_start_state = CombatState.CHASE
+	layered_motion_state = CombatState.CHASE
+	layered_motion_due = false
+	layered_chase_gate_cached = false
+	layered_chase_contact_cached = false
+	layered_chase_objective_valid_cached = false
+	layered_area_motion_phase_due = false
 	state_time_left = 0.0
 	attack_cooldown_left = 0.0
 	skill1_cooldown_left = (

@@ -264,6 +264,13 @@ var _current_snapshot_hz := _NetConstants.ENEMY_SNAPSHOT_HZ
 var _offscreen_interpolation_slots: Dictionary[int, int] = {}
 var _offscreen_proxy_count := 0
 var _proxy_visual_budget_time_left := 0.0
+var _proxy_visual_query_candidates: Array[Enemy] = []
+var _proxy_visual_active_ids: Dictionary[int, bool] = {}
+var _proxy_visual_inactive_ids: Dictionary[int, bool] = {}
+var _proxy_visual_next_active_ids: Dictionary[int, bool] = {}
+var _proxy_visual_state_work_ids: Array[int] = []
+var _proxy_visual_aabb_query_count := 0
+var _proxy_visual_last_candidate_count := 0
 var _pending_enemy_action_previous_ids: Dictionary[int, int] = {}
 var _pending_enemy_action_next_ids: Dictionary[int, int] = {}
 var _pending_enemy_action_oldest_id := 0
@@ -879,10 +886,7 @@ func update_proxy_visual_budget(delta: float) -> void:
 	if viewport != null:
 		camera = viewport.get_camera_2d()
 	if camera == null:
-		_offscreen_proxy_count = 0
-		for enemy in _runtime.get_network_enemies():
-			if enemy != null and is_instance_valid(enemy):
-				enemy.set_multiplayer_proxy_visual_active(true)
+		_restore_all_tracked_proxy_visuals()
 		return
 	var viewport_size := viewport.get_visible_rect().size
 	var safe_zoom := Vector2(
@@ -898,15 +902,74 @@ func update_proxy_visual_budget(delta: float) -> void:
 		camera.get_screen_center_position() - visible_world_size * 0.5 - margin_vector,
 		visible_world_size + margin_vector * 2.0
 	)
-	var offscreen_count := 0
-	for enemy in _runtime.get_network_enemies():
-		if enemy == null or not is_instance_valid(enemy):
+	_runtime.combat_target_index.query_world_aabb_into(
+		active_rect,
+		_proxy_visual_query_candidates
+	)
+	_proxy_visual_aabb_query_count += 1
+	_proxy_visual_next_active_ids.clear()
+	for enemy in _proxy_visual_query_candidates:
+		if (
+			enemy == null
+			or not is_instance_valid(enemy)
+			or not enemy.is_multiplayer_proxy
+		):
 			continue
-		var visual_active := active_rect.has_point(enemy.global_position)
-		enemy.set_multiplayer_proxy_visual_active(visual_active)
-		if not visual_active:
-			offscreen_count += 1
-	_offscreen_proxy_count = offscreen_count
+		var net_id := enemy.combat_target_index_net_id
+		if net_id <= 0 or _runtime.get_network_enemy(net_id) != enemy:
+			continue
+		_proxy_visual_next_active_ids[net_id] = true
+		if not _proxy_visual_active_ids.has(net_id):
+			enemy.set_multiplayer_proxy_visual_active(true)
+
+	_proxy_visual_state_work_ids.clear()
+	for net_id_variant in _proxy_visual_active_ids:
+		_proxy_visual_state_work_ids.append(int(net_id_variant))
+	_proxy_visual_state_work_ids.sort()
+	for net_id in _proxy_visual_state_work_ids:
+		if _proxy_visual_next_active_ids.has(net_id):
+			continue
+		var previous_enemy := _runtime.get_network_enemy(net_id)
+		_proxy_visual_active_ids.erase(net_id)
+		if (
+			previous_enemy == null
+			or not is_instance_valid(previous_enemy)
+			or not previous_enemy.is_multiplayer_proxy
+		):
+			_proxy_visual_inactive_ids.erase(net_id)
+			continue
+		previous_enemy.set_multiplayer_proxy_visual_active(false)
+		_proxy_visual_inactive_ids[net_id] = true
+
+	for net_id_variant in _proxy_visual_next_active_ids:
+		var net_id := int(net_id_variant)
+		_proxy_visual_active_ids[net_id] = true
+		_proxy_visual_inactive_ids.erase(net_id)
+	_proxy_visual_last_candidate_count = _proxy_visual_next_active_ids.size()
+	_offscreen_proxy_count = _proxy_visual_inactive_ids.size()
+
+
+func _restore_all_tracked_proxy_visuals() -> void:
+	_proxy_visual_state_work_ids.clear()
+	for net_id_variant in _proxy_visual_inactive_ids:
+		_proxy_visual_state_work_ids.append(int(net_id_variant))
+	_proxy_visual_state_work_ids.sort()
+	for net_id in _proxy_visual_state_work_ids:
+		var enemy := _runtime.get_network_enemy(net_id)
+		_proxy_visual_inactive_ids.erase(net_id)
+		if (
+			enemy == null
+			or not is_instance_valid(enemy)
+			or not enemy.is_multiplayer_proxy
+		):
+			_proxy_visual_active_ids.erase(net_id)
+			continue
+		enemy.set_multiplayer_proxy_visual_active(true)
+		_proxy_visual_active_ids[net_id] = true
+	_proxy_visual_query_candidates.clear()
+	_proxy_visual_next_active_ids.clear()
+	_proxy_visual_last_candidate_count = 0
+	_offscreen_proxy_count = 0
 
 
 func build_live_spawn_batches(host_timestamp: float) -> Array[SpawnBatch]:
@@ -1993,6 +2056,7 @@ func _rollback_prepared_client_spawn_registry(
 			and runtime.get_network_enemy(prepared.net_id) == candidate
 		):
 			runtime.unregister_network_enemy(prepared.net_id, candidate)
+		_forget_client_proxy_visual_state(prepared.net_id)
 		var previous_enemy := prepared.previous_enemy
 		if previous_enemy != null and is_instance_valid(previous_enemy):
 			var restored: bool = runtime.register_network_enemy(
@@ -2004,6 +2068,7 @@ func _rollback_prepared_client_spawn_registry(
 				and runtime.get_network_enemy(prepared.net_id) == previous_enemy,
 				"MpEnemyCoordinator 无法恢复敌人生成事务的旧注册。"
 			)
+			_track_client_proxy_visual_state(prepared.net_id, previous_enemy)
 		prepared.committed_enemy = null
 		prepared.publishes_spawn = false
 
@@ -2184,6 +2249,7 @@ func _clear_committed_client_spawn_batch(
 			enemy.queue_free()
 		enemy_interpolators.erase(prepared.net_id)
 		_offscreen_interpolation_slots.erase(prepared.net_id)
+		_forget_client_proxy_visual_state(prepared.net_id)
 
 
 static func _release_prepared_client_spawns(
@@ -4106,6 +4172,7 @@ func get_valid_client_enemy(enemy_net_id: int) -> Enemy:
 		enemy_spawn_incarnation_tokens.erase(enemy_net_id)
 		enemy_interpolators.erase(enemy_net_id)
 		_offscreen_interpolation_slots.erase(enemy_net_id)
+		_forget_client_proxy_visual_state(enemy_net_id)
 		return null
 	return enemy
 
@@ -4331,6 +4398,7 @@ func remove_client_enemy(
 	if not preserve_interpolator:
 		enemy_interpolators.erase(net_id)
 	_offscreen_interpolation_slots.erase(net_id)
+	_forget_client_proxy_visual_state(net_id)
 
 
 func _replay_ready_pending_enemy_actions(
@@ -4654,6 +4722,11 @@ func reset_session_state() -> void:
 	_host_target_presentation_states.clear()
 	_pending_host_target_presentation_states.clear()
 	_offscreen_interpolation_slots.clear()
+	_proxy_visual_query_candidates.clear()
+	_proxy_visual_active_ids.clear()
+	_proxy_visual_inactive_ids.clear()
+	_proxy_visual_next_active_ids.clear()
+	_proxy_visual_state_work_ids.clear()
 	_host_snapshot_batch_sequence = 0
 	_snapshot_chunk_encode_count = 0
 	_snapshot_batch_count = 0
@@ -4665,6 +4738,8 @@ func reset_session_state() -> void:
 	_current_snapshot_hz = _NetConstants.ENEMY_SNAPSHOT_HZ
 	_offscreen_proxy_count = 0
 	_proxy_visual_budget_time_left = 0.0
+	_proxy_visual_aabb_query_count = 0
+	_proxy_visual_last_candidate_count = 0
 
 
 func get_snapshot_metrics() -> Dictionary:
@@ -4677,6 +4752,10 @@ func get_snapshot_metrics() -> Dictionary:
 		"enemy_snapshot_cohort_size": _snapshot_cohort_peers.size(),
 		"current_enemy_snapshot_hz": _current_snapshot_hz,
 		"offscreen_enemy_proxy_count": _offscreen_proxy_count,
+		"proxy_visual_aabb_query_count": _proxy_visual_aabb_query_count,
+		"proxy_visual_candidate_count": _proxy_visual_last_candidate_count,
+		"proxy_visual_active_count": _proxy_visual_active_ids.size(),
+		"proxy_visual_inactive_count": _proxy_visual_inactive_ids.size(),
 	}
 
 
@@ -4866,6 +4945,7 @@ func _register_client_enemy_on_runtime(
 	var callback := _on_client_enemy_tree_exited.bind(net_id, enemy)
 	if not enemy.tree_exited.is_connected(callback):
 		enemy.tree_exited.connect(callback)
+	_track_client_proxy_visual_state(net_id, enemy)
 	return true
 
 
@@ -4887,8 +4967,32 @@ func _on_client_enemy_tree_exited(net_id: int, exiting_enemy: Enemy) -> void:
 	enemy_spawn_incarnation_tokens.erase(net_id)
 	enemy_interpolators.erase(net_id)
 	_offscreen_interpolation_slots.erase(net_id)
+	_forget_client_proxy_visual_state(net_id)
 	if is_bound():
 		_runtime.unregister_network_enemy(net_id, exiting_enemy)
+
+
+func _track_client_proxy_visual_state(net_id: int, enemy: Enemy) -> void:
+	_forget_client_proxy_visual_state(net_id)
+	if (
+		net_id <= 0
+		or enemy == null
+		or not is_instance_valid(enemy)
+		or not enemy.is_multiplayer_proxy
+	):
+		return
+	if enemy.multiplayer_proxy_visual_active:
+		_proxy_visual_active_ids[net_id] = true
+	else:
+		_proxy_visual_inactive_ids[net_id] = true
+
+
+func _forget_client_proxy_visual_state(net_id: int) -> void:
+	if net_id <= 0:
+		return
+	_proxy_visual_active_ids.erase(net_id)
+	_proxy_visual_inactive_ids.erase(net_id)
+	_proxy_visual_next_active_ids.erase(net_id)
 
 
 func _receive_action_record(record: Dictionary, current_time: float) -> void:

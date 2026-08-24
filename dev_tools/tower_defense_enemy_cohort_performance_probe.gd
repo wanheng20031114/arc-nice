@@ -27,6 +27,18 @@ const CORN_CONFIG := preload(
 const AGAVE_CONFIG := preload(
 	"res://resources/config/plant_defense/agave_cannon.tres"
 )
+const FORMAL_WAVE_01_PATH := (
+	"res://resources/config/campaigns/tower_defense/formal/wave_01.tres"
+)
+const FORMAL_WAVE_12_PATH := (
+	"res://resources/config/campaigns/tower_defense/formal/wave_12.tres"
+)
+const CLIENT_RUNTIME_SCENE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
+const MP_ENEMY_COORDINATOR_SCENE := preload(
+	"res://scene/multiplayer/enemy/mp_enemy_coordinator.tscn"
+)
 
 const DEFAULT_ENEMY_CONFIG_PATH := (
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
@@ -50,6 +62,7 @@ const COMBAT_ROBOT_GUNNER_BULLET_POOL_PATH := (
 const CAPOO_MAGE_FIREBALL_SCRIPT_PATH := "res://scene/enemy/capoo/capoo_mage_fireball.gd"
 const BULLET_HIT_EFFECT_POOL_PATH := "res://scene/combat/projectiles/bullet_hit_effect.tscn"
 const ENEMY_HIT_EFFECT_POOL_PATH := "res://scene/enemy/enemy_hit_effect.tscn"
+const AGAVE_CANNONBALL_POOL_PATH := "res://scene/plant_defense/agave_cannonball.tscn"
 const FIXTURE_CENTER := Vector2(512.0, 352.0)
 const PLAYER_PROBE_HEALTH := 1_000_000_000
 const ENEMY_PROBE_HEALTH := 1_000_000_000
@@ -69,6 +82,31 @@ const CPU60_DEFAULT_OVER_33_RATIO_BUDGET := 0.005
 const WINDOW60_DEFAULT_WALL_P95_BUDGET_MS := 18.0
 const WINDOW60_DEFAULT_OVER_18_RATIO_BUDGET := 0.05
 const FORMAL_WINDOW_SIZE := Vector2i(1280, 720)
+const AB_WARMUP_PHYSICS_TICKS := 300
+const AB_SAMPLE_PHYSICS_TICKS := 1800
+const FORMAL_SCENARIO_IDS := [
+	"first_night_main",
+	"critical_300",
+	"basic_pursuit_300",
+	"tower_projectile_96",
+	"faction_battle_150v150",
+	"obstacle_water_unreachable",
+	"host_client_proxy_1000",
+]
+const FACTION_BATTLE_SIZE := 150
+const CLIENT_PROXY_COUNT := 1_000
+const CLIENT_PROXY_NET_ID_BASE := 30_001
+const CLIENT_PROXY_POSITION_COLUMNS := 40
+const CLIENT_PROXY_POSITION_SPACING := 64.0
+const CLIENT_PROXY_SNAPSHOT_HZ := 20
+const CLIENT_PROXY_SNAPSHOT_BATCH_ID_BASE := 90_000
+const CLIENT_PROXY_SNAPSHOT_HEALTH := 1_000_000
+const UNREACHABLE_TARGET_SLOW_SOURCE_ID := 91_001
+const RUNTIME_FATE_RANDOM_SEED_OFFSET := 2_000_000
+const RUNTIME_FATE_MANAGER_RANDOM_SEED_OFFSET := 2_000_001
+const TOWER_PROJECTILE_MINIMUM_TOTAL_SHOTS := 96
+const TOWER_PROJECTILE_MINIMUM_AGAVE_SHOTS := 32
+const TOWER_PROJECTILE_MINIMUM_CONCURRENT_PROJECTILES := 8
 
 enum ProbePhase {
 	APPROACH,
@@ -100,11 +138,31 @@ var simple_fences: Array[CardinalConnectedPlant] = []
 var forbidden_enemy_cells: Dictionary[Vector2i, bool] = {}
 var viewport_rid := RID()
 var simple_fence_fixture_metrics := {}
+var building_fixture_positions := PackedVector2Array()
+var formal_registration_fingerprint_before_measurement := {}
+var formal_flow_config: WaveConfig = null
+var scenario_contract := {}
+var client_proxy_runtime: EnemyGameplayGatewayTestRuntime = null
+var client_proxy_coordinator: MpEnemyCoordinator = null
+var client_proxy_snapshot_sender: SnapshotManager = null
+var client_proxy_snapshot_states: Array[SnapshotManager.EnemyState] = []
+var client_proxy_snapshot_sequence := 0
+var client_proxy_fixture_tick := 0
+var client_proxy_target_assignment_events := 0
+var client_proxy_damage_broadcast_events := 0
+var client_proxy_defeat_events := 0
+var host_runtime_configured_before_tree := false
+var runtime_random_streams_determinized_after_ready := false
 
 var enemy_config_path := DEFAULT_ENEMY_CONFIG_PATH
 var wave_config_path := ""
 var phase := ProbePhase.APPROACH
 var requested_enemy_count := DEFAULT_ENEMY_COUNT
+var requested_scenario_id := "custom"
+var requested_simulation_mode := EnemySimulationPolicy.Mode.LEGACY
+var requested_simulation_mode_explicit := false
+var requested_authoritative_tick_sampling := false
+var requested_detailed_semantic_evidence := false
 var requested_simple_fence_count := 0
 var requested_simple_fence_ab_metrics := false
 var warmup_frames := DEFAULT_WARMUP_FRAMES
@@ -159,6 +217,22 @@ func _parse_user_arguments() -> void:
 			phase = _parse_phase(argument.get_slice("=", 1))
 		elif argument.begins_with("--enemies="):
 			requested_enemy_count = maxi(int(argument.get_slice("=", 1)), 0)
+		elif argument.begins_with("--scenario-id="):
+			requested_scenario_id = argument.get_slice("=", 1).strip_edges().to_lower()
+		elif argument.begins_with("--enemy-simulation-mode="):
+			requested_simulation_mode_explicit = true
+			requested_simulation_mode = EnemySimulationPolicy.parse_mode_name(
+				argument.get_slice("=", 1),
+				EnemySimulationPolicy.Mode.LEGACY
+			)
+		elif argument.begins_with("--authoritative-tick-sampling="):
+			requested_authoritative_tick_sampling = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
+		elif argument.begins_with("--detailed-semantic-evidence="):
+			requested_detailed_semantic_evidence = (
+				argument.get_slice("=", 1).to_lower() == "true"
+			)
 		elif argument.begins_with("--fences="):
 			requested_simple_fence_count = maxi(
 				int(argument.get_slice("=", 1)),
@@ -272,6 +346,113 @@ func _parse_user_arguments() -> void:
 		# The first frames are the workload for self-destruct enemies. Warming
 		# them first would leave an empty cohort and produce a false cheap result.
 		warmup_frames = 0
+	_validate_scenario_contract()
+
+
+func _validate_scenario_contract() -> void:
+	if requested_scenario_id.is_empty():
+		failures.append("Scenario ID must not be empty.")
+		requested_scenario_id = "custom"
+	if requested_scenario_id != "custom" and requested_scenario_id not in FORMAL_SCENARIO_IDS:
+		failures.append("Unknown cohort scenario ID: %s" % requested_scenario_id)
+		return
+	if requested_scenario_id == "custom":
+		return
+	var expected_enemy_count := 200 if requested_scenario_id == "first_night_main" else 300
+	var expected_wave_path := ""
+	var expected_enemy_path := ""
+	var expected_phase := ProbePhase.APPROACH
+	var expected_fences := 0
+	var expected_corn := 0
+	var expected_agave := 0
+	match requested_scenario_id:
+		"first_night_main", "critical_300":
+			expected_wave_path = FORMAL_WAVE_01_PATH
+			expected_fences = 40
+			expected_corn = 40
+			expected_agave = 20
+		"tower_projectile_96":
+			expected_wave_path = FORMAL_WAVE_12_PATH
+			expected_phase = ProbePhase.ENGAGEMENT
+			expected_corn = 64
+			expected_agave = 32
+		"host_client_proxy_1000":
+			expected_wave_path = FORMAL_WAVE_01_PATH
+		_:
+			expected_enemy_path = DEFAULT_ENEMY_CONFIG_PATH
+			if requested_scenario_id == "faction_battle_150v150":
+				expected_phase = ProbePhase.ENGAGEMENT
+	_expect(
+		wave_config_path == expected_wave_path
+		and (expected_enemy_path.is_empty() or enemy_config_path == expected_enemy_path),
+		"%s must use its declared authored cohort source."
+		% requested_scenario_id
+	)
+	_expect(
+		requested_enemy_count == expected_enemy_count,
+		"%s must contain exactly %d host-authoritative enemies."
+		% [requested_scenario_id, expected_enemy_count]
+	)
+	_expect(
+		requested_simple_fence_count == expected_fences
+		and requested_corn_count == expected_corn
+		and requested_agave_count == expected_agave,
+		"%s building composition must match its formal fixture."
+		% requested_scenario_id
+	)
+	_expect(
+		phase == expected_phase,
+		"%s must retain its declared production phase."
+		% requested_scenario_id
+	)
+	_expect(
+		requested_authoritative_tick_sampling,
+		"%s requires authoritative physics-tick sampling."
+		% requested_scenario_id
+	)
+	_expect(
+		warmup_frames == AB_WARMUP_PHYSICS_TICKS
+		and sample_frames == AB_SAMPLE_PHYSICS_TICKS,
+		"%s requires exactly %d warmup and %d sample physics ticks."
+		% [
+			requested_scenario_id,
+			AB_WARMUP_PHYSICS_TICKS,
+			AB_SAMPLE_PHYSICS_TICKS,
+		]
+	)
+	_expect(
+		not requested_detailed_semantic_evidence,
+		"Performance A/B scenarios must disable detailed semantic evidence."
+	)
+
+
+func _uses_formal_runtime_fixture() -> bool:
+	return requested_scenario_id in FORMAL_SCENARIO_IDS
+
+
+func _get_scenario_fixture_kind() -> String:
+	match requested_scenario_id:
+		"first_night_main", "critical_300":
+			return "host_wave"
+		"basic_pursuit_300":
+			return "basic_pursuit"
+		"tower_projectile_96":
+			return "tower_projectile"
+		"faction_battle_150v150":
+			return "faction_battle"
+		"obstacle_water_unreachable":
+			return "water_unreachable"
+		"host_client_proxy_1000":
+			return "host_client_proxy"
+	return "custom"
+
+
+func _get_formal_flow_step_path() -> String:
+	return (
+		FORMAL_WAVE_12_PATH
+		if requested_scenario_id == "tower_projectile_96"
+		else FORMAL_WAVE_01_PATH
+	)
 
 
 func _parse_phase(value: String) -> ProbePhase:
@@ -368,9 +549,28 @@ func _run() -> void:
 		await _finish()
 		return
 	game.auto_start_waves = false
-	game.random_generator.seed = fixed_seed
+	if _uses_formal_runtime_fixture():
+		# Match MpGame's production construction order: multiplayer identity and
+		# authority are configured while the runtime is still outside SceneTree, so
+		# every _ready() branch observes Host authority from its first instruction.
+		game.defer_runtime_activation()
+		game.configure_multiplayer(
+			CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+			1,
+			{1: "A/B Probe Host"}
+		)
+		host_runtime_configured_before_tree = (
+			not game.is_inside_tree()
+			and game.runtime_mode == CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		)
 	root.add_child(game)
 	current_scene = game
+	# TowerDefenseGame and its Fate children randomize in _ready(). Reapply every
+	# runtime-owned stream only after those calls, before activation or fixture
+	# setup can consume gameplay randomness.
+	_determinize_runtime_random_streams_after_ready()
+	if _uses_formal_runtime_fixture():
+		game.activate_runtime()
 	if requested_window_size != Vector2i.ZERO and DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_size(requested_window_size)
 		root.size = requested_window_size
@@ -408,6 +608,19 @@ func _run() -> void:
 	viewport_rid = game.get_viewport().get_viewport_rid()
 	RenderingServer.viewport_set_measure_render_time(viewport_rid, true)
 	_prepare_runtime()
+	if _uses_in_field_building_fixture():
+		building_fixture_positions = _build_tower_positions(
+			requested_simple_fence_count
+			+ requested_corn_count
+			+ requested_agave_count
+		)
+		_expect(
+			building_fixture_positions.size()
+			== requested_simple_fence_count
+			+ requested_corn_count
+			+ requested_agave_count,
+			"The scenario must reserve every in-field building position."
+		)
 	await _spawn_simple_fence_fixture()
 	if simple_fences.size() != requested_simple_fence_count:
 		await _finish()
@@ -440,6 +653,11 @@ func _run() -> void:
 	if enemies.size() != requested_enemy_count:
 		await _finish()
 		return
+	if requested_scenario_id == "host_client_proxy_1000":
+		await _spawn_client_proxy_fixture()
+		if client_proxy_runtime == null or client_proxy_coordinator == null:
+			await _finish()
+			return
 	_stagger_tower_attack_timers()
 
 	print(
@@ -473,9 +691,7 @@ func _run() -> void:
 		]
 	)
 
-	for _warmup_index in range(warmup_frames):
-		await process_frame
-		_drive_player_movement()
+	await _run_warmup_window()
 	print("TOWER_DEFENSE_ENEMY_COHORT_MEASURE_BEGIN")
 
 	var result := await _measure_sample_window(
@@ -489,9 +705,54 @@ func _run() -> void:
 	await _finish()
 
 
+func _uses_in_field_building_fixture() -> bool:
+	return (
+		_uses_formal_runtime_fixture()
+		and requested_simple_fence_count
+		+ requested_corn_count
+		+ requested_agave_count > 0
+	)
+
+
+func _run_warmup_window() -> void:
+	var previous_physics_frame := Engine.get_physics_frames()
+	for _warmup_index in range(warmup_frames):
+		_step_client_proxy_fixture()
+		if requested_authoritative_tick_sampling:
+			await physics_frame
+			var current_physics_frame := Engine.get_physics_frames()
+			_expect(
+				current_physics_frame - previous_physics_frame == 1,
+				"Authoritative warmup must advance exactly one physics tick per sample."
+			)
+			previous_physics_frame = current_physics_frame
+		else:
+			await process_frame
+		_drive_player_movement()
+
+
 func _prepare_runtime() -> void:
 	game.enemy_spawn_timer.stop()
 	game.state_timer.stop()
+	if _uses_formal_runtime_fixture():
+		# The formal A/B fixture represents the first night itself, not the quiet
+		# PRE_WAVE daylight that happens to precede it in the production scene. It
+		# also exercises the Host-authoritative identity path configured before the
+		# scene entered SceneTree; every fixture enemy then enters through
+		# register_external_enemy/finalize_authoritative_enemy_spawn below.
+		formal_flow_config = load(_get_formal_flow_step_path()) as WaveConfig
+		_expect(formal_flow_config != null, "Formal flow-step resource must load.")
+		game.campaign_coordinator.current_flow_step = formal_flow_config
+		game.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
+		game.campaign_coordinator.current_wave_index = 0
+		game.enemy_coordinator.clear_queue()
+		game.enemy_coordinator.clear_active_enemies()
+		game.enemy_coordinator.clear_hud_alive_enemies()
+		game.clear_network_enemy_registry()
+		game.enemy_coordinator.next_multiplayer_enemy_net_id = 1
+		game.campaign_coordinator.reset_wave_progress(requested_enemy_count)
+		# Timers remain stopped so the fixed cohort is the only spawn workload.
+		game.day_night_controller.set_night_factor_immediate(1.0)
 	game.maximum_base_health = BASE_PROBE_HEALTH
 	game.current_base_health = BASE_PROBE_HEALTH
 	game.player.global_position = FIXTURE_CENTER
@@ -549,13 +810,19 @@ func _spawn_simple_fence_fixture() -> void:
 	)
 	if plant_system == null:
 		return
+	if (
+		_uses_in_field_building_fixture()
+		and building_fixture_positions.size() < requested_simple_fence_count
+	):
+		_expect(false, "The in-field fence fixture has insufficient reserved positions.")
+		return
 	if requested_simple_fence_ab_metrics:
 		plant_system.set_plant_target_query_metrics_enabled(true)
 		plant_system.set_enemy_target_query_metrics_enabled(true)
 
-	# These cells remain thousands of authored tiles away from the player and
-	# cohort. They therefore exercise real StaticBody2D registration and scene
-	# ownership without creating a contact workload or changing an objective.
+	# Custom diagnostics keep fences far from combat. Formal first-night A/B uses
+	# reserved production-map cells so all 100 buildings contribute their real
+	# scene, collision and target-index cost inside the active field.
 	plant_system.placement_area = Rect2i(-20_000, -20_000, 40_000, 40_000)
 	await process_frame
 	await physics_frame
@@ -573,13 +840,21 @@ func _spawn_simple_fence_fixture() -> void:
 			fence_index % SIMPLE_FENCE_GRID_COLUMNS,
 			fence_index / SIMPLE_FENCE_GRID_COLUMNS
 		)
+		if _uses_in_field_building_fixture():
+			cell = pathfinder.call(
+				"_global_to_map",
+				building_fixture_positions[fence_index]
+			) as Vector2i
+			for y_offset in range(-1, 2):
+				for x_offset in range(-1, 2):
+					forbidden_enemy_cells[cell + Vector2i(x_offset, y_offset)] = true
 		var fence := plant_system.spawn_multiplayer_replica(
 			&"simple_fence",
 			cell,
 			null,
 			SIMPLE_FENCE_NET_ID_BASE + fence_index,
-			500,
-			500,
+			PLANT_PROBE_HEALTH,
+			PLANT_PROBE_HEALTH,
 			0,
 			false
 		) as CardinalConnectedPlant
@@ -636,6 +911,9 @@ func _spawn_simple_fence_fixture() -> void:
 		"spawned": simple_fences.size(),
 		"real_static_body_count": simple_fences.size(),
 		"real_collision_shape_count": _count_fence_collision_shapes(),
+		"placement_scope": (
+			"in_field" if _uses_in_field_building_fixture() else "far_non_contact"
+		),
 		"fence_subtree_node_count": _count_fence_subtree_nodes(),
 		"setup_ms": fence_setup_ms,
 		"node_count_before": node_count_before,
@@ -839,7 +1117,22 @@ func _spawn_tower_fixture() -> void:
 	var total_tower_count := requested_corn_count + requested_agave_count
 	if total_tower_count <= 0:
 		return
-	var positions := _build_tower_positions(total_tower_count)
+	var plant_system := game.plant_system as PlantSystem
+	_expect(
+		plant_system != null,
+		"The production tower cohort requires PlantSystem."
+	)
+	if plant_system == null:
+		return
+	var positions := PackedVector2Array()
+	if _uses_in_field_building_fixture():
+		for position_index in range(total_tower_count):
+			var source_index := requested_simple_fence_count + position_index
+			if source_index >= building_fixture_positions.size():
+				break
+			positions.append(building_fixture_positions[source_index])
+	else:
+		positions = _build_tower_positions(total_tower_count)
 	_expect(
 		positions.size() >= total_tower_count,
 		"The production map must provide every requested tower cell."
@@ -847,7 +1140,6 @@ func _spawn_tower_fixture() -> void:
 	if positions.size() < total_tower_count:
 		return
 
-	var empty_footprint: Array[Vector2i] = []
 	for tower_index in range(total_tower_count):
 		var tower_position := positions[tower_index]
 		var tower_cell := pathfinder.call("_global_to_map", tower_position) as Vector2i
@@ -856,42 +1148,36 @@ func _spawn_tower_fixture() -> void:
 				forbidden_enemy_cells[tower_cell + Vector2i(x_offset, y_offset)] = true
 
 		if tower_index < requested_corn_count:
-			var corn := CORN_CONFIG.plant_scene.instantiate() as CornMachineGun
-			if corn == null:
-				continue
-			game.plant_container.add_child(corn)
-			corn.global_position = tower_position
-			corn.set_meta(&"net_id", tower_index + 1)
-			corn.setup(
+			var corn := plant_system._instantiate_registered_plant(
 				CORN_CONFIG,
+				tower_cell,
 				game.player,
-				empty_footprint,
+				tower_index + 1,
 				false,
 				PLANT_PROBE_HEALTH,
 				0,
 				PLANT_PROBE_HEALTH,
 				false
-			)
+			) as CornMachineGun
+			if corn == null:
+				continue
 			corn.set_idle_aim_random_seed(fixed_seed + tower_index)
 			corn_towers.append(corn)
 			continue
 
-		var agave := AGAVE_CONFIG.plant_scene.instantiate() as AgaveCannon
-		if agave == null:
-			continue
-		game.plant_container.add_child(agave)
-		agave.global_position = tower_position
-		agave.set_meta(&"net_id", tower_index + 1)
-		agave.setup(
+		var agave := plant_system._instantiate_registered_plant(
 			AGAVE_CONFIG,
+			tower_cell,
 			game.player,
-			empty_footprint,
+			tower_index + 1,
 			false,
 			PLANT_PROBE_HEALTH,
 			0,
 			PLANT_PROBE_HEALTH,
 			false
-		)
+		) as AgaveCannon
+		if agave == null:
+			continue
 		agave.set_idle_aim_random_seed(fixed_seed + tower_index)
 		agave_towers.append(agave)
 
@@ -1020,11 +1306,49 @@ func _spawn_cohort() -> void:
 			enemy.set_objective_target(game.player)
 		else:
 			game.enemy_coordinator.assign_enemy_targets(enemy, enemy.global_position)
-		game.enemy_coordinator.configure_authoritative_enemy_physics_interpolation(enemy)
+		if _uses_formal_runtime_fixture():
+			var enemy_id := enemy.get_instance_id()
+			var registered_in_wave := game.enemy_coordinator.register_external_enemy(
+				enemy,
+				WaveEnemyTerminalLedger.EnemyRole.OBJECTIVE
+			)
+			_expect(
+				registered_in_wave,
+				"Every formal cohort enemy must register in the production wave ledger."
+			)
+			if not registered_in_wave:
+				enemy.queue_free()
+				continue
+			enemy.defeated.connect(Callable(
+				game.enemy_coordinator,
+				&"_on_wave_enemy_defeated"
+			))
+			enemy.tree_exited.connect(
+				game.enemy_coordinator.handle_wave_enemy_tree_exited.bind(enemy_id)
+			)
+			var enemy_net_id := (
+				game.enemy_coordinator.finalize_authoritative_enemy_spawn(
+					enemy,
+					current_enemy_config,
+					enemy.global_position,
+					true
+				)
+			)
+			_expect(
+				enemy_net_id > 0,
+				"Every formal cohort enemy must receive a production network identity."
+			)
+		else:
+			game.enemy_coordinator.configure_authoritative_enemy_physics_interpolation(
+				enemy
+			)
 		if is_boss:
 			(enemy as LinglanBoss).activate_boss(game.player, pathfinder)
 		enemy.velocity = Vector2.ZERO
-		enemy.set_physics_process(false)
+		# Pause through the simulation ownership boundary. Directly toggling the
+		# Node callback would accidentally re-enable an empty per-enemy callback in
+		# centralized modes and contaminate the A/B result.
+		enemy.set_authoritative_simulation_enabled(false)
 		enemy.reset_physics_interpolation()
 		enemies.append(enemy)
 
@@ -1039,13 +1363,893 @@ func _spawn_cohort() -> void:
 			continue
 		prewarmed_profiles[profile_key] = true
 		pathfinder.prewarm_agent_grid(half_extents, traversal_types)
+	_configure_formal_scenario_adapter()
 	for enemy in enemies:
-		enemy.set_physics_process(true)
+		enemy.set_authoritative_simulation_enabled(true)
 		enemy.reset_physics_interpolation()
 
 	for _settle_index in range(3):
 		await process_frame
 		await physics_frame
+	if _uses_formal_runtime_fixture():
+		formal_registration_fingerprint_before_measurement = (
+			_capture_formal_registration_fingerprint()
+		)
+		_validate_formal_registration_fingerprint(
+			formal_registration_fingerprint_before_measurement,
+			"before_measurement"
+		)
+
+
+func _configure_formal_scenario_adapter() -> void:
+	if not _uses_formal_runtime_fixture():
+		return
+	scenario_contract = {
+		"fixture_kind": _get_scenario_fixture_kind(),
+		"flow_step_path": _get_formal_flow_step_path(),
+		"host_configured_before_tree": host_runtime_configured_before_tree,
+		"host_authority_verified": (
+			game.runtime_mode == CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		),
+		"host_enemy_count": enemies.size(),
+		"allied_enemy_count": 0,
+		"hostile_enemy_count": enemies.size(),
+		"unreachable_assignment_count": 0,
+		"client_proxy_count": 0,
+		"client_index_count": 0,
+		"client_authoritative_registered_count": 0,
+		"client_proxy_start": {},
+		"client_proxy_end": {},
+		"client_authoritative_attack_delta": 0,
+		"client_authoritative_damage_delta": 0,
+		"client_authoritative_kill_delta": 0,
+		"client_authoritative_reward_delta": 0,
+		"basic_pursuit_count": 0,
+		"tower_count": corn_towers.size() + agave_towers.size(),
+		"projectile_pressure_verified": false,
+		"tower_total_shots": 0,
+		"tower_agave_projectile_shots": 0,
+		"tower_peak_concurrent_projectiles": 0,
+		"paired_dynamic_target_count": 0,
+		"faction_valid_dynamic_targets_start": {},
+		"faction_valid_dynamic_targets_end": {},
+		"faction_damage_taken": {},
+		"water_target_verified": false,
+		"disconnected_connectivity_verified": false,
+	}
+	_expect(
+		host_runtime_configured_before_tree,
+		"Formal A/B runtime must configure Host authority before entering SceneTree."
+	)
+	match requested_scenario_id:
+		"basic_pursuit_300":
+			scenario_contract["basic_pursuit_count"] = _count_basic_pursuit_enemies()
+		"faction_battle_150v150":
+			_configure_faction_battle_adapter()
+		"obstacle_water_unreachable":
+			_configure_water_unreachable_adapter()
+
+
+func _count_basic_pursuit_enemies() -> int:
+	var count := 0
+	for enemy in enemies:
+		if enemy != null and enemy.config != null and enemy.config.resource_path == DEFAULT_ENEMY_CONFIG_PATH:
+			count += 1
+	return count
+
+
+func _configure_faction_battle_adapter() -> void:
+	_expect(enemies.size() == FACTION_BATTLE_SIZE * 2, "Faction adapter requires 150v150 enemies.")
+	if enemies.size() != FACTION_BATTLE_SIZE * 2:
+		return
+	var paired_target_count := 0
+	for pair_index in range(FACTION_BATTLE_SIZE):
+		var allied := enemies[pair_index]
+		var hostile := enemies[FACTION_BATTLE_SIZE + pair_index]
+		allied.set_combat_faction_id(CombatRelationService.PLAYER_ALLIED)
+		if allied.consider_automatic_combat_target(hostile, 1):
+			paired_target_count += 1
+		if hostile.consider_automatic_combat_target(allied, 1):
+			paired_target_count += 1
+	scenario_contract["allied_enemy_count"] = _count_enemies_in_faction(
+		CombatRelationService.PLAYER_ALLIED
+	)
+	scenario_contract["hostile_enemy_count"] = _count_enemies_in_faction(
+		CombatRelationService.HOSTILE_WAVE
+	)
+	scenario_contract["paired_dynamic_target_count"] = paired_target_count
+	_expect(
+		paired_target_count == FACTION_BATTLE_SIZE * 2,
+		"Faction adapter must assign all 300 paired dynamic targets."
+	)
+
+
+func _configure_water_unreachable_adapter() -> void:
+	_expect(enemies.size() == 300, "Water-unreachable adapter requires 300 enemies.")
+	if enemies.size() != 300:
+		return
+	var target := enemies[0]
+	var source := enemies[1]
+	target.set_combat_faction_id(CombatRelationService.PLAYER_ALLIED)
+	target.add_move_speed_modifier(UNREACHABLE_TARGET_SLOW_SOURCE_ID, 0.0)
+	var profile := source.call("_get_navigation_agent_profile") as GridPathfinder.AgentNavigationProfile
+	_expect(profile != null, "Water-unreachable adapter requires a published navigation profile.")
+	if profile == null:
+		return
+	var water_target_position := _find_disconnected_water_target_position(
+		source,
+		target,
+		profile
+	)
+	_expect(
+		water_target_position.is_finite() and water_target_position != Vector2.INF,
+		"Production navigation must provide a disconnected water target cell."
+	)
+	if not water_target_position.is_finite() or water_target_position == Vector2.INF:
+		return
+	target.global_position = water_target_position
+	target.reset_physics_interpolation()
+	var descriptor := CombatTargetDescriptor.create_enemy(
+		target.combat_target_index_net_id,
+		target.get_faction_revision(),
+		water_target_position
+	)
+	var assignment_count := 0
+	for enemy_index in range(1, enemies.size()):
+		if enemies[enemy_index].apply_designated_combat_target(descriptor, 1):
+			assignment_count += 1
+	var connectivity := pathfinder.classify_dynamic_target_connectivity_with_profile(
+		source.global_position,
+		water_target_position,
+		source.get_dynamic_target_contact_goal_radius(target),
+		profile
+	)
+	scenario_contract["allied_enemy_count"] = 1
+	scenario_contract["hostile_enemy_count"] = 299
+	scenario_contract["unreachable_assignment_count"] = assignment_count
+	scenario_contract["water_target_verified"] = true
+	scenario_contract["disconnected_connectivity_verified"] = (
+		connectivity == GridPathfinder.NavigationConnectivityStatus.DISCONNECTED
+	)
+	_expect(assignment_count == 299, "All hostile enemies must receive the unreachable target.")
+	_expect(
+		connectivity == GridPathfinder.NavigationConnectivityStatus.DISCONNECTED,
+		"The authored water target must be navigation-disconnected."
+	)
+
+
+func _find_disconnected_water_target_position(
+	source: Enemy,
+	target: Enemy,
+	profile: GridPathfinder.AgentNavigationProfile
+) -> Vector2:
+	var region := profile.solid_integral_snapshot.region
+	for cell_y in range(region.position.y, region.end.y):
+		for cell_x in range(region.position.x, region.end.x):
+			var cell := Vector2i(cell_x, cell_y)
+			if not profile.path_grid.is_point_solid(cell):
+				continue
+			var traversal_flags := int(pathfinder.call(
+				"_get_live_terrain_traversal_flags",
+				cell
+			))
+			if (
+				traversal_flags & DualGridTilemap.TraversalType.WATER
+			) == 0:
+				continue
+			var candidate := pathfinder.call("_map_to_global", cell) as Vector2
+			var connectivity := pathfinder.classify_dynamic_target_connectivity_with_profile(
+				source.global_position,
+				candidate,
+				source.get_dynamic_target_contact_goal_radius(target),
+				profile
+			)
+			if connectivity == GridPathfinder.NavigationConnectivityStatus.DISCONNECTED:
+				return candidate
+	return Vector2.INF
+
+
+func _count_enemies_in_faction(faction_id: int) -> int:
+	var count := 0
+	for enemy in enemies:
+		if enemy != null and enemy.get_combat_faction_id() == faction_id:
+			count += 1
+	return count
+
+
+func _capture_faction_battle_state() -> Dictionary:
+	var result := {
+		"allied_count": 0,
+		"hostile_count": 0,
+		"allied_valid_dynamic_targets": 0,
+		"hostile_valid_dynamic_targets": 0,
+		"allied_total_health": 0,
+		"hostile_total_health": 0,
+		"health_by_index": {},
+	}
+	var relation_service := game.get_combat_relation_service()
+	for enemy_index in range(enemies.size()):
+		var enemy := enemies[enemy_index]
+		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+			continue
+		var faction_id := enemy.get_combat_faction_id()
+		if faction_id == CombatRelationService.PLAYER_ALLIED:
+			result["allied_count"] = int(result["allied_count"]) + 1
+			result["allied_total_health"] = (
+				int(result["allied_total_health"]) + enemy.current_health
+			)
+		elif faction_id == CombatRelationService.HOSTILE_WAVE:
+			result["hostile_count"] = int(result["hostile_count"]) + 1
+			result["hostile_total_health"] = (
+				int(result["hostile_total_health"]) + enemy.current_health
+			)
+		else:
+			continue
+		var health_by_index := result["health_by_index"] as Dictionary
+		health_by_index[enemy_index] = enemy.current_health
+		var dynamic_target := enemy.objective_target as Enemy
+		if (
+			dynamic_target == null
+			or not is_instance_valid(dynamic_target)
+			or dynamic_target.is_dead
+			or relation_service == null
+			or not relation_service.is_hostile(
+				faction_id,
+				dynamic_target.get_combat_faction_id()
+			)
+			or not enemy.can_attack_combat_target(dynamic_target)
+		):
+			continue
+		if faction_id == CombatRelationService.PLAYER_ALLIED:
+			result["allied_valid_dynamic_targets"] = (
+				int(result["allied_valid_dynamic_targets"]) + 1
+			)
+		else:
+			result["hostile_valid_dynamic_targets"] = (
+				int(result["hostile_valid_dynamic_targets"]) + 1
+			)
+	return result
+
+
+func _build_faction_damage_evidence(
+	before: Dictionary,
+	after: Dictionary
+) -> Dictionary:
+	var before_health := before.get("health_by_index", {}) as Dictionary
+	var after_health := after.get("health_by_index", {}) as Dictionary
+	var allied_damaged_count := 0
+	var hostile_damaged_count := 0
+	for enemy_index_variant in before_health:
+		var enemy_index := int(enemy_index_variant)
+		var damage_taken := maxi(
+			int(before_health.get(enemy_index, 0))
+			- int(after_health.get(enemy_index, 0)),
+			0
+		)
+		if damage_taken <= 0 or enemy_index < 0 or enemy_index >= enemies.size():
+			continue
+		var enemy := enemies[enemy_index]
+		if enemy == null or not is_instance_valid(enemy):
+			continue
+		if enemy.get_combat_faction_id() == CombatRelationService.PLAYER_ALLIED:
+			allied_damaged_count += 1
+		elif enemy.get_combat_faction_id() == CombatRelationService.HOSTILE_WAVE:
+			hostile_damaged_count += 1
+	return {
+		"allied_damage_taken": maxi(
+			int(before.get("allied_total_health", 0))
+			- int(after.get("allied_total_health", 0)),
+			0
+		),
+		"hostile_damage_taken": maxi(
+			int(before.get("hostile_total_health", 0))
+			- int(after.get("hostile_total_health", 0)),
+			0
+		),
+		"allied_damaged_enemy_count": allied_damaged_count,
+		"hostile_damaged_enemy_count": hostile_damaged_count,
+	}
+
+
+func _get_agave_projectile_generation_total() -> int:
+	if game == null or game.session_object_pool == null:
+		return 0
+	var total := 0
+	for child in game.session_object_pool.get_children():
+		if (
+			str(child.get_meta(SessionObjectPool.POOL_KEY_META, ""))
+			== AGAVE_CANNONBALL_POOL_PATH
+		):
+			total += int(child.get_meta(SessionObjectPool.POOL_GENERATION_META, 0))
+	return total
+
+
+func _get_agave_projectile_in_use_count() -> int:
+	if game == null or game.session_object_pool == null:
+		return 0
+	return int(
+		game.session_object_pool.get_metrics(
+			AGAVE_CANNONBALL_POOL_PATH
+		).get("in_use", 0)
+	)
+
+
+func _spawn_client_proxy_fixture() -> void:
+	client_proxy_target_assignment_events = 0
+	client_proxy_damage_broadcast_events = 0
+	client_proxy_defeat_events = 0
+	client_proxy_runtime = CLIENT_RUNTIME_SCENE.instantiate() as EnemyGameplayGatewayTestRuntime
+	client_proxy_coordinator = (
+		MP_ENEMY_COORDINATOR_SCENE.instantiate() as MpEnemyCoordinator
+	)
+	_expect(
+		client_proxy_runtime != null and client_proxy_coordinator != null,
+		"Host/client adapter must instantiate the authored client runtime and coordinator."
+	)
+	if client_proxy_runtime == null or client_proxy_coordinator == null:
+		return
+	client_proxy_runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	root.add_child(client_proxy_runtime)
+	root.add_child(client_proxy_coordinator)
+	client_proxy_coordinator.bind_runtime(client_proxy_runtime)
+	await process_frame
+	client_proxy_snapshot_sender = SnapshotManager.new()
+	client_proxy_snapshot_states.resize(CLIENT_PROXY_COUNT)
+	for proxy_index in range(CLIENT_PROXY_COUNT):
+		var column := proxy_index % CLIENT_PROXY_POSITION_COLUMNS
+		var row := floori(float(proxy_index) / float(CLIENT_PROXY_POSITION_COLUMNS))
+		var initial_position := Vector2(
+			float(column - 20) * CLIENT_PROXY_POSITION_SPACING,
+			float(row - 12) * CLIENT_PROXY_POSITION_SPACING
+		)
+		var state := SnapshotManager.EnemyState.new()
+		state.net_id = CLIENT_PROXY_NET_ID_BASE + proxy_index
+		state.position = initial_position
+		state.velocity = Vector2(12.0, 0.0)
+		state.locomotion_state = Enemy.LocomotionState.MOVING
+		state.health = CLIENT_PROXY_SNAPSHOT_HEALTH
+		state.health_revision = 1
+		state.is_dead = false
+		state.visual_status_mask = 0
+		state.faction_id = CombatRelationService.HOSTILE_WAVE
+		state.faction_revision = 0
+		client_proxy_snapshot_states[proxy_index] = state
+	_spawn_client_proxy_batches()
+	for net_id in client_proxy_coordinator.get_remote_enemy_ids():
+		var proxy := client_proxy_coordinator.get_valid_client_enemy(net_id)
+		if proxy == null:
+			continue
+		if not proxy.objective_target_changed.is_connected(
+			_on_client_proxy_objective_target_changed
+		):
+			proxy.objective_target_changed.connect(
+				_on_client_proxy_objective_target_changed
+			)
+		if not proxy.defeated.is_connected(_on_client_proxy_defeated):
+			proxy.defeated.connect(_on_client_proxy_defeated)
+	if not client_proxy_coordinator.damage_rpc_broadcast_requested.is_connected(
+		_on_client_proxy_damage_rpc_broadcast_requested
+	):
+		client_proxy_coordinator.damage_rpc_broadcast_requested.connect(
+			_on_client_proxy_damage_rpc_broadcast_requested
+		)
+	var client_simulation := client_proxy_runtime.get_enemy_simulation_coordinator()
+	var client_registered := (
+		int(client_simulation.get_metrics().get("registered_count", -1))
+		if client_simulation != null
+		else -1
+	)
+	var proxy_count := client_proxy_coordinator.get_remote_enemy_count()
+	var client_index_count: int = int(
+		client_proxy_runtime.combat_target_index.enemies_by_net_id.size()
+	)
+	_expect(
+		proxy_count == CLIENT_PROXY_COUNT
+		and client_proxy_runtime.get_network_enemy_count() == CLIENT_PROXY_COUNT
+		and client_index_count == CLIENT_PROXY_COUNT,
+		"Host/client adapter must register exactly 1,000 real client proxies."
+	)
+	_expect(
+		client_registered == 0,
+		"CLIENT_VIEW must keep the authored AI coordinator at zero registrations."
+	)
+	scenario_contract["client_proxy_count"] = proxy_count
+	scenario_contract["client_index_count"] = client_index_count
+	scenario_contract["client_authoritative_registered_count"] = client_registered
+
+
+func _on_client_proxy_objective_target_changed(
+	_enemy: Enemy,
+	current_target: Node2D
+) -> void:
+	if current_target != null:
+		client_proxy_target_assignment_events += 1
+
+
+func _on_client_proxy_damage_rpc_broadcast_requested(
+	_method_name: StringName,
+	_arguments: Array
+) -> void:
+	client_proxy_damage_broadcast_events += 1
+
+
+func _on_client_proxy_defeated(_enemy: Enemy) -> void:
+	client_proxy_defeat_events += 1
+
+
+func _capture_client_proxy_authority_state() -> Dictionary:
+	var result := {
+		"proxy_count": -1,
+		"network_count": -1,
+		"index_count": -1,
+		"proxy_true_count": 0,
+		"process_disabled_count": 0,
+		"physics_process_disabled_count": 0,
+		"area_count": 0,
+		"monitoring_area_count": 0,
+		"simulation_registered_count": -1,
+		"contact_registered_count": -1,
+		"authoritative_attack_state_count": 0,
+		"authoritative_damage_state_count": 0,
+		"dead_count": 0,
+		"total_health": 0,
+		"target_assignment_events": client_proxy_target_assignment_events,
+		"damage_broadcast_events": client_proxy_damage_broadcast_events,
+		"defeat_events": client_proxy_defeat_events,
+		"pending_reward": 0,
+		"reward_flush_queued": false,
+	}
+	if client_proxy_runtime == null or client_proxy_coordinator == null:
+		return result
+	result["proxy_count"] = client_proxy_coordinator.get_remote_enemy_count()
+	result["network_count"] = client_proxy_runtime.get_network_enemy_count()
+	result["index_count"] = (
+		client_proxy_runtime.combat_target_index.enemies_by_net_id.size()
+	)
+	var simulation := client_proxy_runtime.get_enemy_simulation_coordinator()
+	if simulation != null:
+		result["simulation_registered_count"] = int(
+			simulation.get_metrics().get("registered_count", -1)
+		)
+	var contact_service := client_proxy_runtime.get_enemy_contact_service()
+	if contact_service != null:
+		result["contact_registered_count"] = int(
+			contact_service.get_metrics().get("registered_count", -1)
+		)
+	result["pending_reward"] = client_proxy_runtime._pending_xirang_kill_reward
+	result["reward_flush_queued"] = client_proxy_runtime._xirang_kill_reward_flush_queued
+	for net_id in client_proxy_coordinator.get_remote_enemy_ids():
+		var proxy := client_proxy_coordinator.get_valid_client_enemy(net_id)
+		if proxy == null or not is_instance_valid(proxy):
+			continue
+		if proxy.is_multiplayer_proxy:
+			result["proxy_true_count"] = int(result["proxy_true_count"]) + 1
+		if not proxy.is_processing():
+			result["process_disabled_count"] = (
+				int(result["process_disabled_count"]) + 1
+			)
+		if not proxy.is_physics_processing():
+			result["physics_process_disabled_count"] = (
+				int(result["physics_process_disabled_count"]) + 1
+			)
+		if (
+			proxy.objective_target != null
+			or proxy.target_player != null
+			or proxy.dynamic_targeting_state_active
+			or proxy.touch_damage_cooldown_left > 0.0
+		):
+			result["authoritative_attack_state_count"] = (
+				int(result["authoritative_attack_state_count"]) + 1
+			)
+		if proxy.last_damage_taken != 0 or proxy.last_damage_result != null:
+			result["authoritative_damage_state_count"] = (
+				int(result["authoritative_damage_state_count"]) + 1
+			)
+		if proxy.is_dead:
+			result["dead_count"] = int(result["dead_count"]) + 1
+		result["total_health"] = int(result["total_health"]) + proxy.current_health
+		var area_nodes := proxy.find_children("*", "Area2D", true, false)
+		result["area_count"] = int(result["area_count"]) + area_nodes.size()
+		for area_node in area_nodes:
+			var area := area_node as Area2D
+			if area != null and area.monitoring:
+				result["monitoring_area_count"] = (
+					int(result["monitoring_area_count"]) + 1
+				)
+	return result
+
+
+func _spawn_client_proxy_batches() -> void:
+	var batch_size := MpEnemyCoordinator.ENEMY_SPAWN_BATCH_MAX_RECORDS
+	for batch_start in range(0, CLIENT_PROXY_COUNT, batch_size):
+		var batch_end := mini(batch_start + batch_size, CLIENT_PROXY_COUNT)
+		var net_ids := PackedInt32Array()
+		var config_paths := PackedStringArray()
+		var positions := PackedVector2Array()
+		var spawn_times := PackedFloat64Array()
+		var faction_ids := PackedByteArray()
+		var faction_revisions := PackedInt32Array()
+		for proxy_index in range(batch_start, batch_end):
+			var state := client_proxy_snapshot_states[proxy_index]
+			net_ids.append(state.net_id)
+			config_paths.append(DEFAULT_ENEMY_CONFIG_PATH)
+			positions.append(state.position)
+			spawn_times.append(1.0)
+			faction_ids.append(CombatRelationService.HOSTILE_WAVE)
+			faction_revisions.append(0)
+		client_proxy_coordinator.receive_enemy_spawn_batch(
+			net_ids,
+			config_paths,
+			positions,
+			spawn_times,
+			1.0,
+			false,
+			0.0,
+			faction_ids,
+			faction_revisions,
+			true
+		)
+
+
+func _step_client_proxy_fixture() -> void:
+	if client_proxy_runtime == null or client_proxy_coordinator == null:
+		return
+	client_proxy_fixture_tick += 1
+	var sample_tick := client_proxy_fixture_tick
+	if sample_tick % 3 != 0:
+		client_proxy_coordinator.interpolate_remote_enemies(
+			2.0 + float(sample_tick) / 60.0
+		)
+		return
+	client_proxy_snapshot_sequence += 1
+	var offset_sign := 1.0 if client_proxy_snapshot_sequence % 2 == 0 else -1.0
+	for proxy_index in range(CLIENT_PROXY_COUNT):
+		var state := client_proxy_snapshot_states[proxy_index]
+		state.position.x += 40.0 * offset_sign
+		state.position.y += 24.0 * offset_sign
+		state.health_revision = client_proxy_snapshot_sequence
+	var records_per_chunk := MpEnemyCoordinator.ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES
+	var chunk_count := ceili(
+		float(CLIENT_PROXY_COUNT) / float(records_per_chunk)
+	)
+	var snapshot_timestamp := 2.0 + float(sample_tick) / 60.0
+	for chunk_index in range(chunk_count):
+		var chunk_start := chunk_index * records_per_chunk
+		var chunk_size := mini(
+			records_per_chunk,
+			CLIENT_PROXY_COUNT - chunk_start
+		)
+		var data := client_proxy_snapshot_sender.encode_enemy_snapshot_range_for_cohort(
+			-77,
+			client_proxy_snapshot_states,
+			chunk_start,
+			chunk_size,
+			true
+		)
+		client_proxy_coordinator.apply_authoritative_snapshot(
+			snapshot_timestamp,
+			data,
+			CLIENT_PROXY_SNAPSHOT_BATCH_ID_BASE + client_proxy_snapshot_sequence,
+			chunk_index,
+			chunk_count,
+			CLIENT_PROXY_SNAPSHOT_HZ,
+			snapshot_timestamp
+		)
+	client_proxy_coordinator.interpolate_remote_enemies(snapshot_timestamp + 0.05)
+	client_proxy_coordinator.update_proxy_visual_budget(1.0 / 60.0)
+
+
+func _dispose_client_proxy_fixture() -> void:
+	if client_proxy_coordinator != null and is_instance_valid(client_proxy_coordinator):
+		client_proxy_coordinator.reset_session_state()
+		client_proxy_coordinator.unbind_runtime(client_proxy_runtime)
+		client_proxy_coordinator.queue_free()
+	if client_proxy_runtime != null and is_instance_valid(client_proxy_runtime):
+		client_proxy_runtime.queue_free()
+	client_proxy_snapshot_states.clear()
+	client_proxy_snapshot_sender = null
+	client_proxy_coordinator = null
+	client_proxy_runtime = null
+	client_proxy_fixture_tick = 0
+	client_proxy_target_assignment_events = 0
+	client_proxy_damage_broadcast_events = 0
+	client_proxy_defeat_events = 0
+	await process_frame
+
+
+func _capture_formal_registration_fingerprint() -> Dictionary:
+	var ledger := game.campaign_coordinator.wave_enemy_terminal_ledger
+	var ledger_snapshot := ledger.get_snapshot()
+	var plant_index := game.enemy_coordinator.get_plant_objective_index_metrics()
+	var network_ids := game.get_network_enemy_ids()
+	network_ids.sort()
+	var combat_ids: Array[int] = []
+	for net_id_variant in game.combat_target_index.enemies_by_net_id:
+		combat_ids.append(int(net_id_variant))
+	combat_ids.sort()
+	var cross_store_mapping_count := 0
+	var ledger_mapping_count := 0
+	var reverse_mapping_count := 0
+	for net_id in network_ids:
+		var network_enemy := game.get_network_enemy(net_id)
+		if network_enemy == null or not is_instance_valid(network_enemy):
+			continue
+		if game.combat_target_index.enemies_by_net_id.get(net_id) == network_enemy:
+			cross_store_mapping_count += 1
+		if ledger.has_enemy(network_enemy.get_instance_id()):
+			ledger_mapping_count += 1
+		if (
+			game.get_network_enemy_net_id_by_instance_id(
+				network_enemy.get_instance_id()
+			)
+			== net_id
+		):
+			reverse_mapping_count += 1
+	var expected_network_ids: Array[int] = []
+	for expected_net_id in range(1, requested_enemy_count + 1):
+		expected_network_ids.append(expected_net_id)
+	var combat_registered_count: int = (
+		game.combat_target_index.enemies_by_net_id.size()
+	)
+	var network_registered_count: int = network_ids.size()
+	var ledger_attached_count: int = ledger.get_attached_enemy_count()
+	return {
+		"runtime_mode": int(game.runtime_mode),
+		"current_flow_step_path": (
+			game.campaign_coordinator.current_flow_step.resource_path
+			if game.campaign_coordinator.current_flow_step != null
+			else ""
+		),
+		"ledger": {
+			"snapshot": ledger_snapshot,
+			"active_count": ledger.get_active_enemy_count(),
+			"attached_count": ledger_attached_count,
+		},
+		"plant_objective_index": plant_index,
+		"network_registry": {
+			"registered_count": network_registered_count,
+			"net_ids_hash": hash(network_ids),
+			"continuous_initial_ids": network_ids == expected_network_ids,
+			"reverse_mapping_count": reverse_mapping_count,
+		},
+		"combat_target_index": {
+			"registered_count": combat_registered_count,
+			"net_ids_hash": hash(combat_ids),
+			"bucket_mapping_count": game.combat_target_index.bucket_by_net_id.size(),
+			"bucket_slot_count": game.combat_target_index.bucket_slot_by_net_id.size(),
+			"faction_mapping_count": game.combat_target_index.faction_by_net_id.size(),
+			"faction_slot_count": (
+				game.combat_target_index.faction_bucket_slot_by_net_id.size()
+			),
+			"safety_audit_count": game.combat_target_index.safety_audit_net_ids.size(),
+		},
+		"cross_store": {
+			"combat_mapping_count": cross_store_mapping_count,
+			"ledger_mapping_count": ledger_mapping_count,
+			"network_and_combat_ids_match": network_ids == combat_ids,
+			"attached_and_network_counts_match": (
+				ledger_attached_count == network_registered_count
+			),
+		},
+	}
+
+
+func _validate_formal_registration_fingerprint(
+	fingerprint: Dictionary,
+	stage: String
+) -> void:
+	var ledger := fingerprint.get("ledger", {}) as Dictionary
+	var ledger_snapshot := ledger.get("snapshot", {}) as Dictionary
+	var plant_index := fingerprint.get("plant_objective_index", {}) as Dictionary
+	var network_registry := fingerprint.get("network_registry", {}) as Dictionary
+	var combat_index := fingerprint.get("combat_target_index", {}) as Dictionary
+	var cross_store := fingerprint.get("cross_store", {}) as Dictionary
+	var network_count := int(network_registry.get("registered_count", -1))
+	var combat_count := int(combat_index.get("registered_count", -1))
+	var attached_count := int(ledger.get("attached_count", -1))
+	var tracked_count := int(plant_index.get("tracked_enemies", -1))
+	_expect(
+		int(fingerprint.get("runtime_mode", -1))
+		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		"Formal registration fingerprint %s must use Host authority." % stage
+	)
+	_expect(
+		str(fingerprint.get("current_flow_step_path", ""))
+		== _get_formal_flow_step_path(),
+		"Formal registration fingerprint %s must retain its declared current_flow_step."
+		% stage
+	)
+	_expect(
+		int(ledger_snapshot.get("total", -1)) == requested_enemy_count
+		and int(ledger_snapshot.get("spawned", -1)) == requested_enemy_count,
+		"Formal registration fingerprint %s must retain the complete wave ledger."
+		% stage
+	)
+	_expect(
+		network_count == combat_count
+		and attached_count == network_count
+		and tracked_count == attached_count,
+		(
+			"Formal registration fingerprint %s must keep ledger, plant, network "
+			+ "and combat-index membership aligned."
+		)
+		% stage
+	)
+	_expect(
+		int(network_registry.get("reverse_mapping_count", -1)) == network_count
+		and int(cross_store.get("combat_mapping_count", -1)) == network_count
+		and int(cross_store.get("ledger_mapping_count", -1)) == network_count
+		and bool(cross_store.get("network_and_combat_ids_match", false))
+		and bool(cross_store.get("attached_and_network_counts_match", false)),
+		"Formal registration fingerprint %s must preserve every cross-store identity."
+		% stage
+	)
+	_expect(
+		int(combat_index.get("bucket_mapping_count", -1)) == combat_count
+		and int(combat_index.get("bucket_slot_count", -1)) == combat_count
+		and int(combat_index.get("faction_mapping_count", -1)) == combat_count
+		and int(combat_index.get("faction_slot_count", -1)) == combat_count
+		and int(combat_index.get("safety_audit_count", -1)) == combat_count,
+		"Formal registration fingerprint %s must preserve CombatTargetIndex structure."
+		% stage
+	)
+	if stage == "before_measurement":
+		_expect(
+			network_count == requested_enemy_count
+			and int(ledger.get("active_count", -1)) == requested_enemy_count
+			and bool(network_registry.get("continuous_initial_ids", false)),
+			"Formal registration fingerprint must start with the fixed complete cohort."
+		)
+
+
+func _determinize_runtime_random_streams_after_ready() -> void:
+	_expect(
+		game != null and game.is_node_ready(),
+		"Runtime RNG determinization must happen after TowerDefenseGame._ready()."
+	)
+	if game == null or not game.is_node_ready():
+		return
+	# Global helpers are used by a few legacy presentation paths; reseed them too,
+	# but the auditable gameplay contract below is composed only of explicit RNG
+	# objects whose exact state can be captured without consuming a value.
+	seed(fixed_seed)
+	game.random_generator.seed = fixed_seed
+	_expect(
+		game.fate_coordinator != null and game.fate_manager != null,
+		"Formal runtime must expose both Fate RNG owners."
+	)
+	if game.fate_coordinator != null:
+		game.fate_coordinator.random_generator.seed = (
+			fixed_seed + RUNTIME_FATE_RANDOM_SEED_OFFSET
+		)
+	if game.fate_manager != null:
+		game.fate_manager.random_generator.seed = (
+			fixed_seed + RUNTIME_FATE_MANAGER_RANDOM_SEED_OFFSET
+		)
+	_assert_random_stream_matches_seed(
+		game.random_generator,
+		fixed_seed,
+		"TowerDefenseGame runtime RNG"
+	)
+	if game.fate_coordinator != null:
+		_assert_random_stream_matches_seed(
+			game.fate_coordinator.random_generator,
+			fixed_seed + RUNTIME_FATE_RANDOM_SEED_OFFSET,
+			"FateCoordinator RNG"
+		)
+	if game.fate_manager != null:
+		_assert_random_stream_matches_seed(
+			game.fate_manager.random_generator,
+			fixed_seed + RUNTIME_FATE_MANAGER_RANDOM_SEED_OFFSET,
+			"TowerDefenseFateManager RNG"
+		)
+	runtime_random_streams_determinized_after_ready = true
+
+
+func _capture_random_stream_state(random_stream: RandomNumberGenerator) -> Dictionary:
+	if random_stream == null:
+		return {"seed": null, "state": null}
+	return {
+		"seed": random_stream.seed,
+		"state": random_stream.state,
+	}
+
+
+func _capture_runtime_random_state_evidence() -> Dictionary:
+	var enemy_behavior_states: Array[Dictionary] = []
+	var enemy_drop_states: Array[Dictionary] = []
+	var boss_skill_states: Array[Dictionary] = []
+	for enemy_index in range(enemies.size()):
+		var enemy := enemies[enemy_index]
+		if enemy == null or not is_instance_valid(enemy):
+			continue
+		enemy_behavior_states.append({
+			"index": enemy_index,
+			"seed": enemy.random_generator.seed,
+			"state": enemy.random_generator.state,
+		})
+		enemy_drop_states.append({
+			"index": enemy_index,
+			"seed": enemy.material_drop_random_generator.seed,
+			"state": enemy.material_drop_random_generator.state,
+		})
+		var boss := enemy as LinglanBoss
+		if boss != null:
+			boss_skill_states.append({
+				"index": enemy_index,
+				"skill3": _capture_random_stream_state(boss.skill3_random),
+				"skill4": _capture_random_stream_state(boss.skill4_random),
+				"skill_order": _capture_random_stream_state(boss.skill_order_random),
+			})
+	var corn_idle_states: Array[Dictionary] = []
+	for tower_index in range(corn_towers.size()):
+		var corn := corn_towers[tower_index]
+		if corn != null and is_instance_valid(corn):
+			corn_idle_states.append({
+				"index": tower_index,
+				"seed": corn.idle_aim_random.seed,
+				"state": corn.idle_aim_random.state,
+			})
+	var agave_idle_states: Array[Dictionary] = []
+	for tower_index in range(agave_towers.size()):
+		var agave := agave_towers[tower_index]
+		if agave != null and is_instance_valid(agave):
+			agave_idle_states.append({
+				"index": tower_index,
+				"seed": agave.idle_aim_random.seed,
+				"state": agave.idle_aim_random.state,
+			})
+	return {
+		"requested_seed": fixed_seed,
+		"determinized_after_ready": runtime_random_streams_determinized_after_ready,
+		"runtime": _capture_random_stream_state(game.random_generator),
+		"fate_coordinator": _capture_random_stream_state(
+			game.fate_coordinator.random_generator
+			if game.fate_coordinator != null
+			else null
+		),
+		"fate_manager": _capture_random_stream_state(
+			game.fate_manager.random_generator
+			if game.fate_manager != null
+			else null
+		),
+		"enemy_behavior_states": enemy_behavior_states,
+		"enemy_drop_states": enemy_drop_states,
+		"boss_skill_states": boss_skill_states,
+		"corn_idle_states": corn_idle_states,
+		"agave_idle_states": agave_idle_states,
+	}
+
+
+func _validate_runtime_random_state_evidence(
+	evidence: Dictionary,
+	stage: String
+) -> void:
+	var runtime_state := evidence.get("runtime", {}) as Dictionary
+	var fate_state := evidence.get("fate_coordinator", {}) as Dictionary
+	var fate_manager_state := evidence.get("fate_manager", {}) as Dictionary
+	var behavior_states := evidence.get("enemy_behavior_states", []) as Array
+	var drop_states := evidence.get("enemy_drop_states", []) as Array
+	var corn_states := evidence.get("corn_idle_states", []) as Array
+	var agave_states := evidence.get("agave_idle_states", []) as Array
+	_expect(
+		bool(evidence.get("determinized_after_ready", false))
+		and int(evidence.get("requested_seed", -1)) == fixed_seed
+		and int(runtime_state.get("seed", -1)) == fixed_seed
+		and int(fate_state.get("seed", -1))
+		== fixed_seed + RUNTIME_FATE_RANDOM_SEED_OFFSET
+		and int(fate_manager_state.get("seed", -1))
+		== fixed_seed + RUNTIME_FATE_MANAGER_RANDOM_SEED_OFFSET,
+		"Runtime RNG evidence %s must retain the post-ready deterministic seeds."
+		% stage
+	)
+	_expect(
+		behavior_states.size() == enemies.size()
+		and drop_states.size() == enemies.size()
+		and corn_states.size() == corn_towers.size()
+		and agave_states.size() == agave_towers.size(),
+		"Runtime RNG evidence %s must cover every authored random stream." % stage
+	)
 
 
 func _seed_enemy_random_streams(enemy: Enemy, enemy_index: int) -> void:
@@ -1195,6 +2399,8 @@ func _measure_sample_window(
 	telemetry.reset()
 	var corn_locks_before := _get_corn_target_lock_count()
 	var corn_rays_before := _get_corn_hitscan_ray_count()
+	var agave_projectile_generations_before := _get_agave_projectile_generation_total()
+	var tower_peak_concurrent_projectiles := _get_agave_projectile_in_use_count()
 	var pool_before := _aggregate_pool_metrics()
 	var pool_buckets_before := _get_pool_bucket_metrics()
 	var projectile_pool_before := _get_projectile_pool_metrics()
@@ -1211,6 +2417,34 @@ func _measure_sample_window(
 	var player_health_before := game.player.current_health
 	var base_health_before := game.current_base_health
 	var physics_frames_before := Engine.get_physics_frames()
+	var random_state_evidence_start := _capture_runtime_random_state_evidence()
+	_validate_runtime_random_state_evidence(random_state_evidence_start, "measurement_start")
+	var client_proxy_authority_start := {}
+	if requested_scenario_id == "host_client_proxy_1000":
+		client_proxy_authority_start = _capture_client_proxy_authority_state()
+	var faction_battle_state_start := {}
+	if requested_scenario_id == "faction_battle_150v150":
+		faction_battle_state_start = _capture_faction_battle_state()
+	var simulation_coordinator := game.get_enemy_simulation_coordinator()
+	_expect(
+		simulation_coordinator != null,
+		"The production fixture must expose EnemySimulationCoordinator metrics."
+	)
+	var simulation_metrics_before := (
+		simulation_coordinator.get_metrics()
+		if simulation_coordinator != null
+		else {}
+	)
+	var enemy_contact_service := game.get_enemy_contact_service()
+	_expect(
+		enemy_contact_service != null,
+		"The production fixture must expose EnemyContactService metrics."
+	)
+	var contact_service_metrics_before := (
+		enemy_contact_service.get_metrics()
+		if enemy_contact_service != null
+		else {}
+	)
 	pathfinder.agent_navigation_refresh_max_wait_process_frames = 0
 	var navigation_refresh_admitted_before := (
 		pathfinder.agent_navigation_refreshes_admitted_total
@@ -1222,6 +2456,25 @@ func _measure_sample_window(
 		pathfinder.agent_navigation_refresh_budget_saturated_frames_total
 	)
 	var alive_start := _count_alive_enemies()
+	var individual_physics_processing_start := 0
+	var touch_damage_area_monitoring_start := 0
+	for enemy in enemies:
+		if (
+			enemy != null
+			and is_instance_valid(enemy)
+			and not enemy.is_dead
+			and enemy.is_physics_processing()
+		):
+			individual_physics_processing_start += 1
+		if (
+			enemy != null
+			and is_instance_valid(enemy)
+			and not enemy.is_dead
+			and enemy.touch_damage_area != null
+			and is_instance_valid(enemy.touch_damage_area)
+			and enemy.touch_damage_area.monitoring
+		):
+			touch_damage_area_monitoring_start += 1
 	var minimum_alive := alive_start
 	var peak_projectiles := 0
 	var boss_phase_observations := {}
@@ -1271,13 +2524,22 @@ func _measure_sample_window(
 	var previous_tick_usec := Time.get_ticks_usec()
 
 	for sample_index in range(sample_frames):
-		await process_frame
+		_step_client_proxy_fixture()
+		if requested_authoritative_tick_sampling:
+			await physics_frame
+		else:
+			await process_frame
 		_drive_player_movement()
 		var now_usec := Time.get_ticks_usec()
 		var wall_ms := float(now_usec - previous_tick_usec) / 1000.0
 		wall_samples.append(wall_ms)
 		previous_tick_usec = now_usec
 		var current_sample_physics_frame := Engine.get_physics_frames()
+		if requested_scenario_id == "tower_projectile_96":
+			tower_peak_concurrent_projectiles = maxi(
+				tower_peak_concurrent_projectiles,
+				_get_agave_projectile_in_use_count()
+			)
 		var physics_steps_this_sample := maxi(
 			current_sample_physics_frame - previous_sample_physics_frame,
 			0
@@ -1288,6 +2550,11 @@ func _measure_sample_window(
 		physics_samples.append(
 			Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
 		)
+		if requested_authoritative_tick_sampling:
+			# Formal A/B records only the tick wall/engine physics timings needed
+			# for the gate. Render, memory, query and semantic diagnostics would
+			# allocate or call into servers once per sample and contaminate p95.
+			continue
 		var frame_setup_ms := RenderingServer.get_frame_setup_time_cpu()
 		var viewport_render_cpu_ms := (
 			RenderingServer.viewport_get_measured_render_time_cpu(viewport_rid)
@@ -1429,6 +2696,23 @@ func _measure_sample_window(
 		game,
 		CAPOO_MAGE_FIREBALL_SCRIPT_PATH
 	)
+	var random_state_evidence_end := _capture_runtime_random_state_evidence()
+	_validate_runtime_random_state_evidence(random_state_evidence_end, "measurement_end")
+	var client_proxy_authority_end := {}
+	if requested_scenario_id == "host_client_proxy_1000":
+		client_proxy_authority_end = _capture_client_proxy_authority_state()
+	var faction_battle_state_end := {}
+	if requested_scenario_id == "faction_battle_150v150":
+		faction_battle_state_end = _capture_faction_battle_state()
+	var simulation_metrics_after := (
+		simulation_coordinator.get_metrics()
+		if simulation_coordinator != null
+		else {}
+	)
+	var simulation_metric_delta := _subtract_coordinator_metrics(
+		simulation_metrics_after,
+		simulation_metrics_before
+	)
 	var wall_summary := _summarize(wall_samples)
 	var final_fence_metrics := simple_fence_fixture_metrics.duplicate(true)
 	final_fence_metrics["all_target_index_final"] = (
@@ -1449,9 +2733,185 @@ func _measure_sample_window(
 	final_fence_metrics["terrain_support_final"] = (
 		game.plant_system.get_unsupported_terrain_metrics()
 	)
+	var formal_registration_fingerprint_after_measurement := {}
+	if _uses_formal_runtime_fixture():
+		formal_registration_fingerprint_after_measurement = (
+			_capture_formal_registration_fingerprint()
+		)
+		_validate_formal_registration_fingerprint(
+			formal_registration_fingerprint_after_measurement,
+			"after_measurement"
+		)
+	if _uses_formal_runtime_fixture():
+		scenario_contract["host_enemy_count"] = alive_start
+		scenario_contract["allied_enemy_count"] = _count_enemies_in_faction(
+			CombatRelationService.PLAYER_ALLIED
+		)
+		scenario_contract["hostile_enemy_count"] = _count_enemies_in_faction(
+			CombatRelationService.HOSTILE_WAVE
+		)
+	if requested_scenario_id == "tower_projectile_96":
+		var tower_corn_shots := _get_corn_hitscan_ray_count() - corn_rays_before
+		var tower_agave_shots := (
+			_get_agave_projectile_generation_total()
+			- agave_projectile_generations_before
+		)
+		var tower_total_shots := tower_corn_shots + tower_agave_shots
+		scenario_contract["tower_total_shots"] = tower_total_shots
+		scenario_contract["tower_agave_projectile_shots"] = tower_agave_shots
+		scenario_contract["tower_peak_concurrent_projectiles"] = (
+			tower_peak_concurrent_projectiles
+		)
+		scenario_contract["projectile_pressure_verified"] = (
+			tower_total_shots >= TOWER_PROJECTILE_MINIMUM_TOTAL_SHOTS
+			and tower_agave_shots >= TOWER_PROJECTILE_MINIMUM_AGAVE_SHOTS
+			and tower_peak_concurrent_projectiles
+			>= TOWER_PROJECTILE_MINIMUM_CONCURRENT_PROJECTILES
+		)
+		_expect(
+			bool(scenario_contract["projectile_pressure_verified"]),
+			(
+				"Tower scenario must emit at least %d total shots, %d Agave "
+				+ "projectiles and sustain a concurrent projectile peak of %d."
+			)
+			% [
+				TOWER_PROJECTILE_MINIMUM_TOTAL_SHOTS,
+				TOWER_PROJECTILE_MINIMUM_AGAVE_SHOTS,
+				TOWER_PROJECTILE_MINIMUM_CONCURRENT_PROJECTILES,
+			]
+		)
+	if requested_scenario_id == "faction_battle_150v150":
+		scenario_contract["faction_valid_dynamic_targets_start"] = {
+			"allied": int(faction_battle_state_start.get(
+				"allied_valid_dynamic_targets",
+				0
+			)),
+			"hostile": int(faction_battle_state_start.get(
+				"hostile_valid_dynamic_targets",
+				0
+			)),
+		}
+		scenario_contract["faction_valid_dynamic_targets_end"] = {
+			"allied": int(faction_battle_state_end.get(
+				"allied_valid_dynamic_targets",
+				0
+			)),
+			"hostile": int(faction_battle_state_end.get(
+				"hostile_valid_dynamic_targets",
+				0
+			)),
+		}
+		scenario_contract["faction_damage_taken"] = (
+			_build_faction_damage_evidence(
+				faction_battle_state_start,
+				faction_battle_state_end
+			)
+		)
+		var faction_damage := scenario_contract["faction_damage_taken"] as Dictionary
+		_expect(
+			int(faction_battle_state_start.get("allied_valid_dynamic_targets", 0))
+			== FACTION_BATTLE_SIZE
+			and int(faction_battle_state_start.get("hostile_valid_dynamic_targets", 0))
+			== FACTION_BATTLE_SIZE
+			and int(faction_battle_state_end.get("allied_valid_dynamic_targets", 0))
+			== FACTION_BATTLE_SIZE
+			and int(faction_battle_state_end.get("hostile_valid_dynamic_targets", 0))
+			== FACTION_BATTLE_SIZE
+			and int(faction_damage.get("allied_damage_taken", 0)) > 0
+			and int(faction_damage.get("hostile_damage_taken", 0)) > 0
+			and int(faction_damage.get("allied_damaged_enemy_count", 0)) > 0
+			and int(faction_damage.get("hostile_damaged_enemy_count", 0)) > 0,
+			"Faction scenario must retain 150v150 valid targets and real bidirectional damage."
+		)
+	if requested_scenario_id == "host_client_proxy_1000":
+		var client_simulation := (
+			client_proxy_runtime.get_enemy_simulation_coordinator()
+			if client_proxy_runtime != null
+			else null
+		)
+		scenario_contract["client_proxy_count"] = (
+			client_proxy_coordinator.get_remote_enemy_count()
+			if client_proxy_coordinator != null
+			else -1
+		)
+		scenario_contract["client_index_count"] = (
+			client_proxy_runtime.combat_target_index.enemies_by_net_id.size()
+			if client_proxy_runtime != null
+			else -1
+		)
+		scenario_contract["client_authoritative_registered_count"] = (
+			int(client_simulation.get_metrics().get("registered_count", -1))
+			if client_simulation != null
+			else -1
+		)
+		scenario_contract["client_proxy_start"] = client_proxy_authority_start
+		scenario_contract["client_proxy_end"] = client_proxy_authority_end
+		scenario_contract["client_authoritative_attack_delta"] = maxi(
+			int(client_proxy_authority_end.get("target_assignment_events", 0))
+			- int(client_proxy_authority_start.get("target_assignment_events", 0)),
+			0
+		)
+		scenario_contract["client_authoritative_damage_delta"] = (
+			maxi(
+				int(client_proxy_authority_end.get("damage_broadcast_events", 0))
+				- int(client_proxy_authority_start.get("damage_broadcast_events", 0)),
+				0
+			)
+			+ maxi(
+				int(client_proxy_authority_start.get("total_health", 0))
+				- int(client_proxy_authority_end.get("total_health", 0)),
+				0
+			)
+		)
+		scenario_contract["client_authoritative_kill_delta"] = (
+			maxi(
+				int(client_proxy_authority_end.get("defeat_events", 0))
+				- int(client_proxy_authority_start.get("defeat_events", 0)),
+				0
+			)
+			+ maxi(
+				int(client_proxy_authority_end.get("dead_count", 0))
+				- int(client_proxy_authority_start.get("dead_count", 0)),
+				0
+			)
+		)
+		scenario_contract["client_authoritative_reward_delta"] = maxi(
+			int(client_proxy_authority_end.get("pending_reward", 0))
+			- int(client_proxy_authority_start.get("pending_reward", 0)),
+			0
+		)
+		for state_variant in [client_proxy_authority_start, client_proxy_authority_end]:
+			var state := state_variant as Dictionary
+			_expect(
+				int(state.get("proxy_count", -1)) == CLIENT_PROXY_COUNT
+				and int(state.get("network_count", -1)) == CLIENT_PROXY_COUNT
+				and int(state.get("index_count", -1)) == CLIENT_PROXY_COUNT
+				and int(state.get("proxy_true_count", -1)) == CLIENT_PROXY_COUNT
+				and int(state.get("process_disabled_count", -1)) == CLIENT_PROXY_COUNT
+				and int(state.get("physics_process_disabled_count", -1))
+				== CLIENT_PROXY_COUNT
+				and int(state.get("area_count", -1)) > 0
+				and int(state.get("monitoring_area_count", -1)) == 0
+				and int(state.get("simulation_registered_count", -1)) == 0
+				and int(state.get("contact_registered_count", -1)) == 0
+				and int(state.get("authoritative_attack_state_count", -1)) == 0
+				and int(state.get("authoritative_damage_state_count", -1)) == 0
+				and int(state.get("dead_count", -1)) == 0
+				and int(state.get("pending_reward", -1)) == 0
+				and not bool(state.get("reward_flush_queued", true)),
+				"Every client proxy must remain presentation-only at both measurement boundaries."
+			)
+		_expect(
+			int(scenario_contract["client_authoritative_attack_delta"]) == 0
+			and int(scenario_contract["client_authoritative_damage_delta"]) == 0
+			and int(scenario_contract["client_authoritative_kill_delta"]) == 0
+			and int(scenario_contract["client_authoritative_reward_delta"]) == 0,
+			"CLIENT_VIEW must produce zero attack, damage, kill and reward authority deltas."
+		)
 
 	var result := {
 		"schema_version": PROBE_RESULT_SCHEMA_VERSION,
+		"scenario_id": requested_scenario_id,
 		"scope": (
 			"out_of_campaign_boss_diagnostic"
 			if phase == ProbePhase.BOSS
@@ -1462,20 +2922,60 @@ func _measure_sample_window(
 		"wave_path": wave_config_path,
 		"display_name": _get_cohort_display_name(),
 		"composition": _get_cohort_composition(),
+		"scenario_contract": scenario_contract.duplicate(true),
+		"building_composition": {
+			"simple_fence": _count_alive_fences(),
+			"corn": corn_towers.size(),
+			"agave": agave_towers.size(),
+			"total": (
+				_count_alive_fences() + corn_towers.size() + agave_towers.size()
+			),
+			"placement_scope": (
+				"in_field"
+				if _uses_in_field_building_fixture()
+				else (
+					"none"
+					if _uses_formal_runtime_fixture()
+					else "mixed_or_external"
+				)
+			),
+		},
 		"phase": _phase_name(),
+		"flow_state": int(game.campaign_coordinator.wave_state),
+		"night_factor": game.day_night_controller.night_factor,
+		"is_night": game.day_night_controller.is_night(),
 		"gate_profile": _gate_profile_name(),
 		"quick_validation": requested_quick_validation,
 		"seed": fixed_seed,
+		"rng_state_evidence": {
+			"start": random_state_evidence_start,
+			"end": random_state_evidence_end,
+		},
 		"requested_enemies": requested_enemy_count,
 		"requested_simple_fences": requested_simple_fence_count,
 		"simple_fences": simple_fences.size(),
 		"simple_fence_ab_metrics": requested_simple_fence_ab_metrics,
 		"simple_fence_fixture": final_fence_metrics,
+		"production_registration_fingerprint": {
+			"required": _uses_formal_runtime_fixture(),
+			"before_measurement": (
+				formal_registration_fingerprint_before_measurement
+			),
+			"after_measurement": (
+				formal_registration_fingerprint_after_measurement
+			),
+		},
 		"corn_towers": corn_towers.size(),
 		"agave_towers": agave_towers.size(),
 		"alive_start": alive_start,
 		"alive_min": minimum_alive,
 		"alive_end": int(final_counts["active_enemies"]),
+		"individual_physics_processing_start": (
+			individual_physics_processing_start
+		),
+		"touch_damage_area_monitoring_start": (
+			touch_damage_area_monitoring_start
+		),
 		"setup_ms": setup_ms,
 		"tower_setup_ms": tower_setup_ms,
 		"runtime_setup_ms": runtime_setup_ms,
@@ -1483,6 +2983,59 @@ func _measure_sample_window(
 		"burst_trigger_ms": burst_trigger_ms,
 		"warmup_frames": warmup_frames,
 		"sample_frames": sample_frames,
+		"sampling_contract": {
+			"sample_unit": (
+				"authoritative_physics_tick"
+				if requested_authoritative_tick_sampling
+				else "render_process_frame"
+			),
+			"authoritative_tick_sampling": requested_authoritative_tick_sampling,
+			"detailed_semantic_evidence": requested_detailed_semantic_evidence,
+			"per_tick_diagnostics": (
+				"minimal" if requested_authoritative_tick_sampling else "detailed"
+			),
+			"requested_warmup_physics_ticks": warmup_frames,
+			"requested_sample_physics_ticks": sample_frames,
+		},
+		"enemy_simulation": {
+			"requested_mode": (
+				EnemySimulationPolicy.mode_to_name(
+					requested_simulation_mode
+				).to_lower()
+				if requested_simulation_mode_explicit
+				else "project_default"
+			),
+			"requested_mode_explicit": requested_simulation_mode_explicit,
+			"actual_mode": EnemySimulationPolicy.mode_to_name(
+				int(simulation_metrics_after.get("mode", -1))
+			).to_lower(),
+			"actual_mode_value": int(simulation_metrics_after.get("mode", -1)),
+			"registered_start": int(
+				simulation_metrics_before.get("registered_count", 0)
+			),
+			"active_start": int(simulation_metrics_before.get("active_count", 0)),
+			"registered": int(simulation_metrics_after.get("registered_count", 0)),
+			"active": int(simulation_metrics_after.get("active_count", 0)),
+			"contact_registration_count": int(
+				contact_service_metrics_before.get("registered_count", 0)
+			),
+			"registration_rejections": int(
+				simulation_metrics_after.get("registration_rejections", 0)
+			),
+			"contact_registration_rejections": int(
+				simulation_metrics_after.get(
+					"contact_registration_rejections",
+					0
+				)
+			),
+			"physics_ticks": int(simulation_metric_delta.get("physics_ticks", 0)),
+			"authoritative_steps": int(
+				simulation_metric_delta.get("authoritative_steps", 0)
+			),
+			"metrics_before": simulation_metrics_before,
+			"metrics_after": simulation_metrics_after,
+			"measured_metric_delta": simulation_metric_delta,
+		},
 		"navigation_interval": (
 			requested_navigation_interval
 			if requested_navigation_interval > 0
@@ -1639,8 +3192,13 @@ func _measure_sample_window(
 	}
 
 	_expect(wall_samples.size() == sample_frames, "Every requested frame sample must be recorded.")
+	if requested_authoritative_tick_sampling:
+		_expect(
+			_count_samples_not_equal_to(physics_steps_per_render_sample, 1.0) == 0,
+			"Every authoritative sample must contain exactly one physics tick."
+		)
 	_expect(
-		simple_fences.size() == requested_simple_fence_count,
+		_count_alive_fences() == requested_simple_fence_count,
 		"Every requested real simple fence must survive the measured window."
 	)
 	var final_enemy_target_index := (
@@ -1653,8 +3211,13 @@ func _measure_sample_window(
 				"registered_count",
 				-1
 			)
-		),
-		"CONTACT_ONLY fences must remain absent from the proactive index."
+		)
+		+ corn_towers.size()
+		+ agave_towers.size(),
+		(
+			"CONTACT_ONLY fences must remain absent while every combat tower stays "
+			+ "registered in the proactive index."
+		)
 	)
 	_expect(
 		_capture_static_navigation_signature()
@@ -1808,10 +3371,15 @@ func _evaluate_gate(result: Dictionary) -> Dictionary:
 			invalid_reasons.append("window60 requires a single EnemyConfig source")
 		if requested_gate_profile == GateProfile.WAVE60 and wave_config_path.is_empty():
 			invalid_reasons.append("wave60 requires a WaveConfig source")
-	if phase != ProbePhase.ENGAGEMENT:
+	if (
+		phase != ProbePhase.ENGAGEMENT
+		and not _uses_formal_runtime_fixture()
+	):
 		invalid_reasons.append("%s requires phase=engagement" % profile_name)
-	if requested_enemy_count != DEFAULT_ENEMY_COUNT:
-		invalid_reasons.append("%s requires exactly 300 requested enemies" % profile_name)
+	if requested_enemy_count not in [200, DEFAULT_ENEMY_COUNT]:
+		invalid_reasons.append(
+			"%s requires exactly 200 or 300 requested enemies" % profile_name
+		)
 	var minimum_warmup_frames := (
 		QUICK_GATE_MINIMUM_WARMUP_FRAMES
 		if requested_quick_validation
@@ -1837,22 +3405,44 @@ func _evaluate_gate(result: Dictionary) -> Dictionary:
 		or requested_guardian_overlap_metrics
 		or requested_runtime_count_scans
 		or requested_simple_fence_ab_metrics
+		or requested_detailed_semantic_evidence
 	):
 		invalid_reasons.append(
 			"%s forbids intrusive hot-path/count instrumentation" % profile_name
 		)
+	if requested_authoritative_tick_sampling:
+		if warmup_frames != AB_WARMUP_PHYSICS_TICKS:
+			invalid_reasons.append(
+				"authoritative A/B requires exactly %d warmup physics ticks"
+				% AB_WARMUP_PHYSICS_TICKS
+			)
+		if sample_frames != AB_SAMPLE_PHYSICS_TICKS:
+			invalid_reasons.append(
+				"authoritative A/B requires exactly %d sample physics ticks"
+				% AB_SAMPLE_PHYSICS_TICKS
+			)
+		if requested_detailed_semantic_evidence:
+			invalid_reasons.append(
+				"authoritative performance A/B forbids detailed semantic evidence"
+			)
 
 	var alive_start := int(result.get("alive_start", -1))
 	var alive_min := int(result.get("alive_min", -1))
 	var alive_end := int(result.get("alive_end", -1))
-	if (
-		alive_start != DEFAULT_ENEMY_COUNT
-		or alive_min != DEFAULT_ENEMY_COUNT
-		or alive_end != DEFAULT_ENEMY_COUNT
+	if _uses_formal_runtime_fixture():
+		if alive_start != requested_enemy_count or alive_end <= 0:
+			invalid_reasons.append(
+				"%s requires a complete starting cohort and a non-empty measured workload"
+				% profile_name
+			)
+	elif (
+		alive_start != requested_enemy_count
+		or alive_min != requested_enemy_count
+		or alive_end != requested_enemy_count
 	):
 		invalid_reasons.append(
-			"%s requires a stable 300-enemy cohort, observed %d/%d/%d"
-			% [profile_name, alive_start, alive_min, alive_end]
+			"%s requires a stable %d-enemy cohort, observed %d/%d/%d"
+			% [profile_name, requested_enemy_count, alive_start, alive_min, alive_end]
 		)
 
 	var minimum_physics_frames := floori(float(sample_frames) * 0.95)
@@ -1862,6 +3452,150 @@ func _evaluate_gate(result: Dictionary) -> Dictionary:
 			"%s sampled only %d physics frames; requires at least %d"
 			% [profile_name, physics_frames_elapsed, minimum_physics_frames]
 		)
+	if requested_authoritative_tick_sampling and physics_frames_elapsed != sample_frames:
+		invalid_reasons.append(
+			"authoritative A/B observed %d physics ticks; requires exactly %d"
+			% [physics_frames_elapsed, sample_frames]
+		)
+	var catchup := result.get("physics_catchup", {}) as Dictionary
+	if (
+		requested_authoritative_tick_sampling
+		and (
+			int(catchup.get("max_steps_per_render_sample", 0)) != 1
+			or int(catchup.get("samples_with_multiple_steps", 0)) != 0
+		)
+	):
+		invalid_reasons.append(
+			"authoritative A/B requires exactly one physics step in every sample"
+		)
+	var simulation := result.get("enemy_simulation", {}) as Dictionary
+	if _uses_formal_runtime_fixture():
+		if (
+			int(result.get("flow_state", -1))
+			!= CombatFlowState.State.WAVE_ACTIVE
+		):
+			invalid_reasons.append(
+				"formal first-night A/B must remain in WAVE_ACTIVE"
+			)
+		if (
+			not bool(result.get("is_night", false))
+			or not is_equal_approx(float(result.get("night_factor", -1.0)), 1.0)
+		):
+			invalid_reasons.append(
+				"formal first-night A/B must remain at full night factor"
+			)
+	var requested_mode_name := EnemySimulationPolicy.mode_to_name(
+		requested_simulation_mode
+	).to_lower()
+	if (
+		requested_simulation_mode_explicit
+		and str(simulation.get("actual_mode", "")) != requested_mode_name
+	):
+		invalid_reasons.append(
+			"coordinator mode did not match requested %s" % requested_mode_name
+		)
+	if (
+		requested_simulation_mode_explicit
+		and requested_simulation_mode == EnemySimulationPolicy.Mode.LEGACY
+	):
+		if (
+			int(simulation.get("registered_start", -1)) != 0
+			or int(simulation.get("active_start", -1)) != 0
+			or int(simulation.get("registered", -1)) != 0
+			or int(simulation.get("active", -1)) != 0
+			or int(simulation.get("physics_ticks", -1)) != 0
+			or int(simulation.get("authoritative_steps", -1)) != 0
+		):
+			invalid_reasons.append(
+				"LEGACY must retain per-enemy callbacks without coordinator work"
+			)
+		if (
+			int(result.get("individual_physics_processing_start", -1))
+			!= alive_start
+			or int(simulation.get("contact_registration_count", -1)) != 0
+			or int(result.get("touch_damage_area_monitoring_start", -1))
+			!= alive_start
+		):
+			invalid_reasons.append(
+				"LEGACY must retain every per-enemy callback and authored TouchDamageArea monitor"
+			)
+	elif (
+		requested_simulation_mode_explicit
+		and requested_simulation_mode
+		== EnemySimulationPolicy.Mode.LAYERED_CONTACT
+	):
+		if (
+			int(simulation.get("registered_start", -1)) != alive_start
+			or int(simulation.get("active_start", -1)) != alive_start
+			or int(result.get("individual_physics_processing_start", -1)) != 0
+			or int(simulation.get("contact_registration_count", -1)) < 0
+			or int(simulation.get("contact_registration_count", -1))
+			+ int(result.get("touch_damage_area_monitoring_start", -1))
+			!= alive_start
+		):
+			invalid_reasons.append(
+				"LAYERED_CONTACT must exclusively own simulation and partition shared/authored contact for every live enemy"
+			)
+		if (
+			int(simulation.get("registration_rejections", -1)) != 0
+			or int(simulation.get("contact_registration_rejections", -1)) != 0
+		):
+			invalid_reasons.append(
+				"LAYERED_CONTACT must not reject or fall back any formal enemy registration"
+			)
+		var maximum_monitored_touch_areas := floori(
+			float(alive_start) * 0.05
+		)
+		if (
+			int(result.get("touch_damage_area_monitoring_start", -1)) < 0
+			or int(result.get("touch_damage_area_monitoring_start", -1))
+			> maximum_monitored_touch_areas
+		):
+			invalid_reasons.append(
+				"LAYERED_CONTACT must reduce TouchDamageArea monitoring by at least 95%"
+			)
+		var layered_alive_end_for_steps := int(result.get("alive_end", -1))
+		var layered_authoritative_steps := int(
+			simulation.get("authoritative_steps", -1)
+		)
+		if (
+			int(simulation.get("physics_ticks", -1)) != sample_frames
+			or layered_authoritative_steps
+			< layered_alive_end_for_steps * sample_frames
+			or layered_authoritative_steps > alive_start * sample_frames
+			or int(simulation.get("registered", -1))
+			!= layered_alive_end_for_steps
+			or int(simulation.get("active", -1)) != layered_alive_end_for_steps
+		):
+			invalid_reasons.append(
+				"LAYERED_CONTACT ticks, bounded steps, and final ownership must cover the authoritative window"
+			)
+	elif (
+		requested_simulation_mode_explicit
+		and requested_simulation_mode == EnemySimulationPolicy.Mode.COMPAT_60
+	):
+		if (
+			int(simulation.get("registered_start", -1)) != alive_start
+			or int(simulation.get("active_start", -1)) != alive_start
+			or int(result.get("individual_physics_processing_start", -1)) != 0
+		):
+			invalid_reasons.append(
+				"COMPAT_60 must exclusively own every live enemy at measurement start"
+			)
+		var alive_end_for_steps := int(result.get("alive_end", -1))
+		var authoritative_steps := int(
+			simulation.get("authoritative_steps", -1)
+		)
+		if (
+			int(simulation.get("physics_ticks", -1)) != sample_frames
+			or authoritative_steps < alive_end_for_steps * sample_frames
+			or authoritative_steps > alive_start * sample_frames
+			or int(simulation.get("registered", -1)) != alive_end_for_steps
+			or int(simulation.get("active", -1)) != alive_end_for_steps
+		):
+			invalid_reasons.append(
+				"COMPAT_60 ticks, bounded steps, and final ownership must cover the authoritative window"
+			)
 	var minimum_simulation_seconds := (
 		float(sample_frames)
 		/ float(maxi(Engine.physics_ticks_per_second, 1))
@@ -2117,6 +3851,57 @@ func _subtract_pool_metrics(after: Dictionary, before: Dictionary) -> Dictionary
 	return result
 
 
+func _subtract_coordinator_metrics(after: Dictionary, before: Dictionary) -> Dictionary:
+	var result := {}
+	for key in [
+		"simulation_tick",
+		"physics_ticks",
+		"authoritative_steps",
+		"event_phases",
+		"event_sleep_acks",
+		"decision_phases",
+		"urgent_decisions",
+		"motion_phases",
+		"contact_phases",
+		"indexed_touch_syncs",
+		"indexed_touch_authority_enables",
+		"indexed_touch_plant_broadphases",
+		"indexed_touch_plant_exact_candidates",
+		"indexed_touch_plant_candidate_checks",
+		"indexed_touch_plant_sleep_skips",
+		"indexed_touch_plant_exact_cache_hits",
+		"indexed_touch_empty_snapshot_skips",
+		"indexed_touch_unchanged_snapshot_skips",
+		"indexed_touch_complete_snapshot_skips",
+		"indexed_touch_empty_corridor_skips",
+		"indexed_touch_nonempty_plant_certificate_builds",
+		"indexed_touch_nonempty_plant_certificate_reuses",
+		"indexed_touch_nonempty_plant_certificate_rejects",
+		"indexed_touch_dirty_enqueues",
+		"indexed_touch_dirty_drains",
+		"indexed_touch_dirty_ordered_drains",
+		"indexed_touch_dirty_sorts",
+		"indexed_touch_moved_ordered_drains",
+		"indexed_touch_moved_sorts",
+		"indexed_touch_player_invalidations",
+		"indexed_touch_global_invalidations",
+		"activation_skips",
+		"suspended_skips",
+		"profile_contact_setup_usec",
+		"profile_contact_admission_usec",
+		"profile_contact_geometry_usec",
+		"profile_contact_service_usec",
+		"profile_indexed_player_refresh_usec",
+		"profile_indexed_dirty_drain_usec",
+		"profile_event_phase_usec",
+		"profile_decision_phase_usec",
+		"profile_planned_contact_usec",
+		"profile_motion_phase_usec",
+	]:
+		result[key] = int(after.get(key, 0)) - int(before.get(key, 0))
+	return result
+
+
 func _get_pool_bucket_metrics() -> Dictionary:
 	if game == null or game.session_object_pool == null:
 		return {}
@@ -2233,6 +4018,19 @@ func _count_alive_towers() -> int:
 	return count
 
 
+func _count_alive_fences() -> int:
+	var count := 0
+	for fence in simple_fences:
+		if (
+			fence != null
+			and is_instance_valid(fence)
+			and not fence.is_dead
+			and not fence.is_queued_for_deletion()
+		):
+			count += 1
+	return count
+
+
 func _get_corn_target_lock_count() -> int:
 	var count := 0
 	for tower in corn_towers:
@@ -2333,6 +4131,14 @@ func _count_over_budget(samples: Array[float], budget_ms: float) -> int:
 	return count
 
 
+func _count_samples_not_equal_to(samples: Array[float], expected: float) -> int:
+	var count := 0
+	for sample in samples:
+		if not is_equal_approx(sample, expected):
+			count += 1
+	return count
+
+
 func _ratio_over_budget(samples: Array[float], budget_ms: float) -> float:
 	if samples.is_empty():
 		return 0.0
@@ -2349,6 +4155,7 @@ func _gate_profile_name() -> String:
 
 func _finish() -> void:
 	_release_movement_input()
+	await _dispose_client_proxy_fixture()
 	Enemy.performance_metrics_enabled = false
 	STONE_GOLEM_SCRIPT.slam_performance_metrics_enabled = false
 	Enemy.navigation_render_frame_dedupe_enabled = original_navigation_render_dedupe

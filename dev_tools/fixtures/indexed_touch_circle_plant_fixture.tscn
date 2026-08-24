@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/plant_defense.gd" id="1_plant"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_contact_fixture"]
+resource_local_to_scene = true
+radius = 1.0
+
+[node name="IndexedTouchCirclePlantFixture" type="StaticBody2D"]
+collision_layer = 512
+collision_mask = 0
+script = ExtResource("1_plant")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_contact_fixture")

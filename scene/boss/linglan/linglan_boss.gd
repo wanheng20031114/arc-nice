@@ -19,6 +19,7 @@ const ENRAGE_SNIPER_INTERVAL := 10.0
 const ENRAGE_SNIPER_WARNING_DURATION := 1.2
 const ENRAGE_SNIPER_DROP_HEIGHT := 180.0
 const ENRAGE_SNIPER_DROP_DURATION := 0.5
+const LAYERED_FAMILY_SCRIPT_PATH := "res://scene/boss/linglan/linglan_boss.gd"
 
 @export var starts_active: bool = false
 @export var boss_display_name: String = "铃兰"
@@ -81,6 +82,9 @@ var skill4_elapsed: float = 0.0
 var skill4_orb_spawn_ticks_completed: int = 0
 var skill4_laser_field: LinglanSkill4LaserField = null
 var linglan_runtime_port: LinglanBossRuntimePort = null
+var layered_event_start_phase := BossSkillPhase.SKILL1
+var layered_motion_phase := BossSkillPhase.SKILL1
+var layered_motion_due := false
 
 
 func _ready() -> void:
@@ -181,7 +185,7 @@ func set_active(active: bool) -> void:
 	is_active = active
 	visible = active
 	set_process(active)
-	set_physics_process(active)
+	set_authoritative_simulation_enabled(active)
 	if touch_damage_area != null:
 		touch_damage_area.set_deferred("monitoring", active)
 		touch_damage_area.set_deferred("monitorable", active)
@@ -196,7 +200,119 @@ func _on_combat_damage_applied(_result: DamageResult) -> void:
 	_emit_health_changed()
 
 
-func _physics_process(delta: float) -> void:
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func uses_anchored_compat_simulation() -> bool:
+	return false
+
+
+func supports_layered_area_authoritative_simulation() -> bool:
+	return _is_exact_layered_linglan_family()
+
+
+## Boss skill movement and projectile events are phase-separated, while its
+## special tower/contact semantics retain the authored Area until an independent
+## Boss shared-contact shadow gate is available.
+func supports_layered_contact_authoritative_simulation() -> bool:
+	return false
+
+
+func uses_trusted_layered_phase_entrypoints() -> bool:
+	return true
+
+
+func _is_exact_layered_linglan_family() -> bool:
+	var implementation := get_script() as Script
+	return (
+		implementation != null
+		and implementation.resource_path == LAYERED_FAMILY_SCRIPT_PATH
+	)
+
+
+func prepare_layered_area_authoritative_simulation() -> void:
+	super.prepare_layered_area_authoritative_simulation()
+	layered_event_start_phase = boss_skill_phase
+	layered_motion_phase = boss_skill_phase
+	layered_motion_due = false
+	layered_area_motion_phase_due = false
+
+
+func simulate_layered_area_event_phase(
+	delta: float,
+	simulation_tick: int,
+	token: int
+) -> bool:
+	if not _accept_layered_area_event_phase(token, simulation_tick):
+		return false
+	_advance_layered_event_body(delta)
+	return true
+
+
+func simulate_trusted_layered_area_event_phase(
+	delta: float,
+	simulation_tick: int
+) -> bool:
+	scheduled_authoritative_step_count += 1
+	layered_area_last_event_tick = simulation_tick
+	_advance_layered_event_body(delta)
+	return true
+
+
+func simulate_layered_area_decision_phase(
+	_delta: float,
+	simulation_tick: int,
+	token: int
+) -> bool:
+	if not _accept_layered_area_followup_phase(token, simulation_tick):
+		return false
+	layered_area_decision_urgent = false
+	return true
+
+
+func simulate_trusted_layered_area_decision_phase(
+	_delta: float,
+	_simulation_tick: int
+) -> bool:
+	layered_area_decision_urgent = false
+	return true
+
+
+func simulate_layered_area_motion_phase(
+	delta: float,
+	simulation_tick: int,
+	token: int
+) -> bool:
+	if not _accept_layered_area_followup_phase(token, simulation_tick):
+		return false
+	_advance_layered_motion_body(delta)
+	return true
+
+
+func simulate_trusted_layered_area_motion_phase(
+	delta: float,
+	_simulation_tick: int
+) -> bool:
+	_advance_layered_motion_body(delta)
+	return true
+
+
+func should_execute_layered_area_motion_phase() -> bool:
+	return layered_motion_due and is_active and not is_dead
+
+
+func _run_authoritative_physics_step(delta: float) -> void:
+	_advance_layered_event_body(delta)
+	if layered_motion_due:
+		_advance_layered_motion_body(delta)
+
+
+func _advance_layered_event_body(delta: float) -> void:
+	layered_event_start_phase = boss_skill_phase
+	layered_motion_phase = boss_skill_phase
+	layered_motion_due = false
+	layered_area_motion_phase_due = false
 	if not is_active or is_dead:
 		velocity = Vector2.ZERO
 		return
@@ -210,24 +326,52 @@ func _physics_process(delta: float) -> void:
 			if skill1_finished:
 				_finish_skill(1)
 		BossSkillPhase.MOVE_TO_SKILL2:
-			_update_skill2_move(delta)
+			layered_motion_due = true
 		BossSkillPhase.SKILL2:
 			_update_skill2(delta)
 		BossSkillPhase.MOVE_TO_SKILL3:
-			_update_skill3_move(delta)
+			layered_motion_due = true
 		BossSkillPhase.SKILL3:
 			_update_skill3(delta)
 		BossSkillPhase.MOVE_TO_SKILL4:
-			_update_skill4_move(delta)
+			layered_motion_due = true
 		BossSkillPhase.SKILL4:
 			_update_skill4(delta)
 		BossSkillPhase.POST_SKILL_IDLE:
 			_update_post_skill_idle(delta)
 		BossSkillPhase.ADVANCE_TO_HOME:
-			_update_tower_advance(delta)
+			layered_motion_due = true
 		_:
 			velocity = Vector2.ZERO
 			_play_idle_animation()
+	layered_area_motion_phase_due = layered_motion_due
+
+
+func _advance_layered_motion_body(delta: float) -> void:
+	if not is_active or is_dead or not layered_motion_due:
+		velocity = Vector2.ZERO
+		layered_motion_due = false
+		layered_area_motion_phase_due = false
+		return
+	match layered_motion_phase:
+		BossSkillPhase.MOVE_TO_SKILL2:
+			if boss_skill_phase == BossSkillPhase.MOVE_TO_SKILL2:
+				_update_skill2_move(maxf(delta, 0.0))
+		BossSkillPhase.MOVE_TO_SKILL3:
+			if boss_skill_phase == BossSkillPhase.MOVE_TO_SKILL3:
+				_update_skill3_move(maxf(delta, 0.0))
+		BossSkillPhase.MOVE_TO_SKILL4:
+			if boss_skill_phase == BossSkillPhase.MOVE_TO_SKILL4:
+				_update_skill4_move(maxf(delta, 0.0))
+		BossSkillPhase.ADVANCE_TO_HOME:
+			if boss_skill_phase == BossSkillPhase.ADVANCE_TO_HOME:
+				_update_tower_advance(maxf(delta, 0.0))
+		_:
+			velocity = Vector2.ZERO
+	layered_motion_due = boss_skill_phase == layered_motion_phase
+	layered_area_motion_phase_due = layered_motion_due
+	if not layered_motion_due:
+		request_layered_area_urgent_decision()
 
 
 func _die() -> void:
@@ -269,6 +413,10 @@ func _pause_background_music_for_death() -> void:
 func _reset_skill_state() -> void:
 	action_sequence = 0
 	latest_proxy_action_id = 0
+	layered_event_start_phase = BossSkillPhase.SKILL1
+	layered_motion_phase = BossSkillPhase.SKILL1
+	layered_motion_due = false
+	layered_area_motion_phase_due = false
 	opening_skill_order_index = 0
 	queued_skill_number = 0
 	post_skill_idle_elapsed = 0.0

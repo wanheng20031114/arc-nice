@@ -1,7 +1,6 @@
-extends Enemy
+extends "res://scene/enemy/layered_ranged_enemy.gd"
 class_name CapooAK47
 
-const WORLD_COLLISION_MASK := 1
 const CapooConfig := preload("res://resources/config/enemies/capoo_ak47_config.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
@@ -9,6 +8,7 @@ const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 const EnemyRapidFireNetworkCodec := preload(
 	"res://scene/multiplayer/projectile/enemy_rapid_fire_network_codec.gd"
 )
+const LAYERED_FAMILY_SCRIPT_PATH := "res://scene/enemy/capoo/capoo_ak47.gd"
 # Center-first ordering keeps every complete five-agent group at zero mean while
 # spreading the five-physics-tick authored burst cadence across all five phases.
 const ATTACK_PHASE_OFFSETS_PHYSICS_FRAMES: Array[int] = [0, -1, 1, -2, 2]
@@ -18,10 +18,6 @@ enum CombatState {
 	WINDUP,
 	BURST,
 }
-
-@export var path_refresh_interval: float = 0.25
-@export var waypoint_arrival_distance: float = 6.0
-@export var direct_chase_extra_distance: float = 2.0
 
 @onready var attack_audio: AudioStreamPlayer2D = $AttackAudio
 @onready var muzzle_heat: Polygon2D = $MuzzleHeat
@@ -33,7 +29,6 @@ var burst_shot_direction := Vector2.RIGHT
 var burst_shots_fired: int = 0
 var burst_fire_time_left: float = 0.0
 var burst_audio_step: int = 0
-var action_sequence: int = 0
 var latest_proxy_action_id: int = 0
 var attack_target: Node2D = null
 var committed_attack_phase_offset_seconds: float = 0.0
@@ -43,6 +38,7 @@ var network_burst_projectile_ids := PackedInt64Array()
 var network_burst_attached_states := PackedByteArray()
 var network_burst_descriptor := PackedByteArray()
 var network_burst_descriptor_sent := false
+var layered_ak47_event_consumes_tick := false
 
 
 func supports_dynamic_enemy_targeting() -> bool:
@@ -74,7 +70,104 @@ static func calculate_attack_phase_offset_seconds(
 	)
 
 
-func _physics_process(delta: float) -> void:
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func _supports_layered_ranged_authoritative_simulation() -> bool:
+	return _is_exact_layered_ak47_family()
+
+
+func _supports_layered_ranged_contact_authority() -> bool:
+	return _is_exact_layered_ak47_family()
+
+
+func _supports_layered_ranged_indexed_touch_authority() -> bool:
+	# Both production variants author one matching RectangleShape2D for body and
+	# touch. Burst projectiles are service/data records rather than an additional
+	# attack Area, so indexed authority replaces only the authored touch overlap.
+	return _is_exact_layered_ak47_family()
+
+
+func _is_exact_layered_ak47_family() -> bool:
+	var implementation := get_script() as Script
+	return (
+		implementation != null
+		and implementation.resource_path == LAYERED_FAMILY_SCRIPT_PATH
+	)
+
+
+func get_layered_area_decision_interval_frames() -> int:
+	# Preserve the authored per-tick hold/cancel boundary. The underlying target
+	# sample and navigation path keep their existing independent refresh cadence.
+	return 1
+
+
+func _prepare_layered_ranged_authoritative_simulation() -> void:
+	# Authoritative attack state remains the rollback source of truth. Only the
+	# one-tick layered projection is cleared on admission or policy transition.
+	layered_ak47_event_consumes_tick = false
+
+
+func _layered_area_touch_damage_precedes_family_event() -> bool:
+	# The authored runner settles touch before cooldown and attack-state clocks.
+	return true
+
+
+func _advance_layered_ranged_event_phase(delta: float) -> void:
+	layered_ak47_event_consumes_tick = false
+	_update_attack_cooldown(delta)
+	if (
+		combat_state != CombatState.CHASE
+		and not _is_ranged_combat_target_valid(attack_target)
+	):
+		# Legacy cancellation occurs before the state match and therefore permits
+		# a CHASE decision in this same tick.
+		_cancel_attack()
+
+	match combat_state:
+		CombatState.WINDUP:
+			# Even a range/LOS cancellation consumes the complete authored tick.
+			layered_ak47_event_consumes_tick = true
+			_update_windup(delta)
+			if combat_state == CombatState.BURST:
+				request_layered_area_urgent_decision()
+		CombatState.BURST:
+			# Finishing the final bullet also consumes the complete authored tick;
+			# CHASE movement may resume only on the following physics tick.
+			layered_ak47_event_consumes_tick = true
+			_update_burst(delta)
+
+
+func _can_sleep_layered_ranged_event_phase() -> bool:
+	# WINDUP/BURST and cooldown use exact repeated-subtraction semantics. Only a
+	# fully idle CHASE state may leave the sparse event lane.
+	return (
+		combat_state == CombatState.CHASE
+		and attack_cooldown_left <= 0.0
+	)
+
+
+func _try_consume_layered_ranged_decision_phase(_delta: float) -> bool:
+	if layered_ak47_event_consumes_tick:
+		return true
+	var previous_state := combat_state
+	var consumed := _try_consume_ak47_chase_decision()
+	if previous_state == CombatState.CHASE and combat_state == CombatState.WINDUP:
+		# Event sleep may have been accepted before this tick's attack commit.
+		request_layered_area_urgent_decision()
+	return consumed
+
+
+func _layered_ranged_attack_state_allows_motion() -> bool:
+	return (
+		combat_state == CombatState.CHASE
+		and not layered_ak47_event_consumes_tick
+		and not _ranged_attack_position_held
+	)
+
+
+func _run_authoritative_physics_step(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
@@ -95,36 +188,7 @@ func _physics_process(delta: float) -> void:
 			_update_burst(delta)
 			return
 
-	var capoo_config := config as CapooConfig
-	if _is_combat_sense_refresh_due():
-		var preferred_target := _get_preferred_ranged_combat_target()
-		if (
-			capoo_config != null
-			and _try_hold_ranged_attack_position(
-				preferred_target,
-				capoo_config.attack_range,
-				WORLD_COLLISION_MASK
-			)
-		):
-			if _try_start_windup(preferred_target):
-				return
-			# The attack commit performs an exact LOS query. If that invalidated a
-			# previously clear sampled line, leave standoff in the same tick.
-			if _try_hold_ranged_attack_position(
-				preferred_target,
-				capoo_config.attack_range,
-				WORLD_COLLISION_MASK
-			):
-				_update_facing(
-					global_position.direction_to(preferred_target.global_position)
-				)
-				return
-		else:
-			_reset_ranged_attack_position_state()
-	elif _ranged_attack_position_held:
-		# Reuse the sampled standoff decision between 20 Hz sensing ticks. Active
-		# windup/burst states returned above and therefore retain their 60 Hz timing.
-		velocity = Vector2.ZERO
+	if _try_consume_ak47_chase_decision():
 		return
 
 	if not is_instance_valid(objective_target):
@@ -138,6 +202,41 @@ func _physics_process(delta: float) -> void:
 	_move_until_player_contact()
 
 
+func _try_consume_ak47_chase_decision() -> bool:
+	var capoo_config := config as CapooConfig
+	if _is_combat_sense_refresh_due():
+		var preferred_target := _get_preferred_ranged_combat_target()
+		if (
+			capoo_config != null
+			and _try_hold_ranged_attack_position(
+				preferred_target,
+				capoo_config.attack_range,
+				WORLD_COLLISION_MASK
+			)
+		):
+			if _try_start_windup(preferred_target):
+				return true
+			# The attack commit performs an exact LOS query. If that invalidated a
+			# previously clear sampled line, leave standoff in the same tick.
+			if _try_hold_ranged_attack_position(
+				preferred_target,
+				capoo_config.attack_range,
+				WORLD_COLLISION_MASK
+			):
+				_update_facing(
+					global_position.direction_to(preferred_target.global_position)
+				)
+				return true
+		else:
+			_reset_ranged_attack_position_state()
+	elif _ranged_attack_position_held:
+		# Reuse the sampled standoff decision between 20 Hz sensing ticks. Active
+		# windup/burst states returned above and therefore retain their 60 Hz timing.
+		velocity = Vector2.ZERO
+		return true
+	return false
+
+
 func _apply_config() -> void:
 	_release_unused_network_burst_ids()
 	super._apply_config()
@@ -149,6 +248,7 @@ func _apply_config() -> void:
 	burst_audio_step = 0
 	attack_target = null
 	local_data_projectile_sequence = 0
+	layered_ak47_event_consumes_tick = false
 	_clear_committed_attack_timing()
 	_reset_ranged_attack_position_state()
 

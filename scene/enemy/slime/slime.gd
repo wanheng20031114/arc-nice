@@ -6,7 +6,7 @@ const FROST_TOUCH_SOURCE_TYPE := CombatAttackRegistry.FROST_SLIME_TOUCH
 
 
 func supports_layered_area_authoritative_simulation() -> bool:
-	return false
+	return true
 
 
 func _get_touch_damage_type() -> EnemyConfig.DamageType:

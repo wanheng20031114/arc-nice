@@ -43,6 +43,96 @@ class TestScheduledEnemy extends Enemy:
 			on_simulate.call(self, delta, tick, token)
 
 
+class AnchoredScheduledEnemy extends Enemy:
+	var simulation_call_count := 0
+	var on_simulate: Callable
+
+
+	func supports_centralized_authoritative_simulation() -> bool:
+		return true
+
+
+	func uses_anchored_compat_simulation() -> bool:
+		return true
+
+
+	func _run_authoritative_physics_step(delta: float) -> void:
+		simulation_call_count += 1
+		if on_simulate.is_valid():
+			on_simulate.call(self, delta)
+
+
+class IndexedTouchQueueEnemy extends Enemy:
+	func supports_centralized_authoritative_simulation() -> bool:
+		return true
+
+
+	func supports_layered_area_authoritative_simulation() -> bool:
+		return true
+
+
+	func supports_layered_contact_authoritative_simulation() -> bool:
+		return true
+
+
+	func supports_indexed_touch_authority() -> bool:
+		return true
+
+
+class IndexedTouchQueueProbeCoordinator extends EnemySimulationCoordinator:
+	var synchronized_simulation_ids: Array[int] = []
+	var reenqueue_simulation_id := 0
+	var reenqueue_once := false
+
+
+	func prepare_registration(enemy: Enemy):
+		var registration = _registration_by_instance_id.get(
+			enemy.get_instance_id()
+		)
+		registration.contact_proxy_registered = true
+		registration.indexed_touch_authority_capable = true
+		registration.indexed_touch_complete_snapshot_valid = false
+		return registration
+
+
+	func enqueue_dirty(registration, reason: int = 1) -> void:
+		_enqueue_indexed_touch_dirty(registration, reason)
+
+
+	func enqueue_moved(registration) -> bool:
+		return _enqueue_indexed_touch_moved_registration(registration)
+
+
+	func drain_dirty() -> void:
+		_drain_indexed_touch_dirty_queue()
+
+
+	func drain_moved() -> void:
+		_invalidate_indexed_touch_for_moved_enemies()
+
+
+	func dirty_queue_size() -> int:
+		return _dirty_indexed_touch_registrations.size()
+
+
+	func moved_queue_size() -> int:
+		return _indexed_touch_moved_registrations.size()
+
+
+	func _sync_indexed_touch_contacts(
+		registration: EnemySimulationCoordinator.Registration,
+		_enemy: Enemy
+	) -> bool:
+		synchronized_simulation_ids.append(registration.simulation_id)
+		if (
+			reenqueue_once
+			and registration.simulation_id == reenqueue_simulation_id
+		):
+			reenqueue_once = false
+			_enqueue_indexed_touch_dirty(registration, 1 << 6)
+		return true
+
+
 var failures: Array[String] = []
 
 
@@ -57,6 +147,8 @@ func _run() -> void:
 	await _test_unregister_during_iteration()
 	await _test_mode_rollback_waits_for_tick_boundary()
 	await _test_token_mismatch_is_rejected()
+	await _test_anchored_compat_single_frame_ownership()
+	_test_indexed_touch_queue_reuse_and_stable_order()
 	_test_clear_removes_every_registration()
 	_test_empty_registry_stops_processing()
 	_test_legacy_mode_does_not_take_ownership()
@@ -333,6 +425,256 @@ func _test_token_mismatch_is_rejected() -> void:
 		"Mismatched token operations must leave scheduling unchanged."
 	)
 	_dispose_fixture(coordinator, [enemy])
+
+
+func _test_anchored_compat_single_frame_ownership() -> void:
+	var coordinator = _new_compat_coordinator()
+	var call_log: Array[StringName] = []
+	var anchored := AnchoredScheduledEnemy.new()
+	var regular := TestScheduledEnemy.new(&"regular", call_log)
+	var anchored_token: int = coordinator.try_register_enemy(anchored)
+	var regular_token: int = coordinator.try_register_enemy(regular)
+	_bind_direct_ownership(anchored, coordinator, anchored_token)
+	_expect(
+		anchored_token > 0 and regular_token > 0,
+		"Anchored and ordinary COMPAT fixtures must both register."
+	)
+	_expect(
+		not coordinator.advance_anchored_compat_enemy(anchored, TEST_DELTA),
+		"An anchor must respect the registration-frame activation fence."
+	)
+
+	await physics_frame
+	var metrics_before: Dictionary = coordinator.get_metrics()
+	_expect(
+		coordinator.advance_anchored_compat_enemy(anchored, TEST_DELTA),
+		"The scene-local anchor must advance its owned COMPAT registration."
+	)
+	_expect(
+		not coordinator.advance_anchored_compat_enemy(anchored, TEST_DELTA),
+		"Repeated anchor dispatch in one physics frame must fail closed."
+	)
+	coordinator._physics_process(TEST_DELTA)
+	var anchor_first_metrics: Dictionary = coordinator.get_metrics()
+	_expect(
+		anchored.simulation_call_count == 1
+		and regular.simulation_call_count == 1,
+		"Anchor-first dispatch must run each registration exactly once."
+	)
+	_expect(
+		int(anchor_first_metrics["simulation_tick"])
+			== int(metrics_before["simulation_tick"]) + 1
+		and int(anchor_first_metrics["physics_ticks"])
+			== int(metrics_before["physics_ticks"]) + 1
+		and int(anchor_first_metrics["authoritative_steps"])
+			== int(metrics_before["authoritative_steps"]) + 2,
+		"Anchor and main callbacks in one frame must share one tick and metric."
+	)
+
+	await physics_frame
+	coordinator._physics_process(TEST_DELTA)
+	var main_first_tick := int(coordinator.get_metrics()["simulation_tick"])
+	_expect(
+		coordinator.advance_anchored_compat_enemy(anchored, TEST_DELTA),
+		"A later anchor must join a tick already opened by the main callback."
+	)
+	_expect(
+		int(coordinator.get_metrics()["simulation_tick"]) == main_first_tick
+		and anchored.simulation_call_count == 2
+		and regular.simulation_call_count == 2,
+		"Main-first dispatch must not allocate a second simulation tick."
+	)
+
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
+	_expect(
+		coordinator.owns_enemy(anchored, anchored_token),
+		"Layered modes must retain an anchored COMPAT registration."
+	)
+	await physics_frame
+	var layered_metrics_before: Dictionary = coordinator.get_metrics()
+	_expect(
+		coordinator.advance_anchored_compat_enemy(anchored, TEST_DELTA),
+		"An anchored family must keep full COMPAT semantics in layered mode."
+	)
+	coordinator._physics_process(TEST_DELTA)
+	var layered_metrics_after: Dictionary = coordinator.get_metrics()
+	_expect(
+		anchored.simulation_call_count == 3
+		and int(layered_metrics_after["event_phases"])
+			== int(layered_metrics_before["event_phases"])
+		and int(layered_metrics_after["contact_registrations"]) == 0
+		and not anchored.is_indexed_touch_authority_enabled(),
+		"Anchored COMPAT must bypass layered phases and indexed contact takeover."
+	)
+
+	var nested_dispatch_accepted := {"value": true}
+	anchored.on_simulate = func(_enemy: Enemy, nested_delta: float) -> void:
+		nested_dispatch_accepted["value"] = (
+			coordinator.advance_anchored_compat_enemy(anchored, nested_delta)
+		)
+		coordinator.set_mode(POLICY.Mode.LEGACY)
+	await physics_frame
+	_expect(
+		coordinator.advance_anchored_compat_enemy(anchored, TEST_DELTA),
+		"The final anchored step must be admitted before its deferred rollback."
+	)
+	_expect(
+		not bool(nested_dispatch_accepted["value"])
+		and coordinator.mode == POLICY.Mode.LEGACY
+		and not coordinator.advance_anchored_compat_enemy(anchored, TEST_DELTA),
+		"Reentrant dispatch and post-rollback ownership must both fail closed."
+	)
+	_dispose_fixture(coordinator, [anchored, regular])
+
+
+func _test_indexed_touch_queue_reuse_and_stable_order() -> void:
+	var coordinator := IndexedTouchQueueProbeCoordinator.new()
+	coordinator._ready()
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
+	var enemies: Array[IndexedTouchQueueEnemy] = []
+	var tokens: Array[int] = []
+	var registrations: Array = []
+	for _enemy_index in range(4):
+		var enemy := IndexedTouchQueueEnemy.new()
+		enemies.append(enemy)
+		var token := coordinator.try_register_enemy(enemy)
+		tokens.append(token)
+		registrations.append(coordinator.prepare_registration(enemy))
+	var every_registration_valid := true
+	for token in tokens:
+		if token <= 0:
+			every_registration_valid = false
+	_expect(
+		every_registration_valid,
+		"Indexed-touch queue fixtures must receive real stable registrations."
+	)
+
+	# Candidate sources may enqueue in spatial rather than simulation-ID order.
+	# Duplicate reasons must merge into the existing queue membership.
+	coordinator.enqueue_dirty(registrations[2], 1 << 1)
+	coordinator.enqueue_dirty(registrations[0], 1 << 2)
+	coordinator.enqueue_dirty(registrations[1], 1 << 3)
+	coordinator.enqueue_dirty(registrations[0], 1 << 4)
+	_expect(
+		coordinator.dirty_queue_size() == 3,
+		"Repeated dirty reasons must retain one producer-queue membership."
+	)
+	coordinator.drain_dirty()
+	var metrics := coordinator.get_metrics()
+	_expect(
+		coordinator.synchronized_simulation_ids == [
+			registrations[0].simulation_id,
+			registrations[1].simulation_id,
+			registrations[2].simulation_id,
+		]
+		and int(metrics["indexed_touch_dirty_sorts"]) == 1
+		and int(metrics["indexed_touch_dirty_enqueues"]) == 3,
+		"An out-of-order dirty batch must sort once, merge duplicates and drain in stable-ID order."
+	)
+
+	# Clearing the membership flag before sync permits a callback to enqueue the
+	# same Registration into the alternate producer without mutating current work.
+	coordinator.synchronized_simulation_ids.clear()
+	coordinator.reenqueue_simulation_id = registrations[1].simulation_id
+	coordinator.reenqueue_once = true
+	coordinator.enqueue_dirty(registrations[1])
+	coordinator.drain_dirty()
+	_expect(
+		coordinator.synchronized_simulation_ids == [
+			registrations[1].simulation_id,
+		]
+		and coordinator.dirty_queue_size() == 1,
+		"A sync-time second dirty must survive in the alternate producer queue."
+	)
+	coordinator.drain_dirty()
+	metrics = coordinator.get_metrics()
+	_expect(
+		coordinator.synchronized_simulation_ids == [
+			registrations[1].simulation_id,
+			registrations[1].simulation_id,
+		]
+		and coordinator.dirty_queue_size() == 0
+		and int(metrics["indexed_touch_dirty_ordered_drains"]) >= 2,
+		"A deferred same-tick requeue must drain exactly once next pass through the ordered fast path."
+	)
+
+	# Removal cancels producer/work membership through Registration flags instead
+	# of scanning either reusable buffer.
+	coordinator.synchronized_simulation_ids.clear()
+	coordinator.enqueue_dirty(registrations[0])
+	coordinator.unregister_enemy(enemies[0], tokens[0])
+	coordinator.drain_dirty()
+	_expect(
+		coordinator.synchronized_simulation_ids.is_empty()
+		and coordinator.dirty_queue_size() == 0,
+		"A removed dirty Registration must be skipped without a stale sync."
+	)
+
+	# Moved invalidation owns an independent reusable producer/work pair. Its
+	# stable-ID drain must feed an already ordered dirty batch without a second sort.
+	coordinator.synchronized_simulation_ids.clear()
+	_expect(
+		coordinator.enqueue_moved(registrations[3])
+		and coordinator.enqueue_moved(registrations[1])
+		and coordinator.enqueue_moved(registrations[2])
+		and not coordinator.enqueue_moved(registrations[1])
+		and coordinator.moved_queue_size() == 3,
+		"Moved queue membership must reject duplicates before the sparse drain."
+	)
+	coordinator.drain_moved()
+	coordinator.drain_dirty()
+	metrics = coordinator.get_metrics()
+	_expect(
+		coordinator.synchronized_simulation_ids == [
+			registrations[1].simulation_id,
+			registrations[2].simulation_id,
+			registrations[3].simulation_id,
+		]
+		and int(metrics["indexed_touch_moved_sorts"]) == 1
+		and int(metrics["indexed_touch_dirty_sorts"]) == 1,
+		"An out-of-order moved batch must sort once and preserve ordered dirty handoff without another sort."
+	)
+
+	coordinator.synchronized_simulation_ids.clear()
+	coordinator.enqueue_moved(registrations[1])
+	coordinator.enqueue_moved(registrations[3])
+	coordinator.drain_moved()
+	coordinator.drain_dirty()
+	metrics = coordinator.get_metrics()
+	_expect(
+		coordinator.synchronized_simulation_ids == [
+			registrations[1].simulation_id,
+			registrations[3].simulation_id,
+		]
+		and int(metrics["indexed_touch_moved_sorts"]) == 1
+		and int(metrics["indexed_touch_moved_ordered_drains"]) >= 1
+		and int(metrics["indexed_touch_dirty_sorts"]) == 1,
+		"An ordered steady moved batch must reuse both fast paths without allocating another sort."
+	)
+
+	coordinator.synchronized_simulation_ids.clear()
+	coordinator.enqueue_moved(registrations[2])
+	coordinator.unregister_enemy(enemies[2], tokens[2])
+	coordinator.drain_moved()
+	coordinator.drain_dirty()
+	_expect(
+		coordinator.synchronized_simulation_ids.is_empty(),
+		"A removed moved Registration must clear pending membership without producing dirty work."
+	)
+	_dispose_fixture(coordinator, enemies)
+
+
+func _bind_direct_ownership(
+	enemy: Enemy,
+	coordinator: EnemySimulationCoordinator,
+	token: int
+) -> void:
+	enemy.enemy_simulation_coordinator = coordinator
+	enemy.enemy_simulation_token = token
+	enemy.simulation_id = coordinator.get_simulation_id(enemy, token)
+	enemy.authoritative_simulation_driver = (
+		Enemy.AuthoritativeSimulationDriver.SCHEDULED_ACTIVE
+	)
 
 
 func _test_clear_removes_every_registration() -> void:

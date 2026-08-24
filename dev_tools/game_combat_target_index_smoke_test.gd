@@ -19,7 +19,7 @@ class TestEnemy:
 
 
 class TestNetManager:
-	extends Node
+	extends NetManagerStore
 
 	var host_mode := false
 

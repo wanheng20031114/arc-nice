@@ -29,6 +29,7 @@ func _run() -> void:
 		_register_fixture_plants()
 		_test_complete_multi_cell_collision_aabb_and_closed_boundaries()
 		_test_reused_output_and_stable_order()
+		_test_combined_shape_query_reuse_and_exact_boundaries()
 		_test_cached_exact_shape_posterior_and_transform_refresh()
 		_test_explicit_move_and_lifecycle_unregister()
 		_test_idempotent_teardown()
@@ -172,6 +173,101 @@ func _test_reused_output_and_stable_order() -> void:
 	_expect(
 		_collect_instance_ids(reused_output) == first_ids,
 		"Repeated queries into the same Array must preserve stable order."
+	)
+
+
+func _test_combined_shape_query_reuse_and_exact_boundaries() -> void:
+	if first_plant == null or second_plant == null or wide_plant == null:
+		return
+	var query_circle := CircleShape2D.new()
+	query_circle.radius = 1.0
+	var reused_output: Array = [fixture]
+	var corner_false_positive_transform := Transform2D(
+		0.0,
+		Vector2(118.0, 22.0)
+	)
+	_expect(
+		damageable_index.query_overlapping_damageables_into(
+			query_circle,
+			corner_false_positive_transform,
+			reused_output
+		) == 0 and reused_output.is_empty(),
+		"Combined shape query must reject an AABB-corner false positive in place."
+	)
+	var closed_tangent_transform := Transform2D(0.0, Vector2(120.0, 16.0))
+	_expect(
+		damageable_index.query_overlapping_damageables_into(
+			query_circle,
+			closed_tangent_transform,
+			reused_output
+		) == 1
+		and reused_output.size() == 1
+		and reused_output[0] == second_plant,
+		"Combined shape query must include an exact closed tangent boundary once."
+	)
+	_expect(
+		damageable_index.query_overlapping_damageables_into(
+			query_circle,
+			Transform2D(0.0, Vector2(120.01, 16.0)),
+			reused_output
+		) == 0 and reused_output.is_empty(),
+		"Combined shape query must exclude a shape immediately beyond contact."
+	)
+
+	var covering_shape := RectangleShape2D.new()
+	covering_shape.size = Vector2(128.0, 80.0)
+	var covering_transform := Transform2D(0.0, Vector2(64.0, 40.0))
+	reused_output.append(fixture)
+	var first_count := damageable_index.query_overlapping_damageables_into(
+		covering_shape,
+		covering_transform,
+		reused_output
+	)
+	_expect(first_count == 3, "Combined shape query must find all exact overlaps.")
+	_expect(
+		not reused_output.has(fixture),
+		"Combined shape query must clear and reuse caller-owned Array storage."
+	)
+	var first_ids := _collect_instance_ids(reused_output)
+	var expected_ids: Array[int] = [
+		wide_plant.get_instance_id(),
+		first_plant.get_instance_id(),
+		second_plant.get_instance_id(),
+	]
+	expected_ids.sort()
+	_expect(
+		first_ids == expected_ids,
+		"Combined exact results must retain ascending instance-ID order."
+	)
+	damageable_index.query_overlapping_damageables_into(
+		covering_shape,
+		covering_transform,
+		reused_output
+	)
+	_expect(
+		_collect_instance_ids(reused_output) == first_ids,
+		"Repeated combined queries into one Array must preserve stable order."
+	)
+
+	reused_output.append(fixture)
+	_expect(
+		damageable_index.query_overlapping_damageables_into(
+			null,
+			Transform2D.IDENTITY,
+			reused_output
+		) == 0 and reused_output.is_empty(),
+		"A null query shape must fail closed and clear reused output."
+	)
+	var invalid_transform := Transform2D.IDENTITY
+	invalid_transform.origin = Vector2(INF, 0.0)
+	reused_output.append(fixture)
+	_expect(
+		damageable_index.query_overlapping_damageables_into(
+			query_circle,
+			invalid_transform,
+			reused_output
+		) == 0 and reused_output.is_empty(),
+		"A non-finite query transform must fail closed and clear reused output."
 	)
 
 

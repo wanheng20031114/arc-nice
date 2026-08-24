@@ -4,8 +4,7 @@ const POLICY := preload("res://scene/combat/simulation/enemy_simulation_policy.g
 const EVIDENCE := preload(
 	"res://scene/combat/diagnostics/enemy_simulation_evidence_recorder.gd"
 )
-const FRAME_SAMPLE_COUNT := 1800
-const WARMUP_FRAME_COUNT := 300
+const SYNTHETIC_PERCENTILE_SAMPLE_COUNT := 100
 const TEST_TICK_COUNT := 600
 
 var failures: Array[String] = []
@@ -18,11 +17,12 @@ func _init() -> void:
 func _run() -> void:
 	_test_mode_contract()
 	_test_semantic_signature()
-	_test_timing_summary()
+	_test_recorder_percentile_math()
 	var result := {
 		"status": "ok" if failures.is_empty() else "failed",
-		"warmup_frames": WARMUP_FRAME_COUNT,
-		"sample_frames": FRAME_SAMPLE_COUNT,
+		"evidence_scope": "protocol_and_math_only",
+		"measured_runtime": false,
+		"performance_gate": false,
 		"failures": failures.duplicate(),
 	}
 	print("ENEMY_SIMULATION_AB_BASELINE_JSON %s" % JSON.stringify(result))
@@ -43,7 +43,7 @@ func _test_mode_contract() -> void:
 	)
 	_expect(
 		POLICY.resolve_mode_from_arguments(
-			PackedStringArray(["--enemy-simulation-mode=compat_60"])
+			PackedStringArray(["--enemy-simulation-mode=CoMpAt_60"])
 		) == POLICY.Mode.COMPAT_60,
 		"The A/B command-line mode must be case-insensitive."
 	)
@@ -93,17 +93,16 @@ func _build_semantic_evidence(mode: int) -> RefCounted:
 	return recorder
 
 
-func _test_timing_summary() -> void:
+func _test_recorder_percentile_math() -> void:
 	var recorder := EVIDENCE.new()
 	recorder.reset(POLICY.Mode.LEGACY, false)
-	for warmup_index in range(WARMUP_FRAME_COUNT):
-		var ignored_sample := 10.0 + float(warmup_index % 3)
-		if ignored_sample < 0.0:
-			failures.append("Unreachable warmup guard.")
-	for sample_index in range(FRAME_SAMPLE_COUNT):
-		recorder.record_frame_time_ms(float((sample_index % 100) + 1))
+	for sample_index in range(SYNTHETIC_PERCENTILE_SAMPLE_COUNT):
+		recorder.record_frame_time_ms(float(sample_index + 1))
 	var frame_summary := recorder.get_summary()["frame_time"] as Dictionary
-	_expect(int(frame_summary["sample_count"]) == FRAME_SAMPLE_COUNT, "Sample count mismatch.")
+	_expect(
+		int(frame_summary["sample_count"]) == SYNTHETIC_PERCENTILE_SAMPLE_COUNT,
+		"Synthetic percentile sample count mismatch."
+	)
 	_expect(is_equal_approx(float(frame_summary["p50_ms"]), 50.0), "p50 mismatch.")
 	_expect(is_equal_approx(float(frame_summary["p95_ms"]), 95.0), "p95 mismatch.")
 	_expect(is_equal_approx(float(frame_summary["p99_ms"]), 99.0), "p99 mismatch.")

@@ -1,4 +1,4 @@
-extends Enemy
+extends "res://scene/enemy/layered_ranged_enemy.gd"
 class_name CombatRobotGunner
 
 const GunnerConfig := preload(
@@ -12,7 +12,9 @@ const EnemyRapidFireNetworkCodec := preload(
 )
 const ACTION_FIRE: StringName = &"combat_robot_gunner_fire"
 const ACTION_BURST: StringName = &"combat_robot_gunner_burst"
-const WORLD_COLLISION_MASK := 1
+const LAYERED_FAMILY_SCRIPT_PATH := (
+	"res://scene/enemy/mechanical_life/combat_robot_gunner.gd"
+)
 const MUZZLE_RIGHT_POSITION := Vector2(14.0, 1.0)
 const MUZZLE_WORLD_CLEARANCE := 5.0
 const FIRE_UPPER_PHASE_COUNT := 4
@@ -28,9 +30,6 @@ enum CombatState {
 	TRACKING_COOLDOWN,
 }
 
-@export var path_refresh_interval: float = 0.25
-@export var waypoint_arrival_distance: float = 4.0
-
 @onready var muzzle: Marker2D = $Muzzle
 @onready var attack_audio: AudioStreamPlayer2D = $AttackAudio
 
@@ -43,12 +42,17 @@ var locked_fire_direction := Vector2.RIGHT
 var fire_upper_phase: float = 0.0
 var fire_leg_phase: float = 0.0
 var fire_visual_time_left: float = 0.0
-var action_sequence: int = 0
 var latest_proxy_action_id: int = 0
+var layered_gunner_burst_finalize_pending := false
+var layered_gunner_motion_pending := false
+var layered_gunner_legs_stopped := false
+var layered_gunner_contact_target: Enemy = null
 
 
 func supports_dynamic_enemy_targeting() -> bool:
 	return true
+
+
 var gunner_config_cache: GunnerConfig = null
 var local_data_projectile_sequence: int = 0
 var network_burst_projectile_ids := PackedInt64Array()
@@ -82,7 +86,42 @@ func can_target_water_plant_objectives() -> bool:
 	return true
 
 
-func _physics_process(delta: float) -> void:
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func _supports_layered_ranged_authoritative_simulation() -> bool:
+	var implementation := get_script() as Script
+	return (
+		implementation != null
+		and implementation.resource_path == LAYERED_FAMILY_SCRIPT_PATH
+	)
+
+
+func _supports_layered_ranged_contact_authority() -> bool:
+	# Only the exact ordinary/elite script closure publishes Gunner's authored
+	# rectangle and consumes the directed TOI fraction below. Future scripts must
+	# prove their own movement/attack state machine before contact admission.
+	return _supports_layered_ranged_authoritative_simulation()
+
+
+func _supports_layered_ranged_indexed_touch_authority() -> bool:
+	return false
+
+
+func _uses_inherited_touch_damage() -> bool:
+	# LayeredRangedEnemy inherits Capoo's weapon-only default; Gunner explicitly
+	# retains its authored physical body touch during and between bursts.
+	return true
+
+
+func get_layered_area_decision_interval_frames() -> int:
+	# Authored tracking reacquires its preferred movement target every physics
+	# tick, independently from the 3-tick burst-acquisition throttle.
+	return 1
+
+
+func _run_authoritative_physics_step(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
@@ -118,6 +157,233 @@ func _physics_process(delta: float) -> void:
 		false
 	)
 	_update_post_burst_fire_visual(safe_delta, legs_stopped)
+
+
+func _prepare_layered_ranged_authoritative_simulation() -> void:
+	layered_gunner_burst_finalize_pending = false
+	layered_gunner_motion_pending = false
+	layered_gunner_legs_stopped = false
+	layered_gunner_contact_target = null
+
+
+func _layered_area_touch_damage_precedes_family_event() -> bool:
+	return true
+
+
+func _advance_layered_ranged_event_phase(delta: float) -> void:
+	layered_gunner_burst_finalize_pending = false
+	layered_gunner_motion_pending = false
+	layered_gunner_legs_stopped = false
+	if combat_state == CombatState.BURST:
+		_prepare_layered_gunner_burst_tick(maxf(delta, 0.0))
+		return
+	if combat_state != CombatState.TRACKING_COOLDOWN:
+		return
+	attack_cooldown_left = maxf(
+		attack_cooldown_left - maxf(delta, 0.0),
+		0.0
+	)
+	if attack_cooldown_left <= 0.0:
+		combat_state = CombatState.TRACKING_READY
+		request_layered_area_urgent_decision()
+
+
+func _can_sleep_layered_ranged_event_phase() -> bool:
+	return combat_state == CombatState.TRACKING_READY
+
+
+## Committed bursts retain their locked target/direction and do not run the
+## ordinary dynamic-target refresh. READY/COOLDOWN tracking remains a 60 Hz
+## decision because that is the authored movement-target cadence.
+func _simulate_layered_area_decision_body(delta: float) -> bool:
+	if is_dead:
+		velocity = Vector2.ZERO
+		_clear_layered_gunner_tick_plan()
+		return true
+	if combat_state == CombatState.BURST:
+		_publish_layered_gunner_motion_plan()
+		layered_area_decision_urgent = false
+		return true
+
+	refresh_dynamic_combat_target_decision(Engine.get_physics_frames())
+	if combat_state == CombatState.TRACKING_READY and _is_combat_sense_refresh_due():
+		var candidate_target := _get_preferred_ranged_combat_target()
+		if _try_start_burst(candidate_target):
+			# COMPAT calls _update_burst(0) on the commit tick. Plan the same
+			# half-speed physics movement now; motion submits it before the first
+			# projectile is emitted at the moved muzzle position.
+			_prepare_layered_gunner_burst_tick(0.0)
+			_publish_layered_gunner_motion_plan()
+			layered_area_decision_urgent = false
+			return true
+
+	var tracking_target := _get_preferred_ranged_combat_target()
+	layered_gunner_legs_stopped = _update_tracking_movement(
+		1.0,
+		false,
+		tracking_target,
+		false,
+		false
+	)
+	_update_post_burst_fire_visual(
+		maxf(delta, 0.0),
+		layered_gunner_legs_stopped
+	)
+	layered_gunner_motion_pending = velocity != Vector2.ZERO
+	layered_area_planned_move_direction = (
+		velocity.normalized()
+		if layered_gunner_motion_pending
+		else Vector2.ZERO
+	)
+	_publish_layered_gunner_motion_plan()
+	layered_area_decision_urgent = false
+	return true
+
+
+func _can_run_layered_area_motion() -> bool:
+	return (
+		not is_dead
+		and (
+			layered_gunner_motion_pending
+			or layered_gunner_burst_finalize_pending
+		)
+	)
+
+
+func get_layered_area_planned_displacement(delta: float) -> Vector2:
+	if not layered_gunner_motion_pending:
+		return Vector2.ZERO
+	return velocity * maxf(delta, 0.0)
+
+
+func _simulate_layered_area_motion_body(delta: float) -> bool:
+	if is_dead:
+		velocity = Vector2.ZERO
+		_clear_layered_gunner_tick_plan()
+		return true
+	if layered_gunner_motion_pending and velocity != Vector2.ZERO:
+		# EnemyContactService samples the full displacement before this phase. Apply
+		# its directed TOI only to the explicitly published hostile Enemy target;
+		# Player/Plant contact remains owned by the authored Area2D.
+		var safe_motion_fraction := 1.0
+		var enemy_contact_target := get_layered_area_contact_target() as Enemy
+		if enemy_contact_target != null:
+			safe_motion_fraction = get_layered_area_directed_safe_motion_fraction(
+				enemy_contact_target
+			)
+		velocity *= clampf(safe_motion_fraction, 0.0, 1.0)
+		if velocity != Vector2.ZERO:
+			_move_until_player_contact(maxf(delta, 0.0))
+		if safe_motion_fraction < 1.0:
+			# Match SimpleChase's soft-contact contract: the submitted transform ends
+			# on the shell and the shot below observes that moved muzzle, while the
+			# externally visible velocity is stopped in this same physics tick.
+			velocity = Vector2.ZERO
+
+	if layered_gunner_burst_finalize_pending:
+		_finalize_layered_gunner_burst_tick()
+	else:
+		layered_gunner_motion_pending = false
+		layered_area_motion_phase_due = false
+	return true
+
+
+func _prepare_layered_gunner_burst_tick(delta: float) -> void:
+	if is_dead or combat_state != CombatState.BURST:
+		_clear_layered_gunner_tick_plan()
+		return
+	if gunner_config_cache == null:
+		_cancel_burst(true)
+		_clear_layered_gunner_tick_plan()
+		return
+
+	var locked_tracking_target := _get_live_burst_target()
+	layered_gunner_legs_stopped = _update_tracking_movement(
+		gunner_config_cache.burst_move_speed_multiplier,
+		true,
+		locked_tracking_target,
+		true,
+		false
+	)
+	_advance_authoritative_fire_composite(
+		maxf(delta, 0.0),
+		layered_gunner_legs_stopped
+	)
+	burst_fire_time_left -= maxf(delta, 0.0)
+	layered_gunner_burst_finalize_pending = true
+	layered_gunner_motion_pending = velocity != Vector2.ZERO
+	layered_area_planned_move_direction = (
+		velocity.normalized()
+		if layered_gunner_motion_pending
+		else locked_fire_direction
+	)
+
+
+func _finalize_layered_gunner_burst_tick() -> void:
+	if is_dead or combat_state != CombatState.BURST:
+		_clear_layered_gunner_tick_plan()
+		return
+	if gunner_config_cache == null:
+		_cancel_burst(true)
+		_clear_layered_gunner_tick_plan()
+		return
+	var shot_interval := maxf(gunner_config_cache.burst_fire_interval, 0.01)
+	var shot_count := maxi(gunner_config_cache.burst_count, 1)
+	while burst_fire_time_left <= 0.0 and burst_shots_fired < shot_count:
+		if not _fire_locked_bullet():
+			break
+		burst_shots_fired += 1
+		burst_fire_time_left += shot_interval
+
+	layered_gunner_burst_finalize_pending = false
+	layered_gunner_motion_pending = false
+	if burst_shots_fired >= shot_count:
+		_finish_burst()
+		layered_area_planned_move_direction = Vector2.ZERO
+		layered_area_motion_phase_due = false
+		return
+	# The next event tick replans movement and the overdue shot. Keep this
+	# registration resident in the persistent motion lane without inventing a
+	# second movement or fire on the current tick.
+	layered_area_motion_phase_due = true
+
+
+func _publish_layered_gunner_motion_plan() -> void:
+	layered_area_motion_state_known = true
+	layered_area_last_can_move = _can_run_layered_area_motion()
+	if not layered_area_last_can_move:
+		layered_area_planned_move_direction = Vector2.ZERO
+	layered_area_motion_phase_due = layered_area_last_can_move
+
+
+func _clear_layered_gunner_tick_plan() -> void:
+	layered_gunner_burst_finalize_pending = false
+	layered_gunner_motion_pending = false
+	layered_gunner_legs_stopped = false
+	layered_gunner_contact_target = null
+	layered_area_planned_move_direction = Vector2.ZERO
+	layered_area_last_can_move = false
+	layered_area_motion_phase_due = false
+
+
+func get_layered_area_contact_target() -> Node2D:
+	if (
+		layered_gunner_contact_target == null
+		or not is_instance_valid(layered_gunner_contact_target)
+		or not can_attack_combat_target(layered_gunner_contact_target)
+	):
+		return null
+	return layered_gunner_contact_target
+
+
+func _publish_layered_gunner_contact_target(target: Node2D) -> void:
+	layered_gunner_contact_target = null
+	if target == null or not is_instance_valid(target):
+		return
+	var enemy_target := target as Enemy
+	if enemy_target == null or not can_attack_combat_target(enemy_target):
+		return
+	layered_gunner_contact_target = enemy_target
 
 
 func _process(delta: float) -> void:
@@ -279,6 +545,7 @@ func _finish_burst() -> void:
 	)
 	burst_target = null
 	burst_fire_time_left = 0.0
+	layered_gunner_contact_target = null
 	_clear_cached_navigation_move_direction()
 
 
@@ -291,6 +558,7 @@ func _cancel_burst(play_move_animation: bool) -> void:
 	burst_fire_time_left = 0.0
 	fire_visual_time_left = 0.0
 	velocity = Vector2.ZERO
+	layered_gunner_contact_target = null
 	_clear_cached_navigation_move_direction()
 	if play_move_animation and config != null and not is_dead:
 		_restore_move_animation_with_phase(fire_leg_phase)
@@ -309,13 +577,15 @@ func _update_tracking_movement(
 	speed_multiplier: float,
 	preserve_fire_direction: bool,
 	tracking_target: Node2D,
-	use_tracking_target_for_navigation: bool
+	use_tracking_target_for_navigation: bool,
+	submit_motion: bool = true
 ) -> bool:
 	var live_tracking_target := (
 		tracking_target
 		if _is_ranged_combat_target_valid(tracking_target)
 		else null
 	)
+	_publish_layered_gunner_contact_target(live_tracking_target)
 	var stop_distance := (
 		maxf(gunner_config_cache.stop_distance, 0.0)
 		if gunner_config_cache != null
@@ -349,7 +619,7 @@ func _update_tracking_movement(
 			_update_facing(locked_fire_direction)
 		return false
 
-	var move_direction := _get_navigation_move_direction(navigation_target)
+	var move_direction := _get_gunner_navigation_move_direction(navigation_target)
 	velocity = (
 		move_direction
 		* get_effective_move_speed()
@@ -359,7 +629,8 @@ func _update_tracking_movement(
 		_update_facing(locked_fire_direction)
 	else:
 		_update_facing(move_direction)
-	_move_until_player_contact()
+	if submit_motion:
+		_move_until_player_contact()
 	return false
 
 
@@ -872,7 +1143,13 @@ func _clear_proxy_fire_visual(restore_move_animation: bool) -> void:
 	set_process(false)
 
 
-func _get_navigation_move_direction(target: Node2D) -> Vector2:
+func _get_navigation_move_direction(_delta: float) -> Vector2:
+	if not is_instance_valid(objective_target):
+		return Vector2.ZERO
+	return _get_gunner_navigation_move_direction(objective_target)
+
+
+func _get_gunner_navigation_move_direction(target: Node2D) -> Vector2:
 	return _get_safe_navigation_move_direction(
 		target,
 		pathfinder,

@@ -19,6 +19,8 @@ var players_root: Node = null
 var enemy_container: Node2D = null
 var boss_container: Node2D = null
 var plant_system: PlantSystem = null
+var combat_query_facade: CombatQueryFacade = null
+var _visible_combat_targets: Array[Node2D] = []
 var _visible_plants: Array[PlantDefense] = []
 
 var _sample_camera_phase := true
@@ -48,6 +50,12 @@ func setup(
 	enemy_container = new_enemy_container
 	boss_container = new_boss_container
 	plant_system = new_plant_system
+	var combat_runtime := new_players_root as CombatRuntimeBase
+	combat_query_facade = (
+		combat_runtime.get_combat_query_facade()
+		if combat_runtime != null
+		else null
+	)
 	_has_tile_coordinate = false
 
 	_rebuild_static_topology()
@@ -109,8 +117,25 @@ func _sample_world_entities() -> void:
 			remote_player_positions.append(candidate.global_position)
 
 	var enemy_positions := PackedVector2Array()
-	_append_enemy_positions(enemy_container, enemy_positions)
-	_append_enemy_positions(boss_container, enemy_positions)
+	_visible_combat_targets.clear()
+	if combat_query_facade != null:
+		combat_query_facade.query_world_aabb_into(
+			dynamic_layer.get_overview_world_aabb(),
+			_visible_combat_targets,
+			null,
+			0,
+			false,
+			false,
+			true
+		)
+	for target in _visible_combat_targets:
+		var enemy := target as Enemy
+		if enemy == null or enemy.is_dead:
+			continue
+		var parent := enemy.get_parent()
+		if parent != enemy_container and parent != boss_container:
+			continue
+		enemy_positions.append(enemy.global_position)
 
 	var plant_positions := PackedVector2Array()
 	if plant_system != null and is_instance_valid(plant_system):
@@ -126,20 +151,6 @@ func _sample_world_entities() -> void:
 		enemy_positions,
 		plant_positions
 	)
-
-
-func _append_enemy_positions(
-	container: Node2D,
-	positions: PackedVector2Array
-) -> void:
-	if container == null or not is_instance_valid(container):
-		return
-	for child in container.get_children():
-		var enemy := child as Enemy
-		if enemy == null or enemy.is_dead:
-			continue
-		positions.append(enemy.global_position)
-
 
 func _rebuild_static_topology() -> void:
 	_static_rebuild_pending = false

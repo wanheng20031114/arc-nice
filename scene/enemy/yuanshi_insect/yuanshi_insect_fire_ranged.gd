@@ -33,14 +33,77 @@ func can_target_water_plant_objectives() -> bool:
 
 
 func supports_centralized_authoritative_simulation() -> bool:
-	return false
+	return true
 
 
 func supports_layered_area_authoritative_simulation() -> bool:
-	return false
+	return true
 
 
-func _physics_process(delta: float) -> void:
+func _advance_layered_area_family_event_phase(delta: float) -> void:
+	_update_attack_cooldown(delta)
+	if (
+		combat_state == CombatState.ATTACK
+		and not _is_ranged_combat_target_valid(committed_attack_target)
+	):
+		_finish_ranged_attack()
+	if (
+		combat_state == CombatState.CHASE
+		and attack_cooldown_left <= 0.0
+		and _is_combat_sense_refresh_due()
+	):
+		request_layered_area_urgent_decision()
+
+
+func _can_sleep_layered_area_family_event_phase() -> bool:
+	# ATTACK validity stays awake. A CHASE cooldown has an exact wake deadline and
+	# is advanced in one deterministic elapsed-tick step; contact/target mutations
+	# still wake it before that deadline.
+	return combat_state == CombatState.CHASE
+
+
+func _get_layered_area_event_sleep_until_physics_frame(
+	physics_delta: float
+) -> int:
+	var touch_cooldown_frame := super._get_layered_area_event_sleep_until_physics_frame(
+		physics_delta
+	)
+	var interval := maxi(combat_sense_update_interval_frames, 1)
+	var earliest_frame := Engine.get_physics_frames() + 1
+	if attack_cooldown_left > 0.0 and physics_delta > 0.0:
+		earliest_frame = Engine.get_physics_frames() + maxi(
+			ceili(attack_cooldown_left / physics_delta),
+			1
+		)
+	if interval <= 1:
+		return earliest_frame
+	var remainder := posmod(
+		earliest_frame + navigation_update_frame_offset,
+		interval
+	)
+	if remainder != 0:
+		earliest_frame += interval - remainder
+	return (
+		mini(earliest_frame, touch_cooldown_frame)
+		if touch_cooldown_frame >= 0
+		else earliest_frame
+	)
+
+
+func _try_consume_layered_area_family_decision_phase(_delta: float) -> bool:
+	if combat_state == CombatState.ATTACK:
+		return true
+	if not _is_combat_sense_refresh_due():
+		return false
+	var combat_target := _get_preferred_ranged_combat_target()
+	return combat_target != null and _try_start_ranged_attack(combat_target)
+
+
+func _can_run_layered_area_motion() -> bool:
+	return combat_state == CombatState.CHASE and super._can_run_layered_area_motion()
+
+
+func _run_authoritative_physics_step(delta: float) -> void:
 	_update_attack_cooldown(delta)
 
 	if is_dead:
@@ -67,7 +130,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 
-	super._physics_process(delta)
+	super._run_authoritative_physics_step(delta)
 
 
 func _apply_config() -> void:
@@ -120,6 +183,13 @@ func _try_start_ranged_attack(candidate_target: Node2D = null) -> bool:
 	committed_attack_target = candidate_target
 	combat_state = CombatState.ATTACK
 	attack_has_fired = false
+	# ATTACK entry is an atomic locomotion transition. The legacy runner also
+	# cleared velocity immediately after this call; layered decisions can skip the
+	# motion phase entirely, so leaving the previous tick's velocity here would
+	# publish a false MOVING state even though no Transform is submitted.
+	velocity = Vector2.ZERO
+	layered_area_event_phase_sleeping = false
+	layered_area_event_sleep_until_physics_frame = -1
 	attack_cooldown_left = maxf(fire_config.attack_interval, 0.01)
 	_clear_navigation_path()
 	var attack_direction := global_position.direction_to(

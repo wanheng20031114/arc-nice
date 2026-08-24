@@ -521,15 +521,64 @@ func _run() -> void:
 		target_cache_source.config = enemy_config
 		var target_cache_enemy := Enemy.new()
 		target_cache_enemy.config = enemy_config
+		target_cache_enemy.set_combat_faction_id(
+			COMBAT_RELATIONS.PLAYER_ALLIED,
+			2,
+			true
+		)
 		runtime.register_network_enemy(903, target_cache_source)
 		runtime.register_network_enemy(904, target_cache_enemy)
 		coordinator.set_host_enemy_target_presentation_state(
 			903,
 			Enemy.TargetPresentationPhase.SNIPER_LOCK,
-			TARGET_DESCRIPTOR.create_enemy(904, 0, Vector2(120.0, 80.0)),
+			TARGET_DESCRIPTOR.create_enemy(904, 2, Vector2(120.0, 80.0)),
 			2.0,
 			Vector2(100.0, 80.0),
 			7
+		)
+		var dynamic_repair_send_base := _lifecycle_peer_sends.size()
+		coordinator.send_live_spawn_roster_to_peer(10)
+		var dynamic_repair_roster_arguments := (
+			_lifecycle_peer_sends[dynamic_repair_send_base].get(
+				"arguments",
+				[]
+			) as Array
+		)
+		var dynamic_repair_target_arguments := (
+			_lifecycle_peer_sends[dynamic_repair_send_base + 1].get(
+				"arguments",
+				[]
+			) as Array
+		)
+		_expect(
+			_lifecycle_peer_sends.size() == dynamic_repair_send_base + 2
+			and dynamic_repair_roster_arguments.size() == 6
+			and dynamic_repair_roster_arguments[0]
+			== PackedInt32Array([903, 904])
+			and dynamic_repair_roster_arguments[4] == PackedByteArray([
+				COMBAT_RELATIONS.HOSTILE_WAVE,
+				COMBAT_RELATIONS.PLAYER_ALLIED,
+			])
+			and dynamic_repair_roster_arguments[5]
+			== PackedInt32Array([0, 2])
+			and dynamic_repair_target_arguments.size() == 10
+			and dynamic_repair_target_arguments[0] == PackedInt32Array([903])
+			and dynamic_repair_target_arguments[1] == PackedInt32Array([7])
+			and dynamic_repair_target_arguments[2] == PackedByteArray([
+				Enemy.TargetPresentationPhase.SNIPER_LOCK
+			])
+			and dynamic_repair_target_arguments[3] == PackedByteArray([
+				TARGET_DESCRIPTOR.Kind.ENEMY
+			])
+			and dynamic_repair_target_arguments[4] == PackedInt32Array([904])
+			and dynamic_repair_target_arguments[5] == PackedInt32Array([2])
+			and dynamic_repair_target_arguments[6] == PackedVector2Array([
+				Vector2(120.0, 80.0)
+			]),
+			(
+				"迟加入/重连修复必须在同一权威事务中发送目标敌人的"
+				+ " faction revision 与完整 ENEMY descriptor。"
+			)
 		)
 		coordinator.build_host_terminal_event(
 			904,

@@ -7,6 +7,9 @@ const AURA_RANGE_SEGMENTS := 24
 const AURA_PARTICLE_FIXED_FPS := 30
 const MAX_ACTIVE_GUARDIAN_EMISSION_BOOSTS := 12
 const PLAYER_COLLISION_MASK := 2
+const ENEMY_COLLISION_MASK := 4
+const AURA_DAMAGE_COLLISION_MASK := PLAYER_COLLISION_MASK | ENEMY_COLLISION_MASK
+const AURA_DAMAGE_SOURCE_TYPE := &"yuanshi_aura"
 const GUARDIAN_BASE_HALO_MODULATE := Color(0.2, 0.78, 1.0, 0.78)
 const GUARDIAN_EMISSION_CANDIDATE_GROUP := &"guardian_emission_budget_candidates"
 const GUARDIAN_EMISSION_ACTIVE_GROUP := &"guardian_emission_budget_active"
@@ -25,6 +28,10 @@ const GUARDIAN_EMISSION_ACTIVE_GROUP := &"guardian_emission_budget_active"
 # 毒性/守护光环状态。
 var aura_active: bool = false
 var aura_touched_player: Player = null
+var aura_damage_target: Node2D = null
+var aura_damage_targets: Dictionary[int, Node2D] = {}
+var aura_player_death_callbacks: Dictionary[int, Callable] = {}
+var aura_damage_event_sequence := 0
 var aura_damage_cooldown_left: float = 0.0
 
 
@@ -38,32 +45,33 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	_clear_aura_damage_targets()
 	_release_guardian_emission_budget()
 	super._exit_tree()
 
 
-func _physics_process(delta: float) -> void:
+func _run_authoritative_physics_step(delta: float) -> void:
 	_update_aura_damage(delta)
-	super._physics_process(delta)
+	super._run_authoritative_physics_step(delta)
 
 
-func supports_centralized_authoritative_simulation() -> bool:
-	return false
+func _advance_layered_area_family_event_phase(delta: float) -> void:
+	_update_aura_damage(delta)
 
 
-func supports_layered_area_authoritative_simulation() -> bool:
-	return false
-
-
-# The current aura attack contract is Player-only. Keep target capability
-# independent from simulation policy, and opt this family out explicitly until
-# its attack resolver is migrated to the common dynamic-target pipeline.
-func supports_dynamic_enemy_targeting() -> bool:
-	return false
+func _can_sleep_layered_area_family_event_phase() -> bool:
+	# GuardianAuraSystem owns guardian state independently and requires no local
+	# event polling. A live damage aura deliberately stays awake until a dedicated
+	# projection lane exists: its public cooldown and target validation are exact
+	# physics-tick state even while the overlap set is empty.
+	return not aura_active or _uses_centralized_guardian_aura()
 
 
 func _apply_config() -> void:
 	super._apply_config()
+	_clear_aura_damage_targets()
+	aura_damage_event_sequence = 0
+	aura_damage_cooldown_left = 0.0
 
 	if config == null:
 		return
@@ -156,7 +164,7 @@ func _apply_local_damage_aura_config(aura_config: YuanshiInsectAuraConfig) -> vo
 	)
 	_apply_aura_range_indicator(aura_config)
 	_configure_aura_collision_mask()
-	_ensure_player_aura_signals_connected()
+	_ensure_aura_signals_connected()
 
 
 func _has_local_damage_aura_nodes() -> bool:
@@ -189,6 +197,7 @@ func _start_aura() -> void:
 		return
 
 	aura_active = true
+	request_layered_area_urgent_decision()
 	if _uses_centralized_guardian_aura():
 		return
 
@@ -213,10 +222,11 @@ func _stop_aura() -> void:
 	var guardian_aura := _uses_centralized_guardian_aura()
 	var guardian_was_active := aura_active and guardian_aura
 	aura_active = false
+	_clear_aura_damage_targets()
+	request_layered_area_urgent_decision()
 	if guardian_was_active:
 		guardian_aura_deactivated.emit(self)
 	if guardian_aura:
-		aura_touched_player = null
 		aura_damage_cooldown_left = 0.0
 		return
 
@@ -228,15 +238,14 @@ func _stop_aura() -> void:
 	aura_area.set_deferred("monitoring", false)
 	aura_area.set_deferred("monitorable", false)
 	aura_area_shape.set_deferred("disabled", true)
-	aura_touched_player = null
 	aura_damage_cooldown_left = 0.0
 
 
 func _configure_aura_collision_mask() -> void:
-	aura_area.collision_mask = PLAYER_COLLISION_MASK
+	aura_area.collision_mask = AURA_DAMAGE_COLLISION_MASK
 
 
-func _ensure_player_aura_signals_connected() -> void:
+func _ensure_aura_signals_connected() -> void:
 	if not aura_area.body_entered.is_connected(_on_aura_area_body_entered):
 		aura_area.body_entered.connect(_on_aura_area_body_entered)
 	if not aura_area.body_exited.is_connected(_on_aura_area_body_exited):
@@ -323,28 +332,184 @@ func _set_guardian_emission_boost_enabled(enabled: bool) -> void:
 		guardian_light_emission.visible = enabled
 
 
-# 光环区域检测到目标进入。
+# 光环区域检测到目标进入。信号只提交候选集与唤醒，伤害始终在事件阶段结算。
 func _on_aura_area_body_entered(body: Node2D) -> void:
 	if is_dead or not aura_active:
 		return
-	if config as YuanshiInsectGuardianConfig != null:
+	if _uses_centralized_guardian_aura():
 		return
-
-	var player := body as Player
-	if player == null:
+	if not _is_supported_aura_damage_target(body):
 		return
-
-	aura_touched_player = player
-	_try_deal_aura_damage()
+	_track_aura_damage_target(body)
+	request_layered_area_urgent_decision()
 
 
 # 目标离开光环区域。
 func _on_aura_area_body_exited(body: Node2D) -> void:
-	if config as YuanshiInsectGuardianConfig != null:
+	if _uses_centralized_guardian_aura():
 		return
+	_untrack_aura_damage_target(body)
+	request_layered_area_urgent_decision()
 
-	if body == aura_touched_player:
+
+func _is_supported_aura_damage_target(target: Node2D) -> bool:
+	return target != null and target != self and (target is Player or target is Enemy)
+
+
+func _track_aura_damage_target(target: Node2D) -> void:
+	if (
+		not _is_supported_aura_damage_target(target)
+		or not is_instance_valid(target)
+	):
+		return
+	var target_id := target.get_instance_id()
+	if aura_damage_targets.has(target_id):
+		return
+	aura_damage_targets[target_id] = target
+	var player := target as Player
+	if player != null:
+		var death_callback := _on_aura_player_died.bind(player)
+		aura_player_death_callbacks[target_id] = death_callback
+		if not player.died.is_connected(death_callback):
+			player.died.connect(death_callback)
+		return
+	var enemy := target as Enemy
+	if enemy == null:
+		return
+	if not enemy.defeated.is_connected(_on_aura_enemy_defeated):
+		enemy.defeated.connect(_on_aura_enemy_defeated)
+	if not enemy.combat_faction_changed.is_connected(
+		_on_aura_enemy_faction_changed
+	):
+		enemy.combat_faction_changed.connect(_on_aura_enemy_faction_changed)
+
+
+func _untrack_aura_damage_target(target: Node2D) -> void:
+	if target == null:
+		return
+	_erase_aura_damage_target_id(target.get_instance_id())
+
+
+func _erase_aura_damage_target_id(target_id: int) -> void:
+	# A queued target can turn into a freed Object while its instance ID remains
+	# in the overlap dictionary. Keep the value untyped until after the validity
+	# check; casting a freed Object to Node2D itself is an engine error.
+	var target_variant: Variant = aura_damage_targets.get(target_id)
+	if is_instance_valid(target_variant):
+		var target := target_variant as Node2D
+		var player := target as Player
+		if player != null:
+			var death_callback: Callable = aura_player_death_callbacks.get(
+				target_id,
+				Callable()
+			)
+			if (
+				death_callback.is_valid()
+				and player.died.is_connected(death_callback)
+			):
+				player.died.disconnect(death_callback)
+		var enemy := target as Enemy
+		if enemy != null:
+			if enemy.defeated.is_connected(_on_aura_enemy_defeated):
+				enemy.defeated.disconnect(_on_aura_enemy_defeated)
+			if enemy.combat_faction_changed.is_connected(
+				_on_aura_enemy_faction_changed
+			):
+				enemy.combat_faction_changed.disconnect(
+					_on_aura_enemy_faction_changed
+				)
+		if is_instance_valid(aura_damage_target) and aura_damage_target == target:
+			aura_damage_target = null
+		if is_instance_valid(aura_touched_player) and aura_touched_player == target:
+			aura_touched_player = null
+	aura_player_death_callbacks.erase(target_id)
+	aura_damage_targets.erase(target_id)
+	if not is_instance_valid(aura_damage_target):
+		aura_damage_target = null
+	if not is_instance_valid(aura_touched_player):
 		aura_touched_player = null
+
+
+func _clear_aura_damage_targets() -> void:
+	for target_id_variant in aura_damage_targets.keys():
+		_erase_aura_damage_target_id(int(target_id_variant))
+	aura_damage_targets.clear()
+	aura_player_death_callbacks.clear()
+	aura_damage_target = null
+	aura_touched_player = null
+
+
+func _on_aura_player_died(player: Player) -> void:
+	_untrack_aura_damage_target(player)
+	request_layered_area_urgent_decision()
+
+
+func _on_aura_enemy_defeated(enemy: Enemy) -> void:
+	_untrack_aura_damage_target(enemy)
+	request_layered_area_urgent_decision()
+
+
+func _on_aura_enemy_faction_changed(
+	enemy: Enemy,
+	_previous_faction_id: int,
+	_new_faction_id: int,
+	_revision: int
+) -> void:
+	if enemy == null or not aura_damage_targets.has(enemy.get_instance_id()):
+		return
+	request_layered_area_urgent_decision()
+
+
+func _refresh_aura_damage_target() -> void:
+	aura_damage_target = _select_aura_damage_target()
+	aura_touched_player = aura_damage_target as Player
+
+
+func _select_aura_damage_target() -> Node2D:
+	var attackable_objective := get_attackable_objective()
+	if (
+		attackable_objective != null
+		and aura_damage_targets.has(attackable_objective.get_instance_id())
+	):
+		return attackable_objective
+
+	var selected_target: Node2D = null
+	var selected_priority := 3
+	var selected_order_id := 0
+	var stale_target_ids: Array[int] = []
+	for target_id_variant in aura_damage_targets:
+		var target_id := int(target_id_variant)
+		var target_variant: Variant = aura_damage_targets.get(target_id)
+		if not is_instance_valid(target_variant):
+			stale_target_ids.append(target_id)
+			continue
+		var target := target_variant as Node2D
+		if target == null:
+			stale_target_ids.append(target_id)
+			continue
+		if not can_attack_combat_target(target):
+			continue
+		var player := target as Player
+		var priority := 0 if player != null else 1
+		var order_id := (
+			player.peer_id
+			if player != null
+			else maxi(int(target.get_meta(&"net_id", target_id)), 0)
+		)
+		if (
+			selected_target == null
+			or priority < selected_priority
+			or (
+				priority == selected_priority
+				and order_id < selected_order_id
+			)
+		):
+			selected_target = target
+			selected_priority = priority
+			selected_order_id = order_id
+	for stale_target_id in stale_target_ids:
+		_erase_aura_damage_target_id(stale_target_id)
+	return selected_target
 
 # 每帧更新光环持续伤害冷却，在冷却结束后再次造成伤害。
 func _update_aura_damage(delta: float) -> void:
@@ -354,33 +519,73 @@ func _update_aura_damage(delta: float) -> void:
 	if aura_damage_cooldown_left > 0.0:
 		aura_damage_cooldown_left = maxf(aura_damage_cooldown_left - delta, 0.0)
 
-	if aura_touched_player == null:
-		return
-	if not is_instance_valid(aura_touched_player):
-		aura_touched_player = null
+	_refresh_aura_damage_target()
+	if aura_damage_target == null:
 		return
 	if aura_damage_cooldown_left > 0.0:
 		return
 
-	_try_deal_aura_damage()
+	_try_deal_aura_damage(aura_damage_target)
 
 
-# 对光环范围内的玩家造成一次伤害并重置冷却。
-func _try_deal_aura_damage() -> void:
-	if aura_touched_player == null:
-		return
+# 对光环范围内的定向敌对目标造成一次物理伤害。
+func _try_deal_aura_damage(target: Node2D = null) -> bool:
+	var damage_target := (
+		target
+		if target != null
+		else (
+			aura_damage_target
+			if aura_damage_target != null
+			else aura_touched_player
+		)
+	)
+	if (
+		damage_target == null
+		or not is_instance_valid(damage_target)
+		or aura_damage_cooldown_left > 0.0
+		or not can_attack_combat_target(damage_target)
+	):
+		return false
 	var aura_config := config as YuanshiInsectGreenShellConfig
 	if aura_config == null:
-		return
+		return false
 
-	var damage_handled := _apply_multiplayer_player_damage(
-		aura_touched_player,
-		get_effective_attack_damage(config.attack_damage),
-		_get_multiplayer_damage_source_id(int(Time.get_ticks_msec())),
-		&"yuanshi_aura"
+	aura_damage_event_sequence += 1
+	var source_id := _get_multiplayer_damage_source_id(
+		aura_damage_event_sequence
 	)
+	var source_snapshot := create_damage_source_snapshot(
+		source_id,
+		AURA_DAMAGE_SOURCE_TYPE
+	)
+	var outgoing_damage := get_effective_attack_damage(config.attack_damage)
+	var damage_handled := false
+	var player := damage_target as Player
+	if player != null:
+		damage_handled = _apply_multiplayer_player_damage(
+			player,
+			outgoing_damage,
+			source_id,
+			AURA_DAMAGE_SOURCE_TYPE,
+			source_snapshot
+		)
+	else:
+		var enemy := damage_target as Enemy
+		if enemy == null:
+			return false
+		var impact_direction := global_position.direction_to(enemy.global_position)
+		var request := DamageRequest.new(
+			outgoing_damage,
+			EnemyConfig.DamageType.PHYSICAL
+		)
+		request.with_source(self, source_id, AURA_DAMAGE_SOURCE_TYPE)
+		request.with_source_snapshot(source_snapshot)
+		request.with_directions(impact_direction, -impact_direction)
+		request.with_flag(CombatTypes.DamageFlag.PERIODIC)
+		damage_handled = enemy.apply_combat_damage(request).accepted
 	if damage_handled:
 		aura_damage_cooldown_left = aura_config.aura_damage_interval
+	return damage_handled
 
 
 func _die() -> void:

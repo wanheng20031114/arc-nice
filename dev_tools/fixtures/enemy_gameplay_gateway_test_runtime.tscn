@@ -16,6 +16,8 @@ script = ExtResource("1_runtime")
 
 [node name="EnemyContactService" parent="." instance=ExtResource("enemy_contact")]
 
+[node name="BossContainer" type="Node2D" parent="."]
+
 [node name="EnemyContainer" type="Node2D" parent="."]
 
 [node name="GridPathfinder" type="Node" parent="."]

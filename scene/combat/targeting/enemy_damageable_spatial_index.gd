@@ -204,6 +204,10 @@ func contains_damageable(damageable: StaticBody2D) -> bool:
 	return entry != null and entry.damageable == damageable
 
 
+func has_registered_damageables() -> bool:
+	return not _entries_by_instance_id.is_empty()
+
+
 ## Exact posterior for a broad-phase candidate. This only reads shape resources
 ## and transforms cached by register/update; it never traverses plant children.
 func damageable_overlaps_shape(
@@ -225,18 +229,73 @@ func damageable_overlaps_shape(
 	)
 	if entry == null or entry.damageable != damageable:
 		return false
+	return _entry_overlaps_shape(
+		entry,
+		projectile_shape,
+		projectile_world_transform
+	)
+
+
+func _entry_overlaps_shape(
+	entry: Entry,
+	shape: Shape2D,
+	world_transform: Transform2D
+) -> bool:
 	for shape_index in range(entry.root_shapes.size()):
 		var cached_shape := entry.root_shapes[shape_index]
 		if (
 			cached_shape != null
 			and cached_shape.collide(
 				entry.root_shape_world_transforms[shape_index],
-				projectile_shape,
-				projectile_world_transform
+				shape,
+				world_transform
 			)
 		):
 			return true
 	return false
+
+
+## Combined broad/exact query for callers advancing one reusable Shape2D.
+## The caller-owned result is first filled in stable instance-ID order by the
+## existing AABB query, then compacted in place to exact cached-geometry hits.
+## No candidate Array or scene-tree geometry traversal is introduced here.
+func query_overlapping_damageables_into(
+	shape: Shape2D,
+	world_transform: Transform2D,
+	result: Array
+) -> int:
+	result.clear()
+	if shape == null or not _is_finite_transform(world_transform):
+		_rejected_operations_total += 1
+		return 0
+
+	var world_aabb := _transform_rect_to_world_aabb(
+		shape.get_rect(),
+		world_transform
+	)
+	if query_world_aabb_into(world_aabb, result) <= 0:
+		return 0
+
+	var write_index := 0
+	var candidate_count := result.size()
+	for read_index in range(candidate_count):
+		var damageable := result[read_index] as StaticBody2D
+		var entry := (
+			_entries_by_instance_id.get(damageable.get_instance_id()) as Entry
+			if damageable != null
+			else null
+		)
+		_exact_shape_queries_total += 1
+		if (
+			entry == null
+			or entry.damageable != damageable
+			or not _entry_overlaps_shape(entry, shape, world_transform)
+		):
+			continue
+		result[write_index] = damageable
+		write_index += 1
+	result.resize(write_index)
+	return write_index
 
 
 ## Fills caller-owned storage and returns its final size. Results are unique and
@@ -583,18 +642,22 @@ static func _transform_rect_to_world_aabb(
 	world_transform: Transform2D
 ) -> Rect2:
 	var local_end := local_rect.end
-	var corners := [
-		world_transform * local_rect.position,
-		world_transform * Vector2(local_end.x, local_rect.position.y),
-		world_transform * local_end,
-		world_transform * Vector2(local_rect.position.x, local_end.y),
-	]
-	var minimum: Vector2 = corners[0]
-	var maximum: Vector2 = corners[0]
-	for corner_variant in corners:
-		var corner: Vector2 = corner_variant
-		minimum = minimum.min(corner)
-		maximum = maximum.max(corner)
+	var first_corner := world_transform * local_rect.position
+	var second_corner := world_transform * Vector2(
+		local_end.x,
+		local_rect.position.y
+	)
+	var third_corner := world_transform * local_end
+	var fourth_corner := world_transform * Vector2(
+		local_rect.position.x,
+		local_end.y
+	)
+	var minimum := (
+		first_corner.min(second_corner).min(third_corner).min(fourth_corner)
+	)
+	var maximum := (
+		first_corner.max(second_corner).max(third_corner).max(fourth_corner)
+	)
 	return Rect2(minimum, maximum - minimum)
 
 

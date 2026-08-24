@@ -23,7 +23,7 @@ var outgoing_explosion_source_snapshot: DamageSourceSnapshot = null
 
 
 func supports_layered_area_authoritative_simulation() -> bool:
-	return false
+	return true
 
 
 func _apply_config() -> void:

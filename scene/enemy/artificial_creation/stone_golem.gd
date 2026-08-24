@@ -69,10 +69,41 @@ func _ready() -> void:
 	super._ready()
 
 
-func _physics_process(delta: float) -> void:
-	super._physics_process(delta)
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func supports_layered_area_authoritative_simulation() -> bool:
+	return true
+
+
+# The post-Knight SLAM event ordering and single-shape proxy closure are covered
+# by capoo_knight_layered_semantics_regression.gd.
+func supports_layered_contact_authoritative_simulation() -> bool:
+	return true
+
+
+func supports_indexed_touch_authority() -> bool:
+	return true
+
+
+func _run_authoritative_physics_step(delta: float) -> void:
+	super._run_authoritative_physics_step(delta)
 	if slam_impact_time_left > 0.0:
 		_update_slam_impact_visual(delta)
+
+
+func _advance_capoo_knight_derived_event_phase(delta: float) -> void:
+	super._advance_capoo_knight_derived_event_phase(delta)
+	if slam_impact_time_left > 0.0:
+		_update_slam_impact_visual(delta)
+
+
+func _can_sleep_capoo_knight_derived_event_phase() -> bool:
+	return (
+		super._can_sleep_capoo_knight_derived_event_phase()
+		and slam_impact_time_left <= 0.0
+	)
 
 
 func _uses_inherited_touch_damage() -> bool:

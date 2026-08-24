@@ -1,4 +1,4 @@
-extends Enemy
+extends "res://scene/enemy/simple_chase_layered_enemy.gd"
 class_name CombatRobotNinja
 
 const NinjaConfig := preload(
@@ -13,6 +13,10 @@ const BASE_VISUAL_STATUS_MASK := 0x1f
 const AFTERIMAGE_STRENGTH_PARAMETER := &"ninja_afterimage_strength"
 const AFTERIMAGE_DIRECTION_PARAMETER := &"ninja_afterimage_direction"
 const AFTERIMAGE_DIRECTION_EPSILON_SQUARED := 0.0001
+const LAYERED_TIMER_ZERO_EPSILON := 0.000001
+const LAYERED_FAMILY_SCRIPT_PATH := (
+	"res://scene/enemy/mechanical_life/combat_robot_ninja.gd"
+)
 
 @export var path_refresh_interval: float = 0.25
 @export var waypoint_arrival_distance: float = 4.0
@@ -41,6 +45,12 @@ var latest_proxy_action_id := 0
 var proxy_boost_status_latched := false
 var proxy_boost_started_from_action := false
 var afterimage_world_direction := Vector2.RIGHT
+var layered_ninja_timer_authority_active := false
+var layered_boost_time_left := 0.0
+var layered_cooldown_time_left := 0.0
+var layered_timer_physics_delta_hint := 1.0 / 60.0
+var layered_boost_timeout_after_motion := false
+var layered_cooldown_timeout_after_motion := false
 
 
 func _ready() -> void:
@@ -49,7 +59,50 @@ func _ready() -> void:
 	_update_afterimage_direction(_get_facing_direction(), true)
 
 
-func _physics_process(delta: float) -> void:
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func supports_layered_area_authoritative_simulation() -> bool:
+	return _is_exact_layered_ninja_family()
+
+
+## Ninja swaps between two non-convex blade unions at runtime. The contact
+## coordinator can recapture that complete authored union, but the Player/Plant
+## index remains fail-closed because it currently certifies only one shape.
+func supports_layered_contact_authoritative_simulation() -> bool:
+	return _is_exact_layered_ninja_family()
+
+
+func supports_indexed_touch_authority() -> bool:
+	return false
+
+
+func supports_dynamic_enemy_targeting() -> bool:
+	return true
+
+
+## Ordinary and elite scenes intentionally share this exact script. A future
+## Ninja derivative must migrate its complete timer/contact state machine before
+## acquiring layered admission.
+func _is_exact_layered_ninja_family() -> bool:
+	var implementation := get_script() as Script
+	return (
+		implementation != null
+		and implementation.resource_path == LAYERED_FAMILY_SCRIPT_PATH
+	)
+
+
+func _get_navigation_move_direction(_delta: float) -> Vector2:
+	return _get_safe_navigation_move_direction(
+		objective_target,
+		pathfinder,
+		waypoint_arrival_distance
+	)
+
+
+func _run_authoritative_physics_step(delta: float) -> void:
+	_release_layered_ninja_timer_authority_if_needed()
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
@@ -78,6 +131,135 @@ func _physics_process(delta: float) -> void:
 			_update_afterimage_direction(actual_displacement)
 
 
+func prepare_layered_area_authoritative_simulation() -> void:
+	super.prepare_layered_area_authoritative_simulation()
+	# Registration invokes this hook before Enemy stores the coordinator binding.
+	# The first trusted event therefore performs admission capture. Rollback clears
+	# that binding before entering here, which releases paused timers immediately.
+	if not _uses_layered_ninja_timer_authority():
+		_release_layered_ninja_timer_authority()
+
+
+func _advance_layered_area_family_event_phase(delta: float) -> void:
+	_ensure_layered_ninja_timer_authority()
+	if not layered_ninja_timer_authority_active:
+		return
+	var safe_delta := maxf(delta, 0.0)
+	if safe_delta <= 0.0:
+		return
+	var step_delta := maxf(layered_timer_physics_delta_hint, 0.000001)
+	var elapsed_ticks := maxi(roundi(safe_delta / step_delta), 1)
+	# A normal event supplies one fixed physics delta and refreshes the hint. A
+	# sparse cooldown wake supplies an exact integer multiple and keeps it.
+	if elapsed_ticks == 1:
+		layered_timer_physics_delta_hint = safe_delta
+		step_delta = safe_delta
+	for _tick_index in range(elapsed_ticks):
+		_advance_one_layered_ninja_timer_tick(step_delta)
+
+
+func _simulate_layered_area_event_body(
+	elapsed_delta: float,
+	physics_delta: float,
+	elapsed_ticks: int
+) -> bool:
+	var completed := super._simulate_layered_area_event_body(
+		elapsed_delta,
+		physics_delta,
+		elapsed_ticks
+	)
+	# SimpleChase publishes ordinary Transform work after the family event hook.
+	# Republish the independent post-motion Timer lane after that write so trusted
+	# coordinator admission cannot starve a stationary/contact/targetless Ninja.
+	_publish_layered_ninja_post_motion_timeout_due()
+	return completed
+
+
+func _simulate_layered_area_decision_body(delta: float) -> bool:
+	var completed := super._simulate_layered_area_decision_body(delta)
+	# A same-tick decision also recomputes `layered_area_motion_phase_due`. Timer
+	# finalization remains due even when that decision proves no Transform is due.
+	_publish_layered_ninja_post_motion_timeout_due()
+	return completed
+
+
+func _can_sleep_layered_area_family_event_phase() -> bool:
+	# Boost changes movement speed and the active blade union, so it remains a
+	# real 60 Hz event lane. Cooldown alone is inert and may jump to its deadline.
+	return (
+		not boost_active
+		and not layered_boost_timeout_after_motion
+		and not layered_cooldown_timeout_after_motion
+	)
+
+
+func _get_layered_area_event_sleep_until_physics_frame(
+	physics_delta: float
+) -> int:
+	var inherited_deadline := super._get_layered_area_event_sleep_until_physics_frame(
+		physics_delta
+	)
+	var cooldown_deadline := -1
+	if (
+		layered_ninja_timer_authority_active
+		and boost_cooldown_active
+		and physics_delta > 0.0
+	):
+		var remaining := maxf(layered_cooldown_time_left, 0.0)
+		var ticks_until_timeout := 1
+		while remaining > LAYERED_TIMER_ZERO_EPSILON:
+			remaining = _subtract_layered_ninja_timer_delta(
+				remaining,
+				physics_delta
+			)
+			ticks_until_timeout += 1
+		cooldown_deadline = (
+			Engine.get_physics_frames() + ticks_until_timeout
+		)
+	if inherited_deadline < 0:
+		return cooldown_deadline
+	if cooldown_deadline < 0:
+		return inherited_deadline
+	return mini(inherited_deadline, cooldown_deadline)
+
+
+func _simulate_layered_area_motion_body(delta: float) -> bool:
+	# The pending timeout can force this callback without authorizing a Transform.
+	# Capture the ordinary movement contract first, then restore only that contract
+	# after the post-motion Timer callbacks have committed their state/geometry.
+	var movement_phase_remains_due := (
+		super.should_execute_layered_area_motion_phase()
+	)
+	var position_before_move := global_position
+	var completed := super._simulate_layered_area_motion_body(delta)
+	if boost_active:
+		var actual_displacement := global_position - position_before_move
+		if actual_displacement != Vector2.ZERO:
+			_update_afterimage_direction(actual_displacement)
+	_commit_layered_ninja_timeouts_after_motion()
+	layered_area_motion_phase_due = movement_phase_remains_due
+	return completed
+
+
+func should_execute_layered_area_motion_phase() -> bool:
+	# Native physics Timers signal after the Ninja parent callback even when the
+	# body is stationary. A due family timeout therefore owns one post-behavior
+	# motion-lane slot; this is also the safe boundary for swapping the blade union.
+	return (
+		layered_boost_timeout_after_motion
+		or layered_cooldown_timeout_after_motion
+		or super.should_execute_layered_area_motion_phase()
+	)
+
+
+func _publish_layered_ninja_post_motion_timeout_due() -> void:
+	if (
+		layered_boost_timeout_after_motion
+		or layered_cooldown_timeout_after_motion
+	):
+		layered_area_motion_phase_due = true
+
+
 func _apply_config() -> void:
 	boost_active = false
 	boost_cooldown_active = false
@@ -86,6 +268,12 @@ func _apply_config() -> void:
 	proxy_boost_status_latched = false
 	proxy_boost_started_from_action = false
 	afterimage_world_direction = _get_facing_direction()
+	layered_ninja_timer_authority_active = false
+	layered_boost_time_left = 0.0
+	layered_cooldown_time_left = 0.0
+	layered_timer_physics_delta_hint = 1.0 / 60.0
+	layered_boost_timeout_after_motion = false
+	layered_cooldown_timeout_after_motion = false
 	_stop_boost_timers()
 	super._apply_config()
 	ninja_config_cache = config as NinjaConfig
@@ -125,6 +313,22 @@ func is_damage_boost_on_cooldown() -> bool:
 	return boost_cooldown_active
 
 
+func get_authoritative_boost_time_left() -> float:
+	return (
+		layered_boost_time_left
+		if layered_ninja_timer_authority_active
+		else (boost_timer.time_left if boost_timer != null else 0.0)
+	)
+
+
+func get_authoritative_boost_cooldown_time_left() -> float:
+	return (
+		layered_cooldown_time_left
+		if layered_ninja_timer_authority_active
+		else (cooldown_timer.time_left if cooldown_timer != null else 0.0)
+	)
+
+
 func _on_combat_damage_applied(result: DamageResult) -> void:
 	super._on_combat_damage_applied(result)
 	if (
@@ -155,11 +359,21 @@ func _try_start_damage_boost() -> bool:
 	boost_active = true
 	boost_cooldown_active = true
 	boost_timer.start(boost_duration)
+	layered_boost_time_left = boost_duration
+	layered_boost_timeout_after_motion = false
 	var cooldown_duration := maxf(ninja_config_cache.boost_cooldown, 0.0)
 	if cooldown_duration > 0.0:
 		cooldown_timer.start(cooldown_duration)
+		layered_cooldown_time_left = cooldown_duration
+		layered_cooldown_timeout_after_motion = false
 	else:
 		boost_cooldown_active = false
+		layered_cooldown_time_left = 0.0
+		layered_cooldown_timeout_after_motion = false
+	if _uses_layered_ninja_timer_authority():
+		layered_ninja_timer_authority_active = true
+		boost_timer.paused = true
+		cooldown_timer.paused = true
 
 	_switch_locomotion_animation_preserving_phase(
 		ninja_config_cache.boost_animation_name,
@@ -180,12 +394,18 @@ func _try_start_damage_boost() -> bool:
 
 
 func _on_boost_timer_timeout() -> void:
+	layered_boost_time_left = 0.0
+	layered_boost_timeout_after_motion = false
 	if is_dead or not boost_active:
 		return
 	_finish_damage_boost(true)
 
 
 func _on_cooldown_timer_timeout() -> void:
+	layered_cooldown_time_left = 0.0
+	layered_cooldown_timeout_after_motion = false
+	if cooldown_timer != null:
+		cooldown_timer.stop()
 	if is_multiplayer_proxy:
 		return
 	boost_cooldown_active = false
@@ -196,6 +416,8 @@ func _finish_damage_boost(restore_move_animation: bool) -> void:
 		return
 	boost_active = false
 	proxy_boost_started_from_action = false
+	layered_boost_time_left = 0.0
+	layered_boost_timeout_after_motion = false
 	boost_timer.stop()
 	_set_afterimage_strength(0.0)
 	if slash_audio != null:
@@ -218,6 +440,10 @@ func _cancel_damage_boost(
 	boost_active = false
 	boost_cooldown_active = false
 	proxy_boost_started_from_action = false
+	layered_boost_time_left = 0.0
+	layered_cooldown_time_left = 0.0
+	layered_boost_timeout_after_motion = false
+	layered_cooldown_timeout_after_motion = false
 	_stop_boost_timers()
 	_set_afterimage_strength(0.0)
 	if slash_audio != null:
@@ -510,27 +736,44 @@ func _sync_blade_contact_shapes() -> void:
 	if is_multiplayer_proxy or is_dead:
 		_set_all_blade_contact_shapes_disabled()
 		return
-	_set_collision_shape_disabled_deferred(
+	_set_blade_contact_shape_authored_enabled(
 		move_rear_blade_shape,
-		boost_active
+		not boost_active
 	)
-	_set_collision_shape_disabled_deferred(
+	_set_blade_contact_shape_authored_enabled(
 		move_front_blade_shape,
+		not boost_active
+	)
+	_set_blade_contact_shape_authored_enabled(
+		boost_upper_blade_shape,
 		boost_active
 	)
-	_set_collision_shape_disabled_deferred(
-		boost_upper_blade_shape,
-		not boost_active
-	)
-	_set_collision_shape_disabled_deferred(
+	_set_blade_contact_shape_authored_enabled(
 		boost_lower_blade_shape,
-		not boost_active
+		boost_active
 	)
 
 
 func _set_all_blade_contact_shapes_disabled() -> void:
 	for shape_node in _get_blade_contact_shapes():
 		_set_collision_shape_disabled_deferred(shape_node, true)
+
+
+func _set_blade_contact_shape_authored_enabled(
+	shape_node: CollisionShape2D,
+	enabled: bool
+) -> void:
+	if shape_node == null or not is_instance_valid(shape_node):
+		return
+	var shape_id := shape_node.get_instance_id()
+	var next_disabled := not enabled
+	var previous_disabled := bool(
+		authored_touch_shape_disabled_states.get(shape_id, shape_node.disabled)
+	)
+	if previous_disabled != next_disabled:
+		authored_touch_shape_disabled_states[shape_id] = next_disabled
+		mark_contact_shape_geometry_changed()
+	_set_collision_shape_disabled_deferred(shape_node, next_disabled)
 
 
 func _get_blade_contact_shapes() -> Array[CollisionShape2D]:
@@ -546,8 +789,11 @@ func _set_collision_shape_disabled_deferred(
 	shape_node: CollisionShape2D,
 	disabled: bool
 ) -> void:
-	if shape_node == null or shape_node.disabled == disabled:
+	if shape_node == null:
 		return
+	# Always enqueue the latest authored value. A boost can start and be canceled
+	# in the same physics tick; skipping an apparent no-op here would let the older
+	# deferred write win and expose the wrong blade pair on the next boundary.
 	shape_node.set_deferred("disabled", disabled)
 
 
@@ -590,11 +836,130 @@ func _play_boost_audio(start_offset: float = 0.0) -> void:
 		slash_audio.seek(maxf(start_offset, 0.0))
 
 
+func _uses_layered_ninja_timer_authority() -> bool:
+	if (
+		not is_centrally_simulated()
+		or enemy_simulation_coordinator == null
+		or not is_instance_valid(enemy_simulation_coordinator)
+	):
+		return false
+	return enemy_simulation_coordinator.mode in [
+		EnemySimulationPolicy.Mode.LAYERED_AREA,
+		EnemySimulationPolicy.Mode.LAYERED_CONTACT,
+	]
+
+
+func _ensure_layered_ninja_timer_authority() -> void:
+	if not _uses_layered_ninja_timer_authority():
+		_release_layered_ninja_timer_authority()
+		return
+	if layered_ninja_timer_authority_active:
+		return
+	layered_ninja_timer_authority_active = true
+	if boost_active:
+		layered_boost_time_left = maxf(boost_timer.time_left, 0.0)
+	if boost_cooldown_active:
+		layered_cooldown_time_left = maxf(cooldown_timer.time_left, 0.0)
+	layered_boost_timeout_after_motion = false
+	layered_cooldown_timeout_after_motion = false
+	boost_timer.paused = true
+	cooldown_timer.paused = true
+
+
+func _release_layered_ninja_timer_authority_if_needed() -> void:
+	if layered_ninja_timer_authority_active and not _uses_layered_ninja_timer_authority():
+		_release_layered_ninja_timer_authority()
+
+
+func _release_layered_ninja_timer_authority() -> void:
+	if not layered_ninja_timer_authority_active:
+		if boost_timer != null:
+			boost_timer.paused = false
+		if cooldown_timer != null:
+			cooldown_timer.paused = false
+		return
+	layered_ninja_timer_authority_active = false
+	if boost_timer != null:
+		boost_timer.paused = false
+		if boost_active:
+			if layered_boost_timeout_after_motion:
+				_on_boost_timer_timeout()
+			elif layered_boost_time_left > 0.0:
+				boost_timer.start(layered_boost_time_left)
+			else:
+				boost_timer.start(maxf(
+					layered_timer_physics_delta_hint * 0.5,
+					0.000001
+				))
+	if cooldown_timer != null:
+		cooldown_timer.paused = false
+		if boost_cooldown_active:
+			if layered_cooldown_timeout_after_motion:
+				_on_cooldown_timer_timeout()
+			elif layered_cooldown_time_left > 0.0:
+				cooldown_timer.start(layered_cooldown_time_left)
+			else:
+				cooldown_timer.start(maxf(
+					layered_timer_physics_delta_hint * 0.5,
+					0.000001
+				))
+	layered_boost_timeout_after_motion = false
+	layered_cooldown_timeout_after_motion = false
+
+
+func _advance_one_layered_ninja_timer_tick(delta: float) -> void:
+	# Native child Timer callbacks run after the enemy's authored physics step.
+	# A zero observed in the pre-motion event lane arms the callback for the end of
+	# this enemy's real motion slot. CONTACT therefore moves with the old certified
+	# blade proxy, then marks the new union dirty for next tick's atomic preflight.
+	if boost_active and not layered_boost_timeout_after_motion:
+		if layered_boost_time_left <= 0.0:
+			layered_boost_timeout_after_motion = true
+		else:
+			layered_boost_time_left = _subtract_layered_ninja_timer_delta(
+				layered_boost_time_left,
+				delta
+			)
+	if boost_cooldown_active and not layered_cooldown_timeout_after_motion:
+		if layered_cooldown_time_left <= 0.0:
+			layered_cooldown_timeout_after_motion = true
+		else:
+			layered_cooldown_time_left = _subtract_layered_ninja_timer_delta(
+				layered_cooldown_time_left,
+				delta
+			)
+
+
+func _commit_layered_ninja_timeouts_after_motion() -> void:
+	# Scene child order is BoostTimer then CooldownTimer; preserve that order when
+	# both deadlines coincide so animation/contact and cooldown signals stay stable.
+	if layered_boost_timeout_after_motion:
+		layered_boost_timeout_after_motion = false
+		_on_boost_timer_timeout()
+	if layered_cooldown_timeout_after_motion:
+		layered_cooldown_timeout_after_motion = false
+		_on_cooldown_timer_timeout()
+
+
+func _subtract_layered_ninja_timer_delta(
+	remaining: float,
+	delta: float
+) -> float:
+	var next_remaining := remaining - maxf(delta, 0.0)
+	return (
+		0.0
+		if next_remaining <= LAYERED_TIMER_ZERO_EPSILON
+		else next_remaining
+	)
+
+
 func _stop_boost_timers() -> void:
 	if boost_timer != null:
 		boost_timer.stop()
+		boost_timer.paused = false
 	if cooldown_timer != null:
 		cooldown_timer.stop()
+		cooldown_timer.paused = false
 
 
 func _get_boost_duration() -> float:

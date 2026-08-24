@@ -1,4 +1,4 @@
-extends Enemy
+extends "res://scene/enemy/simple_chase_layered_enemy.gd"
 class_name CombatRobotShieldBearer
 
 const ShieldBearerConfig := preload(
@@ -47,28 +47,12 @@ func _ready() -> void:
 	_stop_shield_fx()
 
 
-func _physics_process(delta: float) -> void:
-	if is_dead:
-		velocity = Vector2.ZERO
-		return
-
-	_update_touch_damage(maxf(delta, 0.0))
-	if not is_instance_valid(objective_target):
-		velocity = Vector2.ZERO
-		_move_until_player_contact()
-		return
-	if _has_player_contact():
-		velocity = Vector2.ZERO
-		return
-
-	var move_direction := _get_safe_navigation_move_direction(
+func _get_navigation_move_direction(_delta: float) -> Vector2:
+	return _get_safe_navigation_move_direction(
 		objective_target,
 		pathfinder,
 		waypoint_arrival_distance
 	)
-	_update_facing(move_direction)
-	velocity = move_direction * get_effective_move_speed()
-	_move_until_player_contact()
 
 
 func _apply_config() -> void:

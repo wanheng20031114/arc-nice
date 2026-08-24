@@ -610,6 +610,15 @@ func _test_registration_protocol_handshake_source() -> void:
 		"Host registration must reject an incompatible protocol before adding the player."
 	)
 	_expect(
+		compact_source.contains(
+			"ifsender_id>0andresolved_host_id>0andsender_id!=resolved_host_id:return"
+		),
+		(
+			"Player-list authority must reject an in-band Host migration whose claimed "
+			+ "Host id differs from the authenticated RPC sender."
+		)
+	)
+	_expect(
 		compact_source.contains("orcontent_manifest_schema!=_get_local_content_manifest_schema()")
 		and compact_source.contains("orcontent_digest!=_get_local_content_digest()")
 		and compact_source.contains("_send_content_rejected_to_peer(sender_id)"),
@@ -728,6 +737,20 @@ func _test_relay_channel_count() -> void:
 		compact_relay_source.contains('ifrole=="host":_host_peer_id=peer_id_set_stub_authority(peer_id)')
 		and compact_relay_source.contains("func_set_stub_authority(peer_id:int)->void:"),
 		"A verified Host ticket must assign the same peer id to every Relay RPC stub through the authority helper."
+	)
+	_expect(
+		compact_relay_source.contains("_host_was_authenticated=true")
+		and compact_relay_source.contains(
+			'ifrole=="host":returnregistered_host_peer_id<=0andnothost_was_authenticated'
+		)
+		and compact_relay_source.contains(
+			"ifwas_host:_registration_by_peer.clear()_host_peer_id=0_set_stub_authority(1)"
+		)
+		and not compact_relay_source.contains("_host_was_authenticated=false"),
+		(
+			"A Relay lifetime must reject replacement-Host admission after its authenticated "
+			+ "Host leaves; protocol v94 does not support Host migration."
+		)
 	)
 	_expect(
 		relay_source.contains("func request_host_peer_disconnect(")

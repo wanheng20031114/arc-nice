@@ -1,4 +1,4 @@
-extends "res://scene/enemy/capoo_ranged_enemy.gd"
+extends "res://scene/enemy/layered_ranged_enemy.gd"
 class_name CapooSniper
 
 const SniperConfig := preload("res://resources/config/enemies/capoo_sniper_config.gd")
@@ -11,6 +11,7 @@ const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 const AIM_LINE_START_DISTANCE := 10.0
 const AIM_LINE_TARGET_PADDING := 10.0
 const AIM_LINE_MIN_LENGTH := 8.0
+const LAYERED_FAMILY_SCRIPT_PATH := "res://scene/enemy/capoo/capoo_sniper.gd"
 # Local compatibility names for old positional visual tests. Protocol v94
 # production broadcasts every live combat target through the descriptor path.
 const ACTION_NON_PLAYER_LOCK_START := &"sniper_plant_lock_start"
@@ -48,13 +49,106 @@ var proxy_plant_lock_active := false
 var proxy_locked_plant_position := Vector2.ZERO
 var proxy_lock_duration: float = 0.0
 var proxy_lock_elapsed: float = 0.0
+var layered_sniper_event_consumes_tick := false
+var layered_sniper_lock_ready_to_fire := false
+var layered_sniper_pending_fire_direction := Vector2.ZERO
 
 
 func _ready() -> void:
 	super._ready()
 
 
-func _physics_process(delta: float) -> void:
+func supports_centralized_authoritative_simulation() -> bool:
+	return true
+
+
+func _supports_layered_ranged_authoritative_simulation() -> bool:
+	return _is_exact_layered_sniper_family()
+
+
+func _supports_layered_ranged_contact_authority() -> bool:
+	return _is_exact_layered_sniper_family()
+
+
+func _supports_layered_ranged_indexed_touch_authority() -> bool:
+	# Both production scenes author only the inherited TouchDamageArea. Sniper
+	# lock warnings and direct ranged damage use services/data rather than a
+	# second attack Area, so indexed authority may replace that one overlap area.
+	return _is_exact_layered_sniper_family()
+
+
+func _is_exact_layered_sniper_family() -> bool:
+	var implementation := get_script() as Script
+	return (
+		implementation != null
+		and implementation.resource_path == LAYERED_FAMILY_SCRIPT_PATH
+	)
+
+
+func get_layered_area_decision_interval_frames() -> int:
+	# CHASE re-evaluates target, range, LOS and ranged hold every physics tick.
+	return 1
+
+
+func _prepare_layered_ranged_authoritative_simulation() -> void:
+	layered_sniper_event_consumes_tick = false
+	layered_sniper_lock_ready_to_fire = false
+	layered_sniper_pending_fire_direction = Vector2.ZERO
+
+
+func _layered_area_touch_damage_precedes_family_event() -> bool:
+	# Preserve the authored touch -> cooldown -> lock clock order. This family
+	# deliberately deals no inherited touch hit, but the public clock still owns
+	# the same event position in every policy.
+	return true
+
+
+func _advance_layered_ranged_event_phase(delta: float) -> void:
+	layered_sniper_event_consumes_tick = false
+	layered_sniper_lock_ready_to_fire = false
+	layered_sniper_pending_fire_direction = Vector2.ZERO
+	_update_attack_cooldown(delta)
+	if combat_state != CombatState.LOCK:
+		return
+	# Legacy returns for the complete tick even when validation cancels LOCK.
+	layered_sniper_event_consumes_tick = true
+	if _advance_lock_state(delta):
+		layered_sniper_lock_ready_to_fire = true
+		request_layered_area_urgent_decision()
+
+
+func _can_sleep_layered_ranged_event_phase() -> bool:
+	# LOCK warning progress and cooldown are observable repeated-subtraction
+	# clocks. Keep them at exact 60 Hz until a dedicated projection exists.
+	return (
+		combat_state == CombatState.CHASE
+		and attack_cooldown_left <= 0.0
+	)
+
+
+func _try_consume_layered_ranged_decision_phase(_delta: float) -> bool:
+	if layered_sniper_event_consumes_tick:
+		if layered_sniper_lock_ready_to_fire:
+			_resolve_expired_lock()
+			layered_sniper_lock_ready_to_fire = false
+			layered_sniper_pending_fire_direction = Vector2.ZERO
+		return true
+	var previous_state := combat_state
+	var consumed := _try_consume_sniper_chase_decision()
+	if previous_state == CombatState.CHASE and combat_state == CombatState.LOCK:
+		# Wake the event lane before the first committed lock countdown tick.
+		request_layered_area_urgent_decision()
+	return consumed
+
+
+func _layered_ranged_attack_state_allows_motion() -> bool:
+	return (
+		combat_state == CombatState.CHASE
+		and not layered_sniper_event_consumes_tick
+	)
+
+
+func _run_authoritative_physics_step(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
@@ -66,6 +160,21 @@ func _physics_process(delta: float) -> void:
 		_update_lock(delta)
 		return
 
+	if _try_consume_sniper_chase_decision():
+		return
+
+	if not is_instance_valid(objective_target):
+		velocity = Vector2.ZERO
+		_move_until_player_contact()
+		return
+
+	var move_direction := _get_navigation_move_direction(delta)
+	_update_facing(move_direction)
+	velocity = move_direction * _get_move_speed()
+	_move_until_player_contact()
+
+
+func _try_consume_sniper_chase_decision() -> bool:
 	var sniper_config := config as SniperConfig
 	var preferred_target := _get_preferred_ranged_combat_target()
 	if (
@@ -77,26 +186,17 @@ func _physics_process(delta: float) -> void:
 		)
 	):
 		if _try_start_lock(preferred_target):
-			return
+			return true
 		if _try_hold_ranged_attack_position(
 			preferred_target,
 			sniper_config.attack_range,
 			WORLD_COLLISION_MASK
 		):
 			_update_facing(global_position.direction_to(preferred_target.global_position))
-			return
+			return true
 	else:
 		_reset_ranged_attack_position_state()
-
-	if not is_instance_valid(objective_target):
-		velocity = Vector2.ZERO
-		_move_until_player_contact()
-		return
-
-	var move_direction := _get_navigation_move_direction(delta)
-	_update_facing(move_direction)
-	velocity = move_direction * _get_move_speed()
-	_move_until_player_contact()
+	return false
 
 
 func _process(delta: float) -> void:
@@ -139,6 +239,9 @@ func _apply_config() -> void:
 	latest_proxy_terminal_action_id = 0
 	latest_proxy_presentation_revision = 0
 	latest_proxy_presentation_terminal_revision = 0
+	layered_sniper_event_consumes_tick = false
+	layered_sniper_lock_ready_to_fire = false
+	layered_sniper_pending_fire_direction = Vector2.ZERO
 	_reset_ranged_attack_position_state()
 	_clear_proxy_lock_visual()
 	var sniper_config := config as SniperConfig
@@ -214,13 +317,20 @@ func _try_start_lock(candidate_target: Node2D = null) -> bool:
 
 
 func _update_lock(delta: float) -> void:
+	if not _advance_lock_state(delta):
+		return
+	_resolve_expired_lock()
+	layered_sniper_pending_fire_direction = Vector2.ZERO
+
+
+func _advance_lock_state(delta: float) -> bool:
 	var sniper_config := config as SniperConfig
 	if (
 		sniper_config == null
 		or not _is_lock_target_valid(sniper_config)
 	):
 		_cancel_lock()
-		return
+		return false
 
 	velocity = Vector2.ZERO
 	var direction := global_position.direction_to(locked_target.global_position)
@@ -236,15 +346,72 @@ func _update_lock(delta: float) -> void:
 	_update_lock_warning(locked_target.global_position, progress)
 
 	if lock_time_left > 0.0:
-		return
+		return false
+	layered_sniper_pending_fire_direction = direction
+	return true
 
+
+func _resolve_expired_lock() -> void:
+	var direction := layered_sniper_pending_fire_direction
+	if direction == Vector2.ZERO:
+		direction = Vector2.RIGHT
 	_fire_locked_shot(direction)
 
 
 func _is_lock_target_valid(sniper_config: SniperConfig) -> bool:
-	return _is_ranged_combat_target_in_range(
-		locked_target,
-		sniper_config.attack_range
+	if not _is_frozen_lock_target_valid(locked_target):
+		return false
+	var safe_range := maxf(sniper_config.attack_range, 0.0)
+	return (
+		global_position.distance_squared_to(locked_target.global_position)
+		<= safe_range * safe_range
+	)
+
+
+func _get_frozen_lock_source_faction_id() -> int:
+	if lock_damage_source_snapshot != null:
+		return lock_damage_source_snapshot.source_faction_id
+	return get_combat_faction_id()
+
+
+func _is_frozen_lock_target_valid(candidate: Node2D) -> bool:
+	if candidate == null or not is_instance_valid(candidate) or candidate == self:
+		return false
+	var target_faction_id := CombatRelationService.NEUTRAL
+	var player_target := candidate as Player
+	if player_target != null:
+		if player_target.is_dead or player_target.is_queued_for_deletion():
+			return false
+		target_faction_id = player_target.get_combat_faction_id()
+	var plant_target := candidate as PlantDefense
+	if plant_target != null:
+		if (
+			plant_target.is_dead
+			or plant_target.is_removing
+			or plant_target.is_queued_for_deletion()
+		):
+			return false
+		target_faction_id = plant_target.get_combat_faction_id()
+	var enemy_target := candidate as Enemy
+	if enemy_target != null:
+		if enemy_target.is_dead or enemy_target.is_queued_for_deletion():
+			return false
+		target_faction_id = enemy_target.get_combat_faction_id()
+	elif player_target == null and plant_target == null:
+		return false
+	var relation_service := (
+		combat_runtime.get_combat_relation_service()
+		if combat_runtime != null and is_instance_valid(combat_runtime)
+		else combat_relation_service
+	)
+	if relation_service != null:
+		return relation_service.is_hostile(
+			_get_frozen_lock_source_faction_id(),
+			target_faction_id
+		)
+	return CombatRelationService.is_default_hostile(
+		_get_frozen_lock_source_faction_id(),
+		target_faction_id
 	)
 
 
@@ -252,11 +419,8 @@ func _fire_locked_shot(direction: Vector2) -> void:
 	var sniper_config := config as SniperConfig
 	if (
 		sniper_config == null
-		or not _is_ranged_combat_target_in_range(
-			locked_target,
-			sniper_config.attack_range
-		)
-		or not _has_ranged_combat_line(
+		or not _is_lock_target_valid(sniper_config)
+		or not _has_frozen_lock_combat_line(
 			locked_target,
 			WORLD_COLLISION_MASK,
 			true
@@ -327,6 +491,8 @@ func _fire_locked_shot(direction: Vector2) -> void:
 
 func _cancel_lock() -> void:
 	var had_active_lock := combat_state == CombatState.LOCK
+	layered_sniper_lock_ready_to_fire = false
+	layered_sniper_pending_fire_direction = Vector2.ZERO
 	if locked_target != null and is_instance_valid(locked_target):
 		_broadcast_enemy_target_action(&"sniper_lock_cancel", locked_target)
 	elif had_active_lock:
@@ -352,6 +518,28 @@ func _cancel_lock() -> void:
 	var sniper_config := config as SniperConfig
 	if sniper_config != null:
 		_play_config_animation(sniper_config.move_animation_name)
+
+
+func _has_frozen_lock_combat_line(
+	target: Node2D,
+	collision_mask_value: int,
+	force_refresh: bool
+) -> bool:
+	if not _is_frozen_lock_target_valid(target):
+		return false
+	if _is_live_ranged_combat_target(target):
+		return _has_ranged_combat_line(
+			target,
+			collision_mask_value,
+			force_refresh
+		)
+	# A committed lock keeps its frozen source faction even if the live caster
+	# changes side. At expiry only a fresh geometric ray remains; the ordinary
+	# ranged helper's live-relation guard would otherwise rewrite that snapshot.
+	return _is_world_segment_clear(
+		target.global_position,
+		collision_mask_value
+	)
 
 
 func _broadcast_lock_presentation_state(

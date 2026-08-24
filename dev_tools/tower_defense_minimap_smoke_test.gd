@@ -4,6 +4,10 @@ const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense
 const MINIMAP_SCENE := preload("res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap.tscn")
 const REMOTE_PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const ENEMY_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_basic.tscn")
+const MINIMAP_CANVAS_SOURCE_PATH := (
+	"res://scene/game_modes/tower_defense/ui/minimap/"
+	+ "tower_defense_minimap_canvas.gd"
+)
 const MAX_SAMPLE_RATE_HZ := 30.0
 const EXPECTED_HOME_GATE_CELL_COUNT := 4
 const EXPECTED_MINIMAP_SIZE := Vector2(194.0, 130.0)
@@ -23,6 +27,7 @@ func _init() -> void:
 
 
 func _run() -> void:
+	_verify_minimap_query_source_contract()
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Tower-defense scene must instantiate for minimap verification.")
 	if game == null:
@@ -290,13 +295,25 @@ func _verify_projection_and_coordinate(
 	)
 
 	var view_rect := canvas.static_layer.get_projected_view_rect()
-	_expect(
-		is_equal_approx(view_rect.size.x / canvas.static_layer.size.x, 1.0 / 3.0),
-		"The current-view frame width must occupy one third of the minimap."
+	var projected_overview_size := (
+		canvas.static_layer.overview_world_size
+		* canvas.static_layer._projection_scale
 	)
 	_expect(
-		is_equal_approx(view_rect.size.y / canvas.static_layer.size.y, 1.0 / 3.0),
-		"The current-view frame height must occupy one third of the minimap."
+		is_equal_approx(view_rect.size.x / projected_overview_size.x, 1.0 / 3.0),
+		(
+			"The current-view frame width must occupy one third of the projected "
+			+ "overview; actual=%s view=%s overview=%s."
+		)
+		% [
+			view_rect.size.x / projected_overview_size.x,
+			view_rect.size,
+			projected_overview_size,
+		]
+	)
+	_expect(
+		is_equal_approx(view_rect.size.y / projected_overview_size.y, 1.0 / 3.0),
+		"The current-view frame height must occupy one third of the projected overview."
 	)
 	_expect(
 		canvas.dynamic_layer.local_player_world_position.is_equal_approx(
@@ -408,6 +425,11 @@ func _verify_dynamic_markers(
 	enemy.set_physics_process(false)
 	game.enemy_container.add_child(enemy)
 	enemy.global_position = game.player.global_position + Vector2(-48.0, -32.0)
+	_expect(
+		enemy.combat_target_index_binding == game.combat_target_index
+		and game.combat_target_index.get_enemy(enemy.get_instance_id()) == enemy,
+		"Single-player child-entered wiring must register the minimap fixture enemy."
+	)
 
 	var fence_config := game.plant_system.get_config(&"simple_fence")
 	var valid_fence_anchors := game.plant_system.get_valid_anchors_for_player(
@@ -443,7 +465,7 @@ func _verify_dynamic_markers(
 	)
 	_expect(
 		canvas.dynamic_layer.enemy_world_positions.has(enemy.global_position),
-		"A sampled living enemy must enter the red-marker data layer."
+		"A sampled indexed living enemy must enter the red-marker data layer."
 	)
 	_expect(
 		plant != null
@@ -481,6 +503,30 @@ func _verify_dynamic_markers(
 			),
 			"Minimap fixture plant cleanup must use PlantSystem authoritative removal."
 		)
+	enemy.queue_free()
+	remote_player.queue_free()
+
+
+func _verify_minimap_query_source_contract() -> void:
+	var source := FileAccess.get_file_as_string(MINIMAP_CANVAS_SOURCE_PATH)
+	var function_source := _extract_function_source(
+		source,
+		"func _sample_world_entities("
+	)
+	_expect(
+		not function_source.is_empty()
+		and function_source.find("combat_query_facade.query_world_aabb_into(") >= 0
+		and function_source.find("_append_enemy_positions(") < 0,
+		"Minimap enemy sampling must use the shared AABB facade and never restore container scans."
+	)
+
+
+func _extract_function_source(source: String, signature: String) -> String:
+	var start := source.find(signature)
+	if start < 0:
+		return ""
+	var finish := source.find("\n\nfunc ", start + signature.length())
+	return source.substr(start) if finish < 0 else source.substr(start, finish - start)
 
 
 func _verify_enemy_marker_aggregation(

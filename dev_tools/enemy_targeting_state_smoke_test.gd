@@ -19,6 +19,7 @@ func _run() -> void:
 	_test_entity_and_assignment_revisions_are_independent()
 	_test_automatic_target_hysteresis()
 	_test_priority_and_prepared_fallback()
+	_test_precleared_invalid_assignment_restores_fallback()
 	_test_unreachable_confirmation_cache_and_recovery()
 	_test_immediate_assignment_suppression()
 	if failures.is_empty():
@@ -241,6 +242,22 @@ func _test_immediate_assignment_suppression() -> void:
 		and not state.is_assignment_negative_cached(201)
 		and state.active_target.same_identity(replacement),
 		"更新的宿主赋值必须清除旧目标的负缓存状态。"
+	)
+
+
+func _test_precleared_invalid_assignment_restores_fallback() -> void:
+	var state := TargetingState.new()
+	var assigned := Descriptor.create_enemy(701, 0, Vector2.ZERO)
+	var automatic := Descriptor.create_enemy(702, 0, Vector2.ONE)
+	state.apply_assignment(assigned)
+	state.consider_automatic_target(automatic, INF, 1.0)
+	_expect(
+		state.clear_active_target(assigned)
+		and not state.has_active_target()
+		and state.suppress_assignment(40)
+		and state.active_target.same_identity(automatic)
+		and not state.is_active_target_assigned(),
+		"资格层先清除失效指定目标时，负缓存仍必须恢复已准备的自动补位。"
 	)
 
 
