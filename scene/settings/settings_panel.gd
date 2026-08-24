@@ -19,6 +19,7 @@ const ACTION_ROW_NAMES := {
 	"plant": "PlantRow",
 	"show_detail": "ShowDetailRow",
 	"reload": "ReloadRow",
+	"pause": "PauseRow",
 }
 
 const ACTION_DISPLAY_NAMES := {
@@ -34,6 +35,7 @@ const ACTION_DISPLAY_NAMES := {
 	"plant": "植物防御塔",
 	"show_detail": "生产详情",
 	"reload": "换弹",
+	"pause": "暂停菜单",
 }
 
 @onready var resolution_option: OptionButton = $Center/Panel/Margin/Layout/Scroll/Content/DisplaySection/ResolutionRow/ResolutionOption
@@ -112,6 +114,10 @@ func close() -> void:
 
 func is_open() -> bool:
 	return visible
+
+
+func is_capturing_input() -> bool:
+	return _is_capture_active()
 
 
 func _connect_controls() -> void:

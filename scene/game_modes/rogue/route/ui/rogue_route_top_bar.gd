@@ -1,6 +1,8 @@
 extends PanelContainer
 class_name RogueRouteTopBar
 
+signal menu_requested
+
 const CORE_NORMAL_COLOR := Color(0.42, 0.82, 1.0, 1.0)
 const CORE_CRITICAL_COLOR := Color(1.0, 0.31, 0.28, 1.0)
 const CORE_DAMAGE_FLASH_COLOR := Color(1.32, 0.58, 0.52, 1.0)
@@ -12,9 +14,14 @@ const CORE_DAMAGE_FLASH_SECONDS := 0.42
 @onready var light_stone_value: Label = %LightStoneValue
 @onready var xirang_value: Label = %XirangValue
 @onready var floor_title: Label = $TopLayout/TitleBlock/Title
+@onready var menu_button: Button = %MenuButton
 
 var _core_damage_tween: Tween = null
 var _cached_core_current := -1
+
+
+func _ready() -> void:
+	menu_button.pressed.connect(menu_requested.emit)
 
 
 func _exit_tree() -> void:

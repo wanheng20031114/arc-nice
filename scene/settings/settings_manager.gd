@@ -38,6 +38,7 @@ const BINDABLE_ACTIONS: Array[String] = [
 	"plant",
 	"show_detail",
 	"reload",
+	"pause",
 ]
 
 const RESOLUTION_OPTIONS: Array[Dictionary] = [

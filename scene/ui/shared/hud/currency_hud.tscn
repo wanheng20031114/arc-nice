@@ -84,7 +84,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_profile")
 theme_override_styles/hover = SubResource("StyleBoxFlat_profile_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_profile_hover")
 theme_override_styles/focus = SubResource("StyleBoxFlat_profile_hover")
-tooltip_text = "设置"
+tooltip_text = "暂停菜单"
 
 [node name="GearIcon" type="Control" parent="TopRightMargin/Content/SettingsButton"]
 layout_mode = 1

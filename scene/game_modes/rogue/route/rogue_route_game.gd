@@ -394,6 +394,11 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	var pause_controller := get_node_or_null(
+		"/root/GameplayPause"
+	) as GameplayPauseController
+	if pause_controller != null:
+		pause_controller.unregister_context(self)
 	var runtime_policy_lease := (
 		GlobalRuntimePolicyLeaseStore.get_autoload_instance()
 	)
@@ -2761,6 +2766,14 @@ func set_authority_enabled(enabled: bool) -> void:
 
 func activate_runtime() -> void:
 	_runtime_activated = true
+	if manage_return_locally and not embedded_session:
+		var pause_controller := get_node(
+			"/root/GameplayPause"
+		) as GameplayPauseController
+		pause_controller.register_context(
+			self,
+			_return_to_main_menu
+		)
 	_try_play_route_entry_reveal()
 
 
@@ -4922,7 +4935,7 @@ func _finish_rare_chest_presentation(
 	presentation_serial: int,
 	occurrence_key: String
 ) -> void:
-	await get_tree().create_timer(0.8).timeout
+	await get_tree().create_timer(0.8, false).timeout
 	if (
 		presentation_serial != _rare_chest_presentation_serial
 		or rare_chest_session == null
@@ -5737,6 +5750,13 @@ func _on_regenerate_button_pressed() -> void:
 	):
 		return
 	start_authoritative_session()
+
+
+func _on_route_menu_requested() -> void:
+	var gameplay_pause := get_node(
+		"/root/GameplayPause"
+	) as GameplayPauseController
+	gameplay_pause.open_menu()
 
 
 func _return_to_main_menu() -> void:

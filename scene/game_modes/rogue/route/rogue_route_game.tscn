@@ -383,6 +383,7 @@ layout_mode = 1
 layer = 25
 
 [connection signal="node_pressed" from="World/RouteBoard" to="." method="_on_route_board_node_pressed"]
+[connection signal="menu_requested" from="HUD/Root/TopBar" to="." method="_on_route_menu_requested"]
 [connection signal="pressed" from="HUD/Root/BottomBar/BottomLayout/ActionBlock/Buttons/RegenerateButton" to="." method="_on_regenerate_button_pressed"]
 [connection signal="pressed" from="HUD/Root/BottomBar/BottomLayout/ActionBlock/Buttons/RecenterButton" to="." method="_on_recenter_button_pressed"]
 [connection signal="bag_requested" from="HUD/Root/BottomBar/RogueRouteInventoryStrip" to="." method="_on_route_inventory_bag_requested"]
