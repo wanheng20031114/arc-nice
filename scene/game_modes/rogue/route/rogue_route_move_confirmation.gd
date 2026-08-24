@@ -57,7 +57,7 @@ func dismiss() -> void:
 func _input(event: InputEvent) -> void:
 	if not visible:
 		return
-	if event.is_action_pressed(&"ui_cancel"):
+	if event.is_action_pressed(&"quit"):
 		get_viewport().set_input_as_handled()
 		_cancel()
 

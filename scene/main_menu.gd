@@ -121,7 +121,7 @@ func _process(_delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if (
-		event.is_action_pressed("ui_cancel")
+		event.is_action_pressed("quit")
 		and (
 			(
 				_encyclopedia_open_requested

@@ -63,6 +63,12 @@ const DESCRIPTION_SCROLL_SPEED := 10.0
 const DESCRIPTION_SCROLL_TOP_PAUSE := 0.8
 const DESCRIPTION_SCROLL_BOTTOM_PAUSE := 1.5
 const CONFIRMATION_LOCK_DURATION := 1.0
+const OPTION_ACTIONS: Array[StringName] = [
+	&"select_option_1",
+	&"select_option_2",
+	&"select_option_3",
+	&"select_option_4",
+]
 
 var selected_index: int = 0
 var choices: Array = []
@@ -105,6 +111,11 @@ func _ready() -> void:
 		cards[index].mouse_exited.connect(_on_card_mouse_exited.bind(index))
 		_apply_card_rarity_visuals(index, PickupConfig.CollectibleRarity.COMMON)
 	refresh_button.pressed.connect(_emit_refresh_requested)
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings != null:
+		var binding_callback := Callable(self, "_on_action_bindings_changed")
+		if not settings.is_connected(&"action_bindings_changed", binding_callback):
+			settings.connect(&"action_bindings_changed", binding_callback)
 	set_process(false)
 
 
@@ -151,6 +162,17 @@ func _process(delta: float) -> void:
 func handle_input(event: InputEvent) -> bool:
 	if not root_control.visible:
 		return false
+	if not event.is_echo():
+		for option_index in range(OPTION_ACTIONS.size()):
+			if not event.is_action_pressed(OPTION_ACTIONS[option_index]):
+				continue
+			if option_index >= choices.size():
+				return false
+			if is_confirmation_locked():
+				return true
+			select_choice(option_index)
+			_emit_current_choice()
+			return true
 	if event.is_action_pressed("move_left") or event.is_action_pressed("shoot_left"):
 		select_choice(selected_index - 1)
 		return true
@@ -166,7 +188,7 @@ func handle_input(event: InputEvent) -> bool:
 		if not refresh_button.disabled:
 			_emit_refresh_requested()
 		return true
-	if event.is_action_pressed("ui_cancel"):
+	if event.is_action_pressed("quit"):
 		hide_choices()
 		choice_closed.emit()
 		return true
@@ -187,11 +209,7 @@ func set_refresh_state(
 	current_xirang = maxi(new_current_xirang, 0)
 	var exhausted := refresh_count >= refresh_limit
 	refresh_button.disabled = exhausted
-	refresh_button.text = (
-		"本次休整期已无法刷新"
-		if exhausted
-		else "花费 %d 息壤进行刷新（键盘 R / 手柄 RB）" % refresh_cost
-	)
+	_update_refresh_button_text()
 	refresh_button.tooltip_text = (
 		"刷新次数将在下一个休整期恢复"
 		if exhausted
@@ -226,6 +244,41 @@ func _build_refresh_progress(used_count: int, limit: int) -> String:
 	return "%s  %d/%d" % [" ".join(marks), used_count, limit]
 
 
+func _update_refresh_button_text() -> void:
+	if refresh_count >= refresh_limit:
+		refresh_button.text = "本次休整期已无法刷新"
+		return
+	refresh_button.text = "花费 %d 息壤进行刷新（%s）" % [
+		refresh_cost,
+		_get_binding_summary(&"luoxi_refresh"),
+	]
+
+
+func _get_binding_summary(action: StringName) -> String:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return "未绑定"
+	var keyboard := str(
+		settings.call("get_primary_keyboard_binding_text", str(action), "", true)
+	)
+	var gamepad := str(
+		settings.call("get_primary_gamepad_binding_text", str(action), "", true)
+	)
+	var parts: Array[String] = []
+	if not keyboard.is_empty():
+		parts.append("键盘 %s" % keyboard)
+	if not gamepad.is_empty():
+		parts.append("手柄 %s" % gamepad)
+	return " / ".join(parts) if not parts.is_empty() else "未绑定"
+
+
+func _on_action_bindings_changed(action: StringName) -> void:
+	if action == &"luoxi_refresh" and not refresh_pending:
+		_update_refresh_button_text()
+	if OPTION_ACTIONS.has(action):
+		_update_card_button_labels()
+
+
 func _emit_refresh_requested() -> void:
 	if refresh_button.disabled or refresh_pending:
 		return
@@ -255,7 +308,6 @@ func _update_cards() -> void:
 		titles[index].text = item.display_name if has_item else ""
 		descriptions[index].text = _build_description_text(item) if has_item else ""
 		buttons[index].disabled = not has_item
-		buttons[index].text = "选择"
 		_apply_card_rarity_visuals(
 			index,
 			int(item.collectible_rarity)
@@ -263,7 +315,24 @@ func _update_cards() -> void:
 			else PickupConfig.CollectibleRarity.COMMON
 		)
 		_reset_description_scroll(index)
+	_update_card_button_labels()
 	_update_selection()
+
+
+func _update_card_button_labels() -> void:
+	var settings := get_node_or_null("/root/UserSettings")
+	for index in range(buttons.size()):
+		var shortcut := "未绑定"
+		if settings != null and index < OPTION_ACTIONS.size():
+			shortcut = str(
+				settings.call(
+					"get_primary_binding_text",
+					str(OPTION_ACTIONS[index]),
+					"未绑定",
+					true
+				)
+			)
+		buttons[index].text = "选择 [%s]" % shortcut
 
 
 func _build_description_text(item: PickupConfig) -> String:

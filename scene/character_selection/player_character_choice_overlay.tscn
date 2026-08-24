@@ -190,5 +190,5 @@ mouse_filter = 2
 theme_override_colors/font_color = Color(0.52, 0.55, 0.6, 1)
 theme_override_fonts/font = ExtResource("3_font")
 theme_override_font_sizes/font_size = 12
-text = "A / D 或方向键切换  ·  Enter 确认  ·  Esc 返回"
+text = "切换、确认和返回快捷键可在设置中修改"
 horizontal_alignment = 1

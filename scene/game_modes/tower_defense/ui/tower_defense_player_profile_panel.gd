@@ -208,7 +208,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if not overlay.visible:
 		return
-	if event.is_action_pressed("quit") or event.is_action_pressed("ui_cancel"):
+	if event.is_action_pressed("quit"):
 		close()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ui_accept") and current_tab == 0:

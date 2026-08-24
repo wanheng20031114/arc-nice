@@ -768,7 +768,7 @@ theme_override_colors/font_color = Color(0.42, 0.52, 0.46, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 11
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
-text = "切换 P1A / P1B / P1C / P1D / P1E / P2 / P3 标签查看说明  ·  Esc 返回"
+text = "切换 P1A / P1B / P1C / P1D / P1E / P2 / P3 标签查看说明  ·  使用关闭热键返回"
 horizontal_alignment = 1
 
 [connection signal="tab_changed" from="Root/Center/Panel/PanelMargin/Layout/Tabs" to="." method="_on_tab_changed"]

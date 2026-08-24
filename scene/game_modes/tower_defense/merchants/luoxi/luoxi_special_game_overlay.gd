@@ -191,7 +191,7 @@ func handle_input(event: InputEvent) -> bool:
 		else:
 			_request_card_reveal(selected_index)
 		return true
-	if event.is_action_pressed("ui_cancel"):
+	if event.is_action_pressed("quit"):
 		_request_finish()
 		return true
 	return true

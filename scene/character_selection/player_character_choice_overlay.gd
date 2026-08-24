@@ -16,6 +16,7 @@ const CARD_OPEN_STAGGER := 0.09
 @onready var card_row: HBoxContainer = $Root/Center/Content/CardRow
 @onready var confirm_button: Button = $Root/Center/Content/Footer/ConfirmButton
 @onready var back_button: Button = $Root/Center/Content/Footer/BackButton
+@onready var hint_label: Label = $Root/Center/Content/Hint
 
 var cards: Array[PlayerCharacterCard] = []
 var selected_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
@@ -29,8 +30,41 @@ func _ready() -> void:
 	root_control.hide()
 	confirm_button.pressed.connect(_confirm_selection)
 	back_button.pressed.connect(close)
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings != null:
+		var binding_callback := Callable(self, "_on_action_bindings_changed")
+		if not settings.is_connected(&"action_bindings_changed", binding_callback):
+			settings.connect(&"action_bindings_changed", binding_callback)
+	_refresh_hotkey_hint()
 	set_process(false)
 	set_process_unhandled_input(false)
+
+
+func _on_action_bindings_changed(action: StringName) -> void:
+	if action in [&"move_left", &"move_right", &"interact", &"quit"]:
+		_refresh_hotkey_hint()
+
+
+func _refresh_hotkey_hint() -> void:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return
+	var left_key := str(
+		settings.call("get_primary_keyboard_binding_text", "move_left", "—", true)
+	)
+	var right_key := str(
+		settings.call("get_primary_keyboard_binding_text", "move_right", "—", true)
+	)
+	var interact_key := str(
+		settings.call("get_primary_keyboard_binding_text", "interact", "—", true)
+	)
+	var quit_key := str(
+		settings.call("get_primary_keyboard_binding_text", "quit", "—", true)
+	)
+	hint_label.text = (
+		"%s / %s 或方向键切换  ·  Enter / %s 确认  ·  %s 返回"
+		% [left_key, right_key, interact_key, quit_key]
+	)
 
 
 func open(initial_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID) -> void:
@@ -90,7 +124,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_confirm_selection()
 		get_viewport().set_input_as_handled()
 		return
-	if event.is_action_pressed(&"ui_cancel"):
+	if event.is_action_pressed(&"quit"):
 		close()
 		get_viewport().set_input_as_handled()
 

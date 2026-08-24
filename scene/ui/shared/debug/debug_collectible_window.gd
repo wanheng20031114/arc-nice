@@ -66,7 +66,7 @@ func show_grant_result(config_path: String, success: bool) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible:
 		return
-	if event.is_action_pressed("cheat_collectibles") or event.is_action_pressed("quit") or event.is_action_pressed("ui_cancel"):
+	if event.is_action_pressed("cheat_collectibles") or event.is_action_pressed("quit"):
 		close()
 		get_viewport().set_input_as_handled()
 

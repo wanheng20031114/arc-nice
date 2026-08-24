@@ -57,6 +57,7 @@ var rendered_local_vote: StringName = &""
 var rendered_local_buff_vote: StringName = &""
 var show_tween: Tween = null
 var rendered_stage: StringName = &""
+var _displayed_interaction_binding := "F"
 
 
 func _ready() -> void:
@@ -77,6 +78,12 @@ func _ready() -> void:
 		collectible_buttons[button_index].pressed.connect(
 			_on_collectible_selected.bind(button_index)
 		)
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings != null:
+		var binding_callback := Callable(self, "_on_action_bindings_changed")
+		if not settings.is_connected(&"action_bindings_changed", binding_callback):
+			settings.connect(&"action_bindings_changed", binding_callback)
+	_displayed_interaction_binding = _interaction_binding_text()
 	hide_overlay()
 
 
@@ -213,7 +220,7 @@ func _apply_vote_state(
 		)
 		if recovery_available:
 			status_label.text += (
-				" · 等待超时，按 F 继续结算"
+				" · 等待超时，按 %s 继续结算" % _interaction_binding_text()
 				if local_is_host
 				else " · 等待房主继续结算"
 			)
@@ -264,7 +271,7 @@ func _apply_critical_buff_vote_state(
 		)
 		if recovery_available:
 			status_label.text += (
-				" · 等待超时，按 F 继续结算"
+				" · 等待超时，按 %s 继续结算" % _interaction_binding_text()
 				if local_is_host
 				else " · 等待房主继续结算"
 			)
@@ -275,6 +282,26 @@ func _apply_critical_buff_vote_state(
 	else:
 		status_label.text = "本日旁观 · 等待参与玩家投票选择全局增益"
 	_show_critical_buff_vote_modal(votes, local_is_eligible)
+
+
+func _interaction_binding_text() -> String:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return "未绑定"
+	return str(
+		settings.call("get_primary_binding_text", "interact", "未绑定", true)
+	)
+
+
+func _on_action_bindings_changed(action: StringName) -> void:
+	if action != &"interact":
+		return
+	var next_binding := _interaction_binding_text()
+	status_label.text = status_label.text.replace(
+		"按 %s" % _displayed_interaction_binding,
+		"按 %s" % next_binding
+	)
+	_displayed_interaction_binding = next_binding
 
 
 func _apply_collectible_state(

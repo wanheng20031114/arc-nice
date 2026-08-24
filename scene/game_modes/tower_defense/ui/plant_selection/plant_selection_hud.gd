@@ -28,6 +28,7 @@ const CATEGORY_ORDER: Array[int] = [
 @onready var cancel_button: Button = (
 	$Root/ScreenMargin/Content/Margin/Layout/Footer/CancelButton
 )
+@onready var hint_label: Label = $Root/ScreenMargin/Content/Margin/Layout/Hint
 
 var cards: Array[PlantSelectionCard] = []
 var available_configs: Array[PlantDefenseConfig] = []
@@ -53,7 +54,37 @@ func _ready() -> void:
 	confirm_button.pressed.connect(_confirm_selection)
 	cancel_button.pressed.connect(_request_cancel)
 	dim.gui_input.connect(_on_dim_gui_input)
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings != null:
+		var binding_callback := Callable(self, "_on_action_bindings_changed")
+		if not settings.is_connected(&"action_bindings_changed", binding_callback):
+			settings.connect(&"action_bindings_changed", binding_callback)
+	_refresh_hotkey_hint()
 	set_process_unhandled_input(false)
+
+
+func _on_action_bindings_changed(action: StringName) -> void:
+	if action in [&"interact", &"plant", &"quit"]:
+		_refresh_hotkey_hint()
+
+
+func _refresh_hotkey_hint() -> void:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return
+	var interact_key := str(
+		settings.call("get_primary_binding_text", "interact", "未绑定", true)
+	)
+	var plant_key := str(
+		settings.call("get_primary_binding_text", "plant", "未绑定", true)
+	)
+	var quit_key := str(
+		settings.call("get_primary_binding_text", "quit", "未绑定", true)
+	)
+	hint_label.text = (
+		"左右切换建筑  ·  上下切换分类  ·  Enter / %s 部署  ·  "
+		+ "%s / 右键 / %s 关闭"
+	) % [interact_key, quit_key, plant_key]
 
 
 func open(
@@ -187,7 +218,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_confirm_selection()
 		get_viewport().set_input_as_handled()
 		return
-	if event.is_action_pressed(&"ui_cancel"):
+	if event.is_action_pressed(&"quit"):
 		_request_cancel()
 		get_viewport().set_input_as_handled()
 

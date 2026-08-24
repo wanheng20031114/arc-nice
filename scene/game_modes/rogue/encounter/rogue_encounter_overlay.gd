@@ -100,9 +100,40 @@ func _ready() -> void:
 		choice_card.selected.connect(_on_option_selected)
 		choice_card.button.button_group = group
 		choice_card.reset_card()
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings != null:
+		var binding_callback := Callable(self, "_on_action_bindings_changed")
+		if not settings.is_connected(&"action_bindings_changed", binding_callback):
+			settings.connect(&"action_bindings_changed", binding_callback)
+	_refresh_interaction_prompt()
 	_set_transition_progress(0.0)
 	_set_option_reveal_progress(1.0)
 	hide_immediately()
+
+
+func _on_action_bindings_changed(action: StringName) -> void:
+	if action == &"interact":
+		_refresh_interaction_prompt()
+
+
+func _refresh_interaction_prompt() -> void:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return
+	var keyboard := str(
+		settings.call("get_primary_keyboard_binding_text", "interact", "", true)
+	)
+	var gamepad := str(
+		settings.call("get_primary_gamepad_binding_text", "interact", "", true)
+	)
+	var shortcuts: Array[String] = []
+	if not keyboard.is_empty():
+		shortcuts.append(keyboard)
+	if not gamepad.is_empty():
+		shortcuts.append(gamepad)
+	prompt_label.text = "%s　继续" % (
+		" / ".join(shortcuts) if not shortcuts.is_empty() else "未绑定"
+	)
 
 
 func configure_local_context(

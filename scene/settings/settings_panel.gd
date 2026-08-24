@@ -16,9 +16,23 @@ const ACTION_ROW_NAMES := {
 	"shoot_left": "ShootLeftRow",
 	"shoot_right": "ShootRightRow",
 	"skill1": "Skill1Row",
+	"dash": "DashRow",
+	"interact": "InteractRow",
+	"bag": "BagRow",
+	"use_item": "UseItemRow",
+	"continuous_place": "ContinuousPlaceRow",
 	"plant": "PlantRow",
 	"show_detail": "ShowDetailRow",
+	"delete": "DeleteRow",
 	"reload": "ReloadRow",
+	"luoxi_refresh": "LuoxiRefreshRow",
+	"select_option_1": "SelectOption1Row",
+	"select_option_2": "SelectOption2Row",
+	"select_option_3": "SelectOption3Row",
+	"select_option_4": "SelectOption4Row",
+	"recenter_camera": "RecenterCameraRow",
+	"full_screen": "FullScreenRow",
+	"quit": "QuitRow",
 	"pause": "PauseRow",
 }
 
@@ -32,9 +46,23 @@ const ACTION_DISPLAY_NAMES := {
 	"shoot_left": "向左射击",
 	"shoot_right": "向右射击",
 	"skill1": "技能",
+	"dash": "冲刺",
+	"interact": "交互 / 确认",
+	"bag": "背包",
+	"use_item": "快捷使用物品",
+	"continuous_place": "连续放置",
 	"plant": "植物防御塔",
 	"show_detail": "生产详情",
+	"delete": "拆除最近建筑",
 	"reload": "换弹",
+	"luoxi_refresh": "洛希商品刷新",
+	"select_option_1": "选择选项 1",
+	"select_option_2": "选择选项 2",
+	"select_option_3": "选择选项 3",
+	"select_option_4": "选择选项 4",
+	"recenter_camera": "地图镜头归位",
+	"full_screen": "切换全屏",
+	"quit": "关闭当前界面",
 	"pause": "暂停菜单",
 }
 
@@ -49,6 +77,9 @@ const ACTION_DISPLAY_NAMES := {
 @onready var sfx_value: Label = $Center/Panel/Margin/Layout/Scroll/Content/AudioSection/SfxRow/SfxValue
 @onready var key_rows: VBoxContainer = $Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows
 @onready var hint_label: Label = $Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Hint
+@onready var capture_actions: HBoxContainer = $Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/CaptureActions
+@onready var clear_binding_button: Button = $Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/CaptureActions/ClearBindingButton
+@onready var cancel_capture_button: Button = $Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/CaptureActions/CancelCaptureButton
 @onready var reset_settings_button: Button = $Center/Panel/Margin/Layout/Footer/ResetSettingsButton
 @onready var reset_all_button: Button = $Center/Panel/Margin/Layout/Footer/ResetAllButton
 @onready var close_button: Button = $Center/Panel/Margin/Layout/Footer/CloseButton
@@ -57,6 +88,7 @@ var _slot_buttons_by_action: Dictionary = {}
 var _reset_buttons_by_action: Dictionary = {}
 var _capture_action: String = ""
 var _capture_slot: int = -1
+var _pending_modifier_event: InputEventKey = null
 
 
 func _settings() -> Node:
@@ -129,6 +161,8 @@ func _connect_controls() -> void:
 	reset_settings_button.pressed.connect(_on_reset_settings_pressed)
 	reset_all_button.pressed.connect(_on_reset_all_pressed)
 	close_button.pressed.connect(_on_close_pressed)
+	clear_binding_button.pressed.connect(_on_clear_binding_pressed)
+	cancel_capture_button.pressed.connect(_on_cancel_capture_pressed)
 
 
 func _populate_resolution_options() -> void:
@@ -142,6 +176,7 @@ func _collect_hotkey_rows() -> void:
 		var row_name := str(ACTION_ROW_NAMES.get(action, ""))
 		var row := key_rows.get_node_or_null(row_name) as HBoxContainer
 		if row == null:
+			push_error("设置热键行缺失：action=%s, row=%s" % [action, row_name])
 			continue
 		var action_label := row.get_node_or_null("ActionLabel") as Label
 		if action_label != null:
@@ -150,6 +185,7 @@ func _collect_hotkey_rows() -> void:
 		for slot_idx in range(SETTINGS_MANAGER_SCRIPT.MAX_BINDINGS_PER_ACTION):
 			var button := row.get_node_or_null("Slot%d" % (slot_idx + 1)) as Button
 			if button == null:
+				push_error("设置热键槽位缺失：action=%s, slot=%d" % [action, slot_idx + 1])
 				continue
 			button.pressed.connect(_on_bind_slot_pressed.bind(action, slot_idx))
 			slot_buttons.append(button)
@@ -158,6 +194,8 @@ func _collect_hotkey_rows() -> void:
 		if reset_button != null:
 			reset_button.pressed.connect(_on_reset_action_pressed.bind(action))
 			_reset_buttons_by_action[action] = reset_button
+		else:
+			push_error("设置热键重置按钮缺失：action=%s" % action)
 
 
 func _refresh_from_settings() -> void:
@@ -236,8 +274,31 @@ func _on_volume_changed(value: float, channel: StringName) -> void:
 func _on_bind_slot_pressed(action: String, slot_idx: int) -> void:
 	_capture_action = action
 	_capture_slot = slot_idx
-	_set_hint("正在设置“%s”，请按下新的按键或手柄输入。Esc 取消，Backspace/Delete 清空。" % str(ACTION_DISPLAY_NAMES.get(action, action)))
+	capture_actions.show()
+	_set_hint("正在设置“%s”，请按下新的按键或手柄输入；也可使用下方按钮取消或清空。" % str(ACTION_DISPLAY_NAMES.get(action, action)))
 	_refresh_hotkey_rows()
+
+
+func _on_clear_binding_pressed() -> void:
+	if not _is_capture_active():
+		return
+	var clear_error := int(
+		_settings().call("clear_action_event", _capture_action, _capture_slot)
+	)
+	_stop_capture()
+	_refresh_hotkey_rows()
+	if clear_error == OK:
+		_set_hint("该槽位已清空。")
+	else:
+		_set_persistence_hint(clear_error)
+
+
+func _on_cancel_capture_pressed() -> void:
+	if not _is_capture_active():
+		return
+	_stop_capture()
+	_refresh_hotkey_rows()
+	_set_hint("已取消按键设置。")
 
 
 func _on_reset_action_pressed(action: String) -> void:
@@ -292,7 +353,7 @@ func _input(event: InputEvent) -> void:
 	if _is_capture_active():
 		_handle_capture_input(event)
 		return
-	if event.is_action_pressed("ui_cancel"):
+	if event.is_action_pressed("quit"):
 		close()
 		_mark_input_handled()
 		return
@@ -303,29 +364,33 @@ func _input(event: InputEvent) -> void:
 func _handle_capture_input(event: InputEvent) -> void:
 	if event is InputEventKey:
 		var key_event := event as InputEventKey
-		if key_event.pressed and not key_event.echo:
-			if key_event.physical_keycode == KEY_ESCAPE:
-				_stop_capture()
-				_refresh_hotkey_rows()
-				_set_hint("已取消按键设置。")
-				_mark_input_handled()
-				return
-			if key_event.physical_keycode == KEY_BACKSPACE or key_event.physical_keycode == KEY_DELETE:
-				var clear_error := int(
-					_settings().call("clear_action_event", _capture_action, _capture_slot)
-				)
-				_stop_capture()
-				_refresh_hotkey_rows()
-				if clear_error == OK:
-					_set_hint("该槽位已清空。")
-				else:
-					_set_persistence_hint(clear_error)
-				_mark_input_handled()
-				return
+		if not key_event.pressed:
+			if (
+				_pending_modifier_event != null
+				and _key_event_code(key_event) == _key_event_code(_pending_modifier_event)
+			):
+				var standalone_modifier := _pending_modifier_event
+				_pending_modifier_event = null
+				_commit_captured_event(standalone_modifier)
+			return
 	var settings := _settings()
 	var captured: InputEvent = settings.call("normalize_captured_event", event)
 	if captured == null:
 		return
+	if captured is InputEventKey and _is_modifier_key(captured as InputEventKey):
+		_pending_modifier_event = captured as InputEventKey
+		_set_hint(
+			"已按下 %s；继续按键可组成组合键，直接松开则绑定为单键。"
+			% str(settings.call("event_to_display_text", captured))
+		)
+		_mark_input_handled()
+		return
+	_pending_modifier_event = null
+	_commit_captured_event(captured)
+
+
+func _commit_captured_event(captured: InputEvent) -> void:
+	var settings := _settings()
 	var owner_action := str(settings.call("find_event_owner", captured, _capture_action, _capture_slot))
 	if not owner_action.is_empty():
 		_set_hint("该输入已用于“%s”，请换一个。" % str(ACTION_DISPLAY_NAMES.get(owner_action, owner_action)))
@@ -350,6 +415,17 @@ func _is_capture_active() -> bool:
 func _stop_capture() -> void:
 	_capture_action = ""
 	_capture_slot = -1
+	_pending_modifier_event = null
+	if capture_actions != null:
+		capture_actions.hide()
+
+
+func _key_event_code(event: InputEventKey) -> int:
+	return int(event.physical_keycode if event.physical_keycode != 0 else event.keycode)
+
+
+func _is_modifier_key(event: InputEventKey) -> bool:
+	return _key_event_code(event) in [KEY_SHIFT, KEY_CTRL, KEY_ALT, KEY_META]
 
 
 func _mark_input_handled() -> void:

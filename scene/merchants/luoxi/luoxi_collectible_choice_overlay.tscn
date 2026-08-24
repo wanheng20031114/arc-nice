@@ -425,4 +425,4 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_refresh_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_refresh_button_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_refresh_button_disabled")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
-text = "花费 100 息壤进行刷新（键盘 R / 手柄 RB）"
+text = "花费 100 息壤进行刷新（快捷键可在设置中修改）"

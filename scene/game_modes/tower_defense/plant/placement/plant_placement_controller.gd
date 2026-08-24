@@ -85,6 +85,11 @@ func _ready() -> void:
 	placement_hint_layer.hide()
 	placement_hint_root.hide()
 	preview.hide_preview()
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings != null:
+		var binding_callback := Callable(self, "_on_action_bindings_changed")
+		if not settings.is_connected(&"action_bindings_changed", binding_callback):
+			settings.connect(&"action_bindings_changed", binding_callback)
 	set_process(false)
 
 
@@ -297,7 +302,7 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not placement_input_enabled:
 		return
-	if event.is_action_pressed(&"plant") and not _is_shift_modifier_event(event):
+	if event.is_action_pressed(&"plant"):
 		if placement_state == PlacementState.IDLE:
 			open_selection()
 		else:
@@ -307,7 +312,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if placement_state == PlacementState.IDLE:
 		return
-	if event.is_action_pressed(&"ui_cancel"):
+	if event.is_action_pressed(&"quit"):
 		cancel_placement()
 		get_viewport().set_input_as_handled()
 		return
@@ -323,7 +328,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		placement_state == PlacementState.PLACING
 		and mouse_event.button_index == MOUSE_BUTTON_LEFT
 	):
-		_try_place_hovered(mouse_event.shift_pressed)
+		_try_place_hovered(Input.is_action_pressed(&"continuous_place"))
 		get_viewport().set_input_as_handled()
 
 
@@ -654,13 +659,20 @@ func _update_hint_text() -> void:
 		cost_hint = "  ·  落地消耗背包 1 个建筑物品"
 	elif placement_source == PlacementSource.CATALOG_ITEM:
 		cost_hint = "  ·  落地消耗背包或共享仓库 1 个建筑物品"
+	var continuous_key := _get_binding_text(&"continuous_place")
+	var plant_key := _get_binding_text(&"plant")
+	var quit_key := _get_binding_text(&"quit")
+	var cancel_hint := "右键 / %s / %s 取消" % [quit_key, plant_key]
 	var action_hint := (
-		"建筑已放置，等待物品同步  ·  右键 / Esc / 植物键取消"
+		"建筑已放置，等待物品同步  ·  %s" % cancel_hint
 		if pending_request_id > 0 and pending_success_received
 		else (
-			"等待放置确认  ·  右键 / Esc / 植物键取消"
+			"等待放置确认  ·  %s" % cancel_hint
 			if pending_request_id > 0
-			else "左键放置  ·  按住 Shift 连续放置  ·  右键 / Esc / 植物键取消"
+			else "左键放置  ·  按住 %s 连续放置  ·  %s" % [
+				continuous_key,
+				cancel_hint,
+			]
 		)
 	)
 	placement_hint_label.text = "%s  ·  %d 个可放置位置%s  ·  %s" % [
@@ -780,15 +792,23 @@ func _on_shared_storage_totals_changed() -> void:
 	_try_complete_pending_continuous_placement()
 
 
-static func _is_shift_modifier_event(event: InputEvent) -> bool:
-	var key_event := event as InputEventKey
-	return (
-		key_event != null
-		and (
-			key_event.keycode == KEY_SHIFT
-			or key_event.physical_keycode == KEY_SHIFT
+func _get_binding_text(action: StringName) -> String:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return "未绑定"
+	return str(
+		settings.call(
+			"get_primary_binding_text",
+			str(action),
+			"未绑定",
+			true
 		)
 	)
+
+
+func _on_action_bindings_changed(action: StringName) -> void:
+	if action in [&"continuous_place", &"plant", &"quit"] and is_placing():
+		_update_hint_text()
 
 
 func _disconnect_owner_player() -> void:
@@ -824,6 +844,12 @@ func _on_owner_player_unavailable() -> void:
 
 
 func _exit_tree() -> void:
+	var settings := get_node_or_null("/root/UserSettings")
+	var binding_callback := Callable(self, "_on_action_bindings_changed")
+	if settings != null and settings.is_connected(
+		&"action_bindings_changed", binding_callback
+	):
+		settings.disconnect(&"action_bindings_changed", binding_callback)
 	_disconnect_owner_player()
 	_disconnect_catalog_state()
 	if placement_state != PlacementState.IDLE:

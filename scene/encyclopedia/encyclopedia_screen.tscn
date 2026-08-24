@@ -382,7 +382,7 @@ mouse_filter = 2
 layout_mode = 2
 theme_override_colors/font_color = Color(0.43, 0.46, 0.45, 1)
 theme_override_font_sizes/font_size = 11
-text = "方向键浏览  ·  Esc 返回"
+text = "方向键浏览  ·  使用“关闭当前界面”热键返回"
 horizontal_alignment = 1
 autowrap_mode = 3
 

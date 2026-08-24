@@ -24,6 +24,7 @@ const PLANT_DEFAULT_PHYSICAL_KEYCODE := KEY_T
 
 # 所有持久化尝试都从同一信号对外反馈；error_code 为 OK 时表示已落盘/删除。
 signal persistence_finished(operation: StringName, config_path: String, error_code: int)
+signal action_bindings_changed(action: StringName)
 
 const BINDABLE_ACTIONS: Array[String] = [
 	"move_up",
@@ -35,11 +36,34 @@ const BINDABLE_ACTIONS: Array[String] = [
 	"shoot_left",
 	"shoot_right",
 	"skill1",
+	"dash",
+	"interact",
+	"bag",
+	"use_item",
+	"continuous_place",
 	"plant",
 	"show_detail",
+	"delete",
 	"reload",
+	"luoxi_refresh",
+	"select_option_1",
+	"select_option_2",
+	"select_option_3",
+	"select_option_4",
+	"recenter_camera",
+	"full_screen",
+	"quit",
 	"pause",
 ]
+
+# 这些动作只在互斥上下文内生效，允许保留原有的共键默认值；其余动作仍
+# 维持全局冲突保护，避免一次输入同时触发两个并行玩法命令。
+const CONTEXTUAL_SHARED_BINDING_PEERS := {
+	"reload": "luoxi_refresh",
+	"luoxi_refresh": "reload",
+	"use_item": "continuous_place",
+	"continuous_place": "use_item",
+}
 
 const RESOLUTION_OPTIONS: Array[Dictionary] = [
 	{"id": "1280x720", "label": "1280 x 720 (720p)", "width": 1280, "height": 720},
@@ -257,11 +281,13 @@ func find_event_owner(event: InputEvent, excluded_action: String = "", excluded_
 	if not _is_supported_binding_event(event):
 		return ""
 	for action in BINDABLE_ACTIONS:
+		if _actions_may_share_binding(action, excluded_action):
+			continue
 		var events := get_supported_events(action)
 		for idx in range(events.size()):
 			if action == excluded_action and idx == excluded_slot:
 				continue
-			if events_equal(events[idx], event):
+			if events_overlap(events[idx], event):
 				return action
 	return ""
 
@@ -272,9 +298,11 @@ func events_equal(a: InputEvent, b: InputEvent) -> bool:
 	if a is InputEventKey and b is InputEventKey:
 		var ka := a as InputEventKey
 		var kb := b as InputEventKey
+		var a_code := _key_event_code(ka)
+		var b_code := _key_event_code(kb)
 		return (
-			ka.physical_keycode == kb.physical_keycode
-			and ka.keycode == kb.keycode
+			a_code != 0
+			and a_code == b_code
 			and ka.shift_pressed == kb.shift_pressed
 			and ka.ctrl_pressed == kb.ctrl_pressed
 			and ka.alt_pressed == kb.alt_pressed
@@ -291,28 +319,90 @@ func events_equal(a: InputEvent, b: InputEvent) -> bool:
 	return false
 
 
+## 判断两个绑定是否可能在默认 exact_match=false 的动作查询中同时触发。
+## 持久化去重仍使用 events_equal()，跨动作冲突则必须忽略键盘修饰键差异。
+func events_overlap(a: InputEvent, b: InputEvent) -> bool:
+	if a == null or b == null:
+		return false
+	if a is InputEventKey and b is InputEventKey:
+		var ka := a as InputEventKey
+		var kb := b as InputEventKey
+		var a_code := _key_event_code(ka)
+		var b_code := _key_event_code(kb)
+		if a_code == 0 or b_code == 0:
+			return false
+		if a_code == b_code:
+			return true
+		return _modifier_key_participates(a_code, kb) or _modifier_key_participates(b_code, ka)
+	return events_equal(a, b)
+
+
 func event_to_display_text(event: InputEvent) -> String:
 	if event is InputEventKey:
-		var key_event := event as InputEventKey
-		var parts: Array[String] = []
-		if key_event.ctrl_pressed:
-			parts.append("Ctrl")
-		if key_event.alt_pressed:
-			parts.append("Alt")
-		if key_event.shift_pressed:
-			parts.append("Shift")
-		if key_event.meta_pressed:
-			parts.append("Meta")
-		var code := key_event.physical_keycode if key_event.physical_keycode != 0 else key_event.keycode
-		parts.append(OS.get_keycode_string(code))
-		return "+".join(parts)
+		return _key_event_display_text(event as InputEventKey)
 	if event is InputEventJoypadButton:
 		var button_event := event as InputEventJoypadButton
-		return "手柄按钮 %d" % button_event.button_index
+		return "手柄 %s" % _joy_button_display_name(button_event.button_index)
 	if event is InputEventJoypadMotion:
 		var motion_event := event as InputEventJoypadMotion
 		return _joy_motion_display_name(motion_event.axis, motion_event.axis_value)
 	return "未知"
+
+
+func event_to_compact_display_text(event: InputEvent) -> String:
+	if event is InputEventJoypadButton:
+		return _joy_button_display_name((event as InputEventJoypadButton).button_index)
+	if event is InputEventJoypadMotion:
+		return _joy_motion_display_name(
+			(event as InputEventJoypadMotion).axis,
+			(event as InputEventJoypadMotion).axis_value
+		).replace(" ", "")
+	return event_to_display_text(event)
+
+
+func get_primary_keyboard_binding_text(
+	action: String,
+	fallback: String = "未绑定",
+	compact: bool = false
+) -> String:
+	for event in get_supported_events(action):
+		if event is InputEventKey:
+			return (
+				event_to_compact_display_text(event)
+				if compact
+				else event_to_display_text(event)
+			)
+	return fallback
+
+
+func get_primary_gamepad_binding_text(
+	action: String,
+	fallback: String = "未绑定",
+	compact: bool = false
+) -> String:
+	for event in get_supported_events(action):
+		if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+			return (
+				event_to_compact_display_text(event)
+				if compact
+				else event_to_display_text(event)
+			)
+	return fallback
+
+
+func get_primary_binding_text(
+	action: String,
+	fallback: String = "未绑定",
+	compact: bool = false
+) -> String:
+	var events := get_supported_events(action)
+	if events.is_empty():
+		return fallback
+	return (
+		event_to_compact_display_text(events[0])
+		if compact
+		else event_to_display_text(events[0])
+	)
 
 
 func normalize_captured_event(event: InputEvent) -> InputEvent:
@@ -323,10 +413,11 @@ func normalize_captured_event(event: InputEvent) -> InputEvent:
 		var output_key := InputEventKey.new()
 		output_key.physical_keycode = key_event.physical_keycode
 		output_key.keycode = key_event.keycode
-		output_key.shift_pressed = key_event.shift_pressed
-		output_key.ctrl_pressed = key_event.ctrl_pressed
-		output_key.alt_pressed = key_event.alt_pressed
-		output_key.meta_pressed = key_event.meta_pressed
+		var code := _key_event_code(key_event)
+		output_key.shift_pressed = key_event.shift_pressed and code != KEY_SHIFT
+		output_key.ctrl_pressed = key_event.ctrl_pressed and code != KEY_CTRL
+		output_key.alt_pressed = key_event.alt_pressed and code != KEY_ALT
+		output_key.meta_pressed = key_event.meta_pressed and code != KEY_META
 		return output_key
 	if event is InputEventJoypadButton:
 		var joy_button := event as InputEventJoypadButton
@@ -629,16 +720,20 @@ func _restore_action_default(action: String) -> void:
 func _apply_action_events(action: String, events: Array) -> void:
 	if not InputMap.has_action(action):
 		InputMap.add_action(action)
+	var next_events := _compact_supported_events(events)
+	if _event_arrays_equal(get_supported_events(action), next_events):
+		return
 	for old_event in InputMap.action_get_events(action):
 		InputMap.action_erase_event(action, old_event)
 	var added := 0
-	for event in events:
+	for event in next_events:
 		if not _is_supported_binding_event(event):
 			continue
 		InputMap.action_add_event(action, event)
 		added += 1
 		if added >= MAX_BINDINGS_PER_ACTION:
 			break
+	action_bindings_changed.emit(StringName(action))
 
 
 func _compact_supported_events(events: Array) -> Array:
@@ -657,6 +752,90 @@ func _is_supported_binding_event(event: Variant) -> bool:
 
 func _is_bindable_action(action: String) -> bool:
 	return BINDABLE_ACTIONS.has(action)
+
+
+func _actions_may_share_binding(first_action: String, second_action: String) -> bool:
+	if first_action.is_empty() or second_action.is_empty():
+		return false
+	return str(CONTEXTUAL_SHARED_BINDING_PEERS.get(first_action, "")) == second_action
+
+
+func _event_arrays_equal(first: Array, second: Array) -> bool:
+	if first.size() != second.size():
+		return false
+	for index in range(first.size()):
+		if not events_equal(first[index], second[index]):
+			return false
+	return true
+
+
+func _key_event_code(event: InputEventKey) -> int:
+	return int(event.physical_keycode if event.physical_keycode != 0 else event.keycode)
+
+
+func _modifier_key_participates(code: int, other_event: InputEventKey) -> bool:
+	match code:
+		KEY_SHIFT:
+			return other_event.shift_pressed
+		KEY_CTRL:
+			return other_event.ctrl_pressed
+		KEY_ALT:
+			return other_event.alt_pressed
+		KEY_META:
+			return other_event.meta_pressed
+		_:
+			return false
+
+
+func _key_event_display_text(event: InputEventKey) -> String:
+	var code := _key_event_code(event)
+	var parts: Array[String] = []
+	if event.ctrl_pressed and code != KEY_CTRL:
+		parts.append("Ctrl")
+	if event.alt_pressed and code != KEY_ALT:
+		parts.append("Alt")
+	if event.shift_pressed and code != KEY_SHIFT:
+		parts.append("Shift")
+	if event.meta_pressed and code != KEY_META:
+		parts.append("Meta")
+	parts.append(OS.get_keycode_string(code))
+	return "+".join(parts)
+
+
+func _joy_button_display_name(button_index: int) -> String:
+	match button_index:
+		JOY_BUTTON_A:
+			return "A"
+		JOY_BUTTON_B:
+			return "B"
+		JOY_BUTTON_X:
+			return "X"
+		JOY_BUTTON_Y:
+			return "Y"
+		JOY_BUTTON_BACK:
+			return "Back"
+		JOY_BUTTON_GUIDE:
+			return "Guide"
+		JOY_BUTTON_START:
+			return "Start"
+		JOY_BUTTON_LEFT_STICK:
+			return "LS"
+		JOY_BUTTON_RIGHT_STICK:
+			return "RS"
+		JOY_BUTTON_LEFT_SHOULDER:
+			return "LB"
+		JOY_BUTTON_RIGHT_SHOULDER:
+			return "RB"
+		JOY_BUTTON_DPAD_UP:
+			return "十字键上"
+		JOY_BUTTON_DPAD_DOWN:
+			return "十字键下"
+		JOY_BUTTON_DPAD_LEFT:
+			return "十字键左"
+		JOY_BUTTON_DPAD_RIGHT:
+			return "十字键右"
+		_:
+			return "按钮 %d" % button_index
 
 
 func _clone_events(events: Array) -> Array:

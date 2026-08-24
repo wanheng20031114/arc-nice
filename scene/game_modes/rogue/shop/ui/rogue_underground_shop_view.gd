@@ -264,7 +264,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if not detail_overlay.visible:
 		return
-	if event.is_action_pressed(&"ui_cancel"):
+	if event.is_action_pressed(&"quit"):
 		if not _transaction_pending:
 			close_detail()
 		get_viewport().set_input_as_handled()

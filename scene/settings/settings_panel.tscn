@@ -1,9 +1,10 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://scene/settings/settings_panel.gd" id="1_script"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
 [ext_resource type="Texture2D" path="res://resources/ui/settings_switch_unchecked.png" id="3_switch_unchecked"]
 [ext_resource type="Texture2D" path="res://resources/ui/settings_switch_checked.png" id="4_switch_checked"]
+[ext_resource type="PackedScene" path="res://scene/settings/settings_hotkey_row.tscn" id="5_hotkey_row"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.09, 0.095, 0.105, 0.96)
@@ -363,6 +364,32 @@ theme_override_colors/font_color = Color(0.72, 0.72, 0.66, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 13
 autowrap_mode = 3
+
+[node name="CaptureActions" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 2
+
+[node name="ClearBindingButton" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/CaptureActions"]
+custom_minimum_size = Vector2(120, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "清空当前槽位"
+
+[node name="CancelCaptureButton" type="Button" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/CaptureActions"]
+custom_minimum_size = Vector2(100, 32)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+text = "取消设置"
 
 [node name="Rows" type="VBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection"]
 layout_mode = 2
@@ -967,6 +994,48 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
 text = "重置"
+
+[node name="DashRow" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
+
+[node name="InteractRow" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
+
+[node name="BagRow" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
+
+[node name="UseItemRow" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
+
+[node name="ContinuousPlaceRow" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
+
+[node name="DeleteRow" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
+
+[node name="LuoxiRefreshRow" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
+
+[node name="SelectOption1Row" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
+
+[node name="SelectOption2Row" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
+
+[node name="SelectOption3Row" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
+
+[node name="SelectOption4Row" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
+
+[node name="RecenterCameraRow" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
+
+[node name="FullScreenRow" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
+
+[node name="QuitRow" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows" instance=ExtResource("5_hotkey_row")]
+layout_mode = 2
 
 [node name="PauseRow" type="HBoxContainer" parent="Center/Panel/Margin/Layout/Scroll/Content/HotkeySection/Rows"]
 layout_mode = 2

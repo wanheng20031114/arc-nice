@@ -101,7 +101,7 @@ theme_override_constants/separation = 4
 
 [node name="KeyboardPrompt" type="Label" parent="DialogueLayer/Anchor/BubblePanel/Margin/Content/PromptRow"]
 layout_mode = 2
-text = "按下 F /"
+text = "按下交互键 /"
 label_settings = SubResource("LabelSettings_prompt")
 
 [node name="YButton" type="PanelContainer" parent="DialogueLayer/Anchor/BubblePanel/Margin/Content/PromptRow"]

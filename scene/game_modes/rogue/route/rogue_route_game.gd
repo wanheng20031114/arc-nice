@@ -163,6 +163,7 @@ const ROUTE_PRESENTATION_FULL_HIDE_MASK := (
 @onready var content_body: Label = %ContentBody
 @onready var content_meta: Label = %ContentMeta
 @onready var regenerate_button: Button = %RegenerateButton
+@onready var recenter_button: Button = $HUD/Root/BottomBar/BottomLayout/ActionBlock/Buttons/RecenterButton
 @onready var hint_label: Label = %Hint
 @onready var status_message: Label = %StatusMessage
 @onready var route_hud: CanvasLayer = $HUD
@@ -329,6 +330,7 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
+	_connect_hotkey_presentation()
 	var preparation_generation := begin_runtime_preparation(
 		"正在初始化 Rogue 路线…",
 		1
@@ -394,6 +396,12 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	var settings := get_node_or_null("/root/UserSettings")
+	var binding_callback := Callable(self, "_on_action_bindings_changed")
+	if settings != null and settings.is_connected(
+		&"action_bindings_changed", binding_callback
+	):
+		settings.disconnect(&"action_bindings_changed", binding_callback)
 	var pause_controller := get_node_or_null(
 		"/root/GameplayPause"
 	) as GameplayPauseController
@@ -483,15 +491,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		_apply_camera_drag(mouse_motion.relative)
 		get_viewport().set_input_as_handled()
 		return
-	if event is InputEventKey:
-		var key_event := event as InputEventKey
-		if (
-			key_event.pressed
-			and not key_event.echo
-			and key_event.keycode == KEY_HOME
-		):
-			_recenter_camera_on_player()
-			get_viewport().set_input_as_handled()
+	if event.is_action_pressed(&"recenter_camera") and not event.is_echo():
+		_recenter_camera_on_player()
+		get_viewport().set_input_as_handled()
 
 
 func start_authoritative_session(
@@ -5360,7 +5362,7 @@ func _refresh_route_input_lock() -> void:
 	_set_local_player_controls_locked(locked)
 	# Profile 自己监听全局 bag。关闭状态下若路线已被其他 owner 锁定，
 	# 必须同时停止它的 unhandled input，避免在商店/作战/遭遇上方重开；
-	# Supply 显式 open 后则保留输入，以便玩家仍可用 Bag/Esc 关闭。
+	# Supply 显式 open 后则保留输入，以便玩家仍可用背包/关闭动作退出。
 	if player_profile_panel != null:
 		player_profile_panel.set_process_unhandled_input(
 			player_profile_panel.is_open() or not locked
@@ -6925,6 +6927,60 @@ func _recenter_camera_on_player() -> void:
 	world.recenter_camera(player, get_viewport_rect().size)
 
 
+func _connect_hotkey_presentation() -> void:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return
+	var binding_callback := Callable(self, "_on_action_bindings_changed")
+	if not settings.is_connected(&"action_bindings_changed", binding_callback):
+		settings.connect(&"action_bindings_changed", binding_callback)
+	_update_recenter_button_tooltip()
+
+
+func _on_action_bindings_changed(action: StringName) -> void:
+	if action == &"recenter_camera":
+		_update_recenter_button_tooltip()
+	if action in [&"move_up", &"move_left", &"move_down", &"move_right"]:
+		_update_authority_ui()
+
+
+func _update_recenter_button_tooltip() -> void:
+	var settings := get_node_or_null("/root/UserSettings")
+	var shortcut := "未绑定"
+	if settings != null:
+		shortcut = str(
+			settings.call(
+				"get_primary_binding_text",
+				"recenter_camera",
+				"未绑定",
+				true
+			)
+		)
+	recenter_button.tooltip_text = "回到本地角色（%s）" % shortcut
+
+
+func _movement_binding_summary() -> String:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return "移动键"
+	var actions: Array[String] = [
+		"move_up",
+		"move_left",
+		"move_down",
+		"move_right",
+	]
+	var keyboard: Array[String] = []
+	var gamepad: Array[String] = []
+	for action in actions:
+		keyboard.append(
+			str(settings.call("get_primary_keyboard_binding_text", action, "—", true))
+		)
+		gamepad.append(
+			str(settings.call("get_primary_gamepad_binding_text", action, "—", true))
+		)
+	return "%s / %s" % ["/".join(keyboard), "/".join(gamepad)]
+
+
 func _on_recenter_button_pressed() -> void:
 	if _is_route_input_locked() or _pending_node_id != INVALID_NODE_ID:
 		return
@@ -7114,10 +7170,10 @@ func _update_authority_ui() -> void:
 		else "地下路线正在展开…"
 		if _route_reveal_input_locked
 		else
-		"WASD / 左摇杆探索 · 拖动空白处查看地图 · 每次移动消耗 %d AP。"
-		% generation_config.move_action_cost
+		"%s 探索 · 拖动空白处查看地图 · 每次移动消耗 %d AP。"
+		% [_movement_binding_summary(), generation_config.move_action_cost]
 		if _authority_enabled and generation_config != null
-		else "WASD / 左摇杆自由探索 · 拖动空白处查看地图；路线由房主确认。"
+		else "%s 自由探索 · 拖动空白处查看地图；路线由房主确认。" % _movement_binding_summary()
 	)
 
 func _show_node_content(node_id: int, is_preview: bool) -> void:

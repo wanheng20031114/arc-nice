@@ -262,7 +262,7 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.82, 0.86, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 11
-text = "WASD 移动 · 拖动空白处查看地图"
+text = "移动快捷键可在设置中修改 · 拖动空白处查看地图"
 autowrap_mode = 3
 
 [node name="StatusMessage" type="Label" parent="HUD/Root/BottomBar/BottomLayout/HintBlock"]
@@ -360,7 +360,7 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button")
 theme_override_styles/focus = SubResource("StyleBoxFlat_focus")
 text = "定位角色"
-tooltip_text = "回到本地角色（Home）"
+tooltip_text = "回到本地角色（快捷键可在设置中修改）"
 
 [node name="RogueRouteInventoryStrip" parent="HUD/Root/BottomBar" instance=ExtResource("22_inventory_strip")]
 layout_mode = 1

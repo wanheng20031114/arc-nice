@@ -842,7 +842,6 @@ static func is_building_modal_close_event(event: InputEvent) -> bool:
 		event != null
 		and (
 			event.is_action_pressed(&"quit")
-			or event.is_action_pressed(&"ui_cancel")
 			or event.is_action_pressed(&"bag")
 			or event.is_action_pressed(&"interact")
 		)

@@ -15,6 +15,12 @@ const CANVAS_LAYER := 4
 @onready var text_label: RichTextLabel = (
 	$DialogueLayer/Anchor/BubblePanel/Margin/Content/Text
 )
+@onready var keyboard_prompt: Label = (
+	$DialogueLayer/Anchor/BubblePanel/Margin/Content/PromptRow/KeyboardPrompt
+)
+@onready var gamepad_prompt: Label = (
+	$DialogueLayer/Anchor/BubblePanel/Margin/Content/PromptRow/YButton/YLabel
+)
 @onready var blip_audio: AudioStreamPlayer = $BlipAudio
 @onready var typewriter: DialogueTypewriterController = $Typewriter
 
@@ -26,6 +32,12 @@ var is_revealing: bool:
 func _ready() -> void:
 	dialogue_layer.layer = dialogue_layer_index
 	typewriter.configure(text_label, blip_audio)
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings != null:
+		var binding_callback := Callable(self, "_on_action_bindings_changed")
+		if not settings.is_connected(&"action_bindings_changed", binding_callback):
+			settings.connect(&"action_bindings_changed", binding_callback)
+		_refresh_interaction_binding_presentation()
 	visibility_changed.connect(_on_visibility_changed)
 	dialogue_layer.visible = is_visible_in_tree()
 	_sync_canvas_anchor()
@@ -64,3 +76,32 @@ func _sync_canvas_anchor() -> void:
 	var viewport_transform := get_global_transform_with_canvas()
 	viewport_transform.origin = viewport_transform.origin.round()
 	canvas_anchor.transform = viewport_transform
+
+
+func _on_action_bindings_changed(action: StringName) -> void:
+	if action == &"interact":
+		_refresh_interaction_binding_presentation()
+
+
+func _refresh_interaction_binding_presentation() -> void:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return
+	var keyboard := str(
+		settings.call(
+			"get_primary_keyboard_binding_text",
+			"interact",
+			"—",
+			true
+		)
+	)
+	var gamepad := str(
+		settings.call(
+			"get_primary_gamepad_binding_text",
+			"interact",
+			"—",
+			true
+		)
+	)
+	keyboard_prompt.text = "按下 %s /" % keyboard
+	gamepad_prompt.text = gamepad

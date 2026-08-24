@@ -20,6 +20,7 @@ const BORDER_NOISE_SEED_PARAMETER := &"noise_seed"
 @onready var interaction_area: Area2D = $InteractionArea
 @onready var interaction_prompt: Control = $InteractionPrompt
 @onready var prompt_keycap: Control = $InteractionPrompt/PromptMargin/PromptRow/Keycap
+@onready var prompt_key_label: Label = $InteractionPrompt/PromptMargin/PromptRow/Keycap/KeyLabel
 @onready var health_bar: PlantHealthBar = $HealthBar
 @onready var research_border: MeshInstance2D = $ResearchBorder
 @onready var hotspot_glow: NightPointLight2D = $HotspotGlow
@@ -61,7 +62,32 @@ func _ready() -> void:
 		BORDER_WORKING_ACTIVE_PARAMETER,
 		false
 	)
+	_connect_interaction_binding_presentation()
 	_sync_research_border()
+
+
+func _connect_interaction_binding_presentation() -> void:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return
+	var binding_callback := Callable(self, "_on_interaction_binding_changed")
+	if not settings.is_connected(&"action_bindings_changed", binding_callback):
+		settings.connect(&"action_bindings_changed", binding_callback)
+	_refresh_interaction_binding_presentation()
+
+
+func _on_interaction_binding_changed(action: StringName) -> void:
+	if action == &"interact":
+		_refresh_interaction_binding_presentation()
+
+
+func _refresh_interaction_binding_presentation() -> void:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return
+	prompt_key_label.text = str(
+		settings.call("get_primary_binding_text", "interact", "—", true)
+	)
 
 
 func _exit_tree() -> void:

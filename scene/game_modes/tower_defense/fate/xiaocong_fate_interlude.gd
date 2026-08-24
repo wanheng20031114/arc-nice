@@ -86,6 +86,11 @@ func _ready() -> void:
 	interaction_area.body_exited.connect(_on_body_exited)
 	choice_overlay.choice_submitted.connect(fate_choice_submitted.emit)
 	choice_overlay.collectible_submitted.connect(collectible_choice_submitted.emit)
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings != null:
+		var binding_callback := Callable(self, "_on_action_bindings_changed")
+		if not settings.is_connected(&"action_bindings_changed", binding_callback):
+			settings.connect(&"action_bindings_changed", binding_callback)
 	_set_scene_transition_progress(0.0)
 	set_active(false)
 
@@ -357,13 +362,13 @@ func _refresh_prompt() -> void:
 	)
 	if current_stage == TowerDefenseFateManager.STAGE_VOTING:
 		prompt_label.text = (
-			"等待超时 · F 由房主继续结算"
+			"等待超时 · %s 由房主继续结算" % _interaction_binding_text()
 			if timeout_recovery_available and local_is_host
 			else "命运选择已经开启 · 剩余 %d 秒" % timeout_seconds_left
 		)
 	elif current_stage == TowerDefenseFateManager.STAGE_CRITICAL_BUFF_VOTING:
 		prompt_label.text = (
-			"全局增益投票超时 · F 由房主继续结算"
+			"全局增益投票超时 · %s 由房主继续结算" % _interaction_binding_text()
 			if timeout_recovery_available and local_is_host
 			else "请选择一项全局增益 · 剩余 %d 秒" % timeout_seconds_left
 		)
@@ -374,7 +379,7 @@ func _refresh_prompt() -> void:
 	elif current_stage == TowerDefenseFateManager.STAGE_COLLECTIBLE_REWARD:
 		prompt_label.text = "请完成你的收藏品选择"
 	elif timeout_recovery_available and local_is_host:
-		prompt_label.text = "等待超时 · F 由房主继续流程"
+		prompt_label.text = "等待超时 · %s 由房主继续流程" % _interaction_binding_text()
 	elif local_interaction_sent:
 		prompt_label.text = "已交互 %d/%d · 剩余 %d 秒" % [
 			interacted_player_count,
@@ -382,7 +387,21 @@ func _refresh_prompt() -> void:
 			timeout_seconds_left,
 		]
 	else:
-		prompt_label.text = "F  与小葱交互"
+		prompt_label.text = "%s  与小葱交互" % _interaction_binding_text()
+
+
+func _interaction_binding_text() -> String:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return "未绑定"
+	return str(
+		settings.call("get_primary_binding_text", "interact", "未绑定", true)
+	)
+
+
+func _on_action_bindings_changed(action: StringName) -> void:
+	if action == &"interact" and is_active:
+		_refresh_prompt()
 
 
 func _prepare_conclusion() -> void:

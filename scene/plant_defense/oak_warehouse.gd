@@ -16,6 +16,7 @@ const MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS := 4.0
 @onready var interaction_area: Area2D = $InteractionArea
 @onready var interaction_prompt: Control = $InteractionPrompt
 @onready var prompt_keycap: Control = $InteractionPrompt/PromptMargin/PromptRow/Keycap
+@onready var prompt_key_label: Label = $InteractionPrompt/PromptMargin/PromptRow/Keycap/KeyLabel
 @onready var idle_animation_player: AnimationPlayer = $IdleAnimationPlayer
 @onready var health_bar: Control = $HealthBar
 @onready var multiplayer_storage_request_timer: Timer = $MultiplayerStorageRequestTimer
@@ -55,6 +56,31 @@ func _ready() -> void:
 	interaction_area.body_exited.connect(_on_interaction_area_body_exited)
 	multiplayer_storage_request_timer.timeout.connect(
 		_on_multiplayer_storage_request_timeout
+	)
+	_connect_interaction_binding_presentation()
+
+
+func _connect_interaction_binding_presentation() -> void:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return
+	var binding_callback := Callable(self, "_on_interaction_binding_changed")
+	if not settings.is_connected(&"action_bindings_changed", binding_callback):
+		settings.connect(&"action_bindings_changed", binding_callback)
+	_refresh_interaction_binding_presentation()
+
+
+func _on_interaction_binding_changed(action: StringName) -> void:
+	if action == &"interact":
+		_refresh_interaction_binding_presentation()
+
+
+func _refresh_interaction_binding_presentation() -> void:
+	var settings := get_node_or_null("/root/UserSettings")
+	if settings == null:
+		return
+	prompt_key_label.text = str(
+		settings.call("get_primary_binding_text", "interact", "—", true)
 	)
 
 

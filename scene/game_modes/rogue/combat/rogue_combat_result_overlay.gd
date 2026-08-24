@@ -304,7 +304,7 @@ func _on_close_button_pressed() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not visible or not event.is_action_pressed(&"ui_cancel"):
+	if not visible or not event.is_action_pressed(&"quit"):
 		return
 	get_viewport().set_input_as_handled()
 	_on_close_button_pressed()
