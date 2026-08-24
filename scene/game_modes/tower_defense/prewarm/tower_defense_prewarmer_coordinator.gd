@@ -326,6 +326,12 @@ func _prewarm_enemy_navigation_grids_staged(
 	for profile in profiles:
 		var half_extents: Vector2 = profile["half_extents"]
 		var traversal_types: int = int(profile["traversal_types"])
+		runtime.update_runtime_preparation_progress(
+			preparation_generation,
+			"预热塔防寻路网格…",
+			completed_steps,
+			total_steps
+		)
 		await tower_grid_pathfinder.prewarm_agent_grid_staged(
 			half_extents,
 			traversal_types
@@ -346,6 +352,17 @@ func _prewarm_enemy_navigation_grids_staged(
 			if navigation_target == null or not is_instance_valid(navigation_target):
 				completed_steps += 1
 				continue
+			var target_stage := (
+				"预热玩家追踪流场…"
+				if navigation_target == runtime.player
+				else "预热 Home 防线…"
+			)
+			runtime.update_runtime_preparation_progress(
+				preparation_generation,
+				target_stage,
+				completed_steps,
+				total_steps
+			)
 			await tower_grid_pathfinder.prewarm_flow_navigation_target_staged(
 				navigation_target.global_position,
 				half_extents,
@@ -356,7 +373,7 @@ func _prewarm_enemy_navigation_grids_staged(
 			completed_steps += 1
 			runtime.update_runtime_preparation_progress(
 				preparation_generation,
-				"预热 Home 防线…",
+				target_stage,
 				completed_steps,
 				total_steps
 			)

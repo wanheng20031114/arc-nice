@@ -7,6 +7,7 @@ const RUNTIME_PROFILE_EXTENTS := Vector2(14.0, 11.0)
 const LAND_TRAVERSAL := DualGridTilemap.TraversalType.LAND
 const MANUAL_EXPANSIONS_PER_FRAME := 16
 const MAX_MANUAL_BUILD_FRAMES := 4000
+const MAX_LOADING_PROFILE_PREWARM_FRAMES := 120
 
 var failures: Array[String] = []
 
@@ -217,10 +218,19 @@ func _test_synchronous_and_loading_profile_snapshots(pathfinder: GridPathfinder)
 	) as String
 	pathfinder.agent_grid_cache.erase(staged_key)
 	pathfinder.agent_open_plain_integral_cache.erase(staged_key)
+	var staged_start_frame := Engine.get_process_frames()
 	await pathfinder.prewarm_agent_grid_staged(
 		STAGED_PROFILE_EXTENTS,
 		LAND_TRAVERSAL,
 		8
+	)
+	var staged_elapsed_frames := Engine.get_process_frames() - staged_start_frame
+	_expect(
+		staged_elapsed_frames <= MAX_LOADING_PROFILE_PREWARM_FRAMES,
+		(
+			"Loading profile prewarm must batch connected-component cells by rows; "
+			+ "it took %d frames." % staged_elapsed_frames
+		)
 	)
 	_expect(
 		pathfinder.agent_grid_cache.has(staged_key),

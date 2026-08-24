@@ -1516,12 +1516,18 @@ func prewarm_agent_grid_staged(
 	var component_state := _create_agent_connected_component_build_state(
 		solid_integral_snapshot
 	)
-	completed_rows = 0
+	# 前三段按“行”分帧；连通分量的单步却只处理一个格子或种子。
+	# 若直接复用 rows_per_frame=8，塔防约 3400 格的每种体型会空等
+	# 数百帧。把行预算换算成等量格子，仍保留分帧而不拖长加载。
+	var component_cells_per_frame := (
+		maxi(rows_per_frame, 1) * maxi(agent_grid.region.size.x, 1)
+	)
+	var completed_component_cells := 0
 	while _advance_agent_connected_component_build(component_state):
-		completed_rows += 1
-		if completed_rows < maxi(rows_per_frame, 1):
+		completed_component_cells += 1
+		if completed_component_cells < component_cells_per_frame:
 			continue
-		completed_rows = 0
+		completed_component_cells = 0
 		await get_tree().process_frame
 		if (
 			not is_inside_tree()
