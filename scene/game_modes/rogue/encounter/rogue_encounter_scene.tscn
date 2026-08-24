@@ -28,11 +28,11 @@ corner_radius_bottom_right = 18
 corner_radius_bottom_left = 18
 
 [node name="RogueEncounterScene" type="Node"]
-process_mode = 3
+process_mode = 1
 script = ExtResource("1_script")
 
 [node name="BackdropLayer" type="CanvasLayer" parent="."]
-process_mode = 3
+process_mode = 1
 visible = false
 layer = 30
 

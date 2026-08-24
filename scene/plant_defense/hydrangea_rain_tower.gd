@@ -1325,4 +1325,4 @@ func _get_effect_source_id() -> int:
 
 
 func _now_seconds() -> float:
-	return Time.get_ticks_msec() / 1000.0
+	return GameplayPause.get_gameplay_time_seconds()

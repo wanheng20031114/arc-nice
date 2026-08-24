@@ -4,6 +4,7 @@
 [ext_resource type="AudioStream" path="res://resources/audio/ui/ui_click.wav" id="2_click"]
 
 [node name="UIAudio" type="Node"]
+process_mode = 3
 script = ExtResource("1_script")
 
 [node name="ClickAudio" type="AudioStreamPlayer" parent="."]

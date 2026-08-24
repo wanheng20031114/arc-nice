@@ -390,7 +390,7 @@ func _on_start_wave_button_pressed() -> void:
 	early_start_request_generation += 1
 	var request_generation := early_start_request_generation
 	start_wave_requested.emit()
-	get_tree().create_timer(EARLY_START_RETRY_SECONDS).timeout.connect(
+	get_tree().create_timer(EARLY_START_RETRY_SECONDS, false).timeout.connect(
 		_on_early_start_retry_timeout.bind(request_generation)
 	)
 

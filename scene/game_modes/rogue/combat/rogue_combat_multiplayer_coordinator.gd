@@ -1234,7 +1234,7 @@ func _freeze_local_combat_for_reward_selection() -> void:
 	# 使用既有多人权威丢弃流程整理背包。
 	_combat_game.process_mode = Node.PROCESS_MODE_DISABLED
 	if _combat_game.player_profile_panel != null:
-		_combat_game.player_profile_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+		_combat_game.player_profile_panel.process_mode = Node.PROCESS_MODE_PAUSABLE
 
 
 func _on_emergency_reward_session_state_changed(_snapshot: Dictionary) -> void:
@@ -1723,7 +1723,7 @@ func _on_emergency_reward_inventory_requested() -> void:
 		or _combat_game.player_profile_panel == null
 	):
 		return
-	_combat_game.player_profile_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	_combat_game.player_profile_panel.process_mode = Node.PROCESS_MODE_PAUSABLE
 	_combat_game.player_profile_panel.configure_multiplayer_requests(true)
 	_combat_game.player_profile_panel.open()
 

@@ -552,7 +552,7 @@ func request_tango_charge_started(direction: Vector2) -> bool:
 		_sanitize_tango_direction(tango, direction)
 	):
 		return false
-	_singleplayer_tango_charge_started_at = Time.get_ticks_usec() / 1000000.0
+	_singleplayer_tango_charge_started_at = GameplayPause.get_gameplay_time_seconds()
 	return true
 
 
@@ -567,7 +567,10 @@ func request_tango_charge_released(direction: Vector2) -> bool:
 	var tango := local_player as PlayerTango
 	if not _is_valid_tango(tango):
 		return false
-	var elapsed := maxf(Time.get_ticks_usec() / 1000000.0 - started_at, 0.0)
+	var elapsed := maxf(
+		GameplayPause.get_gameplay_time_seconds() - started_at,
+		0.0
+	)
 	var ratio := tango.resolve_authoritative_tango_charge_release_ratio(elapsed)
 	if ratio < 0.0:
 		tango.cancel_authoritative_tango_charge()

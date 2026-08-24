@@ -21,7 +21,7 @@ atlas = ExtResource("3_xiaocong")
 region = Rect2(0, 0, 1098, 1431)
 
 [node name="RogueUndergroundShopView" type="CanvasLayer"]
-process_mode = 3
+process_mode = 1
 visible = false
 layer = 10
 script = ExtResource("1_script")

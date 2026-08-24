@@ -685,7 +685,7 @@ func _show_transient_status(message: String) -> void:
 	transient_status = message
 	transient_status_token += 1
 	var token := transient_status_token
-	get_tree().create_timer(2.0).timeout.connect(
+	get_tree().create_timer(2.0, false).timeout.connect(
 		func() -> void:
 			if token != transient_status_token:
 				return

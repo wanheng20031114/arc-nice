@@ -834,7 +834,7 @@ func get_visual_progress_elapsed_seconds() -> float:
 	)
 	if _should_project_visual_progress(recipe):
 		var elapsed_since_sync := maxf(
-			float(Time.get_ticks_msec() - _visual_progress_sync_msec) / 1000.0,
+			float(_gameplay_now_msec() - _visual_progress_sync_msec) / 1000.0,
 			0.0
 		)
 		var projection_fraction := clampf(
@@ -1055,7 +1055,7 @@ func _apply_multiplayer_runtime_state_sample(
 		VISUAL_PROJECTION_WINDOW_SECONDS
 	)
 	var sample_age_seconds := maxf(
-		float(Time.get_ticks_msec()) / 1000.0 - mapped_sample_time,
+		GameplayPause.get_gameplay_time_seconds() - mapped_sample_time,
 		0.0
 	)
 	_visual_progress_sync_msec -= int(
@@ -1161,12 +1161,16 @@ func _sync_visual_progress_clock() -> void:
 		0.0,
 		maximum_elapsed
 	)
-	_visual_progress_sync_msec = Time.get_ticks_msec()
+	_visual_progress_sync_msec = _gameplay_now_msec()
 	_visual_projection_duration_seconds = (
 		production_coordinator.get_seconds_until_next_tick()
 		if production_coordinator != null
 		else VISUAL_PROJECTION_WINDOW_SECONDS
 	)
+
+
+func _gameplay_now_msec() -> int:
+	return int(GameplayPause.get_gameplay_time_seconds() * 1000.0)
 
 
 func _should_project_visual_progress(recipe: ProductionRecipe) -> bool:

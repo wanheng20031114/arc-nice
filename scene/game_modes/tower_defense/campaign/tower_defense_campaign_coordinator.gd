@@ -1363,14 +1363,19 @@ func _announce_wave_phase_start(wave_number: int) -> bool:
 
 func start_progression_metrics() -> void:
 	if progression_started_msec <= 0:
-		progression_started_msec = Time.get_ticks_msec()
+		progression_started_msec = int(
+			GameplayPause.get_gameplay_time_seconds() * 1000.0
+		)
 
 
 func get_progression_elapsed_seconds() -> float:
 	if progression_started_msec <= 0:
 		return 0.0
 	return maxf(
-		float(Time.get_ticks_msec() - progression_started_msec) / 1000.0,
+		float(
+			int(GameplayPause.get_gameplay_time_seconds() * 1000.0)
+			- progression_started_msec
+		) / 1000.0,
 		0.0
 	)
 

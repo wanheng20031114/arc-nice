@@ -293,7 +293,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 94, "The multiplayer protocol version must be 94.")
+	_expect(NetConstants.PROTOCOL_VERSION == 95, "The multiplayer protocol version must be 95.")
 	_expect(
 		NetConstants.CH_MEMBERSHIP == 8
 		and NetConstants.ENET_MAX_CHANNEL == 8

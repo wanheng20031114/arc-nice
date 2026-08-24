@@ -589,7 +589,7 @@ func _on_typewriter_line_finished() -> void:
 	result_hold_serial += 1
 	var serial := result_hold_serial
 	if result_page_index + 1 < result_pages.size():
-		var page_timer := get_tree().create_timer(RESULT_PAGE_GAP_SECONDS)
+		var page_timer := get_tree().create_timer(RESULT_PAGE_GAP_SECONDS, false)
 		await page_timer.timeout
 		if (
 			serial != result_hold_serial
@@ -614,7 +614,7 @@ func _begin_result_completion_hold() -> void:
 	prompt_label.visible = false
 	result_hold_serial += 1
 	var serial := result_hold_serial
-	var timer := get_tree().create_timer(RESULT_HOLD_SECONDS)
+	var timer := get_tree().create_timer(RESULT_HOLD_SECONDS, false)
 	await timer.timeout
 	if (
 		serial != result_hold_serial

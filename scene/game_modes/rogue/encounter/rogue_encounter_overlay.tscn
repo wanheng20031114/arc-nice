@@ -94,7 +94,7 @@ font_size = 15
 font_color = Color(0.43, 0.28, 0.15, 0.9)
 
 [node name="RogueEncounterOverlay" type="CanvasLayer"]
-process_mode = 3
+process_mode = 1
 visible = false
 layer = 40
 script = ExtResource("1_script")

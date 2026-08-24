@@ -546,7 +546,7 @@ func _begin_emergency_reward_selection() -> bool:
 	_emergency_reward_overlay.choice_selected.connect(choice_callable)
 	_emergency_reward_overlay.inventory_requested.connect(inventory_callable)
 	_emergency_reward_session.state_changed.connect(state_callable)
-	active_battle.player_profile_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	active_battle.player_profile_panel.process_mode = Node.PROCESS_MODE_PAUSABLE
 	var reward_player := active_battle.player
 	var began := _emergency_reward_session.begin_authority(
 		active_battle.run_state,
@@ -668,7 +668,7 @@ func _on_emergency_reward_inventory_requested() -> void:
 		or active_battle.player_profile_panel == null
 	):
 		return
-	active_battle.player_profile_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	active_battle.player_profile_panel.process_mode = Node.PROCESS_MODE_PAUSABLE
 	active_battle.player_profile_panel.open()
 
 

@@ -41,6 +41,10 @@ func _on_button_pressed(button: BaseButton) -> void:
 		return
 	if bool(button.get_meta(SKIP_CLICK_AUDIO_META, false)):
 		return
+	play_click()
+
+
+func play_click() -> void:
 	click_audio.pitch_scale = _random.randf_range(0.992, 1.008)
 	click_audio.play()
 

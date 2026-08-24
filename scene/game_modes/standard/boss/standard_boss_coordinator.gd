@@ -342,7 +342,7 @@ func _finish_airdrop_sniper_spawn(
 	encounter_generation: int
 ) -> void:
 	if warning_duration > 0.0:
-		await get_tree().create_timer(warning_duration).timeout
+		await get_tree().create_timer(warning_duration, false).timeout
 	if (
 		not _is_encounter_generation_active(encounter_generation)
 		or runtime.enemy_container == null
@@ -823,7 +823,7 @@ func _on_boss_defeated(enemy: Enemy) -> void:
 	# 先封闭遭遇，再广播 Boss 终结；任何等待中的空投从此只能安全退出。
 	end_encounter()
 	boss_defeated.emit(enemy)
-	var victory_timer := get_tree().create_timer(1.3)
+	var victory_timer := get_tree().create_timer(1.3, false)
 	await victory_timer.timeout
 	if (
 		runtime != null

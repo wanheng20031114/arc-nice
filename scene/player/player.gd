@@ -2511,7 +2511,7 @@ func try_begin_skill1_activation(
 		return false
 	if not void_battery_charged and skill1_charge < skill1_charge_duration:
 		return false
-	var now_msec := Time.get_ticks_msec()
+	var now_msec := int(GameplayPause.get_gameplay_time_seconds() * 1000.0)
 	if now_msec - _last_skill_activation_msec < MIN_SKILL_ACTIVATION_INTERVAL_MSEC:
 		return false
 	_last_skill_activation_msec = now_msec
@@ -5101,7 +5101,7 @@ func _queue_collectible_enemy_slow_expiry(
 		return
 	Player._increment_collectible_slow_expiry_metric("timer_count")
 	Player._increment_collectible_slow_expiry_metric("legacy_timer_count")
-	get_tree().create_timer(duration).timeout.connect(
+	get_tree().create_timer(duration, false).timeout.connect(
 		Player._remove_collectible_enemy_slow.bind(enemy_ref, source_id)
 	)
 
@@ -5119,7 +5119,7 @@ func _schedule_collectible_enemy_slow_batch_expiry(
 		return
 	Player._increment_collectible_slow_expiry_metric("timer_count")
 	Player._increment_collectible_slow_expiry_metric("batch_timer_count")
-	get_tree().create_timer(duration).timeout.connect(
+	get_tree().create_timer(duration, false).timeout.connect(
 		Player._remove_collectible_enemy_slow_batch.bind(enemy_refs, source_id)
 	)
 

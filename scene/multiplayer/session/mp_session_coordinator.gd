@@ -76,7 +76,7 @@ func update_transport(delta: float) -> void:
 
 
 func get_net_time() -> float:
-	return Time.get_ticks_msec() / 1000.0 - _net_time_origin
+	return _get_gameplay_clock_seconds() - _net_time_origin
 
 
 func get_net_time_origin() -> float:
@@ -641,9 +641,28 @@ func _clear_world_manifest_dependencies() -> void:
 
 
 func _reset_transport_values() -> void:
-	_net_time_origin = Time.get_ticks_msec() / 1000.0
+	_net_time_origin = _get_gameplay_clock_seconds()
 	_has_host_time_offset = false
 	_host_to_client_time_offset = 0.0
+
+
+## 玩法时间戳必须在全局暂停期间冻结；连接、重连与控制面限频
+## 仍由各自的 Time.get_ticks_msec() 墙钟维护，不经过此接口。
+func _get_gameplay_clock_seconds() -> float:
+	var wall_clock := float(Time.get_ticks_msec()) / 1000.0
+	if not is_inside_tree():
+		return wall_clock
+	var gameplay_pause := get_node_or_null("/root/GameplayPause")
+	if (
+		gameplay_pause == null
+		or not gameplay_pause.has_method("get_gameplay_time_seconds")
+	):
+		return wall_clock
+	var gameplay_time: Variant = gameplay_pause.call("get_gameplay_time_seconds")
+	if typeof(gameplay_time) not in [TYPE_FLOAT, TYPE_INT]:
+		return wall_clock
+	var resolved_time := float(gameplay_time)
+	return resolved_time if is_finite(resolved_time) else wall_clock
 
 
 func _consume_runtime_state_request_token(

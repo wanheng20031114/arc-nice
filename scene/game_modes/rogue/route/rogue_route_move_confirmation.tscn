@@ -143,7 +143,7 @@ expand_margin_bottom = 3.0
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_close"]
 
 [node name="RogueRouteMoveConfirmation" type="CanvasLayer"]
-process_mode = 3
+process_mode = 1
 visible = false
 layer = 30
 script = ExtResource("1_script")

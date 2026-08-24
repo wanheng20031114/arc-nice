@@ -5,7 +5,7 @@
 [ext_resource type="AudioStream" path="res://resources/audio/ui/rogue_combat_victory.wav" id="3_victory_audio"]
 
 [node name="RogueCombatVictoryPresentation" type="CanvasLayer"]
-process_mode = 3
+process_mode = 1
 visible = false
 layer = 110
 script = ExtResource("1_script")

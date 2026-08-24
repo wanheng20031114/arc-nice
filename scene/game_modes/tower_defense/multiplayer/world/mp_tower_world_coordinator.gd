@@ -1371,13 +1371,13 @@ func apply_plant_runtime_state(
 	if production_building != null:
 		production_building.apply_multiplayer_runtime_state_with_host_sample(
 			corrected_state,
-			Time.get_ticks_msec() / 1000.0 - sample_age,
+			GameplayPause.get_gameplay_time_seconds() - sample_age,
 			host_sample_time
 		)
 	else:
 		plant.apply_multiplayer_runtime_state(
 			corrected_state,
-			Time.get_ticks_msec() / 1000.0
+			GameplayPause.get_gameplay_time_seconds()
 		)
 
 

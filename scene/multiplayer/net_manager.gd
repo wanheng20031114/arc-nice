@@ -42,6 +42,8 @@ signal connection_failed(reason: String)
 signal game_mode_changed(new_game_mode: GameMode)
 signal room_capacity_changed(current_players: int, max_players: int)
 signal game_load_progress_changed(ready_count: int, total_count: int)
+## SceneTree 暂停时只驱动经显式登记的窄控制面维护；玩法模拟不得接入。
+signal paused_control_plane_tick(delta: float)
 
 const DEFAULT_CHARACTER_ID := &"weishidaier"
 const RECONNECT_TOKEN_HEX_LENGTH := 32
@@ -56,6 +58,9 @@ const REGISTRATION_TIMEOUT_MILLISECONDS := 10_000
 const CLIENT_REGISTRATION_TIMEOUT_MILLISECONDS := 30_000
 const LOBBY_COMMAND_RATE_PER_SECOND := 6.0
 const LOBBY_COMMAND_RATE_BURST := 12.0
+const GAME_PAUSE_COMMAND_RATE_PER_SECOND := 4.0
+const GAME_PAUSE_COMMAND_RATE_BURST := 8.0
+const GAME_PAUSE_EXIT_RELEASE_TIMEOUT_MILLISECONDS := 1_500
 const MAX_LOBBY_PLAYER_NAME_WIRE_LENGTH := 64
 const MAX_LOBBY_CHARACTER_ID_WIRE_LENGTH := 64
 const STABLE_PARTICIPANT_KEY_DOMAIN := "arc-nice:rogue-participant:v1:"
@@ -162,6 +167,9 @@ var _connection_attempt_generation := 0
 ## transport 已连通并不等于成员已获准。accepted 三元组与本地 ACTIVE roster
 ## 分别到达后才提交 CONNECTED_IN_LOBBY，避免先确认公网占位再被内容门拒绝。
 var _registration_accepted_tuple: Dictionary = {}
+## CH0 start 可能先于 CH8 accepted/ACTIVE roster 抵达。按连接 attempt 暂存
+## 唯一元组，注册门完成后再消费，避免跨可靠信道竞态丢失重连启动。
+var _pending_authoritative_start_game: Dictionary = {}
 var _registration_started_msec: int = 0
 var _expected_game_load_peers: Dictionary = {}
 var _ready_game_load_peers: Dictionary = {}
@@ -189,9 +197,21 @@ var _forced_final_departure_peer_ids: Dictionary[int, bool] = {}
 var _session_projection_failure_active: bool = false
 var _late_registration_deadlines: Dictionary[int, int] = {}
 var _lobby_command_rate_buckets: Dictionary[int, Dictionary] = {}
+## 全局暂停是单局会话状态；session_id 防止旧包跨局复活，
+## revision 同时用于客户端幂等收敛与 Host CAS。
+var _game_pause_session_id: int = 0
+var _game_pause_revision: int = 0
+var _game_pause_paused := false
+var _game_pause_actor_peer_id: int = 0
+## 客户端可在 LOADING_GAME 先收到重连暂停快照，只在 host-ready 后
+## 交给 GameplayPause，避免冻结加载屏障。
+var _game_pause_apply_pending := false
+var _game_pause_command_rate_buckets: Dictionary[int, Dictionary] = {}
 
 
 func _enter_tree() -> void:
+	# SceneTree 暂停后仍需处理恢复 RPC、连接超时与重连租约。
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	if name != &"NetManager" or get_parent() != get_tree().root:
 		return
 	assert(
@@ -214,11 +234,16 @@ static func get_autoload_instance() -> NetManagerStore:
 	return _autoload_instance
 
 
-func _physics_process(_delta: float) -> void:
-	_physics_frame_count += 1
+func _physics_process(delta: float) -> void:
+	# ALWAYS 节点在暂停时仍会获得回调；网络控制面继续维护，
+	# 但玩法 tick 序号不得跨过暂停窗口。
+	if not _game_pause_paused and not get_tree().paused:
+		_physics_frame_count += 1
 	_poll_pending_connection()
 	_poll_registration_timeout()
 	_poll_relay_identity_lookup_timeouts()
+	if get_tree().paused:
+		paused_control_plane_tick.emit(maxf(delta, 0.0))
 	_poll_reconnect_deadlines()
 
 
@@ -347,6 +372,7 @@ func is_gameplay_ingress_admitted(peer_id: int) -> bool:
 	return (
 		is_host()
 		and connection_state == ConnectionState.IN_GAME
+		and not _game_pause_paused
 		and peer_id > 0
 		and connected_players.has(peer_id)
 		and is_session_member_active(peer_id)
@@ -1014,6 +1040,7 @@ static func _strict_nonnegative_network_integer(value: Variant) -> int:
 
 func disconnect_from_game() -> void:
 	_disconnect_in_progress = true
+	reset_game_pause_state(&"disconnect")
 	_cleanup_multiplayer_signals()
 	if _relay_peer != null:
 		_relay_peer.close()
@@ -1152,6 +1179,7 @@ func host_start_game() -> void:
 	if loading_session_id <= 0:
 		connection_failed.emit("游戏会话世代已耗尽，请重启游戏后重新建房。")
 		return
+	_initialize_game_pause_session(loading_session_id)
 	_expected_game_load_peers.clear()
 	_ready_game_load_peers.clear()
 	for peer_id_variant in connected_players:
@@ -1178,6 +1206,7 @@ func mark_in_game() -> void:
 		return
 	host_game_ready = true
 	_set_connection_state(ConnectionState.IN_GAME)
+	_apply_pending_game_pause_state()
 	_send_host_game_ready_to_clients()
 
 
@@ -1210,6 +1239,365 @@ func get_game_session_incarnation() -> int:
 	):
 		return 0
 	return loading_session_id
+
+
+## 向 Host 请求一个显式目标状态。Client 不做本地预测；返回 true 只表示
+## 请求已由 Host 处理或已排入可靠控制信道，最终状态以绝对快照为准。
+func request_game_pause(desired_paused: bool) -> bool:
+	var local_peer_id := get_local_peer_id()
+	if local_peer_id <= 0 and is_host():
+		local_peer_id = get_host_peer_id()
+	if not _is_game_pause_requester_active(local_peer_id):
+		return false
+	if is_host():
+		return _handle_game_pause_request(
+			local_peer_id,
+			loading_session_id,
+			_game_pause_revision,
+			desired_paused
+		)
+	if (
+		not is_client()
+		or not is_peer_control_send_ready(get_host_peer_id())
+	):
+		return false
+	_rpc_request_game_pause.rpc_id(
+		get_host_peer_id(),
+		loading_session_id,
+		_game_pause_revision,
+		desired_paused
+	)
+	return true
+
+
+## 主动离场者只需要释放“由自己持有”的暂停。Client 保持传输到 Host 的
+## 绝对状态确认抵达，避免 LAN/无公网 lease 时 reliable 请求刚排队就断线。
+## 若另一玩家随后重新暂停，actor 已变化，也视为本次所有权安全释放。
+func release_local_game_pause_for_exit() -> bool:
+	if not is_client() or not _game_pause_paused:
+		return true
+	var local_peer_id := get_local_peer_id()
+	if local_peer_id <= 0 or _game_pause_actor_peer_id != local_peer_id:
+		return true
+	var session_id := _game_pause_session_id
+	var requested_revision := _game_pause_revision
+	if not request_game_pause(false):
+		return false
+	var deadline_msec := (
+		Time.get_ticks_msec() + GAME_PAUSE_EXIT_RELEASE_TIMEOUT_MILLISECONDS
+	)
+	while (
+		connection_state == ConnectionState.IN_GAME
+		and _game_pause_session_id == session_id
+		and Time.get_ticks_msec() < deadline_msec
+	):
+		if not _game_pause_paused or _game_pause_actor_peer_id != local_peer_id:
+			return true
+		# 并发写入可能让首个 CAS 过期。每观察到一个新修订只补发一次，
+		# 仍受独立 pause token bucket 约束，不会形成热循环。
+		if _game_pause_revision > requested_revision:
+			requested_revision = _game_pause_revision
+			request_game_pause(false)
+		await get_tree().process_frame
+	return (
+		not _game_pause_paused
+		or _game_pause_actor_peer_id != local_peer_id
+	)
+
+
+func get_game_pause_state() -> Dictionary:
+	return {
+		"session_id": _game_pause_session_id,
+		"revision": _game_pause_revision,
+		"paused": _game_pause_paused,
+		"actor_peer_id": _game_pause_actor_peer_id,
+	}
+
+
+## 只供会话生命周期清理使用。无论当前状态如何都显式通知
+## GameplayPause 撤销网络暂停，防止断线后大厅仍保持冻结。
+func reset_game_pause_state(reason: StringName = &"") -> void:
+	_game_pause_session_id = 0
+	_game_pause_revision = 0
+	_game_pause_paused = false
+	_game_pause_actor_peer_id = 0
+	_game_pause_apply_pending = false
+	_game_pause_command_rate_buckets.clear()
+	_apply_game_pause_state_to_controller()
+	if not reason.is_empty():
+		_debug_log("NetManager: 已重置全局暂停状态, reason=%s" % String(reason))
+
+
+func _initialize_game_pause_session(session_id: int) -> void:
+	_game_pause_session_id = session_id
+	_game_pause_revision = 0
+	_game_pause_paused = false
+	_game_pause_actor_peer_id = 0
+	_game_pause_apply_pending = true
+	_game_pause_command_rate_buckets.clear()
+
+
+func _is_game_pause_requester_active(peer_id: int) -> bool:
+	return (
+		connection_state == ConnectionState.IN_GAME
+		and loading_session_id > 0
+		and _game_pause_session_id == loading_session_id
+		and peer_id > 0
+		and connected_players.has(peer_id)
+		and is_session_member_active(peer_id)
+		and not _pending_reconnect_loads.has(peer_id)
+		and not _forced_final_departure_peer_ids.has(peer_id)
+		and not _session_projection_failure_active
+	)
+
+
+## 暂停请求属于控制面，不能调用 is_gameplay_ingress_admitted，
+## 否则 paused=true 后恰好会把恢复请求拒绝。
+func _handle_game_pause_request(
+	sender_id: int,
+	session_id: int,
+	expected_revision: int,
+	desired_paused: bool
+) -> bool:
+	if not is_host():
+		return false
+	if not _is_game_pause_requester_active(sender_id):
+		_acknowledge_game_pause_request(sender_id)
+		return false
+	if (
+		sender_id != get_host_peer_id()
+		and not _consume_game_pause_command_admission(sender_id)
+	):
+		_acknowledge_game_pause_request(sender_id)
+		return false
+	if (
+		session_id != loading_session_id
+		or session_id != _game_pause_session_id
+		or expected_revision != _game_pause_revision
+	):
+		_acknowledge_game_pause_request(sender_id)
+		return false
+	if desired_paused == _game_pause_paused:
+		_acknowledge_game_pause_request(sender_id)
+		return true
+	var committed := _commit_host_game_pause_state(desired_paused, sender_id)
+	if not committed:
+		_acknowledge_game_pause_request(sender_id)
+	return committed
+
+
+func _commit_host_game_pause_state(
+	paused: bool,
+	actor_peer_id: int,
+	force_actor_revision: bool = false
+) -> bool:
+	if (
+		not is_host()
+		or connection_state != ConnectionState.IN_GAME
+		or _game_pause_session_id != loading_session_id
+		or loading_session_id <= 0
+		or actor_peer_id <= 0
+	):
+		return false
+	if paused == _game_pause_paused and not force_actor_revision:
+		return true
+	if _game_pause_revision >= NetConstants.MAX_GAME_PAUSE_REVISION:
+		push_error("NetManager: 全局暂停修订已耗尽，拒绝继续变更状态。")
+		return false
+	_game_pause_revision += 1
+	_game_pause_paused = paused
+	_game_pause_actor_peer_id = actor_peer_id
+	_game_pause_apply_pending = false
+	# 先将权威状态排入各 peer 的可靠 CH_AUTH，再让 Host 本地
+	# GameplayPause 冻结 SceneTree。
+	_broadcast_game_pause_state()
+	_apply_game_pause_state_to_controller()
+	return true
+
+
+func _broadcast_game_pause_state() -> void:
+	if not is_host():
+		return
+	var host_id := get_host_peer_id()
+	for peer_id in get_active_session_member_peer_ids():
+		if peer_id == host_id:
+			continue
+		_send_game_pause_state_to_peer(peer_id)
+
+
+func _send_game_pause_state_to_requester(peer_id: int) -> void:
+	if peer_id <= 0 or peer_id == get_host_peer_id():
+		return
+	_send_game_pause_state_to_peer(peer_id)
+
+
+func _acknowledge_game_pause_request(peer_id: int) -> void:
+	if peer_id <= 0:
+		return
+	if peer_id == get_host_peer_id():
+		_apply_game_pause_state_to_controller()
+	else:
+		_send_game_pause_state_to_requester(peer_id)
+
+
+func _send_game_pause_state_to_peer(peer_id: int) -> bool:
+	if (
+		not is_host()
+		or peer_id <= 0
+		or peer_id == get_host_peer_id()
+		or not is_peer_control_send_ready(peer_id)
+		or _game_pause_session_id != loading_session_id
+		or loading_session_id <= 0
+	):
+		return false
+	_rpc_sync_game_pause_state.rpc_id(
+		peer_id,
+		_game_pause_session_id,
+		_game_pause_revision,
+		_game_pause_paused,
+		_game_pause_actor_peer_id
+	)
+	return true
+
+
+func _accept_authoritative_game_pause_state(
+	session_id: int,
+	revision: int,
+	paused: bool,
+	actor_peer_id: int
+) -> bool:
+	if (
+		is_host()
+		or connection_state < ConnectionState.LOADING_GAME
+		or session_id <= 0
+		or session_id != loading_session_id
+		or session_id != _game_pause_session_id
+		or revision < 0
+		or revision > NetConstants.MAX_GAME_PAUSE_REVISION
+		or (revision == 0 and (paused or actor_peer_id != 0))
+		or (revision > 0 and actor_peer_id <= 0)
+	):
+		return false
+	if revision < _game_pause_revision:
+		return false
+	if revision == _game_pause_revision:
+		var is_idempotent := (
+			paused == _game_pause_paused
+			and actor_peer_id == _game_pause_actor_peer_id
+		)
+		if is_idempotent:
+			if connection_state == ConnectionState.IN_GAME:
+				_game_pause_apply_pending = false
+				_apply_game_pause_state_to_controller()
+			else:
+				_game_pause_apply_pending = true
+		return is_idempotent
+	_game_pause_revision = revision
+	_game_pause_paused = paused
+	_game_pause_actor_peer_id = actor_peer_id
+	if connection_state == ConnectionState.IN_GAME:
+		_game_pause_apply_pending = false
+		_apply_game_pause_state_to_controller()
+	else:
+		_game_pause_apply_pending = true
+	return true
+
+
+func _apply_pending_game_pause_state() -> void:
+	if (
+		not _game_pause_apply_pending
+		or connection_state != ConnectionState.IN_GAME
+		or _game_pause_session_id != loading_session_id
+	):
+		return
+	_game_pause_apply_pending = false
+	_apply_game_pause_state_to_controller()
+
+
+func _apply_game_pause_state_to_controller() -> void:
+	if not is_inside_tree():
+		return
+	var gameplay_pause := get_node_or_null("/root/GameplayPause")
+	if gameplay_pause == null:
+		return
+	if not gameplay_pause.has_method("apply_network_pause_state"):
+		push_error("NetManager: GameplayPause 缺少网络暂停状态接口。")
+		return
+	gameplay_pause.call(
+		"apply_network_pause_state",
+		_game_pause_session_id,
+		_game_pause_revision,
+		_game_pause_paused,
+		_game_pause_actor_peer_id
+	)
+
+
+func _consume_game_pause_command_admission(
+	peer_id: int,
+	now_seconds: float = -1.0
+) -> bool:
+	if peer_id <= 0:
+		return false
+	# 控制面限频必须使用单调墙钟，不能随 gameplay clock 一同冻结。
+	var now := (
+		float(Time.get_ticks_msec()) / 1000.0
+		if now_seconds < 0.0
+		else now_seconds
+	)
+	var bucket: Dictionary
+	if _game_pause_command_rate_buckets.has(peer_id):
+		bucket = _game_pause_command_rate_buckets[peer_id] as Dictionary
+	else:
+		bucket = {
+			"tokens": GAME_PAUSE_COMMAND_RATE_BURST,
+			"last_time": now,
+		}
+	var tokens := float(bucket.get("tokens", GAME_PAUSE_COMMAND_RATE_BURST))
+	var last_time := float(bucket.get("last_time", now))
+	tokens = minf(
+		GAME_PAUSE_COMMAND_RATE_BURST,
+		tokens + maxf(now - last_time, 0.0) * GAME_PAUSE_COMMAND_RATE_PER_SECOND
+	)
+	var accepted := tokens >= 1.0
+	if accepted:
+		tokens -= 1.0
+	bucket["tokens"] = tokens
+	bucket["last_time"] = now
+	_game_pause_command_rate_buckets[peer_id] = bucket
+	return accepted
+
+
+## 暂停控制与认证/加载共用可靠 CH_AUTH(0)。expected_revision 是
+## 客户端已观察的绝对版本，Host 以此执行 compare-and-swap。
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _rpc_request_game_pause(
+	session_id: int,
+	expected_revision: int,
+	desired_paused: bool
+) -> void:
+	_handle_game_pause_request(
+		multiplayer.get_remote_sender_id(),
+		session_id,
+		expected_revision,
+		desired_paused
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_sync_game_pause_state(
+	session_id: int,
+	revision: int,
+	paused: bool,
+	actor_peer_id: int
+) -> void:
+	if multiplayer.get_remote_sender_id() != get_host_peer_id():
+		return
+	_accept_authoritative_game_pause_state(
+		session_id,
+		revision,
+		paused,
+		actor_peer_id
+	)
 
 
 ## 只由 Host 开始新局时分配；水位跨 disconnect 保留，当前 session 清零不会
@@ -1684,6 +2072,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	_forced_final_departure_peer_ids.erase(peer_id)
 	_late_registration_deadlines.erase(peer_id)
 	_lobby_command_rate_buckets.erase(peer_id)
+	_game_pause_command_rate_buckets.erase(peer_id)
 	if is_host() and connection_state == ConnectionState.LOADING_GAME:
 		_expected_game_load_peers.erase(peer_id)
 		_ready_game_load_peers.erase(peer_id)
@@ -1826,12 +2215,14 @@ func _clear_connection_attempt() -> void:
 
 func _begin_registration_handshake() -> void:
 	_registration_accepted_tuple.clear()
+	_pending_authoritative_start_game.clear()
 	_registration_started_msec = Time.get_ticks_msec()
 	_set_connection_state(ConnectionState.REGISTERING)
 
 
 func _clear_registration_handshake() -> void:
 	_registration_accepted_tuple.clear()
+	_pending_authoritative_start_game.clear()
 	_registration_started_msec = 0
 
 
@@ -2756,6 +3147,7 @@ func _clear_reconnect_session_state() -> void:
 	_forced_final_departure_peer_ids.clear()
 	_late_registration_deadlines.clear()
 	_lobby_command_rate_buckets.clear()
+	_game_pause_command_rate_buckets.clear()
 
 
 func _consume_lobby_command_admission(
@@ -2934,6 +3326,20 @@ func _try_complete_client_registration() -> bool:
 	_registration_started_msec = 0
 	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
 	_debug_log("NetManager: 内容摘要与 ACTIVE 成员身份均已获 Host 接受")
+	if not _pending_authoritative_start_game.is_empty():
+		var pending_start := _pending_authoritative_start_game.duplicate(true)
+		_pending_authoritative_start_game.clear()
+		if (
+			int(pending_start.get("connection_attempt_generation", -1))
+			!= _connection_attempt_generation
+			or not _apply_authoritative_start_game(
+				int(pending_start.get("game_mode", -1)),
+				int(pending_start.get("session_id", 0))
+			)
+		):
+			connection_failed.emit("重连启动状态无法在注册完成后提交，连接已关闭。")
+			disconnect_from_game()
+			return false
 	return true
 
 
@@ -3186,8 +3592,6 @@ func _rpc_start_game(game_mode: int = 0, session_id: int = 0) -> void:
 ## wire 解码与运行准入在这里汇合：roster 可记录隐藏模式，但 start 必须
 ## 匹配本机显式受众。拒绝时立即断开，避免 Client 永久停在大厅等待加载。
 func _apply_authoritative_start_game(game_mode: int, session_id: int) -> bool:
-	if net_role == NetRole.CLIENT and connection_state == ConnectionState.REGISTERING:
-		return false
 	if session_id <= 0 or session_id > NetConstants.MAX_GAME_SESSION_INCARNATION:
 		return false
 	if not _is_known_game_mode(game_mode):
@@ -3196,6 +3600,20 @@ func _apply_authoritative_start_game(game_mode: int, session_id: int) -> bool:
 	if not is_runtime_game_mode_admitted(game_mode):
 		_reject_authoritative_runtime_mode(game_mode, true)
 		return false
+	if net_role == NetRole.CLIENT and connection_state == ConnectionState.REGISTERING:
+		var pending_start := {
+			"game_mode": game_mode,
+			"session_id": session_id,
+			"connection_attempt_generation": _connection_attempt_generation,
+		}
+		if _pending_authoritative_start_game.is_empty():
+			_pending_authoritative_start_game = pending_start
+			return true
+		if _pending_authoritative_start_game == pending_start:
+			return true
+		connection_failed.emit("Host 在注册期间发送了互相冲突的启动状态，连接已关闭。")
+		disconnect_from_game()
+		return false
 	if connection_state >= ConnectionState.LOADING_GAME:
 		# Reliable delivery should only apply this transition once. Ignore a stale or
 		# duplicated start packet instead of resetting already reported readiness.
@@ -3203,6 +3621,7 @@ func _apply_authoritative_start_game(game_mode: int, session_id: int) -> bool:
 	_set_current_game_mode(game_mode as GameMode)
 	host_game_ready = false
 	loading_session_id = session_id
+	_initialize_game_pause_session(session_id)
 	_last_game_session_incarnation = maxi(
 		_last_game_session_incarnation,
 		session_id
@@ -3243,6 +3662,7 @@ func _rpc_host_game_ready(session_id: int = 0) -> void:
 	host_game_ready = true
 	if connection_state >= ConnectionState.LOADING_GAME:
 		_set_connection_state(ConnectionState.IN_GAME)
+		_apply_pending_game_pause_state()
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
@@ -3648,6 +4068,9 @@ func _can_send_reconnect_game_ready_to_peer(peer_id: int) -> bool:
 ## 调用前已经完成 transport 预检与 ACTIVE 提交；RPC 排队本身没有失败回执，
 ## 因而这里只做不可失败通知，不能再触发成员回滚。
 func _send_reconnect_game_ready_to_peer(peer_id: int) -> void:
+	# 与 host-ready 共用可靠 CH_AUTH，按排队顺序保证重连者先缓存
+	# 当前暂停快照，再进入 IN_GAME 并应用。
+	_send_game_pause_state_to_peer(peer_id)
 	_rpc_host_game_ready.rpc_id(peer_id, loading_session_id)
 
 
@@ -3865,6 +4288,7 @@ func _send_host_game_ready_to_clients() -> void:
 			continue
 		if not is_peer_send_ready(peer_id):
 			continue
+		_send_game_pause_state_to_peer(peer_id)
 		_rpc_host_game_ready.rpc_id(peer_id, loading_session_id)
 
 
@@ -4068,6 +4492,10 @@ func _remap_session_member_identity(
 	_session_members.erase(old_peer_id)
 	_session_members[new_peer_id] = member
 	_session_membership_revision += 1
+	if _game_pause_paused and _game_pause_actor_peer_id == old_peer_id:
+		# 暂停发起者的身份随重连 transport 迁移，该变更也必须
+		# 占用新修订，否则其之后最终离场无法自动撤销暂停。
+		_commit_host_game_pause_state(true, new_peer_id, true)
 	if emit_change:
 		_emit_session_membership_changed()
 	return true
@@ -4107,6 +4535,14 @@ func _finalize_session_member_departures(
 	if removed_peer_ids.is_empty():
 		return 0
 	_publish_host_session_membership_change()
+	if (
+		is_host()
+		and _game_pause_paused
+		and removed_peer_ids.has(_game_pause_actor_peer_id)
+	):
+		# 发起者在宽限期结束后已真正离开会话。由 Host 提交一个
+		# 新的 resumed 修订，避免全局状态永久遗留在暂停。
+		_commit_host_game_pause_state(false, get_host_peer_id())
 	for peer_id in removed_peer_ids:
 		session_member_final_departed.emit(
 			peer_id,

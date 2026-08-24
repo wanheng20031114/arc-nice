@@ -16,7 +16,7 @@ shader_parameter/growth_core_color = Color(0.54, 0.55, 0.56, 0.34)
 shader_parameter/growth_edge_width = 0.024
 
 [node name="RogueSceneTransition" type="CanvasLayer"]
-process_mode = 3
+process_mode = 1
 visible = false
 layer = 120
 script = ExtResource("1_script")

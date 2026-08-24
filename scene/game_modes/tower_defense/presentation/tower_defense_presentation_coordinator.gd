@@ -205,7 +205,10 @@ func handle_unhandled_input(event: InputEvent) -> void:
 func open_settings() -> void:
 	if _player_profile_panel.is_open():
 		_player_profile_panel.close()
-	_settings_panel.open()
+	var pause_controller := get_node(
+		"/root/GameplayPause"
+	) as GameplayPauseController
+	pause_controller.open_menu()
 
 
 func open_player_profile() -> void:

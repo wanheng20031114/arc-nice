@@ -14,7 +14,7 @@ shader_parameter/edge_width_pixels = 1.5
 shader_parameter/target_rows = 18.0
 
 [node name="RogueUndergroundShopTransition" type="CanvasLayer"]
-process_mode = 3
+process_mode = 1
 visible = false
 layer = 120
 script = ExtResource("1_script")

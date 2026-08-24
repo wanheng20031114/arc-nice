@@ -215,6 +215,11 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	var pause_controller := get_node_or_null(
+		"/root/GameplayPause"
+	) as GameplayPauseController
+	if pause_controller != null:
+		pause_controller.unregister_context(self)
 	runtime_prewarm_tearing_down = true
 	LuoxiMerchant.reset_runtime_choice_count()
 	var runtime_policy_lease := (
@@ -443,6 +448,14 @@ func _fail_tower_runtime_preparation(
 
 
 func _on_runtime_activated() -> void:
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		var pause_controller := get_node(
+			"/root/GameplayPause"
+		) as GameplayPauseController
+		pause_controller.register_context(
+			self,
+			_on_pause_return_to_main_menu
+		)
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return
 	if (
@@ -453,6 +466,10 @@ func _on_runtime_activated() -> void:
 		campaign_coordinator.enter_pre_flow_step(
 			campaign_coordinator.get_start_flow_step()
 		)
+
+
+func _on_pause_return_to_main_menu() -> void:
+	tower_multiplayer_mode_adapter.handle_return_to_lobby_requested()
 
 
 func _on_scene_teardown_prepared() -> void:

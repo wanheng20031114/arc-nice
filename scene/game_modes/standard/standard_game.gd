@@ -160,6 +160,26 @@ func _ready() -> void:
 	super._ready()
 
 
+func _exit_tree() -> void:
+	var pause_controller := get_node_or_null(
+		"/root/GameplayPause"
+	) as GameplayPauseController
+	if pause_controller != null:
+		pause_controller.unregister_context(self)
+
+
+func _on_runtime_activated() -> void:
+	if runtime_mode != RuntimeMode.SINGLEPLAYER:
+		return
+	var pause_controller := get_node(
+		"/root/GameplayPause"
+	) as GameplayPauseController
+	pause_controller.register_context(
+		self,
+		_on_pause_return_to_main_menu
+	)
+
+
 func configure_multiplayer(
 	mode: int,
 	local_peer_id: int,
@@ -691,8 +711,14 @@ func _apply_initial_player_xirang() -> void:
 func _on_currency_hud_settings_requested() -> void:
 	if player_profile_panel.is_open():
 		player_profile_panel.close()
-	settings_panel.open()
-	_lock_player_for_modal_ui()
+	var pause_controller := get_node(
+		"/root/GameplayPause"
+	) as GameplayPauseController
+	pause_controller.open_menu()
+
+
+func _on_pause_return_to_main_menu() -> void:
+	standard_multiplayer_mode_adapter.handle_return_to_lobby_requested()
 
 func _on_settings_panel_closed() -> void:
 	_refresh_player_modal_ui_lock()

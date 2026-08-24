@@ -263,7 +263,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 94, "Protocol must be v94.")
+	_expect(NetConstants.PROTOCOL_VERSION == 95, "Protocol must be v95.")
 	_expect(
 		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
 		"Protocol v94 must retain scene-specific bits 5..6 for shield stages, ninja boost, and main-battle airborne visuals."

@@ -1,0 +1,323 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scene/pause/gameplay_pause.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="2_settings"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.09, 0.095, 0.105, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.64, 0.42, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_size = 12
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_normal"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.18, 0.19, 0.2, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.58, 0.51, 0.34, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_hover"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.24, 0.23, 0.2, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.82, 0.48, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_pressed"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.14, 0.14, 0.15, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.82, 0.48, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_disabled"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.13, 0.135, 0.14, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.28, 0.23, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_danger_normal"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.24, 0.14, 0.13, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.72, 0.46, 0.3, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_danger_hover"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.34, 0.17, 0.14, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.98, 0.7, 0.4, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[node name="GameplayPause" type="Node"]
+process_mode = 3
+script = ExtResource("1_script")
+
+[node name="PauseLayer" type="CanvasLayer" parent="."]
+layer = 900
+
+[node name="ScreenRoot" type="Control" parent="PauseLayer"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Dim" type="ColorRect" parent="PauseLayer/ScreenRoot"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.015, 0.017, 0.02, 0.72)
+
+[node name="MainCenter" type="CenterContainer" parent="PauseLayer/ScreenRoot"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PausePanel" type="PanelContainer" parent="PauseLayer/ScreenRoot/MainCenter"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="Margin" type="MarginContainer" parent="PauseLayer/ScreenRoot/MainCenter/PausePanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 34
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 34
+theme_override_constants/margin_bottom = 30
+
+[node name="Layout" type="VBoxContainer" parent="PauseLayer/ScreenRoot/MainCenter/PausePanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 13
+
+[node name="Title" type="Label" parent="PauseLayer/ScreenRoot/MainCenter/PausePanel/Margin/Layout"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.88, 0.62, 1)
+theme_override_font_sizes/font_size = 30
+text = "暂停"
+horizontal_alignment = 1
+
+[node name="PauseSource" type="Label" parent="PauseLayer/ScreenRoot/MainCenter/PausePanel/Margin/Layout"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.72, 0.68, 1)
+theme_override_font_sizes/font_size = 15
+text = "游戏进程已暂停"
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="PauseLayer/ScreenRoot/MainCenter/PausePanel/Margin/Layout"]
+custom_minimum_size = Vector2(0, 6)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="ResumeButton" type="Button" parent="PauseLayer/ScreenRoot/MainCenter/PausePanel/Margin/Layout"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+focus_neighbor_top = NodePath("../ReturnButton")
+focus_neighbor_bottom = NodePath("../SettingsButton")
+theme_override_colors/font_color = Color(0.94, 0.91, 0.82, 1)
+theme_override_colors/font_disabled_color = Color(0.45, 0.44, 0.4, 1)
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
+text = "继续游戏"
+
+[node name="SettingsButton" type="Button" parent="PauseLayer/ScreenRoot/MainCenter/PausePanel/Margin/Layout"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+focus_neighbor_top = NodePath("../ResumeButton")
+focus_neighbor_bottom = NodePath("../ReturnButton")
+theme_override_colors/font_color = Color(0.94, 0.91, 0.82, 1)
+theme_override_colors/font_disabled_color = Color(0.45, 0.44, 0.4, 1)
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
+text = "设置"
+
+[node name="ReturnButton" type="Button" parent="PauseLayer/ScreenRoot/MainCenter/PausePanel/Margin/Layout"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+focus_neighbor_top = NodePath("../SettingsButton")
+focus_neighbor_bottom = NodePath("../ResumeButton")
+theme_override_colors/font_color = Color(0.98, 0.82, 0.67, 1)
+theme_override_colors/font_disabled_color = Color(0.45, 0.36, 0.31, 1)
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleBoxFlat_danger_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_danger_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_danger_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
+text = "返回主菜单"
+
+[node name="Hint" type="Label" parent="PauseLayer/ScreenRoot/MainCenter/PausePanel/Margin/Layout"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.52, 0.52, 0.49, 1)
+theme_override_font_sizes/font_size = 13
+text = "再次按暂停键继续游戏"
+horizontal_alignment = 1
+
+[node name="ConfirmCenter" type="CenterContainer" parent="PauseLayer/ScreenRoot"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ConfirmPanel" type="PanelContainer" parent="PauseLayer/ScreenRoot/ConfirmCenter"]
+custom_minimum_size = Vector2(490, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="Margin" type="MarginContainer" parent="PauseLayer/ScreenRoot/ConfirmCenter/ConfirmPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 34
+theme_override_constants/margin_top = 30
+theme_override_constants/margin_right = 34
+theme_override_constants/margin_bottom = 30
+
+[node name="Layout" type="VBoxContainer" parent="PauseLayer/ScreenRoot/ConfirmCenter/ConfirmPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="Title" type="Label" parent="PauseLayer/ScreenRoot/ConfirmCenter/ConfirmPanel/Margin/Layout"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.88, 0.62, 1)
+theme_override_font_sizes/font_size = 26
+text = "返回主菜单？"
+horizontal_alignment = 1
+
+[node name="Description" type="Label" parent="PauseLayer/ScreenRoot/ConfirmCenter/ConfirmPanel/Margin/Layout"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.8, 0.74, 1)
+theme_override_font_sizes/font_size = 17
+text = "当前游戏进度可能不会保存。\n多人房主离开时，当前房间也会结束。"
+horizontal_alignment = 1
+
+[node name="Actions" type="HBoxContainer" parent="PauseLayer/ScreenRoot/ConfirmCenter/ConfirmPanel/Margin/Layout"]
+layout_mode = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="CancelButton" type="Button" parent="PauseLayer/ScreenRoot/ConfirmCenter/ConfirmPanel/Margin/Layout/Actions"]
+custom_minimum_size = Vector2(170, 48)
+layout_mode = 2
+focus_neighbor_left = NodePath("../ConfirmButton")
+focus_neighbor_right = NodePath("../ConfirmButton")
+theme_override_colors/font_color = Color(0.94, 0.91, 0.82, 1)
+theme_override_colors/font_disabled_color = Color(0.45, 0.44, 0.4, 1)
+theme_override_font_sizes/font_size = 19
+theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
+text = "取消"
+
+[node name="ConfirmButton" type="Button" parent="PauseLayer/ScreenRoot/ConfirmCenter/ConfirmPanel/Margin/Layout/Actions"]
+custom_minimum_size = Vector2(170, 48)
+layout_mode = 2
+focus_neighbor_left = NodePath("../CancelButton")
+focus_neighbor_right = NodePath("../CancelButton")
+theme_override_colors/font_color = Color(0.98, 0.82, 0.67, 1)
+theme_override_colors/font_disabled_color = Color(0.45, 0.36, 0.31, 1)
+theme_override_font_sizes/font_size = 19
+theme_override_styles/normal = SubResource("StyleBoxFlat_danger_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_danger_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_danger_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
+text = "确认返回"
+
+[node name="Hint" type="Label" parent="PauseLayer/ScreenRoot/ConfirmCenter/ConfirmPanel/Margin/Layout"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.52, 0.52, 0.49, 1)
+theme_override_font_sizes/font_size = 13
+text = "再次按暂停键返回暂停菜单"
+horizontal_alignment = 1
+
+[node name="SettingsPanel" parent="PauseLayer" instance=ExtResource("2_settings")]

@@ -94,7 +94,7 @@ outline_size = 2
 outline_color = Color(0.025, 0.02, 0.018, 0.96)
 
 [node name="RogueRunDefeatOverlay" type="CanvasLayer"]
-process_mode = 3
+process_mode = 1
 visible = false
 layer = 130
 script = ExtResource("1_script")

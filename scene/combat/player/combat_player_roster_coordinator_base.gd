@@ -322,7 +322,7 @@ func request_tango_charge_started(direction: Vector2) -> bool:
 	var safe_direction := _sanitize_tango_charge_direction(tango, direction)
 	if not tango.try_authoritative_tango_charge_started(safe_direction):
 		return false
-	_singleplayer_tango_charge_started_at = Time.get_ticks_usec() / 1000000.0
+	_singleplayer_tango_charge_started_at = GameplayPause.get_gameplay_time_seconds()
 	return true
 
 
@@ -337,7 +337,10 @@ func request_tango_charge_released(direction: Vector2) -> bool:
 	var tango := runtime.player as PlayerTango
 	if tango == null or not is_instance_valid(tango):
 		return false
-	var elapsed := maxf(Time.get_ticks_usec() / 1000000.0 - started_at, 0.0)
+	var elapsed := maxf(
+		GameplayPause.get_gameplay_time_seconds() - started_at,
+		0.0
+	)
 	var charge_ratio := tango.resolve_authoritative_tango_charge_release_ratio(
 		elapsed
 	)
@@ -382,7 +385,7 @@ func schedule_multiplayer_defeat_check() -> void:
 	if defeat_check_pending:
 		return
 	defeat_check_pending = true
-	var timer := get_tree().create_timer(MULTIPLAYER_DEFEAT_GRACE_SECONDS)
+	var timer := get_tree().create_timer(MULTIPLAYER_DEFEAT_GRACE_SECONDS, false)
 	timer.timeout.connect(run_multiplayer_defeat_check_after_grace)
 
 

@@ -266,7 +266,7 @@ corner_radius_bottom_left = 6
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_close"]
 
 [node name="RogueRouteNodeBriefing" type="CanvasLayer"]
-process_mode = 3
+process_mode = 1
 visible = false
 layer = 50
 script = ExtResource("1_script")

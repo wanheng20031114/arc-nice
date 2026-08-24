@@ -664,7 +664,7 @@ func _emit_state() -> void:
 
 
 func _finish_after_delay(generation: int) -> void:
-	await get_tree().create_timer(RESULT_DISPLAY_SECONDS).timeout
+	await get_tree().create_timer(RESULT_DISPLAY_SECONDS, false).timeout
 	if generation != _finish_generation or not active or stage != STAGE_RESOLVED:
 		return
 	force_finish()

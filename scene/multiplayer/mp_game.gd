@@ -34,6 +34,8 @@ const GAME_RUNTIME_CLIENT_VIEW := 2
 const STATE_DISCONNECTED := 0
 const STATE_LOADING_GAME := 5
 const STATE_IN_GAME := 6
+const MAIN_MENU_SCENE_PATH := "res://scene/main_menu.tscn"
+const MULTIPLAYER_LOBBY_SCENE_PATH := "res://scene/multiplayer/multiplayer_lobby.tscn"
 const RECENT_EVENT_PRUNE_INTERVAL_SECONDS := 5.0
 const PEER_RESULT_INVENTORY_SNAPSHOT := &"inventory_snapshot"
 const PEER_RESULT_WAREHOUSE_COMMAND := &"warehouse_command"
@@ -148,6 +150,7 @@ var _pending_reconnected_player_projections: Dictionary[int, Dictionary] = {}
 var _completed_reconnected_player_projections: Dictionary[int, int] = {}
 var _public_return_in_progress := false
 var _lobby_return_in_progress := false
+var _return_scene_path := MULTIPLAYER_LOBBY_SCENE_PATH
 var _game_setup_failure_reason := ""
 var _preparation_generation := 0
 
@@ -186,6 +189,12 @@ func _ready() -> void:
 	set_multiplayer_authority(_get_host_peer_id())
 	if not net_manager.connection_state_changed.is_connected(_on_connection_state_changed):
 		net_manager.connection_state_changed.connect(_on_connection_state_changed)
+	if not net_manager.paused_control_plane_tick.is_connected(
+		_on_paused_control_plane_tick
+	):
+		net_manager.paused_control_plane_tick.connect(
+			_on_paused_control_plane_tick
+		)
 	if not net_manager.player_left.is_connected(_on_net_player_left):
 		net_manager.player_left.connect(_on_net_player_left)
 	if not net_manager.player_reconnected.is_connected(_on_net_player_reconnected):
@@ -650,6 +659,11 @@ func _on_enemy_snapshot_send_requested(
 
 
 func _exit_tree() -> void:
+	var pause_controller := get_node_or_null(
+		"/root/GameplayPause"
+	) as GameplayPauseController
+	if pause_controller != null:
+		pause_controller.unregister_context(self)
 	if net_manager != null and not embedded_runtime:
 		net_manager.unregister_reconnect_delivery_preparer(
 			prepare_reconnected_member_delivery
@@ -1007,6 +1021,12 @@ func _process(delta: float) -> void:
 		tower_world_coordinator.update_client(delta)
 		enemy_coordinator.update_proxy_visual_budget(delta)
 		world_flow_coordinator.update_client_enemy_count()
+
+
+func _on_paused_control_plane_tick(delta: float) -> void:
+	# NetManager 的 ALWAYS 控制岛只借此推进重连 Player 投影的有界重试；
+	# 插值、世界状态和普通 transport 更新仍由暂停冻结。
+	_update_pending_reconnected_player_projections(delta)
 
 
 func request_multiplayer_upgrade(stat_type: int) -> void:
@@ -5466,18 +5486,17 @@ func _on_game_return_to_lobby_requested() -> void:
 	# 协议决定是回路线、重试还是结束会话。
 	if embedded_runtime:
 		return
-	if net_manager != null and net_manager.is_multiplayer_active():
-		if _public_return_in_progress:
-			return
-		_public_return_in_progress = true
-		# 公网身份先结束；断开 ENet 后再由既有状态信号统一切回大厅。
-		if public_room_lease != null:
-			await public_room_lease.release_current_and_wait(&"game_return_to_lobby")
-		if not is_inside_tree():
-			return
-		net_manager.disconnect_from_game()
-		return
-	_return_to_lobby()
+	await _request_session_exit(
+		MULTIPLAYER_LOBBY_SCENE_PATH,
+		&"game_return_to_lobby"
+	)
+
+
+func _on_pause_return_to_main_menu() -> void:
+	await _request_session_exit(
+		MAIN_MENU_SCENE_PATH,
+		&"pause_return_to_main_menu"
+	)
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
@@ -7592,6 +7611,13 @@ func _on_connection_state_changed(new_state: int) -> void:
 		_client_host_game_ready = true
 		if game != null:
 			game.activate_runtime()
+		var pause_controller := get_node(
+			"/root/GameplayPause"
+		) as GameplayPauseController
+		pause_controller.register_context(
+			self,
+			_on_pause_return_to_main_menu
+		)
 		if net_manager.is_client():
 			_request_runtime_state_from_host()
 			if _peer_result_repair_needed:
@@ -8449,7 +8475,10 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	projectile_coordinator.clear_peer(peer_id)
 
 
-func _return_to_lobby() -> void:
+func _request_session_exit(
+	destination_scene_path: String,
+	reason: StringName
+) -> void:
 	# 内嵌运行时既不切场景也不断开共享传输。同步/异步准备失败已经通过
 	# RuntimePreparationProvider 的失败信号交还给外层作战协调器。
 	if embedded_runtime:
@@ -8457,12 +8486,39 @@ func _return_to_lobby() -> void:
 	if _lobby_return_in_progress:
 		return
 	_lobby_return_in_progress = true
+	_public_return_in_progress = true
+	_return_scene_path = destination_scene_path
+	var pause_controller := get_node_or_null(
+		"/root/GameplayPause"
+	) as GameplayPauseController
+	if (
+		pause_controller != null
+		and pause_controller.is_gameplay_paused()
+		and net_manager != null
+		and net_manager.is_client()
+	):
+		# 只释放本机持有的全局暂停，并等待 Host 绝对状态确认。其他玩家
+		# 发起的暂停保持不变；本地仍维持遮罩直到离场清理完成。
+		await net_manager.release_local_game_pause_for_exit()
+		if not is_inside_tree():
+			return
 	# 初始化失败、远端断线和主动返回都必须经过同一个跨场景清理门。
 	if public_room_lease != null:
-		await public_room_lease.release_current_and_wait(&"mp_game_return_to_lobby")
+		await public_room_lease.release_current_and_wait(reason)
 	if not is_inside_tree():
 		return
+	if pause_controller != null:
+		pause_controller.force_unpause_for_transition()
+	if net_manager != null and net_manager.is_multiplayer_active():
+		net_manager.disconnect_from_game()
 	_complete_return_to_lobby()
+
+
+func _return_to_lobby() -> void:
+	await _request_session_exit(
+		MULTIPLAYER_LOBBY_SCENE_PATH,
+		&"mp_game_return_to_lobby"
+	)
 
 
 func _complete_return_to_lobby() -> void:
@@ -8490,4 +8546,4 @@ func _complete_return_to_lobby() -> void:
 	var tree: SceneTree = get_tree()
 	if tree == null:
 		return
-	tree.change_scene_to_file("res://scene/multiplayer/multiplayer_lobby.tscn")
+	tree.change_scene_to_file(_return_scene_path)

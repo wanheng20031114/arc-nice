@@ -38,7 +38,7 @@ func cover() -> bool:
 		1.0,
 		duration
 	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	await get_tree().create_timer(duration, true).timeout
+	await get_tree().create_timer(duration, false).timeout
 	if serial != _transition_serial:
 		return false
 	_transition_tween = null
@@ -61,7 +61,7 @@ func reveal() -> bool:
 		0.0,
 		REVEAL_DURATION_SECONDS
 	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	await get_tree().create_timer(REVEAL_DURATION_SECONDS, true).timeout
+	await get_tree().create_timer(REVEAL_DURATION_SECONDS, false).timeout
 	if serial != _transition_serial:
 		return false
 	_transition_tween = null

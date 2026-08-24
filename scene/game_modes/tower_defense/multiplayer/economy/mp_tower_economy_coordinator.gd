@@ -438,7 +438,7 @@ func handle_authoritative_production_command(
 	else:
 		reason = building.apply_authoritative_multiplayer_production_command(command)
 		success = reason == ProductionBuildingProtocolScript.RESULT_SUCCESS
-	var host_sample_time := _get_net_time()
+	var host_sample_time := _get_gameplay_net_time()
 	var state := (
 		building.export_multiplayer_runtime_state()
 		if building != null and is_instance_valid(building)
@@ -491,7 +491,7 @@ func handle_authoritative_production_snapshot_request(
 		or not _net_manager.is_peer_send_ready(sender_id)
 	):
 		return false
-	var sample_time := _get_net_time()
+	var sample_time := _get_gameplay_net_time()
 	rpc_to_peer_requested.emit(
 		sender_id,
 		&"net_production_state_batch",
@@ -1125,7 +1125,7 @@ func _on_authoritative_production_state_changed(
 		return
 	_pending_production_state_updates[net_id] = {
 		"state": building.export_multiplayer_runtime_state(),
-		"host_sample_time": _get_net_time(),
+		"host_sample_time": _get_gameplay_net_time(),
 	}
 	_schedule_shared_production_state_flush()
 
@@ -1584,7 +1584,7 @@ func _consume_peer_rate_token(
 ) -> bool:
 	if peer_id <= 0 or rate_per_second <= 0.0 or burst <= 0.0:
 		return false
-	var now := _get_net_time()
+	var now := _get_control_time()
 	var bucket := buckets.get(peer_id, {}) as Dictionary
 	if bucket.is_empty():
 		bucket = {"tokens": burst, "last_time": now}
@@ -1622,5 +1622,9 @@ func _is_host_bound() -> bool:
 	return is_bound() and _net_manager.is_host()
 
 
-func _get_net_time() -> float:
+func _get_gameplay_net_time() -> float:
+	return GameplayPause.get_gameplay_time_seconds() - _net_time_origin
+
+
+func _get_control_time() -> float:
 	return Time.get_ticks_msec() / 1000.0 - _net_time_origin

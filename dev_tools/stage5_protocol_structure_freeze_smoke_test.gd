@@ -355,7 +355,7 @@ func _strip_quotes(value: String) -> String:
 
 
 func _test_protocol_and_wire_values() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 94, "多人协议必须保持 v94。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 95, "多人协议必须保持 v95。")
 	_expect(
 		NET_CONSTANTS.CH_MEMBERSHIP == 8
 		and NET_CONSTANTS.ENET_MAX_CHANNEL == 8

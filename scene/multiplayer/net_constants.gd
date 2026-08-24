@@ -201,10 +201,15 @@ extends RefCounted
 ## 终止、迟加入和运行时修复使用可靠 CH5，并加入分块视觉快照，确保无碰撞的
 ## 客户端表现弹最终收敛。v93 客户端无法解析扩展后的快照、出生批次、目标动作、
 ## 投射物载荷与新 RPC 表面，也缺少阵营修订合同，不能与 v94 混联。
-const PROTOCOL_VERSION := 94
+## v95：新增会话级宿主权威暂停请求与绝对状态 RPC，以游戏会话世代、
+## 单调修订和显式目标状态完成 CAS；暂停快照在重连 host-ready 前通过可靠
+## CH0 收敛。v94 及更旧客户端缺少该 RPC 表面与逻辑时钟契约，不能与 v95 混联。
+const PROTOCOL_VERSION := 95
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF
+## 单局暂停状态修订不回绕，新会话重置为 0。
+const MAX_GAME_PAUSE_REVISION := 0x7FFFFFFF
 ## 成员世代同样只递增不回绕，但生命周期属于 Host 成员账本而非单局流程。
 const MAX_PARTICIPANT_INCARNATION := 0x7FFFFFFF
 
@@ -375,7 +380,7 @@ static func _has_public_lobby_api_authority(base_url: String) -> bool:
 	return true
 
 ## ENet 信道定义
-## 0: 认证、加载、repair 控制/manifest — reliable；各域 repair 正文走 5/6
+## 0: 认证、加载、全局暂停、repair 控制/manifest — reliable；各域 repair 正文走 5/6
 ## 1: 玩家输入上报 — unreliable_ordered
 ## 2: 玩家实时状态 — unreliable_ordered
 ## 3: 敌人分块状态 — unreliable

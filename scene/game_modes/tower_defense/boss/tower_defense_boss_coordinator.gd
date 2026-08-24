@@ -868,7 +868,7 @@ func _finish_airdrop_sniper_spawn(
 	drop_duration: float
 ) -> void:
 	if warning_duration > 0.0:
-		await runtime.get_tree().create_timer(warning_duration).timeout
+		await runtime.get_tree().create_timer(warning_duration, false).timeout
 	if campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	if enemy_container == null or player_roster_coordinator.local_player == null:
@@ -968,7 +968,7 @@ func _on_boss_defeated(enemy: Enemy) -> void:
 	presentation_coordinator.show_boss_progress(1, 1)
 	enemy_coordinator.emit_multiplayer_enemy_defeated(enemy)
 	remove_remaining_adds()
-	var victory_timer := runtime.get_tree().create_timer(1.3)
+	var victory_timer := runtime.get_tree().create_timer(1.3, false)
 	victory_timer.timeout.connect(_complete_boss_after_delay)
 
 

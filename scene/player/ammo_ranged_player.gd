@@ -215,7 +215,7 @@ func try_accept_authoritative_primary_shot(projectile_type: StringName) -> bool:
 		return false
 	if is_dead or are_combat_actions_locked():
 		return false
-	var now_msec := Time.get_ticks_msec()
+	var now_msec := int(GameplayPause.get_gameplay_time_seconds() * 1000.0)
 	if (
 		current_shot_pattern == PickupConfig.ShotPattern.SPIRAL
 		and _authoritative_spiral_partner_pending

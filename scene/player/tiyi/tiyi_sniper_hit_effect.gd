@@ -33,7 +33,7 @@ func _ready() -> void:
 		hit_sprite.play(&"hit")
 		emission_overlay.play(&"hit")
 	call_deferred("_request_night_flash")
-	get_tree().create_timer(0.32).timeout.connect(_finish)
+	get_tree().create_timer(0.32, false).timeout.connect(_finish)
 
 
 func _request_night_flash() -> void:

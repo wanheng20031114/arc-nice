@@ -75,7 +75,7 @@ func _play_remote_airdrop_visual(
 	drop_duration: float
 ) -> void:
 	if warning_duration > 0.0:
-		await combat_runtime.get_tree().create_timer(warning_duration).timeout
+		await combat_runtime.get_tree().create_timer(warning_duration, false).timeout
 	if (
 		not is_bound()
 		or not combat_runtime.is_inside_tree()

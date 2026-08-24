@@ -50,7 +50,7 @@ func play(music_player: AudioStreamPlayer) -> bool:
 	_prepare_visuals()
 	_start_music_fade(music_player)
 	_start_visual_animation()
-	await get_tree().create_timer(VICTORY_AUDIO_DELAY_SECONDS, true).timeout
+	await get_tree().create_timer(VICTORY_AUDIO_DELAY_SECONDS, false).timeout
 	if serial != _play_serial:
 		return false
 	victory_audio.play()
@@ -63,7 +63,7 @@ func play(music_player: AudioStreamPlayer) -> bool:
 		VISUAL_DURATION_SECONDS - VICTORY_AUDIO_DELAY_SECONDS,
 		audio_duration
 	)
-	await get_tree().create_timer(remaining_duration, true).timeout
+	await get_tree().create_timer(remaining_duration, false).timeout
 	if serial != _play_serial:
 		return false
 	_finish_visuals()
@@ -182,7 +182,7 @@ func _start_music_fade(music_player: AudioStreamPlayer) -> void:
 	_music_original_process_mode = music_player.process_mode
 	_music_original_volume_db = music_player.volume_db
 	_music_original_stream_paused = music_player.stream_paused
-	music_player.process_mode = Node.PROCESS_MODE_ALWAYS
+	music_player.process_mode = Node.PROCESS_MODE_PAUSABLE
 	music_player.stream_paused = false
 	if not music_player.playing:
 		_restore_music_player_state()

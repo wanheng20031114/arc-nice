@@ -477,8 +477,8 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 94,
-		"协议v94必须冻结认证注册转发、Relay身份绑定与既有内容合同。"
+		NetConstants.PROTOCOL_VERSION == 95,
+		"协议v95必须冻结认证注册转发、Relay身份绑定与既有内容合同。"
 	)
 	_expect(
 		NetConstants.CH_MEMBERSHIP == 8
@@ -695,7 +695,7 @@ func _test_relay_channel_count() -> void:
 		and relay_source.contains("const RELAY_SERVICE_CHANNEL := RELAY_CONTROL_CHANNEL")
 		and relay_source.contains("const ENET_MAX_CHANNEL := RELAY_CONTROL_CHANNEL")
 		and relay_source.contains("const CHANNEL_COUNT := CH_MEMBERSHIP + 1")
-		and relay_source.contains("const PROTOCOL_VERSION := 94")
+		and relay_source.contains("const PROTOCOL_VERSION := 95")
 		and relay_source.contains("const MAX_CLIENTS := 8")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, transport_capacity, ENET_MAX_CHANNEL)")

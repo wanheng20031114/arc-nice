@@ -28,6 +28,7 @@ RunState="*res://run_state.gd"
 NetManager="*res://scene/multiplayer/net_manager.gd"
 PublicRoomLease="*res://scene/multiplayer/public_room/public_room_lease.tscn"
 UIAudio="*res://scene/ui/shared/audio/ui_click_audio.tscn"
+GameplayPause="*res://scene/pause/gameplay_pause.tscn"
 GameLoadCoordinator="*res://scene/loading/game_load_coordinator.tscn"
 StatusEffectExpiryScheduler="*res://scene/combat/status/status_effect_expiry_scheduler.gd"
 BurnStatusScheduler="*res://scene/combat/status/burn_status_scheduler.gd"
@@ -180,6 +181,11 @@ delete={
 show_detail={
 "deadzone": 0.2,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":67,"key_label":0,"unicode":99,"location":0,"echo":false,"script":null)
+]
+}
+pause={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194336,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
 ]
 }
 

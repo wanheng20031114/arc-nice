@@ -10,6 +10,7 @@ const MultiplayerReconnectTypesScript := preload(
 const MULTIPLAYER_LOBBY_SCENE_PATH := (
 	"res://scene/multiplayer/multiplayer_lobby.tscn"
 )
+const MAIN_MENU_SCENE_PATH := "res://scene/main_menu.tscn"
 const STATE_DISCONNECTED := NetManagerStore.ConnectionState.DISCONNECTED
 const STATE_LOADING_GAME := NetManagerStore.ConnectionState.LOADING_GAME
 const STATE_IN_GAME := NetManagerStore.ConnectionState.IN_GAME
@@ -90,6 +91,7 @@ var _embedded_rpc_sender_id := 0
 var _rpc_transport: Callable = Callable()
 var _preparation_generation := 0
 var _route_preparation_generation := 0
+var _return_scene_path := MULTIPLAYER_LOBBY_SCENE_PATH
 
 
 func _ready() -> void:
@@ -533,6 +535,11 @@ func _physics_process(delta: float) -> void:
 
 
 func _exit_tree() -> void:
+	var pause_controller := get_node_or_null(
+		"/root/GameplayPause"
+	) as GameplayPauseController
+	if pause_controller != null:
+		pause_controller.unregister_context(self)
 	_route_repair_request_rate_buckets.clear()
 	_route_encounter_command_rate_buckets.clear()
 	_route_shop_command_rate_buckets.clear()
@@ -792,6 +799,13 @@ func _on_connection_state_changed(new_state: int) -> void:
 	if new_state == STATE_DISCONNECTED:
 		_return_to_lobby()
 	elif new_state == STATE_IN_GAME:
+		var pause_controller := get_node(
+			"/root/GameplayPause"
+		) as GameplayPauseController
+		pause_controller.register_context(
+			self,
+			_on_pause_return_to_main_menu
+		)
 		_synchronize_after_barrier()
 
 
@@ -2902,36 +2916,60 @@ func net_route_briefing_cover_ready(
 func _on_return_requested() -> void:
 	if _embedded_campaign_mode:
 		return
-	if _public_return_in_progress:
-		return
-	_public_return_in_progress = true
-	var public_room_lease := PublicRoomLeaseStore.get_autoload_instance()
-	if public_room_lease != null:
-		await public_room_lease.release_current_and_wait(&"rogue_return_to_lobby")
-	if not is_inside_tree():
-		return
-	if _net_manager != null:
-		_net_manager.disconnect_from_game()
-	_return_to_lobby()
+	await _request_session_exit(
+		MULTIPLAYER_LOBBY_SCENE_PATH,
+		&"rogue_return_to_lobby"
+	)
+
+
+func _on_pause_return_to_main_menu() -> void:
+	await _request_session_exit(
+		MAIN_MENU_SCENE_PATH,
+		&"rogue_pause_return_to_main_menu"
+	)
 
 
 func _return_to_lobby() -> void:
-	if _return_scheduled:
+	await _request_session_exit(
+		MULTIPLAYER_LOBBY_SCENE_PATH,
+		&"rogue_return_to_lobby"
+	)
+
+
+func _request_session_exit(
+	destination_scene_path: String,
+	reason: StringName
+) -> void:
+	if _embedded_campaign_mode or _return_scheduled:
 		return
 	_return_scheduled = true
-	call_deferred("_release_before_change_to_lobby")
-
-
-func _release_before_change_to_lobby() -> void:
+	_public_return_in_progress = true
+	_return_scene_path = destination_scene_path
+	var pause_controller := get_node_or_null(
+		"/root/GameplayPause"
+	) as GameplayPauseController
+	if (
+		pause_controller != null
+		and pause_controller.is_gameplay_paused()
+		and _net_manager != null
+		and _net_manager.is_client()
+	):
+		await _net_manager.release_local_game_pause_for_exit()
+		if not is_inside_tree():
+			return
 	# P3 的任意启动/运行失败都通过同一个清理门；standalone 也必须先断 transport。
 	var public_room_lease := PublicRoomLeaseStore.get_autoload_instance()
 	if public_room_lease != null:
-		await public_room_lease.release_current_and_wait(&"rogue_return_to_lobby")
+		await public_room_lease.release_current_and_wait(reason)
 	if not is_inside_tree():
 		return
-	if _net_manager != null:
+	if pause_controller != null:
+		pause_controller.force_unpause_for_transition()
+	if _net_manager != null and _net_manager.is_multiplayer_active():
 		_net_manager.disconnect_from_game()
-	_change_to_lobby()
+	# 断开信号可能正在当前调用栈内分发；沿用原有 deferred 场景切换，
+	# 避免在 MultiplayerAPI 清理尚未退栈时替换整棵场景树。
+	call_deferred("_change_to_lobby")
 
 
 func _change_to_lobby() -> void:
@@ -2939,7 +2977,7 @@ func _change_to_lobby() -> void:
 		_combat_coordinator.prepare_active_runtime_for_scene_teardown()
 	var tree := get_tree()
 	if tree != null:
-		tree.change_scene_to_file(MULTIPLAYER_LOBBY_SCENE_PATH)
+		tree.change_scene_to_file(_return_scene_path)
 
 
 func _generate_session_seed() -> int:

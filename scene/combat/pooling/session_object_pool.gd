@@ -18,7 +18,7 @@ var _dirty_metric_keys: Dictionary[String, bool] = {}
 
 
 func _ready() -> void:
-	process_mode = Node.PROCESS_MODE_ALWAYS
+	process_mode = Node.PROCESS_MODE_PAUSABLE
 	set_physics_process(true)
 
 

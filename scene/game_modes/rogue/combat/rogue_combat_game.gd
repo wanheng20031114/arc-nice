@@ -382,8 +382,10 @@ func _present_intermission_started(cleared_step: FlowStepConfig) -> void:
 func _on_currency_hud_settings_requested() -> void:
 	if player_profile_panel.is_open():
 		player_profile_panel.close()
-	settings_panel.open()
-	_lock_player_for_modal_ui()
+	var pause_controller := get_node(
+		"/root/GameplayPause"
+	) as GameplayPauseController
+	pause_controller.open_menu()
 
 
 func _on_settings_panel_closed() -> void:
