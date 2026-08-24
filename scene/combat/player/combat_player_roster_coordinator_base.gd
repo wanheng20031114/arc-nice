@@ -322,7 +322,9 @@ func request_tango_charge_started(direction: Vector2) -> bool:
 	var safe_direction := _sanitize_tango_charge_direction(tango, direction)
 	if not tango.try_authoritative_tango_charge_started(safe_direction):
 		return false
-	_singleplayer_tango_charge_started_at = GameplayPause.get_gameplay_time_seconds()
+	_singleplayer_tango_charge_started_at = (
+		GameplayPauseController.get_global_gameplay_time_seconds()
+	)
 	return true
 
 
@@ -338,7 +340,7 @@ func request_tango_charge_released(direction: Vector2) -> bool:
 	if tango == null or not is_instance_valid(tango):
 		return false
 	var elapsed := maxf(
-		GameplayPause.get_gameplay_time_seconds() - started_at,
+		GameplayPauseController.get_global_gameplay_time_seconds() - started_at,
 		0.0
 	)
 	var charge_ratio := tango.resolve_authoritative_tango_charge_release_ratio(

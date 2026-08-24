@@ -1180,7 +1180,7 @@ func _apply_muzzle_light_state(phase: int, frame_index: int) -> void:
 
 
 func _now_seconds() -> float:
-	return GameplayPause.get_gameplay_time_seconds()
+	return GameplayPauseController.get_global_gameplay_time_seconds()
 
 
 func _is_valid_committed_windup_duration(duration_seconds: float) -> bool:

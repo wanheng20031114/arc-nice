@@ -2511,7 +2511,9 @@ func try_begin_skill1_activation(
 		return false
 	if not void_battery_charged and skill1_charge < skill1_charge_duration:
 		return false
-	var now_msec := int(GameplayPause.get_gameplay_time_seconds() * 1000.0)
+	var now_msec := int(
+		GameplayPauseController.get_global_gameplay_time_seconds() * 1000.0
+	)
 	if now_msec - _last_skill_activation_msec < MIN_SKILL_ACTIVATION_INTERVAL_MSEC:
 		return false
 	_last_skill_activation_msec = now_msec

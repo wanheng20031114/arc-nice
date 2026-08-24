@@ -1325,4 +1325,4 @@ func _get_effect_source_id() -> int:
 
 
 func _now_seconds() -> float:
-	return GameplayPause.get_gameplay_time_seconds()
+	return GameplayPauseController.get_global_gameplay_time_seconds()

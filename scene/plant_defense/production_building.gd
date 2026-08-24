@@ -1055,7 +1055,7 @@ func _apply_multiplayer_runtime_state_sample(
 		VISUAL_PROJECTION_WINDOW_SECONDS
 	)
 	var sample_age_seconds := maxf(
-		GameplayPause.get_gameplay_time_seconds() - mapped_sample_time,
+		GameplayPauseController.get_global_gameplay_time_seconds() - mapped_sample_time,
 		0.0
 	)
 	_visual_progress_sync_msec -= int(
@@ -1170,7 +1170,9 @@ func _sync_visual_progress_clock() -> void:
 
 
 func _gameplay_now_msec() -> int:
-	return int(GameplayPause.get_gameplay_time_seconds() * 1000.0)
+	return int(
+		GameplayPauseController.get_global_gameplay_time_seconds() * 1000.0
+	)
 
 
 func _should_project_visual_progress(recipe: ProductionRecipe) -> bool:

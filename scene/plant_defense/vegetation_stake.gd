@@ -191,4 +191,4 @@ func _stop_ambient_reveal_tween() -> void:
 
 
 func _now_seconds() -> float:
-	return GameplayPause.get_gameplay_time_seconds()
+	return GameplayPauseController.get_global_gameplay_time_seconds()

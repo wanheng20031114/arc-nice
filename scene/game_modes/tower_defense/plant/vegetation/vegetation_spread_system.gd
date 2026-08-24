@@ -279,7 +279,9 @@ func apply_source_runtime_state(
 	if not is_finite(elapsed_seconds) or elapsed_seconds < 0.0:
 		return false
 	if mapped_sample_time_seconds >= 0.0:
-		var local_now_seconds := GameplayPause.get_gameplay_time_seconds()
+		var local_now_seconds := (
+			GameplayPauseController.get_global_gameplay_time_seconds()
+		)
 		elapsed_seconds += (
 			maxf(local_now_seconds - mapped_sample_time_seconds, 0.0)
 			* _spread_speed_multiplier

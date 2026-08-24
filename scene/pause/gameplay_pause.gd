@@ -25,6 +25,11 @@ const PAUSE_ACTION := &"pause"
 	$PauseLayer/ScreenRoot/ConfirmCenter/ConfirmPanel/Margin/Layout/Actions/CancelButton
 )
 @onready var settings_panel: SettingsPanel = $PauseLayer/SettingsPanel
+@onready var ui_audio: Node = get_node("/root/UIAudio")
+@onready var user_settings: Node = get_node("/root/UserSettings")
+@onready var net_manager: NetManagerStore = (
+	get_node("/root/NetManager") as NetManagerStore
+)
 
 var _context_owner: Node = null
 var _context_owner_tree_exiting_callback := Callable()
@@ -42,6 +47,27 @@ var _network_pause_revision := 0
 var _network_pause_state := false
 var _network_pause_actor_peer_id := 0
 var _network_request_pending := false
+
+
+static func get_autoload_instance() -> GameplayPauseController:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return null
+	return tree.root.get_node_or_null("/root/GameplayPause") as GameplayPauseController
+
+
+static func get_global_gameplay_time_seconds() -> float:
+	var controller := get_autoload_instance()
+	if controller != null:
+		return controller.get_gameplay_time_seconds()
+	# 自定义 SceneTree 测试会早于项目 autoload 挂载来解析玩法脚本；此时
+	# 没有可暂停的玩法上下文，墙钟就是等价的游戏时钟。
+	return float(Time.get_ticks_msec()) / 1000.0
+
+
+static func is_global_gameplay_paused() -> bool:
+	var controller := get_autoload_instance()
+	return controller != null and controller.is_gameplay_paused()
 
 
 func _ready() -> void:
@@ -66,7 +92,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and (event as InputEventKey).echo:
 		return
 	get_viewport().set_input_as_handled()
-	UIAudio.play_click()
+	ui_audio.call("play_click")
 	if settings_panel.is_open():
 		settings_panel.close()
 		return
@@ -93,9 +119,9 @@ func register_context(owner: Node, exit_handler: Callable) -> void:
 		_clear_registered_context()
 	_context_owner = owner
 	_exit_handler = exit_handler
-	_context_is_networked = NetManager.is_multiplayer_active()
+	_context_is_networked = net_manager.is_multiplayer_active()
 	_context_session_id = (
-		NetManager.get_game_session_incarnation() if _context_is_networked else 0
+		net_manager.get_game_session_incarnation() if _context_is_networked else 0
 	)
 	_exit_in_progress = false
 	_network_request_pending = false
@@ -140,7 +166,7 @@ func request_pause(desired: bool) -> void:
 			return
 		_network_request_pending = true
 		_set_pause_controls_disabled(true)
-		var request_accepted: bool = NetManager.request_game_pause(desired)
+		var request_accepted: bool = net_manager.request_game_pause(desired)
 		if not request_accepted:
 			_network_request_pending = false
 			_set_pause_controls_disabled(false)
@@ -192,7 +218,7 @@ func apply_network_pause_state(
 		or (revision > 0 and actor_peer_id <= 0)
 	):
 		return
-	if session_id != NetManager.get_game_session_incarnation():
+	if session_id != net_manager.get_game_session_incarnation():
 		return
 	var session_changed := _network_session_id != session_id
 	if _network_session_id != session_id:
@@ -294,7 +320,7 @@ func _close_secondary_panels_and_flush() -> void:
 	if settings_panel.is_open():
 		settings_panel.close()
 	else:
-		UserSettings.flush_pending_save()
+		user_settings.call("flush_pending_save")
 
 
 func _set_pause_controls_disabled(disabled: bool) -> void:
@@ -330,7 +356,7 @@ func _on_confirm_return_pressed() -> void:
 	var handler := _exit_handler
 	# 离场清理可能需要等待公网 lease。确认层保持可处理且玩法树继续暂停，
 	# 真正的恢复与场景切换由会话 handler 在网络清理完成后负责。
-	UserSettings.flush_pending_save()
+	user_settings.call("flush_pending_save")
 	handler.call()
 
 

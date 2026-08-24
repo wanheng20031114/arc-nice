@@ -82,7 +82,7 @@ func enqueue_weak_ref_batch(
 func _process(_delta: float) -> void:
 	# 本节点为了分帧清理而常驻处理；全局玩法暂停时仍必须冻结待结算队列，
 	# 否则状态会在暂停菜单期间悄悄失效。
-	if GameplayPause.is_gameplay_paused():
+	if GameplayPauseController.is_global_gameplay_paused():
 		return
 	if _jobs.is_empty():
 		set_process(false)

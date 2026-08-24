@@ -1623,7 +1623,10 @@ func _is_host_bound() -> bool:
 
 
 func _get_gameplay_net_time() -> float:
-	return GameplayPause.get_gameplay_time_seconds() - _net_time_origin
+	return (
+		GameplayPauseController.get_global_gameplay_time_seconds()
+		- _net_time_origin
+	)
 
 
 func _get_control_time() -> float:
