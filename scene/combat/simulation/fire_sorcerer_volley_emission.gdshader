@@ -1,21 +1,18 @@
 shader_type canvas_item;
-render_mode unshaded;
+render_mode blend_add, unshaded;
 
-// INSTANCE_CUSTOM.r: authoritative fly age in seconds.
-// INSTANCE_CUSTOM.g: normalized effect progress.
-// INSTANCE_CUSTOM.b: EffectKind (NONE=0, IMPACT=1, EXPIRE=2).
+// Additive copy of the authored volley frame. It shares the base MultiMesh,
+// so transforms, animation state and visible-prefix writes remain single-copy.
 const float ATLAS_COLUMNS = 4.0;
 const float ATLAS_ROWS = 4.0;
 const float FLY_FRAMES_PER_SECOND = 12.0;
 
 varying vec3 volley_visual_data;
-varying vec4 volley_modulate;
+varying vec4 emission_modulate;
 
 void vertex() {
 	volley_visual_data = INSTANCE_CUSTOM.rgb;
-	// Preserve authored tint without reusing fragment COLOR, which already
-	// contains a default TEXTURE sample taken with the unmodified atlas UV.
-	volley_modulate = COLOR;
+	emission_modulate = COLOR;
 }
 
 void fragment() {
@@ -47,5 +44,5 @@ void fragment() {
 		(frame_uv.x + atlas_column) / ATLAS_COLUMNS,
 		(frame_uv.y + atlas_row) / ATLAS_ROWS
 	);
-	COLOR = texture(TEXTURE, atlas_uv) * volley_modulate;
+	COLOR = texture(TEXTURE, atlas_uv) * emission_modulate;
 }

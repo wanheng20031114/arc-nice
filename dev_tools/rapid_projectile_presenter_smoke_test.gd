@@ -100,7 +100,8 @@ func _test_static_authored_multimesh_contract() -> void:
 			and is_equal_approx(
 				float(shader_material.get_shader_parameter("animation_fps")),
 				16.0
-			),
+			)
+			and _has_legacy_single_pass_visual_contract(shader_material),
 			"The AK batch must author a three-frame 16 FPS material."
 		)
 	_expect_projectile_batch(
@@ -136,8 +137,15 @@ func _test_static_authored_multimesh_contract() -> void:
 		shader_source.contains("render_mode unshaded")
 		and shader_source.contains("INSTANCE_CUSTOM.r")
 		and shader_source.contains("uniform float frame_count")
-		and shader_source.contains("uniform float animation_fps"),
-		"Shader must use INSTANCE_CUSTOM and per-material atlas cadence uniforms."
+		and shader_source.contains("uniform float animation_fps")
+		and shader_source.contains("VERTEX *= quad_expansion")
+		and shader_source.contains("source_local_uv")
+		and shader_source.contains("halo_opacity")
+		and shader_source.contains("projectile_modulate = COLOR")
+		and shader_source.contains("texture(TEXTURE, atlas_uv)")
+		and shader_source.contains("* projectile_modulate")
+		and not shader_source.contains("texture(TEXTURE, atlas_uv) * COLOR"),
+		"Shader must select one atlas frame and preserve tint without multiplying a second default texture sample."
 	)
 	var hit_shader_source := FileAccess.get_file_as_string(
 		HIT_PRESENTER_SHADER_PATH
@@ -820,8 +828,41 @@ func _expect_projectile_batch(
 		and is_equal_approx(
 			float(material.get_shader_parameter("animation_fps")),
 			expected_fps
-		),
+		)
+		and _has_legacy_single_pass_visual_contract(material),
 		"%s must preserve its atlas, frame size, and cadence." % expected_name
+	)
+
+
+func _has_legacy_single_pass_visual_contract(
+	material: ShaderMaterial
+) -> bool:
+	if material == null:
+		return false
+	return (
+		is_equal_approx(
+			float(material.get_shader_parameter("highlight_threshold")),
+			0.38
+		)
+		and is_equal_approx(
+			float(material.get_shader_parameter("highlight_softness")),
+			0.22
+		)
+		and is_equal_approx(
+			float(material.get_shader_parameter("emission_strength")),
+			0.58
+		)
+		and material.get_shader_parameter("emission_tint").is_equal_approx(
+			Color(1.0, 0.72, 0.28, 1.0)
+		)
+		and is_equal_approx(
+			float(material.get_shader_parameter("quad_expansion")),
+			1.75
+		)
+		and is_equal_approx(
+			float(material.get_shader_parameter("halo_opacity")),
+			0.085
+		)
 	)
 
 

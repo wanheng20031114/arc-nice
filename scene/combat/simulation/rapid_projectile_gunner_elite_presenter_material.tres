@@ -6,3 +6,9 @@
 shader = ExtResource("1_shader")
 shader_parameter/frame_count = 3.0
 shader_parameter/animation_fps = 25.0
+shader_parameter/highlight_threshold = 0.38
+shader_parameter/highlight_softness = 0.22
+shader_parameter/emission_strength = 0.58
+shader_parameter/emission_tint = Color(1, 0.72, 0.28, 1)
+shader_parameter/quad_expansion = 1.75
+shader_parameter/halo_opacity = 0.085

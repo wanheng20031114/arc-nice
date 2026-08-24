@@ -12,8 +12,20 @@ const VIEW_CULL_MARGIN := 20.0
 @onready var normal_volley_multimesh: MultiMeshInstance2D = (
 	$NormalVolleyMultiMesh
 )
+@onready var normal_volley_halo_multimesh: MultiMeshInstance2D = (
+	$NormalVolleyHaloMultiMesh
+)
+@onready var normal_volley_emission_multimesh: MultiMeshInstance2D = (
+	$NormalVolleyEmissionMultiMesh
+)
 @onready var elite_volley_multimesh: MultiMeshInstance2D = (
 	$EliteVolleyMultiMesh
+)
+@onready var elite_volley_halo_multimesh: MultiMeshInstance2D = (
+	$EliteVolleyHaloMultiMesh
+)
+@onready var elite_volley_emission_multimesh: MultiMeshInstance2D = (
+	$EliteVolleyEmissionMultiMesh
 )
 
 var _service: FireSorcererVolleySimulationServiceScript = null
@@ -50,6 +62,10 @@ func _ready() -> void:
 	if (
 		not _is_valid_authored_multimesh(normal_multimesh)
 		or not _is_valid_authored_multimesh(elite_multimesh)
+		or not _effect_layers_share_authored_multimeshes(
+			normal_multimesh,
+			elite_multimesh
+		)
 	):
 		push_error("FireSorcererVolleyPresenter authored MultiMesh contracts are invalid.")
 		_release_multimeshes()
@@ -282,8 +298,30 @@ func get_normal_multimesh_instance() -> MultiMeshInstance2D:
 	return get_node_or_null("NormalVolleyMultiMesh") as MultiMeshInstance2D
 
 
+func get_normal_halo_multimesh_instance() -> MultiMeshInstance2D:
+	return get_node_or_null("NormalVolleyHaloMultiMesh") as MultiMeshInstance2D
+
+
+func get_normal_emission_multimesh_instance() -> MultiMeshInstance2D:
+	return (
+		get_node_or_null("NormalVolleyEmissionMultiMesh")
+		as MultiMeshInstance2D
+	)
+
+
 func get_elite_multimesh_instance() -> MultiMeshInstance2D:
 	return get_node_or_null("EliteVolleyMultiMesh") as MultiMeshInstance2D
+
+
+func get_elite_halo_multimesh_instance() -> MultiMeshInstance2D:
+	return get_node_or_null("EliteVolleyHaloMultiMesh") as MultiMeshInstance2D
+
+
+func get_elite_emission_multimesh_instance() -> MultiMeshInstance2D:
+	return (
+		get_node_or_null("EliteVolleyEmissionMultiMesh")
+		as MultiMeshInstance2D
+	)
 
 
 static func build_instance_transform(
@@ -362,6 +400,22 @@ func _get_normal_multimesh() -> MultiMesh:
 func _get_elite_multimesh() -> MultiMesh:
 	var multimesh_instance := get_elite_multimesh_instance()
 	return multimesh_instance.multimesh if multimesh_instance != null else null
+
+
+func _effect_layers_share_authored_multimeshes(
+	normal_multimesh: MultiMesh,
+	elite_multimesh: MultiMesh
+) -> bool:
+	return (
+		normal_volley_halo_multimesh != null
+		and normal_volley_halo_multimesh.multimesh == normal_multimesh
+		and normal_volley_emission_multimesh != null
+		and normal_volley_emission_multimesh.multimesh == normal_multimesh
+		and elite_volley_halo_multimesh != null
+		and elite_volley_halo_multimesh.multimesh == elite_multimesh
+		and elite_volley_emission_multimesh != null
+		and elite_volley_emission_multimesh.multimesh == elite_multimesh
+	)
 
 
 func _track_capacity_drop(

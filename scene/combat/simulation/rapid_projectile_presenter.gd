@@ -13,7 +13,7 @@ const AK_FRAME_COUNT := 3
 const AK_ANIMATION_FPS := 16.0
 const GUNNER_FRAME_COUNT := 3
 const GUNNER_ANIMATION_FPS := 25.0
-const VIEW_CULL_MARGIN := 8.0
+const VIEW_CULL_MARGIN := 16.0
 const HIT_LIFETIME_SECONDS := 0.18
 
 @onready var projectile_multimesh: MultiMeshInstance2D = $ProjectileMultiMesh
