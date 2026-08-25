@@ -77,6 +77,7 @@ var _detail_tween: Tween
 var _grid_reflow_tween: Tween
 var _layout_transition_active := false
 var _layout_transition_serial := 0
+var _navigation_in_progress := false
 var _transition_anchor_id := &""
 var _transition_anchor_screen_y := 0.0
 var _grid_anchor_extra_bottom := 0
@@ -106,14 +107,35 @@ func _ready() -> void:
 	call_deferred("_sync_selection_indicator", false)
 
 
+func _exit_tree() -> void:
+	_navigation_in_progress = true
+	_grid_generation += 1
+	_layout_transition_serial += 1
+	_cancel_card_batch_tweens()
+	for tween in [
+		_page_tween,
+		_section_tween,
+		_indicator_tween,
+		_detail_tween,
+		_grid_reflow_tween,
+	]:
+		if tween != null and tween.is_valid():
+			tween.kill()
+	_page_tween = null
+	_section_tween = null
+	_indicator_tween = null
+	_detail_tween = null
+	_grid_reflow_tween = null
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	if not event.is_action_pressed(&"quit"):
+	if _navigation_in_progress or not event.is_action_pressed(&"quit"):
 		return
+	get_viewport().set_input_as_handled()
 	if _detail_open:
 		_close_detail(true)
 	else:
 		_return_to_main_menu()
-	get_viewport().set_input_as_handled()
 
 
 func _initialize_section_states() -> void:
@@ -643,9 +665,18 @@ func _make_filter_swatch(color: Color) -> Texture2D:
 
 
 func _return_to_main_menu() -> void:
+	if _navigation_in_progress:
+		return
+	var tree := get_tree()
+	if tree == null:
+		return
+	_navigation_in_progress = true
 	_save_current_section_state()
 	MainMenu.request_focus_after_return(&"encyclopedia")
-	get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
+	var error := tree.change_scene_to_file(MAIN_MENU_SCENE_PATH)
+	if error != OK:
+		_navigation_in_progress = false
+		push_error("无法从图鉴返回主菜单：%s" % error_string(error))
 
 
 func _on_grid_pane_resized() -> void:

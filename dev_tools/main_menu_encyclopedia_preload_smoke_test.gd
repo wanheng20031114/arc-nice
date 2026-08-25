@@ -139,16 +139,16 @@ func _test_preload_feedback_and_transition() -> void:
 	)
 
 	var cancel_event := InputEventAction.new()
-	cancel_event.action = &"ui_cancel"
+	cancel_event.action = &"quit"
 	cancel_event.pressed = true
 	main_menu.call("_unhandled_input", cancel_event)
 	_expect(
 		not bool(main_menu.get("_encyclopedia_open_requested")) and not feedback.visible,
-		"ui_cancel must dismiss a pending encyclopedia entry without cancelling preloading."
+		"The quit action must dismiss a pending encyclopedia entry without cancelling preloading."
 	)
 	_expect(
 		encyclopedia_button.has_focus(),
-		"ui_cancel must return focus to the Encyclopedia button."
+		"The quit action must return focus to the Encyclopedia button."
 	)
 
 	main_menu.set_process(true)
@@ -200,7 +200,7 @@ func _test_preload_feedback_and_transition() -> void:
 		current_scene == main_menu
 		and int(main_menu.get("_encyclopedia_load_state"))
 		== MainMenu.EncyclopediaLoadState.LOADED,
-		"Same-frame ui_cancel must revoke a deferred loaded-state entry."
+		"A same-frame quit action must revoke a deferred loaded-state entry."
 	)
 	_expect(
 		not bool(main_menu.get("_encyclopedia_open_requested"))
@@ -229,6 +229,33 @@ func _test_preload_feedback_and_transition() -> void:
 			"A warmed collectible section switch must return within 50 ms; got %.3f ms."
 			% collectible_switch_msec
 		)
+		await _test_encyclopedia_escape_return(screen)
+
+
+func _test_encyclopedia_escape_return(screen: EncyclopediaScreen) -> void:
+	var escape_event := InputEventKey.new()
+	escape_event.keycode = KEY_ESCAPE
+	escape_event.physical_keycode = KEY_ESCAPE
+	escape_event.pressed = true
+	Input.parse_input_event(escape_event)
+	for _frame in range(3):
+		await process_frame
+	escape_event.pressed = false
+	Input.parse_input_event(escape_event)
+	var returned_menu := current_scene as MainMenu
+	_expect(
+		returned_menu != null,
+		"Physical Escape from the encyclopedia must return to the main menu."
+	)
+	if returned_menu == null:
+		return
+	var encyclopedia_button := returned_menu.get_node_or_null(
+		"MenuCenter/MenuPanel/MarginContainer/MenuStack/Encyclopedia"
+	) as Button
+	_expect(
+		encyclopedia_button != null and encyclopedia_button.has_focus(),
+		"Returning from the encyclopedia must restore focus to its main-menu button."
+	)
 
 
 func _cleanup_current_scene() -> void:
