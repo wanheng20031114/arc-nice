@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Build and audit the selected Planting Base building sprite.
 
-The selected source contains enclosed background openings, so this processor
-uses the sampled magenta candidate mask globally instead of a border-only flood
-fill.  The generated source is already within the logical-size contract, so it
-is reduced exactly once by selecting one center pixel per measured logical cell.
+The selected ImageGen source has a native transparent background and is already
+within the logical-size contract, so it is reduced exactly once by selecting
+one center pixel per measured logical cell.
 No fitting resize, interpolation, color averaging, antialiasing, or smoothing
 is allowed.  The audited 64x64 result is also split into complementary lower
 and upper draw layers from the user's reviewed blue-outline mask.
@@ -20,10 +19,6 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from connected_background_remover import (
-    ConnectedBackgroundOptions,
-    build_sample_background_mask,
-)
 from pixel_grid_analyzer import analyze_image
 from plant_pixel_asset_pipeline import (
     CANVAS_SIDE,
@@ -44,7 +39,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/plant_defense/planting_base"
 SOURCE = (
     SOURCE_DIR
-    / "planting_base_selected_native_coarse_imagegen_magenta.png"
+    / "planting_base_selected_native_coarse_alpha_preview.png"
 )
 OUTPUT_DIR = (
     ROOT
@@ -100,40 +95,19 @@ UPPER_CANOPY_LAYER_SPANS = (
 EXPECTED_UPPER_VISIBLE_PIXELS = 383
 
 
-def _global_magenta_key(source_path: Path) -> tuple[Image.Image, dict]:
-    """Remove all sampled magenta cells, including enclosed architectural holes."""
+def _load_transparent_source(source_path: Path) -> Image.Image:
     if not source_path.is_file():
         raise FileNotFoundError(source_path)
 
     with Image.open(source_path) as source_image:
         source = source_image.convert("RGBA")
-    array = np.array(source, dtype=np.uint8)
-    options = ConnectedBackgroundOptions(
-        sample=(0, 0),
-        rgb_tolerance=72,
-        hue_tolerance=0.035,
-        expansion_radius=12,
-        harden_alpha=True,
-    )
-    background_mask = build_sample_background_mask(array, options)
-    original_alpha = array[:, :, 3] > 0
-    visible_mask = (~background_mask) & original_alpha
-    array[background_mask] = (0, 0, 0, 0)
-    array[visible_mask, 3] = 255
-    keyed = clean_transparency(Image.fromarray(array))
-    bbox = keyed.getchannel("A").getbbox()
+    if source.getchannel("A").getextrema()[0] == 255:
+        raise RuntimeError("Planting Base source must have a native transparent background")
+    source = clean_transparency(source)
+    bbox = source.getchannel("A").getbbox()
     if bbox is None:
-        raise RuntimeError("Planting Base chroma key produced an empty subject")
-
-    return keyed, {
-        "mode": "global_sampled_magenta_candidate_mask",
-        "sample_rgb": list(source.getpixel(options.sample)[:3]),
-        "rgb_tolerance": options.rgb_tolerance,
-        "hue_tolerance": options.hue_tolerance,
-        "removed_pixel_count": int(np.count_nonzero(background_mask)),
-        "visible_pixel_count": int(np.count_nonzero(visible_mask)),
-        "reason": "selected arch and channels contain enclosed background holes",
-    }
+        raise RuntimeError("Planting Base transparent source contains no visible subject")
+    return source
 
 
 def _center_sample(image: Image.Image, size: tuple[int, int]) -> Image.Image:
@@ -156,8 +130,8 @@ def _center_sample(image: Image.Image, size: tuple[int, int]) -> Image.Image:
     return clean_transparency(Image.fromarray(sampled))
 
 
-def _measure_reviewed_grid(keyed: Image.Image) -> tuple[dict, tuple[int, int, int, int]]:
-    general_analysis = analyze_image(keyed)
+def _measure_reviewed_grid(source: Image.Image) -> tuple[dict, tuple[int, int, int, int]]:
+    general_analysis = analyze_image(source)
     bbox_data = general_analysis["subject_bbox"]
     bbox = (
         int(bbox_data["left"]),
@@ -165,7 +139,7 @@ def _measure_reviewed_grid(keyed: Image.Image) -> tuple[dict, tuple[int, int, in
         int(bbox_data["right"]),
         int(bbox_data["bottom"]),
     )
-    periodic = _measure_periodic_pixel_grid(keyed.crop(bbox))
+    periodic = _measure_periodic_pixel_grid(source.crop(bbox))
     if periodic is None:
         raise RuntimeError("Planting Base periodic logical grid was not measurable")
 
@@ -215,9 +189,9 @@ def _split_semantic_layers(
 
 
 def build_asset() -> tuple[Image.Image, Image.Image, Image.Image, dict]:
-    keyed, chroma_key_audit = _global_magenta_key(SOURCE)
-    grid_analysis, source_bbox = _measure_reviewed_grid(keyed)
-    source_subject = keyed.crop(source_bbox)
+    source = _load_transparent_source(SOURCE)
+    grid_analysis, source_bbox = _measure_reviewed_grid(source)
+    source_subject = source.crop(source_bbox)
     detected_size = (
         int(grid_analysis["subject_grid_width"]),
         int(grid_analysis["subject_grid_height"]),
@@ -305,7 +279,7 @@ def build_asset() -> tuple[Image.Image, Image.Image, Image.Image, dict]:
         "asset_family": "planting_base",
         "status": "failed" if failures else "passed",
         "pipeline": [
-            "sampled magenta global chroma key including enclosed holes",
+            "native transparent ImageGen source",
             "pixel_grid_analyzer baseline measurement",
             "independent periodic-phase grid measurement with strict source-specific gate",
             "single measured-cell center sample with one source logical cell per output pixel",
@@ -326,10 +300,9 @@ def build_asset() -> tuple[Image.Image, Image.Image, Image.Image, dict]:
         "source": {
             "path": portable_path(SOURCE),
             "sha256": hashlib.sha256(SOURCE.read_bytes()).hexdigest(),
-            "source_canvas_px": list(keyed.size),
+            "source_canvas_px": list(source.size),
             "subject_bbox_exclusive": list(source_bbox),
             "subject_physical_size_px": list(source_subject.size),
-            "chroma_key": chroma_key_audit,
             "grid_analysis": grid_analysis,
         },
         "normalization": {

@@ -49,15 +49,13 @@ RUNTIME_SUPPORT_PATHS = {
 RUNTIME_BUILD_REPORT = REPORT_DIR / "combat_robot_main_battle_elite_highres_runtime_build_report.json"
 RUNTIME_BUILDER = ROOT / "dev_tools/build_combat_robot_main_battle_elite_highres_runtime_assets.py"
 ALLOWED_RUNTIME_BUILD_OPERATIONS = [
-    "hard_chroma_key",
-    "hard_residual_chroma_key",
+    "native_alpha_validation",
     "crop",
     "integer_translate",
     "pad",
 ]
 EXPECTED_REPORTED_SPATIAL_OPERATIONS = [
-    "hard_chroma_key",
-    "hard_residual_chroma_key",
+    "native_alpha_validation",
     "audited_source_crop_or_component_extraction",
     "integer_translation",
     "transparent_padding",
@@ -76,7 +74,6 @@ SHEETS: dict[str, dict[str, Any]] = {
         "prompt": SOURCE / "combat_robot_main_battle_elite_animation_m1_user_anchor_only_v4_v5_upper_body_y_lineage.md",
         "layout": [4, 2],
         "frames": 8,
-        "key_mode": "mn",
         "grid_analyzer_confidence": 0.247,
     },
     "n2": {
@@ -86,7 +83,6 @@ SHEETS: dict[str, dict[str, Any]] = {
         "prompt": SOURCE / "combat_robot_main_battle_elite_animation_n2_parallel_heavy_press_anchor_only_v3_independent_prompt.md",
         "layout": [4, 2],
         "frames": 8,
-        "key_mode": "mn",
         "grid_analyzer_confidence": 0.074,
     },
     "c2_windup_dash": {
@@ -96,7 +92,6 @@ SHEETS: dict[str, dict[str, Any]] = {
         "prompt": SOURCE / "combat_robot_main_battle_elite_anim_c2_windup_dash_user_anchor_only_v1_prompt.md",
         "layout": [4, 2],
         "frames": 8,
-        "key_mode": "cj",
         "grid_analyzer_confidence": 0.026,
     },
     "c2_circle_slash": {
@@ -106,7 +101,6 @@ SHEETS: dict[str, dict[str, Any]] = {
         "prompt": SOURCE / "combat_robot_main_battle_elite_anim_c2_circle_slash_user_anchor_only_v1_prompt.md",
         "layout": [4, 2],
         "frames": 8,
-        "key_mode": "cj",
         "grid_analyzer_confidence": 0.017,
     },
     "j1_takeoff": {
@@ -116,7 +110,6 @@ SHEETS: dict[str, dict[str, Any]] = {
         "prompt": SOURCE / "combat_robot_main_battle_elite_anim_j1_takeoff_user_anchor_only_v1_prompt.md",
         "layout": [5, 1],
         "frames": 5,
-        "key_mode": "cj",
         "grid_analyzer_confidence": 0.021,
     },
     "j1_drop_slash": {
@@ -126,7 +119,6 @@ SHEETS: dict[str, dict[str, Any]] = {
         "prompt": SOURCE / "combat_robot_main_battle_elite_anim_j1_drop_bilateral_slash_user_anchor_only_v6_independent_prompt.md",
         "layout": [4, 2],
         "frames": 8,
-        "key_mode": "cj",
         "grid_analyzer_confidence": 0.020,
     },
     "d1": {
@@ -136,7 +128,6 @@ SHEETS: dict[str, dict[str, Any]] = {
         "prompt": SOURCE / "death_animation_drafts/combat_robot_main_battle_elite_death_d1_user_anchor_only_v1_prompt.md",
         "layout": [4, 2],
         "frames": 8,
-        "key_mode": "d",
         "grid_analyzer_confidence": 0.020,
     },
 }
@@ -210,23 +201,6 @@ def transition_phase_gcd(array: np.ndarray, axis: int) -> tuple[int, int]:
     return int(len(coordinates)), result
 
 
-def chroma_alpha(rgb: np.ndarray, mode: str) -> tuple[np.ndarray, str]:
-    values = rgb.astype(np.int16)
-    r, g, b = values[..., 0], values[..., 1], values[..., 2]
-    if mode == "mn":
-        background = (g >= r + 8) & (g >= b + 8)
-        predicate = "G>=R+8 and G>=B+8"
-    elif mode == "cj":
-        background = (g - r >= 35) & (g - b >= 25) & (g >= 70)
-        predicate = "G-R>=35 and G-B>=25 and G>=70"
-    elif mode == "d":
-        background = (g >= r + 12) & (g >= b + 12)
-        predicate = "G>=R+12 and G>=B+12"
-    else:
-        raise AssertionError(f"unknown key mode: {mode}")
-    return (~background).astype(np.uint8), predicate
-
-
 def audit_sheet(key: str, spec: dict[str, Any]) -> dict[str, Any]:
     path: Path = spec["path"]
     prompt: Path = spec["prompt"]
@@ -236,7 +210,9 @@ def audit_sheet(key: str, spec: dict[str, Any]) -> dict[str, Any]:
         raise AssertionError(f"generation record missing: {key}")
     image = Image.open(path).convert("RGBA")
     rgba = np.asarray(image, dtype=np.uint8)
-    alpha, predicate = chroma_alpha(rgba[..., :3], spec["key_mode"])
+    if rgba[..., 3].min() == 255:
+        raise AssertionError(f"approved source lacks native transparent Alpha: {key}")
+    alpha = (rgba[..., 3] > 0).astype(np.uint8)
     raw_x_count, raw_x_gcd = transition_phase_gcd(rgba, 0)
     raw_y_count, raw_y_gcd = transition_phase_gcd(rgba, 1)
     alpha_x_count, alpha_x_gcd = transition_phase_gcd(alpha, 0)
@@ -268,11 +244,10 @@ def audit_sheet(key: str, spec: dict[str, Any]) -> dict[str, Any]:
         },
         "exact_integer_display": {
             "eligible": False,
-            "diagnostic_only_hard_chroma_predicate": predicate,
             "raw_rgba_transition_coordinates": {"x": raw_x_count, "y": raw_y_count},
             "raw_rgba_transition_phase_gcd": {"x": raw_x_gcd, "y": raw_y_gcd},
-            "keyed_alpha_transition_coordinates": {"x": alpha_x_count, "y": alpha_y_count},
-            "keyed_alpha_transition_phase_gcd": {"x": alpha_x_gcd, "y": alpha_y_gcd},
+            "source_alpha_transition_coordinates": {"x": alpha_x_count, "y": alpha_y_count},
+            "source_alpha_transition_phase_gcd": {"x": alpha_x_gcd, "y": alpha_y_gcd},
             "max_common_square_integer_scale_from_immutable_alpha": max_alpha_scale,
             "shared_frame_canvas_origin_certificate": None,
             "shared_grid_phase_certificate": None,
@@ -357,8 +332,6 @@ def runtime_artifact_record() -> dict[str, Any]:
         conservation.get("lost") != 0
         or conservation.get("duplicated") != 0
         or conservation.get("accepted_source_total") != conservation.get("runtime_total")
-        or not isinstance(conservation.get("removed_residual_chroma_total"), int)
-        or conservation.get("removed_residual_chroma_total", 0) <= 0
     ):
         raise AssertionError("runtime foreground conservation failed")
     for role, artifact in artifacts.items():
@@ -426,7 +399,7 @@ def build_audit() -> dict[str, Any]:
         "shared_grid_phase": None,
         "native_eligible": False,
         "human_approval_is_not_native_qualification": True,
-        "native_block_reason": "neither direct_native nor exact_integer_display has positive evidence for every approved raw; keyed immutable-alpha phase gcd is 1 for every sheet",
+        "native_block_reason": "neither direct_native nor exact_integer_display has positive evidence for every approved raw; native-alpha phase gcd is 1 for every sheet",
         "forbidden_asset_build_techniques_not_executed": [
             "resize",
             "downsample",
@@ -496,7 +469,6 @@ def approval_payload(
         "approval_recorded_on": "2026-08-12",
         "approval_evidence": [
             "用户明确回复：很好，上述全部同意，开始继续处理",
-            "用户明确授权：采用高像素的低视觉像素像素画，仅进行抠图，动画采用缩放达到合适大小，为防止闪烁采用线性过滤，开始！",
         ],
         "approval_scope": "animation motion design, review timing, and the source-preserved high-resolution runtime display strategy; native64 qualification remains a separate technical gate",
         "selection": {

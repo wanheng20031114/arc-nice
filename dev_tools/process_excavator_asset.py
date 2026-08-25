@@ -32,12 +32,12 @@ EXCAVATOR_SOURCE_DIR = (
     ROOT / "dev_assets/source_images/plant_defense/excavator"
 )
 EXCAVATOR_SOURCE = (
-    EXCAVATOR_SOURCE_DIR / "excavator_imagegen_magenta_v2.png"
+    EXCAVATOR_SOURCE_DIR / "excavator_imagegen_transparent_v3.png"
 )
 DIRT_BLOCK_SOURCE = (
     ROOT
     / "dev_assets/source_images/materials/dirt_block"
-    / "dirt_block_imagegen_magenta_v1.png"
+    / "dirt_block_imagegen_transparent_v2.png"
 )
 EXCAVATOR_OUTPUT = (
     ROOT / "resources/texture/plant_defense/excavator/excavator.png"
@@ -61,13 +61,13 @@ FINAL_IMAGEGEN_PROMPT_SUMMARIES = {
         "drill, small right-side soil hopper, and copper-and-iron palette; "
         "strongly simplify pipes, bolts, and railings into uniform large "
         "square pixel blocks, keeping the subject within 54x58 logical "
-        "pixels on a pure #FF00FF background. No shadow, ground, grass, "
+        "pixels on a native transparent background. No shadow, ground, grass, "
         "water, scenery, or text."
     ),
     "dirt_block": (
         "One centered brown compacted-dirt block or soil clod, about 22 "
         "logical pixels across for a 32x32 inventory canvas, drawn with "
-        "uniform coarse square pixels on a pure #FF00FF background. No "
+        "uniform coarse square pixels on a native transparent background. No "
         "grass, roots, loose pieces, container, ground, text, or UI."
     ),
 }
@@ -269,8 +269,8 @@ def build_assets() -> tuple[dict[str, Image.Image], dict]:
         "asset_family": "excavator",
         "status": "failed" if failures else "passed",
         "pipeline": [
-            "built-in imagegen final masters on flat #FF00FF",
-            "plant_pixel_asset_pipeline connected chroma-key removal",
+            "built-in imagegen final masters with native transparent backgrounds",
+            "plant_pixel_asset_pipeline transparent-alpha validation",
             "pixel_grid_analyzer measured logical-grid center sampling",
             "fit_oversized=False with exact detected-size retention",
             "palette reduction without dithering",

@@ -174,11 +174,6 @@ func _test_sprite_sheet_contract() -> void:
 				is_zero_approx(color.a) or is_equal_approx(color.a, 1.0),
 				"史莱姆图集必须保持二值 alpha，禁止半透明破边。"
 			)
-			if color.a > 0.5:
-				_expect(
-					not _is_magenta_key_color(color),
-					"史莱姆图集的非透明区域不得残留洋红抠图底色。"
-				)
 
 	_test_move_frame_contract(image)
 	_test_death_frame_contract(image)
@@ -262,10 +257,6 @@ func _test_death_frame_contract(image: Image) -> void:
 			_is_eye_core_color(image.get_pixel(eye_pixel.x, 32 + eye_pixel.y)),
 			"第一帧塌缩姿势必须保留原图中的两枚眼睛。"
 		)
-
-
-func _is_magenta_key_color(color: Color) -> bool:
-	return minf(color.r, color.b) - color.g >= 96.0 / 255.0
 
 
 func _is_eye_core_color(color: Color) -> bool:

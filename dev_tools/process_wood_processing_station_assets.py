@@ -12,12 +12,12 @@ from PIL import Image
 
 from plant_pixel_asset_pipeline import (
     TRANSPARENT,
-    _key_magenta_source,
     apply_palette,
     audit_image,
     build_shared_palette,
     clean_transparency,
     foot_anchor,
+    load_transparent_source,
     normalize_imagegen_subject,
     place_bottom_center,
     portable_path,
@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILDING_SOURCE = (
     ROOT
     / "dev_assets/source_images/plant_defense/wood_processing_station"
-    / "wood_processing_station_selected_imagegen_magenta_v4.png"
+    / "wood_processing_station_alpha_preview_v4.png"
 )
 PANEL_SOURCE = (
     ROOT
@@ -40,7 +40,7 @@ PANEL_SOURCE = (
 PLANK_SOURCE = (
     ROOT
     / "dev_assets/source_images/materials/plank"
-    / "plank_selected_imagegen_magenta_v4.png"
+    / "plank_alpha_preview_v4.png"
 )
 BUILDING_OUTPUT = (
     ROOT
@@ -86,11 +86,11 @@ def _build_building() -> tuple[Image.Image, dict]:
 
 
 def _build_plank() -> tuple[Image.Image, dict]:
-    keyed = _key_magenta_source(PLANK_SOURCE)
-    bbox = keyed.getchannel("A").getbbox()
+    source = load_transparent_source(PLANK_SOURCE)
+    bbox = source.getchannel("A").getbbox()
     if bbox is None:
-        raise RuntimeError("Plank chroma-key source contains no visible subject")
-    cropped = keyed.crop(bbox)
+        raise RuntimeError("Transparent plank source contains no visible subject")
+    cropped = source.crop(bbox)
     # The generated master was reviewed as one intact board whose diagonal
     # silhouette needs a near-full 32x32 footprint for inventory readability.
     # Sample it directly into the reviewed 29x26 target grid so the source
@@ -195,7 +195,7 @@ def main() -> None:
         "status": "failed" if failures else "passed",
         "pipeline": [
             "built-in imagegen reference-guided masters",
-            "flat #FF00FF chroma key",
+            "native transparent ImageGen source",
             "project pixel-grid review and nearest logical-cell sampling",
             "oversized building sources rejected instead of fitted",
             "palette reduction without dithering",

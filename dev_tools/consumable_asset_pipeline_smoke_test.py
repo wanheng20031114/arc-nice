@@ -64,13 +64,13 @@ def main() -> None:
     _expect(
         all(
             (
-                spec.source_path.name.startswith(f"{spec.slug}_imagegen_magenta")
+                spec.source_path.name == f"{spec.slug}_alpha.png"
                 or spec.source_path.name == spec.native_manual_master_filename
             )
             and spec.source_path.suffix == ".png"
             for spec in ALL_ASSETS
         ),
-        "Approved masters must be versioned ImageGen sources or explicit native manual masters",
+        "Approved masters must be native-transparent ImageGen sources or explicit native manual masters",
     )
     _expect(
         all(spec.output_path.name == f"{spec.slug}.png" for spec in ALL_ASSETS),
@@ -153,7 +153,7 @@ def main() -> None:
         "one-pixel border",
     )
     dirty = output.copy()
-    dirty.putpixel((0, 0), (255, 0, 255, 255))
+    dirty.putpixel((0, 0), (255, 255, 255, 255))
     _expect_runtime_error(
         lambda: _audit_output(dirty, subject, origin),
         "one_pixel_transparent_border",

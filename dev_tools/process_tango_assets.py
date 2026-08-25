@@ -222,22 +222,25 @@ class ExtractedFrame:
     source_bbox: tuple[int, int, int, int]
 
 
-def _is_chroma(red: int, green: int, blue: int) -> bool:
-    """Classify magenta and its antialiased spill without eating gray/cyan art."""
-    return min(red, blue) - green >= 16
-
-
-def _remove_chroma(image: Image.Image) -> Image.Image:
-    rgba = image.convert("RGBA")
-    pixels = rgba.load()
-    for y in range(rgba.height):
-        for x in range(rgba.width):
-            red, green, blue, _alpha = pixels[x, y]
-            if _is_chroma(red, green, blue):
-                pixels[x, y] = (0, 0, 0, 0)
-            else:
-                pixels[x, y] = (red, green, blue, 255)
-    return normalize_transparency(rgba)
+def _load_native_transparent_board(board_path: Path) -> Image.Image:
+    if not board_path.is_file():
+        raise FileNotFoundError(
+            f"{board_path} is missing. Provide an ImageGen board exported with "
+            "a native transparent background."
+        )
+    with Image.open(board_path) as image:
+        if "A" not in image.getbands():
+            raise ValueError(
+                f"{board_path} has no Alpha channel. Regenerate it with a "
+                "native transparent background."
+            )
+        minimum_alpha, maximum_alpha = image.getchannel("A").getextrema()
+        if minimum_alpha >= 255 or maximum_alpha == 0:
+            raise ValueError(
+                f"{board_path} must contain both transparent and visible "
+                "pixels in its native Alpha channel."
+            )
+        return normalize_transparency(image)
 
 
 def _runs(values: Iterable[bool]) -> list[tuple[int, int]]:
@@ -258,17 +261,17 @@ def _extract_board(
     columns: int,
     rows: int,
 ) -> list[list[ExtractedFrame]]:
-    keyed = _remove_chroma(Image.open(board_path))
-    alpha = keyed.getchannel("A")
+    source = _load_native_transparent_board(board_path)
+    alpha = source.getchannel("A")
     alpha_pixels = alpha.load()
     extracted: list[list[ExtractedFrame]] = []
 
     for row in range(rows):
-        top = round(row * keyed.height / rows)
-        bottom = round((row + 1) * keyed.height / rows)
+        top = round(row * source.height / rows)
+        bottom = round((row + 1) * source.height / rows)
         foreground_counts = [
             sum(alpha_pixels[x, y] > 0 for y in range(top, bottom))
-            for x in range(keyed.width)
+            for x in range(source.width)
         ]
         column_runs = _runs(count >= 3 for count in foreground_counts)
         if len(column_runs) != columns:
@@ -279,7 +282,7 @@ def _extract_board(
 
         row_frames: list[ExtractedFrame] = []
         for left, right in column_runs:
-            slot = keyed.crop((left, top, right, bottom))
+            slot = source.crop((left, top, right, bottom))
             bbox = slot.getchannel("A").getbbox()
             if bbox is None:
                 raise ValueError(f"{board_path.name} row {row}: empty subject")

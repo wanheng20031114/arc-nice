@@ -7,9 +7,6 @@ from pathlib import Path
 
 from PIL import Image
 
-from connected_background_remover import ConnectedBackgroundOptions, remove_connected_background
-
-
 PANEL_SOURCE = "dev_assets/source_images/item_detail_panel_pixel_generated.png"
 BADGE_SOURCE = "dev_assets/source_images/item_category_badge_pixel_generated.png"
 PANEL_OUTPUT = "resources/texture/item_detail_panel_bg.png"
@@ -18,20 +15,11 @@ ITEM_BADGE_OUTPUT = "resources/texture/item_category_badge_item.png"
 
 PANEL_SIZE = (242, 148)
 BADGE_SIZE = (58, 22)
-BACKGROUND_RGB_TOLERANCE = 72
-BACKGROUND_HUE_TOLERANCE = 0.045
-BACKGROUND_EXPANSION_RADIUS = 8
-
-
-def _remove_connected_chroma_background(image: Image.Image) -> Image.Image:
-	return remove_connected_background(
-		image,
-		ConnectedBackgroundOptions(
-			rgb_tolerance=BACKGROUND_RGB_TOLERANCE,
-			hue_tolerance=BACKGROUND_HUE_TOLERANCE,
-			expansion_radius=BACKGROUND_EXPANSION_RADIUS,
-		),
-	)
+def _load_transparent(path: Path) -> Image.Image:
+	image = Image.open(path).convert("RGBA")
+	if image.getchannel("A").getextrema()[0] == 255:
+		raise ValueError(f"ImageGen source must have a native transparent background: {path}")
+	return image
 
 
 def _crop_visible(image: Image.Image) -> Image.Image:
@@ -67,12 +55,12 @@ def _tint_badge(image: Image.Image, tint: tuple[int, int, int], amount: float) -
 
 def main() -> None:
 	root = Path(__file__).resolve().parents[1]
-	panel_source = _crop_visible(_remove_connected_chroma_background(Image.open(root / PANEL_SOURCE)))
+	panel_source = _crop_visible(_load_transparent(root / PANEL_SOURCE))
 	panel = _resize_pixel_ui(panel_source, PANEL_SIZE)
 	panel.save(root / PANEL_OUTPUT)
 	print(f"Item detail panel: {root / PANEL_OUTPUT} ({panel.width}x{panel.height})")
 
-	badge_source = _crop_visible(_remove_connected_chroma_background(Image.open(root / BADGE_SOURCE)))
+	badge_source = _crop_visible(_load_transparent(root / BADGE_SOURCE))
 	badge = _resize_pixel_ui(badge_source, BADGE_SIZE)
 	collectible_badge = _tint_badge(badge, (66, 210, 181), 0.12)
 	item_badge = _tint_badge(badge, (218, 161, 70), 0.18)

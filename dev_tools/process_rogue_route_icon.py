@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""把去色键后的生成图收口为低像素、有限色板的路线图图标。"""
+"""把原生透明生成图收口为低像素、有限色板的路线图图标。"""
 
 from __future__ import annotations
 

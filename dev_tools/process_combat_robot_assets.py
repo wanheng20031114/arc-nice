@@ -3,8 +3,8 @@
 
 Input contract
 --------------
-The source directory must contain four horizontal green-screen or transparent
-strips:
+The source directory must contain four horizontal strips with native transparent
+Alpha:
 
 * combat_robot_move_v2_imagegen.png: 8 poses;
 * combat_robot_windup_v2_imagegen.png: 4 poses;
@@ -129,24 +129,25 @@ class ExtractedPose:
     torso_bbox: tuple[int, int, int, int]
 
 
-def _is_green_key(red: int, green: int, blue: int) -> bool:
-    """Match a green key and its antialiased spill without eating neutral steel."""
-    return (
-        green >= 96
-        and green - red >= 38
-        and green - blue >= 38
-        and green >= max(red, blue) * 1.35
-    )
-
-
-def normalize_source(image: Image.Image) -> Image.Image:
+def normalize_source(image: Image.Image, source_path: Path) -> Image.Image:
     """Return binary-alpha RGBA with transparent RGB normalized to zero."""
+    if "A" not in image.getbands():
+        raise ValueError(
+            f"{source_path} has no Alpha channel. Provide an ImageGen strip "
+            "exported with a native transparent background."
+        )
+    minimum_alpha, maximum_alpha = image.getchannel("A").getextrema()
+    if minimum_alpha >= 255 or maximum_alpha == 0:
+        raise ValueError(
+            f"{source_path} must contain both transparent and visible pixels "
+            "in its native Alpha channel."
+        )
     rgba = image.convert("RGBA")
     pixels = rgba.load()
     for y in range(rgba.height):
         for x in range(rgba.width):
             red, green, blue, alpha = pixels[x, y]
-            if alpha <= ALPHA_THRESHOLD or _is_green_key(red, green, blue):
+            if alpha <= ALPHA_THRESHOLD:
                 pixels[x, y] = (0, 0, 0, 0)
             else:
                 pixels[x, y] = (red, green, blue, 255)
@@ -245,12 +246,13 @@ def _extract_strip(
         raise FileNotFoundError(
             f"Combat-robot source strip not found: {source_path}"
         )
-    source = normalize_source(Image.open(source_path))
+    with Image.open(source_path) as source_image:
+        source = normalize_source(source_image, source_path)
     raw_components = _extract_mask_components(source.getchannel("A"))
     if len(raw_components) != expected_count:
         raise ValueError(
-            f"{source_path.name} has {len(raw_components)} connected poses after "
-            f"key removal; expected {expected_count}. Component bboxes: "
+            f"{source_path.name} has {len(raw_components)} connected poses in "
+            f"native Alpha; expected {expected_count}. Component bboxes: "
             f"{[item[1] for item in raw_components]}"
         )
 

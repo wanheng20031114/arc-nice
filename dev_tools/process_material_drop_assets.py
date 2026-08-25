@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build three 32x32 enemy material icons from approved imagegen masters.
 
-The approved magenta-backed imagegen images are authoritative for both the
-interior pixels and the refined silhouette.  Each source is sampled once per
+The approved native-transparent ImageGen images are authoritative for both the
+interior pixels and the refined silhouette. Each source is sampled once per
 visually audited logical grid cell, centered on a transparent 32x32 canvas,
 and checked against the previous mechanical 2x-reference-mask regression.
 """
@@ -69,11 +69,8 @@ ASSETS = (
     {
         "id": "capoo_blue_crystal",
         "reference": SOURCE_ROOT / "capoo_blue_crystal_reference.png",
-        "source": SOURCE_ROOT / "capoo_blue_crystal_imagegen_magenta.png",
-        "helper_alpha": SOURCE_ROOT / "capoo_blue_crystal_helper_alpha.png",
-        "approved_master_sha256": "9ecf54ce3f296c0736eb840a64db3eb8b045d9fd862a8c0051f67bdd277a6604",
-        "helper_alpha_sha256": "961bd15688444ccfbcb81a6c1ec5cb4fefc534106f18b09e65988f300d7273ed",
-        "alpha": SOURCE_ROOT / "capoo_blue_crystal_alpha.png",
+        "source": SOURCE_ROOT / "capoo_blue_crystal_alpha.png",
+        "approved_master_sha256": "4fc371869b35d67454a2ef385a01e1b9591894f4cdc82194d93d7ebd9da8eb03",
         "logical": SOURCE_ROOT / "capoo_blue_crystal_logical_preview.png",
         "output": OUTPUT_ROOT / "capoo_blue_crystal.png",
         "approved_logical_size": (12, 25),
@@ -87,11 +84,8 @@ ASSETS = (
     {
         "id": "white_crystal",
         "reference": SOURCE_ROOT / "white_crystal_reference.png",
-        "source": SOURCE_ROOT / "white_crystal_imagegen_magenta.png",
-        "helper_alpha": SOURCE_ROOT / "white_crystal_helper_alpha.png",
-        "approved_master_sha256": "66a754abe526eaef0e5c9a5b6c1132e490f397ddf46564253c8d2ca048118df8",
-        "helper_alpha_sha256": "755d28eb5195036b9a7d86a7f1b5649275c214a3ad145d23faba3eaa009776f2",
-        "alpha": SOURCE_ROOT / "white_crystal_alpha.png",
+        "source": SOURCE_ROOT / "white_crystal_alpha.png",
+        "approved_master_sha256": "5fa298fe470a088c8e1a431966bfb0caa00a41b8c76db79c3a1a517bd94fc484",
         "logical": SOURCE_ROOT / "white_crystal_logical_preview.png",
         "output": OUTPUT_ROOT / "white_crystal.png",
         "approved_logical_size": (16, 29),
@@ -105,11 +99,8 @@ ASSETS = (
     {
         "id": "sorcerer_violet_powder",
         "reference": SOURCE_ROOT / "reserved_pale_blue_powder_reference.png",
-        "source": SOURCE_ROOT / "sorcerer_violet_powder_imagegen_magenta.png",
-        "helper_alpha": SOURCE_ROOT / "sorcerer_violet_powder_helper_alpha.png",
-        "approved_master_sha256": "56a0a8b5c9902767a6a8eab19e2dd5ee881ad278918220cbcb80bd84e1405967",
-        "helper_alpha_sha256": "a14e2303644c431d5dd00aded3af5063547bfb4b7dac5ef33c4162a0b19ae15b",
-        "alpha": SOURCE_ROOT / "sorcerer_violet_powder_alpha.png",
+        "source": SOURCE_ROOT / "sorcerer_violet_powder_alpha.png",
+        "approved_master_sha256": "bced5003720d98927d393668863365ace80589a784118fc6a362780d22b00766",
         "logical": SOURCE_ROOT / "sorcerer_violet_powder_logical_preview.png",
         "output": OUTPUT_ROOT / "sorcerer_violet_powder.png",
         "approved_logical_size": (18, 16),
@@ -139,80 +130,15 @@ def _mask_sha256(image: Image.Image) -> str:
 def _validate_approved_sources() -> None:
     for spec in ASSETS:
         expected_source_sha = spec["approved_master_sha256"]
-        expected_helper_sha = spec["helper_alpha_sha256"]
         actual_source_sha = _sha256(spec["source"])
-        actual_helper_sha = _sha256(spec["helper_alpha"])
         if actual_source_sha != expected_source_sha:
             raise RuntimeError(
                 f"Approved imagegen master drifted for {spec['id']}: "
                 f"expected {expected_source_sha}, got {actual_source_sha}"
             )
-        if actual_helper_sha != expected_helper_sha:
-            raise RuntimeError(
-                f"Approved helper alpha drifted for {spec['id']}: "
-                f"expected {expected_helper_sha}, got {actual_helper_sha}"
-            )
-
-
-def _validate_source_helper_pixels(
-    source_path: Path,
-    helper_alpha_path: Path,
-) -> dict:
-    """Prove every retained helper pixel came unchanged from its master."""
-    with Image.open(source_path) as opened_source:
-        source = opened_source.convert("RGBA")
-    with Image.open(helper_alpha_path) as opened_helper:
-        helper = opened_helper.convert("RGBA")
-    if source.size != helper.size:
-        raise RuntimeError(
-            f"Source/helper dimensions differ: {source_path}, "
-            f"{helper_alpha_path}"
-        )
-
-    helper_alpha_values: set[int] = set()
-    visible_pixels = 0
-    for source_pixel, helper_pixel in zip(
-        source.getdata(),
-        helper.getdata(),
-    ):
-        helper_alpha = helper_pixel[3]
-        helper_alpha_values.add(helper_alpha)
-        if helper_alpha == 0:
-            if helper_pixel[:3] != (0, 0, 0):
-                raise RuntimeError(
-                    f"Helper contains dirty transparent RGB: "
-                    f"{helper_alpha_path}"
-                )
-            continue
-        visible_pixels += 1
-        if (
-            source_pixel[3] == 0
-            or helper_pixel[:3] != source_pixel[:3]
-        ):
-            raise RuntimeError(
-                f"Helper foreground is not pixel-identical to its master: "
-                f"{helper_alpha_path}"
-            )
-    if not helper_alpha_values.issubset({0, 255}):
-        raise RuntimeError(
-            f"Helper alpha is not binary: {helper_alpha_path}"
-        )
-    if visible_pixels == 0:
-        raise RuntimeError(f"Helper has no visible subject: {helper_alpha_path}")
-    return {
-        "same_dimensions": True,
-        "visible_rgb_matches_master": True,
-        "binary_alpha": True,
-        "clean_transparent_rgb": True,
-        "visible_pixel_count": visible_pixels,
-    }
-
-
-def _validate_helper_alpha(path: Path) -> dict:
+def _validate_transparent_source(path: Path) -> dict:
     if not path.is_file():
-        raise FileNotFoundError(
-            f"Run the installed imagegen chroma helper first: {path}"
-        )
+        raise FileNotFoundError(path)
     with Image.open(path) as opened:
         image = opened.convert("RGBA")
     bbox = image.getchannel("A").getbbox()
@@ -228,7 +154,7 @@ def _validate_helper_alpha(path: Path) -> dict:
         or any(alpha != 0 for alpha in corners)
     ):
         raise RuntimeError(
-            f"Installed chroma helper validation failed for {path}: "
+            f"Native transparent source validation failed for {path}: "
             f"bbox={bbox}, corners={corners}"
         )
     return {
@@ -239,17 +165,17 @@ def _validate_helper_alpha(path: Path) -> dict:
 
 
 def _sample_approved_master(
-    helper_alpha_path: Path,
+    source_path: Path,
     approved_logical_size: tuple[int, int],
 ) -> tuple[Image.Image, Image.Image, dict]:
     """Sample one final pixel per approved imagegen logical cell."""
-    with Image.open(helper_alpha_path) as opened:
-        keyed = clean_transparency(opened)
-    analysis = analyze_image(keyed)
-    bbox = keyed.getchannel("A").getbbox()
+    with Image.open(source_path) as opened:
+        source = clean_transparency(opened)
+    analysis = analyze_image(source)
+    bbox = source.getchannel("A").getbbox()
     if bbox is None:
         raise RuntimeError(
-            f"Approved imagegen helper alpha is empty: {helper_alpha_path}"
+            f"Approved transparent ImageGen source is empty: {source_path}"
         )
 
     logical_width, logical_height = approved_logical_size
@@ -259,7 +185,7 @@ def _sample_approved_master(
     ):
         raise RuntimeError(
             f"Approved logical subject {approved_logical_size} exceeds "
-            f"{MAX_SUBJECT_SIZE}: {helper_alpha_path}"
+            f"{MAX_SUBJECT_SIZE}: {source_path}"
         )
 
     subject_width = bbox[2] - bbox[0]
@@ -273,11 +199,11 @@ def _sample_approved_master(
     if logical_cell_aspect_ratio > MAX_LOGICAL_CELL_ASPECT_RATIO:
         raise RuntimeError(
             f"Approved grid {approved_logical_size} does not describe near-"
-            f"square source cells for {helper_alpha_path}: "
+            f"square source cells for {source_path}: "
             f"{logical_cell_width:.3f}x{logical_cell_height:.3f}"
         )
 
-    subject = keyed.crop(bbox).resize(
+    subject = source.crop(bbox).resize(
         approved_logical_size,
         Image.Resampling.NEAREST,
     )
@@ -290,7 +216,7 @@ def _sample_approved_master(
     ):
         raise RuntimeError(
             "Approved master sampling lost an outer logical edge: "
-            f"{helper_alpha_path}"
+            f"{source_path}"
         )
 
     grid_audit = {
@@ -304,7 +230,7 @@ def _sample_approved_master(
             3,
         ),
     }
-    return subject, keyed, grid_audit
+    return subject, source, grid_audit
 
 
 def _compact_pixel_palette(image: Image.Image) -> Image.Image:
@@ -407,18 +333,13 @@ def _build_asset(spec: dict) -> tuple[dict, Image.Image]:
     for required_path in (
         spec["reference"],
         spec["source"],
-        spec["helper_alpha"],
     ):
         if not required_path.is_file():
             raise FileNotFoundError(required_path)
 
-    source_helper_audit = _validate_source_helper_pixels(
+    source_audit = _validate_transparent_source(spec["source"])
+    approved_subject, _source, grid_audit = _sample_approved_master(
         spec["source"],
-        spec["helper_alpha"],
-    )
-    helper_audit = _validate_helper_alpha(spec["helper_alpha"])
-    approved_subject, keyed_source, grid_audit = _sample_approved_master(
-        spec["helper_alpha"],
         spec["approved_logical_size"],
     )
     final_subject = _compact_pixel_palette(approved_subject)
@@ -469,14 +390,7 @@ def _build_asset(spec: dict) -> tuple[dict, Image.Image]:
     if failures:
         raise RuntimeError(f"{spec['id']}: " + "; ".join(failures))
 
-    spec["alpha"].parent.mkdir(parents=True, exist_ok=True)
     spec["output"].parent.mkdir(parents=True, exist_ok=True)
-    keyed_source.save(
-        spec["alpha"],
-        format="PNG",
-        optimize=True,
-        compress_level=9,
-    )
     final_subject.save(
         spec["logical"],
         format="PNG",
@@ -496,14 +410,11 @@ def _build_asset(spec: dict) -> tuple[dict, Image.Image]:
         "identity_reference": portable_path(spec["reference"]),
         "approved_imagegen_master": portable_path(spec["source"]),
         "approval_record": "approved source hashes embedded in processor",
-        "installed_helper_alpha": helper_audit,
-        "source_helper_pair": source_helper_audit,
-        "connected_alpha_source": portable_path(spec["alpha"]),
+        "transparent_source_audit": source_audit,
         "logical_preview": portable_path(spec["logical"]),
         "output": portable_path(spec["output"]),
         "identity_reference_sha256": _sha256(spec["reference"]),
         "approved_master_sha256": _sha256(spec["source"]),
-        "helper_alpha_sha256": _sha256(spec["helper_alpha"]),
         "output_sha256": _sha256(spec["output"]),
         "grid_note": spec["grid_note"],
         "grid_audit": grid_audit,
@@ -560,10 +471,8 @@ def main() -> None:
         "status": "passed",
         "approval_record": "approved source hashes embedded in processor",
         "pipeline": [
-            "approved imagegen master/helper pairs hash-locked in processor",
-            "helper foreground RGB verified pixel-identical to its master",
+            "approved native-transparent ImageGen sources hash-locked in processor",
             "approved generated masters treated as silhouette authorities",
-            "flat magenta removed with connected chroma-key extraction",
             "logical grid measured with pixel_grid_analyzer and manually audited",
             "one final pixel center-sampled per approved generated logical cell",
             "generated master silhouette retained instead of an old reference mask",

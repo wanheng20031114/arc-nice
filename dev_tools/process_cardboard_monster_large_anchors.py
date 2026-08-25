@@ -393,20 +393,20 @@ def audit_candidate(key: str, built: BuiltCandidate) -> dict[str, object]:
     }
 
 
-def normalize_reference(raw: Image.Image) -> Image.Image:
-    rgba = raw.convert("RGBA")
-    result = Image.new("RGBA", rgba.size, TRANSPARENT)
-    source = rgba.load()
-    target = result.load()
-    for y in range(rgba.height):
-        for x in range(rgba.width):
-            red, green, blue, alpha = source[x, y]
-            if alpha <= 8 or (green >= max(red, blue) + 34 and green >= 115):
-                continue
-            if green > max(red, blue) + 8:
-                green = max(red, blue)
-            target[x, y] = (red, green, blue, 255)
-    return result
+def load_transparent_reference(raw_path: Path, transparent_path: Path) -> Image.Image:
+    alpha_source = transparent_path if transparent_path.is_file() else raw_path
+    with Image.open(alpha_source) as opened:
+        image = opened.convert("RGBA")
+    alpha_min, alpha_max = image.getchannel("A").getextrema()
+    if alpha_min == 255:
+        raise AssertionError(
+            f"{rel(alpha_source)} has no transparent Alpha pixels; "
+            "provide a native-transparent ImageGen source or a pre-existing, "
+            "approved matching Alpha derivative"
+        )
+    if alpha_max == 0:
+        raise AssertionError(f"{rel(alpha_source)} is fully transparent")
+    return image
 
 
 def nearest(image: Image.Image, scale: int) -> Image.Image:
@@ -610,12 +610,10 @@ def build_once(approved_selection: str | None) -> tuple[dict[str, object], dict[
             raise AssertionError(f"{spec.key}: raw ImageGen SHA drift, expected {expected_sha}")
         raw = Image.open(raw_path).convert("RGBA")
         raw_records[spec.key] = {**file_record(raw_path), "analysis": analyze_image(raw)}
-        transparent = normalize_reference(raw)
-        if transparent.getchannel("A").getbbox() is None:
-            raise AssertionError(f"{spec.key}: empty normalized reference")
-        crop = crop_to_square(transparent, padding=36, align_to_grid=False)
         transparent_path = SOURCE_DIR / f"cardboard_monster_large_anchor_{spec.key}_transparent_reference.png"
         crop_path = SOURCE_DIR / f"cardboard_monster_large_anchor_{spec.key}_crop_tool.png"
+        transparent = load_transparent_reference(raw_path, transparent_path)
+        crop = crop_to_square(transparent, padding=36, align_to_grid=False)
         save_png(transparent, transparent_path)
         save_png(crop, crop_path)
 

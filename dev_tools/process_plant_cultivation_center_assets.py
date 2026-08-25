@@ -31,7 +31,7 @@ SOURCE_DIR = (
 )
 BUILDING_SOURCE = (
     SOURCE_DIR
-    / "plant_cultivation_center_compact_imagegen_magenta.png"
+    / "plant_cultivation_center_compact_alpha.png"
 )
 BUILDING_OUTPUT = (
     ROOT
@@ -138,7 +138,7 @@ def build_assets() -> tuple[dict[str, Image.Image], dict]:
         "pipeline": [
             "built-in imagegen selected concept",
             "built-in imagegen logical-grid compactness correction",
-            "flat #FF00FF chroma key",
+            "reviewed transparent-Alpha master; future generations require native ImageGen Alpha",
             "pixel_grid_analyzer measured logical grid",
             "nearest logical-cell selection without smoothing",
             "palette reduction without dithering",

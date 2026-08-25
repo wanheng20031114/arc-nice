@@ -30,7 +30,7 @@ from plant_pixel_asset_pipeline import (
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/plant_defense/vegetation_stake"
-DEFAULT_INPUT = SOURCE_DIR / "vegetation_stake_selected_imagegen_magenta.png"
+DEFAULT_INPUT = SOURCE_DIR / "vegetation_stake_selected_imagegen_transparent.png"
 OUTPUT_DIR = ROOT / "resources/texture/plant_defense/vegetation_stake"
 AUDIT_PATH = ROOT / "dev_tools/output/plant_defense/vegetation_stake_asset_audit.json"
 # The selected square-core source is natively 22x30 logical pixels including
@@ -163,8 +163,7 @@ def main() -> None:
         "asset_family": "vegetation_stake",
         "status": "failed" if failures else "passed",
         "pipeline": [
-            "built-in imagegen reference-guided master",
-            "flat #FF00FF chroma key",
+            "built-in imagegen reference-guided master with native transparent Alpha",
             "pixel_grid_analyzer measured logical grid",
             "nearest logical-cell selection",
             "detached motes delegated to GPUParticles2D",

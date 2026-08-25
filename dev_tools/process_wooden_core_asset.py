@@ -10,7 +10,6 @@ from PIL import Image
 
 from plant_pixel_asset_pipeline import (
     TRANSPARENT,
-    _key_magenta_source,
     clean_transparency,
     normalize_imagegen_subject,
     portable_path,
@@ -19,11 +18,6 @@ from plant_pixel_asset_pipeline import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_MASTER = (
-    ROOT
-    / "dev_assets/source_images/materials/wooden_core"
-    / "wooden_core_selected_imagegen_magenta.png"
-)
 ALPHA_SOURCE = (
     ROOT
     / "dev_assets/source_images/materials/wooden_core"
@@ -45,12 +39,11 @@ REVIEWED_LOGICAL_SIZE = (30, 31)
 
 
 def main() -> None:
-    if not SOURCE_MASTER.is_file():
-        raise FileNotFoundError(SOURCE_MASTER)
+    if not ALPHA_SOURCE.is_file():
+        raise FileNotFoundError(ALPHA_SOURCE)
 
-    alpha_source = _key_magenta_source(SOURCE_MASTER)
     subject = normalize_imagegen_subject(
-        SOURCE_MASTER,
+        ALPHA_SOURCE,
         max_subject_size=REVIEWED_LOGICAL_SIZE,
         fit_oversized=False,
     )
@@ -122,14 +115,13 @@ def main() -> None:
         "status": "passed",
         "pipeline": [
             "built-in imagegen reference-guided first draft selected by user",
-            "flat #FF00FF chroma-key removal",
+            "native transparent ImageGen source",
             "pixel_grid_analyzer.py confirmed a 30x31 logical subject",
             "measured logical-cell center sampling at the detected 30x31 grid",
             "no palette quantization and no secondary logical resize",
             "binary-alpha 32x32 canvas audit",
         ],
-        "source_master": portable_path(SOURCE_MASTER),
-        "alpha_source": portable_path(ALPHA_SOURCE),
+        "source_master": portable_path(ALPHA_SOURCE),
         "logical_output": portable_path(LOGICAL_OUTPUT),
         "output": portable_path(OUTPUT),
         "source": source_audit(subject),
@@ -142,8 +134,6 @@ def main() -> None:
     }
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    ALPHA_SOURCE.parent.mkdir(parents=True, exist_ok=True)
-    alpha_source.save(ALPHA_SOURCE, format="PNG", optimize=True, compress_level=9)
     logical.save(LOGICAL_OUTPUT, format="PNG", optimize=True, compress_level=9)
     output.save(OUTPUT, format="PNG", optimize=True, compress_level=9)
     AUDIT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)

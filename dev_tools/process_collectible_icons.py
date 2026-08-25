@@ -8,7 +8,6 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from connected_background_remover import ConnectedBackgroundOptions, remove_connected_background
 from pixel_crop_tool import crop_to_square, normalize_transparency
 
 
@@ -65,19 +64,6 @@ def _fit_to_icon(image: Image.Image) -> Image.Image:
 	return canvas.resize((OUTPUT_SIZE, OUTPUT_SIZE), Image.Resampling.NEAREST)
 
 
-def _remove_green_background(cell: Image.Image) -> Image.Image:
-	return remove_connected_background(
-		cell,
-		ConnectedBackgroundOptions(
-			sample=(0, 0),
-			rgb_tolerance=92,
-			hue_tolerance=0.0,
-			expansion_radius=10,
-			use_hue=False,
-		),
-	)
-
-
 def _is_icon_empty(image: Image.Image) -> bool:
 	alpha = np.array(image.getchannel("A"), dtype=np.uint8)
 	return int(np.count_nonzero(alpha)) <= 0
@@ -89,6 +75,8 @@ def main() -> None:
 
 	OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 	sheet = Image.open(SOURCE).convert("RGBA")
+	if sheet.getchannel("A").getextrema()[0] == 255:
+		raise ValueError("Collectible icon sheet must have a native transparent background")
 	cell_width = sheet.width / float(GRID_COLUMNS)
 	cell_height = sheet.height / float(GRID_ROWS)
 
@@ -100,8 +88,7 @@ def main() -> None:
 		right = round((column + 1) * cell_width)
 		bottom = round((row + 1) * cell_height)
 		cell = sheet.crop((left, top, right, bottom))
-		alpha = _remove_green_background(cell)
-		icon = _fit_to_icon(alpha)
+		icon = _fit_to_icon(cell)
 		if _is_icon_empty(icon):
 			raise ValueError(f"Processed icon is empty: {icon_name}")
 		icon.save(OUTPUT_DIR / f"{icon_name}.png")

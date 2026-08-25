@@ -35,7 +35,6 @@ class TextureAsset:
 	output_path: Path
 	columns: int
 	rows: int
-	key_color: tuple[int, int, int]
 	body_mode: str
 	generated_columns: int | None = None
 	generated_rows: int | None = None
@@ -49,11 +48,10 @@ ASSETS = (
 	TextureAsset(
 		asset_id="capoo_ak47",
 		base_path=ROOT / "resources/texture/enemy/capoo/capoo_ak47.png",
-		imagegen_path=SOURCE_DIR / "capoo_ak47_stone_eroded_imagegen_magenta.png",
+		imagegen_path=SOURCE_DIR / "capoo_ak47_stone_eroded_imagegen_transparent.png",
 		output_path=TEXTURE_DIR / "capoo_ak47.png",
 		columns=4,
 		rows=4,
-		key_color=(255, 0, 255),
 		body_mode="capoo_left",
 		allow_empty_frames=(15,),
 	),
@@ -61,24 +59,22 @@ ASSETS = (
 		asset_id="capoo_knight",
 		base_path=ROOT / "resources/texture/enemy/capoo/capoo_knight.png",
 		imagegen_path=(
-			SOURCE_DIR / "capoo_knight_stone_eroded_imagegen_magenta.png"
+			SOURCE_DIR / "capoo_knight_stone_eroded_imagegen_transparent.png"
 		),
 		output_path=TEXTURE_DIR / "capoo_knight.png",
 		columns=4,
 		rows=4,
-		key_color=(255, 0, 255),
 		body_mode="capoo_right",
 	),
 	TextureAsset(
 		asset_id="capoo_knight_elite",
 		base_path=ROOT / "resources/texture/enemy/capoo/capoo_knight_elite.png",
 		imagegen_path=(
-			SOURCE_DIR / "capoo_knight_elite_stone_eroded_imagegen_magenta.png"
+			SOURCE_DIR / "capoo_knight_elite_stone_eroded_imagegen_transparent.png"
 		),
 		output_path=TEXTURE_DIR / "capoo_knight_elite.png",
 		columns=4,
 		rows=4,
-		key_color=(255, 0, 255),
 		# Its large blue shield occupies the right flank; anchor the crust on
 		# the exposed left-middle blue body.  All four poses rotate or collapse enough
 		# that the generic flank crop would otherwise switch body islands.
@@ -95,12 +91,11 @@ ASSETS = (
 		asset_id="capoo_mage",
 		base_path=ROOT / "resources/texture/enemy/capoo/capoo_mage.png",
 		imagegen_path=(
-			SOURCE_DIR / "capoo_mage_stone_eroded_imagegen_green.png"
+			SOURCE_DIR / "capoo_mage_stone_eroded_imagegen_transparent.png"
 		),
 		output_path=TEXTURE_DIR / "capoo_mage.png",
 		columns=4,
 		rows=4,
-		key_color=(0, 255, 0),
 		body_mode="capoo_right",
 		# The dissolving body changes silhouette radically; a shared central-
 		# lower anchor keeps the crust on the same remaining body mass.
@@ -110,22 +105,20 @@ ASSETS = (
 	TextureAsset(
 		asset_id="capoo_rpg",
 		base_path=ROOT / "resources/texture/enemy/capoo/capoo_rpg.png",
-		imagegen_path=SOURCE_DIR / "capoo_rpg_stone_eroded_imagegen_magenta.png",
+		imagegen_path=SOURCE_DIR / "capoo_rpg_stone_eroded_imagegen_transparent.png",
 		output_path=TEXTURE_DIR / "capoo_rpg.png",
 		columns=4,
 		rows=4,
-		key_color=(255, 0, 255),
 		body_mode="capoo_left",
 		allow_empty_frames=(15,),
 	),
 	TextureAsset(
 		asset_id="capoo_smg",
 		base_path=ROOT / "resources/texture/enemy/capoo/capoo_smg.png",
-		imagegen_path=SOURCE_DIR / "capoo_smg_stone_eroded_imagegen_magenta.png",
+		imagegen_path=SOURCE_DIR / "capoo_smg_stone_eroded_imagegen_transparent.png",
 		output_path=TEXTURE_DIR / "capoo_smg.png",
 		columns=4,
 		rows=4,
-		key_color=(255, 0, 255),
 		body_mode="capoo_left",
 		allow_empty_frames=(15,),
 	),
@@ -133,12 +126,11 @@ ASSETS = (
 		asset_id="capoo_sniper",
 		base_path=ROOT / "resources/texture/enemy/capoo/capoo_sniper.png",
 		imagegen_path=(
-			SOURCE_DIR / "capoo_sniper_stone_eroded_imagegen_magenta.png"
+			SOURCE_DIR / "capoo_sniper_stone_eroded_imagegen_transparent.png"
 		),
 		output_path=TEXTURE_DIR / "capoo_sniper.png",
 		columns=4,
 		rows=4,
-		key_color=(255, 0, 255),
 		body_mode="capoo_left",
 		allow_empty_frames=(15,),
 	),
@@ -146,12 +138,11 @@ ASSETS = (
 		asset_id="capoo_swordsman",
 		base_path=ROOT / "resources/texture/enemy/capoo/capoo_swordsman.png",
 		imagegen_path=(
-			SOURCE_DIR / "capoo_swordsman_stone_eroded_imagegen_magenta.png"
+			SOURCE_DIR / "capoo_swordsman_stone_eroded_imagegen_transparent.png"
 		),
 		output_path=TEXTURE_DIR / "capoo_swordsman.png",
 		columns=4,
 		rows=4,
-		key_color=(255, 0, 255),
 		body_mode="capoo_left",
 		# During the spin attack the body rotates under the sword arc.  Use the
 		# common torso instead of alternating between disconnected flank pixels.
@@ -162,24 +153,22 @@ ASSETS = (
 		asset_id="yuanshi_insect",
 		base_path=ROOT / "resources/texture/enemy/yuanshi_insect/源石虫.png",
 		imagegen_path=(
-			SOURCE_DIR / "yuanshi_insect_stone_eroded_imagegen_magenta.png"
+			SOURCE_DIR / "yuanshi_insect_stone_eroded_imagegen_transparent.png"
 		),
 		output_path=TEXTURE_DIR / "yuanshi_insect.png",
 		columns=3,
 		rows=6,
-		key_color=(255, 0, 255),
 		body_mode="yuanshi",
 	),
 	TextureAsset(
 		asset_id="yuanshi_insect_fire_ranged",
 		base_path=ROOT / "resources/texture/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.png",
 		imagegen_path=(
-			SOURCE_DIR / "yuanshi_insect_fire_ranged_stone_eroded_imagegen_magenta.png"
+			SOURCE_DIR / "yuanshi_insect_fire_ranged_stone_eroded_imagegen_transparent.png"
 		),
 		output_path=TEXTURE_DIR / "yuanshi_insect_fire_ranged.png",
 		columns=10,
 		rows=1,
-		key_color=(255, 0, 255),
 		body_mode="yuanshi",
 		generated_columns=5,
 		generated_rows=2,
@@ -190,24 +179,22 @@ ASSETS = (
 		asset_id="yuanshi_insect_green_shell",
 		base_path=ROOT / "resources/texture/enemy/yuanshi_insect/yuanshi_insect_green_shell.png",
 		imagegen_path=(
-			SOURCE_DIR / "yuanshi_insect_green_shell_stone_eroded_imagegen_magenta.png"
+			SOURCE_DIR / "yuanshi_insect_green_shell_stone_eroded_imagegen_transparent.png"
 		),
 		output_path=TEXTURE_DIR / "yuanshi_insect_green_shell.png",
 		columns=3,
 		rows=2,
-		key_color=(255, 0, 255),
 		body_mode="yuanshi",
 	),
 	TextureAsset(
 		asset_id="yuanshi_insect_guardian",
 		base_path=ROOT / "resources/texture/enemy/yuanshi_insect/yuanshi_insect_guardian.png",
 		imagegen_path=(
-			SOURCE_DIR / "yuanshi_insect_guardian_stone_eroded_imagegen_magenta.png"
+			SOURCE_DIR / "yuanshi_insect_guardian_stone_eroded_imagegen_transparent.png"
 		),
 		output_path=TEXTURE_DIR / "yuanshi_insect_guardian.png",
 		columns=3,
 		rows=2,
-		key_color=(255, 0, 255),
 		body_mode="yuanshi",
 		allow_empty_frames=(5,),
 	),
@@ -215,64 +202,58 @@ ASSETS = (
 		asset_id="yuanshi_insect_purple_bomber",
 		base_path=ROOT / "resources/texture/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.png",
 		imagegen_path=(
-			SOURCE_DIR / "yuanshi_insect_purple_bomber_stone_eroded_imagegen_green.png"
+			SOURCE_DIR / "yuanshi_insect_purple_bomber_stone_eroded_imagegen_transparent.png"
 		),
 		output_path=TEXTURE_DIR / "yuanshi_insect_purple_bomber.png",
 		columns=3,
 		rows=2,
-		key_color=(0, 255, 0),
 		body_mode="yuanshi",
 	),
 	TextureAsset(
 		asset_id="slime",
 		base_path=ROOT / "resources/texture/enemy/slime/slime.png",
-		imagegen_path=SOURCE_DIR / "slime_stone_eroded_imagegen_magenta.png",
+		imagegen_path=SOURCE_DIR / "slime_stone_eroded_imagegen_transparent.png",
 		output_path=TEXTURE_DIR / "slime.png",
 		columns=3,
 		rows=2,
-		key_color=(255, 0, 255),
 		body_mode="slime",
 	),
 	TextureAsset(
 		asset_id="slime_fire",
 		base_path=ROOT / "resources/texture/enemy/slime/slime_fire.png",
-		imagegen_path=SOURCE_DIR / "slime_fire_stone_eroded_imagegen_magenta.png",
+		imagegen_path=SOURCE_DIR / "slime_fire_stone_eroded_imagegen_transparent.png",
 		output_path=TEXTURE_DIR / "slime_fire.png",
 		columns=3,
 		rows=2,
-		key_color=(255, 0, 255),
 		body_mode="slime",
 	),
 	TextureAsset(
 		asset_id="slime_frost",
 		base_path=ROOT / "resources/texture/enemy/slime/slime_frost.png",
-		imagegen_path=SOURCE_DIR / "slime_frost_stone_eroded_imagegen_magenta.png",
+		imagegen_path=SOURCE_DIR / "slime_frost_stone_eroded_imagegen_transparent.png",
 		output_path=TEXTURE_DIR / "slime_frost.png",
 		columns=3,
 		rows=2,
-		key_color=(255, 0, 255),
 		body_mode="slime",
 	),
 	TextureAsset(
 		asset_id="slime_golden",
 		base_path=ROOT / "resources/texture/enemy/slime/slime_golden.png",
 		imagegen_path=(
-			SOURCE_DIR / "slime_golden_stone_eroded_imagegen_magenta.png"
+			SOURCE_DIR / "slime_golden_stone_eroded_imagegen_transparent.png"
 		),
 		output_path=TEXTURE_DIR / "slime_golden.png",
 		columns=3,
 		rows=2,
-		key_color=(255, 0, 255),
 		body_mode="slime",
 	),
 	TextureAsset(
 		asset_id="slime_green",
 		base_path=ROOT / "resources/texture/enemy/slime/slime_green.png",
-		imagegen_path=SOURCE_DIR / "slime_green_stone_eroded_imagegen_magenta.png",
+		imagegen_path=SOURCE_DIR / "slime_green_stone_eroded_imagegen_transparent.png",
 		output_path=TEXTURE_DIR / "slime_green.png",
 		columns=3,
 		rows=2,
-		key_color=(255, 0, 255),
 		body_mode="slime",
 	),
 )
@@ -284,27 +265,32 @@ SMALL_FRAME_VISIBLE_THRESHOLD = 512
 SMALL_MIN_STONE_RATIO = 0.075
 SMALL_TARGET_STONE_RATIO = 0.110
 SMALL_MAX_STONE_RATIO = 0.150
-CHROMA_DISTANCE = 24
 MIN_STONE_LUMINANCE = 0.12
 MAX_STONE_LUMINANCE = 0.90
 STONE_BLEND = 0.90
 
 
-def _remove_edge_connected_chroma(
-	image: Image.Image,
-	key_color: tuple[int, int, int],
-) -> Image.Image:
-	array = np.array(image.convert("RGBA"), dtype=np.uint8)
-	rgb = array[:, :, :3].astype(np.int16)
-	key = np.array(key_color, dtype=np.int16)
-	candidate = np.max(np.abs(rgb - key), axis=2) <= CHROMA_DISTANCE
-	seeds = np.zeros(candidate.shape, dtype=bool)
-	seeds[0, :] = candidate[0, :]
-	seeds[-1, :] = candidate[-1, :]
-	seeds[:, 0] = candidate[:, 0]
-	seeds[:, -1] = candidate[:, -1]
-	background = ndimage.binary_propagation(seeds, mask=candidate)
-	array[background] = (0, 0, 0, 0)
+def _load_native_transparent_image(source_path: Path) -> Image.Image:
+	if not source_path.is_file():
+		raise FileNotFoundError(
+			f"{source_path} is missing. Provide an ImageGen edit sheet exported "
+			"with a native transparent background."
+		)
+	with Image.open(source_path) as image:
+		if "A" not in image.getbands():
+			raise ValueError(
+				f"{source_path} has no Alpha channel. Regenerate it with a native "
+				"transparent background."
+			)
+		minimum_alpha, maximum_alpha = image.getchannel("A").getextrema()
+		if minimum_alpha >= 255 or maximum_alpha == 0:
+			raise ValueError(
+				f"{source_path} must contain both transparent and visible pixels "
+				"in its native Alpha channel."
+			)
+		array = np.array(image.convert("RGBA"), dtype=np.uint8)
+	transparent = array[:, :, 3] == 0
+	array[:, :, :3][transparent] = 0
 	return Image.fromarray(array, mode="RGBA")
 
 
@@ -1069,11 +1055,7 @@ def _stone_color_field(
 def _build_texture(asset: TextureAsset) -> dict[str, object]:
 	with Image.open(asset.base_path) as base_image:
 		base = base_image.convert("RGBA")
-	with Image.open(asset.imagegen_path) as generated_image:
-		generated = _remove_edge_connected_chroma(
-			generated_image,
-			asset.key_color,
-		)
+	generated = _load_native_transparent_image(asset.imagegen_path)
 
 	# BOX is used only to measure ImageGen's high-resolution treatment.  The
 	# canonical base image supplies every output alpha byte and every untouched
@@ -1256,7 +1238,10 @@ def main() -> None:
 		raise ValueError(f"Unknown assets: {unknown}")
 	for asset in selected:
 		if not asset.imagegen_path.is_file():
-			raise FileNotFoundError(asset.imagegen_path)
+			raise FileNotFoundError(
+				f"{asset.imagegen_path} is missing. Provide an ImageGen edit sheet "
+				"with a native transparent background."
+			)
 		report = _build_texture(asset)
 		print(
 			f"{report['asset_id']}: {report['size'][0]}x{report['size'][1]}, "

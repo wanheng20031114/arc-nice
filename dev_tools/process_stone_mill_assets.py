@@ -26,11 +26,11 @@ from plant_pixel_asset_pipeline import (
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/plant_defense/stone_mill"
 
-BUILDING_SOURCE = SOURCE_DIR / "stone_mill_imagegen_magenta_v2.png"
+BUILDING_SOURCE = SOURCE_DIR / "stone_mill_imagegen_transparent_v3.png"
 BLUE_POWDER_SOURCE = (
-    SOURCE_DIR / "capoo_blue_crystal_powder_imagegen_magenta_v2.png"
+    SOURCE_DIR / "capoo_blue_crystal_powder_imagegen_transparent_v3.png"
 )
-WHITE_POWDER_SOURCE = SOURCE_DIR / "white_crystal_powder_imagegen_magenta_v2.png"
+WHITE_POWDER_SOURCE = SOURCE_DIR / "white_crystal_powder_imagegen_transparent_v3.png"
 
 BUILDING_OUTPUT = (
     ROOT / "resources/texture/plant_defense/stone_mill/stone_mill.png"
@@ -229,8 +229,7 @@ def main() -> None:
         "asset_family": "stone_mill",
         "status": "failed" if failures else "passed",
         "pipeline": [
-            "built-in imagegen precise-object-edit masters",
-            "flat #FF00FF chroma key",
+            "built-in imagegen precise-object-edit masters with native transparent Alpha",
             "plant_pixel_asset_pipeline measured logical-grid center sampling",
             "fit_oversized=False for every source",
             "detected powder logical sizes retained and centered on 32x32 canvases",

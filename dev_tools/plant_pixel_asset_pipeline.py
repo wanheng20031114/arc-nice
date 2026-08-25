@@ -16,10 +16,6 @@ from typing import Iterable, Sequence
 
 from PIL import Image
 
-from connected_background_remover import (
-    ConnectedBackgroundOptions,
-    remove_connected_background,
-)
 from pixel_grid_analyzer import analyze_image
 from pixel_grid_analyzer import _collect_edge_signal, _period_phase_score
 
@@ -55,20 +51,17 @@ def clean_transparency(image: Image.Image) -> Image.Image:
     return rgba
 
 
-def _key_magenta_source(source_path: Path) -> Image.Image:
-    keyed = remove_connected_background(
-        Image.open(source_path),
-        ConnectedBackgroundOptions(
-            rgb_tolerance=72,
-            hue_tolerance=0.035,
-            expansion_radius=12,
-            harden_alpha=True,
-        ),
-    )
-    keyed = clean_transparency(keyed)
-    if keyed.getchannel("A").getbbox() is None:
-        raise RuntimeError(f"Chroma-key removal produced an empty image: {source_path}")
-    return keyed
+def load_transparent_source(source_path: Path) -> Image.Image:
+    with Image.open(source_path) as source_image:
+        source = source_image.convert("RGBA")
+    if source.getchannel("A").getextrema()[0] == 255:
+        raise RuntimeError(
+            f"ImageGen source must have a native transparent background: {source_path}"
+        )
+    source = clean_transparency(source)
+    if source.getchannel("A").getbbox() is None:
+        raise RuntimeError(f"Transparent source contains no visible subject: {source_path}")
+    return source
 
 
 def normalize_imagegen_subject(
@@ -77,7 +70,7 @@ def normalize_imagegen_subject(
     max_subject_size: tuple[int, int],
     fit_oversized: bool = True,
 ) -> NormalizedSubject:
-    """Convert a keyed source into one native pixel per measured logical cell.
+    """Convert a transparent source into one native pixel per measured logical cell.
 
     Sources already no larger than 64x64 are preserved pixel-for-pixel.  Larger
     sources require a measured grid with confidence >= 0.65; an unknown grid is
@@ -85,8 +78,8 @@ def normalize_imagegen_subject(
     """
     if not source_path.is_file():
         raise FileNotFoundError(source_path)
-    keyed = _key_magenta_source(source_path)
-    analysis = analyze_image(keyed)
+    source = load_transparent_source(source_path)
+    analysis = analyze_image(source)
     bbox_dict = analysis["subject_bbox"]
     bbox = (
         int(bbox_dict["left"]),
@@ -95,7 +88,7 @@ def normalize_imagegen_subject(
         int(bbox_dict["bottom"]),
     )
 
-    if keyed.width <= CANVAS_SIDE and keyed.height <= CANVAS_SIDE:
+    if source.width <= CANVAS_SIDE and source.height <= CANVAS_SIDE:
         logical_width = bbox[2] - bbox[0]
         logical_height = bbox[3] - bbox[1]
         normalization_mode = "native_64_or_smaller"
@@ -105,7 +98,7 @@ def normalize_imagegen_subject(
             analysis["detection_mode"] == "native_or_unknown"
             or confidence < MIN_SAFE_GRID_CONFIDENCE
         ):
-            fallback = _measure_periodic_pixel_grid(keyed.crop(bbox))
+            fallback = _measure_periodic_pixel_grid(source.crop(bbox))
             if fallback is None:
                 raise RuntimeError(
                     "Refusing unreliable logical-grid compression for "
@@ -140,7 +133,7 @@ def normalize_imagegen_subject(
     if fitted_height > max_height:
         fitted_height = max_height
 
-    subject = keyed.crop(bbox)
+    subject = source.crop(bbox)
     if subject.size != (logical_width, logical_height):
         # Pillow's nearest sampler selects one representative center per
         # measured logical cell.  There is no color averaging or smoothing.

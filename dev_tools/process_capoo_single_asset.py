@@ -15,13 +15,10 @@ from process_capoo_variant_assets import (
 	CAPOO_ANIMATION_WRITE_ORDER,
 	CAPOO_ANIMATION_ROWS,
 	CAPOO_FRAME_SIZE,
-	DEBUG_DIR,
 	SPRITE_FRAME_UIDS,
 	TEXTURE_UIDS,
 	TEXTURE_DIR,
-	_remove_chroma_background,
-	_remove_magenta_residue,
-	_save_debug,
+	_load_native_alpha_source,
 	_subject_bbox,
 	_write_capoo_frames,
 )
@@ -32,22 +29,18 @@ ROOT = Path(__file__).resolve().parents[1]
 SINGLE_SOURCES = {
 	"capoo_mage": {
 		"path": ROOT / "dev_assets/source_images/capoo_mage_generated_v3.png",
-		"key": "green",
-		"alpha_path": ROOT / "tmp/capoo_variant_assets/capoo_mage_single_alpha.png",
 		"direct_alpha_sheet": True,
 		"direct_frame_size": (374, 300),
 		"direct_body_anchor": (160, 244),
 	},
 	"capoo_sniper": {
 		"path": ROOT / "dev_assets/source_images/capoo_sniper_generated_v4.png",
-		"key": "magenta",
 		"frame_size": (128, 96),
 		"body_anchor_target": (48.0, 67.0),
 		"component_row_slicing": True,
 	},
 	"capoo_smg": {
 		"path": ROOT / "dev_assets/source_images/capoo_smg_generated_v1.png",
-		"key": "magenta",
 		"frame_size": (160, 128),
 		"body_anchor_target": (48.0, 91.0),
 		"component_row_slicing": True,
@@ -488,18 +481,10 @@ def process_capoo(name: str) -> None:
 	if source_config == None:
 		raise ValueError(f"Unsupported single Capoo: {name}")
 	source_path = source_config["path"]
-	alpha_path = source_config.get("alpha_path")
-	if alpha_path != None and alpha_path.is_file():
-		alpha_source = Image.open(alpha_path).convert("RGBA")
-	elif not source_path.is_file():
-		raise FileNotFoundError(source_path)
-	else:
-		alpha_source = _remove_chroma_background(Image.open(source_path), str(source_config["key"]))
-		_save_debug(f"{name}_single_alpha", alpha_source)
+	alpha_source = _load_native_alpha_source(source_path)
 
 	TEXTURE_DIR.mkdir(parents=True, exist_ok=True)
 	ANIMATION_DIR.mkdir(parents=True, exist_ok=True)
-	DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
 	if source_config.get("direct_alpha_sheet", False):
 		frame_size = source_config["direct_frame_size"]
@@ -515,8 +500,6 @@ def process_capoo(name: str) -> None:
 	body_anchor_target = source_config.get("body_anchor_target", BODY_ANCHOR_TARGET)
 	component_row_slicing = bool(source_config.get("component_row_slicing", False))
 	sheet = _build_single_capoo_sheet(alpha_source, frame_size, body_anchor_target, component_row_slicing)
-	if source_config["key"] == "magenta":
-		sheet = _remove_magenta_residue(sheet)
 	sheet.save(TEXTURE_DIR / f"{name}.png")
 	_write_capoo_frames(name, frame_size=frame_size)
 	_audit_body_anchors(sheet, name, frame_size)

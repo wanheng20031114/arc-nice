@@ -30,8 +30,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/plant_defense/water_collector"
 ITEM_SOURCE_DIR = ROOT / "dev_assets/source_images/items/water_bottle"
 
-BUILDING_SOURCE = SOURCE_DIR / "water_collector_selected_imagegen_magenta.png"
-BOTTLE_SOURCE = ITEM_SOURCE_DIR / "water_bottle_imagegen_magenta.png"
+BUILDING_SOURCE = SOURCE_DIR / "water_collector_selected_imagegen_transparent.png"
+BOTTLE_SOURCE = ITEM_SOURCE_DIR / "water_bottle_imagegen_transparent.png"
 PANEL_SOURCE = SOURCE_DIR / "water_collector_panel_background_imagegen.png"
 
 BUILDING_OUTPUT = (
@@ -193,8 +193,7 @@ def build_assets() -> tuple[dict[str, Image.Image], dict]:
         "asset_family": "water_collector",
         "status": "failed" if failures else "passed",
         "pipeline": [
-            "built-in imagegen reference-guided masters",
-            "flat #FF00FF chroma key for sprite assets",
+            "built-in imagegen reference-guided sprite masters with native transparent Alpha",
             "pixel_grid_analyzer measured logical grid",
             "nearest logical-cell selection without smoothing",
             "palette reduction without dithering",

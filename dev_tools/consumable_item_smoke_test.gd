@@ -186,7 +186,7 @@ func _test_icon_contract() -> void:
 					)
 		_expect(
 			not has_partial_alpha and not has_dirty_transparent_rgb,
-			"%s 必须使用硬透明边，透明像素不得残留色键。" % item.display_name
+			"%s 必须使用硬透明边，并清零完全透明像素的 RGB。" % item.display_name
 		)
 
 

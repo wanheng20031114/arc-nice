@@ -23,7 +23,6 @@ from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
 from pixel_crop_tool import crop_to_square
 from pixel_grid_analyzer import analyze_image
-from process_combat_robot_assets import normalize_source
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -209,31 +208,30 @@ def load_base() -> Image.Image:
     return sheet.crop((0, 0, FRAME_SIZE, FRAME_SIZE))
 
 
-def normalize_imagegen_source(image: Image.Image) -> Image.Image:
-    """Remove the generated green review field without sampling it into native art."""
-    result = normalize_source(image.convert("RGBA"))
-    pixels = result.load()
-    for y in range(result.height):
-        for x in range(result.width):
-            red, green, blue, alpha = pixels[x, y]
-            if alpha == 0:
-                continue
-            strongest_non_green = max(red, blue)
-            if green >= 72 and green >= strongest_non_green + 18:
-                pixels[x, y] = TRANSPARENT
-            elif green > strongest_non_green + 8:
-                pixels[x, y] = (red, strongest_non_green, blue, 255)
-    return result
+def load_transparent_imagegen_source(
+    source_path: Path, transparent_path: Path
+) -> tuple[Image.Image, Path]:
+    alpha_source = transparent_path if transparent_path.is_file() else source_path
+    with Image.open(alpha_source) as opened:
+        image = opened.convert("RGBA")
+    alpha_min, alpha_max = image.getchannel("A").getextrema()
+    if alpha_min == 255:
+        raise AssertionError(
+            f"{relative(alpha_source)} has no transparent Alpha pixels; "
+            "provide a native-transparent ImageGen source or a pre-existing, "
+            "approved matching Alpha derivative"
+        )
+    if alpha_max == 0:
+        raise AssertionError(f"{relative(alpha_source)} is fully transparent")
+    return image, alpha_source
 
 
 def audit_reference_alpha(image: Image.Image, label: str) -> None:
-    if image.getchannel("A").getbbox() is None:
-        raise AssertionError(f"{label}: normalized ImageGen reference is empty")
-    for red, green, blue, alpha in image.getdata():
-        if alpha not in (0, 255):
-            raise AssertionError(f"{label}: reference alpha is not binary")
-        if alpha == 0 and (red, green, blue) != (0, 0, 0):
-            raise AssertionError(f"{label}: reference transparent RGB is dirty")
+    alpha_min, alpha_max = image.getchannel("A").getextrema()
+    if alpha_min == 255:
+        raise AssertionError(f"{label}: reference has no transparent Alpha pixels")
+    if alpha_max == 0:
+        raise AssertionError(f"{label}: reference is fully transparent")
 
 
 def map_accents(frame: Image.Image) -> set[tuple[int, int]]:
@@ -547,10 +545,13 @@ def build(approval: str | None) -> dict[str, object]:
     candidates: dict[str, Image.Image] = {}
     for spec in CANDIDATES:
         raw_path = raw_paths[spec.key]
-        transparent_source = normalize_imagegen_source(Image.open(raw_path))
-        audit_reference_alpha(transparent_source, spec.key)
         transparent_path = SOURCE_DIR / f"combat_robot_ninja_elite_anchor_{spec.key}_transparent.png"
-        save_png(transparent_source, transparent_path)
+        transparent_source, alpha_source = load_transparent_imagegen_source(
+            raw_path, transparent_path
+        )
+        audit_reference_alpha(transparent_source, spec.key)
+        if alpha_source != transparent_path:
+            save_png(transparent_source, transparent_path)
         cropped_source = crop_to_square(transparent_source, padding=24, align_to_grid=False)
         crop_path = SOURCE_DIR / f"combat_robot_ninja_elite_anchor_{spec.key}_crop_tool.png"
         save_png(cropped_source, crop_path)
@@ -576,7 +577,7 @@ def build(approval: str | None) -> dict[str, object]:
             "title": spec.title,
             "summary": spec.summary,
             "imagegen_source": {"path": relative(raw_path), "sha256": sha256(raw_path)},
-            "transparent_reference": {"path": relative(transparent_path), "sha256": sha256(transparent_path)},
+            "transparent_reference": {"path": relative(transparent_path), "sha256": sha256(transparent_path), "alpha_source": relative(alpha_source)},
             "pixel_crop_tool_reference": {
                 "path": relative(crop_path),
                 "sha256": sha256(crop_path),

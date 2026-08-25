@@ -4,10 +4,8 @@
 from __future__ import annotations
 
 import argparse
-from collections import deque
 from pathlib import Path
 
-import numpy as np
 from PIL import Image
 
 
@@ -23,72 +21,26 @@ OUTPUT_SUBJECT_HEIGHT = 64
 OUTPUT_FOOT_Y = 66
 
 
-def _is_background_candidate(rgb: np.ndarray) -> np.ndarray:
-    border = np.concatenate(
-        (
-            rgb[0, :, :],
-            rgb[-1, :, :],
-            rgb[:, 0, :],
-            rgb[:, -1, :],
-        ),
-        axis=0,
-    ).astype(np.int16)
-    key_color = np.median(border, axis=0)
-    color_distance = np.max(
-        np.abs(rgb.astype(np.int16) - key_color),
-        axis=2,
-    )
-    red = rgb[:, :, 0].astype(np.int16)
-    green = rgb[:, :, 1].astype(np.int16)
-    blue = rgb[:, :, 2].astype(np.int16)
-    strongest_magenta = np.maximum(red, blue)
-    dark_magenta_edge = (
-        (np.abs(red - blue) <= np.maximum(36, strongest_magenta // 3))
-        & (green * 3 <= strongest_magenta)
-        & (red + blue >= 48)
-    )
-    return (color_distance <= 42) | dark_magenta_edge
-
-
-def _find_external_background(candidate: np.ndarray) -> np.ndarray:
-    height, width = candidate.shape
-    outside = np.zeros_like(candidate, dtype=bool)
-    queue: deque[tuple[int, int]] = deque()
-
-    for x in range(width):
-        for y in (0, height - 1):
-            if candidate[y, x] and not outside[y, x]:
-                outside[y, x] = True
-                queue.append((y, x))
-    for y in range(height):
-        for x in (0, width - 1):
-            if candidate[y, x] and not outside[y, x]:
-                outside[y, x] = True
-                queue.append((y, x))
-
-    while queue:
-        y, x = queue.popleft()
-        for offset_y in (-1, 0, 1):
-            for offset_x in (-1, 0, 1):
-                if offset_x == 0 and offset_y == 0:
-                    continue
-                next_y = y + offset_y
-                next_x = x + offset_x
-                if not (0 <= next_y < height and 0 <= next_x < width):
-                    continue
-                if outside[next_y, next_x] or not candidate[next_y, next_x]:
-                    continue
-                outside[next_y, next_x] = True
-                queue.append((next_y, next_x))
-
-    return outside
-
-
-def _remove_chroma_background(frame: Image.Image) -> Image.Image:
-    rgba = np.array(frame.convert("RGBA"))
-    outside = _find_external_background(_is_background_candidate(rgba[:, :, :3]))
-    rgba[outside] = (0, 0, 0, 0)
-    return Image.fromarray(rgba)
+def _require_native_transparency(image: Image.Image) -> Image.Image:
+    if "A" not in image.getbands():
+        raise ValueError(
+            "Zhuang Fangyi source has no Alpha channel. Provide an ImageGen "
+            "sheet exported with a native transparent background."
+        )
+    minimum_alpha, maximum_alpha = image.getchannel("A").getextrema()
+    if minimum_alpha >= 255 or maximum_alpha == 0:
+        raise ValueError(
+            "Zhuang Fangyi source must contain both transparent and visible "
+            "pixels in its native Alpha channel."
+        )
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            red, green, blue, alpha = pixels[x, y]
+            if alpha == 0:
+                pixels[x, y] = (0, 0, 0, 0)
+    return rgba
 
 
 def _fit_frame(frame: Image.Image, scale: float) -> Image.Image:
@@ -115,7 +67,7 @@ def _fit_frame(frame: Image.Image, scale: float) -> Image.Image:
 
 
 def build_sheet(source: Image.Image) -> Image.Image:
-    source = source.convert("RGBA")
+    source = _require_native_transparency(source)
     transparent_frames: list[Image.Image] = []
 
     for row in range(FRAME_ROWS):
@@ -125,7 +77,7 @@ def build_sheet(source: Image.Image) -> Image.Image:
             left = round(column * source.width / FRAME_COLUMNS)
             right = round((column + 1) * source.width / FRAME_COLUMNS)
             frame = source.crop((left, top, right, bottom))
-            transparent_frames.append(_remove_chroma_background(frame))
+            transparent_frames.append(frame)
 
     subject_heights = []
     for frame in transparent_frames:

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Build deterministic first-gate anchors for the ninja combat robot.
 
-The three ImageGen drafts define pose and blade language only. Their pixels are
-never resized or copied into the native candidates. The approved drone-operator
-anchor supplies the immutable antenna, head, box body and line-leg identity.
-Only two dark side plates, wire arms, grips and blades are authored on the
-native logical canvas.
+The three native-transparent ImageGen drafts define pose and blade language
+only. Their pixels are never resized or copied into the native candidates. The
+approved drone-operator anchor supplies the immutable antenna, head, box body
+and line-leg identity. Only two dark side plates, wire arms, grips and blades
+are authored on the native logical canvas.
 
 This script writes review/source artifacts under ``dev_assets`` only. It never
 touches runtime textures, animations, scenes or configuration.
@@ -583,12 +583,12 @@ def _tango_density_frame() -> Image.Image:
 
 
 def _source_thumbnail(path: Path, size: int) -> Image.Image:
-    image = Image.open(path).convert("RGB")
+    image = Image.open(path).convert("RGBA")
     image.thumbnail((size, size), Image.Resampling.LANCZOS)
     result = Image.new("RGBA", (size, size), REVIEW_PANEL)
     left = (size - image.width) // 2
     top = (size - image.height) // 2
-    result.paste(image.convert("RGBA"), (left, top))
+    result.alpha_composite(image, (left, top))
     return result
 
 
@@ -633,7 +633,9 @@ def _write_comparison(candidates: dict[str, Image.Image]) -> Path:
     for index, style in enumerate(("a", "b", "c")):
         left = 80 + index * 580
         draw.text((left, 468), STYLE_LABELS[style], fill=REVIEW_TEXT, font=label_font)
-        source_path = SOURCE_DIR / f"combat_robot_ninja_anchor_{style}_imagegen.png"
+        source_path = (
+            SOURCE_DIR / f"combat_robot_ninja_anchor_{style}_transparent.png"
+        )
         draw.text((left, 500), "ImageGen concept", fill=REVIEW_MUTED, font=small_font)
         canvas.alpha_composite(_source_thumbnail(source_path, source_size), (left, 526))
         draw.text(
@@ -655,24 +657,26 @@ def _write_comparison(candidates: dict[str, Image.Image]) -> Path:
 
 
 def _source_grid_report(style: str) -> dict[str, object]:
-    original_path = SOURCE_DIR / f"combat_robot_ninja_anchor_{style}_imagegen.png"
-    transparent_path = SOURCE_DIR / f"combat_robot_ninja_anchor_{style}_transparent.png"
-    if not original_path.is_file() or not transparent_path.is_file():
+    source_path = SOURCE_DIR / f"combat_robot_ninja_anchor_{style}_transparent.png"
+    if not source_path.is_file():
         raise FileNotFoundError(
-            f"Missing ImageGen source pair for ninja anchor {style.upper()}"
+            f"Missing native-transparent ImageGen source for ninja anchor {style.upper()}"
         )
-    transparent = Image.open(transparent_path).convert("RGBA")
-    bbox = transparent.getchannel("A").getbbox()
+    source = Image.open(source_path).convert("RGBA")
+    alpha_min, alpha_max = source.getchannel("A").getextrema()
+    if alpha_max == 0 or alpha_min == 255:
+        raise AssertionError(
+            f"ImageGen source must contain native transparency: {source_path.name}"
+        )
+    bbox = source.getchannel("A").getbbox()
     if bbox is None:
-        raise AssertionError(f"Transparent source {transparent_path.name} is empty")
-    cropped = transparent.crop(bbox)
+        raise AssertionError(f"Transparent source {source_path.name} is empty")
+    cropped = source.crop(bbox)
     analysis = analyze_image(cropped)
     return {
-        "original": _relative(original_path),
-        "original_sha256": _sha256(original_path),
-        "transparent": _relative(transparent_path),
-        "transparent_sha256": _sha256(transparent_path),
-        "source_size": list(transparent.size),
+        "source": _relative(source_path),
+        "source_sha256": _sha256(source_path),
+        "source_size": list(source.size),
         "subject_bbox": list(bbox),
         "subject_crop_size": list(cropped.size),
         "grid_cell_width": float(analysis["grid_cell_width"]),
@@ -692,15 +696,14 @@ def _write_manifest(source_reports: dict[str, dict[str, object]]) -> Path:
         "version": 1,
         "mode": "built-in image_gen",
         "use_case": "stylized-concept",
-        "background": "flat #00ff00 chroma key",
+        "background": "native transparent alpha",
         "identity_references": [
             _relative(path) for _label, path in ROBOT_REFERENCE_PATHS
         ],
         "density_reference": _relative(TANGO_REFERENCE_PATH),
         "source_candidates": {
             style: {
-                "file": Path(report["original"]).name,
-                "transparent_file": Path(report["transparent"]).name,
+                "file": Path(report["source"]).name,
                 "role": "pose and blade silhouette language only",
                 "selection_label": STYLE_LABELS[style],
             }

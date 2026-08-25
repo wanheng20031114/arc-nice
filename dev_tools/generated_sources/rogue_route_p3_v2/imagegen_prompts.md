@@ -24,11 +24,11 @@ Avoid: starry sky, outer space, bright magic, ornate fantasy palace, glossy meta
 Use case: stylized-concept
 Asset type: source artwork for one simple route-map UI icon
 Primary request: a compact icon representing supplies recovered from underground ruins
-Scene/backdrop: perfectly flat solid #ff00ff chroma-key background for local background removal
+Scene/backdrop: native transparent background
 Subject: one small cracked ancient stone supply coffer or blocky reliquary, front three-quarter view, with a single simple cool-cyan relic shard visible inside and one tiny muted bronze clasp
 Style/medium: clean flat game UI icon, bold simplified silhouette, restrained Minecraft-like block construction, thick dark outline, broad color areas, readable when reduced to 22 pixels; match a minimal six-color icon family
 Composition/framing: one centered object, square canvas, generous empty padding on every side
-Color palette: charcoal outline, two slate-gray stone shades, muted bronze, one cyan accent, one pale highlight; do not use #ff00ff in the subject
-Constraints: background must be exactly one uniform #ff00ff color with no shadows, gradients, texture, floor plane, reflection, lighting variation, or vignette; crisp isolated edges; no cast shadow; no contact shadow; no text; no runes or letters; no extra objects; no border frame; no watermark
+Color palette: charcoal outline, two slate-gray stone shades, muted bronze, one cyan accent, one pale highlight
+Constraints: transparent alpha outside the subject; crisp isolated edges; no baked background, cast shadow, contact shadow, text, runes or letters, extra objects, border frame, or watermark
 Avoid: realistic treasure chest, gold piles, ornate fantasy decoration, glossy rendering, many tiny details, browser-game loot icon aesthetic, soft blurry silhouette
 ```

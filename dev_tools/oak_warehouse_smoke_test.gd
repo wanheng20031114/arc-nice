@@ -213,7 +213,6 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 	)
 	var warehouse_image := sprite_texture.get_image()
 	_expect(_has_binary_alpha(warehouse_image), "橡木仓库像素图不得包含半透明脏边。")
-	_expect(not _has_legacy_magenta_fringe(warehouse_image), "橡木仓库轮廓不得残留旧素材的紫色边缘。")
 	var opaque_bounds := _get_opaque_bounds(warehouse_image)
 	_expect(
 		opaque_bounds.has_area()
@@ -2277,19 +2276,3 @@ func _get_centered_sprite_subject_rect(
 		sprite.position + source_origin * sprite.scale,
 		Vector2(opaque_bounds.size) * sprite.scale.abs()
 	)
-
-
-func _has_legacy_magenta_fringe(image: Image) -> bool:
-	var legacy_fringe := Color8(91, 20, 62, 255)
-	for y in range(image.get_height()):
-		for x in range(image.get_width()):
-			var pixel := image.get_pixel(x, y)
-			if pixel.a <= 0.001:
-				continue
-			if (
-				absf(pixel.r - legacy_fringe.r) < 0.02
-				and absf(pixel.g - legacy_fringe.g) < 0.02
-				and absf(pixel.b - legacy_fringe.b) < 0.02
-			):
-				return true
-	return false

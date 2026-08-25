@@ -1,7 +1,7 @@
 """Build the second-generation P3 route-map runtime textures.
 
-The ImageGen icon sources are first chroma-keyed with the installed imagegen
-helper.  This script then performs only deterministic project-side work:
+The ImageGen icon sources use native transparent Alpha. This script performs
+only deterministic project-side work:
 
 * crops the already-transparent subjects by alpha coverage;
 * rescales them into a deliberately roomy 128x128 canvas;
@@ -102,7 +102,7 @@ def _resize_rgba_premultiplied(
     image: Image.Image,
     size: tuple[int, int],
 ) -> Image.Image:
-    """Resize RGBA while preventing hidden chroma RGB from bleeding into edges."""
+    """Resize RGBA while preventing hidden transparent RGB from bleeding into edges."""
 
     rgba = image.convert("RGBA")
     alpha = rgba.getchannel("A")
@@ -217,6 +217,8 @@ def _build_icon(
         raise FileNotFoundError(source_path)
 
     source = Image.open(source_path).convert("RGBA")
+    if source.getchannel("A").getextrema()[0] == 255:
+        raise RuntimeError(f"Icon source must have a native transparent background: {source_path}")
     subject = source.crop(_alpha_bbox(source))
     scale = min(
         subject_max / subject.width,

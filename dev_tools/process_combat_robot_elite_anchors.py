@@ -27,7 +27,7 @@ from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_rep
 from PIL import Image, ImageDraw, ImageFont
 
 from pixel_grid_analyzer import analyze_image
-from process_combat_robot_assets import PALETTE, normalize_source
+from process_combat_robot_assets import PALETTE
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -215,21 +215,22 @@ def _normalize_binary_alpha(frame: Image.Image) -> Image.Image:
     return result
 
 
-def _normalize_imagegen_source(image: Image.Image) -> Image.Image:
-    """Apply the shared key removal plus a hard pixel-art green despill."""
-    result = normalize_source(image)
-    pixels = result.load()
-    for y in range(result.height):
-        for x in range(result.width):
-            red, green, blue, alpha = pixels[x, y]
-            if alpha == 0:
-                continue
-            strongest_non_green = max(red, blue)
-            if green >= 64 and green >= strongest_non_green + 18:
-                pixels[x, y] = TRANSPARENT
-            elif green > strongest_non_green + 8:
-                pixels[x, y] = (red, strongest_non_green, blue, 255)
-    return result
+def _load_transparent_imagegen_source(
+    source_path: Path, transparent_path: Path
+) -> tuple[Image.Image, Path]:
+    alpha_source = transparent_path if transparent_path.is_file() else source_path
+    with Image.open(alpha_source) as opened:
+        image = opened.convert("RGBA")
+    alpha_min, alpha_max = image.getchannel("A").getextrema()
+    if alpha_min == 255:
+        raise AssertionError(
+            f"{alpha_source.name} has no transparent Alpha pixels; "
+            "provide a native-transparent ImageGen source or a pre-existing, "
+            "approved matching Alpha derivative"
+        )
+    if alpha_max == 0:
+        raise AssertionError(f"{alpha_source.name} is fully transparent")
+    return image, alpha_source
 
 
 def _build_candidate(base: Image.Image, spec: CandidateSpec) -> tuple[Image.Image, int]:
@@ -322,7 +323,7 @@ def _registration_overlay(base: Image.Image, candidate: Image.Image) -> Image.Im
 
 
 def _imagegen_thumbnail(path: Path, size: tuple[int, int]) -> Image.Image:
-    source = _normalize_imagegen_source(Image.open(path))
+    source, _alpha_source = _load_transparent_imagegen_source(path, path)
     bbox = source.getchannel("A").getbbox()
     if bbox is None:
         raise AssertionError(f"ImageGen source is empty: {path}")
@@ -357,7 +358,7 @@ def _review_font(size: int) -> ImageFont.ImageFont:
 def _build_comparison(
     base: Image.Image,
     candidates: dict[str, Image.Image],
-    raw_paths: dict[str, Path],
+    transparent_paths: dict[str, Path],
 ) -> Path:
     cell_width = 360
     row_height = 360
@@ -390,7 +391,7 @@ def _build_comparison(
             summary = "ordinary move[0] registration source"
         else:
             native = candidates[key]
-            raw = _imagegen_thumbnail(raw_paths[key], (320, 320))
+            raw = _imagegen_thumbnail(transparent_paths[key], (320, 320))
             overlay = _difference_overlay(base, native)
             summary = next(spec.summary for spec in CANDIDATES if spec.key == key)
         draw.text((x0 + 16, header_height + 28), summary, fill=REVIEW_MUTED, font=font)
@@ -453,12 +454,17 @@ def main() -> None:
 
     candidates: dict[str, Image.Image] = {}
     report_candidates: dict[str, dict] = {}
+    transparent_paths: dict[str, Path] = {}
     for spec in CANDIDATES:
         raw_path = raw_paths[spec.key]
         transparent_path = SOURCE_DIR / f"combat_robot_elite_anchor_{spec.key}_transparent.png"
-        normalized_source = _normalize_imagegen_source(Image.open(raw_path))
-        normalized_source.save(transparent_path)
-        source_analysis = analyze_image(normalized_source)
+        transparent_source, alpha_source = _load_transparent_imagegen_source(
+            raw_path, transparent_path
+        )
+        if alpha_source != transparent_path:
+            transparent_source.save(transparent_path)
+        transparent_paths[spec.key] = transparent_path
+        source_analysis = analyze_image(transparent_source)
 
         candidate, accent_count = _build_candidate(base, spec)
         unexpected = sorted(set(candidate.getdata()) - allowed_palette)
@@ -490,7 +496,7 @@ def main() -> None:
             "rgba_sha256": _sha256(native_path),
         }
 
-    comparison_path = _build_comparison(base, candidates, raw_paths)
+    comparison_path = _build_comparison(base, candidates, transparent_paths)
     approved_outputs: dict[str, str] | None = None
     if args.approve is not None:
         approved_native_path = (

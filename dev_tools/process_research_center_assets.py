@@ -26,7 +26,7 @@ from plant_pixel_asset_pipeline import (
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/plant_defense/research_center"
-BUILDING_SOURCE = SOURCE_DIR / "research_center_final_v4_magenta.png"
+BUILDING_SOURCE = SOURCE_DIR / "research_center_final_v4_transparent.png"
 PANEL_SOURCE = SOURCE_DIR / "research_center_panel_background_imagegen.png"
 BUILDING_OUTPUT = (
     ROOT / "resources/texture/plant_defense/research_center/research_center.png"
@@ -101,7 +101,7 @@ def build_assets() -> tuple[dict[str, Image.Image], dict]:
         "pipeline": [
             "built-in imagegen concept selection",
             "five iterative imagegen-only logical-pixel refinement passes",
-            "flat #FF00FF chroma key",
+            "ImageGen native transparent Alpha source",
             "pixel_grid_analyzer measured logical grid",
             "nearest logical-cell selection without smoothing",
             "palette reduction without dithering",

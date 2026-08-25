@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Extract the ImageGen slime directly from its magenta 16x sprite sheet.
+"""Extract the ImageGen slime directly from its transparent 16x sprite sheet.
 
 The source is a 1536x1024, 3x2 sheet whose six 512x512 frame slots correspond
 to six 32x32 runtime frames.  Generated pseudo-pixel phase varies slightly, so
 single-point nearest sampling is unsafe.  Each intended 16x16 source cell is
-instead classified by all 256 pixels: at least 35% non-magenta coverage makes
-one opaque logical pixel, whose color is the non-magenta median mapped without
+instead classified by all 256 pixels: at least 35% alpha coverage makes one
+opaque logical pixel, whose color is the visible-pixel median mapped without
 dithering to a clean eight-color runtime palette.  The seven grass-green body
 colors remain source-derived; only the yellowest highlight is kept green-led.
 No averaged resizing, soft alpha, outline substitution, or frame repositioning
@@ -62,10 +62,21 @@ MOVE_FACE_ROI = (13, 14, 20, 17)
 
 
 def _is_source_foreground(color: tuple[int, int, int, int]) -> bool:
-    """Reject noisy purple by channel relationship instead of exact key RGB."""
-    red, green, blue, alpha = color
-    is_magenta = red - green >= 20 and blue - green >= 20
-    return alpha >= 128 and not is_magenta
+    return color[3] >= 128
+
+
+def _require_native_transparency(image: Image.Image, source_path: Path) -> None:
+    if "A" not in image.getbands():
+        raise ValueError(
+            f"{source_path} has no Alpha channel. Provide an ImageGen source "
+            "exported with a native transparent background."
+        )
+    minimum_alpha, maximum_alpha = image.getchannel("A").getextrema()
+    if minimum_alpha >= 255 or maximum_alpha == 0:
+        raise ValueError(
+            f"{source_path} does not contain both transparent and visible pixels. "
+            "Provide an ImageGen source with native transparent Alpha."
+        )
 
 
 def _is_grass_green(color: tuple[int, int, int, int]) -> bool:
@@ -242,6 +253,7 @@ def align_imagegen_source(
     with Image.open(reference_path) as reference_image:
         reference = reference_image.convert("RGBA")
     with Image.open(source_path) as source_image:
+        _require_native_transparency(source_image, source_path)
         source = source_image.convert("RGBA")
 
     logical_result = _extract_native_grid(source)
@@ -270,7 +282,7 @@ def align_imagegen_source(
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Extract a magenta-background ImageGen Slime sheet through "
+            "Extract a native-transparent ImageGen Slime sheet through "
             "full-cell foreground voting without averaged resizing."
         )
     )

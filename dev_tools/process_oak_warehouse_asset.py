@@ -26,7 +26,7 @@ from plant_pixel_asset_pipeline import (
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/plant_defense/oak_warehouse"
-DEFAULT_INPUT = SOURCE_DIR / "oak_warehouse_selected_imagegen_magenta.png"
+DEFAULT_INPUT = SOURCE_DIR / "oak_warehouse_selected_imagegen_transparent.png"
 OUTPUT_PATH = ROOT / "resources/texture/plant_defense/oak_warehouse/oak_warehouse.png"
 AUDIT_PATH = ROOT / "dev_tools/output/plant_defense/oak_warehouse_asset_audit.json"
 MAX_SUBJECT_SIZE = (60, 62)
@@ -69,8 +69,7 @@ def main() -> None:
         "asset_family": "oak_warehouse",
         "status": "failed" if failures else "passed",
         "pipeline": [
-            "built-in imagegen",
-            "flat #FF00FF chroma key",
+            "built-in imagegen source with native transparent Alpha",
             "reliable logical-grid analysis",
             "nearest center sample to one pixel per logical cell",
             "<=64-color palette without dithering",

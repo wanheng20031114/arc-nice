@@ -3,9 +3,9 @@
 
 The approved ImageGen edit is intentionally kept at its native resolution for
 the static route UI.  This script performs no resize, palette reduction, or
-resampling.  It only verifies the approved source hash, hardens transparency,
-clears hidden RGB, removes residual chroma-key pixels, and writes the Godot
-production PNG deterministically.
+resampling. It only verifies the approved transparent source hash, hardens its
+Alpha, clears hidden RGB, and writes the Godot production PNG deterministically.
+Future sources must use ImageGen native transparent Alpha.
 """
 
 from __future__ import annotations
@@ -42,13 +42,17 @@ def _sha256(path: Path) -> str:
 
 
 def _clean_hard_alpha(image: Image.Image) -> Image.Image:
-    """Normalize the approved chroma-key result without resampling its pixels."""
+    """Normalize the approved transparent Alpha without resampling its pixels."""
 
     rgba = image.convert("RGBA")
+    if rgba.getchannel("A").getextrema()[0] == 255:
+        raise ValueError(
+            "rare-chest source must include ImageGen native transparent Alpha; "
+            "regenerate it with a transparent background"
+        )
     cleaned: list[tuple[int, int, int, int]] = []
     for red, green, blue, alpha in rgba.getdata():
-        is_key_fringe = red > green + 24 and blue > green + 24
-        if alpha < 127 or is_key_fringe:
+        if alpha < 127:
             cleaned.append((0, 0, 0, 0))
         else:
             cleaned.append((red, green, blue, 255))

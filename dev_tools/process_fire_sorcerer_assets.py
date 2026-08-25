@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Build native fire-sorcerer sprites from the accepted imagegen sources.
 
-The raw imagegen files are intentionally retained under
-``dev_assets/source_images/fire_sorcerer``.  This pipeline removes their
-connected green screen, validates every source cell with
+Historical imagegen files are retained under
+``dev_assets/source_images/fire_sorcerer`` for provenance.  This pipeline
+accepts only native-transparent sources, validates every source cell with
 ``pixel_grid_analyzer.analyze_image``, and only then samples the detected
 logical grid.  The legacy four-frame move row remains in the 4x4 atlas for
 source continuity. Runtime movement is authored separately as an eight-pose
@@ -25,7 +25,6 @@ from __future__ import annotations
 from collections import OrderedDict
 import hashlib
 from pathlib import Path
-from statistics import median
 
 import numpy as np
 from PIL import Image
@@ -43,11 +42,11 @@ SOURCE_DIR = ROOT / "dev_assets/source_images/fire_sorcerer"
 TEXTURE_DIR = ROOT / "resources/texture/enemy/sorcerer"
 ANIMATION_DIR = ROOT / "resources/animation"
 
-CHARACTER_SOURCE = SOURCE_DIR / "fire_sorcerer_generated_v2.png"
+CHARACTER_SOURCE = SOURCE_DIR / "fire_sorcerer_generated_transparent_v3.png"
 CHARACTER_REPLACEMENT_SOURCE = (
-    SOURCE_DIR / "fire_sorcerer_attack_1_generated_v1.png"
+    SOURCE_DIR / "fire_sorcerer_attack_1_generated_transparent_v2.png"
 )
-FIREBALL_SOURCE = SOURCE_DIR / "fire_sorcerer_fireball_generated_v1.png"
+FIREBALL_SOURCE = SOURCE_DIR / "fire_sorcerer_fireball_generated_transparent_v2.png"
 CHARACTER_MOVE_NATIVE_SOURCE = (
     SOURCE_DIR / "fire_sorcerer_move_native_v1.png"
 )
@@ -69,7 +68,6 @@ CHARACTER_FRAME_SIZE = 40
 FIREBALL_FRAME_SIZE = 32
 MAX_LOGICAL_SUBJECT_SIZE = 40
 MIN_GRID_CONFIDENCE = 0.65
-CHROMA_TOLERANCE = 72
 CHARACTER_REPLACEMENT_CELL = (2, 1)
 OPTIONAL_EMPTY_CHARACTER_CELL = (3, 3)
 OPTIONAL_EMPTY_FIREBALL_CELL = (3, 3)
@@ -122,55 +120,25 @@ def _require_sources() -> None:
     ]
     if missing:
         joined = ", ".join(str(path) for path in missing)
-        raise FileNotFoundError(f"Missing fire-sorcerer raw source(s): {joined}")
+        raise FileNotFoundError(
+            "Missing native-transparent fire-sorcerer source(s): " + joined
+        )
 
 
-def _sample_border_key(image: Image.Image) -> tuple[int, int, int]:
-    """Match the imagegen chroma helper's deterministic border median."""
-    rgba = image.convert("RGBA")
-    pixels = rgba.load()
-    width, height = rgba.size
-    band = max(1, min(width, height, 6))
-    step = max(1, min(width, height) // 256)
-    samples: list[tuple[int, int, int]] = []
-
-    for x in range(0, width, step):
-        for y in range(band):
-            samples.append(pixels[x, y][:3])
-            samples.append(pixels[x, height - 1 - y][:3])
-    for y in range(0, height, step):
-        for x in range(band):
-            samples.append(pixels[x, y][:3])
-            samples.append(pixels[width - 1 - x, y][:3])
-
-    if not samples:
-        raise AssetContractError("Cannot sample a chroma key from an empty border")
-    return (
-        int(round(median(sample[0] for sample in samples))),
-        int(round(median(sample[1] for sample in samples))),
-        int(round(median(sample[2] for sample in samples))),
-    )
-
-
-def _remove_green_screen(image: Image.Image) -> tuple[Image.Image, tuple[int, int, int]]:
-    """Remove the accepted flat green background with binary alpha.
-
-    The sampled key and tolerance reproduce the already-reviewed alpha sources,
-    while keeping this production pipeline independent from ``tmp``.
-    """
-    rgba = np.array(image.convert("RGBA"), dtype=np.uint8)
-    key = _sample_border_key(image)
-    distance = np.max(
-        np.abs(
-            rgba[:, :, :3].astype(np.int16)
-            - np.asarray(key, dtype=np.int16)
-        ),
-        axis=2,
-    )
-    visible = (rgba[:, :, 3] > 0) & (distance > CHROMA_TOLERANCE)
-    rgba[visible, 3] = 255
-    rgba[~visible] = (0, 0, 0, 0)
-    return Image.fromarray(rgba), key
+def _load_transparent_source(path: Path) -> Image.Image:
+    """Load an ImageGen source without inferring transparency from RGB."""
+    image = Image.open(path).convert("RGBA")
+    alpha_min, alpha_max = image.getchannel("A").getextrema()
+    if alpha_max == 0:
+        raise AssetContractError(f"Native-transparent source is empty: {path}")
+    if alpha_min == 255:
+        raise AssetContractError(
+            f"Source has no transparency: {path}. Regenerate it with ImageGen's "
+            "native transparent background; RGB background inference is unsupported."
+        )
+    rgba = np.array(image, dtype=np.uint8)
+    rgba[rgba[:, :, 3] == 0, :3] = 0
+    return Image.fromarray(rgba, "RGBA")
 
 
 def _crop_grid_cell(
@@ -227,19 +195,13 @@ def _validate_source_frame(
     return analysis
 
 
-def _despill_logical_pixels(image: Image.Image) -> Image.Image:
-    """Neutralize green-screen fringe without changing the alpha silhouette."""
+def _normalize_logical_alpha(image: Image.Image) -> Image.Image:
+    """Normalize genuine source alpha to the runtime's binary pixel contract."""
     rgba = np.array(image.convert("RGBA"), dtype=np.uint8)
-    alpha = rgba[:, :, 3] > 0
-    red = rgba[:, :, 0].astype(np.int16)
-    green = rgba[:, :, 1].astype(np.int16)
-    blue = rgba[:, :, 2].astype(np.int16)
-    fringe = alpha & (green > red + 18) & (green > blue + 18)
-    neutral = np.maximum(red, blue)
-    rgba[:, :, 1][fringe] = neutral[fringe].astype(np.uint8)
-    rgba[:, :, 3][alpha] = 255
-    rgba[~alpha] = (0, 0, 0, 0)
-    return Image.fromarray(rgba)
+    visible = rgba[:, :, 3] > 0
+    rgba[:, :, 3][visible] = 255
+    rgba[~visible] = (0, 0, 0, 0)
+    return Image.fromarray(rgba, "RGBA")
 
 
 def _sample_native_subject(image: Image.Image, analysis: dict) -> Image.Image:
@@ -255,7 +217,7 @@ def _sample_native_subject(image: Image.Image, analysis: dict) -> Image.Image:
         int(analysis["subject_grid_height"]),
     )
     subject = image.crop(bbox).resize(logical_size, Image.Resampling.NEAREST)
-    return _despill_logical_pixels(subject)
+    return _normalize_logical_alpha(subject)
 
 
 def _place_character_subject(subject: Image.Image) -> Image.Image:
@@ -849,27 +811,12 @@ def main() -> None:
     TEXTURE_DIR.mkdir(parents=True, exist_ok=True)
     ANIMATION_DIR.mkdir(parents=True, exist_ok=True)
 
-    character_source, character_key = _remove_green_screen(
-        Image.open(CHARACTER_SOURCE)
-    )
-    replacement_source, replacement_key = _remove_green_screen(
-        Image.open(CHARACTER_REPLACEMENT_SOURCE)
-    )
+    character_source = _load_transparent_source(CHARACTER_SOURCE)
+    replacement_source = _load_transparent_source(CHARACTER_REPLACEMENT_SOURCE)
     move_strip_source = Image.open(
         CHARACTER_MOVE_NATIVE_SOURCE
     ).convert("RGBA")
-    fireball_source, fireball_key = _remove_green_screen(
-        Image.open(FIREBALL_SOURCE)
-    )
-    print(
-        "CHROMA_KEYS "
-        f"character=#{character_key[0]:02x}{character_key[1]:02x}"
-        f"{character_key[2]:02x} "
-        f"replacement=#{replacement_key[0]:02x}{replacement_key[1]:02x}"
-        f"{replacement_key[2]:02x} "
-        f"fireball=#{fireball_key[0]:02x}{fireball_key[1]:02x}"
-        f"{fireball_key[2]:02x} tolerance={CHROMA_TOLERANCE}"
-    )
+    fireball_source = _load_transparent_source(FIREBALL_SOURCE)
 
     character_sheet = _build_character_sheet(
         character_source,

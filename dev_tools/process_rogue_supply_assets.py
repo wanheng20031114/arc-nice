@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Deterministically build the Rogue supply-node production textures.
 
-The ImageGen sources are intentionally retained under dev_assets. Chroma-key
-removal is performed before this script for transparent sources. The
+The native-transparent ImageGen sources are retained under dev_assets. The
 production assets intentionally use a small logical canvas and nearest-neighbour
 upscale so the result stays chunky instead of drifting back toward dense UI art.
 """
@@ -36,17 +35,23 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _hard_alpha(image: Image.Image) -> Image.Image:
+def _normalize_alpha(image: Image.Image) -> Image.Image:
     rgba = image.convert("RGBA")
     cleaned: list[tuple[int, int, int, int]] = []
     for red, green, blue, alpha in rgba.getdata():
-        is_key_fringe = red > green + 24 and blue > green + 24
-        if alpha < 127 or is_key_fringe:
+        if alpha < 127:
             cleaned.append((0, 0, 0, 0))
         else:
             cleaned.append((red, green, blue, 255))
     rgba.putdata(cleaned)
     return rgba
+
+
+def _load_transparent(path: Path) -> Image.Image:
+    image = Image.open(path).convert("RGBA")
+    if image.getchannel("A").getextrema()[0] == 255:
+        raise ValueError(f"ImageGen source must have a native transparent background: {path}")
+    return _normalize_alpha(image)
 
 
 def _quantize_rgb(image: Image.Image, color_count: int) -> Image.Image:
@@ -58,11 +63,11 @@ def _quantize_rgb(image: Image.Image, color_count: int) -> Image.Image:
 
 
 def _quantize_rgba(image: Image.Image, color_count: int) -> Image.Image:
-    source = _hard_alpha(image)
+    source = _normalize_alpha(image)
     alpha = source.getchannel("A")
     quantized = _quantize_rgb(source, color_count).convert("RGBA")
     quantized.putalpha(alpha)
-    return _hard_alpha(quantized)
+    return _normalize_alpha(quantized)
 
 
 def _fit_alpha_subject(
@@ -70,7 +75,7 @@ def _fit_alpha_subject(
     canvas_size: tuple[int, int],
     padding: int,
 ) -> Image.Image:
-    source = _hard_alpha(image)
+    source = _normalize_alpha(image)
     bbox = source.getchannel("A").getbbox()
     if bbox is None:
         raise ValueError("transparent source has no subject")
@@ -99,7 +104,7 @@ def _fit_alpha_subject(
 
 def _build_tableau() -> Path:
     source_path = SOURCE_DIR / "supply_tableau_approved_alpha.png"
-    source = _hard_alpha(Image.open(source_path))
+    source = _load_transparent(source_path)
     if source.size != (1098, 1433):
         raise ValueError(f"unexpected tableau source size: {source.size}")
     logical = _fit_alpha_subject(source, TABLEAU_LOGICAL_SIZE, padding=3)
@@ -115,7 +120,7 @@ def _build_tableau() -> Path:
 
 def _build_panel() -> Path:
     source_path = SOURCE_DIR / "supply_choice_panel_shared_alpha.png"
-    source = _hard_alpha(Image.open(source_path))
+    source = _load_transparent(source_path)
     bbox = source.getchannel("A").getbbox()
     if bbox is None:
         raise ValueError("shared panel source has no subject")
@@ -131,7 +136,7 @@ def _build_panel() -> Path:
 
 def _build_envelope() -> Path:
     source_path = SOURCE_DIR / "flying_envelope_approved_32.png"
-    source = _hard_alpha(Image.open(source_path))
+    source = _load_transparent(source_path)
     if source.size != (32, 32):
         raise ValueError(f"unexpected envelope production size: {source.size}")
     output_path = COLLECTIBLE_TEXTURE_DIR / "flying_envelope.png"
@@ -140,21 +145,14 @@ def _build_envelope() -> Path:
 
 
 def _write_manifest(outputs: list[Path]) -> None:
-    inputs = sorted(SOURCE_DIR.glob("*.png"))
+    inputs = [
+        SOURCE_DIR / "supply_tableau_approved_alpha.png",
+        SOURCE_DIR / "supply_choice_panel_shared_alpha.png",
+        SOURCE_DIR / "flying_envelope_approved_32.png",
+    ]
     payload = {
-        "pipeline": "built-in ImageGen -> border-connected chroma-key removal where needed -> low-resolution palette reduction -> nearest 4x/3x upscale",
-        "panel_chroma_key_command": (
-            "python dev_tools/connected_background_remover.py "
-            "dev_assets/source_images/rogue_supply/"
-            "supply_choice_panel_shared_imagegen.png "
-            "dev_assets/source_images/rogue_supply/"
-            "supply_choice_panel_shared_alpha.png "
-            "--rgb-tolerance 24 --hue-tolerance 0.08 --radius 1"
-        ),
+        "pipeline": "built-in ImageGen native transparent source -> low-resolution palette reduction -> nearest 4x/3x upscale",
         "processing_script_sha256": _sha256(Path(__file__)),
-        "background_remover_sha256": _sha256(
-            PROJECT_ROOT / "dev_tools/connected_background_remover.py"
-        ),
         "grid_review": (
             "The generated sources were inspected manually after pixel_grid_analyzer. "
             "The user explicitly requested lower pixel density without voxelizing the "

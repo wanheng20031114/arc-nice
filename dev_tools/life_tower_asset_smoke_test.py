@@ -151,15 +151,6 @@ def main() -> None:
     if not np.any(np.all(heart_colors >= np.array([245, 245, 245]), axis=1)):
         raise AssertionError("heart white highlight was lost during color reduction")
 
-    magenta_like = (
-        (master[:, :, 3] > 0)
-        & (master[:, :, 0] > 200)
-        & (master[:, :, 2] > 180)
-        & (master[:, :, 1] < 80)
-    )
-    if np.any(magenta_like):
-        raise AssertionError("visible chroma-key residue remains in the sprite")
-
     print("LIFE_TOWER_ASSET_SMOKE_OK")
     print(f"visible_colors={len(visible_colors)}")
     print(f"lower_pixels={base_pixels}")

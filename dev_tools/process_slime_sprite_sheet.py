@@ -43,24 +43,18 @@ EIGHT_NEIGHBORS = tuple(
 )
 
 
-def _is_magenta_background(pixel: tuple[int, int, int, int]) -> bool:
-    red, green, blue, alpha = pixel
-    if alpha == 0:
-        return True
-    # Remove both the flat key and its purple edge fringe before calculating
-    # the subject bounds. The dark-blue outline/eyes have very low red and are
-    # therefore preserved by this deliberately asymmetric test.
-    return (
-        red > 16
-        and blue > 80
-        and red > green * 1.45
-        and blue > green * 1.45
-    )
-
-
-def _is_magenta_sample(pixel: tuple[int, int, int, int]) -> bool:
-    red, green, blue, alpha = pixel
-    return alpha == 0 or min(red, blue) - green >= 96
+def _require_native_transparency(image: Image.Image, source_path: Path) -> None:
+    if "A" not in image.getbands():
+        raise ValueError(
+            f"{source_path} has no Alpha channel. Provide an ImageGen source "
+            "exported with a native transparent background."
+        )
+    minimum_alpha, maximum_alpha = image.getchannel("A").getextrema()
+    if minimum_alpha >= 255 or maximum_alpha == 0:
+        raise ValueError(
+            f"{source_path} does not contain both transparent and visible pixels. "
+            "Provide an ImageGen source with native transparent Alpha."
+        )
 
 
 def _collect_components(
@@ -92,7 +86,7 @@ def _extract_clean_foreground(cell: Image.Image) -> Image.Image:
         (x, y)
         for y in range(SOURCE_FRAME_SIZE)
         for x in range(SOURCE_FRAME_SIZE)
-        if not _is_magenta_background(source_pixels[x, y])
+        if source_pixels[x, y][3] > 0
     }
     components = _collect_components(visible_pixels)
     kept_pixels = set().union(
@@ -103,7 +97,7 @@ def _extract_clean_foreground(cell: Image.Image) -> Image.Image:
         )
     )
     if not kept_pixels:
-        raise ValueError("Slime frame contains no foreground after chroma cleanup.")
+        raise ValueError("Slime frame contains no foreground in its Alpha channel.")
 
     result = Image.new(
         "RGBA",
@@ -175,10 +169,7 @@ def _compress_and_align_frame(
                 ),
             )
             source_pixel = source_pixels[source_x, source_y]
-            if (
-                clean_alpha[source_x, source_y] == 0
-                or _is_magenta_sample(source_pixel)
-            ):
+            if clean_alpha[source_x, source_y] == 0:
                 continue
             red, green, blue, _alpha = source_pixel
             subject_pixels[logical_x, logical_y] = (
@@ -200,6 +191,7 @@ def _compress_and_align_frame(
 
 def process_sprite_sheet(source_path: Path, output_path: Path) -> None:
     with Image.open(source_path) as source_image:
+        _require_native_transparency(source_image, source_path)
         source = source_image.convert("RGBA")
     if source.size != SOURCE_SHEET_SIZE:
         raise ValueError(

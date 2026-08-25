@@ -38,16 +38,29 @@ PURPLE_PALETTE = np.array(
 )
 
 
+def _load_native_transparent_source() -> Image.Image:
+    if not SOURCE_PATH.is_file():
+        raise FileNotFoundError(
+            f"{SOURCE_PATH} is missing. Provide the High Noon casting sheet as "
+            "an ImageGen PNG with a native transparent background."
+        )
+    with Image.open(SOURCE_PATH) as source:
+        if "A" not in source.getbands():
+            raise ValueError(
+                f"{SOURCE_PATH} has no Alpha channel. Regenerate it with a "
+                "native transparent background."
+            )
+        minimum_alpha, maximum_alpha = source.getchannel("A").getextrema()
+        if minimum_alpha >= 255 or maximum_alpha == 0:
+            raise ValueError(
+                f"{SOURCE_PATH} must contain both transparent and visible "
+                "pixels in its native Alpha channel."
+            )
+        return source.convert("RGBA")
+
+
 def _foreground_mask(source: np.ndarray) -> np.ndarray:
-    red = source[:, :, 0].astype(np.float32)
-    green = source[:, :, 1].astype(np.float32)
-    blue = source[:, :, 2].astype(np.float32)
-    chroma_green = (
-        (green > 120.0)
-        & (green > red * 1.35)
-        & (green > blue * 1.20)
-    )
-    return ~chroma_green
+    return source[:, :, 3] > 0
 
 
 def _collect_unit_components(
@@ -87,7 +100,7 @@ def _clean_source(
     for label_index, _bounds in components:
         keep |= labels == label_index
     rgba = np.zeros((*labels.shape, 4), dtype=np.uint8)
-    rgba[:, :, :3][keep] = source[:, :, :3][keep]
+    rgba[keep] = source[keep]
     rgba[:, :, 3][keep] = 255
     return Image.fromarray(rgba)
 
@@ -172,7 +185,7 @@ def _move_units_outward(logical: Image.Image) -> tuple[Image.Image, list[float]]
 def _build_sheet(
     source: Image.Image,
 ) -> tuple[Image.Image, list[int], list[float]]:
-    source_array = np.asarray(source.convert("RGB"), dtype=np.uint8)
+    source_array = np.asarray(source.convert("RGBA"), dtype=np.uint8)
     mask = _foreground_mask(source_array)
     labels, components = _collect_unit_components(mask)
     cleaned = _clean_source(source_array, labels, components)
@@ -259,7 +272,7 @@ def _validate(
 
 
 def main() -> None:
-    source = Image.open(SOURCE_PATH).convert("RGB")
+    source = _load_native_transparent_source()
     if source.size != SOURCE_SIZE:
         raise AssertionError(f"unexpected source size: {source.size}")
     sheet, visible_counts, radial_shifts = _build_sheet(source)

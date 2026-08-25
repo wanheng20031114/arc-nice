@@ -463,7 +463,6 @@ func _inspect_elite_texture(
 	var recolored_per_frame: Array[int] = []
 	recolored_per_frame.resize(frame_columns * frame_rows)
 	var visible_colors := {}
-	var has_green_residue := false
 	var alpha_drift := false
 	var invalid_palette_swap := false
 	for y in range(expected_size.y):
@@ -490,11 +489,6 @@ func _inspect_elite_texture(
 			if elite_pixel.a < 0.5:
 				continue
 			visible_colors[elite_key] = true
-			has_green_residue = has_green_residue or (
-				elite_pixel.g > 0.75
-				and elite_pixel.g > elite_pixel.r * 1.4
-				and elite_pixel.g > elite_pixel.b * 1.4
-			)
 	_expect(
 		recolored_per_frame == expected_recolored_per_frame,
 		"Elite %s fixed violet palette-swap coverage changed."
@@ -512,10 +506,6 @@ func _inspect_elite_texture(
 	_expect(
 		visible_colors.size() == MAX_RUNTIME_COLORS,
 		"Elite %s must keep the base-sized 23-color pixel-art palette." % label
-	)
-	_expect(
-		not has_green_residue,
-		"Elite %s must not retain chroma-key green pixels." % label
 	)
 
 

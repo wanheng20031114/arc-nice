@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Build deterministic underground-shop interaction UI textures.
 
-The ImageGen sources intentionally live under ``dev_assets``.  This script
-normalizes their visual pixel grid with PerfectPixel, removes the green key
-from isolated UI components, applies a restrained palette, and derives the
+The native-transparent ImageGen sources intentionally live under ``dev_assets``.
+This script normalizes their visual pixel grid with PerfectPixel, preserves the
+source Alpha, applies a restrained palette, and derives the
 four product-card states from the project's existing inventory-slot language.
 Backgrounds and character art stay outside this asset pipeline.
 """
@@ -26,18 +26,14 @@ if str(PERFECT_PIXEL_SRC) not in sys.path:
 if str(PROJECT_ROOT / "dev_tools") not in sys.path:
 	sys.path.insert(0, str(PROJECT_ROOT / "dev_tools"))
 
-from connected_background_remover import (  # noqa: E402
-	ConnectedBackgroundOptions,
-	remove_connected_background,
-)
 from perfect_pixel.perfect_pixel_noCV2 import get_perfect_pixel  # noqa: E402
 
 
 SOURCE_DIR = PROJECT_ROOT / "dev_assets" / "source_images" / "rogue_shop" / "underground_shop"
 IMAGEGEN_SOURCE_FILES = (
-	"panel_imagegen_green_v1.png",
-	"title_plaque_imagegen_green_v1.png",
-	"button_states_imagegen_green_v1.png",
+	"panel_imagegen_transparent_v2.png",
+	"title_plaque_imagegen_transparent_v2.png",
+	"button_states_imagegen_transparent_v2.png",
 )
 INVENTORY_SLOT_EMPTY = PROJECT_ROOT / "resources" / "texture" / "rogue_route" / "inventory" / "inventory_slot_empty_ref_v3.png"
 INVENTORY_SLOT_SELECTED = PROJECT_ROOT / "resources" / "texture" / "rogue_route" / "inventory" / "inventory_slot_selected_ref_v3.png"
@@ -47,18 +43,12 @@ BUILD_MANIFEST = (
 	PROJECT_ROOT / "dev_tools/output/underground_shop/asset_build_manifest.json"
 )
 
-GREEN_KEY_OPTIONS = ConnectedBackgroundOptions(
-	sample=(0, 0),
-	rgb_tolerance=104,
-	expansion_radius=6,
-	use_hue=False,
-	harden_alpha=True,
-)
-
-
 def _perfect_pixel(source: Path, grid_size: tuple[int, int] | None) -> Image.Image:
 	with Image.open(source) as loaded:
-		rgb = np.asarray(loaded.convert("RGB"), dtype=np.uint8)
+		rgba = loaded.convert("RGBA")
+	if rgba.getchannel("A").getextrema()[0] == 255:
+		raise RuntimeError(f"ImageGen source must have a native transparent background: {source}")
+	rgb = np.asarray(rgba.convert("RGB"), dtype=np.uint8)
 	width, height, result = get_perfect_pixel(
 		rgb,
 		sample_method="center",
@@ -69,20 +59,11 @@ def _perfect_pixel(source: Path, grid_size: tuple[int, int] | None) -> Image.Ima
 	)
 	if width is None or height is None:
 		raise RuntimeError(f"PerfectPixel failed to resolve a grid for {source}")
-	return Image.fromarray(result.astype(np.uint8), mode="RGB")
-
-
-def _remove_green_key(image: Image.Image) -> Image.Image:
-	cleaned = remove_connected_background(image.convert("RGBA"), GREEN_KEY_OPTIONS)
-	array = np.asarray(cleaned, dtype=np.uint8).copy()
-	red = array[:, :, 0].astype(np.int16)
-	green = array[:, :, 1].astype(np.int16)
-	blue = array[:, :, 2].astype(np.int16)
-	green_fringe = (green > 72) & (green > red + 24) & (green > blue + 24)
-	array[green_fringe] = (0, 0, 0, 0)
-	visible = array[:, :, 3] > 0
-	array[:, :, 3] = np.where(visible, 255, 0).astype(np.uint8)
-	array[~visible, :3] = 0
+	logical = Image.fromarray(result.astype(np.uint8), mode="RGB").convert("RGBA")
+	alpha = rgba.getchannel("A").resize(logical.size, Image.Resampling.NEAREST)
+	logical.putalpha(alpha)
+	array = np.asarray(logical, dtype=np.uint8).copy()
+	array[array[:, :, 3] == 0] = (0, 0, 0, 0)
 	return Image.fromarray(array, mode="RGBA")
 
 
@@ -191,8 +172,8 @@ def _save(image: Image.Image, output: Path) -> dict[str, object]:
 
 
 def _build_panel() -> Image.Image:
-	logical = _perfect_pixel(SOURCE_DIR / "panel_imagegen_green_v1.png", (154, 154))
-	logical = _tight_crop(_remove_green_key(logical))
+	logical = _perfect_pixel(SOURCE_DIR / IMAGEGEN_SOURCE_FILES[0], (154, 154))
+	logical = _tight_crop(logical)
 	if logical.width > 136 or logical.height > 136:
 		raise RuntimeError(f"Panel subject exceeds its logical canvas: {logical.size}")
 	panel = _quantize(_fit_canvas(logical, (136, 136)), 32)
@@ -200,25 +181,19 @@ def _build_panel() -> Image.Image:
 
 
 def _build_title_plaque() -> Image.Image:
-	logical = _perfect_pixel(SOURCE_DIR / "title_plaque_imagegen_green_v1.png", (150, 61))
-	logical = _tight_crop(_remove_green_key(logical))
+	logical = _perfect_pixel(SOURCE_DIR / IMAGEGEN_SOURCE_FILES[1], (150, 61))
+	logical = _tight_crop(logical)
 	if logical.width > 136 or logical.height > 32:
 		raise RuntimeError(f"Title plaque exceeds its logical canvas: {logical.size}")
 	return _quantize(_fit_canvas(logical, (136, 32)), 32)
 
 
 def _button_row_bounds() -> list[tuple[int, int, int, int]]:
-	with Image.open(SOURCE_DIR / "button_states_imagegen_green_v1.png") as loaded:
-		rgb = np.asarray(loaded.convert("RGB"), dtype=np.uint8)
-	red = rgb[:, :, 0].astype(np.int16)
-	green = rgb[:, :, 1].astype(np.int16)
-	blue = rgb[:, :, 2].astype(np.int16)
-	chroma_background = (
-		(green > 140)
-		& (green > red + 60)
-		& (green > blue + 60)
-	)
-	visible = ~chroma_background
+	with Image.open(SOURCE_DIR / IMAGEGEN_SOURCE_FILES[2]) as loaded:
+		rgba = np.asarray(loaded.convert("RGBA"), dtype=np.uint8)
+	if rgba[:, :, 3].min() == 255:
+		raise RuntimeError("Button sheet must have a native transparent background")
+	visible = rgba[:, :, 3] > 0
 	row_has_alpha = np.any(visible, axis=1)
 	intervals: list[tuple[int, int]] = []
 	start: int | None = None
@@ -244,12 +219,12 @@ def _button_row_bounds() -> list[tuple[int, int, int, int]]:
 
 def _build_buttons() -> dict[str, Image.Image]:
 	state_names = ("normal", "hover", "pressed", "disabled")
-	with Image.open(SOURCE_DIR / "button_states_imagegen_green_v1.png") as loaded:
-		sheet = loaded.convert("RGB")
+	with Image.open(SOURCE_DIR / IMAGEGEN_SOURCE_FILES[2]) as loaded:
+		sheet = loaded.convert("RGBA")
 	outputs: dict[str, Image.Image] = {}
 	for state_name, bounds in zip(state_names, _button_row_bounds(), strict=True):
 		component = sheet.crop(bounds)
-		rgb = np.asarray(component, dtype=np.uint8)
+		rgb = np.asarray(component.convert("RGB"), dtype=np.uint8)
 		_width, _height, sampled = get_perfect_pixel(
 			rgb,
 			sample_method="center",
@@ -258,7 +233,10 @@ def _build_buttons() -> dict[str, Image.Image]:
 			fix_square=False,
 			debug=False,
 		)
-		logical = _tight_crop(_remove_green_key(Image.fromarray(sampled.astype(np.uint8), mode="RGB")))
+		logical = Image.fromarray(sampled.astype(np.uint8), mode="RGB").convert("RGBA")
+		alpha = component.getchannel("A").resize(logical.size, Image.Resampling.NEAREST)
+		logical.putalpha(alpha)
+		logical = _tight_crop(logical)
 		if logical.width > 104 or logical.height > 28:
 			raise RuntimeError(f"Button {state_name} exceeds its logical canvas: {logical.size}")
 		button = _quantize(_fit_canvas(logical, (104, 28)), 24)

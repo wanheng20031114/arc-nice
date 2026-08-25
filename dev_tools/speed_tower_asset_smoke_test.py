@@ -81,8 +81,6 @@ def main() -> None:
         raise AssertionError(f"boot has {len(colors)} colors")
     if not np.any((colors[:, 0] > 220) & (colors[:, 1] > 150) & (colors[:, 2] < 80)):
         raise AssertionError("boot is missing a clear golden-yellow main color")
-    if np.any((colors[:, 0] > 180) & (colors[:, 2] > 140) & (colors[:, 1] < 100)):
-        raise AssertionError("boot retains magenta chroma-key residue")
     print("SPEED_TOWER_ASSET_SMOKE_OK")
     print(f"boot_bbox={bbox}")
     print(f"boot_pixels={pixels}")

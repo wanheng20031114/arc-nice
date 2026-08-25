@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build Xiaocong's native pixel assets from reviewed ImageGen source art.
 
-The Xiaocong source is already chroma-keyed.  Its generated pixel grid is
+The Xiaocong source already carries native transparency. Its generated pixel grid is
 measured before any reduction; this stage then samples each detected logical
 cell once, applies a small non-dithered palette, and performs only integer-pixel
 animation edits.  Runtime frames are kept at their native size in Godot.
@@ -39,8 +39,8 @@ def _hard_palette(image: Image.Image, colors: int) -> Image.Image:
 
 
 def build_xiaocong_base(source: Path) -> Image.Image:
-    keyed = normalize_transparency(Image.open(source), alpha_threshold=127)
-    analysis = analyze_image(keyed)
+    transparent = normalize_transparency(Image.open(source), alpha_threshold=127)
+    analysis = analyze_image(transparent)
     detected_size = (
         int(analysis["subject_grid_width"]),
         int(analysis["subject_grid_height"]),
@@ -59,7 +59,7 @@ def build_xiaocong_base(source: Path) -> Image.Image:
     # The measured subject bounds are exactly 23x37 generated logical cells.
     # Nearest-neighbour center sampling maps one detected cell to one runtime
     # pixel; it is not an arbitrary visual resize.
-    subject = keyed.crop(find_subject_bbox(keyed)).resize(
+    subject = transparent.crop(find_subject_bbox(transparent)).resize(
         SOURCE_SUBJECT_GRID_SIZE,
         Image.Resampling.NEAREST,
     )
@@ -124,8 +124,8 @@ def build_xiaocong_sheet(base: Image.Image) -> Image.Image:
 
 
 def build_fate_stone(source: Path) -> Image.Image:
-    keyed = normalize_transparency(Image.open(source))
-    square = crop_to_square(keyed, padding=36, align_to_grid=True)
+    transparent = normalize_transparency(Image.open(source))
+    square = crop_to_square(transparent, padding=36, align_to_grid=True)
     logical, _analysis = compress_to_logical_grid(
         square,
         logical_size=48,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Capoo variant sprites from chroma-keyed imagegen sources."""
+"""Build Capoo variant sprites from native-transparent ImageGen sources."""
 
 from __future__ import annotations
 
@@ -71,64 +71,28 @@ CAPOO_ANIMATION_ROWS = OrderedDict(
 CAPOO_ANIMATION_WRITE_ORDER = ("attack", "death", "move", "windup")
 
 
-def _remove_chroma_background(image: Image.Image, key: str) -> Image.Image:
-	array = np.array(image.convert("RGBA"), dtype=np.uint8)
-	rgb = array[:, :, :3].astype(np.int16)
-	red = rgb[:, :, 0]
-	green = rgb[:, :, 1]
-	blue = rgb[:, :, 2]
-
-	if key == "magenta":
-		candidate = (
-			(red >= 130)
-			& (blue >= 130)
-			& (green <= 125)
-			& ((red - green) >= 55)
-			& ((blue - green) >= 55)
+def _load_native_alpha_source(source_path: Path) -> Image.Image:
+	if not source_path.is_file():
+		raise FileNotFoundError(
+			f"{source_path} is missing. Provide an ImageGen PNG exported with a "
+			"native transparent background."
 		)
-	elif key == "green":
-		candidate = (
-			(green >= 120)
-			& ((green - red) >= 45)
-			& ((green - blue) >= 45)
-		)
-	else:
-		raise ValueError(f"Unsupported chroma key: {key}")
-
-	seeds = np.zeros(candidate.shape, dtype=bool)
-	seeds[0, :] = candidate[0, :]
-	seeds[-1, :] = candidate[-1, :]
-	seeds[:, 0] = candidate[:, 0]
-	seeds[:, -1] = candidate[:, -1]
-	background = ndimage.binary_propagation(
-		seeds,
-		structure=np.ones((5, 5), dtype=bool),
-		mask=candidate,
-	)
-
-	array[background] = (0, 0, 0, 0)
-	visible = ~background
-	array[:, :, 3][visible] = 255
-	array[:, :, :3][~visible] = 0
-	_despill(array, key, visible)
+	with Image.open(source_path) as image:
+		if "A" not in image.getbands():
+			raise ValueError(
+				f"{source_path} has no Alpha channel. Regenerate it with a native "
+				"transparent background."
+			)
+		minimum_alpha, maximum_alpha = image.getchannel("A").getextrema()
+		if minimum_alpha >= 255 or maximum_alpha == 0:
+			raise ValueError(
+				f"{source_path} must contain both transparent and visible pixels "
+				"in its native Alpha channel."
+			)
+		array = np.array(image.convert("RGBA"), dtype=np.uint8)
+	transparent = array[:, :, 3] == 0
+	array[:, :, :3][transparent] = 0
 	return Image.fromarray(array)
-
-
-def _despill(array: np.ndarray, key: str, visible: np.ndarray) -> None:
-	rgb = array[:, :, :3].astype(np.int16)
-	red = rgb[:, :, 0]
-	green = rgb[:, :, 1]
-	blue = rgb[:, :, 2]
-
-	if key == "green":
-		fringe = visible & (green > red + 18) & (green > blue + 18)
-		green_limit = np.maximum(red, blue) + 10
-		array[:, :, 1][fringe] = np.minimum(green[fringe], green_limit[fringe]).astype(np.uint8)
-	elif key == "magenta":
-		fringe = visible & (red > green + 32) & (blue > green + 32) & (red > 120) & (blue > 120)
-		limit = green + 90
-		array[:, :, 0][fringe] = np.minimum(red[fringe], limit[fringe]).astype(np.uint8)
-		array[:, :, 2][fringe] = np.minimum(blue[fringe], limit[fringe]).astype(np.uint8)
 
 
 def _crop_grid_cell(sheet: Image.Image, columns: int, rows: int, column: int, row: int) -> Image.Image:
@@ -416,23 +380,6 @@ def _build_reticle_texture(source: Image.Image) -> Image.Image:
 	)
 
 
-def _remove_magenta_residue(image: Image.Image) -> Image.Image:
-	array = np.array(image.convert("RGBA"), dtype=np.uint8)
-	alpha = array[:, :, 3] > 0
-	red = array[:, :, 0].astype(np.int16)
-	green = array[:, :, 1].astype(np.int16)
-	blue = array[:, :, 2].astype(np.int16)
-	residue = (
-		alpha
-		& (red >= 72)
-		& (blue >= 72)
-		& (green <= 118)
-		& ((red + blue - green * 2) >= 70)
-	)
-	array[residue] = (0, 0, 0, 0)
-	return Image.fromarray(array)
-
-
 def _write_capoo_frames(name: str, frame_size: tuple[int, int] | None = None) -> None:
 	if frame_size == None:
 		frame_size = (CAPOO_FRAME_SIZE, CAPOO_FRAME_SIZE)
@@ -597,27 +544,18 @@ def _save_debug(name: str, image: Image.Image) -> None:
 
 
 def main() -> None:
-	if not CAPOO_SOURCE.is_file():
-		raise FileNotFoundError(CAPOO_SOURCE)
-	if not PROJECTILE_SOURCE.is_file():
-		raise FileNotFoundError(PROJECTILE_SOURCE)
-	if not FIREBALL_IMPACT_SOURCE.is_file():
-		raise FileNotFoundError(FIREBALL_IMPACT_SOURCE)
-
 	TEXTURE_DIR.mkdir(parents=True, exist_ok=True)
 	ANIMATION_DIR.mkdir(parents=True, exist_ok=True)
 
-	capoo_source = _remove_chroma_background(Image.open(CAPOO_SOURCE), "magenta")
-	projectile_source = _remove_chroma_background(Image.open(PROJECTILE_SOURCE), "green")
-	fireball_impact_source = _remove_chroma_background(Image.open(FIREBALL_IMPACT_SOURCE), "green")
+	capoo_source = _load_native_alpha_source(CAPOO_SOURCE)
+	projectile_source = _load_native_alpha_source(PROJECTILE_SOURCE)
+	fireball_impact_source = _load_native_alpha_source(FIREBALL_IMPACT_SOURCE)
 	_save_debug("capoo_variants_v2_alpha", capoo_source)
 	_save_debug("capoo_projectiles_v2_alpha", projectile_source)
 	_save_debug("capoo_mage_fireball_impact_alpha", fireball_impact_source)
 
 	for name, row in CAPOO_VARIANTS.items():
 		sheet = _build_capoo_sheet(capoo_source, row)
-		if name in ("capoo_sniper", "capoo_smg"):
-			sheet = _remove_magenta_residue(sheet)
 		sheet.save(TEXTURE_DIR / f"{name}.png")
 		_write_capoo_frames(name)
 		print(f"{name}: {sheet.width}x{sheet.height}, bbox={sheet.getchannel('A').getbbox()}")

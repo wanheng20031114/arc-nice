@@ -250,23 +250,6 @@ def _binary_alpha(image: Image.Image, threshold: int = 52) -> Image.Image:
     return rgba
 
 
-def _remove_neutral_frame_lines(image: Image.Image) -> Image.Image:
-    """Discard the white panel dividers occasionally added by imagegen.
-
-    Pale dust remains because it is warm/yellow rather than neutral white.
-    """
-    rgba = image.convert("RGBA")
-    pixels = rgba.load()
-    for y in range(rgba.height):
-        for x in range(rgba.width):
-            red, green, blue, alpha = pixels[x, y]
-            if alpha == 0:
-                continue
-            if min(red, green, blue) >= 232 and max(red, green, blue) - min(red, green, blue) <= 18:
-                pixels[x, y] = (0, 0, 0, 0)
-    return rgba
-
-
 def _place_centered_on_baseline(
     frame: Image.Image,
     baseline: int,

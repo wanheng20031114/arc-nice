@@ -68,14 +68,14 @@ func _draw_guardian_frame(source: Image, output: Image, frame_index: int, death:
 
 func _guardian_color(source_color: Color, death: bool) -> Color:
 	var value := maxf(source_color.r, maxf(source_color.g, source_color.b))
-	var chroma_warm := source_color.r - source_color.b
+	var red_blue_bias := source_color.r - source_color.b
 
 	if death:
 		if value < 0.18:
 			return Color(OUTLINE, source_color.a)
 		if value > 0.58:
 			return Color(SKY_LIGHT, source_color.a)
-		if chroma_warm > 0.12:
+		if red_blue_bias > 0.12:
 			return Color(DEATH_SMOKE, source_color.a)
 		return Color(BLUE_SHELL, source_color.a)
 
@@ -83,9 +83,9 @@ func _guardian_color(source_color: Color, death: bool) -> Color:
 		return Color(OUTLINE, source_color.a)
 	if value > 0.72:
 		return Color(SKY_LIGHT, source_color.a)
-	if chroma_warm > 0.18 and source_color.g > 0.18:
+	if red_blue_bias > 0.18 and source_color.g > 0.18:
 		return Color(WARM_UNDERBODY, source_color.a)
-	if chroma_warm > 0.08:
+	if red_blue_bias > 0.08:
 		return Color(DARK_UNDERBODY, source_color.a)
 	if source_color.b > source_color.r:
 		return Color(BLUE_SHELL, source_color.a)

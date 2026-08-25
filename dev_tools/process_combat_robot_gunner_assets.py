@@ -11,8 +11,8 @@ generated ImageGen boards contribute animation language only:
 * D1 contributes the progressive forward-collapse silhouettes.
 * B2 contributes the compact dark-red / hot-core projectile language.
 
-No high-resolution ImageGen board is ordinarily downscaled.  Each cell is
-green-keyed, inspected with ``pixel_grid_analyzer``, and sampled once at its
+No high-resolution ImageGen board is ordinarily downscaled.  Each native-
+transparent cell is inspected with ``pixel_grid_analyzer`` and sampled once at its
 detected shared logical grid.  The approved 32px anchor is never rescaled.
 
 By default this script writes only review artifacts under
@@ -99,22 +99,27 @@ ATTACK_ALERT_POINTS = (
 )
 
 
-def _green_key(image: Image.Image) -> Image.Image:
-    """Remove the requested green screen and normalize binary transparency."""
-    rgb = np.asarray(image.convert("RGB"), dtype=np.int16)
-    red = rgb[:, :, 0]
-    green = rgb[:, :, 1]
-    blue = rgb[:, :, 2]
-    key = (
-        (green >= 96)
-        & (green - red >= 38)
-        & (green - blue >= 38)
-        & (green >= np.maximum(red, blue) * 1.35)
-    )
-    rgba = np.empty((image.height, image.width, 4), dtype=np.uint8)
-    rgba[:, :, :3] = np.clip(rgb, 0, 255).astype(np.uint8)
-    rgba[:, :, 3] = np.where(key, 0, 255).astype(np.uint8)
-    rgba[key, :3] = 0
+def _load_native_transparent_board(source_path: Path) -> Image.Image:
+    if not source_path.is_file():
+        raise FileNotFoundError(
+            f"{source_path} is missing. Provide an ImageGen board exported with "
+            "a native transparent background."
+        )
+    with Image.open(source_path) as image:
+        if "A" not in image.getbands():
+            raise ValueError(
+                f"{source_path} has no Alpha channel. Regenerate it with a "
+                "native transparent background."
+            )
+        minimum_alpha, maximum_alpha = image.getchannel("A").getextrema()
+        if minimum_alpha >= 255 or maximum_alpha == 0:
+            raise ValueError(
+                f"{source_path} must contain both transparent and visible "
+                "pixels in its native Alpha channel."
+            )
+        rgba = np.asarray(image.convert("RGBA"), dtype=np.uint8).copy()
+    transparent = rgba[:, :, 3] == 0
+    rgba[:, :, :3][transparent] = 0
     return Image.fromarray(rgba, mode="RGBA")
 
 
@@ -122,22 +127,22 @@ def _cell_bounds(size: int, count: int, index: int) -> tuple[int, int]:
     return round(index * size / count), round((index + 1) * size / count)
 
 
-def _split_keyed_board(
+def _split_transparent_board(
     source_path: Path,
     columns: int,
     rows: int,
 ) -> list[Image.Image]:
-    keyed = _green_key(Image.open(source_path))
+    source = _load_native_transparent_board(source_path)
     cells: list[Image.Image] = []
     for row in range(rows):
-        top, bottom = _cell_bounds(keyed.height, rows, row)
+        top, bottom = _cell_bounds(source.height, rows, row)
         for column in range(columns):
-            left, right = _cell_bounds(keyed.width, columns, column)
-            cell = keyed.crop((left, top, right, bottom))
+            left, right = _cell_bounds(source.width, columns, column)
+            cell = source.crop((left, top, right, bottom))
             bbox = cell.getchannel("A").getbbox()
             if bbox is None:
                 raise ValueError(
-                    f"{source_path.name} cell ({column},{row}) is empty after keying"
+                    f"{source_path.name} cell ({column},{row}) has no visible Alpha"
                 )
             cells.append(cell.crop(bbox))
     return cells
@@ -149,7 +154,7 @@ def _extract_logical_frames(
     shared_grid_override: tuple[float, float] | None = None,
 ) -> tuple[list[Image.Image], list[dict]]:
     """Sample every cell at one shared, analyzer-detected logical grid."""
-    cells = _split_keyed_board(source_path, grid[0], grid[1])
+    cells = _split_transparent_board(source_path, grid[0], grid[1])
     analyses = [analyze_image(cell) for cell in cells]
     unsafe = [
         index

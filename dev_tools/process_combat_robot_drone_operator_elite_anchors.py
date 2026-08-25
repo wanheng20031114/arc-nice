@@ -308,21 +308,20 @@ def on_background(image: Image.Image, scale: int = 1) -> Image.Image:
     return canvas
 
 
-def remove_green_for_review(path: Path) -> Image.Image:
-    image = Image.open(path).convert("RGBA")
-    pixels = image.load()
-    for y in range(image.height):
-        for x in range(image.width):
-            red, green, blue, _alpha = pixels[x, y]
-            if green >= 80 and green >= red + 20 and green >= blue + 20:
-                pixels[x, y] = TRANSPARENT
-            elif green > max(red, blue):
-                # Deterministic despill for antialiased reference edges.  These
-                # pixels remain review-only and never enter a native sprite.
-                pixels[x, y] = (red, max(red, blue), blue, 255)
+def load_transparent_reference(raw_path: Path, transparent_path: Path) -> Image.Image:
+    alpha_source = transparent_path if transparent_path.is_file() else raw_path
+    with Image.open(alpha_source) as opened:
+        image = opened.convert("RGBA")
+    alpha_min, alpha_max = image.getchannel("A").getextrema()
+    if alpha_min == 255:
+        raise AssertionError(
+            f"{rel(alpha_source)} has no transparent Alpha pixels; "
+            "provide a native-transparent ImageGen source or a pre-existing, "
+            "approved matching Alpha derivative"
+        )
+    if alpha_max == 0:
+        raise AssertionError(f"{rel(alpha_source)} is fully transparent")
     bbox = image.getchannel("A").getbbox()
-    if bbox is None:
-        raise AssertionError(f"ImageGen reference became empty: {path}")
     return image.crop(bbox)
 
 
@@ -467,7 +466,7 @@ def main() -> None:
         facing_pair = PREVIEW_DIR / f"combat_robot_drone_operator_elite_anchor_{spec.key}_facing_pair.png"
         facing_gif = PREVIEW_DIR / f"combat_robot_drone_operator_elite_anchor_{spec.key}_facing.gif"
         transparent_ref_path = SOURCE_DIR / f"combat_robot_drone_operator_elite_anchor_{spec.key}_transparent_reference.png"
-        ref = remove_green_for_review(imagegen_paths[spec.key])
+        ref = load_transparent_reference(imagegen_paths[spec.key], transparent_ref_path)
         transparent_refs[spec.key] = ref
         save_png(ref, transparent_ref_path)
         save_png(candidate, native)

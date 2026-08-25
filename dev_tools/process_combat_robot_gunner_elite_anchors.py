@@ -30,7 +30,7 @@ from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_rep
 from PIL import Image, ImageDraw, ImageFont
 
 from pixel_grid_analyzer import analyze_image
-from process_combat_robot_assets import PALETTE, normalize_source
+from process_combat_robot_assets import PALETTE
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -262,22 +262,22 @@ def _normalize_binary_alpha(image: Image.Image) -> Image.Image:
     return result
 
 
-def _normalize_imagegen_reference(image: Image.Image) -> Image.Image:
-    """Key and despill a source for display only, never for native pixels."""
-    result = normalize_source(image)
-    pixels = result.load()
-    for y in range(result.height):
-        for x in range(result.width):
-            red, green, blue, alpha = pixels[x, y]
-            if alpha == 0:
-                pixels[x, y] = TRANSPARENT
-                continue
-            strongest_non_green = max(red, blue)
-            if green >= 64 and green >= strongest_non_green + 18:
-                pixels[x, y] = TRANSPARENT
-            elif green > strongest_non_green + 8:
-                pixels[x, y] = (red, strongest_non_green, blue, 255)
-    return result
+def _load_transparent_imagegen_reference(
+    source_path: Path, transparent_path: Path
+) -> tuple[Image.Image, Path]:
+    alpha_source = transparent_path if transparent_path.is_file() else source_path
+    with Image.open(alpha_source) as opened:
+        image = opened.convert("RGBA")
+    alpha_min, alpha_max = image.getchannel("A").getextrema()
+    if alpha_min == 255:
+        raise AssertionError(
+            f"{_relative(alpha_source)} has no transparent Alpha pixels; "
+            "provide a native-transparent ImageGen source or a pre-existing, "
+            "approved matching Alpha derivative"
+        )
+    if alpha_max == 0:
+        raise AssertionError(f"{_relative(alpha_source)} is fully transparent")
+    return image, alpha_source
 
 
 def _visible_metrics(frame: Image.Image) -> dict:
@@ -586,7 +586,7 @@ def _imagegen_thumbnail(
 ) -> Image.Image:
     bbox = transparent_reference.getchannel("A").getbbox()
     if bbox is None:
-        raise AssertionError("ImageGen reference became empty after keying")
+        raise AssertionError("ImageGen reference has no visible native-Alpha pixels")
     subject = transparent_reference.crop(bbox)
     subject.thumbnail(
         (size[0] - 24, size[1] - 24), Image.Resampling.LANCZOS
@@ -840,14 +840,15 @@ def main() -> None:
     candidate_reports: dict[str, dict] = {}
     for spec in CANDIDATES:
         raw_path = expected_paths[spec.key]
-        transparent_reference = _normalize_imagegen_reference(
-            Image.open(raw_path).convert("RGBA")
-        )
         transparent_path = SOURCE_DIR / (
             f"combat_robot_gunner_elite_anchor_{spec.key}_"
             "transparent_reference.png"
         )
-        _save_png(transparent_reference, transparent_path)
+        transparent_reference, alpha_source = _load_transparent_imagegen_reference(
+            raw_path, transparent_path
+        )
+        if alpha_source != transparent_path:
+            _save_png(transparent_reference, transparent_path)
         source_analysis = analyze_image(transparent_reference)
 
         candidate, attachments = _build_candidate(base, mapped_base, spec)

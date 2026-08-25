@@ -41,7 +41,7 @@ from plant_pixel_asset_pipeline import (
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/plant_defense/agave_cannon"
-DEFAULT_INPUT = SOURCE_DIR / "agave_cannon_selected_imagegen_magenta.png"
+DEFAULT_INPUT = SOURCE_DIR / "agave_cannon_selected_imagegen_transparent.png"
 OUTPUT_DIR = ROOT / "resources/texture/plant_defense/agave_cannon"
 AUDIT_PATH = ROOT / "dev_tools/output/plant_defense/agave_asset_audit.json"
 
@@ -546,8 +546,7 @@ def main() -> None:
         "asset_family": "agave_cannon",
         "status": "failed" if failures else "passed",
         "pipeline": [
-            "built-in imagegen selected composite master",
-            "flat #FF00FF chroma key",
+            "built-in imagegen selected composite master with native transparent Alpha",
             "reliable logical-grid analysis",
             "nearest logical-cell selection into 64px contract",
             "shared <=64-color palette without dithering",

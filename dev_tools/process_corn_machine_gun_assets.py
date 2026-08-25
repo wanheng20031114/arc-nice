@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Build the audited Corn Machine Gun pixel family from one imagegen master.
 
-The selected imagegen source already contains the final compact silhouette and
-four-bore identity.  This processor removes only the connected magenta
-background, measures the authored logical grid, and refuses any source that
-would require fitting or unsafe compression.  Every runtime frame is then
-derived deterministically from the same 64px registration and shared palette.
+The selected imagegen source already contains the final compact silhouette,
+four-bore identity, and native transparent Alpha. This processor measures the
+authored logical grid and refuses any source that would require fitting or
+unsafe compression. Every runtime frame is then derived deterministically from
+the same 64px registration and shared palette.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ from plant_pixel_asset_pipeline import (
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/plant_defense/corn_machine_gun"
-DEFAULT_INPUT = SOURCE_DIR / "corn_machine_gun_selected_imagegen_magenta.png"
+DEFAULT_INPUT = SOURCE_DIR / "corn_machine_gun_selected_imagegen_transparent.png"
 OUTPUT_DIR = ROOT / "resources/texture/plant_defense/corn_machine_gun"
 AUDIT_PATH = ROOT / "dev_tools/output/plant_defense/corn_asset_audit.json"
 MANIFEST_PATH = (
@@ -848,7 +848,7 @@ def _build_manifest(input_path: Path) -> dict:
                 "dark forest green through saturated warm green with restrained "
                 "yellow-green highlights; golden corn turret and dark bores"
             ),
-            "background": "connected flat #FF00FF chroma key",
+            "background": "ImageGen native transparent Alpha",
             "alpha_after_processing": "binary; transparent RGB zero",
         },
         "selection": {
@@ -939,8 +939,7 @@ def main() -> None:
         "asset_family": "corn_machine_gun",
         "status": "failed" if failures else "passed",
         "pipeline": [
-            "built-in imagegen selected compact composite master",
-            "connected flat #FF00FF chroma key removal",
+            "built-in imagegen selected compact composite master with native transparent Alpha",
             "reliable logical-grid analysis with fit forbidden",
             "nearest measured logical-cell center sampling into 64px contract",
             "shared <=48-color median-cut palette without dithering",

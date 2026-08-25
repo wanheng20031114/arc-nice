@@ -13,33 +13,18 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy import ndimage
 
-from connected_background_remover import (
-	ConnectedBackgroundOptions,
-	_rgb_to_hsv_arrays,
-	build_sample_background_mask,
-	remove_connected_background,
-)
-
-
 LINGLAN_ANIMATION_STRIPS: OrderedDict[str, str] = OrderedDict(
 	[
 		("idle", "dev_assets/source_images/boss_linglan/idle_v1_alpha.png"),
 		("move", "dev_assets/source_images/boss_linglan/move_v3_alpha.png"),
 	]
 )
-HUD_SOURCE = "dev_assets/source_images/boss_linglan/hud_imagegen_green.png"
-HUD_ALPHA = "dev_assets/source_images/boss_linglan/hud_alpha.png"
-VFX_SOURCE = "dev_assets/source_images/boss_linglan/sakura_vfx_imagegen_green.png"
-VFX_ALPHA = "dev_assets/source_images/boss_linglan/sakura_vfx_alpha.png"
-SKILL2_ROCKET_SOURCE = "dev_assets/source_images/boss_linglan/skill2_sakura_rocket_imagegen_green.png"
-SKILL2_ROCKET_ALPHA = "dev_assets/source_images/boss_linglan/skill2_sakura_rocket_alpha.png"
-SKILL2_EXPLOSION_SOURCE = "dev_assets/source_images/boss_linglan/skill2_sakura_explosion_imagegen_green.png"
-SKILL2_EXPLOSION_ALPHA = "dev_assets/source_images/boss_linglan/skill2_sakura_explosion_alpha.png"
-DIE_SOURCE = "dev_assets/source_images/boss_linglan/die_imagegen_green_v2.png"
-DIE_ALPHA = "dev_assets/source_images/boss_linglan/die_v2_alpha.png"
+HUD_SOURCE = "dev_assets/source_images/boss_linglan/hud_alpha.png"
+VFX_SOURCE = "dev_assets/source_images/boss_linglan/sakura_vfx_alpha.png"
+SKILL2_ROCKET_SOURCE = "dev_assets/source_images/boss_linglan/skill2_sakura_rocket_alpha.png"
+SKILL2_EXPLOSION_SOURCE = "dev_assets/source_images/boss_linglan/skill2_sakura_explosion_alpha.png"
+DIE_SOURCE = "dev_assets/source_images/boss_linglan/die_v2_alpha.png"
 ATTACK_SOURCE = "dev_assets/source_images/boss_linglan/attack_manual_v16_alpha_3x2.png"
-ATTACK_ALPHA = ATTACK_SOURCE
-ATTACK_SOURCE_IS_ALPHA = True
 
 OUTPUT_TEXTURE_DIR = "resources/texture/boss_linglan"
 OUTPUT_FRAMES = "resources/animation/linglan.tres"
@@ -115,106 +100,11 @@ def _round_up(value: int, alignment: int) -> int:
 	return ((value + alignment - 1) // alignment) * alignment
 
 
-def _remove_green_background(image: Image.Image) -> Image.Image:
-	return remove_connected_background(
-		image,
-		ConnectedBackgroundOptions(
-			rgb_tolerance=96,
-			hue_tolerance=0.075,
-			expansion_radius=14,
-			min_hue_saturation=0.35,
-			green_ratio_limit=0.84,
-		),
-	)
-
-
-def _remove_linglan_sprite_background(image: Image.Image) -> Image.Image:
-	result = remove_connected_background(
-		image,
-		ConnectedBackgroundOptions(
-			rgb_tolerance=88,
-			hue_tolerance=0.085,
-			expansion_radius=18,
-			min_hue_saturation=0.30,
-			green_ratio_limit=1.15,
-		),
-	)
-	array = np.array(result.convert("RGBA"), dtype=np.uint8)
-	rgb_float = array[:, :, :3].astype(np.float32) / 255.0
-	hue, saturation, value = _rgb_to_hsv_arrays(rgb_float)
-	magenta_background = (
-		(saturation >= 0.28)
-		& (value >= 0.14)
-		& (hue >= 0.76)
-		& (hue <= 0.94)
-	)
-	array[magenta_background] = (0, 0, 0, 0)
-	visible_pixels = array[:, :, 3] > 0
-	array[:, :, 3][visible_pixels] = 255
-	return Image.fromarray(array)
-
-
-def _remove_linglan_attack_background(image: Image.Image) -> Image.Image:
-	result = remove_connected_background(
-		image,
-		ConnectedBackgroundOptions(
-			rgb_tolerance=72,
-			hue_tolerance=0.07,
-			expansion_radius=18,
-			min_hue_saturation=0.24,
-			green_ratio_limit=1.15,
-		),
-	)
-	array = np.array(result.convert("RGBA"), dtype=np.uint8)
-	alpha = array[:, :, 3] > 0
-	red = array[:, :, 0].astype(np.int16)
-	green = array[:, :, 1].astype(np.int16)
-	blue = array[:, :, 2].astype(np.int16)
-	chroma_blue = alpha & (blue >= 80) & (red <= 55) & (green <= 75) & (blue >= red + 35) & (blue >= green + 25)
-	array[chroma_blue] = (0, 0, 0, 0)
-	visible_pixels = array[:, :, 3] > 0
-	array[:, :, 3][visible_pixels] = 255
-	return Image.fromarray(array)
-
-
-def _remove_global_green_background(image: Image.Image) -> Image.Image:
+def _normalize_transparent_source(image: Image.Image, label: str) -> Image.Image:
 	array = np.array(image.convert("RGBA"), dtype=np.uint8)
-	mask = build_sample_background_mask(
-		array,
-		ConnectedBackgroundOptions(
-			rgb_tolerance=108,
-			hue_tolerance=0.09,
-			expansion_radius=0,
-			min_hue_saturation=0.35,
-			green_ratio_limit=0.9,
-		),
-	)
-	red = array[:, :, 0].astype(np.int16)
-	green = array[:, :, 1].astype(np.int16)
-	blue = array[:, :, 2].astype(np.int16)
-	chroma_green = (green >= 145) & (green >= red + 45) & (green >= blue + 45)
-	array[mask | chroma_green] = (0, 0, 0, 0)
-	visible_pixels = array[:, :, 3] > 0
-	array[:, :, 3][visible_pixels] = 255
-	return Image.fromarray(array)
-
-
-def _despill_chroma_green(image: Image.Image) -> Image.Image:
-	array = np.array(image.convert("RGBA"), dtype=np.uint8)
-	alpha = array[:, :, 3] > 0
-	red = array[:, :, 0].astype(np.int16)
-	green = array[:, :, 1].astype(np.int16)
-	blue = array[:, :, 2].astype(np.int16)
-	strong_green = alpha & (green >= 150) & (red <= 115) & (blue <= 115) & (green >= red + 45)
-	array[strong_green] = (0, 0, 0, 0)
-
-	remaining_alpha = array[:, :, 3] > 0
-	red = array[:, :, 0].astype(np.int16)
-	green = array[:, :, 1].astype(np.int16)
-	blue = array[:, :, 2].astype(np.int16)
-	green_bias = remaining_alpha & (green > red + 14) & (green > blue + 14)
-	clamped_green = np.maximum(red, blue) + 10
-	array[:, :, 1][green_bias] = np.minimum(array[:, :, 1][green_bias], clamped_green[green_bias]).astype(np.uint8)
+	if array[:, :, 3].min() == 255:
+		raise ValueError(f"{label} must have a native transparent background")
+	array[array[:, :, 3] == 0] = (0, 0, 0, 0)
 	return Image.fromarray(array)
 
 
@@ -881,9 +771,7 @@ def _write_health_fill(path: Path) -> None:
 
 def _process_hud(root: Path) -> None:
 	source = Image.open(root / HUD_SOURCE)
-	alpha = _remove_global_green_background(source)
-	(root / HUD_ALPHA).parent.mkdir(parents=True, exist_ok=True)
-	alpha.save(root / HUD_ALPHA)
+	alpha = _normalize_transparent_source(source, "Linglan HUD source")
 
 	health_frame = _crop_band(alpha, (0, alpha.height // 2), 8)
 	nameplate = _crop_largest_component(alpha, (alpha.height // 2, alpha.height), 8)
@@ -919,9 +807,7 @@ def _component_bboxes(image: Image.Image) -> list[tuple[int, int, int, int, int]
 
 def _process_vfx(root: Path) -> None:
 	source = Image.open(root / VFX_SOURCE)
-	alpha = _remove_global_green_background(source)
-	(root / VFX_ALPHA).parent.mkdir(parents=True, exist_ok=True)
-	alpha.save(root / VFX_ALPHA)
+	alpha = _normalize_transparent_source(source, "Linglan VFX source")
 
 	top_half = alpha.crop((0, 0, alpha.width, alpha.height // 2))
 	petal_candidates = [
@@ -990,7 +876,7 @@ def _detect_visible_x_bands(image: Image.Image, expected_count: int) -> list[tup
 	alpha = np.array(image.getchannel("A"), dtype=np.uint8) > 0
 	occupied_columns = np.where(alpha.any(axis=0))[0]
 	if occupied_columns.size == 0:
-		raise ValueError("Linglan die source has no visible pixels after background removal.")
+		raise ValueError("Linglan die source has no visible pixels in its native Alpha.")
 
 	bands: list[tuple[int, int]] = []
 	start = int(occupied_columns[0])
@@ -1026,11 +912,9 @@ def _paste_clipped(target: Image.Image, source: Image.Image, offset: tuple[int, 
 
 def _process_linglan_die(root: Path) -> tuple[dict[str, FrameRegion], list[str]]:
 	source = Image.open(root / DIE_SOURCE).convert("RGBA")
-	alpha = _despill_chroma_green(_remove_global_green_background(source))
+	alpha = _normalize_transparent_source(source, "Linglan die source")
 	alpha = _remove_tiny_alpha_components(alpha, 12)
-	alpha_path = root / DIE_ALPHA
-	alpha_path.parent.mkdir(parents=True, exist_ok=True)
-	alpha.save(alpha_path)
+	alpha_path = root / DIE_SOURCE
 
 	bands = _detect_visible_x_bands(alpha, SOURCE_COLUMNS)
 	frame_width, frame_height = LINGLAN_AUTHORED_FRAME_SIZE
@@ -1159,11 +1043,8 @@ def _remove_attack_edge_artifacts(image: Image.Image) -> Image.Image:
 
 def _process_linglan_attack(root: Path) -> None:
 	source = Image.open(root / ATTACK_SOURCE).convert("RGBA")
-	alpha = source.copy() if ATTACK_SOURCE_IS_ALPHA else _despill_chroma_green(_remove_linglan_sprite_background(source))
-	alpha_path = root / ATTACK_ALPHA
-	if alpha_path != root / ATTACK_SOURCE:
-		alpha_path.parent.mkdir(parents=True, exist_ok=True)
-		alpha.save(alpha_path)
+	alpha = _normalize_transparent_source(source, "Linglan attack source")
+	alpha_path = root / ATTACK_SOURCE
 
 	frames: list[tuple[str, Image.Image]] = []
 	frame_index = 0
@@ -1188,9 +1069,6 @@ def _process_linglan_attack(root: Path) -> None:
 				_detect_linglan_attack_body_anchor(cell, detected),
 				LINGLAN_STANDING_TARGET_ANCHOR,
 			)
-			if not ATTACK_SOURCE_IS_ALPHA:
-				frame = _remove_attack_edge_artifacts(frame)
-				frame = _remove_tiny_alpha_components(_remove_tall_edge_fragments(frame))
 			frames.append((f"attack_{frame_index}", frame))
 			frame_index += 1
 
@@ -1283,10 +1161,7 @@ def _fit_foreground_on_canvas(
 
 def _process_skill2_rocket(root: Path) -> None:
 	source = Image.open(root / SKILL2_ROCKET_SOURCE)
-	alpha = _despill_chroma_green(_remove_global_green_background(source))
-	alpha_path = root / SKILL2_ROCKET_ALPHA
-	alpha_path.parent.mkdir(parents=True, exist_ok=True)
-	alpha.save(alpha_path)
+	alpha = _normalize_transparent_source(source, "Linglan skill2 rocket source")
 
 	rocket = _fit_foreground_on_canvas(
 		alpha,
@@ -1295,7 +1170,6 @@ def _process_skill2_rocket(root: Path) -> None:
 		8,
 		Image.Resampling.LANCZOS,
 	)
-	rocket = _despill_chroma_green(rocket)
 	rocket_path = root / OUTPUT_SKILL2_ROCKET
 	rocket_path.parent.mkdir(parents=True, exist_ok=True)
 	rocket.save(rocket_path)
@@ -1312,10 +1186,7 @@ def _process_skill2_rocket(root: Path) -> None:
 
 def _process_skill2_explosion(root: Path) -> None:
 	source = Image.open(root / SKILL2_EXPLOSION_SOURCE)
-	alpha = _despill_chroma_green(_remove_global_green_background(source))
-	alpha_path = root / SKILL2_EXPLOSION_ALPHA
-	alpha_path.parent.mkdir(parents=True, exist_ok=True)
-	alpha.save(alpha_path)
+	alpha = _normalize_transparent_source(source, "Linglan skill2 explosion source")
 
 	frame_width, frame_height = SKILL2_EXPLOSION_FRAME_SIZE
 	sheet = Image.new(
@@ -1335,7 +1206,6 @@ def _process_skill2_explosion(root: Path) -> None:
 			if cell.getchannel("A").getbbox() is None:
 				raise ValueError(f"Skill2 explosion cell {column},{row} has no foreground.")
 			frame = cell.resize(SKILL2_EXPLOSION_FRAME_SIZE, Image.Resampling.LANCZOS)
-			frame = _despill_chroma_green(frame)
 			frame_index = row * SKILL2_EXPLOSION_COLUMNS + column
 			frame_name = f"explode_{frame_index}"
 			x = column * frame_width

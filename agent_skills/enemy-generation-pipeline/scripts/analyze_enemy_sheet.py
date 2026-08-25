@@ -13,16 +13,6 @@ from PIL import Image
 from scipy import ndimage
 
 
-BACKGROUND_CANDIDATES: dict[str, tuple[int, int, int]] = {
-	"magenta": (255, 0, 255),
-	"green": (0, 255, 0),
-	"cyan": (0, 255, 255),
-	"blue": (0, 0, 255),
-	"yellow": (255, 255, 0),
-	"red": (255, 0, 0),
-}
-
-
 def _parse_size(value: str) -> tuple[int, int]:
 	parts = value.lower().replace(",", "x").split("x")
 	if len(parts) != 2:
@@ -63,29 +53,11 @@ def _grid_cell_bounds(width: int, height: int, columns: int, rows: int, column: 
 	)
 
 
-def _visible_mask(image: Image.Image, edge_key_threshold: float) -> np.ndarray:
+def _visible_mask(image: Image.Image) -> np.ndarray:
 	array = np.array(image.convert("RGBA"), dtype=np.uint8)
-	alpha = array[:, :, 3] > 0
-	if not alpha.any():
-		return alpha
 	if array[:, :, 3].min() < 255:
-		return alpha
-
-	edge_pixels = np.concatenate(
-		[
-			array[0, :, :3],
-			array[-1, :, :3],
-			array[:, 0, :3],
-			array[:, -1, :3],
-		],
-		axis=0,
-	)
-	quantized = (edge_pixels // 8) * 8
-	key = Counter(map(tuple, quantized.tolist())).most_common(1)[0][0]
-	key_color = np.array(key, dtype=np.int16)
-	rgb = array[:, :, :3].astype(np.int16)
-	distance = np.linalg.norm(rgb - key_color, axis=2)
-	return alpha & (distance > edge_key_threshold)
+		return array[:, :, 3] > 0
+	raise ValueError("Sprite sheets must use ImageGen's native transparent background.")
 
 
 def _dominant_colors(image: Image.Image, mask: np.ndarray, limit: int) -> list[dict[str, object]]:
@@ -104,28 +76,6 @@ def _dominant_colors(image: Image.Image, mask: np.ndarray, limit: int) -> list[d
 		}
 		for color, count in counts
 	]
-
-
-def _score_backgrounds(image: Image.Image, mask: np.ndarray) -> list[dict[str, object]]:
-	array = np.array(image.convert("RGBA"), dtype=np.uint8)
-	pixels = array[:, :, :3][mask]
-	if len(pixels) == 0:
-		return []
-	step = max(1, len(pixels) // 8000)
-	sample = pixels[::step].astype(np.int16)
-	ranked: list[dict[str, object]] = []
-	for name, rgb in BACKGROUND_CANDIDATES.items():
-		candidate = np.array(rgb, dtype=np.int16)
-		distances = np.linalg.norm(sample - candidate, axis=1)
-		ranked.append(
-			{
-				"name": name,
-				"rgb": list(rgb),
-				"min_distance": round(float(distances.min()), 2),
-				"p05_distance": round(float(np.percentile(distances, 5)), 2),
-			}
-		)
-	return sorted(ranked, key=lambda item: (item["min_distance"], item["p05_distance"]), reverse=True)
 
 
 def _largest_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | None:
@@ -317,20 +267,19 @@ def _load_image(path: Path) -> Image.Image:
 
 
 def main() -> None:
-	parser = argparse.ArgumentParser(description="Analyze an enemy sprite sheet for color contrast and anchor slicing.")
+	parser = argparse.ArgumentParser(description="Analyze a transparent enemy sprite sheet for color and anchor slicing.")
 	parser.add_argument("image", type=Path)
 	parser.add_argument("--grid", type=_parse_size, required=True, help="Actual sheet grid as COLUMNSxROWS. Pass the real frame layout for this asset.")
 	parser.add_argument("--body-rgb", type=_parse_color, default=None, help="Stable body color as R,G,B or #RRGGBB.")
 	parser.add_argument("--body-threshold", type=float, default=70.0, help="RGB distance threshold for body mask.")
 	parser.add_argument("--virtual-size", type=_parse_size, default=None, help="Logical AtlasTexture size as WIDTHxHEIGHT.")
 	parser.add_argument("--body-anchor", type=_parse_size, default=None, help="Body anchor inside logical frame as XxY.")
-	parser.add_argument("--edge-key-threshold", type=float, default=35.0, help="Opaque edge background exclusion threshold.")
 	parser.add_argument("--safe-padding", type=int, default=8, help="Required empty pixels around visible bbox inside each grid cell.")
 	parser.add_argument("--dominant-colors", type=int, default=10)
 	args = parser.parse_args()
 
 	image = _load_image(args.image)
-	visible = _visible_mask(image, args.edge_key_threshold)
+	visible = _visible_mask(image)
 	body = _body_mask(image, visible, args.body_rgb, args.body_threshold)
 	sheet_bbox = _mask_bbox(visible)
 	frames = _frame_data(
@@ -348,7 +297,6 @@ def main() -> None:
 		"size": [image.width, image.height],
 		"visible_bbox": _rect_from_bbox(sheet_bbox),
 		"dominant_colors": _dominant_colors(image, visible, args.dominant_colors),
-		"background_recommendations": _score_backgrounds(image, visible),
 		"summary": _summarize_frames(frames, args.safe_padding),
 		"frames": frames,
 	}

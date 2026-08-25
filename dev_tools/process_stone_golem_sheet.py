@@ -29,17 +29,24 @@ PALETTE_COLOR_COUNT = 24
 GUTTER_SEARCH_FRACTION = 0.30
 
 
-def _is_chroma_spill(red: int, green: int, blue: int) -> bool:
-    return red >= 150 and blue >= 150 and green * 2 < red + blue
-
-
-def _normalize_source(image: Image.Image) -> Image.Image:
+def _normalize_source(image: Image.Image, source_path: Path) -> Image.Image:
+    if "A" not in image.getbands():
+        raise ValueError(
+            f"{source_path} has no Alpha channel. Provide an ImageGen sheet "
+            "exported with a native transparent background."
+        )
+    minimum_alpha, maximum_alpha = image.getchannel("A").getextrema()
+    if minimum_alpha >= 255 or maximum_alpha == 0:
+        raise ValueError(
+            f"{source_path} does not contain both transparent and visible pixels. "
+            "Provide an ImageGen sheet with native transparent Alpha."
+        )
     rgba = image.convert("RGBA")
     pixels = rgba.load()
     for y in range(rgba.height):
         for x in range(rgba.width):
             red, green, blue, alpha = pixels[x, y]
-            if alpha <= ALPHA_THRESHOLD or _is_chroma_spill(red, green, blue):
+            if alpha <= ALPHA_THRESHOLD:
                 pixels[x, y] = (0, 0, 0, 0)
             else:
                 pixels[x, y] = (red, green, blue, 255)
@@ -190,7 +197,7 @@ def _quantize_sheet(image: Image.Image) -> Image.Image:
 
 
 def build_sheet(source_path: Path, output_path: Path) -> Image.Image:
-    source = _normalize_source(Image.open(source_path))
+    source = _normalize_source(Image.open(source_path), source_path)
     source_alpha = source.getchannel("A")
     column_bounds = _find_axis_bounds(
         source_alpha,
@@ -226,7 +233,10 @@ def build_sheet(source_path: Path, output_path: Path) -> Image.Image:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Process the generated 4x4 stone-golem sheet into 64 px frames"
+        description=(
+            "Process a native-transparent generated 4x4 stone-golem sheet "
+            "into 64 px frames"
+        )
     )
     parser.add_argument("source_path", type=Path)
     parser.add_argument("output_path", type=Path)

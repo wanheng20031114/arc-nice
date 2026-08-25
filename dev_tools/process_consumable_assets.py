@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Deterministically build and validate consumable icons and native repairs.
 
-Each approved ImageGen master is retained beside its processing artifacts.
-Rejected rasters are removed after approval unless an accepted precise edit
-uses them as an input.  A flat magenta background is removed without changing retained foreground RGB,
-one pixel is sampled per *measured* logical source cell, and the result is
+Each approved transparent ImageGen master is retained beside its processing
+artifacts. Rejected rasters are removed after approval unless an accepted
+precise edit uses them as an input. One pixel is sampled per *measured* logical source cell, and the result is
 centered on a transparent 32x32 canvas.  The pipeline intentionally has no
 unsafe resize or palette-reduction escape hatch: an unreliable or oversized
 source must be regenerated instead of being hidden behind destructive
@@ -31,8 +30,8 @@ from PIL import Image
 from plant_pixel_asset_pipeline import (
     NormalizedSubject,
     TRANSPARENT,
-    _key_magenta_source,
     clean_transparency,
+    load_transparent_source,
     normalize_imagegen_subject,
     portable_path,
     source_audit,
@@ -45,9 +44,7 @@ SOURCE_ROOT = ROOT / "dev_assets/source_images/consumables"
 OUTPUT_ROOT = ROOT / "resources/texture/consumables"
 CANVAS_SIZE = (32, 32)
 MIN_SUBJECT_SIZE = (8, 8)
-CHROMA_KEY = "#FF00FF"
 TRANSPARENT_BORDER = 1
-KEY_REMAINDER_TOLERANCE = 12
 OUTER_BOUNDARY_COLOR = (5, 8, 12, 255)
 OUTER_BOUNDARY_TOLERANCE = 8
 MAX_SECOND_LAYER_DARK_RATIO = 0.20
@@ -61,8 +58,6 @@ class AssetSpec:
     tier: str
     shape: str
     max_subject_size: tuple[int, int]
-    approved_source_filename: str | None = None
-    rejected_sources: tuple[tuple[str, str], ...] = ()
     reviewed_logical_size: tuple[int, int] | None = None
     review_note: str = ""
     expected_normalized_size: tuple[int, int] | None = None
@@ -82,12 +77,7 @@ class AssetSpec:
     def source_path(self) -> Path:
         if self.native_manual_master_filename is not None:
             return self.source_directory / self.native_manual_master_filename
-        filename = (
-            self.approved_source_filename
-            if self.approved_source_filename is not None
-            else f"{self.slug}_imagegen_magenta.png"
-        )
-        return self.source_directory / filename
+        return self.alpha_path
 
     @property
     def alpha_path(self) -> Path:
@@ -121,7 +111,6 @@ ASSETS = (
         "low",
         "small_battery",
         (22, 30),
-        "skill_charge_battery_imagegen_magenta_v2.png",
     ),
     AssetSpec(
         "large_skill_charge_battery",
@@ -129,7 +118,6 @@ ASSETS = (
         "medium",
         "large_battery",
         (27, 30),
-        "large_skill_charge_battery_imagegen_magenta_v2.png",
     ),
     AssetSpec(
         "magic_resistance_potion",
@@ -150,7 +138,6 @@ ASSETS = (
         "medium",
         "large_bottle",
         (27, 30),
-        "large_magic_resistance_potion_imagegen_magenta_v2.png",
     ),
     AssetSpec(
         "regeneration_potion",
@@ -171,7 +158,6 @@ ASSETS = (
         "medium",
         "large_bottle",
         (27, 30),
-        "large_regeneration_potion_imagegen_magenta_v2.png",
     ),
     AssetSpec("guardian_mixture", "守护合剂", "medium", "single_bottle", (24, 30)),
     AssetSpec(
@@ -180,13 +166,6 @@ ASSETS = (
         "medium",
         "single_bottle",
         (20, 31),
-        "battle_spirit_potion_imagegen_magenta_v6.png",
-        (
-            (
-                "battle_spirit_potion_imagegen_magenta_v4.png",
-                "rejected alternate: measured 25x33 and technically row-editable, but its round bottle is too close to the healing-potion silhouette",
-            ),
-        ),
         reviewed_logical_size=(20, 31),
         review_note=(
             "PerfectPixel and gradient reviews both locked 20x31; the "
@@ -204,13 +183,6 @@ ASSETS = (
         "medium",
         "single_bottle",
         (24, 32),
-        "windwalk_potion_imagegen_magenta_v4.png",
-        (
-            (
-                "windwalk_potion_imagegen_magenta_v3.png",
-                "rejected: measured 18x36 logical subject is too tall",
-            ),
-        ),
         reviewed_logical_size=(24, 32),
         review_note=(
             "PerfectPixel independent review locked 24x32. The automatic "
@@ -258,13 +230,6 @@ REPAIR_ASSETS = (
         "low",
         "small_bottle",
         (22, 30),
-        "healing_potion_imagegen_magenta_v7.png",
-        (
-            (
-                "healing_potion_imagegen_magenta_v6.png",
-                "rejected: measured approximately 20x24 and is visibly smaller than the approved 22x30 reference volume",
-            ),
-        ),
         reviewed_logical_size=(22, 28),
         review_note=(
             "Manual review locked 22x28: the 568x710 source bbox yields "
@@ -297,15 +262,6 @@ def _visible_colors(image: Image.Image) -> set[tuple[int, int, int]]:
         for red, green, blue, alpha in image.convert("RGBA").getdata()
         if alpha > 0
     }
-
-
-def _has_near_key_foreground(image: Image.Image) -> bool:
-    for red, green, blue, alpha in image.convert("RGBA").getdata():
-        if alpha == 0:
-            continue
-        if max(abs(red - 255), abs(green), abs(blue - 255)) <= KEY_REMAINDER_TOLERANCE:
-            return True
-    return False
 
 
 def _delete_logical_rows(
@@ -636,7 +592,6 @@ def _audit_output(
             for red, green, blue, alpha in rgba.getdata()
         ),
         "logical_pixels_preserved": placed.tobytes() == subject.tobytes(),
-        "no_near_chroma_key_foreground": not _has_near_key_foreground(rgba),
     }
     failures = [name for name, passed in checks.items() if not passed]
     if failures:
@@ -649,7 +604,7 @@ def _save_lossless(image: Image.Image, path: Path) -> None:
     image.save(path, format="PNG", optimize=True, compress_level=9)
 
 
-def _normalize_source(spec: AssetSpec, keyed: Image.Image) -> NormalizedSubject:
+def _normalize_source(spec: AssetSpec, source: Image.Image) -> NormalizedSubject:
     if spec.reviewed_logical_size is None:
         return normalize_imagegen_subject(
             spec.source_path,
@@ -657,7 +612,7 @@ def _normalize_source(spec: AssetSpec, keyed: Image.Image) -> NormalizedSubject:
             fit_oversized=False,
         )
 
-    analysis = analyze_image(keyed)
+    analysis = analyze_image(source)
     bbox_dict = analysis["subject_bbox"]
     bbox = (
         int(bbox_dict["left"]),
@@ -682,7 +637,7 @@ def _normalize_source(spec: AssetSpec, keyed: Image.Image) -> NormalizedSubject:
             f"{cell_width:.3f}x{cell_height:.3f}"
         )
     subject = clean_transparency(
-        keyed.crop(bbox).resize(
+        source.crop(bbox).resize(
             spec.reviewed_logical_size,
             Image.Resampling.NEAREST,
         )
@@ -773,15 +728,6 @@ def _build_native_manual_asset(spec: AssetSpec) -> dict:
                 "sha256": _sha256(spec.source_path),
                 "kind": "user_authored_native_manual_master",
             },
-            "rejected": [
-                {
-                    "path": portable_path(spec.source_directory / filename),
-                    "sha256": _sha256(spec.source_directory / filename),
-                    "reason": reason,
-                }
-                for filename, reason in spec.rejected_sources
-                if (spec.source_directory / filename).is_file()
-            ],
         },
         "hashes": {
             "native_manual_master_sha256": _sha256(spec.source_path),
@@ -826,8 +772,8 @@ def _build_asset(spec: AssetSpec, *, write_outputs: bool = True) -> dict:
     if not spec.source_path.is_file():
         raise FileNotFoundError(spec.source_path)
 
-    keyed = _key_magenta_source(spec.source_path)
-    normalized = _normalize_source(spec, keyed)
+    source = load_transparent_source(spec.source_path)
+    normalized = _normalize_source(spec, source)
     logical = clean_transparency(normalized.image)
     redraw_record: dict | None = None
     if spec.logical_row_deletions or spec.logical_row_duplications_after:
@@ -864,15 +810,9 @@ def _build_asset(spec: AssetSpec, *, write_outputs: bool = True) -> dict:
         checks.update(redraw_record["assertions"])
 
     if write_outputs:
-        _save_lossless(keyed, spec.alpha_path)
         _save_lossless(logical, spec.logical_preview_path)
         _save_lossless(output, spec.output_path)
     else:
-        _assert_existing_png_matches(
-            keyed,
-            spec.alpha_path,
-            label=f"{spec.slug} alpha source",
-        )
         _assert_existing_png_matches(
             logical,
             spec.logical_preview_path,
@@ -892,11 +832,9 @@ def _build_asset(spec: AssetSpec, *, write_outputs: bool = True) -> dict:
         "tier": spec.tier,
         "shape": spec.shape,
         "repair_asset": spec.repair_asset,
-        "chroma_key": CHROMA_KEY,
         "pipeline": [
-            "built-in ImageGen, one distinct source per item",
-            "flat #FF00FF border-connected chroma-key extraction",
-            "retained foreground RGB preserved without palette quantization",
+            "built-in ImageGen native transparent source, one distinct source per item",
+            "visible RGBA preserved without palette quantization",
             "strict pixel-grid analysis with no unsafe compression override",
             "one final pixel center-sampled per measured logical cell",
             (
@@ -913,10 +851,6 @@ def _build_asset(spec: AssetSpec, *, write_outputs: bool = True) -> dict:
             "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py",
         },
         "processing_parameters": {
-            "background_remover": "connected_background_remover.remove_connected_background",
-            "rgb_tolerance": 72,
-            "hue_tolerance": 0.035,
-            "expansion_radius": 12,
             "hard_alpha": True,
             "transparent_rgb": [0, 0, 0],
             "logical_sampler": "Pillow nearest center sample",
@@ -930,7 +864,6 @@ def _build_asset(spec: AssetSpec, *, write_outputs: bool = True) -> dict:
         },
         "paths": {
             "source_master": portable_path(spec.source_path),
-            "alpha_source": portable_path(spec.alpha_path),
             "logical_preview": portable_path(spec.logical_preview_path),
             "production_texture": portable_path(spec.output_path),
             "atlas": portable_path(spec.atlas_path),
@@ -941,21 +874,11 @@ def _build_asset(spec: AssetSpec, *, write_outputs: bool = True) -> dict:
                 "path": portable_path(spec.source_path),
                 "sha256": _sha256(spec.source_path),
             },
-            "rejected": [
-                {
-                    "path": portable_path(spec.source_directory / filename),
-                    "sha256": _sha256(spec.source_directory / filename),
-                    "reason": reason,
-                }
-                for filename, reason in spec.rejected_sources
-                if (spec.source_directory / filename).is_file()
-            ],
             "manual_review_note": spec.review_note,
             "global_unsafe_override_enabled": False,
         },
         "hashes": {
             "source_master_sha256": _sha256(spec.source_path),
-            "alpha_source_sha256": _sha256(spec.alpha_path),
             "logical_preview_sha256": _sha256(spec.logical_preview_path),
             "production_texture_sha256": _sha256(spec.output_path),
             "processing_script_sha256": _sha256(Path(__file__)),
@@ -987,7 +910,7 @@ def plan_payload() -> dict:
         "new_expansion_asset_count": len(ASSETS),
         "repair_asset_count": len(REPAIR_ASSETS),
         "contract": {
-            "source_chroma_key": CHROMA_KEY,
+            "source_background": "native_transparent_alpha",
             "production_canvas": [32, 32],
             "production_mode": "RGBA",
             "alpha_values": [0, 255],

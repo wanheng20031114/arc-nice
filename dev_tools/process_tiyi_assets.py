@@ -2,7 +2,7 @@
 """Deterministically build Tiyi runtime pixel assets from imagegen sources.
 
 The five authored boards are retained under ``dev_assets/source_images/player_tiyi``.
-This script consumes their chroma-key Alpha derivatives, registers every frame
+This script consumes the approved transparent canonical files, registers every frame
 to the game's logical pixel grid, applies fixed palettes, and writes the runtime
 atlases plus a reproducibility manifest.
 """
@@ -124,7 +124,13 @@ def _load_alpha(name: str) -> Image.Image:
     path = SOURCE_DIR / f"{name}_alpha.png"
     if not path.is_file():
         raise FileNotFoundError(path)
-    return Image.open(path).convert("RGBA")
+    image = Image.open(path).convert("RGBA")
+    alpha_min, alpha_max = image.getchannel("A").getextrema()
+    if alpha_max == 0 or alpha_min == 255:
+        raise ValueError(
+            f"{path.name} must contain both visible pixels and native transparency"
+        )
+    return image
 
 
 def _binary_alpha(image: Image.Image, threshold: int = ALPHA_THRESHOLD) -> Image.Image:
@@ -271,7 +277,7 @@ def _sample_logical_frame(
                 continue
             visible = sample[:, :, 3] >= ALPHA_THRESHOLD
             # Alpha coverage, rather than one arbitrarily chosen source pixel,
-            # makes edge cells stable in the presence of chroma-key antialiasing.
+            # makes edge cells stable in the presence of source alpha antialiasing.
             if float(visible.mean()) < 0.5:
                 continue
             colors = sample[:, :, :3][visible].astype(np.int32)
@@ -830,8 +836,9 @@ def _validate_body_animation(
 def _write_readme() -> None:
     readme = """# 提伊像素素材源与处理说明
 
-本目录保留五张内置 imagegen 生成的 `*_source.png` 原图、官方色键脚本生成的
-`*_alpha.png`，以及项目 `pixel_crop_tool.py` 的可复核裁切结果。运行
+本目录保留五张内置 imagegen 生成的历史 `*_source.png` 原图、已批准的透明 canonical
+`*_alpha.png`，以及项目 `pixel_crop_tool.py` 的可复核裁切结果。今后重新生成素材时必须
+由 ImageGen 直接输出原生透明背景，不再从 RGB 背景推断 Alpha。运行
 `python dev_tools/process_tiyi_assets.py` 可确定性重建全部运行时图集、动画资源与
 `manifest.json`。
 
@@ -852,7 +859,7 @@ def _write_readme() -> None:
 1. 在完整源图上一次性标记连通域，取得 16 个完整人物，避免分行裁切漏掉脚底像素。
 2. 每帧独立使用测得的横纵周期与相位，把格界量化为连续的 8/9px 整数单元。
 3. 每个单元只统计中央 60%：Alpha 覆盖达到 50% 才视为可见，再对有限角色调色板
-   的索引取众数，从而排除色键边缘和任意单点采样造成的抖动。
+   的索引取众数，从而排除 Alpha 边缘和任意单点采样造成的抖动。
 4. 保留得到的 22–27×23–24 逻辑轮廓，以作者化人物轴直接放入 32×32 单元。
    down/up 脚底固定在 y=26，right/left 固定在 y=25。
 5. 自动验证每帧包围盒、Alpha 质心、同方向轴漂移和“源可见面积÷格面积”的误差；
@@ -953,11 +960,6 @@ def main() -> None:
         "processor": "dev_tools/process_tiyi_assets.py",
         "source_records": source_records,
         "tool_commands": {
-            "remove_chroma_key": (
-                "python C:/Users/wh/.codex/skills/.system/imagegen/scripts/remove_chroma_key.py "
-                "--input <name>_source.png --out <name>_alpha.png --auto-key border "
-                "--soft-matte --transparent-threshold 12 --opaque-threshold 220 --despill --force"
-            ),
             "pixel_grid_analyzer": "python dev_tools/pixel_grid_analyzer.py <name>_alpha.png --json",
             "pixel_crop_tool": (
                 "python dev_tools/pixel_crop_tool.py <name>_alpha.png <name>_crop_tool.png "

@@ -45,6 +45,6 @@
 - 冒烟测试：`dev_tools/rogue_underground_shop_preview_smoke_test.gd`
 
 处理脚本使用项目内 MIT 许可的 PerfectPixel 无 OpenCV 实现统一 UI 母稿的逻辑像素
-网格，再执行色键移除、硬 Alpha 与限制色板；商品卡从项目现有背包槽素材派生。
+网格，再验证并保留 ImageGen 原生 Alpha、执行硬 Alpha 规范化与限制色板；商品卡从项目现有背包槽素材派生。
 精确输入哈希、输出哈希和可见包围盒会临时写入
 `dev_tools/output/underground_shop/asset_build_manifest.json`。
