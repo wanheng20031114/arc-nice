@@ -57,6 +57,20 @@ texture = SubResource("GradientTexture2D_backdrop")
 expand_mode = 1
 stretch_mode = 6
 
+[node name="EncounterBackdrop" type="TextureRect" parent="BackdropLayer/Root"]
+unique_name_in_owner = true
+visible = false
+texture_filter = 1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+
 [node name="ChamberFrame" type="Panel" parent="BackdropLayer/Root"]
 layout_mode = 1
 anchors_preset = 15

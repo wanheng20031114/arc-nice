@@ -204,7 +204,9 @@ extends RefCounted
 ## v95：新增会话级宿主权威暂停请求与绝对状态 RPC，以游戏会话世代、
 ## 单调修订和显式目标状态完成 CAS；暂停快照在重连 host-ready 前通过可靠
 ## CH0 收敛。v94 及更旧客户端缺少该 RPC 表面与逻辑时钟契约，不能与 v95 混联。
-const PROTOCOL_VERSION := 95
+## v96：神奇遭遇正式池与每局节点由 4 扩展为 5，新增 deep_sea_ruins
+## 及 take_crystals/take_rings 稳定内容 ID。旧客户端无法解析该遭遇并会生成不同路线内容。
+const PROTOCOL_VERSION := 96
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF

@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "75f8433867ce8586a48cd4688dd167d4af5781ca55ea585e80e63719611a3b18",
+	"content_sha256": "e27f2aefb0258bf565f51d0ff83f977686a208d78680e6097d678f58ebaaf7f2",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -2949,6 +2949,10 @@
 			"sha256": "77ede4e99a2cc6a98962c61ffcd74dec57954355d1f7013a09086a870ea20b51"
 		},
 		{
+			"path": "res://resources/config/collectibles/collectible_registry.gd",
+			"sha256": "8f33539a0384cbe9cbe0055ad36320b3fb97c3128cb1fd9810d718485b313d98"
+		},
+		{
 			"path": "res://resources/config/collectibles/collectible_river_shell.tres",
 			"sha256": "b7781a672096fb7367d02d32cc9b68a4af2776becb28ce6ba7121240e1221cde"
 		},
@@ -4106,7 +4110,7 @@
 		},
 		{
 			"path": "res://resources/config/rogue_route/magical_encounter.tres",
-			"sha256": "8cdccb41dc64dbb5fc0a4ea28b2fec253bfaf4fd636e835a10357f13e7570f17"
+			"sha256": "9ef2717bc21e0995269a1269192d1e1857615cc0ab3e744b5de3f62b0cd80170"
 		},
 		{
 			"path": "res://resources/config/rogue_route/normal_combat.tres",
@@ -7317,6 +7321,14 @@
 			"sha256": "e1ed33eeb34600c8bb36c29461d04eb658e909e14cf6377323122f13d0744495"
 		},
 		{
+			"path": "res://resources/texture/rogue_encounter/deep_sea_ruins.png",
+			"sha256": "9075f5330f22965daf897e779077ae8cf9f903fc46abb350a496f34a427bf322"
+		},
+		{
+			"path": "res://resources/texture/rogue_encounter/deep_sea_ruins.png.import",
+			"sha256": "335088b47c8ba60511277c2ff6978944b91e4f4ae45be2f5bf1c6d26bfb6966c"
+		},
+		{
 			"path": "res://resources/texture/rogue_encounter/encounter_panel_frame.png",
 			"sha256": "e870060ec0156b11c4b5a0ab0604f9385b5a56f1b3fac0faa5a105c22d683258"
 		},
@@ -7758,7 +7770,7 @@
 		},
 		{
 			"path": "res://scene/boss/linglan/linglan_boss.gd",
-			"sha256": "fccbb2fc47c9b32c09a95204c329634c8865b154e9cc2fe197d43ae553e5bda6"
+			"sha256": "1b7cc5ab7aae79bf5c1c77ec8feefbed142e052b256d254e67de646aa80a6aa8"
 		},
 		{
 			"path": "res://scene/boss/linglan/linglan_boss.tscn",
@@ -7826,7 +7838,7 @@
 		},
 		{
 			"path": "res://scene/combat/contact/enemy_contact_service.gd",
-			"sha256": "8da6dbbf352ead5f95fdddf592b711b36675d9be31758a178534751610a045ef"
+			"sha256": "70b1e0bccca1689c3ccb1515e183cdf26fd3781e692a0840339a9cf67cde3221"
 		},
 		{
 			"path": "res://scene/combat/contact/enemy_contact_service.tscn",
@@ -7846,7 +7858,7 @@
 		},
 		{
 			"path": "res://scene/combat/navigation/grid_pathfinder.gd",
-			"sha256": "dfaa15414edbfcf9631bca0aaedc433968867f97e390c7c6607a92f9a89512c8"
+			"sha256": "d5d27ba54a954f97f7ebe7167c975c5d4d8d0e7a342b2673fefa66d380166feb"
 		},
 		{
 			"path": "res://scene/combat/pickups/pickup.gd",
@@ -7858,7 +7870,7 @@
 		},
 		{
 			"path": "res://scene/combat/pooling/session_object_pool.gd",
-			"sha256": "6df439509336d1a2f54a78b92dc161197532a86df1817d92a99f889c6cc2cea6"
+			"sha256": "585dd3a15120b3a75801dced958126a8c402900674aff92ae3663f19300677dc"
 		},
 		{
 			"path": "res://scene/combat/presentation/capoo_mage_fireball_atlas.gdshader",
@@ -7998,7 +8010,7 @@
 		},
 		{
 			"path": "res://scene/combat/simulation/enemy_simulation_coordinator.gd",
-			"sha256": "c76d159f08bfd494b9ebb0f027766ee8e14511340d349c4983acc0acf1174772"
+			"sha256": "c8399a6d64b1a42342dce5d1f18e1110f04737d5f511048273a727a276736300"
 		},
 		{
 			"path": "res://scene/combat/simulation/enemy_simulation_coordinator.tscn",
@@ -8013,8 +8025,28 @@
 			"sha256": "122812f428af42fcbb3d902a0df34e48f9c346677011874fa4152cbb64307833"
 		},
 		{
+			"path": "res://scene/combat/simulation/fire_sorcerer_volley_elite_halo_material.tres",
+			"sha256": "022c30de518b227ff7038a7582039e0a1ba51370805fe72c12e62c583dd3174d"
+		},
+		{
 			"path": "res://scene/combat/simulation/fire_sorcerer_volley_elite_presenter_material.tres",
 			"sha256": "840bbf94f7aa759a0a6215ba69150318b07592af2195b5a2e0fed39ae3c62cb6"
+		},
+		{
+			"path": "res://scene/combat/simulation/fire_sorcerer_volley_emission.gdshader",
+			"sha256": "7a8fe78cddcd31cafa976c5805cec6b79bc6848def8a2c3264fe819552a959af"
+		},
+		{
+			"path": "res://scene/combat/simulation/fire_sorcerer_volley_emission_material.tres",
+			"sha256": "95bbd83954b894dc18afec7270f1d69bb619a326fb4c52d09d06dd2d07076cae"
+		},
+		{
+			"path": "res://scene/combat/simulation/fire_sorcerer_volley_halo.gdshader",
+			"sha256": "29f46bea3cb4f3b589406a8680364d3e6f26986348169a0cad6eb9ba1dd8d4bd"
+		},
+		{
+			"path": "res://scene/combat/simulation/fire_sorcerer_volley_normal_halo_material.tres",
+			"sha256": "b7cc2b96a116fa9f7be49c1594de0b5926a08f841e4e81a0a2d7e653efe5eff4"
 		},
 		{
 			"path": "res://scene/combat/simulation/fire_sorcerer_volley_normal_presenter_material.tres",
@@ -8022,15 +8054,15 @@
 		},
 		{
 			"path": "res://scene/combat/simulation/fire_sorcerer_volley_presenter.gd",
-			"sha256": "acd8c1a4352ee40316db077be8d8c8ba8e911333e2468b0ac3194d8f90854836"
+			"sha256": "6c7d500ed6810d490677390494bd332ac2844661b5e565296f3f252df3f59a4a"
 		},
 		{
 			"path": "res://scene/combat/simulation/fire_sorcerer_volley_presenter.gdshader",
-			"sha256": "b95346a24609754818c300a046e54f2722abc7cdc11c64b34f64167ebf998b42"
+			"sha256": "9a25d250af6897142781cbf2064fa7b8c303ceffb493e8556da20531e89ffde6"
 		},
 		{
 			"path": "res://scene/combat/simulation/fire_sorcerer_volley_presenter.tscn",
-			"sha256": "501c83c00c1b6b3152096e3d885681d05c09a4d1a373604fd8eea92422dea352"
+			"sha256": "38c69484f7b14f55574605b4f5643bfca2ac0ef217a1ed5feb64805f8647584f"
 		},
 		{
 			"path": "res://scene/combat/simulation/fire_sorcerer_volley_simulation_service.gd",
@@ -8058,11 +8090,11 @@
 		},
 		{
 			"path": "res://scene/combat/simulation/rapid_projectile_gunner_elite_presenter_material.tres",
-			"sha256": "4b2824317e156b8005be35c07465ec752fee2c76fbb823c4a741e05d48d0f237"
+			"sha256": "c65d29c549509f29e7a7cb67c3e8e98768156a775bde9163b049aa46d7b97748"
 		},
 		{
 			"path": "res://scene/combat/simulation/rapid_projectile_gunner_presenter_material.tres",
-			"sha256": "4b2824317e156b8005be35c07465ec752fee2c76fbb823c4a741e05d48d0f237"
+			"sha256": "c65d29c549509f29e7a7cb67c3e8e98768156a775bde9163b049aa46d7b97748"
 		},
 		{
 			"path": "res://scene/combat/simulation/rapid_projectile_hit_presenter.gdshader",
@@ -8074,11 +8106,11 @@
 		},
 		{
 			"path": "res://scene/combat/simulation/rapid_projectile_presenter.gd",
-			"sha256": "c34443eccd8e2a9927b3d8a9bf8f5b878cdec8324ea0830e8189e9a263af7b6b"
+			"sha256": "fb84b834f24a6bcfa1e3001fe2de892d9b5e89d23b56dba585ddd6808db034c4"
 		},
 		{
 			"path": "res://scene/combat/simulation/rapid_projectile_presenter.gdshader",
-			"sha256": "09c029b03d304c0e3b9da63745dcd3156788be99b4e30ea154f8cb4fe244506a"
+			"sha256": "2656dee42598f3833b541b6832a4215cfde75db83407af2e26281e82247ee83d"
 		},
 		{
 			"path": "res://scene/combat/simulation/rapid_projectile_presenter.tscn",
@@ -8086,11 +8118,11 @@
 		},
 		{
 			"path": "res://scene/combat/simulation/rapid_projectile_presenter_material.tres",
-			"sha256": "405fbd4e53b174b566196eda12c30b658bdb872cdb752bce0f69a175bc859f74"
+			"sha256": "36019b438d93023475f7793648a6da71d339bf37689d4b9bd42fe6e9ee6b15e6"
 		},
 		{
 			"path": "res://scene/combat/targeting/enemy_damageable_spatial_index.gd",
-			"sha256": "3201a26421c1e0c859471252300131b72551d4384bf583629d1ca44764397342"
+			"sha256": "75c1e7ee629014920f0eb54f2350daab6cb1bc4ded0575e7c8e551ba2acf9c92"
 		},
 		{
 			"path": "res://scene/combat/targeting/enemy_damageable_spatial_index.tscn",
@@ -8098,7 +8130,7 @@
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/cardboard_monster.gd",
-			"sha256": "9daafe935e569bdbeb8194a2e9d99fd1c72de756b7d7b2f3296ec951a57dd723"
+			"sha256": "d9f399ddadc4aa64de4c0646b49d0723ab567ba60061a062064c036376511546"
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/cardboard_monster.tscn",
@@ -8114,7 +8146,7 @@
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/stone_golem.gd",
-			"sha256": "ca2672b038c6e69d41b8de4c3cd53aa40a198a82ad14ff9a72588850ef49710a"
+			"sha256": "4acca9d74853c6e90152ab080e4b3477fcea938e2205ab9e8e9971bd335436e8"
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/stone_golem.tscn",
@@ -8130,7 +8162,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_ak47.gd",
-			"sha256": "947ce70770e0fcd9c682da3360e0224721202437e0327e7ba9a4e069bbbcf622"
+			"sha256": "625b3c2d5ec3199b7e18caf87c4cf24eff8564b7b5eb72f5adb1287503978f46"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_ak47.tscn",
@@ -8138,7 +8170,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_knight.gd",
-			"sha256": "c47521b5c95bc974e94287766f3491f0f2f8fd243c28d7092cf7af5fe4c1cc9e"
+			"sha256": "686d8cd0bd132775d83fd7f0974fba4ac56da52ca30ee7c8fe840bc5ed835557"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_knight.tscn",
@@ -8158,7 +8190,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_mage.gd",
-			"sha256": "d9ce96e76dd3e58004dde609d8148ba4810dd3b76e5fc994a3def9853a1cd5db"
+			"sha256": "15d37cccc6471dc62729899bbe8f20ee5cd71f876d0e2386a6171706d7b3f2df"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_mage.tscn",
@@ -8166,7 +8198,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_rpg.gd",
-			"sha256": "1e1997b567f92c99e281b096427f8448d937b8f978e6c28b6ae3783b709e3f34"
+			"sha256": "90b3e35581dc976f92eba59b09634e5cf30586a5275a8e73c8bcca29338aa231"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_rpg.tscn",
@@ -8174,7 +8206,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_smg.gd",
-			"sha256": "acab8692e061dfb3a711ecce4bbebf6ac0c2f00231312af8f8fb4ab154b72891"
+			"sha256": "8796316068ba5a50fb460f7b6584da9fb1ba7fba687c0749500ac846c747fda3"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_smg.tscn",
@@ -8182,7 +8214,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_sniper.gd",
-			"sha256": "f21b05ce025466e852931ad7eb2e419675399f6975753f7a291e039075ac9dea"
+			"sha256": "28b85d8730ec76985127e294d6117cc2d27643f42943e532742fef74617c9d10"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_sniper.tscn",
@@ -8190,7 +8222,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_swordsman.gd",
-			"sha256": "51a3d8e64cb342490aceb48627a060c84b789088e35684e459f0be4c78cf9e74"
+			"sha256": "f6e379a2e0b01acf9821fd30856d8bbebe8a1de5a3a0454172be91bf929d25a3"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_swordsman.tscn",
@@ -8202,7 +8234,7 @@
 		},
 		{
 			"path": "res://scene/enemy/enemy.gd",
-			"sha256": "308716646b4cad5367c5c1cf84e3390b3b9cf36ec1c78057c3eb964822d60a36"
+			"sha256": "23c7ff4e7be6a32195f3179b255b0679b9fc37de3c9b26b43ec3e862ea4ad53f"
 		},
 		{
 			"path": "res://scene/enemy/enemy.tscn",
@@ -8210,7 +8242,7 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot.gd",
-			"sha256": "ab743f7123648adeb1f68bfd15a69e95e21d381ecf52a59cafe718810c73ac51"
+			"sha256": "894fc2a696f4a3aaea6b02a241efea20182b8c815bc9be35814fab3eca620d73"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot.tscn",
@@ -8226,7 +8258,7 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_drone_operator.gd",
-			"sha256": "1dd2fc38148dd946369695b879400a80ca98981bc0d761fa78852367eb783bec"
+			"sha256": "60a59917dd87b04eb26ab06c57b4d3aa61381dfb595cf5481f219b1e5716e625"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_drone_operator.tscn",
@@ -8242,7 +8274,7 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_gunner.gd",
-			"sha256": "9e138c1317eb937c6bd39cbb632740551cbcd4eed6090a2dce7ea211c0338715"
+			"sha256": "b33c305497c8461e6625ec9c135a83757ad884446e66e3447ed2b598865af85f"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_gunner.tscn",
@@ -8254,7 +8286,7 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.gd",
-			"sha256": "64c5b5ed5d8aeaf53ef6604ea6161223564f82a8fa7bc6d4a2a7649f6be448d7"
+			"sha256": "8ab2b938747f370c327849de2d7a351b183ae2d0f63880d7d3fa6a1cb0728fbb"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.tscn",
@@ -8262,7 +8294,7 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_ninja.gd",
-			"sha256": "ded06d64d7e10ac74dd4015f1daccb968e0ab80aec230e7208dd455e0225db21"
+			"sha256": "e7d0ec5cfb26c21fff172443e3fa57dcd1a6763bb92af92bc287ffdb953e7760"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_ninja.tscn",
@@ -8274,7 +8306,7 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_shield_bearer.gd",
-			"sha256": "d6b69d0e21d416bc0b9da8adcb9ff508efcde5a78099f37fe3fc7e37fc37d81b"
+			"sha256": "dcc9c5736a023a6ab369292b0a68adc189bd2c4a632c78325486a3e0b5feba5e"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_shield_bearer.tscn",
@@ -8302,7 +8334,7 @@
 		},
 		{
 			"path": "res://scene/enemy/slime/slime.gd",
-			"sha256": "5d140737c4d73e9ca62bd977b0442e7df1c88ea3fc0609b1a9211f069b221034"
+			"sha256": "bc3dfdf47699d429f76cdba36f4baed417103eca0849e971797da143333cdf2a"
 		},
 		{
 			"path": "res://scene/enemy/slime/slime.tscn",
@@ -8334,7 +8366,7 @@
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/fire_sorcerer.gd",
-			"sha256": "c9409d525d57887c4ca7fa96ae5a2a37a1c2717a32f938871b91e616f4fb974b"
+			"sha256": "25479d132cfeb61e3b8858b2aea9c5e8099a08a5fee6342cd9d6da2cc8ee9832"
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/fire_sorcerer.tscn",
@@ -8346,7 +8378,7 @@
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/frost_sorcerer.gd",
-			"sha256": "f05a779be71879a64b46aeedbef83dfe65fa5d0da1be195d55981d05e2ffd26a"
+			"sha256": "c444002ca23427b91a8b2da6ae48517bfb4a36ef3acf0c405672e01f51d24ccb"
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/frost_sorcerer.tscn",
@@ -8366,7 +8398,7 @@
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/lightning_sorcerer.gd",
-			"sha256": "5c0ce910cb84a4ab03db67b759cfca97df33da835c2dc6c57d06449659978982"
+			"sha256": "c7f550172197d2e84b85c594fb4edff2aed5c94d34eeb68038248b30afa04834"
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/lightning_sorcerer.tscn",
@@ -8462,7 +8494,7 @@
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/guardian_aura_system.gd",
-			"sha256": "d39016b3668e8bf85f59920218f93bc26530800a3d7438d678791610a08a0d9d"
+			"sha256": "f54fe9dad71742587be054c721b10f5e3a2e809b885b6fa2dadb3a136ff1a9ce"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/guardian_aura_system.tscn",
@@ -8478,7 +8510,7 @@
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect.gd",
-			"sha256": "8166f3442b8fdd54ec68dbde600cbd0b0b962676528d5382474c26052a79fc17"
+			"sha256": "43c62d26c46c46cddd4c9d68a6c0b176d9e23f4c0659e38b2c1739c366a54035"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect.tscn",
@@ -8486,7 +8518,7 @@
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_aura.gd",
-			"sha256": "4ebe4cd34b74a4c92f4a625f4ed1a5271738c80103fb9c26b3327b91c78de5d9"
+			"sha256": "7df6be7d7cf35f2683168d289142025e2a37c7af4ef1ec94b7cb1c42d6bab5fd"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_basic.tscn",
@@ -8498,7 +8530,7 @@
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_exploder.gd",
-			"sha256": "4101c312c6e457ada8b2924aabc66c54aa87de6bf6bb2b51099654a2476b0336"
+			"sha256": "a996896ff370acbb602c4c78fbca7be23c3c428622f94330aa41c2d243fee11b"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_fast.tscn",
@@ -8514,7 +8546,7 @@
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.gd",
-			"sha256": "b8081cb53a2fd9cb8433e6fbc70b1a75d9303b9702f074c318be0c9ce5ef1e67"
+			"sha256": "ceb19d52351e53a98c08f281c9f0a17872f4fc038b5bea51d4b40de960da6a39"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.tscn",
@@ -8554,27 +8586,27 @@
 		},
 		{
 			"path": "res://scene/game_modes/rogue/combat/rogue_combat_multiplayer_coordinator.gd",
-			"sha256": "c36968900b9e9f5db39be2487d4e429d6354ff8d71a8f272e5fe4d4d489c613d"
+			"sha256": "096c3c6f513a3ed63101e32212e69b07ecd09b21c21a447473af4537a154c1ca"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/combat/rogue_combat_result_overlay.gd",
-			"sha256": "f6fac1a7007552e6c50f5092b57b93e3adc853296a4708b8a45a3ba2822a09fa"
+			"sha256": "5ad98a7af3d0c66ee3c3d72eb33f02cfec07f034217b146710ddf2014631363a"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/combat/rogue_combat_result_overlay.tscn",
-			"sha256": "099ccef1413bfd4ad2d954d6143c76109c3d06c19f7fce7d515074b2e42ee8ec"
+			"sha256": "75c8241ce5ca5e4311bff1ad3fb16d3d42d99127fa4d3627ef73b7dca343ee2c"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/combat/rogue_combat_singleplayer_coordinator.gd",
-			"sha256": "5a2ab042ccbd9724559cf7e9639d3a6f10ef15f40295f1a64dbb24657dd30994"
+			"sha256": "8794782355c8d943a78241bc36969107d1a9bb297dc5317333c85939a87fa702"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/combat/rogue_combat_victory_presentation.gd",
-			"sha256": "1230d73572df9f0bea293e9a47e151cdb1cd4be4ea0350ff5c93228cd240ef8c"
+			"sha256": "91706cbcc17f4eabf2e80b02f6660498b3a22f57e864dc5fca14cf203203af6c"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/combat/rogue_combat_victory_presentation.tscn",
-			"sha256": "356fc8072c369ee4b7fcb115764590ac7e9a37a1d8b80831b84a44ab7aa777b7"
+			"sha256": "12da429b4232f7fee5c2212aa0ebe73a66b8bd3123b01fc616074e6bfda311d0"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_choice_card.gd",
@@ -8586,23 +8618,27 @@
 		},
 		{
 			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_economy_coordinator.gd",
-			"sha256": "1d0cfba48c097bf5b07dd9081c00991da6289139695284e43ce8329c14b81237"
+			"sha256": "4b047407ce4c0de14bd2e8ef8c2c9a6a18946eb14e755d6ed5eac1fe60764361"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_overlay.gd",
-			"sha256": "e9b8c817d1d2d4d08a2e09d667558151a7364ab86c8cf14a3045c7b4beb598ea"
+			"sha256": "2343efe0c722a356c988f07f87ff6c50b0d6e1b981677c289db9d426cf42e983"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_overlay.tscn",
-			"sha256": "2eea397495b5720387a0c2a0930d2d005dfe7ea3ee511ce7f99b5f0690646e06"
+			"sha256": "ec01a6b7d8f5629b6b2a180247bcda8bd0ea2de4522a1c828b0b8af9b5a35f9c"
+		},
+		{
+			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_registry.gd",
+			"sha256": "b68d633eef1ae0211542d9a4cf07362bdfdc32a513a9a0db30a6bc05d4a270bf"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_scene.gd",
-			"sha256": "116b7145a8394d8baae290bc7f51cfb382a38771199b0657f283f6238db4ee1d"
+			"sha256": "1309cac3a9930788121e3914c3e2b29dea9b9cebaebe834780d5c098605cd573"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_scene.tscn",
-			"sha256": "33082e0f805addfc2f08f23e32513b65880b1dd64330f2f92998a43cc5c70537"
+			"sha256": "26f44a2a89e439ddab9b329c074570a0b2e80056e3bb2edb143a0b77feb8fede"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_session.gd",
@@ -8654,11 +8690,11 @@
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/rogue_route_game.gd",
-			"sha256": "94f047d42d3586a3730c7f14f0f93ad5c194e3475a5f257ec49c2aaa9d864cb0"
+			"sha256": "5a3b142350bc0de54cedc7c7c0d06d093399ef2565aa2a0921af3578f56b98d1"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/rogue_route_game.tscn",
-			"sha256": "118ed318dcf0eafd6886a2282b84a69824d2bdd1131ea01efd0f668b42ced2d6"
+			"sha256": "3f55d6a9d57efe24f2d52fb18bc7419c46e65c7252f14b2aaa03abd1d611f930"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/rogue_route_inventory_strip.gd",
@@ -8670,19 +8706,19 @@
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/rogue_route_move_confirmation.gd",
-			"sha256": "d2fd1795d128fe1757c2bbed92888c7178a48971fb8b2eeb7f6e59abd4d81e6c"
+			"sha256": "40dcff5429f4443f813b8c4815b01b3e52aba8d5004f4409fd9c916328ee8c3a"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/rogue_route_move_confirmation.tscn",
-			"sha256": "6b7f5a42ea79d9c15f7bade0b99a7b959e2e1e546eb1297ac0ea526285daafad"
+			"sha256": "403581d408fd7fa75038de06012385fc7cad41fbdd3335e1e6efe22498dc4811"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/rogue_route_node_briefing.gd",
-			"sha256": "b2e897e873178553c981a15252621937f2be7458eee84941d85bb626cc114489"
+			"sha256": "6752eac9e59dbc803049d2fda9f2d43d5d5f4179860b0d46503691f690aa563f"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/rogue_route_node_briefing.tscn",
-			"sha256": "ceff99b5dabaa6bcf277e4db287a0dad1e944b8ff88ead9817fbcfe58aaaf558"
+			"sha256": "02a0a39513dc78828a2037f26273f0ca1aac86e56a2dfea4e8666cec62b81c61"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/rogue_route_world.gd",
@@ -8694,15 +8730,15 @@
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/rogue_run_defeat_overlay.tscn",
-			"sha256": "fa4a9822a3a3028a6a7ebdc28cc50e60937d49c39dc665962a5b80e1fc80af48"
+			"sha256": "7eff7f7b24d58c93f0427c2e420c16b4b63dfe5ddf04b132c64fe7a1e2b008d5"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/rogue_scene_transition.gd",
-			"sha256": "5a73e5d1f6246d4c9328670cfb9b5c993d2ddabbcd55dcdf5f639f1c51416c4e"
+			"sha256": "905d765fb193e079ce54cfed1b3f1c8ded91e97f5a174f3eb02c15f465bda76e"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/rogue_scene_transition.tscn",
-			"sha256": "cd4f5c7e23206c7f6d82fc1e77b5874dbfae621ff6855e3d859e5c83e20ef5e5"
+			"sha256": "70162ec44c5d4f09ed729505d2324e8a95109f1834a6f246d7934c72f0a5c2e4"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/shaders/rogue_route_connection_flow.gdshader",
@@ -8710,11 +8746,11 @@
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/ui/rogue_route_top_bar.gd",
-			"sha256": "67a3666d43a8533d8bd4ca4597c222ed41f8f77b88210b659ca3c98c0116f2b7"
+			"sha256": "98f4114a3b9039915a32719f9dc4f92155ace0d4d0ff3c61924ec0af8fee1230"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/route/ui/rogue_route_top_bar.tscn",
-			"sha256": "ec78bd029e605f607a7cd4cf03fb2237911472dfcc87ad6e42839da2c0ebbfaf"
+			"sha256": "5dfe1c7a57f8a7d88d74bcf1af2cc9c0cc10e228bb571b2a894a813ff8f4654b"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/shop/domain/rogue_underground_shop_economy_coordinator.gd",
@@ -8742,15 +8778,15 @@
 		},
 		{
 			"path": "res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_transition.tscn",
-			"sha256": "c590997727a7673b23029c76dbd00497df6fe385a0a8e21e5f0747eb183d4d6b"
+			"sha256": "52032ae00026513848726a2ec85064229800b170007b89eb716452e664fa210d"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_view.gd",
-			"sha256": "9719c44637f140d5b80c7042e63817dfc478ffd90cb879470bb79f720e5d1e19"
+			"sha256": "896e8cc81b6bfe80c3d26ffc55f997a5a5062aa854171e860e7dd3f648bee80b"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_view.tscn",
-			"sha256": "b0a2087ef0964c4e65a7f562ae552b785f0e6456ad5738cdd4167f685e5d0d72"
+			"sha256": "1382042b2c596dbea4b4405ee43001f6de4a20a5462731894a8df145f7eaabb5"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/supply/domain/rogue_supply_economy_coordinator.gd",
@@ -8802,7 +8838,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/boss/tower_defense_boss_coordinator.gd",
-			"sha256": "9dc02be3a6e1c7967c172fd936f1dc7b69437b68d27bc7e8adb797d0c2ecb133"
+			"sha256": "c20c33529f7728e71bd2f95e222cd58442631c040cd140861b9fa9878bdd0196"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/boss/tower_defense_boss_coordinator.tscn",
@@ -8818,7 +8854,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_coordinator.gd",
-			"sha256": "7d9cdc13e26b17ea82c5c3b0dad94c0ff072df80a66def000b24897d428cc531"
+			"sha256": "a03942beb6ff700712d4be1cd43d5e3e618f4d24fe563f6670f1e80978cc1a4b"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_coordinator.tscn",
@@ -8850,7 +8886,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/economy/research/research_center_panel.gd",
-			"sha256": "5015b6c5e83d8e272e0e4f7bc48e4cbea62a01308909fc549a8b3487fb3a2215"
+			"sha256": "c34fab0b615a9b502e21dcbe52543692b5afa647e56b93655de629fcfc579f89"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/economy/research/research_center_panel.tscn",
@@ -8902,11 +8938,11 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/fate/tower_defense_fate_manager.gd",
-			"sha256": "e886377f4a135d487e92ae88f4c8730f0690b8e1ed27fe710ed6cd965c6ba085"
+			"sha256": "c5515c4c0023141655a0cdbee4b9c1bf819bc1ee3004ea3d8e28deb2dd3f1e12"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/fate/xiaocong_dialogue_bubble.tscn",
-			"sha256": "c71714a68f78ead494db3fa2601951aec0f27d38abbccd30416246bc623de299"
+			"sha256": "4555267293b3263977bba2cab04e0a228ad59e8a878f1b46078a7d15e54951dc"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/fate/xiaocong_fate_choice_card.gd",
@@ -8918,7 +8954,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/fate/xiaocong_fate_choice_overlay.gd",
-			"sha256": "1ebcb6d7d4ef46227e655e4dc647abb90f5f73e8ba0bd9bb45ade6eedc33642c"
+			"sha256": "ed53eea3a0824ca683bb8eb800c79aaea453eaaea3fab035bb6f054944600dde"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/fate/xiaocong_fate_choice_overlay.tscn",
@@ -8926,11 +8962,11 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/fate/xiaocong_fate_interlude.gd",
-			"sha256": "aed6c18df5f6bca040f17f5704b97f0d7c784f7e9d213ef6c3dd04af0e8226fc"
+			"sha256": "29e2af6ae754da216987281c45f2cbbe6ba2181757348cdadf1ad1ba3a55519e"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/fate/xiaocong_fate_interlude.tscn",
-			"sha256": "634bf8181a3fefd973d8c5ae1f57854560b37e50064c86f76cf268497a19c6f0"
+			"sha256": "328f8e2aec894a5a511545c8b94f5d043f7579ab1bd0b4a99a7450045f8f263a"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/home/tower_defense_home_defense_coordinator.gd",
@@ -8946,7 +8982,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/merchants/luoxi/luoxi_special_game_overlay.gd",
-			"sha256": "de74786e7a4be12937d99348721d9b8dc142ba28c395d83b357c05b44f0c1c9e"
+			"sha256": "0b145979421041c0ce46c8f40865041475fe5d95cafb0fc722163cd08b79583e"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/merchants/luoxi/luoxi_special_game_overlay.tscn",
@@ -8994,11 +9030,11 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/plant/placement/plant_placement_controller.gd",
-			"sha256": "465c233df60ce3a3269606df2097170a2959b55597c4f564c92c48eeb8357163"
+			"sha256": "72f0e23e952219d6eb8ab18b64f013abe08eec222a516437e4422573017eee57"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/plant/placement/plant_placement_controller.tscn",
-			"sha256": "49b02fd6b8f6115c08eeea206d6cadb3e55a0384c407c3bd310924ec99f6caa1"
+			"sha256": "a9674bdca284959ed65235c65b390341601dd848d128a0f5690342ec4cd311c8"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/plant/placement/plant_placement_preview.gd",
@@ -9046,7 +9082,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/plant/vegetation/vegetation_spread_system.gd",
-			"sha256": "df4c7c9be84b1665451cacd631414aeb7aad0712777b41d6dc9b0271ad888368"
+			"sha256": "4253e6930442fb574bb484bd09826932dcc62c47ef0b6f6f41d4bdf5dba12c61"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/plant/vegetation/vegetation_spread_system.tscn",
@@ -9058,7 +9094,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/player/tower_defense_player_roster_coordinator.gd",
-			"sha256": "71b79210ba84107856fafd245f846ae5683f91d7690040b4763871e0ebb9a3fe"
+			"sha256": "f573c15977b056576b9cd6574d5a95196beee63af138dbc224eb8d7606597de6"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/player/tower_defense_player_roster_coordinator.tscn",
@@ -9070,7 +9106,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.gd",
-			"sha256": "f4b947da5af82d8f0402964e240694fb4764ad79b3229e1f3a05d87f35defc8e"
+			"sha256": "188f66ebcf3517e72de427910856f7739b71dc35250c4c622734d067a498183a"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.tscn",
@@ -9078,7 +9114,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.gd",
-			"sha256": "62ddf87c1d7e17486de778eb2bf8f1a6c768bcc830cc51623bdb03b2c6d8f945"
+			"sha256": "94516c39dd8090d0cc8af311da90bccabd38be729d4a239acad93af883601e39"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.tscn",
@@ -9094,7 +9130,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/tower_defense_game.gd",
-			"sha256": "7827adc456deae65aa9f3c278fe7ef37b1ccf73ba1dcf7a0b15969e9f5953164"
+			"sha256": "fa5bac69bcb25920042dde0a505b976fa8ba71442d306982a74b4476f4cd8818"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/tower_defense_game.tscn",
@@ -9106,7 +9142,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/day_phase_announcement.tscn",
-			"sha256": "ba2ebfc097d26641fc6f7fad69272876c82e9f88220eda6d212a4fe54922e7c9"
+			"sha256": "834d069a7be20a2c7e9965a6cce044f5d4938598a871062ef46bb0a38a6eacac"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap.gd",
@@ -9118,7 +9154,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap_canvas.gd",
-			"sha256": "3db0a75f68c80398699e67200c05aaba3ef16ab191c069477823b6e95d5045c4"
+			"sha256": "8985f7cb8a27785a02cbe7b442d4684cef69b9eeaae73c3ace4641dda93b3925"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap_dynamic_layer.gd",
@@ -9134,11 +9170,11 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/plant_selection/plant_selection_hud.gd",
-			"sha256": "e2c64b0f1922fc4e4f8fe2799d2705ba4835de93f37c414fa7d92df2fde729e8"
+			"sha256": "132e68ee95ea565adc86d04aafd6a9ee8dcbc5ac2a80be1a677312a68fa9cb75"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/plant_selection/plant_selection_hud.tscn",
-			"sha256": "57f6192c7df23af05db0eb45a3168cc80ccbaef298af12f6f6127d66b6acf6e1"
+			"sha256": "c1914002d416203691802ca1e04ce740636e4c692564e96badce847bd9acbbee"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_day_dial.gd",
@@ -9150,7 +9186,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_player_profile_panel.gd",
-			"sha256": "445f0c5f4e255ae48d51e1d858b6b8b8462807d13a70226c14bf77e930c59665"
+			"sha256": "2882c7558430f1bf85fc101dc5d4d0e758d8ba53e76bc0d564faf376aee33695"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_player_profile_panel.tscn",
@@ -9166,7 +9202,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_wave_hud.gd",
-			"sha256": "52bdf94156bd60f30a59c50d7652255f6f92b281579400760bbf77ad2556ce4c"
+			"sha256": "4ec6f3de410895a5718b6e5cf4b272df279ab1f534322f5abb12363d7d989fa8"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/tower_defense_wave_hud.tscn",
@@ -9218,19 +9254,19 @@
 		},
 		{
 			"path": "res://scene/merchants/luoxi/luoxi_collectible_choice_overlay.gd",
-			"sha256": "cff5e5a8103fd85dcff9f2edb0968bb5c285e2a9574f89d3241cb9efcc884010"
+			"sha256": "8a035f5fcc13469198393a139e38e16ad916654281a0a5b5e527f7f231a13cb6"
 		},
 		{
 			"path": "res://scene/merchants/luoxi/luoxi_collectible_choice_overlay.tscn",
-			"sha256": "e303bc1a13225247770a7eba1264e42a2f0bdf2697486fe1bb36c70c8a27109a"
+			"sha256": "c3cbdc217df4ec044f7b259989c10d9eaabc48f26f6fc4e660e20036b3ea772c"
 		},
 		{
 			"path": "res://scene/merchants/luoxi/luoxi_dialogue_bubble.tscn",
-			"sha256": "7ee16a89faa2a060c22189291067e22d6137ded056a6315bd42f2ec13ff3e5b4"
+			"sha256": "b75dfef1418cfbe39143b17d626a54c583388c8acf3a89c3db955edf3dac9d6a"
 		},
 		{
 			"path": "res://scene/merchants/luoxi/luoxi_merchant.gd",
-			"sha256": "7e4902e82cc718cab635655eded47337f3bf659e8502d214a28a146811e32c30"
+			"sha256": "4f98afe34ac69151390ae6505d37c9e42a1568333f59b37fc58262e861a44e26"
 		},
 		{
 			"path": "res://scene/merchants/luoxi/luoxi_merchant.tscn",
@@ -9238,11 +9274,11 @@
 		},
 		{
 			"path": "res://scene/merchants/shared/merchant_dialogue_bubble.gd",
-			"sha256": "1d753dbd5ee5eebafbadb2034fefb4d914e1d3ed33f928ce45865fa66d7ede8b"
+			"sha256": "5c38550afd23aee83b577b8e5967e67f7dab08501b6b32faff0da325398b5446"
 		},
 		{
 			"path": "res://scene/merchants/shared/merchant_dialogue_bubble.tscn",
-			"sha256": "dcbdfae893664f2c606ab96686cfbca327904651ca5eebd872824265e91fb1e2"
+			"sha256": "e21987970974c04f908e61e669c3267d3e3b8453f8ce5cbfb1094dc5b9c8c70a"
 		},
 		{
 			"path": "res://scene/merchants/zhuangfangyi/zhuangfangyi_merchant.gd",
@@ -9278,7 +9314,7 @@
 		},
 		{
 			"path": "res://scene/plant_defense/bamboo_mortar.gd",
-			"sha256": "0bc2668c71edd40cade7a0e59f0a1eb8f22ef672255a1bbe71a9f9aebbe0c864"
+			"sha256": "a8bea42c0b97cc4432781b93c71c43da88ed9a68474ff42d10d741a4e3ad787d"
 		},
 		{
 			"path": "res://scene/plant_defense/bamboo_mortar.tscn",
@@ -9318,7 +9354,7 @@
 		},
 		{
 			"path": "res://scene/plant_defense/hydrangea_rain_tower.gd",
-			"sha256": "094789a6ad27caffb5dbf330395eac720a90f14223941349b28154e5d7408bb7"
+			"sha256": "d25a11d840eae2e3820348204701c9c67d1f523c006ab33d0bd69c20fae4474a"
 		},
 		{
 			"path": "res://scene/plant_defense/hydrangea_rain_tower.tscn",
@@ -9334,7 +9370,7 @@
 		},
 		{
 			"path": "res://scene/plant_defense/oak_warehouse.gd",
-			"sha256": "233cd474d0bc5626c4f427374382a9dfb32b340fc31d7d0942c3eb1eb24c0237"
+			"sha256": "fcef5c47c7a0364de00aad140df49fd780ce308a3cd66b3738c35c8a663fbaee"
 		},
 		{
 			"path": "res://scene/plant_defense/oak_warehouse.tscn",
@@ -9366,7 +9402,7 @@
 		},
 		{
 			"path": "res://scene/plant_defense/research_center.gd",
-			"sha256": "5649cb10671699a3acbf7fdb671ee04ece4d3b7e66ed7217b5b3f6c2ae37fe2f"
+			"sha256": "6972927069d4053a76423caf32f6f14db4b42ef421b9e30be191a615a062b28b"
 		},
 		{
 			"path": "res://scene/plant_defense/research_center.tscn",
@@ -9410,7 +9446,7 @@
 		},
 		{
 			"path": "res://scene/plant_defense/vegetation_stake.gd",
-			"sha256": "af16691985cfccd13313e77c1a351a77f1dcc58a598b6d97ac39091cd1ce2d01"
+			"sha256": "6e5c84f42592052d2c93fba2243168ae8ac28d5ce48b603ef0a6df1630dd8d47"
 		},
 		{
 			"path": "res://scene/plant_defense/vegetation_stake.tscn",
@@ -9437,12 +9473,16 @@
 			"sha256": "e1ad0c00eb1313f3e53d896f629ca89f6e59bff677af2f0e65612f9716cb4a3e"
 		},
 		{
+			"path": "res://scene/settings/settings_hotkey_row.tscn",
+			"sha256": "863a7f5ed359eff37edfbafab4ec7ef158bfbf94d7fc5b1bcc7d8f97ee7d7f2d"
+		},
+		{
 			"path": "res://scene/settings/settings_panel.gd",
-			"sha256": "4a8fa07ac0d81c6b8cda9926a32b2716c3df070b44e9fe4532acb94cca86cea4"
+			"sha256": "24d04b50e25736e199ecdf2aa617bbf9fc390b8e6a10422deca5467ee4b27e96"
 		},
 		{
 			"path": "res://scene/settings/settings_panel.tscn",
-			"sha256": "5e463c4d280aee261bcb9ffc585ce94dca0cb66e96c406ee080a17121708f9a8"
+			"sha256": "facb75c93a02fdf77b51f12850e5499d8d647e5c77bdc5431c3f54be4e6bd447"
 		},
 		{
 			"path": "res://scene/terrain/dual_grid_tilemap.gd",
@@ -9466,7 +9506,7 @@
 		},
 		{
 			"path": "res://scene/ui/shared/debug/debug_collectible_window.gd",
-			"sha256": "30364ffe7a210282ea2479d9f4a4ffff486bbf4e1fd03845679efffe598b4bc7"
+			"sha256": "4277f2ec45ed65a5ef5ba1f95871306e9fc106f6fef69c43e389f3ec81801437"
 		},
 		{
 			"path": "res://scene/ui/shared/debug/debug_collectible_window.tscn",
@@ -9482,7 +9522,7 @@
 		},
 		{
 			"path": "res://scene/ui/shared/hud/currency_hud.tscn",
-			"sha256": "8afd0f6f74017f40cd2904dc39b2851e96126c83a53855fbbcb21a349cf3f708"
+			"sha256": "4e02b1e8c3d94dfa8142f8da5ac737dd68a7a5a45216083055436da8194b4f16"
 		},
 		{
 			"path": "res://scene/ui/shared/inventory/inventory_slot.gd",
@@ -9506,7 +9546,7 @@
 		},
 		{
 			"path": "res://scene/ui/shared/profile/basic_player_profile_panel.gd",
-			"sha256": "ef6570502f38944b404a69ff230a6062885fe6997d78a7c42103fcb2872ab311"
+			"sha256": "c211eded450be49fab862cff7307a108ccfc9ad866ae83a98bc6c3e26a6bbcb7"
 		},
 		{
 			"path": "res://scene/ui/shared/profile/basic_player_profile_panel.tscn",

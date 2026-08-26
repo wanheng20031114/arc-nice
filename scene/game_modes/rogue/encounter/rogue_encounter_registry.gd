@@ -10,6 +10,7 @@ const GHOST_SHADOW := &"ghost_shadow"
 const FLUORESCENT_PIT := &"fluorescent_pit"
 const SUITCASE_FRENZY := &"suitcase_frenzy"
 const INVISIBLE_SEA_CUCUMBER := &"invisible_sea_cucumber"
+const DEEP_SEA_RUINS := &"deep_sea_ruins"
 
 ## 预留事件保留完整内容、结算和表现实现，但不属于任何可抽取事件池。
 ## 恢复事件时必须显式从这里移除并重新加入目标池，避免只改一处留下暗门。
@@ -33,6 +34,8 @@ const OPTION_IGNORE_SUITCASE := &"ignore_suitcase"
 const OPTION_STOMP_SEA_CUCUMBER := &"stomp_sea_cucumber"
 const OPTION_GIVE_GOLD_WINE_CUP := &"give_gold_wine_cup"
 const OPTION_COOK_SEA_CUCUMBER := &"cook_sea_cucumber"
+const OPTION_TAKE_CRYSTALS := &"take_crystals"
+const OPTION_TAKE_RINGS := &"take_rings"
 
 const MAX_VISIBLE_OPTIONS := 3
 
@@ -264,6 +267,36 @@ const _CONTENT_CONFIGS := {
 			},
 		],
 	},
+	DEEP_SEA_RUINS: {
+		"display_name": "深海遗迹",
+		"background_texture_path": (
+			"res://resources/texture/rogue_encounter/deep_sea_ruins.png"
+		),
+		"encounter_hint": "幽蓝海渊中的失落遗迹",
+		"intro_speaker": "",
+		"intro_text": "你发现了一处深海遗迹",
+		"intro_is_narration": true,
+		"resolving_speaker": "",
+		"resolving_text": "遗迹中的微光正在回应你们的选择……",
+		"resolving_is_narration": true,
+		"result_status": "深海遗迹已经给出了馈赠",
+		"default_result_speaker": "",
+		"default_result_is_narration": true,
+		"options": [
+			{
+				"option_id": OPTION_TAKE_CRYSTALS,
+				"title": "拿走水晶！",
+				"description": "获得2个光石",
+				"icon_texture_path": "",
+			},
+			{
+				"option_id": OPTION_TAKE_RINGS,
+				"title": "拿走戒指！",
+				"description": "每个玩家随机获得一个戒指类收藏品",
+				"icon_texture_path": "",
+			},
+		],
+	},
 }
 
 const _POOLS := {
@@ -272,6 +305,7 @@ const _POOLS := {
 		FLUORESCENT_PIT,
 		SUITCASE_FRENZY,
 		INVISIBLE_SEA_CUCUMBER,
+		DEEP_SEA_RUINS,
 	],
 }
 

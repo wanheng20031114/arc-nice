@@ -384,16 +384,19 @@ func _test_client_requires_acceptance_and_active_roster() -> void:
 		)
 	)
 	_expect(
-		not client._apply_authoritative_start_game(NetManagerStore.GameMode.STANDARD, 7),
-		"REGISTERING 客户端不得越过成员门直接进入加载。"
+		client._apply_authoritative_start_game(NetManagerStore.GameMode.STANDARD, 7)
+		and client.connection_state == NetManagerStore.ConnectionState.REGISTERING
+		and not (client.get("_pending_authoritative_start_game") as Dictionary).is_empty(),
+		"REGISTERING 客户端只能缓存 Host 启动状态，不得越过成员门直接加载。"
 	)
 	_apply_active_roster(client, CLIENT_PEER_ID)
 	_expect(
-		client.connection_state == NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY
+		client.connection_state == NetManagerStore.ConnectionState.LOADING_GAME
+		and client.loading_session_id == 7
 		and client.is_session_member_active(CLIENT_PEER_ID)
 		and client.connected_players.has(CLIENT_PEER_ID)
 		and int(client.get("_registration_started_msec")) == 0,
-		"只有 accepted 三元组与本地 ACTIVE roster 同时成立后才能进入大厅。"
+		"只有 accepted 三元组与本地 ACTIVE roster 同时成立后，才能提交缓存的启动状态进入加载。"
 	)
 	client.free()
 

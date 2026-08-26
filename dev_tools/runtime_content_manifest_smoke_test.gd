@@ -44,6 +44,15 @@ const EXCAVATOR_CYCLE_PATH := (
 const GLOBAL_RESEARCH_REGISTRY_PATH := (
 	"res://resources/config/research/global_research_registry.gd"
 )
+const COLLECTIBLE_REGISTRY_PATH := (
+	"res://resources/config/collectibles/collectible_registry.gd"
+)
+const ROGUE_ENCOUNTER_REGISTRY_PATH := (
+	"res://scene/game_modes/rogue/encounter/rogue_encounter_registry.gd"
+)
+const DEEP_SEA_RUINS_BACKGROUND_PATH := (
+	"res://resources/texture/rogue_encounter/deep_sea_ruins.png"
+)
 const RESEARCH_EFFECT_SCRIPT_PATHS := [
 	"res://resources/config/research/global_research_effect.gd",
 	"res://resources/config/research/global_research_additive_modifier_effect.gd",
@@ -61,7 +70,7 @@ const ENHANCEMENT_TOWER_RECIPE_PATHS := [
 const EXPECTED_PLANT_DEFENSE_CONFIG_COUNT := 19
 const EXPECTED_PRODUCTION_RECIPE_COUNT := 32
 const GOLDEN_CONTENT_SHA256 := (
-	"75f8433867ce8586a48cd4688dd167d4af5781ca55ea585e80e63719611a3b18"
+	"e27f2aefb0258bf565f51d0ff83f977686a208d78680e6097d678f58ebaaf7f2"
 )
 
 var failures: Array[String] = []
@@ -162,6 +171,10 @@ func _validate_manifest(manifest: Dictionary) -> void:
 		dependency_hashes
 	)
 	_validate_research_dependency_closure(canonical_lines, dependency_hashes)
+	_validate_rogue_encounter_dependency_closure(
+		canonical_lines,
+		dependency_hashes
+	)
 
 
 func _validate_tower_defense_dependency_closure(
@@ -319,6 +332,36 @@ func _validate_research_dependency_closure(
 			dependency_hashes.has(effect_script_path),
 			"类型化科研效果脚本必须进入多人内容摘要：%s。"
 			% effect_script_path
+		)
+
+
+func _validate_rogue_encounter_dependency_closure(
+	canonical_lines: PackedStringArray,
+	dependency_hashes: Dictionary[String, String]
+) -> void:
+	for dependency_path in [
+		COLLECTIBLE_REGISTRY_PATH,
+		ROGUE_ENCOUNTER_REGISTRY_PATH,
+		DEEP_SEA_RUINS_BACKGROUND_PATH,
+	]:
+		_expect(
+			FileAccess.file_exists(dependency_path)
+			and dependency_hashes.has(dependency_path),
+			"神奇遭遇的稳定池、内容 ID 与动态背景必须进入内容摘要：%s。"
+			% dependency_path
+		)
+		if not dependency_hashes.has(dependency_path):
+			continue
+		var original_sha256 := str(dependency_hashes[dependency_path])
+		var mutated_sha256 := (
+			("0" if original_sha256.substr(0, 1) != "0" else "1")
+			+ original_sha256.substr(1)
+		)
+		_expect_dependency_mutation_changes_digest(
+			canonical_lines,
+			dependency_path,
+			mutated_sha256,
+			dependency_path
 		)
 
 

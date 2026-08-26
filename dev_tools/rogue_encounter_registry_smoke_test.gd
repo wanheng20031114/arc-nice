@@ -26,8 +26,9 @@ func _test_pool_and_deterministic_selection() -> void:
 			RogueEncounterRegistry.FLUORESCENT_PIT,
 			RogueEncounterRegistry.SUITCASE_FRENZY,
 			RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER,
+			RogueEncounterRegistry.DEEP_SEA_RUINS,
 		],
-		"正式神奇遭遇池必须只保留四种启用事件并保持稳定顺序。"
+		"正式神奇遭遇池必须保留五种启用事件并保持稳定顺序。"
 	)
 	_expect(
 		RogueEncounterRegistry.get_reserved_encounter_ids() == [
@@ -64,8 +65,9 @@ func _test_pool_and_deterministic_selection() -> void:
 		selected.has(RogueEncounterRegistry.SLIME_TALKERS)
 		and selected.has(RogueEncounterRegistry.FLUORESCENT_PIT)
 		and selected.has(RogueEncounterRegistry.SUITCASE_FRENZY)
-		and selected.has(RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER),
-		"固定seed样本必须能够覆盖池中的四种启用遭遇。"
+		and selected.has(RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER)
+		and selected.has(RogueEncounterRegistry.DEEP_SEA_RUINS),
+		"固定seed样本必须能够覆盖池中的五种启用遭遇。"
 	)
 
 
@@ -138,6 +140,9 @@ func _test_content_configs() -> void:
 	)
 	var sea_cucumber := RogueEncounterRegistry.get_encounter_config(
 		RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER
+	)
+	var deep_sea_ruins := RogueEncounterRegistry.get_encounter_config(
+		RogueEncounterRegistry.DEEP_SEA_RUINS
 	)
 	_expect(
 		RogueEncounterRegistry.has_encounter(RogueEncounterRegistry.CHICKEN_BRO)
@@ -216,12 +221,16 @@ func _test_content_configs() -> void:
 	var sea_cucumber_options := RogueEncounterRegistry.get_option_configs(
 		RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER
 	)
+	var deep_sea_ruins_options := RogueEncounterRegistry.get_option_configs(
+		RogueEncounterRegistry.DEEP_SEA_RUINS
+	)
 	_expect(chicken_options.size() == 2, "鸡哥必须继续显示两个选项。")
 	_expect(slime_options.size() == 3, "史莱姆遭遇必须显示三个选项。")
 	_expect(ghost_options.size() == 2, "鬼影遭遇必须显示两个选项。")
 	_expect(pit_options.size() == 2, "荧光坑洞必须显示两个选项。")
 	_expect(suitcase_options.size() == 3, "疯穿箱子必须显示三个选项。")
 	_expect(sea_cucumber_options.size() == 3, "隐形海参必须显示三个选项。")
+	_expect(deep_sea_ruins_options.size() == 2, "深海遗迹必须显示两个选项。")
 	_expect(
 		RogueEncounterRegistry.get_option_ids(
 			RogueEncounterRegistry.SLIME_TALKERS
@@ -349,6 +358,40 @@ func _test_content_configs() -> void:
 		and str(sea_cucumber_options[2].get("description", ""))
 		== "管他会不会隐身直接做成海线大餐！",
 		"隐形海参三个选项的ID、顺序与用户原文必须精确。"
+	)
+	var deep_sea_background_path := str(
+		deep_sea_ruins.get("background_texture_path", "")
+	)
+	_expect(
+		str(deep_sea_ruins.get("display_name", "")) == "深海遗迹"
+		and str(deep_sea_ruins.get("encounter_hint", ""))
+		== "幽蓝海渊中的失落遗迹"
+		and str(deep_sea_ruins.get("intro_text", ""))
+		== "你发现了一处深海遗迹"
+		and bool(deep_sea_ruins.get("intro_is_narration", false))
+		and deep_sea_background_path
+		== "res://resources/texture/rogue_encounter/deep_sea_ruins.png"
+		and ResourceLoader.exists(deep_sea_background_path, "Texture2D")
+		and ResourceLoader.load(deep_sea_background_path, "Texture2D") is Texture2D
+		and not deep_sea_ruins.has("options_side"),
+		"深海遗迹必须使用正式背景、指定标题与旁白，并沿用右侧选项布局。"
+	)
+	_expect(
+		RogueEncounterRegistry.get_option_ids(
+			RogueEncounterRegistry.DEEP_SEA_RUINS
+		) == [
+			RogueEncounterRegistry.OPTION_TAKE_CRYSTALS,
+			RogueEncounterRegistry.OPTION_TAKE_RINGS,
+		]
+		and str(deep_sea_ruins_options[0].get("title", ""))
+		== "拿走水晶！"
+		and str(deep_sea_ruins_options[0].get("description", ""))
+		== "获得2个光石"
+		and str(deep_sea_ruins_options[1].get("title", ""))
+		== "拿走戒指！"
+		and str(deep_sea_ruins_options[1].get("description", ""))
+		== "每个玩家随机获得一个戒指类收藏品",
+		"深海遗迹选项 wire ID、顺序与大小字必须精确。"
 	)
 	var legacy_intro_pages := RogueEncounterRegistry.get_intro_pages(
 		RogueEncounterRegistry.CHICKEN_BRO

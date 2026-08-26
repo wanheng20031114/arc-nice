@@ -293,12 +293,12 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 95, "The multiplayer protocol version must be 95.")
+	_expect(NetConstants.PROTOCOL_VERSION == 96, "The multiplayer protocol version must be 96.")
 	_expect(
 		NetConstants.CH_MEMBERSHIP == 8
 		and NetConstants.ENET_MAX_CHANNEL == 8
 		and NetConstants.CHANNEL_COUNT == 9,
-		"Protocol v94 must expose logical CH0..CH8 with ENet max channel 8."
+		"Protocol v96 must expose logical CH0..CH8 with ENet max channel 8."
 	)
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
@@ -317,7 +317,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 					incompatible_version
 				)
 			),
-			"Protocol v94 must reject incompatible version %d."
+			"Protocol v96 must reject incompatible version %d."
 			% incompatible_version
 		)
 

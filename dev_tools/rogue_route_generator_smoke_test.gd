@@ -55,7 +55,7 @@ func _test_default_config_contract() -> void:
 	)
 	_expect_type_range(RogueRouteGraph.NodeType.NORMAL_COMBAT, 4, 4)
 	_expect_type_range(RogueRouteGraph.NodeType.EMERGENCY_COMBAT, 3, 3)
-	_expect_type_range(RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER, 4, 4)
+	_expect_type_range(RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER, 5, 5)
 	_expect_type_range(RogueRouteGraph.NodeType.UNDERGROUND_SHOP, 2, 3)
 	_expect_type_range(RogueRouteGraph.NodeType.PREPARE_AHEAD, 2, 3)
 	_expect_type_range(RogueRouteGraph.NodeType.WILDERNESS_RESOURCE, 2, 3)
@@ -284,11 +284,11 @@ func _test_seed_sweep_invariants() -> void:
 		] = true
 	_expect(seen_templates.size() == 20, "连续 1024 个 seed 必须覆盖全部 20 个等权模板。")
 	_expect(
-		seen_magical_counts.size() == 1 and seen_magical_counts.has(4)
+		seen_magical_counts.size() == 1 and seen_magical_counts.has(5)
 		and seen_shop_counts.has(2) and seen_shop_counts.has(3)
 		and seen_chest_counts.has(2) and seen_chest_counts.has(3)
 		and seen_resource_counts.has(2) and seen_resource_counts.has(3),
-		"神奇遭遇必须固定4个，其余2–3独立均匀数量必须覆盖两端：遭遇%s 商店%s 宝箱%s 物资%s。"
+		"神奇遭遇必须固定5个，其余2–3独立均匀数量必须覆盖两端：遭遇%s 商店%s 宝箱%s 物资%s。"
 		% [
 			seen_magical_counts.keys(),
 			seen_shop_counts.keys(),

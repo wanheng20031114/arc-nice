@@ -15,12 +15,14 @@ const SEA_CUCUMBER_GEL_REWARD_COUNT := 10
 const SEA_CUCUMBER_WOOD_REWARD_COUNT := 5
 const SEA_CUCUMBER_ATTACK_DAMAGE_BONUS := 10
 const SEA_CUCUMBER_DASH_COOLDOWN_REDUCTION := 1
+const DEEP_SEA_LIGHT_STONE_REWARD := 2
 const ENCOUNTER_CHICKEN_BRO := &"chicken_bro"
 const ENCOUNTER_SLIME_TALKERS := &"slime_talkers"
 const ENCOUNTER_GHOST_SHADOW := &"ghost_shadow"
 const ENCOUNTER_FLUORESCENT_PIT := &"fluorescent_pit"
 const ENCOUNTER_SUITCASE_FRENZY := &"suitcase_frenzy"
 const ENCOUNTER_INVISIBLE_SEA_CUCUMBER := &"invisible_sea_cucumber"
+const ENCOUNTER_DEEP_SEA_RUINS := &"deep_sea_ruins"
 const OPTION_PURCHASE := &"purchase_basketball"
 const OPTION_FREE := &"ask_for_free"
 const OPTION_HELP_SLIMES := &"help_slimes"
@@ -36,6 +38,8 @@ const OPTION_IGNORE_SUITCASE := &"ignore_suitcase"
 const OPTION_STOMP_SEA_CUCUMBER := &"stomp_sea_cucumber"
 const OPTION_GIVE_GOLD_WINE_CUP := &"give_gold_wine_cup"
 const OPTION_COOK_SEA_CUCUMBER := &"cook_sea_cucumber"
+const OPTION_TAKE_CRYSTALS := &"take_crystals"
+const OPTION_TAKE_RINGS := &"take_rings"
 const PLANK_PATH := "res://resources/config/materials/material_plank.tres"
 const BASKETBALL_PATH := "res://resources/config/collectibles/collectible_basketball.tres"
 const WATER_BOTTLE_PATH := "res://resources/config/materials/material_water_bottle.tres"
@@ -82,6 +86,8 @@ const RESULT_SEA_CUCUMBER_FEAST := &"sea_cucumber_feast"
 const RESULT_SEA_CUCUMBER_PARTY_INVENTORY_FULL := (
 	&"sea_cucumber_party_inventory_full"
 )
+const RESULT_DEEP_SEA_LIGHT_STONES := &"deep_sea_light_stones"
+const RESULT_DEEP_SEA_RINGS := &"deep_sea_rings"
 const GHOST_IDENTITY_SPECIAL_OUTCOME := &"ghost_identity_special"
 const SUITCASE_FOLLOWUP_COMBAT_ID := &"suitcase_battle"
 const RESULT_PRESENTATION_PAGES := &"pages"
@@ -244,6 +250,11 @@ func get_option_availability(
 					can_grant_sea_cucumber_to_all(peer_ids)
 				),
 			}
+		ENCOUNTER_DEEP_SEA_RUINS:
+			return {
+				String(OPTION_TAKE_CRYSTALS): true,
+				String(OPTION_TAKE_RINGS): true,
+			}
 		_:
 			return {}
 
@@ -301,8 +312,220 @@ func resolve_encounter(
 				eligible_peer_ids,
 				occurrence_key
 			)
+		ENCOUNTER_DEEP_SEA_RUINS:
+			return resolve_deep_sea_ruins(
+				option_id,
+				node_content_seed,
+				eligible_peer_ids,
+				occurrence_key
+			)
 		_:
 			return _make_result(false, RESULT_INVALID_REQUEST)
+
+
+## “深海遗迹”由房主一次性结算。光石进入全队共享账本；戒指按稳定玩家
+## ID 独立抽取并在一个 Party Economy CAS 中提交，occurrence 重放只返回
+## 首次缓存结果。
+func resolve_deep_sea_ruins(
+	option_id: StringName,
+	node_content_seed: int,
+	eligible_peer_ids: Array[int],
+	occurrence_key: String = ""
+) -> Dictionary:
+	if not occurrence_key.is_empty() and _settled_occurrences.has(occurrence_key):
+		return (
+			(_settled_occurrences[occurrence_key] as Dictionary).duplicate(true)
+		)
+	if (
+		_run_state == null
+		or option_id not in [OPTION_TAKE_CRYSTALS, OPTION_TAKE_RINGS]
+	):
+		return _make_result(false, RESULT_INVALID_REQUEST)
+	var ordered_peer_ids := _normalize_peer_ids(eligible_peer_ids)
+	if (
+		ordered_peer_ids.is_empty()
+		or not _has_registered_peer_ledgers(ordered_peer_ids)
+	):
+		return _make_result(false, RESULT_INVALID_REQUEST)
+	if option_id == OPTION_TAKE_CRYSTALS:
+		return _resolve_deep_sea_light_stones(
+			ordered_peer_ids,
+			occurrence_key
+		)
+	return _resolve_deep_sea_rings(
+		node_content_seed,
+		ordered_peer_ids,
+		occurrence_key
+	)
+
+
+func _resolve_deep_sea_light_stones(
+	ordered_peer_ids: Array[int],
+	occurrence_key: String
+) -> Dictionary:
+	var party_snapshot := _run_state.export_party_economy_snapshot(
+		_to_packed_peer_ids(ordered_peer_ids)
+	)
+	var inventory_snapshots := _index_inventory_snapshots(party_snapshot)
+	if inventory_snapshots.size() != ordered_peer_ids.size():
+		return _make_result(false, RESULT_STALE_STATE)
+	var expected_inventory_revisions := _get_expected_inventory_revisions(
+		inventory_snapshots,
+		ordered_peer_ids
+	)
+	if expected_inventory_revisions.size() != ordered_peer_ids.size():
+		return _make_result(false, RESULT_STALE_STATE)
+	var light_stone_ledger := (
+		party_snapshot.get("light_stone_ledger", {}) as Dictionary
+	).duplicate(true)
+	if light_stone_ledger.is_empty():
+		return _make_result(false, RESULT_STALE_STATE)
+	var expected_light_stone_revision := int(
+		light_stone_ledger.get("revision", -1)
+	)
+	var next_amount := int(light_stone_ledger.get("amount", 0)) + (
+		DEEP_SEA_LIGHT_STONE_REWARD
+	)
+	light_stone_ledger["revision"] = expected_light_stone_revision + 1
+	light_stone_ledger["amount"] = next_amount
+	if not _run_state.apply_authoritative_party_transaction(
+		party_snapshot,
+		int((party_snapshot["warehouse_ledger"] as Dictionary)["revision"]),
+		expected_inventory_revisions,
+		-1,
+		{},
+		-1,
+		{},
+		expected_light_stone_revision,
+		light_stone_ledger
+	):
+		return _make_result(false, RESULT_STALE_STATE)
+	var result := _make_deep_sea_result(
+		RESULT_DEEP_SEA_LIGHT_STONES,
+		OPTION_TAKE_CRYSTALS
+	)
+	result.merge({
+		"reward_kind": "light_stones",
+		"reward_granted": true,
+		"light_stone_delta": DEEP_SEA_LIGHT_STONE_REWARD,
+		"light_stone_amount": next_amount,
+		"common_result_text": "拿走了遗迹中的水晶。",
+		"common_detail_text": "全队获得了2个光石。",
+	}, true)
+	return _finalize_resolution(
+		result,
+		occurrence_key,
+		ordered_peer_ids,
+		true
+	)
+
+
+func _resolve_deep_sea_rings(
+	node_content_seed: int,
+	ordered_peer_ids: Array[int],
+	occurrence_key: String
+) -> Dictionary:
+	var ring_pool := CollectibleRegistry.get_ring_random_pool()
+	if ring_pool.size() != CollectibleRegistry.RING_CONFIG_PATHS.size():
+		return _make_result(false, RESULT_INVALID_REQUEST)
+	var party_snapshot := _run_state.export_party_economy_snapshot(
+		_to_packed_peer_ids(ordered_peer_ids)
+	)
+	var inventory_snapshots := _index_inventory_snapshots(party_snapshot)
+	if inventory_snapshots.size() != ordered_peer_ids.size():
+		return _make_result(false, RESULT_STALE_STATE)
+	var expected_inventory_revisions := _get_expected_inventory_revisions(
+		inventory_snapshots,
+		ordered_peer_ids
+	)
+	if expected_inventory_revisions.size() != ordered_peer_ids.size():
+		return _make_result(false, RESULT_STALE_STATE)
+	var next_snapshot := party_snapshot.duplicate(true)
+	var next_inventory_snapshots := _index_inventory_snapshots(next_snapshot)
+	var touched_peer_ids: Dictionary = {}
+	var collectible_rewards: Array[Dictionary] = []
+	var personal_detail_by_peer: Dictionary = {}
+	var any_reward_granted := false
+	for peer_id in ordered_peer_ids:
+		var item := ring_pool[
+			RogueEncounterRandom.choose_index(
+				node_content_seed,
+				StringName("deep_sea_ruins_ring|peer:%d" % peer_id),
+				ring_pool.size()
+			)
+		]
+		var granted := _add_item_to_inventory(
+			next_inventory_snapshots[peer_id] as Dictionary,
+			item
+		)
+		if granted:
+			touched_peer_ids[peer_id] = true
+			any_reward_granted = true
+		var rarity_name := PickupConfig.get_collectible_rarity_label(
+			int(item.collectible_rarity)
+		)
+		personal_detail_by_peer[peer_id] = (
+			"获得：%s（%s）" % [item.display_name, rarity_name]
+			if granted
+			else "背包已满，未获得：%s（%s）" % [item.display_name, rarity_name]
+		)
+		collectible_rewards.append({
+			"peer_id": peer_id,
+			"rolled_path": item.resource_path,
+			"rolled_paths": [item.resource_path],
+			"granted_paths": [item.resource_path] if granted else [],
+			"name": item.display_name,
+			"rarity": int(item.collectible_rarity),
+			"rarity_name": rarity_name,
+			"granted": granted,
+			"failure_reason": "" if granted else "inventory_full",
+			"discarded_count": 0 if granted else 1,
+		})
+	if not _bump_touched_inventory_revisions(
+		next_inventory_snapshots,
+		expected_inventory_revisions,
+		touched_peer_ids
+	):
+		return _make_result(false, RESULT_STALE_STATE)
+	if any_reward_granted and not _run_state.apply_authoritative_party_transaction(
+		next_snapshot,
+		int((party_snapshot["warehouse_ledger"] as Dictionary)["revision"]),
+		expected_inventory_revisions
+	):
+		return _make_result(false, RESULT_STALE_STATE)
+	var result := _make_deep_sea_result(
+		RESULT_DEEP_SEA_RINGS,
+		OPTION_TAKE_RINGS
+	)
+	result.merge({
+		"reward_kind": "collectibles",
+		"reward_granted": any_reward_granted,
+		"collectible_rewards": collectible_rewards,
+		"personal_detail_by_peer": personal_detail_by_peer,
+		"common_result_text": "拿走了遗迹中的戒指。",
+		"common_detail_text": "每位玩家独立抽取了一件戒指类收藏品。",
+	}, true)
+	return _finalize_resolution(
+		result,
+		occurrence_key,
+		ordered_peer_ids,
+		any_reward_granted
+	)
+
+
+func _make_deep_sea_result(
+	result_code: StringName,
+	option_id: StringName
+) -> Dictionary:
+	var result := _make_result(true, result_code)
+	result.merge({
+		"encounter_id": String(ENCOUNTER_DEEP_SEA_RUINS),
+		"option_id": String(option_id),
+		"reward_kind": "none",
+		"collectible_rewards": [],
+		"personal_detail_by_peer": {},
+	}, true)
+	return result
 
 
 ## “隐形海参”统一由房主结算，并按 occurrence_key 缓存所有分支。

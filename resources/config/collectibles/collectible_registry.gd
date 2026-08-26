@@ -3,6 +3,16 @@ class_name CollectibleRegistry
 
 const CONFIG_DIR := "res://resources/config/collectibles"
 const CONFIG_PREFIX := "collectible_"
+const RING_CONFIG_PATHS: Array[String] = [
+	"res://resources/config/collectibles/collectible_celestial_ring.tres",
+	"res://resources/config/collectibles/collectible_life_ring.tres",
+	"res://resources/config/collectibles/collectible_magic_ring.tres",
+	"res://resources/config/collectibles/collectible_physical_ring.tres",
+	"res://resources/config/collectibles/collectible_power_ring.tres",
+	"res://resources/config/collectibles/collectible_sapphire_ring.tres",
+	"res://resources/config/collectibles/collectible_speed_ring.tres",
+	"res://resources/config/collectibles/collectible_tin_ring.tres",
+]
 
 static var _pool_cache: Array[PickupConfig] = []
 static var _standard_random_pool_cache: Array[PickupConfig] = []
@@ -36,6 +46,18 @@ static func get_standard_random_pool_up_to(
 	var result: Array[PickupConfig] = []
 	for item in _standard_random_pool_cache:
 		if int(item.collectible_rarity) <= bounded_maximum:
+			result.append(item)
+	return result
+
+
+## 遭遇等限定奖励使用的稳定戒指池。显式路径既避免把名称相近的收藏品
+## 误归类，也让相同 seed 在不同客户端始终按同一顺序抽取。
+static func get_ring_random_pool() -> Array[PickupConfig]:
+	ensure_cache()
+	var result: Array[PickupConfig] = []
+	for config_path in RING_CONFIG_PATHS:
+		var item := _by_path_cache.get(config_path) as PickupConfig
+		if item != null:
 			result.append(item)
 	return result
 

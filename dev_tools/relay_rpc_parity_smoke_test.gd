@@ -477,8 +477,8 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 95,
-		"协议v95必须冻结认证注册转发、Relay身份绑定与既有内容合同。"
+		NetConstants.PROTOCOL_VERSION == 96,
+		"协议v96必须冻结认证注册转发、Relay身份绑定与既有内容合同。"
 	)
 	_expect(
 		NetConstants.CH_MEMBERSHIP == 8
@@ -488,7 +488,7 @@ func _run() -> void:
 		and NetConstants.RELAY_SERVICE_CHANNEL == 9
 		and NetConstants.RELAY_ENET_MAX_CHANNEL == 9,
 		(
-			"Protocol v94 must keep application CH0..CH8 and order Relay "
+			"Protocol v96 must keep application CH0..CH8 and order Relay "
 			+ "topology plus service traffic on reliable CH9."
 		)
 	)
@@ -695,7 +695,7 @@ func _test_relay_channel_count() -> void:
 		and relay_source.contains("const RELAY_SERVICE_CHANNEL := RELAY_CONTROL_CHANNEL")
 		and relay_source.contains("const ENET_MAX_CHANNEL := RELAY_CONTROL_CHANNEL")
 		and relay_source.contains("const CHANNEL_COUNT := CH_MEMBERSHIP + 1")
-		and relay_source.contains("const PROTOCOL_VERSION := 95")
+		and relay_source.contains("const PROTOCOL_VERSION := 96")
 		and relay_source.contains("const MAX_CLIENTS := 8")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, transport_capacity, ENET_MAX_CHANNEL)")
@@ -1350,7 +1350,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		)
 	_expect(
 		channel_counts.get(NetConstants.CH_WORLD_EVENT, 0) == 68,
-		"Protocol v94 must expose exactly 68 MpGame RPCs on reliable world-event CH5."
+		"Protocol v96 must expose exactly 68 MpGame RPCs on reliable world-event CH5."
 	)
 
 	_expect_rpc_channel(rpcs, "net_runtime_state_requested", NetConstants.CH_AUTH)

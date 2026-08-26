@@ -820,7 +820,7 @@ class RelayCapacityTests(unittest.TestCase):
         )
 
         self.assertEqual(game_relay_peer_bytes, relay_peer_bytes)
-        self.assertIn("const PROTOCOL_VERSION := 94", relay_source)
+        self.assertIn("const PROTOCOL_VERSION := 96", relay_source)
         self.assertIn("const MAX_CLIENTS := 8", relay_source)
         self.assertIn("const CH_MEMBERSHIP := 8", relay_source)
         self.assertIn(
@@ -832,6 +832,8 @@ class RelayCapacityTests(unittest.TestCase):
         )
         self.assertIn("const ENET_MAX_CHANNEL := RELAY_CONTROL_CHANNEL", relay_source)
         self.assertIn("const CHANNEL_COUNT := CH_MEMBERSHIP + 1", relay_source)
+        self.assertNotIn("const PROTOCOL_VERSION := 95", relay_source)
+        self.assertNotIn("const PROTOCOL_VERSION := 94", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 93", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 92", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 90", relay_source)

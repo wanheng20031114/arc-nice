@@ -15,8 +15,16 @@ signal encounter_hidden
 ## 常驻路线运行时持有。本节点只协调不透明背景、UI 与转场时序。
 @onready var presentation: RogueEncounterOverlay = $Presentation
 @onready var backdrop_layer: CanvasLayer = $BackdropLayer
+@onready var opaque_backdrop: TextureRect = $BackdropLayer/Root/OpaqueBackdrop
+@onready var encounter_backdrop: TextureRect = %EncounterBackdrop
+@onready var chamber_frame: Panel = $BackdropLayer/Root/ChamberFrame
+@onready var top_ambient_band: ColorRect = $BackdropLayer/Root/TopAmbientBand
+@onready var bottom_ambient_band: ColorRect = (
+	$BackdropLayer/Root/BottomAmbientBand
+)
 
 var _transfer_serial := 0
+var _backdrop_encounter_id: StringName = &""
 
 
 func _ready() -> void:
@@ -43,7 +51,29 @@ func configure_local_context(
 
 
 func apply_state(new_state: Dictionary) -> void:
+	_bind_encounter_backdrop(StringName(new_state.get("encounter_id", &"")))
 	presentation.apply_state(new_state)
+
+
+func _bind_encounter_backdrop(encounter_id: StringName) -> void:
+	if encounter_id == _backdrop_encounter_id:
+		return
+	_backdrop_encounter_id = encounter_id
+	var config := RogueEncounterRegistry.get_encounter_config(encounter_id)
+	var background_path := str(config.get("background_texture_path", ""))
+	var background_texture: Texture2D = null
+	if (
+		not background_path.is_empty()
+		and ResourceLoader.exists(background_path, "Texture2D")
+	):
+		background_texture = load(background_path) as Texture2D
+	var uses_encounter_background := background_texture != null
+	encounter_backdrop.texture = background_texture
+	encounter_backdrop.visible = uses_encounter_background
+	opaque_backdrop.visible = not uses_encounter_background
+	chamber_frame.visible = not uses_encounter_background
+	top_ambient_band.visible = not uses_encounter_background
+	bottom_ambient_band.visible = not uses_encounter_background
 
 
 ## 先让着色器在路线画面上完成遮盖，再显示遭遇的独立不透明背景。

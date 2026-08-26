@@ -2,6 +2,24 @@ extends Node
 
 ## RPC surface stub for /root/NetManager while this project runs as a pure relay.
 
+@rpc("any_peer", "call_remote", "reliable", 0)
+func _rpc_request_game_pause(
+	session_id: int,
+	expected_revision: int,
+	desired_paused: bool
+) -> void:
+	pass
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_sync_game_pause_state(
+	session_id: int,
+	revision: int,
+	paused: bool,
+	actor_peer_id: int
+) -> void:
+	pass
+
 @rpc("any_peer", "call_remote", "reliable", 9)
 func _rpc_relay_player_registration_forward(
 	target_peer_id: int,

@@ -230,7 +230,7 @@ func _run() -> void:
 		_test_v25_high_value_player_snapshot_contract()
 		_test_player_codec_and_reuse()
 		if failures.is_empty():
-			print("PROTOCOL_V94_PLAYER_SNAPSHOT_SMOKE_TEST_OK")
+			print("PROTOCOL_V96_PLAYER_SNAPSHOT_SMOKE_TEST_OK")
 			quit()
 			return
 		for failure in failures:
@@ -254,7 +254,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V94_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V96_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -263,10 +263,10 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 95, "Protocol must be v95.")
+	_expect(NetConstants.PROTOCOL_VERSION == 96, "Protocol must be v96.")
 	_expect(
 		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
-		"Protocol v94 must retain scene-specific bits 5..6 for shield stages, ninja boost, and main-battle airborne visuals."
+		"Protocol v96 must retain scene-specific bits 5..6 for shield stages, ninja boost, and main-battle airborne visuals."
 	)
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0

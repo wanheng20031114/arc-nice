@@ -45,6 +45,9 @@ const EXPLICIT_GAMEPLAY_DEPENDENCY_ROOTS := [
 	GLOBAL_RESEARCH_REGISTRY_PATH,
 	PLANT_DEFENSE_REGISTRY_PATH,
 	PRODUCTION_RECIPE_REGISTRY_PATH,
+	"res://resources/config/collectibles/collectible_registry.gd",
+	"res://scene/game_modes/rogue/encounter/rogue_encounter_registry.gd",
+	"res://resources/texture/rogue_encounter/deep_sea_ruins.png",
 	TOWER_DEFENSE_GAME_SCENE_PATH,
 	"res://scene/plant_defense/wood_processing_station.tscn",
 ]

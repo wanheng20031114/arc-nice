@@ -24,6 +24,7 @@ func _run() -> void:
 	_test_deterministic_tie_and_no_vote()
 	_test_snapshot_replay_and_peer_migration()
 	_test_route_map_unique_assignment()
+	_test_deep_sea_ruins_session_snapshot_flow()
 	_test_run_history_persistence_and_exhausted_fallback()
 	_test_dynamic_option_availability()
 	_test_settled_result_and_spectator_migration()
@@ -409,7 +410,7 @@ func _test_snapshot_replay_and_peer_migration() -> void:
 
 
 func _test_route_map_unique_assignment() -> void:
-	var node_ids := PackedInt32Array([3, 7, 11, 18])
+	var node_ids := PackedInt32Array([3, 7, 11, 18, 24])
 	var assigned: Array[StringName] = []
 	for node_id in node_ids:
 		var encounter_id := RogueEncounterRegistry.select_encounter_for_map(
@@ -422,9 +423,13 @@ func _test_route_map_unique_assignment() -> void:
 			not encounter_id.is_empty()
 			and not assigned.has(encounter_id)
 			and not RogueEncounterRegistry.is_reserved_encounter(encounter_id),
-			"同一地图的四个神奇遭遇节点必须得到互不重复的启用事件。"
+			"同一地图的五个神奇遭遇节点必须得到互不重复的启用事件。"
 		)
 		assigned.append(encounter_id)
+	_expect(
+		assigned.has(RogueEncounterRegistry.DEEP_SEA_RUINS),
+		"五节点地图分配必须完整覆盖新加入的深海遗迹。"
+	)
 	var repeated: Array[StringName] = []
 	for node_id in node_ids:
 		repeated.append(RogueEncounterRegistry.select_encounter_for_map(
@@ -450,6 +455,184 @@ func _test_route_map_unique_assignment() -> void:
 		RogueEncounterRegistry.compute_runtime_contract_hash().length() == 64,
 		"事件池顺序必须提供稳定的路线运行契约哈希。"
 	)
+
+
+func _test_deep_sea_ruins_session_snapshot_flow() -> void:
+	var peer_ids: Array[int] = [101, 102, 103]
+	var run_state := _new_run_state()
+	for peer_id in peer_ids:
+		_expect(
+			run_state.register_multiplayer_peer_state(peer_id),
+			"深海遗迹 Session 夹具必须先注册全部参与玩家。"
+		)
+	var economy := RogueEncounterEconomyCoordinator.new()
+	economy.configure(run_state)
+	var session := RogueEncounterSession.new()
+	session.initialize_authority(economy, peer_ids, run_state)
+	var seed := _seed_for_encounter(
+		820_000,
+		RogueEncounterRegistry.DEEP_SEA_RUINS
+	)
+	_expect(
+		RogueEncounterRegistry.select_encounter(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			seed
+		) == RogueEncounterRegistry.DEEP_SEA_RUINS,
+		"深海遗迹 Session 夹具必须先找到能稳定选中新事件的 seed。"
+	)
+	_expect(
+		session.start_for_node(
+			821,
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			seed,
+			peer_ids
+		),
+		"深海遗迹必须能由通用 Session 按 seed 从正式池启动。"
+	)
+	var started := session.export_state()
+	var availability := started.get("option_availability", {}) as Dictionary
+	_expect(
+		StringName(started.get("encounter_id", &""))
+		== RogueEncounterRegistry.DEEP_SEA_RUINS
+		and StringName(started.get("phase", &""))
+		== RogueEncounterSession.PHASE_INTRO
+		and bool(availability.get(
+			String(RogueEncounterRegistry.OPTION_TAKE_CRYSTALS),
+			false
+		))
+		and bool(availability.get(
+			String(RogueEncounterRegistry.OPTION_TAKE_RINGS),
+			false
+		))
+		and (started.get("encountered_encounter_ids", []) as Array).has(
+			String(RogueEncounterRegistry.DEEP_SEA_RUINS)
+		),
+		"深海遗迹开场快照必须携带新 encounter ID、两项可用 option ID 与历史。"
+	)
+	for peer_id in peer_ids:
+		_expect(
+			session.submit_intro_ack(
+				peer_id,
+				session.get_occurrence_key(),
+				session.get_revision()
+			),
+			"深海遗迹所有参与玩家都必须能通过通用开场确认。"
+		)
+	_expect(
+		session.submit_vote(
+			101,
+			session.get_occurrence_key(),
+			session.get_revision(),
+			RogueEncounterRegistry.OPTION_TAKE_RINGS
+		),
+		"深海遗迹戒指选项必须能进入权威投票快照。"
+	)
+	_expect(
+		session.submit_vote(
+			102,
+			session.get_occurrence_key(),
+			session.get_revision(),
+			RogueEncounterRegistry.OPTION_TAKE_CRYSTALS
+		),
+		"深海遗迹水晶选项必须能进入权威投票快照。"
+	)
+	var voting := session.export_state()
+	var seen_vote_options: Array[StringName] = []
+	for raw_vote in voting.get("votes", []) as Array:
+		seen_vote_options.append(StringName(
+			(raw_vote as Dictionary).get("option_id", &"")
+		))
+	_expect(
+		StringName(voting.get("phase", &""))
+		== RogueEncounterSession.PHASE_VOTING
+		and seen_vote_options.has(RogueEncounterRegistry.OPTION_TAKE_CRYSTALS)
+		and seen_vote_options.has(RogueEncounterRegistry.OPTION_TAKE_RINGS),
+		"深海遗迹投票快照必须能同时编码两项新增 option ID。"
+	)
+
+	var remote_run_state := _new_run_state()
+	for peer_id in peer_ids:
+		_expect(
+			remote_run_state.register_multiplayer_peer_state(peer_id),
+			"深海遗迹远端夹具必须先注册权威参与玩家。"
+		)
+	var remote_economy := RogueEncounterEconomyCoordinator.new()
+	remote_economy.configure(remote_run_state)
+	var remote_session := RogueEncounterSession.new()
+	remote_session.initialize_remote(remote_economy, remote_run_state)
+	_expect(
+		remote_session.apply_remote_state(voting)
+		and remote_session.export_state() == voting,
+		"远端 Session/Economy 必须接受含深海遗迹及两项新投票 ID 的快照。"
+	)
+	_expect(
+		remote_session.apply_remote_state(voting)
+		and remote_session.export_state() == voting,
+		"同 revision 深海遗迹投票快照重放不得因新增 ID 被拒绝。"
+	)
+
+	_expect(
+		session.submit_vote(
+			103,
+			session.get_occurrence_key(),
+			session.get_revision(),
+			RogueEncounterRegistry.OPTION_TAKE_CRYSTALS
+		),
+		"深海遗迹多数票选择水晶后必须进入通用结算流程。"
+	)
+	var result := session.export_state()
+	var economy_result := result.get("economy_result", {}) as Dictionary
+	var result_pages := result.get("result_pages", []) as Array
+	_expect(
+		StringName(result.get("phase", &""))
+		== RogueEncounterSession.PHASE_RESULT
+		and StringName(result.get("winning_option", &""))
+		== RogueEncounterRegistry.OPTION_TAKE_CRYSTALS
+		and StringName(economy_result.get("encounter_id", &""))
+		== RogueEncounterRegistry.DEEP_SEA_RUINS
+		and StringName(economy_result.get("option_id", &""))
+		== RogueEncounterRegistry.OPTION_TAKE_CRYSTALS
+		and StringName(economy_result.get("result_code", &""))
+		== RogueEncounterEconomyCoordinator.RESULT_DEEP_SEA_LIGHT_STONES
+		and result_pages.size() == 2
+		and bool(result.get("settlement_committed", false))
+		and run_state.get_party_light_stone_amount() == 2,
+		"深海遗迹 Session 必须保留新增 ID，并把多数票结算为共享光石结果页。"
+	)
+	_expect(
+		remote_session.apply_remote_state(result)
+		and remote_session.export_state() == result
+		and remote_run_state.get_party_light_stone_amount() == 2,
+		"远端 Session/Economy 必须原子应用含深海结算 ID 的结果快照。"
+	)
+	_expect(
+		remote_session.apply_remote_state(result)
+		and remote_session.export_state() == result
+		and remote_run_state.get_party_light_stone_amount() == 2,
+		"深海遗迹结果快照重放不得拒绝新 ID 或重复发放光石。"
+	)
+	_expect(
+		session.complete_result(
+			session.get_occurrence_key(),
+			session.get_revision()
+		),
+		"深海遗迹结果页必须能通过通用完成请求结束。"
+	)
+	var completed := session.export_state()
+	_expect(
+		StringName(completed.get("phase", &""))
+		== RogueEncounterSession.PHASE_COMPLETED
+		and session.is_node_resolved(821)
+		and remote_session.apply_remote_state(completed)
+		and remote_session.export_state() == completed,
+		"远端 Session 必须接受深海遗迹完整完成态快照。"
+	)
+	remote_session.free()
+	remote_economy.free()
+	remote_run_state.free()
+	session.free()
+	economy.free()
+	run_state.free()
 
 
 func _test_run_history_persistence_and_exhausted_fallback() -> void:
@@ -499,7 +682,7 @@ func _test_run_history_persistence_and_exhausted_fallback() -> void:
 		pool.has(fallback_encounter_id)
 		and not RogueEncounterRegistry.is_reserved_encounter(fallback_encounter_id)
 		and host_run_state.get_rogue_encountered_ids().size() == pool.size(),
-		"RunState 应只记录四种启用遭遇，耗尽回退不得选择预留事件。"
+		"RunState 应只记录五种启用遭遇，耗尽回退不得选择预留事件。"
 	)
 	var client_run_state := _new_run_state()
 	_expect(
@@ -880,14 +1063,15 @@ func _test_ghost_shadow_results_and_no_economy() -> void:
 		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
 	)
 	_expect(
-		pool_entries.size() == 4
+		pool_entries.size() == 5
 		and pool_entries.has(RogueEncounterRegistry.SLIME_TALKERS)
 		and pool_entries.has(RogueEncounterRegistry.FLUORESCENT_PIT)
 		and pool_entries.has(RogueEncounterRegistry.SUITCASE_FRENZY)
 		and pool_entries.has(RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER)
+		and pool_entries.has(RogueEncounterRegistry.DEEP_SEA_RUINS)
 		and not pool_entries.has(RogueEncounterRegistry.CHICKEN_BRO)
 		and not pool_entries.has(RogueEncounterRegistry.GHOST_SHADOW),
-		"正式神奇遭遇池必须只包含四种启用事件。"
+		"正式神奇遭遇池必须只包含五种启用事件。"
 	)
 	var ghost_config := RogueEncounterRegistry.get_encounter_config(
 		RogueEncounterRegistry.GHOST_SHADOW

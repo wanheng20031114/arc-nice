@@ -33,15 +33,16 @@ relay_servers/
 必须逐字节一致，并由 Relay parity/capacity 测试锁定。主游戏生产导出继续整体排除
 `relay_servers/*`，不会把大厅后端或 Headless Relay 工程打进客户端。
 
-当前网络基线为协议 v95。应用层使用 CH0..CH8 共 9 条逻辑信道；公网 Relay
+当前网络基线为协议 v96。应用层使用 CH0..CH8 共 9 条逻辑信道；公网 Relay
 的认证感知包装层另使用可靠 CH9 依次发布拓扑并承载 Relay 服务控制，因此公网
-ENet 最大信道索引为 9。v95 在 reliable CH0 新增宿主权威的全局暂停请求与
+ENet 最大信道索引为 9。v96 将神奇遭遇固定节点与正式内容池由 4 扩展为 5，
+并新增 `deep_sea_ruins` 及两个稳定选项 ID；v95 在 reliable CH0 新增宿主权威的全局暂停请求与
 绝对状态快照，并以会话世代和单调修订保证并发、重连与乱序消息最终收敛；v94
 为敌人出生/快照追加阵营与修订，以 reliable CH5
 同步阵营变化，并扩展通用目标动作与 Host 投射物来源载荷；敌人高频连发同时
 压缩为 CH4 单次 burst，通过 reliable CH5 收敛命中/取消并分块恢复迟加入客户端
 的活跃视觉弹体。v93 的敌人快照长度、RPC 表面和 rapid-fire 描述符合同均不同，
-不能与 v95 安全混联。v93 扩展玩家快照以逐帧绝对复制最终开火间隔和临时表现
+不能与当前 v96 安全混联。v93 扩展玩家快照以逐帧绝对复制最终开火间隔和临时表现
 状态，并把天依 High Noon 目标列表迁入 reliable CH5。v92 将拾取 spawn、原子 collected 终端
 与普通 remove 统一放在 reliable CH5，旧 v91 的 collected 仍在 CH6。
 v91 关闭 `SceneMultiplayer.server_relay` 的私有 mesh，
@@ -156,7 +157,7 @@ v35 的战斗机器人枪手弹丸及玩家受击来源 wire ID 17 保持兼容�
 P3 路线世界继续使用约 12Hz 的轻量角色姿态同步：
 Client 在输入信道上报，Host 校验后在玩家状态信道广播，非法位置通过可靠信道纠正。
 v34 的 P3 路线全量快照携带 `runtime_contract_hash`，Host 与 Client 必须使用相同的世界几何契约；
-v94 及更旧客户端不能加入 v95 房间。
+v95 及更旧客户端不能加入 v96 房间。
 Relay 只转发 RPC，不重复实现游戏状态逻辑；逻辑 Host 对不兼容、重连加载或
 运行时投影超时成员的断开请求会可靠发送至 Relay 服务端（peer 1）。Relay 只
 接受已登记 Host 的请求，并由服务端断开同房目标；普通客户端不能踢出其他成员。
@@ -352,7 +353,7 @@ Relay 重启还会轮换房间 secret，旧进程签发的短票不能跨世代�
 `peer_authenticating` 中向 server peer 1 发送 UTF-8 JSON：
 
 ```json
-{"v":1,"ticket":"ra1....","player_name":"...","character_id":"weishidaier","character_confirmed":true,"protocol_version":95,"reconnect_token":"<32 lowercase hex>","content_manifest_schema":1,"content_digest":"<64 lowercase hex>"}
+{"v":1,"ticket":"ra1....","player_name":"...","character_id":"weishidaier","character_confirmed":true,"protocol_version":96,"reconnect_token":"<32 lowercase hex>","content_manifest_schema":1,"content_digest":"<64 lowercase hex>"}
 ```
 
 Relay 验票成功后先用 `send_auth` 返回 ack，再调用 `complete_auth(peer_id)`：

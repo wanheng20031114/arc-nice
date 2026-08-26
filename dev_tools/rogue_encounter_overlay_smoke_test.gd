@@ -3,6 +3,9 @@ extends SceneTree
 const OVERLAY_SCENE := preload(
 	"res://scene/game_modes/rogue/encounter/rogue_encounter_overlay.tscn"
 )
+const ENCOUNTER_SCENE := preload(
+	"res://scene/game_modes/rogue/encounter/rogue_encounter_scene.tscn"
+)
 
 var failures: Array[String] = []
 var intro_requests: Array[Dictionary] = []
@@ -180,6 +183,7 @@ func _run() -> void:
 	await _test_ghost_shadow_presentation_and_results()
 	await _test_personal_result_page_and_ack_request()
 	await _test_suitcase_intro_results_and_immediate_exit()
+	await _test_deep_sea_background_presentation()
 
 	if failures.is_empty():
 		print("ROGUE_ENCOUNTER_OVERLAY_SMOKE_TEST_OK")
@@ -867,6 +871,80 @@ func _test_suitcase_intro_results_and_immediate_exit() -> void:
 	)
 	overlay.hide_immediately()
 	overlay.free()
+
+
+func _test_deep_sea_background_presentation() -> void:
+	var encounter_scene := ENCOUNTER_SCENE.instantiate() as RogueEncounterScene
+	root.add_child(encounter_scene)
+	encounter_scene.configure_local_context(1, {1: "玩家"}, {1: &""})
+	var deep_sea := _make_intro_state()
+	deep_sea["node_id"] = 91
+	deep_sea["node_content_seed"] = 8891
+	deep_sea["occurrence_key"] = "91:8891"
+	deep_sea["encounter_id"] = String(RogueEncounterRegistry.DEEP_SEA_RUINS)
+	deep_sea["option_availability"] = {
+		"take_crystals": true,
+		"take_rings": true,
+	}
+	encounter_scene.apply_state(deep_sea)
+	await process_frame
+	var overlay := encounter_scene.presentation
+	_expect(
+		encounter_scene.encounter_backdrop.visible
+		and encounter_scene.encounter_backdrop.texture != null
+		and encounter_scene.encounter_backdrop.texture.resource_path
+		== "res://resources/texture/rogue_encounter/deep_sea_ruins.png"
+		and encounter_scene.encounter_backdrop.texture.get_size()
+		== Vector2(1672, 941)
+		and encounter_scene.encounter_backdrop.stretch_mode == 6,
+		"深海遗迹必须以原尺寸镜像素材作为全屏等比覆盖背景。"
+	)
+	_expect(
+		not encounter_scene.opaque_backdrop.visible
+		and not encounter_scene.chamber_frame.visible
+		and not encounter_scene.top_ambient_band.visible
+		and not encounter_scene.bottom_ambient_band.visible,
+		"深海背景显示时必须隐藏默认渐变、琥珀边框和上下装饰带。"
+	)
+	_expect(
+		overlay.portrait_stage.visible
+		and not overlay.actor_center.visible
+		and not overlay.name_plate.visible
+		and not overlay.encounter_hint.visible
+		and overlay.portrait_stage.get_index()
+		< overlay.decision_panel.get_index(),
+		"深海遗迹必须保留左列宽度并隐藏人物内容，使决策面板仍在右侧。"
+	)
+	_expect(
+		overlay.map_shade.color
+		== RogueEncounterOverlay.BACKGROUND_MAP_SHADE_COLOR,
+		"深海背景必须使用较淡的中性遮罩，不能沿用旧琥珀重遮罩。"
+	)
+
+	var legacy := _make_slime_intro_state()
+	legacy["node_id"] = 92
+	legacy["node_content_seed"] = 8892
+	legacy["occurrence_key"] = "92:8892"
+	encounter_scene.apply_state(legacy)
+	await process_frame
+	_expect(
+		not encounter_scene.encounter_backdrop.visible
+		and encounter_scene.encounter_backdrop.texture == null
+		and encounter_scene.opaque_backdrop.visible
+		and encounter_scene.chamber_frame.visible
+		and encounter_scene.top_ambient_band.visible
+		and encounter_scene.bottom_ambient_band.visible,
+		"切回旧遭遇时必须清空专属背景并恢复全部默认场景装饰。"
+	)
+	_expect(
+		overlay.actor_center.visible
+		and overlay.name_plate.visible
+		and overlay.encounter_hint.visible
+		and overlay.map_shade.color
+		== RogueEncounterOverlay.DEFAULT_MAP_SHADE_COLOR,
+		"切回旧遭遇时必须恢复人物内容与原有重遮罩。"
+	)
+	encounter_scene.free()
 
 
 func _expect(condition: bool, message: String) -> void:

@@ -30,8 +30,13 @@ const REVEAL_DURATION_SECONDS := 0.38
 const OPTION_REVEAL_DURATION_SECONDS := 0.36
 const RESULT_PAGE_GAP_SECONDS := 0.45
 const RESULT_HOLD_SECONDS := 1.5
+const DEFAULT_MAP_SHADE_COLOR := Color(0.025, 0.018, 0.012, 0.76)
+const BACKGROUND_MAP_SHADE_COLOR := Color(0.0, 0.0, 0.0, 0.18)
 
 @onready var encounter_content: Control = %EncounterContent
+@onready var map_shade: ColorRect = %MapShade
+@onready var portrait_stage: VBoxContainer = %PortraitStage
+@onready var actor_center: CenterContainer = %ActorCenter
 @onready var decision_panel: NinePatchRect = %DecisionPanel
 @onready var actor_portrait: TextureRect = %ActorPortrait
 @onready var name_plate: PanelContainer = %NamePlate
@@ -771,6 +776,19 @@ func _bind_encounter_content(encounter_id: StringName) -> void:
 	encounter_config = RogueEncounterRegistry.get_encounter_config(encounter_id)
 	intro_pages = RogueEncounterRegistry.get_intro_pages(encounter_id)
 	intro_page_index = 0
+	var uses_encounter_background := not str(encounter_config.get(
+		"background_texture_path",
+		""
+	)).is_empty()
+	map_shade.color = (
+		BACKGROUND_MAP_SHADE_COLOR
+		if uses_encounter_background
+		else DEFAULT_MAP_SHADE_COLOR
+	)
+	# 背景型遭遇仍保留左列本身，使右侧决策面板的尺寸和位置不变；
+	# 只隐藏立绘、名称牌和提示，给背景主体留下完整展示空间。
+	portrait_stage.visible = true
+	actor_center.visible = not uses_encounter_background
 	if encounter_config.is_empty():
 		actor_portrait.texture = null
 		actor_name.text = "神秘来客"
@@ -784,8 +802,14 @@ func _bind_encounter_content(encounter_id: StringName) -> void:
 	)))
 	actor_name.text = str(encounter_config.get("display_name", "神秘来客"))
 	encounter_hint.text = str(encounter_config.get("encounter_hint", ""))
-	encounter_hint.visible = not encounter_hint.text.is_empty()
-	name_plate.visible = not actor_name.text.is_empty()
+	encounter_hint.visible = (
+		not uses_encounter_background
+		and not encounter_hint.text.is_empty()
+	)
+	name_plate.visible = (
+		not uses_encounter_background
+		and not actor_name.text.is_empty()
+	)
 
 
 func _result_presentation_is_immediate() -> bool:

@@ -28,17 +28,17 @@ const EXPECTED_MP_GAME_RPC_ANNOTATION_HASH := (
 	"99bd05526b4851f5d005c722b4edbba039c1132addb0fa3f647f2deec1c2b3f2"
 )
 
-## v91 移除了已被认证拓扑帧取代的 relay registration completed RPC；旧冻结
-## 基线遗漏同步，v94 在本次协议审计中按当前 16 个生产 RPC 重新锁定。
-const EXPECTED_NET_MANAGER_RPC_COUNT := 16
+## v91 移除了已被认证拓扑帧取代的 relay registration completed RPC；
+## v95 新增全局暂停请求与绝对状态 RPC，v96 按当前 18 个生产 RPC 锁定。
+const EXPECTED_NET_MANAGER_RPC_COUNT := 18
 const EXPECTED_NET_MANAGER_RPC_NAME_HASH := (
-	"09b646cdc8650e8e8271a303e4538cd2b3a2d53f4e4e791c87b913c4a7182dac"
+	"698eafafffefed38f2c2c88ba9a02042201f3d1e62d6e4a421908a44c6dec857"
 )
 const EXPECTED_NET_MANAGER_RPC_SIGNATURE_HASH := (
-	"f3055a9ad24ab591c576156b26c566a76d32162ecba0e29b4f36d83d71c806dc"
+	"088b57311625ce60ca8f8dcabb9e10655c09fb9e8bf12fabf3c39156fd0ce3f7"
 )
 const EXPECTED_NET_MANAGER_RPC_ANNOTATION_HASH := (
-	"f128431b6a86d1b3dca13168abf56123cc7c04e67fddbc0365ad6363f151c8c8"
+	"7b5135f92335010780a0f5b348521f9a9c6c2d8b3cadcca71cdb422f8d87bab2"
 )
 
 const EXPECTED_MP_ROGUE_ROUTE_RPC_COUNT := 17
@@ -355,7 +355,7 @@ func _strip_quotes(value: String) -> String:
 
 
 func _test_protocol_and_wire_values() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 95, "多人协议必须保持 v95。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 96, "多人协议必须保持 v96。")
 	_expect(
 		NET_CONSTANTS.CH_MEMBERSHIP == 8
 		and NET_CONSTANTS.ENET_MAX_CHANNEL == 8

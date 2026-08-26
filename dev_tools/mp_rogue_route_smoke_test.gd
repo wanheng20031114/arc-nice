@@ -1124,9 +1124,9 @@ func _dispatch_tower_client_transaction_requests(
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 95,
+		NetConstants.PROTOCOL_VERSION == 96,
 		(
-			"协议 v95 必须保留 v79 T 目录付费、v78 Route 升级事务与完整进度账本，同时保留v77内容摘要、v74旧局CH6结果、v73会话成员、v71地下水道、v69植被科研、v68六格扩散、v67攻速强化塔、v66移速强化塔、P1E入口、神奇遭遇本局历史、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
+			"协议 v96 必须保留 v79 T 目录付费、v78 Route 升级事务与完整进度账本，同时保留v77内容摘要、v74旧局CH6结果、v73会话成员、v71地下水道、v69植被科研、v68六格扩散、v67攻速强化塔、v66移速强化塔、P1E入口、神奇遭遇本局历史、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
 			+ "狭路相逢波次资源合同，并隔离 P1C 与纸箱怪资源、"
 			+ "精英战斗机器人、精英持枪机器人弹丸与消耗品资源合同，且保留"
 			+ "精英操作员无人机、精英盾兵、物资节点共享光石/行动力状态、"
@@ -2699,8 +2699,11 @@ func _test_encounter_network_contract(
 			break
 	_expect(
 		map_assignment_complete
-		and unique_map_encounter_ids.size() == magical_node_ids.size(),
-		"同一张路线图的神奇遭遇必须完整地按地图 seed 一一分配且互不重复。"
+		and magical_node_ids.size() == 5
+		and map_encounter_ids.size() == active_encounter_ids.size()
+		and unique_map_encounter_ids.size() == magical_node_ids.size()
+		and map_encounter_ids.has(RogueEncounterRegistry.DEEP_SEA_RUINS),
+		"同一张路线图的五个神奇遭遇必须按地图 seed 一一分配、互不重复并覆盖深海遗迹。"
 	)
 	_expect(
 		map_assignment_uses_only_active_pool,
