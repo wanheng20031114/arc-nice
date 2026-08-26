@@ -1,0 +1,73 @@
+{
+  "pipeline": {
+    "generator": "Codex built-in image_gen",
+    "source_format": "1254x1254 RGBA PNG with native alpha",
+    "background_removal": "none; RGB colors were never used to infer alpha",
+    "alpha_threshold": 127,
+    "runtime_size": [32, 32],
+    "runtime_padding": 2,
+    "resampling": "nearest"
+  },
+  "purple_audit": {
+    "definition": "visible pixel with HSV hue 259.2-338.4 degrees, saturation >= 0.22, value >= 0.12",
+    "all_runtime_icons_passed": true
+  },
+  "assets": {
+    "mode_standard": {
+      "source_alpha_extrema": [0, 255],
+      "source_threshold_bbox": [118, 119, 1137, 1117],
+      "runtime_visible_bbox": [2, 2, 30, 29],
+      "runtime_partial_alpha_pixels": 0,
+      "runtime_purple_pixels": 0
+    },
+    "mode_tower_defense": {
+      "source_alpha_extrema": [0, 255],
+      "source_threshold_bbox": [56, 44, 1198, 1171],
+      "runtime_visible_bbox": [2, 2, 30, 30],
+      "runtime_partial_alpha_pixels": 0,
+      "runtime_purple_pixels": 0
+    },
+    "mode_test_p1": {
+      "source_alpha_extrema": [0, 255],
+      "source_threshold_bbox": [158, 110, 1178, 1135],
+      "runtime_visible_bbox": [2, 2, 30, 30],
+      "runtime_partial_alpha_pixels": 0,
+      "runtime_purple_pixels": 0
+    },
+    "mode_test_p2": {
+      "source_alpha_extrema": [0, 255],
+      "source_threshold_bbox": [123, 123, 1147, 1137],
+      "runtime_visible_bbox": [2, 2, 30, 30],
+      "runtime_partial_alpha_pixels": 0,
+      "runtime_purple_pixels": 0
+    },
+    "network_public": {
+      "source_alpha_extrema": [0, 255],
+      "source_threshold_bbox": [69, 176, 1186, 1059],
+      "runtime_visible_bbox": [2, 5, 30, 27],
+      "runtime_partial_alpha_pixels": 0,
+      "runtime_purple_pixels": 0
+    },
+    "network_lan": {
+      "source_alpha_extrema": [0, 255],
+      "source_threshold_bbox": [141, 227, 1117, 1041],
+      "runtime_visible_bbox": [2, 4, 30, 27],
+      "runtime_partial_alpha_pixels": 0,
+      "runtime_purple_pixels": 0
+    },
+    "action_create_room": {
+      "source_alpha_extrema": [0, 255],
+      "source_threshold_bbox": [177, 90, 1092, 1157],
+      "runtime_visible_bbox": [4, 2, 28, 30],
+      "runtime_partial_alpha_pixels": 0,
+      "runtime_purple_pixels": 0
+    },
+    "action_start_game": {
+      "source_alpha_extrema": [0, 255],
+      "source_threshold_bbox": [237, 131, 1018, 1012],
+      "runtime_visible_bbox": [3, 2, 28, 30],
+      "runtime_partial_alpha_pixels": 0,
+      "runtime_purple_pixels": 0
+    }
+  }
+}

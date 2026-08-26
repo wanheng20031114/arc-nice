@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -36,6 +37,15 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--size", type=int, default=32)
     parser.add_argument("--padding", type=int, default=2)
+    parser.add_argument(
+        "--alpha-threshold",
+        type=int,
+        default=127,
+        help=(
+            "Alpha values at or below this threshold are removed before "
+            "pixel-grid analysis; surviving pixels become fully opaque."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -43,7 +53,10 @@ def _run_pixel_crop_tool(
     raw_path: Path,
     cropped_path: Path,
     crop_tool: Path,
+    alpha_threshold: int,
 ) -> None:
+    child_env = os.environ.copy()
+    child_env["PYTHONIOENCODING"] = "utf-8"
     subprocess.run(
         [
             sys.executable,
@@ -53,9 +66,13 @@ def _run_pixel_crop_tool(
             "--padding",
             "8",
             "--alpha-threshold",
-            "0",
+            str(alpha_threshold),
         ],
         check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=child_env,
     )
 
 
@@ -107,6 +124,8 @@ def main() -> int:
     args = _parse_args()
     if args.size <= 0 or args.padding < 0 or args.padding * 2 >= args.size:
         raise ValueError("Invalid output size or padding.")
+    if not 0 <= args.alpha_threshold <= 255:
+        raise ValueError("Alpha threshold must be between 0 and 255.")
 
     repo_root = Path(__file__).resolve().parent.parent
     crop_tool = repo_root / "dev_tools" / "pixel_crop_tool.py"
@@ -126,7 +145,12 @@ def main() -> int:
             raw_path = args.source_crops_dir / f"{icon_name}_cell.png"
             cropped_path = args.source_crops_dir / f"{icon_name}_cropped.png"
             atlas.crop((left, top, right, bottom)).save(raw_path)
-            _run_pixel_crop_tool(raw_path, cropped_path, crop_tool)
+            _run_pixel_crop_tool(
+                raw_path,
+                cropped_path,
+                crop_tool,
+                args.alpha_threshold,
+            )
             reports[icon_name] = _analyze_logical_grid(cropped_path, analyzer)
             _write_runtime_icon(
                 cropped_path,
