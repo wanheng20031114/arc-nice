@@ -81,6 +81,8 @@ func _ready() -> void:
 	confirm_return_button.pressed.connect(_on_confirm_return_pressed)
 	cancel_return_button.pressed.connect(_on_cancel_return_pressed)
 	settings_panel.closed.connect(_on_settings_panel_closed)
+	if not net_manager.player_list_changed.is_connected(_on_net_player_list_changed):
+		net_manager.player_list_changed.connect(_on_net_player_list_changed)
 	_set_pause_controls_disabled(false)
 
 
@@ -294,11 +296,22 @@ func _show_main_menu() -> void:
 
 
 func _refresh_pause_source_label() -> void:
+	if not _context_is_networked or _network_pause_actor_peer_id <= 0:
+		pause_source_label.text = "游戏进程已暂停"
+		return
+	var actor_name := net_manager.get_player_name_by_id(
+		_network_pause_actor_peer_id
+	).strip_edges()
 	pause_source_label.text = (
-		"玩家 %d 暂停了游戏" % _network_pause_actor_peer_id
-		if _context_is_networked and _network_pause_actor_peer_id > 0
-		else "游戏进程已暂停"
+		"玩家 %s 暂停了游戏" % actor_name
+		if not actor_name.is_empty()
+		else "有玩家暂停了游戏"
 	)
+
+
+func _on_net_player_list_changed() -> void:
+	if _gameplay_paused and _context_is_networked:
+		_refresh_pause_source_label()
 
 
 func _show_return_confirmation() -> void:
