@@ -22,6 +22,10 @@ func _run() -> void:
 	var overlay := OVERLAY_SCENE.instantiate() as RogueEncounterOverlay
 	root.add_child(overlay)
 	_expect(
+		overlay.get_node_or_null("Root/EncounterContent/TopTitle") == null,
+		"遭遇选项界面不得恢复已经废弃的顶部‘神奇遭遇’标题板。"
+	)
+	_expect(
 		overlay.transition_cover_audio.stream.resource_path
 		== "res://resources/audio/ui/xiaocong_transition_cover.wav"
 		and overlay.transition_reveal_audio.stream.resource_path

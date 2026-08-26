@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "e27f2aefb0258bf565f51d0ff83f977686a208d78680e6097d678f58ebaaf7f2",
+	"content_sha256": "22ecaa463e9ed12bbab68b5a372d2cd1342da30b2feee280dabc70cd1788edf3",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -8626,7 +8626,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_overlay.tscn",
-			"sha256": "ec01a6b7d8f5629b6b2a180247bcda8bd0ea2de4522a1c828b0b8af9b5a35f9c"
+			"sha256": "e9bc57693320b9c70ba0d20740e51d54d050d33b3cbf625734de95da08bdca5a"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/encounter/rogue_encounter_registry.gd",
