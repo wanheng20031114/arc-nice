@@ -4,7 +4,7 @@
 
 用于验证当前多人稳定化目标中自动测试无法覆盖的部分：真实 1 Host + 3 Client LAN、完整核心流程、以及 100-200ms RTT / 2-5% 丢包模拟下的可玩性。
 
-自动探针 `dev_tools/run_multiplayer_lan_probe.ps1` 已覆盖本机 1 Host + 3 Client 的真实 ENet 连接、开始游戏、玩家快照、客户端移动状态上报、敌人生成/移除同步、Host 击杀后全员收到配置息壤奖金、cheat、升级、技能购买、死亡与复活状态同步；`-Scenario leave` 会验证 client4 中途离开后 Host 与剩余 Client 清理该玩家；`-Scenario wave` 会验证开波、波次敌人同步、敌人移除后进入休整和商店激活。手动验证仍需重点覆盖真实键鼠移动/射击手感、完整长波次体验、死亡复活视觉表现、普通掉落表现和网络模拟。
+旧自动烟测与网络探针已删除。本清单只描述人工验证；后续若恢复自动化，应按当时的网络协议、场景结构和验收目标重新编写。
 
 ## 环境准备
 
@@ -38,22 +38,7 @@
 | B | 200ms | 2% | 射击/受击反馈可接受，复活和拾取不重复 |
 | C | 200ms | 5% | 允许更明显抖动，但不能出现永久不同步、重复加钱、无法复活或断线后残留 |
 
-如果使用 clumsy，可以先把 `clumsy.exe` 放到 PATH，或在命令中传入 `-ClumsyExe`：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools\run_multiplayer_clumsy_probe.ps1 -Profile 100ms-2 -Scenario full -Port 29500 -ClumsyExe C:\path\to\clumsy.exe
-powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools\run_multiplayer_clumsy_probe.ps1 -Profile 200ms-2 -Scenario full -Port 29501 -ClumsyExe C:\path\to\clumsy.exe
-powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools\run_multiplayer_clumsy_probe.ps1 -Profile 200ms-5 -Scenario leave -Port 29502 -ClumsyExe C:\path\to\clumsy.exe
-powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools\run_multiplayer_clumsy_probe.ps1 -Profile 200ms-5 -Scenario wave -Port 29503 -ClumsyExe C:\path\to\clumsy.exe
-```
-
-批量自动验证可以使用矩阵 runner：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools\run_multiplayer_clumsy_matrix.ps1 -ClumsyExe C:\path\to\clumsy.exe -StartPort 29520 -TimeoutSeconds 180
-```
-
-本轮已经用 clumsy 0.3 官方 64 位 release 跑通自动矩阵：`100ms-2`、`200ms-2`、`200ms-5` 均覆盖 `full`、`wave`、`leave`。手动验证仍需看真人操作下的射击手感、死亡/复活视觉、完整长波次和 UI 一致性。
+使用 clumsy 或其他网络模拟工具时，只限制本轮 Godot 进程或测试端口，并按上表逐档执行人工流程。旧自动 runner 不再可用。
 
 每个档位至少重复：
 

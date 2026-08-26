@@ -237,15 +237,6 @@ def write_rows(ws, headers: list[str], rows: list[list[Any]]) -> None:
     for row in rows: ws.append([as_excel(v) for v in row])
 
 
-def specific_test_refs(config_name: str) -> list[str]:
-    refs = []
-    for path in sorted((PROJECT_ROOT / "dev_tools").glob("*smoke_test.gd")):
-        text = path.read_text(encoding="utf-8")
-        if config_name in text:
-            refs.append(path.name)
-    return refs
-
-
 def main() -> None:
     audits = audit.audit_collectibles()
     if len(audits) != audit.EXPECTED_TOTAL_COUNT:
@@ -403,7 +394,6 @@ def main() -> None:
         ("弹数迁移", "AmmoRangedPlayer._on_collectible_ammunition_stats_refreshed", "原本满弹时扩容同步补满；未满保持当前弹数；降容夹紧到新上限。"),
         ("全量刷新", "Player._refresh_collectible_stats", "从背包一次性聚合并缓存静态、条件、息壤动态、概率、弹药和防御倍率等效果。"),
         ("联网", "MpGame收藏品RPC/广播路径", "同步有效容量、当前弹数与换弹进度；有效容量不会覆盖角色基础ammo_capacity，避免重复乘算。"),
-        ("通用运行时审计", "dev_tools/collectible_runtime_audit_smoke_test.gd", "遍历全部收藏品，验证字段、聚合属性、触发、命中、击杀、周期和技能效果。"),
         ("静态审计", "dev_tools/audit_collectibles.py", "检查125件数量、品质/分类、字段逻辑、唯一性、效果或事件用途、图标尺寸/像素/导入文件和设计元数据。"),
     ]
     write_rows(ws, ["主题", "代码入口/常量", "详细说明"], rules); style_sheet(ws); add_table(ws, "RuntimeRules"); autosize(ws, 80)
@@ -420,18 +410,17 @@ def main() -> None:
     write_rows(ws, ["字段名", "中文含义", "分组", "默认值", "显式配置件数", "使用默认值件数", "关键语义/单位", "读取提示"], rows); style_sheet(ws); add_table(ws, "FieldDictionary"); autosize(ws, 62)
     ws.column_dimensions["G"].width = 62; ws.column_dimensions["H"].width = 48
 
-    ws = wb.create_sheet("测试与引用")
+    ws = wb.create_sheet("引用清单")
     rows = []
     for index, item in enumerate(audits, 1):
-        refs = specific_test_refs(item.path.name)
         categories = audit.primary_affix_categories(item.data) or ["特殊"]
         scene_refs = [
             "scene/player/player.gd",
             "scene/merchants/luoxi/luoxi_merchant.gd",
         ]
         if any(c in categories for c in ["周期", "技能", "触发"]): scene_refs.append("scene/multiplayer/mp_game.gd")
-        rows.append([index, item.data["display_name"], item.data["collectible_effect_id"], "是", "dev_tools/collectible_runtime_audit_smoke_test.gd", "；".join(refs) or "无逐件预载专项", "；".join(scene_refs), "；".join(categories)])
-    write_rows(ws, ["序号", "名称", "效果ID", "全量运行时审计覆盖", "通用测试", "专项预载测试", "主要运行时文件", "覆盖机制"], rows); style_sheet(ws); add_table(ws, "TestReferences"); autosize(ws, 58)
+        rows.append([index, item.data["display_name"], item.data["collectible_effect_id"], "dev_tools/audit_collectibles.py", "；".join(scene_refs), "；".join(categories)])
+    write_rows(ws, ["序号", "名称", "效果ID", "静态审计", "主要运行时文件", "覆盖机制"], rows); style_sheet(ws); add_table(ws, "ReferenceInventory"); autosize(ws, 58)
 
     ws = wb.create_sheet("文案改写记录")
     rows = []

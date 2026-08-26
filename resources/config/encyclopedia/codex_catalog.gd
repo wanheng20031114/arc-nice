@@ -40,7 +40,6 @@ const RESEARCH_FILTER_KEYS := {
 	&"building_enhancement": "建筑增强",
 }
 ## Authored catalog contract used by navigation before any section is materialized.
-## The encyclopedia smoke test verifies these counts against the full registries.
 const REGISTERED_ENTRY_COUNTS := {
 	CodexSection.ENEMY: 64,
 	CodexSection.COLLECTIBLE: 125,

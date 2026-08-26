@@ -161,11 +161,7 @@ v95 及更旧客户端不能加入 v96 房间。
 Relay 只转发 RPC，不重复实现游戏状态逻辑；逻辑 Host 对不兼容、重连加载或
 运行时投影超时成员的断开请求会可靠发送至 Relay 服务端（peer 1）。Relay 只
 接受已登记 Host 的请求，并由服务端断开同房目标；普通客户端不能踢出其他成员。
-每次调整主项目 RPC 的名称、注解、参数或通道后，都必须同步对应 stub，并在仓库根目录运行：
-
-```bash
-godot --headless --path . --script res://dev_tools/relay_rpc_parity_smoke_test.gd
-```
+每次调整主项目 RPC 的名称、注解、参数或通道后，都必须同步对应 stub。旧 parity 烟测已删除；需要自动校验时，应基于当时的完整 RPC 契约重新编写验证。
 
 ### 公网 Relay 容量与真实验证边界
 

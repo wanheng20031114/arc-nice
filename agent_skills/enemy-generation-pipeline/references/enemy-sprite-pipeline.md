@@ -251,7 +251,7 @@ local_anchor_offset = (body_anchor - logical_frame_size / 2) * sprite_scale
 sprite_position = desired_world_anchor - local_anchor_offset
 ```
 
-如果碰撞体居中且下沿是脚底，`desired_world_anchor.y` 通常接近碰撞体半高。最终用锚点十字预览和 Godot smoke test 验证。
+如果碰撞体居中且下沿是脚底，`desired_world_anchor.y` 通常接近碰撞体半高。最终用锚点十字预览和 Godot 内可视核验确认。
 
 高分辨率原图保真分支的 `logical_frame_size` 是共享虚拟画布的高分辨率尺寸，`sprite_scale` 必须是全动作共用的 uniform 值。允许线性过滤仅意味着 Godot 在绘制时采样这张高分纹理；公式、注册点和原始 atlas 像素不因此改变。测试必须拒绝任一动作/帧覆盖 scale 或使用非统一 x/y 比例。
 
@@ -275,7 +275,7 @@ sprite_position = desired_world_anchor - local_anchor_offset
 - 动画名必须和配置、场景脚本一致；不要从示例里照搬固定动画名。
 - 优先直接编辑 `.tscn` / `.tres`，不要把视觉节点动态生成塞进运行时代码。
 - PNG 改动后重新导入 Godot。
-- 跑聚焦 smoke test。
+- 运行仍适用于当前结构的专项回归；没有合适入口时进行人工可视核验，按需重写验证。
 - 根据影响面检查：
   - texture size；
   - animation names；

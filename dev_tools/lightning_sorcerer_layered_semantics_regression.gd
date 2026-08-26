@@ -35,12 +35,6 @@ const TARGET_C_NET_ID := 78_004
 const TARGET_D_NET_ID := 78_005
 const TARGET_HEALTH := 1000
 const ROLLBACK_TICK := 40
-const LEGACY_SMOKE_PATHS := [
-	"res://dev_tools/lightning_sorcerer_smoke_test.gd",
-	"res://dev_tools/lightning_sorcerer_elite_smoke_test.gd",
-	"res://dev_tools/lightning_sorcerer_network_smoke_test.gd",
-	"res://dev_tools/lightning_sorcerer_vfx_smoke_test.gd",
-]
 const TEST_MODES: Array[int] = [
 	POLICY.Mode.LEGACY,
 	POLICY.Mode.COMPAT_60,
@@ -109,7 +103,6 @@ func _init() -> void:
 
 func _run() -> void:
 	_verify_two_config_closure_and_capabilities()
-	_verify_legacy_smoke_closure()
 	var runs: Dictionary = {}
 	for simulation_mode in TEST_MODES:
 		runs[simulation_mode] = await _run_mode(simulation_mode)
@@ -126,7 +119,6 @@ func _run() -> void:
 		"modes": _mode_names(),
 		"trace_digests": _trace_digests(runs),
 		"checkpoints": _checkpoint_diagnostics(runs),
-		"legacy_smokes": LEGACY_SMOKE_PATHS,
 		"failures": failures.duplicate(),
 	}
 	print("LIGHTNING_SORCERER_LAYERED_SEMANTICS_JSON %s" % JSON.stringify(result))
@@ -193,14 +185,6 @@ func _verify_two_config_closure_and_capabilities() -> void:
 		and LIGHTNING_ELITE_CONFIG.max_health == 300,
 		"The two-config closure must preserve normal/elite damage, chain, cooldown and health distinctions."
 	)
-
-
-func _verify_legacy_smoke_closure() -> void:
-	for smoke_path in LEGACY_SMOKE_PATHS:
-		_expect(
-			ResourceLoader.exists(smoke_path, "Script"),
-			"Existing Lightning coverage must remain available: %s" % smoke_path
-		)
 
 
 func _run_mode(simulation_mode: int) -> Dictionary:

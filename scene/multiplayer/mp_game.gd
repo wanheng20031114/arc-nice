@@ -75,6 +75,28 @@ const PEER_RESULT_RPC_METHODS := {
 	&"net_cheat_xirang_confirmed": 0,
 	&"net_debug_collectible_granted": 0,
 }
+## 每个 CH6 玩家结果在 participant/session trailer 之前的固定业务参数数量。
+## 发送端必须显式提供所有业务默认值；否则 trailer 会被 Godot 绑定到前面的
+## 可选参数，导致末尾 session incarnation 静默回落为 0。
+const PEER_RESULT_RPC_BUSINESS_ARGUMENT_COUNTS := {
+	&"net_warehouse_command_result": 1,
+	&"net_inventory_snapshot": 3,
+	&"net_research_state_updated": 3,
+	&"net_pickup_collected": 5,
+	&"net_upgrade_confirmed": 6,
+	&"net_inventory_item_used": 6,
+	&"net_inventory_item_discarded": 5,
+	&"net_simple_crafting_result": 6,
+	&"net_skill1_purchase_confirmed": 6,
+	&"net_luoxi_collectible_offer_state": 6,
+	&"net_luoxi_collectible_confirmed": 6,
+	&"net_luoxi_collectible_refresh_confirmed": 4,
+	&"net_luoxi_special_game_started": 3,
+	&"net_luoxi_special_game_card_revealed": 2,
+	&"net_luoxi_special_game_finished": 3,
+	&"net_cheat_xirang_confirmed": 3,
+	&"net_debug_collectible_granted": 4,
+}
 const SUBJECT_IDENTITY_MARKER := &"__canonical_peer_subject__"
 const PLAYER_PROJECTION_RETRY_INTERVAL_SECONDS := 0.25
 const PLAYER_PROJECTION_RETRY_TIMEOUT_SECONDS := 2.0
@@ -221,6 +243,10 @@ func _ready() -> void:
 			return
 		_host_startup_snapshot_grace_time_left = HOST_STARTUP_SNAPSHOT_GRACE_SECONDS
 		_client_host_game_ready = true
+		if not embedded_runtime:
+			# 只有此时 Host 的稳定 RPC 根与运行时协调器才已全部挂载。Client
+			# 收到 start 后可以并行加载，但不会再领先 Host 创建 /root/MpGame。
+			net_manager.host_broadcast_start_game()
 	elif net_manager.is_client():
 		if not _setup_game(GAME_RUNTIME_CLIENT_VIEW):
 			mark_runtime_preparation_failed(
@@ -1310,7 +1336,10 @@ func _on_tower_economy_inventory_snapshot_broadcast_requested(
 	peer_id: int,
 	snapshot: Dictionary
 ) -> void:
-	_rpc_to_connected_clients(&"net_inventory_snapshot", [peer_id, snapshot])
+	_rpc_to_connected_clients(
+		&"net_inventory_snapshot",
+		[peer_id, snapshot, false]
+	)
 
 
 func _on_tower_economy_plant_runtime_state_apply_requested(
@@ -2118,7 +2147,10 @@ func _capture_shared_warehouse_ledger() -> bool:
 
 func _broadcast_inventory_snapshot(peer_id: int) -> void:
 	var snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
-	_rpc_to_connected_clients(&"net_inventory_snapshot", [peer_id, snapshot])
+	_rpc_to_connected_clients(
+		&"net_inventory_snapshot",
+		[peer_id, snapshot, false]
+	)
 
 
 func _on_host_multiplayer_inventory_changed(peer_id: int) -> void:
@@ -2540,8 +2572,8 @@ func _setup_game(mode: int) -> bool:
 		)
 	if not run_state.set_active_multiplayer_peer(local_peer_id):
 		return _fail_game_setup("本机 peer 尚未注册为持久账本成员。")
-	if net_manager.is_host() and _has_tower_mode():
-		tower_world_coordinator.broadcast_base_health_snapshot()
+	# LOADING_GAME 阶段不发送玩法快照。所有成员进入 IN_GAME 后，Client 的
+	# runtime-state repair 会请求基地生命等完整权威状态。
 	return true
 
 
@@ -2757,8 +2789,7 @@ func _commit_pending_peer_ledger_envelope(
 		PEER_RESULT_INVENTORY_SNAPSHOT:
 			return transactions_coordinator.receive_inventory_snapshot(
 				peer_id,
-				_rehydrate_inventory_snapshot(peer_id, payload),
-				bool(payload["force_inventory_repair"])
+				_rehydrate_inventory_snapshot(peer_id, payload)
 			)
 		PEER_RESULT_WAREHOUSE_COMMAND:
 			var warehouse_result := _decode_subject_dictionary(
@@ -3256,7 +3287,15 @@ func _rpc_to_peer(
 	args: Array = [],
 	record_outbound: bool = true
 ) -> bool:
-	if peer_id <= 0:
+	if (
+		peer_id <= 0
+		or not is_inside_tree()
+		or net_manager == null
+		or (
+			not net_manager.is_peer_send_ready(peer_id)
+			and not net_manager.is_reconnect_delivery_preparing(peer_id)
+		)
+	):
 		return false
 	var wire_args := _build_outbound_rpc_arguments(method_name, args)
 	if PEER_RESULT_RPC_METHODS.has(method_name) and wire_args.is_empty():
@@ -3270,7 +3309,11 @@ func _rpc_to_peer(
 
 
 func _rpc_to_connected_clients(method_name: StringName, args: Array = []) -> void:
-	if embedded_runtime and not _embedded_runtime_active:
+	if (
+		not is_inside_tree()
+		or net_manager == null
+		or (embedded_runtime and not _embedded_runtime_active)
+	):
 		return
 	var wire_args := _build_outbound_rpc_arguments(method_name, args)
 	if PEER_RESULT_RPC_METHODS.has(method_name) and wire_args.is_empty():
@@ -3293,6 +3336,15 @@ func _build_outbound_rpc_arguments(
 	var wire_args := args.duplicate()
 	if not PEER_RESULT_RPC_METHODS.has(method_name):
 		return wire_args
+	var expected_business_argument_count := int(
+		PEER_RESULT_RPC_BUSINESS_ARGUMENT_COUNTS.get(method_name, -1)
+	)
+	if args.size() != expected_business_argument_count:
+		push_error(
+			"MpGame: CH6 结果 %s 需要 %d 个业务参数，实际为 %d，拒绝发送。"
+			% [method_name, expected_business_argument_count, args.size()]
+		)
+		return []
 	var session_incarnation := net_manager.get_game_session_incarnation()
 	if session_incarnation <= 0:
 		push_error(
@@ -6035,6 +6087,7 @@ func net_production_state_batch(
 	)
 
 
+@warning_ignore("unused_parameter")
 @rpc("authority", "call_remote", "reliable", 6)
 func net_inventory_snapshot(
 	peer_id: int,
@@ -6053,7 +6106,6 @@ func net_inventory_snapshot(
 			"inventory_snapshot": _make_identity_neutral_inventory_snapshot(
 				snapshot
 			),
-			"force_inventory_repair": force_inventory_repair,
 		},
 		participant_incarnation,
 		session_incarnation

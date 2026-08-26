@@ -1,7 +1,0 @@
-[gd_scene load_steps=3 format=3]
-
-[ext_resource type="PackedScene" path="res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn" id="1_runtime"]
-[ext_resource type="Script" path="res://dev_tools/fixtures/lightning_sorcerer_performance_runtime.gd" id="2_script"]
-
-[node name="LightningSorcererPerformanceRuntime" instance=ExtResource("1_runtime")]
-script = ExtResource("2_script")

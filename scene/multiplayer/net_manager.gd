@@ -1186,7 +1186,8 @@ func host_start_game() -> void:
 		_expected_game_load_peers[int(peer_id_variant)] = true
 	_set_connection_state(ConnectionState.LOADING_GAME)
 	_emit_game_load_progress()
-	_send_start_game_to_clients()
+	# Host 先自行切入并挂载 /root/MpGame。该节点入树后再通知 Client，避免
+	# Client 更快完成切场并把玩法 RPC 发给仍停留在 Lobby 的 Host。
 
 
 func host_broadcast_start_game() -> void:
@@ -1714,6 +1715,7 @@ func is_peer_send_ready(peer_id: int) -> bool:
 		peer_id <= 0
 		or _disconnect_in_progress
 		or _session_projection_failure_active
+		or connection_state != ConnectionState.IN_GAME
 		or _pending_reconnect_loads.has(peer_id)
 	):
 		return false
@@ -1989,7 +1991,7 @@ func _reject_late_connected_peer(peer_id: int) -> void:
 	if connected_players.has(peer_id):
 		return
 	_pending_relay_registrations.erase(peer_id)
-	if is_peer_send_ready(peer_id):
+	if is_peer_control_send_ready(peer_id):
 		_rpc_join_rejected.rpc_id(
 			peer_id,
 			(
@@ -4255,7 +4257,7 @@ func _send_player_list_to_peer(peer_id: int) -> bool:
 		or not connected_players.has(peer_id)
 		or _enet_peer == null
 		or not multiplayer.has_multiplayer_peer()
-		or not is_peer_send_ready(peer_id)
+		or not is_peer_control_send_ready(peer_id)
 	):
 		return false
 	_rpc_sync_player_list.rpc_id(
@@ -4275,7 +4277,7 @@ func _send_start_game_to_clients() -> void:
 		var peer_id := int(peer_id_variant)
 		if peer_id <= 0 or peer_id == host_id:
 			continue
-		if not is_peer_send_ready(peer_id):
+		if not is_peer_control_send_ready(peer_id):
 			continue
 		_rpc_start_game.rpc_id(peer_id, int(current_game_mode), loading_session_id)
 
@@ -4286,7 +4288,7 @@ func _send_host_game_ready_to_clients() -> void:
 		var peer_id := int(peer_id_variant)
 		if peer_id <= 0 or peer_id == host_id:
 			continue
-		if not is_peer_send_ready(peer_id):
+		if not is_peer_control_send_ready(peer_id):
 			continue
 		_send_game_pause_state_to_peer(peer_id)
 		_rpc_host_game_ready.rpc_id(peer_id, loading_session_id)
@@ -4337,7 +4339,11 @@ func _broadcast_game_load_progress() -> void:
 	var host_id := get_host_peer_id()
 	for peer_id_variant in _expected_game_load_peers:
 		var peer_id := int(peer_id_variant)
-		if peer_id <= 0 or peer_id == host_id or not is_peer_send_ready(peer_id):
+		if (
+			peer_id <= 0
+			or peer_id == host_id
+			or not is_peer_control_send_ready(peer_id)
+		):
 			continue
 		_rpc_game_load_progress.rpc_id(
 			peer_id,

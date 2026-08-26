@@ -848,7 +848,6 @@ def _build_asset(spec: AssetSpec, *, write_outputs: bool = True) -> dict:
         ],
         "commands": {
             "build": f"python dev_tools/process_consumable_assets.py --asset {spec.slug}",
-            "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py",
         },
         "processing_parameters": {
             "hard_alpha": True,

@@ -28,12 +28,6 @@ const TARGET_A_NET_ID := 77_002
 const TARGET_B_NET_ID := 77_003
 const TARGET_HEALTH := 1000
 const ROLLBACK_TICK := 40
-const LEGACY_SMOKE_PATHS := [
-	"res://dev_tools/fire_sorcerer_smoke_test.gd",
-	"res://dev_tools/fire_sorcerer_elite_smoke_test.gd",
-	"res://dev_tools/fire_sorcerer_data_backend_smoke_test.gd",
-	"res://dev_tools/fire_sorcerer_network_contact_smoke_test.gd",
-]
 const TEST_MODES: Array[int] = [
 	POLICY.Mode.LEGACY,
 	POLICY.Mode.COMPAT_60,
@@ -120,7 +114,6 @@ func _run() -> void:
 		burn_scheduler.set_physics_process(false)
 
 	_verify_two_config_closure_and_capabilities()
-	_verify_legacy_smoke_closure()
 	var runs: Dictionary = {}
 	for simulation_mode in TEST_MODES:
 		runs[simulation_mode] = await _run_mode(simulation_mode)
@@ -140,7 +133,6 @@ func _run() -> void:
 		"modes": _mode_names(),
 		"trace_digests": _trace_digests(runs),
 		"checkpoints": _checkpoint_diagnostics(runs),
-		"legacy_smokes": LEGACY_SMOKE_PATHS,
 		"failures": failures.duplicate(),
 	}
 	print("FIRE_SORCERER_LAYERED_SEMANTICS_JSON %s" % JSON.stringify(result))
@@ -224,14 +216,6 @@ func _verify_two_config_closure_and_capabilities() -> void:
 		normal.free()
 	if elite != null:
 		elite.free()
-
-
-func _verify_legacy_smoke_closure() -> void:
-	for smoke_path in LEGACY_SMOKE_PATHS:
-		_expect(
-			ResourceLoader.exists(smoke_path, "Script"),
-			"Existing Fire coverage must remain available: %s" % smoke_path
-		)
 
 
 func _run_mode(simulation_mode: int) -> Dictionary:

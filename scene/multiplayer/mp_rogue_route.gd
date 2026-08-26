@@ -177,6 +177,10 @@ func _ready() -> void:
 
 	_runtime_prepared = true
 	mark_runtime_preparation_complete(_preparation_generation)
+	if _is_host():
+		# 独立 P3 使用自己的稳定 RPC 根；等它完成挂载后再让 Client 切场，
+		# 避免 Client 先向仍在 Lobby 的 Host 发送路线 RPC。
+		_net_manager.host_broadcast_start_game()
 	call_deferred("_report_game_loaded")
 	if _get_connection_state() == STATE_IN_GAME:
 		call_deferred("_synchronize_after_barrier")

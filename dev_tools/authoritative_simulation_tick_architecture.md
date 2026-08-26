@@ -4,6 +4,7 @@
 > 日期：2026-07-21
 > 范围：塔防压力场景、单机与多人 Host 的共享权威模拟、客户端表现层
 > 本文记录证据、当前已落地的低风险切片与后续迁移设计；目标调度器尚未全部建成。
+> 旧烟测与探针已于 2026-08-26 删除；文中测量仅作历史记录，新的验证基础设施应按当前架构重写。
 
 ## 1. 结论
 
@@ -500,7 +501,7 @@ flowchart TD
 
 - 本文建立基线时，原 `scene/game.gd` 与 `scene/game_tower_defense.gd` 分别约 2688 / 5032 行，并有约 174 个共同函数名；现已迁移为 `scene/game_modes/standard/standard_game.gd` 与 `scene/game_modes/tower_defense/tower_defense_game.gd`，共享中性能力下沉至 `scene/combat/runtime/combat_runtime_base.gd`，模式流程继续由各自协调器承载。
 - `path_refresh_interval`、`direct_chase_extra_distance` 在多种敌人脚本与场景中保留导出项，例如 `scene/enemy/capoo/capoo_ak47.gd:16-18`、`scene/enemy/capoo/capoo_knight.gd:20-22`、`scene/enemy/capoo_ranged_enemy.gd:9-11`；当前搜索只发现声明/序列化，没有运行时读取。确认场景迁移与兼容后再删除。
-- 开发探针和 `runtime_performance_telemetry.gd` 属于验证基础设施，不应当作“垃圾代码”随意删除。
+- 后续验证基础设施应基于当前架构按需重写，并与仍服务正式运行时的 telemetry 生命周期分别评估。
 
 验收：每次清理提交只做结构等价重构，固定种子签名和性能基准均不回退。
 
