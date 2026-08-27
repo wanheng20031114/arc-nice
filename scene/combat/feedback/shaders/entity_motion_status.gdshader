@@ -31,6 +31,22 @@ uniform vec4 direct_hit_flash_color : source_color = vec4(1.0, 0.24, 0.26, 1.0);
 uniform float revive_glow_strength : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 revive_glow_color : source_color = vec4(3.2, 3.2, 3.2, 1.0);
 uniform float revive_glow_outline_width : hint_range(1.0, 8.0) = 4.5;
+uniform bool paint_recolor_enabled = false;
+uniform vec4 paint_color : source_color = vec4(0.086, 0.686, 0.91, 1.0);
+
+vec3 rgb_to_hsv(vec3 color) {
+	vec4 k = vec4(0.0, -0.3333333333, 0.6666666667, -1.0);
+	vec4 p = mix(vec4(color.bg, k.wz), vec4(color.gb, k.xy), step(color.b, color.g));
+	vec4 q = mix(vec4(p.xyw, color.r), vec4(color.r, p.yzx), step(p.x, color.r));
+	float difference = q.x - min(q.w, q.y);
+	float epsilon = 0.0000000001;
+	return vec3(abs(q.z + (q.w - q.y) / (6.0 * difference + epsilon)), difference / (q.x + epsilon), q.x);
+}
+
+vec3 hsv_to_rgb(vec3 color) {
+	vec3 p = abs(fract(color.xxx + vec3(0.0, 0.6666666667, 0.3333333333)) * 6.0 - 3.0);
+	return color.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), color.y);
+}
 
 void fragment() {
 	if (hide_pixels) {
@@ -39,6 +55,30 @@ void fragment() {
 
 	vec4 texture_color = texture(TEXTURE, UV);
 	vec4 color = COLOR;
+	if (paint_recolor_enabled && texture_color.a > 0.0) {
+		vec3 source_hsv = rgb_to_hsv(texture_color.rgb);
+		vec3 palette_hsv = vec3(
+			floor(source_hsv.x * 12.0 + 0.5) / 12.0,
+			floor(source_hsv.y * 3.0 + 0.5) / 3.0,
+			floor(source_hsv.z * 4.0 + 0.5) / 4.0
+		);
+		color.rgb = hsv_to_rgb(palette_hsv);
+		float cyan_blue_hue_mask = (
+			smoothstep(0.43, 0.49, source_hsv.x)
+			* (1.0 - smoothstep(0.70, 0.76, source_hsv.x))
+		);
+		float paint_mask = cyan_blue_hue_mask * smoothstep(0.22, 0.46, source_hsv.y);
+		if (paint_mask > 0.0) {
+			vec3 target_hsv = rgb_to_hsv(paint_color.rgb);
+			float target_value_scale = target_hsv.z / 0.91;
+			vec3 recolored = hsv_to_rgb(vec3(
+				target_hsv.x,
+				target_hsv.y,
+				clamp(palette_hsv.z * target_value_scale, 0.0, 1.0)
+			));
+			color.rgb = mix(color.rgb, recolored, paint_mask);
+		}
+	}
 
 	if (blink_enabled && color.a > 0.0) {
 		float blink_phase = fract(TIME * blink_speed);

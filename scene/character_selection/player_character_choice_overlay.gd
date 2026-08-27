@@ -72,7 +72,7 @@ func open(initial_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHA
 		return
 	selected_character_id = (
 		initial_character_id
-		if PlayerCharacterRegistry.is_valid_character_id(initial_character_id)
+		if PlayerCharacterRegistry.is_character_menu_selectable(initial_character_id)
 		else PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 	)
 	confirmation_lock_time_left = CONFIRMATION_LOCK_DURATION
@@ -134,7 +134,7 @@ func _build_character_cards() -> void:
 		child.free()
 	cards.clear()
 
-	for config in PlayerCharacterRegistry.get_all_configs():
+	for config in PlayerCharacterRegistry.get_character_menu_configs():
 		var card := CHARACTER_CARD_SCENE.instantiate() as PlayerCharacterCard
 		card_row.add_child(card)
 		card.setup(config, config.character_id == selected_character_id)
@@ -144,7 +144,7 @@ func _build_character_cards() -> void:
 
 
 func _select_character(character_id: StringName) -> void:
-	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
+	if not PlayerCharacterRegistry.is_character_menu_selectable(character_id):
 		return
 	selected_character_id = character_id
 	_refresh_selection()
@@ -176,7 +176,7 @@ func _refresh_selection() -> void:
 func _confirm_selection() -> void:
 	if confirmation_in_progress or confirmation_lock_time_left > 0.0:
 		return
-	if not PlayerCharacterRegistry.is_valid_character_id(selected_character_id):
+	if not PlayerCharacterRegistry.is_character_menu_selectable(selected_character_id):
 		return
 	var selected_index := _get_selected_card_index()
 	if selected_index < 0:

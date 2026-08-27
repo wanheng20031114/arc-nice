@@ -1,0 +1,47 @@
+[gd_resource type="SpriteFrames" load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/player/vehicle/mini_combat_car.png" id="1_vehicle"]
+
+[resource]
+resource_name = "player_vehicle"
+animations = [{
+"frames": [{"duration": 1.0, "texture": ExtResource("1_vehicle")}],
+"loop": true,
+"name": &"armed_down",
+"speed": 1.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("1_vehicle")}],
+"loop": true,
+"name": &"armed_left",
+"speed": 1.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("1_vehicle")}],
+"loop": true,
+"name": &"armed_right",
+"speed": 1.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("1_vehicle")}],
+"loop": true,
+"name": &"armed_up",
+"speed": 1.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("1_vehicle")}],
+"loop": true,
+"name": &"normal_down",
+"speed": 1.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("1_vehicle")}],
+"loop": true,
+"name": &"normal_left",
+"speed": 1.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("1_vehicle")}],
+"loop": true,
+"name": &"normal_right",
+"speed": 1.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("1_vehicle")}],
+"loop": true,
+"name": &"normal_up",
+"speed": 1.0
+}]

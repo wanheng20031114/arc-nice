@@ -1681,7 +1681,9 @@ func are_all_player_characters_confirmed() -> bool:
 		var peer_id := int(peer_id_variant)
 		if not connected_player_characters.has(peer_id):
 			return false
-		if not PlayerCharacterRegistry.is_valid_character_id(get_player_character_id(peer_id)):
+		if not PlayerCharacterRegistry.is_multiplayer_character_id(
+			get_player_character_id(peer_id)
+		):
 			return false
 		if not is_player_character_confirmed(peer_id):
 			return false
@@ -2877,7 +2879,9 @@ func _handle_player_registration(
 
 	connected_players[sender_id] = _sanitize_player_name(player_name)
 	var requested_character_id := StringName(character_id)
-	var character_is_valid := PlayerCharacterRegistry.is_valid_character_id(requested_character_id)
+	var character_is_valid := PlayerCharacterRegistry.is_multiplayer_character_id(
+		requested_character_id
+	)
 	_set_peer_character(
 		sender_id,
 		requested_character_id if character_is_valid else DEFAULT_CHARACTER_ID,
@@ -3426,7 +3430,7 @@ func _handle_player_character_request(
 	):
 		return false
 	var requested_id := StringName(character_id)
-	if not PlayerCharacterRegistry.is_valid_character_id(requested_id):
+	if not PlayerCharacterRegistry.is_multiplayer_character_id(requested_id):
 		return false
 	if (
 		StringName(connected_player_characters.get(sender_id, DEFAULT_CHARACTER_ID))
@@ -4114,7 +4118,7 @@ func _apply_player_reconnected_identity(
 		or old_peer_id == new_peer_id
 		or new_peer_id == get_host_peer_id()
 		or membership_revision <= 0
-		or not PlayerCharacterRegistry.is_valid_character_id(character_id)
+		or not PlayerCharacterRegistry.is_multiplayer_character_id(character_id)
 	):
 		return false
 	var resolved_player_name := _sanitize_player_name(player_name)
@@ -4637,7 +4641,7 @@ func _prepare_session_member_list(player_list: Array) -> Dictionary:
 			or seen_participant_incarnations.has(participant_incarnation)
 			or state < int(SessionMemberState.ACTIVE)
 			or state > int(SessionMemberState.RECONNECTING)
-			or not PlayerCharacterRegistry.is_valid_character_id(character_id)
+			or not PlayerCharacterRegistry.is_multiplayer_character_id(character_id)
 		):
 			return {}
 		seen_participant_incarnations[participant_incarnation] = true
@@ -4778,7 +4782,7 @@ func _set_peer_character(peer_id: int, character_id: StringName, confirmed: bool
 
 
 func _sanitize_character_id(character_id: StringName) -> StringName:
-	if PlayerCharacterRegistry.is_valid_character_id(character_id):
+	if PlayerCharacterRegistry.is_multiplayer_character_id(character_id):
 		return character_id
 	return DEFAULT_CHARACTER_ID
 

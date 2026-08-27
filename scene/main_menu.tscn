@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="5_settings_panel"]
 [ext_resource type="PackedScene" path="res://scene/character_selection/player_character_choice_overlay.tscn" id="6_character_choice"]
 [ext_resource type="PackedScene" path="res://scene/test_arena/test_arena_choice_overlay.tscn" id="7_test_arena_choice"]
+[ext_resource type="PackedScene" path="res://scene/vehicle_mode/vehicle_mode_choice_overlay.tscn" id="8_vehicle_mode_choice"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.09, 0.095, 0.105, 0.92)
@@ -136,7 +137,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 
 [node name="MenuPanel" type="PanelContainer" parent="MenuCenter" unique_id=523533853]
-custom_minimum_size = Vector2(360, 500)
+custom_minimum_size = Vector2(360, 550)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
@@ -149,7 +150,7 @@ theme_override_constants/margin_bottom = 34
 
 [node name="MenuStack" type="VBoxContainer" parent="MenuCenter/MenuPanel/MarginContainer" unique_id=250161274]
 layout_mode = 2
-theme_override_constants/separation = 14
+theme_override_constants/separation = 10
 alignment = 1
 
 [node name="Title" type="Label" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack" unique_id=1181603264]
@@ -168,7 +169,7 @@ layout_mode = 2
 custom_minimum_size = Vector2(260, 42)
 layout_mode = 2
 focus_neighbor_top = NodePath("../Quit")
-focus_neighbor_bottom = NodePath("../TowerDefense")
+focus_neighbor_bottom = NodePath("../VehicleMode")
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
 theme_override_colors/font_disabled_color = Color(0.42, 0.42, 0.42, 1)
 theme_override_fonts/font = ExtResource("3_sepwh")
@@ -180,10 +181,26 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_btn_hover")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "单人模式"
 
-[node name="TowerDefense" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack" unique_id=1334307674]
+[node name="VehicleMode" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack"]
 custom_minimum_size = Vector2(260, 42)
 layout_mode = 2
 focus_neighbor_top = NodePath("../SinglePlayer")
+focus_neighbor_bottom = NodePath("../TowerDefense")
+theme_override_colors/font_color = Color(0.72, 0.94, 1, 1)
+theme_override_colors/font_disabled_color = Color(0.42, 0.42, 0.42, 1)
+theme_override_fonts/font = ExtResource("3_sepwh")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_btn_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
+text = "小车模式"
+
+[node name="TowerDefense" type="Button" parent="MenuCenter/MenuPanel/MarginContainer/MenuStack" unique_id=1334307674]
+custom_minimum_size = Vector2(260, 42)
+layout_mode = 2
+focus_neighbor_top = NodePath("../VehicleMode")
 focus_neighbor_bottom = NodePath("../Rogue")
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
 theme_override_colors/font_disabled_color = Color(0.42, 0.42, 0.42, 1)
@@ -337,7 +354,11 @@ visible = false
 [node name="PlayerCharacterChoiceOverlay" parent="." unique_id=626649155 instance=ExtResource("6_character_choice")]
 visible = false
 
+[node name="VehicleModeChoiceOverlay" parent="." instance=ExtResource("8_vehicle_mode_choice")]
+visible = false
+
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer" to="." method="_on_singleplayer_pressed"]
+[connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/VehicleMode" to="." method="_on_vehicle_mode_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/TowerDefense" to="." method="_on_tower_defense_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/Rogue" to="." method="_on_rogue_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuPanel/MarginContainer/MenuStack/TestArena" to="." method="_on_test_arena_pressed"]

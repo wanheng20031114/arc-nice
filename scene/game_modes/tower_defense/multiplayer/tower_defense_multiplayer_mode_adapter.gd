@@ -546,7 +546,7 @@ func ensure_reconnected_multiplayer_player(
 		tower_runtime == null
 		or _player_roster_coordinator == null
 		or new_peer_id <= 0
-		or not PlayerCharacterRegistry.is_valid_character_id(character_id)
+		or not PlayerCharacterRegistry.is_multiplayer_character_id(character_id)
 	):
 		return CombatRuntimeBase.ReconnectedPlayerProjection.new(
 			CombatRuntimeBase.ReconnectedPlayerProjectionStatus.INVALID_REQUEST

@@ -18,6 +18,7 @@ signal quick_use_binding_changed(
 signal upgrade_changed
 signal player_upgrade_ledger_changed(snapshot: Dictionary)
 signal selected_character_changed(character_id: StringName)
+signal vehicle_paint_color_changed(color: Color)
 signal shared_warehouse_ledger_changed(snapshot: Dictionary)
 ## 单仓热更新只发布有界 delta；需要完整账本的冷路径订阅者应监听
 ## shared_warehouse_ledger_changed，或在收到 delta 后显式请求完整导出。
@@ -67,6 +68,7 @@ const STARTING_WOOD_COUNT := 20
 const STARTING_WOOD: PickupConfig = preload(
 	"res://resources/config/materials/material_wood.tres"
 )
+const DEFAULT_VEHICLE_PAINT_COLOR := Color("16afe8")
 const CRAFT_RESULT_SUCCESS := &"success"
 const CRAFT_RESULT_INVALID_RECIPE := &"invalid_recipe"
 const CRAFT_RESULT_MISSING_INPUT := &"missing_input"
@@ -184,6 +186,7 @@ var party_status_ledger_revision: int = 0
 var rogue_encounter_history_revision: int = 0
 var rogue_encounter_ids: Dictionary = {}
 var selected_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
+var vehicle_paint_color := DEFAULT_VEHICLE_PAINT_COLOR
 var _include_starting_inventory_for_new_peers := true
 
 
@@ -203,6 +206,23 @@ func get_selected_character_id() -> StringName:
 
 func get_selected_character_config() -> PlayerCharacterConfig:
 	return PlayerCharacterRegistry.get_config(selected_character_id)
+
+
+func set_vehicle_paint_color(color: Color) -> void:
+	var resolved_color := Color(
+		clampf(color.r, 0.0, 1.0),
+		clampf(color.g, 0.0, 1.0),
+		clampf(color.b, 0.0, 1.0),
+		1.0
+	)
+	if vehicle_paint_color.is_equal_approx(resolved_color):
+		return
+	vehicle_paint_color = resolved_color
+	vehicle_paint_color_changed.emit(vehicle_paint_color)
+
+
+func get_vehicle_paint_color() -> Color:
+	return vehicle_paint_color
 
 
 func begin_new_run(

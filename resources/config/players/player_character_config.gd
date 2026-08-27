@@ -13,6 +13,8 @@ class_name PlayerCharacterConfig
 @export_file("*.png", "*.webp", "*.svg") var portrait_texture: String = ""
 @export var portrait_offset: Vector2 = Vector2.ZERO
 @export var supports_ammunition: bool = false
+@export var selectable_in_character_menu: bool = true
+@export var supports_multiplayer: bool = true
 
 @export_group("Skill")
 @export var skill_display_name: String = ""

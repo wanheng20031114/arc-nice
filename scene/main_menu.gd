@@ -46,6 +46,7 @@ enum SingleplayerDestination {
 
 @onready var settings_panel: Control = $SettingsPanel
 @onready var singleplayer_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer
+@onready var vehicle_mode_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/VehicleMode
 @onready var tower_defense_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/TowerDefense
 @onready var rogue_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/Rogue
 @onready var test_arena_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/TestArena
@@ -53,6 +54,7 @@ enum SingleplayerDestination {
 @onready var encyclopedia_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/Encyclopedia
 @onready var test_arena_choice_overlay: TestArenaChoiceOverlay = $TestArenaChoiceOverlay
 @onready var character_choice_overlay: PlayerCharacterChoiceOverlay = $PlayerCharacterChoiceOverlay
+@onready var vehicle_mode_choice_overlay: VehicleModeChoiceOverlay = $VehicleModeChoiceOverlay
 @onready var encyclopedia_loading_feedback: PanelContainer = $EncyclopediaLoadingFeedback
 @onready var encyclopedia_loading_label: Label = $EncyclopediaLoadingFeedback/Status
 
@@ -83,6 +85,8 @@ func _ready() -> void:
 	test_arena_choice_overlay.selection_closed.connect(_on_test_arena_selection_closed)
 	character_choice_overlay.character_confirmed.connect(_on_character_confirmed)
 	character_choice_overlay.selection_closed.connect(_on_character_selection_closed)
+	vehicle_mode_choice_overlay.vehicle_confirmed.connect(_on_vehicle_mode_confirmed)
+	vehicle_mode_choice_overlay.selection_closed.connect(_on_vehicle_mode_selection_closed)
 	call_deferred("_apply_requested_focus")
 	call_deferred("_preload_encyclopedia_after_first_frame")
 
@@ -158,6 +162,33 @@ func _on_singleplayer_pressed() -> void:
 	_open_singleplayer_character_selection(SingleplayerDestination.STANDARD)
 
 
+func _on_vehicle_mode_pressed() -> void:
+	_cancel_pending_encyclopedia_open()
+	var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
+	vehicle_mode_choice_overlay.open(run_state.get_vehicle_paint_color())
+
+
+func _on_vehicle_mode_confirmed(paint_color: Color) -> void:
+	var definition := GameModeCatalog.get_definition(GameModeCatalog.MODE_STANDARD)
+	if definition == null or not definition.is_selectable_for(
+		GameModeDefinition.SelectionAudience.RELEASE
+	):
+		push_error("Main menu could not resolve Standard mode for vehicle mode.")
+		vehicle_mode_button.grab_focus()
+		return
+	var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
+	run_state.set_vehicle_paint_color(paint_color)
+	run_state.begin_new_run(
+		PlayerCharacterRegistry.VEHICLE_ID,
+		definition.include_starting_inventory
+	)
+	_begin_singleplayer_load(definition.singleplayer_entry_scene_path)
+
+
+func _on_vehicle_mode_selection_closed() -> void:
+	vehicle_mode_button.grab_focus()
+
+
 func _on_tower_defense_pressed() -> void:
 	_cancel_pending_encyclopedia_open()
 	_open_singleplayer_character_selection(SingleplayerDestination.TOWER_DEFENSE)
@@ -196,6 +227,12 @@ func _open_singleplayer_character_selection(destination: SingleplayerDestination
 
 
 func _on_character_confirmed(character_id: StringName) -> void:
+	if not PlayerCharacterRegistry.is_character_menu_selectable(character_id):
+		push_error(
+			"Main menu rejected a character outside the ordinary roster: %s"
+			% character_id
+		)
+		return
 	var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 	if not run_state.set_selected_character(character_id):
 		push_error("Main menu received an invalid character selection: %s" % character_id)

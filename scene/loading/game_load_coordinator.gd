@@ -847,7 +847,7 @@ func _append_mode_preload_resources(
 	for path in GameModeCatalog.get_preload_resource_paths(definition):
 		_append_existing_resource_path(manifest, path)
 	if include_all_characters:
-		for character_config in PlayerCharacterRegistry.get_all_configs():
+		for character_config in PlayerCharacterRegistry.get_multiplayer_configs():
 			if character_config != null:
 				_append_existing_resource_path(manifest, character_config.player_scene)
 

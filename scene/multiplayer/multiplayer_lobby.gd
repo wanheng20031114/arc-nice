@@ -1294,7 +1294,7 @@ func _on_choose_character_pressed() -> void:
 
 
 func _on_character_confirmed(character_id: StringName) -> void:
-	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
+	if not PlayerCharacterRegistry.is_multiplayer_character_id(character_id):
 		return
 	if run_state != null:
 		run_state.set_selected_character(character_id)
@@ -1624,7 +1624,7 @@ func _get_local_selected_character_id() -> StringName:
 	var selected_character_id := PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 	if run_state != null:
 		selected_character_id = run_state.get_selected_character_id()
-	if not PlayerCharacterRegistry.is_valid_character_id(selected_character_id):
+	if not PlayerCharacterRegistry.is_multiplayer_character_id(selected_character_id):
 		selected_character_id = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 	return selected_character_id
 

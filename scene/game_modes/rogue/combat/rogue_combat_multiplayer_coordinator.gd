@@ -4374,7 +4374,7 @@ func _freeze_participant_reward_identities() -> bool:
 		if route_player == null or not is_instance_valid(route_player):
 			return false
 		var character_id := route_player.get_character_id()
-		if not PlayerCharacterRegistry.is_valid_character_id(character_id):
+		if not PlayerCharacterRegistry.is_multiplayer_character_id(character_id):
 			return false
 		_participant_character_ids[peer_id] = character_id
 		var stable_key := str(route_stable_keys.get(

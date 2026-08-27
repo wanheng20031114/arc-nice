@@ -1,0 +1,271 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scene/vehicle_mode/vehicle_mode_choice_overlay.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/player/vehicle/mini_combat_car.png" id="2_vehicle"]
+[ext_resource type="Shader" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="3_shader"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_preview"]
+resource_local_to_scene = true
+shader = ExtResource("3_shader")
+shader_parameter/paint_recolor_enabled = true
+shader_parameter/paint_color = Color(0.086, 0.686, 0.91, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_panel"]
+bg_color = Color(0.045, 0.075, 0.09, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.12, 0.7, 0.88, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_preview"]
+bg_color = Color(0.02, 0.035, 0.045, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.18, 0.48, 0.58, 0.8)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_button"]
+content_margin_left = 12.0
+content_margin_top = 7.0
+content_margin_right = 12.0
+content_margin_bottom = 7.0
+bg_color = Color(0.08, 0.18, 0.22, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.18, 0.58, 0.7, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_button_hover"]
+content_margin_left = 12.0
+content_margin_top = 7.0
+content_margin_right = 12.0
+content_margin_bottom = 7.0
+bg_color = Color(0.12, 0.32, 0.4, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.42, 0.88, 1, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="VehicleModeChoiceOverlay" type="CanvasLayer"]
+layer = 35
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="Dim" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.005, 0.01, 0.015, 0.86)
+
+[node name="Center" type="CenterContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="Root/Center"]
+custom_minimum_size = Vector2(500, 590)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBox_panel")
+
+[node name="Margin" type="MarginContainer" parent="Root/Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="Content" type="VBoxContainer" parent="Root/Center/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Root/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.52, 0.91, 1, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 28
+text = "小车模式 · 涂装工坊"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="Root/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.74, 0.83, 0.86, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 15
+text = "标准地图与敌人不变，驾驶迷你战车进入战斗"
+horizontal_alignment = 1
+
+[node name="PreviewFrame" type="PanelContainer" parent="Root/Center/Panel/Margin/Content"]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBox_preview")
+
+[node name="PreviewCenter" type="CenterContainer" parent="Root/Center/Panel/Margin/Content/PreviewFrame"]
+layout_mode = 2
+
+[node name="Preview" type="TextureRect" parent="Root/Center/Panel/Margin/Content/PreviewFrame/PreviewCenter"]
+texture_filter = 1
+material = SubResource("ShaderMaterial_preview")
+custom_minimum_size = Vector2(128, 128)
+layout_mode = 2
+texture = ExtResource("2_vehicle")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Controls" type="Label" parent="Root/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.9, 0.92, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 14
+text = "W / S 前进与倒车 · A / D 转向\n1 秒加速至 100 · 反向键快速刹车 · 松键滑行 0.45 秒\n射击键或鼠标左键只会从车头中央炮口向当前车头开火"
+horizontal_alignment = 1
+
+[node name="PresetLabel" type="Label" parent="Root/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.52, 0.91, 1, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 16
+text = "统一涂装预设"
+
+[node name="Presets" type="HBoxContainer" parent="Root/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 7
+alignment = 1
+
+[node name="Ocean" type="Button" parent="Root/Center/Panel/Margin/Content/Presets"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/focus = SubResource("StyleBox_button_hover")
+text = "海蓝"
+
+[node name="Flame" type="Button" parent="Root/Center/Panel/Margin/Content/Presets"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/focus = SubResource("StyleBox_button_hover")
+text = "烈焰"
+
+[node name="Sun" type="Button" parent="Root/Center/Panel/Margin/Content/Presets"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/focus = SubResource("StyleBox_button_hover")
+text = "日光"
+
+[node name="Leaf" type="Button" parent="Root/Center/Panel/Margin/Content/Presets"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/focus = SubResource("StyleBox_button_hover")
+text = "青叶"
+
+[node name="Amethyst" type="Button" parent="Root/Center/Panel/Margin/Content/Presets"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/focus = SubResource("StyleBox_button_hover")
+text = "紫晶"
+
+[node name="Snow" type="Button" parent="Root/Center/Panel/Margin/Content/Presets"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/focus = SubResource("StyleBox_button_hover")
+text = "雪白"
+
+[node name="CustomColor" type="HBoxContainer" parent="Root/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="Label" type="Label" parent="Root/Center/Panel/Margin/Content/CustomColor"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 15
+text = "自定义颜色"
+vertical_alignment = 1
+
+[node name="ColorPickerButton" type="ColorPickerButton" parent="Root/Center/Panel/Margin/Content/CustomColor"]
+custom_minimum_size = Vector2(170, 38)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("4_font")
+color = Color(0.086, 0.686, 0.91, 1)
+edit_alpha = false
+text = "打开完整调色板"
+
+[node name="Footer" type="HBoxContainer" parent="Root/Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="StartButton" type="Button" parent="Root/Center/Panel/Margin/Content/Footer"]
+custom_minimum_size = Vector2(180, 44)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.98, 1, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 17
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/focus = SubResource("StyleBox_button_hover")
+text = "驾驶小车出发"
+
+[node name="BackButton" type="Button" parent="Root/Center/Panel/Margin/Content/Footer"]
+custom_minimum_size = Vector2(120, 44)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 17
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/focus = SubResource("StyleBox_button_hover")
+text = "返回"
+
+[connection signal="pressed" from="Root/Center/Panel/Margin/Content/Presets/Ocean" to="." method="_on_preset_pressed" binds= [0]]
+[connection signal="pressed" from="Root/Center/Panel/Margin/Content/Presets/Flame" to="." method="_on_preset_pressed" binds= [1]]
+[connection signal="pressed" from="Root/Center/Panel/Margin/Content/Presets/Sun" to="." method="_on_preset_pressed" binds= [2]]
+[connection signal="pressed" from="Root/Center/Panel/Margin/Content/Presets/Leaf" to="." method="_on_preset_pressed" binds= [3]]
+[connection signal="pressed" from="Root/Center/Panel/Margin/Content/Presets/Amethyst" to="." method="_on_preset_pressed" binds= [4]]
+[connection signal="pressed" from="Root/Center/Panel/Margin/Content/Presets/Snow" to="." method="_on_preset_pressed" binds= [5]]
+[connection signal="color_changed" from="Root/Center/Panel/Margin/Content/CustomColor/ColorPickerButton" to="." method="_on_color_changed"]
+[connection signal="pressed" from="Root/Center/Panel/Margin/Content/Footer/StartButton" to="." method="_on_start_pressed"]
+[connection signal="pressed" from="Root/Center/Panel/Margin/Content/Footer/BackButton" to="." method="close"]

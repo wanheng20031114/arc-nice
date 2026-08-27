@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="PlayerCharacterConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://resources/config/players/player_character_config.gd" id="1_config"]
+
+[resource]
+script = ExtResource("1_config")
+character_id = &"vehicle"
+display_name = "迷你战车"
+english_name = "Mini Combat Car"
+title = "轮式火力平台"
+description = "以车头中央炮口进行固定朝向射击，拥有独特的转向、加速、制动与滑行操作。"
+playstyle = "载具 · 固定炮口 · 惯性驾驶"
+player_scene = "res://scene/player/vehicle/player_vehicle.tscn"
+portrait_texture = "res://resources/texture/player/vehicle/mini_combat_car.png"
+supports_ammunition = true
+selectable_in_character_menu = false
+supports_multiplayer = false
+skill_display_name = "经典技能"
+skill_description = "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
+skill_icon_texture = "res://resources/texture/player/weishidaier/skill1_icon.png"
+starting_max_health = 100
+starting_attack_damage = 10
+starting_attack_speed = 555.56
+starting_move_speed = 100.0
+attack_damage_per_upgrade = 4.0
+card_background_color = Color(0.055, 0.12, 0.16, 0.98)
+card_edge_color = Color(0.1, 0.68, 0.88, 1)
+card_hover_edge_color = Color(0.42, 0.88, 1, 1)
+card_accent_color = Color(0.42, 0.88, 1, 1)
+card_button_color = Color(0.06, 0.4, 0.58, 1)
+card_text_color = Color(0.9, 0.98, 1, 1)
