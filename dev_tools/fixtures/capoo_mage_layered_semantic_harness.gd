@@ -21,7 +21,7 @@ var movement_submission_count := 0
 var action_log := PackedStringArray()
 var fireball_attempt_count := 0
 var fireball_records: Array[Dictionary] = []
-var known_fireball_ids: Dictionary[int, bool] = {}
+var known_fireball_handles: Dictionary[int, bool] = {}
 var last_glow_progress := 0.0
 var los_query_count := 0
 
@@ -36,7 +36,7 @@ func reset_semantic_trace() -> void:
 	action_sequence = 0
 	fireball_attempt_count = 0
 	fireball_records.clear()
-	known_fireball_ids.clear()
+	known_fireball_handles.clear()
 	last_glow_progress = 0.0
 	los_query_count = 0
 
@@ -137,26 +137,29 @@ func _broadcast_enemy_action(
 func _fire_fireball() -> bool:
 	fireball_attempt_count += 1
 	var fired := super._fire_fireball()
-	if not fired or combat_runtime == null or not is_instance_valid(combat_runtime):
+	if not fired:
 		return fired
-	for child in combat_runtime.get_children():
-		var fireball := child as CapooMageFireball
-		if fireball == null:
+	var fireball_service := _get_capoo_mage_fireball_simulation_service()
+	if fireball_service == null:
+		return fired
+	for stable_index in range(fireball_service.get_dense_record_count()):
+		var handle := fireball_service.get_handle_at_stable_index(stable_index)
+		if (
+			handle <= CapooMageFireballSimulationServiceScript.INVALID_HANDLE
+			or known_fireball_handles.has(handle)
+		):
 			continue
-		var fireball_id := fireball.get_instance_id()
-		if known_fireball_ids.has(fireball_id):
-			continue
-		known_fireball_ids[fireball_id] = true
-		fireball.set_physics_process(false)
-		var snapshot := fireball.damage_source_snapshot
+		known_fireball_handles[handle] = true
+		var target := fireball_service.get_target(handle)
+		var snapshot := fireball_service.get_damage_source_snapshot(handle)
+		var direction := fireball_service.get_direction(handle)
 		fireball_records.append({
-			"direction_x": _quantize(fireball.direction.x),
-			"direction_y": _quantize(fireball.direction.y),
-			"damage": fireball.damage,
+			"direction_x": _quantize(direction.x),
+			"direction_y": _quantize(direction.y),
+			"damage": fireball_service.get_damage(handle),
 			"target_id": (
-				int(fireball.target_player.get_meta(&"net_id", 0))
-				if fireball.target_player != null
-				and is_instance_valid(fireball.target_player)
+				int(target.get_meta(&"net_id", 0))
+				if target != null and is_instance_valid(target)
 				else 0
 			),
 			"source_faction": (

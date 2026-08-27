@@ -68,6 +68,7 @@ size = Vector2(67, 32)
 [node name="RogueCombatGame02" type="Node2D" unique_id=20737211]
 position = Vector2(1, 0)
 script = ExtResource("1_cb4l3")
+enemy_navigation_mode = 0
 event_title = "地下教会"
 singleplayer_campaign = ExtResource("2_kmxr7")
 multiplayer_campaign = ExtResource("2_kmxr7")
@@ -120,6 +121,7 @@ script = ExtResource("14_qu6t0")
 [node name="Camera2D" type="Camera2D" parent="." unique_id=945169532]
 position = Vector2(160, 128)
 zoom = Vector2(2, 2)
+process_callback = 0
 
 [node name="PlayerSpawn" type="Marker2D" parent="." unique_id=1640433019]
 position = Vector2(79, 128)

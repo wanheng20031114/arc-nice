@@ -49,13 +49,11 @@ const PLANT_LIFECYCLE_VFX_RETAINED_CAPACITY := 32
 	$BambooMortarGlowShaderPrewarm
 )
 
-var navigation_prewarm_requested := false
-var navigation_prewarmed := false
+var shared_prewarm_requested := false
 var plant_lifecycle_shader_prewarmed := false
 var projectile_pool_registration_ms := 0.0
 
 var runtime: TowerDefenseGame = null
-var tower_grid_pathfinder: GridPathfinder = null
 var map_camera: Camera2D = null
 var session_object_pool: SessionObjectPool = null
 var boss_coordinator: TowerDefenseBossCoordinator = null
@@ -63,26 +61,20 @@ var fate_coordinator: FateCoordinator = null
 var placement_particles_scene: PackedScene = null
 var removal_smoke_scene: PackedScene = null
 var guardian_point_light_texture: Texture2D = null
-var waves: Array[WaveConfig] = []
 
 
 func setup(
 	runtime_instance: TowerDefenseGame,
-	grid_pathfinder_instance: GridPathfinder,
 	camera_instance: Camera2D,
 	object_pool: SessionObjectPool,
 	boss_runtime_coordinator: TowerDefenseBossCoordinator,
 	fate_runtime_coordinator: FateCoordinator,
-	wave_configs: Array[WaveConfig],
 	plant_placement_particles_scene: PackedScene,
 	plant_removal_smoke_scene: PackedScene,
 	guardian_texture: Texture2D
 ) -> bool:
 	if runtime_instance == null:
 		push_error("TowerDefensePrewarmerCoordinator: 缺少 TowerDefenseGame。")
-		return false
-	if grid_pathfinder_instance == null:
-		push_error("TowerDefensePrewarmerCoordinator: GridPathfinder 强类型绑定失败。")
 		return false
 	if camera_instance == null or object_pool == null:
 		push_error("TowerDefensePrewarmerCoordinator: 缺少相机或对象池。")
@@ -99,12 +91,10 @@ func setup(
 		return false
 
 	runtime = runtime_instance
-	tower_grid_pathfinder = grid_pathfinder_instance
 	map_camera = camera_instance
 	session_object_pool = object_pool
 	boss_coordinator = boss_runtime_coordinator
 	fate_coordinator = fate_runtime_coordinator
-	waves = wave_configs
 	placement_particles_scene = plant_placement_particles_scene
 	removal_smoke_scene = plant_removal_smoke_scene
 	guardian_point_light_texture = guardian_texture
@@ -114,7 +104,6 @@ func setup(
 func is_bound() -> bool:
 	return (
 		runtime != null
-		and tower_grid_pathfinder != null
 		and map_camera != null
 		and session_object_pool != null
 		and boss_coordinator != null
@@ -186,16 +175,16 @@ func schedule_boss_runtime_scene_loads(preparation_generation: int) -> void:
 		boss_coordinator.request_runtime_scene_loads(preparation_generation)
 
 
-func schedule_enemy_navigation_prewarm(preparation_generation: int) -> void:
+func schedule_shared_runtime_prewarm(preparation_generation: int) -> void:
 	if not is_bound() or runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return
-	if navigation_prewarmed or navigation_prewarm_requested:
+	if shared_prewarm_requested:
 		return
 	if not runtime._can_continue_runtime_prewarm(preparation_generation):
 		return
-	navigation_prewarm_requested = true
+	shared_prewarm_requested = true
 	call_deferred(
-		"_run_scheduled_enemy_navigation_prewarm",
+		"_run_scheduled_shared_runtime_prewarm",
 		preparation_generation
 	)
 
@@ -213,34 +202,14 @@ func prepare_shared_runtime_data_and_complete(preparation_generation: int) -> vo
 		runtime.mark_runtime_preparation_complete(preparation_generation)
 
 
-func ensure_navigation_prewarmed_sync() -> void:
-	if (
-		not is_bound()
-		or runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-		or navigation_prewarmed
-	):
-		return
-	_prewarm_enemy_navigation_grids()
-	# Preserve the legacy wave-start fallback: even an unavailable/unbuilt grid
-	# consumes the one synchronous attempt before WAVE_ACTIVE begins.
-	navigation_prewarmed = true
-
-
-func _run_scheduled_enemy_navigation_prewarm(preparation_generation: int) -> void:
+func _run_scheduled_shared_runtime_prewarm(preparation_generation: int) -> void:
 	await get_tree().process_frame
 	if not runtime._can_continue_runtime_prewarm(preparation_generation):
 		return
 	await get_tree().process_frame
 	if not runtime._can_continue_runtime_prewarm(preparation_generation):
 		return
-	navigation_prewarm_requested = false
-	if navigation_prewarmed:
-		await _finish_shared_runtime_prewarm(preparation_generation)
-		return
-	await _prewarm_enemy_navigation_grids_staged(preparation_generation)
-	if not runtime._can_continue_runtime_prewarm(preparation_generation):
-		return
-	navigation_prewarmed = true
+	shared_prewarm_requested = false
 	await _finish_shared_runtime_prewarm(preparation_generation)
 
 
@@ -272,217 +241,6 @@ func _prewarm_tower_shared_runtime_data(preparation_generation: int) -> void:
 			preparation_generation,
 			fate_coordinator.runtime_preparation_failure_reason
 		)
-
-
-func _prewarm_enemy_navigation_grids() -> void:
-	if tower_grid_pathfinder == null or not tower_grid_pathfinder.is_built:
-		return
-	var profiles := _collect_unique_enemy_profiles()
-	var navigation_targets := _collect_navigation_targets()
-	for profile in profiles:
-		var half_extents: Vector2 = profile["half_extents"]
-		var traversal_types: int = int(profile["traversal_types"])
-		tower_grid_pathfinder.prewarm_agent_grid(half_extents, traversal_types)
-		for navigation_target in navigation_targets:
-			if navigation_target == null or not is_instance_valid(navigation_target):
-				continue
-			tower_grid_pathfinder.prewarm_flow_navigation_target(
-				navigation_target.global_position,
-				half_extents,
-				traversal_types
-			)
-
-
-func _prewarm_enemy_navigation_grids_staged(
-	preparation_generation: int
-) -> void:
-	runtime.update_runtime_preparation_progress(
-		preparation_generation,
-		"分析塔防敌人体型…",
-		0,
-		1
-	)
-	await get_tree().process_frame
-	if (
-		not runtime._can_continue_runtime_prewarm(preparation_generation)
-		or not tower_grid_pathfinder.is_built
-	):
-		return
-
-	var profiles := await _collect_unique_enemy_profiles_staged(
-		preparation_generation
-	)
-	if not runtime._can_continue_runtime_prewarm(preparation_generation):
-		return
-	var navigation_targets := _collect_navigation_targets()
-	var total_steps := maxi(profiles.size() * (1 + navigation_targets.size()), 1)
-	var completed_steps := 0
-	runtime.update_runtime_preparation_progress(
-		preparation_generation,
-		"预热塔防寻路网格…",
-		completed_steps,
-		total_steps
-	)
-	for profile in profiles:
-		var half_extents: Vector2 = profile["half_extents"]
-		var traversal_types: int = int(profile["traversal_types"])
-		runtime.update_runtime_preparation_progress(
-			preparation_generation,
-			"预热塔防寻路网格…",
-			completed_steps,
-			total_steps
-		)
-		await tower_grid_pathfinder.prewarm_agent_grid_staged(
-			half_extents,
-			traversal_types
-		)
-		if not runtime._can_continue_runtime_prewarm(preparation_generation):
-			return
-		completed_steps += 1
-		runtime.update_runtime_preparation_progress(
-			preparation_generation,
-			"预热塔防寻路网格…",
-			completed_steps,
-			total_steps
-		)
-		await get_tree().process_frame
-		if not runtime._can_continue_runtime_prewarm(preparation_generation):
-			return
-		for navigation_target in navigation_targets:
-			if navigation_target == null or not is_instance_valid(navigation_target):
-				completed_steps += 1
-				continue
-			var target_stage := (
-				"预热玩家追踪流场…"
-				if navigation_target == runtime.player
-				else "预热 Home 防线…"
-			)
-			runtime.update_runtime_preparation_progress(
-				preparation_generation,
-				target_stage,
-				completed_steps,
-				total_steps
-			)
-			await tower_grid_pathfinder.prewarm_flow_navigation_target_staged(
-				navigation_target.global_position,
-				half_extents,
-				traversal_types
-			)
-			if not runtime._can_continue_runtime_prewarm(preparation_generation):
-				return
-			completed_steps += 1
-			runtime.update_runtime_preparation_progress(
-				preparation_generation,
-				target_stage,
-				completed_steps,
-				total_steps
-			)
-			await get_tree().process_frame
-			if not runtime._can_continue_runtime_prewarm(preparation_generation):
-				return
-
-
-func _collect_unique_enemy_profiles() -> Array[Dictionary]:
-	var profiles: Array[Dictionary] = []
-	var seen_scene_keys: Dictionary = {}
-	var seen_extent_keys: Dictionary = {}
-	for wave_config in waves:
-		if wave_config == null:
-			continue
-		for entry in wave_config.enemy_entries:
-			if entry == null or entry.enemy_config == null:
-				continue
-			var enemy_config := entry.enemy_config
-			if enemy_config.enemy_scene == null:
-				continue
-			var scene_key := enemy_config.enemy_scene.resource_path
-			if scene_key.is_empty():
-				scene_key = enemy_config.resource_path
-			if seen_scene_keys.has(scene_key):
-				continue
-			seen_scene_keys[scene_key] = true
-			var body_half_extents := _get_enemy_scene_body_half_extents(enemy_config)
-			if body_half_extents == Vector2.ZERO:
-				continue
-			var traversal_types := enemy_config.terrain_traversal_types
-			var extent_key := "%d:%d:%d" % [
-				ceili(body_half_extents.x),
-				ceili(body_half_extents.y),
-				traversal_types,
-			]
-			if seen_extent_keys.has(extent_key):
-				continue
-			seen_extent_keys[extent_key] = true
-			profiles.append({
-				"half_extents": body_half_extents,
-				"traversal_types": traversal_types,
-			})
-	return profiles
-
-
-func _collect_unique_enemy_profiles_staged(
-	preparation_generation: int
-) -> Array[Dictionary]:
-	var profiles: Array[Dictionary] = []
-	var seen_scene_keys: Dictionary = {}
-	var seen_extent_keys: Dictionary = {}
-	for wave_config in waves:
-		if wave_config == null:
-			continue
-		for entry in wave_config.enemy_entries:
-			if entry == null or entry.enemy_config == null:
-				continue
-			var enemy_config := entry.enemy_config
-			if enemy_config.enemy_scene == null:
-				continue
-			var scene_key := enemy_config.enemy_scene.resource_path
-			if scene_key.is_empty():
-				scene_key = enemy_config.resource_path
-			if seen_scene_keys.has(scene_key):
-				continue
-			seen_scene_keys[scene_key] = true
-			var body_half_extents := _get_enemy_scene_body_half_extents(enemy_config)
-			await get_tree().process_frame
-			if not runtime._can_continue_runtime_prewarm(preparation_generation):
-				return profiles
-			if body_half_extents == Vector2.ZERO:
-				continue
-			var traversal_types := enemy_config.terrain_traversal_types
-			var extent_key := "%d:%d:%d" % [
-				ceili(body_half_extents.x),
-				ceili(body_half_extents.y),
-				traversal_types,
-			]
-			if seen_extent_keys.has(extent_key):
-				continue
-			seen_extent_keys[extent_key] = true
-			profiles.append({
-				"half_extents": body_half_extents,
-				"traversal_types": traversal_types,
-			})
-	return profiles
-
-
-func _collect_navigation_targets() -> Array[Node2D]:
-	var navigation_targets: Array[Node2D] = []
-	if runtime.player != null:
-		navigation_targets.append(runtime.player)
-	navigation_targets.append_array(runtime.get_home_objective_targets())
-	return navigation_targets
-
-
-func _get_enemy_scene_body_half_extents(enemy_config: EnemyConfig) -> Vector2:
-	if enemy_config == null or enemy_config.enemy_scene == null:
-		return Vector2.ZERO
-	var instance := enemy_config.enemy_scene.instantiate()
-	var enemy_instance := instance as Enemy
-	if enemy_instance == null:
-		if instance != null:
-			instance.free()
-		return Vector2.ZERO
-	var body_half_extents := enemy_instance.get_configured_body_collision_half_extents()
-	enemy_instance.free()
-	return body_half_extents
 
 
 func _prewarm_plant_lifecycle_shader(preparation_generation: int) -> void:

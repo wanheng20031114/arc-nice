@@ -99,6 +99,12 @@ func configure_embedded_participant_roster(
 func activate_embedded_runtime() -> bool
 
 
+## 内嵌战斗只在 ACTIVE 阶段租用高频 Player 状态信道。路线协调器
+## 必须在准备、奖励冻结、终局与拆场前显式关闭该租约。
+@abstract
+func set_embedded_realtime_player_state_ingress_enabled(enabled: bool) -> bool
+
+
 ## 只暂停当前内嵌战斗参与权，不断开其外层路线会话身份。
 @abstract
 func suspend_embedded_participant_for_current_combat(
@@ -608,7 +614,7 @@ func apply_authoritative_plant_enemy_damage_batch(
 
 @abstract
 func request_bamboo_mortar_target(
-	owner: Node2D,
+	request_owner: Node2D,
 	minimum_range: float,
 	maximum_range: float,
 	callback: Callable
@@ -616,7 +622,7 @@ func request_bamboo_mortar_target(
 
 
 @abstract
-func cancel_bamboo_mortar_target_request(owner: Node) -> void
+func cancel_bamboo_mortar_target_request(request_owner: Node) -> void
 
 
 @abstract

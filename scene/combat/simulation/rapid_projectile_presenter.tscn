@@ -50,6 +50,7 @@ visible_instance_count = 0
 mesh = SubResource("QuadMesh_hit")
 
 [node name="RapidProjectilePresenter" type="Node2D"]
+physics_interpolation_mode = 2
 script = ExtResource("1_presenter")
 
 [node name="ProjectileMultiMesh" type="MultiMeshInstance2D" parent="."]

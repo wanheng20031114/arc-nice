@@ -85,7 +85,6 @@ const GAMEPLAY_FIELDS: PackedStringArray = [
 
 var failures: Array[String] = []
 var completed_mode_count := 0
-var saved_stagger_enabled := true
 
 
 func _init() -> void:
@@ -93,8 +92,6 @@ func _init() -> void:
 
 
 func _run() -> void:
-	saved_stagger_enabled = CapooAK47.attack_phase_stagger_enabled
-	CapooAK47.attack_phase_stagger_enabled = false
 	_verify_two_config_closure_and_capabilities()
 
 	var runs: Dictionary = {}
@@ -105,7 +102,6 @@ func _run() -> void:
 		"The pre-refactor oracle and every AK policy must reach completion."
 	)
 	_compare_mode_traces(runs)
-	CapooAK47.attack_phase_stagger_enabled = saved_stagger_enabled
 
 	var result := {
 		"status": "ok" if failures.is_empty() else "failed",
@@ -316,6 +312,7 @@ func _reset_source_after_bootstrap(
 	source.burst_fire_time_left = 0.0
 	source.burst_audio_step = 0
 	source.attack_target = null
+	source.navigation_update_frame_offset = 0
 	source.committed_attack_phase_offset_seconds = 0.0
 	source.committed_windup_duration_seconds = 0.0
 	source.layered_ak47_event_consumes_tick = false

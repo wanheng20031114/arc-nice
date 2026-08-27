@@ -655,7 +655,7 @@ func enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 		countdown_seconds,
 		can_local_player_start_wave_early()
 	)
-	_prewarmer_coordinator.schedule_enemy_navigation_prewarm(
+	_prewarmer_coordinator.schedule_shared_runtime_prewarm(
 		_runtime_port.get_runtime_preparation_generation()
 	)
 	publish_flow_state(CombatFlowState.State.PRE_WAVE)
@@ -820,8 +820,6 @@ func begin_wave_config(wave_config: WaveConfig) -> void:
 	if not _enemy_coordinator.resolve_spawn_points(wave_config):
 		enter_defeat()
 		return
-	_prewarmer_coordinator.ensure_navigation_prewarmed_sync()
-
 	wave_state = CombatFlowState.State.WAVE_ACTIVE
 	_player_roster_coordinator.reset_wave_death_counts()
 	current_wave_index = get_wave_number_for_step(

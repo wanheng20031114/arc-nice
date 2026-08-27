@@ -33,6 +33,11 @@ enum RuntimeMode {
 	CLIENT_VIEW,
 }
 
+enum EnemyNavigationMode {
+	COMPLEX_OBSTACLE_AWARE,
+	SIMPLE_LINEAR,
+}
+
 enum WorldLightingPolicy {
 	FLOW_CONTROLLED,
 	FIXED_DAY,
@@ -75,13 +80,20 @@ class ReconnectedPlayerProjection:
 
 @export var runtime_mode: RuntimeMode = RuntimeMode.SINGLEPLAYER
 
+@export_group("敌人寻路")
+@export var enemy_navigation_mode: EnemyNavigationMode = (
+	EnemyNavigationMode.COMPLEX_OBSTACLE_AWARE
+)
+
 @export_group("世界光照")
 @export var world_lighting_policy: WorldLightingPolicy = (
 	WorldLightingPolicy.FLOW_CONTROLLED
 )
 
 @onready var enemy_container: Node2D = $EnemyContainer
-@onready var grid_pathfinder: Node = $GridPathfinder
+@onready var grid_pathfinder: GridPathfinder = (
+	get_node_or_null("GridPathfinder") as GridPathfinder
+)
 @onready var combat_robot_drone_motion_system: CombatRobotDroneMotionSystem = (
 	$CombatRobotDroneMotionSystem
 )
@@ -126,6 +138,37 @@ var _scene_teardown_prepared := false
 var _pending_xirang_kill_reward: int = 0
 var _xirang_kill_reward_flush_queued: bool = false
 var player_persistent_modifier_projector: PlayerPersistentModifierProjector = null
+
+
+func uses_simple_enemy_navigation() -> bool:
+	return enemy_navigation_mode == EnemyNavigationMode.SIMPLE_LINEAR
+
+
+## Concrete combat scenes serialize the policy. A complex scene without a
+## completed GridPathfinder is a loading failure, never permission to chase
+## through walls; a simple scene must not contain a pathfinder that can build
+## and consume navigation budget before the runtime becomes active.
+func validate_enemy_navigation_runtime_contract() -> bool:
+	var authored_pathfinder := get_node_or_null("GridPathfinder") as GridPathfinder
+	grid_pathfinder = authored_pathfinder
+	if uses_simple_enemy_navigation():
+		if authored_pathfinder != null:
+			push_error(
+				"%s: SIMPLE_LINEAR 场景不得包含 GridPathfinder。" % get_class()
+			)
+			return false
+		return true
+	if authored_pathfinder == null:
+		push_error(
+			"%s: COMPLEX_OBSTACLE_AWARE 场景缺少 GridPathfinder。" % get_class()
+		)
+		return false
+	if not authored_pathfinder.is_built:
+		push_error(
+			"%s: COMPLEX_OBSTACLE_AWARE 的 GridPathfinder 构建失败。" % get_class()
+		)
+		return false
+	return true
 
 
 func get_multiplayer_gameplay_gateway() -> MultiplayerGameplayGateway:

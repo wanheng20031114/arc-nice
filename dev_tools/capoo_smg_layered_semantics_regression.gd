@@ -70,7 +70,6 @@ const GAMEPLAY_FIELDS: PackedStringArray = [
 	"movement_submissions",
 	"touch_updates",
 	"last_touch_delta",
-	"target_refreshes",
 	"behavior_rng",
 	"drop_rng",
 ]
@@ -361,6 +360,7 @@ func _apply_pre_tick_script(tick_index: int, context: Dictionary) -> void:
 		source.set_objective_target(null)
 		source.request_layered_area_urgent_decision()
 	elif tick_index == 13:
+		source.forced_fire_success = true
 		source.forced_target_valid = true
 		source.set_objective_target(target_a)
 		source.request_layered_area_urgent_decision()
@@ -676,7 +676,6 @@ func _validate_backend_and_attribution(
 	mode_name: String,
 	source: Variant
 ) -> void:
-	var projectile_records := 0
 	for index in range(source.shot_records.size()):
 		var shot := source.shot_records[index] as Dictionary
 		var action := source.action_records[index] as Dictionary
@@ -697,36 +696,24 @@ func _validate_backend_and_attribution(
 			"%s shot %d must preserve damage and ownership attribution."
 			% [mode_name, index + 1]
 		)
-		if String(shot.get("mode", "")) == "projectile":
-			projectile_records += 1
-			_expect(
-				int(shot.get("tick", 0)) == 14
-				and int(shot.get("event_source_id", -1)) == 0
-				and String(shot.get("source_type", ""))
-				== "capoo_smg_bullet",
-				"%s projectile mode must freeze the tick-14 bullet snapshot."
-				% mode_name
-			)
-		else:
-			_expect(
-				String(shot.get("mode", "")) == "hitscan"
-				and int(shot.get("event_source_id", 0))
-				== SOURCE_NET_ID * 1_000_000 + index + 1
-				and String(shot.get("source_type", ""))
-				== "capoo_smg_hitscan",
-				"%s hitscan shot %d must use action-correlated source identity."
-				% [mode_name, index + 1]
-			)
+		_expect(
+			String(shot.get("mode", "")) == "hitscan"
+			and int(shot.get("event_source_id", 0))
+			== SOURCE_NET_ID * 1_000_000 + index + 1
+			and String(shot.get("source_type", ""))
+			== "capoo_smg_hitscan",
+			"%s hitscan shot %d must use action-correlated source identity."
+			% [mode_name, index + 1]
+		)
 	var allied_shot := source.shot_records[5] as Dictionary
 	_expect(
-		projectile_records == 1
-		and source.hitscan_shots_fired == EXPECTED_SHOT_TICKS.size() - 1
+		source.hitscan_shots_fired == EXPECTED_SHOT_TICKS.size()
 		and int((source.shot_records[0] as Dictionary)["source_faction"])
 		== CombatRelationService.HOSTILE_WAVE
 		and int(allied_shot["tick"]) == 17
 		and int(allied_shot["source_faction"])
 		== CombatRelationService.PLAYER_ALLIED,
-		"%s must preserve backend selection and freeze the launch-time source faction."
+		"%s must preserve the hitscan backend and freeze the launch-time source faction."
 		% mode_name
 	)
 

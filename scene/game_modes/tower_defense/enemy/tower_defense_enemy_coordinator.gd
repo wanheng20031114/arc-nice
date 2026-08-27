@@ -30,7 +30,6 @@ var _enemy_container: Node2D
 var _boss_container: Node2D
 var _enemy_spawn_points_root: Node2D
 var _ground_tile_map_layer: TileMapLayer
-var _grid_pathfinder: GridPathfinder
 var _enemy_spawn_timer: Timer
 var _multiplayer_gateway: MultiplayerGameplayGateway
 var _fate_coordinator: FateCoordinator
@@ -73,7 +72,6 @@ func setup(
 	boss_container: Node2D,
 	enemy_spawn_points_root: Node2D,
 	ground_tile_map_layer: TileMapLayer,
-	grid_pathfinder: GridPathfinder,
 	enemy_spawn_timer: Timer,
 	multiplayer_gateway: MultiplayerGameplayGateway,
 	fate_coordinator: FateCoordinator,
@@ -91,7 +89,6 @@ func setup(
 	assert(boss_container != null, "EnemyCoordinator 缺少 BossContainer。")
 	assert(enemy_spawn_points_root != null, "EnemyCoordinator 缺少 EnemySpawnPoints。")
 	assert(ground_tile_map_layer != null, "EnemyCoordinator 缺少 Ground TileMapLayer。")
-	assert(grid_pathfinder != null, "EnemyCoordinator 缺少强类型 GridPathfinder。")
 	assert(enemy_spawn_timer != null, "EnemyCoordinator 缺少 EnemySpawnTimer。")
 	assert(multiplayer_gateway != null, "EnemyCoordinator 缺少多人网关。")
 	assert(fate_coordinator != null, "EnemyCoordinator 缺少命运协调器。")
@@ -107,7 +104,6 @@ func setup(
 	_boss_container = boss_container
 	_enemy_spawn_points_root = enemy_spawn_points_root
 	_ground_tile_map_layer = ground_tile_map_layer
-	_grid_pathfinder = grid_pathfinder
 	_enemy_spawn_timer = enemy_spawn_timer
 	_multiplayer_gateway = multiplayer_gateway
 	_fate_coordinator = fate_coordinator
@@ -137,7 +133,6 @@ func is_bound() -> bool:
 		and _boss_container != null
 		and _enemy_spawn_points_root != null
 		and _ground_tile_map_layer != null
-		and _grid_pathfinder != null
 		and _enemy_spawn_timer != null
 		and _multiplayer_gateway != null
 		and _fate_coordinator != null
@@ -524,7 +519,7 @@ func try_spawn_enemy(
 	enemy_instance.setup(
 		enemy_config,
 		pick_enemy_target(spawn_point.global_position),
-		_grid_pathfinder,
+		null,
 		_runtime
 	)
 	enemy_instance.set_xirang_kill_reward_override(xirang_kill_reward_override)
@@ -800,7 +795,6 @@ func apply_remote_wave_progress(
 func is_spawn_system_ready() -> bool:
 	return (
 		_player_roster_coordinator.local_player != null
-		and _grid_pathfinder.is_built
 		and not enemy_spawn_points.is_empty()
 	)
 

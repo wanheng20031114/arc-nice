@@ -23,6 +23,8 @@ const LINGLAN_SKILL4_AUTHORED_TARGET_CENTER := Vector2(6.5, 2.0)
 const LINGLAN_SKILL_REFERENCE_ARENA_POSITION := Vector2i(-3, -1)
 const LINGLAN_AIRDROP_NEARBY_RADIUS := Vector2(96.0, 80.0)
 const AUTHORED_LOGICAL_TILE_SIZE := 16.0
+const AIRDROP_WORLD_COLLISION_MASK := 1 | (1 << 11)
+const AIRDROP_CLEARANCE_SIZE := Vector2(16.0, 16.0)
 
 var enabled := false
 var runtime: CombatRuntimeBase
@@ -37,7 +39,6 @@ var player_roster_coordinator: TowerDefensePlayerRosterCoordinator
 var presentation_coordinator: TowerDefensePresentationCoordinator
 var multiplayer_adapter: TowerDefenseMultiplayerModeAdapter
 var prewarmer_coordinator: TowerDefensePrewarmerCoordinator
-var grid_pathfinder: GridPathfinder
 var random_generator: RandomNumberGenerator
 
 var active_boss_config: BossConfig
@@ -53,6 +54,8 @@ var linglan_enrage_sniper_config: EnemyConfig
 var runtime_scene_loads_requested := false
 var runtime_resources_by_path: Dictionary[String, Resource] = {}
 var runtime_preparation_failure_reason := ""
+var _airdrop_clearance_shape: RectangleShape2D = null
+var _airdrop_clearance_query: PhysicsShapeQueryParameters2D = null
 
 
 func setup(
@@ -69,7 +72,6 @@ func setup(
 	configured_presentation: TowerDefensePresentationCoordinator,
 	configured_multiplayer_adapter: TowerDefenseMultiplayerModeAdapter,
 	configured_prewarmer: TowerDefensePrewarmerCoordinator,
-	configured_pathfinder: GridPathfinder,
 	configured_random: RandomNumberGenerator
 ) -> void:
 	runtime = runtime_instance
@@ -85,7 +87,6 @@ func setup(
 	presentation_coordinator = configured_presentation
 	multiplayer_adapter = configured_multiplayer_adapter
 	prewarmer_coordinator = configured_prewarmer
-	grid_pathfinder = configured_pathfinder
 	random_generator = configured_random
 	if runtime_port != null:
 		runtime_port.bind_boss_coordinator(self)
@@ -105,7 +106,6 @@ func is_bound() -> bool:
 		and presentation_coordinator != null
 		and multiplayer_adapter != null
 		and prewarmer_coordinator != null
-		and grid_pathfinder != null
 		and random_generator != null
 	)
 
@@ -250,7 +250,7 @@ func activate_boss() -> void:
 	linglan_boss.global_position = get_linglan_spawn_global_position(active_boss_config)
 	linglan_boss.activate_boss(
 		player_roster_coordinator.local_player,
-		grid_pathfinder,
+		null,
 		runtime,
 		runtime_port
 	)
@@ -626,6 +626,8 @@ func spawn_airdrop_sniper(
 	):
 		return
 	var landing_position := _get_random_arena_position()
+	if not landing_position.is_finite():
+		return
 	if runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY:
 		runtime_port.airdrop_started.emit(
 			enemy_config, landing_position, warning_duration, drop_height, drop_duration
@@ -779,7 +781,7 @@ func instantiate_remote_proxy(
 	boss_enemy.setup(
 		enemy_config,
 		player_roster_coordinator.local_player,
-		grid_pathfinder,
+		null,
 		runtime,
 		runtime_port
 	)
@@ -823,7 +825,7 @@ func _try_spawn_boss_add_at_position(
 	enemy_instance.setup(
 		enemy_config,
 		enemy_coordinator.pick_enemy_target(spawn_position),
-		grid_pathfinder,
+		null,
 		runtime
 	)
 	enemy_coordinator.assign_enemy_targets(enemy_instance, spawn_position)
@@ -882,7 +884,7 @@ func _finish_airdrop_sniper_spawn(
 	enemy_instance.setup(
 		enemy_config,
 		enemy_coordinator.pick_enemy_target(landing_position),
-		grid_pathfinder,
+		null,
 		runtime
 	)
 	enemy_coordinator.assign_enemy_targets(enemy_instance, landing_position)
@@ -929,13 +931,42 @@ func _get_random_arena_position() -> Vector2:
 			)
 		)
 		candidate = presentation_coordinator.clamp_camera_position(candidate).round()
-		if (
-			grid_pathfinder == null
-			or not grid_pathfinder.is_built
-			or grid_pathfinder.is_navigation_segment_walkable(front_center, candidate)
-		):
+		if _is_airdrop_landing_position_clear(candidate):
 			return candidate
-	return front_center.round()
+	var clamped_front_center := presentation_coordinator.clamp_camera_position(
+		front_center
+	).round()
+	if _is_airdrop_landing_position_clear(clamped_front_center):
+		return clamped_front_center
+	return Vector2.INF
+
+
+func _is_airdrop_landing_position_clear(candidate: Vector2) -> bool:
+	if runtime == null or not is_instance_valid(runtime) or not runtime.is_inside_tree():
+		return false
+	var terrain := runtime.get_node_or_null("DualGridTerrain") as DualGridTilemap
+	if (
+		terrain == null
+		or not terrain.is_world_position_traversable(
+			candidate,
+			DualGridTilemap.TraversalType.LAND
+		)
+	):
+		return false
+	if _airdrop_clearance_shape == null:
+		_airdrop_clearance_shape = RectangleShape2D.new()
+		_airdrop_clearance_shape.size = AIRDROP_CLEARANCE_SIZE
+	if _airdrop_clearance_query == null:
+		_airdrop_clearance_query = PhysicsShapeQueryParameters2D.new()
+		_airdrop_clearance_query.shape = _airdrop_clearance_shape
+		_airdrop_clearance_query.collision_mask = AIRDROP_WORLD_COLLISION_MASK
+		_airdrop_clearance_query.collide_with_bodies = true
+		_airdrop_clearance_query.collide_with_areas = false
+	_airdrop_clearance_query.transform = Transform2D(0.0, candidate)
+	return runtime.get_world_2d().direct_space_state.intersect_shape(
+		_airdrop_clearance_query,
+		1
+	).is_empty()
 
 
 func _on_intro_finished() -> void:

@@ -267,6 +267,13 @@ func _run_mode(simulation_mode: int) -> Dictionary:
 		"rollback_released_indexed": context["rollback_released_indexed"],
 		"rollback_preserved_state": context["rollback_preserved_state"],
 	}
+	var combat_services := runtime.get_enemy_combat_services()
+	if combat_services != null:
+		var fireball_service := (
+			combat_services.get_capoo_mage_fireball_simulation_service()
+		)
+		if fireball_service != null:
+			fireball_service.clear()
 	runtime.queue_free()
 	await process_frame
 	completed_mode_count += 1

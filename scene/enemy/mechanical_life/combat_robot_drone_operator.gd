@@ -1018,9 +1018,9 @@ func _update_facing(direction: Vector2) -> void:
 
 func _refresh_drone_motion_system() -> void:
 	drone_motion_system = null
-	if pathfinder == null:
-		return
-	var runtime := pathfinder.get_parent()
+	var runtime: Node = combat_runtime
+	if runtime == null and pathfinder != null:
+		runtime = pathfinder.get_parent()
 	if runtime == null:
 		return
 	drone_motion_system = runtime.get_node_or_null(

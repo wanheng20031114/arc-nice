@@ -21,6 +21,10 @@ const TOMBSTONE_COMPACTION_RATIO_DIVISOR := 3
 # shape checks and revision invalidation unchanged.
 const INDEXED_TOUCH_STATIC_IDLE_QUERY_TICKS := 48
 const INDEXED_TOUCH_STATIC_ENVELOPE_EPSILON := 0.25
+## Displacements above this explicit per-tick envelope are teleports/dashes for
+## Player broadphase purposes and retain the all-player compatibility slow path.
+## At 60 Hz this still admits ordinary authored movement up to 7,680 px/s.
+const INDEXED_TOUCH_MAX_NORMAL_MOTION_PER_TICK := 128.0
 const DECISION_DUE_BUCKET_POOL_LIMIT := 128
 const AUTHORITY_CONTAINER_PATHS: Array[NodePath] = [
 	NodePath("BossContainer"),
@@ -63,7 +67,6 @@ class Registration:
 	var event_work_physics_frame := -1
 	var scheduled_event_physics_frame := -1
 	var event_sleep_counted := false
-	var touch_timer_projection_listed := false
 	var event_admission_physics_frame := -1
 	var trusted_sleep_wake_after_event_physics_frame := -1
 	var motion_listed := false
@@ -118,6 +121,7 @@ class Registration:
 	var indexed_touch_motion_to_position := Vector2.ZERO
 	var indexed_touch_motion_world_aabb := Rect2()
 	var indexed_touch_motion_pending := false
+	var indexed_touch_moved_generation := -1
 
 
 	func _init(
@@ -199,6 +203,7 @@ var _dirty_indexed_touch_queue_ordered := true
 var _dirty_indexed_touch_queue_last_simulation_id := INVALID_SIMULATION_ID
 var _indexed_touch_moved_registrations: Array[Registration] = []
 var _indexed_touch_moved_work_registrations: Array[Registration] = []
+var _indexed_touch_slow_path_registrations: Array[Registration] = []
 var _indexed_touch_moved_queue_ordered := true
 var _indexed_touch_moved_queue_last_simulation_id := INVALID_SIMULATION_ID
 var _indexed_touch_nonempty_player_registrations: Array[Registration] = []
@@ -211,6 +216,8 @@ var _indexed_touch_player_extents: Array[float] = []
 var _indexed_touch_player_shape_rects: Array[Rect2] = []
 var _indexed_touch_player_world_aabbs: Array[Rect2] = []
 var _indexed_touch_player_swept_world_aabbs: Array[Rect2] = []
+var _indexed_touch_player_state_changed_flags: Array[bool] = []
+var _indexed_touch_any_player_state_changed_this_tick := false
 var _indexed_touch_previous_player_instance_ids: Array[int] = []
 var _indexed_touch_previous_player_shapes: Array[Shape2D] = []
 var _indexed_touch_previous_player_transforms: Array[Transform2D] = []
@@ -245,7 +252,6 @@ var _event_phase_current_simulation_id := INVALID_SIMULATION_ID
 var _event_phase_completed_physics_frame := -1
 var _event_sleep_ack_metric_physics_frame := -1
 var _sleeping_event_registration_count := 0
-var _touch_timer_projection_registrations: Array[Registration] = []
 var _motion_active_registrations: Array[Registration] = []
 var _compat_decision_registrations: Array[Registration] = []
 
@@ -259,7 +265,7 @@ var _metric_physics_tick_count := 0
 var _metric_authoritative_step_count := 0
 var _metric_event_phase_count := 0
 var _metric_event_sleep_ack_count := 0
-var _metric_touch_timer_projection_tick_count := 0
+var _metric_touch_cooldown_deadline_wake_count := 0
 var _metric_decision_phase_count := 0
 var _metric_urgent_decision_count := 0
 var _metric_motion_phase_count := 0
@@ -271,6 +277,7 @@ var _metric_indexed_touch_sync_count := 0
 var _metric_indexed_touch_authority_count := 0
 var _metric_indexed_touch_plant_broadphase_count := 0
 var _metric_indexed_touch_plant_exact_candidate_count := 0
+var _metric_indexed_touch_plant_exact_shape_hit_count := 0
 var _metric_indexed_touch_plant_candidate_check_count := 0
 var _metric_indexed_touch_plant_sleep_skip_count := 0
 var _metric_indexed_touch_plant_exact_cache_hit_count := 0
@@ -289,6 +296,18 @@ var _metric_indexed_touch_moved_ordered_drain_count := 0
 var _metric_indexed_touch_moved_sort_count := 0
 var _metric_indexed_touch_player_invalidation_count := 0
 var _metric_indexed_touch_global_invalidation_count := 0
+var _metric_indexed_touch_player_index_query_count := 0
+var _metric_indexed_touch_player_index_candidate_count := 0
+var _metric_indexed_touch_player_aabb_pair_check_count := 0
+var _metric_indexed_touch_player_aabb_pair_hit_count := 0
+var _metric_indexed_touch_player_exact_shape_check_count := 0
+var _metric_indexed_touch_player_exact_shape_hit_count := 0
+var _metric_indexed_touch_player_slow_path_mover_count := 0
+var _metric_indexed_touch_contact_enter_count := 0
+var _metric_indexed_touch_contact_exit_count := 0
+var _metric_touch_damage_attempt_count := 0
+var _metric_touch_damage_accepted_count := 0
+var _metric_touch_damage_rejected_count := 0
 var _metric_activation_skip_count := 0
 var _metric_suspended_skip_count := 0
 var _metric_invalid_enemy_release_count := 0
@@ -822,9 +841,8 @@ func get_metrics(reset_after_read: bool = false) -> Dictionary:
 		"event_ready_queue_count": _event_ready_registrations.size(),
 		"event_due_bucket_count": _event_due_by_physics_frame.size(),
 		"event_sleeping_count": _sleeping_event_registration_count,
-		"touch_timer_projection_active_count": (
-			_touch_timer_projection_registrations.size()
-		),
+		# Retained as zero-valued compatibility keys for older benchmark parsers.
+		"touch_timer_projection_active_count": 0,
 		"motion_active_count": _motion_active_registrations.size(),
 		"compat_decision_count": _compat_decision_registrations.size(),
 		"next_simulation_id": _next_simulation_id,
@@ -840,8 +858,9 @@ func get_metrics(reset_after_read: bool = false) -> Dictionary:
 		"authoritative_steps": _metric_authoritative_step_count,
 		"event_phases": _metric_event_phase_count,
 		"event_sleep_acks": _metric_event_sleep_ack_count,
-		"touch_timer_projection_ticks": (
-			_metric_touch_timer_projection_tick_count
+		"touch_timer_projection_ticks": 0,
+		"touch_cooldown_deadline_wakes": (
+			_metric_touch_cooldown_deadline_wake_count
 		),
 		"decision_phases": _metric_decision_phase_count,
 		"urgent_decisions": _metric_urgent_decision_count,
@@ -861,6 +880,9 @@ func get_metrics(reset_after_read: bool = false) -> Dictionary:
 		),
 		"indexed_touch_plant_exact_candidates": (
 			_metric_indexed_touch_plant_exact_candidate_count
+		),
+		"indexed_touch_plant_exact_shape_hits": (
+			_metric_indexed_touch_plant_exact_shape_hit_count
 		),
 		"indexed_touch_plant_candidate_checks": (
 			_metric_indexed_touch_plant_candidate_check_count
@@ -916,6 +938,44 @@ func get_metrics(reset_after_read: bool = false) -> Dictionary:
 		"indexed_touch_global_invalidations": (
 			_metric_indexed_touch_global_invalidation_count
 		),
+		"indexed_touch_player_index_queries": (
+			_metric_indexed_touch_player_index_query_count
+		),
+		"indexed_touch_player_index_candidates": (
+			_metric_indexed_touch_player_index_candidate_count
+		),
+		"indexed_touch_player_aabb_pair_checks": (
+			_metric_indexed_touch_player_aabb_pair_check_count
+		),
+		"indexed_touch_player_aabb_pair_hits": (
+			_metric_indexed_touch_player_aabb_pair_hit_count
+		),
+		"indexed_touch_player_exact_shape_checks": (
+			_metric_indexed_touch_player_exact_shape_check_count
+		),
+		"indexed_touch_player_exact_shape_hits": (
+			_metric_indexed_touch_player_exact_shape_hit_count
+		),
+		"indexed_touch_exact_shape_checks": (
+			_metric_indexed_touch_player_exact_shape_check_count
+				+ _metric_indexed_touch_plant_exact_candidate_count
+		),
+		"indexed_touch_exact_shape_hits": (
+			_metric_indexed_touch_player_exact_shape_hit_count
+				+ _metric_indexed_touch_plant_exact_shape_hit_count
+		),
+		"indexed_touch_player_slow_path_movers": (
+			_metric_indexed_touch_player_slow_path_mover_count
+		),
+		"indexed_touch_contact_enters": (
+			_metric_indexed_touch_contact_enter_count
+		),
+		"indexed_touch_contact_exits": (
+			_metric_indexed_touch_contact_exit_count
+		),
+		"touch_damage_attempts": _metric_touch_damage_attempt_count,
+		"touch_damage_accepted": _metric_touch_damage_accepted_count,
+		"touch_damage_rejected": _metric_touch_damage_rejected_count,
 		"indexed_touch_dirty_queue_count": (
 			_dirty_indexed_touch_registrations.size()
 		),
@@ -946,6 +1006,14 @@ func get_metrics(reset_after_read: bool = false) -> Dictionary:
 	if reset_after_read:
 		_reset_cumulative_metrics()
 	return snapshot
+
+
+func record_touch_damage_attempt(accepted: bool) -> void:
+	_metric_touch_damage_attempt_count += 1
+	if accepted:
+		_metric_touch_damage_accepted_count += 1
+	else:
+		_metric_touch_damage_rejected_count += 1
 
 
 func clear(restore_individual_callbacks: bool = true) -> void:
@@ -1123,8 +1191,6 @@ func _advance_layered_area(
 			Time.get_ticks_usec() - profile_started_usec
 		)
 		profile_started_usec = Time.get_ticks_usec()
-	_advance_layered_touch_timer_projection(delta)
-
 	# Phase 1: only awake or exact-deadline registrations are visited. Trusted
 	# sleepers are represented by an O(1) count until contact/target mutation or a
 	# deadline wakes them; moving sleepers remain in the independent 60 Hz motion
@@ -1294,12 +1360,21 @@ func _advance_layered_area(
 		)
 		profile_started_usec = Time.get_ticks_usec()
 
-	# Geometry changed by an event/decision cannot be recaptured transactionally
-	# after gameplay has already advanced. Keep the dirty work for next tick's
-	# preflight and suppress this cohort's Transform submission now. A failure, if
-	# any, is then discovered before that next tick's event/damage/RNG work.
+	# Facing and authored attack-state transitions may legitimately change a
+	# compound contact shape during the decision phase. Recapture only that sparse
+	# dirty set before planned contact so the same tick can still submit motion.
+	# update_shape_proxies() is fail-before-mutation for each registration; if any
+	# capture is unsupported, no later contact/motion phase runs and the complete
+	# cohort commits its existing COMPAT_60 fallback at this tick boundary.
 	if uses_shared_contact and not _dirty_contact_geometries.is_empty():
-		return
+		_sync_layered_contact_proxy_geometry()
+		if Enemy.performance_metrics_enabled:
+			_metric_profile_contact_geometry_usec += (
+				Time.get_ticks_usec() - profile_started_usec
+			)
+			profile_started_usec = Time.get_ticks_usec()
+		if _contact_geometry_sync_failed_this_tick:
+			return
 
 	# Continuous enemy-enemy contact is predicted only after every movement plan
 	# is final. The resulting directed TOI fractions clip this tick's displacement;
@@ -1438,79 +1513,6 @@ func _set_event_sleep_counted(
 			_sleeping_event_registration_count - 1,
 			0
 		)
-	_reconcile_layered_touch_timer_projection(registration)
-
-
-## Only stable Player/Plant touch cooldowns enter this lane. It preserves the
-## authored per-tick floating-point value while the expensive event body sleeps;
-## deadline or mutation wake-up later consumes only ticks not projected here.
-func _reconcile_layered_touch_timer_projection(
-	registration: Registration
-) -> void:
-	if registration == null:
-		return
-	var enemy := registration.enemy
-	var should_list := (
-		registration.event_sleep_counted
-		and not registration.tombstone
-		and not registration.suspended
-		and not registration.uses_anchored_compat_simulation
-		and enemy != null
-		and is_instance_valid(enemy)
-		and enemy.should_project_layered_touch_damage_cooldown()
-	)
-	if not should_list:
-		if registration.touch_timer_projection_listed:
-			_touch_timer_projection_registrations.erase(registration)
-			registration.touch_timer_projection_listed = false
-		return
-	if registration.touch_timer_projection_listed:
-		return
-	registration.touch_timer_projection_listed = true
-	var low := 0
-	var high := _touch_timer_projection_registrations.size()
-	while low < high:
-		var middle := (low + high) >> 1
-		if (
-			_touch_timer_projection_registrations[middle].simulation_id
-			< registration.simulation_id
-		):
-			low = middle + 1
-		else:
-			high = middle
-	_touch_timer_projection_registrations.insert(low, registration)
-
-
-func _advance_layered_touch_timer_projection(physics_delta: float) -> void:
-	if physics_delta <= 0.0 or _touch_timer_projection_registrations.is_empty():
-		return
-	var write_index := 0
-	var projection_count := _touch_timer_projection_registrations.size()
-	for read_index in range(projection_count):
-		var registration := _touch_timer_projection_registrations[read_index]
-		if (
-			registration == null
-			or registration.tombstone
-			or registration.suspended
-			or not registration.event_sleep_counted
-			or not registration.touch_timer_projection_listed
-		):
-			if registration != null:
-				registration.touch_timer_projection_listed = false
-			continue
-		var enemy := registration.enemy
-		if (
-			enemy == null
-			or not is_instance_valid(enemy)
-			or not enemy.should_project_layered_touch_damage_cooldown()
-		):
-			registration.touch_timer_projection_listed = false
-			continue
-		if enemy.project_layered_touch_damage_cooldown_tick(physics_delta):
-			_metric_touch_timer_projection_tick_count += 1
-		_touch_timer_projection_registrations[write_index] = registration
-		write_index += 1
-	_touch_timer_projection_registrations.resize(write_index)
 
 
 func _enqueue_event_ready_registration(registration: Registration) -> bool:
@@ -1656,6 +1658,11 @@ func _collect_sparse_event_work(physics_frame: int) -> void:
 			_set_event_sleep_counted(registration, false)
 			var enemy := registration.enemy
 			if enemy != null and is_instance_valid(enemy):
+				if (
+					enemy.get_touch_damage_cooldown_deadline_physics_frame()
+						== physics_frame
+				):
+					_metric_touch_cooldown_deadline_wake_count += 1
 				enemy.layered_area_event_phase_sleeping = false
 				enemy.layered_area_event_sleep_until_physics_frame = -1
 			_insert_event_work_registration(registration, physics_frame)
@@ -1736,6 +1743,14 @@ func _recover_sparse_event_deadlines_after_frame_gap(
 				or registration.scheduled_event_physics_frame != due_frame
 			):
 				continue
+			var enemy := registration.enemy
+			if (
+				enemy != null
+				and is_instance_valid(enemy)
+				and enemy.get_touch_damage_cooldown_deadline_physics_frame()
+					== due_frame
+			):
+				_metric_touch_cooldown_deadline_wake_count += 1
 			_wake_event_registration(registration)
 		due_registrations.clear()
 		if _event_due_bucket_pool.size() < DECISION_DUE_BUCKET_POOL_LIMIT:
@@ -2151,7 +2166,6 @@ func _reset_layered_scheduler_state() -> void:
 	_decision_work_registrations.clear()
 	_event_ready_registrations.clear()
 	_event_work_registrations.clear()
-	_touch_timer_projection_registrations.clear()
 	_motion_active_registrations.clear()
 	_compat_decision_registrations.clear()
 	_sleeping_event_registration_count = 0
@@ -2175,7 +2189,6 @@ func _reset_layered_scheduler_state() -> void:
 		registration.event_work_physics_frame = -1
 		registration.scheduled_event_physics_frame = -1
 		registration.event_sleep_counted = false
-		registration.touch_timer_projection_listed = false
 		registration.event_admission_physics_frame = -1
 		registration.trusted_sleep_wake_after_event_physics_frame = -1
 		registration.motion_listed = false
@@ -2250,7 +2263,6 @@ func _mark_tombstone(
 	registration.urgent_decision_enqueued = false
 	registration.event_ready_enqueued = false
 	registration.scheduled_event_physics_frame = -1
-	registration.touch_timer_projection_listed = false
 	registration.motion_listed = false
 	registration.compat_decision_listed = false
 	registration.tombstone = true
@@ -2425,7 +2437,10 @@ func _refresh_indexed_touch_player_candidates() -> void:
 	_indexed_touch_player_shape_rects.resize(player_count)
 	_indexed_touch_player_world_aabbs.resize(player_count)
 	_indexed_touch_player_swept_world_aabbs.resize(player_count)
+	_indexed_touch_player_state_changed_flags.resize(player_count)
+	_indexed_touch_any_player_state_changed_this_tick = false
 	for player_index in range(player_count):
+		_indexed_touch_player_state_changed_flags[player_index] = false
 		var player := _indexed_touch_living_players[player_index]
 		_indexed_touch_player_instance_ids[player_index] = (
 			player.get_instance_id()
@@ -2628,34 +2643,19 @@ func _invalidate_indexed_touch_for_changed_players() -> void:
 				current_index
 			):
 				player_state_changed = true
-				_enqueue_indexed_touch_player_sweep_candidates(
-					previous_aabb,
-					previous_shape,
-					current_aabb,
-					current_shape
-				)
+				_indexed_touch_player_state_changed_flags[current_index] = true
 			previous_index += 1
 			current_index += 1
 		elif previous_id < current_id:
 			player_state_changed = true
-			_enqueue_indexed_touch_player_sweep_candidates(
-				_indexed_touch_previous_player_world_aabbs[previous_index],
-				_indexed_touch_previous_player_shapes[previous_index],
-				Rect2(),
-				null
-			)
 			previous_index += 1
 		else:
 			player_state_changed = true
-			_enqueue_indexed_touch_player_sweep_candidates(
-				Rect2(),
-				null,
-				_indexed_touch_player_world_aabbs[current_index],
-				_indexed_touch_player_shapes[current_index]
-			)
+			_indexed_touch_player_state_changed_flags[current_index] = true
 			current_index += 1
 	if not player_state_changed:
 		return
+	_indexed_touch_any_player_state_changed_this_tick = true
 	_enqueue_indexed_touch_nonempty_player_snapshots()
 	_metric_indexed_touch_player_invalidation_count += 1
 
@@ -2691,42 +2691,11 @@ func _merge_indexed_touch_player_world_aabbs(
 	return previous_aabb.merge(current_aabb)
 
 
-func _enqueue_indexed_touch_player_sweep_candidates(
-	previous_aabb: Rect2,
-	previous_shape: Shape2D,
-	current_aabb: Rect2,
-	current_shape: Shape2D
-) -> void:
-	if previous_shape == null and current_shape == null:
-		return
-	if _combat_target_index == null or not is_instance_valid(_combat_target_index):
-		_enqueue_all_indexed_touch_authority(INDEXED_TOUCH_DIRTY_PLAYER)
-		return
-	var sweep_aabb := _merge_indexed_touch_player_world_aabbs(
-		previous_aabb,
-		previous_shape,
-		current_aabb,
-		current_shape
-	).grow(
-		maxf(_maximum_indexed_touch_enemy_extent, 0.0)
-			+ INDEXED_TOUCH_STATIC_ENVELOPE_EPSILON
-	)
-	_combat_target_index.query_world_aabb_into(
-		sweep_aabb,
-		_indexed_touch_player_enemy_candidates
-	)
-	for candidate in _indexed_touch_player_enemy_candidates:
-		var registration := _registration_by_instance_id.get(
-			candidate.get_instance_id()
-		) as Registration
-		_enqueue_indexed_touch_dirty(
-			registration,
-			INDEXED_TOUCH_DIRTY_PLAYER
-		)
-
-
 func _invalidate_indexed_touch_for_moved_enemies() -> void:
-	if _indexed_touch_moved_registrations.is_empty():
+	if (
+		_indexed_touch_moved_registrations.is_empty()
+		and not _indexed_touch_any_player_state_changed_this_tick
+	):
 		return
 	# Swap the producer and reusable consumer buffers. Transform notifications
 	# raised while this drain is running append to the now-empty producer and are
@@ -2740,18 +2709,29 @@ func _invalidate_indexed_touch_for_moved_enemies() -> void:
 	var queue_was_ordered := _indexed_touch_moved_queue_ordered
 	_indexed_touch_moved_queue_ordered = true
 	_indexed_touch_moved_queue_last_simulation_id = INVALID_SIMULATION_ID
-	if queue_was_ordered:
+	if queue_was_ordered and not _indexed_touch_moved_work_registrations.is_empty():
 		_metric_indexed_touch_moved_ordered_drain_count += 1
-	else:
+	elif not _indexed_touch_moved_work_registrations.is_empty():
 		_indexed_touch_moved_work_registrations.sort_custom(
 			func(left: Registration, right: Registration) -> bool:
 				return left.simulation_id < right.simulation_id
 		)
 		_metric_indexed_touch_moved_sort_count += 1
+	var movement_generation := Engine.get_physics_frames()
+	var maximum_normal_motion := 0.0
+	var normal_mover_count := 0
+	var can_use_player_index := (
+		_combat_target_index != null
+		and is_instance_valid(_combat_target_index)
+	)
+	_indexed_touch_slow_path_registrations.clear()
+	if _indexed_touch_any_player_state_changed_this_tick and not can_use_player_index:
+		_enqueue_all_indexed_touch_authority(INDEXED_TOUCH_DIRTY_PLAYER)
 	for registration in _indexed_touch_moved_work_registrations:
 		if registration == null or not registration.indexed_touch_motion_pending:
 			continue
 		registration.indexed_touch_motion_pending = false
+		registration.indexed_touch_moved_generation = -1
 		if (
 			registration.tombstone
 			or registration.suspended
@@ -2771,28 +2751,147 @@ func _invalidate_indexed_touch_for_moved_enemies() -> void:
 			)
 			continue
 		var enemy_sweep := registration.indexed_touch_motion_world_aabb
+		var enemy := registration.enemy
+		var motion_distance := registration.indexed_touch_motion_from_position.distance_to(
+			registration.indexed_touch_motion_to_position
+		)
 		if (
 			not enemy_sweep.position.is_finite()
 			or not enemy_sweep.size.is_finite()
+			or enemy_sweep.size.x <= 0.0
+			or enemy_sweep.size.y <= 0.0
+			or not registration.indexed_touch_motion_from_position.is_finite()
+			or not registration.indexed_touch_motion_to_position.is_finite()
+			or not is_finite(motion_distance)
 		):
 			_enqueue_indexed_touch_dirty(
 				registration,
 				INDEXED_TOUCH_DIRTY_PLAYER
 			)
 			continue
+		if (
+			not can_use_player_index
+			or enemy == null
+			or not is_instance_valid(enemy)
+			or enemy.combat_target_index_binding != _combat_target_index
+			or enemy.combat_target_index_net_id <= 0
+			or motion_distance > INDEXED_TOUCH_MAX_NORMAL_MOTION_PER_TICK
+		):
+			_indexed_touch_slow_path_registrations.append(registration)
+			continue
+		registration.indexed_touch_moved_generation = movement_generation
+		normal_mover_count += 1
+		maximum_normal_motion = maxf(maximum_normal_motion, motion_distance)
+
+	if can_use_player_index:
 		for player_index in range(_indexed_touch_living_players.size()):
+			var player_state_changed := (
+				_indexed_touch_player_state_changed_flags[player_index]
+			)
+			if not player_state_changed and normal_mover_count <= 0:
+				continue
 			if _indexed_touch_player_shapes[player_index] == null:
 				continue
 			var player_sweep := (
 				_indexed_touch_player_swept_world_aabbs[player_index]
 			)
-			if enemy_sweep.intersects(player_sweep, true):
+			if (
+				not player_sweep.position.is_finite()
+				or not player_sweep.size.is_finite()
+				or player_sweep.size.x <= 0.0
+				or player_sweep.size.y <= 0.0
+			):
+				if player_state_changed:
+					_enqueue_all_indexed_touch_authority(
+						INDEXED_TOUCH_DIRTY_PLAYER
+					)
+				_enqueue_all_normal_movers_for_indexed_touch_slow_path(
+					movement_generation
+				)
+				break
+			var query_aabb := player_sweep.grow(
+				maxf(_maximum_indexed_touch_enemy_extent, 0.0)
+					+ maximum_normal_motion
+					+ INDEXED_TOUCH_STATIC_ENVELOPE_EPSILON
+			)
+			_combat_target_index.query_world_aabb_into(
+				query_aabb,
+				_indexed_touch_player_enemy_candidates
+			)
+			_metric_indexed_touch_player_index_query_count += 1
+			_metric_indexed_touch_player_index_candidate_count += (
+				_indexed_touch_player_enemy_candidates.size()
+			)
+			for candidate in _indexed_touch_player_enemy_candidates:
+				if candidate == null or not is_instance_valid(candidate):
+					continue
+				var registration := _registration_by_instance_id.get(
+					candidate.get_instance_id()
+				) as Registration
+				if player_state_changed:
+					_enqueue_indexed_touch_dirty(
+						registration,
+						INDEXED_TOUCH_DIRTY_PLAYER
+					)
+					continue
+				if (
+					registration == null
+					or registration.indexed_touch_moved_generation
+						!= movement_generation
+					or registration.indexed_touch_dirty
+				):
+					continue
+				_metric_indexed_touch_player_aabb_pair_check_count += 1
+				if not registration.indexed_touch_motion_world_aabb.intersects(
+					player_sweep,
+					true
+				):
+					continue
+				_metric_indexed_touch_player_aabb_pair_hit_count += 1
 				_enqueue_indexed_touch_dirty(
 					registration,
 					INDEXED_TOUCH_DIRTY_PLAYER
 				)
-				break
+
+	for registration in _indexed_touch_slow_path_registrations:
+		_invalidate_indexed_touch_slow_path_mover(registration)
+	_indexed_touch_any_player_state_changed_this_tick = false
 	_indexed_touch_moved_work_registrations.clear()
+	_indexed_touch_slow_path_registrations.clear()
+
+
+func _enqueue_all_normal_movers_for_indexed_touch_slow_path(
+	movement_generation: int
+) -> void:
+	for registration in _indexed_touch_moved_work_registrations:
+		if (
+			registration == null
+			or registration.indexed_touch_moved_generation != movement_generation
+		):
+			continue
+		registration.indexed_touch_moved_generation = -1
+		_indexed_touch_slow_path_registrations.append(registration)
+
+
+func _invalidate_indexed_touch_slow_path_mover(
+	registration: Registration
+) -> void:
+	if registration == null or registration.indexed_touch_dirty:
+		return
+	_metric_indexed_touch_player_slow_path_mover_count += 1
+	var enemy_sweep := registration.indexed_touch_motion_world_aabb
+	for player_index in range(_indexed_touch_living_players.size()):
+		if _indexed_touch_player_shapes[player_index] == null:
+			continue
+		var player_sweep := _indexed_touch_player_swept_world_aabbs[player_index]
+		_metric_indexed_touch_player_aabb_pair_check_count += 1
+		if enemy_sweep.intersects(player_sweep, true):
+			_metric_indexed_touch_player_aabb_pair_hit_count += 1
+			_enqueue_indexed_touch_dirty(
+				registration,
+				INDEXED_TOUCH_DIRTY_PLAYER
+			)
+			return
 
 
 func _enqueue_indexed_touch_nonempty_player_snapshots() -> void:
@@ -2981,11 +3080,13 @@ func _sync_indexed_touch_contacts(
 			) > combined_extent * combined_extent
 		):
 			continue
+		_metric_indexed_touch_player_exact_shape_check_count += 1
 		if touch_shape.collide(
 			touch_transform,
 			player_shape,
 			_indexed_touch_player_transforms[player_index]
 		):
+			_metric_indexed_touch_player_exact_shape_hit_count += 1
 			_indexed_touch_players.append(player)
 	if not enemy.is_indexed_touch_authority_enabled():
 		enemy.set_indexed_touch_authority(true)
@@ -3060,6 +3161,11 @@ func _sync_indexed_touch_contacts(
 			faction_id
 		)
 		return true
+	var contact_membership_changes := _count_indexed_touch_membership_changes(
+		enemy,
+		_indexed_touch_players,
+		_indexed_touch_plants
+	)
 	if not enemy.synchronize_indexed_touch_contacts(
 		_indexed_touch_players,
 		_indexed_touch_plants
@@ -3068,6 +3174,8 @@ func _sync_indexed_touch_contacts(
 		enemy.set_indexed_touch_authority(false)
 		return false
 	_metric_indexed_touch_sync_count += 1
+	_metric_indexed_touch_contact_enter_count += contact_membership_changes.x
+	_metric_indexed_touch_contact_exit_count += contact_membership_changes.y
 	_record_indexed_touch_complete_snapshot(
 		registration,
 		enemy,
@@ -3077,6 +3185,37 @@ func _sync_indexed_touch_contacts(
 		faction_id
 	)
 	return true
+
+
+func _count_indexed_touch_membership_changes(
+	enemy: Enemy,
+	players: Array[Player],
+	plants: Array
+) -> Vector2i:
+	var shared_player_count := 0
+	for player in players:
+		if (
+			player != null
+			and is_instance_valid(player)
+			and enemy.touching_players.get(player.get_instance_id()) == player
+		):
+			shared_player_count += 1
+	var shared_plant_count := 0
+	for plant_variant in plants:
+		if plant_variant == null or not is_instance_valid(plant_variant):
+			continue
+		var plant := plant_variant as PlantDefense
+		if (
+			plant != null
+			and enemy.touching_plants.get(plant.get_instance_id()) == plant
+		):
+			shared_plant_count += 1
+	return Vector2i(
+		maxi(players.size() - shared_player_count, 0)
+			+ maxi(plants.size() - shared_plant_count, 0),
+		maxi(enemy.touching_players.size() - shared_player_count, 0)
+			+ maxi(enemy.touching_plants.size() - shared_plant_count, 0)
+	)
 
 
 func _can_reuse_indexed_touch_safe_corridor(
@@ -3486,6 +3625,7 @@ func _sync_indexed_touch_plant_candidates(
 				touch_transform
 			):
 			continue
+		_metric_indexed_touch_plant_exact_shape_hit_count += 1
 		_indexed_touch_plants.append(plant)
 	registration.indexed_touch_exact_geometry_revision = geometry_revision
 	registration.indexed_touch_exact_transform = touch_transform
@@ -3864,8 +4004,10 @@ func _clear_indexed_touch_invalidation_queues() -> void:
 	_dirty_indexed_touch_queue_last_simulation_id = INVALID_SIMULATION_ID
 	_indexed_touch_moved_registrations.clear()
 	_indexed_touch_moved_work_registrations.clear()
+	_indexed_touch_slow_path_registrations.clear()
 	_indexed_touch_moved_queue_ordered = true
 	_indexed_touch_moved_queue_last_simulation_id = INVALID_SIMULATION_ID
+	_indexed_touch_any_player_state_changed_this_tick = false
 
 
 func _get_registered_contact_attacker_world_position(
@@ -3942,9 +4084,9 @@ func _step_layered_current_contact_service() -> void:
 func _step_layered_planned_contact_service(delta: float) -> void:
 	if _contact_service == null:
 		return
-	# Geometry was committed by this tick's preflight. Event/decision mutations are
-	# deliberately left dirty for the next preflight, and the caller suppresses
-	# motion rather than attempting a fallible recapture after gameplay advanced.
+	# Preflight captures existing geometry; the sparse late-decision recapture in
+	# _advance_layered_area commits any facing/attack-state shape transition before
+	# this future-sweep prediction.
 	_contact_service.step_planned(delta, _simulation_tick)
 
 
@@ -4395,7 +4537,7 @@ func _reset_cumulative_metrics() -> void:
 	_metric_authoritative_step_count = 0
 	_metric_event_phase_count = 0
 	_metric_event_sleep_ack_count = 0
-	_metric_touch_timer_projection_tick_count = 0
+	_metric_touch_cooldown_deadline_wake_count = 0
 	_metric_decision_phase_count = 0
 	_metric_urgent_decision_count = 0
 	_metric_motion_phase_count = 0
@@ -4407,6 +4549,7 @@ func _reset_cumulative_metrics() -> void:
 	_metric_indexed_touch_authority_count = 0
 	_metric_indexed_touch_plant_broadphase_count = 0
 	_metric_indexed_touch_plant_exact_candidate_count = 0
+	_metric_indexed_touch_plant_exact_shape_hit_count = 0
 	_metric_indexed_touch_plant_candidate_check_count = 0
 	_metric_indexed_touch_plant_sleep_skip_count = 0
 	_metric_indexed_touch_plant_exact_cache_hit_count = 0
@@ -4425,6 +4568,18 @@ func _reset_cumulative_metrics() -> void:
 	_metric_indexed_touch_moved_sort_count = 0
 	_metric_indexed_touch_player_invalidation_count = 0
 	_metric_indexed_touch_global_invalidation_count = 0
+	_metric_indexed_touch_player_index_query_count = 0
+	_metric_indexed_touch_player_index_candidate_count = 0
+	_metric_indexed_touch_player_aabb_pair_check_count = 0
+	_metric_indexed_touch_player_aabb_pair_hit_count = 0
+	_metric_indexed_touch_player_exact_shape_check_count = 0
+	_metric_indexed_touch_player_exact_shape_hit_count = 0
+	_metric_indexed_touch_player_slow_path_mover_count = 0
+	_metric_indexed_touch_contact_enter_count = 0
+	_metric_indexed_touch_contact_exit_count = 0
+	_metric_touch_damage_attempt_count = 0
+	_metric_touch_damage_accepted_count = 0
+	_metric_touch_damage_rejected_count = 0
 	_metric_activation_skip_count = 0
 	_metric_suspended_skip_count = 0
 	_metric_invalid_enemy_release_count = 0

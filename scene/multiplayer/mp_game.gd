@@ -151,6 +151,9 @@ var _recent_event_prune_time_left: float = RECENT_EVENT_PRUNE_INTERVAL_SECONDS
 var _host_startup_snapshot_grace_time_left: float = 0.0
 var _client_host_game_ready: bool = false
 var _embedded_runtime_active := false
+## 内嵌战斗的高频 Player 状态租约与 runtime 激活分离：奖励
+## 选择与终局仍保留稳定 RPC 根，但必须停止位移包与快照。
+var _embedded_realtime_player_state_ingress_enabled := false
 var _embedded_participant_peer_ids: Dictionary[int, bool] = {}
 var _suspended_embedded_participant_peer_ids: Dictionary[int, bool] = {}
 ## 身份已经迁移、但 Player 尚未完成投影的内嵌战斗参与者。该集合只是一份
@@ -494,6 +497,10 @@ func _on_player_action_rpc_to_host_requested(
 	if (
 		not net_manager.is_client()
 		or _is_tower_world_suspended_for_rogue_exploration()
+		or (
+			method_name == &"_rpc_client_player_state"
+			and not is_realtime_player_state_exchange_enabled()
+		)
 	):
 		return
 	_rpc_to_peer(_get_host_peer_id(), method_name, arguments)
@@ -526,6 +533,7 @@ func _on_player_snapshot_send_requested(
 		peer_id <= 0
 		or not net_manager.is_host()
 		or _is_tower_world_suspended_for_rogue_exploration()
+		or not is_realtime_player_state_exchange_enabled()
 	):
 		return
 	_record_snapshot_packet_size(&"player", data.size(), entity_count)
@@ -685,6 +693,7 @@ func _on_enemy_snapshot_send_requested(
 
 
 func _exit_tree() -> void:
+	_embedded_realtime_player_state_ingress_enabled = false
 	var pause_controller := get_node_or_null(
 		"/root/GameplayPause"
 	) as GameplayPauseController
@@ -902,6 +911,34 @@ func activate_embedded_runtime() -> bool:
 		if _peer_result_repair_needed:
 			_schedule_peer_result_full_repair()
 	return true
+
+
+func set_embedded_realtime_player_state_ingress_enabled(
+	enabled: bool
+) -> bool:
+	if not embedded_runtime:
+		return false
+	if (
+		enabled
+		and (
+			not _embedded_runtime_active
+			or game == null
+			or not is_instance_valid(game)
+		)
+	):
+		return false
+	_embedded_realtime_player_state_ingress_enabled = enabled
+	return true
+
+
+func is_realtime_player_state_exchange_enabled() -> bool:
+	return (
+		not embedded_runtime
+		or (
+			_embedded_runtime_active
+			and _embedded_realtime_player_state_ingress_enabled
+		)
+	)
 
 
 ## Freezes the peer roster before an embedded combat runtime enters the tree.
@@ -2072,21 +2109,21 @@ func apply_authoritative_plant_enemy_damage(
 
 
 func request_bamboo_mortar_target(
-	owner: Node2D,
+	request_owner: Node2D,
 	minimum_range: float,
 	maximum_range: float,
 	callback: Callable
 ) -> bool:
 	return tower_world_coordinator.request_bamboo_mortar_target(
-		owner,
+		request_owner,
 		minimum_range,
 		maximum_range,
 		callback
 	)
 
 
-func cancel_bamboo_mortar_target_request(owner: Node) -> void:
-	tower_world_coordinator.cancel_bamboo_mortar_target_request(owner)
+func cancel_bamboo_mortar_target_request(request_owner: Node) -> void:
+	tower_world_coordinator.cancel_bamboo_mortar_target_request(request_owner)
 
 
 func select_bamboo_mortar_target_sync_for_fixture(
@@ -3242,10 +3279,11 @@ func _host_physics_tick(frame: int, _delta: float) -> void:
 		return
 	var client_peer_ids := _get_connected_client_peer_ids()
 	_sync_snapshot_cohort_readiness(client_peer_ids)
-	player_coordinator.update_host_realtime_snapshots(
-		frame,
-		client_peer_ids
-	)
+	if is_realtime_player_state_exchange_enabled():
+		player_coordinator.update_host_realtime_snapshots(
+			frame,
+			client_peer_ids
+		)
 	var enemy_snapshot_interval_frames := enemy_coordinator.get_snapshot_interval_frames()
 	if frame % enemy_snapshot_interval_frames == 0:
 		enemy_coordinator.broadcast_host_enemy_snapshots(
@@ -3462,6 +3500,8 @@ func _get_network_diagnostics_coordinator() -> MpNetworkDiagnosticsCoordinatorSc
 
 
 func _client_physics_tick(frame: int) -> void:
+	if not is_realtime_player_state_exchange_enabled():
+		return
 	player_coordinator.update_client_realtime_input(
 		frame,
 		_client_host_game_ready
@@ -3469,6 +3509,8 @@ func _client_physics_tick(frame: int) -> void:
 
 
 func _client_send_input_if_needed(buttons: int) -> void:
+	if not is_realtime_player_state_exchange_enabled():
+		return
 	player_coordinator.send_client_input_if_needed(buttons)
 
 
@@ -3489,13 +3531,17 @@ func _is_client_input_state_active(
 func _client_interpolate_entities() -> void:
 	if game == null:
 		return
-	player_coordinator.interpolate_client_players()
+	if is_realtime_player_state_exchange_enabled():
+		player_coordinator.interpolate_client_players()
 	enemy_coordinator.interpolate_remote_enemies(_get_net_time())
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
 func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) -> void:
-	if _is_tower_world_suspended_for_rogue_exploration():
+	if (
+		_is_tower_world_suspended_for_rogue_exploration()
+		or not is_realtime_player_state_exchange_enabled()
+	):
 		return
 	player_coordinator.receive_authoritative_player_snapshot(
 		host_timestamp,
@@ -3544,6 +3590,7 @@ func _rpc_client_player_state(
 		_is_tower_world_suspended_for_rogue_exploration()
 		or net_manager == null
 		or not net_manager.is_host()
+		or not is_realtime_player_state_exchange_enabled()
 	):
 		return
 	var sender_id := _get_rpc_sender_id()
@@ -3946,6 +3993,8 @@ func _cancel_authoritative_tiyi_high_noon(
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_player_state_corrected(corrected_position: Vector2, corrected_velocity: Vector2) -> void:
+	if not is_realtime_player_state_exchange_enabled():
+		return
 	player_coordinator.apply_local_state_correction(
 		corrected_position,
 		corrected_velocity
@@ -4911,22 +4960,26 @@ func net_player_healed(
 
 # Protocol v25 retains these compatibility shells for older relay deployments.
 # Xirang orbs no longer exist; all annotated endpoints remain deliberate no-ops.
+@warning_ignore("unused_parameter")
 @rpc("authority", "call_remote", "reliable", 5)
 func net_xirang_orb_spawned(orb_id: int, amount: int, spawn_position: Vector2) -> void:
 	pass
 
 
+@warning_ignore("unused_parameter")
 @rpc("any_peer", "call_remote", "reliable", 6)
 func _rpc_xirang_orb_collected(orb_id: int) -> void:
 	var _sender_id := _get_rpc_sender_id()
 	pass
 
 
+@warning_ignore("unused_parameter")
 @rpc("authority", "call_remote", "reliable", 6)
 func net_xirang_granted_all(orb_id: int, amount: int, revision: int) -> void:
 	pass
 
 
+@warning_ignore("unused_parameter")
 @rpc("authority", "call_remote", "reliable", 5)
 func net_xirang_orb_removed(orb_id: int) -> void:
 	pass

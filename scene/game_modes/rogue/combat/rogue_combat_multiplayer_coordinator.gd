@@ -747,6 +747,12 @@ func _create_embedded_runtime() -> bool:
 		)
 		instance.free()
 		return false
+	if not instance.set_embedded_realtime_player_state_ingress_enabled(false):
+		push_error(
+			"RogueCombatMultiplayerCoordinator: 内嵌战场拒绝准备阶段状态入口关闭。"
+		)
+		instance.free()
+		return false
 	if not instance.embedded_runtime_prepared.is_connected(
 		_on_embedded_runtime_prepared
 	):
@@ -1112,6 +1118,8 @@ func _activate_local_runtime() -> bool:
 		return false
 	if not _combat_network.activate_embedded_runtime():
 		return false
+	if not _combat_network.set_embedded_realtime_player_state_ingress_enabled(true):
+		return false
 	_local_runtime_activated = true
 	_phase = ProtocolPhase.ACTIVE
 	# PREPARED and ACTIVATED are distinct idempotent protocol stages. Reusing one
@@ -1123,6 +1131,16 @@ func _activate_local_runtime() -> bool:
 			_active_occurrence_key
 		)
 	return true
+
+
+func _set_local_realtime_player_state_ingress_enabled(
+	enabled: bool
+) -> bool:
+	if _combat_network == null or not is_instance_valid(_combat_network):
+		return not enabled
+	return _combat_network.set_embedded_realtime_player_state_ingress_enabled(
+		enabled
+	)
 
 
 func _connect_emergency_reward_overlay_signals() -> void:
@@ -1228,6 +1246,7 @@ func _begin_host_emergency_reward_selection(
 
 
 func _freeze_local_combat_for_reward_selection() -> void:
+	_set_local_realtime_player_state_ingress_enabled(false)
 	if _combat_game == null or not is_instance_valid(_combat_game):
 		return
 	# 战场模拟冻结，但保留资料面板与 MpGame 事务节点；这样背包满时仍可
@@ -1838,6 +1857,7 @@ func _on_local_combat_outcome_started(
 		or _local_outcome_received
 	):
 		return
+	_set_local_realtime_player_state_ingress_enabled(false)
 	_local_outcome_received = true
 	_local_outcome_victory = victory
 	_local_outcome_failure_reason = failure_reason
@@ -2460,6 +2480,7 @@ func _apply_settlement(settlement: Dictionary) -> bool:
 
 	_pending_settlement = settlement.duplicate(true)
 	_settlement_received = true
+	_set_local_realtime_player_state_ingress_enabled(false)
 	_phase = ProtocolPhase.SETTLED
 	_expected_terminal_peers = _participant_peer_ids.duplicate()
 	for disconnected_peer_id in _disconnected_participants.keys():
@@ -2874,6 +2895,7 @@ func _return_to_route_local() -> bool:
 
 
 func _stop_local_combat_processing() -> void:
+	_set_local_realtime_player_state_ingress_enabled(false)
 	if _combat_network == null or not is_instance_valid(_combat_network):
 		return
 	# Host 停止继续发战场快照；客户端仍保留稳定 RPC NodePath，直至
@@ -2891,6 +2913,7 @@ func _set_combat_presentation_visible(visible: bool) -> void:
 
 
 func prepare_active_runtime_for_scene_teardown() -> void:
+	_set_local_realtime_player_state_ingress_enabled(false)
 	var runtime := _combat_game as CombatRuntimeBase
 	if (
 		(runtime == null or not is_instance_valid(runtime))

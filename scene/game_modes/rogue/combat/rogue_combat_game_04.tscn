@@ -45,6 +45,7 @@ size = Vector2(25, 287)
 [node name="RogueCombatGame04" type="Node2D" unique_id=595286618]
 position = Vector2(1, 0)
 script = ExtResource("1_game")
+enemy_navigation_mode = 0
 event_title = "地下水道"
 singleplayer_campaign = ExtResource("27_campaign")
 multiplayer_campaign = ExtResource("27_campaign")
@@ -97,6 +98,7 @@ script = ExtResource("11_pathfinder")
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1283892349]
 position = Vector2(208, 144)
 zoom = Vector2(2, 2)
+process_callback = 0
 
 [node name="PlayerSpawn" type="Marker2D" parent="." unique_id=192365113]
 position = Vector2(56, 152)

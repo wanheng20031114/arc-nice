@@ -94,7 +94,6 @@ const MULTIPLAYER_SPAWN_OFFSETS: Array[Vector2] = [
 @onready var prewarmer_coordinator: TowerDefensePrewarmerCoordinator = (
 	$PrewarmerCoordinator
 )
-@onready var tower_grid_pathfinder: GridPathfinder = grid_pathfinder as GridPathfinder
 @onready var tower_multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter = (
 	multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
 )
@@ -158,12 +157,9 @@ var has_received_remote_base_health_snapshot: bool:
 		return home_defense_coordinator.has_received_remote_base_health_snapshot
 	set(value):
 		home_defense_coordinator.has_received_remote_base_health_snapshot = value
-var navigation_prewarm_requested: bool:
+var shared_runtime_prewarm_requested: bool:
 	get:
-		return prewarmer_coordinator != null and prewarmer_coordinator.navigation_prewarm_requested
-var navigation_prewarmed: bool:
-	get:
-		return prewarmer_coordinator != null and prewarmer_coordinator.navigation_prewarmed
+		return prewarmer_coordinator != null and prewarmer_coordinator.shared_prewarm_requested
 var plant_lifecycle_shader_prewarmed: bool:
 	get:
 		return prewarmer_coordinator != null and prewarmer_coordinator.plant_lifecycle_shader_prewarmed
@@ -245,6 +241,12 @@ func _ready() -> void:
 	)
 	random_generator.randomize()
 	initialize_world_lighting()
+	if not validate_enemy_navigation_runtime_contract():
+		_fail_tower_runtime_preparation(
+			preparation_generation,
+			"塔防简单寻路场景契约失败。"
+		)
+		return
 	if not _configure_player_roster_coordinator():
 		_fail_tower_runtime_preparation(preparation_generation, "塔防玩家名册协调器配置失败。")
 		return
@@ -434,7 +436,7 @@ func _ready() -> void:
 		else:
 			mark_runtime_preparation_complete(preparation_generation)
 	elif auto_start_waves or runtime_activation_deferred:
-		_schedule_enemy_navigation_prewarm(preparation_generation)
+		_schedule_shared_runtime_prewarm(preparation_generation)
 
 
 func _fail_tower_runtime_preparation(
@@ -678,17 +680,12 @@ func _configure_prewarmer_coordinator() -> bool:
 	if prewarmer_coordinator == null:
 		push_error("TowerDefenseGame: 缺少静态 PrewarmerCoordinator 节点。")
 		return false
-	if tower_grid_pathfinder == null:
-		push_error("TowerDefenseGame: GridPathfinder 必须为强类型 GridPathfinder。")
-		return false
 	return prewarmer_coordinator.setup(
 		self,
-		tower_grid_pathfinder,
 		map_camera,
 		session_object_pool,
 		boss_coordinator,
 		fate_coordinator,
-		campaign_coordinator.waves,
 		PLANT_PLACEMENT_PARTICLES_SCENE,
 		PLANT_REMOVAL_SMOKE_SCENE,
 		GUARDIAN_POINT_LIGHT_TEXTURE
@@ -923,7 +920,6 @@ func _configure_boss_coordinator() -> bool:
 		presentation_coordinator,
 		tower_multiplayer_mode_adapter,
 		prewarmer_coordinator,
-		grid_pathfinder,
 		random_generator
 	)
 	if not boss_coordinator.is_bound():
@@ -944,7 +940,6 @@ func _configure_enemy_coordinator() -> void:
 		boss_container,
 		enemy_spawn_points_root,
 		ground_tile_map_layer,
-		tower_grid_pathfinder,
 		enemy_spawn_timer,
 		multiplayer_gateway,
 		fate_coordinator,
@@ -975,9 +970,9 @@ func _can_continue_runtime_prewarm(preparation_generation: int) -> bool:
 	)
 
 
-func _schedule_enemy_navigation_prewarm(preparation_generation: int) -> void:
+func _schedule_shared_runtime_prewarm(preparation_generation: int) -> void:
 	if prewarmer_coordinator != null:
-		prewarmer_coordinator.schedule_enemy_navigation_prewarm(
+		prewarmer_coordinator.schedule_shared_runtime_prewarm(
 			preparation_generation
 		)
 

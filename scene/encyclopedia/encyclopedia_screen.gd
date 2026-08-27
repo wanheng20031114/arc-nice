@@ -699,7 +699,7 @@ func _begin_layout_transition() -> void:
 
 func _start_grid_reflow(
 	target_pane_width: float,
-	ease: Tween.EaseType,
+	ease_type: Tween.EaseType,
 	delay: float = 0.0
 ) -> void:
 	if _grid_reflow_tween != null:
@@ -720,7 +720,7 @@ func _start_grid_reflow(
 		"modulate:a",
 		1.0,
 		GRID_REFLOW_FADE_DURATION
-	).set_trans(Tween.TRANS_SINE).set_ease(ease)
+	).set_trans(Tween.TRANS_SINE).set_ease(ease_type)
 	_grid_reflow_tween.finished.connect(func() -> void: _grid_reflow_tween = null)
 
 

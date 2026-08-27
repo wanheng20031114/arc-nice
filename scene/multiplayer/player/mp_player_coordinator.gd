@@ -2146,6 +2146,12 @@ func handle_client_player_state(
 	if player_node == null or not is_instance_valid(player_node):
 		_record_player_state_rejection(sender_id, sequence, &"missing_player")
 		return
+	# A process-mode transition removes CharacterBody2D from its Physics2D space
+	# before delayed unreliable packets are drained. Such packets belong to the
+	# previous lifecycle phase: drop them without advancing sequence/pose watermarks,
+	# emitting a correction, or counting them as cheating rejections.
+	if not _is_player_motion_body_ready(player_node):
+		return
 	if player_node.is_dead:
 		_record_player_state_rejection(sender_id, sequence, &"player_dead")
 		_request_player_state_correction(sender_id, player_node)
@@ -2226,6 +2232,11 @@ func accept_client_player_state(
 		return false
 	var now := _get_action_net_time()
 	var player_node := _runtime.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		_record_player_state_rejection(peer_id, sequence, &"missing_player")
+		return false
+	if not _is_player_motion_body_ready(player_node):
+		return false
 	var rejection_reason := _get_client_player_motion_rejection_reason(
 		peer_id,
 		sequence,
@@ -2352,6 +2363,27 @@ func _get_client_player_motion_rejection_reason(
 	):
 		return &"blocked_motion"
 	return &""
+
+
+func _is_player_motion_body_ready(player_node: Player) -> bool:
+	if (
+		player_node == null
+		or not is_instance_valid(player_node)
+		or player_node.is_queued_for_deletion()
+		or not player_node.is_inside_tree()
+	):
+		return false
+	var body_rid := player_node.get_rid()
+	if not body_rid.is_valid():
+		return false
+	var body_space := PhysicsServer2D.body_get_space(body_rid)
+	if not body_space.is_valid():
+		return false
+	var world := player_node.get_world_2d()
+	if world == null:
+		return false
+	var world_space := world.space
+	return world_space.is_valid() and body_space == world_space
 
 
 func _commit_accepted_client_player_state(

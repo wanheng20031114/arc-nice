@@ -110,6 +110,7 @@ sources/0 = SubResource("TileSetAtlasSource_fc0e3")
 [node name="RogueCombatGame01" type="Node2D" unique_id=20737211]
 position = Vector2(1, 0)
 script = ExtResource("1_17rxn")
+enemy_navigation_mode = 0
 singleplayer_campaign = ExtResource("35_rogue_campaign")
 multiplayer_campaign = ExtResource("35_rogue_campaign")
 pre_wave_duration = 3.0
@@ -159,6 +160,7 @@ tile_set = SubResource("TileSet_7jktm")
 [node name="Camera2D" type="Camera2D" parent="." unique_id=945169532]
 position = Vector2(128, 128)
 zoom = Vector2(2, 2)
+process_callback = 0
 
 [node name="PlayerSpawn" type="Marker2D" parent="." unique_id=1640433019]
 position = Vector2(79, 128)

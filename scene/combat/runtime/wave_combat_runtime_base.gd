@@ -408,6 +408,8 @@ func _validate_wave_runtime_scene_content() -> bool:
 	if enemy_spawn_points_root == null or enemy_spawn_timer == null or state_timer == null:
 		push_error("%s: 波次场景缺少静态出生点或计时器节点。" % get_class())
 		return false
+	if not validate_enemy_navigation_runtime_contract():
+		return false
 	return _validate_mode_scene_content()
 
 

@@ -194,7 +194,7 @@ func _get_layered_area_elapsed_event_ticks(
 func _simulate_layered_area_event_body(
 	elapsed_delta: float,
 	physics_delta: float,
-	elapsed_ticks: int
+	_elapsed_ticks: int
 ) -> bool:
 	if is_dead:
 		velocity = Vector2.ZERO
@@ -204,27 +204,20 @@ func _simulate_layered_area_event_body(
 	# CardboardMonster's authored runner settles contact damage before its Knight
 	# state machine. Most families do the inverse. Keep the default ordering byte-
 	# for-byte compatible while allowing that explicit family contract to route
-	# the same unprojected touch delta ahead of its event hook.
+	# the same deadline-based touch settlement ahead of its event hook.
 	var advances_touch_damage := _advances_layered_area_touch_damage_event()
 	var touch_precedes_family := (
 		advances_touch_damage
 		and _layered_area_touch_damage_precedes_family_event()
 	)
 	if touch_precedes_family:
-		_update_touch_damage(consume_layered_touch_damage_unprojected_delta(
-			elapsed_ticks,
-			physics_delta
-		))
+		_update_touch_damage(physics_delta)
 	_advance_layered_area_family_event_phase(elapsed_delta)
 	if advances_touch_damage and not touch_precedes_family:
-		# Touch cooldowns and overlap-derived damage are event semantics and must
-		# stay exact even when a stable-contact interval is projected by the sparse
-		# timer lane. Family timers receive the complete elapsed_delta above; touch
-		# consumes only ticks not already materialized in its raw field.
-		_update_touch_damage(consume_layered_touch_damage_unprojected_delta(
-			elapsed_ticks,
-			physics_delta
-		))
+		# Cooldown readiness is an absolute physics-frame deadline. Family timers
+		# still receive their complete elapsed delta above, while touch damage does
+		# no per-frame countdown work.
+		_update_touch_damage(physics_delta)
 	var can_move := _can_run_layered_area_motion()
 	if not layered_area_motion_state_known or can_move != layered_area_last_can_move:
 		request_layered_area_urgent_decision()
@@ -278,8 +271,7 @@ func _can_enter_layered_area_event_sleep() -> bool:
 		and (
 			has_stable_touch_cooldown
 			or (
-				touch_damage_cooldown_left <= 0.0
-				and indexed_touch_contact_snapshot_is_empty()
+				indexed_touch_contact_snapshot_is_empty()
 				and layered_area_last_can_move
 			)
 		)
@@ -310,13 +302,6 @@ func _can_sleep_layered_area_family_event_phase() -> bool:
 	return true
 
 
-func should_project_layered_touch_damage_cooldown() -> bool:
-	return (
-		layered_area_event_phase_sleeping
-		and _has_sleepable_layered_touch_damage_cooldown()
-	)
-
-
 ## Event deadline hook. Family implementations may return an earlier wake frame
 ## after combining their own timer with super's touch-cooldown deadline.
 func _get_layered_area_event_sleep_until_physics_frame(
@@ -324,23 +309,9 @@ func _get_layered_area_event_sleep_until_physics_frame(
 ) -> int:
 	if (
 		not _has_sleepable_layered_touch_damage_cooldown()
-		or physics_delta <= 0.0
 	):
 		return -1
-	# Reproduce the authored 60 Hz subtraction sequence instead of deriving the
-	# deadline with ceil(left / delta). For values such as 0.5 at 60 Hz, repeated
-	# floating-point subtraction leaves a positive remainder after tick 30 and the
-	# legacy runner becomes ready on tick 31. This bounded loop runs only once per
-	# accepted touch cooldown, replacing all of those per-enemy event callbacks.
-	var remaining_cooldown := touch_damage_cooldown_left
-	var ticks_until_ready := 0
-	while remaining_cooldown > 0.0:
-		remaining_cooldown = maxf(
-			remaining_cooldown - physics_delta,
-			0.0
-		)
-		ticks_until_ready += 1
-	return Engine.get_physics_frames() + maxi(ticks_until_ready, 1)
+	return get_touch_damage_cooldown_deadline_physics_frame()
 
 
 func simulate_layered_area_decision_phase(

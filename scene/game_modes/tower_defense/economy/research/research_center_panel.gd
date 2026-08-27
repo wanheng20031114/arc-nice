@@ -583,10 +583,10 @@ func _on_action_pressed() -> void:
 		):
 			_show_result(ResearchCoordinator.RESULT_UNAVAILABLE, true)
 			return
-		var result := building.try_start_global_research(
+		var global_research_result := building.try_start_global_research(
 			selected_global_research_id
 		)
-		_show_result(result, true)
+		_show_result(global_research_result, true)
 		return
 	var previous_level := tracked_player.get_research_technology_level()
 	var result := building.try_purchase_player_technology(tracked_player)

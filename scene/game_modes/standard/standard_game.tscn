@@ -137,6 +137,7 @@ b = Vector2(1060, -106.666664)
 [node name="StandardGame" type="Node2D" unique_id=20737211]
 position = Vector2(1, 0)
 script = ExtResource("1_17rxn")
+enemy_navigation_mode = 0
 mode_definition = ExtResource("31_mode_definition")
 
 [node name="MultiplayerGameplayGateway" parent="." instance=ExtResource("32_gameplay_gateway")]

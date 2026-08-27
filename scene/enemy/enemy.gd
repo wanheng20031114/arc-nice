@@ -118,6 +118,7 @@ const RANGED_COMBAT_LOS_MOTION_INVALIDATION_DISTANCE_SQUARED := (
 	RANGED_COMBAT_LOS_MOTION_INVALIDATION_DISTANCE
 	* RANGED_COMBAT_LOS_MOTION_INVALIDATION_DISTANCE
 )
+const INVALID_TOUCH_DAMAGE_DEADLINE_PHYSICS_FRAME := -1
 
 enum DeathSequenceStage {
 	NONE,
@@ -206,10 +207,19 @@ var objective_target: Node2D = null:
 		if objective_target == value:
 			return
 		objective_target = value
-		request_layered_area_urgent_decision()
+		if uses_simple_enemy_navigation():
+			_clear_cached_navigation_move_direction()
+		else:
+			request_layered_area_urgent_decision()
 		objective_target_changed.emit(self, objective_target)
 var pathfinder: Node = null
 var combat_runtime: CombatRuntimeBase = null
+## Captured exactly once by setup(). A Tower enemy therefore cannot begin
+## requesting flow fields if a later coordinator changes its own policy or
+## accidentally offers a pathfinder reference.
+var enemy_navigation_mode: int = (
+	CombatRuntimeBase.EnemyNavigationMode.COMPLEX_OBSTACLE_AWARE
+)
 var combat_query_facade = null
 var combat_relation_service: CombatRelationService = null
 var targeting_state: EnemyTargetingState = ENEMY_TARGETING_STATE.new()
@@ -226,7 +236,22 @@ var last_damage_result: DamageResult = null
 var defeat_context: EnemyDefeatContext = null
 var combat_faction_id: int = COMBAT_RELATION_SERVICE.HOSTILE_WAVE
 var faction_revision: int = 0
-var touch_damage_cooldown_left: float = 0.0
+## Compatibility/debug projection of the authoritative physics-frame deadline.
+## Production cooldown readiness never decrements this value every tick.
+var touch_damage_cooldown_left: float:
+	get:
+		return _get_touch_damage_cooldown_left()
+	set(value):
+		_set_touch_damage_cooldown_left(value)
+var touch_damage_cooldown_deadline_physics_frame := (
+	INVALID_TOUCH_DAMAGE_DEADLINE_PHYSICS_FRAME
+)
+var touch_damage_cooldown_started_physics_frame := (
+	INVALID_TOUCH_DAMAGE_DEADLINE_PHYSICS_FRAME
+)
+var touch_damage_cooldown_authored_seconds := 0.0
+var touch_damage_cooldown_physics_delta := 0.0
+var touch_damage_last_physics_delta := 0.0
 var touched_player: Player = null
 var touching_players: Dictionary[int, Player] = {}
 var touching_player_death_callbacks: Dictionary[int, Callable] = {}
@@ -360,9 +385,6 @@ var layered_area_event_phase_sleeping := false
 ## let a family skip empty 60 Hz event ticks while still waking on its exact
 ## authored physics-frame cadence.
 var layered_area_event_sleep_until_physics_frame := -1
-## Number of authored touch-cooldown subtractions already materialized by the
-## coordinator's sparse timer lane since the last real family event.
-var layered_touch_damage_projected_ticks_since_event := 0
 var layered_area_motion_phase_due := false
 
 
@@ -721,6 +743,11 @@ func setup(
 	_clear_direct_hit_flash()
 	if runtime_context != null:
 		bind_combat_runtime(runtime_context)
+	enemy_navigation_mode = (
+		int(runtime_context.enemy_navigation_mode)
+		if runtime_context != null
+		else CombatRuntimeBase.EnemyNavigationMode.COMPLEX_OBSTACLE_AWARE
+	)
 	clear_cold_status()
 	clear_collectible_statuses()
 	clear_electric_surge_state()
@@ -735,12 +762,16 @@ func setup(
 	dynamic_targeting_state_active = false
 	target_player = player
 	objective_target = player
-	pathfinder = shared_pathfinder
+	pathfinder = shared_pathfinder if not uses_simple_enemy_navigation() else null
 	navigation_agent_profile = null
 	navigation_flow_prefetch_next_physics_frame = 0
 	last_navigation_update_render_frame = -1
 	last_navigation_refresh_process_frame = -1
 	navigation_refresh_deferred = false
+	if uses_simple_enemy_navigation():
+		# A reused enemy must not carry a previously certified complex-mode direct
+		# translation into a simple runtime, where every motion uses move_and_slide.
+		_clear_cached_navigation_move_direction()
 	_invalidate_blocked_world_los_cache()
 	_invalidate_ranged_combat_line_cache()
 	_reset_ranged_attack_position_state()
@@ -1258,7 +1289,6 @@ func prepare_layered_area_authoritative_simulation() -> void:
 	layered_area_last_event_tick = -1
 	layered_area_event_phase_sleeping = false
 	layered_area_event_sleep_until_physics_frame = -1
-	layered_touch_damage_projected_ticks_since_event = 0
 	layered_area_motion_phase_due = false
 
 
@@ -1321,47 +1351,91 @@ func acknowledge_trusted_sleeping_layered_area_event_phase(
 	return false
 
 
-## Only opted-in layered families enter the sparse raw-timer lane. The base
-## contract stays false so an unmigrated family can never lose event work.
-func should_project_layered_touch_damage_cooldown() -> bool:
-	return false
-
-
-## Materializes exactly one authored 60 Hz cooldown subtraction. Keeping this
-## operation identical to `_update_touch_damage_unprofiled()` preserves the raw
-## public field (including floating-point residue) on every physics tick.
-func project_layered_touch_damage_cooldown_tick(
-	physics_delta: float
+func is_touch_damage_cooldown_ready(
+	physics_frame: int = Engine.get_physics_frames()
 ) -> bool:
+	return (
+		touch_damage_cooldown_deadline_physics_frame < 0
+		or physics_frame >= touch_damage_cooldown_deadline_physics_frame
+	)
+
+
+func has_active_touch_damage_cooldown(
+	physics_frame: int = Engine.get_physics_frames()
+) -> bool:
+	return not is_touch_damage_cooldown_ready(physics_frame)
+
+
+func get_touch_damage_cooldown_deadline_physics_frame() -> int:
+	return touch_damage_cooldown_deadline_physics_frame
+
+
+func _get_touch_damage_cooldown_left() -> float:
+	var current_frame := Engine.get_physics_frames()
+	if is_touch_damage_cooldown_ready(current_frame):
+		return 0.0
+	var remaining := maxf(touch_damage_cooldown_authored_seconds, 0.0)
+	var elapsed_ticks := maxi(
+		current_frame - touch_damage_cooldown_started_physics_frame,
+		0
+	)
+	for _tick in range(elapsed_ticks):
+		remaining = maxf(
+			remaining - touch_damage_cooldown_physics_delta,
+			0.0
+		)
+		if remaining <= 0.0:
+			break
+	return remaining
+
+
+func _set_touch_damage_cooldown_left(value: float) -> void:
+	if not is_finite(value) or value <= 0.0:
+		_clear_touch_damage_cooldown()
+		return
+	_begin_touch_damage_cooldown(value)
+
+
+func _get_touch_damage_physics_delta() -> float:
 	if (
-		physics_delta <= 0.0
-		or not should_project_layered_touch_damage_cooldown()
+		is_finite(touch_damage_last_physics_delta)
+		and touch_damage_last_physics_delta > 0.0
 	):
-		return false
-	touch_damage_cooldown_left = maxf(
-		touch_damage_cooldown_left - physics_delta,
-		0.0
-	)
-	layered_touch_damage_projected_ticks_since_event += 1
-	return true
+		return touch_damage_last_physics_delta
+	return 1.0 / float(maxi(Engine.physics_ticks_per_second, 1))
 
 
-## A real event advances family timers by its complete elapsed delta, but touch
-## damage must subtract only ticks not already materialized by the sparse lane.
-## Urgent wakes deliberately keep the counter until this consumption point.
-func consume_layered_touch_damage_unprojected_delta(
-	elapsed_ticks: int,
-	physics_delta: float
-) -> float:
-	var safe_elapsed_ticks := maxi(elapsed_ticks, 0)
-	var projected_ticks := mini(
-		layered_touch_damage_projected_ticks_since_event,
-		safe_elapsed_ticks
+## Computes the exact authored readiness frame once. Repeated subtraction is
+## intentionally retained here because 0.5 at 60 Hz becomes ready on tick 31,
+## not tick 30, due to the same floating-point residue as the legacy runner.
+func _begin_touch_damage_cooldown(authored_seconds: float) -> void:
+	var safe_seconds := maxf(authored_seconds, 0.0)
+	if safe_seconds <= 0.0:
+		_clear_touch_damage_cooldown()
+		return
+	var physics_delta := _get_touch_damage_physics_delta()
+	var remaining := safe_seconds
+	var ticks_until_ready := 0
+	while remaining > 0.0:
+		remaining = maxf(remaining - physics_delta, 0.0)
+		ticks_until_ready += 1
+	var current_frame := Engine.get_physics_frames()
+	touch_damage_cooldown_authored_seconds = safe_seconds
+	touch_damage_cooldown_physics_delta = physics_delta
+	touch_damage_cooldown_started_physics_frame = current_frame
+	touch_damage_cooldown_deadline_physics_frame = (
+		current_frame + maxi(ticks_until_ready, 1)
 	)
-	layered_touch_damage_projected_ticks_since_event = 0
-	return maxf(physics_delta, 0.0) * float(
-		safe_elapsed_ticks - projected_ticks
+
+
+func _clear_touch_damage_cooldown() -> void:
+	touch_damage_cooldown_deadline_physics_frame = (
+		INVALID_TOUCH_DAMAGE_DEADLINE_PHYSICS_FRAME
 	)
+	touch_damage_cooldown_started_physics_frame = (
+		INVALID_TOUCH_DAMAGE_DEADLINE_PHYSICS_FRAME
+	)
+	touch_damage_cooldown_authored_seconds = 0.0
 
 
 func simulate_layered_area_decision_phase(
@@ -1834,6 +1908,11 @@ func refresh_dynamic_combat_target_decision(simulation_tick: int) -> void:
 func classify_combat_target_reachability(target: Node2D) -> int:
 	if target == null or not can_attack_combat_target(target):
 		return ENEMY_TARGETING_STATE.ReachabilityResult.UNREACHABLE
+	# SIMPLE_LINEAR scenes intentionally have no grid connectivity model. A live
+	# hostile target is reachable by policy; physical CharacterBody collisions
+	# still decide how the enemy slides along the authored world and water edges.
+	if uses_simple_enemy_navigation():
+		return ENEMY_TARGETING_STATE.ReachabilityResult.REACHABLE
 	var grid_pathfinder := pathfinder as GridPathfinder
 	var profile := _get_navigation_agent_profile()
 	if grid_pathfinder == null or profile == null:
@@ -2190,6 +2269,8 @@ func _set_ranged_attack_position_held(held: bool) -> void:
 
 
 func set_pathfinder(shared_pathfinder: Node) -> void:
+	if uses_simple_enemy_navigation():
+		shared_pathfinder = null
 	if pathfinder == shared_pathfinder:
 		return
 	pathfinder = shared_pathfinder
@@ -2198,6 +2279,13 @@ func set_pathfinder(shared_pathfinder: Node) -> void:
 	_invalidate_ranged_combat_line_cache()
 	_reset_ranged_attack_position_state()
 	_clear_cached_navigation_move_direction()
+
+
+func uses_simple_enemy_navigation() -> bool:
+	return (
+		enemy_navigation_mode
+		== CombatRuntimeBase.EnemyNavigationMode.SIMPLE_LINEAR
+	)
 
 
 func configure_multiplayer_proxy() -> void:
@@ -4228,8 +4316,8 @@ func _set_facing_left(new_facing_left: bool) -> void:
 		return
 	facing_left = new_facing_left
 	_apply_sprite_facing()
-	_apply_facing_mirror()
-	mark_contact_shape_geometry_changed()
+	if _apply_facing_mirror():
+		mark_contact_shape_geometry_changed()
 
 
 func _apply_sprite_facing() -> void:
@@ -4242,33 +4330,59 @@ func _apply_sprite_facing() -> void:
 	animated_sprite.position = Vector2(animated_sprite_base_position.x * mirror_sign, animated_sprite_base_position.y)
 
 
-func _apply_facing_mirror() -> void:
+func _apply_facing_mirror() -> bool:
 	var mirror_sign := -1.0 if facing_left else 1.0
+	var geometry_changed := false
 	for shape_node in mirrored_collision_shapes:
-		_apply_collision_shape_mirror(shape_node, mirror_sign)
+		geometry_changed = (
+			_apply_collision_shape_mirror(shape_node, mirror_sign)
+			or geometry_changed
+		)
+	return geometry_changed
 
 
-func _apply_collision_shape_mirror(shape_node: CollisionShape2D, mirror_sign: float) -> void:
+func _apply_collision_shape_mirror(
+	shape_node: CollisionShape2D,
+	mirror_sign: float
+) -> bool:
 	if shape_node == null:
-		return
+		return false
 	var state: Dictionary = collision_shape_mirror_states.get(shape_node.get_instance_id(), {})
 	if state.is_empty():
-		return
+		return false
 
 	var original_position := state["position"] as Vector2
 	var original_rotation := float(state["rotation"])
-	shape_node.position = Vector2(original_position.x * mirror_sign, original_position.y)
-	shape_node.rotation = original_rotation * mirror_sign
+	var mirrored_position := Vector2(
+		original_position.x * mirror_sign,
+		original_position.y
+	)
+	var mirrored_rotation := original_rotation * mirror_sign
+	var geometry_changed := (
+		not shape_node.position.is_equal_approx(mirrored_position)
+		or not is_equal_approx(shape_node.rotation, mirrored_rotation)
+	)
+	if geometry_changed:
+		shape_node.position = mirrored_position
+		shape_node.rotation = mirrored_rotation
 
 	if not bool(state.get("has_segment", false)):
-		return
+		return geometry_changed
 	var segment_shape := shape_node.shape as SegmentShape2D
 	if segment_shape == null:
-		return
+		return geometry_changed
 	var original_a := state["segment_a"] as Vector2
 	var original_b := state["segment_b"] as Vector2
-	segment_shape.a = Vector2(original_a.x * mirror_sign, original_a.y)
-	segment_shape.b = Vector2(original_b.x * mirror_sign, original_b.y)
+	var mirrored_a := Vector2(original_a.x * mirror_sign, original_a.y)
+	var mirrored_b := Vector2(original_b.x * mirror_sign, original_b.y)
+	var segment_changed := (
+		not segment_shape.a.is_equal_approx(mirrored_a)
+		or not segment_shape.b.is_equal_approx(mirrored_b)
+	)
+	if segment_changed:
+		segment_shape.a = mirrored_a
+		segment_shape.b = mirrored_b
+	return geometry_changed or segment_changed
 
 
 func _get_body_collision_extent_radius() -> float:
@@ -4345,6 +4459,8 @@ func _get_safe_navigation_move_direction(
 	shared_pathfinder: Node,
 	waypoint_arrival_distance: float
 ) -> Vector2:
+	if uses_simple_enemy_navigation():
+		return _get_simple_linear_navigation_move_direction(target_node)
 	var current_refresh_interval := _get_navigation_update_interval_frames(
 		objective_target
 	)
@@ -4372,6 +4488,19 @@ func _get_safe_navigation_move_direction(
 		started_usec
 	)
 	return move_direction
+
+
+func _get_simple_linear_navigation_move_direction(target_node: Node2D) -> Vector2:
+	if not _should_update_navigation_direction(target_node):
+		return cached_navigation_move_direction
+	if target_node == null or not is_instance_valid(target_node):
+		return _cache_navigation_move_direction(Vector2.ZERO)
+	# Do not call GridPathfinder, flow/profile/generation/prefetch, test_move(),
+	# or a navigation budget here. The 60 Hz motion stage still submits velocity
+	# through move_and_slide(), preserving world and peripheral-water collision.
+	return _cache_navigation_move_direction(
+		global_position.direction_to(target_node.global_position)
+	)
 
 
 func _get_safe_navigation_move_direction_unprofiled(
@@ -5188,6 +5317,8 @@ func _get_next_navigation_phase_frame(interval: int) -> int:
 
 func _get_navigation_update_interval_frames(target_node: Node2D) -> int:
 	var interval := maxi(navigation_update_interval_frames, 1)
+	if uses_simple_enemy_navigation():
+		return interval
 	if _is_far_static_objective(target_node):
 		interval = maxi(interval, FAR_STATIC_OBJECTIVE_UPDATE_INTERVAL_FRAMES)
 	return interval
@@ -5860,7 +5991,7 @@ func _on_touched_plant_removal_started(_mode: int, plant: PlantDefense) -> void:
 ## not qualify: their moving contact and faction lifetime stay event-driven.
 func _has_sleepable_layered_touch_damage_cooldown() -> bool:
 	if (
-		touch_damage_cooldown_left <= 0.0
+		is_touch_damage_cooldown_ready()
 		or _get_valid_dynamic_enemy_objective() != null
 	):
 		return false
@@ -5879,10 +6010,11 @@ func _has_sleepable_layered_touch_damage_cooldown() -> bool:
 
 
 func _update_touch_damage(delta: float) -> void:
+	if is_finite(delta) and delta > 0.0:
+		touch_damage_last_physics_delta = delta
 	var has_dynamic_enemy_contact := _has_dynamic_enemy_target_contact()
 	if (
-		touch_damage_cooldown_left <= 0.0
-		and touching_plants.is_empty()
+		touching_plants.is_empty()
 		and touching_players.is_empty()
 		and not has_dynamic_enemy_contact
 	):
@@ -5902,11 +6034,9 @@ func _update_touch_damage(delta: float) -> void:
 
 
 func _update_touch_damage_unprofiled(
-	delta: float,
+	_delta: float,
 	has_dynamic_enemy_contact: bool
 ) -> void:
-	if touch_damage_cooldown_left > 0.0:
-		touch_damage_cooldown_left = maxf(touch_damage_cooldown_left - delta, 0.0)
 	if (
 		touching_plants.is_empty()
 		and touching_players.is_empty()
@@ -5918,11 +6048,11 @@ func _update_touch_damage_unprofiled(
 
 	touched_plant = _select_touching_plant()
 	if touched_plant != null:
-		if touch_damage_cooldown_left <= 0.0:
+		if is_touch_damage_cooldown_ready():
 			_try_deal_touch_damage()
 		return
 	if has_dynamic_enemy_contact:
-		if touch_damage_cooldown_left <= 0.0:
+		if is_touch_damage_cooldown_ready():
 			_try_deal_touch_damage()
 		return
 
@@ -5934,7 +6064,7 @@ func _update_touch_damage_unprofiled(
 		touched_player = _select_touching_player()
 		if touched_player == null:
 			return
-	if touch_damage_cooldown_left > 0.0:
+	if not is_touch_damage_cooldown_ready():
 		return
 
 	_try_deal_touch_damage()
@@ -5945,7 +6075,7 @@ func _try_deal_touch_damage() -> void:
 		return
 	if not _uses_inherited_touch_damage():
 		return
-	if touch_damage_cooldown_left > 0.0:
+	if not is_touch_damage_cooldown_ready():
 		return
 	if config == null:
 		return
@@ -5973,8 +6103,12 @@ func _try_deal_touch_damage() -> void:
 		plant_request.with_source(self, touch_source_id, touch_source_type)
 		plant_request.with_source_snapshot(touch_source_snapshot)
 		plant_request.with_directions(impact_direction)
-		if touched_plant.apply_combat_damage(plant_request).accepted:
-			touch_damage_cooldown_left = touch_damage_interval
+		var plant_damage_accepted := (
+			touched_plant.apply_combat_damage(plant_request).accepted
+		)
+		_record_touch_damage_result(plant_damage_accepted)
+		if plant_damage_accepted:
+			_begin_touch_damage_cooldown(touch_damage_interval)
 			_on_touch_damage_applied(touched_plant, touch_source_snapshot)
 		return
 	var dynamic_enemy_target := _get_valid_dynamic_enemy_objective()
@@ -5992,8 +6126,9 @@ func _try_deal_touch_damage() -> void:
 		enemy_request.with_source_snapshot(touch_source_snapshot)
 		enemy_request.with_directions(enemy_impact_direction)
 		var enemy_result := dynamic_enemy_target.apply_combat_damage(enemy_request)
+		_record_touch_damage_result(enemy_result.accepted)
 		if enemy_result.accepted:
-			touch_damage_cooldown_left = touch_damage_interval
+			_begin_touch_damage_cooldown(touch_damage_interval)
 			_on_touch_damage_applied(
 				dynamic_enemy_target,
 				touch_source_snapshot
@@ -6017,9 +6152,11 @@ func _try_deal_touch_damage() -> void:
 		false,
 		touch_source_snapshot
 	):
-		touch_damage_cooldown_left = touch_damage_interval
+		_record_touch_damage_result(true)
+		_begin_touch_damage_cooldown(touch_damage_interval)
 		return
 	if not _has_explicit_singleplayer_authority():
+		_record_touch_damage_result(false)
 		return
 	var damage_was_applied := touched_player.apply_damage(
 		outgoing_damage,
@@ -6033,7 +6170,18 @@ func _try_deal_touch_damage() -> void:
 	)
 	if damage_was_applied:
 		_on_touch_damage_applied(touched_player, touch_source_snapshot)
-	touch_damage_cooldown_left = touch_damage_interval
+	_record_touch_damage_result(damage_was_applied)
+	# Preserve the authored single-player settlement contract: this branch starts
+	# its cooldown even when Player rejects the final damage application.
+	_begin_touch_damage_cooldown(touch_damage_interval)
+
+
+func _record_touch_damage_result(accepted: bool) -> void:
+	if (
+		enemy_simulation_coordinator != null
+		and is_instance_valid(enemy_simulation_coordinator)
+	):
+		enemy_simulation_coordinator.record_touch_damage_attempt(accepted)
 
 
 func _uses_inherited_touch_damage() -> bool:

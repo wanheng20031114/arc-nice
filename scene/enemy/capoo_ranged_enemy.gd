@@ -65,7 +65,8 @@ func _get_navigation_move_direction(_delta: float) -> Vector2:
 
 func _can_direct_chase_player_without_pathfinder() -> bool:
 	return (
-		(pathfinder == null or not bool(pathfinder.get("is_built")))
+		not uses_simple_enemy_navigation()
+		and (pathfinder == null or not bool(pathfinder.get("is_built")))
 		and is_objective_targeting_player()
 		and global_position.distance_squared_to(target_player.global_position)
 			<= NO_PATHFINDER_DIRECT_CHASE_DISTANCE_SQUARED

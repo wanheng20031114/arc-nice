@@ -23,8 +23,13 @@ const HARNESS_SCENE := preload(
 )
 
 const PHYSICS_DELTA := 1.0 / 60.0
+const PLAYER_CENTERED_BROADPHASE_ENEMY_COUNT := 200
+const PLAYER_CENTERED_BROADPHASE_PLAYER_COUNT := 5
+const PLAYER_CENTERED_PERFORMANCE_WARMUP_TICKS := 30
+const PLAYER_CENTERED_PERFORMANCE_TICKS := 120
 
 var failures: Array[String] = []
+var player_centered_broadphase_report: Dictionary = {}
 
 
 func _init() -> void:
@@ -37,7 +42,13 @@ func _run() -> void:
 	await _test_plant_shape_change_and_target_deletion()
 	await _test_stable_candidate_and_dirty_drain_order()
 	await _test_player_domain_does_not_poison_plant_certificate()
+	await _test_moving_player_against_static_enemy()
+	await _test_player_centered_broadphase_and_touch_deadline()
 	if failures.is_empty():
+		print(
+			"ENEMY_INDEXED_PLAYER_BROADPHASE_JSON %s"
+			% JSON.stringify(player_centered_broadphase_report)
+		)
 		print("ENEMY_INDEXED_PLANT_EMPTY_CERTIFICATE_REGRESSION_OK")
 		quit(0)
 		return
@@ -370,6 +381,310 @@ func _test_player_domain_does_not_poison_plant_certificate() -> void:
 	await _cleanup_runtime(runtime, coordinator)
 
 
+func _test_moving_player_against_static_enemy() -> void:
+	var runtime := RUNTIME_SCENE.instantiate() as EnemyGameplayGatewayTestRuntime
+	root.add_child(runtime)
+	await process_frame
+	runtime.enable_singleplayer_combat_target_index(true)
+	var coordinator := runtime.get_enemy_simulation_coordinator()
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
+
+	var player := PLAYER_SCENE.instantiate() as Player
+	player.peer_id = 9
+	runtime.add_child(player)
+	runtime.bind_player_runtime_context(player)
+	runtime.peer_players[player.peer_id] = player
+	player.global_position = Vector2(512.0, 0.0)
+	player.reset_physics_interpolation()
+	player.set_process(false)
+	player.set_physics_process(false)
+	var enemy := _spawn_harness(runtime, Vector2.ZERO)
+	enemy.set_objective_target(player)
+	await _settle_physics_frames(6)
+	coordinator.set_physics_process(false)
+	coordinator.get_metrics(true)
+
+	var health_before_rejected_enter := player.current_health
+	player.invincibility_time_left = 1.0
+	player.global_position = enemy.global_position
+	await _manual_coordinator_tick(coordinator)
+	var enter_metrics: Dictionary = coordinator.get_metrics(true)
+	var health_after_enter := player.current_health
+	_expect(
+		int(enter_metrics["indexed_touch_player_index_queries"]) == 1
+		and int(enter_metrics["indexed_touch_player_exact_shape_hits"]) == 1
+		and int(enter_metrics["indexed_touch_contact_enters"]) == 1
+		and int(enter_metrics["touch_damage_attempts"]) == 1
+		and int(enter_metrics["touch_damage_accepted"]) == 0
+		and int(enter_metrics["touch_damage_rejected"]) == 1
+		and player.current_health == health_before_rejected_enter
+		and enemy.has_active_touch_damage_cooldown()
+		and enemy.touched_player == player,
+		"A moving Player must enter a static enemy in the same tick; the authored single-player rejected settlement still establishes its cooldown deadline."
+	)
+
+	player.is_dead = true
+	await _manual_coordinator_tick(coordinator)
+	var death_metrics: Dictionary = coordinator.get_metrics(true)
+	_expect(
+		int(death_metrics["indexed_touch_contact_exits"]) == 1
+		and enemy.indexed_touch_player_snapshot_is_empty(),
+		"Player death must remove a nonempty indexed contact snapshot in the first tick."
+	)
+
+	player.is_dead = false
+	await _manual_coordinator_tick(coordinator)
+	var revive_metrics: Dictionary = coordinator.get_metrics(true)
+	_expect(
+		int(revive_metrics["indexed_touch_contact_enters"]) == 1
+		and enemy.touched_player == player
+		and player.current_health == health_after_enter,
+		"Player revival inside contact must re-enter immediately without bypassing the existing damage deadline."
+	)
+	await _cleanup_runtime(runtime, coordinator)
+
+
+func _test_player_centered_broadphase_and_touch_deadline() -> void:
+	var runtime := RUNTIME_SCENE.instantiate() as EnemyGameplayGatewayTestRuntime
+	runtime.enemy_navigation_mode = (
+		CombatRuntimeBase.EnemyNavigationMode.SIMPLE_LINEAR
+	)
+	root.add_child(runtime)
+	await process_frame
+	runtime.enable_singleplayer_combat_target_index(true)
+	var coordinator := runtime.get_enemy_simulation_coordinator()
+	coordinator.set_mode(POLICY.Mode.LAYERED_CONTACT)
+
+	var players: Array[Player] = []
+	for peer_id in range(1, PLAYER_CENTERED_BROADPHASE_PLAYER_COUNT + 1):
+		var player := PLAYER_SCENE.instantiate() as Player
+		player.peer_id = peer_id
+		runtime.add_child(player)
+		runtime.bind_player_runtime_context(player)
+		runtime.peer_players[peer_id] = player
+		player.global_position = Vector2.ZERO
+		player.reset_physics_interpolation()
+		player.set_process(false)
+		player.set_physics_process(false)
+		players.append(player)
+
+	var enemies: Array[YuanshiInsect] = []
+	for enemy_index in range(PLAYER_CENTERED_BROADPHASE_ENEMY_COUNT):
+		var spawn_position := Vector2(
+			2048.0 + float(enemy_index % 20) * 24.0,
+			1024.0 + float(enemy_index / 20) * 24.0
+		)
+		var enemy := _spawn_harness(runtime, spawn_position)
+		enemy.set_objective_target(players[0])
+		enemy.random_generator.seed = 20_260_827 + enemy_index
+		enemies.append(enemy)
+	await _settle_physics_frames(PLAYER_CENTERED_PERFORMANCE_WARMUP_TICKS)
+	# Exercise the complete automatic physics path, but do not turn Godot's
+	# TIME_PHYSICS_PROCESS monitor into per-tick samples. That monitor publishes
+	# the previous coarse (up to one-second) maximum and retains the same value
+	# between updates; percentiles over repeated reads would therefore be false.
+	for tick_index in range(PLAYER_CENTERED_PERFORMANCE_TICKS):
+		var phase := (
+			TAU * float(tick_index % 60) / 60.0
+		)
+		for player_index in range(players.size()):
+			players[player_index].global_position = (
+				Vector2.from_angle(
+					phase + TAU * float(player_index) / float(players.size())
+				)
+				* 32.0
+			)
+		await physics_frame
+
+	coordinator.set_physics_process(false)
+	var previous_performance_metrics_enabled := Enemy.performance_metrics_enabled
+	Enemy.set_performance_metrics_enabled(true)
+	coordinator.get_metrics(true)
+	var coordinator_usec_samples: Array[int] = []
+	for tick_index in range(PLAYER_CENTERED_PERFORMANCE_TICKS):
+		var phase := (
+			TAU * float(tick_index % 60) / 60.0
+		)
+		for player_index in range(players.size()):
+			players[player_index].global_position = (
+				Vector2.from_angle(
+					phase + TAU * float(player_index) / float(players.size())
+				)
+				* 32.0
+			)
+		await physics_frame
+		var coordinator_started_usec := Time.get_ticks_usec()
+		coordinator._physics_process(PHYSICS_DELTA)
+		coordinator_usec_samples.append(
+			Time.get_ticks_usec() - coordinator_started_usec
+		)
+	var coordinator_profile_metrics := coordinator.get_metrics(true)
+	Enemy.set_performance_metrics_enabled(previous_performance_metrics_enabled)
+	coordinator_usec_samples.sort()
+	for player in players:
+		player.global_position = Vector2.ZERO
+	await physics_frame
+	coordinator.get_metrics(true)
+
+	for enemy in enemies:
+		enemy.global_position += Vector2.RIGHT
+	await _manual_coordinator_tick(coordinator)
+	var empty_motion_metrics: Dictionary = coordinator.get_metrics(true)
+	var legacy_pair_upper_bound := (
+		PLAYER_CENTERED_BROADPHASE_ENEMY_COUNT
+		* PLAYER_CENTERED_BROADPHASE_PLAYER_COUNT
+	)
+	_expect(
+		int(empty_motion_metrics["indexed_touch_player_index_queries"])
+			== PLAYER_CENTERED_BROADPHASE_PLAYER_COUNT,
+		"Two hundred normal movers must issue exactly one spatial-index query per living Player."
+	)
+	_expect(
+		int(empty_motion_metrics["indexed_touch_player_aabb_pair_checks"])
+			< legacy_pair_upper_bound / 10
+		and int(empty_motion_metrics["indexed_touch_player_slow_path_movers"])
+			== 0,
+		"The common empty-contact frame must eliminate the Enemy x Player full pair path."
+	)
+	player_centered_broadphase_report = {
+		"enemies": PLAYER_CENTERED_BROADPHASE_ENEMY_COUNT,
+		"players": PLAYER_CENTERED_BROADPHASE_PLAYER_COUNT,
+		"legacy_pair_upper_bound_per_tick": legacy_pair_upper_bound,
+		"index_queries": int(
+			empty_motion_metrics["indexed_touch_player_index_queries"]
+		),
+		"index_candidates": int(
+			empty_motion_metrics["indexed_touch_player_index_candidates"]
+		),
+		"aabb_pair_checks": int(
+			empty_motion_metrics["indexed_touch_player_aabb_pair_checks"]
+		),
+		"aabb_pair_hits": int(
+			empty_motion_metrics["indexed_touch_player_aabb_pair_hits"]
+		),
+		"slow_path_movers": int(
+			empty_motion_metrics["indexed_touch_player_slow_path_movers"]
+		),
+		"automatic_stress_ticks": PLAYER_CENTERED_PERFORMANCE_TICKS,
+		"full_host_physics_percentiles": "requires_profiler_host_matrix",
+		"coordinator_p50_ms": (
+			float(_percentile_nearest_rank(coordinator_usec_samples, 0.50))
+			/ 1000.0
+		),
+		"coordinator_p95_ms": (
+			float(_percentile_nearest_rank(coordinator_usec_samples, 0.95))
+			/ 1000.0
+		),
+		"coordinator_p99_ms": (
+			float(_percentile_nearest_rank(coordinator_usec_samples, 0.99))
+			/ 1000.0
+		),
+		"profile_contact_setup_ms_per_tick": (
+			float(coordinator_profile_metrics["profile_contact_setup_usec"])
+			/ float(PLAYER_CENTERED_PERFORMANCE_TICKS)
+			/ 1000.0
+		),
+		"profile_indexed_player_refresh_ms_per_tick": (
+			float(
+				coordinator_profile_metrics[
+					"profile_indexed_player_refresh_usec"
+				]
+			)
+			/ float(PLAYER_CENTERED_PERFORMANCE_TICKS)
+			/ 1000.0
+		),
+		"profile_indexed_dirty_drain_ms_per_tick": (
+			float(
+				coordinator_profile_metrics[
+					"profile_indexed_dirty_drain_usec"
+				]
+			)
+			/ float(PLAYER_CENTERED_PERFORMANCE_TICKS)
+			/ 1000.0
+		),
+		"profile_motion_ms_per_tick": (
+			float(coordinator_profile_metrics["profile_motion_phase_usec"])
+			/ float(PLAYER_CENTERED_PERFORMANCE_TICKS)
+			/ 1000.0
+		),
+	}
+
+	var teleported_enemy := enemies[0]
+	teleported_enemy.global_position = players[0].global_position
+	await _manual_coordinator_tick(coordinator)
+	var teleport_metrics: Dictionary = coordinator.get_metrics(true)
+	_expect(
+		int(teleport_metrics["indexed_touch_player_slow_path_movers"]) >= 1
+		and int(teleport_metrics["indexed_touch_player_aabb_pair_hits"]) >= 1
+		and int(teleport_metrics["indexed_touch_player_exact_shape_hits"])
+			== PLAYER_CENTERED_BROADPHASE_PLAYER_COUNT
+		and int(teleport_metrics["indexed_touch_contact_enters"])
+			== PLAYER_CENTERED_BROADPHASE_PLAYER_COUNT,
+		"A teleport must use the explicit all-Player slow path and publish every exact overlap in the same tick."
+	)
+	_expect(
+		teleported_enemy.touched_player == players[0],
+		"Five overlapping Players must retain deterministic lowest-peer selection."
+	)
+
+	var first_hit_health := players[0].current_health
+	var cooldown_deadline := (
+		teleported_enemy.get_touch_damage_cooldown_deadline_physics_frame()
+	)
+	_expect(
+		cooldown_deadline
+			- teleported_enemy.touch_damage_cooldown_started_physics_frame
+			== 31,
+		"The authored 0.5 second cooldown must preserve legacy tick-31 readiness."
+	)
+	var far_position := Vector2(4096.0, 2048.0)
+	teleported_enemy.global_position = far_position
+	await _manual_coordinator_tick(coordinator)
+	var exit_metrics: Dictionary = coordinator.get_metrics(true)
+	_expect(
+		int(exit_metrics["indexed_touch_contact_exits"])
+			== PLAYER_CENTERED_BROADPHASE_PLAYER_COUNT
+		and teleported_enemy.indexed_touch_player_snapshot_is_empty()
+		and teleported_enemy.get_touch_damage_cooldown_deadline_physics_frame()
+			== cooldown_deadline,
+		"EXIT must resume movement membership without cancelling the accepted-hit cooldown deadline."
+	)
+
+	teleported_enemy.global_position = players[0].global_position
+	await _manual_coordinator_tick(coordinator)
+	var reentry_metrics: Dictionary = coordinator.get_metrics(true)
+	_expect(
+		int(reentry_metrics["indexed_touch_contact_enters"])
+			== PLAYER_CENTERED_BROADPHASE_PLAYER_COUNT
+		and players[0].current_health == first_hit_health,
+		"Re-entry during cooldown must update exact membership without duplicate damage."
+	)
+
+	while Engine.get_physics_frames() < cooldown_deadline:
+		if Engine.get_physics_frames() + 1 >= cooldown_deadline:
+			players[0].invincibility_time_left = 0.0
+		await _manual_coordinator_tick(coordinator)
+	var deadline_metrics: Dictionary = coordinator.get_metrics(true)
+	_expect(
+		int(deadline_metrics["touch_cooldown_deadline_wakes"]) == 1
+		and int(deadline_metrics["touch_damage_attempts"]) == 1
+		and int(deadline_metrics["touch_damage_accepted"]) == 1
+		and int(deadline_metrics["touch_damage_rejected"]) == 0
+		and players[0].current_health < first_hit_health,
+		(
+			"The default 0.5 second cooldown must wake exactly once on authored tick 31 and settle one accepted hit; deadline=%d frame=%d health=%d->%d metrics=%s."
+			% [
+				cooldown_deadline,
+				Engine.get_physics_frames(),
+				first_hit_health,
+				players[0].current_health,
+				deadline_metrics,
+			]
+		)
+	)
+	await _cleanup_runtime(runtime, coordinator)
+
+
 func _make_circle_plant(
 	runtime: EnemyGameplayGatewayTestRuntime,
 	world_position: Vector2,
@@ -438,6 +753,20 @@ func _cleanup_runtime(
 		runtime.queue_free()
 	await process_frame
 	await physics_frame
+
+
+func _percentile_nearest_rank(
+	sorted_samples: Array[int],
+	percentile: float
+) -> int:
+	if sorted_samples.is_empty():
+		return 0
+	var rank := clampi(
+		ceili(clampf(percentile, 0.0, 1.0) * float(sorted_samples.size())) - 1,
+		0,
+		sorted_samples.size() - 1
+	)
+	return sorted_samples[rank]
 
 
 func _expect(condition: bool, message: String) -> void:
