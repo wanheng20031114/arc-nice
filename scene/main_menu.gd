@@ -19,6 +19,7 @@ const TEST_ARENA_MODE_IDS := {
 	TEST_ARENA_P2_ID: GameModeCatalog.MODE_TEST_ARENA_P2,
 	TEST_ARENA_P3_ID: GameModeCatalog.MODE_TEST_ARENA_P3,
 }
+const FOCUS_REQUEST_NONE: StringName = &""
 const FOCUS_DEFAULT: StringName = &"singleplayer"
 const FOCUS_ENCYCLOPEDIA: StringName = &"encyclopedia"
 const ENCYCLOPEDIA_LOADING_TEXT := "正在整理图鉴…"
@@ -45,6 +46,7 @@ enum SingleplayerDestination {
 }
 
 @onready var settings_panel: Control = $SettingsPanel
+@onready var menu_stack: VBoxContainer = $MenuCenter/MenuPanel/MarginContainer/MenuStack
 @onready var singleplayer_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer
 @onready var vehicle_mode_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/VehicleMode
 @onready var tower_defense_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/TowerDefense
@@ -58,7 +60,7 @@ enum SingleplayerDestination {
 @onready var encyclopedia_loading_feedback: PanelContainer = $EncyclopediaLoadingFeedback
 @onready var encyclopedia_loading_label: Label = $EncyclopediaLoadingFeedback/Status
 
-static var _requested_focus_id: StringName = FOCUS_DEFAULT
+static var _requested_focus_id: StringName = FOCUS_REQUEST_NONE
 
 var pending_singleplayer_destination := SingleplayerDestination.STANDARD
 var pending_test_arena_id: StringName = TEST_ARENA_P1A_ID
@@ -140,6 +142,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		_cancel_pending_encyclopedia_open()
 		encyclopedia_button.grab_focus()
 		get_viewport().set_input_as_handled()
+		return
+	if _try_begin_keyboard_navigation(event):
+		get_viewport().set_input_as_handled()
 
 
 static func request_focus_after_return(focus_id: StringName) -> void:
@@ -147,14 +152,48 @@ static func request_focus_after_return(focus_id: StringName) -> void:
 
 
 func _apply_requested_focus() -> void:
-	var target := (
-		encyclopedia_button
-		if _requested_focus_id == FOCUS_ENCYCLOPEDIA
-		else singleplayer_button
-	)
-	_requested_focus_id = FOCUS_DEFAULT
+	var requested_focus_id := _requested_focus_id
+	_requested_focus_id = FOCUS_REQUEST_NONE
+	var target: Button
+	match requested_focus_id:
+		FOCUS_DEFAULT:
+			target = singleplayer_button
+		FOCUS_ENCYCLOPEDIA:
+			target = encyclopedia_button
+		_:
+			return
 	if target != null and target.is_visible_in_tree() and not target.disabled:
 		target.grab_focus()
+
+
+func _try_begin_keyboard_navigation(event: InputEvent) -> bool:
+	if get_viewport().gui_get_focus_owner() != null:
+		return false
+	var focusable_buttons := _get_focusable_menu_buttons()
+	if focusable_buttons.is_empty():
+		return false
+	var target: Button
+	if event.is_action_pressed(&"ui_up") or event.is_action_pressed(&"ui_focus_prev"):
+		target = focusable_buttons.back()
+	elif (
+		event.is_action_pressed(&"ui_down")
+		or event.is_action_pressed(&"ui_focus_next")
+		or event.is_action_pressed(&"ui_accept")
+	):
+		target = focusable_buttons.front()
+	else:
+		return false
+	target.grab_focus()
+	return true
+
+
+func _get_focusable_menu_buttons() -> Array[Button]:
+	var buttons: Array[Button] = []
+	for child in menu_stack.get_children():
+		var button := child as Button
+		if button != null and button.is_visible_in_tree() and not button.disabled:
+			buttons.append(button)
+	return buttons
 
 
 func _on_singleplayer_pressed() -> void:
