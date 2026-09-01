@@ -9,35 +9,9 @@ const WAVE_CAMPAIGN_CONFIG_SCRIPT := preload(
 const WAVE_CONTENT_CONTRACT := preload(
 	"res://dev_tools/wave_campaign_content_contract.gd"
 )
-const WAVE_ENEMY_ENTRY_SCRIPT := preload(
-	"res://resources/config/waves/wave_enemy_entry.gd"
-)
-const TOWER_DEFENSE_STRESS_BASIC := preload(
-	"res://resources/config/enemies/yuanshi_insect_basic.tres"
-)
-const TOWER_DEFENSE_STRESS_SHELL := preload(
-	"res://resources/config/enemies/yuanshi_insect_shell.tres"
-)
-const TOWER_DEFENSE_STRESS_AK47 := preload(
-	"res://resources/config/enemies/capoo_ak47.tres"
-)
 const FORCE_ARGUMENT := "--force"
 const CHECK_ARGUMENT := "--check"
 const STANDARD_SHARED_POLICY := &"standard_shared"
-const TOWER_DEFENSE_STRESS_POLICY := &"tower_defense_stress"
-const TOWER_DEFENSE_STRESS_TOTAL_ENEMIES := 1200
-const TOWER_DEFENSE_STRESS_MAX_ALIVE := 300
-const TOWER_DEFENSE_EARLY_WAVE_COUNT := 2
-const TOWER_DEFENSE_EARLY_WAVE_SPAWN_INTERVAL := 0.1
-const TOWER_DEFENSE_ORIGINAL_BATCH_INTERVAL := 0.1
-const TOWER_DEFENSE_ORIGINAL_BATCH_SIZE := 4.0
-const TOWER_DEFENSE_SEQUENTIAL_SPAWN_INTERVAL := (
-	TOWER_DEFENSE_ORIGINAL_BATCH_INTERVAL / TOWER_DEFENSE_ORIGINAL_BATCH_SIZE
-)
-const TOWER_DEFENSE_SEQUENTIAL_SPAWN_COUNT_PER_TICK := 1
-const TOWER_DEFENSE_FIRST_WAVE_BASIC_COUNT := 850
-const TOWER_DEFENSE_FIRST_WAVE_SHELL_COUNT := 320
-const TOWER_DEFENSE_FIRST_WAVE_AK47_COUNT := 30
 
 const CAMPAIGNS := [
 	{
@@ -58,16 +32,6 @@ const CAMPAIGNS := [
 		"boss_config": STANDARD_BOSS_CONFIG,
 		"wave_policy": STANDARD_SHARED_POLICY,
 	},
-	{
-		"mode": "tower_defense",
-		"players": "performance",
-		"campaign_id": &"tower_defense_performance",
-		"display_name": "塔防模式 / 1200 敌人性能测试",
-		"spawn_point_mask": WaveConfig.ALL_SPAWN_POINT_MASK,
-		"boss_config": null,
-		"wave_policy": TOWER_DEFENSE_STRESS_POLICY,
-		"wave_subdirectory": "waves",
-	},
 ]
 
 
@@ -85,9 +49,7 @@ func _init() -> void:
 	var failures := PackedStringArray()
 	if should_check:
 		for definition in CAMPAIGNS:
-			# 性能战役保留独立调参历史；本检查只为正式 Standard 快照闭包负责。
-			if definition["wave_policy"] == STANDARD_SHARED_POLICY:
-				_check_campaign(definition, failures)
+			_check_campaign(definition, failures)
 	else:
 		for definition in CAMPAIGNS:
 			_generate_campaign(definition, failures)
@@ -250,8 +212,6 @@ func _build_campaign_wave(
 	match StringName(definition["wave_policy"]):
 		STANDARD_SHARED_POLICY:
 			pass
-		TOWER_DEFENSE_STRESS_POLICY:
-			_configure_tower_defense_stress_wave(campaign_wave, wave_number)
 		_:
 			failures.append(
 				"Campaign %s 使用了未知波次策略。" % String(definition["campaign_id"])
@@ -267,108 +227,3 @@ func _assert_formal_label(
 ) -> void:
 	if WAVE_CONTENT_CONTRACT.has_test_label(wave_config):
 		failures.append("正式 Standard 波次禁止测试标签：%s" % resource_path)
-
-
-func _configure_tower_defense_stress_wave(
-	wave_config: WaveConfig,
-	wave_number: int
-) -> void:
-	wave_config.spawn_interval = (
-		TOWER_DEFENSE_EARLY_WAVE_SPAWN_INTERVAL
-		if wave_number <= TOWER_DEFENSE_EARLY_WAVE_COUNT
-		else TOWER_DEFENSE_SEQUENTIAL_SPAWN_INTERVAL
-	)
-	wave_config.spawn_count_per_tick = TOWER_DEFENSE_SEQUENTIAL_SPAWN_COUNT_PER_TICK
-	wave_config.max_alive_enemies = TOWER_DEFENSE_STRESS_MAX_ALIVE
-
-	if wave_number == 1:
-		wave_config.wave_name = "第1波 虫潮压力测试"
-		wave_config.display_name = wave_config.wave_name
-		wave_config.enemy_entries = [
-			_create_wave_entry(
-				TOWER_DEFENSE_STRESS_BASIC,
-				TOWER_DEFENSE_FIRST_WAVE_BASIC_COUNT
-			),
-			_create_wave_entry(
-				TOWER_DEFENSE_STRESS_SHELL,
-				TOWER_DEFENSE_FIRST_WAVE_SHELL_COUNT
-			),
-			_create_wave_entry(
-				TOWER_DEFENSE_STRESS_AK47,
-				TOWER_DEFENSE_FIRST_WAVE_AK47_COUNT
-			),
-		]
-	else:
-		_merge_duplicate_wave_entries(wave_config.enemy_entries)
-		_scale_wave_entries_to_total(
-			wave_config.enemy_entries,
-			TOWER_DEFENSE_STRESS_TOTAL_ENEMIES
-		)
-
-	if wave_number == 12:
-		# 塔防铃兰需要独立的大量设计；压力战役目前在第12波后直接结束。
-		wave_config.exits.clear()
-		wave_config.post_clear_rest_duration = 0.0
-
-
-func _create_wave_entry(enemy_config: EnemyConfig, count: int) -> WaveEnemyEntry:
-	var entry := WAVE_ENEMY_ENTRY_SCRIPT.new() as WaveEnemyEntry
-	entry.enemy_config = enemy_config
-	entry.count = count
-	return entry
-
-
-func _merge_duplicate_wave_entries(entries: Array[WaveEnemyEntry]) -> void:
-	var merged_entries: Array[WaveEnemyEntry] = []
-	var entries_by_config_path: Dictionary = {}
-	for entry in entries:
-		if entry == null or entry.enemy_config == null:
-			continue
-		var config_path := entry.enemy_config.resource_path
-		if entries_by_config_path.has(config_path):
-			var existing := entries_by_config_path[config_path] as WaveEnemyEntry
-			existing.count += entry.count
-			continue
-		entries_by_config_path[config_path] = entry
-		merged_entries.append(entry)
-	entries.assign(merged_entries)
-
-
-func _scale_wave_entries_to_total(
-	entries: Array[WaveEnemyEntry],
-	target_total: int
-) -> void:
-	var source_total := 0
-	for entry in entries:
-		if entry != null and entry.enemy_config != null:
-			source_total += maxi(entry.count, 0)
-	if source_total <= 0 or target_total <= 0:
-		return
-
-	var allocated_total := 0
-	var remainders: Array[Dictionary] = []
-	for entry_index in range(entries.size()):
-		var entry := entries[entry_index]
-		if entry == null or entry.enemy_config == null:
-			continue
-		var exact_count := float(entry.count) * float(target_total) / float(source_total)
-		entry.count = maxi(int(floor(exact_count)), 1)
-		allocated_total += entry.count
-		remainders.append({
-			"entry_index": entry_index,
-			"remainder": exact_count - floor(exact_count),
-		})
-
-	remainders.sort_custom(
-		func(a: Dictionary, b: Dictionary) -> bool:
-			var difference := float(a["remainder"]) - float(b["remainder"])
-			if not is_zero_approx(difference):
-				return difference > 0.0
-			return int(a["entry_index"]) < int(b["entry_index"])
-	)
-	var remaining := target_total - allocated_total
-	for remainder_index in range(remaining):
-		var target_entry_index := int(
-			remainders[remainder_index % remainders.size()]["entry_index"]
-		)
-		entries[target_entry_index].count += 1
