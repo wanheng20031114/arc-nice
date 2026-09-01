@@ -12,8 +12,6 @@ const ProductionRecipeRegistryScript := preload(
 
 const WRITE_ARGUMENT := "--write"
 const CHECK_ARGUMENT := "--check"
-const CHECK_INVALID_BOSS_PATH_FIXTURE_ARGUMENT := "--check-invalid-boss-path-fixture"
-const INVALID_BOSS_PATH_FIXTURE := "res://__manifest_fixture_missing__/missing.tscn"
 const CAMPAIGN_ROOT := "res://resources/config/campaigns"
 const MANIFEST_OUTPUT_PATH := (
 	"res://resources/config/generated/runtime_content_manifest.schema1.json"
@@ -68,8 +66,6 @@ const TEXT_EXTENSIONS := {
 }
 
 var failures: Array[String] = []
-var _invalid_boss_path_fixture_enabled := false
-var _invalid_boss_path_fixture_consumed := false
 
 
 func _init() -> void:
@@ -84,17 +80,8 @@ func _run() -> void:
 		push_error("请使用 -- --write 生成内容清单，或使用 -- --check 校验已提交清单。")
 		quit(2)
 		return
-	_invalid_boss_path_fixture_enabled = arguments.has(
-		CHECK_INVALID_BOSS_PATH_FIXTURE_ARGUMENT
-	)
-	if _invalid_boss_path_fixture_enabled and not should_check:
-		push_error("Boss 坏路径 fixture 只允许与 --check 同时使用。")
-		quit(2)
-		return
 
 	var generated := _build_generated_outputs()
-	if _invalid_boss_path_fixture_enabled and not _invalid_boss_path_fixture_consumed:
-		failures.append("Boss 坏路径 fixture 未遇到 Campaign 闭包中的 BossConfig。")
 	if failures.is_empty():
 		if should_check:
 			_check_output(MANIFEST_OUTPUT_PATH, str(generated.get("manifest", "")))
@@ -111,8 +98,6 @@ func _run() -> void:
 		)
 		quit(0)
 		return
-	if _invalid_boss_path_fixture_enabled and _invalid_boss_path_fixture_consumed:
-		print("CHECK_INVALID_BOSS_PATH_FIXTURE_REJECTED")
 	for failure in failures:
 		push_error(failure)
 	quit(1)
@@ -414,10 +399,6 @@ func _append_explicit_campaign_boss_dependencies(
 	var boss_config := loaded_resource as BossConfig
 	if boss_config == null:
 		return
-	var intro_vfx_scene_path := boss_config.intro_vfx_scene_path
-	if _invalid_boss_path_fixture_enabled and not _invalid_boss_path_fixture_consumed:
-		intro_vfx_scene_path = INVALID_BOSS_PATH_FIXTURE
-		_invalid_boss_path_fixture_consumed = true
 	var explicit_paths := [
 		{
 			"field": "enemy_config_path",
@@ -425,7 +406,7 @@ func _append_explicit_campaign_boss_dependencies(
 		},
 		{
 			"field": "intro_vfx_scene_path",
-			"path": intro_vfx_scene_path,
+			"path": boss_config.intro_vfx_scene_path,
 		},
 		{
 			"field": "boss_hud_scene_path",

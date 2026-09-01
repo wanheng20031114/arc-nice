@@ -27,7 +27,6 @@ const MAX_XIRANG_REWARD_OVERRIDE := 999
 
 const INPUT_ARGUMENT_PREFIX := "--input="
 const APPLY_ARGUMENT := "--apply"
-const TEST_FAIL_AFTER_WAVE_COMMIT_ARGUMENT := "--test-fail-after-wave-commit"
 
 const FORMAL_WAVE_PATH_PATTERN := (
 	"res://resources/config/campaigns/tower_defense/formal/wave_%02d.tres"
@@ -102,11 +101,7 @@ func _init() -> void:
 		quit()
 		return
 
-	var apply_error := _apply_plan(
-		plan,
-		waves,
-		bool(arguments["test_fail_after_wave_commit"])
-	)
+	var apply_error := _apply_plan(plan, waves)
 	if not apply_error.is_empty():
 		push_error(apply_error)
 		quit(1)
@@ -119,7 +114,6 @@ func _init() -> void:
 func _parse_arguments() -> Dictionary:
 	var input_path := ""
 	var apply := false
-	var test_fail_after_wave_commit := false
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with(INPUT_ARGUMENT_PREFIX):
 			if not input_path.is_empty():
@@ -131,11 +125,6 @@ func _parse_arguments() -> Dictionary:
 				push_error("--apply 只能提供一次。")
 				return {"valid": false}
 			apply = true
-		elif argument == TEST_FAIL_AFTER_WAVE_COMMIT_ARGUMENT:
-			if test_fail_after_wave_commit:
-				push_error("--test-fail-after-wave-commit 只能提供一次。")
-				return {"valid": false}
-			test_fail_after_wave_commit = true
 		else:
 			push_error("未知参数：%s" % argument)
 			return {"valid": false}
@@ -147,14 +136,10 @@ func _parse_arguments() -> Dictionary:
 	if not input_path.begins_with("res://") and not input_path.is_absolute_path():
 		push_error("--input 必须是绝对路径或 res:// 路径：%s" % input_path)
 		return {"valid": false}
-	if test_fail_after_wave_commit and not apply:
-		push_error("--test-fail-after-wave-commit 只能与 --apply 一起使用。")
-		return {"valid": false}
 	return {
 		"valid": true,
 		"input_path": input_path,
 		"apply": apply,
-		"test_fail_after_wave_commit": test_fail_after_wave_commit,
 	}
 
 
@@ -625,8 +610,7 @@ func _create_flow_graph(waves: Array[WaveConfig], graph_name: String) -> FlowGra
 
 func _apply_plan(
 	plan: Dictionary,
-	waves: Array[WaveConfig],
-	test_fail_after_wave_commit: bool
+	waves: Array[WaveConfig]
 ) -> String:
 	var run_id := "%d_%d" % [int(Time.get_unix_time_from_system()), OS.get_process_id()]
 	var staging_root := "user://tower_defense_wave_import/staging_%s" % run_id
@@ -680,8 +664,7 @@ func _apply_plan(
 	var commit_error := _commit_staged_resources(
 		plan,
 		staging_root,
-		backup_root,
-		test_fail_after_wave_commit
+		backup_root
 	)
 	_cleanup_staging(staging_root)
 	if not commit_error.is_empty():
@@ -779,8 +762,7 @@ func _create_backups(backup_root: String) -> String:
 func _commit_staged_resources(
 	plan: Dictionary,
 	staging_root: String,
-	backup_root: String,
-	test_fail_after_wave_commit: bool
+	backup_root: String
 ) -> String:
 	for wave_number in range(1, WAVE_COUNT + 1):
 		var source := "%s/wave_%02d.tres" % [staging_root, wave_number]
@@ -806,10 +788,6 @@ func _commit_staged_resources(
 			_rollback_from_backups(backup_root)
 			return "%s；已尝试回滚。" % verify_error
 		committed_waves.append(wave)
-	if test_fail_after_wave_commit:
-		_rollback_from_backups(backup_root)
-		return "测试注入：波次提交后故意失败；已尝试回滚。"
-
 	var single_graph := _create_flow_graph(
 		committed_waves, "塔防模式 / 正式单人战斗流程"
 	)

@@ -30,7 +30,7 @@ relay_servers/
 
 主游戏从 `scene/multiplayer/transport/authenticated_relay_multiplayer_peer.gd`
 加载可导出的 canonical wrapper；独立 Relay 项目保留上图中的镜像副本。两份脚本
-必须逐字节一致，并由 Relay parity/capacity 测试锁定。主游戏生产导出继续整体排除
+必须继续逐字节一致。主游戏生产导出继续整体排除
 `relay_servers/*`，不会把大厅后端或 Headless Relay 工程打进客户端。
 
 当前网络基线为协议 v96。应用层使用 CH0..CH8 共 9 条逻辑信道；公网 Relay

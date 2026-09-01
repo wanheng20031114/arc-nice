@@ -42,7 +42,6 @@
 - 确定性处理脚本：`dev_tools/process_underground_shop_assets.py`
 - Godot 拼装原型：
   `dev_tools/visual_prototypes/underground_shop/underground_shop_preview.tscn`
-- 可视核验入口：`dev_tools/rogue_underground_shop_preview_visual_capture.gd`
 
 处理脚本使用项目内 MIT 许可的 PerfectPixel 无 OpenCV 实现统一 UI 母稿的逻辑像素
 网格，再验证并保留 ImageGen 原生 Alpha、执行硬 Alpha 规范化与限制色板；商品卡从项目现有背包槽素材派生。
