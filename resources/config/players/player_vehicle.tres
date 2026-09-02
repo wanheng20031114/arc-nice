@@ -14,6 +14,7 @@ player_scene = "res://scene/player/vehicle/player_vehicle.tscn"
 portrait_texture = "res://resources/texture/player/vehicle/mini_combat_car.png"
 supports_ammunition = true
 selectable_in_character_menu = false
+visible_in_codex = false
 supports_multiplayer = false
 skill_display_name = "经典技能"
 skill_description = "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"

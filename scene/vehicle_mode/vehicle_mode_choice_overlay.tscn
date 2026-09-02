@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scene/vehicle_mode/vehicle_mode_choice_overlay.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/player/vehicle/mini_combat_car.png" id="2_vehicle"]
@@ -67,6 +67,22 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
+[sub_resource type="StyleBoxFlat" id="StyleBox_button_pressed"]
+content_margin_left = 11.0
+content_margin_top = 6.0
+content_margin_right = 11.0
+content_margin_bottom = 6.0
+bg_color = Color(0.055, 0.29, 0.36, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.52, 0.91, 1, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
 [node name="VehicleModeChoiceOverlay" type="CanvasLayer"]
 layer = 35
 script = ExtResource("1_script")
@@ -98,26 +114,26 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="Panel" type="PanelContainer" parent="Root/Center"]
-custom_minimum_size = Vector2(500, 590)
+custom_minimum_size = Vector2(440, 560)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBox_panel")
 
 [node name="Margin" type="MarginContainer" parent="Root/Center/Panel"]
 layout_mode = 2
-theme_override_constants/margin_left = 28
-theme_override_constants/margin_top = 24
-theme_override_constants/margin_right = 28
-theme_override_constants/margin_bottom = 24
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 16
 
 [node name="Content" type="VBoxContainer" parent="Root/Center/Panel/Margin"]
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 9
 
 [node name="Title" type="Label" parent="Root/Center/Panel/Margin/Content"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.52, 0.91, 1, 1)
 theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 26
 text = "小车模式 · 涂装工坊"
 horizontal_alignment = 1
 
@@ -130,7 +146,7 @@ text = "标准地图与敌人不变，驾驶迷你战车进入战斗"
 horizontal_alignment = 1
 
 [node name="PreviewFrame" type="PanelContainer" parent="Root/Center/Panel/Margin/Content"]
-custom_minimum_size = Vector2(0, 150)
+custom_minimum_size = Vector2(0, 128)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBox_preview")
 
@@ -140,7 +156,7 @@ layout_mode = 2
 [node name="Preview" type="TextureRect" parent="Root/Center/Panel/Margin/Content/PreviewFrame/PreviewCenter"]
 texture_filter = 1
 material = SubResource("ShaderMaterial_preview")
-custom_minimum_size = Vector2(128, 128)
+custom_minimum_size = Vector2(112, 112)
 layout_mode = 2
 texture = ExtResource("2_vehicle")
 expand_mode = 1
@@ -150,7 +166,7 @@ stretch_mode = 5
 layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 0.9, 0.92, 1)
 theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 13
 text = "W / S 前进与倒车 · A / D 转向\n1 秒加速至 100 · 反向键快速刹车 · 松键滑行 0.45 秒\n射击键或鼠标左键只会从车头中央炮口向当前车头开火"
 horizontal_alignment = 1
 
@@ -168,49 +184,92 @@ alignment = 1
 
 [node name="Ocean" type="Button" parent="Root/Center/Panel/Margin/Content/Presets"]
 layout_mode = 2
+toggle_mode = true
+button_pressed = true
+theme_override_colors/font_color = Color(0.0862745, 0.686275, 0.909804, 1)
+theme_override_colors/font_focus_color = Color(0.0862745, 0.686275, 0.909804, 1)
+theme_override_colors/font_pressed_color = Color(0.0862745, 0.686275, 0.909804, 1)
+theme_override_colors/font_hover_color = Color(0.0862745, 0.686275, 0.909804, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button_pressed")
 theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/hover_pressed = SubResource("StyleBox_button_pressed")
 theme_override_styles/focus = SubResource("StyleBox_button_hover")
 text = "海蓝"
 
 [node name="Flame" type="Button" parent="Root/Center/Panel/Margin/Content/Presets"]
 layout_mode = 2
+toggle_mode = true
+theme_override_colors/font_color = Color(0.92549, 0.345098, 0.301961, 1)
+theme_override_colors/font_focus_color = Color(0.92549, 0.345098, 0.301961, 1)
+theme_override_colors/font_pressed_color = Color(0.92549, 0.345098, 0.301961, 1)
+theme_override_colors/font_hover_color = Color(0.92549, 0.345098, 0.301961, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button_pressed")
 theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/hover_pressed = SubResource("StyleBox_button_pressed")
 theme_override_styles/focus = SubResource("StyleBox_button_hover")
 text = "烈焰"
 
 [node name="Sun" type="Button" parent="Root/Center/Panel/Margin/Content/Presets"]
 layout_mode = 2
+toggle_mode = true
+theme_override_colors/font_color = Color(0.941176, 0.784314, 0.262745, 1)
+theme_override_colors/font_focus_color = Color(0.941176, 0.784314, 0.262745, 1)
+theme_override_colors/font_pressed_color = Color(0.941176, 0.784314, 0.262745, 1)
+theme_override_colors/font_hover_color = Color(0.941176, 0.784314, 0.262745, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button_pressed")
 theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/hover_pressed = SubResource("StyleBox_button_pressed")
 theme_override_styles/focus = SubResource("StyleBox_button_hover")
 text = "日光"
 
 [node name="Leaf" type="Button" parent="Root/Center/Panel/Margin/Content/Presets"]
 layout_mode = 2
+toggle_mode = true
+theme_override_colors/font_color = Color(0.345098, 0.741176, 0.439216, 1)
+theme_override_colors/font_focus_color = Color(0.345098, 0.741176, 0.439216, 1)
+theme_override_colors/font_pressed_color = Color(0.345098, 0.741176, 0.439216, 1)
+theme_override_colors/font_hover_color = Color(0.345098, 0.741176, 0.439216, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button_pressed")
 theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/hover_pressed = SubResource("StyleBox_button_pressed")
 theme_override_styles/focus = SubResource("StyleBox_button_hover")
 text = "青叶"
 
 [node name="Amethyst" type="Button" parent="Root/Center/Panel/Margin/Content/Presets"]
 layout_mode = 2
+toggle_mode = true
+theme_override_colors/font_color = Color(0.639216, 0.419608, 0.886275, 1)
+theme_override_colors/font_focus_color = Color(0.639216, 0.419608, 0.886275, 1)
+theme_override_colors/font_pressed_color = Color(0.639216, 0.419608, 0.886275, 1)
+theme_override_colors/font_hover_color = Color(0.639216, 0.419608, 0.886275, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button_pressed")
 theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/hover_pressed = SubResource("StyleBox_button_pressed")
 theme_override_styles/focus = SubResource("StyleBox_button_hover")
 text = "紫晶"
 
 [node name="Snow" type="Button" parent="Root/Center/Panel/Margin/Content/Presets"]
 layout_mode = 2
+toggle_mode = true
+theme_override_colors/font_color = Color(0.909804, 0.933333, 0.94902, 1)
+theme_override_colors/font_focus_color = Color(0.909804, 0.933333, 0.94902, 1)
+theme_override_colors/font_pressed_color = Color(0.909804, 0.933333, 0.94902, 1)
+theme_override_colors/font_hover_color = Color(0.909804, 0.933333, 0.94902, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button_pressed")
 theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/hover_pressed = SubResource("StyleBox_button_pressed")
 theme_override_styles/focus = SubResource("StyleBox_button_hover")
 text = "雪白"
 
@@ -227,12 +286,22 @@ text = "自定义颜色"
 vertical_alignment = 1
 
 [node name="ColorPickerButton" type="ColorPickerButton" parent="Root/Center/Panel/Margin/Content/CustomColor"]
-custom_minimum_size = Vector2(170, 38)
+custom_minimum_size = Vector2(160, 38)
 layout_mode = 2
+tooltip_text = "拖动色域实时预览，也可直接输入 HEX 色值"
+theme_override_colors/font_color = Color(0.82, 0.9, 0.92, 1)
+theme_override_colors/font_focus_color = Color(0.9, 0.98, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.9, 0.98, 1, 1)
+theme_override_colors/font_hover_color = Color(0.9, 0.98, 1, 1)
 theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/pressed = SubResource("StyleBox_button_pressed")
+theme_override_styles/hover = SubResource("StyleBox_button_hover")
+theme_override_styles/focus = SubResource("StyleBox_button_hover")
 color = Color(0.086, 0.686, 0.91, 1)
 edit_alpha = false
-text = "打开完整调色板"
+text = "精细调色"
 
 [node name="Footer" type="HBoxContainer" parent="Root/Center/Panel/Margin/Content"]
 layout_mode = 2

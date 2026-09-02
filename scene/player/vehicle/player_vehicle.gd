@@ -9,9 +9,19 @@ const STEERING_SPEED_RADIANS := deg_to_rad(150.0)
 const MUZZLE_DISTANCE := 12.0
 const MIN_SPEED_EPSILON := 0.01
 const PAINT_COLOR_SHADER_PARAMETER := &"paint_color"
+const WHEEL_IDLE_ANIMATION := &"idle"
+const WHEEL_ROLL_ANIMATION := &"roll"
+const WHEEL_MIN_PLAYBACK_SCALE := 0.65
+const WHEEL_MAX_PLAYBACK_SCALE := 1.60
 
 @onready var muzzle_pivot: Node2D = $MuzzlePivot
 @onready var muzzle: Marker2D = $MuzzlePivot/Muzzle
+@onready var wheel_sprites: Array[AnimatedSprite2D] = [
+	$BodySprite/RearTopWheel,
+	$BodySprite/FrontTopWheel,
+	$BodySprite/RearBottomWheel,
+	$BodySprite/FrontBottomWheel,
+]
 
 var heading := Vector2.RIGHT
 var longitudinal_speed := 0.0
@@ -38,11 +48,13 @@ func _physics_process(delta: float) -> void:
 	super._physics_process(delta)
 	if is_dead or controls_locked:
 		longitudinal_speed = 0.0
+		_sync_wheel_animation()
 		return
 	if get_slide_collision_count() > 0:
 		var collision_limited_speed := velocity.dot(heading)
 		if absf(collision_limited_speed) < absf(longitudinal_speed):
 			longitudinal_speed = collision_limited_speed
+	_sync_wheel_animation()
 
 
 func _get_current_move_input() -> Vector2:
@@ -70,6 +82,51 @@ func _get_current_shoot_input() -> Vector2:
 		else network_shoot_input
 	)
 	return heading if wants_to_shoot != Vector2.ZERO else Vector2.ZERO
+
+
+func apply_remote_multiplayer_view_state(
+	remote_velocity: Vector2,
+	shoot_input: Vector2,
+	use_skill1: bool = false,
+	use_reload: bool = false
+) -> void:
+	super.apply_remote_multiplayer_view_state(
+		remote_velocity,
+		shoot_input,
+		use_skill1,
+		use_reload
+	)
+	_sync_remote_wheel_animation(remote_velocity)
+
+
+func apply_multiplayer_snapshot_motion(
+	remote_position: Vector2,
+	remote_velocity: Vector2,
+	facing_id: int,
+	anim_state: int
+) -> void:
+	super.apply_multiplayer_snapshot_motion(
+		remote_position,
+		remote_velocity,
+		facing_id,
+		anim_state
+	)
+	_sync_remote_wheel_animation(remote_velocity)
+
+
+func apply_world_movement_snapshot(
+	remote_position: Vector2,
+	remote_velocity: Vector2,
+	facing_id: int,
+	anim_state: int
+) -> void:
+	super.apply_world_movement_snapshot(
+		remote_position,
+		remote_velocity,
+		facing_id,
+		anim_state
+	)
+	_sync_remote_wheel_animation(remote_velocity)
 
 
 func _get_mouse_shoot_direction() -> Vector2:
@@ -106,25 +163,30 @@ func _on_controls_lock_changed(locked: bool) -> void:
 	super._on_controls_lock_changed(locked)
 	if locked:
 		longitudinal_speed = 0.0
+		_sync_wheel_animation()
 
 
 func _cleanup_character_combat_on_death() -> void:
 	super._cleanup_character_combat_on_death()
 	longitudinal_speed = 0.0
+	_sync_wheel_animation()
 
 
 func _clear_character_scene_transients() -> void:
 	super._clear_character_scene_transients()
 	longitudinal_speed = 0.0
+	_sync_wheel_animation()
 
 
 func _reset_character_resources_on_revive() -> void:
 	super._reset_character_resources_on_revive()
 	longitudinal_speed = 0.0
+	_sync_wheel_animation()
 
 
 func _play_death_animation() -> void:
 	longitudinal_speed = 0.0
+	_sync_wheel_animation()
 	body_sprite.stop()
 	body_sprite.hide()
 
@@ -136,8 +198,38 @@ func _update_armed_effect() -> void:
 	armed_effect_sprite.stop()
 
 
+func _set_slow_overlay_strength(strength: float) -> void:
+	super._set_slow_overlay_strength(strength)
+	_set_wheel_instance_shader_parameter(
+		SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		clampf(strength, 0.0, 1.0)
+	)
+
+
+func _set_damage_status_overlay_strength(
+	parameter_name: StringName,
+	strength: float
+) -> void:
+	super._set_damage_status_overlay_strength(parameter_name, strength)
+	if (
+		parameter_name != BURN_OVERLAY_STRENGTH_SHADER_PARAMETER
+		and parameter_name != BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER
+	):
+		return
+	_set_wheel_instance_shader_parameter(
+		parameter_name,
+		clampf(strength, 0.0, 1.0)
+	)
+
+
 func _update_facing(_move_input: Vector2, _shoot_input: Vector2) -> void:
 	facing_suffix = _vector_to_facing_suffix(heading)
+	_sync_vehicle_visuals()
+
+
+func _set_multiplayer_facing_id(facing_id: int) -> void:
+	super._set_multiplayer_facing_id(facing_id)
+	heading = _facing_suffix_to_vector(facing_suffix)
 	_sync_vehicle_visuals()
 
 
@@ -197,6 +289,55 @@ func _sync_vehicle_visuals() -> void:
 		grass_healing_particles.rotation = -heading_rotation
 	if muzzle_pivot != null:
 		muzzle_pivot.rotation = heading_rotation
+	_sync_wheel_animation()
+
+
+func _sync_remote_wheel_animation(remote_velocity: Vector2) -> void:
+	var remote_speed := remote_velocity.length()
+	if is_dead or remote_speed <= MIN_SPEED_EPSILON:
+		longitudinal_speed = 0.0
+		_sync_wheel_animation()
+		return
+	var direction_sign := signf(remote_velocity.dot(heading))
+	if is_zero_approx(direction_sign):
+		direction_sign = (
+			signf(longitudinal_speed)
+			if absf(longitudinal_speed) > MIN_SPEED_EPSILON
+			else 1.0
+		)
+	longitudinal_speed = remote_speed * direction_sign
+	_sync_wheel_animation()
+
+
+func _sync_wheel_animation() -> void:
+	if absf(longitudinal_speed) <= MIN_SPEED_EPSILON:
+		for wheel in wheel_sprites:
+			wheel.speed_scale = 1.0
+			wheel.animation = WHEEL_IDLE_ANIMATION
+			wheel.stop()
+			wheel.set_frame_and_progress(0, 0.0)
+		return
+
+	var speed_ratio := clampf(absf(longitudinal_speed) / MAX_VEHICLE_SPEED, 0.0, 1.0)
+	var playback_scale := lerpf(
+		WHEEL_MIN_PLAYBACK_SCALE,
+		WHEEL_MAX_PLAYBACK_SCALE,
+		speed_ratio
+	) * signf(longitudinal_speed)
+	for wheel in wheel_sprites:
+		wheel.speed_scale = playback_scale
+		if wheel.animation != WHEEL_ROLL_ANIMATION:
+			wheel.play(WHEEL_ROLL_ANIMATION)
+		elif not wheel.is_playing():
+			wheel.play()
+
+
+func _set_wheel_instance_shader_parameter(
+	parameter_name: StringName,
+	value: Variant
+) -> void:
+	for wheel in wheel_sprites:
+		wheel.set_instance_shader_parameter(parameter_name, value)
 
 
 func _apply_selected_paint_color() -> void:

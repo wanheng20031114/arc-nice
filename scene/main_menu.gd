@@ -94,7 +94,7 @@ func _ready() -> void:
 
 
 func _configure_main_menu_visibility() -> void:
-	# 测试场只属于调试构建；正式菜单始终形成 Standard/Tower/Rogue 三入口。
+	# 测试场只属于调试构建；正式菜单保留三种常规模式与小车单人入口。
 	var show_development_entries := OS.is_debug_build()
 	test_arena_button.visible = show_development_entries
 	rogue_button.focus_neighbor_bottom = (
@@ -203,8 +203,7 @@ func _on_singleplayer_pressed() -> void:
 
 func _on_vehicle_mode_pressed() -> void:
 	_cancel_pending_encyclopedia_open()
-	var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
-	vehicle_mode_choice_overlay.open(run_state.get_vehicle_paint_color())
+	vehicle_mode_choice_overlay.open(RunStateStore.DEFAULT_VEHICLE_PAINT_COLOR)
 
 
 func _on_vehicle_mode_confirmed(paint_color: Color) -> void:

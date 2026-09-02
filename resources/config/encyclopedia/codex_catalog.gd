@@ -357,7 +357,7 @@ func _build_character_entries() -> Array[CodexEntryViewData]:
 	var configs := PlayerCharacterRegistry.get_all_configs()
 	for config_index in configs.size():
 		var config := configs[config_index]
-		if config == null or not config.is_valid():
+		if config == null or not config.is_valid() or not config.visible_in_codex:
 			continue
 		var entry_id := StringName("character.%s" % config.character_id)
 		var visibility := _get_visibility_state(

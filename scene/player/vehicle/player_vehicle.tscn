@@ -1,54 +1,106 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene format=3 uid="uid://c2odida2c1x16"]
 
-[ext_resource type="PackedScene" path="res://scene/player/weishidaier/player_weishidaier.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scene/player/vehicle/player_vehicle.gd" id="2_script"]
+[ext_resource type="PackedScene" uid="uid://h7x0o8vhlixl" path="res://scene/player/weishidaier/player_weishidaier.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://bqwto1nq5e4c2" path="res://scene/player/vehicle/player_vehicle.gd" id="2_script"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/player_vehicle.tres" id="3_frames"]
-[ext_resource type="Shader" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="4_status_shader"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="4_status_shader"]
+[ext_resource type="Shader" uid="uid://d3dvdthptsr0k" path="res://scene/player/effects/dash_ready_glow.gdshader" id="5_45y6o"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/player_vehicle_wheel_roll.tres" id="6_wheel_frames"]
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_vehicle"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_op6ov"]
 resource_local_to_scene = true
 shader = ExtResource("4_status_shader")
 shader_parameter/blink_enabled = false
 shader_parameter/hide_pixels = false
+shader_parameter/blink_speed = 12.0
+shader_parameter/hidden_ratio = 0.5
+shader_parameter/dodge_effect_strength = 0.0
+shader_parameter/dodge_sweep = 0.0
+shader_parameter/dodge_color = Color(0.42, 0.95, 1, 1)
+shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
+shader_parameter/dodge_outline_width = 3.0
+shader_parameter/dash_effect_strength = 0.0
+shader_parameter/dash_direction = Vector2(1, 0)
+shader_parameter/dash_color = Color(0.12, 1.45, 1.3, 1)
+shader_parameter/dash_trail_pixels = 4.0
+shader_parameter/ninja_afterimage_pixels = 4.0
+shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
+shader_parameter/burn_overlay_color = Color(1, 0.56, 0.18, 0.46)
+shader_parameter/burn_edge_width = 2.0
+shader_parameter/bleed_overlay_color = Color(0.95, 0.02, 0.08, 0.58)
+shader_parameter/bleed_outline_width = 2.0
+shader_parameter/electromagnetic_attachment_overlay_color = Color(0.2, 1.18, 1.32, 0.72)
+shader_parameter/direct_hit_flash_color = Color(1, 0.24, 0.26, 1)
+shader_parameter/revive_glow_strength = 0.0
+shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
+shader_parameter/revive_glow_outline_width = 4.5
 shader_parameter/paint_recolor_enabled = true
 shader_parameter/paint_color = Color(0.086, 0.686, 0.91, 1)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_4lrox"]
+resource_local_to_scene = true
+shader = ExtResource("5_45y6o")
+shader_parameter/ready_strength = 0.0
+shader_parameter/glow_color = Color(0.08, 1.55, 1.35, 1)
+shader_parameter/glow_opacity = 0.18
+shader_parameter/pulse_speed = 2.2
+shader_parameter/pulse_amount = 0.1
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_vehicle"]
 radius = 7.5
 
-[node name="VehiclePlayer" instance=ExtResource("1_base")]
+[node name="VehiclePlayer" unique_id=630907103 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
 character_id = &"vehicle"
 
-[node name="BodySprite" parent="." index="0"]
+[node name="BodySprite" parent="." index="0" unique_id=2014942495]
 texture_filter = 1
-material = SubResource("ShaderMaterial_vehicle")
+material = SubResource("ShaderMaterial_op6ov")
 sprite_frames = ExtResource("3_frames")
 animation = &"normal_right"
-autoplay = "normal_right"
 
-[node name="ArmedEffectSprite" parent="." index="2"]
+[node name="RearTopWheel" type="AnimatedSprite2D" parent="BodySprite"]
+texture_filter = 1
+material = SubResource("ShaderMaterial_op6ov")
+position = Vector2(-7, -7)
+sprite_frames = ExtResource("6_wheel_frames")
+animation = &"idle"
+
+[node name="FrontTopWheel" type="AnimatedSprite2D" parent="BodySprite"]
+texture_filter = 1
+material = SubResource("ShaderMaterial_op6ov")
+position = Vector2(5, -7)
+sprite_frames = ExtResource("6_wheel_frames")
+animation = &"idle"
+
+[node name="RearBottomWheel" type="AnimatedSprite2D" parent="BodySprite"]
+texture_filter = 1
+material = SubResource("ShaderMaterial_op6ov")
+position = Vector2(-7, 7)
+sprite_frames = ExtResource("6_wheel_frames")
+animation = &"idle"
+flip_v = true
+
+[node name="FrontBottomWheel" type="AnimatedSprite2D" parent="BodySprite"]
+texture_filter = 1
+material = SubResource("ShaderMaterial_op6ov")
+position = Vector2(5, 7)
+sprite_frames = ExtResource("6_wheel_frames")
+animation = &"idle"
+flip_v = true
+
+[node name="DashReadyIndicator" parent="." index="4" unique_id=651272184]
 visible = false
+material = SubResource("ShaderMaterial_4lrox")
 
-[node name="DashReadyIndicator" parent="." index="4"]
-visible = false
-
-[node name="CollisionShape2D" parent="." index="5"]
+[node name="CollisionShape2D" parent="." index="5" unique_id=416011949]
 position = Vector2(0, 0)
 shape = SubResource("CircleShape2D_vehicle")
 
-[node name="HealthBar" parent="." index="9"]
-offset_top = -17.0
-offset_bottom = -12.0
-
-[node name="Skill1ChargeBar" parent="." index="10"]
-offset_top = 13.0
-offset_bottom = 15.0
-
-[node name="FootstepAudio" parent="." index="14"]
+[node name="FootstepAudio" parent="." index="14" unique_id=2035136595]
 stream = null
 
-[node name="MuzzlePivot" type="Node2D" parent="."]
+[node name="MuzzlePivot" type="Node2D" parent="." index="20" unique_id=1544587506]
 
-[node name="Muzzle" type="Marker2D" parent="MuzzlePivot"]
+[node name="Muzzle" type="Marker2D" parent="MuzzlePivot" index="0" unique_id=1545525481]
 position = Vector2(12, 0)
