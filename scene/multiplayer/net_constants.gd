@@ -206,7 +206,10 @@ extends RefCounted
 ## CH0 收敛。v94 及更旧客户端缺少该 RPC 表面与逻辑时钟契约，不能与 v95 混联。
 ## v96：神奇遭遇正式池与每局节点由 4 扩展为 5，新增 deep_sea_ruins
 ## 及 take_crystals/take_rings 稳定内容 ID。旧客户端无法解析该遭遇并会生成不同路线内容。
-const PROTOCOL_VERSION := 96
+## v97：新增 Mirage PVP 稳定模式 9、CT/T 成员队伍字段与选队 RPC，
+## PVP start 与 roster 共用可靠 CH8；玩法使用独立权威输入/动作与压缩分片快照。
+## NetManager RPC 表面已改变，v96 及更旧客户端/Relay 不能安全混联。
+const PROTOCOL_VERSION := 97
 
 ## 会话世代走 wire 固定正整数；同一 NetManager 生命周期内只递增不回绕。
 const MAX_GAME_SESSION_INCARNATION := 0x7FFFFFFF

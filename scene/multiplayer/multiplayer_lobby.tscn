@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3]
+[gd_scene load_steps=25 format=3]
 
 [ext_resource type="Script" path="res://scene/multiplayer/multiplayer_lobby.gd" id="1_lobby"]
 [ext_resource type="Texture2D" uid="uid://q1v73vx6yokg" path="res://resources/texture/ui/menu_rooftop_garden_background.png" id="2_tile"]
@@ -12,6 +12,9 @@
 [ext_resource type="Texture2D" path="res://resources/texture/ui/multiplayer/network_lan.png" id="10_lan_icon"]
 [ext_resource type="Texture2D" path="res://resources/texture/ui/multiplayer/action_create_room.png" id="11_create_icon"]
 [ext_resource type="Texture2D" path="res://resources/texture/ui/multiplayer/action_start_game.png" id="12_start_icon"]
+
+[sub_resource type="ButtonGroup" id="ButtonGroup_pvp_teams"]
+allow_unpress = true
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.035, 0.071, 0.059, 0.97)
@@ -898,6 +901,40 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 text = "选择并确认角色"
+
+[node name="PvpTeamPanel" type="VBoxContainer" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="TeamLabel" type="Label" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/PvpTeamPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.85, 0.61, 1)
+theme_override_font_sizes/font_size = 13
+text = "全员维什戴尔 · 点击队伍确认 · 双方均须有人"
+horizontal_alignment = 1
+
+[node name="TeamButtons" type="HBoxContainer" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/PvpTeamPanel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="CtButton" type="Button" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/PvpTeamPanel/TeamButtons"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.5, 0.8, 1, 1)
+toggle_mode = true
+button_group = SubResource("ButtonGroup_pvp_teams")
+text = "CT · 反恐精英 (0)"
+
+[node name="TButton" type="Button" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/PvpTeamPanel/TeamButtons"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.76, 0.38, 1)
+toggle_mode = true
+button_group = SubResource("ButtonGroup_pvp_teams")
+text = "T · 恐怖分子 (0)"
 
 [node name="StartGameButton" type="Button" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
 visible = false

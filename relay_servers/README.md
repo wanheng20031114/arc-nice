@@ -33,16 +33,19 @@ relay_servers/
 必须继续逐字节一致。主游戏生产导出继续整体排除
 `relay_servers/*`，不会把大厅后端或 Headless Relay 工程打进客户端。
 
-当前网络基线为协议 v96。应用层使用 CH0..CH8 共 9 条逻辑信道；公网 Relay
+当前网络基线为协议 v97。应用层使用 CH0..CH8 共 9 条逻辑信道；公网 Relay
 的认证感知包装层另使用可靠 CH9 依次发布拓扑并承载 Relay 服务控制，因此公网
-ENet 最大信道索引为 9。v96 将神奇遭遇固定节点与正式内容池由 4 扩展为 5，
+ENet 最大信道索引为 9。v97 新增 `mirage_pvp`（稳定模式 ID 9），成员名单同步
+CT/T 队伍，并新增选队与 PVP 开局 RPC；PVP start 与名单共用 reliable CH8，
+确保开局前队伍已提交。PVP 玩法只向已入场玩家定向发包，避开 Relay 服务节点的
+旧 PVE `/root/MpGame` RPC 表面。v96 将神奇遭遇固定节点与正式内容池由 4 扩展为 5，
 并新增 `deep_sea_ruins` 及两个稳定选项 ID；v95 在 reliable CH0 新增宿主权威的全局暂停请求与
 绝对状态快照，并以会话世代和单调修订保证并发、重连与乱序消息最终收敛；v94
 为敌人出生/快照追加阵营与修订，以 reliable CH5
 同步阵营变化，并扩展通用目标动作与 Host 投射物来源载荷；敌人高频连发同时
 压缩为 CH4 单次 burst，通过 reliable CH5 收敛命中/取消并分块恢复迟加入客户端
 的活跃视觉弹体。v93 的敌人快照长度、RPC 表面和 rapid-fire 描述符合同均不同，
-不能与当前 v96 安全混联。v93 扩展玩家快照以逐帧绝对复制最终开火间隔和临时表现
+不能与当前 v97 安全混联。v93 扩展玩家快照以逐帧绝对复制最终开火间隔和临时表现
 状态，并把天依 High Noon 目标列表迁入 reliable CH5。v92 将拾取 spawn、原子 collected 终端
 与普通 remove 统一放在 reliable CH5，旧 v91 的 collected 仍在 CH6。
 v91 关闭 `SceneMultiplayer.server_relay` 的私有 mesh，
@@ -157,11 +160,32 @@ v35 的战斗机器人枪手弹丸及玩家受击来源 wire ID 17 保持兼容�
 P3 路线世界继续使用约 12Hz 的轻量角色姿态同步：
 Client 在输入信道上报，Host 校验后在玩家状态信道广播，非法位置通过可靠信道纠正。
 v34 的 P3 路线全量快照携带 `runtime_contract_hash`，Host 与 Client 必须使用相同的世界几何契约；
-v95 及更旧客户端不能加入 v96 房间。
+v96 及更旧客户端不能加入 v97 房间。
 Relay 只转发 RPC，不重复实现游戏状态逻辑；逻辑 Host 对不兼容、重连加载或
 运行时投影超时成员的断开请求会可靠发送至 Relay 服务端（peer 1）。Relay 只
 接受已登记 Host 的请求，并由服务端断开同房目标；普通客户端不能踢出其他成员。
 每次调整主项目 RPC 的名称、注解、参数或通道后，都必须同步对应 stub。旧 parity 烟测已删除；需要自动校验时，应基于当时的完整 RPC 契约重新编写验证。
+
+### Mirage PVP v97 配套发布
+
+更新客户端前，必须配套部署本目录的 `lobby_api/models.py`（正式模式准入）以及
+`relay_godot_project/relay_server.gd`、`relay_net_manager_stub.gd`（协议 v97 与新 RPC 表）。
+只发布客户端或只改大厅模式清单会造成 Relay 协议拒绝或 RPC checksum 不一致；
+旧 v96 Relay 进程与新版客户端不能混用。客户端和服务器必须来自同一批发布，
+客户端发布前还需重生成并核验 runtime content manifest。
+
+Mirage 的 CT/T 在房间内点击即确认，Host 只允许全员已选队且双方均有人时开局；
+对局开始后锁定队伍。Mirage 断线按离场处理，人数不足时由对局判胜，
+不启用 PVE 的 90 秒运行时恢复协议。普通冒险、塔防与 Rogue 的恢复逻辑保持原有策略。
+
+可执行验证入口为主项目的 `dev_tools/verify_mirage_lobby.tscn`（队伍与模式契约）、
+`dev_tools/verify_mirage_lan.tscn`（单进程双 SceneMultiplayer ENet），以及
+`dev_tools/verify_mirage_match.tscn`（双进程生产加载器与购买/丢枪/拾取/离场）。
+最后一个入口接受 `-- --role=host|client --port=<端口>`；加上
+`--relay-admission=<临时 JSON 路径>` 可验证本地认证 Relay，JSON 包含
+`room_id`、`host_ticket`、`member_ticket`，Host 将当前身份写入同路径的 `.host_id` 文件。
+认证票据只用于隔离的本地测试，测试结束后删除临时文件并核实所有辅助进程退出。
+本次只更新源码并执行本地验证，没有连接或部署远端服务。
 
 ### 公网 Relay 容量与真实验证边界
 
@@ -349,7 +373,7 @@ Relay 重启还会轮换房间 secret，旧进程签发的短票不能跨世代�
 `peer_authenticating` 中向 server peer 1 发送 UTF-8 JSON：
 
 ```json
-{"v":1,"ticket":"ra1....","player_name":"...","character_id":"weishidaier","character_confirmed":true,"protocol_version":96,"reconnect_token":"<32 lowercase hex>","content_manifest_schema":1,"content_digest":"<64 lowercase hex>"}
+{"v":1,"ticket":"ra1....","player_name":"...","character_id":"weishidaier","character_confirmed":true,"protocol_version":97,"reconnect_token":"<32 lowercase hex>","content_manifest_schema":1,"content_digest":"<64 lowercase hex>"}
 ```
 
 Relay 验票成功后先用 `send_auth` 返回 ack，再调用 `complete_auth(peer_id)`：

@@ -14,6 +14,7 @@ const MODE_TEST_ARENA_P1B := 5
 const MODE_TEST_ARENA_P1C := 6
 const MODE_TEST_ARENA_P1D := 7
 const MODE_TEST_ARENA_P1E := 8
+const MODE_MIRAGE_PVP := 9
 # 肉鸽正式名称与旧 wire ID 解耦；数值 4 和 test_arena_p3 永久兼容。
 const MODE_ROGUE := MODE_TEST_ARENA_P3
 const DEFAULT_MODE_ID := MODE_STANDARD
@@ -28,8 +29,9 @@ const FROZEN_MODE_IDS := [
 	MODE_TEST_ARENA_P1C,
 	MODE_TEST_ARENA_P1D,
 	MODE_TEST_ARENA_P1E,
+	MODE_MIRAGE_PVP,
 ]
-const RELEASE_MODE_IDS := [MODE_STANDARD, MODE_TOWER_DEFENSE, MODE_ROGUE]
+const RELEASE_MODE_IDS := [MODE_STANDARD, MODE_TOWER_DEFENSE, MODE_ROGUE, MODE_MIRAGE_PVP]
 
 const TOWER_DEFENSE_PRELOAD_RESOURCE_PATHS := [
 	"res://scene/plant_defense/agave_cannon.tscn",
@@ -261,7 +263,7 @@ func validate_definitions() -> PackedStringArray:
 	var release_mode_ids: Array[int] = []
 	var development_mode_ids: Array[int] = []
 	if definitions.size() != FROZEN_MODE_IDS.size():
-		errors.append("catalog must contain exactly 9 frozen v62 modes")
+		errors.append("catalog must contain exactly %d stable modes" % FROZEN_MODE_IDS.size())
 	for definition in definitions:
 		if definition == null:
 			errors.append("catalog contains a null definition")
@@ -314,7 +316,7 @@ func validate_definitions() -> PackedStringArray:
 	development_mode_ids.sort()
 	if release_mode_ids != RELEASE_MODE_IDS:
 		errors.append(
-			"release modes must remain Standard/Tower/Rogue: %s"
+			"release modes must remain Standard/Tower/Rogue/Mirage PVP: %s"
 			% [release_mode_ids]
 		)
 	var expected_development_ids: Array[int] = []
@@ -343,7 +345,8 @@ func _ensure_index() -> void:
 			continue
 		_definition_by_id[definition.mode_id] = definition
 		_definition_by_wire_key[String(definition.wire_key).to_lower()] = definition
-		_definition_by_singleplayer_entry[
-			definition.singleplayer_entry_scene_path
-		] = definition
+		if definition.supports_singleplayer:
+			_definition_by_singleplayer_entry[
+				definition.singleplayer_entry_scene_path
+			] = definition
 	_index_ready = true

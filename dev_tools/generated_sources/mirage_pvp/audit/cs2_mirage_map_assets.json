@@ -1,0 +1,6063 @@
+{
+  "vpk": "E:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\maps\\de_mirage.vpk",
+  "vpk_version": 2,
+  "total_entries": 757,
+  "matching_entries": [
+    {
+      "path": "maps/de_mirage.custom.occlusion",
+      "crc32": "1d8a2e02",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 170200585,
+      "length": 8728108
+    },
+    {
+      "path": "maps/de_mirage.nav",
+      "crc32": "669da9b7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 169731137,
+      "length": 469448
+    },
+    {
+      "path": "maps/de_mirage.vmap_c",
+      "crc32": "393e664c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 169634289,
+      "length": 96848
+    },
+    {
+      "path": "maps/de_mirage/baked_bomb_damage.vdata_c",
+      "crc32": "f046834d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168922082,
+      "length": 712207
+    },
+    {
+      "path": "maps/de_mirage/entities/a site_2_60263.vmdl_c",
+      "crc32": "037ba2a1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168917694,
+      "length": 4388
+    },
+    {
+      "path": "maps/de_mirage/entities/b site_2_60265.vmdl_c",
+      "crc32": "8e4d877d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168913610,
+      "length": 4084
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4611.vmdl_c",
+      "crc32": "7ad4035a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168908590,
+      "length": 5020
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4613.vmdl_c",
+      "crc32": "c70fe11e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168898908,
+      "length": 9682
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4615.vmdl_c",
+      "crc32": "5874617f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168894768,
+      "length": 4140
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4617.vmdl_c",
+      "crc32": "eb1a6d53",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168887166,
+      "length": 7602
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4619.vmdl_c",
+      "crc32": "36a11c1e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168883026,
+      "length": 4140
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4621.vmdl_c",
+      "crc32": "c7614497",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168875488,
+      "length": 7538
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4623.vmdl_c",
+      "crc32": "4a0dc55c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168871348,
+      "length": 4140
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4625.vmdl_c",
+      "crc32": "139c32bc",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168863794,
+      "length": 7554
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4627.vmdl_c",
+      "crc32": "68f7fba7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168859382,
+      "length": 4412
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4629.vmdl_c",
+      "crc32": "ed2f4f2d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168851092,
+      "length": 8290
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4631.vmdl_c",
+      "crc32": "3ea04770",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168841362,
+      "length": 9730
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4633.vmdl_c",
+      "crc32": "2bd8b8e8",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168836374,
+      "length": 4988
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4635.vmdl_c",
+      "crc32": "e6723562",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168828836,
+      "length": 7538
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4637.vmdl_c",
+      "crc32": "0dd3341f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168824696,
+      "length": 4140
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4639.vmdl_c",
+      "crc32": "1eb957e9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168815158,
+      "length": 9538
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4641.vmdl_c",
+      "crc32": "cc77f141",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168810186,
+      "length": 4972
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4643.vmdl_c",
+      "crc32": "22fd2ca0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168801112,
+      "length": 9074
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_asite_2_60417_4645.vmdl_c",
+      "crc32": "23b3e37c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168796412,
+      "length": 4700
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_bsite_2_60417_4648.vmdl_c",
+      "crc32": "babaf2fd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168792288,
+      "length": 4124
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_bsite_2_60417_4650.vmdl_c",
+      "crc32": "e1ca9eeb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168784638,
+      "length": 7650
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_bsite_2_60417_4652.vmdl_c",
+      "crc32": "e6b19ae4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168777132,
+      "length": 7506
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_bsite_2_60417_4654.vmdl_c",
+      "crc32": "1ad24a6e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168772992,
+      "length": 4140
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_bsite_2_60417_4656.vmdl_c",
+      "crc32": "ff7723a9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168765518,
+      "length": 7474
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_bsite_2_60417_4658.vmdl_c",
+      "crc32": "ddd028d7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168761378,
+      "length": 4140
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_bsite_2_60417_4660.vmdl_c",
+      "crc32": "6f064f5a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168753808,
+      "length": 7570
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_bsite_2_60417_4662.vmdl_c",
+      "crc32": "0ad7ae0d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168749668,
+      "length": 4140
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_bsite_2_60417_4664.vmdl_c",
+      "crc32": "db535ee3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168742146,
+      "length": 7522
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_bsite_2_60417_4666.vmdl_c",
+      "crc32": "0d5365fd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168738006,
+      "length": 4140
+    },
+    {
+      "path": "maps/de_mirage/entities/retake_bsite_2_60417_4668.vmdl_c",
+      "crc32": "d9ee4e9a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168730500,
+      "length": 7506
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60286.vmdl_c",
+      "crc32": "035f4d20",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168726048,
+      "length": 4452
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60289.vmdl_c",
+      "crc32": "8386da42",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168721372,
+      "length": 4676
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_101.vmdl_c",
+      "crc32": "fff0e3a5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168714670,
+      "length": 6702
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_2281.vmdl_c",
+      "crc32": "70ffee36",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168688954,
+      "length": 25716
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_2294.vmdl_c",
+      "crc32": "0715c16b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168677096,
+      "length": 11858
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_2316.vmdl_c",
+      "crc32": "7867cf70",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168655269,
+      "length": 21827
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_2422.vmdl_c",
+      "crc32": "818c9f0f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168634502,
+      "length": 20767
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_2912.vmdl_c",
+      "crc32": "d582791b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168630430,
+      "length": 4072
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_2914.vmdl_c",
+      "crc32": "7513c0d7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168626358,
+      "length": 4072
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_3008.vmdl_c",
+      "crc32": "2907b0f5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168618280,
+      "length": 8078
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_3260.vmdl_c",
+      "crc32": "7ebff1ad",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168610410,
+      "length": 7870
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_3322.vmdl_c",
+      "crc32": "4f00f513",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168601032,
+      "length": 9378
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_3880.vmdl_c",
+      "crc32": "6e731635",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168589078,
+      "length": 11954
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_3885.vmdl_c",
+      "crc32": "49beb20e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168577124,
+      "length": 11954
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_4395.vmdl_c",
+      "crc32": "0e6ccf8d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168570246,
+      "length": 6878
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_4582.vmdl_c",
+      "crc32": "944d9af6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168566190,
+      "length": 4056
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_63.vmdl_c",
+      "crc32": "53bcbd0a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168559456,
+      "length": 6734
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_7117.vmdl_c",
+      "crc32": "171f1b51",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168554984,
+      "length": 4472
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_7128.vmdl_c",
+      "crc32": "8021c077",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168551408,
+      "length": 3576
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_7130.vmdl_c",
+      "crc32": "51cf0b73",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168547304,
+      "length": 4104
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_7155.vmdl_c",
+      "crc32": "24fbd609",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168543280,
+      "length": 4024
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_7187.vmdl_c",
+      "crc32": "44ceb490",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168539240,
+      "length": 4040
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_7188.vmdl_c",
+      "crc32": "413f9bb0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168535200,
+      "length": 4040
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_7189.vmdl_c",
+      "crc32": "efecc66d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168531160,
+      "length": 4040
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_7306.vmdl_c",
+      "crc32": "c302b7e1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168526016,
+      "length": 5144
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_7308.vmdl_c",
+      "crc32": "6a52c6c4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168522008,
+      "length": 4008
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_81.vmdl_c",
+      "crc32": "a921445a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168515514,
+      "length": 6494
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_83.vmdl_c",
+      "crc32": "163a6def",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168506520,
+      "length": 8994
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60417_92.vmdl_c",
+      "crc32": "40de7618",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168475142,
+      "length": 31378
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_113.vmdl_c",
+      "crc32": "05678ffa",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168470462,
+      "length": 4680
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_181.vmdl_c",
+      "crc32": "ca538b45",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168465494,
+      "length": 4968
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1811.vmdl_c",
+      "crc32": "a6c4c271",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168460462,
+      "length": 5032
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1813.vmdl_c",
+      "crc32": "c1e5477e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168456326,
+      "length": 4136
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1815.vmdl_c",
+      "crc32": "9cc24fc2",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168451822,
+      "length": 4504
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1818.vmdl_c",
+      "crc32": "6c9d7205",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168447702,
+      "length": 4120
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1820.vmdl_c",
+      "crc32": "6e3b7114",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168443038,
+      "length": 4664
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1822.vmdl_c",
+      "crc32": "7e640704",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168438646,
+      "length": 4392
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1824.vmdl_c",
+      "crc32": "1fab0d86",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168434222,
+      "length": 4424
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1829.vmdl_c",
+      "crc32": "e91f4836",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168430118,
+      "length": 4104
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1831.vmdl_c",
+      "crc32": "70b6ad41",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168425998,
+      "length": 4120
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1833.vmdl_c",
+      "crc32": "9ef70ee6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168421590,
+      "length": 4408
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1835.vmdl_c",
+      "crc32": "8c42a456",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168416414,
+      "length": 5176
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1838.vmdl_c",
+      "crc32": "93bd4f58",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168411766,
+      "length": 4648
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1840.vmdl_c",
+      "crc32": "27dbf816",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168407646,
+      "length": 4120
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1843.vmdl_c",
+      "crc32": "37f584c8",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168403526,
+      "length": 4120
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1845.vmdl_c",
+      "crc32": "541d6bfa",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168398670,
+      "length": 4856
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_1848.vmdl_c",
+      "crc32": "06d4fea2",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168394246,
+      "length": 4424
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_2.vmdl_c",
+      "crc32": "8d84e1a8",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168390210,
+      "length": 4036
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_205.vmdl_c",
+      "crc32": "693d7a2a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168385834,
+      "length": 4376
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_267.vmdl_c",
+      "crc32": "125be803",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168381186,
+      "length": 4648
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_69.vmdl_c",
+      "crc32": "8b4230de",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168377098,
+      "length": 4088
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_71.vmdl_c",
+      "crc32": "0626bfee",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168372706,
+      "length": 4392
+    },
+    {
+      "path": "maps/de_mirage/entities/unnamed_2_60421_919.vmdl_c",
+      "crc32": "c827dad4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 168368298,
+      "length": 4408
+    },
+    {
+      "path": "maps/de_mirage/world_physics.vmdl_c",
+      "crc32": "a49d260d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 164877122,
+      "length": 3491176
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_4carz1024_0.vmdl_c",
+      "crc32": "4ba2830b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 164743688,
+      "length": 133434
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_airconditioner001_0.vmdl_c",
+      "crc32": "c5a50997",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 164637448,
+      "length": 106240
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_ammo_pallet01_0.vmdl_c",
+      "crc32": "91bcf2cd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 164124778,
+      "length": 512670
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_artillery02_0.vmdl_c",
+      "crc32": "07a7ce31",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 163756944,
+      "length": 367834
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_awning01_0.vmdl_c",
+      "crc32": "90669726",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 163702730,
+      "length": 54214
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_awning_smalldoor_0.vmdl_c",
+      "crc32": "da85f919",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 163691724,
+      "length": 11006
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_aztec_scaffolding_system_0.vmdl_c",
+      "crc32": "7e6beff7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 163486806,
+      "length": 204918
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_base_rocks_a_0.vmdl_c",
+      "crc32": "e4801a2a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 163447548,
+      "length": 39258
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_bench_a_0.vmdl_c",
+      "crc32": "a1ca80bf",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 163380342,
+      "length": 67206
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_bench_wood_color_0.vmdl_c",
+      "crc32": "9109d84d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 163338584,
+      "length": 41758
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_black_simple_0.vmdl_c",
+      "crc32": "7cce8080",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 163326734,
+      "length": 11850
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_blend_blacktopsand_01_0.vmdl_c",
+      "crc32": "ecae3975",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 163313624,
+      "length": 13110
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_blkmetal_0.vmdl_c",
+      "crc32": "17b18015",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 163302098,
+      "length": 11526
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_blkmetal_1.vmdl_c",
+      "crc32": "c68f7a70",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 163214860,
+      "length": 87238
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_bomb_site_tarp_0.vmdl_c",
+      "crc32": "3d9d8aeb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 163150814,
+      "length": 64046
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_bomb_tanks_0.vmdl_c",
+      "crc32": "84a52015",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 161886564,
+      "length": 1264250
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_brick_ext_04_0.vmdl_c",
+      "crc32": "6099ee27",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 161468122,
+      "length": 418442
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_brick_ext_04_1.vmdl_c",
+      "crc32": "556b97b3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 161435088,
+      "length": 33034
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_broken_wall_1_0.vmdl_c",
+      "crc32": "74558c6d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 161393634,
+      "length": 41454
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_bucket_tools_0.vmdl_c",
+      "crc32": "2825b57b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 161366745,
+      "length": 26889
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_bus01_a_2_0.vmdl_c",
+      "crc32": "b1da4f42",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 161335311,
+      "length": 31434
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_bus01_b_2_0.vmdl_c",
+      "crc32": "1dcdd435",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 161031189,
+      "length": 304122
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_camera_0.vmdl_c",
+      "crc32": "2548e993",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 161011167,
+      "length": 20022
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_cannon_0.vmdl_c",
+      "crc32": "120c1f7a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160997273,
+      "length": 13894
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_cannon_1.vmdl_c",
+      "crc32": "4faa9841",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160851875,
+      "length": 145398
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_cart_wheel_0.vmdl_c",
+      "crc32": "e6bb81bc",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160802729,
+      "length": 49146
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_cash_register_0.vmdl_c",
+      "crc32": "29b2ddbc",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160765659,
+      "length": 37070
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_cashregister01_0.vmdl_c",
+      "crc32": "37603aad",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160747853,
+      "length": 17806
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_ceiling_light_0.vmdl_c",
+      "crc32": "1fd81aa9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160697615,
+      "length": 50238
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_chimneys001_0.vmdl_c",
+      "crc32": "8e784a8a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160666245,
+      "length": 31370
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_cinderblock_0.vmdl_c",
+      "crc32": "ac174b27",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160530523,
+      "length": 135722
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_claypot02_0.vmdl_c",
+      "crc32": "1331dba2",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160503313,
+      "length": 27210
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_clothing_pile3_0.vmdl_c",
+      "crc32": "34827183",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160486371,
+      "length": 16942
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_composite_debris2_0.vmdl_c",
+      "crc32": "b261e547",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160379330,
+      "length": 107041
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_concrete_ext_07_0.vmdl_c",
+      "crc32": "64660ec3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160371300,
+      "length": 8030
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_concrete_floor_04_0.vmdl_c",
+      "crc32": "1dfb6a39",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160365314,
+      "length": 5986
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_construction_wood_2x4_pile01_0.vmdl_c",
+      "crc32": "d66678f3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160352153,
+      "length": 13161
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_couch_a_diffuse_0.vmdl_c",
+      "crc32": "5880a611",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 160284571,
+      "length": 67582
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_curbs001_0.vmdl_c",
+      "crc32": "8265139b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159995797,
+      "length": 288774
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_base_trim_ver1_diffuse__0.vmdl_c",
+      "crc32": "87a29f21",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159988264,
+      "length": 7533
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_base_ver1_blend_0.vmdl_c",
+      "crc32": "498bbced",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159978307,
+      "length": 9957
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_brick_ver1_diffuse_0.vmdl_c",
+      "crc32": "80498c01",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159945166,
+      "length": 33141
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_brick_ver1pl_blend_diffuse_0.vmdl_c",
+      "crc32": "9174cf96",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159920529,
+      "length": 24637
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_brick_ver2_blend_update_0.vmdl_c",
+      "crc32": "f4a815fa",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159898084,
+      "length": 22445
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_ground_tilec_blend_diffuse__0.vmdl_c",
+      "crc32": "5171ad11",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159875683,
+      "length": 22401
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_ground_tileh_blend_diffuse__0.vmdl_c",
+      "crc32": "01a6ab95",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159826930,
+      "length": 48753
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_mid_ver1_diffuse_0.vmdl_c",
+      "crc32": "8504739c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159792973,
+      "length": 33957
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_plaster_blue1_blend_0.vmdl_c",
+      "crc32": "70314cba",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159755204,
+      "length": 37769
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_plaster_blue1_diffuse_0.vmdl_c",
+      "crc32": "e5fa88df",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159741019,
+      "length": 14185
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_plaster_brick4_diffuse_0.vmdl_c",
+      "crc32": "d1ad21b6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159735810,
+      "length": 5209
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_plaster_salmon1_blend_0.vmdl_c",
+      "crc32": "01387b72",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159714025,
+      "length": 21785
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_plaster_salmon1_diffuse_0.vmdl_c",
+      "crc32": "2c58125b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159702188,
+      "length": 11837
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_tile_ver4_blend_0.vmdl_c",
+      "crc32": "4e7cc8cb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159693799,
+      "length": 8389
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_tile_ver4_diffuse_0.vmdl_c",
+      "crc32": "5a4de7c9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159682354,
+      "length": 11445
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_tilef_diffuse_0.vmdl_c",
+      "crc32": "c8f1fa2b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159668577,
+      "length": 13777
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_top_ver1_blend_0.vmdl_c",
+      "crc32": "57fb1416",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159571264,
+      "length": 97313
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_top_ver1_diffuse_0.vmdl_c",
+      "crc32": "2f0831b3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159536299,
+      "length": 34965
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_de_mirage_wood_ver3_diffuse_0.vmdl_c",
+      "crc32": "ada29f86",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159494358,
+      "length": 41941
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_dishestibet_0.vmdl_c",
+      "crc32": "a28041da",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159482796,
+      "length": 11562
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_door011_0.vmdl_c",
+      "crc32": "9fc6d485",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159477862,
+      "length": 4934
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_door01_0.vmdl_c",
+      "crc32": "43441e00",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159472448,
+      "length": 5414
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_door02_0.vmdl_c",
+      "crc32": "b24d29b9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159467594,
+      "length": 4854
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_door04_0.vmdl_c",
+      "crc32": "0ac0731e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159462068,
+      "length": 5526
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_door_a_0.vmdl_c",
+      "crc32": "99b47428",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159457086,
+      "length": 4982
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_door_c_0.vmdl_c",
+      "crc32": "306dec73",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159452152,
+      "length": 4934
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_doora_0.vmdl_c",
+      "crc32": "a5ebcb85",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159438898,
+      "length": 13254
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_dusandwlltrim3_0.vmdl_c",
+      "crc32": "c5e55da0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159400036,
+      "length": 38862
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_dust_arch_small_0.vmdl_c",
+      "crc32": "6c00d38c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 159085702,
+      "length": 314334
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_dust_food_crates_0.vmdl_c",
+      "crc32": "2b564117",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 158947960,
+      "length": 137742
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_dust_rusty_barrel_0.vmdl_c",
+      "crc32": "15370c40",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 158921382,
+      "length": 26578
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_dust_shipping_crate_02_wood_color_0.vmdl_c",
+      "crc32": "35a08bec",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 158519542,
+      "length": 401840
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_dust_shipping_crate_02_wood_color_1.vmdl_c",
+      "crc32": "fcceb94b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 158476774,
+      "length": 42768
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_dutile1_0.vmdl_c",
+      "crc32": "973ef85a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 158455136,
+      "length": 21638
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_electric_cables01_0.vmdl_c",
+      "crc32": "cae2d4b6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 158142447,
+      "length": 312689
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_electric_cables01_1.vmdl_c",
+      "crc32": "df69d72e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 158060590,
+      "length": 81857
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_electrical_boxes_0.vmdl_c",
+      "crc32": "261e17f0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157711584,
+      "length": 349006
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_fence001_0.vmdl_c",
+      "crc32": "cba8d01a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157627291,
+      "length": 84293
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_flower_a_0.vmdl_c",
+      "crc32": "223b1512",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157594453,
+      "length": 32838
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_flower_b_0.vmdl_c",
+      "crc32": "3e30f53d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157533023,
+      "length": 61430
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_flower_barrel_0.vmdl_c",
+      "crc32": "12cc9114",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157473329,
+      "length": 59694
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_flower_c_0.vmdl_c",
+      "crc32": "f4b5c089",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157370171,
+      "length": 103158
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_flower_d_0.vmdl_c",
+      "crc32": "c4321093",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157351397,
+      "length": 18774
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_food_used_0.vmdl_c",
+      "crc32": "89fcbcca",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157216315,
+      "length": 135082
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_furniture_couch02a_0.vmdl_c",
+      "crc32": "c8e23f7f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157205465,
+      "length": 10850
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_furniture_wood01_0.vmdl_c",
+      "crc32": "5c89ecff",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157193675,
+      "length": 11790
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_furniture_wood02_0.vmdl_c",
+      "crc32": "a5498780",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157181405,
+      "length": 12270
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_furnitureboiler001a_0.vmdl_c",
+      "crc32": "49e0e00b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157168555,
+      "length": 12850
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_furniturecouch001a_0.vmdl_c",
+      "crc32": "cf8c0995",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157145129,
+      "length": 23426
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_furnitureinteriorcabinetswood_0.vmdl_c",
+      "crc32": "8ad28e70",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157055772,
+      "length": 89357
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_furniturestove001a_0.vmdl_c",
+      "crc32": "0357d9ac",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157035034,
+      "length": 20738
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_furnituretable001a_0.vmdl_c",
+      "crc32": "1aa01052",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 157006265,
+      "length": 28769
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_garbage001a_01_0.vmdl_c",
+      "crc32": "5b3088f7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156848443,
+      "length": 157822
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_garbage002a_01_0.vmdl_c",
+      "crc32": "c6e0330d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156833341,
+      "length": 15102
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_garbage003a_01_0.vmdl_c",
+      "crc32": "30d8426b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156811247,
+      "length": 22094
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_gasmeters001a_0.vmdl_c",
+      "crc32": "e45c1cc5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156798433,
+      "length": 12814
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_gate_door01a_0.vmdl_c",
+      "crc32": "6fe3acc4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156769767,
+      "length": 28666
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_glasswindow048a_0.vmdl_c",
+      "crc32": "dd730036",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156764617,
+      "length": 5150
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_grocerystorechiller01_0.vmdl_c",
+      "crc32": "bba6a87a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156741779,
+      "length": 22838
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_hanging_cloth_a_0.vmdl_c",
+      "crc32": "7d8f2b5e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156637989,
+      "length": 103790
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_hardwareitems01_0.vmdl_c",
+      "crc32": "1c4662f2",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156625015,
+      "length": 12974
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_hazard_ribbons_0.vmdl_c",
+      "crc32": "f279a986",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156591145,
+      "length": 33870
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_hpe_italy_pipe_wall_0.vmdl_c",
+      "crc32": "924a8a9f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156555847,
+      "length": 35298
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_hpe_plaster_tan_wall_0.vmdl_c",
+      "crc32": "624bba85",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156495653,
+      "length": 60194
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_hpe_plaster_tint_tan_0.vmdl_c",
+      "crc32": "16cf2259",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156486691,
+      "length": 8962
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_hpe_plaster_trim_light_0.vmdl_c",
+      "crc32": "0c04d50b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156480973,
+      "length": 5718
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_hpe_plaster_yellow_wall_0.vmdl_c",
+      "crc32": "9f32562f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156459111,
+      "length": 21862
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_infwllg_0.vmdl_c",
+      "crc32": "ef5115ce",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156454257,
+      "length": 4854
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_ladderaluminium_0.vmdl_c",
+      "crc32": "040f1490",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156387763,
+      "length": 66494
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_ladderwood_0.vmdl_c",
+      "crc32": "19c725c5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156367369,
+      "length": 20394
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_lamp_diffuse_0.vmdl_c",
+      "crc32": "daedb5f1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 156324671,
+      "length": 42698
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_lamp_diffuse_1.vmdl_c",
+      "crc32": "7ac8f361",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 155755589,
+      "length": 569082
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_lamp_diffuse_2.vmdl_c",
+      "crc32": "b00595c7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 155434683,
+      "length": 320906
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_lampholder2a_0.vmdl_c",
+      "crc32": "2e5007e3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 155428833,
+      "length": 5850
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_lamps_off_0.vmdl_c",
+      "crc32": "8f3550a5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 155408391,
+      "length": 20442
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_large_door_b_0.vmdl_c",
+      "crc32": "f9f58f82",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 155329741,
+      "length": 78650
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_large_door_c_0.vmdl_c",
+      "crc32": "b8613d2a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 155298755,
+      "length": 30986
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_light_orange2_0.vmdl_c",
+      "crc32": "55684b4b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 155290773,
+      "length": 7982
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_light_shop_0.vmdl_c",
+      "crc32": "4db333ba",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 155258011,
+      "length": 32762
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_light_shop_off_0.vmdl_c",
+      "crc32": "ad8121b4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 155243981,
+      "length": 14030
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_lightbulb01a_on_0.vmdl_c",
+      "crc32": "be1cdd8a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 155225055,
+      "length": 18926
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_mall_trees_barks01_0.vmdl_c",
+      "crc32": "44343dcb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 155154237,
+      "length": 70818
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_mall_trees_branches01_0.vmdl_c",
+      "crc32": "b12c456f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 155062791,
+      "length": 91446
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_mall_trees_branches01_1.vmdl_c",
+      "crc32": "c67c3c22",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 154214977,
+      "length": 847814
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_mall_trees_branches03_0.vmdl_c",
+      "crc32": "2e4b780c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 154161099,
+      "length": 53878
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_mall_trees_branches03_1.vmdl_c",
+      "crc32": "1672dbba",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 154151349,
+      "length": 9750
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_marble_01_0.vmdl_c",
+      "crc32": "fbe3ebec",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 154113835,
+      "length": 37514
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_market_dolly01_0.vmdl_c",
+      "crc32": "790f6ff0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 154093085,
+      "length": 20750
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_marketwall02_0.vmdl_c",
+      "crc32": "b674687e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 154084515,
+      "length": 8570
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_marketwall05a_0.vmdl_c",
+      "crc32": "a1d0dbac",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 154075253,
+      "length": 9262
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_metal_corrugated03a_0.vmdl_c",
+      "crc32": "c5b5e310",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 154069028,
+      "length": 6225
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_metal_corrugated03a_1.vmdl_c",
+      "crc32": "c942187a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 154030931,
+      "length": 38097
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_metal_corrugated03b_0.vmdl_c",
+      "crc32": "5c55e537",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 154021506,
+      "length": 9425
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_metaldoor034a_0.vmdl_c",
+      "crc32": "4ba3a7d5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 154015108,
+      "length": 6398
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_metalhull003a_0.vmdl_c",
+      "crc32": "c098cafc",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 154009702,
+      "length": 5406
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_metalrail011a_0.vmdl_c",
+      "crc32": "906ad224",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 154004232,
+      "length": 5470
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_metaltrack001a_0.vmdl_c",
+      "crc32": "ba8ccce7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153996890,
+      "length": 7342
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_milbeams003_0.vmdl_c",
+      "crc32": "85f16dce",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153972496,
+      "length": 24394
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_milflr002_0.vmdl_c",
+      "crc32": "84cd50ff",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153966518,
+      "length": 5978
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_milsteps001_0.vmdl_c",
+      "crc32": "998a721a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153959644,
+      "length": 6874
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_mirage_plaster_2_0.vmdl_c",
+      "crc32": "9d8a8340",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153948018,
+      "length": 11626
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_mirage_plaster_blend_3_0.vmdl_c",
+      "crc32": "3d04a785",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153847904,
+      "length": 100114
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_mirage_plaster_blend_3_1.vmdl_c",
+      "crc32": "b9f3ea91",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153543406,
+      "length": 304498
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_mkt_container3_0.vmdl_c",
+      "crc32": "f64faf04",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153521216,
+      "length": 22190
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_nuke_metaltrims_01_0.vmdl_c",
+      "crc32": "cf7f381d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153515102,
+      "length": 6114
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_overhang_ver1_diffuse_0.vmdl_c",
+      "crc32": "2d1a6b8f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153396136,
+      "length": 118966
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_paint_roller_0.vmdl_c",
+      "crc32": "bded68aa",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153379662,
+      "length": 16474
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_pi_apc_0.vmdl_c",
+      "crc32": "b328aac2",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153203496,
+      "length": 176166
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_pillow_a_diffuse_0.vmdl_c",
+      "crc32": "3c536c70",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153180394,
+      "length": 23102
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_pillow_b_diffuse_0.vmdl_c",
+      "crc32": "a0a8ba03",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153166188,
+      "length": 14206
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_pillow_c_diffuse_0.vmdl_c",
+      "crc32": "d3ce5f85",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153139374,
+      "length": 26814
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_pipeset02d_512_001a_0.vmdl_c",
+      "crc32": "70add124",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153115100,
+      "length": 24274
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_plaster_0.vmdl_c",
+      "crc32": "3dfc6442",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153093990,
+      "length": 21110
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_plaster_ext_19_0.vmdl_c",
+      "crc32": "a6c194bb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153088600,
+      "length": 5390
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_plaster_int_02_0.vmdl_c",
+      "crc32": "d4a4e171",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153077786,
+      "length": 10814
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_plasterwall021a_0.vmdl_c",
+      "crc32": "a788201a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153072956,
+      "length": 4830
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_plasterwall04_0.vmdl_c",
+      "crc32": "fdec77f0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 153065198,
+      "length": 7758
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_plastic_table_set001_0.vmdl_c",
+      "crc32": "fbe4712d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152834701,
+      "length": 230497
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_plywood02_0.vmdl_c",
+      "crc32": "aaad45cd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152824947,
+      "length": 9754
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_porch_light003_0.vmdl_c",
+      "crc32": "d9908149",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152689669,
+      "length": 135278
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_powerbox001_0.vmdl_c",
+      "crc32": "77f7cb0c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152637643,
+      "length": 52026
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_prison_objects002_0.vmdl_c",
+      "crc32": "e149e300",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152627337,
+      "length": 10306
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_prison_objects004_0.vmdl_c",
+      "crc32": "4eb727df",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152608263,
+      "length": 19074
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_prison_switchbox01_0.vmdl_c",
+      "crc32": "5c3690b4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152590471,
+      "length": 17792
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_prodwlla_0.vmdl_c",
+      "crc32": "4ec29201",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152581265,
+      "length": 9206
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_pwtrim2_0.vmdl_c",
+      "crc32": "1875a47e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152338731,
+      "length": 242534
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_pwtrim2_1.vmdl_c",
+      "crc32": "0c96f2e3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152331061,
+      "length": 7670
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_railing01_0.vmdl_c",
+      "crc32": "d729ba24",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152304475,
+      "length": 26586
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_railing01a_0.vmdl_c",
+      "crc32": "30d239da",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152259585,
+      "length": 44890
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_refrigeratordoor01a_0.vmdl_c",
+      "crc32": "51393668",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152247135,
+      "length": 12450
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_residwall04a_0.vmdl_c",
+      "crc32": "1be301d5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152226565,
+      "length": 20570
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_residwall04a_1.vmdl_c",
+      "crc32": "1e3419bc",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 152145227,
+      "length": 81338
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_rolling_gate_0.vmdl_c",
+      "crc32": "f39bd036",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 151900833,
+      "length": 244394
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_roof_dish001_0.vmdl_c",
+      "crc32": "2565403f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 151632119,
+      "length": 268714
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_rooftop01a_0.vmdl_c",
+      "crc32": "6e76d1e9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 151620829,
+      "length": 11290
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_rooftopcluster06a_0.vmdl_c",
+      "crc32": "255b3263",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 151503275,
+      "length": 117554
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_rug01_0.vmdl_c",
+      "crc32": "30f4497a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 151479509,
+      "length": 23766
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_rug02_0.vmdl_c",
+      "crc32": "dd72d720",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 151457039,
+      "length": 22470
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_rug03_0.vmdl_c",
+      "crc32": "72601e5c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 151428985,
+      "length": 28054
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_rug04_0.vmdl_c",
+      "crc32": "e464ec84",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 151411987,
+      "length": 16998
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_rug05_0.vmdl_c",
+      "crc32": "38f56358",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 151398733,
+      "length": 13254
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_rusted_fence_a_0.vmdl_c",
+      "crc32": "3c885d70",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 149750672,
+      "length": 1648061
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_shelvingstore_grocery01_0.vmdl_c",
+      "crc32": "8d76835a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 149675258,
+      "length": 75414
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_shelvingstore_grocery01_1.vmdl_c",
+      "crc32": "4a825583",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 149656788,
+      "length": 18470
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_sign_shop01_0.vmdl_c",
+      "crc32": "cc7f78ae",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 149650666,
+      "length": 6122
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_sign_street01_0.vmdl_c",
+      "crc32": "a4636056",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 149642620,
+      "length": 8046
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_sitebwall07a_0.vmdl_c",
+      "crc32": "aae35c0c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 149636242,
+      "length": 6378
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_sitebwall08a_0.vmdl_c",
+      "crc32": "038407d6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 149594824,
+      "length": 41418
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_sitebwall13a_0.vmdl_c",
+      "crc32": "f7d3be97",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 149438190,
+      "length": 156634
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_sitebwall13a_1.vmdl_c",
+      "crc32": "de89698e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 149095188,
+      "length": 343002
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_sitebwall13a_2.vmdl_c",
+      "crc32": "ba961bdd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 149038666,
+      "length": 56522
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_small_door_b_diffuse_0.vmdl_c",
+      "crc32": "e89949c0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 149022536,
+      "length": 16130
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_sofa01_0.vmdl_c",
+      "crc32": "22af90fe",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148998546,
+      "length": 23990
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_sofa_chair_0.vmdl_c",
+      "crc32": "23a88acc",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148973320,
+      "length": 25226
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_stoneblocks01_0.vmdl_c",
+      "crc32": "2f1612bf",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148955274,
+      "length": 18046
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_stoneblocks01_1.vmdl_c",
+      "crc32": "d765ebbb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148942684,
+      "length": 12590
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_stonestep02_0.vmdl_c",
+      "crc32": "331c4e5a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148927170,
+      "length": 15514
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_stonestep03_0.vmdl_c",
+      "crc32": "bf75c617",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148905832,
+      "length": 21338
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_stoop002_0.vmdl_c",
+      "crc32": "1bb0acd3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148885042,
+      "length": 20790
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_streetlight001_0.vmdl_c",
+      "crc32": "577849bd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148720916,
+      "length": 164126
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_tarp_a_diffuse_0.vmdl_c",
+      "crc32": "46a2332d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148699030,
+      "length": 21886
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_telephone_pole001_0.vmdl_c",
+      "crc32": "a11b2b38",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148520820,
+      "length": 178210
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_telephone_pole_addons001_0.vmdl_c",
+      "crc32": "1765cd95",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148232510,
+      "length": 288310
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_telephone_pole_addons001_1.vmdl_c",
+      "crc32": "9d394dac",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148093640,
+      "length": 138870
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_tile_int_02_0.vmdl_c",
+      "crc32": "4399422e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148088222,
+      "length": 5418
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_tile_mall_floor00_0.vmdl_c",
+      "crc32": "76c6297e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148080748,
+      "length": 7474
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_tilefloor01_0.vmdl_c",
+      "crc32": "e27300a2",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148066354,
+      "length": 14394
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_tilefloor02_0.vmdl_c",
+      "crc32": "f61daaf0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148057752,
+      "length": 8602
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_tilewall009b_0.vmdl_c",
+      "crc32": "8aca30b4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148052446,
+      "length": 5306
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_tire001_0.vmdl_c",
+      "crc32": "c7988e75",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 148037000,
+      "length": 15446
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_towertop_e_0.vmdl_c",
+      "crc32": "fc2bda7f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 147890574,
+      "length": 146426
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_trashbin01_0.vmdl_c",
+      "crc32": "6d66d8b4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 147850468,
+      "length": 40106
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_trashcans_0.vmdl_c",
+      "crc32": "29e69489",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 147783514,
+      "length": 66954
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_trashclusters01_0.vmdl_c",
+      "crc32": "dd50c084",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 147606284,
+      "length": 177230
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_urban_palm_trunkdust_animated_0.vmdl_c",
+      "crc32": "36a6a37d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 147326945,
+      "length": 279339
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_urban_trees_barks01_medium_animated_0.vmdl_c",
+      "crc32": "e0c36f79",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 147028098,
+      "length": 298847
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_urban_trees_barks01_still_0.vmdl_c",
+      "crc32": "c61a1e1a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 146981736,
+      "length": 46362
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_urban_trees_barks01_still_1.vmdl_c",
+      "crc32": "b58f9108",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 146885022,
+      "length": 96714
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_urban_trees_branches02_mip0_0.vmdl_c",
+      "crc32": "19596b1c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 146847012,
+      "length": 38010
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_urban_trees_branches03_0.vmdl_c",
+      "crc32": "504e6ddd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 146562894,
+      "length": 284118
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_urban_trees_branches03_medium_animated_0.vmdl_c",
+      "crc32": "b4b6ac44",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 146055531,
+      "length": 507363
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_urban_trees_branches03_small_0.vmdl_c",
+      "crc32": "9c1e56ec",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145962225,
+      "length": 93306
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_van1_0.vmdl_c",
+      "crc32": "f9bc22ac",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145873967,
+      "length": 88258
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_vertigo_ibeam_0.vmdl_c",
+      "crc32": "11396c1a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145867937,
+      "length": 6030
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_vietnam_hut_wood_gang_0.vmdl_c",
+      "crc32": "ae8816cb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145675067,
+      "length": 192870
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wagon_0.vmdl_c",
+      "crc32": "5d8c9516",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145593749,
+      "length": 81318
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wall_arch_a1_0.vmdl_c",
+      "crc32": "683ab8eb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145544635,
+      "length": 49114
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wall_hole_diffuse_0.vmdl_c",
+      "crc32": "3915357b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145498745,
+      "length": 45890
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wall_hole_diffuse_1.vmdl_c",
+      "crc32": "1e99d041",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145475207,
+      "length": 23538
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wall_lamp_bulb_0.vmdl_c",
+      "crc32": "3f852e24",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145451001,
+      "length": 24206
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wall_wires1_0.vmdl_c",
+      "crc32": "8ac29bbc",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145198847,
+      "length": 252154
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_warehouserailing_0.vmdl_c",
+      "crc32": "3b1650f7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145174145,
+      "length": 24702
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_4x6_arch_0.vmdl_c",
+      "crc32": "47a4e542",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145154131,
+      "length": 20014
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_4x6_square_0.vmdl_c",
+      "crc32": "3fd78757",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145147409,
+      "length": 6722
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_4x8_arch_0.vmdl_c",
+      "crc32": "041c0da9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145133827,
+      "length": 13582
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_4x8_arch_flat_0.vmdl_c",
+      "crc32": "a90cd389",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145107409,
+      "length": 26418
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_4x8_square_0.vmdl_c",
+      "crc32": "a0a6f918",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145097791,
+      "length": 9618
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_4x8_square_flat_0.vmdl_c",
+      "crc32": "a4d367f3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145070169,
+      "length": 27622
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_6x10_arch_0.vmdl_c",
+      "crc32": "dae09735",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145013931,
+      "length": 56238
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_6x10_arch_1.vmdl_c",
+      "crc32": "e64b117d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 145008861,
+      "length": 5070
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_6x10_arch_flat_0.vmdl_c",
+      "crc32": "359ddb7b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 144973991,
+      "length": 34870
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_6x8_shutters_0.vmdl_c",
+      "crc32": "aa462c50",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 144957653,
+      "length": 16338
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_6x8_shutters_flat_0.vmdl_c",
+      "crc32": "9a6f7f8d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 144943919,
+      "length": 13734
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_6x8_sill_0.vmdl_c",
+      "crc32": "f22752c2",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 144920753,
+      "length": 23166
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_a_diffuse_0.vmdl_c",
+      "crc32": "431082bd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 144762179,
+      "length": 158574
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_window_illum_backing_0.vmdl_c",
+      "crc32": "acdc1d25",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 144757313,
+      "length": 4866
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wirespout_0.vmdl_c",
+      "crc32": "ff803f46",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 144738087,
+      "length": 19226
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wood_dock_pylon_01_0.vmdl_c",
+      "crc32": "79c59d6c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 144722277,
+      "length": 15810
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wood_ext_05_0.vmdl_c",
+      "crc32": "bfe6e53f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 144716011,
+      "length": 6266
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wood_int_02_0.vmdl_c",
+      "crc32": "9d6e5884",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 144706049,
+      "length": 9962
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wood_pallet_01_0.vmdl_c",
+      "crc32": "13412973",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 144609331,
+      "length": 96718
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wood_ver3_diffuse_0.vmdl_c",
+      "crc32": "739b8df1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 143405745,
+      "length": 1203586
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wood_ver3_diffuse_1.vmdl_c",
+      "crc32": "4e7c4e32",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142377247,
+      "length": 1028498
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_woodbeam001a_0.vmdl_c",
+      "crc32": "6e7be32f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142371445,
+      "length": 5802
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wooddoor019a_0.vmdl_c",
+      "crc32": "ca6fcd8f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142366299,
+      "length": 5146
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_wooddoor026a_0.vmdl_c",
+      "crc32": "60fb8b43",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142360913,
+      "length": 5386
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_woodfloor005a_0.vmdl_c",
+      "crc32": "be425e21",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142291139,
+      "length": 69774
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_merge_woodfurniture01_0.vmdl_c",
+      "crc32": "7ef26d85",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142280805,
+      "length": 10334
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_prop_aztec_scaffolding_system_0.vmdl_c",
+      "crc32": "82d7e4f3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142268847,
+      "length": 11958
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_prop_urban_palm_trunkdust_animated_0.vmdl_c",
+      "crc32": "f477a4b8",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142245544,
+      "length": 23303
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_agg_prop_urban_trees_branches03_medium_animated_0.vmdl_c",
+      "crc32": "36942e80",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142220085,
+      "length": 25459
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_b_nomerge2_4carz1024_glass.vmdl_c",
+      "crc32": "728611e8",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142206975,
+      "length": 13110
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_b_nomerge8_urban_puddle01a.vmdl_c",
+      "crc32": "f3b1ac3d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142201305,
+      "length": 5670
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_bl_mesh_blocklight0_shadow.vmdl_c",
+      "crc32": "7e458368",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142196564,
+      "length": 4741
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_nomerge0_dust_002.vmdl_c",
+      "crc32": "26fe007c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142191814,
+      "length": 4750
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_nomerge10_dust_002.vmdl_c",
+      "crc32": "3732983b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142187304,
+      "length": 4510
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_nomerge11_dust_002.vmdl_c",
+      "crc32": "beea3709",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142182794,
+      "length": 4510
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_nomerge12_dust_002.vmdl_c",
+      "crc32": "e44af829",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142178284,
+      "length": 4510
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_nomerge13_dust_002.vmdl_c",
+      "crc32": "878ce80e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142173774,
+      "length": 4510
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_nomerge1_dust_002.vmdl_c",
+      "crc32": "b63613da",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142169264,
+      "length": 4510
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_nomerge3_dust_002.vmdl_c",
+      "crc32": "4fa932ff",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142164514,
+      "length": 4750
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_nomerge4_dust_002.vmdl_c",
+      "crc32": "008db120",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142159764,
+      "length": 4750
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_nomerge5_dust_002.vmdl_c",
+      "crc32": "f1d05e30",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142155014,
+      "length": 4750
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_nomerge6_metalfence004a.vmdl_c",
+      "crc32": "5dbb056c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142150501,
+      "length": 4513
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_nomerge7_metalfence004a.vmdl_c",
+      "crc32": "66145f85",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142145988,
+      "length": 4513
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_cb_nomerge9_dust_002.vmdl_c",
+      "crc32": "6eda4ee5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142141478,
+      "length": 4510
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c0_s_mesh_overlay0.vmdl_c",
+      "crc32": "156c4003",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142136385,
+      "length": 5093
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c100_s_mesh_overlay100.vmdl_c",
+      "crc32": "b0da75e0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142131544,
+      "length": 4841
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c101_s_mesh_overlay101.vmdl_c",
+      "crc32": "12e7322b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142127023,
+      "length": 4521
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c102_s_mesh_overlay102.vmdl_c",
+      "crc32": "abeae922",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142122006,
+      "length": 5017
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c103_s_mesh_overlay103.vmdl_c",
+      "crc32": "50f17f71",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142116973,
+      "length": 5033
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c104_s_mesh_overlay104.vmdl_c",
+      "crc32": "b9a0a717",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142108276,
+      "length": 8697
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c105_s_mesh_overlay105.vmdl_c",
+      "crc32": "c4f7f9e9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142103275,
+      "length": 5001
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c106_s_mesh_overlay106.vmdl_c",
+      "crc32": "44b636f3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142098482,
+      "length": 4793
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c107_s_mesh_overlay107.vmdl_c",
+      "crc32": "d3a0e614",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142093641,
+      "length": 4841
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c108_s_mesh_overlay108.vmdl_c",
+      "crc32": "a5dadb16",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142088944,
+      "length": 4697
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c109_s_mesh_overlay109.vmdl_c",
+      "crc32": "e081c2b3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142084119,
+      "length": 4825
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c10_s_mesh_overlay10.vmdl_c",
+      "crc32": "9c3b28e2",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142078466,
+      "length": 5653
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c110_s_mesh_overlay110.vmdl_c",
+      "crc32": "0db6793d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142073753,
+      "length": 4713
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c111_s_mesh_overlay111.vmdl_c",
+      "crc32": "5ac4cb20",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142067792,
+      "length": 5961
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c112_s_mesh_overlay112.vmdl_c",
+      "crc32": "12ca7008",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142063047,
+      "length": 4745
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c113_s_mesh_overlay113.vmdl_c",
+      "crc32": "16cbc49a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142057470,
+      "length": 5577
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c114_s_mesh_overlay114.vmdl_c",
+      "crc32": "6ddb6878",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142052373,
+      "length": 5097
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c115_s_mesh_overlay115.vmdl_c",
+      "crc32": "cb8a7ff4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142046572,
+      "length": 5801
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c116_s_mesh_overlay116.vmdl_c",
+      "crc32": "5fe804a1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142041651,
+      "length": 4921
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c117_s_mesh_overlay117.vmdl_c",
+      "crc32": "ab7e3a97",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142036874,
+      "length": 4777
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c118_s_mesh_overlay118.vmdl_c",
+      "crc32": "ce4b4e44",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142032209,
+      "length": 4665
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c119_s_mesh_overlay119.vmdl_c",
+      "crc32": "68bad82c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142027640,
+      "length": 4569
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c11_s_mesh_overlay11.vmdl_c",
+      "crc32": "6a38e75c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142022099,
+      "length": 5541
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c120_s_mesh_overlay120.vmdl_c",
+      "crc32": "2f2de08c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142017482,
+      "length": 4617
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c121_s_mesh_overlay121.vmdl_c",
+      "crc32": "bc079633",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142012881,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c122_s_mesh_overlay122.vmdl_c",
+      "crc32": "34b845c3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142008120,
+      "length": 4761
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c123_s_mesh_overlay123.vmdl_c",
+      "crc32": "9d7a346d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 142003151,
+      "length": 4969
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c124_s_mesh_overlay124.vmdl_c",
+      "crc32": "b1ba2ebb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141998262,
+      "length": 4889
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c125_s_mesh_overlay125.vmdl_c",
+      "crc32": "ce018179",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141992813,
+      "length": 5449
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c126_s_mesh_overlay126.vmdl_c",
+      "crc32": "16f2e7e9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141988036,
+      "length": 4777
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c127_s_mesh_overlay127.vmdl_c",
+      "crc32": "d2ffd887",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141983531,
+      "length": 4505
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c128_s_mesh_overlay128.vmdl_c",
+      "crc32": "e2509be5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141978946,
+      "length": 4585
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c129_s_mesh_overlay129.vmdl_c",
+      "crc32": "1c826771",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141974425,
+      "length": 4521
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c12_s_mesh_overlay12.vmdl_c",
+      "crc32": "004cf398",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141969700,
+      "length": 4725
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c130_s_mesh_overlay130.vmdl_c",
+      "crc32": "cd1dfe63",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141965003,
+      "length": 4697
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c131_s_mesh_overlay131.vmdl_c",
+      "crc32": "3bf352b2",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141960354,
+      "length": 4649
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c132_s_mesh_overlay132.vmdl_c",
+      "crc32": "f606c47b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141955641,
+      "length": 4713
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c133_s_mesh_overlay133.vmdl_c",
+      "crc32": "12577f86",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141950912,
+      "length": 4729
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c134_s_mesh_overlay134.vmdl_c",
+      "crc32": "85c11bf4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141946135,
+      "length": 4777
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c135_s_mesh_overlay135.vmdl_c",
+      "crc32": "3f2d0bc1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141941054,
+      "length": 5081
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c136_s_mesh_overlay136.vmdl_c",
+      "crc32": "564369e9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141936181,
+      "length": 4873
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c137_s_mesh_overlay137.vmdl_c",
+      "crc32": "fc85d66e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141931580,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c138_s_mesh_overlay138.vmdl_c",
+      "crc32": "c1242137",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141926899,
+      "length": 4681
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c139_s_mesh_overlay139.vmdl_c",
+      "crc32": "ee7dcbed",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141922202,
+      "length": 4697
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c13_s_mesh_overlay13.vmdl_c",
+      "crc32": "2f42b9b8",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141917109,
+      "length": 5093
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c140_s_mesh_overlay140.vmdl_c",
+      "crc32": "4d823692",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141912492,
+      "length": 4617
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c141_s_mesh_overlay141.vmdl_c",
+      "crc32": "1c18c023",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141907763,
+      "length": 4729
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c142_s_mesh_overlay142.vmdl_c",
+      "crc32": "d9249ebe",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141903098,
+      "length": 4665
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c143_s_mesh_overlay143.vmdl_c",
+      "crc32": "df971464",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141898433,
+      "length": 4665
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c144_s_mesh_overlay144.vmdl_c",
+      "crc32": "35213f6b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141893272,
+      "length": 5161
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c145_s_mesh_overlay145.vmdl_c",
+      "crc32": "0ce3a13b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141888639,
+      "length": 4633
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c146_s_mesh_overlay146.vmdl_c",
+      "crc32": "b2cb9ab8",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141884038,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c147_s_mesh_overlay147.vmdl_c",
+      "crc32": "5067cc93",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141878733,
+      "length": 5305
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c148_s_mesh_overlay148.vmdl_c",
+      "crc32": "9fe2ad29",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141874084,
+      "length": 4649
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c149_s_mesh_overlay149.vmdl_c",
+      "crc32": "963c636d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141869387,
+      "length": 4697
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c14_s_mesh_overlay14.vmdl_c",
+      "crc32": "ecec5984",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141863878,
+      "length": 5509
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c150_s_mesh_overlay150.vmdl_c",
+      "crc32": "5b1e6834",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141859245,
+      "length": 4633
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c151_s_mesh_overlay151.vmdl_c",
+      "crc32": "ca6fed04",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141854644,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c152_s_mesh_overlay152.vmdl_c",
+      "crc32": "07e26b8e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141849963,
+      "length": 4681
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c153_s_mesh_overlay153.vmdl_c",
+      "crc32": "128da980",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141844866,
+      "length": 5097
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c154_s_mesh_overlay154.vmdl_c",
+      "crc32": "43a9edd7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141840121,
+      "length": 4745
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c155_s_mesh_overlay155.vmdl_c",
+      "crc32": "b2953d7a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141835472,
+      "length": 4649
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c156_s_mesh_overlay156.vmdl_c",
+      "crc32": "e5f0fd72",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141830951,
+      "length": 4521
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c157_s_mesh_overlay157.vmdl_c",
+      "crc32": "db9088b0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141826350,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c158_s_mesh_overlay158.vmdl_c",
+      "crc32": "5bbf7a99",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141821365,
+      "length": 4985
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c159_s_mesh_overlay159.vmdl_c",
+      "crc32": "29e8973f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141816492,
+      "length": 4873
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c15_s_mesh_overlay15.vmdl_c",
+      "crc32": "732efa05",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141810935,
+      "length": 5557
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c160_s_mesh_overlay160.vmdl_c",
+      "crc32": "f4d40db7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141805822,
+      "length": 5113
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c161_s_mesh_overlay161.vmdl_c",
+      "crc32": "e20e8937",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141800901,
+      "length": 4921
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c162_s_mesh_overlay162.vmdl_c",
+      "crc32": "79453ea8",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141796284,
+      "length": 4617
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c163_s_mesh_overlay163.vmdl_c",
+      "crc32": "16141a88",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141791363,
+      "length": 4921
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c164_s_mesh_overlay164.vmdl_c",
+      "crc32": "862cac56",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141786762,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c165_s_mesh_overlay165.vmdl_c",
+      "crc32": "4db71769",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141782193,
+      "length": 4569
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c166_s_mesh_overlay166.vmdl_c",
+      "crc32": "abb61235",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141777432,
+      "length": 4761
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c167_s_mesh_overlay167.vmdl_c",
+      "crc32": "77086148",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141772735,
+      "length": 4697
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c168_s_mesh_overlay168.vmdl_c",
+      "crc32": "4ca64aa4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141768150,
+      "length": 4585
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c169_s_mesh_overlay169.vmdl_c",
+      "crc32": "28a8ab65",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141763581,
+      "length": 4569
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c16_s_mesh_overlay16.vmdl_c",
+      "crc32": "7f134f87",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141758136,
+      "length": 5445
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c170_s_mesh_overlay170.vmdl_c",
+      "crc32": "c0f053d1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141753455,
+      "length": 4681
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c171_s_mesh_overlay171.vmdl_c",
+      "crc32": "978fa031",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141748598,
+      "length": 4857
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c172_s_mesh_overlay172.vmdl_c",
+      "crc32": "4473a3cf",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141742957,
+      "length": 5641
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c173_s_mesh_overlay173.vmdl_c",
+      "crc32": "e5398537",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141738276,
+      "length": 4681
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c174_s_mesh_overlay174.vmdl_c",
+      "crc32": "472c5f48",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141733387,
+      "length": 4889
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c175_s_mesh_overlay175.vmdl_c",
+      "crc32": "c92e659b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141728018,
+      "length": 5369
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c176_s_mesh_overlay176.vmdl_c",
+      "crc32": "254be639",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141723129,
+      "length": 4889
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c177_s_mesh_overlay177.vmdl_c",
+      "crc32": "950b48a1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141718288,
+      "length": 4841
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c178_s_mesh_overlay178.vmdl_c",
+      "crc32": "d8f371c8",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141713751,
+      "length": 4537
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c179_s_mesh_overlay179.vmdl_c",
+      "crc32": "45c837c5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141708990,
+      "length": 4761
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c17_s_mesh_overlay17.vmdl_c",
+      "crc32": "7e94a5dd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141703481,
+      "length": 5509
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c180_s_mesh_overlay180.vmdl_c",
+      "crc32": "e206ee3b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141698608,
+      "length": 4873
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c181_s_mesh_overlay181.vmdl_c",
+      "crc32": "514b1a6b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141693943,
+      "length": 4665
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c182_s_mesh_overlay182.vmdl_c",
+      "crc32": "b24efbcd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141689342,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c183_s_mesh_overlay183.vmdl_c",
+      "crc32": "a3f9cc3a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141684597,
+      "length": 4745
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c184_s_mesh_overlay184.vmdl_c",
+      "crc32": "d5034e94",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141679660,
+      "length": 4937
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c185_s_mesh_overlay185.vmdl_c",
+      "crc32": "ea20fe22",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141674867,
+      "length": 4793
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c186_s_mesh_overlay186.vmdl_c",
+      "crc32": "282d60e8",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141669530,
+      "length": 5337
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c187_s_mesh_overlay187.vmdl_c",
+      "crc32": "22aadc61",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141664897,
+      "length": 4633
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c188_s_mesh_overlay188.vmdl_c",
+      "crc32": "dc52192e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141659032,
+      "length": 5865
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c189_s_mesh_overlay189.vmdl_c",
+      "crc32": "2d6ce134",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141654079,
+      "length": 4953
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c18_s_mesh_overlay18.vmdl_c",
+      "crc32": "ae3c8803",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141648794,
+      "length": 5285
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c190_s_mesh_overlay190.vmdl_c",
+      "crc32": "9a3b6bae",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141643041,
+      "length": 5753
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c191_s_mesh_overlay191.vmdl_c",
+      "crc32": "bd7609a1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141637736,
+      "length": 5305
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c192_s_mesh_overlay192.vmdl_c",
+      "crc32": "75e380ab",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141632751,
+      "length": 4985
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c193_s_mesh_overlay193.vmdl_c",
+      "crc32": "f8f1e39e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141627542,
+      "length": 5209
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c194_s_mesh_overlay194.vmdl_c",
+      "crc32": "f1ce3ac5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141619581,
+      "length": 7961
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c195_s_mesh_overlay195.vmdl_c",
+      "crc32": "05b05166",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141614964,
+      "length": 4617
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c196_s_mesh_overlay196.vmdl_c",
+      "crc32": "3fe0eba7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141610283,
+      "length": 4681
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c197_s_mesh_overlay197.vmdl_c",
+      "crc32": "a4a31590",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141605682,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c198_s_mesh_overlay198.vmdl_c",
+      "crc32": "21f8d875",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141601081,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c199_s_mesh_overlay199.vmdl_c",
+      "crc32": "e232c567",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141595968,
+      "length": 5113
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c19_s_mesh_overlay19.vmdl_c",
+      "crc32": "2ef06a91",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141590091,
+      "length": 5877
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c1_s_cb_bl_mesh_blocklight1_noshadow.vmdl_c",
+      "crc32": "fba4b9c6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141585286,
+      "length": 4805
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c1_s_cb_bl_mesh_blocklight1_shadow.vmdl_c",
+      "crc32": "b05d5388",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141580817,
+      "length": 4469
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c1_s_mesh_overlay1.vmdl_c",
+      "crc32": "d2e9c925",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141574940,
+      "length": 5877
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c200_s_mesh_overlay200.vmdl_c",
+      "crc32": "787111f9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141569523,
+      "length": 5417
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c201_s_mesh_overlay201.vmdl_c",
+      "crc32": "3437aa08",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141565002,
+      "length": 4521
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c202_s_mesh_overlay202.vmdl_c",
+      "crc32": "c1030d97",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141559985,
+      "length": 5017
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c203_s_mesh_overlay203.vmdl_c",
+      "crc32": "2aee1a60",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141554504,
+      "length": 5481
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c204_s_mesh_overlay204.vmdl_c",
+      "crc32": "dde2ff02",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141549727,
+      "length": 4777
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c205_s_mesh_overlay205.vmdl_c",
+      "crc32": "edb82db9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141545126,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c206_s_mesh_overlay206.vmdl_c",
+      "crc32": "6db8091f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141540541,
+      "length": 4585
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c207_s_mesh_overlay207.vmdl_c",
+      "crc32": "1843c2f0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141535780,
+      "length": 4761
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c208_s_mesh_overlay208.vmdl_c",
+      "crc32": "af42f904",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141530875,
+      "length": 4905
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c209_s_mesh_overlay209.vmdl_c",
+      "crc32": "4c612bbe",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141525986,
+      "length": 4889
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c20_s_mesh_overlay20.vmdl_c",
+      "crc32": "d8593e27",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141521165,
+      "length": 4821
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c210_s_mesh_overlay210.vmdl_c",
+      "crc32": "fbce0c07",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141516580,
+      "length": 4585
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c211_s_mesh_overlay211.vmdl_c",
+      "crc32": "c6c75cc6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141511179,
+      "length": 5401
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c212_s_mesh_overlay212.vmdl_c",
+      "crc32": "d028d458",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141506210,
+      "length": 4969
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c213_s_mesh_overlay213.vmdl_c",
+      "crc32": "01fa4140",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141501689,
+      "length": 4521
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c214_s_mesh_overlay214.vmdl_c",
+      "crc32": "cad18544",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141497104,
+      "length": 4585
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c215_s_mesh_overlay215.vmdl_c",
+      "crc32": "c99cd97d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141492087,
+      "length": 5017
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c216_s_mesh_overlay216.vmdl_c",
+      "crc32": "f1a3acf1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141487422,
+      "length": 4665
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c217_s_mesh_overlay217.vmdl_c",
+      "crc32": "092f2d86",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141482677,
+      "length": 4745
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c218_s_mesh_overlay218.vmdl_c",
+      "crc32": "41c3367c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141477884,
+      "length": 4793
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c219_s_mesh_overlay219.vmdl_c",
+      "crc32": "9073fa04",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141473027,
+      "length": 4857
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c21_s_mesh_overlay21.vmdl_c",
+      "crc32": "05f2fbb1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141467854,
+      "length": 5173
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c220_s_mesh_overlay220.vmdl_c",
+      "crc32": "344a7558",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141462949,
+      "length": 4905
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c221_s_mesh_overlay221.vmdl_c",
+      "crc32": "71575673",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141458012,
+      "length": 4937
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c222_s_mesh_overlay222.vmdl_c",
+      "crc32": "2473ffc7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141453411,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c223_s_mesh_overlay223.vmdl_c",
+      "crc32": "a2829b89",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141448794,
+      "length": 4617
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c224_s_mesh_overlay224.vmdl_c",
+      "crc32": "765f841c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141443921,
+      "length": 4873
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c225_s_mesh_overlay225.vmdl_c",
+      "crc32": "d0080c71",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141439080,
+      "length": 4841
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c226_s_mesh_overlay226.vmdl_c",
+      "crc32": "e01270ae",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141434287,
+      "length": 4793
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c227_s_mesh_overlay227.vmdl_c",
+      "crc32": "98645188",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141429062,
+      "length": 5225
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c228_s_mesh_overlay228.vmdl_c",
+      "crc32": "1a0919b7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141423981,
+      "length": 5081
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c229_s_mesh_overlay229.vmdl_c",
+      "crc32": "151242d6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141419076,
+      "length": 4905
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c22_s_mesh_overlay22.vmdl_c",
+      "crc32": "9208113d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141413151,
+      "length": 5925
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c230_s_mesh_overlay230.vmdl_c",
+      "crc32": "711f0d16",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141408502,
+      "length": 4649
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c231_s_mesh_overlay231.vmdl_c",
+      "crc32": "f7d864da",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141403997,
+      "length": 4505
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c232_s_mesh_overlay232.vmdl_c",
+      "crc32": "f31c9c19",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141399268,
+      "length": 4729
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c233_s_mesh_overlay233.vmdl_c",
+      "crc32": "142b55d3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141394603,
+      "length": 4665
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c234_s_mesh_overlay234.vmdl_c",
+      "crc32": "1f133dc6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141389746,
+      "length": 4857
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c235_s_mesh_overlay235.vmdl_c",
+      "crc32": "1ed0eb4b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141385081,
+      "length": 4665
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c236_s_mesh_overlay236.vmdl_c",
+      "crc32": "018c17cc",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141380080,
+      "length": 5001
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c237_s_mesh_overlay237.vmdl_c",
+      "crc32": "1f67393d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141375527,
+      "length": 4553
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c238_s_mesh_overlay238.vmdl_c",
+      "crc32": "6779c780",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141370990,
+      "length": 4537
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c239_s_mesh_overlay239.vmdl_c",
+      "crc32": "1334a707",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141366389,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c23_s_mesh_overlay23.vmdl_c",
+      "crc32": "6fde32a7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141361408,
+      "length": 4981
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c240_s_mesh_overlay240.vmdl_c",
+      "crc32": "5e82a9c7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141356727,
+      "length": 4681
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c241_s_mesh_overlay241.vmdl_c",
+      "crc32": "a701fb6e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141352174,
+      "length": 4553
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c242_s_mesh_overlay242.vmdl_c",
+      "crc32": "8e3877ab",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141347477,
+      "length": 4697
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c243_s_mesh_overlay243.vmdl_c",
+      "crc32": "70cee8dc",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141342908,
+      "length": 4569
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c244_s_mesh_overlay244.vmdl_c",
+      "crc32": "5af2b5cb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141338051,
+      "length": 4857
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c245_s_mesh_overlay245.vmdl_c",
+      "crc32": "98f8ced5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141333370,
+      "length": 4681
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c246_s_mesh_overlay246.vmdl_c",
+      "crc32": "5d0cc225",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141328705,
+      "length": 4665
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c247_s_mesh_overlay247.vmdl_c",
+      "crc32": "5c3945c5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141324104,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c248_s_mesh_overlay248.vmdl_c",
+      "crc32": "88afcdea",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141319327,
+      "length": 4777
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c249_s_mesh_overlay249.vmdl_c",
+      "crc32": "149e0ae7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141314566,
+      "length": 4761
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c24_s_mesh_overlay24.vmdl_c",
+      "crc32": "de2cedba",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141309969,
+      "length": 4597
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c250_s_mesh_overlay250.vmdl_c",
+      "crc32": "83c96362",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141305256,
+      "length": 4713
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c251_s_mesh_overlay251.vmdl_c",
+      "crc32": "ebc09ec9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141300623,
+      "length": 4633
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c252_s_mesh_overlay252.vmdl_c",
+      "crc32": "7d552956",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141295798,
+      "length": 4825
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c253_s_mesh_overlay253.vmdl_c",
+      "crc32": "51bdd0e6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141290605,
+      "length": 5193
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c254_s_mesh_overlay254.vmdl_c",
+      "crc32": "b16235d7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141285140,
+      "length": 5465
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c255_s_mesh_overlay255.vmdl_c",
+      "crc32": "4b4b7c0c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141280363,
+      "length": 4777
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c256_s_mesh_overlay256.vmdl_c",
+      "crc32": "b4d96dca",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141275746,
+      "length": 4617
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c257_s_mesh_overlay257.vmdl_c",
+      "crc32": "f45ecbcc",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141270905,
+      "length": 4841
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c258_s_mesh_overlay258.vmdl_c",
+      "crc32": "9b130a81",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141266176,
+      "length": 4729
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c259_s_mesh_overlay259.vmdl_c",
+      "crc32": "ce47d006",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141261399,
+      "length": 4777
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c25_s_mesh_overlay25.vmdl_c",
+      "crc32": "5869a628",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141256082,
+      "length": 5317
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c260_s_mesh_overlay260.vmdl_c",
+      "crc32": "b7f952cf",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141251417,
+      "length": 4665
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c261_s_mesh_overlay261.vmdl_c",
+      "crc32": "118600e1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141246640,
+      "length": 4777
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c262_s_mesh_overlay262.vmdl_c",
+      "crc32": "766c739f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141242039,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c263_s_mesh_overlay263.vmdl_c",
+      "crc32": "1da8c240",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141237422,
+      "length": 4617
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c264_s_mesh_overlay264.vmdl_c",
+      "crc32": "b7eca55e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141232549,
+      "length": 4873
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c265_s_mesh_overlay265.vmdl_c",
+      "crc32": "36bb4ed5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141227468,
+      "length": 5081
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c266_s_mesh_overlay266.vmdl_c",
+      "crc32": "5454916a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141222755,
+      "length": 4713
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c267_s_mesh_overlay267.vmdl_c",
+      "crc32": "42c9ed05",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141218154,
+      "length": 4601
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c268_s_mesh_overlay268.vmdl_c",
+      "crc32": "ac93d289",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141212721,
+      "length": 5433
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c269_s_mesh_overlay269.vmdl_c",
+      "crc32": "4d16e709",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141207048,
+      "length": 5673
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c26_s_mesh_overlay26.vmdl_c",
+      "crc32": "d7e74be4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141199683,
+      "length": 7365
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c270_s_mesh_overlay270.vmdl_c",
+      "crc32": "2e92c2c3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141195162,
+      "length": 4521
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c271_s_mesh_overlay271.vmdl_c",
+      "crc32": "ca881289",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141190417,
+      "length": 4745
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c272_s_mesh_overlay272.vmdl_c",
+      "crc32": "76520e58",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141185784,
+      "length": 4633
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c273_s_mesh_overlay273.vmdl_c",
+      "crc32": "9547d714",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141181199,
+      "length": 4585
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c274_s_mesh_overlay274.vmdl_c",
+      "crc32": "c83234a9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141176566,
+      "length": 4633
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c275_s_mesh_overlay275.vmdl_c",
+      "crc32": "4a914f05",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141171821,
+      "length": 4745
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c276_s_mesh_overlay276.vmdl_c",
+      "crc32": "d87af9d1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141167124,
+      "length": 4697
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c277_s_mesh_overlay277.vmdl_c",
+      "crc32": "f9187782",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141162555,
+      "length": 4569
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c278_s_mesh_overlay278.vmdl_c",
+      "crc32": "0ada4a0a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141157186,
+      "length": 5369
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c279_s_mesh_overlay279.vmdl_c",
+      "crc32": "373fcf2b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141150201,
+      "length": 6985
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c27_s_mesh_overlay27.vmdl_c",
+      "crc32": "756e8960",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141145092,
+      "length": 5109
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c280_s_mesh_overlay280.vmdl_c",
+      "crc32": "24bba24a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141139483,
+      "length": 5609
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c281_s_mesh_overlay281.vmdl_c",
+      "crc32": "be88698b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141134738,
+      "length": 4745
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c282_s_mesh_overlay282.vmdl_c",
+      "crc32": "3f710dd5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141130121,
+      "length": 4617
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c283_s_mesh_overlay283.vmdl_c",
+      "crc32": "fe4a5630",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141125152,
+      "length": 4969
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c284_s_mesh_overlay284.vmdl_c",
+      "crc32": "40f45363",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141120535,
+      "length": 4617
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c285_s_mesh_overlay285.vmdl_c",
+      "crc32": "f179cc3e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141115790,
+      "length": 4745
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c286_s_mesh_overlay286.vmdl_c",
+      "crc32": "c5486f98",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141111205,
+      "length": 4585
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c287_s_mesh_overlay287.vmdl_c",
+      "crc32": "04be7ac1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141106620,
+      "length": 4585
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c288_s_mesh_overlay288.vmdl_c",
+      "crc32": "7c0f0f29",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141102051,
+      "length": 4569
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c289_s_mesh_overlay289.vmdl_c",
+      "crc32": "c50bd066",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141096634,
+      "length": 5417
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c28_s_mesh_overlay28.vmdl_c",
+      "crc32": "05ab6d98",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141091685,
+      "length": 4949
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c290_s_mesh_overlay290.vmdl_c",
+      "crc32": "8988fe6c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141086988,
+      "length": 4697
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c291_s_mesh_overlay291.vmdl_c",
+      "crc32": "22813629",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141082131,
+      "length": 4857
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c292_s_mesh_overlay292.vmdl_c",
+      "crc32": "9801f6a1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141077402,
+      "length": 4729
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c293_s_mesh_overlay293.vmdl_c",
+      "crc32": "03cf36fd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141072833,
+      "length": 4569
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c294_s_mesh_overlay294.vmdl_c",
+      "crc32": "62516341",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141068200,
+      "length": 4633
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c295_s_mesh_overlay295.vmdl_c",
+      "crc32": "d7b2553b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141063711,
+      "length": 4489
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c296_s_mesh_overlay296.vmdl_c",
+      "crc32": "1ae68ca4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141059014,
+      "length": 4697
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c297_s_mesh_overlay297.vmdl_c",
+      "crc32": "496fb07c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141054397,
+      "length": 4617
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c298_s_mesh_overlay298.vmdl_c",
+      "crc32": "69b1efd0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141049204,
+      "length": 5193
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c299_s_mesh_overlay299.vmdl_c",
+      "crc32": "71339b5c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141044619,
+      "length": 4585
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c29_s_mesh_overlay29.vmdl_c",
+      "crc32": "c1996a90",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141039446,
+      "length": 5173
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c2_s_cb_bl_mesh_blocklight2_noshadow.vmdl_c",
+      "crc32": "7e4ca588",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141033329,
+      "length": 6117
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c2_s_cb_bl_mesh_blocklight2_shadow.vmdl_c",
+      "crc32": "120d80a5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141028444,
+      "length": 4885
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c2_s_mesh_overlay2.vmdl_c",
+      "crc32": "93fec638",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141023639,
+      "length": 4805
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c30_s_mesh_overlay30.vmdl_c",
+      "crc32": "9bf2525c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141018130,
+      "length": 5509
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c31_s_mesh_overlay31.vmdl_c",
+      "crc32": "b904631a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141013309,
+      "length": 4821
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c32_s_mesh_overlay32.vmdl_c",
+      "crc32": "594f5d46",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141008424,
+      "length": 4885
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c33_s_mesh_overlay33.vmdl_c",
+      "crc32": "f181bc50",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 141003491,
+      "length": 4933
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c34_s_mesh_overlay34.vmdl_c",
+      "crc32": "ec8096d8",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140998590,
+      "length": 4901
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c35_s_mesh_overlay35.vmdl_c",
+      "crc32": "0035b67c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140993993,
+      "length": 4597
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c36_s_mesh_overlay36.vmdl_c",
+      "crc32": "759e8b5b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140989476,
+      "length": 4517
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c37_s_mesh_overlay37.vmdl_c",
+      "crc32": "4a6c3c83",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140983615,
+      "length": 5861
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c38_s_mesh_overlay38.vmdl_c",
+      "crc32": "baa02fc0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140978666,
+      "length": 4949
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c39_s_mesh_overlay39.vmdl_c",
+      "crc32": "dc358eb1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140973605,
+      "length": 5061
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c3_s_cb_bl_mesh_blocklight3_noshadow.vmdl_c",
+      "crc32": "ac526aed",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140968640,
+      "length": 4965
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c3_s_mesh_overlay3.vmdl_c",
+      "crc32": "be576b8b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140962619,
+      "length": 6021
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c3_s_nv_mesh_overlay300.vmdl_c",
+      "crc32": "b7482a9d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140958066,
+      "length": 4553
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c40_s_mesh_overlay40.vmdl_c",
+      "crc32": "2de598b7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140952477,
+      "length": 5589
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c41_s_mesh_overlay41.vmdl_c",
+      "crc32": "1f1b0aa1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140947288,
+      "length": 5189
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c42_s_mesh_overlay42.vmdl_c",
+      "crc32": "dfc1f589",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140942675,
+      "length": 4613
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c43_s_mesh_overlay43.vmdl_c",
+      "crc32": "c54b674f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140937806,
+      "length": 4869
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c44_s_mesh_overlay44.vmdl_c",
+      "crc32": "badd10ff",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140933161,
+      "length": 4645
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c45_s_mesh_overlay45.vmdl_c",
+      "crc32": "25d551b4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140928500,
+      "length": 4661
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c46_s_mesh_overlay46.vmdl_c",
+      "crc32": "1a1c9660",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140923743,
+      "length": 4757
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c47_s_mesh_overlay47.vmdl_c",
+      "crc32": "e55a98d4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140919178,
+      "length": 4565
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c48_s_mesh_overlay48.vmdl_c",
+      "crc32": "0aba73d3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140913909,
+      "length": 5269
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c49_s_mesh_overlay49.vmdl_c",
+      "crc32": "17434a09",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140909312,
+      "length": 4597
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c4_s_cb_bl_mesh_blocklight4_noshadow.vmdl_c",
+      "crc32": "37712287",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140904827,
+      "length": 4485
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c4_s_mesh_overlay4.vmdl_c",
+      "crc32": "0895f301",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140899302,
+      "length": 5525
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c50_s_mesh_overlay50.vmdl_c",
+      "crc32": "6ae1e057",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140894721,
+      "length": 4581
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c51_s_mesh_overlay51.vmdl_c",
+      "crc32": "07571b0c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140889708,
+      "length": 5013
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c52_s_mesh_overlay52.vmdl_c",
+      "crc32": "3a0a1d85",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140884919,
+      "length": 4789
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c53_s_mesh_overlay53.vmdl_c",
+      "crc32": "2686e0f7",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140879762,
+      "length": 5157
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c54_s_mesh_overlay54.vmdl_c",
+      "crc32": "9250f5df",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140874957,
+      "length": 4805
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c55_s_mesh_overlay55.vmdl_c",
+      "crc32": "15aa2bf9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140870376,
+      "length": 4581
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c56_s_mesh_overlay56.vmdl_c",
+      "crc32": "b9091d51",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140865491,
+      "length": 4885
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c57_s_mesh_overlay57.vmdl_c",
+      "crc32": "e8d2b825",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140860526,
+      "length": 4965
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c58_s_mesh_overlay58.vmdl_c",
+      "crc32": "f8842b24",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140855945,
+      "length": 4581
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c59_s_mesh_overlay59.vmdl_c",
+      "crc32": "c28257f1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140851236,
+      "length": 4709
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_cb_b_mesh.vmdl_c",
+      "crc32": "408b6fcb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140835091,
+      "length": 16145
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_cb_b_mesh_cm00_lp62507215_nz.vmdl_c",
+      "crc32": "912fa178",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140829726,
+      "length": 5365
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_cb_b_mesh_cm00_lp62507219.vmdl_c",
+      "crc32": "18dbf591",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140823181,
+      "length": 6545
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_cb_b_mesh_cm00_lp62507225_nsh.vmdl_c",
+      "crc32": "3a3b5736",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140814552,
+      "length": 8629
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_cb_b_mesh_nsh.vmdl_c",
+      "crc32": "c24927c6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140784259,
+      "length": 30293
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_cb_b_mesh_nz_nsh.vmdl_c",
+      "crc32": "570ea1e3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140779450,
+      "length": 4809
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_cb_mesh.vmdl_c",
+      "crc32": "13f7cad4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140769117,
+      "length": 10333
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_cb_mesh_cm00_lp62507175.vmdl_c",
+      "crc32": "62febf24",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140764624,
+      "length": 4493
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_cb_mesh_cm00_lp62507184_nsh.vmdl_c",
+      "crc32": "e725826a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140759503,
+      "length": 5121
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_cb_mesh_cm00_lp62507188_nsh.vmdl_c",
+      "crc32": "4c91b79b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140754222,
+      "length": 5281
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_cb_mesh_cm00_lp62507213.vmdl_c",
+      "crc32": "8e446871",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140749441,
+      "length": 4781
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_cb_mesh_nsh.vmdl_c",
+      "crc32": "d4216a5f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140739296,
+      "length": 10145
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_cb_mesh_nz.vmdl_c",
+      "crc32": "921ea621",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140734607,
+      "length": 4689
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c5_s_mesh_overlay5.vmdl_c",
+      "crc32": "618852ea",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140729338,
+      "length": 5269
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c60_s_mesh_overlay60.vmdl_c",
+      "crc32": "65ef0293",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140723733,
+      "length": 5605
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c61_s_mesh_overlay61.vmdl_c",
+      "crc32": "94dde478",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140717440,
+      "length": 6293
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c62_s_mesh_overlay62.vmdl_c",
+      "crc32": "23cdef50",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140712923,
+      "length": 4517
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c63_s_mesh_overlay63.vmdl_c",
+      "crc32": "43374806",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140707734,
+      "length": 5189
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c64_s_mesh_overlay64.vmdl_c",
+      "crc32": "73670f73",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140702689,
+      "length": 5045
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c65_s_mesh_overlay65.vmdl_c",
+      "crc32": "2adbfab1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140697580,
+      "length": 5109
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c66_s_mesh_overlay66.vmdl_c",
+      "crc32": "f6373d75",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140691815,
+      "length": 5765
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c67_s_mesh_overlay67.vmdl_c",
+      "crc32": "c46b091d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140687202,
+      "length": 4613
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c68_s_mesh_overlay68.vmdl_c",
+      "crc32": "f94b0076",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140682637,
+      "length": 4565
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c69_s_mesh_overlay69.vmdl_c",
+      "crc32": "3bc655eb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140678072,
+      "length": 4565
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c6_s_mesh_overlay6.vmdl_c",
+      "crc32": "334ad369",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140672659,
+      "length": 5413
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c70_s_mesh_overlay70.vmdl_c",
+      "crc32": "f593a0e1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140667870,
+      "length": 4789
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c71_s_mesh_overlay71.vmdl_c",
+      "crc32": "d63b601d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140663305,
+      "length": 4565
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c72_s_mesh_overlay72.vmdl_c",
+      "crc32": "4827f014",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140658676,
+      "length": 4629
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c73_s_mesh_overlay73.vmdl_c",
+      "crc32": "8e26e19f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140653759,
+      "length": 4917
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c74_s_mesh_overlay74.vmdl_c",
+      "crc32": "d22a90da",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140649034,
+      "length": 4725
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c75_s_mesh_overlay75.vmdl_c",
+      "crc32": "c59a6bd0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140644389,
+      "length": 4645
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c76_s_mesh_overlay76.vmdl_c",
+      "crc32": "b7272e85",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140639712,
+      "length": 4677
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c77_s_mesh_overlay77.vmdl_c",
+      "crc32": "53acad09",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140635003,
+      "length": 4709
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c78_s_mesh_overlay78.vmdl_c",
+      "crc32": "473d35b6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140630358,
+      "length": 4645
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c79_s_mesh_overlay79.vmdl_c",
+      "crc32": "7367d1f1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140625409,
+      "length": 4949
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c7_s_mesh_overlay7.vmdl_c",
+      "crc32": "2e1b120d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140620380,
+      "length": 5029
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c80_s_mesh_overlay80.vmdl_c",
+      "crc32": "30fbcfaa",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140614663,
+      "length": 5717
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c81_s_mesh_overlay81.vmdl_c",
+      "crc32": "3bd1a719",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140610162,
+      "length": 4501
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c82_s_mesh_overlay82.vmdl_c",
+      "crc32": "e6bdf4f4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140605661,
+      "length": 4501
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c83_s_mesh_overlay83.vmdl_c",
+      "crc32": "5caa23ef",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140601000,
+      "length": 4661
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c84_s_mesh_overlay84.vmdl_c",
+      "crc32": "011c5d2e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140596499,
+      "length": 4501
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c85_s_mesh_overlay85.vmdl_c",
+      "crc32": "2e414677",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140590670,
+      "length": 5829
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c86_s_mesh_overlay86.vmdl_c",
+      "crc32": "92ab10de",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140585289,
+      "length": 5381
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c87_s_mesh_overlay87.vmdl_c",
+      "crc32": "ccaf1029",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140578420,
+      "length": 6869
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c88_s_mesh_overlay88.vmdl_c",
+      "crc32": "d8293d33",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140573055,
+      "length": 5365
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c89_s_mesh_overlay89.vmdl_c",
+      "crc32": "b24bbda4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140566922,
+      "length": 6133
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c8_s_mesh_overlay8.vmdl_c",
+      "crc32": "972b9aff",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140560389,
+      "length": 6533
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c90_s_mesh_overlay90.vmdl_c",
+      "crc32": "a704247d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140555600,
+      "length": 4789
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c91_s_mesh_overlay91.vmdl_c",
+      "crc32": "d64444e1",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140550907,
+      "length": 4693
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c92_s_mesh_overlay92.vmdl_c",
+      "crc32": "3672f23b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140545430,
+      "length": 5477
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c93_s_mesh_overlay93.vmdl_c",
+      "crc32": "5e6fa9ef",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140540817,
+      "length": 4613
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c94_s_mesh_overlay94.vmdl_c",
+      "crc32": "e15db76f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140536092,
+      "length": 4725
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c95_s_mesh_overlay95.vmdl_c",
+      "crc32": "ce960d2d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140531223,
+      "length": 4869
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c96_s_mesh_overlay96.vmdl_c",
+      "crc32": "acf9efb2",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140526626,
+      "length": 4597
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c97_s_mesh_overlay97.vmdl_c",
+      "crc32": "90a35cda",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140521965,
+      "length": 4661
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c98_s_mesh_overlay98.vmdl_c",
+      "crc32": "a656a7e5",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140517272,
+      "length": 4693
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c99_s_mesh_overlay99.vmdl_c",
+      "crc32": "8e3dcf92",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140512451,
+      "length": 4821
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0_lr0_c9_s_mesh_overlay9.vmdl_c",
+      "crc32": "16195966",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140505902,
+      "length": 6549
+    },
+    {
+      "path": "maps/de_mirage/entities/default_ents.vents_c",
+      "crc32": "d9a423c9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 140436923,
+      "length": 68979
+    },
+    {
+      "path": "maps/de_mirage/cubemaps/env_cubemap_array.vtex_c",
+      "crc32": "5e8d0f7f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 110020627,
+      "length": 30416296
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/debug_chart_color.vtex_c",
+      "crc32": "b563c40a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 108974555,
+      "length": 1046072
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/direct_light_shadows.vtex_c",
+      "crc32": "037929e3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 105115500,
+      "length": 3859055
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/directional_irradiance.vtex_c",
+      "crc32": "cec3aa8b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 97734452,
+      "length": 7381048
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_atlas.vtex_c",
+      "crc32": "512f8e39",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 91829713,
+      "length": 5904739
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_atlas_dlshd.vtex_c",
+      "crc32": "13beedfc",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 91599881,
+      "length": 229832
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/irradiance.vtex_c",
+      "crc32": "a9ae0512",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15532532,
+      "length": 76067349
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507175_octree.dat",
+      "crc32": "3d340e8d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15467122,
+      "length": 65410
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507176_octree.dat",
+      "crc32": "8c464111",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15426282,
+      "length": 40840
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507177_octree.dat",
+      "crc32": "8991468d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15395754,
+      "length": 30528
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507178_octree.dat",
+      "crc32": "6518b1a6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15357368,
+      "length": 38386
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507179_octree.dat",
+      "crc32": "d6412bb6",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15313354,
+      "length": 44014
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507180_octree.dat",
+      "crc32": "d7b86df0",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15269271,
+      "length": 44083
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507181_octree.dat",
+      "crc32": "6b96498f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15248762,
+      "length": 20509
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507182_octree.dat",
+      "crc32": "78677cbe",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15207781,
+      "length": 40981
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507183_octree.dat",
+      "crc32": "437f6459",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15160675,
+      "length": 47106
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507184_octree.dat",
+      "crc32": "91d022e2",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15128131,
+      "length": 32544
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507185_octree.dat",
+      "crc32": "e1fe3c92",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15083536,
+      "length": 44595
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507186_octree.dat",
+      "crc32": "9d799481",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15038724,
+      "length": 44812
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507187_octree.dat",
+      "crc32": "f0789dff",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 15016917,
+      "length": 21807
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507188_octree.dat",
+      "crc32": "025dd96b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14968589,
+      "length": 48328
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507189_octree.dat",
+      "crc32": "dba52ddb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14934675,
+      "length": 33914
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507190_octree.dat",
+      "crc32": "f5143fdf",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14899461,
+      "length": 35214
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507191_octree.dat",
+      "crc32": "01e7bfb9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14869004,
+      "length": 30457
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507192_octree.dat",
+      "crc32": "2f25af08",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14821972,
+      "length": 47032
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507193_octree.dat",
+      "crc32": "5c17e0d8",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14761682,
+      "length": 60290
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507194_octree.dat",
+      "crc32": "e3de7669",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14701391,
+      "length": 60291
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507195_octree.dat",
+      "crc32": "01ff452c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14655514,
+      "length": 45877
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507196_octree.dat",
+      "crc32": "815f7248",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14654896,
+      "length": 618
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507197_octree.dat",
+      "crc32": "e6742b50",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14612837,
+      "length": 42059
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507198_octree.dat",
+      "crc32": "d9b9ccdb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14551323,
+      "length": 61514
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507199_octree.dat",
+      "crc32": "9f0c5080",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14486418,
+      "length": 64905
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507200_octree.dat",
+      "crc32": "15ec00cd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14450269,
+      "length": 36149
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507201_octree.dat",
+      "crc32": "3a699311",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14400498,
+      "length": 49771
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507202_octree.dat",
+      "crc32": "e14b49ef",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14356279,
+      "length": 44219
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507203_octree.dat",
+      "crc32": "7f1f1dae",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14289501,
+      "length": 66778
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507204_octree.dat",
+      "crc32": "ff4e404e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14217179,
+      "length": 72322
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507205_octree.dat",
+      "crc32": "69e8b659",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14151410,
+      "length": 65769
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507206_octree.dat",
+      "crc32": "a8bd9a2d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14100700,
+      "length": 50710
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507207_octree.dat",
+      "crc32": "745b8f79",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 14033059,
+      "length": 67641
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507208_octree.dat",
+      "crc32": "11604066",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13964914,
+      "length": 68145
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507209_octree.dat",
+      "crc32": "f71f91c4",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13900082,
+      "length": 64832
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507210_octree.dat",
+      "crc32": "ca75900a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13832224,
+      "length": 67858
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507211_octree.dat",
+      "crc32": "89aa1f68",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13767464,
+      "length": 64760
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507212_octree.dat",
+      "crc32": "95687d4c",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13720076,
+      "length": 47388
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507213_octree.dat",
+      "crc32": "91199eaf",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13655027,
+      "length": 65049
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507214_octree.dat",
+      "crc32": "7416e3bc",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13586018,
+      "length": 69009
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507215_octree.dat",
+      "crc32": "0c5479f3",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13516432,
+      "length": 69586
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507216_octree.dat",
+      "crc32": "c4192f93",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13449583,
+      "length": 66849
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507217_octree.dat",
+      "crc32": "abace79e",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13382808,
+      "length": 66775
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507218_octree.dat",
+      "crc32": "b3137921",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13320641,
+      "length": 62167
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507219_octree.dat",
+      "crc32": "cc5d45cd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13259703,
+      "length": 60938
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507220_octree.dat",
+      "crc32": "ad3d2569",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13197105,
+      "length": 62598
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507221_octree.dat",
+      "crc32": "23b9fb62",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13134864,
+      "length": 62241
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507222_octree.dat",
+      "crc32": "cc61bceb",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13079111,
+      "length": 55753
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507223_octree.dat",
+      "crc32": "782069da",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13074097,
+      "length": 5014
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507224_octree.dat",
+      "crc32": "77de5808",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13073479,
+      "length": 618
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507225_octree.dat",
+      "crc32": "6d1cedbc",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 13027673,
+      "length": 45806
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507226_octree.dat",
+      "crc32": "2f657a3a",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 12973366,
+      "length": 54307
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507227_octree.dat",
+      "crc32": "7ff99336",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 12961432,
+      "length": 11934
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507228_octree.dat",
+      "crc32": "d2164982",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 12949498,
+      "length": 11934
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507229_octree.dat",
+      "crc32": "b7c7297b",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 12936482,
+      "length": 13016
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507230_octree.dat",
+      "crc32": "59d71760",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 12935864,
+      "length": 618
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507231_octree.dat",
+      "crc32": "cd91d5f9",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 12914057,
+      "length": 21807
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/env_light_probe_volume_62507232_octree.dat",
+      "crc32": "815f7248",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 12913439,
+      "length": 618
+    },
+    {
+      "path": "maps/de_mirage/lightmaps/lightmap_query_data.kv3",
+      "crc32": "7ceb4bcd",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 4106180,
+      "length": 8807259
+    },
+    {
+      "path": "maps/de_mirage/world.vrman_c",
+      "crc32": "67a2a3f2",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 4105253,
+      "length": 927
+    },
+    {
+      "path": "maps/de_mirage/world_physics.vrman_c",
+      "crc32": "631b7a64",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 4104351,
+      "length": 902
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0.vrman_c",
+      "crc32": "a188ab2f",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 4103448,
+      "length": 903
+    },
+    {
+      "path": "maps/de_mirage/world.vwrld_c",
+      "crc32": "2a308151",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 4101502,
+      "length": 1946
+    },
+    {
+      "path": "maps/de_mirage/world_visibility.vvis_c",
+      "crc32": "6e944033",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 68618,
+      "length": 4032884
+    },
+    {
+      "path": "maps/de_mirage/worldnodes/n0.vwnod_c",
+      "crc32": "49ec8a9d",
+      "preload_bytes": 0,
+      "archive": 32767,
+      "offset": 0,
+      "length": 68618
+    }
+  ]
+}

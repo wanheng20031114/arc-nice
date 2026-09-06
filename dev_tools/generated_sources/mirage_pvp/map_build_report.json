@@ -1,0 +1,90 @@
+{
+  "world_size": [
+    1920,
+    1600
+  ],
+  "walkable_tiles": 1001,
+  "wall_rectangles": 64,
+  "landmark_count": 23,
+  "collidable_landmarks": 25,
+  "facade_edges": 462,
+  "connected": true,
+  "clearance_probe_cells": 12923,
+  "accessible_probe_cells": 12873,
+  "native_alpha": true,
+  "spawns": {
+    "CT": [
+      [
+        250,
+        559
+      ],
+      [
+        252,
+        581
+      ],
+      [
+        253,
+        537
+      ],
+      [
+        215,
+        565
+      ],
+      [
+        269,
+        603
+      ],
+      [
+        207,
+        579
+      ],
+      [
+        244,
+        606
+      ],
+      [
+        265,
+        573
+      ]
+    ],
+    "T": [
+      [
+        698,
+        277
+      ],
+      [
+        698,
+        300
+      ],
+      [
+        698,
+        344
+      ],
+      [
+        698,
+        365
+      ],
+      [
+        698,
+        387
+      ],
+      [
+        683,
+        325
+      ],
+      [
+        713,
+        354
+      ],
+      [
+        712,
+        397
+      ]
+    ]
+  },
+  "references": [
+    "https://totalcsgo.com/callouts/mirage",
+    "https://docs.godotengine.org/en/stable/tutorials/2d/using_tilesets.html"
+  ],
+  "adaptation": "Single-plane 2D: underpass offset beside VIP, walkable window and balcony steps; no bomb gameplay in elimination PVP."
+}

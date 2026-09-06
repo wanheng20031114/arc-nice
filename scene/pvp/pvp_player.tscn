@@ -1,0 +1,108 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scene/pvp/pvp_player.gd" id="1"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/player_weishidaier.tres" id="2"]
+[ext_resource type="Texture2D" path="res://resources/texture/pvp/desert_eagle.tres" id="3"]
+[ext_resource type="Texture2D" path="res://resources/texture/pvp/ak47.tres" id="4"]
+
+[sub_resource type="CircleShape2D" id="movement"]
+radius = 7.0
+
+[sub_resource type="RectangleShape2D" id="body"]
+size = Vector2(13, 13)
+
+[sub_resource type="CircleShape2D" id="head"]
+radius = 5.0
+
+[node name="PvpPlayer" type="CharacterBody2D"]
+collision_layer = 2
+collision_mask = 1
+motion_mode = 1
+script = ExtResource("1")
+
+[node name="TeamRing" type="Polygon2D" parent="."]
+position = Vector2(0, 10)
+polygon = PackedVector2Array(-7, 0, -4, -2, 4, -2, 7, 0, 4, 2, -4, 2)
+color = Color(0.35, 0.72, 0.93, 1)
+
+[node name="BodySprite" type="AnimatedSprite2D" parent="."]
+texture_filter = 1
+sprite_frames = ExtResource("2")
+animation = &"normal_right"
+
+[node name="MovementShape" type="CollisionShape2D" parent="."]
+position = Vector2(0, 3)
+shape = SubResource("movement")
+
+[node name="BodyHitbox" type="Area2D" parent="."]
+position = Vector2(0, 3)
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+
+[node name="Shape" type="CollisionShape2D" parent="BodyHitbox"]
+shape = SubResource("body")
+
+[node name="HeadHitbox" type="Area2D" parent="."]
+position = Vector2(0, -8)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+
+[node name="Shape" type="CollisionShape2D" parent="HeadHitbox"]
+shape = SubResource("head")
+
+[node name="WeaponPivot" type="Node2D" parent="."]
+position = Vector2(0, -1)
+
+[node name="Deagle" type="Sprite2D" parent="WeaponPivot"]
+position = Vector2(8, 1)
+scale = Vector2(0.05, 0.05)
+texture = ExtResource("3")
+
+[node name="AK" type="Sprite2D" parent="WeaponPivot"]
+visible = false
+position = Vector2(12, 1)
+scale = Vector2(0.06, 0.06)
+texture = ExtResource("4")
+
+[node name="NameLabel" type="Label" parent="."]
+offset_left = -60.0
+offset_top = -27.0
+offset_right = 60.0
+offset_bottom = -16.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.9, 0.92, 0.95, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 8
+text = "维什戴尔"
+horizontal_alignment = 1
+
+[node name="Camera2D" type="Camera2D" parent="."]
+enabled = false
+zoom = Vector2(2, 2)
+position_smoothing_enabled = true
+position_smoothing_speed = 12.0
+limit_left = 0
+limit_top = 0
+limit_right = 1920
+limit_bottom = 1600
+
+[node name="HitFlashTimer" type="Timer" parent="."]
+wait_time = 0.10
+one_shot = true
+
+[node name="MuzzleFlash" type="Polygon2D" parent="WeaponPivot"]
+visible = false
+position = Vector2(15, 0)
+polygon = PackedVector2Array(0, 0, 6, -3, 4, 0, 8, 1, 3, 2, 5, 4)
+color = Color(1, 0.88, 0.49, 1)
+
+[node name="MuzzleFlashTimer" type="Timer" parent="."]
+wait_time = 0.045
+one_shot = true
+
+[connection signal="timeout" from="HitFlashTimer" to="." method="_on_hit_flash_timer_timeout"]
+[connection signal="timeout" from="MuzzleFlashTimer" to="." method="_on_muzzle_flash_timer_timeout"]

@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://dev_tools/verify_mirage_lan.gd" id="1_test"]
+[ext_resource type="Script" path="res://scene/multiplayer/net_manager.gd" id="2_net"]
+
+[node name="VerifyMirageLan" type="Node"]
+script = ExtResource("1_test")
+
+[node name="HostContext" type="Node" parent="."]
+
+[node name="NetManager" type="Node" parent="HostContext"]
+script = ExtResource("2_net")
+
+[node name="ClientContext" type="Node" parent="."]
+
+[node name="NetManager" type="Node" parent="ClientContext"]
+script = ExtResource("2_net")

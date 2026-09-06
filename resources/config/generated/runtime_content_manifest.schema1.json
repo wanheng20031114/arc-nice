@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "22ecaa463e9ed12bbab68b5a372d2cd1342da30b2feee280dabc70cd1788edf3",
+	"content_sha256": "80400340586e2292084dc1dd9918cc7c4566325c937740cd317851ded95c4fe5",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -1297,6 +1297,10 @@
 			"sha256": "ad36c772bced49504367a54d59dbc3d494d24e05c618a3db8a0b4c87026e8a83"
 		},
 		{
+			"path": "res://resources/animation/player_weishidaier.tres",
+			"sha256": "33cc9755c0c93084b549461915645b9dcff513d497d7f18fa39c01a23b7d1c79"
+		},
+		{
 			"path": "res://resources/animation/slime.tres",
 			"sha256": "98bfb7bea7c73a30dad6701f3838992c49ab161da8afd7bf5d89e24be60ab010"
 		},
@@ -1569,6 +1573,14 @@
 			"sha256": "fafc562587061bcc221d65b7369c6d0a0033a53c4c06e335312f35b37ebc243b"
 		},
 		{
+			"path": "res://resources/audio/Cowboy_gunshot.wav",
+			"sha256": "3135fd58a984df0bd004743d85469f41eff866267ca480faced8aeb3bb09776c"
+		},
+		{
+			"path": "res://resources/audio/Cowboy_gunshot.wav.import",
+			"sha256": "0bbedc989bf1ca3a6b8f77438b1aa80e7c16af68289c1ca6abc4c6fd9ff1c7ea"
+		},
+		{
 			"path": "res://resources/audio/capoo_ak47_fire.wav",
 			"sha256": "c002cbb6f1b0730bfd3dda867aeeb2b6f9a6d3102c57c136a078352393236aa9"
 		},
@@ -1743,6 +1755,14 @@
 		{
 			"path": "res://resources/audio/cowboy_explosion.wav.import",
 			"sha256": "9c3744137cb13ca8180afa3f93febd0799c4d460bc5dd282728a7347596eee8b"
+		},
+		{
+			"path": "res://resources/audio/cowboy_gunload.wav",
+			"sha256": "e6a78eced634876c7b71e3e16f62739564a268128ac3f1d08417454d22badf78"
+		},
+		{
+			"path": "res://resources/audio/cowboy_gunload.wav.import",
+			"sha256": "3b39cd5f2808d18fc3cc4e1787ff6f1ba157bbea720e78c674bd047f598872b1"
 		},
 		{
 			"path": "res://resources/audio/cowboy_monsterdie.wav",
@@ -4407,6 +4427,10 @@
 		{
 			"path": "res://resources/shader/plant_visual_pixel_snap.gdshader",
 			"sha256": "08d9ebdfce9e677092e221270e9c1f34ba7fe84f4a2a808146ec83b7dd8c88f7"
+		},
+		{
+			"path": "res://resources/shader/pvp_visibility.gdshader",
+			"sha256": "d4deb107cb382239edf38e89e7fd51977f89b9e324bf2827ca536b8b3afc8b95"
 		},
 		{
 			"path": "res://resources/shader/rapid_projectile_single_pass.gdshader",
@@ -7209,6 +7233,14 @@
 			"sha256": "55e5f23c163d993f101ad728039d3f274b05cc2b6f644e2f8e21a70b4f7c147b"
 		},
 		{
+			"path": "res://resources/texture/player/weishidaier/body.png",
+			"sha256": "0dbe43a95f46e540597bfcba33d6368078f1ff5dff5493640ba15e06f0e4b2d6"
+		},
+		{
+			"path": "res://resources/texture/player/weishidaier/body.png.import",
+			"sha256": "e8e3117441df4fb1b60fd3d8c87e8cfc39b0e23277c428b2e8030f79c21ddfc5"
+		},
+		{
 			"path": "res://resources/texture/player_profile_background.png",
 			"sha256": "4fabca500e3be210b307751ccd9b42a066a3a5606f3e4c478143d85dd202ea1a"
 		},
@@ -7279,6 +7311,74 @@
 		{
 			"path": "res://resources/texture/profile_tab_unselected.png.import",
 			"sha256": "86e971000272569ca146ddfe7c56a726985f36386c9e7e2f8322423fccd28837"
+		},
+		{
+			"path": "res://resources/texture/pvp/ak47.tres",
+			"sha256": "6e0db173ee7bdfe7ada16b06a879e9cfe0d628b82ad420fd86958cd8c8b5e39d"
+		},
+		{
+			"path": "res://resources/texture/pvp/ammo_crates.tres",
+			"sha256": "8dd26caeb1ef779c5b7f2a3a4b22bca03a6db0eb8e89bb766b515d894035b286"
+		},
+		{
+			"path": "res://resources/texture/pvp/arch.tres",
+			"sha256": "23e2b953ab1fcb4caaa7bb9bcfd2d7ab976c4bdaf5d72ebf23fba7d931499371"
+		},
+		{
+			"path": "res://resources/texture/pvp/bench.tres",
+			"sha256": "92cca5fef28b6fc51bf122467d0d12193763550019ac691509087083c57603db"
+		},
+		{
+			"path": "res://resources/texture/pvp/column.tres",
+			"sha256": "28d8b382f754020cd8ad937cf372ea3638974ced48bf84c27a6095dc7e633c97"
+		},
+		{
+			"path": "res://resources/texture/pvp/crates.tres",
+			"sha256": "6ef0d3a4e3c339d1b0af142437a165e94cdda97ee1f127190e73b68508d70ec6"
+		},
+		{
+			"path": "res://resources/texture/pvp/desert_eagle.tres",
+			"sha256": "d32918569a8eee47652dcd29c6e030237cea8fc9f07514a90037dbd05fee90ef"
+		},
+		{
+			"path": "res://resources/texture/pvp/market_stall.tres",
+			"sha256": "e31be004c889e96d0e02cbf5950fb4d2cb11472c52020f1ebd41a693cabb508b"
+		},
+		{
+			"path": "res://resources/texture/pvp/mirage_props.png",
+			"sha256": "bf33c494a8ed0c5f5a47fa4c46032d63980db2ef01685b91dca556166f043e5a"
+		},
+		{
+			"path": "res://resources/texture/pvp/mirage_props.png.import",
+			"sha256": "182f9ad267de92548907d2893b467ddf82d2368a6b7d47e75ee2d1607616a7d2"
+		},
+		{
+			"path": "res://resources/texture/pvp/mirage_tiles.png",
+			"sha256": "b28d14a10ee2ad20ac5c73b38712ac4a7ba593bbf54461f5e2c9462d45a21f71"
+		},
+		{
+			"path": "res://resources/texture/pvp/mirage_tiles.png.import",
+			"sha256": "e82114b17b0660c37d2c49a480eb9074db1e58272c1bc49e929fbe0afcab11d3"
+		},
+		{
+			"path": "res://resources/texture/pvp/mirage_tileset.tres",
+			"sha256": "5188dc74fd975fef33101a51319b1eada9cd2b9f8491bbb899bbfd938870942f"
+		},
+		{
+			"path": "res://resources/texture/pvp/palm.tres",
+			"sha256": "e51a847eaec996f2fc717c9dd74338393d16a376c36a727160c82797b6a12b43"
+		},
+		{
+			"path": "res://resources/texture/pvp/pottery.tres",
+			"sha256": "e98ae868a72bee9ec710c01a01263789d090881ba2860005f9b88e851d2f19ec"
+		},
+		{
+			"path": "res://resources/texture/pvp/rugs.tres",
+			"sha256": "6ed226148f17ec1f3ba53f744723ab2b10a2270ca22e5b369812a22049f03e12"
+		},
+		{
+			"path": "res://resources/texture/pvp/van.tres",
+			"sha256": "4de8290358ecb9216b5366d584666d9162e4699573415e25f8292db64fa76d48"
 		},
 		{
 			"path": "res://resources/texture/research/research_center_panel_background.png",
@@ -7854,11 +7954,7 @@
 		},
 		{
 			"path": "res://scene/combat/feedback/shaders/entity_motion_status.gdshader",
-			"sha256": "a9724e312c3c80836bb8bf77c4a7bcec47cf308754a648a752eba368a8e2e1b4"
-		},
-		{
-			"path": "res://scene/combat/navigation/grid_pathfinder.gd",
-			"sha256": "d5d27ba54a954f97f7ebe7167c975c5d4d8d0e7a342b2673fefa66d380166feb"
+			"sha256": "65d2f7690964ca65613dcefd672429febd41ca7e859f34c441575ec940725a79"
 		},
 		{
 			"path": "res://scene/combat/pickups/pickup.gd",
@@ -8010,7 +8106,7 @@
 		},
 		{
 			"path": "res://scene/combat/simulation/enemy_simulation_coordinator.gd",
-			"sha256": "c8399a6d64b1a42342dce5d1f18e1110f04737d5f511048273a727a276736300"
+			"sha256": "a554d78aeb2d0ce8f31150c38a5b8c23085801654bcb5eba01b407b10e94a8ba"
 		},
 		{
 			"path": "res://scene/combat/simulation/enemy_simulation_coordinator.tscn",
@@ -8114,7 +8210,7 @@
 		},
 		{
 			"path": "res://scene/combat/simulation/rapid_projectile_presenter.tscn",
-			"sha256": "114d73cdc375c0c854e00dc2bab8de62b1d7e5c446398e794b0c6a20106d1125"
+			"sha256": "14ef130e250bf977929d17cd65e1daf8fda16239d47aa272b49bf9915f45707f"
 		},
 		{
 			"path": "res://scene/combat/simulation/rapid_projectile_presenter_material.tres",
@@ -8234,7 +8330,7 @@
 		},
 		{
 			"path": "res://scene/enemy/enemy.gd",
-			"sha256": "23c7ff4e7be6a32195f3179b255b0679b9fc37de3c9b26b43ec3e862ea4ad53f"
+			"sha256": "987bde04f7c22502ff92ac0ef68b9bc0cc1437808e1c61e872268aac86b8229d"
 		},
 		{
 			"path": "res://scene/enemy/enemy.tscn",
@@ -8258,7 +8354,7 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_drone_operator.gd",
-			"sha256": "60a59917dd87b04eb26ab06c57b4d3aa61381dfb595cf5481f219b1e5716e625"
+			"sha256": "4c3546c71a3eaf00f31ec5d6f6bfb24f5a4b0547897518d009034dab2140724d"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_drone_operator.tscn",
@@ -8569,12 +8665,56 @@
 			"sha256": "2dac8b6d1fc6cb87b1f7ad2d7f50b34a8af69727ec768b3fcdd72bd7de9e27d7"
 		},
 		{
+			"path": "res://scene/game_modes/definitions/mirage_pvp.tres",
+			"sha256": "b1afc1ae3b25177ec3cea0cac07ee6fe16cafd458c0c2ae44a8c3005ca4a8e71"
+		},
+		{
+			"path": "res://scene/game_modes/definitions/standard.tres",
+			"sha256": "0fe52880a1ee587e103f42a6555394d0d01cdb6eb946addbbb7e7f6837737c21"
+		},
+		{
+			"path": "res://scene/game_modes/definitions/test_arena_p1.tres",
+			"sha256": "8a75ac6ec78cd59f6e269e66b7d48c90226a6dfa381f6f5266771e6356e502dd"
+		},
+		{
+			"path": "res://scene/game_modes/definitions/test_arena_p1b.tres",
+			"sha256": "dae3c57420ca1426187b87485521424f7e3474948f7f2953b56a1bc29208daf5"
+		},
+		{
+			"path": "res://scene/game_modes/definitions/test_arena_p1c.tres",
+			"sha256": "edfd3a233fe68c05a862ff0fcdae5e0d39103320a9ea96530252cbfacb11f67b"
+		},
+		{
+			"path": "res://scene/game_modes/definitions/test_arena_p1d.tres",
+			"sha256": "8a7e9c4e6f7ec644ee6999166752463878f47d538a61a18343c0185f14483142"
+		},
+		{
+			"path": "res://scene/game_modes/definitions/test_arena_p1e.tres",
+			"sha256": "e0000fbfafd7c50dce839fc02f52d9c861730b5b2a0f8d240e410383c9a45626"
+		},
+		{
+			"path": "res://scene/game_modes/definitions/test_arena_p2.tres",
+			"sha256": "8aadefacf8d1a457bfaa7eb8978db0cd0ff67273711f56735b17af555afe0ecd"
+		},
+		{
+			"path": "res://scene/game_modes/definitions/test_arena_p3.tres",
+			"sha256": "1ebf95c2c67b5b84a0ce267e17f2934d186083e93f4122c577be34f90d254d48"
+		},
+		{
 			"path": "res://scene/game_modes/definitions/tower_defense.tres",
 			"sha256": "5c42366c355d82eea5659d9121e7bb81dbc508702295961944221da8eac4cd99"
 		},
 		{
+			"path": "res://scene/game_modes/game_mode_catalog.gd",
+			"sha256": "afa183703c45bac29750226b121462895d17335b8e6d7ab1af474b60aadcfa11"
+		},
+		{
+			"path": "res://scene/game_modes/game_mode_catalog.tres",
+			"sha256": "cd5a15a28be7dd28c7c3d068823e18bad565341ddf1cf5fc052468eb4c10daa3"
+		},
+		{
 			"path": "res://scene/game_modes/game_mode_definition.gd",
-			"sha256": "488e14174043b4106c3c806a87e149a51ce66f3f0ddef2993aa724cdc795c7b3"
+			"sha256": "ccc09447d65eb27f326f3363cdaba90149efade4923e1a1ca64112404390b85a"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/combat/reward/rogue_emergency_reward_choice_overlay.gd",
@@ -8586,7 +8726,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/rogue/combat/rogue_combat_multiplayer_coordinator.gd",
-			"sha256": "096c3c6f513a3ed63101e32212e69b07ecd09b21c21a447473af4537a154c1ca"
+			"sha256": "f8c48cc7d7c0fe89b6f72b1c000b102d19734a2d1124793521c07e4dfe76cccc"
 		},
 		{
 			"path": "res://scene/game_modes/rogue/combat/rogue_combat_result_overlay.gd",
@@ -8838,7 +8978,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/boss/tower_defense_boss_coordinator.gd",
-			"sha256": "c20c33529f7728e71bd2f95e222cd58442631c040cd140861b9fa9878bdd0196"
+			"sha256": "2a3dfc75cac300b9f676ba66b9f5ac98cba99d95baea5e08c2980d9000fff0b9"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/boss/tower_defense_boss_coordinator.tscn",
@@ -8854,7 +8994,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_coordinator.gd",
-			"sha256": "a03942beb6ff700712d4be1cd43d5e3e618f4d24fe563f6670f1e80978cc1a4b"
+			"sha256": "276fad8844e34e388cf519f9230609ef3b286fcf0348cb34b4eb4cb445eb68a3"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_coordinator.tscn",
@@ -8886,7 +9026,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/economy/research/research_center_panel.gd",
-			"sha256": "c34fab0b615a9b502e21dcbe52543692b5afa647e56b93655de629fcfc579f89"
+			"sha256": "9d70d3a7da73d4b6ae410dbed9eec8ddc2ef316410955e30c29e6b4282274f25"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/economy/research/research_center_panel.tscn",
@@ -8914,7 +9054,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/enemy/tower_defense_enemy_coordinator.gd",
-			"sha256": "80d19d85f72147be5b32af14009c1c961c398e0d5911e620bb2ad5d3e4b789ad"
+			"sha256": "799c3258ed25865456da8ee2d0f42eaad8d4381150838bb7d93d6988a589341e"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/enemy/tower_defense_enemy_coordinator.tscn",
@@ -8998,7 +9138,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.gd",
-			"sha256": "f0eeede600d4182863767574cc338f8909b522233648e11b261b6ea56930ab2d"
+			"sha256": "ccf13d561f43b23922fce4160a9532448215265190a77dcaf0130fb11d50d8a3"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.tscn",
@@ -9114,7 +9254,7 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.gd",
-			"sha256": "94516c39dd8090d0cc8af311da90bccabd38be729d4a239acad93af883601e39"
+			"sha256": "04f7a2cf6beb01366a32d946ef3faf745c32a12d81caeb614791d3de3a40129d"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.tscn",
@@ -9130,11 +9270,11 @@
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/tower_defense_game.gd",
-			"sha256": "fa5bac69bcb25920042dde0a505b976fa8ba71442d306982a74b4476f4cd8818"
+			"sha256": "48095d6a711853b6256ecc19b5ae581b7db63600b13b3c7d2355fad19293fc03"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/tower_defense_game.tscn",
-			"sha256": "5e7ecb21177fec149368a5512163cfdce298be29425a10a2d72d10adb503ebfd"
+			"sha256": "dd3a483f9be1dffdce78dc2c703da681a51fd1b2b6ab2bbe8d33bfaecdadac7e"
 		},
 		{
 			"path": "res://scene/game_modes/tower_defense/ui/day_phase_announcement.gd",
@@ -9295,6 +9435,14 @@
 		{
 			"path": "res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn",
 			"sha256": "5b7036e4a90a7f80e5fe47f83c67d7224414a09665f04b4995155af6f9d9e366"
+		},
+		{
+			"path": "res://scene/multiplayer/net_constants.gd",
+			"sha256": "0607d9f8d40231d28b3d2d5853b61403081950d0ead25aca2713bbeadea36f51"
+		},
+		{
+			"path": "res://scene/multiplayer/net_manager.gd",
+			"sha256": "788ac8d396d0f29502cd42cb27cbfe3e52368b2900a12b5459ee5b42542ec64e"
 		},
 		{
 			"path": "res://scene/plant_defense/agave_cannon.gd",
@@ -9467,6 +9615,78 @@
 		{
 			"path": "res://scene/plant_defense/wood_processing_station.tscn",
 			"sha256": "a97d15e054fb9cecdf4748728d90dae9ab200db0ebfd91546afb472ceca3b100"
+		},
+		{
+			"path": "res://scene/pvp/maps/mirage_map.gd",
+			"sha256": "7bbb9a75576b23ff5efb98d2a3e126ae247720552d0815ad0ea27922a4a2b117"
+		},
+		{
+			"path": "res://scene/pvp/maps/mirage_map.tscn",
+			"sha256": "0fe2a0392a99c20fff93137b76e1c1ed498d78c4e83abbe83fc54a4980e9448a"
+		},
+		{
+			"path": "res://scene/pvp/mirage_pvp.gd",
+			"sha256": "b5b8697c31e8a5efd8b1523d00c0909be3489244ab4b0066927f6ea27c22c3f9"
+		},
+		{
+			"path": "res://scene/pvp/mirage_pvp.tscn",
+			"sha256": "132a39cdcc26d28eb8b99fb5e5f8d430743d1bca9d9a37665701324e7ff9a648"
+		},
+		{
+			"path": "res://scene/pvp/pvp_player.gd",
+			"sha256": "e2e33a76b538425d418346ddfddcc923a4e263dd2bda2b620be6314a41df5fd6"
+		},
+		{
+			"path": "res://scene/pvp/pvp_player.tscn",
+			"sha256": "c263212b4c9986ff5a3ff214098e6852fc207fe0f361381341d5fc25ccb22a06"
+		},
+		{
+			"path": "res://scene/pvp/pvp_projectile.gd",
+			"sha256": "ecebf683b6ec85d6abf055bd127d21a549688954fbbe6df7873525b60fd955b1"
+		},
+		{
+			"path": "res://scene/pvp/pvp_projectile.tscn",
+			"sha256": "ee80aba21b87f7117962499d3a433ee34f778737c57eebca770b48840d76a1ee"
+		},
+		{
+			"path": "res://scene/pvp/pvp_rules.gd",
+			"sha256": "3848c955bc4b879ec695916a828d290bd85dde1c3d15af280c1d4936b2bd5d9c"
+		},
+		{
+			"path": "res://scene/pvp/pvp_visibility.gd",
+			"sha256": "4008e9a40229ac9c36e472cc71c79a9859df3748e50bccaa6fec2394e8285b05"
+		},
+		{
+			"path": "res://scene/pvp/pvp_visibility.tscn",
+			"sha256": "4fba30b805313d291006d57d595b1ab899cf2799fe3c93db297a6fd4271d2fc3"
+		},
+		{
+			"path": "res://scene/pvp/pvp_weapon_pickup.gd",
+			"sha256": "d31cb5afbb933321b3fad6065af67f3ca5991aaf37dec72100cd640a3d86663c"
+		},
+		{
+			"path": "res://scene/pvp/pvp_weapon_pickup.tscn",
+			"sha256": "394ffe14799aa9e493a536f4c9975f5f4967ad88c502fec6b6fec01913536d1d"
+		},
+		{
+			"path": "res://scene/pvp/ui/pvp_crosshair.gd",
+			"sha256": "c110a87124bbc9c7f30c9d48d086d8c854297dcac7b692fd0a0069f0941e477b"
+		},
+		{
+			"path": "res://scene/pvp/ui/pvp_hud.gd",
+			"sha256": "e331139b4207e8979d26a65fec3f6e78c55024ebcc9a032a4d558be1ab8b4da2"
+		},
+		{
+			"path": "res://scene/pvp/ui/pvp_hud.tscn",
+			"sha256": "3ad045739963b9fd037cc5f6b57353919ffe33d52fd4fa244abadcc28090eeab"
+		},
+		{
+			"path": "res://scene/pvp/ui/pvp_minimap.gd",
+			"sha256": "c73f3d4e9527e3ae20a3bd244616010580f80955dcecd4b3ed0d6d1580230458"
+		},
+		{
+			"path": "res://scene/pvp/ui/pvp_shadow_canvas.gd",
+			"sha256": "02d8c87bf4641088bbdeae73830f65ef1518b30c85beb8b55d1e79326e72cd9c"
 		},
 		{
 			"path": "res://scene/settings/settings_gear_icon.gd",

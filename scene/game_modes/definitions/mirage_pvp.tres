@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="GameModeDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/game_mode_definition.gd" id="1_definition"]
+
+[resource]
+script = ExtResource("1_definition")
+mode_id = 9
+wire_key = &"mirage_pvp"
+display_name = "荒漠迷城 · PVP"
+visibility = 2
+lobby_label = "Mirage · CT / T 对抗"
+lobby_icon_path = "res://resources/texture/pvp/mirage_icon.png"
+lobby_order = 9
+supports_singleplayer = false
+multiplayer_entry_scene_path = "res://scene/pvp/mirage_pvp.tscn"
+multiplayer_runtime_scene_path = "res://scene/pvp/mirage_pvp.tscn"
+uses_wave_campaign = false
+include_starting_inventory = false
+runtime_load_weight = 5.0
+entry_load_weight = 3.0

@@ -29,6 +29,7 @@ enum SelectionAudience {
 @export_range(0, 255, 1) var lobby_order: int = 0
 
 @export_group("Entry and runtime paths")
+@export var supports_singleplayer: bool = true
 @export_file("*.tscn") var singleplayer_entry_scene_path: String = ""
 @export_file("*.tscn") var multiplayer_entry_scene_path: String = ""
 @export_file("*.tscn") var multiplayer_runtime_scene_path: String = ""
@@ -73,14 +74,14 @@ func validate_definition() -> PackedStringArray:
 			errors.append("mode %d has an empty lobby label" % mode_id)
 		if lobby_icon_path.strip_edges().is_empty():
 			errors.append("mode %d has an empty lobby icon path" % mode_id)
-		if singleplayer_entry_scene_path.strip_edges().is_empty():
+		if supports_singleplayer and singleplayer_entry_scene_path.strip_edges().is_empty():
 			errors.append("mode %d has no singleplayer entry" % mode_id)
 		if multiplayer_entry_scene_path.strip_edges().is_empty():
 			errors.append("mode %d has no multiplayer entry" % mode_id)
 		if multiplayer_runtime_scene_path.strip_edges().is_empty():
 			errors.append("mode %d has no multiplayer runtime" % mode_id)
 		if uses_wave_campaign:
-			if singleplayer_campaign_path.strip_edges().is_empty():
+			if supports_singleplayer and singleplayer_campaign_path.strip_edges().is_empty():
 				errors.append("mode %d has no singleplayer campaign" % mode_id)
 			if multiplayer_campaign_path.strip_edges().is_empty():
 				errors.append("mode %d has no multiplayer campaign" % mode_id)

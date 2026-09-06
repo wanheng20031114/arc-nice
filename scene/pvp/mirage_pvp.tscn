@@ -1,0 +1,46 @@
+[gd_scene load_steps=8 format=3]
+[ext_resource type="Script" path="res://scene/pvp/mirage_pvp.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scene/pvp/maps/mirage_map.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://scene/pvp/ui/pvp_hud.tscn" id="3"]
+[ext_resource type="PackedScene" path="res://scene/pvp/pvp_visibility.tscn" id="4"]
+[ext_resource type="AudioStream" path="res://resources/audio/Cowboy_gunshot.wav" id="5"]
+[ext_resource type="AudioStream" path="res://resources/audio/capoo_ak47_fire.wav" id="6"]
+[ext_resource type="AudioStream" path="res://resources/audio/cowboy_gunload.wav" id="7"]
+
+[node name="MpGame" type="Node2D"]
+texture_filter = 1
+script = ExtResource("1")
+
+[node name="Map" parent="." instance=ExtResource("2")]
+
+[node name="Pickups" type="Node2D" parent="."]
+z_index = 1
+
+[node name="Players" type="Node2D" parent="."]
+z_index = 2
+y_sort_enabled = true
+
+[node name="Projectiles" type="Node2D" parent="."]
+z_index = 3
+
+[node name="Visibility" parent="." instance=ExtResource("4")]
+
+[node name="HUD" parent="." instance=ExtResource("3")]
+
+[node name="DeagleSound" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("5")
+volume_db = -13.0
+max_distance = 650.0
+max_polyphony = 8
+
+[node name="AKSound" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("6")
+volume_db = -16.0
+max_distance = 650.0
+max_polyphony = 12
+
+[node name="ReloadSound" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("7")
+volume_db = -14.0
+max_distance = 200.0
+max_polyphony = 4

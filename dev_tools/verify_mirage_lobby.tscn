@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://dev_tools/verify_mirage_lobby.gd" id="1_test"]
+[ext_resource type="Script" path="res://scene/multiplayer/net_manager.gd" id="2_net"]
+
+[node name="VerifyMirageLobby" type="Node"]
+script = ExtResource("1_test")
+
+[node name="Host" type="Node" parent="."]
+script = ExtResource("2_net")
+
+[node name="Client" type="Node" parent="."]
+script = ExtResource("2_net")

@@ -40,6 +40,7 @@ class GameMode(str, Enum):
     TEST_ARENA_P1C = "test_arena_p1c"
     TEST_ARENA_P1D = "test_arena_p1d"
     TEST_ARENA_P1E = "test_arena_p1e"
+    MIRAGE_PVP = "mirage_pvp"
 
 
 # 正式大厅模式准入的唯一真源。TEST_ARENA_P3 是已发布 Rogue 的稳定 wire key，
@@ -49,6 +50,7 @@ RELEASE_GAME_MODES: frozenset[GameMode] = frozenset(
         GameMode.STANDARD,
         GameMode.TOWER_DEFENSE,
         GameMode.TEST_ARENA_P3,
+        GameMode.MIRAGE_PVP,
     }
 )
 

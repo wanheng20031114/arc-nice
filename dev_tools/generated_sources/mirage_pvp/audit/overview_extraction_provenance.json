@@ -1,0 +1,329 @@
+{
+  "vpk": "E:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\pak01_dir.vpk",
+  "vpk_version": 2,
+  "total_entries": 135686,
+  "matching_entries": [
+    {
+      "path": "resource/overviews/ar_baggage.txt",
+      "crc32": "c3587d4a",
+      "preload_bytes": 0,
+      "archive": 187,
+      "offset": 1682544,
+      "length": 496
+    },
+    {
+      "path": "resource/overviews/ar_shoots.txt",
+      "crc32": "ad2052f0",
+      "preload_bytes": 0,
+      "archive": 187,
+      "offset": 1683040,
+      "length": 216
+    },
+    {
+      "path": "resource/overviews/ar_shoots_night.txt",
+      "crc32": "2e5c1a26",
+      "preload_bytes": 0,
+      "archive": 107,
+      "offset": 82629472,
+      "length": 228
+    },
+    {
+      "path": "resource/overviews/cs_italy.txt",
+      "crc32": "8376fdb4",
+      "preload_bytes": 0,
+      "archive": 158,
+      "offset": 84085376,
+      "length": 634
+    },
+    {
+      "path": "resource/overviews/cs_office.txt",
+      "crc32": "26b4695c",
+      "preload_bytes": 0,
+      "archive": 22,
+      "offset": 49617200,
+      "length": 605
+    },
+    {
+      "path": "resource/overviews/de_ancient.txt",
+      "crc32": "f3057c5c",
+      "preload_bytes": 0,
+      "archive": 158,
+      "offset": 84084672,
+      "length": 447
+    },
+    {
+      "path": "resource/overviews/de_ancient_night.txt",
+      "crc32": "f3057c5c",
+      "preload_bytes": 0,
+      "archive": 107,
+      "offset": 82622688,
+      "length": 447
+    },
+    {
+      "path": "resource/overviews/de_ancient_v1.txt",
+      "crc32": "f3057c5c",
+      "preload_bytes": 0,
+      "archive": 107,
+      "offset": 82623136,
+      "length": 447
+    },
+    {
+      "path": "resource/overviews/de_ancient_v2.txt",
+      "crc32": "f3057c5c",
+      "preload_bytes": 0,
+      "archive": 107,
+      "offset": 82623584,
+      "length": 447
+    },
+    {
+      "path": "resource/overviews/de_anubis.txt",
+      "crc32": "5fcbe99a",
+      "preload_bytes": 0,
+      "archive": 158,
+      "offset": 84085120,
+      "length": 254
+    },
+    {
+      "path": "resource/overviews/de_cache.txt",
+      "crc32": "2da3d159",
+      "preload_bytes": 0,
+      "archive": 366,
+      "offset": 53367152,
+      "length": 527
+    },
+    {
+      "path": "resource/overviews/de_dust.txt",
+      "crc32": "cacd39dc",
+      "preload_bytes": 0,
+      "archive": 22,
+      "offset": 49617808,
+      "length": 438
+    },
+    {
+      "path": "resource/overviews/de_dust2.txt",
+      "crc32": "ca427be7",
+      "preload_bytes": 0,
+      "archive": 22,
+      "offset": 49618256,
+      "length": 541
+    },
+    {
+      "path": "resource/overviews/de_inferno.txt",
+      "crc32": "a36ac0ff",
+      "preload_bytes": 0,
+      "archive": 433,
+      "offset": 14716784,
+      "length": 414
+    },
+    {
+      "path": "resource/overviews/de_inferno_s2.txt",
+      "crc32": "a36ac0ff",
+      "preload_bytes": 0,
+      "archive": 433,
+      "offset": 14717200,
+      "length": 414
+    },
+    {
+      "path": "resource/overviews/de_mirage.txt",
+      "crc32": "fe5bb4c2",
+      "preload_bytes": 0,
+      "archive": 22,
+      "offset": 49618800,
+      "length": 640
+    },
+    {
+      "path": "resource/overviews/de_nuke.txt",
+      "crc32": "c33e22ac",
+      "preload_bytes": 0,
+      "archive": 22,
+      "offset": 49619440,
+      "length": 746
+    },
+    {
+      "path": "resource/overviews/de_overpass.txt",
+      "crc32": "fe87cace",
+      "preload_bytes": 0,
+      "archive": 187,
+      "offset": 1660288,
+      "length": 444
+    },
+    {
+      "path": "resource/overviews/de_overpass_2v2.txt",
+      "crc32": "fe87cace",
+      "preload_bytes": 0,
+      "archive": 187,
+      "offset": 1660736,
+      "length": 444
+    },
+    {
+      "path": "resource/overviews/de_train.txt",
+      "crc32": "19744c40",
+      "preload_bytes": 0,
+      "archive": 309,
+      "offset": 26272,
+      "length": 547
+    },
+    {
+      "path": "resource/overviews/de_vertigo.txt",
+      "crc32": "7ab08d16",
+      "preload_bytes": 0,
+      "archive": 187,
+      "offset": 1661184,
+      "length": 767
+    },
+    {
+      "path": "resource/overviews/workshop_preview.txt",
+      "crc32": "d25af5c7",
+      "preload_bytes": 0,
+      "archive": 106,
+      "offset": 95498336,
+      "length": 111
+    },
+    {
+      "path": "panorama/styles/mapoverview.vcss_c",
+      "crc32": "020caa6b",
+      "preload_bytes": 0,
+      "archive": 262,
+      "offset": 89711552,
+      "length": 22783
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/icon-death.vsvg_c",
+      "crc32": "4fc74383",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43254768,
+      "length": 4531
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/icon-death_50black.vsvg_c",
+      "crc32": "9f5045ea",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43259312,
+      "length": 6711
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/icon-death_black.vsvg_c",
+      "crc32": "10d3b2e8",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43266032,
+      "length": 6714
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/icon-enemy-death_png.vtex_c",
+      "crc32": "a7991b3b",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43272752,
+      "length": 6768
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/icon-enemy-on-map_png.vtex_c",
+      "crc32": "933fe3bc",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43279520,
+      "length": 4952
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/icon-flashed_png.vtex_c",
+      "crc32": "5d8e80ef",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43284480,
+      "length": 22122
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/icon-hostage-death_png.vtex_c",
+      "crc32": "ee71d2d2",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43306608,
+      "length": 6768
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/icon-hostage-on-map_png.vtex_c",
+      "crc32": "7810a929",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43313376,
+      "length": 4952
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/icon-muzzle-flash_png.vtex_c",
+      "crc32": "7f0e8d97",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43318336,
+      "length": 6132
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/icon-paradrop_png.vtex_c",
+      "crc32": "eadd0e1f",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43324480,
+      "length": 18432
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/icon-player-low-health_png.vtex_c",
+      "crc32": "b80db798",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43342912,
+      "length": 11280
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/png_decoy_png.vtex_c",
+      "crc32": "ae83573e",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43354192,
+      "length": 3164
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/png_flash_png.vtex_c",
+      "crc32": "a85e5d88",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43357360,
+      "length": 19346
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/png_he_png.vtex_c",
+      "crc32": "c17aa407",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43376720,
+      "length": 16475
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/png_molotov_png.vtex_c",
+      "crc32": "876b5a98",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43393200,
+      "length": 33188
+    },
+    {
+      "path": "panorama/images/hud/radar/mapoverview/png_smoke_png.vtex_c",
+      "crc32": "97ae89cf",
+      "preload_bytes": 0,
+      "archive": 118,
+      "offset": 43426400,
+      "length": 29286
+    },
+    {
+      "path": "panorama/layout/mapoverview.vxml_c",
+      "crc32": "b3fba5a1",
+      "preload_bytes": 0,
+      "archive": 141,
+      "offset": 78831200,
+      "length": 10944
+    }
+  ],
+  "extracted_archive": "E:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\pak01_022.vpk",
+  "extracted_output": "dev_tools\\generated_sources\\mirage_pvp\\audit\\de_mirage_original_overview.txt"
+}

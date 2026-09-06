@@ -1,0 +1,2 @@
+# Preserve the extracted overview bytes, including its original line endings.
+de_mirage_original_overview.txt -text -diff

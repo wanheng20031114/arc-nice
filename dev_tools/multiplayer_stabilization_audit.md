@@ -1,10 +1,16 @@
 # 多人模式稳定化全量审计记录
 
-> 2026-08-26 当前网络基线为协议 v96。应用层继续使用 CH0..CH8 九条逻辑信道；公网 Relay 的认证感知 `MultiplayerPeerExtension` 另外使用可靠 CH9 依次发布拓扑并承载 Relay 服务控制，公网 ENet 最大信道索引为 9。v96 新增深海遗迹遭遇并将每局神奇遭遇节点从 4 扩展为 5，同时保留 v95 的宿主权威暂停与既有 wire 合同；文中的 v95、v94、v93、v92、v91、v90 与 v9 小节均为历史快照，不能据此判断当前协议状态。
+> 2026-09-07 当前网络基线为协议 v97。应用层继续使用 CH0..CH8 九条逻辑信道；公网 Relay 的认证感知 `MultiplayerPeerExtension` 另外使用可靠 CH9 发布拓扑并承载 Relay 服务控制。v97 新增 Mirage PVP 模式、CT/T roster 字段与选队/PVP start RPC；v96 及更旧版本小节都是历史快照，不能据此判断当前协议状态。
 >
 > 本文提到的旧烟测、探针及 runner 已于 2026-08-26 删除；相关路径和结果只保留为历史记录，不能作为当前可执行验证入口。
 
-## 2026-08-26 当前 v96 增量摘要
+## 2026-09-07 当前 v97 增量摘要
+
+Mirage PVP 使用稳定 ID `9` / key `mirage_pvp`。Host 强制维什戴尔、验证 CT/T 选队与双方人数；成员队伍携带同一 roster revision，PVP start 使用 reliable CH8 保证最后一次选队先于开局。独立 PVP 玩法 RPC 定向发送给实际玩家，快照压缩后分片，避免向 Relay service peer 1 发送与旧 PVE stub 不同的 RPC 表。对局断线执行最终离场，不进入缺少恢复投影器的 PVE 重连流程。
+
+客户端及独立 Relay 协议统一提升至 v97，Relay NetManager stub 同步新增 RPC，大厅 API 放行新模式。发布新版客户端前必须配套更新后端；本次只进行本地 LAN 与认证 Relay 验证，未部署远端。当前可执行验证入口为 `verify_mirage_lobby.tscn`、`verify_mirage_lan.tscn`、`verify_mirage_match.tscn`。
+
+## 历史记录：2026-08-26 v96 增量摘要
 
 v96 将神奇遭遇固定节点与正式内容池由 4 扩展为 5，新增 `deep_sea_ruins` 及 `take_crystals` / `take_rings` 稳定 ID。这会改变同种子下的路线内容映射与运行时内容摘要；v95 及更旧客户端缺少该内容 ID 和五节点契约，不能与 v96 混联。
 

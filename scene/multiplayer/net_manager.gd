@@ -38,6 +38,7 @@ signal session_member_final_departed(
 )
 signal player_list_changed
 signal player_character_changed(peer_id: int, character_id: StringName, confirmed: bool)
+signal player_teams_changed
 signal connection_failed(reason: String)
 signal game_mode_changed(new_game_mode: GameMode)
 signal room_capacity_changed(current_players: int, max_players: int)
@@ -100,6 +101,7 @@ enum GameMode {
 	TEST_ARENA_P1C = GameModeCatalog.MODE_TEST_ARENA_P1C,
 	TEST_ARENA_P1D = GameModeCatalog.MODE_TEST_ARENA_P1D,
 	TEST_ARENA_P1E = GameModeCatalog.MODE_TEST_ARENA_P1E,
+	MIRAGE_PVP = GameModeCatalog.MODE_MIRAGE_PVP,
 }
 enum ConnectionState {
 	DISCONNECTED,
@@ -124,6 +126,8 @@ var relay_room_id: String = ""
 var connected_players: Dictionary = {}
 var connected_player_characters: Dictionary = {}
 var confirmed_character_peers: Dictionary = {}
+## 队伍是成员账本的投影，随同一 roster revision 原子同步及重连迁移。
+var player_teams: Dictionary[int, String] = {}
 var host_peer_id: int = 1
 var host_game_ready: bool = false
 var current_game_mode: GameMode = GameMode.STANDARD
@@ -1174,6 +1178,9 @@ func host_start_game() -> void:
 	if not are_all_player_characters_confirmed():
 		connection_failed.emit("仍有玩家尚未确认角色")
 		return
+	if is_mirage_pvp() and not are_pvp_teams_ready():
+		connection_failed.emit("所有玩家必须选择 CT / T，且两队均至少有一名玩家。")
+		return
 	host_game_ready = false
 	loading_session_id = _issue_next_game_session_incarnation()
 	if loading_session_id <= 0:
@@ -1624,6 +1631,10 @@ func _issue_next_participant_incarnation() -> int:
 func set_local_character_id(character_id: StringName, confirmed: bool = true) -> bool:
 	if is_multiplayer_active() and connection_state >= ConnectionState.LOADING_GAME:
 		return false
+	if is_mirage_pvp():
+		if character_id != DEFAULT_CHARACTER_ID:
+			return false
+		confirmed = true
 	var resolved_character_id := _sanitize_character_id(character_id)
 	if resolved_character_id != character_id:
 		return false
@@ -1646,6 +1657,59 @@ func set_local_character_id(character_id: StringName, confirmed: bool = true) ->
 
 func confirm_local_character() -> void:
 	set_local_character_id(local_character_id, true)
+
+
+func is_mirage_pvp() -> bool:
+	return current_game_mode == GameMode.MIRAGE_PVP
+
+
+func get_player_team(peer_id: int) -> String:
+	# 身份事务先发布 player_reconnected，再发布成员集合；该回调期间也须
+	# 能从已提交账本读取新 peer 的队伍，不依赖随后刷新的展示投影。
+	if not is_mirage_pvp() or not _session_members.has(peer_id):
+		return ""
+	return str((_session_members[peer_id] as Dictionary).get("team", ""))
+
+
+## 点击队伍即确认；客户端只发送意图，只有 Host 提交后 UI 才显示选中。
+func set_local_team(team: String) -> bool:
+	if (
+		not is_mirage_pvp()
+		or team not in ["CT", "T"]
+		or not is_multiplayer_active()
+		or connection_state >= ConnectionState.LOADING_GAME
+		or not connected_players.has(get_local_peer_id())
+	):
+		return false
+	if is_host():
+		return _handle_player_team_request(get_local_peer_id(), team)
+	if connection_state != ConnectionState.CONNECTED_IN_LOBBY:
+		return false
+	_rpc_set_player_team.rpc_id(get_host_peer_id(), team)
+	return true
+
+
+func are_pvp_teams_ready() -> bool:
+	if not is_mirage_pvp() or connected_players.size() < 2:
+		return false
+	var has_ct := false
+	var has_t := false
+	for raw_peer_id in connected_players:
+		var peer_id := int(raw_peer_id)
+		if (
+			not is_session_member_active(peer_id)
+			or get_player_character_id(peer_id) != DEFAULT_CHARACTER_ID
+			or not is_player_character_confirmed(peer_id)
+		):
+			return false
+		match get_player_team(peer_id):
+			"CT":
+				has_ct = true
+			"T":
+				has_t = true
+			_:
+				return false
+	return has_ct and has_t
 
 
 func get_player_character_id(peer_id: int) -> StringName:
@@ -2042,6 +2106,8 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	):
 		var can_keep_grace := (
 			connection_state == ConnectionState.IN_GAME
+			# Mirage 对局把断线作为离场/判胜；没有 PVE 的重连运行时投影器。
+			and not is_mirage_pvp()
 			and not forced_final_departure
 			and _is_valid_reconnect_token(reconnect_token)
 			and player_name != "Unknown"
@@ -2543,11 +2609,7 @@ func _try_replay_relay_registration_response(
 			room_max_players,
 			_session_membership_revision
 		)
-		_rpc_start_game.rpc_id(
-			sender_id,
-			int(current_game_mode),
-			loading_session_id
-		)
+		_send_start_game_to_peer(sender_id)
 		return true
 	if (
 		_forced_final_departure_peer_ids.has(sender_id)
@@ -2927,7 +2989,8 @@ func _begin_peer_reconnect(
 	reconnect_token: String
 ) -> bool:
 	if (
-		new_peer_id <= 0
+		is_mirage_pvp()
+		or new_peer_id <= 0
 		or loading_session_id <= 0
 		or not _disconnected_reconnect_slots.has(reconnect_token)
 	):
@@ -3004,11 +3067,7 @@ func _begin_peer_reconnect(
 		room_max_players,
 		_session_membership_revision
 	)
-	_rpc_start_game.rpc_id(
-		new_peer_id,
-		int(current_game_mode),
-		loading_session_id
-	)
+	_send_start_game_to_peer(new_peer_id)
 	player_list_changed.emit()
 	_debug_log(
 		"NetManager: 玩家开始重连, old_peer=%d new_peer=%d name=%s"
@@ -3407,6 +3466,32 @@ func _rpc_join_rejected(reason: String) -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
+func _rpc_set_player_team(team: String) -> void:
+	_handle_player_team_request(multiplayer.get_remote_sender_id(), team)
+
+
+func _handle_player_team_request(sender_id: int, team: String) -> bool:
+	if (
+		not is_host()
+		or not is_mirage_pvp()
+		or connection_state >= ConnectionState.LOADING_GAME
+		or team not in ["CT", "T"]
+		or not connected_players.has(sender_id)
+		or not is_session_member_active(sender_id)
+		or not _consume_lobby_command_admission(sender_id)
+	):
+		return false
+	if get_player_team(sender_id) == team:
+		return true
+	var member := _session_members[sender_id] as Dictionary
+	member["team"] = team
+	_session_members[sender_id] = member
+	_publish_host_session_membership_change()
+	_broadcast_player_list_to_clients()
+	return true
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
 func _rpc_set_player_character(character_id: String, confirmed: bool) -> void:
 	_handle_player_character_request(
 		multiplayer.get_remote_sender_id(),
@@ -3431,6 +3516,8 @@ func _handle_player_character_request(
 		return false
 	var requested_id := StringName(character_id)
 	if not PlayerCharacterRegistry.is_multiplayer_character_id(requested_id):
+		return false
+	if is_mirage_pvp() and (requested_id != DEFAULT_CHARACTER_ID or not confirmed):
 		return false
 	if (
 		StringName(connected_player_characters.get(sender_id, DEFAULT_CHARACTER_ID))
@@ -3471,6 +3558,14 @@ func _rpc_sync_player_list(
 		return
 	if not _is_known_game_mode(game_mode):
 		return
+	if game_mode == int(GameMode.MIRAGE_PVP):
+		for member_variant in prepared_members.values():
+			var member := member_variant as Dictionary
+			if (
+				StringName(member["character_id"]) != DEFAULT_CHARACTER_ID
+				or not bool(member["character_confirmed"])
+			):
+				return
 	if not _is_valid_room_max_players(max_players):
 		return
 	if session_membership_revision < _session_membership_revision:
@@ -3593,6 +3688,14 @@ func _rpc_start_game(game_mode: int = 0, session_id: int = 0) -> void:
 	if multiplayer.get_remote_sender_id() != get_host_peer_id():
 		return
 	_apply_authoritative_start_game(game_mode, session_id)
+
+
+## PVP 的出生队伍必须先提交；与 roster 共用 CH8 保证选队快照先于 start。
+@rpc("authority", "call_remote", "reliable", 8)
+func _rpc_start_mirage_pvp(session_id: int) -> void:
+	if multiplayer.get_remote_sender_id() != get_host_peer_id():
+		return
+	_apply_authoritative_start_game(int(GameMode.MIRAGE_PVP), session_id)
 
 
 ## wire 解码与运行准入在这里汇合：roster 可记录隐藏模式，但 start 必须
@@ -4283,6 +4386,13 @@ func _send_start_game_to_clients() -> void:
 			continue
 		if not is_peer_control_send_ready(peer_id):
 			continue
+		_send_start_game_to_peer(peer_id)
+
+
+func _send_start_game_to_peer(peer_id: int) -> void:
+	if is_mirage_pvp():
+		_rpc_start_mirage_pvp.rpc_id(peer_id, loading_session_id)
+	else:
 		_rpc_start_game.rpc_id(peer_id, int(current_game_mode), loading_session_id)
 
 
@@ -4368,6 +4478,25 @@ func _set_current_game_mode(game_mode: GameMode) -> void:
 	if current_game_mode == game_mode:
 		return
 	current_game_mode = game_mode
+	if is_mirage_pvp():
+		local_character_id = DEFAULT_CHARACTER_ID
+		local_character_confirmed = true
+	if is_host():
+		for raw_peer_id in _session_members:
+			var peer_id := int(raw_peer_id)
+			var member := _session_members[peer_id] as Dictionary
+			member["team"] = ""
+			if is_mirage_pvp():
+				member["character_id"] = DEFAULT_CHARACTER_ID
+				member["character_confirmed"] = true
+				connected_player_characters[peer_id] = DEFAULT_CHARACTER_ID
+				confirmed_character_peers[peer_id] = true
+			_session_members[peer_id] = member
+		if not _session_members.is_empty():
+			_publish_host_session_membership_change()
+	if not is_mirage_pvp() and not player_teams.is_empty():
+		player_teams.clear()
+		player_teams_changed.emit()
 	game_mode_changed.emit(current_game_mode)
 
 
@@ -4415,12 +4544,14 @@ func _make_session_member_record(
 	state: SessionMemberState,
 	participant_incarnation: int,
 	reconnect_token: String = "",
-	grace_expires_msec: int = 0
+	grace_expires_msec: int = 0,
+	team: String = ""
 ) -> Dictionary:
 	return {
 		"player_name": _sanitize_player_name(player_name),
 		"character_id": _sanitize_character_id(character_id),
 		"character_confirmed": character_confirmed,
+		"team": team,
 		"state": int(state),
 		"participant_incarnation": participant_incarnation,
 		"reconnect_token": reconnect_token,
@@ -4431,6 +4562,9 @@ func _make_session_member_record(
 func _reset_session_membership(emit_change: bool = false) -> void:
 	var had_members := not _session_members.is_empty()
 	_session_members.clear()
+	if not player_teams.is_empty():
+		player_teams.clear()
+		player_teams_changed.emit()
 	_session_membership_revision = 0
 	_forced_final_departure_peer_ids.clear()
 	if emit_change and had_members:
@@ -4568,10 +4702,25 @@ func _publish_host_session_membership_change() -> void:
 
 
 func _emit_session_membership_changed() -> void:
+	_refresh_player_teams_from_members()
 	session_membership_changed.emit(
 		get_session_member_peer_ids(),
 		_session_membership_revision
 	)
+
+
+func _refresh_player_teams_from_members() -> void:
+	var next_teams: Dictionary[int, String] = {}
+	if is_mirage_pvp():
+		for raw_peer_id in _session_members:
+			var peer_id := int(raw_peer_id)
+			var team := str((_session_members[peer_id] as Dictionary).get("team", ""))
+			if team in ["CT", "T"]:
+				next_teams[peer_id] = team
+	if player_teams == next_teams:
+		return
+	player_teams = next_teams
+	player_teams_changed.emit()
 
 
 func _build_session_member_list_array(recipient_peer_id: int = 0) -> Array:
@@ -4616,6 +4765,7 @@ func _build_session_member_list_array(recipient_peer_id: int = 0) -> Array:
 				else bool(member.get("character_confirmed", false))
 			),
 			"session_state": int(wire_state),
+			"team": str(member.get("team", "")),
 		})
 	return result
 
@@ -4630,6 +4780,11 @@ func _prepare_session_member_list(player_list: Array) -> Dictionary:
 		var peer_id := int(entry.get("id", 0))
 		var state := int(entry.get("session_state", -1))
 		var character_id := StringName(entry.get("character_id", DEFAULT_CHARACTER_ID))
+		if typeof(entry.get("team", "")) != TYPE_STRING:
+			return {}
+		var team := str(entry.get("team", ""))
+		if team not in ["", "CT", "T"]:
+			return {}
 		if typeof(entry.get("participant_incarnation")) != TYPE_INT:
 			return {}
 		var participant_incarnation := int(entry["participant_incarnation"])
@@ -4650,7 +4805,10 @@ func _prepare_session_member_list(player_list: Array) -> Dictionary:
 			character_id,
 			bool(entry.get("character_confirmed", false)),
 			state as SessionMemberState,
-			participant_incarnation
+			participant_incarnation,
+			"",
+			0,
+			team
 		)
 	return prepared_members
 
@@ -4751,6 +4909,7 @@ func _session_member_sets_match(left: Dictionary, right: Dictionary) -> bool:
 			"player_name",
 			"character_id",
 			"character_confirmed",
+			"team",
 			"state",
 			"participant_incarnation",
 		]:
@@ -4763,6 +4922,9 @@ func _set_peer_character(peer_id: int, character_id: StringName, confirmed: bool
 	if peer_id <= 0:
 		return
 	var resolved_character_id := _sanitize_character_id(character_id)
+	if is_mirage_pvp():
+		resolved_character_id = DEFAULT_CHARACTER_ID
+		confirmed = true
 	var changed := (
 		StringName(connected_player_characters.get(peer_id, DEFAULT_CHARACTER_ID))
 		!= resolved_character_id

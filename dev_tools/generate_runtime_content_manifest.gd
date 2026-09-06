@@ -48,6 +48,17 @@ const EXPLICIT_GAMEPLAY_DEPENDENCY_ROOTS := [
 	"res://resources/texture/rogue_encounter/deep_sea_ruins.png",
 	TOWER_DEFENSE_GAME_SCENE_PATH,
 	"res://scene/plant_defense/wood_processing_station.tscn",
+	# PVP does not use a WaveCampaign. Include its scene and GDScript-preloaded
+	# combat entities explicitly, so mismatched map/weapon/network builds cannot
+	# join a shared authoritative match with the same content digest.
+	"res://scene/game_modes/game_mode_catalog.tres",
+	"res://scene/multiplayer/net_manager.gd",
+	"res://scene/multiplayer/net_constants.gd",
+	"res://scene/pvp/mirage_pvp.tscn",
+	"res://scene/pvp/pvp_player.tscn",
+	"res://scene/pvp/pvp_projectile.tscn",
+	"res://scene/pvp/pvp_weapon_pickup.tscn",
+	"res://scene/pvp/pvp_rules.gd",
 ]
 const TEXT_EXTENSIONS := {
 	"cfg": true,

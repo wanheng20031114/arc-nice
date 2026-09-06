@@ -1,0 +1,4263 @@
+{
+  "vpk": "E:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\pak01_dir.vpk",
+  "vpk_version": 2,
+  "total_entries": 135686,
+  "matching_entries": [
+    {
+      "path": "maps/de_mirage_camera_nodes.kv3",
+      "crc32": "72eadb25",
+      "preload_bytes": 0,
+      "archive": 157,
+      "offset": 16958400,
+      "length": 25623
+    },
+    {
+      "path": "annotations/official/de_mirage/de_mirage.txt",
+      "crc32": "8c111eda",
+      "preload_bytes": 0,
+      "archive": 493,
+      "offset": 73937792,
+      "length": 13186
+    },
+    {
+      "path": "maps/de_mirage_retake.txt",
+      "crc32": "ca33c5f4",
+      "preload_bytes": 0,
+      "archive": 407,
+      "offset": 92603936,
+      "length": 4767
+    },
+    {
+      "path": "resource/overviews/de_mirage.txt",
+      "crc32": "fe5bb4c2",
+      "preload_bytes": 0,
+      "archive": 22,
+      "offset": 49618800,
+      "length": 640
+    },
+    {
+      "path": "weapons/paints/legacy/am_mirage_flowers_metalic.vcompmat_c",
+      "crc32": "a9eb3501",
+      "preload_bytes": 0,
+      "archive": 124,
+      "offset": 7626928,
+      "length": 1707
+    },
+    {
+      "path": "weapons/paints/legacy/sp_mirage_flowers_tan.vcompmat_c",
+      "crc32": "e6453c05",
+      "preload_bytes": 0,
+      "archive": 124,
+      "offset": 8976736,
+      "length": 1695
+    },
+    {
+      "path": "materials/de_mirage/base/de_mirage_base_trim_ver1_diffuse_.vmat_c",
+      "crc32": "ff351d9b",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 102212544,
+      "length": 3408
+    },
+    {
+      "path": "materials/de_mirage/base/de_mirage_base_ver1_blend.vmat_c",
+      "crc32": "8614a54a",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 102215952,
+      "length": 4494
+    },
+    {
+      "path": "materials/de_mirage/base/de_mirage_mid_ver1_diffuse.vmat_c",
+      "crc32": "4ef73c8b",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 102220448,
+      "length": 3728
+    },
+    {
+      "path": "materials/de_mirage/base/de_mirage_top_ver1_blend.vmat_c",
+      "crc32": "4045c0a8",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 102224176,
+      "length": 4798
+    },
+    {
+      "path": "materials/de_mirage/base/de_mirage_top_ver1_diffuse.vmat_c",
+      "crc32": "66bf3244",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 102228976,
+      "length": 3600
+    },
+    {
+      "path": "materials/de_mirage/brick/cinderblock_1a.vmat_c",
+      "crc32": "07fdf627",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 75518496,
+      "length": 3608
+    },
+    {
+      "path": "materials/de_mirage/brick/de_mirage_brick_ver1_blend.vmat_c",
+      "crc32": "a42d0680",
+      "preload_bytes": 0,
+      "archive": 384,
+      "offset": 36433408,
+      "length": 4158
+    },
+    {
+      "path": "materials/de_mirage/brick/de_mirage_brick_ver1_diffuse.vmat_c",
+      "crc32": "add234d6",
+      "preload_bytes": 0,
+      "archive": 384,
+      "offset": 36437568,
+      "length": 3584
+    },
+    {
+      "path": "materials/de_mirage/brick/de_mirage_brick_ver1pl_blend_diffuse.vmat_c",
+      "crc32": "25b7ec0c",
+      "preload_bytes": 0,
+      "archive": 384,
+      "offset": 36441152,
+      "length": 4190
+    },
+    {
+      "path": "materials/de_mirage/brick/de_mirage_brick_ver2_blend2_diffuse.vmat_c",
+      "crc32": "93a6377d",
+      "preload_bytes": 0,
+      "archive": 384,
+      "offset": 36445344,
+      "length": 4206
+    },
+    {
+      "path": "materials/de_mirage/brick/de_mirage_brick_ver2_blend_update.vmat_c",
+      "crc32": "de4dffb4",
+      "preload_bytes": 0,
+      "archive": 384,
+      "offset": 36449552,
+      "length": 4510
+    },
+    {
+      "path": "materials/de_mirage/concrete/concrete_hs01a.vmat_c",
+      "crc32": "c34f92a3",
+      "preload_bytes": 0,
+      "archive": 95,
+      "offset": 71083200,
+      "length": 3632
+    },
+    {
+      "path": "materials/de_mirage/decals/poster_a_decal.vmat_c",
+      "crc32": "6001437d",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 19961072,
+      "length": 3456
+    },
+    {
+      "path": "materials/de_mirage/decals/poster_b_decal.vmat_c",
+      "crc32": "aa6898d8",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 20054176,
+      "length": 3456
+    },
+    {
+      "path": "materials/de_mirage/decals/poster_c_decal.vmat_c",
+      "crc32": "d3674e53",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 20147280,
+      "length": 3456
+    },
+    {
+      "path": "materials/de_mirage/decals/sign_b_decal.vmat_c",
+      "crc32": "4a484c95",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 20240384,
+      "length": 3568
+    },
+    {
+      "path": "materials/de_mirage/decals/sign_c_decal.vmat_c",
+      "crc32": "2ee1e569",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 20294208,
+      "length": 3568
+    },
+    {
+      "path": "materials/de_mirage/decals/wall_worna_decal.vmat_c",
+      "crc32": "43272d62",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 20387280,
+      "length": 3584
+    },
+    {
+      "path": "materials/de_mirage/decals/window_a_decal.vmat_c",
+      "crc32": "00a3fc68",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 21057808,
+      "length": 3536
+    },
+    {
+      "path": "materials/de_mirage/decals/window_b_decal.vmat_c",
+      "crc32": "66ec857e",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 21107280,
+      "length": 3552
+    },
+    {
+      "path": "materials/de_mirage/doors/door_a.vmat_c",
+      "crc32": "e9e7b703",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 37160016,
+      "length": 3552
+    },
+    {
+      "path": "materials/de_mirage/doors/door_b.vmat_c",
+      "crc32": "8ca19c30",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 37163568,
+      "length": 3584
+    },
+    {
+      "path": "materials/de_mirage/doors/door_c.vmat_c",
+      "crc32": "a4f75308",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 37167152,
+      "length": 3584
+    },
+    {
+      "path": "materials/de_mirage/effects/window_glow.vmat_c",
+      "crc32": "d149cbb1",
+      "preload_bytes": 0,
+      "archive": 187,
+      "offset": 3617040,
+      "length": 3904
+    },
+    {
+      "path": "materials/de_mirage/graffiti/graffiti006_decal.vmat_c",
+      "crc32": "850d4502",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 10794704,
+      "length": 4016
+    },
+    {
+      "path": "materials/de_mirage/graffiti/graffiti007_decal.vmat_c",
+      "crc32": "f3a3adb2",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 11052640,
+      "length": 4016
+    },
+    {
+      "path": "materials/de_mirage/graffiti/graffiti013_decal.vmat_c",
+      "crc32": "d82175f2",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 11502240,
+      "length": 4016
+    },
+    {
+      "path": "materials/de_mirage/ground/de_mirage_ground_tilec_blend_diffuse_.vmat_c",
+      "crc32": "57eba450",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 11618928,
+      "length": 4734
+    },
+    {
+      "path": "materials/de_mirage/ground/de_mirage_ground_tileh_blend2_diffuse.vmat_c",
+      "crc32": "92dcab53",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 11623664,
+      "length": 4446
+    },
+    {
+      "path": "materials/de_mirage/ground/de_mirage_ground_tileh_blend_diffuse_.vmat_c",
+      "crc32": "5bbcf13b",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 11628112,
+      "length": 4414
+    },
+    {
+      "path": "materials/de_mirage/ground/de_mirage_tilef_diffuse.vmat_c",
+      "crc32": "14017b5d",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 11632528,
+      "length": 3600
+    },
+    {
+      "path": "materials/de_mirage/hr_mirage/mirage_plaster_1.vmat_c",
+      "crc32": "33101117",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 16678688,
+      "length": 3328
+    },
+    {
+      "path": "materials/de_mirage/hr_mirage/mirage_plaster_2.vmat_c",
+      "crc32": "56f542e9",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 17596480,
+      "length": 3568
+    },
+    {
+      "path": "materials/de_mirage/hr_mirage/mirage_plaster_blend_3.vmat_c",
+      "crc32": "b9cfa310",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 19436080,
+      "length": 4702
+    },
+    {
+      "path": "materials/de_mirage/marble/marble_01.vmat_c",
+      "crc32": "20f68a41",
+      "preload_bytes": 0,
+      "archive": 251,
+      "offset": 86006576,
+      "length": 3920
+    },
+    {
+      "path": "materials/de_mirage/metal/metal_basic_1.vmat_c",
+      "crc32": "bceedd85",
+      "preload_bytes": 0,
+      "archive": 251,
+      "offset": 86012448,
+      "length": 3840
+    },
+    {
+      "path": "materials/de_mirage/metal/metal_siding_hs01a.vmat_c",
+      "crc32": "7df851bb",
+      "preload_bytes": 0,
+      "archive": 50,
+      "offset": 4285040,
+      "length": 4238
+    },
+    {
+      "path": "materials/de_mirage/metal/metal_trim_roof_hs01a.vmat_c",
+      "crc32": "f31b1f4d",
+      "preload_bytes": 0,
+      "archive": 95,
+      "offset": 82635664,
+      "length": 3712
+    },
+    {
+      "path": "materials/de_mirage/plaster/de_mirage_plaster_blue1_blend.vmat_c",
+      "crc32": "dadbdf67",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 90522544,
+      "length": 4782
+    },
+    {
+      "path": "materials/de_mirage/plaster/de_mirage_plaster_blue1_diffuse.vmat_c",
+      "crc32": "61360e17",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 90527328,
+      "length": 3648
+    },
+    {
+      "path": "materials/de_mirage/plaster/de_mirage_plaster_salmon1_blend.vmat_c",
+      "crc32": "888372b6",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 90530976,
+      "length": 4510
+    },
+    {
+      "path": "materials/de_mirage/plaster/de_mirage_plaster_salmon1_diffuse.vmat_c",
+      "crc32": "dfd49997",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 90535488,
+      "length": 3616
+    },
+    {
+      "path": "materials/de_mirage/plaster/interior_plaster_hs01a.vmat_c",
+      "crc32": "6735f467",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 90539104,
+      "length": 4272
+    },
+    {
+      "path": "materials/de_mirage/plaster_worn/de_mirage_plaster_brick4_diffuse.vmat_c",
+      "crc32": "a4b166a1",
+      "preload_bytes": 0,
+      "archive": 194,
+      "offset": 25531456,
+      "length": 3760
+    },
+    {
+      "path": "materials/de_mirage/stone/stone_cladding_01a.vmat_c",
+      "crc32": "dbcd1524",
+      "preload_bytes": 0,
+      "archive": 272,
+      "offset": 67550176,
+      "length": 3600
+    },
+    {
+      "path": "materials/de_mirage/stone/stone_cladding_01a_2_dirt.vmat_c",
+      "crc32": "9d37ef25",
+      "preload_bytes": 0,
+      "archive": 272,
+      "offset": 67553776,
+      "length": 3936
+    },
+    {
+      "path": "materials/de_mirage/tile/de_mirage_tile_ver4_blend.vmat_c",
+      "crc32": "b5c8eee3",
+      "preload_bytes": 0,
+      "archive": 147,
+      "offset": 88487296,
+      "length": 4318
+    },
+    {
+      "path": "materials/de_mirage/tile/de_mirage_tile_ver4_diffuse.vmat_c",
+      "crc32": "b7a8c28c",
+      "preload_bytes": 0,
+      "archive": 147,
+      "offset": 88491616,
+      "length": 3584
+    },
+    {
+      "path": "materials/de_mirage/trims/concrete_trim_02.vmat_c",
+      "crc32": "76def706",
+      "preload_bytes": 0,
+      "archive": 236,
+      "offset": 3534144,
+      "length": 4272
+    },
+    {
+      "path": "materials/de_mirage/trims/trims01a.vmat_c",
+      "crc32": "67fbf981",
+      "preload_bytes": 0,
+      "archive": 87,
+      "offset": 80261632,
+      "length": 3648
+    },
+    {
+      "path": "materials/de_mirage/trims/trims01a_noscale.vmat_c",
+      "crc32": "da0fdac8",
+      "preload_bytes": 0,
+      "archive": 407,
+      "offset": 91786272,
+      "length": 3632
+    },
+    {
+      "path": "materials/de_mirage/trims/trims01a_painted.vmat_c",
+      "crc32": "81868eb3",
+      "preload_bytes": 0,
+      "archive": 407,
+      "offset": 91789904,
+      "length": 3840
+    },
+    {
+      "path": "materials/de_mirage/wood/de_mirage_wood_ver3_diffuse.vmat_c",
+      "crc32": "f9b636d5",
+      "preload_bytes": 0,
+      "archive": 278,
+      "offset": 63306336,
+      "length": 3808
+    },
+    {
+      "path": "materials/de_mirage/wood/wood_pallet_01_dmg.vmat_c",
+      "crc32": "1fcd052d",
+      "preload_bytes": 0,
+      "archive": 236,
+      "offset": 3478288,
+      "length": 4306
+    },
+    {
+      "path": "materials/decals/mirage_flammable.vmat_c",
+      "crc32": "8dd05a7e",
+      "preload_bytes": 0,
+      "archive": 256,
+      "offset": 64062128,
+      "length": 3568
+    },
+    {
+      "path": "materials/lobby_mapveto/mapveto_mirage.vmat_c",
+      "crc32": "ecc47777",
+      "preload_bytes": 0,
+      "archive": 241,
+      "offset": 54291200,
+      "length": 2503
+    },
+    {
+      "path": "materials/lobby_mapveto/mapveto_mirage_bw.vmat_c",
+      "crc32": "fdf76e7e",
+      "preload_bytes": 0,
+      "archive": 241,
+      "offset": 54293712,
+      "length": 2551
+    },
+    {
+      "path": "materials/models/inventory_items/pins/mirage.vmat_c",
+      "crc32": "834a6ec4",
+      "preload_bytes": 0,
+      "archive": 87,
+      "offset": 100367568,
+      "length": 3520
+    },
+    {
+      "path": "materials/models/props/de_mirage/base_rocks_a/base_rocks_a.vmat_c",
+      "crc32": "57218b9b",
+      "preload_bytes": 0,
+      "archive": 263,
+      "offset": 81879120,
+      "length": 3952
+    },
+    {
+      "path": "materials/models/props/de_mirage/bench_a/bench_a.vmat_c",
+      "crc32": "708a1e22",
+      "preload_bytes": 0,
+      "archive": 412,
+      "offset": 96411760,
+      "length": 4416
+    },
+    {
+      "path": "materials/models/props/de_mirage/bomb_site_tarp/bomb_site_tarp.vmat_c",
+      "crc32": "c26ac6c8",
+      "preload_bytes": 0,
+      "archive": 280,
+      "offset": 74017120,
+      "length": 4105
+    },
+    {
+      "path": "materials/models/props/de_mirage/broken_wall_1/broken_wall_1.vmat_c",
+      "crc32": "40433e81",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 3264224,
+      "length": 3872
+    },
+    {
+      "path": "materials/models/props/de_mirage/brush_shapes/residwall04a.vmat_c",
+      "crc32": "f5606105",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 6703296,
+      "length": 3616
+    },
+    {
+      "path": "materials/models/props/de_mirage/brush_shapes/sitebwall13a.vmat_c",
+      "crc32": "27237a1c",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 6708864,
+      "length": 3568
+    },
+    {
+      "path": "materials/models/props/de_mirage/couch_a/couch_a_diffuse.vmat_c",
+      "crc32": "d2ebf050",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 6737056,
+      "length": 3936
+    },
+    {
+      "path": "materials/models/props/de_mirage/hanging_cloth_a/hanging_cloth_a.vmat_c",
+      "crc32": "c8c34402",
+      "preload_bytes": 0,
+      "archive": 236,
+      "offset": 5242192,
+      "length": 3920
+    },
+    {
+      "path": "materials/models/props/de_mirage/lamp/lamp_diffuse/lamp_diffuse.vmat_c",
+      "crc32": "04ab2ea8",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 10047840,
+      "length": 4720
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_a/base_top_ver1_diffuse.vmat_c",
+      "crc32": "9fd76564",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 11207856,
+      "length": 3648
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_a/large_door_a_det_diffuse.vmat_c",
+      "crc32": "433143f2",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 11213456,
+      "length": 3632
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_a/plaster_tan1_diffuse.vmat_c",
+      "crc32": "bef99c5d",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 17105728,
+      "length": 3488
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_b/large_door_b.vmat_c",
+      "crc32": "1d93608f",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 17190672,
+      "length": 4352
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_b/large_door_c.vmat_c",
+      "crc32": "b34fe51c",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 24286720,
+      "length": 3856
+    },
+    {
+      "path": "materials/models/props/de_mirage/metal_ammo_box_1/metal_ammo_box_1.vmat_c",
+      "crc32": "2e1f539e",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 25792048,
+      "length": 3568
+    },
+    {
+      "path": "materials/models/props/de_mirage/overhang/overhang/overhang_ver1_diffuse.vmat_c",
+      "crc32": "7d59704f",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 27262944,
+      "length": 4032
+    },
+    {
+      "path": "materials/models/props/de_mirage/pillow_a/pillow_a_diffuse.vmat_c",
+      "crc32": "81b19dad",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 28736576,
+      "length": 4448
+    },
+    {
+      "path": "materials/models/props/de_mirage/pillow_b/pillow_b_diffuse.vmat_c",
+      "crc32": "e6e65092",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 28999040,
+      "length": 4448
+    },
+    {
+      "path": "materials/models/props/de_mirage/pillow_c/pillow_c_diffuse.vmat_c",
+      "crc32": "95d8b534",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 29176368,
+      "length": 4432
+    },
+    {
+      "path": "materials/models/props/de_mirage/rusted_fence_a/rusted_fence_a.vmat_c",
+      "crc32": "e56e303b",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 29798048,
+      "length": 4480
+    },
+    {
+      "path": "materials/models/props/de_mirage/shutter_window/shutter_window_diffuse.vmat_c",
+      "crc32": "d38d1a00",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 30598592,
+      "length": 4336
+    },
+    {
+      "path": "materials/models/props/de_mirage/small_door_b/small_door_b_diffuse.vmat_c",
+      "crc32": "11c947f3",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 31013696,
+      "length": 4032
+    },
+    {
+      "path": "materials/models/props/de_mirage/tarp_a/tarp_a_diffuse.vmat_c",
+      "crc32": "9f461e84",
+      "preload_bytes": 0,
+      "archive": 280,
+      "offset": 74192304,
+      "length": 4025
+    },
+    {
+      "path": "materials/models/props/de_mirage/towertop_a/base_top_ver1_diffuse.vmat_c",
+      "crc32": "5581c90d",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 32566752,
+      "length": 3664
+    },
+    {
+      "path": "materials/models/props/de_mirage/towertop_d/towertop_d.vmat_c",
+      "crc32": "35500d36",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 32836560,
+      "length": 4304
+    },
+    {
+      "path": "materials/models/props/de_mirage/towertop_e/towertop_e.vmat_c",
+      "crc32": "8c5ecf7c",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 34590144,
+      "length": 3872
+    },
+    {
+      "path": "materials/models/props/de_mirage/wall_arch_a/wall_arch_a1.vmat_c",
+      "crc32": "9a226ed2",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 41469232,
+      "length": 3904
+    },
+    {
+      "path": "materials/models/props/de_mirage/wall_hole/sheet_metal_panel.vmat_c",
+      "crc32": "de04d2a3",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 47899504,
+      "length": 3984
+    },
+    {
+      "path": "materials/models/props/de_mirage/wall_hole/wall_hole_cbble.vmat_c",
+      "crc32": "7d58d4e4",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 47905440,
+      "length": 4176
+    },
+    {
+      "path": "materials/models/props/de_mirage/wall_hole/wall_hole_diffuse.vmat_c",
+      "crc32": "0ca50dc8",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 48907024,
+      "length": 4560
+    },
+    {
+      "path": "materials/models/props/de_mirage/window_a/window_a_diffuse.vmat_c",
+      "crc32": "3a1bab38",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 50546960,
+      "length": 3840
+    },
+    {
+      "path": "materials/models/props/de_mirage/wood_roof_plank/wood_ver3_diffuse.vmat_c",
+      "crc32": "7ae88db7",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 52462640,
+      "length": 3568
+    },
+    {
+      "path": "materials/models/weapons/customization/paints/vmats/am_mirage_flowers_metalic.vmat_c",
+      "crc32": "a56b7f58",
+      "preload_bytes": 0,
+      "archive": 81,
+      "offset": 46921168,
+      "length": 4357
+    },
+    {
+      "path": "materials/models/weapons/customization/paints/vmats/sp_mirage_flowers_tan.vmat_c",
+      "crc32": "0f7c4b6f",
+      "preload_bytes": 0,
+      "archive": 264,
+      "offset": 66267632,
+      "length": 4533
+    },
+    {
+      "path": "materials/skybox/sky_de_mirage.vmat_c",
+      "crc32": "70b85a0a",
+      "preload_bytes": 0,
+      "archive": 249,
+      "offset": 86538208,
+      "length": 1890
+    },
+    {
+      "path": "models/de_mirage/construction/light_floodlight/light_floodlight_glow.vmat_c",
+      "crc32": "07bd9ccf",
+      "preload_bytes": 0,
+      "archive": 338,
+      "offset": 49174688,
+      "length": 4000
+    },
+    {
+      "path": "models/de_mirage/debris/concrete/concrete_painted_white_hs01a.vmat_c",
+      "crc32": "2c402e2f",
+      "preload_bytes": 0,
+      "archive": 102,
+      "offset": 104778928,
+      "length": 4016
+    },
+    {
+      "path": "models/de_mirage/debris/croncrete/concrete_broken01a.vmat_c",
+      "crc32": "37613d38",
+      "preload_bytes": 0,
+      "archive": 236,
+      "offset": 4982256,
+      "length": 3952
+    },
+    {
+      "path": "models/de_mirage/debris/croncrete/concrete_broken01b.vmat_c",
+      "crc32": "e623823f",
+      "preload_bytes": 0,
+      "archive": 236,
+      "offset": 4887024,
+      "length": 3968
+    },
+    {
+      "path": "models/de_mirage/decorations/interior_cup_metal_001/interior_cup_metal_001.vmat_c",
+      "crc32": "6ad15150",
+      "preload_bytes": 0,
+      "archive": 236,
+      "offset": 4366288,
+      "length": 4032
+    },
+    {
+      "path": "models/de_mirage/decorations/tabletop/tabletop_props_03.vmat_c",
+      "crc32": "c71f09b9",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 27670480,
+      "length": 3576
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_01a.vmat_c",
+      "crc32": "c2ccf285",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 107782800,
+      "length": 4298
+    },
+    {
+      "path": "models/de_mirage/industrial/airduct01/airduct01_rust.vmat_c",
+      "crc32": "3acad234",
+      "preload_bytes": 0,
+      "archive": 386,
+      "offset": 81311856,
+      "length": 4740
+    },
+    {
+      "path": "models/de_mirage/industrial/industrial_walkway/industrial_walkway_plate001.vmat_c",
+      "crc32": "3df4ffe7",
+      "preload_bytes": 0,
+      "archive": 216,
+      "offset": 75161184,
+      "length": 3888
+    },
+    {
+      "path": "models/de_mirage/industrial/padlock001/padlock001a.vmat_c",
+      "crc32": "acf3d108",
+      "preload_bytes": 0,
+      "archive": 247,
+      "offset": 196880,
+      "length": 3432
+    },
+    {
+      "path": "models/de_mirage/industrial/padlock001/padlock001a_clean.vmat_c",
+      "crc32": "e472995a",
+      "preload_bytes": 0,
+      "archive": 247,
+      "offset": 1149520,
+      "length": 3560
+    },
+    {
+      "path": "models/de_mirage/lights/flourescent_light/light_flourescent_01_lit.vmat_c",
+      "crc32": "85b9a2c2",
+      "preload_bytes": 0,
+      "archive": 41,
+      "offset": 33614720,
+      "length": 4016
+    },
+    {
+      "path": "models/de_mirage/lights/flourescent_light/light_flourescent_01_unlit.vmat_c",
+      "crc32": "8f6c5f51",
+      "preload_bytes": 0,
+      "archive": 251,
+      "offset": 84118928,
+      "length": 3952
+    },
+    {
+      "path": "models/de_mirage/pipes/pipe/pipe_connectors.vmat_c",
+      "crc32": "f9bff984",
+      "preload_bytes": 0,
+      "archive": 95,
+      "offset": 82677648,
+      "length": 3544
+    },
+    {
+      "path": "models/de_mirage/pipes/pipe/pipe_connectors_1_rusty.vmat_c",
+      "crc32": "357d2253",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 44321568,
+      "length": 3560
+    },
+    {
+      "path": "models/de_mirage/railings/metal_railing/metal_railing_001_painted.vmat_c",
+      "crc32": "4e8f9a6d",
+      "preload_bytes": 0,
+      "archive": 236,
+      "offset": 4890992,
+      "length": 3968
+    },
+    {
+      "path": "models/de_mirage/street/street_leaves_1/street_leaves_1.vmat_c",
+      "crc32": "942813fe",
+      "preload_bytes": 0,
+      "archive": 236,
+      "offset": 4212208,
+      "length": 4066
+    },
+    {
+      "path": "models/de_mirage/street/street_wire_hook_wall/street_wire_hook_wall_1.vmat_c",
+      "crc32": "a839870d",
+      "preload_bytes": 0,
+      "archive": 147,
+      "offset": 88258528,
+      "length": 3512
+    },
+    {
+      "path": "models/props/crates/cs2_drop_crate_souvenir/crate_aus2025_promo_de_mirage.vmat_c",
+      "crc32": "7235f3ed",
+      "preload_bytes": 0,
+      "archive": 245,
+      "offset": 74527968,
+      "length": 8301
+    },
+    {
+      "path": "models/props/crates/cs2_drop_crate_souvenir/crate_bud2025_promo_de_mirage.vmat_c",
+      "crc32": "41748c2e",
+      "preload_bytes": 0,
+      "archive": 262,
+      "offset": 87541536,
+      "length": 8372
+    },
+    {
+      "path": "models/props/crates/cs2_drop_crate_souvenir/crate_cph2024_promo_de_mirage.vmat_c",
+      "crc32": "706800fd",
+      "preload_bytes": 0,
+      "archive": 335,
+      "offset": 77574224,
+      "length": 8008
+    },
+    {
+      "path": "models/props/crates/cs2_drop_crate_souvenir/crate_sha2024_promo_de_mirage.vmat_c",
+      "crc32": "debea1d5",
+      "preload_bytes": 0,
+      "archive": 294,
+      "offset": 44960688,
+      "length": 8008
+    },
+    {
+      "path": "stickers/csgo10/tv_on_mirage_paper.vmat_c",
+      "crc32": "e89889a8",
+      "preload_bytes": 0,
+      "archive": 210,
+      "offset": 100676960,
+      "length": 4944
+    },
+    {
+      "path": "stickers/tournament_assets/de_mirage_cs2_gold.vmat_c",
+      "crc32": "ad3a080f",
+      "preload_bytes": 0,
+      "archive": 210,
+      "offset": 87977088,
+      "length": 5088
+    },
+    {
+      "path": "stickers/tournament_assets/de_mirage_gold.vmat_c",
+      "crc32": "3f8dd78b",
+      "preload_bytes": 0,
+      "archive": 210,
+      "offset": 89392224,
+      "length": 5072
+    },
+    {
+      "path": "models/de_mirage/construction/stoneblock_01c.vmdl_c",
+      "crc32": "e92ef91e",
+      "preload_bytes": 0,
+      "archive": 338,
+      "offset": 49226384,
+      "length": 39603
+    },
+    {
+      "path": "models/de_mirage/debris/croncrete/concrete_broken_chunk02a.vmdl_c",
+      "crc32": "6aa927a4",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 63647376,
+      "length": 28450
+    },
+    {
+      "path": "models/de_mirage/debris/croncrete/concrete_broken_crn_out_8x8a.vmdl_c",
+      "crc32": "c8e04f62",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 63675840,
+      "length": 10870
+    },
+    {
+      "path": "models/de_mirage/debris/croncrete/concrete_broken_hole128x128c.vmdl_c",
+      "crc32": "215b8be0",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 63686720,
+      "length": 138867
+    },
+    {
+      "path": "models/de_mirage/debris/croncrete/concrete_broken_str32x16b.vmdl_c",
+      "crc32": "b6a8bbc7",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 63825600,
+      "length": 21504
+    },
+    {
+      "path": "models/de_mirage/debris/croncrete/concrete_broken_str64x16b.vmdl_c",
+      "crc32": "ffcc2083",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 63847104,
+      "length": 26416
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_bottle_01a.vmdl_c",
+      "crc32": "14911e81",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108490160,
+      "length": 27988
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_bottle_breakable_01a.vmdl_c",
+      "crc32": "967bd766",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108518160,
+      "length": 29162
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_bottle_breakable_01a/01a1.vmdl_c",
+      "crc32": "5852ff53",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108547328,
+      "length": 21490
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_bottle_breakable_01a/01b1.vmdl_c",
+      "crc32": "36b13ba8",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108568832,
+      "length": 15426
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_bottle_breakable_01a/01c1.vmdl_c",
+      "crc32": "c490a7db",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108584272,
+      "length": 28194
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_bottle_breakable_01a/01c_copy4.vmdl_c",
+      "crc32": "2f472c1f",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108612480,
+      "length": 12299
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_bottle_breakable_01a/01c_copy5.vmdl_c",
+      "crc32": "32b56fa5",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108624784,
+      "length": 17755
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_bottle_breakable_01a/01c_copy6.vmdl_c",
+      "crc32": "1f7d3891",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108642544,
+      "length": 14459
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_bottle_breakable_01a/01c_copy7.vmdl_c",
+      "crc32": "e10e2dbf",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108657008,
+      "length": 18235
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_bottle_breakable_01a/break_particles.vmdl_c",
+      "crc32": "59135800",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108675248,
+      "length": 17961
+    },
+    {
+      "path": "models/de_mirage/industrial/industrial_wood_pallet/industrial_wood_pallet_01.vmdl_c",
+      "crc32": "49ee30a5",
+      "preload_bytes": 0,
+      "archive": 247,
+      "offset": 0,
+      "length": 98209
+    },
+    {
+      "path": "models/de_mirage/industrial/industrial_wood_pallet/industrial_wood_pallet_02_dmg_01.vmdl_c",
+      "crc32": "d0765212",
+      "preload_bytes": 0,
+      "archive": 247,
+      "offset": 98224,
+      "length": 55444
+    },
+    {
+      "path": "models/de_mirage/industrial/padlock001/padlock001a.vmdl_c",
+      "crc32": "6b33fdaa",
+      "preload_bytes": 0,
+      "archive": 247,
+      "offset": 153680,
+      "length": 43190
+    },
+    {
+      "path": "models/de_mirage/industrial/padlock001/padlock001b.vmdl_c",
+      "crc32": "e6c45a46",
+      "preload_bytes": 0,
+      "archive": 41,
+      "offset": 32841184,
+      "length": 19683
+    },
+    {
+      "path": "models/de_mirage/industrial/padlock001/padlock001c.vmdl_c",
+      "crc32": "9059e579",
+      "preload_bytes": 0,
+      "archive": 41,
+      "offset": 32860880,
+      "length": 18451
+    },
+    {
+      "path": "models/de_mirage/industrial/padlock001/padlock001d.vmdl_c",
+      "crc32": "b0ebb082",
+      "preload_bytes": 0,
+      "archive": 41,
+      "offset": 32879344,
+      "length": 19187
+    },
+    {
+      "path": "models/de_mirage/lights/flourescent_light/flourescent_light_1_bulbs_bare_dmg_01.vmdl_c",
+      "crc32": "b030e5f3",
+      "preload_bytes": 0,
+      "archive": 41,
+      "offset": 32898544,
+      "length": 29783
+    },
+    {
+      "path": "models/de_mirage/lights/flourescent_light/flourescent_light_2_bulbs_bare_dmg_01.vmdl_c",
+      "crc32": "63ea9b3b",
+      "preload_bytes": 0,
+      "archive": 41,
+      "offset": 32928336,
+      "length": 49655
+    },
+    {
+      "path": "models/de_mirage/pipes/pipe/pipe_brace_1.vmdl_c",
+      "crc32": "85642f49",
+      "preload_bytes": 0,
+      "archive": 95,
+      "offset": 82639376,
+      "length": 9440
+    },
+    {
+      "path": "models/de_mirage/pipes/pipe/pipe_brace_2.vmdl_c",
+      "crc32": "060f66b1",
+      "preload_bytes": 0,
+      "archive": 95,
+      "offset": 82648816,
+      "length": 13008
+    },
+    {
+      "path": "models/de_mirage/pipes/pipe/pipe_brace_3.vmdl_c",
+      "crc32": "8ece78f2",
+      "preload_bytes": 0,
+      "archive": 95,
+      "offset": 82661824,
+      "length": 15824
+    },
+    {
+      "path": "models/de_mirage/pipes/pipe/pipe_straight_connect_1.vmdl_c",
+      "crc32": "0e4a280b",
+      "preload_bytes": 0,
+      "archive": 280,
+      "offset": 68190016,
+      "length": 9238
+    },
+    {
+      "path": "models/de_mirage/pipes/pipe/pipe_straight_connect_3.vmdl_c",
+      "crc32": "d45d0b85",
+      "preload_bytes": 0,
+      "archive": 280,
+      "offset": 68199264,
+      "length": 8854
+    },
+    {
+      "path": "models/de_mirage/street/street_wire_hook_wall/street_wire_hook_wall_1.vmdl_c",
+      "crc32": "aff91d77",
+      "preload_bytes": 0,
+      "archive": 147,
+      "offset": 88245920,
+      "length": 12600
+    },
+    {
+      "path": "models/de_mirage/trims/trim02/trim02_str01a.vmdl_c",
+      "crc32": "8509f881",
+      "preload_bytes": 0,
+      "archive": 87,
+      "offset": 80255360,
+      "length": 6266
+    },
+    {
+      "path": "models/inventory_items/collectible_pin_mirage.vmdl_c",
+      "crc32": "402e6bec",
+      "preload_bytes": 0,
+      "archive": 194,
+      "offset": 98048496,
+      "length": 5941
+    },
+    {
+      "path": "models/props/crates/crate_aus2025_promo_de_mirage.vmdl_c",
+      "crc32": "69038bc8",
+      "preload_bytes": 0,
+      "archive": 477,
+      "offset": 4493504,
+      "length": 35947
+    },
+    {
+      "path": "models/props/crates/crate_bud2025_promo_de_mirage.vmdl_c",
+      "crc32": "6385e0f3",
+      "preload_bytes": 0,
+      "archive": 477,
+      "offset": 4709200,
+      "length": 35947
+    },
+    {
+      "path": "models/props/crates/crate_cph2024_promo_de_mirage.vmdl_c",
+      "crc32": "7a890265",
+      "preload_bytes": 0,
+      "archive": 477,
+      "offset": 4959440,
+      "length": 35459
+    },
+    {
+      "path": "models/props/crates/crate_sha2024_promo_de_mirage.vmdl_c",
+      "crc32": "77572ff3",
+      "preload_bytes": 0,
+      "archive": 477,
+      "offset": 5243248,
+      "length": 35458
+    },
+    {
+      "path": "models/props/de_mirage/base_rocks_a.vmdl_c",
+      "crc32": "b19e3d77",
+      "preload_bytes": 0,
+      "archive": 263,
+      "offset": 81840864,
+      "length": 38251
+    },
+    {
+      "path": "models/props/de_mirage/bench_a.vmdl_c",
+      "crc32": "37ccf12f",
+      "preload_bytes": 0,
+      "archive": 263,
+      "offset": 82795296,
+      "length": 19958
+    },
+    {
+      "path": "models/props/de_mirage/bomb_site_tarp.vmdl_c",
+      "crc32": "bed75308",
+      "preload_bytes": 0,
+      "archive": 269,
+      "offset": 73982096,
+      "length": 238518
+    },
+    {
+      "path": "models/props/de_mirage/broken_wall_1.vmdl_c",
+      "crc32": "cbd6d9e2",
+      "preload_bytes": 0,
+      "archive": 390,
+      "offset": 2608624,
+      "length": 199580
+    },
+    {
+      "path": "models/props/de_mirage/brush_shape_1.vmdl_c",
+      "crc32": "017a2ded",
+      "preload_bytes": 0,
+      "archive": 281,
+      "offset": 60392256,
+      "length": 10236
+    },
+    {
+      "path": "models/props/de_mirage/couch_a.vmdl_c",
+      "crc32": "c25fff0c",
+      "preload_bytes": 0,
+      "archive": 141,
+      "offset": 78273488,
+      "length": 22742
+    },
+    {
+      "path": "models/props/de_mirage/hanging_cloth_b.vmdl_c",
+      "crc32": "f77e5024",
+      "preload_bytes": 0,
+      "archive": 315,
+      "offset": 96409280,
+      "length": 67534
+    },
+    {
+      "path": "models/props/de_mirage/hanging_cloth_d.vmdl_c",
+      "crc32": "9e91f3b6",
+      "preload_bytes": 0,
+      "archive": 315,
+      "offset": 96476816,
+      "length": 50094
+    },
+    {
+      "path": "models/props/de_mirage/lamp_ver1.vmdl_c",
+      "crc32": "7e599112",
+      "preload_bytes": 0,
+      "archive": 335,
+      "offset": 37781344,
+      "length": 59720
+    },
+    {
+      "path": "models/props/de_mirage/lamp_ver2.vmdl_c",
+      "crc32": "37d54478",
+      "preload_bytes": 0,
+      "archive": 335,
+      "offset": 37841072,
+      "length": 9864
+    },
+    {
+      "path": "models/props/de_mirage/lamp_ver5.vmdl_c",
+      "crc32": "e5558e3c",
+      "preload_bytes": 0,
+      "archive": 335,
+      "offset": 37850944,
+      "length": 102552
+    },
+    {
+      "path": "models/props/de_mirage/large_door_a.vmdl_c",
+      "crc32": "3acfed84",
+      "preload_bytes": 0,
+      "archive": 335,
+      "offset": 37953504,
+      "length": 295787
+    },
+    {
+      "path": "models/props/de_mirage/large_door_b.vmdl_c",
+      "crc32": "49a50326",
+      "preload_bytes": 0,
+      "archive": 315,
+      "offset": 100409232,
+      "length": 73307
+    },
+    {
+      "path": "models/props/de_mirage/large_door_c.vmdl_c",
+      "crc32": "7d2ebf6d",
+      "preload_bytes": 0,
+      "archive": 187,
+      "offset": 4727168,
+      "length": 34155
+    },
+    {
+      "path": "models/props/de_mirage/metal_ammo_box_1.vmdl_c",
+      "crc32": "f50dafca",
+      "preload_bytes": 0,
+      "archive": 360,
+      "offset": 43591216,
+      "length": 50239
+    },
+    {
+      "path": "models/props/de_mirage/overhang_ver00.vmdl_c",
+      "crc32": "74dc3321",
+      "preload_bytes": 0,
+      "archive": 246,
+      "offset": 16830528,
+      "length": 143469
+    },
+    {
+      "path": "models/props/de_mirage/overhang_ver01.vmdl_c",
+      "crc32": "d2cf5010",
+      "preload_bytes": 0,
+      "archive": 246,
+      "offset": 16974000,
+      "length": 180653
+    },
+    {
+      "path": "models/props/de_mirage/overhang_ver02.vmdl_c",
+      "crc32": "891c5d51",
+      "preload_bytes": 0,
+      "archive": 246,
+      "offset": 17154656,
+      "length": 127997
+    },
+    {
+      "path": "models/props/de_mirage/pillow_a.vmdl_c",
+      "crc32": "e399fdb6",
+      "preload_bytes": 0,
+      "archive": 246,
+      "offset": 17282656,
+      "length": 32087
+    },
+    {
+      "path": "models/props/de_mirage/pillow_b.vmdl_c",
+      "crc32": "4e924f37",
+      "preload_bytes": 0,
+      "archive": 192,
+      "offset": 89122384,
+      "length": 23559
+    },
+    {
+      "path": "models/props/de_mirage/pillow_c.vmdl_c",
+      "crc32": "7667269b",
+      "preload_bytes": 0,
+      "archive": 187,
+      "offset": 4130880,
+      "length": 35623
+    },
+    {
+      "path": "models/props/de_mirage/roof_plank_a.vmdl_c",
+      "crc32": "dd31d842",
+      "preload_bytes": 0,
+      "archive": 259,
+      "offset": 26724016,
+      "length": 44795
+    },
+    {
+      "path": "models/props/de_mirage/roof_plank_b.vmdl_c",
+      "crc32": "ffae4843",
+      "preload_bytes": 0,
+      "archive": 259,
+      "offset": 26768816,
+      "length": 67195
+    },
+    {
+      "path": "models/props/de_mirage/roof_plank_c.vmdl_c",
+      "crc32": "918c7b1b",
+      "preload_bytes": 0,
+      "archive": 259,
+      "offset": 26836016,
+      "length": 138731
+    },
+    {
+      "path": "models/props/de_mirage/rusted_fence_a.vmdl_c",
+      "crc32": "1cff26a8",
+      "preload_bytes": 0,
+      "archive": 259,
+      "offset": 26974752,
+      "length": 229260
+    },
+    {
+      "path": "models/props/de_mirage/rusted_fence_b.vmdl_c",
+      "crc32": "9a45ef60",
+      "preload_bytes": 0,
+      "archive": 273,
+      "offset": 77070768,
+      "length": 93644
+    },
+    {
+      "path": "models/props/de_mirage/sheetmetal_b_shard_1.vmdl_c",
+      "crc32": "b9c194b9",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 46855776,
+      "length": 24170
+    },
+    {
+      "path": "models/props/de_mirage/sheetmetal_b_shard_2.vmdl_c",
+      "crc32": "fcd19666",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 46879952,
+      "length": 28942
+    },
+    {
+      "path": "models/props/de_mirage/sheetmetal_b_shard_3.vmdl_c",
+      "crc32": "974a529c",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 46908896,
+      "length": 21977
+    },
+    {
+      "path": "models/props/de_mirage/sheetmetal_shard_1.vmdl_c",
+      "crc32": "e48610ad",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 46930880,
+      "length": 26746
+    },
+    {
+      "path": "models/props/de_mirage/sheetmetal_shard_2.vmdl_c",
+      "crc32": "14e8917c",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 46957632,
+      "length": 27530
+    },
+    {
+      "path": "models/props/de_mirage/sheetmetal_shard_3.vmdl_c",
+      "crc32": "94a68b2e",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 46985168,
+      "length": 23466
+    },
+    {
+      "path": "models/props/de_mirage/sheetmetal_shard_4.vmdl_c",
+      "crc32": "8bab06c8",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 47008640,
+      "length": 28652
+    },
+    {
+      "path": "models/props/de_mirage/sheetmetal_shard_5.vmdl_c",
+      "crc32": "db0f0574",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 47037296,
+      "length": 21833
+    },
+    {
+      "path": "models/props/de_mirage/sheetmetal_shard_6.vmdl_c",
+      "crc32": "ff7e8db8",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 47059136,
+      "length": 21642
+    },
+    {
+      "path": "models/props/de_mirage/sheetmetal_shard_7.vmdl_c",
+      "crc32": "84b6a56b",
+      "preload_bytes": 0,
+      "archive": 253,
+      "offset": 47080784,
+      "length": 24587
+    },
+    {
+      "path": "models/props/de_mirage/shutter_window_l_breakable.vmdl_c",
+      "crc32": "c200dd52",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 30781872,
+      "length": 16540
+    },
+    {
+      "path": "models/props/de_mirage/shutter_window_l_dama.vmdl_c",
+      "crc32": "3dd6dc35",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 30798416,
+      "length": 23876
+    },
+    {
+      "path": "models/props/de_mirage/shutter_window_l_damb.vmdl_c",
+      "crc32": "65b1879b",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 30822304,
+      "length": 28548
+    },
+    {
+      "path": "models/props/de_mirage/shutter_window_l_damc.vmdl_c",
+      "crc32": "ff121d31",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 30850864,
+      "length": 14212
+    },
+    {
+      "path": "models/props/de_mirage/shutter_window_l_remainder.vmdl_c",
+      "crc32": "927e83b6",
+      "preload_bytes": 0,
+      "archive": 384,
+      "offset": 98625840,
+      "length": 16648
+    },
+    {
+      "path": "models/props/de_mirage/shutter_window_r_breakable.vmdl_c",
+      "crc32": "730643c4",
+      "preload_bytes": 0,
+      "archive": 384,
+      "offset": 98642496,
+      "length": 20755
+    },
+    {
+      "path": "models/props/de_mirage/shutter_window_r_dama.vmdl_c",
+      "crc32": "d4093530",
+      "preload_bytes": 0,
+      "archive": 384,
+      "offset": 98663264,
+      "length": 31981
+    },
+    {
+      "path": "models/props/de_mirage/shutter_window_r_damb.vmdl_c",
+      "crc32": "b1f99c48",
+      "preload_bytes": 0,
+      "archive": 384,
+      "offset": 98695248,
+      "length": 28557
+    },
+    {
+      "path": "models/props/de_mirage/shutter_window_r_damc.vmdl_c",
+      "crc32": "f7f0c926",
+      "preload_bytes": 0,
+      "archive": 384,
+      "offset": 98723808,
+      "length": 18971
+    },
+    {
+      "path": "models/props/de_mirage/shutter_window_r_remainder.vmdl_c",
+      "crc32": "0eab6250",
+      "preload_bytes": 0,
+      "archive": 384,
+      "offset": 98742784,
+      "length": 12056
+    },
+    {
+      "path": "models/props/de_mirage/small_door_b.vmdl_c",
+      "crc32": "7568caa5",
+      "preload_bytes": 0,
+      "archive": 384,
+      "offset": 98754848,
+      "length": 21371
+    },
+    {
+      "path": "models/props/de_mirage/tarp_a.vmdl_c",
+      "crc32": "4af28cfe",
+      "preload_bytes": 0,
+      "archive": 315,
+      "offset": 95570592,
+      "length": 121733
+    },
+    {
+      "path": "models/props/de_mirage/towertop_a_skybox.vmdl_c",
+      "crc32": "fa818fb1",
+      "preload_bytes": 0,
+      "archive": 182,
+      "offset": 24625168,
+      "length": 260992
+    },
+    {
+      "path": "models/props/de_mirage/towertop_d_skybox.vmdl_c",
+      "crc32": "e3fa85ae",
+      "preload_bytes": 0,
+      "archive": 246,
+      "offset": 15844272,
+      "length": 377893
+    },
+    {
+      "path": "models/props/de_mirage/towertop_e.vmdl_c",
+      "crc32": "5553ad9d",
+      "preload_bytes": 0,
+      "archive": 246,
+      "offset": 16222176,
+      "length": 121721
+    },
+    {
+      "path": "models/props/de_mirage/wall_arch_a1.vmdl_c",
+      "crc32": "24a7e17f",
+      "preload_bytes": 0,
+      "archive": 187,
+      "offset": 3246752,
+      "length": 37675
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_b_cover_sheetmetal.vmdl_c",
+      "crc32": "216f896f",
+      "preload_bytes": 0,
+      "archive": 220,
+      "offset": 83601776,
+      "length": 24454
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_cbble_frame.vmdl_c",
+      "crc32": "e7ea3fb8",
+      "preload_bytes": 0,
+      "archive": 360,
+      "offset": 42742192,
+      "length": 73988
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_cover_sheetmetal.vmdl_c",
+      "crc32": "6524a842",
+      "preload_bytes": 0,
+      "archive": 287,
+      "offset": 43826624,
+      "length": 44975
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_frame.vmdl_c",
+      "crc32": "a16b7a6b",
+      "preload_bytes": 0,
+      "archive": 394,
+      "offset": 87949664,
+      "length": 31062
+    },
+    {
+      "path": "models/props/de_mirage/window_a.vmdl_c",
+      "crc32": "3ed29d73",
+      "preload_bytes": 0,
+      "archive": 280,
+      "offset": 67112704,
+      "length": 22007
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_b_cover_sheetmetal/piece.vmdl_c",
+      "crc32": "d18bdb95",
+      "preload_bytes": 0,
+      "archive": 220,
+      "offset": 83626240,
+      "length": 9495
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_b_cover_sheetmetal/piece1.vmdl_c",
+      "crc32": "c275a94c",
+      "preload_bytes": 0,
+      "archive": 220,
+      "offset": 83635744,
+      "length": 9768
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_b_cover_sheetmetal/piece2.vmdl_c",
+      "crc32": "c22327af",
+      "preload_bytes": 0,
+      "archive": 220,
+      "offset": 83645520,
+      "length": 10360
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_cover_sheetmetal/piece.vmdl_c",
+      "crc32": "c174f015",
+      "preload_bytes": 0,
+      "archive": 287,
+      "offset": 43871600,
+      "length": 11605
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_cover_sheetmetal/piece1.vmdl_c",
+      "crc32": "e0cf0e2b",
+      "preload_bytes": 0,
+      "archive": 287,
+      "offset": 43883216,
+      "length": 9958
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_cover_sheetmetal/piece2.vmdl_c",
+      "crc32": "0f1d4248",
+      "preload_bytes": 0,
+      "archive": 287,
+      "offset": 43893184,
+      "length": 12598
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_cover_sheetmetal/piece3.vmdl_c",
+      "crc32": "a27d4eb9",
+      "preload_bytes": 0,
+      "archive": 287,
+      "offset": 43905792,
+      "length": 10422
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_cover_sheetmetal/piece4.vmdl_c",
+      "crc32": "1fd27815",
+      "preload_bytes": 0,
+      "archive": 287,
+      "offset": 43916224,
+      "length": 11414
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_cover_sheetmetal/piece5.vmdl_c",
+      "crc32": "109b18cf",
+      "preload_bytes": 0,
+      "archive": 287,
+      "offset": 43927648,
+      "length": 9782
+    },
+    {
+      "path": "models/props/de_mirage/wall_hole_cover_sheetmetal/piece6.vmdl_c",
+      "crc32": "e5085760",
+      "preload_bytes": 0,
+      "archive": 287,
+      "offset": 43937440,
+      "length": 9382
+    },
+    {
+      "path": "lighting/postprocessing/de_mirage_postprocess.vpost_c",
+      "crc32": "909c11dc",
+      "preload_bytes": 0,
+      "archive": 87,
+      "offset": 47003984,
+      "length": 133387
+    },
+    {
+      "path": "lighting/postprocessing/de_mirage_prefab/de_mirage.vpost_c",
+      "crc32": "d6b4948e",
+      "preload_bytes": 0,
+      "archive": 87,
+      "offset": 47137376,
+      "length": 133395
+    },
+    {
+      "path": "lighting/postprocessing/de_mirage_prefab/de_mirage_prefab.vpost_c",
+      "crc32": "a6981804",
+      "preload_bytes": 0,
+      "archive": 87,
+      "offset": 47270784,
+      "length": 133328
+    },
+    {
+      "path": "lighting/postprocessing/de_mirage_prefab/de_mirage_vanity.vpost_c",
+      "crc32": "c40797ac",
+      "preload_bytes": 0,
+      "archive": 204,
+      "offset": 9946960,
+      "length": 82228
+    },
+    {
+      "path": "particles/models/de_mirage/food/magixx_sauce_01a/magixx_sauce_bottle_breakable_01a/break_particles1.vsnap_c",
+      "crc32": "2a7cad1d",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108693216,
+      "length": 1115
+    },
+    {
+      "path": "sounds/ui/panorama/bg_mirage_01.vsnd_c",
+      "crc32": "f8ebfd4e",
+      "preload_bytes": 0,
+      "archive": 35,
+      "offset": 70447968,
+      "length": 8714372
+    },
+    {
+      "path": "sounds/vo/announcer/cs2_classic/felix_broken_fang_pick_mirage.vsnd_c",
+      "crc32": "dc043dce",
+      "preload_bytes": 0,
+      "archive": 171,
+      "offset": 71708384,
+      "length": 117618
+    },
+    {
+      "path": "sounds/vo/announcer/cs2_classic/felix_broken_fang_pick_mirage_tk01.vsnd_c",
+      "crc32": "9b5c97e6",
+      "preload_bytes": 0,
+      "archive": 171,
+      "offset": 71826016,
+      "length": 169782
+    },
+    {
+      "path": "sounds/vo/announcer/cs2_classic/felix_broken_fang_pick_mirage_tk02.vsnd_c",
+      "crc32": "e106e72a",
+      "preload_bytes": 0,
+      "archive": 171,
+      "offset": 71995808,
+      "length": 113872
+    },
+    {
+      "path": "sounds/vo/announcer/cs2_classic/felix_broken_fang_premier_mirage.vsnd_c",
+      "crc32": "53545f02",
+      "preload_bytes": 0,
+      "archive": 171,
+      "offset": 76959392,
+      "length": 68944
+    },
+    {
+      "path": "sounds/vo/announcer/cs2_classic/felix_broken_fang_premier_mirage_tk01.vsnd_c",
+      "crc32": "7d1630b0",
+      "preload_bytes": 0,
+      "archive": 171,
+      "offset": 77028336,
+      "length": 61526
+    },
+    {
+      "path": "sounds/vo/announcer/cs2_classic/felix_broken_fang_premier_mirage_tk02.vsnd_c",
+      "crc32": "7c39c2de",
+      "preload_bytes": 0,
+      "archive": 171,
+      "offset": 77089872,
+      "length": 83708
+    },
+    {
+      "path": "soundevents/ambience/game_sounds_mirage.vsndevts_c",
+      "crc32": "9b0ba0ef",
+      "preload_bytes": 0,
+      "archive": 462,
+      "offset": 53779504,
+      "length": 10593
+    },
+    {
+      "path": "panorama/images/map_icons/map_icon_de_mirage.vsvg_c",
+      "crc32": "a82eac5a",
+      "preload_bytes": 0,
+      "archive": 201,
+      "offset": 47063312,
+      "length": 15205
+    },
+    {
+      "path": "materials/de_mirage/base/base_1_diffuse_blend_psd_37bb7bd3.vtex_c",
+      "crc32": "6bfc2d00",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 97384880,
+      "length": 301605
+    },
+    {
+      "path": "materials/de_mirage/base/base_mid_ver1_diffuse_color_psd_a1ba91d5.vtex_c",
+      "crc32": "e74132ed",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 97686496,
+      "length": 611541
+    },
+    {
+      "path": "materials/de_mirage/base/base_mid_ver1_normal_psd_fdce5b8c.vtex_c",
+      "crc32": "51ddb2f9",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 98298048,
+      "length": 1301937
+    },
+    {
+      "path": "materials/de_mirage/base/base_top_ver1_diffuse_color_psd_41ae5e62.vtex_c",
+      "crc32": "1b7a07a7",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 99600000,
+      "length": 590425
+    },
+    {
+      "path": "materials/de_mirage/base/base_top_ver1_normal_psd_6397a1fd.vtex_c",
+      "crc32": "60c6828f",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 100190432,
+      "length": 1207385
+    },
+    {
+      "path": "materials/de_mirage/base/base_trim_ver1_diffuse_color_psd_42449588.vtex_c",
+      "crc32": "a75cc3c5",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 101397824,
+      "length": 176960
+    },
+    {
+      "path": "materials/de_mirage/base/base_ver1_diffuse_color_psd_1af4fd13.vtex_c",
+      "crc32": "5fb6a396",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 101574784,
+      "length": 637756
+    },
+    {
+      "path": "materials/de_mirage/brick/brick_ver1_a_normal_psd_549713d8.vtex_c",
+      "crc32": "3f14270e",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 73067344,
+      "length": 1239706
+    },
+    {
+      "path": "materials/de_mirage/brick/brick_ver1_blend_psd_f9788b2e.vtex_c",
+      "crc32": "d597e038",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 74307056,
+      "length": 299752
+    },
+    {
+      "path": "materials/de_mirage/brick/brick_ver1_diffuse_color_psd_54ca765c.vtex_c",
+      "crc32": "475cd7b5",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 74606816,
+      "length": 627321
+    },
+    {
+      "path": "materials/de_mirage/brick/brick_ver3_blend_psd_6b8e9a4e.vtex_c",
+      "crc32": "8466e9b1",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 75234144,
+      "length": 284338
+    },
+    {
+      "path": "materials/de_mirage/brick/cinderblock_1a_ao_tga_cd2691e1.vtex_c",
+      "crc32": "8c18d33e",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 75522112,
+      "length": 632431
+    },
+    {
+      "path": "materials/de_mirage/brick/cinderblock_1a_color_psd_8b2f9476.vtex_c",
+      "crc32": "232719d2",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 76154544,
+      "length": 5125138
+    },
+    {
+      "path": "materials/de_mirage/brick/cinderblock_1a_normal_tga_61748d37.vtex_c",
+      "crc32": "cdc58253",
+      "preload_bytes": 0,
+      "archive": 13,
+      "offset": 44693344,
+      "length": 5130147
+    },
+    {
+      "path": "materials/de_mirage/concrete/concrete_floor_base_2_ao_tga_3c3c1de.vtex_c",
+      "crc32": "bba6c6dd",
+      "preload_bytes": 0,
+      "archive": 384,
+      "offset": 36454064,
+      "length": 547392
+    },
+    {
+      "path": "materials/de_mirage/concrete/concrete_floor_base_2_color_tga_f72d8d29.vtex_c",
+      "crc32": "3b036654",
+      "preload_bytes": 0,
+      "archive": 106,
+      "offset": 69966896,
+      "length": 2390336
+    },
+    {
+      "path": "materials/de_mirage/concrete/concrete_hs01a_color_tga_a10d04d5.vtex_c",
+      "crc32": "e2bede6d",
+      "preload_bytes": 0,
+      "archive": 95,
+      "offset": 71086832,
+      "length": 10096721
+    },
+    {
+      "path": "materials/de_mirage/concrete/concrete_hs01a_mask_tga_3000ad10.vtex_c",
+      "crc32": "4ae8f7d5",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 1264,
+      "length": 2798392
+    },
+    {
+      "path": "materials/de_mirage/concrete/concrete_hs01a_normal_tga_d651e2ab.vtex_c",
+      "crc32": "f75947c7",
+      "preload_bytes": 0,
+      "archive": 338,
+      "offset": 26802864,
+      "length": 22371816
+    },
+    {
+      "path": "materials/de_mirage/decals/poster_a_decal_color_psd_c5214ce0.vtex_c",
+      "crc32": "fb37e6ec",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 19964528,
+      "length": 89636
+    },
+    {
+      "path": "materials/de_mirage/decals/poster_b_decal_color_psd_61aa2c75.vtex_c",
+      "crc32": "bd5fc9ba",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 20057632,
+      "length": 89636
+    },
+    {
+      "path": "materials/de_mirage/decals/poster_c_decal_color_psd_82038387.vtex_c",
+      "crc32": "16ee106e",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 20150736,
+      "length": 89636
+    },
+    {
+      "path": "materials/de_mirage/decals/sign_b_decal_color_psd_935c2789.vtex_c",
+      "crc32": "77f8afaf",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 20243952,
+      "length": 50251
+    },
+    {
+      "path": "materials/de_mirage/decals/sign_c_decal_color_psd_bd701b89.vtex_c",
+      "crc32": "22bc53fe",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 20297776,
+      "length": 89496
+    },
+    {
+      "path": "materials/de_mirage/decals/wall_worna_decal_color_psd_f4257215.vtex_c",
+      "crc32": "6573f962",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 20390864,
+      "length": 666932
+    },
+    {
+      "path": "materials/de_mirage/decals/window_a_decal_color_psd_463ab17.vtex_c",
+      "crc32": "351b3a56",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 21061344,
+      "length": 45936
+    },
+    {
+      "path": "materials/de_mirage/decals/window_b_decal_color_psd_d4aa9338.vtex_c",
+      "crc32": "af1eaf5f",
+      "preload_bytes": 0,
+      "archive": 409,
+      "offset": 21110832,
+      "length": 45968
+    },
+    {
+      "path": "materials/de_mirage/doors/doortexture_a_diffuse_color_psd_d8231592.vtex_c",
+      "crc32": "972c8ca0",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 37170736,
+      "length": 89572
+    },
+    {
+      "path": "materials/de_mirage/doors/doortexture_a_normal_psd_702aaa60.vtex_c",
+      "crc32": "00762f83",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 37260320,
+      "length": 135060
+    },
+    {
+      "path": "materials/de_mirage/doors/doortexture_b_diffuse_color_psd_fb2efbce.vtex_c",
+      "crc32": "41630e4c",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 37395392,
+      "length": 89588
+    },
+    {
+      "path": "materials/de_mirage/doors/doortexture_b_normal_psd_e99e7f1c.vtex_c",
+      "crc32": "46852803",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 37484992,
+      "length": 177124
+    },
+    {
+      "path": "materials/de_mirage/doors/doortexture_c_diffuse_color_psd_3d374f5e.vtex_c",
+      "crc32": "c03a2234",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 37662128,
+      "length": 89588
+    },
+    {
+      "path": "materials/de_mirage/doors/doortexture_c_normal_psd_e0d5ded4.vtex_c",
+      "crc32": "66421ba5",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 37751728,
+      "length": 1731626
+    },
+    {
+      "path": "materials/de_mirage/effects/bullet_tracer.vtex_c",
+      "crc32": "7f91acf3",
+      "preload_bytes": 0,
+      "archive": 23,
+      "offset": 28296496,
+      "length": 18432
+    },
+    {
+      "path": "materials/de_mirage/effects/muzzleflash_blue.vtex_c",
+      "crc32": "d9eee652",
+      "preload_bytes": 0,
+      "archive": 187,
+      "offset": 3583936,
+      "length": 30040
+    },
+    {
+      "path": "materials/de_mirage/effects/spark.vtex_c",
+      "crc32": "5a77e2ca",
+      "preload_bytes": 0,
+      "archive": 187,
+      "offset": 3613984,
+      "length": 3056
+    },
+    {
+      "path": "materials/de_mirage/graffiti/graffiti006_decal_psd_f3943c9a.vtex_c",
+      "crc32": "451ed864",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 10798720,
+      "length": 253906
+    },
+    {
+      "path": "materials/de_mirage/graffiti/graffiti007_decal_psd_3e7c1435.vtex_c",
+      "crc32": "c3c37fa5",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 11056656,
+      "length": 445584
+    },
+    {
+      "path": "materials/de_mirage/graffiti/graffiti013_decal_psd_3ce9db8d.vtex_c",
+      "crc32": "08bee435",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 11506256,
+      "length": 112672
+    },
+    {
+      "path": "materials/de_mirage/ground/ground_tilec_blend_diffuse_color_psd_9249503d.vtex_c",
+      "crc32": "57005762",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 11636128,
+      "length": 632508
+    },
+    {
+      "path": "materials/de_mirage/ground/ground_tilec_blendmp_diffuse_blend_psd_3d2b3c8f.vtex_c",
+      "crc32": "6bbd4855",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 12268640,
+      "length": 1013966
+    },
+    {
+      "path": "materials/de_mirage/ground/ground_tilec_normal_psd_7de1b3b1.vtex_c",
+      "crc32": "b14d0484",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 13282608,
+      "length": 351896
+    },
+    {
+      "path": "materials/de_mirage/ground/ground_tilef_diffuse_color_psd_51e48dfa.vtex_c",
+      "crc32": "7d2251aa",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 13634512,
+      "length": 620798
+    },
+    {
+      "path": "materials/de_mirage/ground/ground_tilef_normals_normal_psd_4e668f58.vtex_c",
+      "crc32": "07c838bf",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 14255312,
+      "length": 300791
+    },
+    {
+      "path": "materials/de_mirage/ground/ground_tileh_blend_psd_3bc42ec4.vtex_c",
+      "crc32": "9f59efca",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 14556112,
+      "length": 89572
+    },
+    {
+      "path": "materials/de_mirage/ground/ground_tileh_diffuse_color_psd_aa9ad780.vtex_c",
+      "crc32": "1c8f94bb",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 14645696,
+      "length": 632501
+    },
+    {
+      "path": "materials/de_mirage/ground/ground_tileh_normal_psd_a6790f05.vtex_c",
+      "crc32": "5c388667",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 15278208,
+      "length": 1400476
+    },
+    {
+      "path": "materials/de_mirage/hr_mirage/mirage_plaster_1_color_psd_44f88407.vtex_c",
+      "crc32": "22db35b4",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 16682016,
+      "length": 605240
+    },
+    {
+      "path": "materials/de_mirage/hr_mirage/mirage_plaster_1_normal_psd_80a18e99.vtex_c",
+      "crc32": "4f139f84",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 17287264,
+      "length": 309208
+    },
+    {
+      "path": "materials/de_mirage/hr_mirage/mirage_plaster_2_color_psd_14cbd213.vtex_c",
+      "crc32": "50d2aa78",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 17600048,
+      "length": 626625
+    },
+    {
+      "path": "materials/de_mirage/hr_mirage/mirage_plaster_2_normal_psd_f6e84b0a.vtex_c",
+      "crc32": "ec684eec",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 18226688,
+      "length": 1209380
+    },
+    {
+      "path": "materials/de_mirage/marble/de_mirage_marble_01_color_psd_7342b537.vtex_c",
+      "crc32": "422f8c34",
+      "preload_bytes": 0,
+      "archive": 251,
+      "offset": 84122880,
+      "length": 599076
+    },
+    {
+      "path": "materials/de_mirage/marble/de_mirage_marble_01_normal_psd_8f926943.vtex_c",
+      "crc32": "865c659d",
+      "preload_bytes": 0,
+      "archive": 251,
+      "offset": 84721968,
+      "length": 1284608
+    },
+    {
+      "path": "materials/de_mirage/marble/marble_01_vmat_g_tlayer1ambientocclusion_9782fd5c.vtex_c",
+      "crc32": "8ddff2ff",
+      "preload_bytes": 0,
+      "archive": 251,
+      "offset": 86010496,
+      "length": 1944
+    },
+    {
+      "path": "materials/de_mirage/metal/metal_basic_1_color_tga_c231a254.vtex_c",
+      "crc32": "ced447cd",
+      "preload_bytes": 0,
+      "archive": 50,
+      "offset": 2290000,
+      "length": 988185
+    },
+    {
+      "path": "materials/de_mirage/metal/metal_basic_1_normal_tga_f2f13580.vtex_c",
+      "crc32": "f1675170",
+      "preload_bytes": 0,
+      "archive": 50,
+      "offset": 3278192,
+      "length": 1004892
+    },
+    {
+      "path": "materials/de_mirage/metal/metal_basic_1_vmat_g_tambientocclusion_9782fd5c.vtex_c",
+      "crc32": "8ddff2ff",
+      "preload_bytes": 0,
+      "archive": 50,
+      "offset": 4283088,
+      "length": 1944
+    },
+    {
+      "path": "materials/de_mirage/metal/metal_siding_hs01a_color_tga_4c3c3eb7.vtex_c",
+      "crc32": "421b486d",
+      "preload_bytes": 0,
+      "archive": 50,
+      "offset": 4289280,
+      "length": 12793366
+    },
+    {
+      "path": "materials/de_mirage/metal/metal_siding_hs01a_color_tga_87b1d7bb.vtex_c",
+      "crc32": "579a1caa",
+      "preload_bytes": 0,
+      "archive": 50,
+      "offset": 17082656,
+      "length": 9441247
+    },
+    {
+      "path": "materials/de_mirage/metal/metal_siding_hs01a_normal_tga_d031dbf7.vtex_c",
+      "crc32": "5d5c76c0",
+      "preload_bytes": 0,
+      "archive": 50,
+      "offset": 26523904,
+      "length": 4343658
+    },
+    {
+      "path": "materials/de_mirage/metal/metal_siding_hs01a_rust_color_tga_d5d4a220.vtex_c",
+      "crc32": "5b6ddf22",
+      "preload_bytes": 0,
+      "archive": 50,
+      "offset": 30867568,
+      "length": 10400044
+    },
+    {
+      "path": "materials/de_mirage/metal/metal_siding_hs01a_rust_mask_tga_d4f6a352.vtex_c",
+      "crc32": "e05047d9",
+      "preload_bytes": 0,
+      "archive": 153,
+      "offset": 48766848,
+      "length": 2798408
+    },
+    {
+      "path": "materials/de_mirage/metal/metal_trim_hs01a_color_tga_efaa6d65.vtex_c",
+      "crc32": "643b34c7",
+      "preload_bytes": 0,
+      "archive": 153,
+      "offset": 51565264,
+      "length": 11081904
+    },
+    {
+      "path": "materials/de_mirage/metal/metal_trim_hs01a_normal_tga_3e4051.vtex_c",
+      "crc32": "e771c8ef",
+      "preload_bytes": 0,
+      "archive": 153,
+      "offset": 62647168,
+      "length": 10306729
+    },
+    {
+      "path": "materials/de_mirage/plaster/interior_plaster_hs01a_color_tga_3f53b021.vtex_c",
+      "crc32": "c6d2c031",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 90543376,
+      "length": 8423339
+    },
+    {
+      "path": "materials/de_mirage/plaster/interior_plaster_hs01a_mask_tga_c0f1a1bc.vtex_c",
+      "crc32": "1e98a027",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 98966720,
+      "length": 6928781
+    },
+    {
+      "path": "materials/de_mirage/plaster/interior_plaster_hs01a_normal_tga_17b73c18.vtex_c",
+      "crc32": "df130af6",
+      "preload_bytes": 0,
+      "archive": 100,
+      "offset": 42815280,
+      "length": 22097277
+    },
+    {
+      "path": "materials/de_mirage/plaster/interior_plaster_worn_hs01a_color_tga_717eeb21.vtex_c",
+      "crc32": "e6de292c",
+      "preload_bytes": 0,
+      "archive": 100,
+      "offset": 64912560,
+      "length": 9315791
+    },
+    {
+      "path": "materials/de_mirage/plaster/interior_plaster_worn_hs01a_mask_tga_d10e4927.vtex_c",
+      "crc32": "a8f28094",
+      "preload_bytes": 0,
+      "archive": 100,
+      "offset": 74228352,
+      "length": 11186880
+    },
+    {
+      "path": "materials/de_mirage/plaster/interior_plaster_worn_hs01a_normal_tga_8b062beb.vtex_c",
+      "crc32": "b9fb5db8",
+      "preload_bytes": 0,
+      "archive": 194,
+      "offset": 14061504,
+      "length": 5594752
+    },
+    {
+      "path": "materials/de_mirage/plaster/plaster_blue1_diffuse_color_psd_c3bb4227.vtex_c",
+      "crc32": "919b982b",
+      "preload_bytes": 0,
+      "archive": 194,
+      "offset": 19656256,
+      "length": 582395
+    },
+    {
+      "path": "materials/de_mirage/plaster/plaster_salmon1_diffuse_color_psd_b9d02d0e.vtex_c",
+      "crc32": "8b7ede41",
+      "preload_bytes": 0,
+      "archive": 194,
+      "offset": 20238656,
+      "length": 516379
+    },
+    {
+      "path": "materials/de_mirage/plaster/plaster_tan1_diffuse_color_psd_85adbb41.vtex_c",
+      "crc32": "ffb49eff",
+      "preload_bytes": 0,
+      "archive": 194,
+      "offset": 20755040,
+      "length": 632598
+    },
+    {
+      "path": "materials/de_mirage/plaster/stucco_001_detail_psd_62b42970.vtex_c",
+      "crc32": "f61ab4a3",
+      "preload_bytes": 0,
+      "archive": 158,
+      "offset": 60087264,
+      "length": 4215733
+    },
+    {
+      "path": "materials/de_mirage/plaster_worn/plaster_brick1_diffuse_normal_psd_1cff08a4.vtex_c",
+      "crc32": "54ae93a3",
+      "preload_bytes": 0,
+      "archive": 194,
+      "offset": 25535216,
+      "length": 1086500
+    },
+    {
+      "path": "materials/de_mirage/plaster_worn/plaster_brick4_diffuse_color_psd_d2c7de36.vtex_c",
+      "crc32": "895d06b7",
+      "preload_bytes": 0,
+      "archive": 194,
+      "offset": 26621728,
+      "length": 596948
+    },
+    {
+      "path": "materials/de_mirage/stone/stone_cladding_01a_color_psd_deb62891.vtex_c",
+      "crc32": "6e092371",
+      "preload_bytes": 0,
+      "archive": 272,
+      "offset": 67557712,
+      "length": 2119548
+    },
+    {
+      "path": "materials/de_mirage/stone/stone_cladding_01a_color_tga_6876cde3.vtex_c",
+      "crc32": "a8f64265",
+      "preload_bytes": 0,
+      "archive": 155,
+      "offset": 9493984,
+      "length": 2195274
+    },
+    {
+      "path": "materials/de_mirage/stone/stone_cladding_01a_dirty_color_psd_b3dcc219.vtex_c",
+      "crc32": "2b4bc77b",
+      "preload_bytes": 0,
+      "archive": 155,
+      "offset": 11689264,
+      "length": 2521065
+    },
+    {
+      "path": "materials/de_mirage/stone/stone_cladding_01a_dirty_mask_psd_1b97bf7c.vtex_c",
+      "crc32": "091346b3",
+      "preload_bytes": 0,
+      "archive": 173,
+      "offset": 11510224,
+      "length": 2798268
+    },
+    {
+      "path": "materials/de_mirage/stone/stone_cladding_01a_normal_tga_b34cba8c.vtex_c",
+      "crc32": "29f41dba",
+      "preload_bytes": 0,
+      "archive": 173,
+      "offset": 14308496,
+      "length": 5360850
+    },
+    {
+      "path": "materials/de_mirage/tile/tile_ver4_diffuse_color_psd_f7aedb89.vtex_c",
+      "crc32": "ce71f764",
+      "preload_bytes": 0,
+      "archive": 147,
+      "offset": 88495200,
+      "length": 176976
+    },
+    {
+      "path": "materials/de_mirage/trims/concrete_trim_01_detail_psd_edcc04ad.vtex_c",
+      "crc32": "71934905",
+      "preload_bytes": 0,
+      "archive": 377,
+      "offset": 0,
+      "length": 1066278
+    },
+    {
+      "path": "materials/de_mirage/trims/concrete_trim_02_color_tga_8534a3b9.vtex_c",
+      "crc32": "a51ac79e",
+      "preload_bytes": 0,
+      "archive": 266,
+      "offset": 1984368,
+      "length": 610341
+    },
+    {
+      "path": "materials/de_mirage/trims/concrete_trim_02_normal_tga_87a489f6.vtex_c",
+      "crc32": "126be1e2",
+      "preload_bytes": 0,
+      "archive": 266,
+      "offset": 2594720,
+      "length": 1400444
+    },
+    {
+      "path": "materials/de_mirage/trims/trims01a_color_tga_e0ca2793.vtex_c",
+      "crc32": "b142a429",
+      "preload_bytes": 0,
+      "archive": 46,
+      "offset": 49655776,
+      "length": 1922378
+    },
+    {
+      "path": "materials/de_mirage/trims/trims01a_normal_tga_864f1650.vtex_c",
+      "crc32": "18de3e2a",
+      "preload_bytes": 0,
+      "archive": 46,
+      "offset": 51578160,
+      "length": 46463
+    },
+    {
+      "path": "materials/de_mirage/trims/trims01a_painted_color_tga_2dfba711.vtex_c",
+      "crc32": "a4761ecc",
+      "preload_bytes": 0,
+      "archive": 278,
+      "offset": 59757424,
+      "length": 2015431
+    },
+    {
+      "path": "materials/de_mirage/trims/trims01a_painted_color_tga_526e828b.vtex_c",
+      "crc32": "fdc64519",
+      "preload_bytes": 0,
+      "archive": 278,
+      "offset": 61772864,
+      "length": 1533461
+    },
+    {
+      "path": "materials/de_mirage/wood/wood_pallet_01_color_psd_7ac18eee.vtex_c",
+      "crc32": "27f20d00",
+      "preload_bytes": 0,
+      "archive": 278,
+      "offset": 63310144,
+      "length": 4992304
+    },
+    {
+      "path": "materials/de_mirage/wood/wood_pallet_01_dmg_ao_tga_20ede439.vtex_c",
+      "crc32": "cf3cc3c3",
+      "preload_bytes": 0,
+      "archive": 128,
+      "offset": 2404288,
+      "length": 1408900
+    },
+    {
+      "path": "materials/de_mirage/wood/wood_pallet_01_normal_psd_48834ac3.vtex_c",
+      "crc32": "5d391c20",
+      "preload_bytes": 0,
+      "archive": 128,
+      "offset": 3813200,
+      "length": 5594596
+    },
+    {
+      "path": "materials/de_mirage/wood/wood_ver3_diffuse_color_psd_a117309f.vtex_c",
+      "crc32": "3fc0c01e",
+      "preload_bytes": 0,
+      "archive": 128,
+      "offset": 9407808,
+      "length": 636778
+    },
+    {
+      "path": "materials/decals/mirage_flammable_color_psd_b34c0097.vtex_c",
+      "crc32": "9bd74161",
+      "preload_bytes": 0,
+      "archive": 256,
+      "offset": 64065696,
+      "length": 89496
+    },
+    {
+      "path": "materials/effects/lightcookies/mirage_cookie_01a.vtex_c",
+      "crc32": "dc7727b2",
+      "preload_bytes": 0,
+      "archive": 352,
+      "offset": 49349184,
+      "length": 172274
+    },
+    {
+      "path": "materials/lobby_mapveto/mapveto_mirage_bw_color_tga_618889ba.vtex_c",
+      "crc32": "f691c367",
+      "preload_bytes": 0,
+      "archive": 241,
+      "offset": 54296272,
+      "length": 176804
+    },
+    {
+      "path": "materials/lobby_mapveto/mapveto_mirage_color_tga_66e9442c.vtex_c",
+      "crc32": "929896e5",
+      "preload_bytes": 0,
+      "archive": 241,
+      "offset": 54473088,
+      "length": 176804
+    },
+    {
+      "path": "materials/models/inventory_items/pins/mirage_color_psd_e0026c19.vtex_c",
+      "crc32": "be673b1a",
+      "preload_bytes": 0,
+      "archive": 145,
+      "offset": 4472096,
+      "length": 310788
+    },
+    {
+      "path": "materials/models/inventory_items/pins/mirage_exponent_metal_tga_87a6cc72.vtex_c",
+      "crc32": "bcc33579",
+      "preload_bytes": 0,
+      "archive": 145,
+      "offset": 4782896,
+      "length": 84461
+    },
+    {
+      "path": "materials/models/inventory_items/pins/mirage_normal_tga_67a8a84a.vtex_c",
+      "crc32": "5f93858c",
+      "preload_bytes": 0,
+      "archive": 145,
+      "offset": 4867360,
+      "length": 1804604
+    },
+    {
+      "path": "materials/models/props/de_mirage/base_rocks_a/base_rocks_a_color_psd_49465940.vtex_c",
+      "crc32": "c6e1f515",
+      "preload_bytes": 0,
+      "archive": 263,
+      "offset": 81883072,
+      "length": 176960
+    },
+    {
+      "path": "materials/models/props/de_mirage/base_rocks_a/base_rocks_a_normals_normal_psd_7ff7a924.vtex_c",
+      "crc32": "dcc854ee",
+      "preload_bytes": 0,
+      "archive": 263,
+      "offset": 82060032,
+      "length": 733306
+    },
+    {
+      "path": "materials/models/props/de_mirage/base_rocks_a/base_rocks_a_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 263,
+      "offset": 82793344,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/bench_a/bench_a_color_psd_9ae52e4c.vtex_c",
+      "crc32": "9bbbfcfc",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 0,
+      "length": 596083
+    },
+    {
+      "path": "materials/models/props/de_mirage/bench_a/bench_a_normals_normal_psd_9748d4de.vtex_c",
+      "crc32": "4cb96b2e",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 596096,
+      "length": 351912
+    },
+    {
+      "path": "materials/models/props/de_mirage/bench_a/bench_a_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 948016,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/bomb_site_tarp/bomb_site_tarp_color_psd_5b206a94.vtex_c",
+      "crc32": "66a2b9c7",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 1190544,
+      "length": 561344
+    },
+    {
+      "path": "materials/models/props/de_mirage/bomb_site_tarp/bomb_site_tarp_normals_normal_psd_d49570f4.vtex_c",
+      "crc32": "ae70e291",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 1751888,
+      "length": 1312275
+    },
+    {
+      "path": "materials/models/props/de_mirage/broken_wall_1/broken_wall_1_color_psd_ff7ba91a.vtex_c",
+      "crc32": "04bb85f9",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 3268096,
+      "length": 1190489
+    },
+    {
+      "path": "materials/models/props/de_mirage/broken_wall_1/broken_wall_1_normal_psd_c0229bc2.vtex_c",
+      "crc32": "c63b5676",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 4458592,
+      "length": 2232552
+    },
+    {
+      "path": "materials/models/props/de_mirage/broken_wall_1/broken_wall_1_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 6691152,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/brush_shapes/residwall04a_vmat_g_tmetalness_b7e45cfc.vtex_c",
+      "crc32": "cb8566d7",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 6706912,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/brush_shapes/sitebwall13a_vmat_g_tmetalness_b7e45cfc.vtex_c",
+      "crc32": "cb8566d7",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 6712432,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/couch_a/couch_a_diffuse_color_psd_c50afa3b.vtex_c",
+      "crc32": "80047ada",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 6740992,
+      "length": 97015
+    },
+    {
+      "path": "materials/models/props/de_mirage/couch_a/couch_a_diffuse_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 6838016,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/couch_a/couch_a_normal_psd_7fdcc2b8.vtex_c",
+      "crc32": "846f258b",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 6839968,
+      "length": 2307880
+    },
+    {
+      "path": "materials/models/props/de_mirage/hanging_cloth_a/hanging_cloth_a_color_psd_41a702fe.vtex_c",
+      "crc32": "e14d0412",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 9151760,
+      "length": 176976
+    },
+    {
+      "path": "materials/models/props/de_mirage/hanging_cloth_a/hanging_cloth_a_color_psd_966faa57.vtex_c",
+      "crc32": "a68e3489",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 9328736,
+      "length": 351736
+    },
+    {
+      "path": "materials/models/props/de_mirage/hanging_cloth_a/hanging_cloth_a_normals_normal_psd_322b7a82.vtex_c",
+      "crc32": "9483a003",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 9680480,
+      "length": 249784
+    },
+    {
+      "path": "materials/models/props/de_mirage/lamp/lamp_diffuse_color_psd_8ca5c572.vtex_c",
+      "crc32": "fb8bf596",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 10052560,
+      "length": 286098
+    },
+    {
+      "path": "materials/models/props/de_mirage/lamp/lamp_exp_metal_tga_f78d528.vtex_c",
+      "crc32": "a1c857a0",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 10338672,
+      "length": 45884
+    },
+    {
+      "path": "materials/models/props/de_mirage/lamp/lamp_normals_normal_psd_86a2ca52.vtex_c",
+      "crc32": "da08ce25",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 10384560,
+      "length": 351880
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_a/base_top_ver1_diffuse_vmat_g_tmetalness_b7e45cfc.vtex_c",
+      "crc32": "cb8566d7",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 11211504,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_a/large_door_a_det_diffuse_color_psd_5ce43701.vtex_c",
+      "crc32": "5abc11d4",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 11217088,
+      "length": 659928
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_a/large_door_a_det_diffuse_vmat_g_tmetalness_b7e45cfc.vtex_c",
+      "crc32": "cb8566d7",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 11877024,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_a/large_door_a_det_normal_psd_9bb97231.vtex_c",
+      "crc32": "fdc4746c",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 11878976,
+      "length": 5226741
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_a/plaster_tan1_diffuse_vmat_g_tmetalness_b7e45cfc.vtex_c",
+      "crc32": "cb8566d7",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 17109216,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_b/large_door_b_color_psd_fa04e40e.vtex_c",
+      "crc32": "234d7097",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 17195024,
+      "length": 2509782
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_b/large_door_b_normal_psd_ad1e0fac.vtex_c",
+      "crc32": "50fe169d",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 19704816,
+      "length": 4579947
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_b/large_door_b_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 24284768,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_b/large_door_c_color_psd_91a06ee.vtex_c",
+      "crc32": "19c06226",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 24290576,
+      "length": 614927
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_b/large_door_c_normal_psd_e00a101b.vtex_c",
+      "crc32": "d27826a9",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 24905504,
+      "length": 800788
+    },
+    {
+      "path": "materials/models/props/de_mirage/large_door_b/large_door_c_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 25706304,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/metal_ammo_box_1/metal_ammo_box_1_color_psd_5613713d.vtex_c",
+      "crc32": "399f1289",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 25795616,
+      "length": 478829
+    },
+    {
+      "path": "materials/models/props/de_mirage/metal_ammo_box_1/metal_ammo_box_1_normal_psd_44e3ae2a.vtex_c",
+      "crc32": "89b78127",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 26274448,
+      "length": 986540
+    },
+    {
+      "path": "materials/models/props/de_mirage/metal_ammo_box_1/metal_ammo_box_1_vmat_g_tmetalness_b7e45cfc.vtex_c",
+      "crc32": "cb8566d7",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 27260992,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/overhang/overhang/overhang_ver1_diffuse_color_psd_8770cbe5.vtex_c",
+      "crc32": "1e6e0434",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 27266976,
+      "length": 632498
+    },
+    {
+      "path": "materials/models/props/de_mirage/overhang/overhang/overhang_ver1_diffuse_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 27899488,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/overhang/overhang/overhang_ver1_normal_psd_bc1df9ad.vtex_c",
+      "crc32": "a85b1236",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 27901440,
+      "length": 351896
+    },
+    {
+      "path": "materials/models/props/de_mirage/pillow_a/pillow_a_diffuse_color_psd_9f3c2394.vtex_c",
+      "crc32": "6fe3475d",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 28741024,
+      "length": 142836
+    },
+    {
+      "path": "materials/models/props/de_mirage/pillow_a/pillow_a_diffuse_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 28883872,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/pillow_a/pillow_a_normal_psd_8ff86ea8.vtex_c",
+      "crc32": "9cab0717",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 28885824,
+      "length": 89732
+    },
+    {
+      "path": "materials/models/props/de_mirage/pillow_b/pillow_b_diffuse_color_psd_dfd8ec5a.vtex_c",
+      "crc32": "9bc71018",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 29003488,
+      "length": 45900
+    },
+    {
+      "path": "materials/models/props/de_mirage/pillow_b/pillow_b_diffuse_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 29049392,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/pillow_b/pillow_b_normal_psd_cb5efa7f.vtex_c",
+      "crc32": "be8c8aac",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 29051344,
+      "length": 89732
+    },
+    {
+      "path": "materials/models/props/de_mirage/pillow_c/pillow_c_diffuse_color_psd_46be9ffe.vtex_c",
+      "crc32": "0a40ecb4",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 29180800,
+      "length": 45900
+    },
+    {
+      "path": "materials/models/props/de_mirage/pillow_c/pillow_c_diffuse_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 29226704,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/pillow_c/pillow_c_normal_psd_b41bd4b0.vtex_c",
+      "crc32": "6a079467",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 29228656,
+      "length": 89732
+    },
+    {
+      "path": "materials/models/props/de_mirage/rusted_fence_a/rusted_fence_a_color_psd_2169610e.vtex_c",
+      "crc32": "e1c42f10",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 29802528,
+      "length": 104519
+    },
+    {
+      "path": "materials/models/props/de_mirage/rusted_fence_a/rusted_fence_a_normals_normal_psd_822f2409.vtex_c",
+      "crc32": "b955ee8a",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 29907056,
+      "length": 351896
+    },
+    {
+      "path": "materials/models/props/de_mirage/rusted_fence_a/rusted_fence_a_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 30258960,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/shutter_window/shutter_window_diffuse_color_psd_fd30a798.vtex_c",
+      "crc32": "f185c2be",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 30602928,
+      "length": 176992
+    },
+    {
+      "path": "materials/models/props/de_mirage/shutter_window/shutter_window_diffuse_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 30779920,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/small_door_b/small_door_b_diffuse_color_psd_6f5a5632.vtex_c",
+      "crc32": "09924e4b",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 31017728,
+      "length": 176992
+    },
+    {
+      "path": "materials/models/props/de_mirage/small_door_b/small_door_b_diffuse_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 31194720,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/small_door_b/small_door_b_normal_psd_b4d099f4.vtex_c",
+      "crc32": "cfb68e0e",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 31196672,
+      "length": 263578
+    },
+    {
+      "path": "materials/models/props/de_mirage/tarp_a/tarp_a_diffuse_color_psd_d56f5734.vtex_c",
+      "crc32": "2bb2de64",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 31585008,
+      "length": 629856
+    },
+    {
+      "path": "materials/models/props/de_mirage/tarp_a/tarp_a_normal_psd_7ebe61d5.vtex_c",
+      "crc32": "058b960b",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 32214864,
+      "length": 351880
+    },
+    {
+      "path": "materials/models/props/de_mirage/towertop_a/base_top_ver1_diffuse_vmat_g_tmetalness_b7e45cfc.vtex_c",
+      "crc32": "cb8566d7",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 32570416,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/towertop_d/towertop_d_color_psd_edf28dfc.vtex_c",
+      "crc32": "098869cb",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 32840864,
+      "length": 1246423
+    },
+    {
+      "path": "materials/models/props/de_mirage/towertop_d/towertop_d_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 34087296,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/towertop_e/towertop_e_color_psd_1ac815ff.vtex_c",
+      "crc32": "882f14be",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 34594016,
+      "length": 2258973
+    },
+    {
+      "path": "materials/models/props/de_mirage/towertop_e/towertop_e_normal_psd_b492f0d3.vtex_c",
+      "crc32": "b58ac3bb",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 36852992,
+      "length": 4614283
+    },
+    {
+      "path": "materials/models/props/de_mirage/towertop_e/towertop_e_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 41467280,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/wall_arch_a/wall_arch_a1_color_psd_694f0de5.vtex_c",
+      "crc32": "86f419c3",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 41473136,
+      "length": 2295288
+    },
+    {
+      "path": "materials/models/props/de_mirage/wall_arch_a/wall_arch_a1_normal_psd_3f9c0807.vtex_c",
+      "crc32": "3ec65720",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 43768432,
+      "length": 4091442
+    },
+    {
+      "path": "materials/models/props/de_mirage/wall_arch_a/wall_arch_a1_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 47859888,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/wall_hole/sheet_metal_panel_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 47903488,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/wall_hole/wall_hole_cbble_color_psd_65d736fa.vtex_c",
+      "crc32": "6d12ef79",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 47909616,
+      "length": 995447
+    },
+    {
+      "path": "materials/models/props/de_mirage/wall_hole/wall_hole_cbble_vmat_g_tmetalness_b7e45cfc.vtex_c",
+      "crc32": "cb8566d7",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 48905072,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/wall_hole/wall_hole_diffuse_color_psd_6fd517b6.vtex_c",
+      "crc32": "3595fc89",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 48911584,
+      "length": 1400256
+    },
+    {
+      "path": "materials/models/props/de_mirage/wall_hole/wall_hole_diffuse_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 50311840,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/window_a/window_a_diffuse_color_psd_79880b5e.vtex_c",
+      "crc32": "0cb081e8",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 50550800,
+      "length": 642932
+    },
+    {
+      "path": "materials/models/props/de_mirage/window_a/window_a_diffuse_vmat_g_tmetalness_ee87d4b4.vtex_c",
+      "crc32": "3487cca5",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 51193744,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/props/de_mirage/window_a/window_a_normal_psd_5ba954e1.vtex_c",
+      "crc32": "76ae17e2",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 51195696,
+      "length": 1266930
+    },
+    {
+      "path": "materials/models/props/de_mirage/wood_roof_plank/wood_ver3_diffuse_vmat_g_tmetalness_b7e45cfc.vtex_c",
+      "crc32": "cb8566d7",
+      "preload_bytes": 0,
+      "archive": 123,
+      "offset": 52466208,
+      "length": 1944
+    },
+    {
+      "path": "materials/models/weapons/customization/paints/hydrographic/mirage_flowers_psd_3c9879b3.vtex_c",
+      "crc32": "216b9680",
+      "preload_bytes": 0,
+      "archive": 201,
+      "offset": 78361776,
+      "length": 1295069
+    },
+    {
+      "path": "materials/models/weapons/customization/paints/hydrographic/mirage_flowers_psd_c913329c.vtex_c",
+      "crc32": "c93cfe19",
+      "preload_bytes": 0,
+      "archive": 157,
+      "offset": 43443920,
+      "length": 945517
+    },
+    {
+      "path": "materials/skybox/sky_de_mirage_exr_71e5f2a1.vtex_c",
+      "crc32": "a11f7cc2",
+      "preload_bytes": 0,
+      "archive": 249,
+      "offset": 86540112,
+      "length": 630372
+    },
+    {
+      "path": "models/de_mirage/construction/light_floodlight/light_floodlight_glow_color_tga_4386442b.vtex_c",
+      "crc32": "d75b5c77",
+      "preload_bytes": 0,
+      "archive": 338,
+      "offset": 49178688,
+      "length": 45744
+    },
+    {
+      "path": "models/de_mirage/construction/light_floodlight/light_floodlight_glow_vmat_g_tselfillummask_ff155607.vtex_c",
+      "crc32": "22ca267a",
+      "preload_bytes": 0,
+      "archive": 338,
+      "offset": 49224432,
+      "length": 1944
+    },
+    {
+      "path": "models/de_mirage/debris/concrete/concrete_paint_white_hs01a_color_tga_7a506b88.vtex_c",
+      "crc32": "7a99fa12",
+      "preload_bytes": 0,
+      "archive": 102,
+      "offset": 95451104,
+      "length": 9327818
+    },
+    {
+      "path": "models/de_mirage/debris/croncrete/concrete_broken01a_color_tga_fee19902.vtex_c",
+      "crc32": "59604f2c",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 97588176,
+      "length": 2421740
+    },
+    {
+      "path": "models/de_mirage/debris/croncrete/concrete_broken01a_normal_tga_40e3c768.vtex_c",
+      "crc32": "5c7bd1c6",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 100009920,
+      "length": 5220093
+    },
+    {
+      "path": "models/de_mirage/debris/croncrete/concrete_broken01a_vmat_g_ttintmask_73100e5a.vtex_c",
+      "crc32": "e2dfafb2",
+      "preload_bytes": 0,
+      "archive": 187,
+      "offset": 1150000,
+      "length": 1944
+    },
+    {
+      "path": "models/de_mirage/debris/croncrete/concrete_broken01b_color_tga_549aaa8a.vtex_c",
+      "crc32": "7a2f3c12",
+      "preload_bytes": 0,
+      "archive": 240,
+      "offset": 62916640,
+      "length": 2315481
+    },
+    {
+      "path": "models/de_mirage/debris/croncrete/concrete_broken01b_normal_tga_e8c1e409.vtex_c",
+      "crc32": "2942447b",
+      "preload_bytes": 0,
+      "archive": 240,
+      "offset": 65232128,
+      "length": 5073715
+    },
+    {
+      "path": "models/de_mirage/debris/croncrete/concrete_broken01b_vmat_g_ttintmask_73100e5a.vtex_c",
+      "crc32": "e2dfafb2",
+      "preload_bytes": 0,
+      "archive": 386,
+      "offset": 82275056,
+      "length": 1944
+    },
+    {
+      "path": "models/de_mirage/decorations/interior_cup_metal_001/interior_cup_metal_001_ao_psd_f62a2432.vtex_c",
+      "crc32": "277515b8",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 25396688,
+      "length": 77848
+    },
+    {
+      "path": "models/de_mirage/decorations/interior_cup_metal_001/interior_cup_metal_001_color_psd_b5ef7e6a.vtex_c",
+      "crc32": "5a8edd33",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 25474544,
+      "length": 497403
+    },
+    {
+      "path": "models/de_mirage/decorations/interior_cup_metal_001/interior_cup_metal_001_mask_psd_f2e9be58.vtex_c",
+      "crc32": "fed834b8",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 25971952,
+      "length": 436245
+    },
+    {
+      "path": "models/de_mirage/decorations/interior_cup_metal_001/interior_cup_metal_001_normal_psd_d0aa03f2.vtex_c",
+      "crc32": "c486d992",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 26408208,
+      "length": 1262263
+    },
+    {
+      "path": "models/de_mirage/decorations/tabletop/tabletop_props_03_ao_tga_13ad1c45.vtex_c",
+      "crc32": "98818ccb",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 27674064,
+      "length": 1460803
+    },
+    {
+      "path": "models/de_mirage/decorations/tabletop/tabletop_props_03_color_tga_c927e9fa.vtex_c",
+      "crc32": "6f8d2b92",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 29134880,
+      "length": 3215628
+    },
+    {
+      "path": "models/de_mirage/decorations/tabletop/tabletop_props_03_normal_tga_9900aef7.vtex_c",
+      "crc32": "cb9daf79",
+      "preload_bytes": 0,
+      "archive": 133,
+      "offset": 32350512,
+      "length": 4809490
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_01a_color_tga_34eb93ae.vtex_c",
+      "crc32": "c0dbaf9f",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 107787104,
+      "length": 306351
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_01a_height_tga_ca9cd9d3.vtex_c",
+      "crc32": "5b2e6451",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108093456,
+      "length": 118659
+    },
+    {
+      "path": "models/de_mirage/food/magixx_sauce_01a/magixx_sauce_01a_normal_tga_78813a2.vtex_c",
+      "crc32": "c539476f",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108212128,
+      "length": 278027
+    },
+    {
+      "path": "models/de_mirage/furniture/oldstyle_table_1/oldstyle_table_1_detail_psd_cceef2fc.vtex_c",
+      "crc32": "deb4afa9",
+      "preload_bytes": 0,
+      "archive": 202,
+      "offset": 9799248,
+      "length": 995455
+    },
+    {
+      "path": "models/de_mirage/industrial/airduct01/airduct01_rust_color_psd_f70758b8.vtex_c",
+      "crc32": "43d638dd",
+      "preload_bytes": 0,
+      "archive": 216,
+      "offset": 69566656,
+      "length": 5594516
+    },
+    {
+      "path": "models/de_mirage/industrial/industrial_walkway/industrial_walkway_plate001_ao_tga_1e5ee22e.vtex_c",
+      "crc32": "816b9dba",
+      "preload_bytes": 0,
+      "archive": 268,
+      "offset": 14280144,
+      "length": 481065
+    },
+    {
+      "path": "models/de_mirage/industrial/industrial_walkway/industrial_walkway_plate001_color_psd_99a899e2.vtex_c",
+      "crc32": "d4d393a4",
+      "preload_bytes": 0,
+      "archive": 268,
+      "offset": 14761216,
+      "length": 1318188
+    },
+    {
+      "path": "models/de_mirage/industrial/industrial_walkway/industrial_walkway_plate001_normal_tga_3eb82fa7.vtex_c",
+      "crc32": "3912fb96",
+      "preload_bytes": 0,
+      "archive": 268,
+      "offset": 16079408,
+      "length": 1265187
+    },
+    {
+      "path": "models/de_mirage/industrial/padlock001/padlock001a_ao_png_34a65906.vtex_c",
+      "crc32": "76413582",
+      "preload_bytes": 0,
+      "archive": 247,
+      "offset": 200320,
+      "length": 949192
+    },
+    {
+      "path": "models/de_mirage/industrial/padlock001/padlock001a_clean_ao_png_40260a29.vtex_c",
+      "crc32": "c4994213",
+      "preload_bytes": 0,
+      "archive": 247,
+      "offset": 1153088,
+      "length": 950024
+    },
+    {
+      "path": "models/de_mirage/industrial/padlock001/padlock001a_clean_color_png_aec8ed6f.vtex_c",
+      "crc32": "bc09dc21",
+      "preload_bytes": 0,
+      "archive": 247,
+      "offset": 2103120,
+      "length": 89636
+    },
+    {
+      "path": "models/de_mirage/industrial/padlock001/padlock001a_clean_normal_png_52fc8978.vtex_c",
+      "crc32": "a915c8c2",
+      "preload_bytes": 0,
+      "archive": 247,
+      "offset": 2192768,
+      "length": 89716
+    },
+    {
+      "path": "models/de_mirage/industrial/padlock001/padlock001a_color_png_ed22db09.vtex_c",
+      "crc32": "d6854eed",
+      "preload_bytes": 0,
+      "archive": 247,
+      "offset": 2282496,
+      "length": 45884
+    },
+    {
+      "path": "models/de_mirage/industrial/padlock001/padlock001a_normal_png_a8e60769.vtex_c",
+      "crc32": "9706cc7d",
+      "preload_bytes": 0,
+      "archive": 247,
+      "offset": 2328384,
+      "length": 89716
+    },
+    {
+      "path": "models/de_mirage/lights/flourescent_light/light_flourescent_01_color_psd_4c2b999a.vtex_c",
+      "crc32": "6badb72f",
+      "preload_bytes": 0,
+      "archive": 41,
+      "offset": 32978000,
+      "length": 636708
+    },
+    {
+      "path": "models/de_mirage/lights/flourescent_light/light_flourescent_01_lit_color_psd_adda12e2.vtex_c",
+      "crc32": "6e8845b6",
+      "preload_bytes": 0,
+      "archive": 222,
+      "offset": 36190384,
+      "length": 1086183
+    },
+    {
+      "path": "models/de_mirage/lights/flourescent_light/light_flourescent_01_lit_color_psd_ca967e89.vtex_c",
+      "crc32": "6679fd79",
+      "preload_bytes": 0,
+      "archive": 222,
+      "offset": 37276576,
+      "length": 1086183
+    },
+    {
+      "path": "models/de_mirage/lights/flourescent_light/light_flourescent_01_normal_psd_7c0c39e1.vtex_c",
+      "crc32": "efc9b70b",
+      "preload_bytes": 0,
+      "archive": 222,
+      "offset": 38362768,
+      "length": 2068264
+    },
+    {
+      "path": "models/de_mirage/lights/flourescent_light/light_flourescent_01_tint_psd_2d4e28fb.vtex_c",
+      "crc32": "5c9f2014",
+      "preload_bytes": 0,
+      "archive": 222,
+      "offset": 40431040,
+      "length": 257713
+    },
+    {
+      "path": "models/de_mirage/pipes/pipe/pipe_connectors_1_ao_tga_d80c6c1.vtex_c",
+      "crc32": "0958cca2",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 0,
+      "length": 6741485
+    },
+    {
+      "path": "models/de_mirage/pipes/pipe/pipe_connectors_1_color_tga_3939497e.vtex_c",
+      "crc32": "caf83e09",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 6741488,
+      "length": 16401100
+    },
+    {
+      "path": "models/de_mirage/pipes/pipe/pipe_connectors_1_normal_tga_788dd6a4.vtex_c",
+      "crc32": "55c2a35d",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 23142592,
+      "length": 21178964
+    },
+    {
+      "path": "models/de_mirage/pipes/pipe/pipe_connectors_1_rusty_ao_tga_240fc788.vtex_c",
+      "crc32": "be5fca63",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 44325136,
+      "length": 6741501
+    },
+    {
+      "path": "models/de_mirage/pipes/pipe/pipe_connectors_1_rusty_color_tga_607096.vtex_c",
+      "crc32": "7b86bc77",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 51066640,
+      "length": 17926026
+    },
+    {
+      "path": "models/de_mirage/pipes/pipe/pipe_connectors_1_rusty_normal_tga_74bda85d.vtex_c",
+      "crc32": "a5c9ae3b",
+      "preload_bytes": 0,
+      "archive": 96,
+      "offset": 68992672,
+      "length": 21511839
+    },
+    {
+      "path": "models/de_mirage/railings/metal_railing/metal_railing_001_ao_psd_188b37e9.vtex_c",
+      "crc32": "b38b7c6b",
+      "preload_bytes": 0,
+      "archive": 194,
+      "offset": 27218688,
+      "length": 701084
+    },
+    {
+      "path": "models/de_mirage/railings/metal_railing/metal_railing_001b_color_psd_d8a81d2c.vtex_c",
+      "crc32": "b016eeff",
+      "preload_bytes": 0,
+      "archive": 272,
+      "offset": 64622128,
+      "length": 1104660
+    },
+    {
+      "path": "models/de_mirage/railings/metal_railing/metal_railing_001b_mask_psd_7c272b3f.vtex_c",
+      "crc32": "02e65d54",
+      "preload_bytes": 0,
+      "archive": 272,
+      "offset": 65726800,
+      "length": 423100
+    },
+    {
+      "path": "models/de_mirage/railings/metal_railing/metal_railing_001b_normal_psd_dcacdd73.vtex_c",
+      "crc32": "281425ee",
+      "preload_bytes": 0,
+      "archive": 272,
+      "offset": 66149904,
+      "length": 1400268
+    },
+    {
+      "path": "models/de_mirage/street/street_leaves_1/street_leaves_1_ao_tga_394597f9.vtex_c",
+      "crc32": "a637791a",
+      "preload_bytes": 0,
+      "archive": 129,
+      "offset": 10766064,
+      "length": 1109936
+    },
+    {
+      "path": "models/de_mirage/street/street_leaves_1/street_leaves_1_color_psd_8c78cb8a.vtex_c",
+      "crc32": "71ea07e9",
+      "preload_bytes": 0,
+      "archive": 129,
+      "offset": 11876000,
+      "length": 4376833
+    },
+    {
+      "path": "models/de_mirage/street/street_leaves_1/street_leaves_1_normal_tga_dc7d9c09.vtex_c",
+      "crc32": "9d5c32ed",
+      "preload_bytes": 0,
+      "archive": 129,
+      "offset": 16252848,
+      "length": 5000843
+    },
+    {
+      "path": "models/de_mirage/street/street_wire_hook_wall/street_wire_hook_wall_1_ao_tga_43aa45d3.vtex_c",
+      "crc32": "cb2bed2f",
+      "preload_bytes": 0,
+      "archive": 147,
+      "offset": 88262048,
+      "length": 45884
+    },
+    {
+      "path": "models/de_mirage/street/street_wire_hook_wall/street_wire_hook_wall_1_color_tga_f367a9f7.vtex_c",
+      "crc32": "258ef074",
+      "preload_bytes": 0,
+      "archive": 147,
+      "offset": 88307936,
+      "length": 89620
+    },
+    {
+      "path": "models/de_mirage/street/street_wire_hook_wall/street_wire_hook_wall_1_normal_tga_f4df7a98.vtex_c",
+      "crc32": "1d6d2eab",
+      "preload_bytes": 0,
+      "archive": 147,
+      "offset": 88397568,
+      "length": 89716
+    },
+    {
+      "path": "models/props/crates/cs2_drop_crate_souvenir/crate_aus2025_promo_de_mirage_vmat_g_tstickerwepinputs_b5b13ed7.vtex_c",
+      "crc32": "336b8841",
+      "preload_bytes": 0,
+      "archive": 245,
+      "offset": 74536272,
+      "length": 2032
+    },
+    {
+      "path": "models/props/crates/cs2_drop_crate_souvenir/crate_bud2025_promo_de_mirage_vmat_g_tstickerwepinputs_b5b13ed7.vtex_c",
+      "crc32": "4ad44942",
+      "preload_bytes": 0,
+      "archive": 262,
+      "offset": 87549920,
+      "length": 2032
+    },
+    {
+      "path": "models/props/crates/cs2_drop_crate_souvenir/crate_cph2024_promo_de_mirage_vmat_g_tstickerwepinputs_b5b13ed7.vtex_c",
+      "crc32": "02580325",
+      "preload_bytes": 0,
+      "archive": 251,
+      "offset": 59105616,
+      "length": 1984
+    },
+    {
+      "path": "models/props/crates/cs2_drop_crate_souvenir/crate_sha2024_promo_de_mirage_vmat_g_tstickerwepinputs_b5b13ed7.vtex_c",
+      "crc32": "c4e372d3",
+      "preload_bytes": 0,
+      "archive": 294,
+      "offset": 44968704,
+      "length": 1968
+    },
+    {
+      "path": "panorama/images/econ/default_generated/weapon_mac10_sp_mirage_flowers_tan_heavy_png.vtex_c",
+      "crc32": "803ba22f",
+      "preload_bytes": 0,
+      "archive": 11,
+      "offset": 47929472,
+      "length": 215367
+    },
+    {
+      "path": "panorama/images/econ/default_generated/weapon_mac10_sp_mirage_flowers_tan_light_png.vtex_c",
+      "crc32": "5215f744",
+      "preload_bytes": 0,
+      "archive": 11,
+      "offset": 48144848,
+      "length": 218743
+    },
+    {
+      "path": "panorama/images/econ/default_generated/weapon_mac10_sp_mirage_flowers_tan_medium_png.vtex_c",
+      "crc32": "c31425eb",
+      "preload_bytes": 0,
+      "archive": 11,
+      "offset": 48363600,
+      "length": 220031
+    },
+    {
+      "path": "panorama/images/econ/default_generated/weapon_mp9_am_mirage_flowers_metalic_heavy_png.vtex_c",
+      "crc32": "4aa60dcd",
+      "preload_bytes": 0,
+      "archive": 12,
+      "offset": 10672032,
+      "length": 190480
+    },
+    {
+      "path": "panorama/images/econ/default_generated/weapon_mp9_am_mirage_flowers_metalic_light_png.vtex_c",
+      "crc32": "a4bb70ef",
+      "preload_bytes": 0,
+      "archive": 12,
+      "offset": 10862512,
+      "length": 196400
+    },
+    {
+      "path": "panorama/images/econ/default_generated/weapon_mp9_am_mirage_flowers_metalic_medium_png.vtex_c",
+      "crc32": "64077704",
+      "preload_bytes": 0,
+      "archive": 12,
+      "offset": 11058912,
+      "length": 199809
+    },
+    {
+      "path": "panorama/images/econ/set_icons/set_mirage_2021_png.vtex_c",
+      "crc32": "5f60c6d8",
+      "preload_bytes": 0,
+      "archive": 100,
+      "offset": 100231136,
+      "length": 34662
+    },
+    {
+      "path": "panorama/images/econ/set_icons/set_mirage_2021_small_png.vtex_c",
+      "crc32": "f3879994",
+      "preload_bytes": 0,
+      "archive": 100,
+      "offset": 100265808,
+      "length": 19230
+    },
+    {
+      "path": "panorama/images/econ/set_icons/set_mirage_png.vtex_c",
+      "crc32": "f7aed053",
+      "preload_bytes": 0,
+      "archive": 100,
+      "offset": 100285040,
+      "length": 42604
+    },
+    {
+      "path": "panorama/images/econ/set_icons/set_mirage_small_png.vtex_c",
+      "crc32": "9a39b42b",
+      "preload_bytes": 0,
+      "archive": 100,
+      "offset": 100327648,
+      "length": 19367
+    },
+    {
+      "path": "panorama/images/econ/status_icons/collectible_pin_mirage_png.vtex_c",
+      "crc32": "0fae450e",
+      "preload_bytes": 0,
+      "archive": 174,
+      "offset": 1871728,
+      "length": 170738
+    },
+    {
+      "path": "panorama/images/econ/status_icons/collectible_pin_mirage_small_png.vtex_c",
+      "crc32": "0f414ff0",
+      "preload_bytes": 0,
+      "archive": 174,
+      "offset": 2042480,
+      "length": 14352
+    },
+    {
+      "path": "panorama/images/econ/stickers/csgo10/tv_on_mirage_paper_1355_37_png.vtex_c",
+      "crc32": "6089a048",
+      "preload_bytes": 0,
+      "archive": 395,
+      "offset": 54758480,
+      "length": 162849
+    },
+    {
+      "path": "panorama/images/econ/stickers/csgo10/tv_on_mirage_paper_png.vtex_c",
+      "crc32": "a9043d7c",
+      "preload_bytes": 0,
+      "archive": 471,
+      "offset": 6046640,
+      "length": 61701
+    },
+    {
+      "path": "panorama/images/econ/stickers/tournament_assets/de_mirage_cs2_gold_1355_37_png.vtex_c",
+      "crc32": "de91e5a4",
+      "preload_bytes": 0,
+      "archive": 405,
+      "offset": 33331008,
+      "length": 142560
+    },
+    {
+      "path": "panorama/images/econ/stickers/tournament_assets/de_mirage_cs2_gold_png.vtex_c",
+      "crc32": "c2e10715",
+      "preload_bytes": 0,
+      "archive": 271,
+      "offset": 96026192,
+      "length": 180905
+    },
+    {
+      "path": "panorama/images/econ/stickers/tournament_assets/de_mirage_gold_1355_37_png.vtex_c",
+      "crc32": "4692842b",
+      "preload_bytes": 0,
+      "archive": 404,
+      "offset": 94000368,
+      "length": 143720
+    },
+    {
+      "path": "panorama/images/econ/stickers/tournament_assets/de_mirage_gold_png.vtex_c",
+      "crc32": "494924eb",
+      "preload_bytes": 0,
+      "archive": 290,
+      "offset": 51614432,
+      "length": 49440
+    },
+    {
+      "path": "panorama/images/econ/tournaments/aus2025/crate_aus2025_promo_de_mirage_png.vtex_c",
+      "crc32": "1aec1edf",
+      "preload_bytes": 0,
+      "archive": 291,
+      "offset": 64190336,
+      "length": 370509
+    },
+    {
+      "path": "panorama/images/econ/tournaments/bud2025/crate_bud2025_promo_de_mirage_png.vtex_c",
+      "crc32": "ad965c1a",
+      "preload_bytes": 0,
+      "archive": 442,
+      "offset": 75448544,
+      "length": 377322
+    },
+    {
+      "path": "panorama/images/econ/tournaments/sha2024/crate_sha2024_promo_de_mirage_png.vtex_c",
+      "crc32": "31de6d11",
+      "preload_bytes": 0,
+      "archive": 55,
+      "offset": 48109248,
+      "length": 374020
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_antwerp2022_promo_de_mirage_png.vtex_c",
+      "crc32": "b6db62a8",
+      "preload_bytes": 0,
+      "archive": 257,
+      "offset": 7469920,
+      "length": 169424
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_atlanta2017_promo_de_mirage_png.vtex_c",
+      "crc32": "28ca827c",
+      "preload_bytes": 0,
+      "archive": 257,
+      "offset": 8283360,
+      "length": 42741
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_berlin2019_promo_de_mirage_png.vtex_c",
+      "crc32": "5dea4648",
+      "preload_bytes": 0,
+      "archive": 257,
+      "offset": 9260576,
+      "length": 393722
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_boston2018_promo_de_mirage_png.vtex_c",
+      "crc32": "fb014f04",
+      "preload_bytes": 0,
+      "archive": 257,
+      "offset": 11392032,
+      "length": 48897
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_cluj2015_promo_de_mirage_png.vtex_c",
+      "crc32": "b728e90f",
+      "preload_bytes": 0,
+      "archive": 257,
+      "offset": 11760224,
+      "length": 43137
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_cologne2016_promo_de_mirage_png.vtex_c",
+      "crc32": "dc188f4e",
+      "preload_bytes": 0,
+      "archive": 257,
+      "offset": 12037840,
+      "length": 49700
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_columbus2016_promo_de_mirage_png.vtex_c",
+      "crc32": "b9756122",
+      "preload_bytes": 0,
+      "archive": 257,
+      "offset": 12420080,
+      "length": 45427
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_cph2024_promo_de_mirage_png.vtex_c",
+      "crc32": "b7bd90fd",
+      "preload_bytes": 0,
+      "archive": 271,
+      "offset": 92187232,
+      "length": 179682
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_dhw14_promo_de_mirage_png.vtex_c",
+      "crc32": "c7ea6e60",
+      "preload_bytes": 0,
+      "archive": 325,
+      "offset": 103675824,
+      "length": 36742
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_esl14_promo_de_mirage_png.vtex_c",
+      "crc32": "8a2193d7",
+      "preload_bytes": 0,
+      "archive": 325,
+      "offset": 103997552,
+      "length": 45553
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_eslcologne2015_promo_de_mirage_png.vtex_c",
+      "crc32": "ab66a96e",
+      "preload_bytes": 0,
+      "archive": 325,
+      "offset": 104309760,
+      "length": 43975
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_eslkatowice2015_promo_de_mirage_png.vtex_c",
+      "crc32": "038254de",
+      "preload_bytes": 0,
+      "archive": 325,
+      "offset": 104587280,
+      "length": 36169
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_katowice2019_promo_de_mirage_png.vtex_c",
+      "crc32": "515b2a16",
+      "preload_bytes": 0,
+      "archive": 462,
+      "offset": 29249760,
+      "length": 190167
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_krakow2017_promo_de_mirage_png.vtex_c",
+      "crc32": "21ade361",
+      "preload_bytes": 0,
+      "archive": 462,
+      "offset": 30112592,
+      "length": 32670
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_london2018_promo_de_mirage_png.vtex_c",
+      "crc32": "a4e0b451",
+      "preload_bytes": 0,
+      "archive": 462,
+      "offset": 30826512,
+      "length": 193315
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_paris2023_promo_de_mirage_png.vtex_c",
+      "crc32": "697386a4",
+      "preload_bytes": 0,
+      "archive": 266,
+      "offset": 68030864,
+      "length": 127061
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_rio2022_promo_de_mirage_png.vtex_c",
+      "crc32": "055c7bf2",
+      "preload_bytes": 0,
+      "archive": 31,
+      "offset": 91816848,
+      "length": 177440
+    },
+    {
+      "path": "panorama/images/econ/weapon_cases/crate_stockh2021_promo_de_mirage_png.vtex_c",
+      "crc32": "c41f549b",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 35247824,
+      "length": 173330
+    },
+    {
+      "path": "panorama/images/map_icons/screenshots/1080p/de_mirage_1_png.vtex_c",
+      "crc32": "04bbe97c",
+      "preload_bytes": 0,
+      "archive": 462,
+      "offset": 71410656,
+      "length": 3755611
+    },
+    {
+      "path": "panorama/images/map_icons/screenshots/1080p/de_mirage_2_png.vtex_c",
+      "crc32": "5688bfc0",
+      "preload_bytes": 0,
+      "archive": 462,
+      "offset": 75166272,
+      "length": 3360822
+    },
+    {
+      "path": "panorama/images/map_icons/screenshots/1080p/de_mirage_3_png.vtex_c",
+      "crc32": "c1b582e7",
+      "preload_bytes": 0,
+      "archive": 462,
+      "offset": 78527104,
+      "length": 2621711
+    },
+    {
+      "path": "panorama/images/map_icons/screenshots/1080p/de_mirage_4_png.vtex_c",
+      "crc32": "8d8cc134",
+      "preload_bytes": 0,
+      "archive": 462,
+      "offset": 81148816,
+      "length": 2556340
+    },
+    {
+      "path": "panorama/images/map_icons/screenshots/1080p/de_mirage_png.vtex_c",
+      "crc32": "3b23ad23",
+      "preload_bytes": 0,
+      "archive": 462,
+      "offset": 83705168,
+      "length": 3595944
+    },
+    {
+      "path": "panorama/images/map_icons/screenshots/360p/de_mirage_png.vtex_c",
+      "crc32": "36ba3c0b",
+      "preload_bytes": 0,
+      "archive": 166,
+      "offset": 108694336,
+      "length": 453849
+    },
+    {
+      "path": "panorama/images/map_icons/screenshots/720p/de_mirage_1_png.vtex_c",
+      "crc32": "84cbaf7a",
+      "preload_bytes": 0,
+      "archive": 262,
+      "offset": 79634144,
+      "length": 1710449
+    },
+    {
+      "path": "panorama/images/map_icons/screenshots/720p/de_mirage_2_png.vtex_c",
+      "crc32": "adf693a2",
+      "preload_bytes": 0,
+      "archive": 262,
+      "offset": 81344608,
+      "length": 1582810
+    },
+    {
+      "path": "panorama/images/map_icons/screenshots/720p/de_mirage_3_png.vtex_c",
+      "crc32": "56820164",
+      "preload_bytes": 0,
+      "archive": 262,
+      "offset": 82927424,
+      "length": 1283468
+    },
+    {
+      "path": "panorama/images/map_icons/screenshots/720p/de_mirage_4_png.vtex_c",
+      "crc32": "8427671e",
+      "preload_bytes": 0,
+      "archive": 262,
+      "offset": 84210896,
+      "length": 1168561
+    },
+    {
+      "path": "panorama/images/map_icons/screenshots/720p/de_mirage_png.vtex_c",
+      "crc32": "492493ec",
+      "preload_bytes": 0,
+      "archive": 262,
+      "offset": 85379472,
+      "length": 1679959
+    },
+    {
+      "path": "panorama/images/overheadmaps/de_mirage_radar_psd.vtex_c",
+      "crc32": "cecbb316",
+      "preload_bytes": 0,
+      "archive": 137,
+      "offset": 102678480,
+      "length": 177297
+    },
+    {
+      "path": "stickers/csgo10/tv_on_mirage_paper_psd_1a96f482.vtex_c",
+      "crc32": "e31e53fc",
+      "preload_bytes": 0,
+      "archive": 447,
+      "offset": 80377504,
+      "length": 557147
+    },
+    {
+      "path": "stickers/tournament_assets/de_mirage_cs2_gold_psd_a4e1e9d2.vtex_c",
+      "crc32": "9ed2dcea",
+      "preload_bytes": 0,
+      "archive": 271,
+      "offset": 96207104,
+      "length": 407187
+    },
+    {
+      "path": "stickers/tournament_assets/de_mirage_cs2_normal_psd_773bd49d.vtex_c",
+      "crc32": "91781dd8",
+      "preload_bytes": 0,
+      "archive": 291,
+      "offset": 81043152,
+      "length": 377654
+    },
+    {
+      "path": "stickers/tournament_assets/de_mirage_cs2_normal_psd_d4d7e426.vtex_c",
+      "crc32": "bdc89324",
+      "preload_bytes": 0,
+      "archive": 271,
+      "offset": 96614304,
+      "length": 377552
+    },
+    {
+      "path": "stickers/tournament_assets/de_mirage_gold_psd_cded6c76.vtex_c",
+      "crc32": "ed7dc78b",
+      "preload_bytes": 0,
+      "archive": 290,
+      "offset": 51663872,
+      "length": 411949
+    },
+    {
+      "path": "stickers/tournament_assets/de_mirage_normal_psd_65571f47.vtex_c",
+      "crc32": "f32ef4c9",
+      "preload_bytes": 0,
+      "archive": 290,
+      "offset": 52075824,
+      "length": 391114
+    }
+  ]
+}

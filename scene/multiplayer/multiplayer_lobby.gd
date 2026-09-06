@@ -73,6 +73,10 @@ enum PublicRequest {
 @onready var room_capacity_label: Label = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomCapacityLabel
 @onready var wait_player_list_vbox: VBoxContainer = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/PlayerListScroll/PlayerListVBox
 @onready var choose_character_btn: Button = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/ChooseCharacterButton
+@onready var pvp_team_panel: VBoxContainer = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/PvpTeamPanel
+@onready var pvp_team_label: Label = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/PvpTeamPanel/TeamLabel
+@onready var ct_team_btn: Button = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/PvpTeamPanel/TeamButtons/CtButton
+@onready var t_team_btn: Button = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/PvpTeamPanel/TeamButtons/TButton
 @onready var start_game_btn: Button = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/StartGameButton
 @onready var leave_room_btn: Button = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/LeaveButton
 @onready var wait_status_label: Label = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/WaitStatusLabel
@@ -146,6 +150,8 @@ func _ready() -> void:
 	quick_match_button.pressed.connect(_on_quick_match_pressed)
 	browser_back_button.pressed.connect(_on_back_to_mode_select)
 	choose_character_btn.pressed.connect(_on_choose_character_pressed)
+	ct_team_btn.pressed.connect(_on_team_selected.bind("CT"))
+	t_team_btn.pressed.connect(_on_team_selected.bind("T"))
 	start_game_btn.pressed.connect(_on_start_game)
 	leave_room_btn.pressed.connect(_on_leave_room)
 	character_choice_overlay.character_confirmed.connect(_on_character_confirmed)
@@ -176,6 +182,8 @@ func _connect_net_manager_signals() -> void:
 		net_manager.player_left.connect(left_callback)
 	if not net_manager.player_list_changed.is_connected(_on_net_player_list_changed):
 		net_manager.player_list_changed.connect(_on_net_player_list_changed)
+	if not net_manager.player_teams_changed.is_connected(_on_net_player_list_changed):
+		net_manager.player_teams_changed.connect(_on_net_player_list_changed)
 	if not net_manager.connection_failed.is_connected(_on_net_connection_failed):
 		net_manager.connection_failed.connect(_on_net_connection_failed)
 	if not net_manager.connection_state_changed.is_connected(_on_net_state_changed):
@@ -197,6 +205,8 @@ func _disconnect_net_manager_signals() -> void:
 		net_manager.player_left.disconnect(left_callback)
 	if net_manager.player_list_changed.is_connected(_on_net_player_list_changed):
 		net_manager.player_list_changed.disconnect(_on_net_player_list_changed)
+	if net_manager.player_teams_changed.is_connected(_on_net_player_list_changed):
+		net_manager.player_teams_changed.disconnect(_on_net_player_list_changed)
 	if net_manager.connection_failed.is_connected(_on_net_connection_failed):
 		net_manager.connection_failed.disconnect(_on_net_connection_failed)
 	if net_manager.connection_state_changed.is_connected(_on_net_state_changed):
@@ -908,7 +918,7 @@ func _on_public_lobby_request_completed(
 				else:
 					# 云端已经进入 IN_GAME，不能退回一份表面仍可等待的本地房间。
 					_cleanup_failed_public_membership(
-						"开局已取消：仍有玩家尚未确认角色"
+						"开局已取消：玩家人数、角色或 CT / T 队伍准备状态已改变"
 					)
 		_:
 			pass
@@ -1249,6 +1259,14 @@ func _refresh_wait_player_list() -> void:
 		var character_name := _get_character_display_name(character_id)
 		var character_confirmed := net_manager.is_player_character_confirmed(peer_id)
 		var confirmation_marker := " ✓" if character_confirmed else "（角色未确认）"
+		if net_manager.is_mirage_pvp():
+			var team := net_manager.get_player_team(peer_id)
+			confirmation_marker = " · %s ✓" % team if not team.is_empty() else " · 待选择队伍"
+			label.modulate = (
+				Color(0.5, 0.8, 1.0) if team == "CT"
+				else Color(1.0, 0.76, 0.38) if team == "T"
+				else Color(0.75, 0.75, 0.75)
+			)
 		label.text = "%s · %s%s%s%s" % [
 			player_name,
 			character_name,
@@ -1263,9 +1281,48 @@ func _refresh_wait_player_list() -> void:
 		start_game_btn.disabled = (
 			net_manager.connected_players.size() < 2
 			or not net_manager.are_all_player_characters_confirmed()
+			or (net_manager.is_mirage_pvp() and not net_manager.are_pvp_teams_ready())
 			or (public_room_lease.is_public_host() and not relay_host_ready_sent)
 		)
 	_update_choose_character_button()
+	_update_pvp_team_panel()
+
+
+func _on_team_selected(team: String) -> void:
+	if not net_manager.set_local_team(team):
+		return
+	wait_status_label.text = "已选择 %s，等待房主确认队伍并开局。" % team
+	_update_pvp_team_panel()
+
+
+func _update_pvp_team_panel() -> void:
+	pvp_team_panel.visible = net_manager.is_mirage_pvp()
+	if not pvp_team_panel.visible:
+		return
+	var team := net_manager.get_player_team(net_manager.get_local_peer_id())
+	var can_choose := (
+		net_manager.connected_players.has(net_manager.get_local_peer_id())
+		and net_manager.connection_state in [STATE_HOSTING_LAN, STATE_CONNECTED_IN_LOBBY]
+	)
+	ct_team_btn.disabled = not can_choose
+	t_team_btn.disabled = not can_choose
+	ct_team_btn.set_pressed_no_signal(team == "CT")
+	t_team_btn.set_pressed_no_signal(team == "T")
+	var ct_count := 0
+	var t_count := 0
+	for raw_peer_id in net_manager.connected_players:
+		match net_manager.get_player_team(int(raw_peer_id)):
+			"CT":
+				ct_count += 1
+			"T":
+				t_count += 1
+	ct_team_btn.text = "CT · 反恐精英 (%d)" % ct_count
+	t_team_btn.text = "T · 恐怖分子 (%d)" % t_count
+	pvp_team_label.text = (
+		"全员维什戴尔 · 你已确认 %s · 双方均须有人" % team
+		if not team.is_empty()
+		else "全员维什戴尔 · 点击队伍确认 · 双方均须有人"
+	)
 
 
 func _update_room_capacity_label(current_players: int = -1) -> void:
@@ -1282,6 +1339,9 @@ func _update_room_capacity_label(current_players: int = -1) -> void:
 func _open_character_choice_if_needed() -> void:
 	if current_view != LobbyView.ROOM_WAIT:
 		return
+	if net_manager.is_mirage_pvp():
+		_update_pvp_team_panel()
+		return
 	var local_peer_id := net_manager.get_local_peer_id()
 	if local_peer_id > 0 and net_manager.is_player_character_confirmed(local_peer_id):
 		return
@@ -1289,11 +1349,16 @@ func _open_character_choice_if_needed() -> void:
 
 
 func _on_choose_character_pressed() -> void:
+	if net_manager.is_mirage_pvp():
+		return
 	var selected_character_id := _get_local_selected_character_id()
 	character_choice_overlay.open(selected_character_id)
 
 
 func _on_character_confirmed(character_id: StringName) -> void:
+	if net_manager.is_mirage_pvp():
+		character_choice_overlay.close()
+		return
 	if not PlayerCharacterRegistry.is_multiplayer_character_id(character_id):
 		return
 	if run_state != null:
@@ -1310,7 +1375,10 @@ func _on_character_selection_closed() -> void:
 
 
 func _update_choose_character_button() -> void:
-	choose_character_btn.visible = true
+	choose_character_btn.visible = not net_manager.is_mirage_pvp()
+	if net_manager.is_mirage_pvp():
+		character_choice_overlay.close()
+		return
 	var character_id := _get_local_selected_character_id()
 	var character_name := _get_character_display_name(character_id)
 	var local_peer_id := net_manager.get_local_peer_id()
@@ -1402,7 +1470,11 @@ func _on_net_state_changed(new_state: NetManagerStore.ConnectionState) -> void:
 
 
 func _on_start_game() -> void:
-	if not net_manager.is_host():
+	if not net_manager.is_host() or pending_start_after_public_status:
+		return
+	if net_manager.is_mirage_pvp() and not net_manager.are_pvp_teams_ready():
+		wait_status_label.text = "全员须确认 CT / T，且两队均至少有一人。"
+		_refresh_wait_player_list()
 		return
 	if not net_manager.are_all_player_characters_confirmed():
 		wait_status_label.text = "请等待所有玩家确认角色。"
@@ -1621,6 +1693,8 @@ func _sync_local_character_selection() -> void:
 
 
 func _get_local_selected_character_id() -> StringName:
+	if net_manager.is_mirage_pvp():
+		return PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 	var selected_character_id := PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 	if run_state != null:
 		selected_character_id = run_state.get_selected_character_id()

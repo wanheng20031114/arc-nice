@@ -117,6 +117,11 @@ func _rpc_relay_identity_result(
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
+func _rpc_set_player_team(team: String) -> void:
+	pass
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
 func _rpc_set_player_character(character_id: String, confirmed: bool) -> void:
 	pass
 
@@ -134,6 +139,11 @@ func _rpc_sync_player_list(
 
 @rpc("authority", "call_remote", "reliable", 0)
 func _rpc_start_game(game_mode: int = 0, session_id: int = 0) -> void:
+	pass
+
+
+@rpc("authority", "call_remote", "reliable", 8)
+func _rpc_start_mirage_pvp(session_id: int) -> void:
 	pass
 
 

@@ -1,0 +1,32 @@
+[gd_scene load_steps=7 format=3]
+[ext_resource type="Script" path="res://scene/pvp/mirage_pvp.gd" id="1"]
+[ext_resource type="Script" path="res://scene/pvp/tests/pvp_test_map.gd" id="2"]
+[ext_resource type="PackedScene" path="res://scene/pvp/ui/pvp_hud.tscn" id="3"]
+[ext_resource type="PackedScene" path="res://scene/pvp/pvp_visibility.tscn" id="4"]
+[sub_resource type="RectangleShape2D" id="wall"]
+size = Vector2(32, 230)
+[sub_resource type="RectangleShape2D" id="boundary"]
+size = Vector2(1000, 20)
+
+[node name="MpGame" type="Node2D"]
+script = ExtResource("1")
+disable_presentation = true
+[node name="Map" type="Node2D" parent="."]
+script = ExtResource("2")
+[node name="Wall" type="StaticBody2D" parent="Map"]
+position = Vector2(436, 185)
+collision_layer = 1
+collision_mask = 0
+[node name="Shape" type="CollisionShape2D" parent="Map/Wall"]
+shape = SubResource("wall")
+[node name="Boundary" type="StaticBody2D" parent="Map"]
+position = Vector2(500, 500)
+collision_layer = 1
+collision_mask = 0
+[node name="Shape" type="CollisionShape2D" parent="Map/Boundary"]
+shape = SubResource("boundary")
+[node name="Players" type="Node2D" parent="."]
+[node name="Projectiles" type="Node2D" parent="."]
+[node name="Pickups" type="Node2D" parent="."]
+[node name="HUD" parent="." instance=ExtResource("3")]
+[node name="Visibility" parent="." instance=ExtResource("4")]
