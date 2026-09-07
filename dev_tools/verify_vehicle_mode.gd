@@ -35,6 +35,7 @@ func _run() -> void:
 	if await _create_runtime():
 		_check_authored_ui()
 		await _check_modal_pause_clock()
+		await _check_live_robot_pause()
 		await _check_twelve_waves()
 	await _dispose_runtime()
 	if failures == 0 and await _create_runtime():
@@ -347,6 +348,67 @@ func _check_modal_pause_clock() -> void:
 	var resumed_time := pause.get_gameplay_time_seconds()
 	await get_tree().create_timer(0.12, true, false, true).timeout
 	_expect(pause.get_gameplay_time_seconds() - resumed_time >= 0.08, "The gameplay clock advances again after all owners release")
+
+
+func _check_live_robot_pause() -> void:
+	current_case = "live enemy and modal pause integration"
+	var coordinator := runtime.get_enemy_simulation_coordinator()
+	_expect(coordinator.mode == EnemySimulationPolicy.Mode.LAYERED_CONTACT,
+		"Vehicle runs the deployed layered contact coordinator")
+	# Use an untracked real enemy before wave one so the campaign ledger and
+	# twelve-wave score still describe exactly the authored 483 objectives.
+	var config := load("res://resources/config/enemies/combat_robot.tres").duplicate() as EnemyConfig
+	config.attack_damage = 0
+	var robot := config.enemy_scene.instantiate() as CombatRobot
+	robot.config = config
+	runtime.enemy_container.add_child(robot)
+	robot.setup(config, runtime.player, runtime.grid_pathfinder, runtime)
+	robot.global_position = runtime.player.global_position + Vector2(140, 0)
+	robot.dash_cooldown_left = 5.0
+	robot.touch_damage_cooldown_left = 5.0
+	for frame in 4:
+		await get_tree().physics_frame
+	await get_tree().process_frame
+	_expect(robot.is_centrally_simulated() and coordinator.gameplay_step_clock.tick > 0,
+		"A real Robot enters vehicle event/decision/motion simulation")
+	var pause := GameplayPauseController.get_autoload_instance()
+	runtime.player_profile_panel.open()
+	var frozen_tick := coordinator.gameplay_step_clock.tick
+	var frozen_position := robot.global_position
+	var frozen_dash := robot.dash_cooldown_left
+	var frozen_touch := robot.touch_damage_cooldown_left
+	var frozen_score_seconds := runtime.run_progress.combat_seconds
+	var first_engine_frame := Engine.get_physics_frames()
+	await get_tree().create_timer(0.18, true).timeout
+	_expect(Engine.get_physics_frames() > first_engine_frame,
+		"Native physics frame identifiers keep advancing during inventory pause")
+	_expect(coordinator.gameplay_step_clock.tick == frozen_tick and robot.global_position == frozen_position,
+		"Inventory pauses real coordinator steps and enemy motion")
+	_expect(robot.dash_cooldown_left == frozen_dash and robot.touch_damage_cooldown_left == frozen_touch,
+		"Inventory freezes both lazy Robot cooldown and native touch deadline")
+	pause.request_pause(true)
+	runtime.player_profile_panel.close()
+	await get_tree().create_timer(0.12, true).timeout
+	_expect(coordinator.gameplay_step_clock.tick == frozen_tick and robot.dash_cooldown_left == frozen_dash
+		and robot.touch_damage_cooldown_left == frozen_touch,
+		"Closing inventory cannot advance enemy deadlines under the remaining ESC owner")
+	_expect(runtime.run_progress.combat_seconds == frozen_score_seconds,
+		"Nested modals cannot add combat score time")
+	pause.request_pause(false)
+	_expect(robot.dash_cooldown_left == frozen_dash and robot.touch_damage_cooldown_left == frozen_touch,
+		"Releasing the final pause owner does not consume paused physics frames")
+	for frame in 4:
+		await get_tree().physics_frame
+	await get_tree().process_frame
+	_expect(coordinator.gameplay_step_clock.tick > frozen_tick,
+		"Vehicle coordinator resumes on actual gameplay steps")
+	_expect(robot.dash_cooldown_left < frozen_dash and robot.touch_damage_cooldown_left < frozen_touch,
+		"Both real enemy cooldowns resume after the final pause owner closes")
+	_expect(robot.dash_cooldown_left > 4.0 and robot.touch_damage_cooldown_left > 4.0,
+		"Short resumed gameplay cannot consume an unrelated five-second cooldown")
+	robot.free()
+	_expect(runtime.enemy_container.get_child_count() == 0 and runtime.run_progress.kills == 0,
+		"Untracked pause probe leaves no enemy or campaign score behind")
 
 
 func _check_service_progression(wave_number: int) -> void:

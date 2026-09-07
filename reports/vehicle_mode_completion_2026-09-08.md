@@ -59,3 +59,21 @@
 - 首次实战返回菜单后约 0.6 秒即退出，`VEHICLE_PLAYTEST failures=0` 之后才出现图鉴后台加载链中的 PlantDefense 场景解析错误。根任务已引入异步资源生命周期协调并验证主菜单提前退出；fixture 也等待真实菜单预加载终态。最后结构回归没有解析错误。
 - 最终开局、胜利、失败界面的真实渲染证据位于 `dev_tools/output/vehicle_contract_capture/`，1280×720 下文字和双按钮完整、没有遮挡裁切；胜利截图中的 00:00 来自上述加速结构用例，不冒充真实通关成绩。
 - 验证用进程全部带 `--vehicle-audit-*` 标记；每轮完成/终止后均以 Win32_Process 精确筛选并命令核实，不关闭用户编辑器或其他检查任务。最终渲染回归后残留 0 个。
+
+## 全部敌人优化整合后的最终复验（北京时间 07:24）
+
+最终再读成长、胜败、重试、纪录与暂停链路，没有发现需新增修改的产品逻辑缺陷。保底成长按连续波次在前 11 次维护中幂等叠加，收藏品与购买升级仍使用同一个权威账本；胜败只由现有终结账本结算，重试先拆场景并解除暂停，再创建全新的 RunState。ConfigFile 仅保存个人成绩，未用于恢复上一局力量。
+
+小车确实继承默认 `LAYERED_CONTACT` 调度，因此补上原契约未覆盖的交互：在开波前创建一只未计入波次账本的真实 CombatRobot，经过真实 coordinator 准入后打开库存，再叠加 ESC 暂停。Engine 的 physics frame 继续前进时，实际模拟 tick、敌人位置、Robot 懒更新冲刺冷却和原生接触冷却全部保持不变；关闭库存不会解除 ESC 的暂停，最后拥有者退出时也不补扣暂停期间的时间，随后真实物理步骤正常推进两种冷却。探针立即释放，未增加战役击杀或波次目标。
+
+本轮在原 Godot 4.6.2 Forward+ / RTX 3060 Laptop 环境完整运行：**519 名终结、12 次奖励、2788 个断言、0 失败、exit 0，无错误或警告**。其中原账本回归 2771 项、5 项实际截图保存、12 项新的活敌暂停集成断言。仍使用 1 HP 的波次结构用例；没有把本轮结果描述为正常血量通关。
+
+```powershell
+& 'C:/Program Files/Godot/Godot_console.exe' --path 'C:/Users/wh/Documents/arc-nice' --scene 'res://dev_tools/verify_vehicle_mode.tscn' --resolution 1280x720 --max-fps 60 --log-file 'C:/Users/wh/Documents/arc-nice/dev_tools/output/vehicle_contract_integrated_final_20260908.log' -- --vehicle-audit-final-contract --capture-ui
+```
+
+已逐张读取 `dev_tools/output/vehicle_contract_capture/briefing.png`、`victory.png`、`defeat.png`：1280×720 下目标、成长说明、当前用户键位、得分记录与两个操作按钮均完整可读，无遮挡裁切；胜利画面正确显示 483 击破与 8930 分。原阶段截图另存 `dev_tools/output/vehicle_contract_capture_before_integrated_final/`，没有丢弃前次证据。
+
+终波为 65 名敌人、并发上限 20；现有 DamageResolver 用真实初始配置与保底成长证明最终伤害由 1 提高至 14。没有发现新的确定性“无法通关”缺陷。此结论只覆盖已证明的数值和流程，不从简单驾驶机器人此前死亡反推难度不合理。
+
+07:24 再次以 Win32_Process 命令核实本任务 `--vehicle-audit-*` Godot 进程 **0**，随后明确把 CPU/GPU 验证窗口交给其他任务。
