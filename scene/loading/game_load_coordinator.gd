@@ -1,5 +1,7 @@
 extends CanvasLayer
 
+const THREADED_RESOURCE_LIFETIME := preload("res://scene/loading/threaded_resource_lifetime.gd")
+
 signal loading_started(multiplayer_load: bool)
 signal loading_finished(multiplayer_load: bool)
 signal loading_failed(message: String)
@@ -363,13 +365,14 @@ func _invalidate_and_release_active_attempt(reason: StringName) -> void:
 func _is_active_generation(generation: int) -> bool:
 	return (
 		_active_attempt != null
+		and not THREADED_RESOURCE_LIFETIME.is_shutting_down()
 		and not _active_attempt.released
 		and _active_attempt.generation == generation
 	)
 
 
 func _process(delta: float) -> void:
-	if _state == LoadState.IDLE:
+	if _state == LoadState.IDLE or THREADED_RESOURCE_LIFETIME.is_shutting_down():
 		return
 	if (
 		_state != LoadState.COMPLETING
@@ -410,10 +413,10 @@ func _poll_resource_requests() -> void:
 			all_loaded = false
 			continue
 		var progress: Array = []
-		var status := ResourceLoader.load_threaded_get_status(path, progress)
+		var status := THREADED_RESOURCE_LIFETIME.get_status(path, progress)
 		match status:
 			ResourceLoader.THREAD_LOAD_LOADED:
-				var resource := ResourceLoader.load_threaded_get(path)
+				var resource := THREADED_RESOURCE_LIFETIME.claim(path)
 				if resource == null:
 					_show_error("资源加载完成但无法取得实例：%s" % path)
 					return
@@ -471,14 +474,14 @@ func _start_next_resource_request() -> void:
 	for path in attempt.requested_paths.duplicate():
 		if attempt.loaded_resources.has(path) or attempt.started_paths.has(path):
 			continue
-		var existing_status := ResourceLoader.load_threaded_get_status(path)
+		var existing_status := THREADED_RESOURCE_LIFETIME.get_status(path)
 		if (
 			existing_status == ResourceLoader.THREAD_LOAD_IN_PROGRESS
 			or existing_status == ResourceLoader.THREAD_LOAD_LOADED
 		):
 			attempt.started_paths[path] = true
 			return
-		var error := ResourceLoader.load_threaded_request(
+		var error := THREADED_RESOURCE_LIFETIME.request(
 			path,
 			"",
 			true,

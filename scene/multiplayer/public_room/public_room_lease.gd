@@ -1,6 +1,8 @@
 extends Node
 class_name PublicRoomLeaseStore
 
+const THREADED_RESOURCE_LIFETIME := preload("res://scene/loading/threaded_resource_lifetime.gd")
+
 signal lease_changed
 signal release_finished(
 	release_generation: int,
@@ -53,6 +55,7 @@ var _completed_release_results: Dictionary[int, Dictionary] = {}
 var _completed_release_order: Array[int] = []
 var _net_manager: NetManagerStore = null
 var _shutdown_in_progress := false
+var _shutdown_exit_code := 0
 var _public_lobby_api_base_url := ""
 var _public_lobby_api_configuration_error := ""
 ## 显式 fixture 模式只截断传输边界，状态机仍走生产路径。
@@ -111,9 +114,17 @@ func _exit_tree() -> void:
 
 
 func _notification(what: int) -> void:
-	if what != NOTIFICATION_WM_CLOSE_REQUEST or _shutdown_in_progress:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		request_application_shutdown()
+
+
+## Both menu Quit and the window close button share the same shutdown boundary.
+func request_application_shutdown(exit_code: int = 0) -> void:
+	if _shutdown_in_progress:
 		return
 	_shutdown_in_progress = true
+	_shutdown_exit_code = exit_code
+	THREADED_RESOURCE_LIFETIME.begin_shutdown()
 	_prepare_combat_runtimes_for_window_shutdown(get_tree().root)
 	call_deferred("_release_before_window_shutdown")
 
@@ -715,7 +726,8 @@ func _release_before_window_shutdown() -> void:
 	await release_current_and_wait(&"window_close")
 	if _net_manager != null and _net_manager.is_multiplayer_active():
 		_net_manager.disconnect_from_game()
-	get_tree().quit()
+	await THREADED_RESOURCE_LIFETIME.drain_pending_requests(get_tree())
+	get_tree().quit(_shutdown_exit_code)
 
 
 func _prepare_combat_runtimes_for_window_shutdown(parent: Node) -> void:

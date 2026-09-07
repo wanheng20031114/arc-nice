@@ -1,6 +1,7 @@
 extends CharacterBody2D
-
 class_name Player
+
+const THREADED_RESOURCE_LIFETIME := preload("res://scene/loading/threaded_resource_lifetime.gd")
 
 const LEGACY_CONTROL_LOCK_OWNER := &"legacy_controls"
 const LEGACY_COMBAT_ACTION_LOCK_OWNER := &"legacy_combat_actions"
@@ -4978,14 +4979,14 @@ func _spawn_collectible_arrow(target_enemy: Enemy, arrow_damage: int) -> bool:
 func _get_collectible_sakura_rocket_scene() -> PackedScene:
 	if collectible_sakura_rocket_scene_cache != null:
 		return collectible_sakura_rocket_scene_cache
-	var status := ResourceLoader.load_threaded_get_status(
+	var status := THREADED_RESOURCE_LIFETIME.get_status(
 		COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH
 	)
 	if (
 		status == ResourceLoader.THREAD_LOAD_LOADED
 		or status == ResourceLoader.THREAD_LOAD_IN_PROGRESS
 	):
-		collectible_sakura_rocket_scene_cache = ResourceLoader.load_threaded_get(
+		collectible_sakura_rocket_scene_cache = THREADED_RESOURCE_LIFETIME.claim(
 			COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH
 		) as PackedScene
 	else:
@@ -4999,7 +5000,7 @@ func _request_sakura_runtime_resources() -> void:
 	if _sakura_runtime_load_requested or collectible_sakura_rocket_scene_cache != null:
 		return
 	_sakura_runtime_load_requested = true
-	var status := ResourceLoader.load_threaded_get_status(
+	var status := THREADED_RESOURCE_LIFETIME.get_status(
 		COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH
 	)
 	if (
@@ -5007,7 +5008,7 @@ func _request_sakura_runtime_resources() -> void:
 		or status == ResourceLoader.THREAD_LOAD_LOADED
 	):
 		return
-	var error := ResourceLoader.load_threaded_request(
+	var error := THREADED_RESOURCE_LIFETIME.request(
 		COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH,
 		"",
 		true,

@@ -1,6 +1,8 @@
 extends Node
 class_name TowerDefenseBossCoordinator
 
+const THREADED_RESOURCE_LIFETIME := preload("res://scene/loading/threaded_resource_lifetime.gd")
+
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := (
 	"res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
 )
@@ -350,13 +352,13 @@ func request_runtime_scene_loads(_preparation_generation: int) -> bool:
 		return runtime_preparation_failure_reason.is_empty()
 	runtime_scene_loads_requested = true
 	for resource_path in get_runtime_resource_paths():
-		var status := ResourceLoader.load_threaded_get_status(resource_path)
+		var status := THREADED_RESOURCE_LIFETIME.get_status(resource_path)
 		if status in [
 			ResourceLoader.THREAD_LOAD_IN_PROGRESS,
 			ResourceLoader.THREAD_LOAD_LOADED,
 		]:
 			continue
-		var error := ResourceLoader.load_threaded_request(
+		var error := THREADED_RESOURCE_LIFETIME.request(
 			resource_path,
 			"",
 			true,
@@ -383,7 +385,7 @@ func prewarm_runtime_resources(preparation_generation: int) -> bool:
 	for resource_path in get_runtime_resource_paths():
 		if runtime_resources_by_path.has(resource_path):
 			continue
-		var status := ResourceLoader.load_threaded_get_status(resource_path)
+		var status := THREADED_RESOURCE_LIFETIME.get_status(resource_path)
 		var deadline_msec := Time.get_ticks_msec() + RUNTIME_RESOURCE_WAIT_TIMEOUT_MSEC
 		while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			await runtime.get_tree().process_frame
@@ -395,13 +397,13 @@ func prewarm_runtime_resources(preparation_generation: int) -> bool:
 				return _fail_runtime_preparation(
 					"塔防 Boss 线程加载资源超时：%s。" % resource_path
 				)
-			status = ResourceLoader.load_threaded_get_status(resource_path)
+			status = THREADED_RESOURCE_LIFETIME.get_status(resource_path)
 		if status != ResourceLoader.THREAD_LOAD_LOADED:
 			return _fail_runtime_preparation(
 				"塔防 Boss 线程加载资源失败：%s（状态 %d）。"
 				% [resource_path, status]
 			)
-		var resource := ResourceLoader.load_threaded_get(resource_path)
+		var resource := THREADED_RESOURCE_LIFETIME.claim(resource_path)
 		if resource == null:
 			return _fail_runtime_preparation(
 				"塔防 Boss 线程资源已完成但无法取得实例：%s。" % resource_path
@@ -1096,11 +1098,11 @@ func _load_threaded_or_direct(path: String) -> Resource:
 	var retained := runtime_resources_by_path.get(path) as Resource
 	if retained != null:
 		return retained
-	var status := ResourceLoader.load_threaded_get_status(path)
+	var status := THREADED_RESOURCE_LIFETIME.get_status(path)
 	if status in [
 		ResourceLoader.THREAD_LOAD_LOADED,
 	]:
-		return ResourceLoader.load_threaded_get(path)
+		return THREADED_RESOURCE_LIFETIME.claim(path)
 	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 		# 正式准备屏障负责有界收取；战斗热路径不能再次变成无期限同步等待。
 		return null

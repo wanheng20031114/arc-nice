@@ -56,7 +56,7 @@ func _run() -> void:
 	output.store_string(JSON.stringify(result, "\t"))
 	output.close()
 	print("RESOURCE_LIFECYCLE ", JSON.stringify(result))
-	quit(0 if _failures.is_empty() else 1)
+	root.get_node("PublicRoomLease").call("request_application_shutdown", 0 if _failures.is_empty() else 1)
 
 
 func _run_scene_cycle(cycle: int) -> void:

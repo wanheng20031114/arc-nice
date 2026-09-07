@@ -1,6 +1,8 @@
 extends Control
 class_name MainMenu
 
+const THREADED_RESOURCE_LIFETIME := preload("res://scene/loading/threaded_resource_lifetime.gd")
+
 const ENCYCLOPEDIA_SCENE_PATH := "res://scene/encyclopedia/encyclopedia_screen.tscn"
 const VEHICLE_ENTRY_PATH := "res://scene/vehicle_mode/vehicle_game.tscn"
 const TEST_ARENA_P1A_ID := &"p1"
@@ -122,6 +124,8 @@ func _exit_tree() -> void:
 
 
 func _process(_delta: float) -> void:
+	if THREADED_RESOURCE_LIFETIME.is_shutting_down():
+		return
 	if _encyclopedia_load_state == EncyclopediaLoadState.LOADING:
 		_poll_encyclopedia_preload()
 
@@ -382,7 +386,7 @@ func _on_settings_pressed() -> void:
 
 func _on_quit_pressed() -> void:
 	_cancel_pending_encyclopedia_open()
-	get_tree().quit()
+	PublicRoomLeaseStore.get_autoload_instance().request_application_shutdown()
 
 
 func _preload_encyclopedia_after_first_frame() -> void:
@@ -395,13 +399,14 @@ func _preload_encyclopedia_after_first_frame() -> void:
 func _ensure_encyclopedia_preload_started() -> void:
 	if (
 		_is_exiting_tree
+		or THREADED_RESOURCE_LIFETIME.is_shutting_down()
 		or _encyclopedia_load_state == EncyclopediaLoadState.LOADING
 		or _encyclopedia_load_state == EncyclopediaLoadState.LOADED
 		or _encyclopedia_load_state == EncyclopediaLoadState.TRANSITIONING
 	):
 		return
 
-	var existing_status := ResourceLoader.load_threaded_get_status(
+	var existing_status := THREADED_RESOURCE_LIFETIME.get_status(
 		ENCYCLOPEDIA_SCENE_PATH
 	)
 	match existing_status:
@@ -418,7 +423,7 @@ func _ensure_encyclopedia_preload_started() -> void:
 	var cache_mode := ResourceLoader.CACHE_MODE_REUSE
 	if existing_status == ResourceLoader.THREAD_LOAD_FAILED:
 		cache_mode = ResourceLoader.CACHE_MODE_REPLACE
-	var error := ResourceLoader.load_threaded_request(
+	var error := THREADED_RESOURCE_LIFETIME.request(
 		ENCYCLOPEDIA_SCENE_PATH,
 		"PackedScene",
 		false,
@@ -437,7 +442,7 @@ func _poll_encyclopedia_preload() -> void:
 	if _encyclopedia_scene != null:
 		_poll_collectible_cache_warmup()
 		return
-	var status := ResourceLoader.load_threaded_get_status(
+	var status := THREADED_RESOURCE_LIFETIME.get_status(
 		ENCYCLOPEDIA_SCENE_PATH
 	)
 	match status:
@@ -451,14 +456,14 @@ func _finish_encyclopedia_scene_preload() -> void:
 	# Only retrieve after LOADED. Calling load_threaded_get() any earlier would
 	# block the main thread and recreate the menu freeze this path is designed to avoid.
 	if (
-		ResourceLoader.load_threaded_get_status(ENCYCLOPEDIA_SCENE_PATH)
+		THREADED_RESOURCE_LIFETIME.get_status(ENCYCLOPEDIA_SCENE_PATH)
 		!= ResourceLoader.THREAD_LOAD_LOADED
 	):
 		_fail_encyclopedia_preload("图鉴加载状态异常，已停止进入")
 		return
 	_encyclopedia_load_state = EncyclopediaLoadState.LOADING
 	set_process(true)
-	var loaded_resource := ResourceLoader.load_threaded_get(
+	var loaded_resource := THREADED_RESOURCE_LIFETIME.claim(
 		ENCYCLOPEDIA_SCENE_PATH
 	)
 	_encyclopedia_scene = loaded_resource as PackedScene
@@ -487,7 +492,7 @@ func _poll_collectible_cache_warmup() -> void:
 		return
 	for path_variant in _collectible_loading_paths.keys():
 		var path := str(path_variant)
-		var status := ResourceLoader.load_threaded_get_status(path)
+		var status := THREADED_RESOURCE_LIFETIME.get_status(path)
 		match status:
 			ResourceLoader.THREAD_LOAD_LOADED:
 				if not _cache_loaded_collectible_config(path):
@@ -512,6 +517,8 @@ func _poll_collectible_cache_warmup() -> void:
 
 
 func _pump_collectible_cache_requests() -> void:
+	if THREADED_RESOURCE_LIFETIME.is_shutting_down():
+		return
 	var started_this_frame := 0
 	while (
 		_encyclopedia_load_state == EncyclopediaLoadState.LOADING
@@ -522,7 +529,7 @@ func _pump_collectible_cache_requests() -> void:
 		var path := _collectible_config_paths[_collectible_next_request_index]
 		_collectible_next_request_index += 1
 		started_this_frame += 1
-		var existing_status := ResourceLoader.load_threaded_get_status(path)
+		var existing_status := THREADED_RESOURCE_LIFETIME.get_status(path)
 		match existing_status:
 			ResourceLoader.THREAD_LOAD_LOADED:
 				if not _cache_loaded_collectible_config(path):
@@ -533,7 +540,7 @@ func _pump_collectible_cache_requests() -> void:
 				var cache_mode := ResourceLoader.CACHE_MODE_REUSE
 				if existing_status == ResourceLoader.THREAD_LOAD_FAILED:
 					cache_mode = ResourceLoader.CACHE_MODE_REPLACE
-				var error := ResourceLoader.load_threaded_request(
+				var error := THREADED_RESOURCE_LIFETIME.request(
 					path,
 					"Resource",
 					false,
@@ -552,12 +559,12 @@ func _cache_loaded_collectible_config(path: String) -> bool:
 	# The explicit status guard keeps every threaded get non-blocking, including
 	# resources that were requested by an earlier MainMenu instance.
 	if (
-		ResourceLoader.load_threaded_get_status(path)
+		THREADED_RESOURCE_LIFETIME.get_status(path)
 		!= ResourceLoader.THREAD_LOAD_LOADED
 	):
 		_fail_encyclopedia_preload("收藏品配置尚未完成加载：%s" % path)
 		return false
-	var config := ResourceLoader.load_threaded_get(path) as PickupConfig
+	var config := THREADED_RESOURCE_LIFETIME.claim(path) as PickupConfig
 	if config == null:
 		_fail_encyclopedia_preload("收藏品配置类型无效：%s" % path)
 		return false

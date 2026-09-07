@@ -1,6 +1,8 @@
 extends Node
 class_name StandardPrewarmerCoordinator
 
+const THREADED_RESOURCE_LIFETIME := preload("res://scene/loading/threaded_resource_lifetime.gd")
+
 # 普通模式专属预热边界：共享波次实体池仍由 WaveCombatRuntimeBase 注册。
 const TANGO_LASER_BULLET_POOL_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
@@ -80,13 +82,13 @@ func request_boss_runtime_scene_loads() -> bool:
 		return true
 	runtime_scene_loads_requested = true
 	for resource_path in get_boss_runtime_resource_paths():
-		var status := ResourceLoader.load_threaded_get_status(resource_path)
+		var status := THREADED_RESOURCE_LIFETIME.get_status(resource_path)
 		if status in [
 			ResourceLoader.THREAD_LOAD_IN_PROGRESS,
 			ResourceLoader.THREAD_LOAD_LOADED,
 		]:
 			continue
-		var error := ResourceLoader.load_threaded_request(
+		var error := THREADED_RESOURCE_LIFETIME.request(
 			resource_path,
 			"",
 			true,
@@ -114,7 +116,7 @@ func prewarm_boss_runtime_resources() -> bool:
 	for resource_path in get_boss_runtime_resource_paths():
 		if runtime_resources_by_path.has(resource_path):
 			continue
-		var status := ResourceLoader.load_threaded_get_status(resource_path)
+		var status := THREADED_RESOURCE_LIFETIME.get_status(resource_path)
 		var deadline_msec := Time.get_ticks_msec() + RUNTIME_RESOURCE_WAIT_TIMEOUT_MSEC
 		while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			await get_tree().process_frame
@@ -124,13 +126,13 @@ func prewarm_boss_runtime_resources() -> bool:
 				return _fail_runtime_preparation(
 					"普通模式线程加载资源超时：%s。" % resource_path
 				)
-			status = ResourceLoader.load_threaded_get_status(resource_path)
+			status = THREADED_RESOURCE_LIFETIME.get_status(resource_path)
 		if status != ResourceLoader.THREAD_LOAD_LOADED:
 			return _fail_runtime_preparation(
 				"普通模式线程加载资源失败：%s（状态 %d）。"
 				% [resource_path, status]
 			)
-		var runtime_resource := ResourceLoader.load_threaded_get(resource_path)
+		var runtime_resource := THREADED_RESOURCE_LIFETIME.claim(resource_path)
 		if runtime_resource == null:
 			return _fail_runtime_preparation(
 				"普通模式线程资源已完成但无法取得实例：%s。" % resource_path
@@ -153,9 +155,9 @@ func load_threaded_or_direct(path: String) -> Resource:
 	var retained_resource := runtime_resources_by_path.get(path) as Resource
 	if retained_resource != null:
 		return retained_resource
-	var status := ResourceLoader.load_threaded_get_status(path)
+	var status := THREADED_RESOURCE_LIFETIME.get_status(path)
 	if status == ResourceLoader.THREAD_LOAD_LOADED:
-		return ResourceLoader.load_threaded_get(path)
+		return THREADED_RESOURCE_LIFETIME.claim(path)
 	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 		# 正式准备屏障会在有界协程中收取结果；游戏热路径不得重新无期限阻塞。
 		return null

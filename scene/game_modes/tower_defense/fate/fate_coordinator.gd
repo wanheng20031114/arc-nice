@@ -1,6 +1,8 @@
 extends Node
 class_name FateCoordinator
 
+const THREADED_RESOURCE_LIFETIME := preload("res://scene/loading/threaded_resource_lifetime.gd")
+
 const FATE_STONE_CONFIG: PickupConfig = preload(
 	"res://resources/config/fate/xiaocong_fate_stone.tres"
 )
@@ -100,13 +102,13 @@ func request_elite_enemy_config_loads() -> bool:
 		var elite_path := str(elite_path_value)
 		if elite_path.is_empty():
 			continue
-		var status := ResourceLoader.load_threaded_get_status(elite_path)
+		var status := THREADED_RESOURCE_LIFETIME.get_status(elite_path)
 		if status in [
 			ResourceLoader.THREAD_LOAD_IN_PROGRESS,
 			ResourceLoader.THREAD_LOAD_LOADED,
 		]:
 			continue
-		var error := ResourceLoader.load_threaded_request(
+		var error := THREADED_RESOURCE_LIFETIME.request(
 			elite_path,
 			"",
 			true,
@@ -128,7 +130,7 @@ func prewarm_elite_enemy_configs() -> bool:
 		if elite_enemy_config_by_base_path.has(base_path):
 			continue
 		var elite_path := str(ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH[base_path_value])
-		var status := ResourceLoader.load_threaded_get_status(elite_path)
+		var status := THREADED_RESOURCE_LIFETIME.get_status(elite_path)
 		var deadline_msec := Time.get_ticks_msec() + RUNTIME_RESOURCE_WAIT_TIMEOUT_MSEC
 		while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			await get_tree().process_frame
@@ -138,14 +140,14 @@ func prewarm_elite_enemy_configs() -> bool:
 				return _fail_runtime_preparation(
 					"命运系统线程加载精英配置超时：%s。" % elite_path
 				)
-			status = ResourceLoader.load_threaded_get_status(elite_path)
+			status = THREADED_RESOURCE_LIFETIME.get_status(elite_path)
 		if status != ResourceLoader.THREAD_LOAD_LOADED:
 			return _fail_runtime_preparation(
 				"命运系统线程加载精英配置失败：%s（状态 %d）。"
 				% [elite_path, status]
 			)
 		var elite_config := (
-			ResourceLoader.load_threaded_get(elite_path) as EnemyConfig
+			THREADED_RESOURCE_LIFETIME.claim(elite_path) as EnemyConfig
 		)
 		if elite_config == null:
 			return _fail_runtime_preparation(
@@ -542,12 +544,12 @@ func resolve_enemy_config(enemy_config: EnemyConfig) -> EnemyConfig:
 	var elite_path := str(ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.get(base_path, ""))
 	if elite_path.is_empty():
 		return enemy_config
-	var status := ResourceLoader.load_threaded_get_status(elite_path)
+	var status := THREADED_RESOURCE_LIFETIME.get_status(elite_path)
 	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 		# 加载屏障负责有界收取；直达调试场景也只保留基础敌人，不在热路径阻塞。
 		return enemy_config
 	elite_config = (
-		ResourceLoader.load_threaded_get(elite_path) as EnemyConfig
+		THREADED_RESOURCE_LIFETIME.claim(elite_path) as EnemyConfig
 		if status == ResourceLoader.THREAD_LOAD_LOADED
 		else load(elite_path) as EnemyConfig
 	)
