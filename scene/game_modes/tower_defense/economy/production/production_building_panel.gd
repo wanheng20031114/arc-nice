@@ -61,6 +61,7 @@ var building: ProductionBuilding = null
 var tracked_player: Player = null
 var bound_coordinator: ProductionCoordinator = null
 var transient_status := ""
+var _state_refresh_queued := false
 var _last_visual_remaining_seconds := -1
 var _default_styles: Dictionary = {}
 var _plant_styles: Dictionary = {}
@@ -114,13 +115,13 @@ func bind_building(new_building: ProductionBuilding, player: Player) -> void:
 	building = new_building
 	tracked_player = player
 	if building != null:
-		building.production_state_changed.connect(_refresh_all)
+		building.production_state_changed.connect(_request_state_refresh)
 		building.multiplayer_production_result.connect(
 			_on_multiplayer_production_result
 		)
 		bound_coordinator = building.production_coordinator
 		if bound_coordinator != null:
-			bound_coordinator.storage_totals_changed.connect(_refresh_all)
+			bound_coordinator.storage_totals_changed.connect(_request_state_refresh)
 	if tracked_player != null:
 		tracked_player.died.connect(_on_tracked_player_died)
 	_refresh_all()
@@ -202,6 +203,19 @@ func _process(_delta: float) -> void:
 		set_process(false)
 		return
 	_refresh_visual_progress()
+
+
+func _request_state_refresh(_replicate: bool = false) -> void:
+	if _state_refresh_queued or not is_open():
+		return
+	_state_refresh_queued = true
+	_flush_state_refresh.call_deferred()
+
+
+func _flush_state_refresh() -> void:
+	_state_refresh_queued = false
+	if is_open():
+		_refresh_all()
 
 
 func _refresh_all(_replicate: bool = false) -> void:
@@ -876,8 +890,8 @@ func _on_tracked_player_died() -> void:
 
 func _unbind_building() -> void:
 	if building != null and is_instance_valid(building):
-		if building.production_state_changed.is_connected(_refresh_all):
-			building.production_state_changed.disconnect(_refresh_all)
+		if building.production_state_changed.is_connected(_request_state_refresh):
+			building.production_state_changed.disconnect(_request_state_refresh)
 		if building.multiplayer_production_result.is_connected(
 			_on_multiplayer_production_result
 		):
@@ -887,9 +901,9 @@ func _unbind_building() -> void:
 	if (
 		bound_coordinator != null
 		and is_instance_valid(bound_coordinator)
-		and bound_coordinator.storage_totals_changed.is_connected(_refresh_all)
+		and bound_coordinator.storage_totals_changed.is_connected(_request_state_refresh)
 	):
-		bound_coordinator.storage_totals_changed.disconnect(_refresh_all)
+		bound_coordinator.storage_totals_changed.disconnect(_request_state_refresh)
 	if tracked_player != null and is_instance_valid(tracked_player):
 		if tracked_player.died.is_connected(_on_tracked_player_died):
 			tracked_player.died.disconnect(_on_tracked_player_died)

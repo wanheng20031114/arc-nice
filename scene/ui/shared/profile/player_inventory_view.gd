@@ -112,7 +112,9 @@ func set_panel_active(active: bool) -> void:
 
 
 func refresh() -> void:
-	if run_state == null:
+	# Both profile panels explicitly refresh after showing their overlay/tab.
+	# Inventory mutations while hidden should not rebuild every slot's visuals.
+	if run_state == null or not is_visible_in_tree():
 		return
 	for slot_index in range(slots.size()):
 		slots[slot_index].set_item(

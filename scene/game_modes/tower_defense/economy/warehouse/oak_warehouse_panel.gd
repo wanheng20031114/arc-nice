@@ -43,6 +43,7 @@ const PANEL_MOUSE_PRESS_SEQUENCE_META := &"_oak_warehouse_mouse_press_sequence"
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var warehouse: OakWarehouse = null
+var _state_refresh_queued := false
 var tracked_player: Player = null
 var storage_slots: Array[InventorySlot] = []
 var player_slots: Array[InventorySlot] = []
@@ -126,10 +127,10 @@ func bind_warehouse(new_warehouse: OakWarehouse, player: Player) -> void:
 	tracked_player = player
 	if tracked_player != null and not tracked_player.died.is_connected(_on_tracked_player_died):
 		tracked_player.died.connect(_on_tracked_player_died)
-	if warehouse != null and not warehouse.storage_changed.is_connected(_refresh_all):
-		warehouse.storage_changed.connect(_refresh_all)
-	if not run_state.inventory_changed.is_connected(_refresh_all):
-		run_state.inventory_changed.connect(_refresh_all)
+	if warehouse != null and not warehouse.storage_changed.is_connected(_request_state_refresh):
+		warehouse.storage_changed.connect(_request_state_refresh)
+	if not run_state.inventory_changed.is_connected(_request_state_refresh):
+		run_state.inventory_changed.connect(_request_state_refresh)
 	if not run_state.quick_use_binding_changed.is_connected(
 		_on_quick_use_binding_changed
 	):
@@ -275,12 +276,12 @@ func _reset_transient_state() -> void:
 
 
 func _unbind_warehouse() -> void:
-	if warehouse != null and warehouse.storage_changed.is_connected(_refresh_all):
-		warehouse.storage_changed.disconnect(_refresh_all)
+	if warehouse != null and warehouse.storage_changed.is_connected(_request_state_refresh):
+		warehouse.storage_changed.disconnect(_request_state_refresh)
 	if tracked_player != null and tracked_player.died.is_connected(_on_tracked_player_died):
 		tracked_player.died.disconnect(_on_tracked_player_died)
-	if run_state.inventory_changed.is_connected(_refresh_all):
-		run_state.inventory_changed.disconnect(_refresh_all)
+	if run_state.inventory_changed.is_connected(_request_state_refresh):
+		run_state.inventory_changed.disconnect(_request_state_refresh)
 	if run_state.quick_use_binding_changed.is_connected(
 		_on_quick_use_binding_changed
 	):
@@ -653,6 +654,19 @@ func drop_slot_data(
 		status_label.text = "物品已移动"
 		_clear_selection()
 	_get_slot(target_source, target_slot_index).grab_focus()
+
+
+func _request_state_refresh() -> void:
+	if _state_refresh_queued or not is_open():
+		return
+	_state_refresh_queued = true
+	_flush_state_refresh.call_deferred()
+
+
+func _flush_state_refresh() -> void:
+	_state_refresh_queued = false
+	if is_open():
+		_refresh_all()
 
 
 func _refresh_all() -> void:
