@@ -206,3 +206,18 @@ Godot 分析器仍观察到索敌每 tick 成批集中执行。保留原有 0.6 
 重设冷却，以及显式 ALWAYS 节点继续走时钟。修复后暂停前/中/后均为 0.416667 秒，
 全部检查通过，退出无错误警告且专属进程 0 残留。证据 `touch_pause_before.log`、
 `touch_pause_final.log`；前者明确记录旧实现的失败，未将其计为通过。
+
+## 重跑压力场景与证据保留
+
+```powershell
+# 正式混合波次，原生 Forward+，关闭逐敌人诊断，完整 1800 tick 采样。
+./dev_tools/run_tower_density_probe.ps1 -Buildings 400 -Enemies 300 -EnemyWave res://resources/config/campaigns/tower_defense/formal/wave_12.tres -ActiveProduction -Render
+# 仅定位热点：分析器默认 120 tick 预热、180 tick 采样，其 FPS 不用于验收。
+./dev_tools/run_tower_density_probe.ps1 -Buildings 400 -Enemies 300 -EnemyWave res://resources/config/campaigns/tower_defense/formal/wave_12.tres -ActiveProduction -Profile -DetailedMetrics
+```
+
+每轮独立目录保留精确启动参数、Git 提交、工作区 patch、新文件副本、源码 SHA256、硬件信息、
+原始 stdout/stderr、JSON、可选真实截图和产物哈希。正常模式所有 ERROR/WARNING 都判失败；
+分析器模式仅另外计数明确来自 `GDScript::reload` 的静态 lint，仍保留原文，运行期警告和
+任何 ERROR 继续失败。工具核实实际模拟 tick 数，最后按该轮路径识别并清理启动器和子进程。
+输出目录的 `.gdignore` 防止证据副本被 Godot 当成第二份脚本/资源导入。
