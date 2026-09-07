@@ -390,6 +390,20 @@ class EnemyState:
 	var faction_revision: int = 0
 
 
+## Send baselines store the actual wire quantization. Comparing a future state
+## never needs to requantize the previous float or copy receive-only fields.
+class EnemySendState:
+	var position_x := 0
+	var position_y := 0
+	var velocity_x := 0
+	var velocity_y := 0
+	var locomotion_state := 0
+	var health := 0
+	var health_revision := 0
+	var is_dead := false
+	var visual_status_mask := 0
+
+
 ## 构建敌人快照二进制数据
 static func encode_enemy_snapshot(
 	current: EnemyState,
@@ -1018,6 +1032,30 @@ func encode_enemy_snapshot_range_for_cohort(
 	)
 
 
+## Validate the complete cohort before touching any baseline, then encode each
+## MTU-sized range exactly once. A malformed final chunk cannot commit earlier
+## chunks, and validation is not repeated by the coordinator and every range.
+func encode_enemy_snapshot_chunks_for_cohort(
+	cohort_id: int,
+	enemies: Array[EnemyState],
+	force_keyframe: bool = false
+) -> Array[PackedByteArray]:
+	var packets: Array[PackedByteArray] = []
+	if not are_enemy_snapshot_states_serializable(enemies):
+		push_error("SnapshotManager: 拒绝序列化包含非法状态的敌人快照批次。")
+		return packets
+	var count := enemies.size()
+	var chunk_count := maxi(ceili(float(count) / ENEMY_SNAPSHOT_MAX_RECORDS_PER_PACKET), 1)
+	for chunk_index in chunk_count:
+		var start_index := chunk_index * ENEMY_SNAPSHOT_MAX_RECORDS_PER_PACKET
+		packets.append(_encode_validated_enemy_snapshot_range(
+			cohort_id, enemies, start_index,
+			mini(ENEMY_SNAPSHOT_MAX_RECORDS_PER_PACKET, count - start_index),
+			force_keyframe
+		))
+	return packets
+
+
 func _encode_enemy_snapshot_range_for_peer(
 	receiver_peer_id: int,
 	enemies: Array[EnemyState],
@@ -1037,28 +1075,100 @@ func _encode_enemy_snapshot_range_for_peer(
 				"SnapshotManager: 拒绝序列化包含非法状态的敌人 delta 批次。"
 			)
 			return PackedByteArray()
-	var stream := StreamPeerBuffer.new()
-	stream.put_u16(resolved_count)
-
-	var baseline := _get_enemy_send_baseline(receiver_peer_id)
-	for state_index in range(resolved_start, resolved_start + resolved_count):
-		var enemy_state: EnemyState = enemies[state_index]
-		var previous: EnemyState = null
-		if not force_keyframe:
-			previous = baseline.get(enemy_state.net_id) as EnemyState
-		_write_enemy_snapshot(stream, enemy_state, previous)
-		var stored := baseline.get(enemy_state.net_id) as EnemyState
-		if stored == null:
-			stored = EnemyState.new()
-			baseline[enemy_state.net_id] = stored
-		_copy_enemy_state_into(enemy_state, stored)
+	var data := _encode_validated_enemy_snapshot_range(
+		receiver_peer_id, enemies, resolved_start, resolved_count, force_keyframe
+	)
 	if prune_baseline:
 		var live_ids: Dictionary = {}
 		for state_index in range(resolved_start, resolved_start + resolved_count):
 			var live_enemy_state: EnemyState = enemies[state_index]
 			live_ids[live_enemy_state.net_id] = true
-		_prune_dictionary_to_ids(baseline, live_ids)
-	return stream.data_array
+		_prune_dictionary_to_ids(_get_enemy_send_baseline(receiver_peer_id), live_ids)
+	return data
+
+
+func _encode_validated_enemy_snapshot_range(
+	receiver_peer_id: int,
+	enemies: Array[EnemyState],
+	start_index: int,
+	entity_count: int,
+	force_keyframe: bool
+) -> PackedByteArray:
+	var stream := StreamPeerBuffer.new()
+	# Reserve the worst case once, so individual native writes never grow the
+	# buffer. The returned packet is trimmed to its actual delta length below.
+	stream.resize(2 + entity_count * 29)
+	stream.put_u16(entity_count)
+	var baseline := _get_enemy_send_baseline(receiver_peer_id)
+	for state_index in range(start_index, start_index + entity_count):
+		var current: EnemyState = enemies[state_index]
+		var stored := baseline.get(current.net_id) as EnemySendState
+		var full := force_keyframe or stored == null
+		if stored == null:
+			stored = EnemySendState.new()
+			baseline[current.net_id] = stored
+		_write_enemy_snapshot_with_send_baseline(stream, current, stored, full)
+	var result := stream.data_array
+	result.resize(stream.get_position())
+	return result
+
+
+static func _write_enemy_snapshot_with_send_baseline(
+	stream: StreamPeerBuffer,
+	current: EnemyState,
+	stored: EnemySendState,
+	full: bool
+) -> void:
+	var position_x := _pack_scaled_i16(current.position.x, POSITION_SCALE)
+	var position_y := _pack_scaled_i16(current.position.y, POSITION_SCALE)
+	var velocity_x := _pack_scaled_i16(current.velocity.x, VELOCITY_SCALE)
+	var velocity_y := _pack_scaled_i16(current.velocity.y, VELOCITY_SCALE)
+	var locomotion := _normalize_enemy_locomotion_state(current.locomotion_state)
+	var mask := FULL_ENEMY_MASK if full else 0
+	if not full:
+		if position_x != stored.position_x or position_y != stored.position_y:
+			mask |= MASK_POSITION
+		if velocity_x != stored.velocity_x or velocity_y != stored.velocity_y:
+			mask |= MASK_VELOCITY
+		if locomotion != stored.locomotion_state:
+			mask |= MASK_ENEMY_LOCOMOTION
+		if current.health != stored.health or current.health_revision != stored.health_revision:
+			mask |= MASK_HEALTH
+		if current.is_dead != stored.is_dead:
+			mask |= MASK_IS_DEAD
+		if current.visual_status_mask != stored.visual_status_mask:
+			mask |= MASK_ENEMY_VISUAL_STATUS
+	stream.put_32(current.net_id)
+	stream.put_u8(mask)
+	if mask & MASK_POSITION:
+		stream.put_16(position_x)
+		stream.put_16(position_y)
+	if mask & MASK_VELOCITY:
+		stream.put_16(velocity_x)
+		stream.put_16(velocity_y)
+	if mask & MASK_ENEMY_LOCOMOTION:
+		stream.put_u8(locomotion)
+	if mask & MASK_HEALTH:
+		stream.put_32(current.health)
+		stream.put_u32(current.health_revision)
+	if mask & MASK_IS_DEAD:
+		stream.put_u8(1 if current.is_dead else 0)
+	if mask & MASK_ENEMY_VISUAL_STATUS:
+		stream.put_u8(clampi(current.visual_status_mask, 0, 255))
+	# Even a naturally full delta includes the faction trailer, exactly as the
+	# existing wire writer does. No protocol or keyframe semantics change.
+	if _is_full_enemy_mask(mask):
+		stream.put_u8(current.faction_id)
+		stream.put_u32(current.faction_revision)
+	stored.position_x = position_x
+	stored.position_y = position_y
+	stored.velocity_x = velocity_x
+	stored.velocity_y = velocity_y
+	stored.locomotion_state = locomotion
+	stored.health = current.health
+	stored.health_revision = current.health_revision
+	stored.is_dead = current.is_dead
+	stored.visual_status_mask = current.visual_status_mask
 
 
 ## 解码一批敌人快照

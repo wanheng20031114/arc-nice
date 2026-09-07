@@ -25,6 +25,8 @@ var _unclassified_rpc_method_counts: Dictionary[StringName, int] = {}
 var _unclassified_rpc_total := 0
 var _player_input_rejection_counts: Dictionary[StringName, int] = {}
 var _player_input_rejection_total := 0
+var cpu_profiling_enabled := false
+var _cpu_phases: Dictionary[StringName, Dictionary] = {}
 var _runtime_network_metrics = MultiplayerRuntimeMetricsScript.new(
 	_NetConstants.CHANNEL_COUNT
 )
@@ -119,6 +121,27 @@ func set_rpc_payload_diagnostics_enabled(enabled: bool) -> void:
 	_rpc_payload_call_counts.clear()
 	_rpc_payload_sample_bytes.clear()
 	_rpc_payload_sample_count = 0
+
+
+func set_cpu_profiling_enabled(enabled: bool) -> void:
+	cpu_profiling_enabled = enabled
+	_cpu_phases.clear()
+
+
+func record_cpu_phase(phase: StringName, elapsed_usec: int) -> void:
+	if not cpu_profiling_enabled:
+		return
+	var metric: Dictionary = _cpu_phases.get(phase, {})
+	if metric.is_empty():
+		metric = {"calls": 0, "total_usec": 0, "max_usec": 0}
+		_cpu_phases[phase] = metric
+	metric["calls"] = int(metric["calls"]) + 1
+	metric["total_usec"] = int(metric["total_usec"]) + elapsed_usec
+	metric["max_usec"] = maxi(int(metric["max_usec"]), elapsed_usec)
+
+
+func get_cpu_metrics() -> Dictionary:
+	return _cpu_phases.duplicate(true)
 
 
 func get_rpc_traffic_channel(method_name: StringName) -> int:
@@ -263,6 +286,8 @@ func clear_peer(peer_id: int) -> void:
 
 
 func reset_session_state() -> void:
+	cpu_profiling_enabled = false
+	_cpu_phases.clear()
 	_snapshot_packet_warn_time_left = 0.0
 	_max_player_snapshot_packet_bytes = 0
 	_max_enemy_snapshot_packet_bytes = 0

@@ -447,6 +447,12 @@ func register_network_enemy(net_id: int, enemy: Enemy) -> bool:
 	enemy.set_meta(&"net_id", net_id)
 	_network_enemy_by_net_id[net_id] = enemy
 	_network_enemy_net_id_by_instance_id[instance_id] = net_id
+	# Mode ledgers synchronously consume the net ID in tree_exited to publish
+	# terminal events. Registry cleanup runs after those callbacks, in the same
+	# frame's deferred phase, including enemies without a mode-specific callback.
+	var exit_callback := _on_registered_network_enemy_tree_exited.bind(instance_id)
+	if not enemy.tree_exited.is_connected(exit_callback):
+		enemy.tree_exited.connect(exit_callback, CONNECT_DEFERRED)
 	register_combat_target(net_id, enemy)
 	return true
 
@@ -477,6 +483,9 @@ func unregister_network_enemy(
 	unregister_combat_target(net_id)
 	if registered_enemy != null and is_instance_valid(registered_enemy):
 		var instance_id := registered_enemy.get_instance_id()
+		var exit_callback := _on_registered_network_enemy_tree_exited.bind(instance_id)
+		if registered_enemy.tree_exited.is_connected(exit_callback):
+			registered_enemy.tree_exited.disconnect(exit_callback)
 		if int(_network_enemy_net_id_by_instance_id.get(instance_id, 0)) == net_id:
 			_network_enemy_net_id_by_instance_id.erase(instance_id)
 	else:
@@ -532,7 +541,22 @@ func has_network_enemy(net_id: int) -> bool:
 
 
 func get_network_enemy_count() -> int:
-	return get_network_enemies().size()
+	# Registration/unregistration and tree_exited maintain the same authoritative
+	# table. Counting must not allocate two arrays and revalidate every enemy on
+	# every host physics tick just to select the snapshot interval.
+	return _network_enemy_by_net_id.size()
+
+
+func _on_registered_network_enemy_tree_exited(instance_id: int) -> void:
+	var net_id := int(_network_enemy_net_id_by_instance_id.get(instance_id, 0))
+	if net_id <= 0:
+		return
+	var enemy := _get_valid_network_enemy_entry(net_id)
+	# Removing and reattaching the same node before deferred cleanup must not
+	# unregister its new attachment. Normal terminal callbacks already removed it.
+	if enemy != null and enemy.is_inside_tree():
+		return
+	unregister_network_enemy_by_instance_id(instance_id)
 
 
 func get_network_enemy_ids() -> Array[int]:

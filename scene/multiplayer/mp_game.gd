@@ -819,9 +819,15 @@ func _physics_process(delta: float) -> void:
 	# Tower realtime simulation without starving route or route-combat transport.
 	if _is_tower_world_suspended_for_rogue_exploration():
 		return
+	var profile_enabled := network_diagnostics_coordinator.cpu_profiling_enabled
+	var profile_start := Time.get_ticks_usec() if profile_enabled else 0
 	_update_recent_event_cache_prune(delta)
 	_update_snapshot_packet_warning_timer(delta)
 	_update_batched_network_events(delta)
+	if profile_enabled:
+		network_diagnostics_coordinator.record_cpu_phase(
+			&"batched_events", Time.get_ticks_usec() - profile_start
+		)
 	var frame: int = net_manager.get_physics_frame_count()
 	if net_manager.is_host():
 		_update_authoritative_tango_charge_lifecycle()
@@ -829,6 +835,10 @@ func _physics_process(delta: float) -> void:
 	elif net_manager.is_client():
 		projectile_coordinator.refresh_pending_capoo_mage_replica_targets()
 		_client_physics_tick(frame)
+	if profile_enabled:
+		network_diagnostics_coordinator.record_cpu_phase(
+			&"session_physics_total", Time.get_ticks_usec() - profile_start
+		)
 
 
 func _report_game_loaded_when_prepared(preparation_generation: int) -> void:
@@ -3277,20 +3287,41 @@ func _host_physics_tick(frame: int, _delta: float) -> void:
 			0.0
 		)
 		return
+	var profile_enabled := network_diagnostics_coordinator.cpu_profiling_enabled
+	var profile_start := Time.get_ticks_usec() if profile_enabled else 0
 	var client_peer_ids := _get_connected_client_peer_ids()
 	_sync_snapshot_cohort_readiness(client_peer_ids)
+	if profile_enabled:
+		network_diagnostics_coordinator.record_cpu_phase(
+			&"host_cohort", Time.get_ticks_usec() - profile_start
+		)
+		profile_start = Time.get_ticks_usec()
 	if is_realtime_player_state_exchange_enabled():
 		player_coordinator.update_host_realtime_snapshots(
 			frame,
 			client_peer_ids
 		)
+	if profile_enabled:
+		network_diagnostics_coordinator.record_cpu_phase(
+			&"host_player_snapshot", Time.get_ticks_usec() - profile_start
+		)
+		profile_start = Time.get_ticks_usec()
 	var enemy_snapshot_interval_frames := enemy_coordinator.get_snapshot_interval_frames()
 	if frame % enemy_snapshot_interval_frames == 0:
 		enemy_coordinator.broadcast_host_enemy_snapshots(
 			client_peer_ids,
 			_get_net_time()
 		)
+	if profile_enabled:
+		network_diagnostics_coordinator.record_cpu_phase(
+			&"host_enemy_snapshot", Time.get_ticks_usec() - profile_start
+		)
+		profile_start = Time.get_ticks_usec()
 	enemy_coordinator.update_host()
+	if profile_enabled:
+		network_diagnostics_coordinator.record_cpu_phase(
+			&"host_lifecycle", Time.get_ticks_usec() - profile_start
+		)
 
 
 func _sync_snapshot_cohort_readiness(ready_peer_ids: Array[int]) -> void:
@@ -3340,7 +3371,13 @@ func _rpc_to_peer(
 		return false
 	var rpc_args: Array = [peer_id, method_name]
 	rpc_args.append_array(wire_args)
+	var profile_enabled := network_diagnostics_coordinator.cpu_profiling_enabled
+	var profile_start := Time.get_ticks_usec() if profile_enabled else 0
 	callv(&"rpc_id", rpc_args)
+	if profile_enabled:
+		network_diagnostics_coordinator.record_cpu_phase(
+			StringName("rpc:" + String(method_name)), Time.get_ticks_usec() - profile_start
+		)
 	if record_outbound:
 		_record_outbound_rpc(method_name, wire_args)
 	return true
@@ -3357,10 +3394,16 @@ func _rpc_to_connected_clients(method_name: StringName, args: Array = []) -> voi
 	if PEER_RESULT_RPC_METHODS.has(method_name) and wire_args.is_empty():
 		return
 	var peer_ids := _get_connected_client_peer_ids()
+	var profile_enabled := network_diagnostics_coordinator.cpu_profiling_enabled
+	var profile_start := Time.get_ticks_usec() if profile_enabled else 0
 	for peer_id in peer_ids:
 		var rpc_args: Array = [peer_id, method_name]
 		rpc_args.append_array(wire_args)
 		callv("rpc_id", rpc_args)
+	if profile_enabled:
+		network_diagnostics_coordinator.record_cpu_phase(
+			StringName("rpc:" + String(method_name)), Time.get_ticks_usec() - profile_start
+		)
 	if not peer_ids.is_empty():
 		_record_outbound_rpc(method_name, wire_args, peer_ids.size())
 
@@ -3447,6 +3490,17 @@ func _record_outbound_rpc(
 
 func set_rpc_payload_diagnostics_enabled(enabled: bool) -> void:
 	_get_network_diagnostics_coordinator().set_rpc_payload_diagnostics_enabled(enabled)
+
+
+func set_network_cpu_profiling_enabled(enabled: bool) -> void:
+	_get_network_diagnostics_coordinator().set_cpu_profiling_enabled(enabled)
+	enemy_coordinator.set_cpu_profiling_enabled(enabled)
+
+
+func get_network_cpu_metrics() -> Dictionary:
+	var metrics := _get_network_diagnostics_coordinator().get_cpu_metrics()
+	metrics[&"enemy_snapshot_detail"] = enemy_coordinator.get_cpu_metrics()
+	return metrics
 
 
 func _get_rpc_traffic_channel(method_name: StringName) -> int:

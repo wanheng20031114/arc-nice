@@ -217,6 +217,11 @@ class DamageFeedbackBatch:
 		return net_ids.is_empty()
 
 
+var cpu_profiling_enabled := false
+var _snapshot_collect_usec := 0
+var _snapshot_encode_usec := 0
+var _snapshot_dispatch_usec := 0
+var _snapshot_profile_count := 0
 var enemy_interpolators: Dictionary[int, NetInterpolator] = {}
 var pending_enemy_damage_feedback: Dictionary = {}
 var active_enemy_damage_feedback_context: Dictionary = {}
@@ -508,14 +513,22 @@ func broadcast_host_enemy_snapshots(
 ) -> int:
 	if not is_bound() or ready_peer_ids.is_empty():
 		return 0
+	var profile_start := Time.get_ticks_usec() if cpu_profiling_enabled else 0
 	var states: Array[SnapshotManager.EnemyState] = (
 		_runtime.collect_enemy_snapshot_states()
 	)
+	if cpu_profiling_enabled:
+		_snapshot_profile_count += 1
+		_snapshot_collect_usec += Time.get_ticks_usec() - profile_start
+		profile_start = Time.get_ticks_usec()
 	var batch := build_host_snapshot_batch(
 		states,
 		ready_peer_ids,
 		host_timestamp
 	)
+	if cpu_profiling_enabled:
+		_snapshot_encode_usec += Time.get_ticks_usec() - profile_start
+		profile_start = Time.get_ticks_usec()
 	if batch == null or batch.is_empty():
 		return 0
 	var send_count := 0
@@ -532,7 +545,26 @@ func broadcast_host_enemy_snapshots(
 				chunk.entity_count
 			)
 			send_count += 1
+	if cpu_profiling_enabled:
+		_snapshot_dispatch_usec += Time.get_ticks_usec() - profile_start
 	return send_count
+
+
+func set_cpu_profiling_enabled(enabled: bool) -> void:
+	cpu_profiling_enabled = enabled
+	_snapshot_collect_usec = 0
+	_snapshot_encode_usec = 0
+	_snapshot_dispatch_usec = 0
+	_snapshot_profile_count = 0
+
+
+func get_cpu_metrics() -> Dictionary:
+	return {
+		"snapshots": _snapshot_profile_count,
+		"collect_usec": _snapshot_collect_usec,
+		"encode_usec": _snapshot_encode_usec,
+		"dispatch_usec": _snapshot_dispatch_usec,
+	}
 
 
 func build_host_snapshot_batch(
@@ -542,10 +574,7 @@ func build_host_snapshot_batch(
 ) -> HostSnapshotBatch:
 	if not is_bound() or ready_peer_ids.is_empty():
 		return null
-	if not SnapshotManager.are_enemy_snapshot_states_serializable(states):
-		push_error("MpEnemyCoordinator: 敌人快照含越界战斗值，已拒绝整个发送批次。")
-		return null
-	var interval_frames := get_snapshot_interval_frames()
+	var interval_frames := get_snapshot_interval_frames_for_enemy_count(states.size())
 	var snapshot_hz := maxi(
 		roundi(float(_NetConstants.HOST_PHYSICS_HZ) / float(interval_frames)),
 		1
@@ -568,6 +597,11 @@ func build_host_snapshot_batch(
 		ready_peer_ids,
 		host_timestamp
 	)
+	var encoded_chunks := _snapshot_manager.encode_enemy_snapshot_chunks_for_cohort(
+		SHARED_SNAPSHOT_COHORT_ID, states, force_keyframe
+	)
+	if encoded_chunks.is_empty():
+		return null
 	_snapshot_batch_count += ready_peer_ids.size()
 	for chunk_index in range(batch.chunk_count):
 		var chunk_start := chunk_index * ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES
@@ -578,13 +612,7 @@ func build_host_snapshot_batch(
 		var chunk := HostSnapshotChunk.new()
 		chunk.chunk_index = chunk_index
 		chunk.entity_count = chunk_end - chunk_start
-		chunk.data = _snapshot_manager.encode_enemy_snapshot_range_for_cohort(
-			SHARED_SNAPSHOT_COHORT_ID,
-			states,
-			chunk_start,
-			chunk.entity_count,
-			force_keyframe
-		)
+		chunk.data = encoded_chunks[chunk_index]
 		_snapshot_chunk_encode_count += 1
 		batch.chunks.append(chunk)
 	_snapshot_manager.prune_enemy_send_cohort_baseline_to_ids(
@@ -4690,6 +4718,7 @@ func clear_peer(peer_id: int) -> void:
 
 
 func reset_session_state() -> void:
+	set_cpu_profiling_enabled(false)
 	_disconnect_all_host_enemy_faction_signals()
 	_snapshot_manager.reset_delta_cache()
 	if is_bound():
