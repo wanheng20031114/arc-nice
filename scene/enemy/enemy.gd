@@ -1672,6 +1672,15 @@ func try_attach_to_enemy_simulation_coordinator(
 	return true
 
 
+## Lifecycle hook for families whose lazy timers use the shared simulation
+## clock. Direct coordinator callers must honor the same suspension boundary.
+func on_authoritative_simulation_suspension_changed(
+	_coordinator: EnemySimulationCoordinator,
+	_suspended: bool
+) -> void:
+	pass
+
+
 func set_authoritative_simulation_enabled(enabled: bool) -> void:
 	if (
 		enemy_simulation_coordinator == null

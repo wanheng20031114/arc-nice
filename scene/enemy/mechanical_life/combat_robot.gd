@@ -4,6 +4,7 @@ class_name CombatRobot
 const CombatRobotConfigScript := preload(
 	"res://resources/config/enemies/combat_robot_config.gd"
 )
+const SimulationCooldown := preload("res://scene/combat/simulation/enemy_simulation_cooldown.gd")
 const ACTION_WINDUP: StringName = &"combat_robot_windup"
 const ACTION_DASH_START: StringName = &"combat_robot_dash_start"
 const ACTION_DASH_END: StringName = &"combat_robot_dash_end"
@@ -23,7 +24,14 @@ enum CombatState {
 @onready var windup_warning: Polygon2D = $WindupWarning
 
 var combat_state: CombatState = CombatState.CHASE
-var dash_cooldown_left: float = 0.0
+var _dash_cooldown := SimulationCooldown.new()
+var dash_cooldown_left: float:
+	get:
+		return _dash_cooldown.get_remaining()
+	set(value):
+		_dash_cooldown.set_remaining(value)
+# Kept as an explicit comparison switch for authored full-event trace audits.
+var chase_cooldown_event_sleep_enabled := true
 var windup_time_left: float = 0.0
 var dash_time_left: float = 0.0
 var dash_direction := Vector2.RIGHT
@@ -121,9 +129,41 @@ func _run_authoritative_physics_step(delta: float) -> void:
 
 func prepare_layered_area_authoritative_simulation() -> void:
 	super.prepare_layered_area_authoritative_simulation()
+	_refresh_dash_cooldown_clock_binding()
 	layered_dash_step_time = 0.0
 	layered_dash_speed = 0.0
 	layered_dash_step_prepared = false
+
+
+func try_attach_to_enemy_simulation_coordinator(
+	coordinator: EnemySimulationCoordinator
+) -> bool:
+	var attached := super.try_attach_to_enemy_simulation_coordinator(coordinator)
+	if attached:
+		_refresh_dash_cooldown_clock_binding()
+	return attached
+
+
+func on_authoritative_simulation_suspension_changed(
+	coordinator: EnemySimulationCoordinator,
+	suspended: bool
+) -> void:
+	# A single suspended registration must freeze even while other enemies keep
+	# the shared simulation clock advancing.
+	if suspended:
+		_dash_cooldown.detach_clock()
+	else:
+		_dash_cooldown.bind_clock(coordinator.gameplay_step_clock)
+
+
+func _refresh_dash_cooldown_clock_binding() -> void:
+	if (
+		enemy_simulation_coordinator != null
+		and authoritative_simulation_driver == AuthoritativeSimulationDriver.SCHEDULED_ACTIVE
+	):
+		_dash_cooldown.bind_clock(enemy_simulation_coordinator.gameplay_step_clock)
+	else:
+		_dash_cooldown.detach_clock()
 
 
 ## CombatRobot settles inherited touch before every dash-state tick in its
@@ -137,22 +177,25 @@ func _advance_layered_area_family_event_phase(delta: float) -> void:
 	layered_dash_speed = 0.0
 	layered_dash_step_prepared = false
 	_update_dash_cooldown(delta)
+	# CHASE can sleep for many ticks; a newly committed WINDUP/DASH consumes
+	# only this event's actual quantum, not CHASE's accumulated sleep duration.
+	var state_delta := _dash_cooldown.get_event_delta(delta)
 	match combat_state:
 		CombatState.WINDUP:
 			# A windup that reaches zero commits DASH on this tick but does not
 			# move until the following authored tick.
-			_update_windup(delta)
+			_update_windup(state_delta)
 		CombatState.DASH:
-			_prepare_layered_dash_step(delta)
+			_prepare_layered_dash_step(state_delta)
 
 
 func _can_sleep_layered_area_family_event_phase() -> bool:
-	# WINDUP/DASH contain per-tick presentation and motion state. Cooldown uses
-	# repeated 60 Hz subtraction so COMPAT and layered traces retain the same
-	# readiness edge and floating-point state.
+	# Readiness has no event side effect: the unchanged combat-sense decision
+	# cadence reads the lazy exact cooldown and commits WINDUP. The coordinator
+	# then revokes sleep, so authored presentation/motion keep every tick.
 	return (
 		combat_state == CombatState.CHASE
-		and dash_cooldown_left <= 0.0
+		and (chase_cooldown_event_sleep_enabled or dash_cooldown_left <= 0.0)
 	)
 
 
@@ -275,9 +318,7 @@ func play_multiplayer_death_sequence() -> void:
 
 
 func _update_dash_cooldown(delta: float) -> void:
-	if dash_cooldown_left <= 0.0:
-		return
-	dash_cooldown_left = maxf(dash_cooldown_left - maxf(delta, 0.0), 0.0)
+	_dash_cooldown.advance_event(delta)
 
 
 func _try_start_windup(candidate_target: Node2D = null) -> bool:
@@ -295,6 +336,10 @@ func _try_start_windup(candidate_target: Node2D = null) -> bool:
 		return false
 
 	combat_state = CombatState.WINDUP
+	# The scheduler stores a sleep certificate, rather than polling the family
+	# predicate every frame. Revoke it at this committed state transition.
+	layered_area_event_phase_sleeping = false
+	layered_area_event_sleep_until_physics_frame = -1
 	windup_time_left = maxf(robot_config.dash_windup, 0.0)
 	dash_direction = global_position.direction_to(candidate_target.global_position)
 	if dash_direction == Vector2.ZERO:

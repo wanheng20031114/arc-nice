@@ -4,6 +4,7 @@ class_name EnemySimulationCoordinator
 const EnemyCombatServicesScript := preload(
 	"res://scene/combat/simulation/enemy_combat_services.gd"
 )
+const StepClock := preload("res://scene/combat/simulation/enemy_simulation_step_clock.gd")
 
 ## Stable, authority-agnostic owner for the staged enemy simulation handoff.
 ## The caller owns runtime authority checks and the atomic transition of an
@@ -184,6 +185,7 @@ var _registered_count := 0
 var _suspended_count := 0
 var _tombstone_count := 0
 var _simulation_tick := 0
+var gameplay_step_clock := StepClock.new()
 var _last_simulation_physics_frame := -1
 var _last_main_dispatch_physics_frame := -1
 var _is_advancing := false
@@ -549,6 +551,7 @@ func suspend_enemy(enemy: Enemy, token: int) -> bool:
 	if registration == null or registration.suspended:
 		return false
 	registration.suspended = true
+	enemy.on_authoritative_simulation_suspension_changed(self, true)
 	# Lazily invalidate exact-frame queue entries. The old bucket retains only a
 	# stale Registration stamp and is recycled when its frame arrives.
 	registration.scheduled_decision_physics_frame = -1
@@ -567,6 +570,7 @@ func resume_enemy(enemy: Enemy, token: int) -> bool:
 	if registration == null or not registration.suspended:
 		return false
 	registration.suspended = false
+	enemy.on_authoritative_simulation_suspension_changed(self, false)
 	_suspended_count = maxi(_suspended_count - 1, 0)
 	if _is_layered_mode(_mode) and not registration.uses_anchored_compat_simulation:
 		enemy.layered_area_event_phase_sleeping = false
@@ -1091,6 +1095,7 @@ func _advance_compat_60(
 	physics_frame: int,
 	initial_slot_count: int
 ) -> void:
+	gameplay_step_clock.advance(delta)
 	var completed_steps := 0
 	for slot_index in range(initial_slot_count):
 		var registration := _registrations[slot_index]
@@ -1185,6 +1190,7 @@ func _advance_layered_area(
 			)
 	else:
 		_refresh_layered_relation_revision(false)
+	gameplay_step_clock.advance(delta)
 	if Enemy.performance_metrics_enabled:
 		_metric_profile_contact_setup_usec += (
 			Time.get_ticks_usec() - profile_started_usec
