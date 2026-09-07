@@ -254,6 +254,7 @@ var touch_damage_cooldown_started_physics_frame := (
 var touch_damage_cooldown_authored_seconds := 0.0
 var touch_damage_cooldown_physics_delta := 0.0
 var touch_damage_last_physics_delta := 0.0
+var _touch_damage_pause_physics_frame := -1
 var touched_player: Player = null
 var touching_players: Dictionary[int, Player] = {}
 var touching_player_death_callbacks: Dictionary[int, Callable] = {}
@@ -521,6 +522,14 @@ func _ready() -> void:
 
 func _notification(what: int) -> void:
 	if what != NOTIFICATION_LOCAL_TRANSFORM_CHANGED:
+		if what == NOTIFICATION_PAUSED:
+			_touch_damage_pause_physics_frame = Engine.get_physics_frames()
+		elif what == NOTIFICATION_UNPAUSED and _touch_damage_pause_physics_frame >= 0:
+			var paused_frames := Engine.get_physics_frames() - _touch_damage_pause_physics_frame
+			if touch_damage_cooldown_deadline_physics_frame >= 0:
+				touch_damage_cooldown_started_physics_frame += paused_frames
+				touch_damage_cooldown_deadline_physics_frame += paused_frames
+			_touch_damage_pause_physics_frame = -1
 		return
 	if (
 		indexed_touch_transform_notifications_required
@@ -1356,6 +1365,8 @@ func acknowledge_trusted_sleeping_layered_area_event_phase(
 func is_touch_damage_cooldown_ready(
 	physics_frame: int = Engine.get_physics_frames()
 ) -> bool:
+	if _touch_damage_pause_physics_frame >= 0:
+		physics_frame = mini(physics_frame, _touch_damage_pause_physics_frame)
 	return (
 		touch_damage_cooldown_deadline_physics_frame < 0
 		or physics_frame >= touch_damage_cooldown_deadline_physics_frame
@@ -1373,7 +1384,7 @@ func get_touch_damage_cooldown_deadline_physics_frame() -> int:
 
 
 func _get_touch_damage_cooldown_left() -> float:
-	var current_frame := Engine.get_physics_frames()
+	var current_frame := _get_touch_damage_clock_frame()
 	if is_touch_damage_cooldown_ready(current_frame):
 		return 0.0
 	var remaining := maxf(touch_damage_cooldown_authored_seconds, 0.0)
@@ -1389,6 +1400,17 @@ func _get_touch_damage_cooldown_left() -> float:
 		if remaining <= 0.0:
 			break
 	return remaining
+
+
+## Engine physics frame numbers continue advancing while a SceneTree is paused.
+## Native Node pause notifications freeze reads and translate this enemy's two
+## deadline anchors on resume, without adding a per-tick countdown or scan.
+func _get_touch_damage_clock_frame() -> int:
+	return (
+		_touch_damage_pause_physics_frame
+		if _touch_damage_pause_physics_frame >= 0
+		else Engine.get_physics_frames()
+	)
 
 
 func _set_touch_damage_cooldown_left(value: float) -> void:
@@ -1421,7 +1443,7 @@ func _begin_touch_damage_cooldown(authored_seconds: float) -> void:
 	while remaining > 0.0:
 		remaining = maxf(remaining - physics_delta, 0.0)
 		ticks_until_ready += 1
-	var current_frame := Engine.get_physics_frames()
+	var current_frame := _get_touch_damage_clock_frame()
 	touch_damage_cooldown_authored_seconds = safe_seconds
 	touch_damage_cooldown_physics_delta = physics_delta
 	touch_damage_cooldown_started_physics_frame = current_frame

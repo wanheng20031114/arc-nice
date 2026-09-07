@@ -190,3 +190,19 @@ Godot 分析器仍观察到索敌每 tick 成批集中执行。保留原有 0.6 
 同进程 ABBAABBA，各 500 次同一密集位置查询：完整半径 140.386–150.024 ms，
 合法旧目标提供上限后 7.445–7.735 ms。此微基准固定原目标仍近且合法；无旧目标或稀疏
 场景不保证同等收益，也不能换算整场 FPS。证据 `dev_tools/output/plant_hint_first.log`。
+
+## 暂停期间接触攻击冷却跳过
+
+复现发现：剩余 0.416667 秒接触攻击冷却时暂停 0.7 秒，`Engine.get_physics_frames()`
+仍前进 36 帧；旧实现暂停中和恢复后的剩余值都变为 0。它把引擎帧号当成了游戏暂停时钟，
+导致恢复后攻击可能提前。仅恢复稀疏队列的过期键不能修复这个时间语义。
+
+现在使用 [Node 原生暂停/恢复通知](https://docs.godotengine.org/en/4.6/classes/class_node.html#class-node-constant-notification-paused)
+冻结读数，并在恢复时把开始帧和截止帧平移准确的暂停帧数。变换通知热路径保留原有单个
+类型判断；没有新增每帧倒计时或全敌人遍历。原有逐 tick 浮点减法所决定的就绪边界不变。
+
+`touch_cooldown_pause_regression.gd` 检查实际 SceneTree 暂停，在 30/60/120 Hz 下
+验证暂停读数、截止帧准确平移、恢复后真正归零、就绪前一帧仍不可攻击、暂停中创建/清除/
+重设冷却，以及显式 ALWAYS 节点继续走时钟。修复后暂停前/中/后均为 0.416667 秒，
+全部检查通过，退出无错误警告且专属进程 0 残留。证据 `touch_pause_before.log`、
+`touch_pause_final.log`；前者明确记录旧实现的失败，未将其计为通过。
