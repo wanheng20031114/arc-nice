@@ -97,6 +97,16 @@
 
 注意：Godot `Performance.TIME_PROCESS/TIME_PHYSICS_PROCESS` 部分监视器最长约 1 秒更新一次，其值的分位数不能当成逐帧原生 CPU 的精确分位数。墙钟 16.67 ms 包含等待与调度，也不能减去脚本 5 ms 后，把剩余 11 ms 直接解释为 physics CPU。实际函数热点用 `-d --profiling` 单独定位，不使用开启函数 profiler 的运行来报告 FPS。
 
+### 编辑器与发行模板使用同一夹具
+
+07:10 起，游戏节点、加载流程、测量与恢复契约统一位于原生 `tower_multiplayer_density_fixture.tscn` / `.gd`。原 `--script` 入口只是持有、等待并释放该 Node 的薄层；发行模板由独立项目的主场景加载同一个 Node。官方模板限制 `--path`、`--script` 等路径覆盖，不能给编辑器添加一个开关后就称其为发行版。因此独立项目把模板 exe 放在自己的 `project.godot` 旁，通过 `run/main_scene` 指定夹具；正式项目的主场景和文件不改。[Godot 命令行能力说明](https://docs.godotengine.org/en/stable/tutorials/editor/command_line_tutorial.html)
+
+采用官方 4.6.2 模板 `71f334935`，本地 exe SHA-256 为 `3b2d3f99bd640961aad1a1a200f0f7233b7de45b02801ce22d3224dc294d93d1`。团队下载器从官方 HTTPS 归档按成员读取并验证 ZIP CRC 和成员长度，记录了本地 exe SHA；没有宣称验证整份 1.25 GB 归档的哈希。每端 JSON 实际报告 `OS.is_debug_build()` 与 `OS.has_feature("editor")`，runner 对发行请求强制检查二者均 false。
+
+隔离项目仅共享已有导入资源与源代码目录，复制必要的入口/RunState 文件；调用准备脚本时更新这些副本。末尾由 `PublicRoomLease` 统一结束请求，避免带大量游戏类型引用的 MainLoop 干扰退出。为通过发行版本配置检查，仅对子进程设置不会被本地直连测试请求的 `ARC_PUBLIC_LOBBY_API_BASE_URL=https://127.0.0.1`，启动后立即恢复父进程原环境；生产 URL 策略不改。
+
+新入口分别在 `070933`（编辑器）与 `071024`（实际发行模板）完成 2 人 Relay、16 建筑、12 敌、未知 token 拒绝、原 token 恢复和库存终态；两轮所有进程自然 exit 0，Relay 空闲退出码独立检查，零错误/警告、残留 0。发行轮明确报告 debug=false、editor=false。正式 admission TTL 上限保持 120 秒；长测试在实际重连前由本地生产 Signer 刷新票据 nonce，不延长票据规则。
+
 ## 初始复现证据
 
 输出目录位于忽略的 `dev_tools/output/`，最终报告保留摘要，脚本可重新生成。
@@ -170,6 +180,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools/run_tower_multipla
 powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools/run_tower_multiplayer_density_probe.ps1 -Players 6 -Buildings 400 -Enemies 300 -Frames 600
 powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools/run_tower_multiplayer_density_probe.ps1 -Players 6 -Buildings 256 -Enemies 300 -EnemyWave res://resources/config/campaigns/tower_defense/formal/wave_12.tres -Frames 1800 -Transport relay -ActiveInput -NativeCpu
 powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools/run_tower_multiplayer_density_probe.ps1 -Players 3 -Buildings 16 -Enemies 12 -Frames 360 -Transport relay -ActiveInput -ReconnectLastClient -PrepareRouteIdentity
+powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools/prepare_multiplayer_density_release_project.ps1 -Template dev_tools/output/godot_templates_4_6_2/Godot_release.exe
+powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools/run_tower_multiplayer_density_probe.ps1 -Players 6 -Buildings 256 -Enemies 300 -EnemyWave res://resources/config/campaigns/tower_defense/formal/wave_12.tres -Frames 1800 -Transport relay -ActiveInput -NativeCpu -ReconnectLastClient -ReleaseExecutable dev_tools/output/density_multiplayer_release_project/Godot_release.exe
 ```
 
 Runner 使用隐藏窗口启动测试，正常或失败均在 `finally` 根据本次唯一输出目录、脚本/owner 参数和 `--headless` 查找 Godot console 包装进程及其真实 `Godot.exe` 子进程，停止后再次查询。不会依据进程名批量关闭正常编辑器。
@@ -185,3 +197,15 @@ Runner 使用隐藏窗口启动测试，正常或失败均在 `finally` 根据�
 - [ENetPacketPeer RTT、丢失估计与节流统计](https://docs.godotengine.org/en/4.6/classes/class_enetpacketpeer.html)
 
 输出 JSON 与逐端日志保留在忽略目录，可用上述命令复现。工具默认只清理匹配本次唯一输出路径的辅助进程，正常 Godot 编辑器不受影响。
+
+## 发行版共同取样窗口与高负载断线竞态（07:16 样本仍失败）
+
+Node 主场景入口在 `071434` 的 2 发行客户端小场景已通过：两端共享 Host 采样开始/结束标记，Host 60 tick / 1000 ms、Client 60 tick / 998 ms，真实陌生身份拒绝、旧 token 重连、库存版本一致和 3 进程自然退出均通过。从此版本开始，客户端持续输入直到 Host 的墙钟窗口完成，其实际 tick 数可以多于 Host，避免旧 `063004` 客户端提前停止输入的问题。标记观察存在一帧偏差，不能视为毫秒级完全同步；`physics_frame` 信号在节点物理回调前，1800 次信号对应本次指标记录 1799 个已完成模拟回调。
+
+`071638` 为首轮官方发行模板 6 玩家、256 建筑、正式第 12 波混合 300 初始敌人、1800 tick、默认关闭详细指标、实际移动开火、真实本地 Relay 的共同窗口。Host 41.949 秒，224 个 process 间隔，p50 184.821 / p95 214.042 ms；客户端覆盖约 41.945 秒、约 2517 个 physics 信号。敌人数最小/结束 298，未阻止真实自爆死亡。Host 还记录 8 次 `player_dead` 输入拒绝：旧 fixture 直接赋 `max_health=1e7` 会被受伤后的正式属性重算恢复，因此本轮不能宣称六个角色全程存活。后续 fixture 改用正式 `configure_run_stat_bonuses` 健康加成并记录 Host 采样内死亡名单/最低有效最大生命。
+
+该轮性能取样之后的陌生身份拒绝断言失败；Host 同时出现 `SceneMultiplayer.poll` 的 `!connected_peers.has(sender)` 原生错误。**本轮为失败诊断数据，不是端到端验收通过**，也不把早已写出的六份结果文件当作最终一致性证据。辅助进程由 runner 清理，随后 CIM 对该唯一目录核实 0 残留。
+
+根因有独立原生复现：wrapper 在一次 poll 中先把 DATA 放入交付队列，后遇 Relay REMOVE 立即发布 `peer_disconnected`；Godot 的 SceneMultiplayer 在 wrapper.poll 返回后才读取 DATA，此时 sender 已被移除。主工程与 Relay 镜像改为：REMOVE 设置单次交付屏障，停止本轮 ENet 读取；下轮先发布断开，再继续处理尚未消费的 ADD/DATA，保留断开前的可靠消息及同一 ID 立即重新 ADD 的顺序。未扩容队列、未放宽认证、未降低刷新率。
+
+`relay_disconnect_race_regression.gd` 新增真实 ENet client/server 和 SceneMultiplayer 回归：在原生接收队列预积压 12 组 ADD→RAW DATA→REMOVE，立即复用同一逻辑 ID。旧 HEAD 精确复现 12 条原生错误并丢失所有 12 个 DATA（预期负对照 exit 1）；修复后 36 个事件顺序全部匹配、队列归零、exit 0、零错误/警告。原先物理断开期间发送目标保护也一并通过。[Godot 4.6.2 SceneMultiplayer 源码](https://github.com/godotengine/godot/blob/4.6.2-stable/modules/multiplayer/scene_multiplayer.cpp) 可核对 poll 先调用 peer.poll、再逐包验证 connected_peers 的次序。

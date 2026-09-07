@@ -16,10 +16,19 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--players", type=int, required=True)
+    parser.add_argument("--refresh-reconnect", action="store_true")
     args = parser.parse_args()
     if not 2 <= args.players <= 8:
         parser.error("--players must be in 2..8")
     signer = RelayAdmissionTicketSigner()
+    if args.refresh_reconnect:
+        context_path = args.output_dir / "relay_context.json"
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+        for key in ("reconnect_ticket", "rejected_identity_ticket"):
+            context[key] = signer.issue(context["secret"], context["room_id"], "member", f"Density{args.players - 1}", 120)
+        context_path.write_text(json.dumps(context), encoding="utf-8")
+        (args.output_dir / "reconnect_tickets_refreshed.json").write_text('{"ready":true}', encoding="utf-8")
+        return
     room_id = "density_" + secrets.token_hex(8)
     secret = secrets.token_hex(32)
     tickets = [

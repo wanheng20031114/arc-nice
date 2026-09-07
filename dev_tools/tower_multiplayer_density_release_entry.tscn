@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://dev_tools/tower_multiplayer_density_release_entry.gd" id="1_entry"]
+
+[node name="TowerMultiplayerDensityReleaseEntry" type="Node"]
+script = ExtResource("1_entry")

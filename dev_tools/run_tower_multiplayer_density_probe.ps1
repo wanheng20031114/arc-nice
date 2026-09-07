@@ -12,11 +12,21 @@ param(
     [switch]$DetailedMetrics,
     [switch]$NativeCpu,
     [switch]$ProfileHost,
+    [string]$ReleaseExecutable = '',
     [string]$Godot = 'C:/Program Files/Godot/Godot_console.exe'
 )
 $ErrorActionPreference = 'Stop'
 if ($PrepareRouteIdentity -and -not $ReconnectLastClient) { throw '-PrepareRouteIdentity requires -ReconnectLastClient' }
 $probeRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$runtimeExecutable = $Godot
+$runtimeProjectRoot = $probeRoot
+if ($ReleaseExecutable) {
+    if ($ProfileHost) { throw 'Native script profiling requires an editor build; do not profile a release template' }
+    $runtimeExecutable = (Resolve-Path -LiteralPath $ReleaseExecutable).Path
+    $runtimeProjectRoot = Split-Path -Parent $runtimeExecutable
+    $runtimeConfig = Get-Content -LiteralPath (Join-Path $runtimeProjectRoot 'project.godot') -Raw -Encoding UTF8
+    if (-not $runtimeConfig.Contains('run/main_scene="res://dev_tools/tower_multiplayer_density_release_entry.tscn"')) { throw 'Release executable must belong to the isolated multiplayer fixture project' }
+}
 $runDirectory = Join-Path $probeRoot ('dev_tools/output/tower_network_' + (Get-Date -Format 'yyyyMMdd_HHmmss'))
 New-Item -ItemType Directory -Path $runDirectory -Force | Out-Null
 $dirtyHashes = @{}
@@ -31,6 +41,10 @@ $loaderSubThreads = [regex]::Match($loaderText, 'THREADED_RESOURCE_LIFETIME\.req
 $loaderLifetimeText = Get-Content -LiteralPath (Join-Path $probeRoot 'scene/loading/threaded_resource_lifetime.gd') -Raw -Encoding UTF8
 $loaderEffectiveSubThreads = $loaderSubThreads
 if ($loaderLifetimeText.Contains('use_sub_threads and not headless')) { $loaderEffectiveSubThreads = 'false' }
+$runtimeFixtureHashes = @{}
+foreach ($fixtureFile in @('project.godot', 'run_state.gd', 'dev_tools/tower_multiplayer_density_fixture.gd', 'dev_tools/tower_multiplayer_density_fixture.tscn', 'dev_tools/tower_multiplayer_density_release_entry.gd', 'dev_tools/tower_multiplayer_density_release_entry.tscn', 'dev_tools/tower_density_enemy_cohort.gd')) {
+    $runtimeFixtureHashes[$fixtureFile] = (Get-FileHash -LiteralPath (Join-Path $runtimeProjectRoot $fixtureFile) -Algorithm SHA256).Hash
+}
 @{
     git_revision = (& git -C $probeRoot rev-parse HEAD)
     working_changes = @(& git -C $probeRoot status --short)
@@ -39,6 +53,9 @@ if ($loaderLifetimeText.Contains('use_sub_threads and not headless')) { $loaderE
     transport = $Transport; active_input = [bool]$ActiveInput; reconnect_last_client = [bool]$ReconnectLastClient; prepare_route_identity = [bool]$PrepareRouteIdentity; native_profile_host = [bool]$ProfileHost
     detailed_metrics = [bool]$DetailedMetrics
     native_cpu = [bool]$NativeCpu
+    runtime_build = $(if ($ReleaseExecutable) { 'official_release_template' } else { 'editor' })
+    runtime_executable = $runtimeExecutable; runtime_executable_sha256 = (Get-FileHash -LiteralPath $runtimeExecutable -Algorithm SHA256).Hash
+    runtime_fixture_sha256 = $runtimeFixtureHashes
     loader_requested_sub_threads = $loaderSubThreads; loader_effective_headless_sub_threads = $loaderEffectiveSubThreads; working_source_sha256 = $dirtyHashes
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $runDirectory 'run_metadata.json') -Encoding UTF8
 $processes = @()
@@ -47,19 +64,27 @@ $nativeCpuProcesses = @()
 $nativeCpuClock = $null
 $nativeCpuCaptured = $false
 function Start-Probe([int]$Index, [string]$Role) {
-    $arguments = @('--headless', '--path', ('"' + $probeRoot + '"'), '--script', 'res://dev_tools/tower_multiplayer_density_probe.gd')
+    $arguments = @('--headless')
+    if (-not $ReleaseExecutable) { $arguments += @('--path', ('"' + $probeRoot + '"'), '--script', 'res://dev_tools/tower_multiplayer_density_probe.gd') }
     if ($ProfileHost -and $Role -eq 'host') { $arguments += @('-d', '--profiling') }
     $arguments += @('--',
         "--role=$Role", "--index=$Index", "--port=$Port", "--players=$Players", "--buildings=$Buildings",
-        "--enemies=$Enemies", "--frames=$Frames", "--transport=$Transport", ('--output-dir="' + $runDirectory + '"'))
+        "--enemies=$Enemies", "--frames=$Frames", "--transport=$Transport", ('--output-dir="' + $runDirectory + '"'), ('--probe-owner="' + $runDirectory + '"'))
     if ($ActiveInput) { $arguments += '--active-input' }
     if ($ReconnectLastClient) { $arguments += '--reconnect-last-client' }
     if ($PrepareRouteIdentity) { $arguments += '--prepare-route-identity' }
     if ($DetailedMetrics) { $arguments += '--detailed-metrics' }
     if ($EnemyWave) { $arguments += ('--enemy-wave="' + $EnemyWave + '"') }
-    $started = Start-Process -FilePath $Godot -ArgumentList $arguments -WorkingDirectory $probeRoot -WindowStyle Hidden -PassThru `
-        -RedirectStandardOutput (Join-Path $runDirectory "peer_$Index.log") `
-        -RedirectStandardError (Join-Path $runDirectory "peer_$Index.err.log")
+    $previousOfflineLobby = $env:ARC_PUBLIC_LOBBY_API_BASE_URL
+    try {
+        # Release startup validates public-lobby configuration. This isolated
+        # LAN/direct-ticket fixture never sends an HTTP request to this URL.
+        if ($ReleaseExecutable) { $env:ARC_PUBLIC_LOBBY_API_BASE_URL = 'https://127.0.0.1' }
+        $started = Start-Process -FilePath $runtimeExecutable -ArgumentList $arguments -WorkingDirectory $runtimeProjectRoot -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput (Join-Path $runDirectory "peer_$Index.log") `
+            -RedirectStandardError (Join-Path $runDirectory "peer_$Index.err.log")
+    }
+    finally { $env:ARC_PUBLIC_LOBBY_API_BASE_URL = $previousOfflineLobby }
     # Retain the Windows process handle before the console wrapper exits. With
     # Start-Process, opening it only after exit can leave ExitCode unavailable.
     $null = $started.Handle
@@ -102,6 +127,12 @@ try {
     $deadline = (Get-Date).AddSeconds(200)
     $teardownDeadline = $null
     while ((Get-Date) -lt $deadline) {
+        if ($Transport -eq 'relay' -and $ReconnectLastClient -and (Test-Path -LiteralPath (Join-Path $runDirectory 'reconnect_ticket_refresh_requested.json')) -and -not (Test-Path -LiteralPath (Join-Path $runDirectory 'reconnect_tickets_refreshed.json'))) {
+            # Keep the real 120-second admission limit. Obtain fresh nonces at
+            # reconnect time instead of extending signed-ticket validity.
+            & python (Join-Path $PSScriptRoot 'prepare_local_relay_probe.py') --output-dir $runDirectory --players $Players --refresh-reconnect
+            if ($LASTEXITCODE -ne 0) { throw 'Local reconnect ticket refresh failed' }
+        }
         if ($NativeCpu -and $null -eq $nativeCpuClock -and (Test-Path -LiteralPath (Join-Path $runDirectory 'host_sampling.json'))) {
             $nativeCpuProcesses = @(Get-CimInstance Win32_Process | Where-Object {
                 $_.Name -match '^Godot.*\.exe$' -and $_.Name -notmatch '_console\.exe$' -and
@@ -189,6 +220,7 @@ try {
         }
     }
     foreach ($result in $results) {
+        if ($ReleaseExecutable -and ($result.debug_build -or $result.editor_feature)) { throw 'Requested release participant reported an editor/debug runtime' }
         if ($result.participants -ne $Players -or $result.plants -ne $Buildings -or ((-not $EnemyWave) -and $result.enemies -ne $Enemies)) {
             throw "Density/cohort mismatch in participant $($result.index)"
         }
