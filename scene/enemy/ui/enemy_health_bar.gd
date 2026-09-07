@@ -35,7 +35,12 @@ func configure(sprite: AnimatedSprite2D, move_animation: StringName) -> void:
 
 func set_health(current_health: int, maximum_health: int) -> void:
 	max_value = maxi(maximum_health, 1)
-	value = clampi(current_health, 0, int(max_value))
+	var displayed_health := clampi(current_health, 0, int(max_value))
+	# Replayed health snapshots must not reschedule Range accessibility work.
+	# The model already supplies integer health, so the scene also disables
+	# Range's decimal step snapping rather than rounding it again per hit.
+	if value != displayed_health:
+		value = displayed_health
 	visible = current_health > 0 and current_health < maximum_health
 
 
