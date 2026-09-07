@@ -209,3 +209,28 @@ Node 主场景入口在 `071434` 的 2 发行客户端小场景已通过：两�
 根因有独立原生复现：wrapper 在一次 poll 中先把 DATA 放入交付队列，后遇 Relay REMOVE 立即发布 `peer_disconnected`；Godot 的 SceneMultiplayer 在 wrapper.poll 返回后才读取 DATA，此时 sender 已被移除。主工程与 Relay 镜像改为：REMOVE 设置单次交付屏障，停止本轮 ENet 读取；下轮先发布断开，再继续处理尚未消费的 ADD/DATA，保留断开前的可靠消息及同一 ID 立即重新 ADD 的顺序。未扩容队列、未放宽认证、未降低刷新率。
 
 `relay_disconnect_race_regression.gd` 新增真实 ENet client/server 和 SceneMultiplayer 回归：在原生接收队列预积压 12 组 ADD→RAW DATA→REMOVE，立即复用同一逻辑 ID。旧 HEAD 精确复现 12 条原生错误并丢失所有 12 个 DATA（预期负对照 exit 1）；修复后 36 个事件顺序全部匹配、队列归零、exit 0、零错误/警告。原先物理断开期间发送目标保护也一并通过。[Godot 4.6.2 SceneMultiplayer 源码](https://github.com/godotengine/godot/blob/4.6.2-stable/modules/multiplayer/scene_multiplayer.cpp) 可核对 poll 先调用 peer.poll、再逐包验证 connected_peers 的次序。
+
+## 六个真实发行客户端最终完整通过（07:32）
+
+`073245` 在同版主/Relay wrapper 断开屏障、正式玩家生命加成及最新已冻结敌人修复下完成：6 个官方发行模板客户端（`debug_build=false`、`editor_feature=false`），本地真实 Relay，256 建筑、正式第 12 波 300 混合敌人，默认关闭详细指标。全体通过 Host 共同墙钟开始/结束屏障持续输入，随后执行未知身份拒绝、旧 token 断线恢复、实体清单与全部仓库版本一致性验证。
+
+| 项目 | Host | 5 个 Client |
+| --- | --- | --- |
+| 共同采样墙钟 | 43.489 s | 43.490–43.498 s |
+| 实际 physics 信号 | 1800（1799 完成模拟回调） | 各 2610 |
+| process 间隔样本 | 224 | 各 2608–2609 |
+| process 间隔 p95 | **231.900 ms** | 25.341–25.721 ms |
+| 敌人数最小 / 最终 | 300 / 300 | 全部 300 / 300 |
+| 完整快照 / 淘汰 / 过期片 | Host 生成发送 | 各 599 / 0 / 0 |
+| ENet 采样发送 / 接收 | 19,692,297 / 1,626,387 B | 约 325 KB / 3.873 MB |
+| 原生进程 CPU（一个逻辑核=100%） | 102.32% | 72.23–98.97% |
+
+Relay 原生 CPU 为一个核的 13.30%。Host 上行约 453 kB/s，单客户端下行约 89 kB/s；统计包括 ENet 协议开销，不包括 IP/UDP 头，且随 Host 实际模拟速度下降，不能把低吞吐解释成已实现实时性能。Host ENet 平滑可靠 RTT 42 ms、丢失估计 1.49%；客户端 RTT 11–13 ms，估计 0.15–0.40%，与应用层完整快照丢失指标含义不同。
+
+Host 采样六个角色死亡名单为空，所有有效最大生命最小值 10,000,050，未改变伤害、碰撞或目标规则。各客户端在同一 Host 窗口真实发射 203 次本地子弹；Host 接受各输入序列，保留移动碰撞验证与全部开火/重载边界。采样结束水量 384；重连验证过程中继续生产，最终冻结 checkpoint 为水 448，全部 6 端 64 个仓库逐一 revision 精确相等。
+
+陌生 token 收到精确的缺少断线席位拒绝，原 token 随后恢复：peer `1312892138` → `578664077`，stable participant key 与 incarnation `6` 不变，耗时 7.233 秒（包含卸载、身份检查、重新加载以及 120 tick 恢复操作）。Host 记录接受新输入，恢复客户端发送 119 次输入并发射 11 次，300 敌人和 256 建筑的每个 network ID 与 Host 一致。身份拒绝文案由 fixture 单独保存，避免将认证失败或其他断线当作正确拒绝。
+
+Runner 完整退出码 0，6 个游戏进程与 Relay 的 empty-idle 自然退出全部为 0，所有逐端日志无 ERROR/SCRIPT ERROR/WARNING。runner finally 清理后，再用 CIM 按唯一输出目录核实 0 残留。小场景 `073202` 也通过同样六发行实际恢复链。
+
+**这证明六人真实 Relay 高负载下身份、快照、库存和退出链路通过，仍不能宣称该密度已经流畅。** 30 秒目标模拟用了 43.489 秒，Host process p95 231.9 ms，说明权威模拟仍受 CPU 限制。这是 8 核机器上同时运行 6 游戏进程与 1 Relay 的诊断，不能直接替代六台玩家设备测试；后续亲和性对照用于区分同机争用，不能冒充真实分布式验收。

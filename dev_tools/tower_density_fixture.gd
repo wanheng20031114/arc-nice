@@ -104,8 +104,11 @@ func _run() -> void:
 	runtime.activate_runtime()
 	runtime.random_generator.seed = 20260908
 	runtime.plant_terrain_decay_timer.stop()
-	runtime.player.current_health = 10000000
-	runtime.player.max_health = 10000000
+	# Damage can refresh the player's canonical stats. A raw max_health override
+	# is then clamped back to the character's authored value on the first hit.
+	# This disposable run owns its stat ledger, so use the real bonus projection.
+	runtime.player.configure_run_stat_bonuses({"max_health": 10000000})
+	runtime.player.current_health = runtime.player.max_health
 	runtime.player.global_position = Vector2(640, 380)
 	await get_tree().process_frame
 	print("DENSITY_READY ", runtime.plant_system.placement_area)
@@ -167,11 +170,16 @@ func _run() -> void:
 	var simulation := runtime.get_enemy_simulation_coordinator()
 	simulation.get_metrics(true)
 	var alive_at_sample_start := _enemy_instances.filter(func(e): return is_instance_valid(e) and not e.is_dead).size()
+	var sample_started_unix := Time.get_unix_time_from_system()
+	var sample_started_usec := Time.get_ticks_usec()
 	_started_sampling = true
 	for frame in sample_frames:
 		await get_tree().physics_frame
 	_started_sampling = false
 	var measurements := {
+		"sample_started_unix": sample_started_unix,
+		"sample_finished_unix": Time.get_unix_time_from_system(),
+		"sample_wall_ms": float(Time.get_ticks_usec() - sample_started_usec) / 1000.0,
 		"engine_version": Engine.get_version_info()["string"],
 		"debug_build": OS.is_debug_build(),
 		"editor_capable_build": OS.has_feature("editor"),
@@ -183,6 +191,9 @@ func _run() -> void:
 		"detailed_metrics": detailed_metrics,
 		"buildings_alive": _building_instances.filter(func(b): return is_instance_valid(b) and not b.is_dead).size(),
 		"enemies_alive": _enemy_instances.filter(func(e): return is_instance_valid(e) and not e.is_dead).size(),
+		"player_alive": not runtime.player.is_dead,
+		"player_health": runtime.player.current_health,
+		"player_max_health": runtime.player.max_health,
 		"frames": sample_frames,
 		"warmup_frames": warmup_frames,
 		"renderer": RenderingServer.get_current_rendering_method(),

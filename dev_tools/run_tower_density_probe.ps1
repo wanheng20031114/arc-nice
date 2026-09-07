@@ -8,6 +8,8 @@ param(
     [switch]$DetailedMetrics,
     [switch]$Profile,
     [switch]$ActiveProduction,
+    [switch]$DisableProduction,
+    [switch]$DisableVisuals,
     [string]$ProjectPath = '',
     [string]$VariantLabel = '',
     [string]$Godot = 'C:/Program Files/Godot/Godot_console.exe'
@@ -31,6 +33,8 @@ $arguments += @('--', "--buildings=$Buildings", "--enemies=$Enemies", "--frames=
 if ($EnemyWave) { $arguments += ('--enemy-wave="' + $EnemyWave + '"') }
 if ($DetailedMetrics) { $arguments += '--detailed-metrics' }
 if ($ActiveProduction) { $arguments += '--active-production' }
+if ($DisableProduction) { $arguments += '--disable-production' }
+if ($DisableVisuals) { $arguments += '--disable-visuals' }
 if ($Render) { $arguments += ('--screenshot="' + (Join-Path $runDirectory 'screenshot.png') + '"') }
 $patch = (& git -C $probeRoot diff --binary) -join "`n"
 [IO.File]::WriteAllText((Join-Path $runDirectory 'working.patch'), $patch, $utf8)
