@@ -5949,6 +5949,8 @@ func _select_touching_plant() -> PlantDefense:
 		var distance_squared := enemy_position.distance_squared_to(
 			plant.global_position
 		)
+		if best_plant != null and distance_squared > best_distance_squared:
+			continue
 		var network_id := int(plant.get_meta(&"net_id", 0))
 		if network_id <= 0:
 			network_id = instance_id
@@ -6090,20 +6092,18 @@ func _has_sleepable_layered_touch_damage_cooldown() -> bool:
 func _update_touch_damage(delta: float) -> void:
 	if is_finite(delta) and delta > 0.0:
 		touch_damage_last_physics_delta = delta
-	var has_dynamic_enemy_contact := _has_dynamic_enemy_target_contact()
-	if (
-		touching_plants.is_empty()
-		and touching_players.is_empty()
-		and not has_dynamic_enemy_contact
-	):
-		touched_plant = null
-		touched_player = null
-		return
+	var has_dynamic_enemy_contact := false
+	if touching_plants.is_empty() and touching_players.is_empty():
+		has_dynamic_enemy_contact = _has_dynamic_enemy_target_contact()
+		if not has_dynamic_enemy_contact:
+			touched_plant = null
+			touched_player = null
+			return
 	if not Enemy.performance_metrics_enabled:
-		_update_touch_damage_unprofiled(delta, has_dynamic_enemy_contact)
+		_update_touch_damage_unprofiled(has_dynamic_enemy_contact)
 		return
 	var started_usec := Time.get_ticks_usec()
-	_update_touch_damage_unprofiled(delta, has_dynamic_enemy_contact)
+	_update_touch_damage_unprofiled(has_dynamic_enemy_contact)
 	Enemy._record_performance_metric(
 		"touch_damage_calls",
 		"touch_damage_usec",
@@ -6112,24 +6112,16 @@ func _update_touch_damage(delta: float) -> void:
 
 
 func _update_touch_damage_unprofiled(
-	_delta: float,
 	has_dynamic_enemy_contact: bool
 ) -> void:
-	if (
-		touching_plants.is_empty()
-		and touching_players.is_empty()
-		and not has_dynamic_enemy_contact
-	):
-		touched_plant = null
-		touched_player = null
-		return
-
+	# The caller already rejected an empty contact set. Plants have priority;
+	# only a failed plant selection needs the pure dynamic-enemy contact query.
 	touched_plant = _select_touching_plant()
 	if touched_plant != null:
 		if is_touch_damage_cooldown_ready():
 			_try_deal_touch_damage()
 		return
-	if has_dynamic_enemy_contact:
+	if has_dynamic_enemy_contact or _has_dynamic_enemy_target_contact():
 		if is_touch_damage_cooldown_ready():
 			_try_deal_touch_damage()
 		return

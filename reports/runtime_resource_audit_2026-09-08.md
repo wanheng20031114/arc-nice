@@ -277,3 +277,41 @@ proof 162.8 → 28.6 ms（60000 → 0 次冷却证明）。后一组特意包含
 最终阶段全部专属测试 PID 8884、3620、2096、18176、6716、10712 经 Win32_Process
 按 PID/owner marker 核实为 **0 残留**，证据 `ranged_motion_cleanup_verified.json`。
 上述输出均在 `dev_tools/output/deep_audit_20260908/`；失败日志完整保留，不混入成功统计。
+
+
+## 接触更新中的同步重复查询（07:27）
+
+保留全部接触选择、过期清理、目标优先级、有效 delta 记录、冷却/伤害和 urgent 通知。
+`Enemy._update_touch_damage_unprofiled` 只有外层的两个调用者，而外层刚对相同的
+“两个接触集合均空且无动态接触”条件返回，因此删除内层不可命中的二次 guard，
+并删除没有读取的 delta 形参。动态 Enemy 接触是纯读取：runtime getter 仅取已有节点，
+contact service 仅读 entry/current-contact 字典。植物选择间的过期记录清理只断开信号、
+删本地成员、清导航和标记调度队列，不执行回调、不改变目标/位置/阵营或 contact service。
+因此在已有有效植物优先目标时可省略动态接触查询；否则才查询，空集合的原 fast-return
+仍保持。没有删除 weapon-only 家族的整段 touch 更新，也没有改 Gunner 的真实接触伤害。
+
+`_select_touching_plant` 在完成存活/移除/水陆/敌对验证后，若候选距离严格更远便跳过
+无用的稳定 ID 读取；首个候选和相等距离仍走原 net_id/instance_id tie-break。严格 `>`
+在 NaN 时为 false，沿用原后续处理，未加新浮点兜底。过期候选始终先清理再考虑距离。
+
+新增 `touch_update_order_fixture.gd` / `touch_update_order_regression.gd` 复用前阶段 7 族
+真实相位/lifetime/sleep 回归，增加 AK47/RPG/Gunner 60 组空/玩家/植物/混合/死亡/
+释放/动态 Enemy 接触 × 冷却状态的旧算法对照；比对选中对象、成员数、delta、冷却时间
+与 deadline、实际生命变化、尝试次数和唤醒次数。动态场景验证了真实 Enemy 接触成立；
+Gunner 实际命中玩家、植物和 Enemy，AK/RPG 保持无隐形 touch 伤害。
+最终 **2979 项通过、exit 0、无 ERROR/WARNING**；原真实接触/注册回归 **2435 项再次
+通过并清洁退出**。首轮仅 fixture 虚设 1e7 玩家生命与第一次受伤触发正式 50 HP 属性
+重算不一致，已使用角色真实 maxHP 初始化并完整重跑，失败结果没有计为通过。
+
+独立旧算法 reference（保留原重复 guard，但未计额外内层 VM 调用）对照新生产代码，
+60000 次已有有效植物接触更新为 327.5 → 267.8 ms，动态查询 60000 → 0。
+32 候选 × 2000 次选择：近者先入字典 105.2 → 93.4 ms；混合顺序 106.5 → 93.8 ms；
+距离持续递减、无法省略 stable-ID 读取的对照 108.1 → 112.2 ms；全等距 108.9 → 104.2 ms。
+后两项说明额外距离门槛并非所有排列都加速，不能只选最好数字；这些都是局部微基准，
+不是整局 FPS。部分动态查询从外层推迟到计时的内部区域后，诊断 `touch_damage_usec`
+覆盖范围略增，跨阶段的该计数不能直接当同口径 CPU 优化率。
+
+证据：`touch_update_order_first.log/json`、`touch_update_order_final.log/json`、
+`touch_update_contact_final.log`、`touch_update_cleanup_verified.json`，均位于
+`dev_tools/output/deep_audit_20260908/`。PID 3820、11688、1732 及专属 owner marker
+经过 Win32_Process 检查 **0 残留**。
