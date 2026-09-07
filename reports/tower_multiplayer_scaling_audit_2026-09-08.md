@@ -234,3 +234,22 @@ Host 采样六个角色死亡名单为空，所有有效最大生命最小值 10
 Runner 完整退出码 0，6 个游戏进程与 Relay 的 empty-idle 自然退出全部为 0，所有逐端日志无 ERROR/SCRIPT ERROR/WARNING。runner finally 清理后，再用 CIM 按唯一输出目录核实 0 残留。小场景 `073202` 也通过同样六发行实际恢复链。
 
 **这证明六人真实 Relay 高负载下身份、快照、库存和退出链路通过，仍不能宣称该密度已经流畅。** 30 秒目标模拟用了 43.489 秒，Host process p95 231.9 ms，说明权威模拟仍受 CPU 限制。这是 8 核机器上同时运行 6 游戏进程与 1 Relay 的诊断，不能直接替代六台玩家设备测试；后续亲和性对照用于区分同机争用，不能冒充真实分布式验收。
+
+## 同机 CPU 分区诊断：未获得收益（07:43–07:44）
+
+为区分同机客户端与 Host 的 CPU 调度干扰，在相同 git `f79e7ef6b84a` 和完全一致的工作树生产源码哈希下，各跑一次 6 发行 / 256 建筑 / 300 正式波次 / 600 tick / 真实 Relay / 持续输入。此时包含新增 AK47/RPG 冷却实现，不把结果与旧 `073245` 混合作改动收益比较。本组只省略已单独通过的重连阶段。
+
+可选 `-IsolateHostCpu` 根据 Windows `GetLogicalProcessorInformation` 查询真实物理核及 SMT 兄弟，当前 8 核的掩码为 `[3,12,48,192,768,3072,12288,49152]`。Host 限定前 2 个物理核（mask 15），其余客户端和 Relay 限定剩余 6 个核（65520），所有自有实际 PID 的亲和性均回读记录在 `cpu_partition_applied.json`。只影响本轮测试进程，正式游戏默认设置不变。[Windows 物理核拓扑接口](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getlogicalprocessorinformation)、[Process.ProcessorAffinity](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.processoraffinity) 说明了该诊断机制。
+
+| 同版配置 | Host 600 tick 墙钟 | Host p95 process 间隔 | Host 原生 CPU 时间 / 单核占比 |
+| --- | --- | --- | --- |
+| `074301` Windows 默认分配 | 15.862 s | 239.277 ms | 15.922 s / 103.05% |
+| `074406` Host 2 物理核隔离 | 18.826 s | 301.201 ms | 18.984 s / 100.67% |
+
+两轮均全 7 进程自然退出 0、全日志清洁、CIM 残留 0；300 敌人始终存活，Host 六个角色采样内无死亡、最低有效最大生命 10,000,050，所有仓库 checkpoint 同步通过。隔离后没有改善，因此不将 CPU 亲和性作为生产优化。仅一次顺序 A/B，未控制 CPU 温度、功率或每核频率；不能据此排除所有同机争用，也不能冒充六台设备的最终表现。权威线程持续占满一个核心、10 秒模拟仍超过 15 秒墙钟，剩余结构开销需要继续从权威模拟与实际分布式测量评估。
+
+后续 fixture 将生命加成进一步写入正式 `RunState` party-status CAS 账本，再投影到 Player。单纯 `configure_run_stat_bonuses` 仍只是投影，其他真实账本事件可能将其覆盖；已完成上述样本的逐 physics 最小生命/死亡名单证明其当次未丢失，不能把没有这些观测的旧样本一概当作六个存活角色。runner 现在将采样生命下限和死亡名单作为硬断言。
+
+`075223` 对新的正式健康账本 fixture 再做 2 个官方发行客户端 / 本地 Relay / 16 建筑 / 12 敌人 / 60 tick / 持续输入 / 陌生身份拒绝与旧 token 恢复：全部通过，3 个进程自然退出 0、日志清洁、CIM 残留 0。断线前 Host、恢复后 Client 均实际核验每个玩家 `ledger_max_health_bonus=10000000`、有效最大生命 `10000050`、无死亡；旧 peer `120188208` → `494332505`、恢复 5.871 秒，实体全 ID 与仓库水 4 的每项 revision 一致。此验证证明未探索的塔防恢复也会通过现有 inactive 探索快照投影完整持久账本，无须新增 RPC。fixture 的健康加成仅写本轮内存 RunState，不改变正式成长上限、角色资源、伤害或存档。
+
+CPU 分区复现时，在前述官方发行压测命令后增加 `-IsolateHostCpu`。该开关要求 Windows x64 单处理器组、至少 3 个物理核；工具通过原生拓扑精确划分，其他环境直接报告不支持，不猜测 SMT 映射。

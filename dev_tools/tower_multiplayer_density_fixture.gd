@@ -172,6 +172,8 @@ func _run() -> void:
 	session.set_rpc_payload_diagnostics_enabled(detailed_metrics)
 	if role == "host":
 		await _populate()
+		if _failed:
+			return
 		_write_json("setup.json", {"ready": true})
 	else:
 		while (
@@ -493,6 +495,11 @@ func _perform_client_reconnect(relay_context: Dictionary) -> void:
 			return
 		await get_tree().process_frame
 	_write_json("reconnect_roster_pass.json", {"enemies": runtime.get_network_enemy_count(), "plants": runtime.plant_system.plants_by_net_id.size()})
+	var restored_health := _player_health_summary()
+	_write_json("reconnect_player_health.json", restored_health)
+	if int(restored_health[new_peer_id]["ledger_max_health_bonus"]) < 10000000 or int(restored_health[new_peer_id]["max_health"]) < 10000000:
+		_fail("Reconnected client lost its persistent party-status health projection")
+		return
 	net.connection_failed.disconnect(_fail)
 	net.connection_state_changed.disconnect(_on_connection_state_changed)
 
@@ -560,9 +567,13 @@ func _on_connection_state_changed(state: int) -> void:
 
 func _populate() -> void:
 	runtime.random_generator.seed = 20260908
+	var run_state := root.get_node("RunState") as RunStateStore
 	for peer_id in net.connected_players:
+		if not _grant_fixture_health(run_state, int(peer_id)):
+			_fail("Fixture player health party-status transaction failed")
+			return
 		var player := runtime.get_player_for_peer(peer_id)
-		player.configure_run_stat_bonuses({"max_health": 10000000})
+		player.configure_run_stat_bonuses(run_state.get_player_stat_bonuses(int(peer_id)))
 		player.current_health = player.max_health
 	var plant_ids := [&"corn_machine_gun", &"agave_cannon", &"water_collector", &"oak_warehouse"]
 	var candidate_cells: Array[Vector2i] = []
@@ -628,10 +639,28 @@ func _write_json(name: String, value: Dictionary) -> void:
 	file.close()
 
 
+func _grant_fixture_health(run_state: RunStateStore, peer_id: int) -> bool:
+	# Player stats are a projection. Put the fixture bonus through the existing
+	# authoritative CAS so later deaths/ledger signals and reconnection retain it.
+	var snapshot := run_state.export_party_economy_snapshot(PackedInt32Array([peer_id]))
+	var next_status := run_state.build_party_status_ledger_with_player_stat_bonus(peer_id, &"max_health", 10000000)
+	if next_status.is_empty():
+		return false
+	var inventory_revisions := {}
+	for inventory: Dictionary in snapshot["inventories"]:
+		inventory_revisions[int(inventory["peer_id"])] = int(inventory["revision"])
+	return run_state.apply_authoritative_party_transaction(
+		snapshot, int(snapshot["warehouse_ledger"]["revision"]), inventory_revisions,
+		-1, {}, int(snapshot["party_status_ledger"]["revision"]), next_status
+	)
+
+
 func _player_health_summary() -> Dictionary:
 	var states := {}
+	var run_state := root.get_node("RunState") as RunStateStore
 	for player: Player in runtime.peer_players.values():
-		states[player.peer_id] = {"max_health": player.max_health, "health": player.current_health, "dead": player.is_dead}
+		states[player.peer_id] = {"max_health": player.max_health, "health": player.current_health, "dead": player.is_dead,
+			"ledger_max_health_bonus": run_state.get_player_stat_bonus_value(player.peer_id, &"max_health")}
 	return states
 
 

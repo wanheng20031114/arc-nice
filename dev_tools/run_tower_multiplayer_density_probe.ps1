@@ -11,13 +11,17 @@ param(
     [switch]$PrepareRouteIdentity,
     [switch]$DetailedMetrics,
     [switch]$NativeCpu,
+    [switch]$IsolateHostCpu,
     [switch]$ProfileHost,
     [string]$ReleaseExecutable = '',
     [string]$Godot = 'C:/Program Files/Godot/Godot_console.exe'
 )
 $ErrorActionPreference = 'Stop'
 if ($PrepareRouteIdentity -and -not $ReconnectLastClient) { throw '-PrepareRouteIdentity requires -ReconnectLastClient' }
+if ($IsolateHostCpu -and -not $ReleaseExecutable) { throw 'CPU partition diagnosis requires direct official-release processes' }
 $probeRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$cpuPartition = $null
+if ($IsolateHostCpu) { $cpuPartition = & (Join-Path $PSScriptRoot 'get_tower_probe_cpu_partition.ps1') }
 $runtimeExecutable = $Godot
 $runtimeProjectRoot = $probeRoot
 if ($ReleaseExecutable) {
@@ -53,6 +57,7 @@ foreach ($fixtureFile in @('project.godot', 'run_state.gd', 'dev_tools/tower_mul
     transport = $Transport; active_input = [bool]$ActiveInput; reconnect_last_client = [bool]$ReconnectLastClient; prepare_route_identity = [bool]$PrepareRouteIdentity; native_profile_host = [bool]$ProfileHost
     detailed_metrics = [bool]$DetailedMetrics
     native_cpu = [bool]$NativeCpu
+    cpu_partition = $cpuPartition
     runtime_build = $(if ($ReleaseExecutable) { 'official_release_template' } else { 'editor' })
     runtime_executable = $runtimeExecutable; runtime_executable_sha256 = (Get-FileHash -LiteralPath $runtimeExecutable -Algorithm SHA256).Hash
     runtime_fixture_sha256 = $runtimeFixtureHashes
@@ -88,6 +93,11 @@ function Start-Probe([int]$Index, [string]$Role) {
     # Retain the Windows process handle before the console wrapper exits. With
     # Start-Process, opening it only after exit can leave ExitCode unavailable.
     $null = $started.Handle
+    if ($IsolateHostCpu) {
+        $mask = if ($Role -eq 'host') { $cpuPartition.host_mask } else { $cpuPartition.clients_and_relay_mask }
+        $started.ProcessorAffinity = [IntPtr]$mask
+        if ($started.ProcessorAffinity.ToInt64() -ne $mask) { throw "Participant $Index CPU affinity did not apply" }
+    }
     return $started
 }
 try {
@@ -112,6 +122,17 @@ try {
         }
         Start-Sleep -Milliseconds 600
         if ($relayProcess.HasExited) { throw 'Local relay failed to start' }
+        if ($IsolateHostCpu) {
+            $ownedRelayProcesses = @(Get-CimInstance Win32_Process | Where-Object {
+                $_.Name -match '^Godot.*\.exe$' -and $_.CommandLine -and $_.CommandLine.Contains($runDirectory)
+            })
+            if ($ownedRelayProcesses.Count -eq 0) { throw 'Could not find the owned Relay native process for CPU partitioning' }
+            foreach ($ownedRelay in $ownedRelayProcesses) {
+                $nativeRelay = Get-Process -Id $ownedRelay.ProcessId
+                $nativeRelay.ProcessorAffinity = [IntPtr]$cpuPartition.clients_and_relay_mask
+                if ($nativeRelay.ProcessorAffinity.ToInt64() -ne $cpuPartition.clients_and_relay_mask) { throw 'Relay CPU affinity did not apply' }
+            }
+        }
     }
     $processes += Start-Probe 0 'host'
     $startupDeadline = (Get-Date).AddSeconds(45)
@@ -123,6 +144,15 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $runDirectory 'host_ready.json'))) { throw 'Host did not become ready' }
     for ($index = 1; $index -lt $Players; $index++) { $processes += Start-Probe $index 'client' }
     $processes.Id | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runDirectory 'pids.json') -Encoding UTF8
+    if ($IsolateHostCpu) {
+        $affinityEvidence = @(Get-CimInstance Win32_Process | Where-Object {
+            $_.Name -match '^Godot.*\.exe$' -and $_.CommandLine -and $_.CommandLine.Contains($runDirectory)
+        } | ForEach-Object {
+            $ownedProcess = Get-Process -Id $_.ProcessId
+            [PSCustomObject]@{ process_id = $_.ProcessId; command_line = $_.CommandLine; affinity_mask = $ownedProcess.ProcessorAffinity.ToInt64() }
+        })
+        $affinityEvidence | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $runDirectory 'cpu_partition_applied.json') -Encoding UTF8
+    }
     Write-Output "PROBE_STARTED directory=$runDirectory pids=$($processes.Id -join ',')"
     $deadline = (Get-Date).AddSeconds(200)
     $teardownDeadline = $null
@@ -220,6 +250,9 @@ try {
         }
     }
     foreach ($result in $results) {
+		if ($result.role -eq 'host' -and ($result.host_minimum_sample_player_max_health -lt 10000000 -or @($result.host_sample_dead_player_ids).Count -ne 0)) {
+			throw 'Fixture lost its six-player authoritative health cohort during the sample'
+		}
         if ($ReleaseExecutable -and ($result.debug_build -or $result.editor_feature)) { throw 'Requested release participant reported an editor/debug runtime' }
         if ($result.participants -ne $Players -or $result.plants -ne $Buildings -or ((-not $EnemyWave) -and $result.enemies -ne $Enemies)) {
             throw "Density/cohort mismatch in participant $($result.index)"
