@@ -1,0 +1,26 @@
+{
+  "workspace": "C:\\Users\\wh\\Documents\\arc-nice-mirage-commit-check",
+  "content_sha256": "80400340586e2292084dc1dd9918cc7c4566325c937740cd317851ded95c4fe5",
+  "dependency_count": 2179,
+  "manifest_write": "GENERATE_RUNTIME_CONTENT_MANIFEST_OK",
+  "manifest_check": "CHECK_RUNTIME_CONTENT_MANIFEST_OK",
+  "lobby": "48 assertions, 0 failures",
+  "combat": "51 checks passed",
+  "test_runtime_errors": 0,
+  "native_import_exit_code": 0,
+  "import_note": "Empty-cache bootstrap font errors disappear after import. Import and manifest tools print pre-existing cached-resource/RID cleanup diagnostics at exit; gameplay tests are clean.",
+  "import_uid_before_count": 1223,
+  "import_uid_after_count": 1223,
+  "new_or_changed_import_uid": [],
+  "remaining_owned_test_processes": 0,
+  "manifests": [
+    {
+      "path": "C:\\Users\\wh\\Documents\\arc-nice-mirage-commit-check\\resources\\config\\generated\\runtime_content_manifest.gd",
+      "sha256": "78bdc4a12953c95a9a0e6570e3b41903747e89692a4d3b43baa707575e968249"
+    },
+    {
+      "path": "C:\\Users\\wh\\Documents\\arc-nice-mirage-commit-check\\resources\\config\\generated\\runtime_content_manifest.schema1.json",
+      "sha256": "16c472b6e3cc2fa9358e405b3c81dfaa75396bb576c8f1683c3e6c061361451b"
+    }
+  ]
+}

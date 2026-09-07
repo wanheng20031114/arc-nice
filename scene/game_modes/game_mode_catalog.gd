@@ -89,6 +89,9 @@ const TOWER_DEFENSE_PRELOAD_RESOURCE_PATHS := [
 ]
 
 @export var definitions: Array[GameModeDefinition] = []
+## Singleplayer variants share a frozen mode's policy without becoming lobby or
+## wire definitions. They are resolved exclusively by their own entry paths.
+@export var singleplayer_variants: Array[GameModeDefinition] = []
 
 static var _shared_catalog: GameModeCatalog = null
 
@@ -260,6 +263,8 @@ func validate_definitions() -> PackedStringArray:
 	var seen_ids := {}
 	var seen_keys := {}
 	var seen_orders := {}
+	var base_definitions_by_id := {}
+	var seen_singleplayer_entries := {}
 	var release_mode_ids: Array[int] = []
 	var development_mode_ids: Array[int] = []
 	if definitions.size() != FROZEN_MODE_IDS.size():
@@ -279,6 +284,12 @@ func validate_definitions() -> PackedStringArray:
 		seen_ids[definition.mode_id] = true
 		seen_keys[normalized_key] = true
 		seen_orders[definition.lobby_order] = true
+		base_definitions_by_id[definition.mode_id] = definition
+		var entry_path := definition.singleplayer_entry_scene_path.strip_edges()
+		if not entry_path.is_empty():
+			if seen_singleplayer_entries.has(entry_path):
+				errors.append("duplicate singleplayer entry: %s" % entry_path)
+			seen_singleplayer_entries[entry_path] = true
 		if definition.is_selectable_for(
 			GameModeDefinition.SelectionAudience.RELEASE
 		):
@@ -328,6 +339,35 @@ func validate_definitions() -> PackedStringArray:
 			"all authored frozen modes must remain development-selectable: %s"
 			% [development_mode_ids]
 		)
+	for variant in singleplayer_variants:
+		if variant == null:
+			errors.append("catalog contains a null singleplayer variant")
+			continue
+		errors.append_array(variant.validate_definition())
+		var base_definition := (
+			base_definitions_by_id.get(variant.mode_id) as GameModeDefinition
+		)
+		if base_definition == null:
+			errors.append("singleplayer variant has no base mode: %d" % variant.mode_id)
+		elif (
+			variant.wire_key != base_definition.wire_key
+			or not base_definition.is_selectable_for(
+				GameModeDefinition.SelectionAudience.RELEASE
+			)
+		):
+			errors.append("singleplayer variant must share a release base mode: %d" % variant.mode_id)
+		if not variant.is_selectable_for(GameModeDefinition.SelectionAudience.RELEASE):
+			errors.append("singleplayer variant must be release-selectable: %d" % variant.mode_id)
+		var variant_entry := variant.singleplayer_entry_scene_path.strip_edges()
+		if seen_singleplayer_entries.has(variant_entry):
+			errors.append("duplicate singleplayer entry: %s" % variant_entry)
+		seen_singleplayer_entries[variant_entry] = true
+		if not ResourceLoader.exists(variant_entry):
+			errors.append("singleplayer variant entry does not exist: %s" % variant_entry)
+		if variant.uses_wave_campaign and not ResourceLoader.exists(
+			variant.singleplayer_campaign_path
+		):
+			errors.append("singleplayer variant campaign does not exist: %s" % variant.singleplayer_campaign_path)
 	for preload_path in TOWER_DEFENSE_PRELOAD_RESOURCE_PATHS:
 		if not ResourceLoader.exists(preload_path):
 			errors.append("tower-defense preload path does not exist: %s" % preload_path)
@@ -349,4 +389,9 @@ func _ensure_index() -> void:
 			_definition_by_singleplayer_entry[
 				definition.singleplayer_entry_scene_path
 			] = definition
+	for variant in singleplayer_variants:
+		if variant != null:
+			_definition_by_singleplayer_entry[
+				variant.singleplayer_entry_scene_path
+			] = variant
 	_index_ready = true

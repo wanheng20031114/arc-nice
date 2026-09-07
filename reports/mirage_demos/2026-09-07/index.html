@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mirage · 实机演示</title>
+  <style>
+    /* Direction: a quiet cinema surface, sand accents, footage first.
+       Content: one player, six chapters, concise recording provenance.
+       Interaction: native video transport, chapter selection, restrained hover. */
+    :root { color-scheme:dark; font-family:"Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif; background:#111313; color:#eeeae1; }
+    * { box-sizing:border-box; }
+    body { margin:0; }
+    main { max-width:1440px; padding:36px 44px 28px; margin:auto; }
+    header { display:flex; align-items:end; justify-content:space-between; gap:24px; margin-bottom:26px; }
+    .eyebrow { color:#c4ab7b; letter-spacing:.16em; font-size:12px; margin:0 0 8px; }
+    h1 { font-size:clamp(25px,3vw,40px); font-weight:500; line-height:1.2; margin:0; }
+    h1 small { font-size:.46em; color:#a2aaa8; margin-left:12px; white-space:nowrap; }
+    a { color:#d8c194; text-underline-offset:5px; }
+    .workspace { display:grid; grid-template-columns:minmax(0,1fr) 286px; gap:28px; align-items:start; }
+    video { width:100%; aspect-ratio:16/9; display:block; background:#050606; }
+    .current { display:flex; align-items:baseline; justify-content:space-between; gap:20px; margin-top:20px; }
+    h2 { font-size:20px; font-weight:500; margin:0; }
+    #description { color:#aeb5b2; font-size:14px; line-height:1.8; margin:12px 0; }
+    .meta { color:#7e8985; font-size:12px; margin:0; }
+    nav { display:flex; flex-direction:column; }
+    button { cursor:pointer; font:inherit; color:inherit; }
+    .chapter { display:grid; grid-template-columns:84px 1fr; align-items:center; gap:14px; text-align:left; border:0; border-bottom:1px solid #2b302e; background:transparent; padding:14px 0; transition:color .15s ease; }
+    .chapter:first-child { padding-top:0; }
+    .chapter img { width:84px; aspect-ratio:16/9; object-fit:cover; opacity:.65; transition:opacity .15s ease; }
+    .chapter:hover img,.chapter[aria-pressed="true"] img { opacity:1; }
+    .chapter:hover,.chapter[aria-pressed="true"] { color:#dec393; }
+    .chapter strong { display:block; font-size:14px; font-weight:500; line-height:1.6; }
+    .chapter small { color:#87918c; font-size:12px; line-height:1.8; }
+    .collection { border:1px solid #556150; background:transparent; padding:10px 15px; color:#dfcba5; white-space:nowrap; }
+    .collection:hover { background:#232b24; }
+    button:focus-visible,a:focus-visible { outline:2px solid #debe80; outline-offset:5px; }
+    footer { border-top:1px solid #2b302e; margin-top:38px; padding-top:18px; color:#89958e; font-size:12px; line-height:1.9; display:flex; gap:26px; justify-content:space-between; flex-wrap:wrap; }
+    #playback-error { color:#edb585; line-height:1.6; }
+    @media(max-width:1000px) { main { padding:26px 24px; } .workspace { grid-template-columns:minmax(0,1fr); } nav { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 24px; } .chapter:first-child { padding-top:14px; } }
+    @media(max-width:540px) { main { padding:20px 14px; } header { align-items:start; gap:16px; } h1 small { display:block; margin:9px 0 0; font-size:15px; } .collection { padding:9px 11px; font-size:12px; } nav { grid-template-columns:minmax(0,1fr); } .current { flex-wrap:wrap; gap:12px; } h2 { font-size:18px; } }
+    @media(prefers-reduced-motion:reduce) { * { transition:none!important; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><p class="eyebrow">ARC-NICE / 2026.09.07</p><h1>MIRAGE <small>实机演示</small></h1></div>
+    <button type="button" class="collection" id="play-all">连续观看六段</button>
+  </header>
+  <div class="workspace">
+    <section aria-label="视频播放器">
+      <video id="player" controls playsinline preload="metadata" poster="01-lobby-teams-poster.png" src="01-lobby-teams.mp4">浏览器无法播放视频，请使用下方链接打开 MP4。</video>
+      <div class="current"><h2 id="current-title">01 / 房间选队与开局</h2><a id="download" href="01-lobby-teams.mp4" download>保存本段</a></div>
+      <p id="description">两个真实 LAN 进程：固定维什戴尔、选择 CT / T、进入对局并查看双方比分。</p>
+      <p class="meta" id="clip-meta">原生 1152 × 648 · 30 fps · 自动操作实录</p>
+      <p id="playback-error" role="alert" hidden>当前浏览器未能解码视频，可用“保存本段”在本地播放器打开。</p>
+    </section>
+    <nav aria-label="选择演示片段">
+      <button class="chapter" type="button" data-clip="0" aria-pressed="true"><img src="01-lobby-teams-poster.png" alt=""><span><strong>01 / 房间选队与开局</strong><small>真实双进程 LAN</small></span></button>
+      <button class="chapter" type="button" data-clip="1" aria-pressed="false"><img src="02-map-tour-poster.png" alt=""><span><strong>02 / 全图与区域漫游</strong><small>B 点 → 中路 → A 点</small></span></button>
+      <button class="chapter" type="button" data-clip="2" aria-pressed="false"><img src="03-weapons-poster.png" alt=""><span><strong>03 / 买枪、丢枪与换弹</strong><small>B / G / F / 1 / 2 / R</small></span></button>
+      <button class="chapter" type="button" data-clip="3" aria-pressed="false"><img src="04-damage-poster.png" alt=""><span><strong>04 / 身体命中与爆头</strong><small>沙鹰 25 / AK 20 / 爆头 100</small></span></button>
+      <button class="chapter" type="button" data-clip="4" aria-pressed="false"><img src="05-visibility-poster.png" alt=""><span><strong>05 / 掩体与视野遮挡</strong><small>隐藏 → 出现 → 再次隐藏</small></span></button>
+      <button class="chapter" type="button" data-clip="5" aria-pressed="false"><img src="06-map-issues-poster.png" alt=""><span><strong>06 / 当前地图问题复现</strong><small>A1 堵路 / 超市额外贯通</small></span></button>
+    </nav>
+  </div>
+  <footer><span>Godot 实际场景录制。演练片段使用预设起点、固定靶与自动输入；伤害、库存、碰撞和显隐均来自游戏。</span><a href="README.md">演示说明与验证记录</a></footer>
+</main>
+<script>
+(() => {
+  const clips = [
+    { file:'01-lobby-teams.mp4', poster:'01-lobby-teams-poster.png', title:'01 / 房间选队与开局', description:'两个真实 LAN 进程：固定维什戴尔、选择 CT / T、进入对局并查看双方比分。' },
+    { file:'02-map-tour.mp4', poster:'02-map-tour-poster.png', title:'02 / 全图与区域漫游', description:'观察镜头沿 B 点、中路与 A 点移动，展示当前地图的实际建筑、材质与独立道具。此段不是玩家视野。' },
+    { file:'03-weapons.mp4', poster:'03-weapons-poster.png', title:'03 / 买枪、丢枪与换弹', description:'真实购买面板与库存：$4000 购买 AK 后余 $1300，丢出再拾取，切换主副武器，射击后换弹。' },
+    { file:'04-damage.mp4', poster:'04-damage-poster.png', title:'04 / 身体命中与爆头', description:'脚本布置并重置固定靶。实际子弹命中后读取生命值：沙鹰身体 25，AK 身体 20，两者爆头 100。' },
+    { file:'05-visibility.mp4', poster:'05-visibility-poster.png', title:'05 / 掩体与视野遮挡', description:'角色通过真实移动碰撞绕过 A 点箱体。敌人在约 6.2 秒出现，返回后在约 18 秒再次被遮挡。' },
+    { file:'06-map-issues.mp4', poster:'06-map-issues-poster.png', title:'06 / 当前地图问题复现', description:'切换到已检查的两个位置：A1 门柱让玩家无法通过；超市至中路存在约 530 像素的额外直通路线。缺陷保持原状。' }
+  ];
+  const player = document.getElementById('player');
+  const heading = document.getElementById('current-title');
+  const description = document.getElementById('description');
+  const link = document.getElementById('download');
+  const meta = document.getElementById('clip-meta');
+  const error = document.getElementById('playback-error');
+  const buttons = [...document.querySelectorAll('.chapter')];
+  function selectClip(index) {
+    const item = index === -1 ? { file:'00-full-demo.mp4', poster:'02-map-tour-poster.png', title:'完整演示 / 六段连续播放', description:'依次观看选队、地图、武器、伤害、遮挡和当前地图问题。也可从右侧选择单独片段。' } : clips[index];
+    player.pause(); player.src = item.file; player.poster = item.poster; player.load();
+    heading.textContent = item.title; description.textContent = item.description;
+    link.href = item.file; link.textContent = index === -1 ? '保存完整演示' : '保存本段';
+    error.hidden = true;
+    buttons.forEach((button,i) => button.setAttribute('aria-pressed',String(i === index)));
+    player.play().catch(() => {});
+  }
+  buttons.forEach((button,i) => button.addEventListener('click',() => selectClip(i)));
+  document.getElementById('play-all').addEventListener('click',() => selectClip(-1));
+  player.addEventListener('loadedmetadata',() => {
+    meta.textContent = `${Math.floor(player.duration/60)}:${String(Math.floor(player.duration%60)).padStart(2,'0')} · 原生 ${player.videoWidth} × ${player.videoHeight} · 30 fps · 自动操作实录`;
+  });
+  player.addEventListener('error',() => { error.hidden = false; });
+})();
+</script>
+</body>
+</html>

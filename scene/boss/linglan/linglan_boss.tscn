@@ -74,3 +74,6 @@ stream = ExtResource("7_skill2_fire_audio")
 volume_db = -7.0
 max_distance = 260.0
 max_polyphony = 1
+
+[node name="HealthBar" parent="."]
+sprite_content_rect = Rect2(-134, -168, 268, 333)

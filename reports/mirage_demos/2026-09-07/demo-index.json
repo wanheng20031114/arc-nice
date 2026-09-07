@@ -1,0 +1,74 @@
+{
+  "recording_date": "2026-09-07",
+  "engine": "Godot 4.6.3 MovieMaker",
+  "resolution": [
+    1152,
+    648
+  ],
+  "fps": 30,
+  "disclosure": "片段 01 为双进程 LAN；其余使用实际地图与玩法的自动镜头或脚本输入。固定靶与起点由演示脚本布置。MovieMaker 离线录制帧率不代表运行性能。",
+  "clips": [
+    {
+      "file": "01-lobby-teams.mp4",
+      "title": "房间选队与开局",
+      "frames": 808,
+      "duration_seconds": 26.933333333333334,
+      "starts_at_seconds": 0.0,
+      "bytes": 1937648,
+      "sha256": "3cc30721c9ee70f5d2d87ab3ef3e63abe114b52005fd6b9e118c9f8ceaf0522a"
+    },
+    {
+      "file": "02-map-tour.mp4",
+      "title": "全图与区域漫游",
+      "frames": 785,
+      "duration_seconds": 26.166666666666668,
+      "starts_at_seconds": 26.933333333333334,
+      "bytes": 40848423,
+      "sha256": "e18930715fa6f0bfc9dfb13a318ad9b032f52a440ed3c209a08af5e40433b25a"
+    },
+    {
+      "file": "03-weapons.mp4",
+      "title": "买枪、丢枪与换弹",
+      "frames": 841,
+      "duration_seconds": 28.033333333333335,
+      "starts_at_seconds": 53.1,
+      "bytes": 1054233,
+      "sha256": "207b352e458eb90f6d574acc33e0b9a2d13332ebd0169e4c2be9f7ef2ced65b2"
+    },
+    {
+      "file": "04-damage.mp4",
+      "title": "身体命中与爆头",
+      "frames": 706,
+      "duration_seconds": 23.533333333333335,
+      "starts_at_seconds": 81.13333333333334,
+      "bytes": 1443847,
+      "sha256": "e6dab066f8652730cd0d045c8230ab1db5ad6f2b989a91f602f891c341debd5c"
+    },
+    {
+      "file": "05-visibility.mp4",
+      "title": "掩体与视野遮挡",
+      "frames": 751,
+      "duration_seconds": 25.033333333333335,
+      "starts_at_seconds": 104.66666666666667,
+      "bytes": 18356168,
+      "sha256": "2185266550688495f8031bb04c4afa14859254b5d3039fad200105d03303237b"
+    },
+    {
+      "file": "06-map-issues.mp4",
+      "title": "当前地图问题复现",
+      "frames": 625,
+      "duration_seconds": 20.833333333333332,
+      "starts_at_seconds": 129.7,
+      "bytes": 6329589,
+      "sha256": "33612af51ed20675fa020e2af3b363083c3f08aa7be001266e14bc4d252299d4"
+    }
+  ],
+  "compilation": {
+    "file": "00-full-demo.mp4",
+    "frames": 4516,
+    "duration_seconds": 150.53333333333333,
+    "bytes": 67548151,
+    "sha256": "e07f3ced7b528da0c2dafa1774562d16b210cba4437005f97c632d5f46058ea7",
+    "full_decode_passed": true
+  }
+}

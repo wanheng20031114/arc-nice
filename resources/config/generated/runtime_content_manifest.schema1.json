@@ -1,6 +1,6 @@
 {
 	"schema_version": 1,
-	"content_sha256": "80400340586e2292084dc1dd9918cc7c4566325c937740cd317851ded95c4fe5",
+	"content_sha256": "c506dd8d69e05bb0982b625f419321d1d12b11acb0cabef2e8104ca65c11f38b",
 	"enemy_roots": [
 		{
 			"id": "enemy.capoo_ak47",
@@ -1089,6 +1089,10 @@
 		{
 			"id": "tower_defense_singleplayer",
 			"path": "res://resources/config/campaigns/tower_defense/singleplayer/campaign.tres"
+		},
+		{
+			"id": "vehicle_singleplayer",
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/campaign.tres"
 		}
 	],
 	"dependencies": [
@@ -2631,6 +2635,62 @@
 		{
 			"path": "res://resources/config/campaigns/tower_defense/singleplayer/flow.tres",
 			"sha256": "80880640da54757d2b0ffafb82c6d3e081113ae9b09423a57b2c992910dbfc1c"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/campaign.tres",
+			"sha256": "e38466d1de7f16231b336deed54715f491d59e0f10c0893c8da6372c3c32e321"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/flow.tres",
+			"sha256": "94824b223fbfd1a37d0179a816a2170d09890e45490e92d6ead521abee6b09de"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/wave_01.tres",
+			"sha256": "520b8cc7c23f6c50eb2036075eb4446bc8e7f619ad0550eed0e15ddda042cf3c"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/wave_02.tres",
+			"sha256": "605219af71c8a322b9b298d5aa8f59f687722058eb3274003fe59bc6797ad3ac"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/wave_03.tres",
+			"sha256": "a8fb5569c0c536c7ac2e726de1c9e213aedd8253969c0df01c1d0c4fc06df064"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/wave_04.tres",
+			"sha256": "fd43a0de825de3b7ee7dbc8be1e98a9159571472ffb053ab3ada044800342de1"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/wave_05.tres",
+			"sha256": "2576a3491ff7da916391bbdf5859218095bad4d264dfcdefc43d0c72292227f7"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/wave_06.tres",
+			"sha256": "582c3a117dc36d740972a2a8bfb35e5fabc2ec2c21f0cdbc88b103fdb277d15c"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/wave_07.tres",
+			"sha256": "add120a2504875c31bacc8d0862260dc067804dcb9469399aaee8f466543b3a1"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/wave_08.tres",
+			"sha256": "c6d73dca28ee10a37b682126d3fa296c2bbb293f0592d6e4ca4dc7fa2fc1ea9d"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/wave_09.tres",
+			"sha256": "7aa8d95512454161a09ddf9659d0d890edbccb55fa62db3e2ee7862f09fdc30c"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/wave_10.tres",
+			"sha256": "ac9627d1d5fc4dfa45dc5b51e91ad28633b26f86604371112019dae8d9c4fae0"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/wave_11.tres",
+			"sha256": "7dffc144794dde8d478b91f43af267126d329456fd932cbdc40579c5526e9908"
+		},
+		{
+			"path": "res://resources/config/campaigns/vehicle/singleplayer/wave_12.tres",
+			"sha256": "0324063129810ff3c910f781e97a5d92a1ac6ba58604b609de93d13bf3110ab5"
 		},
 		{
 			"path": "res://resources/config/collectibles/collectible_admin_doll.tres",
@@ -7862,7 +7922,7 @@
 		},
 		{
 			"path": "res://scene/boss/linglan/boss_health_hud.gd",
-			"sha256": "da90dd209ba922127bb392216c612c5648099648d6e34dd4afdc399e9c1642a9"
+			"sha256": "915f6645a0c2f6b52170c9ca0e2a54f8b826609f2efce72914500ec7bd51cc34"
 		},
 		{
 			"path": "res://scene/boss/linglan/boss_health_hud.tscn",
@@ -7870,11 +7930,11 @@
 		},
 		{
 			"path": "res://scene/boss/linglan/linglan_boss.gd",
-			"sha256": "1b7cc5ab7aae79bf5c1c77ec8feefbed142e052b256d254e67de646aa80a6aa8"
+			"sha256": "544b0ba3dc97e1c4319d34bcd38a6907cc5640c2dd5c4df59b2702c7bada8dac"
 		},
 		{
 			"path": "res://scene/boss/linglan/linglan_boss.tscn",
-			"sha256": "58d9d0cfc667c3f0a84e4de3a2980b41d74f5285ad3ba19bb094ca161cdf4235"
+			"sha256": "02a490b42f24ee2dca07e353dca2dcdbdd4933c5b3c228eb4c741c3566f2c224"
 		},
 		{
 			"path": "res://scene/boss/linglan/linglan_boss_intro_vfx.gd",
@@ -8230,7 +8290,7 @@
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/cardboard_monster.tscn",
-			"sha256": "851b5e31eb877e66fdee7ee22ffae72671b585a20aa02fd31a10d5426011a0e7"
+			"sha256": "caa66bd8368674e2a866197a1f35bb9a19d872148f67cc5499e0419c9e9971fe"
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/cardboard_monster_large.gd",
@@ -8238,7 +8298,7 @@
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/cardboard_monster_large.tscn",
-			"sha256": "c426df1d29dfd277c6242addc4d0d7d5a796afad7029a950f2bdf01e84813a39"
+			"sha256": "2841f7112f77a2ac7d08c4b1ef42716196e8f07eced7f55b246ef704e11b60a0"
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/stone_golem.gd",
@@ -8246,7 +8306,7 @@
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/stone_golem.tscn",
-			"sha256": "a2a783da3229d28c03fd345b172320acae934a44219902370d2d612997aae049"
+			"sha256": "8efd0fb1f49de8257a2354f692855c69419ed23c723f00ae1dd791b787da3e4f"
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/stone_golem_elite.gd",
@@ -8254,7 +8314,7 @@
 		},
 		{
 			"path": "res://scene/enemy/artificial_creation/stone_golem_elite.tscn",
-			"sha256": "0d807dbb14742eeb80f836e1c09101e2e642742dea8058859e69e180d7030ff3"
+			"sha256": "658210c7ff5fa077981e158f763b97a9cdcc2928697f0d7082848e90517693f9"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_ak47.gd",
@@ -8262,7 +8322,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_ak47.tscn",
-			"sha256": "06506914e440018200eab74c9412db50ca523e7b25019abfc068e5e9c03686c5"
+			"sha256": "49e292b22a060138b82ba19b0660dbb67cc1a57ee7467fb7ef2ad88b6793946b"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_knight.gd",
@@ -8270,11 +8330,11 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_knight.tscn",
-			"sha256": "9dd57fc2147e977eb4adad27992d44d4c33e1abd8d614ee80dac279dfc1146ea"
+			"sha256": "197a5b9a4bc9108d1d3716de9b752b987ed1ca51d5da8c638961d3416c1bc913"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_knight_elite.tscn",
-			"sha256": "06b49e70a202b128f3590193eef67e47d41e66331a653417ebe9127929378b94"
+			"sha256": "1b926474cab6ccf4c3d74942d5688c36fb3a02ce4c50801c08ab1d79298802be"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_knight_slash_effect.gd",
@@ -8290,7 +8350,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_mage.tscn",
-			"sha256": "4f0940b509655ee99b34bd15f3b5806e3c7ff846e26a266923eca4a594f3665e"
+			"sha256": "c2fea695f82e149c61c43e2ce5a7a61c00bdd86cc9b7c90719188b419b169ef5"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_rpg.gd",
@@ -8298,7 +8358,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_rpg.tscn",
-			"sha256": "7054f96940f5bef0d689e7ddef9ff6fa1fbf38a3536d193492b1632898d44e12"
+			"sha256": "9c7776ad2fc475e2785aacc2ac49deb0caee0113f9cc52c47a2064c7af5f9d91"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_smg.gd",
@@ -8306,7 +8366,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_smg.tscn",
-			"sha256": "ee5f10b0bcf7f477c0f345822d6c1bb6e40af94916d9548df55b9b6249c47198"
+			"sha256": "30752dbef49f699940e1f161914e333017552479368e9d2484b2420163547657"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_sniper.gd",
@@ -8314,7 +8374,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_sniper.tscn",
-			"sha256": "01a1bd9c6c6a4a1b7142523443e5d8692a43ae1df9c2be752b201cacf5d7aee0"
+			"sha256": "61c1d16ac0f86ca6c2adc889ef07fc4d4284b80f3e435c3237f7a3785401859b"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_swordsman.gd",
@@ -8322,7 +8382,7 @@
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_swordsman.tscn",
-			"sha256": "57fead25dc533e72bd79a6efbfc4a1a56af5646736f0bb495b6630a34d5bce3f"
+			"sha256": "8e0f060ee06ba0dad1599c0324741dbfba02f2ba937b2f01a6ffaaa7f22cde63"
 		},
 		{
 			"path": "res://scene/enemy/capoo/capoo_swordsman_slash_effect.tscn",
@@ -8330,11 +8390,11 @@
 		},
 		{
 			"path": "res://scene/enemy/enemy.gd",
-			"sha256": "987bde04f7c22502ff92ac0ef68b9bc0cc1437808e1c61e872268aac86b8229d"
+			"sha256": "4509e05d014d684e6e1a11352ed24d48c48ece054bd3857a059faf3bb50f69ad"
 		},
 		{
 			"path": "res://scene/enemy/enemy.tscn",
-			"sha256": "024fb509228bcdd71beb5a4c694a8c14ac6e65b8467b61068fd936a197084899"
+			"sha256": "6f4c2ed3bc7e01bca3c928e8bdfc6ef9429ce7640718b0eaa2f4b8659c86bbf9"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot.gd",
@@ -8342,7 +8402,7 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot.tscn",
-			"sha256": "988154c25f3dd34bec9667ad39896350e91be4a9ec290a7810f8af74dc9a7988"
+			"sha256": "37a520773ad7b4403145579f63f6960564a8a140d04a283d076a528542b0d0ef"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.gd",
@@ -8358,15 +8418,15 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_drone_operator.tscn",
-			"sha256": "149b59aa3fd805954e63fdc4084f2ed5d251dea2abb30bbc1157618ce85f32df"
+			"sha256": "ed9e8f0d63edf99641bba7bc67515fecc91c0220bbbef96e683d3b8e2bd45277"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_drone_operator_elite.tscn",
-			"sha256": "5a9ffbe7e9904ab01c5afb46d549bbfa9407fa4a92fafd75c3db3c956a895f75"
+			"sha256": "c2427b43a31419029b38980525e94bf74dee55860413183f1a3ec0544da2562d"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_elite.tscn",
-			"sha256": "d21d1bf0a0d65a6a098fbae358e52404d23a54fbb4eb64f1b8b08c4334d01e83"
+			"sha256": "493ab809935ba9486b94b12d8868f46fedb686916a3311bc9c3af2abfbcedbbd"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_gunner.gd",
@@ -8374,11 +8434,11 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_gunner.tscn",
-			"sha256": "564ad84811f78d0cbef50bda67b70e58a4382ca256ee7724205a30067ba2f6f5"
+			"sha256": "d4901f94cac869ee12520c4d61b571544d7f819174a084025023981050b36735"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_gunner_elite.tscn",
-			"sha256": "71c874fb50f79438a897be70ee93ec4eb2fd3aa3217d2cb816c2f88bd553f0ce"
+			"sha256": "7e85cb713f16ed7a81844c5e0ff7e7301c45d7d97a6d4959ccda1b789961e850"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.gd",
@@ -8386,7 +8446,7 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.tscn",
-			"sha256": "d4c45e3c4186372afb5cfe98cbb9d605c4e42c8eb783cfde23c3b0a7bd8a6306"
+			"sha256": "2025f35e568d5d2687a4f4f9763cf9b575ca8c6687260fbecc232954ec2a335e"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_ninja.gd",
@@ -8394,11 +8454,11 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_ninja.tscn",
-			"sha256": "c09bd8a9133bea7eb5b1dd8e7cccd65cba36218581a8254d0c0ce884969ea0ba"
+			"sha256": "66b4472c6f4fa3f533fc94fa88702c2cd67dc19caeebaa2bff8f41fdb65ef5bd"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_ninja_elite.tscn",
-			"sha256": "8ea0212ef02cb1d8c182857c9293a10d9aa6a0c2a2e5c389ac7f943108df0b55"
+			"sha256": "d504ab17f26a47f43b21b3c83610460a13f9e2a149d1f636b18da4c61219b87c"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_shield_bearer.gd",
@@ -8406,11 +8466,11 @@
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_shield_bearer.tscn",
-			"sha256": "46814188dee764ff434631b92c4122aad07ca10ebb45e8b7c617bc5a3702a738"
+			"sha256": "20c0c59fed35419fc79df84d459a5f52c188608cd9e34d39a7e5967dea23d98c"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_shield_bearer_elite.tscn",
-			"sha256": "3fa82d6bb7ba8f5bf6226673a27290d02dd255bee94cefaad52107414f5b61f3"
+			"sha256": "ff9a50c8f419896e42e0b98c6fb453e270e82b2cf7a15fc86b053f490b8d455b"
 		},
 		{
 			"path": "res://scene/enemy/mechanical_life/combat_robot_suicide_drone.gd",
@@ -8438,19 +8498,19 @@
 		},
 		{
 			"path": "res://scene/enemy/slime/slime_basic.tscn",
-			"sha256": "0b5fed01c2d41b3e1ea857550a4afd09b38bd6577ebae1eda8b77766abde8ffa"
+			"sha256": "ded46e90d284318f8a1d34cec3ad6ef034b753f5f249ca00c3afbfe1e42142b6"
 		},
 		{
 			"path": "res://scene/enemy/slime/slime_fire.tscn",
-			"sha256": "99bc367717919461148f038c74c501ac7dd88e49e73de10f788275912179a51f"
+			"sha256": "1b534703a36c36fd61bd8a5e6cc6879204c0003144b1eba56c32ac9e4def4d8a"
 		},
 		{
 			"path": "res://scene/enemy/slime/slime_frost.tscn",
-			"sha256": "9ecba4e1aa4377089ea8db365cb31d66c424e88a1b226c135f2dbfe3fe5b4d36"
+			"sha256": "e14b83dabfb60515e37fb966b2ba3e5da1246034d498c3678b40fcf06fc1fff4"
 		},
 		{
 			"path": "res://scene/enemy/slime/slime_golden.tscn",
-			"sha256": "4472958e528d3ffb446724efbf7308a266afdd639a7dab422d2ef43efcc94be2"
+			"sha256": "7228f6bc88c81c4b7e793c439c483bcc179d67c1656ca1d64dd874e293cbb3af"
 		},
 		{
 			"path": "res://scene/enemy/slime/slime_green.gd",
@@ -8458,7 +8518,7 @@
 		},
 		{
 			"path": "res://scene/enemy/slime/slime_green.tscn",
-			"sha256": "a362cbdf96b7d3636bcd301d0ad30cb6d4e0f654bc771bdf68654cb174dac0d1"
+			"sha256": "f3d4c562df522daa90267d22b2a98e1a452efc17800c693757a4564bdfc5d420"
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/fire_sorcerer.gd",
@@ -8466,11 +8526,11 @@
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/fire_sorcerer.tscn",
-			"sha256": "443a502f73baee7c0b0c5e31cc505b93d9c6b4c8cdbd4946bff8dcc812e22f7a"
+			"sha256": "ee29b0563244b810684fb332d019c1e5010afd3267103556b06ea50d3615f9f9"
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/fire_sorcerer_elite.tscn",
-			"sha256": "f84ad90b93540904ffa9c292f906fec85d4616ce6d84a10cb92835d99e4f9400"
+			"sha256": "c53dbf68b87bbb759ee0dfe6b795bdcc78faa8e62f5b0dd14cba409ff57f00cc"
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/frost_sorcerer.gd",
@@ -8478,11 +8538,11 @@
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/frost_sorcerer.tscn",
-			"sha256": "3084e1bdb1c11199e2098729ea607b1647562199bc2c3fc5ceac5fbf50aecb4f"
+			"sha256": "42d6824a1469103a0165339ec11bec4672924be83189019489342b22985644b8"
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/frost_sorcerer_elite.tscn",
-			"sha256": "b777d04fa7b8f5bb74c32d1df4f49145a935e04fa707dfaf852908fd1b491878"
+			"sha256": "6ffba40080b1638d840827f5af70a37f470701a0f262aae5ebe1d520b44969c3"
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.gd",
@@ -8498,95 +8558,103 @@
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/lightning_sorcerer.tscn",
-			"sha256": "9ecc585228eb446ff7fc539f4bb0de9ad0ecf04e9b786a51012dc04b7206b174"
+			"sha256": "7cec34248ea6ba90482307b4bd52889f7cc36502b81d6d0474f341c01e6249f6"
 		},
 		{
 			"path": "res://scene/enemy/sorcerer/lightning_sorcerer_elite.tscn",
-			"sha256": "d54d7a89bf29e3eab45fee602afe277f0bd22b016ee401581b2441bc390a5f53"
+			"sha256": "d15d07113b3acdc587d3dc3bbfee05e3e0b643b47758fd799355b8b4b3d5c764"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_capoo_ak47.tscn",
-			"sha256": "162e20b0bd1f85e0aeb594fa8e6c3c18058e54912586e49b0efd2bd214f09cae"
+			"sha256": "3d760d76fd88d4b70008152f85728a58d6738e415c5a61760ba50c41f9853544"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_capoo_knight.tscn",
-			"sha256": "e6fd54cc5fec8e363cd0f7fef3cfea9eb470e55460d50281d81f679e9ca6f4fd"
+			"sha256": "8cc2a0d888f1f7809f9bfac02a8628652ca0aa4dbae39c72e181763f23e73512"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_capoo_knight_elite.tscn",
-			"sha256": "3b7c0f15688258da636d35f360686c7d0e42f4c427485eb3a1942425b6409a2e"
+			"sha256": "13fedec3524f79b5ac4eee7aef9b154f7976489a8fa7580af979c4e098ae7d35"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_capoo_mage.tscn",
-			"sha256": "42a04f08d0d903bde8c5aeb9767c9cd5bf15ce6505f87b03f683fdc76c51d1ca"
+			"sha256": "36c88c06d0c4089314169c66135b5967a8bb9d860adf3ab156b4c0bb0f7f0f9c"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_capoo_rpg.tscn",
-			"sha256": "1f29d533f3774d72f832032da49bad5401df5f56dadbb4d3d6cb1af2ea6f8320"
+			"sha256": "92e452db017257d146fb59a16b649920562f5d508ea5a3abb2d6a947b231c091"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_capoo_smg.tscn",
-			"sha256": "0fabb0a669935bd1a8536754ec9800d81e1a2950fcbe87b2346e7a37aab6df75"
+			"sha256": "2605fbad31fe7f2dab417b5719e7fbee4ccee660b993251c1ef1f4d789635f08"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_capoo_sniper.tscn",
-			"sha256": "7ad0a94308c66a336daef998544cbdca3bbb8ce81594ce9cad47d4260442c984"
+			"sha256": "369fc3c8b45b67090f89b22e5693d9ae7f90095cfe1caa4e7fa74acc2f967275"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_capoo_swordsman.tscn",
-			"sha256": "73a1366f9b6fa0f6f1275af6abf6a29c1090676e6716c82686bec29762fe7340"
+			"sha256": "bc61ed9fab94792bee0e94ca6eaac6f06476c7a4bb81e102f1688b5fd8343329"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_slime.tscn",
-			"sha256": "203cd312cefbd8e7cc88c128e0d22da74e4bc9d015a9baff4b14c7421f360bdb"
+			"sha256": "ecd5389695a906c570d1058ee1b19b6927b821f029efd8ab7b1a16a8dda64bac"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_slime_fire.tscn",
-			"sha256": "582b766ec7ef2c01927928355c2583c446bb679fd5bddcc1816510fb369a45c3"
+			"sha256": "7d4adc5c994a177aa0cac7308deb8f192224084b4e486c5ddede7be8529389d0"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_slime_frost.tscn",
-			"sha256": "5049d70c46b0c3ef1a1d4fa4acf2e9647d81dfa5e2ec9fffce041d58c3e8ea88"
+			"sha256": "ba78417941b433acbdb838e3baeaa92fe07c6262df18369ca478002aaa964a76"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_slime_golden.tscn",
-			"sha256": "6331e6fcc81bb681e23599f093a78debcfedc004420d62a592a2a84a243d92ac"
+			"sha256": "7c8de9e002f7f2b14e93543ad363d00f08ccbe43e136bbf731603860c9d656d9"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_slime_green.tscn",
-			"sha256": "11a8f87bf407a9c1f8cf246c03d29097d2751b24bf03e6daa2357efed018cfaf"
+			"sha256": "f68701c82a744f69aa042e2923d092306ff441c3994038fb39a8fb527788933e"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_yuanshi_insect_basic.tscn",
-			"sha256": "4f5ed690abfba0c37a6089827b3c545ec73546cec941c5dcd66a295f6944829a"
+			"sha256": "8446ef0444bf4538b8e648d0de077d3ad5a36adfe1b695d7cff5f6766337f5cc"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_yuanshi_insect_bomber.tscn",
-			"sha256": "0a8ceadc8ef1006f5183e3b16251cbad1bebb5d578476a6619baaa15e94b469b"
+			"sha256": "952dd40a20b6ac771d9239d0b661e9f70d02c7caa9c0ac0f315d665f7d4616fa"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_yuanshi_insect_fast.tscn",
-			"sha256": "e4b249ef9e1ec554a80fb120e4515945cca33614a22dd7cf6b80cfbce34ee1dd"
+			"sha256": "dbb776673f89a9ac28ea30abb5f477448aeb4b92a74af323cd541c2817863be5"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_yuanshi_insect_fire_ranged.tscn",
-			"sha256": "e31c075f60a09c55e8319bdc419c2d84554f4179313a6d517aa400db1c3ed153"
+			"sha256": "d3011e75682b5067488bf5229faa970267c03489cfd67166a7cf413bf1a8a9cf"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_yuanshi_insect_green_shell.tscn",
-			"sha256": "8d14581f01301323acc5a423b85a305e13bd145f1e7b8f2f3ff5c10dc5f5a4cf"
+			"sha256": "800b6b6b666166e8bf75c0aafcbc92759e5b1584fd88e353120da9bee5a45c1b"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_yuanshi_insect_guardian.tscn",
-			"sha256": "af9f7aae53ed407f573b2e1017c3ba198db7341168e9ca94b9740370f79c686a"
+			"sha256": "3959c10dcbd2a58ccb46ac251c450e15dba4291ac1ca3b11bfea38f226917d9e"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_yuanshi_insect_purple_bomber.tscn",
-			"sha256": "96250095a299aeadcf7a081caa75746c1bdf6c8527537aa58891c94f56af7edc"
+			"sha256": "4ee97b322b0936ab82e26e2ac9801269b6bffcda2ce17783e01ca4d57cbb87fa"
 		},
 		{
 			"path": "res://scene/enemy/stone_eroded/stone_eroded_yuanshi_insect_shell.tscn",
-			"sha256": "37a1ec72b525097e9071fb69a35bc7ea44d85ffa94dafaea3bc9cac04bb92dd9"
+			"sha256": "a84638dcac83c7c9c544b3684b72555918b1eaab36b09df8d46f98cb29232e6f"
+		},
+		{
+			"path": "res://scene/enemy/ui/enemy_health_bar.gd",
+			"sha256": "12467b65cee5a053a21e879f34bf3cb2ec1a80968349470853a57edf7c659470"
+		},
+		{
+			"path": "res://scene/enemy/ui/enemy_health_bar.tscn",
+			"sha256": "c790ab19bc70dd583d99fc93d6644f66f03184ef09ee64714f691e2a2cec6360"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/guardian_aura_system.gd",
@@ -8618,11 +8686,11 @@
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_basic.tscn",
-			"sha256": "3967977067017b40a5bbc1a25755ced65ddafc88d7dbc7a97a0e00aa592c11b5"
+			"sha256": "03c4f00c8dd81ccd0b8de595dcd128629aa1b7e158fcf2d1b3c2e5b88a52eeab"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_bomber.tscn",
-			"sha256": "98ee139adcac9764339930fbf4e280fd4155aba7614e2b85ed0ab60f93e6e4c2"
+			"sha256": "ab73e01ab547a7ada57da056dea7e58e147a56ac4f6417c6be212858bfcb7b02"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_exploder.gd",
@@ -8630,7 +8698,7 @@
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_fast.tscn",
-			"sha256": "3be5f8fb93dba6c5ce73b6374f5cd7323d4478fa384c038407af8eae2ada636d"
+			"sha256": "44eeedd2450c31e5ef36aa0a53e02316e4994426d57d8d7e1ab63723cbb19002"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.gd",
@@ -8646,23 +8714,23 @@
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.tscn",
-			"sha256": "fb454614497ecbfedf19cc11952abb818f09e0e7adccb5a31bb0f77a9255cf08"
+			"sha256": "80d5c50c6ac56935a1df9a80ee5749176d94e999ab5d6ca8639c73092e3b426a"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_green_shell.tscn",
-			"sha256": "ac4902331f659fe8444fc7abcef8df3dc0a105db93480f0539c8b7f904c1bce3"
+			"sha256": "15ba1f4cf88a8fefe16683815761819ad6e845a2e343073bd0b743e86af71420"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_guardian.tscn",
-			"sha256": "fcf532b8584814512ab07ce461ad861fcc9142e1c001038d051a0dbc3415bd44"
+			"sha256": "b2fd9fd24a885269bce9fda37bf6fde4eb99d7dcf559dd9365cfa5975f0ff686"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.tscn",
-			"sha256": "ad092feb32aba4ba0e35412fce401e2dc0932c788743fc2cd6bf4b5bbab9bf6a"
+			"sha256": "6aa76186170ef12a55b53b271913b340748a46129e6de23e8ccdd6706fb2ded5"
 		},
 		{
 			"path": "res://scene/enemy/yuanshi_insect/yuanshi_insect_shell.tscn",
-			"sha256": "2dac8b6d1fc6cb87b1f7ad2d7f50b34a8af69727ec768b3fcdd72bd7de9e27d7"
+			"sha256": "8034ea85b30fe550b5fa7fa3cd4a267ffb3922e73e4032a2bdb57f638cc1832c"
 		},
 		{
 			"path": "res://scene/game_modes/definitions/mirage_pvp.tres",
@@ -8705,12 +8773,16 @@
 			"sha256": "5c42366c355d82eea5659d9121e7bb81dbc508702295961944221da8eac4cd99"
 		},
 		{
+			"path": "res://scene/game_modes/definitions/vehicle.tres",
+			"sha256": "b4a30e771a5fc50d62dc31ace98178b72e54a15f74a9f5ac67eb3d7ae93cfdea"
+		},
+		{
 			"path": "res://scene/game_modes/game_mode_catalog.gd",
-			"sha256": "afa183703c45bac29750226b121462895d17335b8e6d7ab1af474b60aadcfa11"
+			"sha256": "c6cb7ffae19cc710ad08494aa096c9a70a887461eaee7dce77264e1fe9627025"
 		},
 		{
 			"path": "res://scene/game_modes/game_mode_catalog.tres",
-			"sha256": "cd5a15a28be7dd28c7c3d068823e18bad565341ddf1cf5fc052468eb4c10daa3"
+			"sha256": "685ca58a685145a807a3ff0c0b363bb9b1d7136593c9c1dca664aab0cf3c9156"
 		},
 		{
 			"path": "res://scene/game_modes/game_mode_definition.gd",

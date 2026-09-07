@@ -1,7 +1,6 @@
 extends Enemy
 class_name LinglanBoss
 
-signal health_changed(current_health: int, maximum_health: int)
 signal boss_defeated
 
 const SKILL2_AUDIO_LIMITER := preload("res://scene/combat/audio/explosion_audio_limiter.gd")
@@ -93,7 +92,6 @@ func _ready() -> void:
 	skill4_random.randomize()
 	skill_order_random.randomize()
 	set_active(starts_active)
-	_emit_health_changed()
 
 
 func setup(
@@ -105,7 +103,6 @@ func setup(
 ) -> void:
 	super.setup(enemy_config, player, shared_pathfinder, runtime_context)
 	bind_linglan_runtime_port(runtime_port)
-	_emit_health_changed()
 
 
 func bind_linglan_runtime_port(runtime_port: LinglanBossRuntimePort) -> void:
@@ -194,10 +191,6 @@ func set_active(active: bool) -> void:
 	if not active:
 		_clear_touching_players()
 		_reset_skill_state()
-
-
-func _on_combat_damage_applied(_result: DamageResult) -> void:
-	_emit_health_changed()
 
 
 func supports_centralized_authoritative_simulation() -> bool:
@@ -381,7 +374,6 @@ func _die() -> void:
 	boss_defeated.emit()
 	_reset_skill_state()
 	super._die()
-	_emit_health_changed()
 
 
 func play_multiplayer_death_sequence() -> void:
@@ -394,15 +386,6 @@ func play_multiplayer_death_sequence() -> void:
 
 func get_max_health() -> int:
 	return get_runtime_max_health()
-
-
-func _emit_health_changed() -> void:
-	health_changed.emit(maxi(current_health, 0), get_max_health())
-
-
-func apply_multiplayer_health_snapshot(new_current_health: int) -> void:
-	super.apply_multiplayer_health_snapshot(new_current_health)
-	_emit_health_changed()
 
 
 func _pause_background_music_for_death() -> void:

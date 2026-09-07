@@ -67,6 +67,9 @@ texture_filter = 1
 sprite_frames = ExtResource("7_fx")
 animation = &"shield_block"
 
+[node name="HealthBar" parent="."]
+sprite_content_rect = Rect2(-8, -12, 22, 24)
+
 [connection signal="durability_changed" from="ShieldFacingRoot/ProjectileShieldArea" to="." method="_on_projectile_shield_area_durability_changed"]
 [connection signal="shield_broken" from="ShieldFacingRoot/ProjectileShieldArea" to="." method="_on_projectile_shield_area_shield_broken"]
 [connection signal="animation_finished" from="ShieldFacingRoot/ShieldFxSprite" to="." method="_on_shield_fx_sprite_animation_finished"]

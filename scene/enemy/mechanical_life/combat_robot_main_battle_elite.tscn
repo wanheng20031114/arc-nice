@@ -268,4 +268,8 @@ fixed_fps = 60
 visibility_rect = Rect2(-64, -64, 128, 128)
 process_material = SubResource("ParticleProcessMaterial_skill2_fan")
 
+[node name="HealthBar" parent="."]
+sprite_content_rect = Rect2(-182, -21, 363, 301)
+track_frame_animations = Array[StringName]([&"skill2_takeoff", &"skill2_drop_slash"])
+
 [connection signal="frame_changed" from="AnimatedSprite2D" to="." method="_on_main_battle_animation_frame_changed"]

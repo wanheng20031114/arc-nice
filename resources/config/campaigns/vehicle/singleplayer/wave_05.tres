@@ -1,0 +1,57 @@
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="1_wave"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="3_exit"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_combat.ogg" id="4_music"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_intermission.ogg" id="5_rest_music"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="yuanshi_insect_basic"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="yuanshi_insect_fast"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="yuanshi_insect_shell"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="yuanshi_insect_green_shell"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_guardian.tres" id="yuanshi_insect_guardian"]
+
+[sub_resource type="Resource" id="Entry_yuanshi_insect_basic"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("yuanshi_insect_basic")
+count = 10
+
+[sub_resource type="Resource" id="Entry_yuanshi_insect_fast"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("yuanshi_insect_fast")
+count = 10
+
+[sub_resource type="Resource" id="Entry_yuanshi_insect_shell"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("yuanshi_insect_shell")
+count = 6
+
+[sub_resource type="Resource" id="Entry_yuanshi_insect_green_shell"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("yuanshi_insect_green_shell")
+count = 4
+
+[sub_resource type="Resource" id="Entry_yuanshi_insect_guardian"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("yuanshi_insect_guardian")
+count = 4
+
+[sub_resource type="Resource" id="Exit_next_wave"]
+script = ExtResource("3_exit")
+target_step_id = &"wave_06"
+
+[resource]
+script = ExtResource("1_wave")
+wave_name = "第5波 翠壳防线"
+enemy_entries = Array[ExtResource("2_entry")]([SubResource("Entry_yuanshi_insect_basic"), SubResource("Entry_yuanshi_insect_fast"), SubResource("Entry_yuanshi_insect_shell"), SubResource("Entry_yuanshi_insect_green_shell"), SubResource("Entry_yuanshi_insect_guardian")])
+spawn_point_order = 1
+spawn_interval = 0.7
+spawn_count_per_tick = 1
+max_alive_enemies = 10
+music = ExtResource("4_music")
+post_wave_music = ExtResource("5_rest_music")
+step_id = &"wave_05"
+display_name = "第5波 翠壳防线"
+post_clear_rest_duration = 4.0
+exits = Array[ExtResource("3_exit")]([SubResource("Exit_next_wave")])
+editor_position = Vector2(120, 340)

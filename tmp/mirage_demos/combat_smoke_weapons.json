@@ -1,0 +1,190 @@
+{
+	"actions": [
+		{
+			"action": "scene_ready",
+			"ammo": 7,
+			"at_seconds": 0.0,
+			"description": "Production Mirage scene, locally scripted demonstration",
+			"dropped_weapons": 0,
+			"money": 4000,
+			"reserve": 35,
+			"target_health": 100,
+			"weapon": "deagle"
+		},
+		{
+			"action": "open_buy",
+			"ammo": 7,
+			"at_seconds": 2.025,
+			"description": "B：打开购买面板",
+			"dropped_weapons": 0,
+			"money": 4000,
+			"reserve": 35,
+			"target_health": 100,
+			"weapon": "deagle"
+		},
+		{
+			"action": "buy_ak",
+			"ammo": 7,
+			"at_seconds": 4.825,
+			"description": "B：打开购买面板",
+			"dropped_weapons": 0,
+			"money": 4000,
+			"reserve": 35,
+			"target_health": 100,
+			"weapon": "deagle"
+		},
+		{
+			"action": "close_buy",
+			"ammo": 30,
+			"at_seconds": 6.425,
+			"description": "AK-47 已购买 · 余额来自实际经济系统",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "drop",
+			"ammo": 30,
+			"at_seconds": 8.025,
+			"description": "G：丢出手中 AK-47",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "pickup",
+			"ammo": 7,
+			"at_seconds": 10.825,
+			"description": "F：拾回地上的 AK-47",
+			"dropped_weapons": 1,
+			"money": 1300,
+			"reserve": 35,
+			"target_health": 100,
+			"weapon": "deagle"
+		},
+		{
+			"action": "slot2",
+			"ammo": 30,
+			"at_seconds": 13.025,
+			"description": "2：切换副武器沙漠之鹰",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "slot1",
+			"ammo": 7,
+			"at_seconds": 15.025,
+			"description": "1：切换主武器 AK-47",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 35,
+			"target_health": 100,
+			"weapon": "deagle"
+		},
+		{
+			"action": "practice_fire",
+			"ammo": 29,
+			"at_seconds": 17.025,
+			"description": "实际开火三次：观察弹匣 30 → 27",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "practice_fire",
+			"ammo": 28,
+			"at_seconds": 17.325,
+			"description": "实际开火三次：观察弹匣 30 → 27",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "practice_fire",
+			"ammo": 27,
+			"at_seconds": 17.625,
+			"description": "实际开火三次：观察弹匣 30 → 27",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "reload",
+			"ammo": 27,
+			"at_seconds": 19.025,
+			"description": "R：换弹，弹药从备弹转入弹匣",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "weapons_summary",
+			"ammo": 30,
+			"at_seconds": 22.525,
+			"description": "操作完成：$1300 · AK 30 / 87",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 87,
+			"target_health": 100,
+			"weapon": "ak"
+		}
+	],
+	"ak_price": 2700,
+	"bullet_speed": 500.0,
+	"case": "weapons",
+	"character": "weishidaier",
+	"duration_seconds": 28.0250000000006,
+	"failures": [],
+	"final_inventory": {
+		"aim": "(0.0, -1.0)",
+		"alive": true,
+		"ammo": 30,
+		"current_weapon": "ak",
+		"deaths": 0,
+		"display_name": "维什戴尔 · 演示玩家",
+		"health": 100,
+		"kills": 0,
+		"last_shot_weapon": "ak",
+		"loadout": {
+			"ak": {
+				"ammo": 30,
+				"reserve": 87
+			},
+			"deagle": {
+				"ammo": 7,
+				"reserve": 35
+			}
+		},
+		"money": 1300,
+		"peer_id": 1,
+		"position": "(600.0, 1229.8)",
+		"reload_remaining": 0.0,
+		"reloading": false,
+		"reserve": 87,
+		"shot_sequence": 3,
+		"team": "CT",
+		"velocity": "(0.0, 0.0)"
+	},
+	"fixture_disclosure": "Local recording choreography repositions/reset existing targets and starts rounds. Input uses native B/G/F/R/1/2 key events and actual HUD mouse clicks. Production request_action, authority_tick, _try_fire and PhysicsDirectSpaceState2D projectile sweeps execute all outcomes. No health reduction is scripted.",
+	"observed_damage": [],
+	"resolution": [
+		1280,
+		720
+	],
+	"scene": "res://scene/pvp/mirage_pvp.tscn"
+}

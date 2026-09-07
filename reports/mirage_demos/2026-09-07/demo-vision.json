@@ -1,0 +1,1631 @@
+{
+  "demo": "05-visibility",
+  "disclosure": [
+    "Offline single-machine training scene, not a network multiplayer capture.",
+    "Only starting player positions are preset; purchase is skipped to enter the live phase.",
+    "Scripted movement is submitted through the real host input queue at half stick strength.",
+    "Production authority_tick and move_and_slide perform every subsequent movement.",
+    "Enemy visible, shadow mask, map artwork, collision and normal HUD are not overridden."
+  ],
+  "duration_seconds": 25.0166666666665,
+  "initial_enemy_position": [
+    1120.0,
+    1335.0
+  ],
+  "initial_local_position": [
+    1000.0,
+    1225.0
+  ],
+  "production_scene": "res://scene/pvp/mirage_pvp.tscn",
+  "renderer": "forward_plus",
+  "samples": [
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 0.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 0.283
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 0.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 0.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 1.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 1.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 1.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 1.783
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 2.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 2.283
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 2.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 2.783
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 3.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 3.283
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 3.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 3.783
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.83331298828,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 4.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1014.16632080078,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 4.283
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1025.83288574219,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 4.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1039.16687011719,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 4.783
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1050.83410644531,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 5.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1064.16809082031,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 5.283
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1075.83532714844,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 5.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1089.16931152344,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 5.783
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1100.83654785156,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 6.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1114.17053222656,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 6.283
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1125.83776855469,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 6.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1139.17175292969,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 6.783
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1150.83898925781,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 7.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 7.283
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 7.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 7.783
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1225.83337402344
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "③ 继续沿右侧靠近训练靶",
+      "time_seconds": 8.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1239.16735839844
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "③ 继续沿右侧靠近训练靶",
+      "time_seconds": 8.283
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1250.83459472656
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "③ 继续沿右侧靠近训练靶",
+      "time_seconds": 8.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1262.50183105469
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "③ 继续沿右侧靠近训练靶",
+      "time_seconds": 8.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1275.83581542969
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "③ 继续沿右侧靠近训练靶",
+      "time_seconds": 9.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1287.50305175781
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "③ 继续沿右侧靠近训练靶",
+      "time_seconds": 9.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1300.83703613281
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "③ 继续沿右侧靠近训练靶",
+      "time_seconds": 9.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1312.50427246094
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "③ 继续沿右侧靠近训练靶",
+      "time_seconds": 9.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "③ 继续沿右侧靠近训练靶",
+      "time_seconds": 10.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "③ 继续沿右侧靠近训练靶",
+      "time_seconds": 10.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "③ 继续沿右侧靠近训练靶",
+      "time_seconds": 10.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "③ 继续沿右侧靠近训练靶",
+      "time_seconds": 10.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "④ 视线畅通：敌人与名字出现",
+      "time_seconds": 11.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "④ 视线畅通：敌人与名字出现",
+      "time_seconds": 11.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "④ 视线畅通：敌人与名字出现",
+      "time_seconds": 11.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "④ 视线畅通：敌人与名字出现",
+      "time_seconds": 11.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "④ 视线畅通：敌人与名字出现",
+      "time_seconds": 12.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "④ 视线畅通：敌人与名字出现",
+      "time_seconds": 12.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "④ 视线畅通：敌人与名字出现",
+      "time_seconds": 12.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "④ 视线畅通：敌人与名字出现",
+      "time_seconds": 12.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "④ 视线畅通：敌人与名字出现",
+      "time_seconds": 13.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "④ 视线畅通：敌人与名字出现",
+      "time_seconds": 13.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "④ 视线畅通：敌人与名字出现",
+      "time_seconds": 13.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1325.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "④ 视线畅通：敌人与名字出现",
+      "time_seconds": 13.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1323.33325195313
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 14.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1311.666015625
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 14.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1298.33203125
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 14.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1286.66479492188
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 14.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1273.33081054688
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 15.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1261.66357421875
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 15.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1248.32958984375
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 15.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1236.66235351563
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 15.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 16.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 16.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 16.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1160.0,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 16.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1158.33325195313,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 17.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1146.666015625,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 17.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1133.33203125,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 17.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1121.66479492188,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 17.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1108.33081054688,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 18.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1096.66357421875,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 18.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1083.32958984375,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 18.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1071.66235351563,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 18.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1058.32836914063,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 19.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1046.6611328125,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 19.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1033.3271484375,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 19.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1021.66009521484,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 19.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1008.32708740234,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 20.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 20.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 20.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 20.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 21.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 21.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 21.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 21.75
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 22.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 22.25
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 22.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 22.783
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 23.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 23.283
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 23.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 23.783
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 24.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 24.283
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 24.517
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 24.783
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑥ 再次回到箱后：敌人隐藏",
+      "time_seconds": 25.017
+    }
+  ],
+  "transitions": [
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1000.0,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "① Default 箱后：停留观察",
+      "time_seconds": 0.017
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": true,
+      "local_position": [
+        1109.17028808594,
+        1225.0
+      ],
+      "ray_blocked": false,
+      "ray_collider": "",
+      "stage": "② 沿箱子上侧移动，绕过右角",
+      "time_seconds": 6.183
+    },
+    {
+      "enemy_position": [
+        1120.0,
+        1335.0
+      ],
+      "enemy_visible": false,
+      "local_position": [
+        1108.33081054688,
+        1225.0
+      ],
+      "ray_blocked": true,
+      "ray_collider": "/root/MpGame/Map/Landmarks/ADefault/Body",
+      "stage": "⑤ 原路返回，观察遮挡恢复",
+      "time_seconds": 18.017
+    }
+  ],
+  "window_size": [
+    1280,
+    720
+  ],
+  "video_verification": {
+    "size_bytes": 18356168,
+    "upscaled": false,
+    "godot_exit": "normal SceneTree.quit",
+    "frames": 751,
+    "resolution": [
+      1152,
+      648
+    ],
+    "duration_seconds": 25.033333,
+    "pixel_format": "yuv420p",
+    "codec": "h264",
+    "file": "05-visibility.mp4",
+    "fps": 30,
+    "script_errors": false,
+    "helper_processes_remaining": 0,
+    "faststart": true,
+    "renderer": "Forward+ / Vulkan / NVIDIA GeForce RTX 3080"
+  },
+  "visual_verification": [
+    {
+      "image": "05-visibility-hidden-03.png",
+      "ray_blocked": true,
+      "time_seconds": 3,
+      "enemy_visible": false,
+      "observed": "Training target and name are absent; Default casts the actual black-gray occluded region."
+    },
+    {
+      "image": "05-visibility-poster.png",
+      "ray_blocked": false,
+      "time_seconds": 12,
+      "enemy_visible": true,
+      "observed": "Both players and target name are visible after walking around the real crate corner; occlusion remains elsewhere."
+    },
+    {
+      "image": "05-visibility-hidden-23.png",
+      "ray_blocked": true,
+      "time_seconds": 23,
+      "enemy_visible": false,
+      "observed": "After returning by actual movement, the target and name are hidden again behind Default."
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+Godot Engine v4.6.3.stable.official.7d41c59c4 - https://godotengine.org
+
+ISSUES_DEMO_COMPLETE: [{ "event": "A1_right_input_blocked", "x": 1422.59875488281, "y": 1136.0 }, { "event": "A1_lower_gap_blocked", "x": 1424.08337402344, "y": 1173.9990234375 }, { "event": "market_to_mid_unintended_route", "x": 1068.33813476563, "y": 820.599975585938, "target_x": 1068.0 }]

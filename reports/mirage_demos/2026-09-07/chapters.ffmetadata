@@ -1,0 +1,33 @@
+;FFMETADATA1
+title=Mirage 2D PVP 实机演示
+comment=实际 Godot 场景；自动操作与固定靶演练
+[CHAPTER]
+TIMEBASE=1/30
+START=0
+END=808
+title=01 / 房间选队与开局
+[CHAPTER]
+TIMEBASE=1/30
+START=808
+END=1593
+title=02 / 全图与区域漫游
+[CHAPTER]
+TIMEBASE=1/30
+START=1593
+END=2434
+title=03 / 买枪、丢枪与换弹
+[CHAPTER]
+TIMEBASE=1/30
+START=2434
+END=3140
+title=04 / 身体命中与爆头
+[CHAPTER]
+TIMEBASE=1/30
+START=3140
+END=3891
+title=05 / 掩体与视野遮挡
+[CHAPTER]
+TIMEBASE=1/30
+START=3891
+END=4516
+title=06 / 当前地图问题复现

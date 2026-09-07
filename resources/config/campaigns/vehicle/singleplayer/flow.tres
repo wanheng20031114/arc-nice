@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="FlowGraphConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/flow/flow_graph_config.gd" id="1_graph"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_step_config.gd" id="2_step"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/vehicle/singleplayer/wave_01.tres" id="wave_01"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/vehicle/singleplayer/wave_02.tres" id="wave_02"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/vehicle/singleplayer/wave_03.tres" id="wave_03"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/vehicle/singleplayer/wave_04.tres" id="wave_04"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/vehicle/singleplayer/wave_05.tres" id="wave_05"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/vehicle/singleplayer/wave_06.tres" id="wave_06"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/vehicle/singleplayer/wave_07.tres" id="wave_07"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/vehicle/singleplayer/wave_08.tres" id="wave_08"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/vehicle/singleplayer/wave_09.tres" id="wave_09"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/vehicle/singleplayer/wave_10.tres" id="wave_10"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/vehicle/singleplayer/wave_11.tres" id="wave_11"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/vehicle/singleplayer/wave_12.tres" id="wave_12"]
+
+[resource]
+script = ExtResource("1_graph")
+graph_name = "小车模式 / 十二波突围"
+start_step = ExtResource("wave_01")
+steps = Array[ExtResource("2_step")]([ExtResource("wave_01"), ExtResource("wave_02"), ExtResource("wave_03"), ExtResource("wave_04"), ExtResource("wave_05"), ExtResource("wave_06"), ExtResource("wave_07"), ExtResource("wave_08"), ExtResource("wave_09"), ExtResource("wave_10"), ExtResource("wave_11"), ExtResource("wave_12")])

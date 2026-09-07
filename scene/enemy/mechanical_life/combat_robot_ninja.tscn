@@ -91,5 +91,8 @@ max_distance = 160.0
 max_polyphony = 1
 bus = &"SFX"
 
+[node name="HealthBar" parent="."]
+sprite_content_rect = Rect2(-14, -12, 27, 24)
+
 [connection signal="timeout" from="BoostTimer" to="." method="_on_boost_timer_timeout"]
 [connection signal="timeout" from="CooldownTimer" to="." method="_on_cooldown_timer_timeout"]

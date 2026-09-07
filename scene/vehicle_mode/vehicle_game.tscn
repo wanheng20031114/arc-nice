@@ -1,0 +1,38 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scene/game_modes/standard/standard_game.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scene/vehicle_mode/vehicle_game.gd" id="2_script"]
+[ext_resource type="Resource" path="res://scene/game_modes/definitions/vehicle.tres" id="3_mode"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/vehicle/singleplayer/campaign.tres" id="4_campaign"]
+[ext_resource type="PackedScene" path="res://scene/vehicle_mode/ui/vehicle_combat_hud.tscn" id="5_hud"]
+[ext_resource type="PackedScene" path="res://scene/vehicle_mode/rewards/vehicle_wave_reward.tscn" id="6_reward"]
+
+[node name="VehicleGame" instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+mode_definition = ExtResource("3_mode")
+singleplayer_campaign = ExtResource("4_campaign")
+pre_wave_duration = 4.0
+linglan_boss_enabled = false
+standard_merchants_enabled = false
+
+[node name="CurrencyHUD" parent="."]
+visible = false
+
+[node name="WaveHUD" parent="."]
+visible = false
+
+[node name="PlayerProfilePanel" parent="."]
+process_mode = 3
+layer = 40
+
+[node name="ZhuangfangyiMerchant" parent="."]
+process_mode = 4
+visible = false
+
+[node name="LuoxiMerchant" parent="."]
+process_mode = 4
+visible = false
+
+[node name="VehicleCombatHUD" parent="." instance=ExtResource("5_hud")]
+
+[node name="VehicleWaveReward" parent="." instance=ExtResource("6_reward")]

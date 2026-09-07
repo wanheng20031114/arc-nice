@@ -4,11 +4,11 @@ class_name RuntimeContentManifest
 ## 此文件由 dev_tools/generate_runtime_content_manifest.gd 生成，禁止手改。
 ## 运行时只信任这组编译期常量；JSON 清单用于代码审查与 --check 重现。
 const SCHEMA_VERSION := 1
-const CONTENT_SHA256 := "80400340586e2292084dc1dd9918cc7c4566325c937740cd317851ded95c4fe5"
+const CONTENT_SHA256 := "c506dd8d69e05bb0982b625f419321d1d12b11acb0cabef2e8104ca65c11f38b"
 const ENEMY_ROOT_COUNT := 64
 const PICKUP_ROOT_COUNT := 181
-const CAMPAIGN_ROOT_COUNT := 26
-const DEPENDENCY_COUNT := 2179
+const CAMPAIGN_ROOT_COUNT := 27
+const DEPENDENCY_COUNT := 2196
 
 
 static func is_valid() -> bool:
@@ -16,7 +16,7 @@ static func is_valid() -> bool:
 		SCHEMA_VERSION == 1
 		and ENEMY_ROOT_COUNT == 64
 		and PICKUP_ROOT_COUNT == 181
-		and CAMPAIGN_ROOT_COUNT == 26
+		and CAMPAIGN_ROOT_COUNT == 27
 		and DEPENDENCY_COUNT > 0
 		and is_valid_wire_digest(CONTENT_SHA256)
 	)

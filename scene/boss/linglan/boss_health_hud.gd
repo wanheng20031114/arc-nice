@@ -31,12 +31,10 @@ func show_for_boss(boss: LinglanBoss, boss_name: String = "") -> void:
 		display_name = bound_boss.boss_display_name
 	name_label.text = display_name
 
-	root_control.visible = true
-	health_bar.visible = true
-	root_control.modulate = Color(1.0, 1.0, 1.0, 0.0)
-	health_bar.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	_stop_reveal_tween()
+	root_control.visible = false
+	health_bar.visible = false
 	_on_boss_health_changed(bound_boss.current_health, bound_boss.get_max_health())
-	_play_reveal()
 
 
 func hide_all() -> void:
@@ -51,6 +49,19 @@ func _on_boss_health_changed(current_health: int, maximum_health: int) -> void:
 	health_bar.max_value = safe_maximum
 	health_bar.value = clampi(current_health, 0, safe_maximum)
 	health_text.text = "%d / %d" % [clampi(current_health, 0, safe_maximum), safe_maximum]
+	var was_visible := health_bar.visible
+	var should_show := (
+		current_health > 0 and current_health < maximum_health
+		and not bound_boss.is_dead
+	)
+	root_control.visible = should_show
+	health_bar.visible = should_show
+	if should_show and not was_visible:
+		root_control.modulate.a = 0.0
+		health_bar.modulate.a = 0.0
+		_play_reveal()
+	elif not should_show:
+		_stop_reveal_tween()
 
 
 func _on_boss_defeated(enemy: Enemy) -> void:

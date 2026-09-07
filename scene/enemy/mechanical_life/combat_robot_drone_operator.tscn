@@ -91,6 +91,9 @@ one_shot = true
 
 [node name="DroneSpawn" type="Marker2D" parent="." index="9" unique_id=351997409]
 
+[node name="HealthBar" parent="."]
+sprite_content_rect = Rect2(-7, -12, 15, 24)
+
 [connection signal="body_entered" from="AttackSenseArea" to="." method="_on_attack_sense_area_body_entered"]
 [connection signal="body_exited" from="AttackSenseArea" to="." method="_on_attack_sense_area_body_exited"]
 [connection signal="timeout" from="DeployTimer" to="." method="_on_deploy_timer_timeout"]

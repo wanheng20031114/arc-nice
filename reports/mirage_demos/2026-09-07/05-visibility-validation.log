@@ -1,0 +1,3 @@
+Godot Engine v4.6.3.stable.official.7d41c59c4 - https://godotengine.org
+
+VISION_DEMO_COMPLETE [{"enemy_position":[1120.0,1335.0],"enemy_visible":false,"local_position":[1000.0,1225.0],"ray_blocked":true,"ray_collider":"/root/MpGame/Map/Landmarks/ADefault/Body","stage":"① Default 箱后：停留观察","time_seconds":0.017},{"enemy_position":[1120.0,1335.0],"enemy_visible":true,"local_position":[1109.17028808594,1225.0],"ray_blocked":false,"ray_collider":"","stage":"② 沿箱子上侧移动，绕过右角","time_seconds":6.183},{"enemy_position":[1120.0,1335.0],"enemy_visible":false,"local_position":[1108.33081054688,1225.0],"ray_blocked":true,"ray_collider":"/root/MpGame/Map/Landmarks/ADefault/Body","stage":"⑤ 原路返回，观察遮挡恢复","time_seconds":18.017}]

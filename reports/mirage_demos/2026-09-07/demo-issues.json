@@ -1,0 +1,22 @@
+{
+	"events": [
+		{
+			"event": "A1_right_input_blocked",
+			"x": 1422.59875488281,
+			"y": 1136.0
+		},
+		{
+			"event": "A1_lower_gap_blocked",
+			"x": 1424.08337402344,
+			"y": 1173.9990234375
+		},
+		{
+			"event": "market_to_mid_unintended_route",
+			"target_x": 1068.0,
+			"x": 1070.00476074219,
+			"y": 820.599975585938
+		}
+	],
+	"kind": "scripted actual-game defect reproduction",
+	"staging": "Only initial player positions are set. Motion uses production authoritative input and move_and_slide; map, collision and visibility unchanged."
+}

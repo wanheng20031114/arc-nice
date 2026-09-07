@@ -169,6 +169,7 @@ func _exit_tree() -> void:
 
 
 func _on_runtime_activated() -> void:
+	super._on_runtime_activated()
 	if runtime_mode != RuntimeMode.SINGLEPLAYER:
 		return
 	var pause_controller := get_node(

@@ -1,0 +1,14 @@
+Godot Engine v4.6.3.stable.official.7d41c59c4 - https://godotengine.org
+
+NetManager: LAN Host 已创建, port=35576, max_players=4
+NetManager: Client 正在连接 LAN Host 127.0.0.1:35576
+NetManager: LAN transport 已连接，正在等待内容与成员注册回执
+NetManager: Peer 已连接, id=1
+NetManager: Peer 已连接, id=1738776933
+NetManager: 玩家注册, id=1738776933, name=MirageClient
+NetManager: 内容摘要与 ACTIVE 成员身份均已获 Host 接受
+NetManager: 已重置全局暂停状态, reason=disconnect
+NetManager: 已断开连接
+NetManager: 已重置全局暂停状态, reason=disconnect
+NetManager: 已断开连接
+MIRAGE_LAN: 17 assertions, 0 failures

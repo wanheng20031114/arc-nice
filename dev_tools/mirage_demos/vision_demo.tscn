@@ -1,0 +1,61 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scene/pvp/mirage_pvp.tscn" id="1"]
+[ext_resource type="Script" path="res://dev_tools/mirage_demos/vision_demo.gd" id="2"]
+
+[node name="MpGame" instance=ExtResource("1")]
+script = ExtResource("2")
+
+[node name="CaptureLabels" type="CanvasLayer" parent="."]
+layer = 100
+
+[node name="Panel" type="ColorRect" parent="CaptureLabels"]
+offset_left = 26.0
+offset_top = 310.0
+offset_right = 345.0
+offset_bottom = 487.0
+mouse_filter = 2
+color = Color(0.045, 0.057, 0.066, 0.94)
+
+[node name="Title" type="Label" parent="CaptureLabels/Panel"]
+offset_left = 14.0
+offset_top = 9.0
+offset_right = 305.0
+offset_bottom = 33.0
+theme_override_colors/font_color = Color(0.96, 0.93, 0.84, 1)
+theme_override_font_sizes/font_size = 18
+text = "05 / A 点 · 真实障碍遮挡"
+
+[node name="Disclosure" type="Label" parent="CaptureLabels/Panel"]
+offset_left = 14.0
+offset_top = 36.0
+offset_right = 305.0
+offset_bottom = 57.0
+theme_override_colors/font_color = Color(0.73, 0.77, 0.78, 1)
+theme_override_font_sizes/font_size = 13
+text = "预设起点 · 脚本输入 · 实际物理移动"
+
+[node name="Stage" type="Label" parent="CaptureLabels/Panel"]
+offset_left = 14.0
+offset_top = 65.0
+offset_right = 305.0
+offset_bottom = 87.0
+theme_override_font_sizes/font_size = 15
+text = "① Default 箱后：停留观察"
+
+[node name="Status" type="Label" parent="CaptureLabels/Panel"]
+offset_left = 14.0
+offset_top = 92.0
+offset_right = 305.0
+offset_bottom = 138.0
+theme_override_font_sizes/font_size = 16
+text = "等待首个物理帧"
+
+[node name="Elapsed" type="Label" parent="CaptureLabels/Panel"]
+offset_left = 14.0
+offset_top = 146.0
+offset_right = 305.0
+offset_bottom = 165.0
+theme_override_colors/font_color = Color(0.60, 0.66, 0.69, 1)
+theme_override_font_sizes/font_size = 12
+text = "00.0 / 25.0 秒 · 原版视野控制器"

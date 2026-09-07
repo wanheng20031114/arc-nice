@@ -2,6 +2,7 @@ extends CharacterBody2D
 class_name Enemy
 
 signal defeated(enemy: Enemy)
+signal health_changed(current_health: int, maximum_health: int)
 signal objective_target_changed(enemy: Enemy, current_target: Node2D)
 signal combat_faction_changed(
 	enemy: Enemy,
@@ -200,6 +201,7 @@ static var _performance_metrics := {
 @onready var touch_damage_shape: CollisionShape2D = null
 @onready var hit_audio: AudioStreamPlayer2D = $HitAudio
 @onready var death_audio: AudioStreamPlayer2D = $DeathAudio
+@onready var health_bar: EnemyHealthBar = $HealthBar
 
 var target_player: Player = null
 var objective_target: Node2D = null:
@@ -2354,6 +2356,7 @@ func remove_for_home_escape() -> bool:
 	if is_dead:
 		return false
 	is_dead = true
+	_emit_health_changed()
 	set_indexed_touch_authority(false)
 	clear_cold_status()
 	clear_collectible_statuses()
@@ -2431,6 +2434,7 @@ func restore_health(amount: int) -> int:
 	var restored_amount := current_health - health_before
 	if restored_amount > 0:
 		health_revision += 1
+		_emit_health_changed()
 	return restored_amount
 
 
@@ -2464,6 +2468,7 @@ func set_runtime_max_health_multiplier(
 		current_health = mini(current_health, new_max_health)
 	if current_health != previous_health:
 		health_revision += 1
+	_emit_health_changed()
 
 
 func get_runtime_max_health() -> int:
@@ -2477,6 +2482,11 @@ func get_runtime_max_health() -> int:
 
 func apply_multiplayer_health_snapshot(new_current_health: int) -> void:
 	current_health = maxi(new_current_health, 0)
+	_emit_health_changed()
+
+
+func _emit_health_changed() -> void:
+	health_changed.emit(0 if is_dead else maxi(current_health, 0), get_runtime_max_health())
 
 
 ## Applies a client health snapshot and its monotonic watermark as one entity-owned
@@ -2560,6 +2570,7 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 	last_damage_taken = result.applied_damage
 	current_health = result.health_after
 	health_revision += 1
+	_emit_health_changed()
 	var impact_direction := request.get_safe_impact_direction()
 	var damage_type := request.damage_type as EnemyConfig.DamageType
 	# 浮字表达本次完整结算伤害；生命扣除仍由 applied_damage 按剩余生命封顶。
@@ -2698,6 +2709,7 @@ func play_multiplayer_death_sequence() -> void:
 		return
 
 	is_dead = true
+	_emit_health_changed()
 	clear_cold_status()
 	clear_collectible_statuses()
 	clear_electric_surge_state()
@@ -3994,6 +4006,10 @@ func _apply_config() -> void:
 	_refresh_effective_physical_defense_cache()
 	_refresh_effective_move_speed_cache()
 	_play_scene_animation(config.move_animation_name)
+	# setup() may run before entering the tree; _ready() applies it again.
+	if health_bar != null:
+		health_bar.configure(animated_sprite, config.move_animation_name)
+	_emit_health_changed()
 
 
 func _play_scene_animation(animation_name: StringName) -> bool:
@@ -6300,6 +6316,7 @@ func _die() -> void:
 	# cannot settle it twice. Ledger-owning runtimes synchronously commit
 	# DEFEATED from this signal; rewards and drops are admitted only afterwards.
 	is_dead = true
+	_emit_health_changed()
 	set_indexed_touch_authority(false)
 	clear_cold_status()
 	clear_collectible_statuses()

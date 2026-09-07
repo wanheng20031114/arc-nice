@@ -1,0 +1,96 @@
+{
+	"automated": true,
+	"events": [
+		{
+			"event": "client_registered_via_production_join_button",
+			"local_peer_id": 1009039117,
+			"roster": [
+				{
+					"character": "weishidaier",
+					"name": "演示房主",
+					"peer_id": 1,
+					"team": ""
+				},
+				{
+					"character": "weishidaier",
+					"name": "演示队员",
+					"peer_id": 1009039117,
+					"team": ""
+				}
+			],
+			"session_id": 0,
+			"state": 4,
+			"video_seconds": 1.42,
+			"wall_elapsed_ms": 1337
+		},
+		{
+			"event": "client_clicked_production_T_button",
+			"local_peer_id": 1009039117,
+			"roster": [
+				{
+					"character": "weishidaier",
+					"name": "演示房主",
+					"peer_id": 1,
+					"team": "CT"
+				},
+				{
+					"character": "weishidaier",
+					"name": "演示队员",
+					"peer_id": 1009039117,
+					"team": ""
+				}
+			],
+			"session_id": 0,
+			"state": 4,
+			"video_seconds": 11.154,
+			"wall_elapsed_ms": 11067
+		},
+		{
+			"event": "client_production_match_IN_GAME",
+			"local_peer_id": 1009039117,
+			"roster": [
+				{
+					"character": "weishidaier",
+					"name": "演示房主",
+					"peer_id": 1,
+					"team": "CT"
+				},
+				{
+					"character": "weishidaier",
+					"name": "演示队员",
+					"peer_id": 1009039117,
+					"team": "T"
+				}
+			],
+			"session_id": 1,
+			"state": 6,
+			"video_seconds": 18.103,
+			"wall_elapsed_ms": 18000
+		},
+		{
+			"event": "capture_finished",
+			"local_peer_id": 0,
+			"roster": [],
+			"session_id": 0,
+			"state": 0,
+			"video_seconds": 34.736,
+			"wall_elapsed_ms": 34636
+		}
+	],
+	"failures": [],
+	"limitations": [
+		"自动点击正式按钮与注入 Tab 输入；并非真人操作录像。",
+		"本机双进程真实 LAN 回环，不代表互联网或公网部署验证。",
+		"Godot Movie Maker 固定 30 fps 离线采帧；模拟时间和实际墙钟时间可能不同。",
+		"只有房主画面被录制；另一端无头运行正式大厅和对局。",
+		"字幕是演示标注；玩家名单、队伍与比分均来自生产场景和真实网络状态。",
+		"当前地图复刻质量问题仍在，参见 mirage_fidelity_audit.md。"
+	],
+	"network": "Two Godot processes, ENet 127.0.0.1:48981",
+	"production_loader": "GameLoadCoordinator",
+	"production_lobby": "res://scene/multiplayer/multiplayer_lobby.tscn",
+	"protocol": 97,
+	"role": "client",
+	"title": "01 双进程 LAN：CT/T 选队至实战 HUD",
+	"video_simulation_seconds": 34.7364773333334
+}

@@ -1,0 +1,62 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/vehicle_mode/rewards/vehicle_wave_reward.gd" id="1_reward"]
+[ext_resource type="PackedScene" path="res://scene/merchants/luoxi/luoxi_collectible_choice_overlay.tscn" id="2_luoxi_cards"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
+
+[sub_resource type="StyleBoxFlat" id="Style_inventory_button"]
+bg_color = Color(0.15, 0.14, 0.12, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.73, 0.59, 0.37, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_left = 6
+corner_radius_bottom_right = 6
+
+[sub_resource type="StyleBoxFlat" id="Style_inventory_button_hover"]
+bg_color = Color(0.27, 0.22, 0.16, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.82, 0.48, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_left = 6
+corner_radius_bottom_right = 6
+
+[node name="VehicleWaveReward" type="Node"]
+process_mode = 3
+script = ExtResource("1_reward")
+
+[node name="LuoxiChoiceOverlay" parent="." instance=ExtResource("2_luoxi_cards")]
+layer = 30
+
+[node name="Hint" parent="LuoxiChoiceOverlay/Root/Center/Content" index=0]
+text = "波次完成 · 选择战利品"
+
+[node name="SubHint" parent="LuoxiChoiceOverlay/Root/Center/Content" index=1]
+text = "从 3 件收藏品中免费选择 1 件 · 选择后继续突围"
+
+[node name="RefreshPanel" parent="LuoxiChoiceOverlay/Root/Center/Content" index=3]
+visible = false
+
+[node name="InventoryButton" type="Button" parent="LuoxiChoiceOverlay/Root/Center/Content" index=4]
+visible = false
+custom_minimum_size = Vector2(216, 42)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(1, 0.92, 0.76, 1)
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("Style_inventory_button")
+theme_override_styles/hover = SubResource("Style_inventory_button_hover")
+theme_override_styles/pressed = SubResource("Style_inventory_button_hover")
+theme_override_styles/focus = SubResource("Style_inventory_button_hover")
+text = "整理背包"
+tooltip_text = "丢弃不需要的物品，腾出空间后领取当前奖励"
+
+[editable path="LuoxiChoiceOverlay"]

@@ -1,0 +1,48 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scene/pvp/mirage_pvp.tscn" id="1"]
+[ext_resource type="Script" path="res://dev_tools/mirage_demos/issues_demo.gd" id="2"]
+
+[node name="MpGame" instance=ExtResource("1")]
+script = ExtResource("2")
+
+[node name="CaptureLabels" type="CanvasLayer" parent="."]
+layer = 100
+
+[node name="Panel" type="ColorRect" parent="CaptureLabels"]
+offset_left = 320.0
+offset_top = 120.0
+offset_right = 1244.0
+offset_bottom = 202.0
+mouse_filter = 2
+color = Color(0.06, 0.065, 0.075, 0.91)
+
+[node name="Title" type="Label" parent="CaptureLabels/Panel"]
+offset_left = 20.0
+offset_top = 8.0
+offset_right = 904.0
+offset_bottom = 43.0
+theme_override_colors/font_color = Color(0.99, 0.79, 0.47, 1)
+theme_override_font_sizes/font_size = 25
+text = "地图问题复现"
+
+[node name="Detail" type="Label" parent="CaptureLabels/Panel"]
+offset_left = 20.0
+offset_top = 48.0
+offset_right = 904.0
+offset_bottom = 74.0
+theme_override_colors/font_color = Color(0.86, 0.87, 0.86, 1)
+theme_override_font_sizes/font_size = 17
+text = "本地自动操作 · 生产地图与碰撞保持原状"
+
+[node name="Readout" type="Label" parent="CaptureLabels"]
+offset_left = 320.0
+offset_top = 218.0
+offset_right = 1244.0
+offset_bottom = 249.0
+theme_override_colors/font_color = Color(0.95, 0.95, 0.92, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 18
+text = "实际角色坐标"

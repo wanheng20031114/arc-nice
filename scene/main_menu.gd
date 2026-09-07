@@ -2,6 +2,7 @@ extends Control
 class_name MainMenu
 
 const ENCYCLOPEDIA_SCENE_PATH := "res://scene/encyclopedia/encyclopedia_screen.tscn"
+const VEHICLE_ENTRY_PATH := "res://scene/vehicle_mode/vehicle_game.tscn"
 const TEST_ARENA_P1A_ID := &"p1"
 const TEST_ARENA_P1_ID := TEST_ARENA_P1A_ID
 const TEST_ARENA_P1B_ID := &"p1b"
@@ -207,11 +208,11 @@ func _on_vehicle_mode_pressed() -> void:
 
 
 func _on_vehicle_mode_confirmed(paint_color: Color) -> void:
-	var definition := GameModeCatalog.get_definition(GameModeCatalog.MODE_STANDARD)
+	var definition := GameModeCatalog.get_definition_by_singleplayer_entry(VEHICLE_ENTRY_PATH)
 	if definition == null or not definition.is_selectable_for(
 		GameModeDefinition.SelectionAudience.RELEASE
 	):
-		push_error("Main menu could not resolve Standard mode for vehicle mode.")
+		push_error("Main menu could not resolve the vehicle singleplayer entry.")
 		vehicle_mode_button.grab_focus()
 		return
 	var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore

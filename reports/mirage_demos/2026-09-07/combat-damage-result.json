@@ -1,0 +1,276 @@
+{
+	"actions": [
+		{
+			"action": "scene_ready",
+			"ammo": 7,
+			"at_seconds": 0.0,
+			"description": "Production Mirage scene, locally scripted demonstration",
+			"dropped_weapons": 0,
+			"money": 4000,
+			"reserve": 35,
+			"target_health": 100,
+			"weapon": "deagle"
+		},
+		{
+			"action": "open_buy",
+			"ammo": 7,
+			"at_seconds": 0.625,
+			"description": "B：打开购买面板",
+			"dropped_weapons": 0,
+			"money": 4000,
+			"reserve": 35,
+			"target_health": 100,
+			"weapon": "deagle"
+		},
+		{
+			"action": "buy_ak",
+			"ammo": 7,
+			"at_seconds": 1.125,
+			"description": "B：打开购买面板",
+			"dropped_weapons": 0,
+			"money": 4000,
+			"reserve": 35,
+			"target_health": 100,
+			"weapon": "deagle"
+		},
+		{
+			"action": "close_buy",
+			"ammo": 30,
+			"at_seconds": 1.825,
+			"description": "AK-47 已购买 · 余额来自实际经济系统",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "slot2",
+			"ammo": 30,
+			"at_seconds": 2.125,
+			"description": "2：切换副武器沙漠之鹰",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "range",
+			"ammo": 7,
+			"at_seconds": 2.525,
+			"description": "2：切换副武器沙漠之鹰",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 35,
+			"target_health": 100,
+			"weapon": "deagle"
+		},
+		{
+			"action": "prepare_deagle_body",
+			"ammo": 7,
+			"at_seconds": 3.125,
+			"description": "沙漠之鹰 · 身体命中测试",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 35,
+			"target_health": 100,
+			"weapon": "deagle"
+		},
+		{
+			"action": "fire_trial",
+			"ammo": 6,
+			"at_seconds": 4.025,
+			"description": "沙漠之鹰 · 身体命中测试",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 35,
+			"target_health": 100,
+			"weapon": "deagle"
+		},
+		{
+			"action": "prepare_deagle_head",
+			"ammo": 6,
+			"at_seconds": 7.425,
+			"description": "沙漠之鹰 · 爆头测试",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 35,
+			"target_health": 100,
+			"weapon": "deagle"
+		},
+		{
+			"action": "fire_trial",
+			"ammo": 5,
+			"at_seconds": 9.025,
+			"description": "沙漠之鹰 · 爆头测试",
+			"dropped_weapons": 0,
+			"money": 1300,
+			"reserve": 35,
+			"target_health": 100,
+			"weapon": "deagle"
+		},
+		{
+			"action": "new_round_range",
+			"ammo": 30,
+			"at_seconds": 12.025,
+			"description": "新一轮固定靶演练 · 切换 AK-47",
+			"dropped_weapons": 0,
+			"money": 4850,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "slot1",
+			"ammo": 30,
+			"at_seconds": 12.525,
+			"description": "1：切换主武器 AK-47",
+			"dropped_weapons": 0,
+			"money": 4850,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "prepare_ak_body",
+			"ammo": 30,
+			"at_seconds": 13.025,
+			"description": "AK-47 · 身体命中测试",
+			"dropped_weapons": 0,
+			"money": 4850,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "fire_trial",
+			"ammo": 29,
+			"at_seconds": 14.025,
+			"description": "AK-47 · 身体命中测试",
+			"dropped_weapons": 0,
+			"money": 4850,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "prepare_ak_head",
+			"ammo": 29,
+			"at_seconds": 17.425,
+			"description": "AK-47 · 爆头测试",
+			"dropped_weapons": 0,
+			"money": 4850,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "fire_trial",
+			"ammo": 28,
+			"at_seconds": 19.025,
+			"description": "AK-47 · 爆头测试",
+			"dropped_weapons": 0,
+			"money": 4850,
+			"reserve": 90,
+			"target_health": 100,
+			"weapon": "ak"
+		},
+		{
+			"action": "damage_summary",
+			"ammo": 28,
+			"at_seconds": 21.025,
+			"description": "四次命中均由实际物理射线结算",
+			"dropped_weapons": 1,
+			"money": 8400,
+			"reserve": 90,
+			"target_health": 0,
+			"weapon": "ak"
+		}
+	],
+	"ak_price": 2700,
+	"bullet_speed": 500.0,
+	"case": "damage",
+	"character": "weishidaier",
+	"duration_seconds": 23.5250000000003,
+	"failures": [],
+	"final_inventory": {
+		"aim": "(0.997308, -0.073331)",
+		"alive": true,
+		"ammo": 28,
+		"current_weapon": "ak",
+		"deaths": 0,
+		"display_name": "维什戴尔 · 演示玩家",
+		"health": 100,
+		"kills": 2,
+		"last_shot_weapon": "ak",
+		"loadout": {
+			"ak": {
+				"ammo": 28,
+				"reserve": 90
+			},
+			"deagle": {
+				"ammo": 7,
+				"reserve": 35
+			}
+		},
+		"money": 8400,
+		"peer_id": 1,
+		"position": "(1056.0, 820.0)",
+		"reload_remaining": 0.0,
+		"reloading": false,
+		"reserve": 90,
+		"shot_sequence": 4,
+		"team": "CT",
+		"velocity": "(0.0, 0.0)"
+	},
+	"fixture_disclosure": "Local recording choreography repositions/reset existing targets and starts rounds. Input uses native B/G/F/R/1/2 key events and actual HUD mouse clicks. Production request_action, authority_tick, _try_fire and PhysicsDirectSpaceState2D projectile sweeps execute all outcomes. No health reduction is scripted.",
+	"movie_output_note": "Actual encoded dimensions are measured with ffprobe; MovieMaker may initialize at UserSettings size before this scene sets its viewport.",
+	"observed_damage": [
+		{
+			"at_seconds": 4.258,
+			"before": 100,
+			"expected_damage": 25,
+			"headshot": false,
+			"health_after": 75,
+			"health_before": 100,
+			"observed_damage": 25,
+			"weapon": "deagle"
+		},
+		{
+			"at_seconds": 9.292,
+			"before": 100,
+			"expected_damage": 100,
+			"headshot": true,
+			"health_after": 0,
+			"health_before": 100,
+			"observed_damage": 100,
+			"weapon": "deagle"
+		},
+		{
+			"at_seconds": 14.258,
+			"before": 100,
+			"expected_damage": 20,
+			"headshot": false,
+			"health_after": 80,
+			"health_before": 100,
+			"observed_damage": 20,
+			"weapon": "ak"
+		},
+		{
+			"at_seconds": 19.292,
+			"before": 100,
+			"expected_damage": 100,
+			"headshot": true,
+			"health_after": 0,
+			"health_before": 100,
+			"observed_damage": 100,
+			"weapon": "ak"
+		}
+	],
+	"runtime_viewport": [
+		1280,
+		720
+	],
+	"scene": "res://scene/pvp/mirage_pvp.tscn"
+}

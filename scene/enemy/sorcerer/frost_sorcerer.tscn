@@ -104,3 +104,6 @@ animation = &"spawn"
 
 [node name="SummonAnimationPlayer" type="AnimationPlayer" parent="." index="6"]
 libraries/ = SubResource("AnimationLibrary_summon")
+
+[node name="HealthBar" parent="."]
+sprite_content_rect = Rect2(-14, -11, 29, 30)

@@ -1,0 +1,20 @@
+{
+  "case": "damage",
+  "arguments": [
+    "--path",
+    "C:\\Users\\wh\\Documents\\arc-nice",
+    "--resolution",
+    "1280x720",
+    "--fixed-fps",
+    "30",
+    "--write-movie",
+    "C:\\Users\\wh\\Documents\\arc-nice\\reports\\mirage_demos\\2026-09-07\\04-damage.avi",
+    "res://dev_tools/mirage_demos/combat_demo.tscn",
+    "--log-file",
+    "C:\\Users\\wh\\Documents\\arc-nice\\tmp\\mirage_demos\\04-damage.log",
+    "--",
+    "--case=damage",
+    "--result=res://reports/mirage_demos/2026-09-07/combat-damage-result.json"
+  ],
+  "pid": 5624
+}

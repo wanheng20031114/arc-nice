@@ -1,0 +1,606 @@
+[gd_scene load_steps=16 format=3]
+
+[ext_resource type="Script" path="res://scene/vehicle_mode/ui/vehicle_combat_hud.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+[ext_resource type="Texture2D" path="res://resources/texture/player/vehicle/mini_combat_car.png" id="3_vehicle"]
+[ext_resource type="Shader" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="4_shader"]
+
+[sub_resource type="StyleBoxFlat" id="Style_header"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 12.0
+bg_color = Color(0.02, 0.042, 0.067, 0.94)
+border_width_bottom = 2
+border_color = Color(0.18, 0.62, 0.75, 0.86)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_left = 4
+corner_radius_bottom_right = 4
+
+[sub_resource type="StyleBoxFlat" id="Style_telemetry"]
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+bg_color = Color(0.02, 0.042, 0.067, 0.93)
+border_width_left = 2
+border_color = Color(0.18, 0.62, 0.75, 0.86)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_left = 4
+corner_radius_bottom_right = 4
+
+[sub_resource type="StyleBoxFlat" id="Style_track"]
+bg_color = Color(0.15, 0.24, 0.28, 0.9)
+corner_radius_top_left = 1
+corner_radius_top_right = 1
+corner_radius_bottom_left = 1
+corner_radius_bottom_right = 1
+
+[sub_resource type="StyleBoxFlat" id="Style_fill"]
+bg_color = Color(0.35, 0.87, 0.98, 1)
+corner_radius_top_left = 1
+corner_radius_top_right = 1
+corner_radius_bottom_left = 1
+corner_radius_bottom_right = 1
+
+[sub_resource type="StyleBoxFlat" id="Style_button"]
+content_margin_left = 16.0
+content_margin_top = 10.0
+content_margin_right = 16.0
+content_margin_bottom = 10.0
+bg_color = Color(0.055, 0.16, 0.2, 1)
+border_width_bottom = 1
+border_color = Color(0.26, 0.71, 0.82, 0.8)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_left = 3
+corner_radius_bottom_right = 3
+
+[sub_resource type="StyleBoxFlat" id="Style_health_fill"]
+bg_color = Color(1, 1, 1, 1)
+corner_radius_top_left = 1
+corner_radius_top_right = 1
+corner_radius_bottom_left = 1
+corner_radius_bottom_right = 1
+
+[sub_resource type="StyleBoxFlat" id="Style_button_hover"]
+content_margin_left = 16.0
+content_margin_top = 10.0
+content_margin_right = 16.0
+content_margin_bottom = 10.0
+bg_color = Color(0.10, 0.29, 0.35, 1)
+border_width_bottom = 2
+border_color = Color(0.48, 0.94, 1, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_left = 3
+corner_radius_bottom_right = 3
+
+[sub_resource type="StyleBoxFlat" id="Style_button_pressed"]
+content_margin_left = 16.0
+content_margin_top = 10.0
+content_margin_right = 16.0
+content_margin_bottom = 10.0
+bg_color = Color(0.025, 0.095, 0.13, 1)
+border_width_bottom = 1
+border_color = Color(0.35, 0.87, 0.98, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_left = 3
+corner_radius_bottom_right = 3
+
+[sub_resource type="StyleBoxFlat" id="Style_result"]
+content_margin_left = 38.0
+content_margin_top = 32.0
+content_margin_right = 38.0
+content_margin_bottom = 30.0
+bg_color = Color(0.02, 0.042, 0.067, 0.98)
+border_width_top = 3
+border_color = Color(0.35, 0.87, 0.98, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_left = 5
+corner_radius_bottom_right = 5
+
+[sub_resource type="ShaderMaterial" id="Material_portrait"]
+resource_local_to_scene = true
+shader = ExtResource("4_shader")
+shader_parameter/paint_recolor_enabled = true
+shader_parameter/paint_color = Color(0.086, 0.686, 0.91, 1)
+
+[sub_resource type="Theme" id="Theme_hud"]
+default_font = ExtResource("2_font")
+default_font_size = 14
+Button/colors/font_color = Color(0.78, 0.95, 0.98, 1)
+Button/colors/font_hover_color = Color(0.94, 0.99, 1, 1)
+Button/colors/font_pressed_color = Color(0.35, 0.87, 0.98, 1)
+Button/colors/font_focus_color = Color(0.94, 0.99, 1, 1)
+Button/colors/font_disabled_color = Color(0.38, 0.48, 0.53, 1)
+Button/styles/normal = SubResource("Style_button")
+Button/styles/hover = SubResource("Style_button_hover")
+Button/styles/focus = SubResource("Style_button_hover")
+Button/styles/pressed = SubResource("Style_button_pressed")
+Button/styles/disabled = SubResource("Style_button_pressed")
+Label/colors/font_color = Color(0.85, 0.92, 0.95, 1)
+ProgressBar/styles/background = SubResource("Style_track")
+ProgressBar/styles/fill = SubResource("Style_fill")
+
+[node name="VehicleCombatHUD" type="CanvasLayer"]
+process_mode = 3
+layer = 16
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = SubResource("Theme_hud")
+
+[node name="Cockpit" type="Control" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TopBar" type="PanelContainer" parent="Root/Cockpit"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 24.0
+offset_top = 20.0
+offset_right = -24.0
+offset_bottom = 114.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("Style_header")
+
+[node name="Row" type="HBoxContainer" parent="Root/Cockpit/TopBar"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 22
+
+[node name="Identity" type="HBoxContainer" parent="Root/Cockpit/TopBar/Row"]
+custom_minimum_size = Vector2(175, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="VehiclePortrait" type="TextureRect" parent="Root/Cockpit/TopBar/Row/Identity"]
+unique_name_in_owner = true
+texture_filter = 1
+material = SubResource("Material_portrait")
+custom_minimum_size = Vector2(46, 46)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("3_vehicle")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Labels" type="VBoxContainer" parent="Root/Cockpit/TopBar/Row/Identity"]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 1
+
+[node name="Title" type="Label" parent="Root/Cockpit/TopBar/Row/Identity/Labels"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 23
+text = "小车突围"
+
+[node name="Mode" type="Label" parent="Root/Cockpit/TopBar/Row/Identity/Labels"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.69, 0.75, 1)
+theme_override_font_sizes/font_size = 11
+text = "VEHICLE / 生存战"
+
+[node name="Divider" type="ColorRect" parent="Root/Cockpit/TopBar/Row"]
+custom_minimum_size = Vector2(1, 0)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.22, 0.37, 0.42, 0.6)
+
+[node name="WaveContent" type="VBoxContainer" parent="Root/Cockpit/TopBar/Row"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Heading" type="HBoxContainer" parent="Root/Cockpit/TopBar/Row/WaveContent"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 9
+
+[node name="WaveIndex" type="Label" parent="Root/Cockpit/TopBar/Row/WaveContent/Heading"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.87, 0.98, 1)
+theme_override_font_sizes/font_size = 30
+text = "01"
+
+[node name="WaveTotal" type="Label" parent="Root/Cockpit/TopBar/Row/WaveContent/Heading"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.69, 0.75, 1)
+theme_override_font_sizes/font_size = 16
+text = "/ 12"
+vertical_alignment = 1
+
+[node name="WaveTitle" type="Label" parent="Root/Cockpit/TopBar/Row/WaveContent/Heading"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "引擎就绪"
+vertical_alignment = 1
+text_overrun_behavior = 3
+
+[node name="WaveProgress" type="ProgressBar" parent="Root/Cockpit/TopBar/Row/WaveContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 4)
+layout_mode = 2
+mouse_filter = 2
+max_value = 1.0
+step = 0.001
+show_percentage = false
+
+[node name="Status" type="HBoxContainer" parent="Root/Cockpit/TopBar/Row/WaveContent"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="PhaseLabel" type="Label" parent="Root/Cockpit/TopBar/Row/WaveContent/Status"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.58, 0.69, 0.75, 1)
+theme_override_font_sizes/font_size = 11
+text = "保持移动，清除所有敌人"
+text_overrun_behavior = 3
+
+[node name="ProgressLabel" type="Label" parent="Root/Cockpit/TopBar/Row/WaveContent/Status"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.66, 0.8, 0.85, 1)
+theme_override_font_sizes/font_size = 11
+text = "0 / 0 已击破"
+
+[node name="Remaining" type="VBoxContainer" parent="Root/Cockpit/TopBar/Row"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="Caption" type="Label" parent="Root/Cockpit/TopBar/Row/Remaining"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.69, 0.75, 1)
+theme_override_font_sizes/font_size = 11
+text = "场上敌人"
+horizontal_alignment = 1
+
+[node name="AliveLabel" type="Label" parent="Root/Cockpit/TopBar/Row/Remaining"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "00"
+horizontal_alignment = 1
+
+[node name="InventoryButton" type="Button" parent="Root/Cockpit/TopBar/Row"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 40)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 13
+text = "战车档案"
+tooltip_text = "查看车体属性与本局收藏品"
+
+[node name="Countdown" type="VBoxContainer" parent="Root/Cockpit"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 10
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -180.0
+offset_top = 134.0
+offset_right = 180.0
+offset_bottom = 236.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="CountdownTitle" type="Label" parent="Root/Cockpit/Countdown"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
+theme_override_colors/font_outline_color = Color(0.012, 0.02, 0.03, 1)
+theme_override_constants/outline_size = 5
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 16
+text = "第 01 波即将开始"
+horizontal_alignment = 1
+
+[node name="CountdownNumber" type="Label" parent="Root/Cockpit/Countdown"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.87, 0.98, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
+theme_override_colors/font_outline_color = Color(0.012, 0.02, 0.03, 1)
+theme_override_constants/outline_size = 6
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 48
+text = "03"
+horizontal_alignment = 1
+
+[node name="Telemetry" type="PanelContainer" parent="Root/Cockpit"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -150.0
+offset_right = 374.0
+offset_bottom = -24.0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("Style_telemetry")
+
+[node name="Row" type="HBoxContainer" parent="Root/Cockpit/Telemetry"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 22
+
+[node name="Speed" type="VBoxContainer" parent="Root/Cockpit/Telemetry/Row"]
+custom_minimum_size = Vector2(78, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="Caption" type="Label" parent="Root/Cockpit/Telemetry/Row/Speed"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.69, 0.75, 1)
+theme_override_font_sizes/font_size = 11
+text = "速度 / 100"
+
+[node name="SpeedLabel" type="Label" parent="Root/Cockpit/Telemetry/Row/Speed"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 34
+text = "000"
+
+[node name="SpeedBar" type="ProgressBar" parent="Root/Cockpit/Telemetry/Row/Speed"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 3)
+layout_mode = 2
+mouse_filter = 2
+max_value = 1.0
+step = 0.001
+show_percentage = false
+
+[node name="GearLabel" type="Label" parent="Root/Cockpit/Telemetry/Row/Speed"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.87, 0.98, 1)
+theme_override_font_sizes/font_size = 11
+text = "驻车"
+
+[node name="Systems" type="VBoxContainer" parent="Root/Cockpit/Telemetry/Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="HealthRow" type="HBoxContainer" parent="Root/Cockpit/Telemetry/Row/Systems"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Caption" type="Label" parent="Root/Cockpit/Telemetry/Row/Systems/HealthRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.58, 0.69, 0.75, 1)
+theme_override_font_sizes/font_size = 12
+text = "车体耐久"
+vertical_alignment = 1
+
+[node name="HealthLabel" type="Label" parent="Root/Cockpit/Telemetry/Row/Systems/HealthRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "100 / 100"
+
+[node name="HealthBar" type="ProgressBar" parent="Root/Cockpit/Telemetry/Row/Systems"]
+unique_name_in_owner = true
+modulate = Color(0.35, 0.87, 0.98, 1)
+custom_minimum_size = Vector2(0, 6)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/fill = SubResource("Style_health_fill")
+max_value = 1.0
+step = 0.001
+value = 1.0
+show_percentage = false
+
+[node name="AmmoRow" type="HBoxContainer" parent="Root/Cockpit/Telemetry/Row/Systems"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="AmmoCaption" type="Label" parent="Root/Cockpit/Telemetry/Row/Systems/AmmoRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.58, 0.69, 0.75, 1)
+theme_override_font_sizes/font_size = 12
+text = "弹药"
+
+[node name="AmmoLabel" type="Label" parent="Root/Cockpit/Telemetry/Row/Systems/AmmoRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "30 / 30"
+
+[node name="AmmoBar" type="ProgressBar" parent="Root/Cockpit/Telemetry/Row/Systems"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 4)
+layout_mode = 2
+mouse_filter = 2
+max_value = 1.0
+step = 0.001
+value = 1.0
+show_percentage = false
+
+[node name="Controls" type="PanelContainer" parent="Root/Cockpit"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -348.0
+offset_top = -150.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("Style_header")
+
+[node name="Content" type="VBoxContainer" parent="Root/Cockpit/Controls"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="SkillRow" type="HBoxContainer" parent="Root/Cockpit/Controls/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="SkillLabel" type="Label" parent="Root/Cockpit/Controls/Content/SkillRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 14
+text = "E  战车技能"
+text_overrun_behavior = 3
+
+[node name="SkillStatus" type="Label" parent="Root/Cockpit/Controls/Content/SkillRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.87, 0.98, 1)
+theme_override_font_sizes/font_size = 12
+text = "充能 0%"
+
+[node name="SkillBar" type="ProgressBar" parent="Root/Cockpit/Controls/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 3)
+layout_mode = 2
+mouse_filter = 2
+max_value = 1.0
+step = 0.001
+show_percentage = false
+
+[node name="DrivingHint" type="Label" parent="Root/Cockpit/Controls/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.66, 0.76, 0.81, 1)
+theme_override_font_sizes/font_size = 12
+text = "W / S 前进·倒车    A / D 转向"
+text_overrun_behavior = 3
+
+[node name="WeaponHint" type="Label" parent="Root/Cockpit/Controls/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.66, 0.76, 0.81, 1)
+theme_override_font_sizes/font_size = 12
+text = "鼠标左键 开火    R 装填    Esc 暂停"
+text_overrun_behavior = 3
+
+[node name="ResultOverlay" type="Control" parent="Root"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="Root/ResultOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.005, 0.012, 0.025, 0.83)
+
+[node name="Center" type="CenterContainer" parent="Root/ResultOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="ResultPanel" type="PanelContainer" parent="Root/ResultOverlay/Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(460, 292)
+layout_mode = 2
+theme_override_styles/panel = SubResource("Style_result")
+
+[node name="Content" type="VBoxContainer" parent="Root/ResultOverlay/Center/ResultPanel"]
+layout_mode = 2
+theme_override_constants/separation = 13
+
+[node name="ResultEyebrow" type="Label" parent="Root/ResultOverlay/Center/ResultPanel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.69, 0.75, 1)
+theme_override_font_sizes/font_size = 13
+text = "12 / 12 波次完成"
+horizontal_alignment = 1
+
+[node name="ResultTitle" type="Label" parent="Root/ResultOverlay/Center/ResultPanel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.87, 0.98, 1)
+theme_override_font_sizes/font_size = 38
+text = "突围成功"
+horizontal_alignment = 1
+
+[node name="ResultDetail" type="Label" parent="Root/ResultOverlay/Center/ResultPanel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/font_color = Color(0.68, 0.79, 0.84, 1)
+theme_override_constants/line_spacing = 3
+theme_override_font_sizes/font_size = 15
+text = "最后一波敌人已清空。\n这辆小车，撑到了最后。"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ReturnButton" type="Button" parent="Root/ResultOverlay/Center/ResultPanel/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 16
+text = "返回主菜单"
+
+[connection signal="pressed" from="Root/Cockpit/TopBar/Row/InventoryButton" to="." method="_on_inventory_pressed"]
+[connection signal="pressed" from="Root/ResultOverlay/Center/ResultPanel/Content/ReturnButton" to="." method="_on_return_pressed"]

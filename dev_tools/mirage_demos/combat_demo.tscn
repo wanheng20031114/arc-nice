@@ -1,0 +1,83 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://scene/pvp/mirage_pvp.tscn" id="1"]
+[ext_resource type="Script" path="res://dev_tools/mirage_demos/combat_demo.gd" id="2"]
+
+[sub_resource type="StyleBoxFlat" id="DemoPanel"]
+bg_color = Color(0.035, 0.055, 0.065, 0.94)
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+border_width_left = 3
+border_color = Color(0.88, 0.7, 0.42, 1)
+
+[node name="MpGame" instance=ExtResource("1")]
+script = ExtResource("2")
+
+[node name="DemoOverlay" type="CanvasLayer" parent="."]
+layer = 24
+
+[node name="ActionPanel" type="PanelContainer" parent="DemoOverlay"]
+offset_left = 28.0
+offset_top = 450.0
+offset_right = 690.0
+offset_bottom = 568.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("DemoPanel")
+
+[node name="Rows" type="VBoxContainer" parent="DemoOverlay/ActionPanel"]
+layout_mode = 2
+theme_override_constants/separation = 5
+mouse_filter = 2
+
+[node name="Title" type="Label" parent="DemoOverlay/ActionPanel/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.86, 0.71, 0.46, 1)
+text = "03 / 枪械操作"
+
+[node name="Action" type="Label" parent="DemoOverlay/ActionPanel/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "出生自带沙漠之鹰"
+
+[node name="Note" type="Label" parent="DemoOverlay/ActionPanel/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.69, 0.77, 0.78, 1)
+text = "本地演练 · 真实库存与弹药"
+
+[node name="TargetPanel" type="PanelContainer" parent="DemoOverlay"]
+offset_left = 967.0
+offset_top = 280.0
+offset_right = 1252.0
+offset_bottom = 520.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("DemoPanel")
+
+[node name="Rows" type="VBoxContainer" parent="DemoOverlay/TargetPanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Label" type="Label" parent="DemoOverlay/TargetPanel/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+theme_override_colors/font_color = Color(0.86, 0.71, 0.46, 1)
+text = "固定靶 · 实时生命读数"
+
+[node name="Health" type="Label" parent="DemoOverlay/TargetPanel/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 34
+text = "100 / 100"
+
+[node name="Detail" type="Label" parent="DemoOverlay/TargetPanel/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "沙漠之鹰 · 瞄准身体"
+
+[node name="Results" type="Label" parent="DemoOverlay/TargetPanel/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.79, 0.86, 0.85, 1)
+text = "每次试验重置固定靶"

@@ -1,0 +1,57 @@
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="1_wave"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="3_exit"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_combat.ogg" id="4_music"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_intermission.ogg" id="5_rest_music"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="yuanshi_insect_basic"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="yuanshi_insect_fast"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="yuanshi_insect_fire_ranged"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_knight.tres" id="capoo_knight"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_ak47.tres" id="capoo_ak47"]
+
+[sub_resource type="Resource" id="Entry_yuanshi_insect_basic"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("yuanshi_insect_basic")
+count = 10
+
+[sub_resource type="Resource" id="Entry_yuanshi_insect_fast"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("yuanshi_insect_fast")
+count = 10
+
+[sub_resource type="Resource" id="Entry_yuanshi_insect_fire_ranged"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("yuanshi_insect_fire_ranged")
+count = 6
+
+[sub_resource type="Resource" id="Entry_capoo_knight"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("capoo_knight")
+count = 6
+
+[sub_resource type="Resource" id="Entry_capoo_ak47"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("capoo_ak47")
+count = 6
+
+[sub_resource type="Resource" id="Exit_next_wave"]
+script = ExtResource("3_exit")
+target_step_id = &"wave_07"
+
+[resource]
+script = ExtResource("1_wave")
+wave_name = "第6波 猫虫伏击"
+enemy_entries = Array[ExtResource("2_entry")]([SubResource("Entry_yuanshi_insect_basic"), SubResource("Entry_yuanshi_insect_fast"), SubResource("Entry_yuanshi_insect_fire_ranged"), SubResource("Entry_capoo_knight"), SubResource("Entry_capoo_ak47")])
+spawn_point_order = 1
+spawn_interval = 0.65
+spawn_count_per_tick = 1
+max_alive_enemies = 11
+music = ExtResource("4_music")
+post_wave_music = ExtResource("5_rest_music")
+step_id = &"wave_06"
+display_name = "第6波 猫虫伏击"
+post_clear_rest_duration = 4.0
+exits = Array[ExtResource("3_exit")]([SubResource("Exit_next_wave")])
+editor_position = Vector2(480, 340)

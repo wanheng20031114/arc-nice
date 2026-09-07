@@ -71,3 +71,6 @@ bus = &"SFX"
 volume_db = -18.0
 max_distance = 180.0
 max_polyphony = 3
+
+[node name="HealthBar" parent="."]
+sprite_content_rect = Rect2(-64, -49, 93, 78)

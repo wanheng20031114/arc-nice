@@ -18,3 +18,6 @@ sprite_frames = ExtResource("2_intact")
 
 [node name="ShieldFxSprite" parent="ShieldFacingRoot" index="1"]
 sprite_frames = ExtResource("6_fx")
+
+[node name="HealthBar" parent="."]
+sprite_content_rect = Rect2(-8, -12, 22, 24)

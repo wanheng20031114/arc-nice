@@ -1,0 +1,65 @@
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="1_wave"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="2_entry"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="3_exit"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_town_combat.ogg" id="4_music"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_town_intermission.ogg" id="5_rest_music"]
+[ext_resource type="Resource" path="res://resources/config/enemies/stone_eroded_yuanshi_insect_basic.tres" id="stone_eroded_yuanshi_insect_basic"]
+[ext_resource type="Resource" path="res://resources/config/enemies/stone_eroded_yuanshi_insect_fast.tres" id="stone_eroded_yuanshi_insect_fast"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot.tres" id="combat_robot"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_gunner.tres" id="combat_robot_gunner"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_shield_bearer.tres" id="combat_robot_shield_bearer"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_ninja.tres" id="combat_robot_ninja"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_main_battle_elite.tres" id="combat_robot_main_battle_elite"]
+
+[sub_resource type="Resource" id="Entry_stone_eroded_yuanshi_insect_basic"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("stone_eroded_yuanshi_insect_basic")
+count = 20
+
+[sub_resource type="Resource" id="Entry_stone_eroded_yuanshi_insect_fast"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("stone_eroded_yuanshi_insect_fast")
+count = 20
+
+[sub_resource type="Resource" id="Entry_combat_robot"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("combat_robot")
+count = 12
+
+[sub_resource type="Resource" id="Entry_combat_robot_gunner"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("combat_robot_gunner")
+count = 6
+
+[sub_resource type="Resource" id="Entry_combat_robot_shield_bearer"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("combat_robot_shield_bearer")
+count = 4
+
+[sub_resource type="Resource" id="Entry_combat_robot_ninja"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("combat_robot_ninja")
+count = 2
+
+[sub_resource type="Resource" id="Entry_combat_robot_main_battle_elite"]
+script = ExtResource("2_entry")
+enemy_config = ExtResource("combat_robot_main_battle_elite")
+count = 1
+
+[resource]
+script = ExtResource("1_wave")
+wave_name = "第12波 主战终局"
+enemy_entries = Array[ExtResource("2_entry")]([SubResource("Entry_stone_eroded_yuanshi_insect_basic"), SubResource("Entry_stone_eroded_yuanshi_insect_fast"), SubResource("Entry_combat_robot"), SubResource("Entry_combat_robot_gunner"), SubResource("Entry_combat_robot_shield_bearer"), SubResource("Entry_combat_robot_ninja"), SubResource("Entry_combat_robot_main_battle_elite")])
+spawn_point_order = 1
+spawn_interval = 0.5
+spawn_count_per_tick = 1
+max_alive_enemies = 20
+music = ExtResource("4_music")
+post_wave_music = ExtResource("5_rest_music")
+step_id = &"wave_12"
+display_name = "第12波 主战终局"
+post_clear_rest_duration = 4.0
+exits = Array[ExtResource("3_exit")]([])
+editor_position = Vector2(1200, 560)

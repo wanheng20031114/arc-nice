@@ -5,6 +5,7 @@
 [ext_resource type="AudioStream" uid="uid://4xnlqa7gq1qw" path="res://resources/audio/cowboy_monsterhit.wav" id="3_hit_audio"]
 [ext_resource type="AudioStream" uid="uid://dtcpsyjgcfb6m" path="res://resources/audio/cowboy_monsterdie.wav" id="4_death_audio"]
 [ext_resource type="Texture2D" path="res://resources/texture/enemy/enemy_ground_shadow.tres" id="5_ground_shadow"]
+[ext_resource type="PackedScene" path="res://scene/enemy/ui/enemy_health_bar.tscn" id="6_health_bar"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_enemy"]
 resource_local_to_scene = false
@@ -73,3 +74,7 @@ z_as_relative = false
 texture_filter = 2
 use_parent_material = false
 texture = ExtResource("5_ground_shadow")
+
+[node name="HealthBar" parent="." instance=ExtResource("6_health_bar")]
+
+[connection signal="health_changed" from="." to="HealthBar" method="set_health"]

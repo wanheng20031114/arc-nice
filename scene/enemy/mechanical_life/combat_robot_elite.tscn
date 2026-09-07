@@ -11,3 +11,6 @@ sprite_frames = ExtResource("2_frames")
 [node name="WindupWarning" parent="." index="6"]
 color = Color(0.615686, 0.305882, 0.866667, 0.06)
 polygon = PackedVector2Array(0, -3, 182, -3, 182, 3, 0, 3)
+
+[node name="HealthBar" parent="."]
+sprite_content_rect = Rect2(-8, -9, 20, 21)
