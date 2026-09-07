@@ -1424,10 +1424,24 @@ func _ensure_registration_active_for_tick(
 	if registration == null or registration.tombstone:
 		return false
 	if registration.activation_check_physics_frame == physics_frame:
-		return _registration_remains_active_this_tick(
-			registration,
-			physics_frame
-		)
+		# Each phase still observes immediate death, suspension and deletion. Only
+		# the outer guards already proven above are shared with this same-tick path.
+		if (
+			not registration.active_this_tick
+			or registration.last_authoritative_physics_frame != physics_frame
+			or registration.suspended
+		):
+			return false
+		var current_enemy := registration.enemy
+		if (
+			current_enemy == null
+			or not is_instance_valid(current_enemy)
+			or current_enemy.is_queued_for_deletion()
+			or current_enemy.is_dead
+		):
+			_mark_tombstone(registration, true)
+			return false
+		return true
 	registration.activation_check_physics_frame = physics_frame
 	registration.active_this_tick = false
 	var enemy := registration.enemy
@@ -1458,31 +1472,6 @@ func _ensure_simulation_tick_for_physics_frame(physics_frame: int) -> bool:
 	_last_simulation_physics_frame = physics_frame
 	_simulation_tick += 1
 	_metric_physics_tick_count += 1
-	return true
-
-
-func _registration_remains_active_this_tick(
-	registration: Registration,
-	physics_frame: int
-) -> bool:
-	if (
-		registration == null
-		or registration.tombstone
-		or not registration.active_this_tick
-		or registration.activation_check_physics_frame != physics_frame
-		or registration.last_authoritative_physics_frame != physics_frame
-		or registration.suspended
-	):
-		return false
-	var enemy := registration.enemy
-	if (
-		enemy == null
-		or not is_instance_valid(enemy)
-		or enemy.is_queued_for_deletion()
-		or enemy.is_dead
-	):
-		_mark_tombstone(registration, true)
-		return false
 	return true
 
 
@@ -3939,6 +3928,10 @@ func _unregister_contact_proxy(registration: Registration) -> void:
 	if registration == null or not registration.contact_proxy_registered:
 		return
 	var enemy := registration.enemy
+	if enemy != null and is_instance_valid(enemy):
+		# A suspended registration no longer owns indexed contact snapshots.
+		# The enemy's deferred commit restores the authored live Area state.
+		enemy.set_indexed_touch_authority(false)
 	# Producer/work buffers may currently own this Registration. Clearing its
 	# membership flags cancels either copy in O(1); the next sparse drain skips it.
 	_set_indexed_touch_nonempty_player_membership(registration, false)
