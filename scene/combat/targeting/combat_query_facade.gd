@@ -294,6 +294,28 @@ func query_world_aabb_into(
 	include_plants: bool = true,
 	include_enemies: bool = true
 ) -> void:
+	query_world_aabb_unordered_into(
+		world_aabb, result, excluded_target,
+		include_players, include_plants, include_enemies
+	)
+	result.sort_custom(
+		func(a: Node2D, b: Node2D) -> bool:
+			return _is_stable_candidate_before(a, b)
+	)
+	_limit_result(result, max_count)
+
+
+## Complete visibility set without combat priority or a count limit. Minimap
+## density aggregation is order-independent; sorting every sampled enemy twice
+## used to turn a presentation timer into a full-frame CPU spike.
+func query_world_aabb_unordered_into(
+	world_aabb: Rect2,
+	result: Array[Node2D],
+	excluded_target: Node2D = null,
+	include_players: bool = true,
+	include_plants: bool = true,
+	include_enemies: bool = true
+) -> void:
 	result.clear()
 	if (
 		_runtime == null
@@ -322,18 +344,13 @@ func query_world_aabb_into(
 				result.append(plant)
 	if include_enemies:
 		_enemy_scratch.clear()
-		_runtime.combat_target_index.query_world_aabb_into(
+		_runtime.combat_target_index.query_world_aabb_unordered_into(
 			normalized_aabb,
 			_enemy_scratch
 		)
 		for enemy in _enemy_scratch:
 			if enemy != excluded_target:
 				result.append(enemy)
-	result.sort_custom(
-		func(a: Node2D, b: Node2D) -> bool:
-			return _is_stable_candidate_before(a, b)
-	)
-	_limit_result(result, max_count)
 
 
 ## Faction-aware AABB broadphase for contact simulation. Unlike the generic

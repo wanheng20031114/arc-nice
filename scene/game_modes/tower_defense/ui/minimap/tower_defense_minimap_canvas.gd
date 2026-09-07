@@ -119,11 +119,10 @@ func _sample_world_entities() -> void:
 	var enemy_positions := PackedVector2Array()
 	_visible_combat_targets.clear()
 	if combat_query_facade != null:
-		combat_query_facade.query_world_aabb_into(
+		combat_query_facade.query_world_aabb_unordered_into(
 			dynamic_layer.get_overview_world_aabb(),
 			_visible_combat_targets,
 			null,
-			0,
 			false,
 			false,
 			true

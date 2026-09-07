@@ -393,6 +393,17 @@ func query_world_aabb_into(
 	result: Array[Enemy],
 	max_count: int = 0
 ) -> void:
+	query_world_aabb_unordered_into(world_aabb, result)
+	_sort_candidates_by_stable_net_id(result)
+	_limit_result(result, max_count)
+
+
+## Presentation consumes the complete set, so it must not pay for deterministic
+## combat ordering. Keep the same bounds, liveness and stale-entry maintenance.
+func query_world_aabb_unordered_into(
+	world_aabb: Rect2,
+	result: Array[Enemy]
+) -> void:
 	result.clear()
 	if (
 		not world_aabb.position.is_finite()
@@ -441,8 +452,6 @@ func query_world_aabb_into(
 						result.append(enemy)
 	for stale_net_id in _stale_enemy_net_ids:
 		_remove_enemy_entry(stale_net_id)
-	_sort_candidates_by_stable_net_id(result)
-	_limit_result(result, max_count)
 
 
 ## Unordered faction-aware broadphase for shared contact simulation. The caller
