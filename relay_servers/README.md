@@ -181,7 +181,7 @@ Relay 只转发 RPC，不重复实现游戏状态逻辑；逻辑 Host 对不兼�
 ```powershell
 python dev_tools/check_relay_rpc_parity.py
 & 'C:/Program Files/Godot/Godot_console.exe' --headless --path . --script res://dev_tools/tower_network_scaling_regression.gd
-& ./dev_tools/run_tower_multiplayer_density_probe.ps1 -Players 6 -Buildings 400 -Enemies 300 -Frames 300
+& ./dev_tools/run_tower_multiplayer_density_probe.ps1 -Players 6 -Buildings 256 -Enemies 300 -Frames 600 -Transport relay -ActiveInput
 ```
 
 检查所有退出码以及日志中的 `SCRIPT ERROR`/`ERROR`，单独的 Godot 退出码 0
@@ -192,6 +192,41 @@ python dev_tools/check_relay_rpc_parity.py
 既有服务升级应保留现有 `.env`，不要把重新初始化当作升级命令。
 新开 Relay 日志应报告协议 98，并核对真实多人注册、开局、生产状态与断线重连。
 当前仓库有首次安装脚本，没有自动更新正在运行的云端服务的流水线。
+
+现有 Linux 部署的可执行检查/更新命令如下。`REPOSITORY` 和 `DEPLOY_ROOT` 由运维填入
+实际检出的发布仓库与现有 `relay_servers` 部署目录；先用现有进程管理器排空房间并停止
+大厅及其 Relay 子进程，再执行复制。仓库没有 systemd unit，不能臆造服务名执行重启。
+
+```bash
+# 在服务器上，将下列两个路径替换为现有部署路径；不要调用 deploy.sh。
+REPOSITORY=/path/to/checked-out-release
+DEPLOY_ROOT=/path/to/existing/relay_servers
+test -f "$DEPLOY_ROOT/.env" || exit 1
+python "$REPOSITORY/dev_tools/check_relay_rpc_parity.py" || exit 1
+# 不打印 .env 内容或 secret。沿用现有 Godot、Relay 项目与端口配置。
+set -a
+. "$DEPLOY_ROOT/.env"
+set +a
+test -n "$RELAY_PROJECT_PATH" && test -n "$GODOT_SERVER_PATH" || exit 1
+test -d "$RELAY_PROJECT_PATH" || exit 1
+cp -a "$REPOSITORY/relay_servers/relay_godot_project/." "$RELAY_PROJECT_PATH/"
+"$GODOT_SERVER_PATH" --headless --editor --path "$RELAY_PROJECT_PATH" --import --quit
+```
+
+确认导入退出码为 0 且没有 `SCRIPT ERROR`/`ERROR` 后，由原进程管理器启动大厅。
+如果现有部署本来就是手动前台运行，可使用仓库已有的启动入口：
+
+```bash
+cd "$DEPLOY_ROOT" && ./scripts/start_lobby.sh
+# 另一个终端验证；实际端口不同则替换 8000。
+curl --fail --silent --show-error http://127.0.0.1:8000/health
+```
+
+`/health` 返回 `status=ok` 只证明大厅存活，不证明 Relay 协议已更新。必须由同一提交
+的 v98 客户端新建房间，在新 Relay 日志核实 `protocol=v98`，完成至少两人开局、移动、
+射击、生产写入与正常离开；旧的已启动 v97 Relay 不会通过复制自动变成 v98。
+本次升级的服务端必要改动仅在 Relay 项目；若现有服务端早于上一 v97 基线，还须按其
+对应发布说明同步大厅 Python 文件。`.env`、票据秘密与现有大厅数据保持由现有部署管理。
 
 ### Mirage PVP v97 配套发布
 
@@ -400,7 +435,7 @@ Relay 重启还会轮换房间 secret，旧进程签发的短票不能跨世代�
 `peer_authenticating` 中向 server peer 1 发送 UTF-8 JSON：
 
 ```json
-{"v":1,"ticket":"ra1....","player_name":"...","character_id":"weishidaier","character_confirmed":true,"protocol_version":97,"reconnect_token":"<32 lowercase hex>","content_manifest_schema":1,"content_digest":"<64 lowercase hex>"}
+{"v":1,"ticket":"ra1....","player_name":"...","character_id":"weishidaier","character_confirmed":true,"protocol_version":98,"reconnect_token":"<32 lowercase hex>","content_manifest_schema":1,"content_digest":"<64 lowercase hex>"}
 ```
 
 Relay 验票成功后先用 `send_auth` 返回 ack，再调用 `complete_auth(peer_id)`：

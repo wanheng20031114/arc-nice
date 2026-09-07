@@ -275,7 +275,7 @@ func _consume_client_frame(
 	if not _authenticated_peers.has(physical_source_peer_id):
 		return
 	if target_peer_id > 1:
-		if _authenticated_peers.has(target_peer_id):
+		if _authenticated_peers.has(target_peer_id) and _physical_peers.has(target_peer_id):
 			var send_error := _send_data_frame(
 				physical_source_peer_id,
 				target_peer_id,
@@ -296,6 +296,7 @@ func _consume_client_frame(
 		if (
 			candidate_peer_id == physical_source_peer_id
 			or candidate_peer_id == excluded_peer_id
+			or not _physical_peers.has(candidate_peer_id)
 		):
 			continue
 		var send_error := _send_data_frame(
@@ -630,6 +631,11 @@ func _write_transport_frame(
 ) -> Error:
 	if _transport == null or _closed:
 		return ERR_UNCONFIGURED
+	# Logical disconnections intentionally wait one poll so queued inbound data
+	# remains consumable. Native ENet has already removed the socket, however:
+	# every immediate/deferred outbound write must use physical reachability.
+	if not _physical_peers.has(physical_target_peer_id):
+		return ERR_CONNECTION_ERROR
 	_transport.set_target_peer(physical_target_peer_id)
 	_transport.set_transfer_mode(packet_mode)
 	_transport.set_transfer_channel(packet_channel)
