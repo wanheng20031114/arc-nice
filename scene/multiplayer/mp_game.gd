@@ -6128,16 +6128,8 @@ func net_production_command_result(result: Dictionary) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 6)
-func net_production_state_batch(
-	net_ids: PackedInt32Array,
-	states: Array,
-	host_sample_times: PackedFloat64Array
-) -> void:
-	tower_economy_coordinator.receive_production_state_batch(
-		net_ids,
-		states,
-		host_sample_times
-	)
+func net_production_state_batch(packet: PackedByteArray) -> void:
+	tower_economy_coordinator.receive_production_state_packet(packet)
 
 
 @warning_ignore("unused_parameter")

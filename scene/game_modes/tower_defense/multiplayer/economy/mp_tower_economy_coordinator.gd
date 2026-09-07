@@ -10,6 +10,9 @@ const ProductionBuildingProtocolScript := preload(
 const PeerReplayResultCacheScript := preload(
 	"res://scene/multiplayer/peer_replay_result_cache.gd"
 )
+const ProductionStateBatchCodec := preload(
+	"res://scene/game_modes/tower_defense/multiplayer/economy/production_state_batch_codec.gd"
+)
 
 const BUILDING_INTERACTION_MAX_DISTANCE := 48.0
 const WAREHOUSE_TRANSACTION_RATE_PER_SECOND := 12.0
@@ -22,7 +25,7 @@ const PRODUCTION_COMMAND_RATE_BURST := 12.0
 const PRODUCTION_SNAPSHOT_REQUEST_RATE_PER_SECOND := 2.0
 const PRODUCTION_SNAPSHOT_REQUEST_RATE_BURST := 4.0
 const PRODUCTION_COMMAND_RESULT_CACHE_SIZE := 256
-const PRODUCTION_STATE_BATCH_MAX_BUILDINGS := 24
+const PRODUCTION_STATE_BATCH_MAX_BUILDINGS := ProductionStateBatchCodec.MAX_BUILDINGS
 const RESEARCH_COMMAND_RATE_PER_SECOND := 4.0
 const RESEARCH_COMMAND_RATE_BURST := 6.0
 const RESEARCH_COMMAND_WIRE_ID_MAX_LENGTH := 128
@@ -492,17 +495,16 @@ func handle_authoritative_production_snapshot_request(
 	):
 		return false
 	var sample_time := _get_gameplay_net_time()
-	rpc_to_peer_requested.emit(
-		sender_id,
-		&"net_production_state_batch",
-		[
-			PackedInt32Array([building_net_id]),
-			[building.export_multiplayer_runtime_state()],
-			PackedFloat64Array([sample_time]),
-		],
-		true
+	var packets := ProductionStateBatchCodec.encode_batches(
+		PackedInt32Array([building_net_id]),
+		[building.export_multiplayer_runtime_state()],
+		PackedFloat64Array([sample_time])
 	)
-	return true
+	for packet in packets:
+		rpc_to_peer_requested.emit(
+			sender_id, &"net_production_state_batch", [packet], true
+		)
+	return not packets.is_empty()
 
 
 func handle_authoritative_research_command(
@@ -677,6 +679,17 @@ func receive_production_command_result(result: Dictionary) -> void:
 	if not state.is_empty():
 		plant_runtime_state_apply_requested.emit(building, state, host_sample_time)
 	building.complete_multiplayer_production_request(result)
+
+
+func receive_production_state_packet(packet: PackedByteArray) -> void:
+	if not is_bound() or _net_manager.is_host():
+		return
+	var batch := ProductionStateBatchCodec.decode_batch(packet)
+	if batch.is_empty():
+		return
+	receive_production_state_batch(
+		batch["net_ids"], batch["states"], batch["host_sample_times"]
+	)
 
 
 func receive_production_state_batch(
@@ -1124,7 +1137,7 @@ func _on_authoritative_production_state_changed(
 	if net_id <= 0:
 		return
 	_pending_production_state_updates[net_id] = {
-		"state": building.export_multiplayer_runtime_state(),
+		"building": building,
 		"host_sample_time": _get_gameplay_net_time(),
 	}
 	_schedule_shared_production_state_flush()
@@ -1194,13 +1207,31 @@ func _flush_shared_production_network_state() -> void:
 		for index in range(offset, chunk_end):
 			var net_id := int(production_ids[index])
 			var update := _pending_production_state_updates.get(net_id, {}) as Dictionary
+			var building_reference: Variant = update.get("building")
+			if not is_instance_valid(building_reference):
+				continue
+			var building := building_reference as ProductionBuilding
+			if (
+				building == null
+				or not is_instance_valid(building)
+				or building.is_dead
+				or building.is_removing
+				or building.is_queued_for_deletion()
+			):
+				continue
 			net_ids.append(net_id)
-			states.append((update.get("state", {}) as Dictionary).duplicate(true))
+			# Several commits may touch this building in one shared production tick.
+			# Export only its final absolute state, once per cohort, at flush time.
+			states.append(building.export_multiplayer_runtime_state())
 			sample_times.append(float(update.get("host_sample_time", 0.0)))
-		rpc_broadcast_requested.emit(
-			&"net_production_state_batch",
-			[net_ids, states, sample_times]
-		)
+		if not net_ids.is_empty():
+			var packets := ProductionStateBatchCodec.encode_batches(
+				net_ids, states, sample_times
+			)
+			if packets.is_empty():
+				push_error("MpTowerEconomyCoordinator: 无法编码权威生产状态批次。")
+			for packet in packets:
+				rpc_broadcast_requested.emit(&"net_production_state_batch", [packet])
 		offset = chunk_end
 	_pending_production_state_updates.clear()
 

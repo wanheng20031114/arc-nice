@@ -33,7 +33,11 @@ relay_servers/
 必须继续逐字节一致。主游戏生产导出继续整体排除
 `relay_servers/*`，不会把大厅后端或 Headless Relay 工程打进客户端。
 
-当前网络基线为协议 v97。应用层使用 CH0..CH8 共 9 条逻辑信道；公网 Relay
+当前网络基线为协议 v98。v98 将塔防生产状态批次改为单个 `PackedByteArray`：
+Host 每批只序列化、ZSTD 压缩一次，再向所有成员复用同一包；按实际压缩字节
+分包至最多 1152 bytes，解压分配上限为 128 KiB。包内仍含完整绝对状态，
+1 Hz 生产语义、reliable CH6、revision/CAS 与重连修复保持一致。v97 客户端与
+Relay stub 使用旧三参数 RPC，必须与客户端一起更新。应用层使用 CH0..CH8 共 9 条逻辑信道；公网 Relay
 的认证感知包装层另使用可靠 CH9 依次发布拓扑并承载 Relay 服务控制，因此公网
 ENet 最大信道索引为 9。v97 新增 `mirage_pvp`（稳定模式 ID 9），成员名单同步
 CT/T 队伍，并新增选队与 PVP 开局 RPC；PVP start 与名单共用 reliable CH8，
@@ -45,7 +49,7 @@ CT/T 队伍，并新增选队与 PVP 开局 RPC；PVP start 与名单共用 reli
 同步阵营变化，并扩展通用目标动作与 Host 投射物来源载荷；敌人高频连发同时
 压缩为 CH4 单次 burst，通过 reliable CH5 收敛命中/取消并分块恢复迟加入客户端
 的活跃视觉弹体。v93 的敌人快照长度、RPC 表面和 rapid-fire 描述符合同均不同，
-不能与当前 v97 安全混联。v93 扩展玩家快照以逐帧绝对复制最终开火间隔和临时表现
+不能与当前 v98 安全混联。v93 扩展玩家快照以逐帧绝对复制最终开火间隔和临时表现
 状态，并把天依 High Noon 目标列表迁入 reliable CH5。v92 将拾取 spawn、原子 collected 终端
 与普通 remove 统一放在 reliable CH5，旧 v91 的 collected 仍在 CH6。
 v91 关闭 `SceneMultiplayer.server_relay` 的私有 mesh，
@@ -160,11 +164,34 @@ v35 的战斗机器人枪手弹丸及玩家受击来源 wire ID 17 保持兼容�
 P3 路线世界继续使用约 12Hz 的轻量角色姿态同步：
 Client 在输入信道上报，Host 校验后在玩家状态信道广播，非法位置通过可靠信道纠正。
 v34 的 P3 路线全量快照携带 `runtime_contract_hash`，Host 与 Client 必须使用相同的世界几何契约；
-v96 及更旧客户端不能加入 v97 房间。
+v97 及更旧客户端不能加入 v98 房间。
 Relay 只转发 RPC，不重复实现游戏状态逻辑；逻辑 Host 对不兼容、重连加载或
 运行时投影超时成员的断开请求会可靠发送至 Relay 服务端（peer 1）。Relay 只
 接受已登记 Host 的请求，并由服务端断开同房目标；普通客户端不能踢出其他成员。
-每次调整主项目 RPC 的名称、注解、参数或通道后，都必须同步对应 stub。旧 parity 烟测已删除；需要自动校验时，应基于当时的完整 RPC 契约重新编写验证。
+每次调整主项目 RPC 的名称、注解、参数或通道后，都必须同步对应 stub。
+
+### 塔防性能 v98 配套发布
+
+本次已更新客户端与 Relay 源码，并提供本地验证；没有连接或部署线上服务器。
+公网房间的 Relay 进程必须使用同版 `relay_server.gd` 与 `relay_mp_game_stub.gd`。
+仅推送 Git 或更新客户端，不会自动升级已经运行的 Relay 进程。
+
+部署前在完整仓库运行：
+
+```powershell
+python dev_tools/check_relay_rpc_parity.py
+& 'C:/Program Files/Godot/Godot_console.exe' --headless --path . --script res://dev_tools/tower_network_scaling_regression.gd
+& ./dev_tools/run_tower_multiplayer_density_probe.ps1 -Players 6 -Buildings 400 -Enemies 300 -Frames 300
+```
+
+检查所有退出码以及日志中的 `SCRIPT ERROR`/`ERROR`，单独的 Godot 退出码 0
+不能证明所有依赖脚本都成功编译。公网发布时先结束或排空旧版活动房间，
+将当前完整 `relay_godot_project` 上传到现有 `RELAY_PROJECT_PATH`，由服务器上
+现有的进程管理方式重启大厅/Launcher，再发布同一提交的客户端并新建房间验证。
+部署脚本 `scripts/deploy.sh` 面向全新安装，会重写 `.env` 与 HMAC 秘密；
+既有服务升级应保留现有 `.env`，不要把重新初始化当作升级命令。
+新开 Relay 日志应报告协议 98，并核对真实多人注册、开局、生产状态与断线重连。
+当前仓库有首次安装脚本，没有自动更新正在运行的云端服务的流水线。
 
 ### Mirage PVP v97 配套发布
 
