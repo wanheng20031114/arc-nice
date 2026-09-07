@@ -33,6 +33,11 @@ relay_servers/
 必须继续逐字节一致。主游戏生产导出继续整体排除
 `relay_servers/*`，不会把大厅后端或 Headless Relay 工程打进客户端。
 
+当同次 ENet poll 收到 DATA 后又收到逻辑 REMOVE，wrapper 在交付前者后才于下一次
+poll 发布断开，并暂缓读取后续帧。这保证 SceneMultiplayer 不会丢弃已入队的断开前
+可靠消息，也保持同一逻辑 ID 再次 ADD 的次序。可运行主工程的
+`dev_tools/relay_disconnect_race_regression.gd` 验证真实 ENet / SceneMultiplayer 顺序。
+
 当前网络基线为协议 v98。v98 将塔防生产状态批次改为单个 `PackedByteArray`：
 Host 每批只序列化、ZSTD 压缩一次，再向所有成员复用同一包；按实际压缩字节
 分包至最多 1152 bytes，解压分配上限为 128 KiB。包内仍含完整绝对状态，

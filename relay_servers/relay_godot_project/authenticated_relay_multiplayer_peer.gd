@@ -37,6 +37,7 @@ var _transfer_channel := 0
 var _physical_peers: Dictionary[int, bool] = {}
 var _pending_transport_connected_peers: Array[int] = []
 var _pending_transport_disconnected_peers: Array[int] = []
+var _pending_logical_disconnected_peers: Array[int] = []
 var _publishing_transport_connections := false
 var _connect_signal_deferred_packets: Array[Dictionary] = []
 var _connect_signal_deferred_packet_head := 0
@@ -137,6 +138,9 @@ func _poll() -> void:
 	_flush_pending_transport_disconnections()
 	if _transport == null or _closed:
 		return
+	_flush_pending_logical_disconnections()
+	if _transport == null or _closed:
+		return
 	_transport.poll()
 	if _transport == null or _closed:
 		return
@@ -146,6 +150,7 @@ func _poll() -> void:
 	while (
 		_transport != null
 		and not _closed
+		and _pending_logical_disconnected_peers.is_empty()
 		and consumed_packet_count < MAX_TRANSPORT_PACKETS_PER_POLL
 		and _transport.get_available_packet_count() > 0
 	):
@@ -167,6 +172,17 @@ func _poll() -> void:
 	if _transport == null or _closed:
 		return
 	_flush_connect_signal_deferred_packets()
+
+
+func _flush_pending_logical_disconnections() -> void:
+	if _pending_logical_disconnected_peers.is_empty():
+		return
+	var pending := _pending_logical_disconnected_peers
+	_pending_logical_disconnected_peers = []
+	for peer_id: int in pending:
+		if _closed:
+			return
+		emit_signal("peer_disconnected", peer_id)
 
 
 func _flush_pending_transport_connections() -> void:
@@ -414,7 +430,11 @@ func _apply_topology_control(frame_type: int, peer_id: int) -> void:
 		_drop_unknown_packets_from(peer_id)
 		if not _known_logical_peers.erase(peer_id):
 			return
-		emit_signal("peer_disconnected", peer_id)
+		# A prior DATA frame in this poll is still waiting for SceneMultiplayer.
+		# Stop the native drain here and publish REMOVE on the following poll,
+		# after those packets were consumed. Later ADD/DATA frames remain in ENet
+		# so even a reused logical ID is observed in the original event order.
+		_pending_logical_disconnected_peers.append(peer_id)
 
 
 func _put_packet_script(payload: PackedByteArray) -> Error:
@@ -928,6 +948,7 @@ func _close() -> void:
 	_physical_peers.clear()
 	_pending_transport_connected_peers.clear()
 	_pending_transport_disconnected_peers.clear()
+	_pending_logical_disconnected_peers.clear()
 	_publishing_transport_connections = false
 	_connect_signal_deferred_packets.clear()
 	_connect_signal_deferred_packet_head = 0
