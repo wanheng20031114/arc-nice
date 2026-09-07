@@ -36,3 +36,15 @@
 ## 剩余热点
 
 正式十二波后期混合敌人样本显示，事件、决策和通用目标有效性判断仍然占主要 CPU 时间。当前改动消除变换重复校验，不宣称已解决全部帧长尾；根任务继续检查阵营查询、建筑目标选择及六人真实 Relay 数据。
+
+## 后续阶段：有序事件/决策队列
+
+事件 ready 队列通常沿用上一帧的模拟 ID 顺序，但 `_insert_event_work_registration` 和 `_insert_decision_work_registration` 之前对每个有序尾项也执行 GDScript 二分查找和 Array.insert。现在只增加一个明确的尾 ID 判断：当队列为空或新 ID 大于末尾 ID，直接 append；否则仍使用原有二分插入与 `minimum_index` 游标边界，重复帧和墓碑检查保持在最前面。
+
+独立 `dev_tools/enemy_work_queue_regression.gd` 验证已排序、倒序、乱序、同帧重复、已移除节点、最小插入边界、事件中更高 ID 唤醒/插队、不得回访已处理 ID、决策中同帧紧急请求、新注册初帧隔离。**40 个断言、0 失败、退出码 0、无警告**；完成后命令核实该任务 Godot 进程为 0。
+
+同签名 ABBAABBA、每样本 200 轮×300 条有序工作：事件队列中位 91.838 ms→41.379 ms（约 -54.94%），决策队列 87.937 ms→38.520 ms（约 -56.20%）。同样只表示局部有序构建成本，不冒充全场景帧率。日志与原始 JSON 保留在 `dev_tools/output/enemy_work_queue_regression_final.log`、`dev_tools/output/enemy_work_queue_regression.json`。
+
+```powershell
+& 'C:/Program Files/Godot/Godot_console.exe' --headless --path 'C:/Users/wh/Documents/arc-nice' --script 'res://dev_tools/enemy_work_queue_regression.gd' --log-file 'C:/Users/wh/Documents/arc-nice/dev_tools/output/enemy_work_queue_regression_final.log' -- --vehicle-audit-enemy-queue --benchmark
+```

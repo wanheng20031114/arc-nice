@@ -1542,6 +1542,15 @@ func _insert_event_work_registration(
 		return
 	registration.event_work_physics_frame = physics_frame
 	registration.event_ready_enqueued = false
+	# Ready queues normally retain the previous phase's simulation-ID order.
+	# Append that common case directly; mid-phase wakes still use the fenced
+	# binary insertion below when their ID belongs between existing work items.
+	if (
+		_event_work_registrations.is_empty()
+		or _event_work_registrations[-1].simulation_id < registration.simulation_id
+	):
+		_event_work_registrations.append(registration)
+		return
 	var low := clampi(minimum_index, 0, _event_work_registrations.size())
 	var high := _event_work_registrations.size()
 	while low < high:
@@ -1910,6 +1919,12 @@ func _insert_decision_work_registration(
 	if registration.decision_work_physics_frame == physics_frame:
 		return
 	registration.decision_work_physics_frame = physics_frame
+	if (
+		_decision_work_registrations.is_empty()
+		or _decision_work_registrations[-1].simulation_id < registration.simulation_id
+	):
+		_decision_work_registrations.append(registration)
+		return
 	var low := clampi(minimum_index, 0, _decision_work_registrations.size())
 	var high := _decision_work_registrations.size()
 	while low < high:
