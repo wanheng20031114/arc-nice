@@ -8,16 +8,22 @@ param(
     [switch]$DetailedMetrics,
     [switch]$Profile,
     [switch]$ActiveProduction,
+    [string]$ProjectPath = '',
+    [string]$VariantLabel = '',
     [string]$Godot = 'C:/Program Files/Godot/Godot_console.exe'
 )
 $ErrorActionPreference = 'Stop'
 if ($Profile -and -not $PSBoundParameters.ContainsKey('Frames')) { $Frames = 180 }
 if ($Profile -and -not $PSBoundParameters.ContainsKey('Warmup')) { $Warmup = 120 }
 $probeRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$launchRoot = if ($ProjectPath) { (Resolve-Path -LiteralPath $ProjectPath).Path } else { $probeRoot }
 $runDirectory = Join-Path $probeRoot ('dev_tools/output/tower_density_' + (Get-Date -Format 'yyyyMMdd_HHmmss_fff'))
 New-Item -ItemType Directory -Path $runDirectory -Force | Out-Null
 $utf8 = New-Object System.Text.UTF8Encoding($false)
-$arguments = @('--path', ('"' + $probeRoot + '"'), '--script', 'res://dev_tools/tower_density_probe.gd')
+# WorkingDirectory below already selects the project for the editor. Official
+# release templates reject --path and ignore --script. Their isolated project's
+# main scene must select tower_density_release_entry.tscn instead.
+$arguments = @('--script', 'res://dev_tools/tower_density_probe.gd')
 if (-not $Render) { $arguments += '--headless' }
 if ($Profile) { $arguments += @('-d', '--profiling', '--ignore-error-breaks') }
 $arguments += @('--', "--buildings=$Buildings", "--enemies=$Enemies", "--frames=$Frames", "--warmup=$Warmup",
@@ -48,7 +54,11 @@ $sourceHashes = @(& git -C $probeRoot ls-files --cached --others --exclude-stand
 @{
     git_revision = (& git -C $probeRoot rev-parse HEAD)
     working_changes = @(& git -C $probeRoot status --short)
-    godot = $Godot; arguments = $arguments
+    godot = $Godot; working_directory = $launchRoot; arguments = $arguments
+    variant_label = $VariantLabel
+    executable_sha256 = (Get-FileHash -LiteralPath $Godot -Algorithm SHA256).Hash
+    offline_lobby_fixture_placeholder = ($env:ARC_PUBLIC_LOBBY_API_BASE_URL -eq 'https://127.0.0.1')
+    launch_project_godot = (Get-Content -LiteralPath (Join-Path $launchRoot 'project.godot') -Raw -Encoding UTF8)
     cpu = @(Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors)
     gpu = @(Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion)
     utc_started = [DateTime]::UtcNow.ToString('o')
@@ -56,7 +66,7 @@ $sourceHashes = @(& git -C $probeRoot ls-files --cached --others --exclude-stand
 } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $runDirectory 'manifest.json') -Encoding UTF8
 $process = $null
 try {
-    $process = Start-Process -FilePath $Godot -ArgumentList $arguments -WorkingDirectory $probeRoot -WindowStyle Hidden -PassThru `
+    $process = Start-Process -FilePath $Godot -ArgumentList $arguments -WorkingDirectory $launchRoot -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $runDirectory 'godot.log') `
         -RedirectStandardError (Join-Path $runDirectory 'godot.err.log')
     $null = $process.Handle
@@ -94,18 +104,33 @@ try {
         $result.frames, $result.enemies_alive, $result.frame_ms.p95, $result.render_gpu_ms.p95, $result.water_produced_total)
 }
 finally {
+    if ($null -ne $process -and -not $process.HasExited) {
+        $process.Kill()
+    }
     # Exact run-directory ownership includes the console launcher's Godot child;
     # never terminate another test, the editor, or an unrelated game window.
     $owned = @(Get-CimInstance Win32_Process | Where-Object {
         $_.Name -match '^Godot.*\.exe$' -and $_.CommandLine -match 'tower_density_probe.gd' -and $_.CommandLine.Contains($runDirectory)
     })
-    foreach ($ownedProcess in $owned) { Stop-Process -Id $ownedProcess.ProcessId -Force -ErrorAction SilentlyContinue }
+    foreach ($ownedProcess in $owned) {
+        $ownedHandle = Get-Process -Id $ownedProcess.ProcessId -ErrorAction SilentlyContinue
+        if ($null -ne $ownedHandle) {
+            $null = $ownedHandle.Handle
+            Stop-Process -Id $ownedProcess.ProcessId -Force -ErrorAction SilentlyContinue
+            $ownedHandle.WaitForExit()
+            $ownedHandle.Dispose()
+        }
+    }
+    # WaitForExit also drains Start-Process's redirected streams. A process may
+    # already have exited before this finally block; its log handles still need
+    # draining before we open the files for their evidence hashes.
+    if ($null -ne $process) { $process.WaitForExit() }
     $remaining = @(Get-CimInstance Win32_Process | Where-Object {
         $_.Name -match '^Godot.*\.exe$' -and $_.CommandLine -match 'tower_density_probe.gd' -and $_.CommandLine.Contains($runDirectory)
     })
+    Write-Output "DENSITY_PROCESS_CLEANUP remaining=$($remaining.Count) directory=$runDirectory"
+    if ($remaining.Count -gt 0) { throw 'Owned Godot validation process remains' }
     Get-ChildItem -LiteralPath $runDirectory -File -Recurse | Where-Object { $_.Name -ne 'artifact_hashes.json' } | ForEach-Object {
         @{ path = $_.FullName.Substring($runDirectory.Length + 1); sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
     } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runDirectory 'artifact_hashes.json') -Encoding UTF8
-    Write-Output "DENSITY_PROCESS_CLEANUP remaining=$($remaining.Count) directory=$runDirectory"
-    if ($remaining.Count -gt 0) { throw 'Owned Godot validation process remains' }
 }

@@ -172,6 +172,9 @@ func _run() -> void:
 		await get_tree().physics_frame
 	_started_sampling = false
 	var measurements := {
+		"engine_version": Engine.get_version_info()["string"],
+		"debug_build": OS.is_debug_build(),
+		"editor_capable_build": OS.has_feature("editor"),
 		"buildings_requested": building_count,
 		"enemies_requested": enemy_count,
 		"enemies_alive_at_sample_start": alive_at_sample_start,

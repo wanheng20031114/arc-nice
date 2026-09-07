@@ -255,3 +255,51 @@ StaticBody2D 障碍，43 个断言全部通过：冷却、初始错峰、真实�
 算法对比状态、方向、速度、蓄力/召唤计时、目标、动作序号与冷却均一致。该参考算法
 含测试动态调用，不用其耗时宣称性能收益。正常退出 0、日志无错误警告，命令核实进程 0。
 原始证据 `dev_tools/output/ranged_hold_final.log`。
+
+## 阵营关系高频读取
+
+逐函数热点中约 300 个模拟 tick 调用了 27 万次 `is_hostile`，其中每次额外调用两次
+`is_valid_faction`。现在在读取点直接执行完全相同的四个常量范围比较，仍拒绝负数和
+超出 32 个阵营范围的 ID；阵营写入、方向性、版本与同帧变更不变，没有关系缓存。
+
+`faction_relation_hot_path_regression.gd` 的 8,218 项断言覆盖全部阵营组合、极值非法 ID、
+立即关系修改、重置与版本一致性。相同方法签名的原算法对照，四轮每轮 600,000 次读取：
+原 345.887/357.555 ms，新 172.586/173.343 ms。这只是关系查询的局部收益。
+另在实际敌人、玩家、建筑和空间索引上重新通过 1,350 项查询回归；两项均退出 0，
+无引擎错误和警告。证据 `faction_relation_hot_path.log`、`hostile_query_after_faction_inline.log`。
+
+## 发行构建验证与未采用的复合接触方案（07:07）
+
+此前默认压力工具使用 Godot 编辑器可执行文件。新增发行构建对照使用官方同版本
+4.6.2 stable / 71f334935 的 Windows x86_64 release 模板；运行 JSON 明确记录
+`debug_build=false`、`editor_capable_build=false`，避免将编辑器开销当作最终发行性能。
+
+发行模板来自 [Godot 官方 4.6.2 发布页](https://godotengine.org/download/archive/4.6.2-stable/)。
+下载工具只读取官方 ZIP 中的 Windows 成员，严格检查 HTTP range、ZIP 成员长度和 CRC；
+本地成员 SHA256 为 `3b2d3f99bd640961aad1a1a200f0f7233b7de45b02801ce22d3224dc294d93d1`。
+整个跨平台 ZIP 没有完整下载，因此**没有声称验证整个 ZIP 的官方 SHA256**。
+
+官方发行模板禁用运行时路径覆盖，且忽略 `--script`。隔离项目使用原生主场景
+`tower_density_release_entry.tscn`，复用同一密度 fixture。生产 `project.godot` 不变；
+资源和导入缓存通过明确目录 junction 共享，测试脚本单独复制以避免目录环。
+仅子进程为离线 fixture 设置 HTTPS 本地占位大厅地址，不修改正式大厅配置规则。
+参考 [官方构建系统说明](https://docs.godotengine.org/en/stable/engine_details/development/compiling/introduction_to_the_buildsystem.html)。
+
+在相同 256 建筑、300 个正式第 12 波敌人、300 tick 预热、1800 tick 采样、Forward+、
+实际生产、关闭详细诊断的条件下，按 A/B/B/A 顺序比较原生机械敌人 Area 与新的复合索引：
+
+| 方案 | 原始输出目录后缀 | 画面帧 p95 | GPU p95 | 结束敌人数 | 产水 |
+|---|---|---:|---:|---:|---:|
+| A1 原生 Area | 070209_794 | 89.857 ms | 2.579 ms | 300 | 448 |
+| B1 复合索引 | 070300_163 | 141.195 ms | 2.575 ms | 300 | 448 |
+| B2 复合索引 | 070522_932 | 122.688 ms | 2.568 ms | 299 | 448 |
+| A2 原生 Area | 070613_398 | 85.717 ms | 2.572 ms | 300 | 448 |
+
+完整目录前缀为 `dev_tools/output/tower_density_20260908_`。B2 少一只敌人，不能称为严格
+保持 300 只的样本；A1/B1 已提供完整 300 只对照，反向样本也不支持采用新方案。
+新的双形状索引虽然通过 432 项几何/生命周期断言，却引入更多脚本候选与精确查询成本，
+因此撤回该未提交的生产扩展，保留原生 Area；源和证据归档于
+`dev_tools/output/compound_ab_20260908/`。独立生命周期缺陷另行修复和验证。
+
+四轮均退出 0、无错误警告、逐轮命令核实无专属进程残留。发行构建仍明显卡顿，
+这些数值不构成“已达到流畅六人游戏”的结论，也不能与早期编辑器样本直接计算改善比例。

@@ -54,9 +54,11 @@ func set_hostile(
 
 
 func is_hostile(source_faction: int, target_faction: int) -> bool:
+	# This read runs for every combat candidate. Keep the complete range check
+	# here, without two additional GDScript calls for the same constant bounds.
 	if (
-		not is_valid_faction(source_faction)
-		or not is_valid_faction(target_faction)
+		source_faction < NEUTRAL or source_faction >= MAX
+		or target_faction < NEUTRAL or target_faction >= MAX
 	):
 		return false
 	return (_hostile_masks[source_faction] & (1 << target_faction)) != 0
