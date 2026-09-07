@@ -304,8 +304,8 @@ layout_mode = 2
 size_flags_vertical = 4
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 13
-text = "战车档案"
-tooltip_text = "查看车体属性与本局收藏品"
+text = "背包 / 改装"
+tooltip_text = "暂停战斗，查看收藏品并消耗息壤升级车体"
 
 [node name="Countdown" type="VBoxContainer" parent="Root/Cockpit"]
 unique_name_in_owner = true
@@ -321,6 +321,20 @@ offset_bottom = 236.0
 grow_horizontal = 2
 mouse_filter = 2
 theme_override_constants/separation = 0
+
+[node name="RunStatus" type="Label" parent="Root/Cockpit"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 26.0
+offset_top = 120.0
+offset_right = 770.0
+offset_bottom = 146.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.74, 0.87, 0.91, 1)
+theme_override_colors/font_outline_color = Color(0.012, 0.02, 0.03, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 13
+text = "得分 00000  ·  战斗 00:00  ·  息壤 1000  ·  攻击 10"
 
 [node name="CountdownTitle" type="Label" parent="Root/Cockpit/Countdown"]
 unique_name_in_owner = true
@@ -559,7 +573,7 @@ mouse_filter = 1
 
 [node name="ResultPanel" type="PanelContainer" parent="Root/ResultOverlay/Center"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(460, 292)
+custom_minimum_size = Vector2(610, 450)
 layout_mode = 2
 theme_override_styles/panel = SubResource("Style_result")
 
@@ -594,13 +608,37 @@ text = "最后一波敌人已清空。\n这辆小车，撑到了最后。"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="ReturnButton" type="Button" parent="Root/ResultOverlay/Center/ResultPanel/Content"]
+[node name="ResultStats" type="Label" parent="Root/ResultOverlay/Center/ResultPanel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.92, 0.94, 1)
+theme_override_constants/line_spacing = 4
+theme_override_font_sizes/font_size = 14
+text = ""
+horizontal_alignment = 1
+
+[node name="Actions" type="HBoxContainer" parent="Root/ResultOverlay/Center/ResultPanel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="ActionButton" type="Button" parent="Root/ResultOverlay/Center/ResultPanel/Content/Actions"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 46)
 layout_mode = 2
+size_flags_horizontal = 3
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 16
+text = "重新出发"
+
+[node name="ReturnButton" type="Button" parent="Root/ResultOverlay/Center/ResultPanel/Content/Actions"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+size_flags_horizontal = 3
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 16
 text = "返回主菜单"
 
 [connection signal="pressed" from="Root/Cockpit/TopBar/Row/InventoryButton" to="." method="_on_inventory_pressed"]
-[connection signal="pressed" from="Root/ResultOverlay/Center/ResultPanel/Content/ReturnButton" to="." method="_on_return_pressed"]
+[connection signal="pressed" from="Root/ResultOverlay/Center/ResultPanel/Content/Actions/ReturnButton" to="." method="_on_return_pressed"]
+[connection signal="pressed" from="Root/ResultOverlay/Center/ResultPanel/Content/Actions/ActionButton" to="." method="_on_action_pressed"]

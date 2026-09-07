@@ -32,7 +32,9 @@ func _try_connect_button(node: Node) -> void:
 	if _connected_button_ids.has(button_id):
 		return
 	_connected_button_ids[button_id] = true
-	button.pressed.connect(_on_button_pressed.bind(button))
+	var pressed_callback := _on_button_pressed.bind(button)
+	if not button.pressed.is_connected(pressed_callback):
+		button.pressed.connect(pressed_callback)
 	button.tree_exiting.connect(_on_button_tree_exiting.bind(button_id), CONNECT_ONE_SHOT)
 
 

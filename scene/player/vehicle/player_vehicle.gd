@@ -133,6 +133,10 @@ func _get_mouse_shoot_direction() -> Vector2:
 	return heading
 
 
+func _get_skill1_direction() -> Vector2:
+	return heading
+
+
 func _handle_primary_attack_input(shoot_input: Vector2) -> void:
 	if are_combat_actions_locked():
 		return
@@ -157,6 +161,10 @@ func _try_start_dash(_move_direction: Vector2) -> bool:
 
 func is_dash_ready() -> bool:
 	return false
+
+
+func service_ammunition() -> void:
+	_reset_ammo_to_full()
 
 
 func _on_controls_lock_changed(locked: bool) -> void:

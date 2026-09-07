@@ -23,8 +23,7 @@ var _open := false
 var _claimed := false
 var _inventory_open := false
 var _owns_pause := false
-var _previously_paused := false
-var _pause_tree: SceneTree
+var _pause_controller: GameplayPauseController
 
 
 func _ready() -> void:
@@ -39,6 +38,7 @@ func setup(player: Player, run_state: RunStateStore) -> void:
 	cancel()
 	_player = player
 	_run_state = run_state
+	_pause_controller = GameplayPauseController.get_autoload_instance()
 	_last_claimed_wave = 0
 	_rng.randomize()
 
@@ -58,10 +58,10 @@ func open_for_wave(wave_number: int) -> bool:
 	_claimed = false
 	_inventory_open = false
 	_open = true
-	_pause_tree = get_tree()
-	_previously_paused = _pause_tree.paused
-	_owns_pause = true
-	_pause_tree.paused = true
+	_owns_pause = _pause_controller.acquire_local_modal_pause(self)
+	if not _owns_pause:
+		cancel()
+		return false
 	choice_overlay.visible = true
 	choice_overlay.set_refresh_state(0, 0, 0, 0)
 	title_label.text = "第%d波完成 · 选择战利品" % wave_number
@@ -115,9 +115,12 @@ func _exit_tree() -> void:
 func _input(event: InputEvent) -> void:
 	if not _open:
 		return
-	# Luoxi normally lets Escape close an offer. A wave reward stays pending
-	# until its atomic inventory grant succeeds, so neither pause action escapes.
-	if event.is_action(GameplayPauseController.PAUSE_ACTION) or event.is_action(&"quit"):
+	# The menu can pause/quit a run without discarding its pending reward. It
+	# owns input while open; card shortcuts must never fire beneath that menu.
+	if _pause_controller.is_pause_menu_open() or event.is_action(GameplayPauseController.PAUSE_ACTION):
+		return
+	# Escape returns from inventory, but does not dismiss a mandatory reward.
+	if event.is_action(&"quit"):
 		if _inventory_open and event.is_action_pressed(&"quit") and not event.is_echo():
 			inventory_close_requested.emit()
 		get_viewport().set_input_as_handled()
@@ -129,7 +132,7 @@ func _input(event: InputEvent) -> void:
 
 
 func _on_choice_selected(choice_index: int) -> void:
-	if not _open or _claimed or _inventory_open:
+	if not _open or _claimed or _inventory_open or _pause_controller.is_pause_menu_open():
 		return
 	if choice_index < 0 or choice_index >= _choices.size():
 		return
@@ -157,8 +160,7 @@ func _release_pause() -> void:
 	if not _owns_pause:
 		return
 	_owns_pause = false
-	_pause_tree.paused = _previously_paused
-	_pause_tree = null
+	_pause_controller.release_local_modal_pause(self)
 
 
 func _roll_choices() -> Array[PickupConfig]:

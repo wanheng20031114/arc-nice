@@ -38,6 +38,9 @@ var _context_is_networked := false
 var _context_session_id := 0
 
 var _gameplay_paused := false
+var _local_modal_pause_owners: Dictionary[int, WeakRef] = {}
+var _local_modal_exit_callbacks: Dictionary[int, Callable] = {}
+var _pause_clock_paused := false
 var _accumulated_pause_duration_seconds := 0.0
 var _pause_wall_started_seconds := -1.0
 var _exit_in_progress := false
@@ -177,7 +180,70 @@ func request_pause(desired: bool) -> void:
 
 
 func is_gameplay_paused() -> bool:
+	return _gameplay_paused or not _local_modal_pause_owners.is_empty()
+
+
+func is_pause_menu_open() -> bool:
 	return _gameplay_paused
+
+
+## Singleplayer UI owns a pause independently from the pause menu. Nested
+## inventory/reward modals share the same gameplay clock and cannot resume
+## another owner's pause. Multiplayer pauses still use the host protocol.
+func acquire_local_modal_pause(owner: Node) -> bool:
+	if (
+		not _has_context()
+		or _context_is_networked
+		or _exit_in_progress
+		or owner == null
+		or not owner.is_inside_tree()
+		or (owner != _context_owner and not _context_owner.is_ancestor_of(owner))
+	):
+		push_error("GameplayPause: local modal owner must belong to the active singleplayer context.")
+		return false
+	var owner_id := owner.get_instance_id()
+	if _local_modal_pause_owners.has(owner_id):
+		return true
+	var exit_callback := _release_local_modal_pause_id.bind(owner_id)
+	_local_modal_pause_owners[owner_id] = weakref(owner)
+	_local_modal_exit_callbacks[owner_id] = exit_callback
+	owner.tree_exiting.connect(exit_callback, CONNECT_ONE_SHOT)
+	_update_pause_clock(true)
+	get_tree().paused = true
+	return true
+
+
+func release_local_modal_pause(owner: Node) -> void:
+	if owner != null:
+		_release_local_modal_pause_id(owner.get_instance_id())
+
+
+func get_local_modal_pause_owner_count() -> int:
+	return _local_modal_pause_owners.size()
+
+
+func _release_local_modal_pause_id(owner_id: int) -> void:
+	if not _local_modal_pause_owners.has(owner_id):
+		return
+	var owner := _local_modal_pause_owners[owner_id].get_ref() as Node
+	var exit_callback := _local_modal_exit_callbacks[owner_id]
+	_local_modal_pause_owners.erase(owner_id)
+	_local_modal_exit_callbacks.erase(owner_id)
+	if owner != null and owner.tree_exiting.is_connected(exit_callback):
+		owner.tree_exiting.disconnect(exit_callback)
+	var paused := is_gameplay_paused()
+	_update_pause_clock(paused)
+	get_tree().paused = paused
+
+
+func _clear_local_modal_pauses() -> void:
+	for owner_id in _local_modal_pause_owners.keys():
+		var owner := _local_modal_pause_owners[owner_id].get_ref() as Node
+		var exit_callback := _local_modal_exit_callbacks[owner_id]
+		if owner != null and owner.tree_exiting.is_connected(exit_callback):
+			owner.tree_exiting.disconnect(exit_callback)
+	_local_modal_pause_owners.clear()
+	_local_modal_exit_callbacks.clear()
 
 
 func get_gameplay_time_seconds() -> float:
@@ -185,7 +251,7 @@ func get_gameplay_time_seconds() -> float:
 	if not _has_context():
 		return wall_now
 	var paused_duration := _accumulated_pause_duration_seconds
-	if _gameplay_paused and _pause_wall_started_seconds >= 0.0:
+	if _pause_clock_paused and _pause_wall_started_seconds >= 0.0:
 		paused_duration += maxf(wall_now - _pause_wall_started_seconds, 0.0)
 	return wall_now - paused_duration
 
@@ -209,7 +275,8 @@ func apply_network_pause_state(
 		_set_pause_controls_disabled(_exit_in_progress)
 		# 清理哨兵是网络会话退出的最终保险，即使玩法 owner 已先离树，
 		# 也不能把全局 SceneTree 暂停泄漏到大厅或主菜单。
-		get_tree().paused = false
+		if not _has_context() or _context_is_networked:
+			get_tree().paused = false
 		if _has_context() and _context_is_networked and not _exit_in_progress:
 			_apply_committed_pause_state(false, 0, true)
 		return
@@ -260,6 +327,7 @@ func apply_network_pause_state(
 func force_unpause_for_transition() -> void:
 	_exit_in_progress = true
 	_network_request_pending = false
+	_clear_local_modal_pauses()
 	_update_pause_clock(false)
 	_gameplay_paused = false
 	_close_secondary_panels_and_flush()
@@ -275,10 +343,10 @@ func _apply_committed_pause_state(
 	actor_peer_id: int,
 	apply_scene_tree_pause: bool
 ) -> void:
-	_update_pause_clock(paused)
 	_gameplay_paused = paused
+	_update_pause_clock(is_gameplay_paused())
 	if apply_scene_tree_pause:
-		get_tree().paused = paused
+		get_tree().paused = is_gameplay_paused()
 	if paused:
 		_network_pause_actor_peer_id = actor_peer_id
 		_show_main_menu()
@@ -420,8 +488,9 @@ func _has_context() -> bool:
 
 
 func _update_pause_clock(paused: bool) -> void:
-	if paused == _gameplay_paused:
+	if paused == _pause_clock_paused:
 		return
+	_pause_clock_paused = paused
 	var wall_now := _get_wall_time_seconds()
 	if paused:
 		_pause_wall_started_seconds = wall_now
@@ -437,6 +506,7 @@ func _update_pause_clock(paused: bool) -> void:
 func _reset_pause_clock_after_context() -> void:
 	_accumulated_pause_duration_seconds = 0.0
 	_pause_wall_started_seconds = -1.0
+	_pause_clock_paused = false
 
 
 func _get_wall_time_seconds() -> float:

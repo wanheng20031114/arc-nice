@@ -3,6 +3,8 @@ class_name VehicleCombatHUD
 
 signal return_to_menu_requested
 signal inventory_requested
+signal start_requested
+signal retry_requested
 
 const ACCENT := Color(0.35, 0.87, 0.98)
 const MUTED := Color(0.58, 0.69, 0.75)
@@ -44,6 +46,9 @@ const TELEMETRY_INTERVAL := 0.08
 @onready var result_title: Label = %ResultTitle
 @onready var result_detail: Label = %ResultDetail
 @onready var return_button: Button = %ReturnButton
+@onready var action_button: Button = %ActionButton
+@onready var result_stats: Label = %ResultStats
+@onready var run_status: Label = %RunStatus
 
 var _vehicle: PlayerVehicle
 var _wave_number := 0
@@ -55,6 +60,10 @@ var _wave_tween: Tween
 var _progress_tween: Tween
 var _countdown_tween: Tween
 var _result_tween: Tween
+var _run_progress: VehicleRunProgress
+var _primary_action: StringName = &""
+var _launch_ready := false
+var _service_summary := ""
 
 
 func _ready() -> void:
@@ -87,6 +96,7 @@ func set_wave(
 	total_enemies: int
 ) -> void:
 	_show_cockpit()
+	_service_summary = ""
 	_wave_number = wave_number
 	_total_waves = total_waves
 	wave_index.text = "%02d" % wave_number
@@ -130,7 +140,7 @@ func set_countdown(
 	wave_index.text = "%02d" % wave_number
 	wave_total.text = "/ %02d" % total_waves
 	wave_title.text = "准备下一波" if is_intermission else "引擎就绪"
-	phase_label.text = "整备完成，即将继续" if is_intermission else "保持移动，清除所有敌人"
+	phase_label.text = _service_summary if is_intermission else "保持移动，清除所有敌人"
 	progress_label.text = "每波结束 · 收藏品 3 选 1"
 	alive_label.text = "00"
 	countdown_title.text = "第 %02d 波即将开始" % wave_number
@@ -161,6 +171,8 @@ func show_reward(cleared_wave: int) -> void:
 
 
 func show_victory() -> void:
+	_primary_action = &"retry"
+	action_button.text = "再来一局"
 	_show_result(
 		"%02d / %02d 波次完成" % [_total_waves, _total_waves],
 		"突围成功",
@@ -170,12 +182,58 @@ func show_victory() -> void:
 
 
 func show_defeat() -> void:
+	_primary_action = &"retry"
+	action_button.text = "重新出发"
 	_show_result(
 		"抵达第 %02d / %02d 波" % [_wave_number, _total_waves],
 		"战车失去动力",
 		"本次突围结束。\n重新整备，再次出发。",
 		DANGER
 	)
+
+
+func show_briefing(best_score: int, ready_to_launch: bool) -> void:
+	_primary_action = &"start"
+	_launch_ready = ready_to_launch
+	action_button.text = "启动引擎" if ready_to_launch else "正在准备战场…"
+	set_result_stats("%s\n%s\n%s · 向车头方向发射榴弹\n个人最佳得分 %d" % [
+		driving_hint.text, weapon_hint.text, skill_label.text, best_score,
+	])
+	_show_result(
+		"12 道关卡 · 战车突围",
+		"一辆小车，冲出包围",
+		"清空每波敌人，选择一件免费收藏品。\n波间自动：攻击 +4、耐久上限 +10、维修 25%、弹药补满。\n背包 / 改装中可用息壤强化火力与耐久。\n车头决定射向，松键滑行，反向键先刹车再倒车。\n无伤清场和快速通关可获得额外积分。",
+		ACCENT
+	)
+
+
+func set_launch_ready(ready_to_launch: bool) -> void:
+	_launch_ready = ready_to_launch
+	if _primary_action == &"start":
+		action_button.text = "启动引擎" if ready_to_launch else "正在准备战场…"
+		action_button.disabled = not ready_to_launch
+
+
+func set_run_status(progress: VehicleRunProgress) -> void:
+	_run_progress = progress
+	_update_run_status()
+
+
+func set_service_status(wave_number: int, attack: int) -> void:
+	_service_summary = "火控 Lv.%d · 攻击 %d · 已维修并补满弹药" % [wave_number, attack]
+
+
+func set_result_stats(text: String) -> void:
+	result_stats.text = text
+
+
+func _update_run_status() -> void:
+	if _run_progress == null or not is_instance_valid(_vehicle):
+		return
+	run_status.text = "得分 %05d  ·  战斗 %s  ·  息壤 %d  ·  攻击 %d" % [
+		_run_progress.score, VehicleRunProgress.format_time(_run_progress.combat_seconds),
+		_vehicle.get_xirang(), _vehicle.attack_damage,
+	]
 
 
 func hide_all() -> void:
@@ -194,6 +252,7 @@ func _process(delta: float) -> void:
 		return
 	_telemetry_elapsed = 0.0
 	_update_telemetry()
+	_update_run_status()
 
 
 func _update_telemetry() -> void:
@@ -277,6 +336,7 @@ func _show_result(eyebrow: String, title: String, detail: String, accent: Color)
 	result_panel.pivot_offset = result_panel.size * 0.5
 	result_panel.scale = Vector2.ONE * 0.96
 	return_button.disabled = true
+	action_button.disabled = true
 	_result_tween = create_tween().set_parallel(true)
 	_result_tween.tween_property(result_overlay, "modulate:a", 1.0, 0.3)
 	_result_tween.tween_property(result_panel, "scale", Vector2.ONE, 0.4).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
@@ -285,7 +345,9 @@ func _show_result(eyebrow: String, title: String, detail: String, accent: Color)
 
 func _enable_return_button() -> void:
 	return_button.disabled = false
-	return_button.grab_focus()
+	action_button.disabled = _primary_action == &"start" and not _launch_ready
+	if not action_button.disabled:
+		action_button.grab_focus()
 
 
 func _stop_result_tween() -> void:
@@ -301,3 +363,11 @@ func _on_inventory_pressed() -> void:
 func _on_return_pressed() -> void:
 	return_button.disabled = true
 	return_to_menu_requested.emit()
+
+
+func _on_action_pressed() -> void:
+	action_button.disabled = true
+	if _primary_action == &"start":
+		start_requested.emit()
+	elif _primary_action == &"retry":
+		retry_requested.emit()

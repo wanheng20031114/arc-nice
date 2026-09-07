@@ -142,7 +142,7 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.74, 0.83, 0.86, 1)
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 15
-text = "标准地图与敌人不变，驾驶迷你战车进入战斗"
+text = "12 波突围战役 · 免费收藏品三选一 · 波间改装与维修"
 horizontal_alignment = 1
 
 [node name="PreviewFrame" type="PanelContainer" parent="Root/Center/Panel/Margin/Content"]

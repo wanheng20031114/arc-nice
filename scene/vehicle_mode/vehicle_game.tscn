@@ -15,6 +15,9 @@ pre_wave_duration = 4.0
 linglan_boss_enabled = false
 standard_merchants_enabled = false
 
+[node name="DayNightController" parent="."]
+night_color = Color(0.8, 0.87, 1, 1)
+
 [node name="CurrencyHUD" parent="."]
 visible = false
 
@@ -24,6 +27,9 @@ visible = false
 [node name="PlayerProfilePanel" parent="."]
 process_mode = 3
 layer = 40
+
+[node name="Portrait" parent="PlayerProfilePanel/Overlay/PanelRoot/PlayerStatsView"]
+scale = Vector2(4, 4)
 
 [node name="ZhuangfangyiMerchant" parent="."]
 process_mode = 4

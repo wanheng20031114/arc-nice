@@ -31,8 +31,10 @@ func _ready() -> void:
 func _run() -> void:
 	run_state = get_tree().root.get_node("RunState") as RunStateStore
 	_check_catalog_and_campaign()
+	_check_run_scoring()
 	if await _create_runtime():
 		_check_authored_ui()
+		await _check_modal_pause_clock()
 		await _check_twelve_waves()
 	await _dispose_runtime()
 	if failures == 0 and await _create_runtime():
@@ -64,12 +66,12 @@ func _check_catalog_and_campaign() -> void:
 		return
 	var catalog_errors := catalog.validate_definitions()
 	_expect(catalog_errors.is_empty(), "Catalog validates: %s" % str(catalog_errors))
-	_expect(catalog.definitions.size() == 9, "Nine frozen multiplayer definitions remain")
+	_expect(catalog.definitions.size() == 10, "Ten frozen multiplayer definitions remain")
 	var release_ids: Array[int] = []
 	for definition in GameModeCatalog.get_release_lobby_definitions():
 		release_ids.append(definition.mode_id)
 	release_ids.sort()
-	_expect(release_ids == [0, 1, 4], "Release lobby remains Standard/Tower/Rogue")
+	_expect(release_ids == [0, 1, 4, 9], "Release lobby remains Standard/Tower/Rogue/Mirage")
 	_expect(
 		GameModeCatalog.get_definition_by_wire_key("standard")
 		== GameModeCatalog.get_definition(GameModeCatalog.MODE_STANDARD),
@@ -129,6 +131,7 @@ func _create_runtime() -> bool:
 	if runtime == null:
 		return false
 	runtime.defer_runtime_activation()
+	runtime.save_run_records = false
 	get_tree().root.add_child(runtime)
 	get_tree().current_scene = runtime
 	var deadline := Time.get_ticks_msec() + PREPARATION_TIMEOUT_MS
@@ -146,6 +149,11 @@ func _create_runtime() -> bool:
 	runtime.activate_runtime()
 	_expect(runtime.runtime_activated, "Loader activation is recorded")
 	_expect(runtime.current_flow_step == runtime.waves[0], "Activation begins the first authored step")
+	_expect(runtime._briefing_open and runtime.state_timer.is_stopped(), "Briefing holds the first countdown")
+	_expect(runtime.player.has_control_lock(VehicleGame.BRIEFING_CONTROL_LOCK), "Briefing holds the driving controls")
+	await _capture_ui("briefing")
+	runtime.vehicle_hud.start_requested.emit()
+	_expect(not runtime._briefing_open, "Start action closes the briefing")
 	_expect(runtime.wave_state == CombatFlowState.State.PRE_WAVE and not runtime.state_timer.is_stopped(),
 		"Activation starts the countdown instead of leaving the game idle")
 	_expect(_inventory_count() == 0, "No starter items consume wave reward slots")
@@ -194,6 +202,14 @@ func _check_twelve_waves() -> void:
 			_check_full_inventory(offers)
 			run_state.inventory_changed.connect(_attempt_reentrant_claim, CONNECT_ONE_SHOT)
 		var chosen_item := offers[0] as PickupConfig
+		var health_before_service := -1
+		if wave_number == 2:
+			var car := runtime.player as PlayerVehicle
+			car.apply_direct_health_loss(40)
+			health_before_service = car.current_health
+			car.current_ammo = 3
+			car.is_reloading = true
+			car.reload_progress = 0.4
 		var item_copies_before := run_state.get_inventory_item_total(chosen_item)
 		var event := _action(&"select_option_1")
 		reward.choice_overlay.confirmation_lock_time_left = 0.0
@@ -207,6 +223,11 @@ func _check_twelve_waves() -> void:
 		_expect(_inventory_count() == inventory_before + 1, "Stale repeated card selection cannot grant twice")
 		_expect(not reward.open_for_wave(wave_number), "A claimed wave cannot reopen its reward")
 		if wave_number < EXPECTED_WAVES:
+			_check_service_progression(wave_number)
+			if health_before_service >= 0:
+				_expect(runtime.player.current_health == mini(runtime.player.max_health,
+					health_before_service + ceili(runtime.player.max_health * 0.25)),
+					"Service repairs exactly one quarter of the new maximum, capped at full health")
 			_expect(runtime.wave_state == CombatFlowState.State.INTERMISSION, "Selection enters the rest countdown")
 			_expect(not runtime.state_timer.is_stopped() and runtime.countdown_seconds > 0,
 				"Next wave waits for its authored rest countdown")
@@ -219,7 +240,143 @@ func _check_twelve_waves() -> void:
 		await get_tree().process_frame
 	_expect(_inventory_count() == EXPECTED_WAVES, "Completed run keeps all twelve chosen rewards")
 	_expect(claimed_rewards == EXPECTED_WAVES, "Exactly twelve success events are emitted")
+	_expect(runtime.run_progress.cleared_waves == 12 and runtime.run_progress.kills == 483,
+		"Score follows exactly the canonical twelve-wave enemy ledger")
+	_expect(runtime.run_progress.finished and runtime.run_progress.victory, "Victory finalizes scoring")
+	_expect(runtime.run_progress.score == 8930, "A fast undamaged complete run earns the authored maximum score")
+	_expect(runtime.vehicle_hud.action_button.text == "再来一局", "Victory offers a real retry action")
+	await _capture_ui("victory")
 	completed_twelve_waves = true
+
+
+func _check_run_scoring() -> void:
+	current_case = "score and records"
+	var progress := VehicleRunProgress.new()
+	progress.begin_wave()
+	progress.record_kill()
+	progress.advance_time(90.0)
+	progress.advance_time(-10.0)
+	progress.record_health_loss(12)
+	progress.record_health_loss(-5)
+	_expect(progress.complete_wave(1), "The first cleared wave can settle")
+	_expect(not progress.complete_wave(1) and not progress.complete_wave(3), "Duplicate and skipped settlements are rejected")
+	_expect(progress.score == 110 and progress.combat_seconds == 90.0 and progress.total_health_loss == 12,
+		"Slow damaged wave earns only clear and kill points; negative values cannot improve the record")
+	_expect(progress.finish(false) and not progress.finish(true), "The result commits once")
+	progress.record_kill()
+	progress.record_health_loss(10)
+	progress.advance_time(10.0)
+	_expect(progress.score == 110 and progress.combat_seconds == 90.0 and progress.total_health_loss == 12,
+		"Terminal score and time cannot mutate")
+	var record_path := "res://dev_tools/output/vehicle_record_fixture.cfg"
+	_expect(progress.save_records(record_path) == OK, "Records save using a separate test file")
+	var restored := VehicleRunProgress.new()
+	_expect(restored.load_records(record_path) == OK and restored.best_score == 110 and restored.best_cleared_waves == 1,
+		"Personal records round-trip through native ConfigFile")
+	_expect(restored.kills == 0 and restored.cleared_waves == 0 and restored.score == 0,
+		"Loading a record never restores prior run power or loot")
+	_expect(DirAccess.remove_absolute(ProjectSettings.globalize_path(record_path)) == OK, "Test record is removed")
+	_expect(VehicleRunProgress.format_time(125.9) == "02:05", "Combat time formats as minutes and seconds")
+	var champion := VehicleRunProgress.new()
+	for wave in range(1, 13):
+		champion.begin_wave()
+		champion.advance_time(50.0)
+		_expect(champion.complete_wave(wave), "Record fixture completes wave %d exactly once" % wave)
+	_expect(champion.finish(true) and champion.best_victory_seconds == 600.0,
+		"Victory records its combat duration")
+	_expect(champion.save_records(record_path) == OK, "A victory record can be saved")
+	var slower := VehicleRunProgress.new()
+	_expect(slower.load_records(record_path) == OK, "A future run loads the existing victory record")
+	for wave in range(1, 13):
+		slower.begin_wave()
+		slower.advance_time(700.0 / 12.0)
+		slower.complete_wave(wave)
+	slower.finish(true)
+	_expect(slower.best_victory_seconds == 600.0 and slower.get_result_text().contains("最快通关 10:00"),
+		"A slower future victory preserves and displays the best time")
+	_expect(DirAccess.remove_absolute(ProjectSettings.globalize_path(record_path)) == OK, "Victory record test file is removed")
+	var vehicle_config := load("res://resources/config/players/player_vehicle.tres") as PlayerCharacterConfig
+	var armored_config := load("res://resources/config/enemies/combat_robot_main_battle_elite.tres") as EnemyConfig
+	var armor := DamageTargetProfile.new(armored_config.max_health, armored_config.physical_defense, armored_config.magic_defense)
+	var old_damage := DamageResolver.resolve(DamageRequest.new(vehicle_config.starting_attack_damage), armor)
+	var serviced_attack := vehicle_config.starting_attack_damage + int(champion.get_service_bonuses()["attack_damage"])
+	var serviced_damage := DamageResolver.resolve(DamageRequest.new(serviced_attack), armor)
+	_expect(old_damage.applied_damage == 1 and serviced_damage.applied_damage == 14,
+		"Actual authored vehicle/boss stats and production damage resolver reproduce 1 damage before service, 14 after eleven services")
+
+
+func _check_modal_pause_clock() -> void:
+	current_case = "modal pause and gameplay clock"
+	var pause := GameplayPauseController.get_autoload_instance()
+	var countdown_left := runtime.state_timer.time_left
+	runtime._open_inventory()
+	_expect(get_tree().paused and pause.get_local_modal_pause_owner_count() == 1,
+		"Opening the actual profile pauses the combat world")
+	var frozen_time := pause.get_gameplay_time_seconds()
+	await get_tree().create_timer(0.12, true, false, true).timeout
+	_expect(absf(pause.get_gameplay_time_seconds() - frozen_time) < 0.015,
+		"Inventory time does not consume timed buffs or gameplay effects")
+	_expect(is_equal_approx(runtime.state_timer.time_left, countdown_left), "Inventory freezes the next wave countdown")
+	pause.apply_network_pause_state(0, 0, false, 0)
+	_expect(get_tree().paused, "An inactive network cleanup cannot release a local modal pause")
+	pause.request_pause(true)
+	runtime.player_profile_panel.close()
+	_expect(get_tree().paused and pause.get_local_modal_pause_owner_count() == 0,
+		"Closing inventory preserves an independently opened ESC pause")
+	runtime._open_inventory()
+	pause.request_pause(false)
+	_expect(get_tree().paused and pause.get_local_modal_pause_owner_count() == 1,
+		"Closing the ESC menu preserves an independently opened inventory")
+	runtime.player_profile_panel.close()
+	_expect(not get_tree().paused, "Closing the final pause owner resumes the world")
+	var native_owner := runtime.currency_hud
+	var native_parent := native_owner.get_parent()
+	_expect(pause.acquire_local_modal_pause(native_owner), "A native child can own a local pause")
+	_expect(pause.acquire_local_modal_pause(native_owner) and pause.get_local_modal_pause_owner_count() == 1,
+		"Acquiring the same owner twice is idempotent")
+	native_parent.remove_child(native_owner)
+	_expect(not get_tree().paused and pause.get_local_modal_pause_owner_count() == 0,
+		"A modal owner leaving the scene releases its lease automatically")
+	native_parent.add_child(native_owner)
+	for button in native_owner.find_children("*", "BaseButton", true, false):
+		var click_connections := 0
+		for connection in button.pressed.get_connections():
+			if (connection["callable"] as Callable).get_object() == get_node("/root/UIAudio"):
+				click_connections += 1
+		_expect(click_connections == 1, "A native button reentering the scene keeps exactly one click-audio connection")
+	var resumed_time := pause.get_gameplay_time_seconds()
+	await get_tree().create_timer(0.12, true, false, true).timeout
+	_expect(pause.get_gameplay_time_seconds() - resumed_time >= 0.08, "The gameplay clock advances again after all owners release")
+
+
+func _check_service_progression(wave_number: int) -> void:
+	current_case = "wave %d service" % wave_number
+	var bonuses := run_state.get_player_stat_bonuses(0)
+	var independent_attack := 7 if wave_number > 1 else 0
+	var independent_health := 13 if wave_number > 1 else 0
+	_expect(int(bonuses["attack_damage"]) == wave_number * 4 + independent_attack
+		and int(bonuses["max_health"]) == wave_number * 10 + independent_health,
+		"Guaranteed service and independent same-stat rewards coexist in the canonical run ledger")
+	var car := runtime.player as PlayerVehicle
+	_expect(car.get_multiplayer_current_ammo() == car.get_multiplayer_ammo_capacity() and not car.get_multiplayer_is_reloading(),
+		"Service refills the actual magazine and cancels reload")
+	var previous_health := car.current_health
+	_expect(not runtime._service_vehicle(wave_number) and car.current_health == previous_health,
+		"Duplicate service cannot grant a second heal")
+	if wave_number == 1:
+		var previous_attack := car.attack_damage
+		_expect(run_state.try_upgrade(RunStateStore.StatType.ATTACK, car), "Profile firepower upgrade can be purchased")
+		_expect(car.attack_damage > previous_attack and run_state.get_player_stat_bonus_value(0, &"attack_damage") == 4,
+			"Buying profile upgrades retains wave service instead of overwriting it")
+		_expect(not runtime._service_vehicle(3), "An out-of-order service cannot skip a wave")
+		var status := run_state.export_party_status_ledger()
+		status["player_stat_bonuses"]["0"]["attack_damage"] += 7
+		status["player_stat_bonuses"]["0"]["max_health"] += 13
+		status["revision"] = run_state.party_status_ledger_revision + 1
+		_expect(run_state.apply_party_status_ledger(status), "An independent reward can contribute to the same service stat keys")
+	if wave_number == 11:
+		_expect(car.attack_damage > 40 and car.max_health >= 210,
+			"The final wave has reliable damage above forty-point armor even without lucky loot")
 
 
 func _advance_countdown() -> void:
@@ -312,6 +469,13 @@ func _check_mandatory_reward_input() -> void:
 	reward._input(_action(&"quit"))
 	reward._input(_action(&"pause"))
 	_expect(reward.is_open() and get_tree().paused, "Escape and pause cannot abandon a mandatory reward")
+	var pause := GameplayPauseController.get_autoload_instance()
+	pause._unhandled_input(_action(&"pause"))
+	_expect(pause.is_pause_menu_open() and reward.is_open(), "Pause menu can open above a pending reward")
+	reward.choice_overlay.choice_selected.emit(0)
+	_expect(_inventory_count() == before and reward.is_open(), "Card selection cannot occur beneath the pause menu")
+	pause.request_pause(false)
+	_expect(get_tree().paused and reward.is_open(), "Returning from pause retains the same mandatory reward")
 	reward.choice_overlay.choice_selected.emit(-1)
 	reward.choice_overlay.choice_selected.emit(3)
 	_expect(_inventory_count() == before and reward.is_open(), "Invalid card indices do not mutate inventory")
@@ -355,6 +519,9 @@ func _check_defeat_during_reward() -> void:
 	if not _clear_current_wave():
 		return
 	_expect(runtime.wave_reward.is_open() and get_tree().paused, "Defeat fixture starts with a pending reward")
+	runtime._open_inventory()
+	_expect(GameplayPauseController.get_autoload_instance().get_local_modal_pause_owner_count() == 2,
+		"Defeat fixture nests inventory over its reward")
 	var before := _inventory_count()
 	runtime.player.apply_direct_health_loss(runtime.player.current_health)
 	_expect(runtime.wave_state == CombatFlowState.State.DEFEAT, "Real player death enters defeat")
@@ -373,11 +540,12 @@ func _check_teardown_during_reward() -> void:
 	_expect(runtime.wave_reward.is_open() and get_tree().paused, "Teardown fixture starts with a pending reward")
 	runtime.wave_reward.cancel()
 	_expect(not get_tree().paused, "Cancelling a reward releases its own pause")
-	get_tree().paused = true
+	var pause := GameplayPauseController.get_autoload_instance()
+	pause.request_pause(true)
 	_expect(runtime.wave_reward.open_for_wave(1), "Reward can reopen an unclaimed wave")
 	runtime.wave_reward.cancel()
 	_expect(get_tree().paused, "Cancelling preserves a pause that existed before the reward")
-	get_tree().paused = false
+	pause.request_pause(false)
 	_expect(runtime.wave_reward.open_for_wave(1), "Unclaimed reward opens before scene teardown")
 	runtime.prepare_for_scene_teardown()
 	_expect(runtime.is_scene_teardown_prepared(), "Runtime records its teardown boundary")
@@ -387,12 +555,28 @@ func _check_teardown_during_reward() -> void:
 
 
 func _dispose_runtime() -> void:
+	if runtime != null and is_instance_valid(runtime) and runtime.run_progress.finished and not runtime.run_progress.victory:
+		await _capture_ui("defeat")
 	if runtime != null and is_instance_valid(runtime):
 		runtime.prepare_for_scene_teardown()
 		runtime.free()
 		runtime = null
 	await get_tree().process_frame
 	await get_tree().process_frame
+	_expect(not get_tree().paused and GameplayPauseController.get_autoload_instance().get_local_modal_pause_owner_count() == 0,
+		"Destroying the runtime releases every modal pause owner")
+
+
+func _capture_ui(label: String) -> void:
+	if not OS.get_cmdline_user_args().has("--capture-ui"):
+		return
+	assert(DisplayServer.get_name() != "headless", "UI capture requires an actual renderer.")
+	await get_tree().create_timer(0.6, true, false, true).timeout
+	await RenderingServer.frame_post_draw
+	var output_dir := "res://dev_tools/output/vehicle_contract_capture"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(output_dir))
+	_expect(get_viewport().get_texture().get_image().save_png(output_dir.path_join(label + ".png")) == OK,
+		"Rendered %s panel is captured" % label)
 
 
 func _inventory_count() -> int:
