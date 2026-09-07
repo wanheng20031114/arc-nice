@@ -1115,9 +1115,10 @@ func _on_authoritative_warehouse_storage_changed(warehouse: OakWarehouse) -> voi
 	var net_id := int(warehouse.get_meta("net_id", warehouse.warehouse_net_id))
 	if net_id <= 0:
 		return
-	_pending_authoritative_warehouse_snapshots[net_id] = (
-		warehouse.export_storage_snapshot()
-	)
+	# The authoritative ledger still commits synchronously below. Network output
+	# needs only the final state after this frame's transactions; do not export
+	# twenty slot dictionaries again for every producer touching the same store.
+	_pending_authoritative_warehouse_snapshots[net_id] = warehouse
 	_persist_authoritative_warehouse_snapshot(warehouse, net_id)
 	_schedule_shared_production_state_flush()
 
@@ -1180,13 +1181,14 @@ func _flush_shared_production_network_state() -> void:
 	var warehouse_snapshots: Array = []
 	for warehouse_id_variant in warehouse_ids:
 		var warehouse_net_id := int(warehouse_id_variant)
-		var snapshot := _pending_authoritative_warehouse_snapshots.get(
-			warehouse_net_id,
-			{}
-		) as Dictionary
-		if not snapshot.is_empty():
-			warehouse_net_ids.append(warehouse_net_id)
-			warehouse_snapshots.append(snapshot.duplicate(true))
+		var warehouse_reference: Variant = _pending_authoritative_warehouse_snapshots.get(warehouse_net_id)
+		if not is_instance_valid(warehouse_reference):
+			continue
+		var warehouse := warehouse_reference as OakWarehouse
+		if warehouse == null or warehouse.is_dead or warehouse.is_removing or warehouse.is_queued_for_deletion():
+			continue
+		warehouse_net_ids.append(warehouse_net_id)
+		warehouse_snapshots.append(warehouse.export_storage_snapshot())
 	if not warehouse_net_ids.is_empty():
 		rpc_broadcast_requested.emit(
 			&"net_warehouse_storage_snapshot_batch",

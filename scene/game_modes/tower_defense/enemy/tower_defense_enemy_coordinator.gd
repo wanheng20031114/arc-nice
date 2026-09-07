@@ -54,6 +54,8 @@ var next_multiplayer_enemy_net_id := 1
 var enemy_retarget_time_left := 0.0
 var enemy_retarget_sweep_remaining := 0
 var enemy_retarget_cursor := 0
+var _enemy_retarget_sweep_budget := ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME
+var _enemy_retarget_requested := false
 var _home_objective_targets: Array[Node2D] = []
 var _scene_teardown_prepared := false
 var _plant_objective_enemy_index := PlantObjectiveEnemyIndex.new()
@@ -815,6 +817,20 @@ func update_targets(delta: float) -> void:
 	if enemy_retarget_time_left <= 0.0 and enemy_retarget_sweep_remaining <= 0:
 		enemy_retarget_time_left = ENEMY_RETARGET_INTERVAL_SECONDS
 		enemy_retarget_sweep_remaining = _enemy_container.get_child_count()
+		# Spread periodic work across its existing refresh window. Spawns already
+		# receive a target immediately; explicit roster changes keep the fast sweep.
+		var ticks_per_sweep := maxf(
+			ENEMY_RETARGET_INTERVAL_SECONDS / maxf(delta, 0.0001), 1.0
+		)
+		_enemy_retarget_sweep_budget = (
+			ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME
+			if _enemy_retarget_requested
+			else clampi(
+				ceili(float(enemy_retarget_sweep_remaining) / ticks_per_sweep),
+				1, ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME
+			)
+		)
+		_enemy_retarget_requested = false
 		var boss_enemy := _get_active_boss_target()
 		if (
 			boss_enemy != null
@@ -830,7 +846,7 @@ func _process_retarget_budget() -> void:
 	var processed_count := 0
 	while (
 		enemy_retarget_sweep_remaining > 0
-		and processed_count < ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME
+		and processed_count < _enemy_retarget_sweep_budget
 	):
 		var enemy_count := _enemy_container.get_child_count()
 		if enemy_count <= 0:
@@ -1101,6 +1117,8 @@ func _get_logical_tile_distance_squared(
 
 func request_retarget() -> void:
 	enemy_retarget_time_left = 0.0
+	_enemy_retarget_requested = true
+	_enemy_retarget_sweep_budget = ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME
 
 
 func clear_removed_plant_objective(plant: PlantDefense) -> void:

@@ -15,12 +15,25 @@ class CountingBuilding extends ProductionBuilding:
 		export_count += 1
 		return fixture_state.duplicate()
 
+class CountingWarehouse extends OakWarehouse:
+	var export_count := 0
+
+	func export_storage_snapshot() -> Dictionary:
+		export_count += 1
+		return {"warehouse_net_id": warehouse_net_id, "revision": storage_revision, "slots": []}
+
 class HostEconomy extends Economy:
+	var persist_count := 0
+
 	func _is_host_bound() -> bool:
 		return true
 
 	func _get_gameplay_net_time() -> float:
 		return 100.25
+
+	func _persist_authoritative_warehouse_snapshot(_warehouse: OakWarehouse, _net_id: int) -> bool:
+		persist_count += 1
+		return true
 
 var _failures: Array[String] = []
 var _broadcast_packets: Array[PackedByteArray] = []
@@ -88,6 +101,7 @@ func _run() -> void:
 	_test_incompressible_splitting(ids, sample_times)
 	_test_revision_convergence()
 	_test_coalesced_export()
+	_test_warehouse_coalesced_export()
 	_benchmark(ids, states, sample_times)
 	await process_frame
 	print("TOWER_NETWORK_SCALING_REGRESSION ", "PASS" if _failures.is_empty() else "FAIL",
@@ -196,6 +210,31 @@ func _test_revision_convergence() -> void:
 	building.apply_multiplayer_runtime_state_with_host_sample(state, 102.0, 102.0)
 	_check(not building.production_enabled, "same-revision newer complete repair sample converges")
 	building.free()
+
+
+func _test_warehouse_coalesced_export() -> void:
+	var economy := HostEconomy.new()
+	root.add_child(economy)
+	var packets: Array[Array] = []
+	economy.rpc_broadcast_requested.connect(func(method: StringName, args: Array) -> void:
+		_check(method == &"net_warehouse_storage_snapshot_batch", "correct warehouse RPC")
+		packets.append(args)
+	)
+	var warehouse := CountingWarehouse.new()
+	warehouse.warehouse_net_id = 7
+	for index in 100:
+		warehouse.storage_revision = index
+		economy._on_authoritative_warehouse_storage_changed(warehouse)
+	_check(warehouse.export_count == 0, "warehouse dirty notifications must not export transient network states")
+	_check(economy.persist_count == 100, "each authoritative ledger transaction must still persist synchronously")
+	economy._flush_shared_production_network_state()
+	_check(warehouse.export_count == 1 and packets.size() == 1, "100 storage signals must export and broadcast one final state")
+	_check(packets[0][0] == PackedInt32Array([7]) and packets[0][1][0]["revision"] == 99, "warehouse flush lost final revision")
+	economy._on_authoritative_warehouse_storage_changed(warehouse)
+	warehouse.free()
+	economy._flush_shared_production_network_state()
+	_check(packets.size() == 1, "freed dirty warehouse published a stale snapshot")
+	economy.queue_free()
 
 
 func _on_broadcast(method: StringName, args: Array) -> void:
