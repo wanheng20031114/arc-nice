@@ -156,3 +156,31 @@ python -X utf8 dev_tools/audit_resource_integrity.py
 异步收尾初始证据：`menu_shutdown_before_button_3.log`、`menu_shutdown_before_window_4.log`、`menu_shutdown_fixed_button.log`、`menu_shutdown_fixed_window.log`、`threaded_lifetime_contract_full.log`、`lifecycle_shutdown_final.log`、`density_fixture_small.log`。
 
 验证进程均按启动 PID 记录，仅检查和清理本代理创建的进程；提交前命令核实已记录的 124 个 Godot 验证 PID 均无活跃残留，当时全机 headless/check-only 进程也为 0，没有关闭用户的正常编辑器。后续其他代理的验证进程由各自按 PID 管理。
+## 全量原生资源加载补充（06:29）
+
+除显式路径与编辑器导入检查外，新增 `dev_tools/audit_native_resources.py` 与
+`dev_tools/resource_native_load_probe.gd`，通过 Git 跟踪清单逐项执行原生同步
+`ResourceLoader.load(..., CACHE_MODE_REUSE)`。主游戏与独立 Relay 使用各自
+`project.godot` 的资源根；所有脚本（包括继承 SceneTree 的测试入口）只加载、
+不实例化，不调用它们的 `_initialize` 或测试逻辑。结果保留逐项路径、实际类型、
+原生加载耗时、当次源码 SHA256、Git HEAD 与工作区差异。
+
+2026-09-08 本轮结果：主工程 592 个 `.gd`、836 个 `.tres`、363 个 `.tscn`，
+合计 **1791 / 1791** 非空加载；独立 Relay 5 个 `.gd`、1 个 `.tscn`，
+**6 / 6** 非空加载。两进程退出码均为 0，完整合并日志没有 SCRIPT ERROR、
+ERROR、WARNING、ObjectDB 或 RID 警告；耗时分别 11.922 秒与 0.375 秒。
+此结论针对清单中的 Git 跟踪工作文件，尚未跟踪的新测试脚本不计入上述数字。
+只加载不能证明所有场景实例化后的节点路径、动态拼接资源或 GPU shader 均正确；
+正式场景生命周期、实际渲染和玩法回归仍是独立验证。
+
+证据目录 `dev_tools/output/deep_audit_20260908/native_all_resources_first/`：
+`metadata.json`、每工程 `manifest.json/results.json/godot.log/source_hashes.json`，
+以及命令核实的 `cleanup_verified.json`。独立 owner 标记的 PID 11652、17432
+均已结束，Win32_Process 再查 **0 残留**；未关闭其他任务或用户编辑器。
+
+可重跑命令（首次 `--manifest-only` 仅列出清单）：
+
+```powershell
+python -X utf8 dev_tools/audit_native_resources.py --output dev_tools/output/native_resource_audit --manifest-only
+python -X utf8 dev_tools/audit_native_resources.py --output dev_tools/output/native_resource_audit
+```
