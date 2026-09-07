@@ -900,7 +900,8 @@ func assign_enemy_targets(enemy: Enemy, from_position: Vector2) -> void:
 			_plant_runtime_coordinator.find_nearest_enemy_objective(
 				from_position,
 				PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS,
-				enemy.can_target_water_plant_objectives()
+				enemy.can_target_water_plant_objectives(),
+				enemy.get_automatic_combat_target() as PlantDefense
 			)
 		)
 		if automatic_candidate != null:

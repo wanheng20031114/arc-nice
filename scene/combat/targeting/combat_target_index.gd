@@ -331,6 +331,22 @@ func query_hostile_radius_into(
 	excluded_enemy: Enemy = null,
 	relation_service: CombatRelationService = null
 ) -> void:
+	query_hostile_radius_unordered_into(
+		center, radius, source_faction_id, result, excluded_enemy, relation_service
+	)
+	_sort_hostile_candidates_by_distance(result, center)
+	_limit_result(result, max_count)
+
+
+## Unified queries sort once after merging the player/plant/enemy stores.
+func query_hostile_radius_unordered_into(
+	center: Vector2,
+	radius: float,
+	source_faction_id: int,
+	result: Array[Enemy],
+	excluded_enemy: Enemy = null,
+	relation_service: CombatRelationService = null
+) -> void:
 	result.clear()
 	if (
 		not center.is_finite()
@@ -340,6 +356,8 @@ func query_hostile_radius_into(
 	):
 		return
 	_advance_safety_audit_once_per_physics_frame()
+	if not _has_hostile_faction(source_faction_id, relation_service):
+		return
 	var radius_squared := radius * radius
 	var radius_vector := Vector2.ONE * radius
 	var minimum := center - radius_vector
@@ -364,8 +382,6 @@ func query_hostile_radius_into(
 			excluded_enemy,
 			relation_service
 		)
-	_sort_hostile_candidates_by_distance(result, center)
-	_limit_result(result, max_count)
 
 
 func find_nearest_hostile(
@@ -476,6 +492,8 @@ func query_hostile_world_aabb_unordered_into(
 	var minimum := normalized_aabb.position
 	var maximum := normalized_aabb.end
 	_advance_safety_audit_once_per_physics_frame()
+	if not _has_hostile_faction(source_faction_id, relation_service):
+		return
 	_stale_enemy_net_ids.clear()
 	if _should_scan_radius_registry(minimum, maximum):
 		for net_id_variant in enemies_by_net_id:
@@ -502,7 +520,7 @@ func query_hostile_world_aabb_unordered_into(
 	else:
 		var minimum_cell := _to_bucket(minimum)
 		var maximum_cell := _to_bucket(maximum)
-		for target_faction_id in range(COMBAT_RELATIONS.MAX_FACTION_COUNT):
+		for target_faction_id in faction_buckets:
 			if not _is_hostile_relation(
 				source_faction_id,
 				target_faction_id,
@@ -581,7 +599,7 @@ func _append_hostile_in_radius_buckets(
 	relation_service: CombatRelationService
 ) -> void:
 	_stale_enemy_net_ids.clear()
-	for target_faction_id in range(COMBAT_RELATIONS.MAX_FACTION_COUNT):
+	for target_faction_id in faction_buckets:
 		if not _is_hostile_relation(
 			source_faction_id,
 			target_faction_id,
@@ -613,6 +631,19 @@ func _append_hostile_in_radius_buckets(
 						result.append(enemy)
 	for stale_net_id in _stale_enemy_net_ids:
 		_remove_enemy_entry(stale_net_id)
+
+
+## The spatial store already removes empty faction buckets on moves, faction
+## changes and retirement. Query only those present; an all-wave cohort has no
+## enemy targets for another wave enemy, regardless of search radius.
+func _has_hostile_faction(
+	source_faction_id: int,
+	relation_service: CombatRelationService
+) -> bool:
+	for target_faction_id in faction_buckets:
+		if _is_hostile_relation(source_faction_id, target_faction_id, relation_service):
+			return true
+	return false
 
 
 func _is_hostile_relation(

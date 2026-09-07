@@ -731,7 +731,8 @@ func find_nearest_enemy_objective(
 	from_global_position: Vector2,
 	max_radius_cells: float,
 	include_water_plants: bool = true,
-	excluded_instance_ids: Dictionary = {}
+	excluded_instance_ids: Dictionary = {},
+	previous_objective: PlantDefense = null
 ) -> PlantDefense:
 	if (
 		ground_tile_map == null
@@ -754,10 +755,33 @@ func find_nearest_enemy_objective(
 	var maximum_distance_squared := max_radius_cells * max_radius_cells
 	var nearest_plant: PlantDefense = null
 	var nearest_distance_squared := INF
+	var candidate_radius := max_radius_cells
+	# A still-eligible previous objective is an exact upper bound for the nearest
+	# search, not a cached answer. Movement, new buildings and deterministic ties
+	# are still queried live, but distant buildings cannot improve this result.
+	if (
+		previous_objective != null
+		and is_instance_valid(previous_objective)
+		and _enemy_target_plants.has(previous_objective)
+		and not previous_objective.is_dead
+		and not previous_objective.is_removing
+		and not previous_objective.is_queued_for_deletion()
+		and not excluded_instance_ids.has(previous_objective.get_instance_id())
+	):
+		var previous_config := _registered_plant_configs.get(previous_objective) as PlantDefenseConfig
+		if previous_config != null and (include_water_plants or not previous_config.is_water_building()):
+			var previous_local := ground_tile_map.to_local(previous_objective.global_position)
+			var previous_distance_squared := ((previous_local - from_local) / tile_size).length_squared()
+			if previous_distance_squared <= maximum_distance_squared:
+				nearest_plant = previous_objective
+				nearest_distance_squared = previous_distance_squared
+				# Pad only the broad phase against sqrt/transform roundoff. The exact
+				# distance and original authored radius below remain unchanged.
+				candidate_radius = minf(max_radius_cells, sqrt(previous_distance_squared) + 0.0001)
 	var candidates := _query_enemy_targets_for_logical_radius(
 		from_global_position,
 		tile_size,
-		max_radius_cells
+		candidate_radius
 	)
 	for candidate_variant in candidates:
 		var plant := candidate_variant as PlantDefense

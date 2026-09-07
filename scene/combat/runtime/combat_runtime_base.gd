@@ -815,20 +815,22 @@ func find_nearest_hostile_enemy_attack_target_world(
 		or not CombatRelationService.is_valid_faction_id(source_faction_id)
 	):
 		return null
-	get_combat_query_facade().query_hostile_radius_into(
+	var facade := get_combat_query_facade()
+	facade.query_hostile_radius_unordered_into(
 		from_position,
 		max_distance,
 		source_faction_id,
 		_enemy_attack_target_query_scratch,
 		null,
-		0,
 		combat_relation_service
 	)
+	var nearest: Node2D = null
 	for candidate in _enemy_attack_target_query_scratch:
 		if excluded_instance_ids.has(candidate.get_instance_id()):
 			continue
-		return candidate
-	return null
+		if facade.is_radius_candidate_before(candidate, nearest, from_position):
+			nearest = candidate
+	return nearest
 
 
 ## Fills caller-owned storage with the deterministic hostile attack-target

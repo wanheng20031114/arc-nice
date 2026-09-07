@@ -226,6 +226,30 @@ func query_hostile_radius_into(
 	include_plants: bool = true,
 	include_enemies: bool = true
 ) -> void:
+	query_hostile_radius_unordered_into(
+		center, radius, source_faction_id, result, excluded_target,
+		relation_service, include_players, include_plants, include_enemies
+	)
+	result.sort_custom(
+		func(a: Node2D, b: Node2D) -> bool:
+			return _is_radius_candidate_before(a, b, center)
+	)
+	_limit_result(result, max_count)
+
+
+## Callers selecting only the nearest candidate use a linear minimum with the
+## public comparator; ordered list consumers keep query_hostile_radius_into.
+func query_hostile_radius_unordered_into(
+	center: Vector2,
+	radius: float,
+	source_faction_id: int,
+	result: Array[Node2D],
+	excluded_target: Node2D = null,
+	relation_service: CombatRelationService = null,
+	include_players: bool = true,
+	include_plants: bool = true,
+	include_enemies: bool = true
+) -> void:
 	result.clear()
 	if (
 		_runtime == null
@@ -265,22 +289,16 @@ func query_hostile_radius_into(
 				result.append(plant)
 	if include_enemies:
 		_enemy_scratch.clear()
-		_runtime.combat_target_index.query_hostile_radius_into(
+		_runtime.combat_target_index.query_hostile_radius_unordered_into(
 			center,
 			radius,
 			source_faction_id,
 			_enemy_scratch,
-			0,
 			excluded_target as Enemy,
 			relation_service
 		)
 		for enemy in _enemy_scratch:
 			result.append(enemy)
-	result.sort_custom(
-		func(a: Node2D, b: Node2D) -> bool:
-			return _is_radius_candidate_before(a, b, center)
-	)
-	_limit_result(result, max_count)
 
 
 ## AABB enumeration is intended for client visibility and minimap candidate

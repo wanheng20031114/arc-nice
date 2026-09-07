@@ -423,12 +423,13 @@ func find_nearest_enemy_attack_target_world(
 func find_nearest_enemy_objective(
 	from_position: Vector2,
 	maximum_distance_cells: int,
-	include_water_plants: bool
+	include_water_plants: bool,
+	previous_objective: PlantDefense = null
 ) -> PlantDefense:
 	if _plant_system == null:
 		return null
 	return _plant_system.find_nearest_enemy_objective(
-		from_position, maximum_distance_cells, include_water_plants
+		from_position, maximum_distance_cells, include_water_plants, {}, previous_objective
 	)
 
 
