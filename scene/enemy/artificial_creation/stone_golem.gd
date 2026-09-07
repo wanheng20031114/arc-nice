@@ -18,18 +18,11 @@ const SLAM_WORLD_EFFECT_VISIBILITY := preload(
 	"res://scene/combat/feedback/world_effect_visibility.gd"
 )
 
-@onready var slam_impact_ring: Line2D = $SlamImpactRing
+const SLAM_METRICS := preload(
+	"res://scene/enemy/artificial_creation/stone_golem_performance_metrics.gd"
+)
 
-static var slam_performance_metrics_enabled := false
-static var _slam_performance_metrics := {
-	"slam_query_calls": 0,
-	"slam_query_usec": 0,
-	"slam_total_usec": 0,
-	"slam_query_results": 0,
-	"slam_unique_targets": 0,
-	"slam_damage_dispatches": 0,
-	"slam_physics_queries": 0,
-}
+@onready var slam_impact_ring: Line2D = $SlamImpactRing
 
 var slam_query := PhysicsShapeQueryParameters2D.new()
 var slam_hit_target_ids: Dictionary = {}
@@ -42,22 +35,22 @@ var authored_slam_warning_color := Color(0.78, 0.67, 0.5, 0.08)
 
 
 static func set_slam_performance_metrics_enabled(enabled: bool) -> void:
-	slam_performance_metrics_enabled = enabled
+	SLAM_METRICS.enabled = enabled
 	reset_slam_performance_metrics()
 
 
 static func reset_slam_performance_metrics() -> void:
-	_slam_performance_metrics["slam_query_calls"] = 0
-	_slam_performance_metrics["slam_query_usec"] = 0
-	_slam_performance_metrics["slam_total_usec"] = 0
-	_slam_performance_metrics["slam_query_results"] = 0
-	_slam_performance_metrics["slam_unique_targets"] = 0
-	_slam_performance_metrics["slam_damage_dispatches"] = 0
-	_slam_performance_metrics["slam_physics_queries"] = 0
+	SLAM_METRICS.counters["slam_query_calls"] = 0
+	SLAM_METRICS.counters["slam_query_usec"] = 0
+	SLAM_METRICS.counters["slam_total_usec"] = 0
+	SLAM_METRICS.counters["slam_query_results"] = 0
+	SLAM_METRICS.counters["slam_unique_targets"] = 0
+	SLAM_METRICS.counters["slam_damage_dispatches"] = 0
+	SLAM_METRICS.counters["slam_physics_queries"] = 0
 
 
 static func get_slam_performance_metrics(reset_after_read := false) -> Dictionary:
-	var snapshot := _slam_performance_metrics.duplicate()
+	var snapshot := SLAM_METRICS.counters.duplicate()
 	if reset_after_read:
 		reset_slam_performance_metrics()
 	return snapshot
@@ -150,7 +143,7 @@ func _apply_slash_damage() -> void:
 	_start_slam_impact_visual(golem_config)
 	slam_query.transform = Transform2D(0.0, global_position)
 	slam_hit_target_ids.clear()
-	var metrics_enabled := StoneGolem.slam_performance_metrics_enabled
+	var metrics_enabled := SLAM_METRICS.enabled
 	var total_started_usec := (
 		Time.get_ticks_usec()
 		if metrics_enabled
@@ -204,31 +197,31 @@ func _apply_slash_damage() -> void:
 		damage_dispatches += 1
 
 	if metrics_enabled:
-		StoneGolem._slam_performance_metrics["slam_query_calls"] = (
-			int(StoneGolem._slam_performance_metrics["slam_query_calls"]) + 1
+		SLAM_METRICS.counters["slam_query_calls"] = (
+			int(SLAM_METRICS.counters["slam_query_calls"]) + 1
 		)
-		StoneGolem._slam_performance_metrics["slam_query_usec"] = (
-			int(StoneGolem._slam_performance_metrics["slam_query_usec"])
+		SLAM_METRICS.counters["slam_query_usec"] = (
+			int(SLAM_METRICS.counters["slam_query_usec"])
 			+ query_elapsed_usec
 		)
-		StoneGolem._slam_performance_metrics["slam_total_usec"] = (
-			int(StoneGolem._slam_performance_metrics["slam_total_usec"])
+		SLAM_METRICS.counters["slam_total_usec"] = (
+			int(SLAM_METRICS.counters["slam_total_usec"])
 			+ maxi(Time.get_ticks_usec() - total_started_usec, 0)
 		)
-		StoneGolem._slam_performance_metrics["slam_query_results"] = (
-			int(StoneGolem._slam_performance_metrics["slam_query_results"])
+		SLAM_METRICS.counters["slam_query_results"] = (
+			int(SLAM_METRICS.counters["slam_query_results"])
 			+ results.size()
 		)
-		StoneGolem._slam_performance_metrics["slam_unique_targets"] = (
-			int(StoneGolem._slam_performance_metrics["slam_unique_targets"])
+		SLAM_METRICS.counters["slam_unique_targets"] = (
+			int(SLAM_METRICS.counters["slam_unique_targets"])
 			+ slam_hit_target_ids.size()
 		)
-		StoneGolem._slam_performance_metrics["slam_damage_dispatches"] = (
-			int(StoneGolem._slam_performance_metrics["slam_damage_dispatches"])
+		SLAM_METRICS.counters["slam_damage_dispatches"] = (
+			int(SLAM_METRICS.counters["slam_damage_dispatches"])
 			+ damage_dispatches
 		)
-		StoneGolem._slam_performance_metrics["slam_physics_queries"] = (
-			int(StoneGolem._slam_performance_metrics["slam_physics_queries"])
+		SLAM_METRICS.counters["slam_physics_queries"] = (
+			int(SLAM_METRICS.counters["slam_physics_queries"])
 			+ int(slam_query_page_metrics.get("physics_query_count", 0))
 		)
 
