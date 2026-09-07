@@ -3597,10 +3597,16 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 		or not is_realtime_player_state_exchange_enabled()
 	):
 		return
+	var profile_enabled := network_diagnostics_coordinator.cpu_profiling_enabled
+	var profile_start := Time.get_ticks_usec() if profile_enabled else 0
 	player_coordinator.receive_authoritative_player_snapshot(
 		host_timestamp,
 		data
 	)
+	if profile_enabled:
+		network_diagnostics_coordinator.record_cpu_phase(
+			&"receive_player_snapshot", Time.get_ticks_usec() - profile_start
+		)
 
 
 @rpc("authority", "call_remote", "unreliable", 3)
@@ -3616,6 +3622,8 @@ func _rpc_receive_enemy_snapshot(
 		return
 	if not is_finite(host_timestamp) or host_timestamp < 0.0:
 		return
+	var profile_enabled := network_diagnostics_coordinator.cpu_profiling_enabled
+	var profile_start := Time.get_ticks_usec() if profile_enabled else 0
 	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
 	enemy_coordinator.apply_authoritative_snapshot(
 		snapshot_time,
@@ -3626,6 +3634,10 @@ func _rpc_receive_enemy_snapshot(
 		snapshot_hz,
 		host_timestamp
 	)
+	if profile_enabled:
+		network_diagnostics_coordinator.record_cpu_phase(
+			&"receive_enemy_snapshot", Time.get_ticks_usec() - profile_start
+		)
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
@@ -3648,6 +3660,8 @@ func _rpc_client_player_state(
 	):
 		return
 	var sender_id := _get_rpc_sender_id()
+	var profile_enabled := network_diagnostics_coordinator.cpu_profiling_enabled
+	var profile_start := Time.get_ticks_usec() if profile_enabled else 0
 	player_coordinator.handle_client_player_state(
 		sender_id,
 		sequence,
@@ -3660,6 +3674,10 @@ func _rpc_client_player_state(
 		dash_direction,
 		dash_start_move_input
 	)
+	if profile_enabled:
+		network_diagnostics_coordinator.record_cpu_phase(
+			&"receive_player_input", Time.get_ticks_usec() - profile_start
+		)
 
 
 @rpc("any_peer", "call_remote", "reliable", 5)

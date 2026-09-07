@@ -660,13 +660,11 @@ func apply_authoritative_snapshot(
 	if is_chunked_batch and batch_id < _latest_snapshot_batch_seen:
 		_snapshot_stale_chunk_count += 1
 		return
-	# 正式解码会推进共享 baseline。必须先只读扫描 wire ID/结构，再完成
-	# batch 元数据与跨 chunk 重复检查，才能保证无效 chunk 零提交。
-	var packet_enemy_ids: Array[int] = []
-	if not _snapshot_manager.try_collect_decodable_enemy_snapshot_ids(
-		data,
-		packet_enemy_ids
-	):
+	# Metadata only needs the native 2-byte count. The decoder validates IDs,
+	# structure and restored fields in one staging pass and commits only after
+	# every record, cross-chunk ID and trailing byte have passed.
+	var declared_enemy_count := data.decode_u16(0)
+	if declared_enemy_count == 0 and data.size() != 2:
 		if is_chunked_batch and pending_enemy_snapshot_batches.has(batch_id):
 			pending_enemy_snapshot_batches.erase(batch_id)
 			_prune_snapshot_receive_state_to_active_candidates()
@@ -674,13 +672,13 @@ func apply_authoritative_snapshot(
 	if (
 		is_chunked_batch
 		and (
-			(chunk_count > 1 and packet_enemy_ids.is_empty())
+			(chunk_count > 1 and declared_enemy_count == 0)
 			or (
 				chunk_index < chunk_count - 1
-				and packet_enemy_ids.size()
+				and declared_enemy_count
 				!= ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES
 			)
-			or packet_enemy_ids.size() > ENEMY_SNAPSHOT_MAX_ENTITIES_PER_BATCH
+			or declared_enemy_count > ENEMY_SNAPSHOT_MAX_ENTITIES_PER_BATCH
 		)
 	):
 		if pending_enemy_snapshot_batches.has(batch_id):
@@ -712,33 +710,25 @@ func apply_authoritative_snapshot(
 				return
 			seen_enemy_ids = batch["seen"] as Dictionary
 			var invalid_cross_chunk_ids := (
-				seen_enemy_ids.size() + packet_enemy_ids.size()
+				seen_enemy_ids.size() + declared_enemy_count
 				> ENEMY_SNAPSHOT_MAX_ENTITIES_PER_BATCH
 			)
-			if not invalid_cross_chunk_ids:
-				for net_id in packet_enemy_ids:
-					if seen_enemy_ids.has(net_id):
-						invalid_cross_chunk_ids = true
-						break
 			if invalid_cross_chunk_ids:
 				pending_enemy_snapshot_batches.erase(batch_id)
 				_prune_snapshot_receive_state_to_active_candidates()
 				return
-	var states := _snapshot_manager.decode_enemy_snapshots_with_baseline(
+	var states := _snapshot_manager.decode_enemy_snapshot_chunk(
 		data,
-		false
+		seen_enemy_ids
 	)
-	var snapshot_has_full_roster := _is_complete_snapshot_chunk(data, states.size())
-	if (
-		not snapshot_has_full_roster
-		or states.size() != packet_enemy_ids.size()
-	):
+	var snapshot_has_full_roster := states.size() == declared_enemy_count
+	if not snapshot_has_full_roster:
 		if is_chunked_batch:
 			pending_enemy_snapshot_batches.erase(batch_id)
 			_prune_snapshot_receive_state_to_active_candidates()
 		return
-	for net_id in packet_enemy_ids:
-		seen_enemy_ids[net_id] = true
+	for state in states:
+		seen_enemy_ids[state.net_id] = true
 	if is_chunked_batch:
 		# 只有 wire 结构和正式语义解码都成功的 chunk 才能建立/推进 batch
 		# 水位；高 batch-id 的非法 faction/health 不能淘汰较老合法批次。
@@ -930,7 +920,9 @@ func update_proxy_visual_budget(delta: float) -> void:
 		camera.get_screen_center_position() - visible_world_size * 0.5 - margin_vector,
 		visible_world_size + margin_vector * 2.0
 	)
-	_runtime.combat_target_index.query_world_aabb_into(
+	# Visibility consumes an ID set, so object comparison/sorting cannot change
+	# activation. Use the index's explicit unordered display query.
+	_runtime.combat_target_index.query_world_aabb_unordered_into(
 		active_rect,
 		_proxy_visual_query_candidates
 	)
@@ -4880,17 +4872,6 @@ func _discard_snapshot_batches_through(completed_batch_id: int) -> void:
 			if pending_batch_id < completed_batch_id:
 				_snapshot_incomplete_batch_evict_count += 1
 			pending_enemy_snapshot_batches.erase(pending_batch_id)
-
-
-func _is_complete_snapshot_chunk(data: PackedByteArray, decoded_count: int) -> bool:
-	if data.size() < 2:
-		return false
-	var stream := StreamPeerBuffer.new()
-	stream.data_array = data
-	var declared_count := stream.get_u16()
-	if declared_count == 0:
-		return decoded_count == 0 and data.size() == 2
-	return decoded_count == declared_count
 
 
 func _create_interpolator() -> NetInterpolator:

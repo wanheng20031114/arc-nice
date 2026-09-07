@@ -1261,6 +1261,25 @@ func decode_enemy_snapshots_with_baseline(
 	data: PackedByteArray,
 	prune_baseline: bool = true
 ) -> Array[EnemyState]:
+	return _decode_enemy_snapshot_packet(data, prune_baseline, false, {})
+
+
+## Network chunks are atomic: every record needs a usable baseline and no ID
+## may have appeared in an earlier chunk of this batch. Fold this read-only
+## membership check into the existing staging pass, before its final commit.
+func decode_enemy_snapshot_chunk(
+	data: PackedByteArray,
+	previous_chunk_ids: Dictionary
+) -> Array[EnemyState]:
+	return _decode_enemy_snapshot_packet(data, false, true, previous_chunk_ids)
+
+
+func _decode_enemy_snapshot_packet(
+	data: PackedByteArray,
+	prune_baseline: bool,
+	require_complete_chunk: bool,
+	previous_chunk_ids: Dictionary
+) -> Array[EnemyState]:
 	var result: Array[EnemyState] = []
 	if data.size() < 2:
 		return result
@@ -1288,10 +1307,13 @@ func decode_enemy_snapshots_with_baseline(
 			net_id <= 0
 			or not NetConstants.is_valid_network_combat_value(net_id)
 			or seen_net_ids.has(net_id)
+			or previous_chunk_ids.has(net_id)
 		):
 			return result
 		seen_net_ids[net_id] = true
 		var previous := enemy_receive_baselines.get(net_id) as EnemyState
+		if require_complete_chunk and previous == null and not _is_full_enemy_mask(mask):
+			return result
 		var restored: EnemyState = null
 		if record_index < enemy_receive_staging_states.size():
 			restored = enemy_receive_staging_states[record_index]
@@ -1314,7 +1336,8 @@ func decode_enemy_snapshots_with_baseline(
 		if previous == null and not _is_full_enemy_mask(mask):
 			can_prune = false
 			continue
-		live_ids[restored.net_id] = true
+		if prune_baseline:
+			live_ids[restored.net_id] = true
 		staged_states.append(restored)
 
 	# The receive dictionaries are shared across packets and their output objects
