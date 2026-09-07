@@ -3387,15 +3387,34 @@ func clear_damage_over_time_statuses() -> void:
 
 func get_collectible_visual_status_mask() -> int:
 	var result := 0
-	if _has_collectible_status(&"burn"):
-		result |= 1
-	if _has_collectible_status(&"bleed"):
-		result |= 2
+	# Snapshot collection visits every enemy at 20/30 Hz. Players contribute
+	# independent effect keys, so four status-specific scans multiplied this work
+	# by both horde size and party size. Resolve all visual bits in one traversal;
+	# expiry still uses the live authoritative clock, with no cached status state.
+	var active_after := collectible_status_clock + COLLECTIBLE_STATUS_DEADLINE_EPSILON
+	for effect_key in collectible_status_effects:
+		var status_data := collectible_status_effects[effect_key] as Dictionary
+		if status_data.is_empty():
+			continue
+		var status_bit := 0
+		match StringName(status_data.get("status_id", &"")):
+			&"burn": status_bit = 1
+			&"bleed": status_bit = 2
+			&"mark": status_bit = 8
+			ELECTROMAGNETIC_ATTACHMENT_STATUS_ID:
+				status_bit = ELECTROMAGNETIC_ATTACHMENT_VISUAL_STATUS_MASK
+		if status_bit == 0 or (result & status_bit) != 0:
+			continue
+		var remains_active := (
+			float(status_data.get("expires_at", 0.0)) > active_after
+			if status_data.has("expires_at")
+			else float(status_data.get("time_left", 0.0)) > 0.0
+		)
+		if remains_active:
+			result |= status_bit
 	if _has_move_speed_modifier_below_default():
 		result |= 4
-	if _has_collectible_status(&"mark"):
-		result |= 8
-	if has_electromagnetic_attachment():
+	if permanent_electromagnetic_attachment:
 		result |= ELECTROMAGNETIC_ATTACHMENT_VISUAL_STATUS_MASK
 	return result
 
