@@ -359,7 +359,7 @@ func _resolve_expired_lock() -> void:
 
 
 func _is_lock_target_valid(sniper_config: SniperConfig) -> bool:
-	if not _is_frozen_lock_target_valid(locked_target):
+	if not is_instance_valid(locked_target) or not _is_frozen_lock_target_valid(locked_target):
 		return false
 	var safe_range := maxf(sniper_config.attack_range, 0.0)
 	return (

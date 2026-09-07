@@ -258,9 +258,6 @@ func acknowledge_trusted_sleeping_layered_area_event_phase(
 
 
 func _can_enter_layered_area_event_sleep() -> bool:
-	var has_stable_touch_cooldown := (
-		_has_sleepable_layered_touch_damage_cooldown()
-	)
 	return (
 		not is_dead
 		and objective_target != null
@@ -269,7 +266,7 @@ func _can_enter_layered_area_event_sleep() -> bool:
 		and layered_area_motion_state_known
 		and _can_sleep_layered_area_family_event_phase()
 		and (
-			has_stable_touch_cooldown
+			_has_sleepable_layered_touch_damage_cooldown()
 			or (
 				indexed_touch_contact_snapshot_is_empty()
 				and layered_area_last_can_move

@@ -253,6 +253,7 @@ func _advance_windup_state(delta: float) -> bool:
 	var mage_config := config as MageConfig
 	if (
 		mage_config == null
+		or not is_instance_valid(attack_target)
 		or not _is_ranged_combat_target_in_range(
 			attack_target,
 			mage_config.attack_range
@@ -279,6 +280,7 @@ func _resolve_expired_windup() -> void:
 	var mage_config := config as MageConfig
 	if (
 		mage_config == null
+		or not is_instance_valid(attack_target)
 		or not _is_ranged_combat_target_in_range(
 			attack_target,
 			mage_config.attack_range

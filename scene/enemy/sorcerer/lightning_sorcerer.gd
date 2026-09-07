@@ -144,7 +144,10 @@ func _select_nearest_attack_target(
 	lightning_config: LightningConfig,
 	allow_runtime_refresh: bool
 ) -> Node2D:
-	if not _is_ranged_combat_target_valid(cached_runtime_attack_target):
+	if (
+		not is_instance_valid(cached_runtime_attack_target)
+		or not _is_ranged_combat_target_valid(cached_runtime_attack_target)
+	):
 		cached_runtime_attack_target = null
 		attack_target_refresh_left = 0.0
 	if allow_runtime_refresh and attack_target_refresh_left <= 0.0:
@@ -463,6 +466,7 @@ func _advance_windup_state(delta: float) -> bool:
 	var lightning_config := config as LightningConfig
 	if (
 		lightning_config == null
+		or not is_instance_valid(cast_target)
 		or not _is_frozen_source_hostile_target_valid(cast_target)
 	):
 		_cancel_windup()
@@ -495,7 +499,7 @@ func _advance_windup_state(delta: float) -> bool:
 
 func _resolve_expired_windup() -> void:
 	var lightning_config := config as LightningConfig
-	if lightning_config == null:
+	if lightning_config == null or not is_instance_valid(cast_target):
 		_cancel_windup()
 		return
 	if not _has_ranged_combat_line(cast_target, WORLD_COLLISION_MASK, true):

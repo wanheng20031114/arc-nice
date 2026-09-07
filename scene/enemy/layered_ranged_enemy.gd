@@ -120,9 +120,12 @@ func _try_consume_layered_ranged_decision_phase(_delta: float) -> bool:
 
 
 func _can_run_layered_area_motion() -> bool:
+	# A committed attack already forbids movement. Contact maintenance stays in
+	# the event/target-resolution paths; only a real CHASE movement query needs
+	# the inherited contact scan here. Family gates are pure state predicates.
 	return (
-		super._can_run_layered_area_motion()
-		and _layered_ranged_attack_state_allows_motion()
+		_layered_ranged_attack_state_allows_motion()
+		and super._can_run_layered_area_motion()
 	)
 
 

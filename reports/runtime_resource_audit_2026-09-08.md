@@ -202,3 +202,78 @@ python -X utf8 dev_tools/audit_native_resources.py --output dev_tools/output/nat
 ERROR/WARNING；命令核实专属 `--resource-audit-wake` 验证进程 0 残留。
 证据为 `wake_queue_retry.log`、`wake_contact_final.log`、`wake_cleanup_verified.json`。
 初版测试错传了移除回调参数，已修正后重跑；该首次失败日志保留，未计为通过。
+
+## 远程敌人：先检查确定禁止移动的攻击状态
+
+`LayeredRangedEnemy._can_run_layered_area_motion()` 原先先执行
+`SimpleChaseLayeredEnemy` 的目标/接触检查，再查询具体家族的纯 bool 状态门槛。
+AK47、Mage、RPG、Sniper、Fire、Frost、Lightning 在 WINDUP/BURST/LOCK/SUMMON，
+以及已消费最后一发的 CHASE tick 都明确禁止移动，却仍然重复选择接触目标。
+本次只交换这两个短路谓词的顺序；SMG 的家族门槛恒 true，仍完整进入原接触检查，
+Gunner 自己覆盖运动门槛，不受这个基类方法影响。
+
+这项修改允许无关 stale 接触成员及其重复 urgent 通知延后到下一次真实接触查询清理，
+不要求内部字典每个相位完全相同。实际观察边界保持：7 族完整 decision interval 均为 1，
+锁定状态的 family event sleep 恒 false；动态目标刷新、family decision、事件 touch/delta
+维护、facing、伤害结算均未跳过。实际攻击通过 `get_contact_combat_target()` 重新选择，
+攻击状态推进直接验证已提交目标；重新允许 CHASE 时才走原生接触门槛。`_is_combat_sense_refresh_due()`
+只读物理帧与固定相位，不依赖被省去的 urgent 次数。没有引入缓存、额外采样间隔或新队列。
+
+新增 `ranged_motion_gate_regression.gd` / `ranged_motion_gate_fixture.gd` 在正式 TD READY
+后实例化 7 族真实场景；比对空/活玩家/死玩家/活建筑/死建筑/移除中建筑/友方/恢复敌对/
+已释放玩家，以及已消费事件的 CHASE、死亡攻击者。AK47 另用同一实际 physics tick
+同时推进 authored LEGACY、原顺序 layered 和新顺序 layered，比较逐 tick 状态、移动、
+子弹数、冷却、前摇和已提交目标。该三路使用仅改门槛的测试派生脚本，手动调用真实相位，
+因此并不声称它自身验证 exact-script coordinator admission；真实注册继续由原
+`enemy_transform_scaling_regression.gd` 覆盖。
+
+初轮 fixture 关闭 runtime 自动处理时，未设置测试碰撞身体的原生 KEEP_ACTIVE，导致
+CharacterBody2D 脱离物理 space；另外串行运行的三路落在不同 20 Hz sense 相位，产生了
+伪差异。已把测试身体保留在物理世界，并在同一 physics frame 推进三路，完整保留首次
+失败日志 `ranged_motion_gate_first.log`。随后 `ranged_motion_gate_retry.log` 463 项通过，
+exit 0 且无 ERROR/WARNING。最后一发实际保持当 tick 静止、下一 tick 才追击；死亡/友方
+目标在发射前取消。6 万次锁定门槛微基准：原 206.3 ms / 60000 次 contact scan，
+修改后 27.3 ms / 0 次。它只代表该局部门槛，不代表整局 FPS 或 CPU 总收益。
+
+
+## 稀疏事件睡眠：推迟纯读的接触冷却证明
+
+`SimpleChaseLayeredEnemy._can_enter_layered_area_event_sleep()` 提前计算的
+`_has_sleepable_layered_touch_damage_cooldown()` 只读时钟、目标与阵营，不承担清理或通知。
+现将调用保留在原 OR 表达式内，让死亡、无有效静态目标、运动状态未知、family 必须
+保持活跃等门槛先短路。没有把 deadline 推导缓存到新字段；实际允许 sleep 时仍按原
+路径再次读取 cooldown deadline，保持每族取最早截止帧的协议。
+
+新增 truth-table 在 768 个组合检查旧/新结果、deadline 不变以及实际 helper 调用次数，
+包括 null/static/dynamic 目标、死亡、未知运动、family awake、接触空/活/死/已释放、
+无冷却/未来冷却/已过期/暂停冻结，以及是否能够移动。初次扩展运行全部通过；同轮
+释放已提交目标测试揭露了下述旧问题，因此整次运行未计为成功。
+
+## 释放目标的类型校验顺序缺陷
+
+真实 AK47 在跨 tick 保留的 `attack_target` 已经 free 后，将该失效引用直接传入
+`_is_ranged_combat_target_valid(target: Node2D)`。Godot 在进入函数前就拒绝 freed Object，
+内部 `is_instance_valid` 检查无法执行。LEGACY、原顺序 layered、新顺序 layered 三路
+均连续报同一错误并保持 WINDUP，不是本次 motion gate 重排造成的问题。
+`ranged_motion_gate_final.log` 保留该 2788 项扩展运行的完整失败证据；其余边界通过。
+
+
+随后在 7 族真实场景中分别于事件开始前、事件结束后/发射决策前释放实际敌人目标，
+并测试三族法师的感知缓存释放。修复前 `ranged_lifetime_before_fix.log` 记录 **40 个
+SCRIPT ERROR**，涉及全部 7 族；修复只在缓存持有者首次跨 tick/phase 读取字段处
+增加 `is_instance_valid` 短路，随后沿用原来的类型化目标、距离、视线、取消与冻结阵营
+逻辑。没有把公共类型改成 Variant，也没有给同一同步调用链每层重复增加检查。
+
+最终 `ranged_motion_lifetime_fixed.log` **2827 项通过，exit 0，零 ERROR/WARNING**。
+其中 768 项 sleep 组合各验证结果/时钟不变/调用次数；释放目标的所有前后相位均安全取消，
+既有冷却只按原时钟推进。三路 AK47 最后一发各自实际注册到 RapidFire service，活跃
+记录合计增加 3，当 tick 不动、次 tick 恢复；目标死亡/转友方/移除/释放均不会额外发射。
+`ranged_motion_contact_final.log` 原 **2435 项真实目标选择/接触/注册回归再次通过**，
+exit 0，零 ERROR/WARNING。门槛局部最终微基准为 60000 次：motion scan
+192.1 → 28.7 ms（60000 → 0 次接触查询）；family 已禁止睡眠且有活接触冷却时，sleep
+proof 162.8 → 28.6 ms（60000 → 0 次冷却证明）。后一组特意包含有效接触冷却，
+不能外推到没有 touch cooldown 的远程敌人或整局帧率。
+
+最终阶段全部专属测试 PID 8884、3620、2096、18176、6716、10712 经 Win32_Process
+按 PID/owner marker 核实为 **0 残留**，证据 `ranged_motion_cleanup_verified.json`。
+上述输出均在 `dev_tools/output/deep_audit_20260908/`；失败日志完整保留，不混入成功统计。

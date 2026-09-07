@@ -119,7 +119,10 @@ func _advance_layered_ranged_event_phase(delta: float) -> void:
 	_update_attack_cooldown(delta)
 	if (
 		combat_state != CombatState.CHASE
-		and not _is_ranged_combat_target_valid(attack_target)
+		and (
+			not is_instance_valid(attack_target)
+			or not _is_ranged_combat_target_valid(attack_target)
+		)
 	):
 		# Legacy cancellation occurs before the state match and therefore permits
 		# a CHASE decision in this same tick.
@@ -176,7 +179,10 @@ func _run_authoritative_physics_step(delta: float) -> void:
 	_update_attack_cooldown(delta)
 	if (
 		combat_state != CombatState.CHASE
-		and not _is_ranged_combat_target_valid(attack_target)
+		and (
+			not is_instance_valid(attack_target)
+			or not _is_ranged_combat_target_valid(attack_target)
+		)
 	):
 		_cancel_attack()
 

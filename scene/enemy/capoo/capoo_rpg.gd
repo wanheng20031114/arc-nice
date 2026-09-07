@@ -77,7 +77,10 @@ func _advance_layered_ranged_event_phase(delta: float) -> void:
 	_update_attack_cooldown(delta)
 	if (
 		combat_state != CombatState.CHASE
-		and not _is_ranged_combat_target_valid(committed_attack_target)
+		and (
+			not is_instance_valid(committed_attack_target)
+			or not _is_ranged_combat_target_valid(committed_attack_target)
+		)
 	):
 		# The authored runner cancels before its state match, so CHASE decision and
 		# motion remain eligible later in this same tick.
@@ -131,7 +134,10 @@ func _run_authoritative_physics_step(delta: float) -> void:
 	_update_attack_cooldown(delta)
 	if (
 		combat_state != CombatState.CHASE
-		and not _is_ranged_combat_target_valid(committed_attack_target)
+		and (
+			not is_instance_valid(committed_attack_target)
+			or not _is_ranged_combat_target_valid(committed_attack_target)
+		)
 	):
 		_cancel_attack()
 
@@ -267,7 +273,10 @@ func _advance_windup_state(delta: float) -> bool:
 
 
 func _resolve_expired_windup() -> void:
-	if not _has_clear_world_line_to_rpg_target(committed_attack_target):
+	if (
+		not is_instance_valid(committed_attack_target)
+		or not _has_clear_world_line_to_rpg_target(committed_attack_target)
+	):
 		_cancel_attack()
 		return
 

@@ -132,7 +132,10 @@ func _select_nearest_attack_target(
 	frost_config: FrostConfig,
 	allow_runtime_refresh: bool
 ) -> Node2D:
-	if not _is_ranged_combat_target_valid(cached_runtime_attack_target):
+	if (
+		not is_instance_valid(cached_runtime_attack_target)
+		or not _is_ranged_combat_target_valid(cached_runtime_attack_target)
+	):
 		cached_runtime_attack_target = null
 		attack_target_refresh_left = 0.0
 	if allow_runtime_refresh and attack_target_refresh_left <= 0.0:
@@ -359,6 +362,7 @@ func _advance_summon_state(delta: float) -> bool:
 	var frost_config := config as FrostConfig
 	if (
 		frost_config == null
+		or not is_instance_valid(summon_target)
 		or not _is_ranged_combat_target_valid(summon_target)
 	):
 		_cancel_summon()
@@ -384,7 +388,7 @@ func _advance_summon_state(delta: float) -> bool:
 
 func _resolve_expired_summon() -> void:
 	var frost_config := config as FrostConfig
-	if frost_config == null:
+	if frost_config == null or not is_instance_valid(summon_target):
 		_cancel_summon()
 		return
 	if not _has_ranged_combat_line(
