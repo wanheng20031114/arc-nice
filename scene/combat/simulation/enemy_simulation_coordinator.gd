@@ -741,8 +741,7 @@ func mark_enemy_indexed_touch_transform_dirty(
 			* registration.contact_attacker_local_transform
 	)
 	if (
-		registration.contact_attacker_proxy == null
-		or not registration.contact_attacker_proxy
+		not registration.contact_attacker_proxy
 			.is_translation_transform_supported(current_transform)
 	):
 		# Rotation/scale/shape-basis changes invalidate the immutable contact proxy.
@@ -764,7 +763,7 @@ func mark_enemy_indexed_touch_transform_dirty(
 		registration,
 		current_transform
 	)
-	if _can_reuse_indexed_touch_safe_corridor(registration, enemy):
+	if _can_reuse_indexed_touch_safe_corridor(registration, enemy, current_transform):
 		_metric_indexed_touch_empty_corridor_skip_count += 1
 		return true
 	_enqueue_indexed_touch_dirty(
@@ -3220,7 +3219,8 @@ func _count_indexed_touch_membership_changes(
 
 func _can_reuse_indexed_touch_safe_corridor(
 	registration: Registration,
-	enemy: Enemy
+	enemy: Enemy,
+	touch_transform: Transform2D
 ) -> bool:
 	if (
 		registration == null
@@ -3241,10 +3241,6 @@ func _can_reuse_indexed_touch_safe_corridor(
 			!= enemy.get_contact_shape_revision()
 	):
 		return false
-	var touch_transform := (
-		enemy.global_transform
-			* registration.contact_attacker_local_transform
-	)
 	if (
 		touch_transform.x != registration.indexed_touch_complete_transform.x
 		or touch_transform.y != registration.indexed_touch_complete_transform.y

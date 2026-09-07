@@ -1,0 +1,35 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://dev_tools/enemy_transform_fixture.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/enemy/capoo/capoo_swordsman.tscn" id="2_enemy"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_swordsman.tres" id="3_config"]
+[ext_resource type="PackedScene" path="res://scene/player/weishidaier/player_weishidaier.tscn" id="4_player"]
+
+[sub_resource type="RectangleShape2D" id="Rectangle_wall"]
+size = Vector2(2, 200)
+
+[node name="EnemyTransformFixture" type="Node"]
+script = ExtResource("1_script")
+
+[node name="MotionRig" type="Node2D" parent="."]
+position = Vector2(-2000, -2000)
+
+[node name="Enemy" parent="MotionRig" instance=ExtResource("2_enemy")]
+process_mode = 4
+position = Vector2(-50, 0)
+config = ExtResource("3_config")
+
+[node name="Objective" type="Node2D" parent="MotionRig"]
+position = Vector2(200, 0)
+
+[node name="SecondPlayer" parent="MotionRig" instance=ExtResource("4_player")]
+process_mode = 4
+position = Vector2(-100, -100)
+
+[node name="Wall" type="StaticBody2D" parent="MotionRig"]
+position = Vector2(40, 0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="MotionRig/Wall"]
+shape = SubResource("Rectangle_wall")

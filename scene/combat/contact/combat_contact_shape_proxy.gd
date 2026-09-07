@@ -53,6 +53,8 @@ var _minimum_offset := Vector2.ZERO
 var _maximum_offset := Vector2.ZERO
 var _compound_children: Array[CombatContactShapeProxy] = []
 var _compound_child_anchor_offsets := PackedVector2Array()
+var _capture_basis_x := Vector2.RIGHT
+var _capture_basis_y := Vector2.DOWN
 
 
 static func create(
@@ -140,6 +142,16 @@ func get_bounding_radius() -> float:
 func validate_translation_transform(world_transform: Transform2D) -> SupportStatus:
 	if not is_supported():
 		return support_status
+	# This immutable proxy already validated its captured basis. Ordinary movement
+	# changes only origin, so exact axis equality proves rotation/scale/shear are
+	# unchanged without repeating lengths, determinant and angle decomposition.
+	# Changed axes retain the original tolerance and diagnostic status below.
+	if world_transform.x == _capture_basis_x and world_transform.y == _capture_basis_y:
+		return (
+			SupportStatus.SUPPORTED
+			if world_transform.origin.is_finite()
+			else SupportStatus.NON_FINITE_TRANSFORM
+		)
 	var basis_status := _validate_basis(world_transform)
 	if basis_status != SupportStatus.SUPPORTED:
 		return basis_status
@@ -442,6 +454,8 @@ func _capture(shape: Shape2D, world_transform: Transform2D) -> void:
 	capture_position = world_transform.origin
 	capture_rotation = world_transform.get_rotation()
 	capture_scale = world_transform.x.length()
+	_capture_basis_x = world_transform.x
+	_capture_basis_y = world_transform.y
 
 	var local_core := PackedVector2Array()
 	var local_radius := 0.0
@@ -542,6 +556,8 @@ func _capture_compound(
 	capture_position = anchor_transform.origin
 	capture_rotation = anchor_transform.get_rotation()
 	capture_scale = anchor_transform.x.length()
+	_capture_basis_x = anchor_transform.x
+	_capture_basis_y = anchor_transform.y
 	for child_index in range(shapes.size()):
 		var child := create(shapes[child_index], world_transforms[child_index])
 		if not child.is_supported():

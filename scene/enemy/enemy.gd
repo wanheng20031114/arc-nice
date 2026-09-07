@@ -5499,9 +5499,10 @@ func _move_after_confirmed_no_contact(delta: float = -1.0) -> void:
 	var motion_delta := delta if delta >= 0.0 else get_physics_process_delta_time()
 	var motion := velocity * motion_delta
 	if _can_use_verified_direct_objective_linear_movement(motion):
+		var motion_distance := motion.length()
 		global_position += motion
 		cached_navigation_verified_direct_motion_clearance = maxf(
-			cached_navigation_verified_direct_motion_clearance - motion.length(),
+			cached_navigation_verified_direct_motion_clearance - motion_distance,
 			0.0
 		)
 		if Enemy.performance_metrics_enabled:
@@ -5510,7 +5511,7 @@ func _move_after_confirmed_no_contact(delta: float = -1.0) -> void:
 			)
 			Enemy._performance_metrics["verified_direct_move_distance"] = (
 				float(Enemy._performance_metrics["verified_direct_move_distance"])
-				+ motion.length()
+				+ motion_distance
 			)
 		return
 	# A CharacterBody fallback changes (or can collision-recover) the origin that
@@ -5533,6 +5534,15 @@ func _move_after_confirmed_no_contact(delta: float = -1.0) -> void:
 
 
 func _can_use_verified_direct_objective_linear_movement(motion: Vector2) -> bool:
+	# Most blocked movers have no sweep certificate. Reject them before doing
+	# direction/target math; a successful path still requires every original
+	# clearance, generation and live-target check before writing the transform.
+	if (
+		not cached_navigation_uses_direct_objective_approach
+		or not is_instance_valid(objective_target)
+		or cached_navigation_generation != _get_current_navigation_generation()
+	):
+		return false
 	var motion_distance := motion.length()
 	var motion_matches_swept_direction := (
 		motion_distance > 0.0
@@ -5550,10 +5560,7 @@ func _can_use_verified_direct_objective_linear_movement(motion: Vector2) -> bool
 		)
 	)
 	return (
-		cached_navigation_uses_direct_objective_approach
-		and is_instance_valid(objective_target)
-		and cached_navigation_generation == _get_current_navigation_generation()
-		and motion_matches_swept_direction
+		motion_matches_swept_direction
 		and live_target_still_ahead
 		and motion_distance
 			<= cached_navigation_verified_direct_motion_clearance + 0.0001
@@ -5575,6 +5582,9 @@ func _has_player_contact() -> bool:
 		return true
 	if _select_touching_player() != null:
 		return true
+	if touching_plants.is_empty():
+		return false
+	var hostile_to_plants := _is_hostile_combat_faction(COMBAT_RELATION_SERVICE.PLAYER_ALLIED)
 	var stale_plant_ids: Array[int] = []
 	var has_plant_contact := false
 	for instance_id in touching_plants:
@@ -5582,7 +5592,7 @@ func _has_player_contact() -> bool:
 		if not can_attack_plant_target(plant):
 			stale_plant_ids.append(instance_id)
 			continue
-		if not can_attack_combat_target(plant):
+		if not hostile_to_plants:
 			continue
 		var entry_distance := float(
 			touching_plant_entry_distances.get(instance_id, INF)
@@ -5831,6 +5841,9 @@ func _select_touching_player() -> Player:
 			touched_player = null
 			_clear_cached_navigation_move_direction()
 		return null
+	# All Player contacts share the same faction. Evaluate that relation once for
+	# this synchronous selection, while checking each candidate's live state.
+	var hostile_to_players := _is_hostile_combat_faction(COMBAT_RELATION_SERVICE.PLAYER_ALLIED)
 	var best_player: Player = null
 	var best_peer_id := 0
 	var best_instance_id := 0
@@ -5840,7 +5853,7 @@ func _select_touching_player() -> Player:
 		if player == null or player.is_dead or player.is_queued_for_deletion():
 			stale_player_ids.append(instance_id)
 			continue
-		if not can_attack_combat_target(player):
+		if not hostile_to_players:
 			continue
 		var peer_id := player.peer_id
 		if (
@@ -5871,6 +5884,11 @@ func _select_touching_plant() -> PlantDefense:
 			touched_plant = null
 			_clear_cached_navigation_move_direction()
 		return null
+	# The typed eligibility gate below already checks removal, health and water
+	# targeting. Re-entering the generic target gate repeated those same checks
+	# and faction lookup for every neighboring building.
+	var hostile_to_plants := _is_hostile_combat_faction(COMBAT_RELATION_SERVICE.PLAYER_ALLIED)
+	var enemy_position := global_position
 	var best_plant: PlantDefense = null
 	var best_distance_squared := INF
 	var best_network_id := 0
@@ -5881,9 +5899,9 @@ func _select_touching_plant() -> PlantDefense:
 		if not can_attack_plant_target(plant):
 			stale_plant_ids.append(instance_id)
 			continue
-		if not can_attack_combat_target(plant):
+		if not hostile_to_plants:
 			continue
-		var distance_squared := global_position.distance_squared_to(
+		var distance_squared := enemy_position.distance_squared_to(
 			plant.global_position
 		)
 		var network_id := int(plant.get_meta(&"net_id", 0))
