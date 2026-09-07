@@ -35,8 +35,11 @@ static func persist_to_ledger(
 ) -> bool:
 	if run_state == null or not bind_identity(warehouse, warehouse_net_id):
 		return false
-	return run_state.upsert_shared_warehouse_snapshot(
-		warehouse.export_storage_snapshot(),
+	return run_state.upsert_shared_warehouse_items(
+		warehouse_net_id,
+		warehouse.storage_revision,
+		warehouse.storage_items,
+		warehouse.storage_stack_counts,
 		run_state.get_shared_warehouse_ledger_revision()
 	)
 

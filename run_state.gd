@@ -2851,6 +2851,66 @@ func upsert_shared_warehouse_snapshot(
 	var decoded := _decode_shared_warehouse_snapshot(snapshot)
 	if decoded.is_empty():
 		return false
+	_commit_shared_warehouse_snapshot(decoded, emit_delta_signal)
+	return true
+
+
+## Live authoritative warehouses already own typed, catalog-backed items. Encode
+## these once instead of exporting paths and immediately loading/decoding them
+## again. External/network dictionaries still use the strict decoder above.
+## Validation is complete before commit; each success advances the ledger once.
+func upsert_shared_warehouse_items(
+	warehouse_net_id: int,
+	storage_revision: int,
+	items: Array[PickupConfig],
+	counts: Array[int],
+	expected_ledger_revision: int = -1,
+	emit_delta_signal: bool = true
+) -> bool:
+	ensure_run_started()
+	if (
+		warehouse_net_id <= 0
+		or storage_revision < 0
+		or items.size() != INVENTORY_CAPACITY
+		or counts.size() != INVENTORY_CAPACITY
+		or (
+			expected_ledger_revision >= 0
+			and expected_ledger_revision != shared_warehouse_ledger_revision
+		)
+	):
+		return false
+	var slots: Array[Dictionary] = []
+	slots.resize(INVENTORY_CAPACITY)
+	for slot_index in INVENTORY_CAPACITY:
+		var item := items[slot_index]
+		var count := counts[slot_index]
+		if item == null:
+			if count != 0:
+				return false
+		elif (
+			not RuntimeContentCatalogScript.is_registered_pickup_config(item)
+			or not item.can_store_in_inventory
+			or count <= 0
+			or count > PickupConfig.get_inventory_stack_limit(item)
+		):
+			return false
+		slots[slot_index] = {
+			"slot_index": slot_index,
+			"config_path": item.resource_path if item != null else "",
+			"stack_count": count,
+		}
+	_commit_shared_warehouse_snapshot({
+		"warehouse_net_id": warehouse_net_id,
+		"revision": storage_revision,
+		"slots": slots,
+	}, emit_delta_signal)
+	return true
+
+
+func _commit_shared_warehouse_snapshot(
+	decoded: Dictionary,
+	emit_delta_signal: bool
+) -> void:
 	var warehouse_net_id := int(decoded["warehouse_net_id"])
 	shared_warehouse_snapshots[warehouse_net_id] = decoded
 	shared_warehouse_ledger_revision += 1
@@ -2861,7 +2921,6 @@ func upsert_shared_warehouse_snapshot(
 			false,
 			shared_warehouse_ledger_revision
 		)
-	return true
 
 
 ## 删除同样是单仓事务。缺失 ID 是幂等成功，不推进 revision，也不发布信号。
