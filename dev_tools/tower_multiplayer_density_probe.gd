@@ -18,6 +18,8 @@ var _maximum_sample_enemies := 0
 var sample_frames := 300
 var transport := "lan"
 var active_input := false
+var reconnect_last_client := false
+var prepare_route_identity := false
 var detailed_metrics := false
 var production_period := 5.0
 var output_directory := "res://dev_tools/output/tower_network_density"
@@ -53,6 +55,8 @@ func _initialize() -> void:
 		elif arg.begins_with("--frames="): sample_frames = int(arg.trim_prefix("--frames="))
 		elif arg.begins_with("--transport="): transport = arg.trim_prefix("--transport=")
 		elif arg == "--active-input": active_input = true
+		elif arg == "--reconnect-last-client": reconnect_last_client = true
+		elif arg == "--prepare-route-identity": prepare_route_identity = true
 		elif arg == "--detailed-metrics": detailed_metrics = true
 		elif arg.begins_with("--production-period="): production_period = float(arg.trim_prefix("--production-period="))
 		elif arg.begins_with("--output-dir="): output_directory = arg.trim_prefix("--output-dir=")
@@ -246,6 +250,22 @@ func _run() -> void:
 		for index in range(1, participant_count):
 			while not FileAccess.file_exists(output_directory.path_join("peer_%d.json" % index)):
 				await process_frame
+	if reconnect_last_client:
+		if prepare_route_identity:
+			if not runtime.rogue_exploration_coordinator._ensure_route_runtime_identity():
+				_fail("Could not initialize the embedded route's authenticated identity")
+				return
+			_write_json("route_identity_ready_%d.json" % fixture_index, {"ready": true})
+			for index in participant_count:
+				while not FileAccess.file_exists(output_directory.path_join("route_identity_ready_%d.json" % index)):
+					await process_frame
+		if role == "host":
+			await _verify_host_reconnect()
+		elif fixture_index == participant_count - 1:
+			await _perform_client_reconnect(relay_context)
+		if _failed:
+			return
+	if role == "host":
 		# Measurement windows finish at different wall times when the host catches
 		# up physics ticks. Freeze only AFTER everyone's sample, then verify one
 		# shared final revision through the real reliable replication path.
@@ -257,6 +277,9 @@ func _run() -> void:
 	var checkpoint: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(output_directory.path_join("warehouse_checkpoint.json")))
 	while not _warehouse_checkpoint_matches(checkpoint):
 		await process_frame
+	if prepare_route_identity:
+		if not _verify_retained_route_identity():
+			return
 	_write_json("checkpoint_peer_%d.json" % fixture_index, _warehouse_summary())
 	if role == "host":
 		for index in range(1, participant_count):
@@ -282,6 +305,199 @@ func _run() -> void:
 	for frame in 6:
 		await process_frame
 	quit(0)
+
+
+func _verify_host_reconnect() -> void:
+	while not FileAccess.file_exists(output_directory.path_join("reconnect_disconnected.json")):
+		await process_frame
+	var previous: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(output_directory.path_join("reconnect_disconnected.json")))
+	var old_peer_id := int(previous["old_peer_id"])
+	while not net.is_session_member_suspended(old_peer_id):
+		await process_frame
+	var stable_key := net.get_stable_participant_key(old_peer_id)
+	var incarnation := net.get_session_participant_incarnation(old_peer_id)
+	if stable_key != previous["stable_key"] or incarnation != int(previous["incarnation"]):
+		_fail("Suspended member lost its stable participant identity")
+		return
+	_write_json("reconnect_suspended.json", {"old_peer_id": old_peer_id})
+	while not FileAccess.file_exists(output_directory.path_join("reconnect_client.json")):
+		await process_frame
+	var restored: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(output_directory.path_join("reconnect_client.json")))
+	var new_peer_id := int(restored["new_peer_id"])
+	while not net.is_session_member_active(new_peer_id):
+		await process_frame
+	if (
+		new_peer_id == old_peer_id or net.has_session_member(old_peer_id)
+		or net.get_stable_participant_key(new_peer_id) != stable_key
+		or net.get_session_participant_incarnation(new_peer_id) != incarnation
+		or net.get_active_session_member_peer_ids().size() != participant_count
+		or runtime.get_player_for_peer(new_peer_id) == null
+		or int(_input_sequences()["host_accepted"].get(new_peer_id, 0)) <= 0
+	):
+		_fail("Host did not migrate the reconnect identity, player and active input lease")
+		return
+	var enemy_ids := runtime.get_network_enemy_ids()
+	enemy_ids.sort()
+	var plant_ids := runtime.plant_system.plants_by_net_id.keys()
+	plant_ids.sort()
+	_write_json("reconnect_host.json", {
+		"old_peer_id": old_peer_id, "new_peer_id": new_peer_id,
+		"stable_key": stable_key, "incarnation": incarnation,
+		"enemy_ids": enemy_ids, "plant_ids": plant_ids,
+		"active_players": net.get_active_session_member_peer_ids().size(),
+		"host_accepted_input": _input_sequences()["host_accepted"][new_peer_id],
+	})
+	while not FileAccess.file_exists(output_directory.path_join("reconnect_roster_pass.json")):
+		await process_frame
+
+
+func _perform_client_reconnect(relay_context: Dictionary) -> void:
+	var old_peer_id := net.get_local_peer_id()
+	var stable_key := net.get_stable_participant_key(old_peer_id)
+	var incarnation := net.get_session_participant_incarnation(old_peer_id)
+	var started_msec := Time.get_ticks_msec()
+	_write_json("reconnect_disconnected.json", {
+		"old_peer_id": old_peer_id, "stable_key": stable_key, "incarnation": incarnation,
+	})
+	root.multiplayer.multiplayer_peer.close()
+	net.disconnect_from_game()
+	runtime.prepare_for_scene_teardown()
+	current_scene = null
+	session.queue_free()
+	session = null
+	runtime = null
+	for frame in 6:
+		await process_frame
+	while not FileAccess.file_exists(output_directory.path_join("reconnect_suspended.json")):
+		await process_frame
+	# Exercise the public refusal path before using the retained identity. This
+	# proves the uninitialized-route fix did not grant a new identity admission.
+	var retained_token := net.local_reconnect_token
+	var invalid_token := retained_token.sha256_text().left(32)
+	if invalid_token == retained_token or not net.set_local_reconnect_token(invalid_token):
+		_fail("Could not prepare independent rejected reconnect identity")
+		return
+	var rejected_reasons: Array[String] = []
+	var capture_rejection := func(reason: String) -> void: rejected_reasons.append(reason)
+	net.connection_failed.connect(capture_rejection)
+	var rejected_error := _connect_reconnect_transport(relay_context, true)
+	if rejected_error != OK:
+		_fail("Unknown-identity probe failed before admission")
+		return
+	while rejected_reasons.is_empty() or net.connection_state != NetManagerStore.ConnectionState.DISCONNECTED:
+		await process_frame
+	net.connection_failed.disconnect(capture_rejection)
+	if rejected_reasons != ["房间已经开始；该身份没有可恢复的断线席位。"] or not net.set_local_reconnect_token(retained_token):
+		_fail("Unknown reconnect identity did not receive the exact missing-seat refusal")
+		return
+	_write_json("reconnect_unknown_identity_rejected.json", {"rejected": true})
+	_load_started = false
+	net.connection_failed.connect(_fail)
+	net.connection_state_changed.connect(_on_connection_state_changed)
+	var connect_error := _connect_reconnect_transport(relay_context, false)
+	if connect_error != OK:
+		_fail("Reconnect transport returned " + error_string(connect_error))
+		return
+	while net.connection_state != NetManagerStore.ConnectionState.IN_GAME:
+		await process_frame
+	session = root.get_node("MpGame")
+	runtime = session.get("game") as TowerDefenseGame
+	var new_peer_id := net.get_local_peer_id()
+	if (
+		new_peer_id == old_peer_id or net.get_stable_participant_key(new_peer_id) != stable_key
+		or net.get_session_participant_incarnation(new_peer_id) != incarnation
+	):
+		_fail("Client did not retain its stable identity across the new transport peer")
+		return
+	_controls_enabled = true
+	Input.action_press("shoot_up")
+	var starting_projectiles: int = session.projectile_coordinator.get("_next_projectile_sequence")
+	for frame in 120:
+		await physics_frame
+	_controls_enabled = false
+	Input.action_release("shoot_up")
+	if not _movement_action.is_empty():
+		Input.action_release(_movement_action)
+	var new_projectiles := int(session.projectile_coordinator.get("_next_projectile_sequence")) - starting_projectiles
+	if new_projectiles <= 0 or int(_input_sequences()["sent"]) <= 0:
+		_fail("Restored client could not resume authoritative input and firing")
+		return
+	_write_json("reconnect_client.json", {
+		"old_peer_id": old_peer_id, "new_peer_id": new_peer_id,
+		"stable_key": stable_key, "incarnation": incarnation,
+		"elapsed_ms": Time.get_ticks_msec() - started_msec,
+		"local_projectiles": new_projectiles, "input_sent": _input_sequences()["sent"],
+	})
+	while not FileAccess.file_exists(output_directory.path_join("reconnect_host.json")):
+		await process_frame
+	var host_state: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(output_directory.path_join("reconnect_host.json")))
+	var roster_deadline := Time.get_ticks_msec() + 10000
+	while true:
+		var enemy_ids := runtime.get_network_enemy_ids()
+		enemy_ids.sort()
+		var plant_ids := runtime.plant_system.plants_by_net_id.keys()
+		plant_ids.sort()
+		if _same_network_ids(enemy_ids, host_state["enemy_ids"]) and _same_network_ids(plant_ids, host_state["plant_ids"]):
+			break
+		if Time.get_ticks_msec() > roster_deadline:
+			_write_json("reconnect_roster_mismatch.json", {"enemy_ids": enemy_ids, "plant_ids": plant_ids, "metrics": session.get_snapshot_packet_metrics()})
+			_fail("Restored client roster did not converge: enemies=%d plants=%d" % [enemy_ids.size(), plant_ids.size()])
+			return
+		await process_frame
+	_write_json("reconnect_roster_pass.json", {"enemies": runtime.get_network_enemy_count(), "plants": runtime.plant_system.plants_by_net_id.size()})
+	net.connection_failed.disconnect(_fail)
+	net.connection_state_changed.disconnect(_on_connection_state_changed)
+
+
+func _connect_reconnect_transport(relay_context: Dictionary, rejected_identity: bool) -> Error:
+	if transport == "relay":
+		var host_info: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(output_directory.path_join("host_ready.json")))
+		return net.client_join_relay_room("127.0.0.1", port, int(host_info["host_peer_id"]),
+			relay_context["room_id"], relay_context["rejected_identity_ticket" if rejected_identity else "reconnect_ticket"])
+	return net.client_connect_lan("127.0.0.1", port)
+
+
+func _same_network_ids(actual: Array, expected: Array) -> bool:
+	if actual.size() != expected.size():
+		return false
+	for index in actual.size():
+		# JSON numbers are floats; compare the integer wire identity, not text
+		# formatting such as [1] versus [1.0]. No state is applied from these files.
+		if int(actual[index]) != int(expected[index]):
+			return false
+	return true
+
+
+func _verify_retained_route_identity() -> bool:
+	# A fresh reconnecting process initializes from the final authenticated
+	# roster; surviving processes must migrate their already retained avatars.
+	var exploration := runtime.rogue_exploration_coordinator
+	if not exploration._ensure_route_runtime_identity():
+		_fail("Restored embedded route identity could not initialize")
+		return false
+	var route := exploration.get_node("RogueRoute") as RogueRouteGame
+	var host_state: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(output_directory.path_join("reconnect_host.json")))
+	var old_peer_id := int(host_state["old_peer_id"])
+	var new_peer_id := int(host_state["new_peer_id"])
+	var knows_reconnected_stable_key := role == "host" or fixture_index == participant_count - 1
+	if (
+		route.get_player_for_peer(old_peer_id) != null
+		or route.get_player_for_peer(new_peer_id) == null
+		or route.peer_players.size() != participant_count
+		or (
+			knows_reconnected_stable_key
+			and route.get("_player_stable_keys").get(new_peer_id, "") != host_state["stable_key"]
+		)
+	):
+		_write_json("route_identity_mismatch_%d.json" % fixture_index, {
+			"old_exists": route.get_player_for_peer(old_peer_id) != null,
+			"new_exists": route.get_player_for_peer(new_peer_id) != null,
+			"players": route.peer_players.size(), "knows_stable_key": knows_reconnected_stable_key,
+		})
+		_fail("Retained inactive route did not migrate its avatar and stable identity")
+		return false
+	_write_json("route_identity_peer_%d.json" % fixture_index, {"players": route.peer_players.size(), "old_removed": true, "new_peer_id": new_peer_id})
+	return true
 
 
 func _on_connection_state_changed(state: int) -> void:
@@ -342,12 +558,13 @@ func _populate() -> void:
 	for index in enemy_count:
 		var config_path := _enemy_paths[index]
 		var wire_config := load(config_path) as EnemyConfig
-		var config := wire_config.duplicate() as EnemyConfig
-		config.max_health = 10000000
-		var enemy := config.enemy_scene.instantiate() as Enemy
+		var enemy := wire_config.enemy_scene.instantiate() as Enemy
 		runtime.enemy_container.add_child(enemy)
 		enemy.global_position = Vector2(560 + index % 25 * 12, 130 + index / 25 * 18)
-		enemy.setup(config, runtime.player, null, runtime)
+		enemy.setup(wire_config, runtime.player, null, runtime)
+		# Keep the registered canonical config identity: reconnect spawn rosters
+		# correctly reject duplicated Resources with an empty resource_path.
+		enemy.set_runtime_max_health_multiplier(10000000.0 / wire_config.max_health, true)
 		runtime.enemy_coordinator.assign_enemy_targets(enemy, enemy.global_position)
 		runtime.enemy_coordinator.finalize_authoritative_enemy_spawn(
 			enemy, wire_config, enemy.global_position, true

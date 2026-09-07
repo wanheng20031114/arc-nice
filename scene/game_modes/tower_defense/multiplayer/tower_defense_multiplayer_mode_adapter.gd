@@ -321,6 +321,10 @@ func handle_rogue_exploration_peer_left(peer_id: int) -> void:
 		_rogue_exploration_coordinator.host_remove_disconnected_peer(peer_id)
 
 
+func requires_reconnected_route_identity_projection() -> bool:
+	return _rogue_exploration_coordinator.requires_reconnected_route_identity_projection()
+
+
 func handle_rogue_exploration_peer_reconnected(
 	old_peer_id: int,
 	new_peer_id: int,

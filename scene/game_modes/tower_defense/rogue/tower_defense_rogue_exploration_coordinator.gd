@@ -280,6 +280,13 @@ func _ensure_route_runtime_identity() -> bool:
 	return _route_identity_configured
 
 
+func requires_reconnected_route_identity_projection() -> bool:
+	# Multiplayer setup intentionally leaves the embedded route unconfigured
+	# until its first active snapshot/entry. After an exploration ends its route
+	# and shop identities still exist, so inactivity alone must never skip remap.
+	return _route_identity_configured or _active
+
+
 func _connect_route_signals() -> void:
 	if not _route.return_requested.is_connected(_on_route_return_requested):
 		_route.return_requested.connect(_on_route_return_requested)

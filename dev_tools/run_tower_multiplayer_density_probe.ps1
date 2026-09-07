@@ -7,12 +7,15 @@ param(
     [int]$Port = 28798,
     [ValidateSet('lan', 'relay')][string]$Transport = 'lan',
     [switch]$ActiveInput,
+    [switch]$ReconnectLastClient,
+    [switch]$PrepareRouteIdentity,
     [switch]$DetailedMetrics,
     [switch]$NativeCpu,
     [switch]$ProfileHost,
     [string]$Godot = 'C:/Program Files/Godot/Godot_console.exe'
 )
 $ErrorActionPreference = 'Stop'
+if ($PrepareRouteIdentity -and -not $ReconnectLastClient) { throw '-PrepareRouteIdentity requires -ReconnectLastClient' }
 $probeRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $runDirectory = Join-Path $probeRoot ('dev_tools/output/tower_network_' + (Get-Date -Format 'yyyyMMdd_HHmmss'))
 New-Item -ItemType Directory -Path $runDirectory -Force | Out-Null
@@ -33,7 +36,7 @@ if ($loaderLifetimeText.Contains('use_sub_threads and not headless')) { $loaderE
     working_changes = @(& git -C $probeRoot status --short)
     players = $Players; buildings = $Buildings; enemies = $Enemies; frames = $Frames
     enemy_wave = $EnemyWave
-    transport = $Transport; active_input = [bool]$ActiveInput; native_profile_host = [bool]$ProfileHost
+    transport = $Transport; active_input = [bool]$ActiveInput; reconnect_last_client = [bool]$ReconnectLastClient; prepare_route_identity = [bool]$PrepareRouteIdentity; native_profile_host = [bool]$ProfileHost
     detailed_metrics = [bool]$DetailedMetrics
     native_cpu = [bool]$NativeCpu
     loader_requested_sub_threads = $loaderSubThreads; loader_effective_headless_sub_threads = $loaderEffectiveSubThreads; working_source_sha256 = $dirtyHashes
@@ -50,6 +53,8 @@ function Start-Probe([int]$Index, [string]$Role) {
         "--role=$Role", "--index=$Index", "--port=$Port", "--players=$Players", "--buildings=$Buildings",
         "--enemies=$Enemies", "--frames=$Frames", "--transport=$Transport", ('--output-dir="' + $runDirectory + '"'))
     if ($ActiveInput) { $arguments += '--active-input' }
+    if ($ReconnectLastClient) { $arguments += '--reconnect-last-client' }
+    if ($PrepareRouteIdentity) { $arguments += '--prepare-route-identity' }
     if ($DetailedMetrics) { $arguments += '--detailed-metrics' }
     if ($EnemyWave) { $arguments += ('--enemy-wave="' + $EnemyWave + '"') }
     $started = Start-Process -FilePath $Godot -ArgumentList $arguments -WorkingDirectory $probeRoot -WindowStyle Hidden -PassThru `
@@ -167,6 +172,22 @@ try {
         }
     }
     Write-Output "WAREHOUSE_CHECKPOINT_PASS participants=$Players water=$($checkpoint.water_count)"
+    if ($ReconnectLastClient) {
+        $rejectedIdentity = Get-Content -LiteralPath (Join-Path $runDirectory 'reconnect_unknown_identity_rejected.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        if (-not $rejectedIdentity.rejected) { throw 'Unknown reconnect identity was not rejected' }
+        $reconnectHost = Get-Content -LiteralPath (Join-Path $runDirectory 'reconnect_host.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        $reconnectClient = Get-Content -LiteralPath (Join-Path $runDirectory 'reconnect_client.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        $reconnectRoster = Get-Content -LiteralPath (Join-Path $runDirectory 'reconnect_roster_pass.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($reconnectHost.new_peer_id -eq $reconnectHost.old_peer_id -or $reconnectClient.stable_key -ne $reconnectHost.stable_key -or $reconnectClient.incarnation -ne $reconnectHost.incarnation -or $reconnectRoster.plants -ne $Buildings -or $reconnectHost.host_accepted_input -le 0 -or $reconnectClient.local_projectiles -le 0) { throw 'Reconnect identity, roster or resumed input mismatch' }
+        Write-Output "RECONNECT_PASS old=$($reconnectHost.old_peer_id) new=$($reconnectHost.new_peer_id) elapsed_ms=$($reconnectClient.elapsed_ms) enemies=$($reconnectRoster.enemies) plants=$($reconnectRoster.plants)"
+        if ($PrepareRouteIdentity) {
+            for ($index = 0; $index -lt $Players; $index++) {
+                $routeIdentity = Get-Content -LiteralPath (Join-Path $runDirectory "route_identity_peer_$index.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($routeIdentity.players -ne $Players -or -not $routeIdentity.old_removed -or $routeIdentity.new_peer_id -ne $reconnectHost.new_peer_id) { throw 'Retained embedded route identity mismatch' }
+            }
+            Write-Output "RETAINED_ROUTE_IDENTITY_PASS participants=$Players"
+        }
+    }
     foreach ($result in $results) {
         if ($result.participants -ne $Players -or $result.plants -ne $Buildings -or ((-not $EnemyWave) -and $result.enemies -ne $Enemies)) {
             throw "Density/cohort mismatch in participant $($result.index)"

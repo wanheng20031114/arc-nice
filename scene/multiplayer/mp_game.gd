@@ -8341,7 +8341,10 @@ func _attempt_reconnected_player_projection(
 				"MpGame: 无法将跨幕间重连玩家 %d 权威传送回塔防出生点。"
 				% new_peer_id
 			)
-	if tower_mode_adapter != null:
+	if (
+		tower_mode_adapter != null
+		and tower_mode_adapter.requires_reconnected_route_identity_projection()
+	):
 		var route_migrated := false
 		if net_manager.is_host():
 			route_migrated = (

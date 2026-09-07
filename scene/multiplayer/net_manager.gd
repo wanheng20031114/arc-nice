@@ -3252,11 +3252,14 @@ func _consume_lobby_command_admission(
 func _disconnect_incompatible_peer(peer_id: int) -> void:
 	if peer_id <= 0:
 		return
+	var expected_transport := multiplayer.multiplayer_peer
 	await get_tree().create_timer(0.1).timeout
+	if multiplayer.multiplayer_peer != expected_transport:
+		return
 	if conn_mode == ConnMode.RELAY:
 		_request_relay_peer_disconnect(peer_id)
 		return
-	if _enet_peer == null:
+	if _enet_peer == null or not multiplayer.get_peers().has(peer_id):
 		return
 	var packet_peer := _enet_peer.get_peer(peer_id)
 	if packet_peer != null:

@@ -28,7 +28,13 @@ def main() -> None:
     ]
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "relay_context.json").write_text(
-        json.dumps({"room_id": room_id, "secret": secret, "tickets": tickets}), encoding="utf-8"
+        json.dumps({
+            "room_id": room_id, "secret": secret, "tickets": tickets,
+            # Reconnect keeps the gameplay token but must use a fresh relay
+            # admission nonce. Reusing the original ticket is correctly rejected.
+            "reconnect_ticket": signer.issue(secret, room_id, "member", f"Density{args.players - 1}", 120),
+            "rejected_identity_ticket": signer.issue(secret, room_id, "member", f"Density{args.players - 1}", 120),
+        }), encoding="utf-8"
     )
 
 

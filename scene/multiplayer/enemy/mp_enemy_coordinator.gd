@@ -1626,8 +1626,12 @@ func _prepare_client_spawn(
 			net_id,
 			config_path,
 			spawn_position,
-			mapped_spawn_time
+			incarnation_token
 		)
+		# An enemy may predate a reconnecting client's new session clock. The
+		# authoritative incarnation must be nonnegative; its local mapping need
+		# only be finite and can legitimately fall before local time zero.
+		or not is_finite(mapped_spawn_time)
 		or not is_finite(current_time)
 		or not is_finite(incarnation_token)
 		or incarnation_token < 0.0

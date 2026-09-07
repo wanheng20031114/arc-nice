@@ -71,6 +71,16 @@
 
 3401 项回归覆盖首/末条非法、每个截断位置、保留位、health/revision/faction、重复 ID、缺少基线、乱序分块、空批次和新高 batch 水位；实际 42 个注册 Enemy 参与协调器用例。300 敌人 × 120 样本交替运行，旧流程 417.96–426.25 ms，新流程 336.70–344.03 ms，解码流程 CPU 下降约 19.5%。之后真实六人混合 1800 tick 整合严格通过。
 
+### 8. 实际断线恢复发现的身份与时钟错误
+
+原身份重连最初在真实 LAN 测试中失败，Host 报“无法迁移地下探索路线身份”。原因是普通塔防只在首次进入地下探索时配置内嵌路线身份，重连却无条件尝试迁移未初始化的路线。修复读取已有 `_route_identity_configured` 与 `_active`，仅在确实存在路线身份或探索已 active 时执行严格投影。曾经初始化但目前 inactive 的路线仍迁移旧/new peer 的头像与商店身份；active 而身份异常缺失也不能越过原失败检查。
+
+身份成功恢复后，进一步发现全部建筑能重建，敌人却一直为 0。重连客户端重新建立会话时钟；此前出生的敌人，其原始 Host 时间合法，但映射到新客户端时钟后可能为负数。旧 `_prepare_client_spawn` 错把这个映射值再拿去执行原始 wire 的非负校验，导致整块 spawn 被拒绝。修复对原始 incarnation token 保留非负验证，对本地映射时间只要求有限，不做 clamp。16 项单元断言覆盖精确负映射、幂等、旧 incarnation、非法 Host 时间/offset/path、批次首/末条非法和终结墓碑；真实 Enemy 与注册表参与测试，仅出生 VFX 用计数替身隔离。
+
+同时修复拒绝连接的延迟收尾：等待 0.1 秒后，原 transport 或 peer 可能已经离开。回调持有并校验原 transport 身份，再检查当前 peer 集合，避免向已断开的原生 ENet peer 查询句柄，也避免旧回调作用于新会话。
+
+恢复夹具还修正了一处测试身份问题：不能通过复制 `EnemyConfig` 后修改 health 来维持密度，因为复制资源的 `resource_path` 为空，正式完整 spawn roster 正确地拒绝未注册配置。当前夹具保持正式 catalog 配置，使用已有的运行时生命倍率并保持满血来获得 10,000,000 生命；没有放宽生产路径的 catalog 验证。
+
 ## 实际多进程测试方法
 
 `dev_tools/run_tower_multiplayer_density_probe.ps1` 启动一个正式 Host 与 N−1 个独立 Client。各进程使用正式 NetManager 准入、成员确认、GameLoadCoordinator、开局加载屏障、MpGame RPC、原生敌人/建筑场景和实际代理。
@@ -129,7 +139,14 @@
 
 最终六人运行采用资源审计修复后的原生请求 token 生命周期与 headless FIFO。真实图形后端仍保留原生后台并行；Dummy/headless 的原生纹理 RID 数据竞争由独立最小工程复现后，才实施串行边界。`063004` 所有 7 进程日志无错误、无警告，6 个游戏进程自然 exit 0；旧 runner 在 finally 清理 Relay，未单独检查其退出码，不能声称 Relay 自然 exit 0。runner 按本轮命令行再次确认残留进程 0。评审后新版 runner 增加等待 Relay 原生空房间 3 秒退出并验证退出码 0 的独立断言。早期有 Dummy RID 错误的结果不计为整合通过。
 
-已开始的房间有明确准入契约：**全新身份没有断线席位会被拒绝**；旧 token 的席位保留 90 秒，并经过重新加载、身份迁移和权威首帧交付恢复。快照单元回归已覆盖新 incarnation、重连基线重建和末块无效原子拒绝。自动重连 UI 或公网丢包恢复不能仅凭这些用例声称已通过；本次另进行实际旧身份重连验证，结果后补。
+已开始的房间有明确准入契约：**全新身份没有断线席位会被拒绝**；旧 token 的席位保留 90 秒，并经过重新加载、身份迁移和权威首帧交付恢复。恢复夹具在完成性能取样之后关闭末客户端的真实 ENet 连接并卸载场景，等待 Host 进入 `SUSPENDED_GRACE`，先用陌生 token 验证确切拒绝原因，再用原 token、新 transport peer ID 重入。整个过程使用正式 NetManager 与 GameLoadCoordinator。Relay 每次认证使用新票据 nonce，保持原有防重放规则。共享文件仅协调测试及核对结果，不把实体数据注入客户端。
+
+| 运行目录后缀 | 恢复场景 | 结果 |
+| --- | --- | --- |
+| `065204` | 2 人 LAN，16 建筑、12 敌、4 仓；地下探索从未初始化 | 原 token 恢复耗 5.911 秒（包含恢复后的 2 秒移动射击）；peer 81152666→857894175，稳定身份与 incarnation=2 保留，119 次新输入、11 个客户端弹体；12 敌/16 建筑逐 net ID 一致，共同水 8、逐仓 revision 一致；2 游戏自然 exit 0、日志干净、残留 0 |
+| `070031` | 3 人 Relay，相同密度，原所有端使用正式事务预先配置路线身份，保持 inactive | 陌生 token 被真实 Host 拒绝；原 token 994874388→983954503，6.032 秒含 2 秒恢复射击；完整敌/建筑名册和水 8 一致；所有端保留路线旧 avatar 移除、新 avatar 与 3 人名册正确；Host 与恢复本人核对稳定 key。3 游戏与 Relay 自然 exit 0，Relay 空闲退出码单独断言，零错误/警告、残留 0 |
+
+第二轮验证“已有但 inactive 的路线身份仍然迁移”的契约，预配置使用正式身份准备/提交方法，并未完整游玩一轮地下探索。第三方客户端不持有别人的重连 token；未进入 active 路线快照前，不要求它知道别人的稳定 key。这里验证手动调用正式重连入口，不声称提供了自动重连 UI、公网丢包恢复或新身份迟加入功能。
 
 新版 Relay 自然退出断言于 `063651` 单独实测：2 个游戏进程、16 建筑、12 敌、60 tick，明确输出 `RELAY_EMPTY_IDLE_EXIT_PASS exit=0`，2 个游戏与 1 个 Relay 都自然 exit 0，所有日志干净，命令核实残留 0。该短测验证退出契约，不作为密度性能比较。
 
@@ -147,10 +164,12 @@
 & 'C:/Program Files/Godot/Godot_console.exe' --headless --path . --script res://dev_tools/network_enemy_registry_regression.gd
 & 'C:/Program Files/Godot/Godot_console.exe' --headless --path . --script res://dev_tools/enemy_visual_status_snapshot_regression.gd
 & 'C:/Program Files/Godot/Godot_console.exe' --headless --path . --script res://dev_tools/enemy_snapshot_receive_regression.gd
+& 'C:/Program Files/Godot/Godot_console.exe' --headless --path . --script res://dev_tools/enemy_reconnect_spawn_clock_regression.gd
 python dev_tools/check_relay_rpc_parity.py
 powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools/run_tower_multiplayer_density_probe.ps1 -Players 6 -Buildings 256 -Enemies 300 -Frames 600
 powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools/run_tower_multiplayer_density_probe.ps1 -Players 6 -Buildings 400 -Enemies 300 -Frames 600
 powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools/run_tower_multiplayer_density_probe.ps1 -Players 6 -Buildings 256 -Enemies 300 -EnemyWave res://resources/config/campaigns/tower_defense/formal/wave_12.tres -Frames 1800 -Transport relay -ActiveInput -NativeCpu
+powershell -NoProfile -ExecutionPolicy Bypass -File dev_tools/run_tower_multiplayer_density_probe.ps1 -Players 3 -Buildings 16 -Enemies 12 -Frames 360 -Transport relay -ActiveInput -ReconnectLastClient -PrepareRouteIdentity
 ```
 
 Runner 使用隐藏窗口启动测试，正常或失败均在 `finally` 根据本次唯一输出目录、脚本/owner 参数和 `--headless` 查找 Godot console 包装进程及其真实 `Godot.exe` 子进程，停止后再次查询。不会依据进程名批量关闭正常编辑器。
