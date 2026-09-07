@@ -305,12 +305,18 @@ func _try_consume_lightning_chase_decision() -> bool:
 			WORLD_COLLISION_MASK
 		)
 	):
-		if (
+		# A cooling/staggered attack performs no commit and cannot invalidate the
+		# hold we just established. Recheck LOS only after a real commit attempt.
+		var attempted_attack := (
 			initial_attack_stagger_left <= 0.0
+			and not attack_cooldown_left > 0.0
+		)
+		if (
+			attempted_attack
 			and _try_start_windup(combat_target, lightning_config)
 		):
 			return true
-		if _try_hold_ranged_attack_position(
+		if not attempted_attack or _try_hold_ranged_attack_position(
 			combat_target,
 			lightning_config.attack_range,
 			WORLD_COLLISION_MASK

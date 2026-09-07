@@ -229,13 +229,19 @@ func _try_consume_frost_chase_decision() -> bool:
 			WORLD_COLLISION_MASK
 		)
 	):
-		if (
+		# No attack commit runs while cooling or staggered, so the synchronous
+		# hold above remains valid without repeating target and LOS validation.
+		var attempted_attack := (
 			initial_attack_stagger_left <= 0.0
+			and not attack_cooldown_left > 0.0
+		)
+		if (
+			attempted_attack
 			and _try_start_summon(combat_target, frost_config)
 		):
 			return true
 		# 精确提交可能否定此前缓存的视线结果，同帧复核可避免障碍刚出现时停住。
-		if _try_hold_ranged_attack_position(
+		if not attempted_attack or _try_hold_ranged_attack_position(
 			combat_target,
 			frost_config.attack_range,
 			WORLD_COLLISION_MASK
