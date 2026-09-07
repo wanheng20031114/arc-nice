@@ -256,3 +256,10 @@ rendering/text_driver="ICU / HarfBuzz / Graphite"
 
 textures/canvas_textures/default_texture_filter=0
 viewport/hdr_2d=true
+
+[shader_globals]
+
+production_visual_time={
+"type": "float",
+"value": 0.0
+}

@@ -853,30 +853,36 @@ func get_visual_progress_elapsed_seconds() -> float:
 	var recipe := get_active_recipe()
 	if recipe == null or not recipe.is_valid():
 		return 0.0
-	var visual_elapsed := clampf(
-		_visual_progress_elapsed_at_sync,
-		0.0,
-		recipe.duration_seconds
+	var projection := get_visual_progress_projection()
+	var fraction := clampf(
+		(float(_gameplay_now_msec()) / 1000.0 - projection.z)
+		/ maxf(projection.w, 0.001), 0.0, 1.0
 	)
+	return lerpf(projection.x, projection.y, fraction) * recipe.duration_seconds
+
+
+## One canonical projection for the CPU panel and GPU border: start ratio,
+## bounded next-tick ratio, gameplay-clock epoch, and projection duration.
+## The epoch includes a received snapshot's age; the target includes speed auras.
+func get_visual_progress_projection() -> Vector4:
+	var recipe := get_active_recipe()
+	if recipe == null or not recipe.is_valid():
+		return Vector4.ZERO
+	var start := clampf(
+		_visual_progress_elapsed_at_sync / recipe.duration_seconds, 0.0, 1.0
+	)
+	var target := start
 	if _should_project_visual_progress(recipe):
-		var elapsed_since_sync := maxf(
-			float(_gameplay_now_msec() - _visual_progress_sync_msec) / 1000.0,
-			0.0
-		)
-		var projection_fraction := clampf(
-			elapsed_since_sync / maxf(_visual_projection_duration_seconds, 0.001),
-			0.0,
+		target = minf(
+			start + VISUAL_PROJECTION_WINDOW_SECONDS
+			/ get_production_duration_multiplier() / recipe.duration_seconds,
 			1.0
 		)
-		visual_elapsed += minf(
-			VISUAL_PROJECTION_WINDOW_SECONDS
-			/ get_production_duration_multiplier(),
-			maxf(
-				recipe.duration_seconds - visual_elapsed,
-				0.0
-			)
-		) * projection_fraction
-	return clampf(visual_elapsed, 0.0, recipe.duration_seconds)
+	return Vector4(
+		start, target,
+		float(_visual_progress_sync_msec) / 1000.0,
+		_visual_projection_duration_seconds
+	)
 
 
 func get_visual_progress_ratio() -> float:

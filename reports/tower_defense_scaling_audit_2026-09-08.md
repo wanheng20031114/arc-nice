@@ -50,7 +50,7 @@ Godot_console.exe --headless --path . --script res://dev_tools/production_storag
 为了测量固定密度，夹具提高敌人与建筑血量、跳过放置距离/地形限制并停止不受支持地形的衰减；这不是正常通关平衡测试。初次记录为 400 建筑、300 敌人全数存活，16,522 节点、约 3,042 碰撞对，无窗口帧间隔 p95 21.33 ms。样本来自加入最新血条之前，不用于声称后续渲染收益。
 
 联机与最终整合测量将在后续阶段补充；各阶段结果必须保留对应场景、引擎、窗口/无窗口和负载构成。
-# 小地图显示查询的周期性开销（第二轮定位）
+## 小地图显示查询的周期性开销（第二轮定位）
 
 使用 Godot 原生本地脚本分析器 `-d --profiling` 对实际 400 建筑、300 敌人场景定位，
 `TowerDefenseMinimapCanvas._sample_world_entities()` 是模拟协调器之外的主要周期性热点：
@@ -69,3 +69,22 @@ Godot_console.exe --headless --path . --script res://dev_tools/production_storag
 同时补充了 `dev_tools/tower_density_probe.gd` 实战密度探针。原生 `Performance` 时间监视器
 约一秒更新一次，其重复读数不能当作逐物理帧 CPU 耗时；探针分别报告墙钟帧间隔、监视器样本
 和敌人协调器分阶段微秒累计。多人测量另见联网审计报告，单机与同机多进程数据应分开判读。
+
+## 生产动画共享时钟与真实 GPU 检查
+
+四类生产建筑原来每次状态同步都销毁并新建一个 Tween，再逐渲染帧回调 GDScript 设置进度
+uniform。新实现由生产协调器每帧更新一次全局游戏时钟；每栋建筑仅在状态变化时发布起点、
+下一次权威 tick 的终点、采样时间与时长，ShaderInclude 统一计算有界进度。保留原生建造显现
+Tween。边框与生产面板共用同一份投影，顺便修复旧边框忽略生产加速光环及网络样本年龄的问题。
+不会提前发放产物，也不会无限外推超过下一次逻辑采样。
+
+`dev_tools/production_progress_projection_regression.gd` 检查正常/两倍生产速率、延迟 0.5 秒的
+客户端状态、全局暂停/恢复、缺料冻结、完成上限、停机和最后一栋生产建筑注销，全部通过。
+Godot 原生编辑器导入与 Forward+ 实际渲染均未报告 shader 错误。
+
+在 RTX 3060 Laptop + Ryzen 5900HS 上，打开真实窗口，400 建筑、300 敌人，其中 100 加工站
+运行测试水配方，采集 600 个物理 tick：GPU 帧耗时 p95 1.54 ms，渲染 CPU p95 2.985 ms；
+墙钟渲染帧间隔 p95 31.015 ms，p99 43.403 ms。GPU 未成为该场景的主要瓶颈，仍需继续处理
+主机 CPU 的模拟与同步开销。此次没有同硬件同场景的 GPU 修改前对照，不把它作为整局提速比例。
+原始日志/JSON/截图：`dev_tools/output/deep_audit_20260908/density_rendered_active_production.*`
+及 `production_density_render.png`。此夹具超出正常 256 栋团队上限，用于额外压力测试。

@@ -7,7 +7,7 @@ uniform vec4 progress_brown : source_color = vec4(1.0, 0.64, 0.285, 1.0);
 uniform float grain_speed : hint_range(0.25, 4.0, 0.05) = 1.8;
 
 instance uniform bool working_active = false;
-instance uniform float progress_value : hint_range(0.0, 1.0) = 0.0;
+#include "res://resources/shader/production_progress_projection.gdshaderinc"
 instance uniform float noise_seed = 0.0;
 instance uniform vec4 environment_tint : source_color = vec4(1.0);
 
@@ -58,7 +58,7 @@ void fragment() {
 		);
 		COLOR = vec4(idle_color, 1.0);
 		if (working_active) {
-			float displayed_progress = progress_value;
+			float displayed_progress = production_displayed_progress();
 			float path_progress = clockwise_progress(pixel);
 			float completed = step(path_progress, displayed_progress);
 			float leading_edge = 1.0 - smoothstep(

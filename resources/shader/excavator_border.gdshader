@@ -7,7 +7,7 @@ uniform vec4 progress_amber : source_color = vec4(1.0, 0.62, 0.16, 1.0);
 uniform float pulse_speed : hint_range(0.25, 4.0, 0.05) = 1.4;
 
 instance uniform bool working_active = false;
-instance uniform float progress_value : hint_range(0.0, 1.0) = 0.0;
+#include "res://resources/shader/production_progress_projection.gdshaderinc"
 instance uniform float noise_seed = 0.0;
 instance uniform vec4 environment_tint : source_color = vec4(1.0);
 
@@ -48,8 +48,8 @@ void fragment() {
 		COLOR = vec4(idle_color, 1.0);
 		if (working_active) {
 			float path_progress = clockwise_progress(pixel);
-			float completed = step(path_progress, progress_value);
-			float leading_edge = 1.0 - smoothstep(0.0, 0.03, abs(path_progress - progress_value));
+			float completed = step(path_progress, production_displayed_progress());
+			float leading_edge = 1.0 - smoothstep(0.0, 0.03, abs(path_progress - production_displayed_progress()));
 			vec3 completed_color = progress_amber.rgb * mix(0.88, 1.08, pulse);
 			completed_color = mix(completed_color, vec3(1.0, 0.88, 0.56), leading_edge * 0.75);
 			COLOR = vec4(mix(idle_color * 0.7, completed_color, completed), 1.0);

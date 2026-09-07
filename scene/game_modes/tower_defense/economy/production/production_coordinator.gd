@@ -5,6 +5,7 @@ signal storage_totals_changed
 signal personal_inventory_output_committed(peer_id: int)
 
 const TICK_INTERVAL_SECONDS := 1.0
+const VISUAL_TIME_PARAMETER := &"production_visual_time"
 const RESULT_SUCCESS := &"success"
 const RESULT_MISSING_INPUT := &"missing_input"
 const RESULT_STORAGE_FULL := &"storage_full"
@@ -124,6 +125,7 @@ var _storage_totals_warehouse_scan_count := 0
 
 
 func _ready() -> void:
+	set_process(not production_buildings.is_empty())
 	production_tick_timer.timeout.connect(_on_production_tick)
 	if (
 		run_state != null
@@ -131,6 +133,15 @@ func _ready() -> void:
 	):
 		run_state.inventory_changed.connect(_on_inventory_changed)
 	_refresh_timer_state()
+
+
+func _process(_delta: float) -> void:
+	# One shared shader clock replaces one script Tween per active building.
+	# This clock freezes with gameplay (including modal pause leases), unlike TIME.
+	RenderingServer.global_shader_parameter_set(
+		VISUAL_TIME_PARAMETER,
+		GameplayPauseController.get_global_gameplay_time_seconds()
+	)
 
 
 func _exit_tree() -> void:
@@ -210,6 +221,7 @@ func register_plant(plant: PlantDefense) -> void:
 		if not production_buildings.has(production_building):
 			production_buildings.append(production_building)
 		production_building.set_production_coordinator(self)
+		set_process(true)
 
 	var warehouse := plant as OakWarehouse
 	if warehouse == null or warehouses.has(warehouse):
@@ -242,6 +254,7 @@ func unregister_plant(plant: PlantDefense) -> void:
 	if production_building != null:
 		production_buildings.erase(production_building)
 		production_building.set_production_coordinator(null)
+		set_process(not production_buildings.is_empty())
 
 	var warehouse := plant as OakWarehouse
 	if warehouse == null:

@@ -4,12 +4,12 @@ class_name ProductionProgressBorderBuilding
 const BORDER_REVEAL_SECONDS := 0.15
 const WORKING_ACTIVE_PARAMETER := &"working_active"
 const PROGRESS_VALUE_PARAMETER := &"progress_value"
+const PROGRESS_PROJECTION_PARAMETER := &"progress_projection"
 const NOISE_SEED_PARAMETER := &"noise_seed"
 
 @onready var production_border: MeshInstance2D = $ProductionBorder
 
 var _border_reveal_tween: Tween = null
-var _border_progress_tween: Tween = null
 
 
 func _ready() -> void:
@@ -26,7 +26,6 @@ func _on_setup_completed() -> void:
 
 func _on_construction_started() -> void:
 	_stop_border_reveal_tween()
-	_stop_border_progress_tween()
 	production_border.hide()
 
 
@@ -55,7 +54,6 @@ func _on_operational_started() -> void:
 
 func _on_removal_started(mode: RemovalMode) -> void:
 	_stop_border_reveal_tween()
-	_stop_border_progress_tween()
 	production_border.hide()
 	super._on_removal_started(mode)
 
@@ -63,7 +61,6 @@ func _on_removal_started(mode: RemovalMode) -> void:
 func _sync_production_border(_replicate: bool = false) -> void:
 	if production_border == null:
 		return
-	_stop_border_progress_tween()
 	var recipe := get_active_recipe()
 	var working := (
 		is_operational
@@ -73,51 +70,23 @@ func _sync_production_border(_replicate: bool = false) -> void:
 		and recipe != null
 		and recipe.is_valid()
 	)
-	# State-change signals are emitted immediately after the authoritative
-	# one-second value is committed. Starting the Tween from that exact value
-	# avoids introducing a millisecond-sized offset before its first frame.
-	var progress_start := get_progress_ratio() if working else 0.0
-	var progress_target := progress_start
-	if (
-		working
-		and completion_wait_reason == &""
-		and progress_start < 1.0
-	):
-		progress_target = minf(
-			progress_start
-			+ VISUAL_PROJECTION_WINDOW_SECONDS / recipe.duration_seconds,
-			1.0
-		)
+	var projection := get_visual_progress_projection() if working else Vector4.ZERO
 	production_border.set_instance_shader_parameter(
 		WORKING_ACTIVE_PARAMETER,
 		working
 	)
 	production_border.set_instance_shader_parameter(
 		PROGRESS_VALUE_PARAMETER,
-		progress_start
+		projection.x
+	)
+	production_border.set_instance_shader_parameter(
+		PROGRESS_PROJECTION_PARAMETER,
+		Vector3(projection.y, projection.z, projection.w)
 	)
 	var seed_source := int(get_meta(&"net_id", get_instance_id()))
 	production_border.set_instance_shader_parameter(
 		NOISE_SEED_PARAMETER,
 		float(posmod(seed_source * 37 + 11, 997)) / 997.0
-	)
-	if progress_target > progress_start + 0.0001:
-		_border_progress_tween = create_tween()
-		_border_progress_tween.set_trans(Tween.TRANS_LINEAR)
-		_border_progress_tween.tween_method(
-			_set_border_progress,
-			progress_start,
-			progress_target,
-			get_visual_projection_duration_seconds()
-		)
-
-
-func _set_border_progress(progress: float) -> void:
-	if production_border == null:
-		return
-	production_border.set_instance_shader_parameter(
-		PROGRESS_VALUE_PARAMETER,
-		progress
 	)
 
 
@@ -125,9 +94,3 @@ func _stop_border_reveal_tween() -> void:
 	if _border_reveal_tween != null and _border_reveal_tween.is_valid():
 		_border_reveal_tween.kill()
 	_border_reveal_tween = null
-
-
-func _stop_border_progress_tween() -> void:
-	if _border_progress_tween != null and _border_progress_tween.is_valid():
-		_border_progress_tween.kill()
-	_border_progress_tween = null

@@ -7,7 +7,7 @@ uniform vec4 progress_light_gray : source_color = vec4(0.82, 0.85, 0.87, 1.0);
 uniform float stone_shimmer_speed : hint_range(0.25, 4.0, 0.05) = 1.25;
 
 instance uniform bool working_active = false;
-instance uniform float progress_value : hint_range(0.0, 1.0) = 0.0;
+#include "res://resources/shader/production_progress_projection.gdshaderinc"
 instance uniform float noise_seed = 0.0;
 instance uniform vec4 environment_tint : source_color = vec4(1.0);
 
@@ -54,11 +54,11 @@ void fragment() {
 		COLOR = vec4(idle_color, 1.0);
 		if (working_active) {
 			float path_progress = clockwise_progress(pixel);
-			float completed = step(path_progress, progress_value);
+			float completed = step(path_progress, production_displayed_progress());
 			float leading_edge = 1.0 - smoothstep(
 				0.0,
 				0.055,
-				abs(path_progress - progress_value)
+				abs(path_progress - production_displayed_progress())
 			);
 			vec3 completed_color = progress_light_gray.rgb * mix(0.9, 1.08, pulse);
 			completed_color = mix(

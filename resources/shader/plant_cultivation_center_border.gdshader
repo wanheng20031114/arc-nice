@@ -7,7 +7,7 @@ uniform vec4 progress_green : source_color = vec4(0.56, 0.94, 0.18, 1.0);
 uniform float leaf_noise_speed : hint_range(0.25, 4.0, 0.05) = 1.55;
 
 instance uniform bool working_active = false;
-instance uniform float progress_value : hint_range(0.0, 1.0) = 0.0;
+#include "res://resources/shader/production_progress_projection.gdshaderinc"
 instance uniform float noise_seed = 0.0;
 instance uniform vec4 environment_tint : source_color = vec4(1.0);
 
@@ -56,11 +56,11 @@ void fragment() {
 		COLOR = vec4(idle_color, 1.0);
 		if (working_active) {
 			float path_progress = clockwise_progress(pixel);
-			float completed = step(path_progress, progress_value);
+			float completed = step(path_progress, production_displayed_progress());
 			float leading_edge = 1.0 - smoothstep(
 				0.0,
 				0.035,
-				abs(path_progress - progress_value)
+				abs(path_progress - production_displayed_progress())
 			);
 			vec3 completed_color = progress_green.rgb * mix(0.86, 1.12, wave);
 			completed_color = mix(
