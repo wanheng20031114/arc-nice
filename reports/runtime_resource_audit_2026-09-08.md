@@ -184,3 +184,21 @@ ERROR、WARNING、ObjectDB 或 RID 警告；耗时分别 11.922 秒与 0.375 秒
 python -X utf8 dev_tools/audit_native_resources.py --output dev_tools/output/native_resource_audit --manifest-only
 python -X utf8 dev_tools/audit_native_resources.py --output dev_tools/output/native_resource_audit
 ```
+
+## 交叉审查：保留有效调度边界，移除紧邻重复通知
+
+`Enemy._clear_cached_navigation_move_direction()` 入口本身就调用 urgent 通知；
+随后的字段重置与 `FlowQueryContext.invalidate()` 没有信号或用户回调。
+原 8 个调用点在相邻位置再次发送同一通知，重复进入所属注册表、事件唤醒与决策排队。
+现移除这 8 次相邻调用，保留 objective 属性 setter、同步 `objective_target_changed`
+回调和真正接触/移除变化各自的通知。未采用跨帧缓存，也没有跳过已提交攻击期间的
+动态目标更新；后者仍可能改变指定目标的失效、负缓存与自动回退状态，不能当成纯读删除。
+
+扩展的 `enemy_work_queue_regression.gd` 38 个断言全部通过，覆盖首次/已有玩家目标、
+相同目标无变化、同步目标监听者的真实重入通知、接触批次变化与相同批次静默、最近选择、
+死亡/移除、稀疏队列唯一性，以及原有同帧 ID 顺序/已消费游标和首次激活边界。
+原 `enemy_transform_scaling_regression.gd` 2435 个断言全部通过，继续检查真实场景下
+最近接触目标、死亡/水陆/有向阵营、几何及注册生命周期。两项最终退出码 0，日志没有
+ERROR/WARNING；命令核实专属 `--resource-audit-wake` 验证进程 0 残留。
+证据为 `wake_queue_retry.log`、`wake_contact_final.log`、`wake_cleanup_verified.json`。
+初版测试错传了移除回调参数，已修正后重跑；该首次失败日志保留，未计为通过。

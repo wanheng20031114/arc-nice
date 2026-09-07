@@ -1006,7 +1006,6 @@ func refresh_indexed_touch_contact_selection() -> void:
 	touched_plant = _select_touching_plant()
 	if touched_player != previous_player or touched_plant != previous_plant:
 		_clear_cached_navigation_move_direction()
-		request_layered_area_urgent_decision()
 
 
 func set_indexed_touch_authority(enabled: bool) -> void:
@@ -1165,7 +1164,6 @@ func synchronize_indexed_touch_contacts(
 	touched_plant = _select_touching_plant()
 	if contact_changed:
 		_clear_cached_navigation_move_direction()
-		request_layered_area_urgent_decision()
 	return true
 
 
@@ -1793,7 +1791,6 @@ func set_target_player(player: Player) -> void:
 			_invalidate_ranged_combat_line_cache()
 			_reset_ranged_attack_position_state()
 			_clear_cached_navigation_move_direction()
-			request_layered_area_urgent_decision()
 		return
 
 	var previous_target := target_player
@@ -1805,7 +1802,6 @@ func set_target_player(player: Player) -> void:
 	if objective_target == null or objective_target == previous_target:
 		objective_target = player
 		_clear_cached_navigation_move_direction()
-		request_layered_area_urgent_decision()
 
 
 func set_objective_target(target: Node2D) -> void:
@@ -1820,7 +1816,6 @@ func set_objective_target(target: Node2D) -> void:
 	_invalidate_ranged_combat_line_cache()
 	_reset_ranged_attack_position_state()
 	_clear_cached_navigation_move_direction()
-	request_layered_area_urgent_decision()
 
 
 ## Host-authored assignments and automatic targeting share one ordered state,
@@ -5469,6 +5464,8 @@ func _cache_navigation_move_direction(
 
 
 func _clear_cached_navigation_move_direction() -> void:
+	# Clearing movement already wakes its event/decision owner. Callers must not
+	# immediately issue a second identical wake after this synchronous reset.
 	request_layered_area_urgent_decision()
 	last_navigation_update_render_frame = -1
 	navigation_refresh_deferred = false
@@ -5768,7 +5765,6 @@ func _clear_touching_players() -> void:
 func _on_touch_damage_area_body_entered(body: Node2D) -> void:
 	if is_dead or indexed_touch_authority_enabled:
 		return
-	request_layered_area_urgent_decision()
 	# A contact changes movement semantics immediately. Never reuse a sweep that
 	# was certified before the body/area overlap began.
 	_clear_cached_navigation_move_direction()
@@ -5882,7 +5878,6 @@ func _on_touched_player_died(player: Player) -> void:
 		return
 	_untrack_touching_player(player)
 	_clear_cached_navigation_move_direction()
-	request_layered_area_urgent_decision()
 
 
 func _select_touching_player() -> Player:
@@ -6067,7 +6062,6 @@ func _on_touched_plant_removal_started(_mode: int, plant: PlantDefense) -> void:
 		return
 	_untrack_touching_plant(plant)
 	_clear_cached_navigation_move_direction()
-	request_layered_area_urgent_decision()
 
 
 ## A stable Player/Plant overlap may omit empty 60 Hz event ticks only while an

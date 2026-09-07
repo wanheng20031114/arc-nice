@@ -1,5 +1,13 @@
 extends Node
 
+class CountedWakeEnemy:
+	extends Enemy
+	var wake_count := 0
+
+	func request_layered_area_urgent_decision() -> void:
+		wake_count += 1
+		super.request_layered_area_urgent_decision()
+
 class LegacyCoordinator:
 	extends EnemySimulationCoordinator
 
@@ -50,6 +58,7 @@ func _run() -> void:
 	var prototype := Enemy.new()
 	_check_ordering(prototype)
 	_check_phase_fences()
+	_check_movement_invalidation_notifications()
 	if "--benchmark" in OS.get_cmdline_user_args():
 		_benchmark(prototype)
 	prototype.free()
@@ -196,6 +205,80 @@ func _benchmark(prototype: Enemy) -> void:
 			_check(queue.size() == 300 and queue[299].simulation_id == 300, "Microbenchmark inserts the same complete ordered cohort")
 			coordinator.free()
 	metrics["ordered_queue_abba"] = measurements
+
+
+func _check_movement_invalidation_notifications() -> void:
+	var enemy := CountedWakeEnemy.new()
+	var coordinator := EnemySimulationCoordinator.new()
+	coordinator._mode = EnemySimulationPolicy.Mode.LAYERED_CONTACT
+	var registration := EnemySimulationCoordinator.Registration.new(
+		enemy, 1, 1, Engine.get_physics_frames() - 1
+	)
+	registration.uses_physics_phase_decisions = true
+	coordinator._registration_by_instance_id[enemy.get_instance_id()] = registration
+	enemy.enemy_simulation_coordinator = coordinator
+	enemy.enemy_simulation_token = registration.token
+	var first := Player.new()
+	var second := Player.new()
+	first.peer_id = 1
+	second.peer_id = 2
+	var navigation_target := Node2D.new()
+	var plant := PlantDefense.new()
+	# The setter's notification and its public objective_changed signal boundary
+	# remain intact. Only the adjacent duplicate after movement invalidation goes.
+	enemy.set_target_player(first)
+	_check(enemy.wake_count == 2 and enemy.objective_target == first, "Player target change preserves setter + post-signal invalidation notifications")
+	enemy.objective_target = null
+	enemy.wake_count = 0
+	enemy.set_target_player(first)
+	_check(enemy.wake_count == 2 and enemy.objective_target == first, "Existing player regains a missing objective without a third identical wake")
+	enemy.wake_count = 0
+	enemy.set_objective_target(navigation_target)
+	_check(enemy.wake_count == 2 and enemy.cached_navigation_move_direction == Vector2.ZERO, "Objective mutation invalidates movement and queues its real notification boundaries")
+	enemy.wake_count = 0
+	enemy.set_objective_target(navigation_target)
+	_check(enemy.wake_count == 0, "Unchanged objective does not invent dirty work")
+	var nested_wake := func(_source: Enemy, _target: Node2D) -> void:
+		enemy.request_layered_area_urgent_decision()
+	enemy.objective_target_changed.connect(nested_wake)
+	enemy.wake_count = 0
+	enemy.set_objective_target(first)
+	_check(enemy.wake_count == 3, "A genuine synchronous objective listener wake is retained")
+	enemy.objective_target_changed.disconnect(nested_wake)
+	enemy.wake_count = 0
+	enemy._on_touch_damage_area_body_entered(navigation_target)
+	_check(enemy.wake_count == 1, "A new body invalidates its sweep with one adjacent notification")
+	enemy.indexed_touch_authority_enabled = true
+	enemy.wake_count = 0
+	_check(enemy.synchronize_indexed_touch_contacts([first], []), "Indexed contact batch is accepted")
+	_check(enemy.wake_count == 1 and enemy.touched_player == first, "A changed indexed batch selects the player and wakes once")
+	enemy.wake_count = 0
+	enemy.synchronize_indexed_touch_contacts([first], [])
+	_check(enemy.wake_count == 0, "Identical indexed contact batch stays silent")
+	enemy.touching_players[second.get_instance_id()] = second
+	first.peer_id = 3
+	enemy.wake_count = 0
+	enemy.refresh_indexed_touch_contact_selection()
+	_check(enemy.wake_count == 1 and enemy.touched_player == second, "A new nearest contact selection wakes once")
+	enemy.wake_count = 0
+	enemy._on_touched_player_died(second)
+	_check(enemy.wake_count == 2 and enemy.touched_player == first, "Death preserves removal and following invalidation but removes their adjacent extra wake")
+	enemy.wake_count = 0
+	enemy._on_touched_plant_removal_started(0, plant)
+	_check(enemy.wake_count == 1, "Plant removal callback retains its required invalidation even without an old membership record")
+	_check(coordinator._event_ready_registrations.size() == 1 and coordinator._urgent_decision_registrations.size() == 1,
+		"All real notifications retain one sparse event/decision registration")
+	_check(enemy.layered_area_decision_urgent and registration.event_ready_enqueued and registration.urgent_decision_enqueued,
+		"Movement invalidation still reaches the owned sparse queues")
+	enemy._clear_touching_players()
+	enemy.enemy_simulation_coordinator = null
+	enemy.enemy_simulation_token = 0
+	coordinator.free()
+	enemy.free()
+	first.free()
+	second.free()
+	navigation_target.free()
+	plant.free()
 
 
 func _check(condition: bool, message: String) -> void:
