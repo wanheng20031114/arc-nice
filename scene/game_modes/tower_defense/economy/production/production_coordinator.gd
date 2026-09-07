@@ -80,6 +80,17 @@ class StorageTransactionJournal:
 		journal.write_slot(slot_index, item, count)
 
 
+## One store's contribution, replaced only when that store commits new slots.
+## Keeping the aggregate separate from transaction journals lets the next recipe
+## see all silent commits without rescanning every untouched warehouse.
+class WarehouseStorageTotals:
+	extends RefCounted
+	var items: Dictionary = {}
+	var stack_capacity: Dictionary = {}
+	var empty_slots := 0
+	var operational := false
+
+
 @onready var production_tick_timer: Timer = $ProductionTickTimer
 @onready var run_state: RunStateStore = get_node_or_null(
 	"/root/RunState"
@@ -106,6 +117,10 @@ var _visible_storage_item_totals: Dictionary = {}
 var _operational_storage_stack_capacity: Dictionary = {}
 var _operational_empty_storage_slot_count := 0
 var _storage_item_totals_cache_dirty := true
+var _storage_totals_by_warehouse: Dictionary[int, WarehouseStorageTotals] = {}
+var _dirty_storage_warehouses: Dictionary[int, OakWarehouse] = {}
+var _storage_totals_rebuild_count := 0
+var _storage_totals_warehouse_scan_count := 0
 
 
 func _ready() -> void:
@@ -116,6 +131,13 @@ func _ready() -> void:
 	):
 		run_state.inventory_changed.connect(_on_inventory_changed)
 	_refresh_timer_state()
+
+
+func _exit_tree() -> void:
+	for warehouse in warehouses:
+		if is_instance_valid(warehouse):
+			warehouse.bind_storage_totals_coordinator(null)
+	_dirty_storage_warehouses.clear()
 
 
 func set_authoritative_processing_enabled(enabled: bool) -> void:
@@ -193,6 +215,7 @@ func register_plant(plant: PlantDefense) -> void:
 	if warehouse == null or warehouses.has(warehouse):
 		return
 	warehouses.append(warehouse)
+	warehouse.bind_storage_totals_coordinator(self)
 	_invalidate_ordered_warehouse_cache()
 	if not warehouse.storage_changed.is_connected(_on_warehouse_storage_changed):
 		warehouse.storage_changed.connect(_on_warehouse_storage_changed)
@@ -224,6 +247,7 @@ func unregister_plant(plant: PlantDefense) -> void:
 	if warehouse == null:
 		return
 	warehouses.erase(warehouse)
+	warehouse.bind_storage_totals_coordinator(null)
 	_invalidate_ordered_warehouse_cache()
 	if warehouse.storage_changed.is_connected(_on_warehouse_storage_changed):
 		warehouse.storage_changed.disconnect(_on_warehouse_storage_changed)
@@ -988,41 +1012,77 @@ func _has_cached_output_capacity_without_consumption(
 
 func _ensure_storage_item_totals_cache() -> void:
 	_ensure_ordered_warehouse_cache()
-	if not _storage_item_totals_cache_dirty:
+	if _storage_item_totals_cache_dirty:
+		_storage_totals_rebuild_count += 1
+		_operational_storage_item_totals.clear()
+		_visible_storage_item_totals.clear()
+		_operational_storage_stack_capacity.clear()
+		_operational_empty_storage_slot_count = 0
+		_storage_totals_by_warehouse.clear()
+		for warehouse in _ordered_visible_warehouses:
+			_replace_warehouse_storage_totals(warehouse)
+		_storage_item_totals_cache_dirty = false
+	else:
+		for warehouse in _dirty_storage_warehouses.values():
+			_replace_warehouse_storage_totals(warehouse)
+	_dirty_storage_warehouses.clear()
+
+
+## Called by the warehouse revision setter, including silent atomic writes and
+## rollback. This method only marks data dirty; it never emits signals or yields.
+func invalidate_warehouse_storage_totals(warehouse: OakWarehouse) -> void:
+	_dirty_storage_warehouses[warehouse.get_instance_id()] = warehouse
+
+
+func _replace_warehouse_storage_totals(warehouse: OakWarehouse) -> void:
+	var instance_id := warehouse.get_instance_id()
+	var previous := _storage_totals_by_warehouse.get(instance_id) as WarehouseStorageTotals
+	if previous != null:
+		_apply_warehouse_storage_totals(previous, -1)
+	if not _is_visible_warehouse(warehouse):
+		_storage_totals_by_warehouse.erase(instance_id)
 		return
-	var operational_totals: Dictionary = {}
-	var visible_totals: Dictionary = {}
-	var operational_stack_capacity: Dictionary = {}
-	var operational_empty_slot_count := 0
-	for warehouse in _ordered_visible_warehouses:
-		var include_in_operational := not warehouse.is_multiplayer_proxy
-		for slot_index in OakWarehouse.STORAGE_CAPACITY:
-			var item: PickupConfig = warehouse.storage_items[slot_index]
-			if item == null:
-				if include_in_operational:
-					operational_empty_slot_count += 1
-				continue
-			var item_key: Variant = _get_storage_item_key(item)
-			var count := maxi(warehouse.storage_stack_counts[slot_index], 1)
-			visible_totals[item_key] = int(visible_totals.get(item_key, 0)) + count
-			if include_in_operational:
-				operational_totals[item_key] = (
-					int(operational_totals.get(item_key, 0)) + count
-				)
-				var stack_capacity := maxi(
-					PickupConfig.get_inventory_stack_limit(item) - count,
-					0
-				)
-				if stack_capacity > 0:
-					operational_stack_capacity[item_key] = (
-						int(operational_stack_capacity.get(item_key, 0))
-						+ stack_capacity
-					)
-	_operational_storage_item_totals = operational_totals
-	_visible_storage_item_totals = visible_totals
-	_operational_storage_stack_capacity = operational_stack_capacity
-	_operational_empty_storage_slot_count = operational_empty_slot_count
-	_storage_item_totals_cache_dirty = false
+	var totals := WarehouseStorageTotals.new()
+	totals.operational = not warehouse.is_multiplayer_proxy
+	_storage_totals_warehouse_scan_count += 1
+	for slot_index in OakWarehouse.STORAGE_CAPACITY:
+		var item := warehouse.storage_items[slot_index]
+		if item == null:
+			totals.empty_slots += 1
+			continue
+		var key: Variant = _get_storage_item_key(item)
+		var count := maxi(warehouse.storage_stack_counts[slot_index], 1)
+		totals.items[key] = int(totals.items.get(key, 0)) + count
+		var capacity := maxi(PickupConfig.get_inventory_stack_limit(item) - count, 0)
+		if capacity > 0:
+			totals.stack_capacity[key] = int(totals.stack_capacity.get(key, 0)) + capacity
+	_storage_totals_by_warehouse[instance_id] = totals
+	_apply_warehouse_storage_totals(totals, 1)
+
+
+func _apply_warehouse_storage_totals(totals: WarehouseStorageTotals, sign: int) -> void:
+	_accumulate_storage_counts(_visible_storage_item_totals, totals.items, sign)
+	if totals.operational:
+		_accumulate_storage_counts(_operational_storage_item_totals, totals.items, sign)
+		_accumulate_storage_counts(_operational_storage_stack_capacity, totals.stack_capacity, sign)
+		_operational_empty_storage_slot_count += sign * totals.empty_slots
+
+
+func _accumulate_storage_counts(target: Dictionary, contribution: Dictionary, sign: int) -> void:
+	for key in contribution:
+		var value := int(target.get(key, 0)) + sign * int(contribution[key])
+		if value == 0:
+			target.erase(key)
+		else:
+			target[key] = value
+
+
+func get_storage_totals_metrics() -> Dictionary:
+	return {
+		"full_rebuilds": _storage_totals_rebuild_count,
+		"warehouse_scans": _storage_totals_warehouse_scan_count,
+		"cached_warehouses": _storage_totals_by_warehouse.size(),
+	}
 
 
 func _get_storage_item_key(item: PickupConfig) -> Variant:
@@ -1093,7 +1153,6 @@ func _on_production_tick() -> void:
 
 
 func _on_warehouse_storage_changed() -> void:
-	_storage_item_totals_cache_dirty = true
 	storage_totals_changed.emit()
 	material_state_changed.emit()
 	if _storage_transaction_in_progress:

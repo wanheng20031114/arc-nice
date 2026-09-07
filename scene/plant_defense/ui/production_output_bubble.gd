@@ -42,6 +42,8 @@ func refresh(
 	requested_visible: bool,
 	is_working: bool
 ) -> void:
+	if _recipe == recipe and _requested_visible == requested_visible and _is_working == is_working:
+		return
 	_recipe = recipe
 	_requested_visible = requested_visible
 	_is_working = is_working
@@ -49,16 +51,22 @@ func refresh(
 
 
 func set_recipe(recipe: ProductionRecipe) -> void:
+	if _recipe == recipe:
+		return
 	_recipe = recipe
 	_refresh_if_ready()
 
 
 func set_requested_visible(requested_visible: bool) -> void:
+	if _requested_visible == requested_visible:
+		return
 	_requested_visible = requested_visible
 	_refresh_if_ready()
 
 
 func set_is_working(is_working: bool) -> void:
+	if _is_working == is_working:
+		return
 	_is_working = is_working
 	_refresh_if_ready()
 

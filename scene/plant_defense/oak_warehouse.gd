@@ -23,7 +23,15 @@ const MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS := 4.0
 
 var storage_items: Array[PickupConfig] = []
 var storage_stack_counts: Array[int] = []
-var storage_revision: int = 0
+var storage_revision: int = 0:
+	set(value):
+		storage_revision = value
+		# Slot arrays are committed before their revision. Invalidate the owning
+		# aggregate even for silent multi-store writes, before public observers
+		# can issue another transaction. This callback never emits a signal.
+		if _storage_totals_coordinator != null:
+			_storage_totals_coordinator.invalidate_warehouse_storage_totals(self)
+var _storage_totals_coordinator: ProductionCoordinator = null
 var warehouse_net_id: int = 0
 var multiplayer_storage_peer_id: int = 0
 var multiplayer_storage_enabled := false
@@ -88,6 +96,10 @@ func _on_setup_completed() -> void:
 	super._on_setup_completed()
 	health_bar.call("setup", max_health, current_health)
 	health_changed.connect(_on_health_changed)
+
+
+func bind_storage_totals_coordinator(coordinator: ProductionCoordinator) -> void:
+	_storage_totals_coordinator = coordinator
 
 
 func _on_operational_started() -> void:

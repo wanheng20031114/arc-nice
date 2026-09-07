@@ -41,6 +41,7 @@ var selected_recipe_id: StringName = &""
 var request_pending := false
 var _next_request_token := 0
 var _pending_request_token := 0
+var _material_refresh_queued := false
 
 
 func _ready() -> void:
@@ -50,6 +51,7 @@ func _ready() -> void:
 		)
 	craft_button.pressed.connect(_on_craft_pressed)
 	request_timeout.timeout.connect(_on_request_timeout)
+	visibility_changed.connect(_on_panel_visibility_changed)
 	_bind_research_state_provider_signal()
 	_bind_material_provider_signal()
 	_reload_recipes()
@@ -378,4 +380,21 @@ func _on_research_state_changed() -> void:
 
 
 func _on_material_state_changed() -> void:
-	refresh()
+	# Production can commit hundreds of stores in one frame on every client.
+	# Closed crafting pages have no presentation work; visible pages read the
+	# final committed aggregate once at the deferred boundary.
+	if not is_visible_in_tree() or _material_refresh_queued:
+		return
+	_material_refresh_queued = true
+	_flush_material_refresh.call_deferred()
+
+
+func _flush_material_refresh() -> void:
+	_material_refresh_queued = false
+	if is_visible_in_tree():
+		refresh()
+
+
+func _on_panel_visibility_changed() -> void:
+	if is_node_ready() and is_visible_in_tree():
+		refresh()
