@@ -315,3 +315,20 @@ Gunner 实际命中玩家、植物和 Enemy，AK/RPG 保持无隐形 touch 伤�
 `touch_update_contact_final.log`、`touch_update_cleanup_verified.json`，均位于
 `dev_tools/output/deep_audit_20260908/`。PID 3820、11688、1732 及专属 owner marker
 经过 Win32_Process 检查 **0 残留**。
+
+## 收尾时的最终完整性复核
+
+用户恢复中断任务后限定只做收尾。撤回未完成验证的集水器显示和额外接触实验后，
+原生编辑器 import 正常 exit 0，无错误或警告，并补齐本任务新增脚本的 UID。
+随后同一全量加载工具检查最终工作区：主工程 **1820 / 1820**（617 脚本、836 资源、
+367 场景），独立 Relay **6 / 6**，共 **1826** 项全部非空原生加载。
+两个引擎进程均 exit 0，零 SCRIPT ERROR、ERROR、WARNING、退出资源滞留。
+
+这是所有受 Git 跟踪脚本/场景/资源的原生加载与解析，不等于逐个实例化全部场景；
+战役、塔防、网络与暂停的实际交互证据见对应专项报告。未在收尾阶段新增功能或压测。
+
+记录：`dev_tools/output/deep_audit_20260908/native_all_resources_closeout/`，含逐资源
+SHA256、版本差异、原生日志、完成计数与退出码。最后 Win32_Process 再次专门检查
+Godot 的 `--headless`、`--check-only` 和任务 owner 参数：**测试 Godot 0、全部 Godot 0、
+本任务 Python 验证辅助进程 0**。清理证据为
+`dev_tools/output/closeout_process_cleanup_20260908.json`，没有关闭用户正常编辑器。

@@ -31,6 +31,8 @@ var _last_frame_usec := 0
 var _last_physics_usec := 0
 var _gpu_samples: Array[float] = []
 var _render_cpu_samples: Array[float] = []
+var _minimum_sample_player_max_health := 2147483647
+var _player_died_during_sample := false
 
 
 func _ready() -> void:
@@ -80,6 +82,8 @@ func _process(_delta: float) -> void:
 
 func _physics_process(_delta: float) -> void:
 	if _started_sampling:
+		_minimum_sample_player_max_health = mini(_minimum_sample_player_max_health, runtime.player.max_health)
+		_player_died_during_sample = _player_died_during_sample or runtime.player.is_dead
 		var now := Time.get_ticks_usec()
 		if _last_physics_usec > 0:
 			_physics_samples.append(float(now - _last_physics_usec) / 1000.0)
@@ -91,7 +95,8 @@ func _run() -> void:
 	Engine.max_fps = 60
 	if DisplayServer.get_name() != "headless":
 		RenderingServer.viewport_set_measure_render_time(get_tree().root.get_viewport_rid(), true)
-	(get_tree().root.get_node("RunState") as RunStateStore).begin_new_run(&"weishidaier", false)
+	var run_state := get_tree().root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
 	runtime = load("res://scene/game_modes/tower_defense/tower_defense_game.tscn").instantiate()
 	runtime.auto_start_waves = false
 	runtime.day_phase_announcements_enabled = false
@@ -104,10 +109,13 @@ func _run() -> void:
 	runtime.activate_runtime()
 	runtime.random_generator.seed = 20260908
 	runtime.plant_terrain_decay_timer.stop()
-	# Damage can refresh the player's canonical stats. A raw max_health override
-	# is then clamped back to the character's authored value on the first hit.
-	# This disposable run owns its stat ledger, so use the real bonus projection.
-	runtime.player.configure_run_stat_bonuses({"max_health": 10000000})
+	# Write the real run ledger as well as its Player projection: later party
+	# status/experience updates must not replay the old zero-bonus snapshot.
+	if not _grant_fixture_health(run_state):
+		push_error("Density fixture could not commit its health ledger")
+		_finish(6)
+		return
+	runtime.player.configure_run_stat_bonuses(run_state.get_player_stat_bonuses(0))
 	runtime.player.current_health = runtime.player.max_health
 	runtime.player.global_position = Vector2(640, 380)
 	await get_tree().process_frame
@@ -194,6 +202,8 @@ func _run() -> void:
 		"player_alive": not runtime.player.is_dead,
 		"player_health": runtime.player.current_health,
 		"player_max_health": runtime.player.max_health,
+		"minimum_sample_player_max_health": _minimum_sample_player_max_health,
+		"player_died_during_sample": _player_died_during_sample,
 		"frames": sample_frames,
 		"warmup_frames": warmup_frames,
 		"renderer": RenderingServer.get_current_rendering_method(),
@@ -229,7 +239,24 @@ func _run() -> void:
 	var production_valid := not active_production or sample_frames < 300 or int(measurements["water_produced_total"]) > 0
 	if not production_valid:
 		push_error("Active production completed no water during the density sample")
-	_finish(0 if production_valid else 5)
+	var health_valid := not _player_died_during_sample and _minimum_sample_player_max_health >= 10000000
+	if not health_valid:
+		push_error("Density fixture lost its authoritative player health cohort")
+	_finish(0 if production_valid and health_valid else 5)
+
+
+func _grant_fixture_health(run_state: RunStateStore) -> bool:
+	var snapshot := run_state.export_party_economy_snapshot(PackedInt32Array([0]))
+	var next_status := run_state.build_party_status_ledger_with_player_stat_bonus(0, &"max_health", 10000000)
+	if next_status.is_empty():
+		return false
+	var inventory_revisions := {}
+	for inventory: Dictionary in snapshot["inventories"]:
+		inventory_revisions[int(inventory["peer_id"])] = int(inventory["revision"])
+	return run_state.apply_authoritative_party_transaction(
+		snapshot, int(snapshot["warehouse_ledger"]["revision"]), inventory_revisions,
+		-1, {}, int(snapshot["party_status_ledger"]["revision"]), next_status
+	)
 
 
 func _wait_for_runtime_preparation() -> bool:

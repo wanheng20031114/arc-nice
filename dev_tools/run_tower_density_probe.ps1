@@ -55,11 +55,21 @@ $sourceHashes = @(& git -C $probeRoot ls-files --cached --others --exclude-stand
         @{ path = $_; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
     }
 })
+$historicalManifest = Join-Path $launchRoot 'historical_source_manifest.json'
+$historicalSource = $null
+if (Test-Path -LiteralPath $historicalManifest -PathType Leaf) {
+    Copy-Item -LiteralPath $historicalManifest -Destination (Join-Path $runDirectory 'historical_source_manifest.json')
+    $historicalSource = @{
+        path = $historicalManifest
+        sha256 = (Get-FileHash -LiteralPath $historicalManifest -Algorithm SHA256).Hash
+    }
+}
 @{
     git_revision = (& git -C $probeRoot rev-parse HEAD)
     working_changes = @(& git -C $probeRoot status --short)
     godot = $Godot; working_directory = $launchRoot; arguments = $arguments
     variant_label = $VariantLabel
+    historical_source_manifest = $historicalSource
     executable_sha256 = (Get-FileHash -LiteralPath $Godot -Algorithm SHA256).Hash
     offline_lobby_fixture_placeholder = ($env:ARC_PUBLIC_LOBBY_API_BASE_URL -eq 'https://127.0.0.1')
     launch_project_godot = (Get-Content -LiteralPath (Join-Path $launchRoot 'project.godot') -Raw -Encoding UTF8)
