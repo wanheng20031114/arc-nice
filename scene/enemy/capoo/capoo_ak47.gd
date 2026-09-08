@@ -1,4 +1,4 @@
-extends "res://scene/enemy/layered_ranged_enemy.gd"
+extends "res://scene/enemy/lazy_cooldown_ranged_enemy.gd"
 class_name CapooAK47
 
 const CapooConfig := preload("res://resources/config/enemies/capoo_ak47_config.gd")
@@ -23,7 +23,6 @@ enum CombatState {
 @onready var muzzle_heat: Polygon2D = $MuzzleHeat
 
 var combat_state: CombatState = CombatState.CHASE
-var attack_cooldown_left: float = 0.0
 var windup_time_left: float = 0.0
 var burst_shot_direction := Vector2.RIGHT
 var burst_shots_fired: int = 0
@@ -115,6 +114,9 @@ func _layered_area_touch_damage_precedes_family_event() -> bool:
 
 
 func _advance_layered_ranged_event_phase(delta: float) -> void:
+	# A CHASE sleep gap is not WINDUP/BURST elapsed time. Only the current
+	# admitted gameplay quantum advances authored attack and visual timers.
+	delta = _attack_cooldown.get_event_delta(delta)
 	layered_ak47_event_consumes_tick = false
 	_update_attack_cooldown(delta)
 	if (
@@ -143,11 +145,12 @@ func _advance_layered_ranged_event_phase(delta: float) -> void:
 
 
 func _can_sleep_layered_ranged_event_phase() -> bool:
-	# WINDUP/BURST and cooldown use exact repeated-subtraction semantics. Only a
-	# fully idle CHASE state may leave the sparse event lane.
+	# The final bullet's consumed flag requires one following event to clear it;
+	# sleeping on that final frame would otherwise forbid CHASE forever.
 	return (
 		combat_state == CombatState.CHASE
-		and attack_cooldown_left <= 0.0
+		and not layered_ak47_event_consumes_tick
+		and (chase_cooldown_event_sleep_enabled or attack_cooldown_left <= 0.0)
 	)
 
 
@@ -220,6 +223,11 @@ func _try_consume_ak47_chase_decision() -> bool:
 				WORLD_COLLISION_MASK
 			)
 		):
+			if attack_cooldown_left > 0.0:
+				# A cooling attack cannot commit or invalidate the sampled LOS.
+				# Retain this call's first valid hold without repeating its queries.
+				_update_facing(global_position.direction_to(preferred_target.global_position))
+				return true
 			if _try_start_windup(preferred_target):
 				return true
 			# The attack commit performs an exact LOS query. If that invalidated a
@@ -278,12 +286,6 @@ func play_multiplayer_death_sequence() -> void:
 	_clear_committed_attack_timing()
 	_set_muzzle_heat(0.0, burst_shot_direction)
 	super.play_multiplayer_death_sequence()
-
-
-func _update_attack_cooldown(delta: float) -> void:
-	if attack_cooldown_left <= 0.0:
-		return
-	attack_cooldown_left = maxf(attack_cooldown_left - delta, 0.0)
 
 
 func _try_start_windup(candidate_target: Node2D = null) -> bool:

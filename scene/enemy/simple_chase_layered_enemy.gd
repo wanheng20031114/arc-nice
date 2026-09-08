@@ -269,10 +269,19 @@ func _can_enter_layered_area_event_sleep() -> bool:
 			_has_sleepable_layered_touch_damage_cooldown()
 			or (
 				indexed_touch_contact_snapshot_is_empty()
-				and layered_area_last_can_move
+				and (
+					layered_area_last_can_move
+					or _can_sleep_layered_area_stationary_empty_contact_event()
+				)
 			)
 		)
 	)
+
+
+## Default families require an active motion plan to sleep without contact.
+## A proven ranged family may also hold position while its CHASE timer is lazy.
+func _can_sleep_layered_area_stationary_empty_contact_event() -> bool:
+	return false
 
 
 ## Event hook: advance deterministic family timers and validate committed state.

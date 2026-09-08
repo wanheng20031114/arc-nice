@@ -1,4 +1,4 @@
-extends "res://scene/enemy/layered_ranged_enemy.gd"
+extends "res://scene/enemy/lazy_cooldown_ranged_enemy.gd"
 class_name CapooRPG
 
 const CapooRPGConfigScript := preload("res://resources/config/enemies/capoo_rpg_config.gd")
@@ -20,7 +20,6 @@ enum CombatState {
 @onready var attack_audio: AudioStreamPlayer2D = $AttackAudio
 
 var combat_state: CombatState = CombatState.CHASE
-var attack_cooldown_left: float = 0.0
 var windup_time_left: float = 0.0
 var fire_time_left: float = 0.0
 var fire_direction := Vector2.RIGHT
@@ -72,6 +71,9 @@ func _prepare_layered_ranged_authoritative_simulation() -> void:
 
 
 func _advance_layered_ranged_event_phase(delta: float) -> void:
+	# The first WINDUP/FIRE event after CHASE sleep consumes only this step;
+	# lazy cooldown already accounts for the earlier individual quanta.
+	delta = _attack_cooldown.get_event_delta(delta)
 	layered_rpg_event_consumes_tick = false
 	layered_rpg_windup_ready_to_fire = false
 	_update_attack_cooldown(delta)
@@ -98,10 +100,12 @@ func _advance_layered_ranged_event_phase(delta: float) -> void:
 
 
 func _can_sleep_layered_ranged_event_phase() -> bool:
-	# Cooldown and authored visual timers are public per-tick state.
+	# Keep the final FIRE recovery frame in the lane until its consumed marker
+	# is cleared, then let the unchanged per-tick CHASE decision read cooldown.
 	return (
 		combat_state == CombatState.CHASE
-		and attack_cooldown_left <= 0.0
+		and not layered_rpg_event_consumes_tick
+		and (chase_cooldown_event_sleep_enabled or attack_cooldown_left <= 0.0)
 	)
 
 
@@ -198,12 +202,6 @@ func play_multiplayer_death_sequence() -> void:
 	committed_attack_target = null
 	_set_muzzle_heat(0.0, fire_direction)
 	super.play_multiplayer_death_sequence()
-
-
-func _update_attack_cooldown(delta: float) -> void:
-	if attack_cooldown_left <= 0.0:
-		return
-	attack_cooldown_left = maxf(attack_cooldown_left - delta, 0.0)
 
 
 func _try_start_windup(candidate_target: Node2D = null) -> bool:
